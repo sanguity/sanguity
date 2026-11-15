@@ -317,9 +317,10 @@ function activityPanel(path, members) {
 }
 
 /* ---------------------------------------------------------------- accounts (admin) */
-function showTemp(username, pw) {
+function showTemp(username, pw, days) {
   say("#userMsg", "");
-  $("#userMsg").replaceChildren(`One-time password for ${username}: `, el("code", {text: pw}), " — give it to them privately; it isn't shown again.");
+  $("#userMsg").replaceChildren(`One-time password for ${username}: `, el("code", {text: pw}),
+    ` — give it to them privately; it isn't shown again, and stops working if not used within ${days || 7} days.`);
 }
 async function loadUsers() {
   const list = await call("users");
@@ -348,7 +349,7 @@ async function loadUsers() {
         el("td", {class: "acts"},
           act(u.disabled ? "Enable" : "Disable", {disabled: !u.disabled}),
           act(u.is_admin ? "Remove admin" : "Make admin", {is_admin: !u.is_admin}),
-          act("Reset password", {reset_password: true}, r => setTimeout(() => showTemp(u.username, r.temporary_password))),
+          act("Reset password", {reset_password: true}, r => setTimeout(() => showTemp(u.username, r.temporary_password, r.temporary_days))),
           self ? null : el("button", {class: "btn small", type: "button", text: "Remove", onclick: () => removeAccount(u)}),
           u.two_factor ? el("button", {class: "btn small", type: "button", text: "Turn off 2FA", disabled: self || null, onclick: async () => {
             if (!confirm(`Turn off two-factor sign-in for ${u.username}? Do this only if they lost both their phone and their recovery codes. They'll be signed out everywhere.`)) return;
@@ -404,7 +405,7 @@ async function removeAccount(u) {
 }
 $("#userNew").onsubmit = async ev => {
   ev.preventDefault();
-  try { const r = await call("users", "POST", {username: $("#userName").value.trim(), is_admin: $("#userAdmin").checked}); $("#userNew").reset(); await loadUsers(); showTemp(r.username, r.temporary_password); }
+  try { const r = await call("users", "POST", {username: $("#userName").value.trim(), is_admin: $("#userAdmin").checked}); $("#userNew").reset(); await loadUsers(); showTemp(r.username, r.temporary_password, r.temporary_days); }
   catch (e) { say("#userMsg", e.message, true); }
 };
 

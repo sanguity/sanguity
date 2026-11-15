@@ -27,6 +27,10 @@ SESSION_DAYS = _int("SESSION_DAYS", 30)                 # a session ends this lo
 SESSION_IDLE_MINUTES = _int("SESSION_IDLE_MINUTES", 0)  # also end it after this long unused (0 = off)
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "auto").lower()   # auto = Secure when the request came over HTTPS
 COOKIE = "sg_session"
+# over HTTPS the session cookie is named with the __Host- prefix, so the browser holds it to Secure, Path=/ and
+# this exact host (no subdomain can set or overwrite it); plain HTTP can't carry that prefix, so it keeps COOKIE
+COOKIE_HOST = "__Host-" + COOKIE
+TEMP_PASSWORD_DAYS = _int("TEMP_PASSWORD_DAYS", 7)   # a one-time password from an admin stops working after this
 DEVICE_COOKIE, DEVICE_DAYS = "sg_device", 365   # marks a browser that has signed in to an account before
 # Addresses people open Sanguity at, when a reverse proxy in front changes the Host header and doesn't send
 # X-Forwarded-Host, e.g. "https://health.example.com" (comma-separated)

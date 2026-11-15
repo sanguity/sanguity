@@ -160,6 +160,9 @@ To load it into a Sanguity install (into an empty profile, or replacing one's re
 # ---------------------------------------------------------------- loading an export
 
 ALLOWED = re.compile(r"^(data\.json|settings\.json|README\.txt|activity\.json|watch/daily\.json|documents/[^/]+/.+)$")
+# a zip that unpacks to more than this is refused before anything is written (a damaged or hostile archive could
+# otherwise fill the disk); far above any real profile's records
+MAX_ENTRIES, MAX_BYTES = 100_000, 16 * 2**30
 
 
 def import_archive(db, pid, archive):
@@ -169,9 +172,12 @@ def import_archive(db, pid, archive):
     new = dest + ".new"
     shutil.rmtree(new, ignore_errors=True)
     with zipfile.ZipFile(archive) as zf:
-        names = [i.filename for i in zf.infolist() if not i.is_dir()]
-        if "data.json" not in names:
+        files = [i for i in zf.infolist() if not i.is_dir()]
+        if "data.json" not in [i.filename for i in files]:
             raise ValueError("this zip has no data.json: it isn't a Sanguity export")
+        if len(files) > MAX_ENTRIES or sum(i.file_size for i in files) > MAX_BYTES:
+            raise ValueError(f"this zip holds more than {MAX_ENTRIES} files or {MAX_BYTES // 2**30} GB unpacked: "
+                             "too big to be a Sanguity export")
         for i in zf.infolist():
             if i.is_dir():
                 continue

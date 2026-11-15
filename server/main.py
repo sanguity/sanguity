@@ -3,7 +3,7 @@
 Roles on a profile:  owner (view, import/edit, share, delete) · editor (view, import/edit) · viewer (view).
 Admin is an account flag for managing accounts only; it gives no access to anyone's records.
 """
-import logging, os, secrets, string, threading, urllib.parse
+import json, logging, os, secrets, string, sys, threading, urllib.parse
 from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
@@ -14,6 +14,16 @@ from pydantic import BaseModel
 from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, passkeys, profiles as prof, security as sec, twofactor
 
 log = logging.getLogger("sanguity")
+# security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
+# `docker compose logs app` shows them. Never a password, code or token; a username only when it names an account
+# (a name typed at sign-in that matches none might be a password typed into the wrong field).
+audit = logging.getLogger("sanguity.security")
+if not audit.handlers:
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(logging.Formatter("%(message)s"))
+    audit.addHandler(_h)
+    audit.setLevel(logging.INFO)
+    audit.propagate = False
 RANK = {"viewer": 1, "editor": 2, "owner": 3}
 WWW = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "www")
 
@@ -74,6 +84,17 @@ def _same_site(origin, request):
     return host in seen
 
 
+def _audit(event, request=None, user=None, warn=True, **fields):
+    """Log a security event. user: an account row (or {"id", "username"}), or None."""
+    line = {"at": dbm.now(), "event": event}
+    if request is not None:
+        line["ip"] = _client_ip(request)
+    if user is not None:
+        line["user"], line["uid"] = user["username"], user["id"]
+    line.update(fields)
+    audit.log(logging.WARNING if warn else logging.INFO, "security %s", json.dumps(line, separators=(",", ":")))
+
+
 @app.exception_handler(passkeys.PasskeyError)
 async def passkey_error(request: Request, exc: passkeys.PasskeyError):
     return JSONResponse({"detail": str(exc)}, status_code=exc.status)
@@ -93,6 +114,7 @@ async def guard(request: Request, call_next):
     if request.url.path.startswith("/api/") and request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin")
         if request.headers.get("x-sanguity") != "1" or (origin and not _same_site(origin, request)):
+            _audit("csrf.refused", request, path=request.url.path, origin=(origin or "")[:200])
             return JSONResponse({"detail": "Request refused (cross-site check)."}, status_code=403)
     resp = await call_next(request)
     if request.url.path.startswith("/api/"):
@@ -101,6 +123,8 @@ async def guard(request: Request, call_next):
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["Referrer-Policy"] = "no-referrer"
         resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+        # an API answer opened directly is downloaded, never rendered (documents say inline themselves)
+        resp.headers.setdefault("Content-Disposition", 'attachment; filename="api.json"')
     return resp
 
 
@@ -119,7 +143,7 @@ def _client_ip(request):
 
 
 def _session(request, db):
-    token = request.cookies.get(config.COOKIE)
+    token = request.cookies.get(config.COOKIE_HOST) or request.cookies.get(config.COOKIE)
     if not token or len(token) > 200:
         return None
     s = db.execute("""SELECT s.id AS sid, s.last_seen, s.expires, u.* FROM sessions s JOIN users u ON u.id = s.user_id
@@ -160,8 +184,9 @@ def user(s=Depends(settled), db=Depends(get_db)):
     return s
 
 
-def admin(s=Depends(user)):
+def admin(request: Request, s=Depends(user)):
     if not s["is_admin"]:
+        _audit("access.denied", request, s, need="admin", path=request.url.path)
         raise HTTPException(403, "Only an admin can do that.")
     return s
 
@@ -175,6 +200,8 @@ def need(db, u, pid, at_least):
     """The caller's role on pid, or an error. A profile not shared with the caller is reported as not found,
     so its existence isn't revealed."""
     r = role_of(db, u["id"], pid)
+    if not r or RANK[r] < RANK[at_least]:
+        _audit("access.denied", None, u, profile=pid, need=at_least, role=r)
     if not r:
         raise HTTPException(404, "No such profile.")
     if RANK[r] < RANK[at_least]:
@@ -190,14 +217,22 @@ def _secure(request):
     return request.url.scheme == "https"
 
 
-def _start_session(request, response, db, uid):
+def _start_session(request, response, db, uid, how=None):
+    """A new session for uid. how: the way they signed in, for the security log (None: a fresh session after a
+    change, not a sign-in)."""
     token, now = sec.new_token(), dbm.now()
     db.execute("DELETE FROM sessions WHERE expires<=?", (now,))
     db.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent) VALUES(?,?,?,?,?,?,?)",
                (sec.token_hash(token), uid, now, now, now + config.SESSION_DAYS * 86400,
                 _client_ip(request), (request.headers.get("user-agent") or "")[:300]))
-    response.set_cookie(config.COOKIE, token, max_age=config.SESSION_DAYS * 86400, path="/",
-                        httponly=True, samesite="strict", secure=_secure(request))
+    secure = _secure(request)
+    response.set_cookie(config.COOKIE_HOST if secure else config.COOKIE, token, max_age=config.SESSION_DAYS * 86400,
+                        path="/", httponly=True, samesite="strict", secure=secure)
+    if secure and request.cookies.get(config.COOKIE):   # one from before the prefix, or from plain HTTP
+        response.delete_cookie(config.COOKIE, path="/", httponly=True, samesite="strict")
+    if how:
+        u = db.execute("SELECT id, username FROM users WHERE id=?", (uid,)).fetchone()
+        _audit("login.ok", request, u, warn=False, method=how)
 
 
 # ---------------------------------------------------------------- setup and sign-in
@@ -224,6 +259,7 @@ def setup(body: Setup, request: Request, response: Response, db=Depends(get_db))
         raise HTTPException(409, "Sanguity is already set up. Sign in instead.")
     if not sec.same(sec.token_hash(body.code.strip().upper()), want):
         sec.throttle.fail(*keys)
+        _audit("setup.fail", request)
         raise HTTPException(403, "That setup code is wrong. The current one is in the app's log (docker compose logs app).")
     with dbm.transaction(db):
         if db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
@@ -242,7 +278,7 @@ def setup(body: Setup, request: Request, response: Response, db=Depends(get_db))
             pid = prof.create_profile(db, label or body.username.strip(), owner_id=uid)
             activity.log(db, "create", first, pid, ip=_client_ip(request))
     sec.throttle.clear(*keys)
-    _start_session(request, response, db, uid)
+    _start_session(request, response, db, uid, "setup")
     return {"ok": True}
 
 
@@ -258,12 +294,17 @@ def login(body: Login, request: Request, response: Response, db=Depends(get_db))
     device = _known_device(request, db, u)
     keys = sec.login_keys(name, _client_ip(request), device)
     if (w := sec.throttle.wait(*keys)):
+        _audit("login.throttled", request, u, step="password")
         raise HTTPException(429, f"Too many failed sign-ins. Try again in {w} seconds.", headers={"Retry-After": str(w)})
     pw = body.password[:config.PASSWORD_MAX]   # no stored password is longer; the same string is checked and rehashed
     ok = sec.verify_password(u["pw_hash"] if u else None, pw)
     if not ok or u["disabled"]:
         sec.throttle.fail(*keys)
+        _audit("login.fail", request, u, step="password", reason="disabled" if ok else "password" if u else "no such account")
         raise HTTPException(401, "Wrong username or password.")
+    if u["must_change_pw"] and accounts.temp_password_expired(u):
+        _audit("login.fail", request, u, step="password", reason="one-time password expired")
+        raise HTTPException(401, "This one-time password has expired. Ask an admin for a new one.")
     sec.throttle.clear(keys[0])   # this person on this device got in; the address and account counts age out
     if sec.needs_rehash(u["pw_hash"]):
         db.execute("UPDATE users SET pw_hash=? WHERE id=?", (sec.hash_password(pw), u["id"]))
@@ -272,7 +313,7 @@ def login(body: Login, request: Request, response: Response, db=Depends(get_db))
         return {"two_factor": True, "ticket": _tickets.issue(u["id"]),
                 "methods": {"code": bool(u["totp_secret"]), "passkey": keys_n > 0}}
     _remember_device(request, response, db, u["id"])
-    _start_session(request, response, db, u["id"])
+    _start_session(request, response, db, u["id"], "password")
     return {"must_change_pw": bool(u["must_change_pw"])}
 
 
@@ -327,13 +368,17 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
         raise HTTPException(401, "That took too long. Enter your password again.")
     keys = ("pair:2fa|" + str(uid) + "|" + _client_ip(request), "user:2fa|" + str(uid))
     if (w := sec.throttle.wait(*keys)):
+        _audit("login.throttled", request, u, step="code")
         raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.", headers={"Retry-After": str(w)})
     out = {"must_change_pw": bool(u["must_change_pw"])}
     if twofactor.looks_like_code(body.code):
-        step = twofactor.verify(crypto.dec(u["totp_secret"]), body.code, u["totp_last_step"])
+        secret = crypto.dec(u["totp_secret"])
+        step = twofactor.verify(secret, body.code, u["totp_last_step"])
         if step is None:
             sec.throttle.fail(*keys)
             _tickets.failed(body.ticket)
+            _audit("login.fail", request, u, step="code",
+                   reason="code already used" if twofactor.verify(secret, body.code) is not None else "wrong code")
             raise HTTPException(401, "That code isn't right. Check your authenticator app's time, or use a recovery code.")
         db.execute("UPDATE users SET totp_last_step=? WHERE id=?", (step, uid))
     else:
@@ -342,6 +387,7 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
         if not hit:
             sec.throttle.fail(*keys)
             _tickets.failed(body.ticket)
+            _audit("login.fail", request, u, step="recovery code")
             raise HTTPException(401, "That recovery code isn't right, or it was used already.")
         accounts.sign_out_everywhere(db, uid)   # a recovery code may mean a lost phone: end every other sign-in
         out["recovery_codes_left"] = left = db.execute(
@@ -350,7 +396,7 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
     _tickets.used(body.ticket)
     sec.throttle.clear(keys[0])
     _remember_device(request, response, db, uid)
-    _start_session(request, response, db, uid)
+    _start_session(request, response, db, uid, "password + " + ("code" if twofactor.looks_like_code(body.code) else "recovery code"))
     return out
 
 
@@ -380,6 +426,7 @@ def login_passkey(body: PasskeyFinish, request: Request, response: Response, db=
     """Sign in with a passkey: the step after the password (with the ticket), or on its own."""
     keys = ("ip:passkey|" + _client_ip(request),)
     if (w := sec.throttle.wait(*keys)):
+        _audit("login.throttled", request, step="passkey")
         raise HTTPException(429, f"Too many failed sign-ins. Try again in {w} seconds.", headers={"Retry-After": str(w)})
     want = None
     if body.ticket:
@@ -388,21 +435,23 @@ def login_passkey(body: PasskeyFinish, request: Request, response: Response, db=
             raise HTTPException(401, "That took too long. Enter your password again.")
     try:
         uid, name = passkeys.authenticate(db, body.state[:200], body.credential)
-    except passkeys.PasskeyError:
+    except passkeys.PasskeyError as e:
         sec.throttle.fail(*keys)
         if body.ticket:
             _tickets.failed(body.ticket[:200])
+        _audit("login.fail", request, step="passkey", reason=str(e)[:200])
         raise
     if want is not None and uid != want:   # the state was issued for this ticket's account, so this can't happen
         raise HTTPException(401, passkeys.STALE)
     u = db.execute("SELECT * FROM users WHERE id=? AND disabled=0", (uid,)).fetchone()
     if not u:
         sec.throttle.fail(*keys)
+        _audit("login.fail", request, step="passkey", reason="account disabled", uid=uid)
         raise HTTPException(401, "That account can't sign in.")
     if body.ticket:
         _tickets.used(body.ticket[:200])
     _remember_device(request, response, db, uid)
-    _start_session(request, response, db, uid)
+    _start_session(request, response, db, uid, "password + passkey" if body.ticket else "passkey")
     return {"must_change_pw": bool(u["must_change_pw"]), "username": u["username"]}
 
 
@@ -436,10 +485,12 @@ def _remember_device(request, response, db, uid):
 
 @app.post("/api/logout")
 def logout(request: Request, response: Response, db=Depends(get_db)):
-    token = request.cookies.get(config.COOKIE)
-    if token:
-        db.execute("DELETE FROM sessions WHERE token_hash=?", (sec.token_hash(token),))
+    for name in (config.COOKIE_HOST, config.COOKIE):
+        if (token := request.cookies.get(name)):
+            db.execute("DELETE FROM sessions WHERE token_hash=?", (sec.token_hash(token),))
     response.delete_cookie(config.COOKIE, path="/", httponly=True, samesite="strict", secure=_secure(request))
+    if _secure(request):
+        response.delete_cookie(config.COOKIE_HOST, path="/", httponly=True, samesite="strict", secure=True)
     return {"ok": True}
 
 
@@ -480,12 +531,13 @@ def change_password(body: PasswordChange, request: Request, s=Depends(any_user),
         raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
     if not sec.verify_password(s["pw_hash"], body.current[:config.PASSWORD_MAX]):
         sec.throttle.fail(*keys)
+        _audit("reauth.fail", request, s, action="change password")
         raise HTTPException(403, "Your current password is wrong.")
     if (p := sec.password_problem(body.new, s["username"], _password_min(db, s))):
         raise HTTPException(400, p)
     if sec.verify_password(s["pw_hash"], body.new):
         raise HTTPException(400, "Choose a password different from the current one.")
-    db.execute("UPDATE users SET pw_hash=?, must_change_pw=0, pw_short=? WHERE id=?",
+    db.execute("UPDATE users SET pw_hash=?, must_change_pw=0, temp_pw_expires=NULL, pw_short=? WHERE id=?",
                (sec.hash_password(body.new), int(len(body.new) < config.PASSWORD_MIN), s["id"]))
     n = db.execute("DELETE FROM sessions WHERE user_id=? AND id<>?", (s["id"], s["sid"])).rowcount
     activity.log(db, "password", s, ip=_client_ip(request))
@@ -570,6 +622,7 @@ def two_factor_off(body: TwoFactorOff, request: Request, s=Depends(settled), db=
         raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
     if not sec.verify_password(s["pw_hash"], body.password[:config.PASSWORD_MAX]):
         sec.throttle.fail(*keys)
+        _audit("reauth.fail", request, s, action="turn off two-factor sign-in")
         raise HTTPException(403, "Your password is wrong.")
     with dbm.transaction(db):
         accounts.turn_off_2fa(db, s["id"])
@@ -618,6 +671,7 @@ def passkey_add_options(body: PasskeyAdd, request: Request, s=Depends(settled), 
         raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
     if not sec.verify_password(s["pw_hash"], body.password[:config.PASSWORD_MAX]):
         sec.throttle.fail(*keys)
+        _audit("reauth.fail", request, s, action="add a passkey")
         raise HTTPException(403, "Your password is wrong.")
     state, options = passkeys.registration_options(db, s, request.headers.get("origin"))
     return {"state": state, "options": options}
@@ -924,7 +978,7 @@ def new_user(body: UserIn, request: Request, s=Depends(admin), db=Depends(get_db
         raise HTTPException(e.status, str(e))
     activity.log(db, "account.create", s, detail={"username": body.username.strip(), **({"admin": True} if body.is_admin else {})},
                  ip=_client_ip(request))
-    return {"id": uid, "username": body.username.strip(), "temporary_password": pw}
+    return {"id": uid, "username": body.username.strip(), "temporary_password": pw, "temporary_days": config.TEMP_PASSWORD_DAYS}
 
 
 @app.get("/api/activity")
@@ -1039,9 +1093,8 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
             accounts.sign_out_everywhere(db, uid)
         note("account.disable" if body.disabled else "account.enable")
     if body.reset_password:
-        out["temporary_password"] = pw = accounts.temp_password()
-        db.execute("UPDATE users SET pw_hash=?, must_change_pw=1 WHERE id=?", (sec.hash_password(pw), uid))
-        accounts.sign_out_everywhere(db, uid)   # a reset may follow a lost or stolen device
+        out["temporary_password"] = accounts.set_temp_password(db, uid)   # signs out everywhere: it may follow a lost device
+        out["temporary_days"] = config.TEMP_PASSWORD_DAYS
         note("account.reset")
     if body.disable_2fa:
         accounts.turn_off_2fa(db, uid, passkeys_too=True)
@@ -1070,6 +1123,11 @@ def change_server_settings(body: ServerSettings, request: Request, s=Depends(adm
 
 # ---------------------------------------------------------------- health check, and static pages for development
 
+# the pages' Content-Security-Policy, as nginx.conf sends it (a test keeps the two the same): scripts only from
+# js/, never inline, so injected markup can't run anything
+PAGE_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; "
+            "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+
 @app.get("/api/healthz")
 def healthz():
     return Response(status_code=204)
@@ -1086,4 +1144,5 @@ if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves w
     def page(page: str = "index.html"):
         if page not in ("index.html", "login.html", "setup.html", "account.html"):
             raise HTTPException(404)
-        return FileResponse(os.path.join(WWW, page), media_type="text/html", headers={"Cache-Control": "no-store"})
+        return FileResponse(os.path.join(WWW, page), media_type="text/html",
+                            headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP})

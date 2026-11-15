@@ -22,7 +22,9 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import db as dbm, main, security as sec   # noqa: E402
+import logging   # noqa: E402
 
+logging.getLogger("sanguity.security").setLevel(logging.ERROR)   # quiet here; assertLogs turns it on where it's checked
 H = {"X-Sanguity": "1"}
 
 
@@ -947,6 +949,112 @@ class Api(unittest.TestCase):
         self.assertNotIn("secure", ck)   # plain http here; https sets it
         r = TestClient(main.app, base_url="https://testserver").post("/api/login", json={"username": "cookie", "password": PW["ben"]}, headers=H)
         self.assertIn("secure", r.headers["set-cookie"].lower())
+        # over HTTPS the session cookie carries the __Host- prefix (Secure, Path=/, no Domain); it signs in, and
+        # signing out ends it
+        s = TestClient(main.app, base_url="https://testserver")
+        s.cookies.set("sg_session", "left over from plain http")
+        r = s.post("/api/login", json={"username": "cookie", "password": PW["ben"]}, headers=H)
+        ck = r.headers["set-cookie"].lower()
+        self.assertIn("__host-sg_session=", ck)
+        self.assertNotIn("domain=", ck)
+        self.assertRegex(ck, r'sg_session=""; ')   # the unprefixed one is cleared
+        self.assertEqual(s.get("/api/me").status_code, 200)
+        self.assertEqual(s.post("/api/logout", headers=H).status_code, 200)
+        self.assertEqual(s.get("/api/me").status_code, 401)
+
+    def test_security_log(self):
+        """Sign-ins, refused second steps and refused access go to the app's log, without passwords or codes."""
+        import time
+        from server import accounts, twofactor
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='logged'").fetchone():
+            accounts.create(db, "logged", password="logged keeps a long passphrase")
+        db.close()
+        with self.assertLogs("sanguity.security", "INFO") as cm:
+            client().post("/api/login", json={"username": "logged", "password": "a wrong password typed"}, headers=H)
+            client().post("/api/login", json={"username": "my secret passphrase", "password": "x"}, headers=H)
+            c = self.login("logged", "logged keeps a long passphrase")
+            c.get("/api/profiles/1/data")   # not shared with this account
+            client().post("/api/login", json={"username": "x", "password": "y"})   # no X-Sanguity header
+        out = "\n".join(cm.output)
+        lines = [json.loads(o.split("security ", 1)[1]) for o in cm.output]
+        events = [(e["event"], e.get("user"), e.get("reason")) for e in lines]
+        self.assertIn(("login.fail", "logged", "password"), events)
+        self.assertIn(("login.fail", None, "no such account"), events)
+        self.assertIn(("login.ok", "logged", None), events)
+        self.assertIn(("access.denied", "logged", None), events)
+        self.assertIn(("csrf.refused", None, None), events)
+        for secret in ("a wrong password typed", "my secret passphrase", "logged keeps a long passphrase"):
+            self.assertNotIn(secret, out)
+        # a code used a second time is refused and logged as reuse
+        db = dbm.connect()
+        secret = twofactor.new_secret()
+        step = int(time.time() // twofactor.PERIOD)
+        db.execute("UPDATE users SET totp_secret=?, totp_last_step=? WHERE username='logged'", (secret, step + 1))
+        db.close()
+        t = client().post("/api/login", json={"username": "logged", "password": "logged keeps a long passphrase"}, headers=H).json()["ticket"]
+        with self.assertLogs("sanguity.security", "INFO") as cm:
+            r = client().post("/api/login/code", json={"ticket": t, "code": twofactor._code(secret, step)}, headers=H)
+        self.assertEqual(r.status_code, 401)
+        self.assertIn('"reason":"code already used"', cm.output[-1])
+        db = dbm.connect()
+        db.execute("UPDATE users SET totp_secret=NULL, totp_last_step=0 WHERE username='logged'")
+        db.close()
+
+    def test_one_time_password_expires(self):
+        from server import accounts, config
+        ben = self.login("ben")
+        r = ben.post("/api/users", json={"username": "late"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["temporary_days"], config.TEMP_PASSWORD_DAYS)
+        temp = r.json()["temporary_password"]
+        db = dbm.connect()
+        db.execute("UPDATE users SET temp_pw_expires=? WHERE username='late'", (dbm.now() - 1,))
+        r = client().post("/api/login", json={"username": "late", "password": temp}, headers=H)
+        self.assertEqual(r.status_code, 401)
+        self.assertIn("expired", r.json()["detail"])
+        # an admin's reset gives a fresh one, which works and is cleared once replaced
+        uid = db.execute("SELECT id FROM users WHERE username='late'").fetchone()[0]
+        r = ben.patch(f"/api/users/{uid}", json={"reset_password": True}, headers=H)
+        temp = r.json()["temporary_password"]
+        c = self.login("late", temp)
+        self.assertEqual(c.post("/api/me/password", json={"current": temp, "new": "late but a long passphrase"}, headers=H).status_code, 200)
+        self.assertIsNone(db.execute("SELECT temp_pw_expires FROM users WHERE id=?", (uid,)).fetchone()[0])
+        db.execute("UPDATE users SET must_change_pw=1, temp_pw_expires=NULL WHERE id=?", (uid,))   # their own password,
+        self.login("late", "late but a long passphrase")   # to be replaced (e.g. a second factor went): no expiry
+        db.close()
+        self.assertTrue(accounts.temp_password_expired({"temp_pw_expires": 1}))
+
+    def test_api_answers_download_and_pages_run_no_inline_script(self):
+        r = self.login("ben").get("/api/me")
+        self.assertEqual(r.headers["content-disposition"], 'attachment; filename="api.json"')
+        # nginx sends the same CSP as the dev server (main.PAGE_CSP), and it allows no inline script
+        import re
+        conf = open(os.path.join(ROOT, "nginx.conf"), encoding="utf-8").read()
+        csp = re.search(r'add_header Content-Security-Policy "([^"]+)" always;', conf).group(1)
+        self.assertEqual(csp, main.PAGE_CSP)
+        script = next(d for d in csp.split(";") if d.strip().startswith("script-src"))
+        self.assertNotIn("unsafe", script)
+        for page in ("index", "login", "setup", "account"):
+            html = open(os.path.join(ROOT, "www", page + ".html"), encoding="utf-8").read()
+            self.assertNotRegex(html, r"<script(?![^>]*\bsrc=)", page)
+            self.assertNotRegex(html, r"\son[a-z]+\s*=", page)
+
+    def test_import_refuses_an_oversized_zip(self):
+        import io, zipfile
+        from server import export
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("data.json", '{"events": []}' + " " * 5000)
+        old = export.MAX_BYTES
+        export.MAX_BYTES = 1000
+        try:
+            db = dbm.connect()
+            with self.assertRaisesRegex(ValueError, "too big"):
+                export.import_archive(db, 1, io.BytesIO(buf.getvalue()))
+            db.close()
+        finally:
+            export.MAX_BYTES = old
 
     def test_document_paths(self):
         from server import profiles as prof
