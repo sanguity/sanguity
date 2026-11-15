@@ -22,3 +22,4 @@ watch-data/
 data/
 settings.json
 records/
+compose.override.yaml

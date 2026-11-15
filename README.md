@@ -103,6 +103,23 @@ portal's export doesn't import, please open an issue with an anonymised sample.
   If sign-in then says "Request refused (cross-site check)", set `PUBLIC_ORIGINS` in `.env` to the address you
   open it at; to see visitors' real addresses on the device list, trust your proxy in `nginx.conf` (see the comment there).
 
+## Testing a branch beside your real install
+
+`docker/dev-stack.sh` runs a separate test copy from any branch on the same machine: its own compose project
+(`sanguity-dev`), ports (8740 and 8741 by default) and folders, so the real install is never touched. Your record
+exports and watch summary can be shown read-only, or it uses the demo data.
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/sanguity/sanguity/main/docker/dev-stack.sh
+sudo bash dev-stack.sh --dir /mnt/POOL/apps/sanguity-dev                       # main, demo data
+sudo bash dev-stack.sh --dir /mnt/POOL/apps/sanguity-dev --branch my-feature   # switch to a branch (also: update)
+sudo bash dev-stack.sh --dir /mnt/POOL/apps/sanguity-dev --records /path/to/exports     --watch-public /path/to/watch-data/public --puid UID --pgid GID              # your data, read-only
+```
+
+With `--records`, put your `sources.json` (and `corrections.json` / `settings.json` if you use them) in the
+test copy's `config/` folder. `--down` stops it, `--logs` follows its logs, `--reset` starts it over; `--help`
+lists everything.
+
 ## Development
 
 ```sh
@@ -121,6 +138,7 @@ server/             The API (FastAPI + SQLite): accounts, sessions, profiles, ro
 requirements.in     The API's dependencies; requirements.txt and requirements-dev.txt are their pinned,
                     hash-checked lock files (regenerate with uv, as requirements.in says)
 docker/setup.py     First-run secrets and folders, data rebuilds
+docker/dev-stack.sh A test copy from any branch beside a real install (see above)
 build.py            Builds a profile's data.json from the exports listed in sources.json (standard-library Python 3)
 lab-aliases.json    Canonical lab names, LOINC codes and other spellings that map onto them
 nginx.conf          Web server: the app's pages and security headers; passes /api/ to the app
