@@ -57,7 +57,7 @@ class Fixture(unittest.TestCase):
         for m in self.w["metrics"]:
             self.assertEqual(set(m), {"key", "name", "unit", "group", "pts"})
         for x in self.w["exercise"]:
-            self.assertEqual(set(x), {"start", "end", "name", "kind", "minutes"})
+            self.assertEqual(set(x), {"key", "start", "end", "name", "kind", "minutes"})
         self.assertEqual(self.w["last_payload"], "2024-03-13T09:00:00+01:00")   # the export's date
         self.assertEqual(self.w["tz"], "America/Los_Angeles")   # the latest HKTimeZone in the export
 
@@ -90,11 +90,23 @@ class Fixture(unittest.TestCase):
         self.assertEqual(pts(self.w, "sleep_awake_min"), {d: 10})
 
     def test_workouts(self):
-        self.assertEqual(self.w["exercise"], [
+        self.assertEqual([{k: v for k, v in x.items() if k != "key"} for x in self.w["exercise"]], [
             {"start": "2024-03-10T11:00:00+00:00", "end": "2024-03-10T11:32:00+00:00",
              "name": "Running", "kind": "running", "minutes": 32},
             {"start": "2024-03-13T01:00:00+00:00", "end": "2024-03-13T01:45:00+00:00",
              "name": "Traditional strength training", "kind": "traditional_strength_training", "minutes": 45}])
+
+    def test_workout_keys_are_stable(self):
+        keys = [x["key"] for x in self.w["exercise"]]
+        self.assertEqual(keys, [x["key"] for x in ah.parse(FILES)["data"]["watch"]["exercise"]])   # parsed again
+        self.assertEqual(len(set(keys)), len(keys))
+        for k in keys:
+            self.assertRegex(k, r"^apple-health:workout:[0-9a-f]{16}$")
+        # from start, end and activity type alone: the same workout written in another offset keeps its key
+        from datetime import datetime
+        s, e = (datetime.fromisoformat(t) for t in ("2024-03-10T07:00:00-04:00", "2024-03-10T07:32:00-04:00"))
+        self.assertEqual(ah.workout_key(s.astimezone(timezone.utc), e, "HKWorkoutActivityTypeRunning"), keys[0])
+        self.assertNotEqual(ah.workout_key(s, e, "HKWorkoutActivityTypeWalking"), keys[0])
 
     def test_weight_units(self):
         self.assertEqual(pts(self.w, "weight"), {"2024-03-09": 176.37, "2024-03-10": 175})   # 80 kg, then 175 lb

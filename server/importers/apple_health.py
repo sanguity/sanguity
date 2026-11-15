@@ -8,8 +8,10 @@ Where the summary goes (proposal, to settle once #17 and #18 land): the import s
 the profile's own folder, <profile_dir>/watch/daily.json (the path a profile restore already uses, server/export.py),
 and points profiles.watch_file at it when the profile has none. When the profile already reads a receiver's file,
 the import is kept beside it as <profile_dir>/watch/apple-health.json and /api/profiles/{pid}/watch merges the two
-per (metric key, day), the receiver winning, and exercise de-duplicated on start time. A later import replaces the
-earlier one (an export always holds the whole history).
+per (metric key, day), the receiver winning, and exercise de-duplicated on start time. A later export that overlaps
+an earlier one replaces by identity, not by appending: each daily point by (metric key, day), each workout by its
+`key` ("apple-health:workout:" + the first 16 hex of a SHA-256 over its UTC start, UTC end and HKWorkoutActivityType,
+so the same workout gets the same key in every export).
 
 The file can be gigabytes: it is streamed with iterparse, each top-level element cleared once read, and only per-day
 totals (plus the sleep segments, a few per night) are kept. Days are the records' own local dates: every date in
@@ -19,6 +21,7 @@ attributes), and so is any encoding but UTF-8.
 
 Standard library only.
 """
+import hashlib
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
@@ -306,7 +309,8 @@ class _Aggregates:
             self.bad_dates += 1
             return
         self._note_tz(el, end)
-        typ = (el.get("workoutActivityType") or "").removeprefix(WORKOUT_PREFIX) or "Other"
+        hk_type = el.get("workoutActivityType") or ""
+        typ = hk_type.removeprefix(WORKOUT_PREFIX) or "Other"
         try:
             sec = float(el.get("duration")) * DURATION.get(el.get("durationUnit") or "min", 60)
         except (TypeError, ValueError):
@@ -314,7 +318,7 @@ class _Aggregates:
         words = "".join(" " + c.lower() if c.isupper() and i else c.lower() for i, c in enumerate(typ)).split()
         k = (start.astimezone(timezone.utc), end.astimezone(timezone.utc), typ)
         self.workouts.setdefault(k, {
-            "start": k[0].isoformat(), "end": k[1].isoformat(),
+            "key": workout_key(k[0], k[1], hk_type), "start": k[0].isoformat(), "end": k[1].isoformat(),
             "name": " ".join(words).capitalize(), "kind": "_".join(words), "minutes": round(sec / 60)})
 
     # -------------------------------------------------------------- summary
@@ -390,6 +394,12 @@ class _Aggregates:
         if self.bad_dates:
             w.append(f"Skipped {self.bad_dates} record{'s' * (self.bad_dates != 1)} with a date it couldn't read.")
         return w
+
+
+def workout_key(start, end, hk_type):
+    """A workout's stable identity: the same in every export that holds it, whatever else changed around it."""
+    ident = f"{start.astimezone(timezone.utc).isoformat()}|{end.astimezone(timezone.utc).isoformat()}|{hk_type}"
+    return f"{NAME}:workout:{hashlib.sha256(ident.encode()).hexdigest()[:16]}"
 
 
 def _without_overlap(session):
