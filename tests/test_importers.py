@@ -81,6 +81,17 @@ class Registry(unittest.TestCase):
                       reg.check({"data": {"events": [{"id": 1, "t": "2026-01-01", "k": "document", "title": "X"}],
                                           "details": {"1": {"type": "file", "url": "x.pdf#page=1"}}, "labs": [], "costs": []}}, FILES))
 
+    def test_keys(self):
+        def out(events, labs=()):
+            return {"data": {"events": [dict(id=i + 1, t="2026-01-01", k="visit", title="V", **e) for i, e in enumerate(events)],
+                             "details": {}, "labs": [dict(name=f"L{i}", pts=[], **s) for i, s in enumerate(labs)], "costs": []}}
+        self.assertEqual(reg.check(out([{"key": "x:1"}, {"key": "x:2"}, {}], [{"key": "loinc:718-7"}, {}])), [])
+        self.assertEqual(reg.check(out([{"key": "x:1"}, {"key": "x:1"}])), ["event 2: key 'x:1' is used twice"])
+        self.assertEqual(reg.check(out([{"key": 7}, {"key": " "}])), ["event 1: key must be a non-empty string",
+                                                                    "event 2: key must be a non-empty string"])
+        self.assertEqual(reg.check(out([], [{"key": "loinc:1"}, {"key": "loinc:1"}])), ["lab series 'L1': key 'loinc:1' is used twice"])
+        self.assertEqual(reg.check(out([{"key": "x:1"}], [{"key": "x:1"}])), [])   # events and series are separate spaces
+
     def test_discovery(self):
         names = [m.NAME for m in reg.importers()]
         self.assertIn("sanguity", names)
@@ -127,6 +138,12 @@ class SanguityImporter(unittest.TestCase):
         self.assertEqual(out["warnings"], [])
         docs = [d for d in out["data"]["details"].values() if d.get("type") == "file"]
         self.assertTrue(docs and all(d["url"] for d in docs))
+
+    def test_keys_pass_through(self):
+        out = reg.run(reg.files_in(os.path.join(FIXTURES, "importers", "sanguity", "export")))
+        self.assertEqual({e["id"]: e["key"] for e in out["data"]["events"] if "key" in e},
+                         {3: "fhir:DocumentReference/doc-0003", 5: "csv:h:5f1c0a9e2b7d4c61"})
+        self.assertEqual(out["data"]["labs"][0]["key"], "loinc:718-7")
 
     def test_other_formats_score_zero(self):
         from server.importers import sanguity

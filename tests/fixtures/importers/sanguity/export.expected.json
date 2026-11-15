@@ -25,7 +25,8 @@
     "t": "2026-03-05T12:00:00",
     "k": "document",
     "title": "Pathology report",
-    "sub": "PDF"
+    "sub": "PDF",
+    "key": "fhir:DocumentReference/doc-0003"
    },
    {
     "id": 4,
@@ -39,7 +40,8 @@
     "t": "2026-04-10T10:00:00",
     "k": "claim",
     "title": "Office visit",
-    "sub": "Lakeside Family Medicine · Example Health Plan"
+    "sub": "Lakeside Family Medicine · Example Health Plan",
+    "key": "csv:h:5f1c0a9e2b7d4c61"
    }
   ],
   "details": {
@@ -108,7 +110,8 @@
       "11.2"
      ]
     ],
-    "txt": []
+    "txt": [],
+    "key": "loinc:718-7"
    },
    {
     "name": "WBC",

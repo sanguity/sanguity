@@ -2,7 +2,8 @@
 
 The smallest importer that keeps to the contract, and the one to copy when writing a new one (docs/importers.md).
 The records are already in the shape Sanguity loads, so parse() only finds data.json, checks it, and points each
-document link at the file in the upload.
+document link at the file in the upload. Source keys ("key" on events and lab series) pass through unchanged, so
+records that first came from a FHIR or C-CDA import keep the key that importer gave them.
 """
 import json, posixpath
 

@@ -10,6 +10,8 @@ The contract (docs/importers.md has the full version, with an example):
                                      raise ValueError("plain-language reason") for input it can't read
 
 `files` is {relative POSIX path inside the upload: absolute path on disk}, as files_in() builds it.
+Events and lab series may carry "key": a stable source id, "<NAME>:..." (or "loinc:<code>" for a series), the same
+every time the same source data is parsed and unique within one parse's output.
 
 Standard library only here, so build.py can import common.py through this package.
 """
@@ -127,7 +129,19 @@ def check(out, files=None):
             p.append(f"data has no {k!r}")
     if p:
         return p
-    ids = set()
+    ids, event_keys, lab_keys = set(), set(), set()
+
+    def key_ok(what, x, seen):
+        """The optional stable source key: a non-empty string, unique among the events (or among the lab series)."""
+        if "key" not in x:
+            return
+        k = x["key"]
+        if not isinstance(k, str) or not k.strip():
+            p.append(f"{what}: key must be a non-empty string")
+        elif k in seen:
+            p.append(f"{what}: key {k!r} is used twice")
+        seen.add(k)
+
     for i, e in enumerate(data["events"]):
         if not isinstance(e, dict) or any(k not in e for k in ("id", "t", "k", "title")):
             p.append(f"event {i} needs id, t, k and title")
@@ -135,6 +149,7 @@ def check(out, files=None):
         if e["id"] in ids:
             p.append(f"event id {e['id']!r} is used twice")
         ids.add(e["id"])
+        key_ok(f"event {e['id']!r}", e, event_keys)
     keys = {str(i) for i in ids}
     for k, d in data["details"].items():
         if str(k) not in keys:
@@ -146,4 +161,6 @@ def check(out, files=None):
     for i, s in enumerate(data["labs"]):
         if not isinstance(s, dict) or "name" not in s or not isinstance(s.get("pts", []), list):
             p.append(f"lab series {i} needs a name and a pts list")
+            continue
+        key_ok(f"lab series {s['name']!r}", s, lab_keys)
     return p

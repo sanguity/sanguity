@@ -98,6 +98,7 @@ The same object build.py and `demo/generate.py` write as data.json. Required key
 | `abn` | Optional count of abnormal results, which marks the event. |
 | `hidden` | `1` for events shown only through another (a `labitem` through its `lab` day). |
 | `src` | Optional short tag of the source, also used on lab points. |
+| `key` | Optional stable source id, such as `"fhir:Observation/abc123"`: see [Source keys](#source-keys). |
 
 ### `details`: what opens when you click an event
 
@@ -129,7 +130,35 @@ links. A document the export mentions but didn't include gets `"url": null` and 
 `pts` are `[time, number, low, high, flag ("H", "L" or ""), value as reported, optional source tag]`, sorted by
 time; `n` is how many. `txt` holds results that aren't numbers. Name series with `common.canonical_lab(name,
 loinc)` so the same test from two sources lands on one chart (it returns None for labs it doesn't know: keep the
-source's name then), and add a LOINC code when you have one.
+source's name then), and add a LOINC code when you have one. A series may carry a `key` too, such as
+`"loinc:718-7"` (see below).
+
+### Source keys
+
+Events and lab series may carry `"key"`: a string that names the record in the source. A later import of the same
+source can then update records in place instead of adding them again, and the import preview can spot duplicates.
+It's optional, but give one whenever you can.
+
+- **Stable.** Parsing the same source data again gives the same key, whatever else is in the upload and in
+  whatever order it comes. Never use random values, counters or the input's order.
+- **Unique** within one importer's output: no two events share a key, and no two series do. Events and series are
+  separate, so one key may appear in each.
+- **Prefixed with your `NAME`** for events: `"fhir:Observation/abc123"`, `"ccda:<id root>^<extension>"`.
+- **No id in the source?** Use `"<NAME>:h:"` plus the first 16 hex characters of a SHA-256 over the normalised fields
+  that identify the record (date, kind, title, value...):
+
+  ```python
+  import hashlib
+  def hkey(*fields):
+      return NAME + ":h:" + hashlib.sha256("\x1f".join(str(f).strip().lower() for f in fields).encode()).hexdigest()[:16]
+  ```
+
+- **Lab series:** `"loinc:<code>"` when there's a LOINC code, otherwise `"<NAME>:<code system>|<code>"`.
+- **Result points** (`pts`) have no key. A point is identified by its series key, its time and the value as reported.
+
+The app ignores fields it doesn't know and keeps an event's fields as they are, so a key costs nothing anywhere else.
+`check()` refuses a key that isn't a non-empty string, or that is used twice. It doesn't check the prefix: the
+`sanguity` importer passes keys through unchanged, so a re-imported export keeps the keys the original importer gave.
 
 ### `costs`: one row per claim
 
