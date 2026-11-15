@@ -261,3 +261,24 @@ python -c "from server import importers as i; print(i.run(i.files_in('tests/fixt
 | `match(files)` | `{"importer": module or None, "score", "tied": [modules with the same score]}`. |
 | `run(files, name=None)` | Parse with the named importer or the best match and check the result: `{"importer", "label", "data", "warnings"}`, or `ValueError`. |
 | `check(out, files=None)` | Problems with a `parse()` result, as sentences; `[]` when it keeps to the contract. |
+
+## Importing from the browser: `server/jobs.py`
+
+An upload is imported as a background job, so the page stays usable while a large export is read. One worker thread
+runs the jobs in turn. A job opens the upload's files (decrypted temporary copies), picks the importer with `match()`
+unless the person asked for one, calls `parse()`, and `check()`s the result. It then saves everything in one
+transaction: the records (`origin` "upload", `format` your `NAME`) and their document links. An import from an upload
+adds to the profile's records and never replaces them.
+
+- A `{"type": "file", "url": "<path in the upload>"}` link is indexed to the stored, sealed copy of that file in the
+  upload's folder, so the document still opens after the temporary copies are deleted.
+- A `ValueError` from `parse()` is shown to the person as it is, so word it for them. Anything else they see as "the
+  importer stopped with an error", and its traceback goes to the app's log.
+- A failure at any point rolls the transaction back. A failed import leaves no records and no documents behind.
+- When no importer matches, the message lists every `LABEL` and asks for an issue with an anonymised sample.
+
+| Route | |
+|---|---|
+| `POST /api/profiles/{pid}/uploads/{upload_id}/import` | Owners and editors. Optional `{"importer": NAME}`. Returns `{"id"}` (202). |
+| `GET /api/profiles/{pid}/jobs/{id}` | `state` (queued, running, done, failed), `stage` (detecting, parsing, saving), `importer`, `label`, `counts`, `range`, `warnings`, `message`. |
+| `GET /api/profiles/{pid}/jobs` | The profile's 20 most recent jobs, newest first. |

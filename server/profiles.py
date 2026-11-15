@@ -107,33 +107,14 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin
     shown = {str(e.get("id")) for e in data["events"] if isinstance(e, dict)}
     data["details"] = {k: v for k, v in (data.get("details") or {}).items() if str(k) in shown}   # what the page can open
     os.makedirs(profile_dir(pid), exist_ok=True)
-    keep, n = set(), 0
     with dbm.transaction(db):
         old = records.imports(db, pid, "build" if origin == "build" else None)
         q = """SELECT id, path, ext FROM documents
                WHERE profile_id=? AND (import_id IS NULL OR import_id IN (SELECT value FROM json_each(?)))"""
         known = {crypto.dec(r["path"]): (r["id"], r["ext"]) for r in db.execute(q, (pid, json.dumps(old)))}
-        for d in (data.get("details") or {}).values():
-            if not isinstance(d, dict) or d.get("type") != "file":
-                continue
-            path = resolve_document(d.get("url"), src_dir)
-            if not path:
-                d["url"] = None
-                continue
-            ext = (d.get("ext") or os.path.splitext(path)[1].lstrip(".")).lower()[:10]
-            doc, had = known.get(path, (None, None))
-            if not doc:
-                doc = secrets.token_urlsafe(16)
-                db.execute("INSERT INTO documents(id, profile_id, path, ext) VALUES(?, ?, ?, ?)", (doc, pid, crypto.enc(path), ext))
-            elif had != ext:   # same file, newly described as another type
-                db.execute("UPDATE documents SET ext=? WHERE id=?", (ext, doc))
-            known[path] = (doc, ext)
-            keep.add(doc)
-            frag = d["url"].split("#", 1)[1] if "#" in d["url"] else ""
-            d["url"] = document_url(pid, doc, path, ext) + ("#" + frag if frag else "")
-            n += 1
+        keep, n = index_documents(db, pid, data.get("details") or {}, lambda url: resolve_document(url, src_dir), known)
         iid = records.store(db, pid, data, origin)
-        db.executemany("UPDATE documents SET import_id=? WHERE id=?", [(iid, d) for d in keep])
+        link_documents(db, iid, keep)
         records.drop(db, pid, old)   # and, by cascade, the documents the new import no longer links to
         db.execute("DELETE FROM documents WHERE profile_id=? AND import_id IS NULL", (pid,))
         src_settings = os.path.join(src_dir, "settings.json")
@@ -143,6 +124,40 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin
             os.remove(settings_path(pid))
         db.execute("UPDATE profiles SET build_mtime=? WHERE id=?", (version, pid))
     return n
+
+
+def index_documents(db, pid, details, locate, known=None):
+    """Give each document link in details ({"type": "file", "url": ...}) a document id, and point its url at the
+    app's route for it (keeping any #fragment). locate(url) is the file the link names, or None, which drops the
+    link. A file already in known ({path: (document id, ext)}) keeps its id. Call inside the import's transaction,
+    then link_documents once the import exists. Returns (the document ids used, the number of links indexed)."""
+    known = {} if known is None else known
+    keep, n = set(), 0
+    for d in details.values():
+        if not isinstance(d, dict) or d.get("type") != "file":
+            continue
+        path = locate(d.get("url"))
+        if not path:
+            d["url"] = None
+            continue
+        ext = (d.get("ext") or os.path.splitext(path)[1].lstrip(".")).lower()[:10]
+        doc, had = known.get(path, (None, None))
+        if not doc:
+            doc = secrets.token_urlsafe(16)
+            db.execute("INSERT INTO documents(id, profile_id, path, ext) VALUES(?, ?, ?, ?)", (doc, pid, crypto.enc(path), ext))
+        elif had != ext:   # same file, newly described as another type
+            db.execute("UPDATE documents SET ext=? WHERE id=?", (ext, doc))
+        known[path] = (doc, ext)
+        keep.add(doc)
+        frag = d["url"].split("#", 1)[1] if "#" in d["url"] else ""
+        d["url"] = document_url(pid, doc, path, ext) + ("#" + frag if frag else "")
+        n += 1
+    return keep, n
+
+
+def link_documents(db, import_id, doc_ids):
+    """Make the documents index_documents gave out belong to the import, so they go when it does."""
+    db.executemany("UPDATE documents SET import_id=? WHERE id=?", [(import_id, d) for d in doc_ids])
 
 
 def build_version():
