@@ -6,8 +6,8 @@ the activity log, encryption at rest, backups and export, and the default Docker
 - **Standard:** OWASP ASVS 4.0.3, Level 2. The chapters Phase 1 touches: V2 authentication, V3 sessions, V4
   access control, V5 validation and encoding, V6 stored cryptography, V7 errors and logging, V8 data protection,
   V9 communications, V12 files, V13 API and V14 configuration. Level 3-only requirements are left out.
-- **Code reviewed:** `main` after #72 (passkeys), plus the fixes in this branch. The watch receiver
-  (`watch/receiver.py`) is out of scope: its encryption is #70, and its outside connections are #59.
+- **Code reviewed:** `main` after #73 (the watch receiver's data encrypted at rest), plus the fixes in this
+  branch. The watch receiver's own endpoint (`watch/receiver.py`) is out of scope; its outside connections are #59.
 - **Date:** November 2026.
 
 **Results**
@@ -217,7 +217,7 @@ The issue asked for these items in particular.
 
 | # | Requirement | Result | Why / where |
 |---|---|---|---|
-| 6.1.1–6.1.2 | Private and health data encrypted at rest | Met | AES-256-GCM for every file Sanguity writes and every sensitive database field (`crypto.py`, `atrest.py`). What isn't covered is listed in `crypto.py`: usernames and profile names, your own original exports (read-only), downloads from "Export everything", and the watch receiver's data (#70). |
+| 6.1.1–6.1.2 | Private and health data encrypted at rest | Met | AES-256-GCM for every file Sanguity writes and every sensitive database field (`crypto.py`, `atrest.py`). What isn't covered is listed in `crypto.py`: usernames and profile names, your own original exports (read-only) and downloads from "Export everything". The watch receiver's data uses the same key since #73. |
 | 6.1.3 | Financial data encrypted | Met | The costs are part of a profile's encrypted records. |
 | 6.2.1 | Fails securely | Met | A failed GCM tag check raises an error, and nothing is returned. Start-up stops with a reason if the key is missing or wrong (`atrest.check_key`). |
 | 6.2.2 | Proven primitives | Met | pycryptodome AES-GCM. Python's `secrets`, `hashlib` and `hmac`. |
