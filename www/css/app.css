@@ -292,6 +292,11 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .acct .prof:first-child{border-top:0}
 .acct .prof-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .acct .activity-wrap{margin-top:10px}
+.acct .btn.danger{background:var(--crit);border-color:transparent;color:#fff}
+.acct .btn.danger:disabled{background:var(--raised);color:var(--muted);border-color:var(--ring)}
+.acct .danger-zone{margin-top:8px;padding:10px 12px;border:1px solid var(--crit);border-radius:10px;max-width:560px}
+.acct .danger-zone p{margin:0 0 8px;font-size:13px}
+.acct .danger-zone label{margin-top:8px}
 .acct .activity{margin-top:6px}
 .acct .activity td.nowrap{white-space:nowrap}
 #acctLog{margin-top:12px}

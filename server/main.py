@@ -555,6 +555,22 @@ def new_profile(body: ProfileIn, request: Request, s=Depends(user), db=Depends(g
     return {"id": pid}
 
 
+class ProfileDelete(BaseModel):
+    confirm_name: str
+
+
+@app.delete("/api/profiles/{pid}")
+def delete_profile(pid: int, body: ProfileDelete, request: Request, s=Depends(user), db=Depends(get_db)):
+    """Delete a profile and everything in it (owners only), confirmed by typing its name."""
+    need(db, s, pid, "owner")
+    name = db.execute("SELECT name FROM profiles WHERE id=?", (pid,)).fetchone()["name"]
+    if body.confirm_name.strip() != name:
+        raise HTTPException(400, "Type the profile's name exactly to confirm.")
+    gone = prof.delete_profile(db, pid)
+    activity.log(db, "profile.delete", s, detail={"name": gone["name"], "members": gone["members"]}, ip=_client_ip(request))
+    return {"ok": True, "unlinked_build": gone["linked_build"]}
+
+
 @app.patch("/api/profiles/{pid}")
 def rename_profile(pid: int, body: ProfileIn, request: Request, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "owner")

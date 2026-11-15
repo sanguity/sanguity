@@ -6,6 +6,8 @@
                                          (--enable also turns a disabled account back on)
   share PROFILE_ID USERNAME ROLE         give an account owner, editor or viewer access (or change it)
   create-profile NAME USERNAME           a new, empty profile owned by USERNAME (prints its number)
+  link-build PROFILE_ID                  load the setup build (your exports via sources.json) into a profile, and keep
+                                         it updated on every rebuild (for after the build's profile was deleted)
   import PROFILE_ID DIR|EXPORT.zip       load DIR/data.json (and settings.json), or an export from the Account page,
                                          into a profile (replacing its records)
   sync                                   re-import the setup build into the profiles linked to it
@@ -132,6 +134,14 @@ def _command(db, argv):
         pid = prof.create_profile(db, args[0].strip()[:80] or "Profile", owner_id=u["id"])
         activity.log(db, "create", profile_id=pid, actor=activity.COMMAND_LINE)
         print(f"Created profile {pid}, \"{args[0].strip()[:80]}\", owned by {u['username']}.")
+    elif cmd == "link-build" and args:
+        pid = int(args[0])
+        if not db.execute("SELECT 1 FROM profiles WHERE id=?", (pid,)).fetchone():
+            sys.exit(f"No profile {pid}.")
+        failed = prof.link_build(db, pid)
+        if failed:
+            sys.exit(f"Linked, but the build couldn't be loaded: {failed[pid]}")
+        print(f"Profile {pid} now shows the setup build, and follows every rebuild.")
     elif cmd == "sync":
         failed = prof.sync_build(db)
         if failed:
