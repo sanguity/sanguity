@@ -19,6 +19,7 @@ DB_PATH = os.path.join(DATA_DIR, "sanguity.db")
 # the first-run setup code is printed to the log and also written here (readable only by the app's own user),
 # for when the log is hard to reach; it is removed as soon as the first account exists
 SETUP_CODE_FILE = os.path.join(DATA_DIR, "setup-code.txt")
+BACKUP_DIR = os.environ.get("SANGUITY_BACKUPS", os.path.join(DATA_DIR, "backups"))   # where server.manage backup writes
 
 SESSION_DAYS = _int("SESSION_DAYS", 30)                 # a session ends this long after sign-in
 SESSION_IDLE_MINUTES = _int("SESSION_IDLE_MINUTES", 0)  # also end it after this long unused (0 = off)

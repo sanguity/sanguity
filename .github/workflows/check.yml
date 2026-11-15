@@ -58,8 +58,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Run the containers as this runner's user (what PUID/PGID in .env do on a real install)
+        run: |
+          echo "PUID=$(id -u)" >> "$GITHUB_ENV"
+          echo "PGID=$(id -g)" >> "$GITHUB_ENV"
+
       - name: Build and start (docker compose up -d --build)
-        run: PUID=$(id -u) PGID=$(id -g) docker compose up -d --build
+        run: docker compose up -d --build
 
       - name: Wait for the app and its setup code
         run: |
@@ -79,7 +84,19 @@ jobs:
 
       - name: After a restart (the database and records carry over)
         run: |
-          PUID=$(id -u) PGID=$(id -g) docker compose up -d --force-recreate
+          docker compose up -d --force-recreate
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && break; sleep 2; done
+          python3 tests/docker_smoke.py --receiver http://127.0.0.1:8731
+
+      - name: Backup while running, lose the data, restore it
+        run: |
+          docker compose exec -T app python -m server.manage backup --keep 3
+          f=$(ls backups | grep -E '^sanguity-backup-[0-9-]+\.tar\.gz$' | tail -1)
+          docker compose exec -T app python -m server.manage verify "/backups/$f"
+          docker compose stop app web
+          rm -rf data/sanguity.db data/sanguity.db-* data/profiles
+          docker compose run -T --rm --no-deps app python -m server.manage restore "/backups/$f" --yes
+          docker compose up -d
           for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && break; sleep 2; done
           python3 tests/docker_smoke.py --receiver http://127.0.0.1:8731
 

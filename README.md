@@ -104,6 +104,37 @@ portal's export doesn't import, please open an issue with an anonymised sample.
   If sign-in then says "Request refused (cross-site check)", set `PUBLIC_ORIGINS` in `.env` to the address you
   open it at; to see visitors' real addresses on the device list, trust your proxy in `nginx.conf` (see the comment there).
 
+## Backup and restore
+
+Health records are worth more than uptime: keep copies off this machine.
+
+**What to back up**
+
+| What | Where | How |
+|---|---|---|
+| Accounts, profiles, records as loaded | `DATA_DIR` (default `./data`) | `docker compose exec app python -m server.manage backup` writes one checked archive to `BACKUP_DIR` (default `./backups`), safe while the app runs; `--keep 14` keeps the newest 14 |
+| Your original exports | `RECORDS_DIR` | copy them; Sanguity only reads them |
+| Watch and scale data | `WATCH_DIR` | `watch.db` plus `raw/`, the receiver's archive of every upload (`receiver.py --reprocess` rebuilds the database from it) |
+| Secrets and configuration | `auth/`, `.env`, `sources.json`, `corrections.json`, `settings.json` | copy them |
+
+Run the backup every night, for example from cron on the host (on TrueNAS: **System > Advanced > Cron Jobs**):
+
+```sh
+0 3 * * * cd /path/to/sanguity && docker compose exec -T app python -m server.manage backup --keep 14
+```
+
+ZFS snapshots of these folders are fine too: SQLite recovers from a snapshot as from a power cut. The archive is
+still worth having, since it can be checked (`python -m server.manage verify FILE`) and copied anywhere.
+
+**Restore** with the app stopped; the data it replaces is moved to `DATA_DIR/before-restore-<time>/`, not deleted,
+and a backup from an older version is upgraded when the app starts:
+
+```sh
+docker compose stop app web
+docker compose run --rm --no-deps app python -m server.manage restore /backups/sanguity-backup-YYYYMMDD-HHMMSS.tar.gz
+docker compose up -d
+```
+
 ## Testing a branch beside your real install
 
 `docker/dev-stack.sh` runs a separate test copy from any branch on the same machine: its own compose project
