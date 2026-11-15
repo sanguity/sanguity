@@ -59,7 +59,7 @@ All five are in the Phase 1 milestone.
 - #74 Pepper password hashes and strengthen recovery codes (2.4.5, 2.6.2)
 - #75 Second factor for admin actions (4.3.1, 4.3.3)
 - #76 Decide session lifetime defaults (3.3.2)
-- #77 Automatic dependency updates, and an update path that pulls patched images (14.2.1)
+- #77 Automatic dependency updates, and an update path that pulls patched images (14.2.1): done, see 14.2.1
 - #78 Confirm or change the accepted ASVS deviations (2.1.1, 6.4.2, 8.1.4, 9.1.1, 9.2.2, 14.4.5): decided, see [Accepted deviations](#accepted-deviations)
 
 ## Accepted deviations
@@ -107,8 +107,10 @@ The issue asked for these items in particular.
     that: browsers that have signed in before are counted on their own.
   - `nginx.conf` shows how to trust a specific proxy with `set_real_ip_from`. Trusting a whole range that clients
     can reach would let them pick their own address, and so dodge the throttle.
-- **Update path:** `git pull && docker compose up -d --build`. Python packages are pinned with hashes, but
-  nothing proposes updates. The base images are moving tags that this command doesn't pull again: #77.
+- **Update path:** `git pull && docker compose pull --ignore-buildable && docker compose build --pull && docker
+  compose up -d`, at least monthly (README). It pulls the newest nginx image and rebuilds the app on the newest
+  Python base image, so a moving tag's security patches arrive. Python packages are pinned with hashes, and
+  Dependabot proposes updates weekly for them, the images and the GitHub Actions (#77).
 - **Containers:**
   - The app and nginx run as unprivileged users on read-only filesystems, with only `/tmp` writable.
   - The app has no published port.
@@ -331,7 +333,7 @@ The issue asked for these items in particular.
 | 14.1.1 | Repeatable builds | Met | Dockerfile, hash-pinned requirements, CI builds and runs the stack (`.github/workflows/check.yml`). |
 | 14.1.3 | Hardened server configuration | Met | Unprivileged users, read-only filesystems, no published app port, `server_tokens off`. |
 | 14.1.4 | Redeploy is automated | Met | `docker compose up -d --build`. |
-| 14.2.1 | Components up to date | **Issue #77** | Pinned, but nothing proposes updates. Base images aren't pulled again on update. |
+| 14.2.1 | Components up to date | Met | `.github/dependabot.yml`: weekly proposals for the Python locks (uv ecosystem, which keeps the hashes and `--universal`; CI checks the locks match `requirements.in`), the Dockerfile and `compose.yaml` images and the GitHub Actions. The README's update command pulls newer images and base images (#77). |
 | 14.2.2 | Unneeded features off | Met | No API docs or OpenAPI. Static serving only in development (`SANGUITY_SERVE_STATIC`). |
 | 14.2.3 | Subresource integrity for outside assets | N/A | Nothing is loaded from elsewhere (`default-src 'self'`). |
 | 14.2.4 | Components from trusted sources | Met | PyPI with `--require-hashes`. Official Python and nginx images. |

@@ -72,7 +72,14 @@ Optional: `corrections.json` (milestones and hand corrections; see `corrections.
 | `docker compose exec app python -m server.manage list` | Accounts, profiles and who has which role |
 | `docker compose exec app python -m server.manage remove-user NAME --hand-to OTHER` | Delete an account for good (also under **Account**); profiles only it owned go to OTHER |
 | `docker compose exec app python -m server.manage disable-2fa NAME` | Turn off two-factor sign-in for someone who lost their phone and recovery codes |
-| `git pull && docker compose up -d --build` | Update Sanguity |
+| `git pull && docker compose pull --ignore-buildable && docker compose build --pull && docker compose up -d` | Update Sanguity, and the images it runs on |
+
+**Updating:** run the update command above at least once a month, and soon after a security fix is announced
+(watch the repository's releases). Besides the code, it pulls the newest nginx image and rebuilds the app on the
+newest Python base image, so the operating system and Python get their security patches; `docker compose up -d
+--build` alone keeps the images of the day you installed. It needs Docker Compose 2.15 or later (`docker compose
+version`). Dependency updates are proposed weekly in this repository by Dependabot (`.github/dependabot.yml`) and
+arrive with `git pull`.
 
 **Upgrading from a version without accounts:**
 
@@ -255,7 +262,8 @@ docker compose up -d --build && python3 tests/docker_smoke.py --code <setup code
 compose.yaml        setup (one-shot), app (the API), web (nginx) and receiver services
 server/             The API (FastAPI + SQLite): accounts, sessions, profiles, roles, records and documents
 requirements.in     The API's dependencies; requirements.txt and requirements-dev.txt are their pinned,
-                    hash-checked lock files (regenerate with uv, as requirements.in says)
+                    hash-checked lock files (regenerate with uv, as requirements.in says; Dependabot proposes
+                    updates weekly, and CI checks the locks match)
 docker/setup.py     First-run secrets and folders, data rebuilds
 docker/dev-stack.sh A test copy from any branch beside a real install (see above)
 build.py            Builds a profile's data.json from the exports listed in sources.json (standard-library Python 3)
