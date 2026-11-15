@@ -7,10 +7,15 @@
   share PROFILE_ID USERNAME ROLE         give an account owner, editor or viewer access (or change it)
   import PROFILE_ID DIR                  load DIR/data.json (and settings.json) into a profile
   sync                                   re-import the setup build into the profiles linked to it
+  backup [DEST] [--keep N]               write a backup archive (default folder: /backups in Docker), keeping the
+                                         newest N there; safe while the app runs
+  verify ARCHIVE                         check a backup is complete and undamaged
+  restore ARCHIVE [--yes]                replace the database, profiles and setup build with a backup's; the app must
+                                         be stopped: docker compose run --rm --no-deps app python -m server.manage restore ...
 """
 import sys
 
-from . import accounts, db as dbm, main, profiles as prof, security as sec
+from . import accounts, backup, db as dbm, main, profiles as prof, security as sec
 
 
 def _user(db, name):
@@ -18,7 +23,34 @@ def _user(db, name):
     return u or sys.exit(f"No account named {name!r}.")
 
 
+def _backup_command(cmd, args):
+    """backup, verify and restore: these work on the files, so no database connection is held open meanwhile."""
+    try:
+        if cmd == "backup":
+            keep = int(args[args.index("--keep") + 1]) if "--keep" in args else None
+            dest = next((a for a in args if not a.startswith("--") and a != str(keep)), None)
+            path = backup.create(dest, keep)
+            print(f"Backup written: {path}")
+        elif cmd == "verify" and args:
+            m = backup.verify(args[0])
+            print(f"OK: backup from {m['created']}, {len(m['files'])} files, database schema {m['schema']}.")
+        elif cmd == "restore" and args:
+            m = backup.verify(args[0])
+            print(f"Backup from {m['created']}: {len(m['files'])} files. Restoring replaces this install's accounts, "
+                  "profiles and records with the backup's (the current ones are moved aside, not deleted).")
+            if "--yes" not in args and (not sys.stdin.isatty() or input("Type yes to restore: ").strip().lower() != "yes"):
+                sys.exit("Nothing changed. (Add --yes to restore without being asked.)")
+            m, aside = backup.restore(args[0])
+            print(f"Restored. The data it replaced is in {aside}. Start the app again.")
+        else:
+            sys.exit(__doc__)
+    except backup.BackupError as e:
+        sys.exit(str(e))
+
+
 def run(argv):
+    if argv and argv[0] in ("backup", "verify", "restore"):
+        return _backup_command(argv[0], argv[1:])
     dbm.init()
     db = dbm.connect()
     try:

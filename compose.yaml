@@ -18,6 +18,7 @@ services:
       - ./:/app:ro
       - ./auth:/app/auth
       - ${DATA_DIR:-./data}:/data
+      - ${BACKUP_DIR:-./backups}:/backups
       - ${WATCH_DIR:-./watch-data}:/watch
       - ${RECORDS_DIR:-./records}:/srv/records:ro
 
@@ -34,6 +35,7 @@ services:
         condition: service_completed_successfully
     environment:
       SANGUITY_DATA: /data
+      SANGUITY_BACKUPS: /backups
       SANGUITY_RECORDS: /srv/records
       SANGUITY_WATCH_FILE: /srv/watch/daily.json
       SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-0}
@@ -48,6 +50,7 @@ services:
     volumes:
       - ./server:/app/server:ro
       - ${DATA_DIR:-./data}:/data
+      - ${BACKUP_DIR:-./backups}:/backups   # server.manage backup writes here
       - ${RECORDS_DIR:-./records}:/srv/records:ro
       - ${WATCH_DIR:-./watch-data}/public:/srv/watch:ro
       - ./www:/srv/www:ro   # only for documents of older installs kept in www/files*/ (see sources.json "files")

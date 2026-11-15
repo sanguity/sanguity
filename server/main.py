@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import accounts, config, db as dbm, profiles as prof, security as sec
+from . import accounts, backup, config, db as dbm, profiles as prof, security as sec
 
 log = logging.getLogger("sanguity")
 RANK = {"viewer": 1, "editor": 2, "owner": 3}
@@ -40,17 +40,18 @@ def _setup_code(db):
 
 @asynccontextmanager
 async def lifespan(app):
-    dbm.init()
-    db = dbm.connect()
-    try:
-        pid = prof.bootstrap(db)
-        if pid:
-            print(f"Loaded the existing records into profile {pid} (\"My records\").", flush=True)
-        prof.sync_build(db)
-        _setup_code(db)
-    finally:
-        db.close()
-    yield
+    with backup.app_running_lock():   # held while the app runs, so a restore can tell and refuse
+        dbm.init()
+        db = dbm.connect()
+        try:
+            pid = prof.bootstrap(db)
+            if pid:
+                print(f"Loaded the existing records into profile {pid} (\"My records\").", flush=True)
+            prof.sync_build(db)
+            _setup_code(db)
+        finally:
+            db.close()
+        yield
 
 
 app = FastAPI(title="Sanguity", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)

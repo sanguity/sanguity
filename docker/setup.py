@@ -21,6 +21,7 @@ APP = os.environ.get("SANGUITY_APP", "/app")   # container paths; overridable fo
 WWW, AUTH = os.path.join(APP, "www"), os.path.join(APP, "auth")
 DATA = os.environ.get("SANGUITY_DATA", "/data")
 BUILD = os.path.join(DATA, "build")
+BACKUPS = os.environ.get("SANGUITY_BACKUPS", "/backups")
 WATCH = os.environ.get("SANGUITY_WATCH", "/watch")
 RECORDS = os.environ.get("SANGUITY_RECORDS", "/srv/records")
 UID, GID = int(os.environ.get("PUID", "1000")), int(os.environ.get("PGID", "1000"))
@@ -51,7 +52,7 @@ def write(path, text, mode=0o600):
 
 
 def secrets_and_dirs():
-    for d in (AUTH, DATA, BUILD, WATCH, os.path.join(WATCH, "public")):
+    for d in (AUTH, DATA, BUILD, BACKUPS, WATCH, os.path.join(WATCH, "public")):
         os.makedirs(d, exist_ok=True)
         own(d)
     ws = os.path.join(AUTH, "watch_secret")

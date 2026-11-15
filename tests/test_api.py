@@ -5,10 +5,11 @@ a profile is shared with. Uses the fictional demo data in a temporary folder.
   pip install -r requirements-dev.txt
   python3 tests/test_api.py
 """
-import json, os, shutil, subprocess, sys, tempfile, unittest
+import atexit, json, os, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-test-")
+atexit.register(shutil.rmtree, TMP, True)   # after every test class (Backups uses what Api left)
 os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"),
                   SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"), PASSWORD_MIN_LENGTH="15",
                   SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"), PUBLIC_ORIGINS="https://health.example.com/")
@@ -43,7 +44,6 @@ class Api(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.ctx.__exit__(None, None, None)
-        shutil.rmtree(TMP, ignore_errors=True)
 
     def setUp(self):
         sec.throttle.clear(*list(sec.throttle._fails))
@@ -571,5 +571,65 @@ class Api(unittest.TestCase):
         db.close()
 
 
+class Backups(unittest.TestCase):
+    """Runs after Api (alphabetical class order doesn't apply to unittest.main's default loader across classes,
+    so this class is listed explicitly below): it restores an older state, which the other tests don't expect."""
+
+    def test_backup_verify_restore(self):
+        import io, tarfile
+        from server import backup
+        with client() as c:   # the app is running (and holds its lock) while the backup is taken
+            if backup.fcntl:
+                self.assertTrue(backup._app_is_running())
+            path = backup.create(keep=2)
+            self.assertTrue(backup.NAME.match(os.path.basename(path)))
+            if os.name != "nt":
+                self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)   # health data: the app's user only
+            m = backup.verify(path)
+            self.assertIn("sanguity.db", m["files"])
+            self.assertTrue(any(n.startswith("profiles/") for n in m["files"]))
+            if backup.fcntl:   # restoring under a running app is refused
+                with self.assertRaises(backup.BackupError):
+                    backup.restore(path)
+            # something that happens after the backup, which restoring takes back
+            db = dbm.connect()
+            db.execute("INSERT INTO users(username, pw_hash, created) VALUES('after-backup', 'x', 0)")
+            db.close()
+        # damaged or doctored archives are refused
+        with open(path, "rb") as f:
+            good = f.read()
+        bad = path.replace(".tar.gz", "-bad.tar.gz")
+        with tarfile.open(path) as src, tarfile.open(bad, "w:gz") as dst:
+            for mem in src.getmembers():
+                data = src.extractfile(mem).read()
+                if mem.name == "sanguity.db":
+                    data = data[:-1] + b"x"
+                mem.size = len(data)
+                dst.addfile(mem, io.BytesIO(data))
+        with self.assertRaises(backup.BackupError):
+            backup.verify(bad)
+        evil = path.replace(".tar.gz", "-evil.tar.gz")
+        with tarfile.open(evil, "w:gz") as dst:
+            for name in ("manifest.json", "../escape.txt"):
+                info = tarfile.TarInfo(name); info.size = 2
+                dst.addfile(info, io.BytesIO(b"{}"))
+        with self.assertRaises(backup.BackupError):
+            backup.verify(evil)
+        # restore (app stopped): the state at backup time comes back, the replaced data is kept aside
+        m, aside = backup.restore(path)
+        self.assertTrue(os.path.isfile(os.path.join(aside, "sanguity.db")))
+        db = dbm.connect()
+        names = {r[0] for r in db.execute("SELECT username FROM users")}
+        db.close()
+        self.assertIn("ben", names)
+        self.assertNotIn("after-backup", names)
+        with client() as c:   # and the app starts on it
+            self.assertEqual(c.post("/api/login", json={"username": "ben", "password": PW["ben"]}, headers=H).status_code, 200)
+        self.assertEqual(good, open(path, "rb").read())   # verifying and restoring never change the archive
+        self.assertEqual(len(backup.list_backups()), 1)   # the doctored copies don't count as backups
+
+
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    suite = unittest.TestSuite([unittest.defaultTestLoader.loadTestsFromTestCase(Api),
+                                unittest.defaultTestLoader.loadTestsFromTestCase(Backups)])   # Backups last
+    sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())

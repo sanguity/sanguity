@@ -83,6 +83,18 @@ jobs:
           for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && break; sleep 2; done
           python3 tests/docker_smoke.py --receiver http://127.0.0.1:8731
 
+      - name: Backup while running, lose the data, restore it
+        run: |
+          docker compose exec -T app python -m server.manage backup --keep 3
+          f=$(ls backups | grep -E '^sanguity-backup-[0-9-]+\.tar\.gz$' | tail -1)
+          docker compose exec -T app python -m server.manage verify "/backups/$f"
+          docker compose stop app web
+          rm -rf data/sanguity.db data/sanguity.db-* data/profiles
+          docker compose run -T --rm --no-deps app python -m server.manage restore "/backups/$f" --yes
+          PUID=$(id -u) PGID=$(id -g) docker compose up -d
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && break; sleep 2; done
+          python3 tests/docker_smoke.py --receiver http://127.0.0.1:8731
+
       - name: Show the containers and their logs
         if: failure()
         run: |
