@@ -56,12 +56,27 @@ def new_recovery_codes(db, uid):
     return codes
 
 
-def turn_off_2fa(db, uid):
-    """Two-factor sign-in off: secret and recovery codes gone, signed out everywhere, and a password that was only
-    allowed because of the second factor has to be replaced at the next sign-in."""
-    db.execute("""UPDATE users SET totp_secret=NULL, totp_pending=NULL, totp_last_step=0,
-                  must_change_pw=CASE WHEN pw_short THEN 1 ELSE must_change_pw END WHERE id=?""", (uid,))
+def has_second_factor(db, u):
+    """An authenticator app, or a passkey (which checks the person itself)."""
+    return bool(u["totp_secret"]) or db.execute("SELECT 1 FROM passkeys WHERE user_id=? LIMIT 1", (u["id"],)).fetchone() is not None
+
+
+def short_password_check(db, uid):
+    """After a second factor went: a password only allowed because of it has to be replaced at the next sign-in."""
+    u = db.execute("SELECT id, totp_secret FROM users WHERE id=?", (uid,)).fetchone()
+    if not has_second_factor(db, u):
+        db.execute("UPDATE users SET must_change_pw=1 WHERE id=? AND pw_short=1", (uid,))
+
+
+def turn_off_2fa(db, uid, passkeys_too=False):
+    """The authenticator app off (and with passkeys_too, every passkey: an admin's reset for a lost phone): secret
+    and recovery codes gone, signed out everywhere, and a password that was only allowed because of a second factor
+    has to be replaced at the next sign-in."""
+    db.execute("UPDATE users SET totp_secret=NULL, totp_pending=NULL, totp_last_step=0 WHERE id=?", (uid,))
     db.execute("DELETE FROM recovery_codes WHERE user_id=?", (uid,))
+    if passkeys_too:
+        db.execute("DELETE FROM passkeys WHERE user_id=?", (uid,))
+    short_password_check(db, uid)
     sign_out_everywhere(db, uid)
 
 
@@ -74,7 +89,7 @@ def sole_owned(db, uid):
 
 
 def remove(db, uid, hand_to=None):
-    """Delete an account for good: its sessions, known browsers, recovery codes and memberships go with it (the
+    """Delete an account for good: its sessions, known browsers, recovery codes, passkeys and memberships go with it (the
     schema cascades); its activity entries stay, under its old name. hand_to (another account's id) first becomes
     owner of the profiles this one was the only active owner of. Returns {"username", "handed_over": [names]}."""
     u = db.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()

@@ -131,13 +131,13 @@ async function loadTwoFactor() {
     el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
       try { showRecoveryCodes((await call("me/2fa/recovery-codes", "POST", {code: code.value})).recovery_codes); } catch (e) { say("#tfMsg", e.message, true); } }},
       code, el("button", {class: "btn small", type: "submit", text: "Make new recovery codes"})),
-    st.required ? el("p", {class: "hint", text: "This server requires two-factor sign-in, so it can't be turned off."}) :
+    st.required && !st.passkeys ? el("p", {class: "hint", text: "This server requires two-factor sign-in, so it can't be turned off. Add a passkey first to stop using the app."}) :
     el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
       if (!confirm("Turn off two-factor sign-in? Every other device will be signed out.")) return;
       try {
         const r = await call("me/2fa/off", "POST", {password: pw.value});
         if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
-        loadTwoFactor(); loadSessions();
+        loadTwoFactor(); loadPasskeys(); loadSessions();
       } catch (e) { say("#tfMsg", e.message, true); } }},
       pw, el("button", {class: "btn small", type: "submit", text: "Turn off"})));
 }
@@ -163,12 +163,60 @@ function showRecoveryCodes(codes, justTurnedOn) {
     "They won't be shown again.";
   const done = el("button", {class: "btn primary small", type: "button", text: "I've saved them", onclick: () => {
     if (ME.user.needs_two_factor) { location.replace("./"); return; }
-    loadTwoFactor(); loadSessions(); }});
+    loadTwoFactor(); loadPasskeys(); loadSessions(); }});
   $("#tfBody").replaceChildren(
     el("pre", {class: "tf-codes", text: codes.join("\n")}),
     el("div", {class: "row"},
       el("a", {class: "btn small", download: "sanguity-recovery-codes.txt", href: "data:text/plain;charset=utf-8," + encodeURIComponent(text), text: "Download"}),
       done));
+}
+
+/* ---------------------------------------------------------------- passkeys */
+const guessName = () => { const d = device(navigator.userAgent); return d === "Browser" ? "Passkey" : d.replace(/^\w+ on /, ""); };
+async function loadPasskeys() {
+  const st = await call("me/passkeys?origin=" + encodeURIComponent(location.origin));
+  say("#pkMsg", "");
+  const usable = passkeysWork() && !st.problem;
+  $("#pkHint").textContent = "Sign in with Face ID, Touch ID, Windows Hello, your phone or a security key: on its own, " +
+    "or as the step after your password. A passkey can't be phished or guessed, and your password still works too." +
+    (usable ? "" : " " + (st.problem || "This browser can't make passkeys here: open Sanguity at its https:// address."));
+  if (usable && st.user_handle)   // the device can forget passkeys removed here (or on another device)
+    passkeySignalAccepted(st.site, st.user_handle, st.passkeys.filter(k => k.here).map(k => k.credential_id));
+  const last = st.passkeys.length === 1 && st.required && !st.authenticator_app;
+  $("#pkList").replaceChildren(st.passkeys.length ? el("table", {class: "tbl"},
+    el("thead", {}, el("tr", {}, ...["Name", "Added", "Last used", ""].map(h => el("th", {text: h})))),
+    el("tbody", {}, ...st.passkeys.map(k => {
+      const name = el("input", {value: k.name, maxlength: 60, "aria-label": "Passkey name"});
+      return el("tr", {},
+        el("td", {}, name, k.here ? null : el("div", {class: "muted", text: `works at ${k.rp_id} only`})),
+        el("td", {text: when(k.created)}), el("td", {text: k.last_used ? when(k.last_used) : "never"}),
+        el("td", {class: "acts"},
+          el("button", {class: "btn small", type: "button", text: "Rename", onclick: async () => {
+            try { await call("me/passkeys/" + k.id, "PATCH", {name: name.value}); say("#pkMsg", "Renamed."); } catch (e) { say("#pkMsg", e.message, true); } }}),
+          el("button", {class: "btn small", type: "button", text: "Remove", disabled: last || null,
+            title: last ? "This server requires two-factor sign-in, and this is your only second step" : null, onclick: async () => {
+              if (!confirm(`Remove the passkey “${k.name}”? Remove it from the device too (in its passwords or passkeys settings).`)) return;
+              try {
+                const r = await call("me/passkeys/" + k.id, "DELETE");
+                if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
+                loadPasskeys();
+              } catch (e) { say("#pkMsg", e.message, true); } }})));
+    }))) : el("p", {class: "hint", text: "No passkeys yet."}));
+  if (last) $("#pkList").append(el("p", {class: "hint", text: "This server requires two-factor sign-in, so your only passkey can't be removed until you add another or turn on the authenticator app."}));
+  if (!usable) { $("#pkBody").replaceChildren(); return; }
+  const pw = el("input", {type: "password", autocomplete: "current-password", placeholder: "Your password", "aria-label": "Your password", required: true});
+  const nm = el("input", {value: guessName(), maxlength: 60, placeholder: "Name, e.g. My phone", "aria-label": "Passkey name"});
+  $("#pkBody").replaceChildren(el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
+    say("#pkMsg", "");
+    try {
+      const o = await call("me/passkeys/options", "POST", {password: pw.value});
+      let credential;
+      try { credential = await passkeyCreate(o.options); } catch (e) { throw new Error(passkeyProblem(e)); }
+      const r = await call("me/passkeys", "POST", {state: o.state, credential, name: nm.value});
+      if (ME.user.needs_two_factor) { location.replace("./"); return; }
+      await loadPasskeys(); say("#pkMsg", `Added “${r.name}”.`); loadTwoFactor(); ME = await call("me");
+    } catch (e) { say("#pkMsg", e.message, true); } }},
+    nm, pw, el("button", {class: "btn primary small", type: "submit", text: "Add a passkey"})));
 }
 
 /* ---------------------------------------------------------------- deleting a profile */
@@ -222,6 +270,8 @@ const WHAT = {
   "2fa.codes": () => "made new recovery codes",
   "2fa.recovery": d => `signed in with a recovery code (${d.left} left)`,
   "2fa.reset": d => `turned off two-factor sign-in for ${d.username}`,
+  "passkey.add": d => `added the passkey “${d.name}”`,
+  "passkey.remove": d => `removed the passkey “${d.name}”`,
   "settings.require_2fa": d => d.on ? "required two-factor sign-in for everyone" : "stopped requiring two-factor sign-in",
   "account.remove": d => `removed the account ${d.username}` +
     (d.handed_over && d.handed_over.length ? `, handing ${d.handed_over.join(", ")} to someone else` : ""),
@@ -365,17 +415,17 @@ $("#userNew").onsubmit = async ev => {
   $("#pwHint").textContent = `At least ${ME.password_min} characters. A few unrelated words make a strong password you can remember.`;
   if (ME.user.must_change_pw) {   // nothing else is available until the one-time password is replaced
     $("#mustChange").hidden = false; $("#back").hidden = true;
-    for (const id of ["#sessions", "#profiles", "#users", "#twofa"]) $(id).hidden = true;
+    for (const id of ["#sessions", "#profiles", "#users", "#twofa", "#passkeys"]) $(id).hidden = true;
     $("#pwCur").focus();
     return;
   }
   if (ME.user.needs_two_factor) {   // the server requires it: set it up before anything else
     $("#needTf").hidden = false; $("#back").hidden = true;
     for (const id of ["#sessions", "#profiles", "#users"]) $(id).hidden = true;
-    await loadTwoFactor();
+    await Promise.all([loadTwoFactor(), loadPasskeys()]);
     return;
   }
-  await Promise.all([loadSessions(), loadProfiles(), loadTwoFactor(), ME.user.is_admin ? loadUsers() : null]);
+  await Promise.all([loadSessions(), loadProfiles(), loadTwoFactor(), loadPasskeys(), ME.user.is_admin ? loadUsers() : null]);
   if (ME.user.is_admin) {
     const req = $("#reqTf");
     req.checked = (await call("settings")).require_2fa;

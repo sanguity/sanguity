@@ -26,6 +26,57 @@ from server import db as dbm, main, security as sec   # noqa: E402
 H = {"X-Sanguity": "1"}
 
 
+class SoftKey:
+    """A software passkey: real WebAuthn messages (attestation "none", ES256), as a phone or security key sends them."""
+    ORIGIN = "https://health.example.com"   # in PUBLIC_ORIGINS above; passkeys need HTTPS
+
+    def __init__(self, origin=ORIGIN):
+        import secrets
+        from cryptography.hazmat.primitives.asymmetric import ec
+        self.key, self.cid, self.count, self.origin = ec.generate_private_key(ec.SECP256R1()), secrets.token_bytes(32), 0, origin
+        self.handle = None
+
+    @staticmethod
+    def b64(b):
+        import base64
+        return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+    @staticmethod
+    def unb64(s):
+        import base64
+        return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+    def _client(self, kind, challenge, origin=None):
+        return json.dumps({"type": kind, "challenge": challenge, "origin": origin or self.origin, "crossOrigin": False}).encode()
+
+    def _auth_data(self, rp_id, flags, extra=b""):
+        import hashlib, struct
+        return hashlib.sha256(rp_id.encode()).digest() + bytes([flags]) + struct.pack(">I", self.count) + extra
+
+    def create(self, options):
+        import cbor2, struct
+        nums = self.key.public_key().public_numbers()
+        cose = cbor2.dumps({1: 2, 3: -7, -1: 1, -2: nums.x.to_bytes(32, "big"), -3: nums.y.to_bytes(32, "big")})
+        self.handle = options["user"]["id"]
+        auth = self._auth_data(options["rp"]["id"], 0x45, bytes(16) + struct.pack(">H", len(self.cid)) + self.cid + cose)
+        att = cbor2.dumps({"fmt": "none", "attStmt": {}, "authData": auth})
+        return {"id": self.b64(self.cid), "rawId": self.b64(self.cid), "type": "public-key", "clientExtensionResults": {},
+                "response": {"clientDataJSON": self.b64(self._client("webauthn.create", options["challenge"])),
+                             "attestationObject": self.b64(att), "transports": ["internal"]}}
+
+    def get(self, options, verified=True, origin=None, rp_id=None):
+        import hashlib
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+        self.count += 1
+        auth = self._auth_data(rp_id or options["rpId"], 0x05 if verified else 0x01)
+        client_data = self._client("webauthn.get", options["challenge"], origin)
+        sig = self.key.sign(auth + hashlib.sha256(client_data).digest(), ec.ECDSA(hashes.SHA256()))
+        return {"id": self.b64(self.cid), "rawId": self.b64(self.cid), "type": "public-key", "clientExtensionResults": {},
+                "response": {"clientDataJSON": self.b64(client_data), "authenticatorData": self.b64(auth),
+                             "signature": self.b64(sig), "userHandle": self.handle}}
+
+
 class other_key:
     """Point the app at a different key file for a while (missing, or holding a key that didn't write the data)."""
     def __init__(self, make=True):
@@ -969,6 +1020,104 @@ class Api(unittest.TestCase):
         self.assertEqual(ben.get("/api/profiles/1/data").json(), records)
         doc = db.execute("SELECT id FROM documents WHERE profile_id=1 LIMIT 1").fetchone()[0]
         self.assertEqual(ben.get(f"/api/profiles/1/documents/{doc}").status_code, 200)
+        db.close()
+
+    def test_passkeys(self):
+        from server import accounts, manage
+        db = dbm.connect()
+        for name in ("pia", "quinn"):
+            if not db.execute("SELECT 1 FROM users WHERE username=?", (name,)).fetchone():
+                accounts.create(db, name, password=f"{name} keeps a long passphrase")
+        pia_id = db.execute("SELECT id FROM users WHERE username='pia'").fetchone()[0]
+        O = {**H, "Origin": SoftKey.ORIGIN}
+        pia = self.login("pia", "pia keeps a long passphrase")
+
+        def add(c, who, key, name="Phone"):
+            o = c.post("/api/me/passkeys/options", json={"password": f"{who} keeps a long passphrase"}, headers=O)
+            self.assertEqual(o.status_code, 200, o.text)
+            o = o.json()
+            self.assertEqual((o["options"]["authenticatorSelection"]["userVerification"], o["options"]["rp"]["id"]), ("required", "health.example.com"))
+            return c.post("/api/me/passkeys", json={"state": o["state"], "credential": key.create(o["options"]), "name": name}, headers=O)
+
+        # where passkeys can't work, it says why
+        self.assertIn("IP address", pia.get("/api/me/passkeys", params={"origin": "http://192.168.1.20:8730"}).json()["problem"])
+        r = pia.post("/api/me/passkeys/options", json={"password": "pia keeps a long passphrase"}, headers={**H, "Origin": "http://testserver"})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("HTTPS", r.json()["detail"])
+        # adding one needs the password
+        self.assertEqual(pia.post("/api/me/passkeys/options", json={"password": "wrong"}, headers=O).status_code, 403)
+        key = SoftKey()
+        r = add(pia, "pia", key)
+        self.assertEqual((r.status_code, r.json()["name"]), (200, "Phone"))
+        self.assertEqual(add(pia, "pia", key).status_code, 409)   # the same one twice
+        listed = pia.get("/api/me/passkeys", params={"origin": SoftKey.ORIGIN}).json()
+        self.assertEqual([(k["name"], k["here"], k["credential_id"]) for k in listed["passkeys"]], [("Phone", True, SoftKey.b64(key.cid))])
+        self.assertEqual(listed["user_handle"], key.handle)   # what the page tells the device still counts
+        self.assertTrue(pia.get("/api/me").json()["user"]["two_factor"])
+        # a state is single-use, and only for the account it was made for
+        o = pia.post("/api/me/passkeys/options", json={"password": "pia keeps a long passphrase"}, headers=O).json()
+        quinn = self.login("quinn", "quinn keeps a long passphrase")
+        self.assertEqual(quinn.post("/api/me/passkeys", json={"state": o["state"], "credential": SoftKey().create(o["options"])}, headers=O).status_code, 401)
+
+        # after the password: the passkey is the second step; the password alone gives no session
+        c = client()
+        first = c.post("/api/login", json={"username": "pia", "password": "pia keeps a long passphrase"}, headers=H).json()
+        self.assertEqual((first["two_factor"], first["methods"]), (True, {"code": False, "passkey": True}))
+        self.assertEqual(c.get("/api/me").status_code, 401)
+        self.assertEqual(c.post("/api/login/code", json={"ticket": first["ticket"], "code": "123456"}, headers=H).status_code, 401)
+        o = c.post("/api/login/passkey/options", json={"ticket": first["ticket"]}, headers=O).json()
+        self.assertEqual([x["id"] for x in o["options"]["allowCredentials"]], [SoftKey.b64(key.cid)])
+        answer = key.get(o["options"], verified=False)   # after a password, presence is enough
+        r = c.post("/api/login/passkey", json={"state": o["state"], "credential": answer, "ticket": first["ticket"]}, headers=O)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(c.get("/api/me").json()["user"]["username"], "pia")
+        # the same answer again is refused (the state is used up)
+        self.assertEqual(client().post("/api/login/passkey", json={"state": o["state"], "credential": answer}, headers=O).status_code, 401)
+
+        def alone(k, **kw):
+            c = client()
+            o = c.post("/api/login/passkey/options", json={}, headers=O).json()
+            self.assertEqual(o["options"]["userVerification"], "required")
+            return c, c.post("/api/login/passkey", json={"state": o["state"], "credential": k.get(o["options"], **kw)}, headers=O)
+
+        # on its own: needs the person verified (fingerprint, face, PIN), the right site, and a registered key
+        c, r = alone(key)
+        self.assertEqual((r.status_code, r.json()["username"]), (200, "pia"))
+        self.assertEqual(c.get("/api/me").status_code, 200)
+        self.assertEqual(alone(key, verified=False)[1].status_code, 401)
+        self.assertEqual(alone(key, origin="https://evil.example")[1].status_code, 401)
+        self.assertEqual(alone(key, rp_id="evil.example")[1].status_code, 401)
+        r = alone(SoftKey())[1]   # a passkey the device has but Sanguity doesn't: says to delete it from the device
+        self.assertEqual(r.status_code, 401)
+        self.assertIn("Delete it from this device", r.json()["detail"])
+        stale = SoftKey(); stale.key, stale.cid, stale.handle = key.key, key.cid, key.handle   # a cloned key: its count is behind
+        self.assertEqual(alone(stale)[1].status_code, 401)
+        # with someone else's ticket, pia's passkey doesn't sign in as them
+        first = client().post("/api/login", json={"username": "quinn", "password": "quinn keeps a long passphrase"}, headers=H).json()
+        self.assertNotIn("methods", first)   # no second step: quinn has none (signed straight in)
+
+        # removing the last one can't lock anyone out: refused only where two-factor is required and it's the last
+        pk = listed["passkeys"][0]["id"]
+        dbm.meta_set(db, "require_2fa", "1")
+        try:
+            r = pia.delete(f"/api/me/passkeys/{pk}", headers=H)
+            self.assertEqual(r.status_code, 409)
+            key2 = SoftKey()
+            pk2 = add(pia, "pia", key2, "Laptop").json()["id"]
+            self.assertEqual(pia.delete(f"/api/me/passkeys/{pk}", headers=H).json()["left"], 1)
+            # signing in with the one left still works, and counts as two-factor
+            c, r = alone(key2)
+            self.assertEqual(c.get("/api/profiles/1/data").status_code, 404)   # past the two-factor gate: just not shared
+        finally:
+            dbm.meta_set(db, "require_2fa", None)
+        self.assertEqual(quinn.delete(f"/api/me/passkeys/{pk2}", headers=H).status_code, 404)   # not theirs
+        self.assertEqual(pia.patch(f"/api/me/passkeys/{pk2}", json={"name": "  Work  laptop "}, headers=H).json()["name"], "Work laptop")
+        # an admin's reset (lost phone) takes the passkeys too
+        manage.run(["disable-2fa", "pia"])
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM passkeys WHERE user_id=?", (pia_id,)).fetchone()[0], 0)
+        self.assertEqual(alone(key2)[1].status_code, 401)
+        actions = {r[0] for r in db.execute("SELECT action FROM activity WHERE actor_id=?", (pia_id,))}
+        self.assertTrue({"passkey.add", "passkey.remove"} <= actions)
         db.close()
 
     def test_manage_import_failure_keeps_link(self):

@@ -312,8 +312,51 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
             check("2FA: the code signs in", js("fetch('api/me').then(r => r.status)") == 200)
             problems[before:] = [x for x in problems[before:] if "401" not in x]   # only the 401s after logging out were the point
+            # passkeys, with Chromium's virtual authenticator, at localhost: a secure context with a name (passkeys
+            # refuse an IP address like 127.0.0.1). Same server; this session's cookie carried over to that name.
+            local = base.replace("127.0.0.1", "localhost")
+            SIGNED_IN_OR_ERROR = "!location.pathname.endsWith('login.html') || (document.getElementById('e') || {}).textContent"
+            ctx = browser.new_context(viewport={"width": 1400, "height": 900})
+            ctx.add_cookies([{**{k: c[k] for k in ("name", "value", "path", "httpOnly", "sameSite")}, "domain": "localhost"}
+                             for c in page.context.cookies() if c["name"] == "sg_session"])
+            pk = ctx.new_page()
+            pk.on("pageerror", lambda e: problems.append(f"script error (localhost): {e}"))
+            pk.on("console", lambda m: m.type == "error" and problems.append(f"console error (localhost): {m.text}"))
+            before = len(problems)
+            pk.on("response", lambda r: r.status >= 400 and problems.append(f"HTTP {r.status}: {r.url}"))
+            cdp = ctx.new_cdp_session(pk)
+            cdp.send("WebAuthn.enable")
+            cdp.send("WebAuthn.addVirtualAuthenticator", {"options": {"protocol": "ctap2", "transport": "internal",
+                     "hasResidentKey": True, "hasUserVerification": True, "isUserVerified": True}})
+            pk.goto(local + "/account.html")
+            pk.wait_for_selector("#pkBody form")
+            pk.locator("#pkBody input[type=password]").fill(PW)
+            pk.locator("#pkBody").get_by_role("button", name="Add a passkey").click()
+            pk.wait_for_selector("#pkList tbody tr", timeout=10000)
+            check("a passkey is added and listed", "never" in pk.inner_text("#pkList"), pk.inner_text("#pkMsg"))
+            pk.click("#logout")
+            pk.wait_for_url("**/login.html", timeout=10000)
+            check("sign-in page offers a passkey", pk.is_visible("#pk") and pk.inner_text("#pk") == "Sign in with a passkey")
+            pk.click("#pk")
+            pk.wait_for_function(SIGNED_IN_OR_ERROR, timeout=20000)
+            check("a passkey signs in on its own", pk.evaluate("fetch('api/me').then(r => r.json()).then(j => j.user && j.user.username)") == USER,
+                  pk.evaluate("(document.getElementById('e') || {}).textContent"))
+            pk.click("#logout")
+            pk.wait_for_url("**/login.html", timeout=10000)
+            pk.fill("#u", USER)
+            pk.fill("#p", PW)
+            pk.click("#b")
+            pk.wait_for_selector("#c", state="visible")
+            check("after the password: the code, or a passkey", pk.is_visible("#pk") and pk.inner_text("#pk") == "Use a passkey")
+            pk.click("#pk")
+            pk.wait_for_function(SIGNED_IN_OR_ERROR, timeout=20000)
+            check("a passkey finishes the sign-in after the password", pk.evaluate("fetch('api/me').then(r => r.status)") == 200)
+            problems[before:] = [x for x in problems[before:] if "401" not in x]   # signed out on the way, on purpose
+            ctx.close()
         except Exception as e:   # report what was caught so far instead of a bare traceback
             problems.append(f"check stopped: {str(e).splitlines()[0]}")
+            if "pk" in locals():
+                problems.append(f"passkey page at {pk.url}: " + str(pk.evaluate("document.body.innerText.slice(0, 300)")))
         browser.close()
     srv.should_exit = True
     time.sleep(0.3)

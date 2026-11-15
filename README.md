@@ -99,6 +99,8 @@ portal's export doesn't import, please open an issue with an anonymised sample.
   of inactivity (`SESSION_IDLE_MINUTES` in `.env`).
 - **Two-factor sign-in** with an authenticator app (codes that can't be reused) and one-time recovery codes, under
   **Account**; admins can require it for everyone. With it on, a password may be as short as 8 characters.
+- **Passkeys** (Face ID, Touch ID, Windows Hello, a phone or a security key), under **Account**: sign in with one on
+  its own, or use it as the step after the password. They need HTTPS; see [Passkeys](#passkeys).
 - **Every request for records or documents checks the account's role on that profile.** Documents are served
   only through that check, read-only, with scripts blocked; no folder of health data is served directly.
 - **Admins manage accounts, not records:** being an admin doesn't show anyone's records.
@@ -118,6 +120,22 @@ portal's export doesn't import, please open an issue with an anonymised sample.
 - Put Sanguity behind HTTPS (a reverse proxy, Tailscale or similar) before using it outside your home network.
   If sign-in then says "Request refused (cross-site check)", set `PUBLIC_ORIGINS` in `.env` to the address you
   open it at; to see visitors' real addresses on the device list, trust your proxy in `nginx.conf` (see the comment there).
+
+### Passkeys
+
+A passkey belongs to the name you open Sanguity at, so it works only:
+
+- **over HTTPS** (or at `http://localhost`): browsers don't offer passkeys to a plain-HTTP address;
+- **at a name, not an IP address**: `https://health.example.com` or a Tailscale name works, `http://192.168.1.20:8730`
+  doesn't. Put Sanguity behind a reverse proxy with a certificate (Caddy, Nginx Proxy Manager, Traefik, Tailscale
+  Serve) and add that address to `PUBLIC_ORIGINS` in `.env`;
+- **at the name it was added at**: one added at `https://health.example.com` isn't offered at another name for the
+  same server. **Account > Passkeys** shows where each one works.
+
+Your password keeps working alongside passkeys. Where an admin requires two-factor sign-in, your last second step
+(the only passkey, with no authenticator app) can't be removed, so nobody locks themselves out. An admin's
+**Turn off 2FA** (or `server.manage disable-2fa NAME`) removes the authenticator app and every passkey, for someone
+who lost the phone holding them.
 
 ## Backup and restore
 

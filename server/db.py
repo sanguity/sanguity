@@ -91,6 +91,22 @@ SCHEMA = [
     DROP INDEX activity_seen;
     CREATE INDEX activity_seen ON activity(session_id, profile_id, action, item);
     """,
+    # version 6: passkeys (see passkeys.py). Each is bound to the site name it was made at (rp_id).
+    """
+    ALTER TABLE users ADD COLUMN webauthn_handle TEXT;   -- random id the authenticator stores for the account
+    CREATE TABLE passkeys(
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        credential_id TEXT NOT NULL UNIQUE,             -- base64url
+        public_key BLOB NOT NULL,                       -- COSE; public, so not encrypted
+        sign_count INTEGER NOT NULL DEFAULT 0,
+        rp_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        transports TEXT,                                -- JSON list, a hint for the browser
+        created INTEGER NOT NULL,
+        last_used INTEGER);
+    CREATE INDEX passkeys_user ON passkeys(user_id);
+    """,
 ]
 
 
