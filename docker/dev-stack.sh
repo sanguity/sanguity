@@ -24,6 +24,7 @@
 #   --watch-public DIR     a real install's watch summary folder (WATCH_DIR/public) to show, read-only
 #   --puid N --pgid N      user and group the containers run as; use the owner of --records (default: 568:568)
 #   --tz ZONE              time zone (default: this machine's)
+#   --public-origin URL    an HTTPS address in front of it (e.g. tailscale serve), for passkeys and the CSRF check
 #   --truenas-app          deploy as a TrueNAS custom app even when Docker is reachable
 #   --down                 stop the test copy (its data stays in --dir)
 #   --logs                 follow its logs (compose project only; for an app use the Apps page)
@@ -32,7 +33,7 @@
 set -euo pipefail
 
 REPO=https://github.com/sanguity/sanguity
-DIR="" BRANCH=main NAME=sanguity-dev PORT=8740 RECORDS="" WATCH_PUBLIC="" PUID=568 PGID=568 ACTION=up MODE=""
+DIR="" BRANCH=main NAME=sanguity-dev PORT=8740 RECORDS="" WATCH_PUBLIC="" PUID=568 PGID=568 ACTION=up MODE="" ORIGIN=""
 TZONE=$(cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -45,12 +46,13 @@ while [ $# -gt 0 ]; do
     --puid) PUID=$2; shift ;;
     --pgid) PGID=$2; shift ;;
     --tz) TZONE=$2; shift ;;
+    --public-origin) ORIGIN=$2; shift ;;
     --truenas-app) MODE=app ;;
     --down) ACTION=down ;;
     --logs) ACTION=logs ;;
     --reset) ACTION=reset ;;
     --remove) ACTION=remove ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
   shift
@@ -134,6 +136,7 @@ RECORDS_DIR=${RECORDS:-$DIR/records}
 TZ=$TZONE
 PUID=$PUID
 PGID=$PGID
+PUBLIC_ORIGINS=$ORIGIN
 EOF
 if [ -n "$WATCH_PUBLIC" ]; then   # show the real install's watch summary instead of this copy's own (read-only)
   cat > "$DIR/src/compose.override.yaml" <<EOF
