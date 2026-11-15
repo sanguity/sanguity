@@ -1,0 +1,13 @@
+{
+ "primary": {
+  "dir": "mychart-*",
+  "org": "Example Health System"
+ },
+ "epic": [
+  {
+   "dir": "otherclinic-*",
+   "org": "Other Clinic",
+   "tag": "OC"
+  }
+ ]
+}

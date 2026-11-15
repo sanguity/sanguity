@@ -1,0 +1,16 @@
+{
+ "departments": {
+  "d1": {
+   "name": "Lakeside Family Medicine"
+  }
+ },
+ "letters": [
+  {
+   "dateISO": "2026-02-03",
+   "depId": "d1",
+   "detail": {
+    "bodyHTML": "<p>Dear Patient,</p><p>Your CT chest result was reviewed and is normal.</p>"
+   }
+  }
+ ]
+}

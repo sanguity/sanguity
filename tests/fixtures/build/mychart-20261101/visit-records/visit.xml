@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3"><component><structuredBody><component><section>
+<entry><observation><code code="29463-7"/><effectiveTime value="20260301101500"/><value value="70.5" unit="kg"/></observation></entry>
+</section></component></structuredBody></component>
+<componentOf><encompassingEncounter><code displayName="Inpatient Encounter"/>
+<effectiveTime><low value="20260301101500"/><high value="20260305120000"/></effectiveTime>
+<encounterParticipant><assignedEntity><assignedPerson><name><given>Avery</given><family>Lin</family></name></assignedPerson></assignedEntity></encounterParticipant>
+<location><healthCareFacility><location><name>Northfield General Hospital</name></location></healthCareFacility></location>
+</encompassingEncounter></componentOf></ClinicalDocument>

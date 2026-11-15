@@ -1,0 +1,35 @@
+{
+ "users": {
+  "u1": {
+   "name": "Dr. Sam Okafor"
+  }
+ },
+ "list": {
+  "h1": {
+   "folders": [
+    1
+   ]
+  }
+ },
+ "details": {
+  "h1": {
+   "subject": "Lab question",
+   "messages": [
+    {
+     "deliveryInstantISO": "2026-01-11T10:00:00-06:00",
+     "author": {
+      "displayName": ""
+     },
+     "body": "Are my results ok?"
+    },
+    {
+     "deliveryInstantISO": "2026-01-11T15:00:00-06:00",
+     "author": {
+      "wprKey": "u1"
+     },
+     "body": "Yes, mild anemia."
+    }
+   ]
+  }
+ }
+}
