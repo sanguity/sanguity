@@ -1,11 +1,14 @@
-"""FHIR R4 importer (server/importers/fhir.py) against the fictional exports in tests/fixtures/fhir/.
+"""FHIR R4 importer (server/importers/fhir.py) against fictional exports: tests/fixtures/importers/fhir/ holds
+uploads the registry must hand to fhir (tests/test_importers.py checks those too), tests/fixtures/fhir/ ones that
+parse() must refuse.
 
-  python3 -m pytest tests/test_importer_fhir.py
+  python -m unittest discover -s tests -p "test_importer*.py" -v
 """
 import json, os, shutil, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FIX = os.path.join(ROOT, "tests", "fixtures", "fhir")
+FIX = os.path.join(ROOT, "tests", "fixtures", "importers", "fhir")   # uploads the registry must give to fhir
+BAD = os.path.join(ROOT, "tests", "fixtures", "fhir")                # uploads parse() must refuse
 sys.path.insert(0, ROOT)
 
 from server.importers import fhir   # noqa: E402
@@ -274,13 +277,38 @@ class Keys(unittest.TestCase):
         items = {e["key"] for e in by_kind(self.bundle, "labitem")}
         self.assertEqual(items, {"fhir:DiagnosticReport/dr-cbc", "fhir:labitem:2025-03-04"})
         docs = {e["key"] for e in by_kind(self.bundle, "document")}
-        self.assertEqual(docs, {"fhir:DocumentReference/doc-1", "fhir:DiagnosticReport/dr-xr#presentedForm/0"})
+        self.assertEqual(docs, {"fhir:DocumentReference/doc-1", "fhir:DiagnosticReport/dr-xr#presentedForm/1"})
         self.assertEqual(series(self.bundle, "Hemoglobin")["key"], "loinc:718-7")
         self.assertEqual(self.bundle["problems"][0]["key"], "fhir:Condition/cond-1")
 
     def test_same_input_twice_same_keys(self):
         again = fhir.parse(upload(os.path.join(FIX, "bundle")))["data"]
         self.assertEqual(keys(again), keys(self.bundle))
+        self.assertEqual(again, self.bundle)   # and the same records: nothing depends on the clock
+
+    def test_registry_accepts_every_fixture(self):
+        from server import importers as reg
+        for d in ("bundle", "ndjson", "apple-health", "two-units"):
+            with self.subTest(d):
+                files = reg.files_in(os.path.join(FIX, d))
+                self.assertEqual(reg.match(files)["importer"].NAME, "fhir")
+                self.assertEqual(reg.check(fhir.parse(files), files), [])
+
+    def test_document_not_in_upload_keeps_its_entry(self):
+        doc = {"resourceType": "DocumentReference", "id": "d9", "status": "current", "date": "2025-02-01",
+               "type": {"text": "Visit note"},
+               "content": [{"attachment": {"contentType": "application/pdf", "url": "notes/visit.pdf"}},
+                           {"attachment": {"contentType": "application/pdf", "url": "https://fhir.example.org/Binary/77"}}]}
+        p = os.path.join(self.tmp, "DocumentReference-d9.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(doc, f)
+        out = fhir.parse({"DocumentReference-d9.json": p})
+        docs = {e["key"]: out["data"]["details"][e["id"]] for e in by_kind(out["data"], "document")}
+        self.assertEqual(docs, {"fhir:DocumentReference/d9": {"type": "file", "url": None, "ext": "pdf"},
+                                "fhir:DocumentReference/d9#content/2": {"type": "file", "url": None, "ext": "pdf"}})
+        w = " ".join(out["warnings"])
+        self.assertIn("isn't in the upload", w)
+        self.assertIn("web address", w)
 
     def test_bundle_and_ndjson_give_same_keys(self):
         nd = fhir.parse(self.bundle_as_ndjson())["data"]
@@ -324,13 +352,13 @@ class Keys(unittest.TestCase):
 class Malformed(unittest.TestCase):
     def test_broken_json_raises_plain_message(self):
         with self.assertRaises(ValueError) as cm:
-            fhir.parse(upload(os.path.join(FIX, "malformed")))
+            fhir.parse(upload(os.path.join(BAD, "malformed")))
         msg = str(cm.exception)
         self.assertIn("Observation-broken.json", msg)
         self.assertIn("isn't valid JSON", msg)
 
     def test_broken_file_beside_good_ones_is_a_warning(self):
-        files = {**upload(os.path.join(FIX, "apple-health")), **upload(os.path.join(FIX, "malformed"))}
+        files = {**upload(os.path.join(FIX, "apple-health")), **upload(os.path.join(BAD, "malformed"))}
         out = fhir.parse(files)
         self.assertTrue(any("Observation-broken.json" in w for w in out["warnings"]))
 

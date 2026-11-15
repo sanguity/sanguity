@@ -24,7 +24,9 @@ Inline (base64) attachments are skipped with a warning for now: the upload has n
 """
 import hashlib, json, posixpath, re
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime
+
+from .common import unit_key
 
 NAME = "fhir"
 LABEL = "FHIR records (Apple Health, Blue Button, patient portals)"
@@ -438,8 +440,13 @@ def resource_key(r, mixed=False):
     when = next((r[k] for k in HASH_TIME if isinstance(r.get(k), str)), None) or \
         next((r[k].get("start") for k in ("effectivePeriod", "period", "onsetPeriod") if isinstance(r.get(k), dict)), "")
     code = next((_coding_keys(r[k]) or [text_of(r[k])] for k in HASH_CODE if r.get(k)), [])
-    fields = [rt, (iso(when) or when or ""), code, _value(r)[1] if rt == "Observation" else ""]
-    return "fhir:h:" + hashlib.sha256(json.dumps(fields, separators=(",", ":")).encode()).hexdigest()[:16]
+    fields = [rt, iso(when) or when or "", ",".join(code), _value(r)[1] if rt == "Observation" else ""]
+    return hkey(*fields)
+
+
+def hkey(*fields):
+    """docs/importers.md's hash key: SHA-256 over the normalised fields, first 16 hex characters."""
+    return NAME + ":h:" + hashlib.sha256("\x1f".join(str(f).strip().lower() for f in fields).encode()).hexdigest()[:16]
 
 
 def parse(files):
@@ -498,7 +505,7 @@ def parse(files):
         loinc = (codes(code_cc, LOINC) or [None])[0]
         key = name
         s = labs.get(key)
-        if s and s["unit"] and unit and s["unit"] != unit:   # same name, different unit: keep the series apart
+        if s and s["unit"] and unit and unit_key(s["unit"]) != unit_key(unit):   # same name, other unit: keep apart
             key = f"{name} ({unit})"
             s = labs.get(key)
         if s is None:
@@ -562,21 +569,19 @@ def parse(files):
         if not url:
             return
         if re.match(r"[a-z][a-z0-9+.-]*:", url, re.I) and not url.lower().startswith("file:"):
-            target = None
-            # Binary/123 or a full server URL: look for a file of that name in the upload
-            base = url.rstrip("/").rsplit("/", 1)[-1]
-            target = next((k for k in files if posixpath.basename(k) == base), None)
+            # Binary/123 or a full server URL: use a file of that name if the upload has exactly one
+            hits = sorted(k for k in files if posixpath.basename(k) == url.rstrip("/").rsplit("/", 1)[-1])
+            target = hits[0] if len(hits) == 1 else None
             if not target:
                 remote += 1
-                return
         else:
             target = _find(files, url, rel)
             if not target:
                 missing += 1
-                return
+        # a document the export names but didn't include still shows, with "url": null (docs/importers.md)
         ct = (att.get("contentType") or "").split(";")[0].strip().lower()
-        ext = posixpath.splitext(target)[1].lstrip(".").lower() or EXT.get(ct, "")
-        b.add(t, "document", title or att.get("title") or posixpath.basename(target),
+        ext = posixpath.splitext(target or url.split("?")[0])[1].lstrip(".").lower() or EXT.get(ct, "")
+        b.add(t, "document", title or att.get("title") or posixpath.basename(target or url),
               " · ".join(x for x in [ext.upper(), org] if x), {"type": "file", "url": target, "ext": ext}, key=key)
 
     # --- DiagnosticReports first, so their Observations are grouped under them
@@ -608,7 +613,8 @@ def parse(files):
                   {"type": "result", "order": order, "name": order, "collected": t[:16].replace("T", " "),
                    "resulted": (iso(r.get("issued")) or t)[:10], "provider": prov, "status": status, "lab": org,
                    "dx": [], "rows": [], "report": report, "comments": []}, key=rkey(r))
-        for i, att in enumerate(r.get("presentedForm") or []):   # the report's own key is taken by its result event
+        # the report's plain key is on its result event, so each form adds #presentedForm/<position, from 1>
+        for i, att in enumerate(r.get("presentedForm") or [], 1):
             document(f"{rkey(r)}#presentedForm/{i}", t, order, att, r, rel, org)
 
     # --- Observations not in a report
@@ -641,10 +647,11 @@ def parse(files):
             skipped["Observation (uncategorised)"] += 1
             continue
         loose[(t[:10], org_of(r))].append(r)
+    orgs_on = Counter(day for day, _ in loose)
     for (day, org), obs in sorted(loose.items()):
         obs.sort(key=lambda o: (_obs_time(o), rkey(o)))
-        # several Observations share this labitem, so its key names the day (and lab), not one resource
-        add_labitem(f"fhir:labitem:{day}" + (f"|{org}" if org else ""), _obs_time(obs[0]), "Lab results", obs, [], who_of(obs[0]),
+        # several Observations share this labitem, so its key names the day (and the lab, when a day has several)
+        add_labitem(f"fhir:labitem:{day}" + (f"|{org}" if orgs_on[day] > 1 else ""), _obs_time(obs[0]), "Lab results", obs, [], who_of(obs[0]),
                     cap(obs[0].get("status") or ""), org, text_of((idx.get(obs[0].get("specimen"), obs[0]) or {}).get("type")))
 
     # --- one visible lab event per day, linking that day's results
@@ -703,7 +710,7 @@ def parse(files):
                            [text_of(c) for c in r.get("reasonCode") or r.get("reason") or []] +
                            [text_of((idx.get(d.get("condition"), r) or {}).get("code")) or (d.get("condition") or {}).get("display", "")
                             for d in r.get("diagnosis") or []] if x))
-            if r.get("status") == "planned" or (t and t > _now()):
+            if r.get("status") == "planned":   # by status, not the clock: the same upload gives the same records
                 if t:
                     upcoming.append({"t": t, "title": title, "who": who, "where": where or org, "dx": dx, "procs": [],
                                      "key": rkey(r)})
@@ -731,8 +738,8 @@ def parse(files):
                           if iso((c.get("attachment") or {}).get("creation"))), None)
             title = r.get("description") or text_of(r.get("type")) or ""
             org = org_of(r)
-            for i, c in enumerate(r.get("content") or []):
-                document(rkey(r) + (f"#content/{i}" if i else ""), t, title, c.get("attachment"), r, rel, org)
+            for i, c in enumerate(r.get("content") or [], 1):   # first plain, the others #content/<position>
+                document(rkey(r) + (f"#content/{i}" if i > 1 else ""), t, title, c.get("attachment"), r, rel, org)
         elif rt not in IMPORTED and rt not in SUPPORTING:
             skipped[rt] += 1
 
@@ -745,10 +752,11 @@ def parse(files):
         warnings.append(f"Skipped {inline} attachment{'s' if inline != 1 else ''} embedded in the records themselves "
                         "(inline base64); only attachments included as separate files are imported for now.")
     if remote:
-        warnings.append(f"Skipped {remote} attachment{'s' if remote != 1 else ''} that link to a web address "
-                        "instead of a file in the upload.")
+        warnings.append(f"{remote} document{'s' if remote != 1 else ''} link{'s' if remote == 1 else ''} to a web address "
+                        "instead of a file in the upload, so only the entry was imported.")
     if missing:
-        warnings.append(f"{missing} attachment{'s' if missing != 1 else ''} named a file that isn't in the upload.")
+        warnings.append(f"{missing} document{'s' if missing != 1 else ''} named a file that isn't in the upload, "
+                        "so only the entry was imported.")
 
     # --- assemble data.json
     series = []
@@ -761,7 +769,7 @@ def parse(files):
                        "pts": pts, "txt": sorted(s["txt"], key=lambda p: p[0])[-50:]})
     # series keys are unique within an import: one test code split by unit gets "|<unit as reported>" on each,
     # and (rarely) the same code and unit under two reported names gets "|<name>" as well
-    for extra in (lambda s: s["unit"], lambda s: s["name"]):
+    for extra in (lambda s: s["unit"], lambda s: s["name"].strip().lower()):
         seen = Counter(s["key"] for s in series if "key" in s)
         for s in series:
             if seen.get(s.get("key"), 0) > 1:
@@ -770,7 +778,7 @@ def parse(files):
     b.events.sort(key=lambda e: e["t"])
     problems.sort(key=lambda p: (p["date"] or "", p["name"]))
     upcoming.sort(key=lambda u: u["t"])
-    data = {"built": datetime.now(timezone.utc).isoformat(timespec="seconds"), "source": "FHIR import",
+    data = {"source": "FHIR import",
             "events": b.events, "details": b.details, "labs": series, "upcoming": upcoming, "problems": problems,
             "costs": [], "outOfPocket": {"payments": []}, "milestones": [], "clinicWeights": sorted(weights)}
     if not (b.events or series or problems or upcoming or weights):
@@ -778,10 +786,6 @@ def parse(files):
         raise ValueError("This FHIR export has no records Sanguity can show yet (it holds "
                          + ", ".join(f"{k} ({n})" for k, n in kinds.most_common()) + ").")
     return {"data": data, "warnings": warnings}
-
-
-def _now():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _find(files, url, rel):
