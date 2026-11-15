@@ -58,6 +58,7 @@ services:
       - /tmp
     volumes:
       - ./server:/app/server:ro
+      - ./lab-aliases.json:/app/lab-aliases.json:ro   # lab names for the importers (server/importers/common.py)
       - ./auth:/run/secrets/sanguity:ro   # data_key: the encryption key, kept apart from the data and its backups
       - ${DATA_DIR:-./data}:/data
       - ${BACKUP_DIR:-./backups}:/backups   # server.manage backup writes here

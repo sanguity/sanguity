@@ -105,7 +105,8 @@ different; the file stays beside them as `data-before-v10.json`, and can be dele
 | Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition |
 
 Standard formats (FHIR, C-CDA labs, Apple Health, CSV) and an import tool in the app are planned; if your
-portal's export doesn't import, please open an issue with an anonymised sample.
+portal's export doesn't import, please open an issue with an anonymised sample, or write an importer for it:
+[docs/importers.md](docs/importers.md) explains how (one Python file and a fictional test fixture).
 
 ## Privacy and security
 
@@ -268,6 +269,7 @@ pip install --require-hashes -r requirements-dev.txt && playwright install chrom
 python3 -I demo/generate.py dev-data/build --watch dev-data/watch    # fictional demo data
 SANGUITY_DATA=dev-data SANGUITY_KEY_FILE=dev-keys/data_key SANGUITY_RECORDS=dev-data/records SANGUITY_WATCH_FILE=dev-data/watch/daily.json   SANGUITY_SERVE_STATIC=1 PORT=8000 python3 -m server               # then open http://127.0.0.1:8000/ (setup code in the output)
 python3 tests/test_api.py                      # API tests: sign-in, sessions, roles, sharing, documents
+python3 -m pytest tests/test_importers.py      # importers against their fixtures, and build.py's output
 python3 tests/browser_check.py                 # the same browser check CI runs on every pull request
 docker compose up -d --build && python3 tests/docker_smoke.py --code <setup code from docker compose logs app>
                                                # the whole install through nginx, as CI does too
@@ -276,6 +278,7 @@ docker compose up -d --build && python3 tests/docker_smoke.py --code <setup code
 ```
 compose.yaml        setup (one-shot), app (the API), web (nginx) and receiver services
 server/             The API (FastAPI + SQLite): accounts, sessions, profiles, roles, records and documents
+server/importers/   One module per record format, the registry that picks one, shared helpers (docs/importers.md)
 requirements.in     The API's dependencies; requirements.txt and requirements-dev.txt are their pinned,
                     hash-checked lock files (regenerate with uv, as requirements.in says; Dependabot proposes
                     updates weekly, and CI checks the locks match)
