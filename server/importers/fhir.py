@@ -22,7 +22,7 @@ What becomes what:
 Lab names stay as reported, with the LOINC code on the series; mapping to canonical names is a later step (#23).
 Inline (base64) attachments are skipped with a warning for now: the upload has no place to write them yet.
 """
-import json, posixpath, re
+import hashlib, json, posixpath, re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
@@ -405,6 +405,43 @@ def _value(o):
     return None, "", ""
 
 
+def _server(r):
+    """The server a resource came from: meta.source, else the base of an absolute fullUrl; "" when unknown."""
+    src = (r.get("meta") or {}).get("source")
+    if isinstance(src, str) and src:
+        return src
+    m = re.match(r"(https?://.+?)/[A-Za-z]+/[^/]+/?$", r.get("_fullUrl") or "")
+    return m.group(1) if m else ""
+
+
+def _coding_keys(cc):
+    return sorted(f"{c.get('system') or ''}|{c['code']}" for c in (cc or {}).get("coding") or [] if c.get("code")) \
+        if isinstance(cc, dict) else []
+
+
+HASH_TIME = ("effectiveDateTime", "effectiveInstant", "issued", "authoredOn", "dateWritten", "dateAsserted",
+             "onsetDateTime", "recordedDate", "dateRecorded", "date", "created", "indexed")
+HASH_CODE = ("code", "medicationCodeableConcept", "type", "vaccineCode")
+
+
+def resource_key(r, mixed=False):
+    """Stable source key for a resource (contract amendment to #18): "fhir:<type>/<id>", then an identifier,
+    then a hash of its identifying fields. Never depends on input order. With resources from more than one
+    server in the upload, the server is part of the key so ids from two servers can't collide."""
+    rt = r.get("resourceType") or "Resource"
+    if r.get("id"):
+        srv = _server(r) if mixed else ""
+        return f"fhir:{srv}|{rt}/{r['id']}" if srv else f"fhir:{rt}/{r['id']}"
+    for ident in r.get("identifier") or []:
+        if isinstance(ident, dict) and ident.get("value"):
+            return f"fhir:{rt}?identifier={ident.get('system') or ''}|{ident['value']}"
+    when = next((r[k] for k in HASH_TIME if isinstance(r.get(k), str)), None) or \
+        next((r[k].get("start") for k in ("effectivePeriod", "period", "onsetPeriod") if isinstance(r.get(k), dict)), "")
+    code = next((_coding_keys(r[k]) or [text_of(r[k])] for k in HASH_CODE if r.get(k)), [])
+    fields = [rt, (iso(when) or when or ""), code, _value(r)[1] if rt == "Observation" else ""]
+    return "fhir:h:" + hashlib.sha256(json.dumps(fields, separators=(",", ":")).encode()).hexdigest()[:16]
+
+
 def parse(files):
     warnings = []
     resources = _load(files, warnings)
@@ -412,6 +449,10 @@ def parse(files):
         raise ValueError("No FHIR records were found in this upload. Expected FHIR JSON: a Bundle, NDJSON with one "
                          "resource per line, or a folder of .json resources.")
     idx = Index(resources)
+    mixed = len({_server(r) for r, _ in resources} - {""}) > 1
+
+    def rkey(r):
+        return resource_key(r, mixed)
     b = Builder()
     labs = {}                               # series name -> {unit, loinc, pts, txt, panels}
     problems, upcoming, weights = [], [], []
@@ -461,8 +502,9 @@ def parse(files):
             key = f"{name} ({unit})"
             s = labs.get(key)
         if s is None:
-            s = labs[key] = {"unit": unit, "loinc": loinc, "pts": [], "txt": [], "panels": Counter()}
+            s = labs[key] = {"unit": unit, "loinc": loinc, "code": None, "pts": [], "txt": [], "panels": Counter()}
         s["loinc"] = s["loinc"] or loinc
+        s["code"] = s["code"] or next(iter(_coding_keys(code_cc)), None)
         s["unit"] = s["unit"] or unit
         s["panels"][panel] += 1
         if v is not None:
@@ -488,7 +530,7 @@ def parse(files):
             abn += a
         return rows, abn
 
-    def add_labitem(t, order, members, report, prov, status, lab, specimen):
+    def add_labitem(key, t, order, members, report, prov, status, lab, specimen):
         rows, abn = [], 0
         for o in members:
             src = lab or SOURCE
@@ -501,7 +543,7 @@ def parse(files):
                "resulted": t[:10], "provider": prov, "status": status, "specimen": specimen, "lab": lab, "dx": [],
                "rows": rows, "report": report, "comments": []}
         sub = " · ".join(x for x in [prov, status, lab] if x)
-        i = b.add(t, "labitem", order, sub, det, abn=abn, hidden=1)
+        i = b.add(t, "labitem", order, sub, det, abn=abn, hidden=1, key=key)
         day = t[:10]
         lab_days[day].append(i)
         m = lab_day_meta[day]
@@ -509,7 +551,7 @@ def parse(files):
         m["abn"] += abn
         m["orders"].add(order)
 
-    def document(t, title, att, owner, rel, org):
+    def document(key, t, title, att, owner, rel, org):
         nonlocal inline, remote, missing
         if not isinstance(att, dict):
             return
@@ -535,7 +577,7 @@ def parse(files):
         ct = (att.get("contentType") or "").split(";")[0].strip().lower()
         ext = posixpath.splitext(target)[1].lstrip(".").lower() or EXT.get(ct, "")
         b.add(t, "document", title or att.get("title") or posixpath.basename(target),
-              " · ".join(x for x in [ext.upper(), org] if x), {"type": "file", "url": target, "ext": ext})
+              " · ".join(x for x in [ext.upper(), org] if x), {"type": "file", "url": target, "ext": ext}, key=key)
 
     # --- DiagnosticReports first, so their Observations are grouped under them
     for r, rel in resources:
@@ -557,7 +599,7 @@ def parse(files):
             continue
         report = [["impression", r["conclusion"], 0]] if r.get("conclusion") else []
         if members:
-            add_labitem(t, order, members, report, prov, status, org, "")
+            add_labitem(rkey(r), t, order, members, report, prov, status, org, "")
         elif report or (r.get("text") or {}).get("div"):
             if not report:
                 report = [["narrative", r["text"]["div"], 1]]
@@ -565,9 +607,9 @@ def parse(files):
             b.add(t, kind, order, " · ".join(x for x in [prov, status, org] if x),
                   {"type": "result", "order": order, "name": order, "collected": t[:16].replace("T", " "),
                    "resulted": (iso(r.get("issued")) or t)[:10], "provider": prov, "status": status, "lab": org,
-                   "dx": [], "rows": [], "report": report, "comments": []})
-        for att in r.get("presentedForm") or []:
-            document(t, order, att, r, rel, org)
+                   "dx": [], "rows": [], "report": report, "comments": []}, key=rkey(r))
+        for i, att in enumerate(r.get("presentedForm") or []):   # the report's own key is taken by its result event
+            document(f"{rkey(r)}#presentedForm/{i}", t, order, att, r, rel, org)
 
     # --- Observations not in a report
     loose = defaultdict(list)   # (day, org) -> observations
@@ -600,8 +642,9 @@ def parse(files):
             continue
         loose[(t[:10], org_of(r))].append(r)
     for (day, org), obs in sorted(loose.items()):
-        obs.sort(key=_obs_time)
-        add_labitem(_obs_time(obs[0]), "Lab results", obs, [], who_of(obs[0]),
+        obs.sort(key=lambda o: (_obs_time(o), rkey(o)))
+        # several Observations share this labitem, so its key names the day (and lab), not one resource
+        add_labitem(f"fhir:labitem:{day}" + (f"|{org}" if org else ""), _obs_time(obs[0]), "Lab results", obs, [], who_of(obs[0]),
                     cap(obs[0].get("status") or ""), org, text_of((idx.get(obs[0].get("specimen"), obs[0]) or {}).get("type")))
 
     # --- one visible lab event per day, linking that day's results
@@ -609,7 +652,7 @@ def parse(files):
         m = lab_day_meta[day]
         orders = sorted(o for o in m["orders"] if o)
         b.add(m["t"], "lab", f"{len(ids)} lab result{'s' if len(ids) != 1 else ''}", ", ".join(orders)[:160],
-              {"type": "labday", "ids": ids}, abn=m["abn"] or None)
+              {"type": "labday", "ids": ids}, abn=m["abn"] or None, key=f"fhir:labday:{day}")
 
     # --- Conditions, medications, encounters, documents
     for r, rel in resources:
@@ -625,7 +668,7 @@ def parse(files):
                              "type": "Health concern" if "health-concern" in cat else "Diagnosis",
                              "date": (iso(onset) or "")[:10] or None,
                              "status": status_of(r.get("clinicalStatus")) or ("Resolved" if r.get("abatementDateTime") else ""),
-                             "src": org_of(r) or who_of(r)})
+                             "src": org_of(r) or who_of(r), "key": rkey(r)})
         elif rt in ("MedicationRequest", "MedicationStatement", "MedicationOrder"):
             if r.get("status") in ("entered-in-error",):
                 continue
@@ -638,7 +681,7 @@ def parse(files):
             status = cap(r.get("status") or "")
             org = org_of(r)
             b.add(t, "med", name, " · ".join(x for x in [instr, status] if x),
-                  {"type": "med", "instructions": instr, "status": status, "src": org or who_of(r)})
+                  {"type": "med", "instructions": instr, "status": status, "src": org or who_of(r)}, key=rkey(r))
         elif rt == "Encounter":
             if r.get("status") in ("entered-in-error", "cancelled"):
                 continue
@@ -662,7 +705,8 @@ def parse(files):
                             for d in r.get("diagnosis") or []] if x))
             if r.get("status") == "planned" or (t and t > _now()):
                 if t:
-                    upcoming.append({"t": t, "title": title, "who": who, "where": where or org, "dx": dx, "procs": []})
+                    upcoming.append({"t": t, "title": title, "who": who, "where": where or org, "dx": dx, "procs": [],
+                                     "key": rkey(r)})
                 continue
             if kcode in INPATIENT or kcode.lower() in INPATIENT:
                 if not t:
@@ -672,11 +716,11 @@ def parse(files):
                 place = where or org
                 b.add(t, "stay", "Hospital stay" + (f" · {org}" if org else ""),
                       " · ".join(x for x in [place, f"{nights} night{'s' if nights != 1 else ''}" if nights else "same day"] if x),
-                      {"type": "stay", "admit": t, "discharge": end or "", "where": place, "how": "FHIR encounter"}, end=stop)
+                      {"type": "stay", "admit": t, "discharge": end or "", "where": place, "how": "FHIR encounter"}, end=stop, key=rkey(r))
                 continue
             b.add(t, "visit", title, " · ".join(x for x in [who, where, org] if x),
                   {"type": "visit", "who": who, "where": where or org, "dx": dx, "procs": [], "src": org or SOURCE, "note": ""},
-                  end=end if end and t and end > t else None)
+                  end=end if end and t and end > t else None, key=rkey(r))
         elif rt == "DocumentReference":
             if r.get("status") == "entered-in-error":
                 continue
@@ -687,8 +731,8 @@ def parse(files):
                           if iso((c.get("attachment") or {}).get("creation"))), None)
             title = r.get("description") or text_of(r.get("type")) or ""
             org = org_of(r)
-            for c in r.get("content") or []:
-                document(t, title, c.get("attachment"), r, rel, org)
+            for i, c in enumerate(r.get("content") or []):
+                document(rkey(r) + (f"#content/{i}" if i else ""), t, title, c.get("attachment"), r, rel, org)
         elif rt not in IMPORTED and rt not in SUPPORTING:
             skipped[rt] += 1
 
@@ -713,6 +757,7 @@ def parse(files):
         panel = s["panels"].most_common(1)[0][0] if s["panels"] else ""
         series.append({"name": name, "unit": s["unit"], "panel": panel, "n": len(pts),
                        **({"loinc": s["loinc"]} if s["loinc"] else {}),
+                       **({"key": f"loinc:{s['loinc']}"} if s["loinc"] else {"key": f"fhir:{s['code']}"} if s["code"] else {}),
                        "pts": pts, "txt": sorted(s["txt"], key=lambda p: p[0])[-50:]})
     series.sort(key=lambda s: (-s["n"], s["name"]))
     b.events.sort(key=lambda e: e["t"])

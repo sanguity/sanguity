@@ -227,6 +227,89 @@ class AppleHealthFolder(Shape, unittest.TestCase):
         self.assertEqual(s["end"], "2024-02-03T23:59:00")
 
 
+def keys(data):
+    return {"events": sorted((e["k"], e["key"]) for e in data["events"]),
+            "labs": sorted((s["name"], s.get("key")) for s in data["labs"]),
+            "problems": sorted(p["key"] for p in data["problems"]),
+            "upcoming": sorted(u["key"] for u in data["upcoming"])}
+
+
+class Keys(unittest.TestCase):
+    """Stable source keys (contract amendment to #18): same input, same keys, whatever the file layout."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="sanguity-fhir-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.bundle = fhir.parse(upload(os.path.join(FIX, "bundle")))["data"]
+
+    def bundle_as_ndjson(self):
+        """The bundle fixture rewritten as a bulk export: one NDJSON file per type, references as Type/id."""
+        with open(os.path.join(FIX, "bundle", "patient-everything.json"), encoding="utf-8") as f:
+            entries = json.load(f)["entry"]
+        refs = {e["fullUrl"]: f"{e['resource']['resourceType']}/{e['resource']['id']}" for e in entries}
+        by_type = {}
+        for e in entries:
+            text = json.dumps(e["resource"])
+            for full, rel in refs.items():
+                text = text.replace(f'"{full}"', f'"{rel}"')
+            by_type.setdefault(e["resource"]["resourceType"], []).append(text)
+        for rt, lines in by_type.items():
+            with open(os.path.join(self.tmp, f"{rt}.ndjson"), "w", encoding="utf-8") as f:
+                f.write("\n".join(reversed(lines)) + "\n")   # a different order must not change the keys
+        shutil.copytree(os.path.join(FIX, "bundle", "attachments"), os.path.join(self.tmp, "attachments"))
+        return upload(self.tmp)
+
+    def test_every_event_has_a_unique_key(self):
+        ks = [e.get("key") for e in self.bundle["events"]]
+        self.assertTrue(all(ks), self.bundle["events"])
+        self.assertEqual(len(ks), len(set(ks)))
+
+    def test_key_forms(self):
+        ev = {e["k"]: e["key"] for e in self.bundle["events"]}
+        self.assertEqual(ev["visit"], "fhir:Encounter/enc-1")
+        self.assertEqual(ev["stay"], "fhir:Encounter/enc-2")
+        self.assertEqual(ev["med"], "fhir:MedicationRequest/med-1")
+        self.assertEqual(ev["lab"], "fhir:labday:2025-03-04")
+        self.assertEqual(ev["imaging"], "fhir:DiagnosticReport/dr-xr")
+        items = {e["key"] for e in by_kind(self.bundle, "labitem")}
+        self.assertEqual(items, {"fhir:DiagnosticReport/dr-cbc", "fhir:labitem:2025-03-04"})
+        docs = {e["key"] for e in by_kind(self.bundle, "document")}
+        self.assertEqual(docs, {"fhir:DocumentReference/doc-1", "fhir:DiagnosticReport/dr-xr#presentedForm/0"})
+        self.assertEqual(series(self.bundle, "Hemoglobin")["key"], "loinc:718-7")
+        self.assertEqual(self.bundle["problems"][0]["key"], "fhir:Condition/cond-1")
+
+    def test_same_input_twice_same_keys(self):
+        again = fhir.parse(upload(os.path.join(FIX, "bundle")))["data"]
+        self.assertEqual(keys(again), keys(self.bundle))
+
+    def test_bundle_and_ndjson_give_same_keys(self):
+        nd = fhir.parse(self.bundle_as_ndjson())["data"]
+        self.assertEqual(keys(nd), keys(self.bundle))
+
+    def test_resource_without_id(self):
+        obs = {"resourceType": "Observation", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+               "code": {"coding": [{"system": "http://loinc.org", "code": "2345-7"}]},
+               "effectiveDateTime": "2025-01-08T07:15:00-06:00", "valueQuantity": {"value": 104, "unit": "mg/dL"}}
+        k = fhir.resource_key(obs)
+        self.assertRegex(k, r"^fhir:h:[0-9a-f]{16}$")
+        self.assertEqual(k, fhir.resource_key(json.loads(json.dumps(obs))))
+        self.assertNotEqual(k, fhir.resource_key(dict(obs, valueQuantity={"value": 105, "unit": "mg/dL"})))
+        ident = dict(obs, identifier=[{"system": "urn:example:lab", "value": "A-17"}])
+        self.assertEqual(fhir.resource_key(ident), "fhir:Observation?identifier=urn:example:lab|A-17")
+
+    def test_mixed_servers_qualify_keys(self):
+        bundle = {"resourceType": "Bundle", "entry": [
+            {"fullUrl": f"https://{host}.example.org/fhir/Encounter/1",
+             "resource": {"resourceType": "Encounter", "id": "1", "status": "finished", "class": {"code": "AMB"},
+                          "period": {"start": f"2025-0{n}-01T09:00:00Z"}}}
+            for n, host in ((1, "one"), (2, "two"))]}
+        p = os.path.join(self.tmp, "mixed.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(bundle, f)
+        ks = sorted(e["key"] for e in fhir.parse({"mixed.json": p})["data"]["events"])
+        self.assertEqual(ks, ["fhir:https://one.example.org/fhir|Encounter/1", "fhir:https://two.example.org/fhir|Encounter/1"])
+
+
 class Malformed(unittest.TestCase):
     def test_broken_json_raises_plain_message(self):
         with self.assertRaises(ValueError) as cm:
