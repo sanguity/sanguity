@@ -95,6 +95,7 @@ async function loadProfiles() {
         try { await call(`profiles/${p.id}/members`, "PUT", {username: name, role: role.value}); loadProfiles(); } catch (e) { fail(e); } }},
         el("span", {class: "muted", text: "Share with"}), who, "as", role, el("button", {class: "btn small", type: "submit", text: "Share"})));
       body.push(activityPanel(`profiles/${p.id}/activity`, members));
+      body.push(deletePanel(p, fail));
     } else {
       body.push(el("div", {class: "row"}, el("button", {class: "btn small", type: "button", text: "Leave this profile",
         onclick: async () => { if (!confirm(`Stop having access to ${p.name}? An owner can share it with you again.`)) return;
@@ -170,6 +171,32 @@ function showRecoveryCodes(codes, justTurnedOn) {
       done));
 }
 
+/* ---------------------------------------------------------------- deleting a profile */
+function deletePanel(p, fail) {
+  const typed = el("input", {autocomplete: "off", spellcheck: "false"});   // no placeholder: it would look filled in
+  const go = el("button", {class: "btn small danger", type: "button", text: "Delete it and everything in it", disabled: true});
+  typed.oninput = () => { go.disabled = typed.value.trim() !== p.name; };
+  go.onclick = async () => {
+    go.disabled = true;
+    try {
+      const r = await call(`profiles/${p.id}`, "DELETE", {confirm_name: typed.value});
+      try { if (localStorage.getItem("ht-profile") === String(p.id)) localStorage.removeItem("ht-profile"); } catch (e) {}
+      say("#profMsg", `Deleted “${p.name}”.` + (r.unlinked_build ? " Its records came from the setup build, which won't be loaded into a profile again unless an admin asks for it." : ""));
+      loadProfiles();
+    } catch (e) { fail(e); go.disabled = false; }
+  };
+  const box = el("div", {class: "danger-zone", hidden: true},
+    el("p", {}, "This deletes ", el("b", {text: p.name}), " for everyone it's shared with: its records, documents, settings, ",
+      "activity log and sharing. Your original exports and the watch receiver's data stay, and so do backups made before now. ",
+      "It can't be undone."),
+    el("div", {class: "row"}, el("a", {class: "btn small", href: `api/profiles/${p.id}/export`, download: "", text: "Export everything first"})),
+    el("label", {}, `Type ${p.name} to confirm`, typed),
+    el("div", {class: "row"}, go));
+  const open = el("button", {class: "btn small", type: "button", text: "Delete profile…", "aria-expanded": "false",
+    onclick: () => { box.hidden = !box.hidden; open.setAttribute("aria-expanded", !box.hidden); if (!box.hidden) typed.focus(); }});
+  return el("div", {class: "activity-wrap"}, open, box);
+}
+
 /* ---------------------------------------------------------------- activity */
 const WHAT = {
   view: () => "opened the records",
@@ -195,6 +222,7 @@ const WHAT = {
   "2fa.recovery": d => `signed in with a recovery code (${d.left} left)`,
   "2fa.reset": d => `turned off two-factor sign-in for ${d.username}`,
   "settings.require_2fa": d => d.on ? "required two-factor sign-in for everyone" : "stopped requiring two-factor sign-in",
+  "profile.delete": d => `deleted the profile “${d.name}”${d.members > 1 ? ` (shared with ${d.members - 1} other${d.members > 2 ? "s" : ""})` : ""}`,
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],

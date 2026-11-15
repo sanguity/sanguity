@@ -176,6 +176,40 @@ def build_error(pid):
     return f[1] if f and f[0] == build_version() else None
 
 
+def delete_profile(db, pid):
+    """Remove a profile: its folder (records, settings, anything imported), document index, memberships and
+    activity. The folder is moved aside first and removed only once the database change is committed, so a
+    failure leaves the profile whole. Original exports and the watch receiver's data are never touched.
+    Returns what was deleted: {"name", "members", "linked_build"}."""
+    p = db.execute("SELECT name, linked_build FROM profiles WHERE id=?", (pid,)).fetchone()
+    members = db.execute("SELECT COUNT(*) FROM memberships WHERE profile_id=?", (pid,)).fetchone()[0]
+    folder, aside = profile_dir(pid), os.path.join(config.DATA_DIR, "profiles", f".deleting-{int(pid)}")
+    shutil.rmtree(aside, ignore_errors=True)
+    if os.path.isdir(folder):
+        os.replace(folder, aside)
+    try:
+        with dbm.transaction(db):
+            db.execute("DELETE FROM profiles WHERE id=?", (pid,))   # cascades: memberships, documents, activity
+            if p["linked_build"]:   # don't bring it back from the build on the next start
+                dbm.meta_set(db, "build_unlinked", "1")
+    except BaseException:
+        if os.path.isdir(aside):
+            os.replace(aside, folder)
+        raise
+    shutil.rmtree(aside, ignore_errors=True)
+    _failed.pop(pid, None)
+    return {"name": p["name"], "members": members, "linked_build": bool(p["linked_build"])}
+
+
+def link_build(db, pid):
+    """Load the setup build into a profile and keep it in step with rebuilds (undoes the unlinking above)."""
+    db.execute("UPDATE profiles SET linked_build=1, build_mtime=NULL, watch_file=IFNULL(watch_file, ?) WHERE id=?",
+               (config.WATCH_FILE, pid))
+    dbm.meta_set(db, "build_unlinked", None)
+    _failed.pop(pid, None)
+    return sync_build(db, pid)
+
+
 def create_profile(db, name, owner_id=None, linked_build=False, watch_file=None):
     cur = db.execute("INSERT INTO profiles(name, created, linked_build, watch_file) VALUES(?, ?, ?, ?)",
                      (name, dbm.now(), int(linked_build), watch_file))
@@ -187,8 +221,9 @@ def create_profile(db, name, owner_id=None, linked_build=False, watch_file=None)
 
 
 def bootstrap(db):
-    """First start: the existing single-person data (the setup build) becomes the first profile."""
-    if db.execute("SELECT 1 FROM profiles LIMIT 1").fetchone() or build_version() is None:
+    """First start: the existing single-person data (the setup build) becomes the first profile. Not again after
+    its profile was deleted (server.manage link-build loads it into a profile on purpose)."""
+    if db.execute("SELECT 1 FROM profiles LIMIT 1").fetchone() or build_version() is None or dbm.meta_get(db, "build_unlinked"):
         return None
     pid = create_profile(db, "My records", linked_build=True, watch_file=config.WATCH_FILE)
     sync_build(db, pid)

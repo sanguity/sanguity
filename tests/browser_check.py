@@ -242,6 +242,17 @@ def main():
             settle(300)
             check("sharing with an existing member asks first", asked_share and "already has access as owner" in asked_share[0], asked_share[:1])
             check("declining keeps their role", js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m[0].role)") == "owner")
+            # deleting a profile: the button stays off until its name is typed exactly
+            second = page.locator("#profList .prof", has_text="Second person")
+            second.get_by_role("button", name="Delete profile…").click()
+            go = second.get_by_role("button", name="Delete it and everything in it")
+            check("delete needs the profile's name first", go.is_disabled())
+            second.get_by_label("Type Second person to confirm").fill("Second person")
+            go.click()
+            page.wait_for_function("![...document.querySelectorAll('#profList .prof')].some(p => p.textContent.includes('Second person'))", timeout=10000)
+            gone_from = len(problems)
+            check("deleting a profile removes it", js("fetch('api/profiles/2/data').then(r => r.status)") == 404)
+            problems[gone_from:] = [x for x in problems[gone_from:] if "404" not in x]   # that 404 was the point
             # disabling the only owner of a profile asks first; accepting disables the account
             from server import db as dbm, profiles
             db = dbm.connect()

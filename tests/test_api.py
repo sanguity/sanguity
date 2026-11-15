@@ -284,6 +284,57 @@ class Api(unittest.TestCase):
         self.assertIsNone(db.execute("SELECT 1 FROM activity WHERE actor='old'").fetchone())
         db.close()
 
+    def test_delete_profile(self):
+        from server import accounts, manage, profiles as prof
+        db = dbm.connect()
+        ben = self.login("ben")
+        for name in ("edna", "otto"):
+            if not db.execute("SELECT 1 FROM users WHERE username=?", (name,)).fetchone():
+                accounts.create(db, name, password=f"{name} has quite a long passphrase")
+        # a profile with records and a document from a folder outside the data folder (like real exports)
+        src = os.path.join(TMP, "delete-src")
+        os.makedirs(os.path.join(src, "docs"), exist_ok=True)
+        with open(os.path.join(src, "docs", "letter.pdf"), "wb") as f:
+            f.write(b"%PDF-1.4 letter")
+        with open(os.path.join(src, "data.json"), "w", encoding="utf-8") as f:
+            json.dump({"events": [{"id": 1, "t": "2025-01-01T00:00:00", "k": "document", "title": "L"}],
+                       "details": {"1": {"type": "file", "url": "docs/letter.pdf", "ext": "pdf"}}}, f)
+        pid = prof.create_profile(db, "To be deleted", owner_id=1)
+        prof.import_dataset(db, pid, src)
+        ben.put(f"/api/profiles/{pid}/members", json={"username": "edna", "role": "editor"}, headers=H)
+        ben.put(f"/api/profiles/{pid}/members", json={"username": "otto", "role": "viewer"}, headers=H)
+        ben.get(f"/api/profiles/{pid}/data")   # something in its activity log
+        # only an owner, and only with the exact name
+        for who in ("edna", "otto"):
+            c = self.login(who, f"{who} has quite a long passphrase")
+            self.assertEqual(c.request("DELETE", f"/api/profiles/{pid}", json={"confirm_name": "To be deleted"}, headers=H).status_code, 403)
+        self.assertEqual(ben.request("DELETE", f"/api/profiles/{pid}", json={"confirm_name": "to be deleted"}, headers=H).status_code, 400)
+        r = ben.request("DELETE", f"/api/profiles/{pid}", json={"confirm_name": " To be deleted "}, headers=H)
+        self.assertEqual((r.status_code, r.json()["unlinked_build"]), (200, False))
+        # gone from disk and the database; the original files and other profiles are untouched
+        self.assertFalse(os.path.exists(prof.profile_dir(pid)))
+        for table in ("profiles WHERE id", "memberships WHERE profile_id", "documents WHERE profile_id", "activity WHERE profile_id"):
+            self.assertEqual(db.execute(f"SELECT COUNT(*) FROM {table}=?", (pid,)).fetchone()[0], 0, table)
+        self.assertTrue(os.path.isfile(os.path.join(src, "docs", "letter.pdf")))
+        self.assertEqual(ben.get(f"/api/profiles/{pid}/data").status_code, 404)
+        self.assertEqual(ben.get("/api/profiles/1/data").status_code, 200)
+        event = ben.get("/api/activity").json()[0]
+        self.assertEqual((event["action"], event["detail"]), ("profile.delete", {"name": "To be deleted", "members": 3}))
+        # a profile showing the setup build: deleting it unlinks the build, so the next start won't recreate it;
+        # link-build loads it into a profile again on purpose
+        linked = prof.create_profile(db, "Build copy", owner_id=1, linked_build=True)
+        prof.sync_build(db, linked)
+        r = ben.request("DELETE", f"/api/profiles/{linked}", json={"confirm_name": "Build copy"}, headers=H)
+        self.assertTrue(r.json()["unlinked_build"])
+        self.assertEqual(dbm.meta_get(db, "build_unlinked"), "1")
+        again = prof.create_profile(db, "Build again", owner_id=1)
+        manage.run(["link-build", str(again)])
+        self.assertIsNone(dbm.meta_get(db, "build_unlinked"))
+        self.assertGreater(len(ben.get(f"/api/profiles/{again}/data").json()["events"]), 100)
+        ben.request("DELETE", f"/api/profiles/{again}", json={"confirm_name": "Build again"}, headers=H)
+        dbm.meta_set(db, "build_unlinked", None)
+        db.close()
+
     def test_export_and_import(self):
         import io, zipfile
         from server import accounts, manage, profiles as prof
