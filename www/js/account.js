@@ -275,6 +275,7 @@ const WHAT = {
   import: d => `imported records (${d.documents} documents)`,
   reload: () => "loaded the latest records",
   export: () => "exported everything",
+  upload: d => `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
   setup: () => "set up Sanguity with the first account",
   password: () => "changed their password",
   "account.create": d => `created the account ${d.username}${d.admin ? " (admin)" : ""}`,
@@ -299,7 +300,7 @@ const WHAT = {
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
-  ["export", "Exports"]];
+  ["export", "Exports"], ["upload", "Uploads"]];
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},

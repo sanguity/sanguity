@@ -48,3 +48,12 @@ PASSWORD_MIN_2FA = _int("PASSWORD_MIN_LENGTH_2FA", 8)   # with two-factor sign-i
 HASH_PARALLEL = _int("HASH_PARALLEL", 2)   # password hashes run at once (64 MiB each); more wait their turn
 HASH_WAIT = 2
 ACTIVITY_DAYS = _int("ACTIVITY_DAYS", 365)   # how long the activity log keeps entries   # seconds a sign-in waits for its turn before the API answers 503 "busy, try again"
+
+# uploads from the import page (uploads.py). A file is one the browser sent or one unpacked from a zip; an upload's
+# total counts what it holds after unpacking. nginx.conf caps one file sent at 4 GB too: raise both to go higher.
+MB = 2**20
+UPLOAD_MAX_FILE = _int("UPLOAD_MAX_FILE_MB", 4096) * MB
+UPLOAD_MAX_TOTAL = _int("UPLOAD_MAX_TOTAL_MB", 16384) * MB
+UPLOAD_MAX_FILES = _int("UPLOAD_MAX_FILES", 20000)
+# a file unpacked from a zip may be at most this many times its compressed size (a zip bomb is thousands)
+UPLOAD_MAX_ZIP_RATIO = _int("UPLOAD_MAX_ZIP_RATIO", 200)

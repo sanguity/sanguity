@@ -2,7 +2,7 @@
 
 A backup is one archive, sanguity-backup-YYYYMMDD-HHMMSS.tar.gz:
   sanguity.db      a consistent copy made with SQLite's online backup API, so the app can keep running
-  profiles/...     each profile's records and settings
+  profiles/...     each profile's records, settings and uploads
   build/...        the setup build (what linked profiles are loaded from)
   manifest.json    format, time, database schema version, and the SHA-256 of every file above
 
@@ -81,6 +81,19 @@ def create(dest=None, keep=None):
                 info.size, info.mtime, info.mode = len(data), int(now.timestamp()), 0o600
                 tar.addfile(info, io.BytesIO(data))
 
+            def add_file(name, f):
+                """A file a piece at a time (an upload can be gigabytes): hashed, then archived from the same open
+                file. Sanguity replaces files whole (os.replace), never in place, so both passes read the same bytes."""
+                h, size = hashlib.sha256(), 0
+                while piece := f.read(1 << 20):
+                    h.update(piece)
+                    size += len(piece)
+                f.seek(0)
+                hashes[name] = h.hexdigest()
+                info = tarfile.TarInfo(name)
+                info.size, info.mtime, info.mode = size, int(now.timestamp()), 0o600
+                tar.addfile(info, f)
+
             with tempfile.TemporaryDirectory(dir=dest) as work:   # the database snapshot, then into the archive
                 copy = os.path.join(work, "sanguity.db")
                 src, dst = sqlite3.connect(config.DB_PATH), sqlite3.connect(copy)
@@ -100,8 +113,8 @@ def create(dest=None, keep=None):
                         if n.endswith(".tmp"):
                             continue   # a file being replaced right now; the finished one is there already
                         path = os.path.join(root, n)
-                        with open(path, "rb") as f:   # one read: the hash is of exactly what goes in
-                            add(os.path.relpath(path, config.DATA_DIR).replace(os.sep, "/"), f.read())
+                        with open(path, "rb") as f:   # one open file: the hash is of exactly what goes in
+                            add_file(os.path.relpath(path, config.DATA_DIR).replace(os.sep, "/"), f)
             add("manifest.json", json.dumps({"format": FORMAT, "created": now.isoformat(timespec="seconds"),
                                              "schema": schema, "files": hashes}, indent=1).encode())
         os.replace(part, final)
@@ -148,7 +161,10 @@ def verify(archive):
             for name, digest in files.items():
                 if name not in members:
                     raise BackupError(f"{name} is missing from the backup.")
-                if hashlib.sha256(tar.extractfile(members[name]).read()).hexdigest() != digest:
+                h, src = hashlib.sha256(), tar.extractfile(members[name])
+                while piece := src.read(1 << 20):
+                    h.update(piece)
+                if h.hexdigest() != digest:
                     raise BackupError(f"{name} doesn't match its checksum: the backup is damaged.")
             if "sanguity.db" not in files:
                 raise BackupError("The backup has no database.")
@@ -163,16 +179,23 @@ def _check_key(archive):
         for m in tar.getmembers():
             if m.name in ("manifest.json", "sanguity.db"):
                 continue
-            data = tar.extractfile(m).read()
-            if crypto.encrypted(data):
-                try:
-                    crypto.keyring.load()
-                    crypto.unseal(data)
-                except crypto.KeyError_ as e:
-                    raise BackupError(f"This backup can't be read with this install's encryption key ({e}) It was "
-                                      f"made with a different key: put that key file at {config.KEY_FILE} "
-                                      "(or add its line to the key file), then restore again.") from None
-                return
+            src = tar.extractfile(m)
+            head = src.read(4)
+            if head != crypto.STREAM and head != crypto.MAGIC:
+                continue
+            try:
+                crypto.keyring.load()
+                if head == crypto.STREAM:   # an upload's file: its first chunk is enough (and a byte of the next,
+                    rest = src.read(15)     # if there is one, so it isn't taken for the last)
+                    first = src.read(int.from_bytes(rest[11:15], "big") + 16 + 1)
+                    next(crypto._stream_chunks(io.BytesIO(head + rest + first)))
+                else:
+                    crypto.unseal(head + src.read())
+            except crypto.KeyError_ as e:
+                raise BackupError(f"This backup can't be read with this install's encryption key ({e}) It was "
+                                  f"made with a different key: put that key file at {config.KEY_FILE} "
+                                  "(or add its line to the key file), then restore again.") from None
+            return
 
 
 def restore(archive):

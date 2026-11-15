@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, export, passkeys, profiles as prof, records, security as sec, twofactor
+from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, export, passkeys, profiles as prof, records, security as sec, twofactor, uploads
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -65,6 +65,8 @@ async def lifespan(app):
             if pid:
                 print(f"Loaded the existing records into profile {pid} (\"My records\").", flush=True)
             prof.sync_build(db)
+            if (gone := uploads.cleanup(db)):
+                print(f"Removed {gone} upload(s) left unfinished for over a day.", flush=True)
             _setup_code(db)
         finally:
             db.close()
@@ -1249,6 +1251,9 @@ def healthz():
     return Response(status_code=204)
 
 
+app.include_router(__import__("server.routes_uploads", fromlist=["router"]).router)   # uploads (#19): uses the dependencies above
+
+
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here
     from fastapi.staticfiles import StaticFiles
 
@@ -1258,7 +1263,7 @@ if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves w
     @app.get("/{page}")
     @app.get("/", include_in_schema=False)
     def page(page: str = "index.html"):
-        if page not in ("index.html", "login.html", "setup.html", "account.html"):
+        if page not in ("index.html", "login.html", "setup.html", "account.html", "import.html"):
             raise HTTPException(404)
         return FileResponse(os.path.join(WWW, page), media_type="text/html",
                             headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP})

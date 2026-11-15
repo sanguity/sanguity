@@ -113,6 +113,23 @@ Standard formats (FHIR, C-CDA labs, Apple Health, CSV) and an import tool in the
 portal's export doesn't import, please open an issue with an anonymised sample, or write an importer for it:
 [docs/importers.md](docs/importers.md) explains how (one Python file and a fictional test fixture).
 
+### Uploading records in the app
+
+**Import** (in the header, or on an empty profile) uploads a portal's or app's export to a profile you own or edit:
+a zip as you downloaded it, a folder you've unpacked (its folders are kept), or single files. Viewers can't upload.
+Each file streams to the server on its own, with progress, and is kept in the profile's folder encrypted, as the
+import's original files: they're included in **Export everything** and in backups, and go when the profile is
+deleted. A zip is unpacked on the server, never in the browser; zips inside it stay zips. Reading the uploaded
+records into the profile comes next.
+
+Limits, in `.env`: `UPLOAD_MAX_FILE_MB` (each file, sent or unpacked; 4096), `UPLOAD_MAX_TOTAL_MB` (one upload
+altogether, after unpacking; 16384) and `UPLOAD_MAX_FILES` (20000). nginx lets a file through up to 4 GB; to go
+higher, raise `client_max_body_size` in `nginx.conf` too. Refused: paths that are absolute or go up a folder
+(`..`), and zips holding links, such paths, more files or bytes than the limits, or a file that unpacks to more
+than `UPLOAD_MAX_ZIP_RATIO` (200) times its compressed size (a zip bomb). An upload left unfinished for a day is
+removed when the app next starts. While an import reads an upload, a decrypted copy sits in the app container's
+`/tmp`, which is in memory, and is removed straight after.
+
 ## Privacy and security
 
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.
@@ -137,7 +154,7 @@ portal's export doesn't import, please open an issue with an anonymised sample, 
   unless they did so, or signed in, within the last 5 minutes (`REAUTH_MINUTES` in `.env`). The command line
   (`server.manage`) needs neither, so it stays the way back in, for example after an admin loses their phone.
 - **Export everything:** owners and editors can download a profile as one zip (records, documents, settings, watch
-  data and activity) under **Account**, and load it into another install with `server.manage create-profile` and
+  data, uploaded files and activity) under **Account**, and load it into another install with `server.manage create-profile` and
   `import`.
 - **Delete profile:** an owner can delete a profile and everything in it under **Account**, after typing its name;
   the original exports and older backups are left alone.
@@ -214,7 +231,7 @@ A restore checks the backup opens with the key before replacing anything.
 ### Encryption at rest
 
 The setup service makes a key on first start, `auth/data_key`, and the app encrypts with it everything it keeps in
-`DATA_DIR`: each profile's settings and documents, the setup build, and the database fields that hold the records
+`DATA_DIR`: each profile's settings, documents and uploaded files, the setup build, and the database fields that hold the records
 themselves, document names, activity details and two-factor secrets, and the pepper that password and recovery-code hashes are
 made with. The watch receiver encrypts what it keeps in `WATCH_DIR`
 with the same key: its archive of uploads (`raw/`), its database (`watch.db`, a sealed snapshot of the copy it keeps
@@ -274,6 +291,7 @@ pip install --require-hashes -r requirements-dev.txt && playwright install chrom
 python3 -I demo/generate.py dev-data/build --watch dev-data/watch    # fictional demo data
 SANGUITY_DATA=dev-data SANGUITY_KEY_FILE=dev-keys/data_key SANGUITY_RECORDS=dev-data/records SANGUITY_WATCH_FILE=dev-data/watch/daily.json   SANGUITY_SERVE_STATIC=1 PORT=8000 python3 -m server               # then open http://127.0.0.1:8000/ (setup code in the output)
 python3 tests/test_api.py                      # API tests: sign-in, sessions, roles, sharing, documents
+python3 tests/test_uploads.py                  # upload tests: roles, refused paths and zips, limits, encryption
 python3 -m unittest discover -s tests -p "test_importer*.py"   # importers and their fixtures, build.py output
 python3 tests/browser_check.py                 # the same browser check CI runs on every pull request
 docker compose up -d --build && python3 tests/docker_smoke.py --code <setup code from docker compose logs app>
@@ -294,9 +312,10 @@ lab-aliases.json    Canonical lab names, LOINC codes and other spellings that ma
 nginx.conf          Web server: the app's pages and security headers; passes /api/ to the app
 watch/receiver.py   Health Connect webhook receiver: archives payloads, folds them into SQLite, writes public/daily.json
 www/                index.html (markup), css/app.css, js/*.js (one plain script per tab, loaded in order),
-                    login.html, setup.html (first account), account.html (password, devices, profiles, accounts)
+                    login.html, setup.html (first account), account.html (password, devices, profiles, accounts),
+                    import.html (uploading a portal's export)
 demo/               Fictional demo dataset generator
-tests/              API tests, a headless browser check and a smoke test of the Docker install (all run in CI)
+tests/              API and upload tests, a headless browser check and a smoke test of the Docker install (all run in CI)
 *.example.json      Templates for sources.json, corrections.json and settings.json; .env.example for .env
 ```
 

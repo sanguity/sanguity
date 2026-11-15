@@ -1324,7 +1324,7 @@ class Api(unittest.TestCase):
         self.assertEqual(csp, main.PAGE_CSP)
         script = next(d for d in csp.split(";") if d.strip().startswith("script-src"))
         self.assertNotIn("unsafe", script)
-        for page in ("index", "login", "setup", "account"):
+        for page in ("index", "login", "setup", "account", "import"):
             html = open(os.path.join(ROOT, "www", page + ".html"), encoding="utf-8").read()
             self.assertNotRegex(html, r"<script(?![^>]*\bsrc=)", page)
             self.assertNotRegex(html, r"\son[a-z]+\s*=", page)

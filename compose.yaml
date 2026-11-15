@@ -51,6 +51,10 @@ services:
       HASH_PARALLEL: ${HASH_PARALLEL:-2}
       ACTIVITY_DAYS: ${ACTIVITY_DAYS:-365}
       REAUTH_MINUTES: ${REAUTH_MINUTES:-5}
+      UPLOAD_MAX_FILE_MB: ${UPLOAD_MAX_FILE_MB:-4096}
+      UPLOAD_MAX_TOTAL_MB: ${UPLOAD_MAX_TOTAL_MB:-16384}
+      UPLOAD_MAX_FILES: ${UPLOAD_MAX_FILES:-20000}
+      UPLOAD_MAX_ZIP_RATIO: ${UPLOAD_MAX_ZIP_RATIO:-200}
       FORWARDED_ALLOW_IPS: "*"   # the app has no published port; only nginx reaches it, and nginx sets the header
     # no ports: only nginx (web) reaches it, over the compose network
     read_only: true

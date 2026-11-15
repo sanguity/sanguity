@@ -7,6 +7,7 @@ Profile events (profile_id set), readable by the profile's owners:
   unshare       {"username"}: removed someone's access, or left (the actor is then that person)
   import        {"documents"}: records loaded with server.manage    reload     records reloaded from the setup build
   export        downloaded everything in the profile as a zip
+  upload        {"upload", "files", "bytes"}: files uploaded on the import page (uploads.py)
 Account events (no profile), readable by admins:
   setup         the first account                                password   changed their own password
   account.create / account.disable / account.enable / account.admin / account.unadmin / account.reset   {"username"}
@@ -24,7 +25,7 @@ import json
 
 from . import config, crypto, db as dbm
 
-PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export")
+PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair")

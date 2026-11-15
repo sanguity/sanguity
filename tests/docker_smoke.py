@@ -85,6 +85,26 @@ def main():
             check("a document isn't reachable signed out", req("/" + docs[0].split("#")[0], signed_in=False)[0] == 401)
         check("watch data is served for the profile", req(f"/api/profiles/{pid}/watch")[0] in (200, 204))
 
+        # ---- an upload through nginx: one file far above the 64 KB every other API request is held to
+        check("the import page is served", req("/import.html", signed_in=False)[0] == 200)
+        st, _, body = req(f"/api/profiles/{pid}/uploads", method="POST")
+        check("an upload starts", st == 200, body[:200])
+        if st == 200:
+            up = json.loads(body)["id"]
+            big = b"date,test,value,unit\n" + b"2026-01-05,Hemoglobin,13.9,g/dL\n" * 32000   # about 1 MB, fictional
+            r = urllib.request.Request(f"{base}/api/profiles/{pid}/uploads/{up}/files?path=smoke%2Flabs.csv", data=big, method="PUT",
+                                       headers={"X-Sanguity": "1", "Origin": base, "Content-Type": "application/octet-stream"})
+            try:
+                with opener.open(r, timeout=60) as resp:
+                    st, body = resp.status, resp.read()
+            except urllib.error.HTTPError as e:
+                st, body = e.code, e.read()
+            check("a 1 MB file uploads through nginx", st == 200 and json.loads(body)["bytes"] == len(big), body[:200])
+            st, _, body = req(f"/api/profiles/{pid}/uploads/{up}/finish", method="POST")
+            check("the upload finishes", st == 200 and json.loads(body)["files"] == 1, body[:200])
+            check("the upload is discarded", req(f"/api/profiles/{pid}/uploads/{up}", method="DELETE")[0] == 200)
+        check("other API requests keep the 64 KB cap", req("/api/me/password", {"current": "x" * 100_000, "new": "y"})[0] == 413)
+
         # ---- sign-out ends the session on the server
         check("signs out", req("/api/logout", method="POST")[0] == 200)
         check("signed out for real", req("/api/me")[0] == 401)
