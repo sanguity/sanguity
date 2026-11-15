@@ -123,9 +123,17 @@ portal's export doesn't import, please open an issue with an anonymised sample.
   [Encryption at rest](#encryption-at-rest).
 - **Secrets are generated on first start** (encryption key, watch-receiver key, a one-time setup code).
 - Records, built data, watch data, logins and secrets are never committed (see `.gitignore`).
-- Put Sanguity behind HTTPS (a reverse proxy, Tailscale or similar) before using it outside your home network.
-  If sign-in then says "Request refused (cross-site check)", set `PUBLIC_ORIGINS` in `.env` to the address you
-  open it at; to see visitors' real addresses on the device list, trust your proxy in `nginx.conf` (see the comment there).
+- **Failed sign-ins:** they're throttled and logged, and admins see a notice under **Account** when one address or
+  account fails 10 times in a day, or 30 failures pile up in all. Nothing is sent outside the server.
+- **Put Sanguity behind HTTPS** (a reverse proxy, Tailscale or similar) before using it outside your home network;
+  Sanguity itself serves plain HTTP on `WEB_PORT`, and the sign-in and Account pages warn when they're opened that
+  way from outside the home network or a tailnet. Behind your proxy:
+  - set `COOKIE_SECURE=1` in `.env`, so the sign-in cookie is never sent over plain HTTP (the default, `auto`,
+    relies on the proxy sending `X-Forwarded-Proto: https`);
+  - turn on HSTS at the proxy (`Strict-Transport-Security: max-age=31536000`), so browsers refuse plain HTTP to that
+    name; Sanguity can't send it itself, since it never sees the HTTPS connection;
+  - if sign-in says "Request refused (cross-site check)", set `PUBLIC_ORIGINS` in `.env` to the address you open it
+    at; to see visitors' real addresses on the device list, trust your proxy in `nginx.conf` (see the comment there).
 
 ### Passkeys
 
@@ -190,6 +198,11 @@ backup.
 - **Back up the key file on its own** (a password manager, a USB stick in a drawer). Without it the data and every
   backup are unreadable, and nobody can recover them. With it, a stolen backup is as readable as without encryption,
   so keep the two apart.
+- **Keeping the key elsewhere:** the app and the receiver read whatever file `SANGUITY_KEY_FILE` names, so it can be
+  a Docker or Podman secret (`/run/secrets/<name>`), a systemd credential (`$CREDENTIALS_DIRECTORY/<name>`) or a
+  file on another encrypted disk. Make the key once with the setup service, move it there, and point
+  `SANGUITY_KEY_FILE` at it for both services in a `compose.override.yaml`. The key is still read into the app's
+  memory while it runs; Sanguity doesn't use a hardware security module.
 - **Not covered:** account and profile names; your original exports in `RECORDS_DIR` (only read, never copied in
   plaintext); downloads from **Export everything** (portable on purpose).
 - **For a stolen disk or server,** also encrypt the disk, which covers those too: an encrypted ZFS dataset (TrueNAS),

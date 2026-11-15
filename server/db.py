@@ -112,6 +112,16 @@ SCHEMA = [
     """
     ALTER TABLE users ADD COLUMN temp_pw_expires INTEGER;
     """,
+    # version 8: failed sign-ins, kept 30 days so admins see bursts (alerts.py). user_id only when the name was a
+    # real account.
+    """
+    CREATE TABLE signin_failures(
+        at INTEGER NOT NULL,
+        ip TEXT,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        step TEXT);
+    CREATE INDEX signin_failures_at ON signin_failures(at);
+    """,
 ]
 
 

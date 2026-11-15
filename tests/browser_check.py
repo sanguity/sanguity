@@ -121,6 +121,7 @@ def main():
         page.click("#b")
         page.wait_for_function("document.getElementById('e').textContent.length > 0")
         check("wrong password refused", "Wrong username or password" in page.inner_text("#e"))
+        check("no plain-HTTP warning on this machine", page.is_hidden("#insecure") and page.evaluate("plainHttpWarning()") is None)
         problems[:] = [x for x in problems if "401" not in x]   # signed out so far: the 401s were the point
         page.evaluate("localStorage.setItem('ht-state', JSON.stringify({tab: 'heatmap', preset: '1y', v: 2}))")   # a view saved before profiles
         page.evaluate("localStorage.setItem('ht-health', JSON.stringify({period: '1y', stays: false}))")
