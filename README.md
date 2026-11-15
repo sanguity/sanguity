@@ -91,7 +91,8 @@ portal's export doesn't import, please open an issue with an anonymised sample.
 ## Privacy and security
 
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.
-- **Accounts with Argon2id-hashed passwords** (at least 15 characters, per NIST SP 800-63B), sign-in throttling,
+- **Accounts with Argon2id-hashed passwords** (at least 15 characters, per NIST SP 800-63B; passwords found in
+  public breaches are refused, checked against a bundled list on your server, see `server/passwords/`), sign-in throttling,
   and server-side sessions you can see and sign out under **Account**. Optionally sign people out after a period
   of inactivity (`SESSION_IDLE_MINUTES` in `.env`).
 - **Every request for records or documents checks the account's role on that profile.** Documents are served
