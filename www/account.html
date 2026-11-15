@@ -30,13 +30,21 @@
     </form>
   </section>
 
-  <div class="card warn" id="needTf" hidden>This server requires two-factor sign-in. Turn it on below to continue.</div>
+  <div class="card warn" id="needTf" hidden>This server requires two-factor sign-in. Turn on the authenticator app or add a passkey below to continue.</div>
 
   <section class="card" id="twofa">
     <h2>Two-factor sign-in</h2>
     <p class="hint" id="tfHint"></p>
     <div id="tfBody"></div>
     <span class="msg" id="tfMsg" role="status"></span>
+  </section>
+
+  <section class="card" id="passkeys">
+    <h2>Passkeys</h2>
+    <p class="hint" id="pkHint"></p>
+    <div id="pkList"></div>
+    <div id="pkBody"></div>
+    <span class="msg" id="pkMsg" role="status"></span>
   </section>
 
   <section class="card" id="sessions">

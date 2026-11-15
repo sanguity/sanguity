@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, profiles as prof, security as sec, twofactor
+from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, passkeys, profiles as prof, security as sec, twofactor
 
 log = logging.getLogger("sanguity")
 RANK = {"viewer": 1, "editor": 2, "owner": 3}
@@ -72,6 +72,11 @@ def _same_site(origin, request):
     seen = {plain(request.headers.get("host", "").lower())}
     seen.update(plain(h.strip().lower()) for h in request.headers.get("x-forwarded-host", "").split(",") if h.strip())
     return host in seen
+
+
+@app.exception_handler(passkeys.PasskeyError)
+async def passkey_error(request: Request, exc: passkeys.PasskeyError):
+    return JSONResponse({"detail": str(exc)}, status_code=exc.status)
 
 
 @app.exception_handler(sec.Busy)
@@ -150,7 +155,7 @@ def settled(s=Depends(any_user)):
 def user(s=Depends(settled), db=Depends(get_db)):
     """Signed in, with nothing left to set up: no pending password change, and two-factor sign-in on if the server
     requires it."""
-    if not s["totp_secret"] and accounts.two_factor_required(db):
+    if accounts.two_factor_required(db) and not accounts.has_second_factor(db, s):
         raise HTTPException(403, "two_factor_required")
     return s
 
@@ -262,8 +267,10 @@ def login(body: Login, request: Request, response: Response, db=Depends(get_db))
     sec.throttle.clear(keys[0])   # this person on this device got in; the address and account counts age out
     if sec.needs_rehash(u["pw_hash"]):
         db.execute("UPDATE users SET pw_hash=? WHERE id=?", (sec.hash_password(pw), u["id"]))
-    if u["totp_secret"]:   # the password was right; now the code
-        return {"two_factor": True, "ticket": _tickets.issue(u["id"])}
+    keys_n = passkeys.count(db, u["id"])
+    if u["totp_secret"] or keys_n:   # the password was right; now the code or a passkey
+        return {"two_factor": True, "ticket": _tickets.issue(u["id"]),
+                "methods": {"code": bool(u["totp_secret"]), "passkey": keys_n > 0}}
     _remember_device(request, response, db, u["id"])
     _start_session(request, response, db, u["id"])
     return {"must_change_pw": bool(u["must_change_pw"])}
@@ -347,6 +354,58 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
     return out
 
 
+class PasskeyStart(BaseModel):
+    ticket: Optional[str] = None   # after a correct password; without one, a passkey signs in on its own
+
+
+class PasskeyFinish(BaseModel):
+    state: str
+    credential: dict
+    ticket: Optional[str] = None
+
+
+@app.post("/api/login/passkey/options")
+def login_passkey_options(body: PasskeyStart, request: Request, db=Depends(get_db)):
+    uid = None
+    if body.ticket:
+        uid = _tickets.get(body.ticket[:200])
+        if not uid:
+            raise HTTPException(401, "That took too long. Enter your password again.")
+    state, options = passkeys.authentication_options(db, request.headers.get("origin"), uid)
+    return {"state": state, "options": options}
+
+
+@app.post("/api/login/passkey")
+def login_passkey(body: PasskeyFinish, request: Request, response: Response, db=Depends(get_db)):
+    """Sign in with a passkey: the step after the password (with the ticket), or on its own."""
+    keys = ("ip:passkey|" + _client_ip(request),)
+    if (w := sec.throttle.wait(*keys)):
+        raise HTTPException(429, f"Too many failed sign-ins. Try again in {w} seconds.", headers={"Retry-After": str(w)})
+    want = None
+    if body.ticket:
+        want = _tickets.get(body.ticket[:200])
+        if not want:
+            raise HTTPException(401, "That took too long. Enter your password again.")
+    try:
+        uid, name = passkeys.authenticate(db, body.state[:200], body.credential)
+    except passkeys.PasskeyError:
+        sec.throttle.fail(*keys)
+        if body.ticket:
+            _tickets.failed(body.ticket[:200])
+        raise
+    if want is not None and uid != want:   # the state was issued for this ticket's account, so this can't happen
+        raise HTTPException(401, "That passkey isn't registered here.")
+    u = db.execute("SELECT * FROM users WHERE id=? AND disabled=0", (uid,)).fetchone()
+    if not u:
+        sec.throttle.fail(*keys)
+        raise HTTPException(401, "That account can't sign in.")
+    if body.ticket:
+        _tickets.used(body.ticket[:200])
+    _remember_device(request, response, db, uid)
+    _start_session(request, response, db, uid)
+    return {"must_change_pw": bool(u["must_change_pw"]), "username": u["username"]}
+
+
 def _known_device(request, db, u):
     """The device-cookie hash, when this browser has signed in to account u before; else None."""
     token = request.cookies.get(config.DEVICE_COOKIE)
@@ -395,17 +454,18 @@ def _profiles_for(db, uid):
 @app.get("/api/me")
 def me(s=Depends(any_user), db=Depends(get_db)):
     required = accounts.two_factor_required(db)
-    needs_2fa = required and not s["totp_secret"]
+    second = accounts.has_second_factor(db, s)
+    needs_2fa = required and not second
     return {"user": {"id": s["id"], "username": s["username"], "is_admin": bool(s["is_admin"]),
-                     "must_change_pw": bool(s["must_change_pw"]), "two_factor": bool(s["totp_secret"]),
+                     "must_change_pw": bool(s["must_change_pw"]), "two_factor": second,
                      "needs_two_factor": needs_2fa},
             "two_factor_required": required,
             "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
-            "password_min": _password_min(s)}
+            "password_min": _password_min(db, s)}
 
 
-def _password_min(s):
-    return config.PASSWORD_MIN_2FA if s["totp_secret"] else config.PASSWORD_MIN
+def _password_min(db, s):
+    return config.PASSWORD_MIN_2FA if accounts.has_second_factor(db, s) else config.PASSWORD_MIN
 
 
 class PasswordChange(BaseModel):
@@ -421,7 +481,7 @@ def change_password(body: PasswordChange, request: Request, s=Depends(any_user),
     if not sec.verify_password(s["pw_hash"], body.current[:config.PASSWORD_MAX]):
         sec.throttle.fail(*keys)
         raise HTTPException(403, "Your current password is wrong.")
-    if (p := sec.password_problem(body.new, s["username"], _password_min(s))):
+    if (p := sec.password_problem(body.new, s["username"], _password_min(db, s))):
         raise HTTPException(400, p)
     if sec.verify_password(s["pw_hash"], body.new):
         raise HTTPException(400, "Choose a password different from the current one.")
@@ -446,7 +506,7 @@ class TwoFactorOff(BaseModel):
 def two_factor_state(s=Depends(settled), db=Depends(get_db)):
     left = db.execute("SELECT COUNT(*) FROM recovery_codes WHERE user_id=? AND used_at IS NULL", (s["id"],)).fetchone()[0]
     return {"on": bool(s["totp_secret"]), "recovery_codes_left": left if s["totp_secret"] else 0,
-            "required": accounts.two_factor_required(db)}
+            "required": accounts.two_factor_required(db), "passkeys": passkeys.count(db, s["id"])}
 
 
 @app.post("/api/me/2fa/start")
@@ -502,8 +562,9 @@ def two_factor_off(body: TwoFactorOff, request: Request, s=Depends(settled), db=
     """Turn it off; needs the password. Signs out everywhere else."""
     if not s["totp_secret"]:
         raise HTTPException(409, "Two-factor sign-in is already off.")
-    if accounts.two_factor_required(db):
-        raise HTTPException(409, "This server requires two-factor sign-in, so it can't be turned off.")
+    if accounts.two_factor_required(db) and not passkeys.count(db, s["id"]):
+        raise HTTPException(409, "This server requires two-factor sign-in, so it can't be turned off. "
+                                 "Add a passkey first if you want to stop using the authenticator app.")
     keys = ("pair:pw|" + s["username"].lower() + "|" + _client_ip(request),)
     if (w := sec.throttle.wait(*keys)):
         raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
@@ -514,9 +575,87 @@ def two_factor_off(body: TwoFactorOff, request: Request, s=Depends(settled), db=
         accounts.turn_off_2fa(db, s["id"])
         activity.log(db, "2fa.off", s, ip=_client_ip(request))
     # turn_off_2fa ended every session, this one too: start a fresh one so the page keeps working
-    response = JSONResponse({"ok": True, "must_change_pw": bool(s["pw_short"])})
+    after = db.execute("SELECT must_change_pw FROM users WHERE id=?", (s["id"],)).fetchone()
+    response = JSONResponse({"ok": True, "must_change_pw": bool(after["must_change_pw"])})
     _start_session(request, response, db, s["id"])
     return response
+
+
+# ---------------------------------------------------------------- passkeys, for the signed-in account
+
+class PasskeyAdd(BaseModel):
+    password: str
+
+
+class PasskeyRegister(BaseModel):
+    state: str
+    credential: dict
+    name: Optional[str] = None
+
+
+class PasskeyRename(BaseModel):
+    name: str
+
+
+@app.get("/api/me/passkeys")
+def my_passkeys(origin: str = "", s=Depends(settled), db=Depends(get_db)):
+    """origin: the page's own (location.origin), to say which passkeys work there; only shown, never trusted."""
+    try:
+        here = passkeys.site(origin[:300])[0]
+        problem = None
+    except passkeys.PasskeyError as e:
+        here, problem = None, str(e)
+    return {"passkeys": passkeys.listing(db, s["id"], here), "site": here, "problem": problem,
+            "required": accounts.two_factor_required(db), "authenticator_app": bool(s["totp_secret"])}
+
+
+@app.post("/api/me/passkeys/options")
+def passkey_add_options(body: PasskeyAdd, request: Request, s=Depends(settled), db=Depends(get_db)):
+    """Adding a passkey adds a way in, so it needs the password."""
+    keys = ("pair:pw|" + s["username"].lower() + "|" + _client_ip(request),)
+    if (w := sec.throttle.wait(*keys)):
+        raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
+    if not sec.verify_password(s["pw_hash"], body.password[:config.PASSWORD_MAX]):
+        sec.throttle.fail(*keys)
+        raise HTTPException(403, "Your password is wrong.")
+    state, options = passkeys.registration_options(db, s, request.headers.get("origin"))
+    return {"state": state, "options": options}
+
+
+@app.post("/api/me/passkeys")
+def passkey_add(body: PasskeyRegister, request: Request, s=Depends(settled), db=Depends(get_db)):
+    pk = passkeys.register(db, s, body.state[:200], body.credential, body.name)
+    name = db.execute("SELECT name FROM passkeys WHERE id=?", (pk,)).fetchone()[0]
+    activity.log(db, "passkey.add", s, detail={"name": name}, ip=_client_ip(request))
+    return {"id": pk, "name": name}
+
+
+@app.patch("/api/me/passkeys/{pk}")
+def passkey_rename(pk: int, body: PasskeyRename, s=Depends(settled), db=Depends(get_db)):
+    name = " ".join(body.name.split())[:passkeys.NAME_MAX]
+    if not name:
+        raise HTTPException(400, "Give the passkey a name.")
+    if not db.execute("UPDATE passkeys SET name=? WHERE id=? AND user_id=?", (name, pk, s["id"])).rowcount:
+        raise HTTPException(404, "No such passkey.")
+    return {"name": name}
+
+
+@app.delete("/api/me/passkeys/{pk}")
+def passkey_remove(pk: int, request: Request, s=Depends(settled), db=Depends(get_db)):
+    """Remove one. The password always still signs in; but where the server requires two-factor sign-in, the last
+    second factor can't go (that would leave the account unable to use anything until an admin stepped in)."""
+    with dbm.transaction(db):
+        r = db.execute("SELECT name FROM passkeys WHERE id=? AND user_id=?", (pk, s["id"])).fetchone()
+        if not r:
+            raise HTTPException(404, "No such passkey.")
+        if accounts.two_factor_required(db) and not s["totp_secret"] and passkeys.count(db, s["id"]) == 1:
+            raise HTTPException(409, "This server requires two-factor sign-in, and this is your only second step. "
+                                     "Add another passkey or turn on the authenticator app first.")
+        db.execute("DELETE FROM passkeys WHERE id=?", (pk,))
+        accounts.short_password_check(db, s["id"])
+        activity.log(db, "passkey.remove", s, detail={"name": r["name"]}, ip=_client_ip(request))
+    after = db.execute("SELECT must_change_pw FROM users WHERE id=?", (s["id"],)).fetchone()
+    return {"ok": True, "left": passkeys.count(db, s["id"]), "must_change_pw": bool(after["must_change_pw"])}
 
 
 @app.get("/api/sessions")
@@ -764,7 +903,8 @@ def document_part(pid: int, doc: str, part: str, request: Request, s=Depends(use
 @app.get("/api/users")
 def users(s=Depends(admin), db=Depends(get_db)):
     return [dict(r) for r in db.execute(
-        """SELECT id, username, is_admin, disabled, must_change_pw, created, totp_secret IS NOT NULL AS two_factor,
+        """SELECT id, username, is_admin, disabled, must_change_pw, created,
+                  totp_secret IS NOT NULL OR EXISTS(SELECT 1 FROM passkeys k WHERE k.user_id = users.id) AS two_factor,
                   (SELECT COUNT(*) FROM sessions x WHERE x.user_id = users.id AND x.expires > ?) AS sessions
            FROM users ORDER BY username COLLATE NOCASE""", (dbm.now(),))]
 
@@ -903,7 +1043,7 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
         accounts.sign_out_everywhere(db, uid)   # a reset may follow a lost or stolen device
         note("account.reset")
     if body.disable_2fa:
-        accounts.turn_off_2fa(db, uid)
+        accounts.turn_off_2fa(db, uid, passkeys_too=True)
         note("2fa.reset")
     return out
 
@@ -920,7 +1060,7 @@ def server_settings(s=Depends(admin), db=Depends(get_db)):
 @app.patch("/api/settings")
 def change_server_settings(body: ServerSettings, request: Request, s=Depends(admin), db=Depends(get_db)):
     if body.require_2fa != accounts.two_factor_required(db):
-        if body.require_2fa and not s["totp_secret"]:
+        if body.require_2fa and not accounts.has_second_factor(db, s):
             raise HTTPException(409, "Turn on two-factor sign-in for your own account first.")
         dbm.meta_set(db, "require_2fa", "1" if body.require_2fa else None)
         activity.log(db, "settings.require_2fa", s, detail={"on": body.require_2fa}, ip=_client_ip(request))

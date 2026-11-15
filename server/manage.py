@@ -16,8 +16,8 @@
   remove-user USERNAME [--hand-to NAME] [--force]
                                          delete an account for good; profiles it alone owned go to NAME (or, with
                                          --force, are left without an owner)
-  disable-2fa USERNAME                   turn off someone's two-factor sign-in (lost phone and recovery codes);
-                                         signs them out everywhere
+  disable-2fa USERNAME                   turn off someone's two-factor sign-in, authenticator app and passkeys (lost
+                                         phone and recovery codes); signs them out everywhere
   reencrypt                              with the app stopped, after adding a key (setup new-key): re-encrypt everything
                                          with it, so the old key can be removed (starting the app does this too)
   verify ARCHIVE                         check a backup is complete and undamaged
@@ -142,9 +142,9 @@ def _command(db, argv):
         print(f"Removed {gone['username']}." + (f" {hand['username']} now owns {', '.join(gone['handed_over'])}." if gone["handed_over"] else ""))
     elif cmd == "disable-2fa" and args:
         u = _user(db, args[0])
-        accounts.turn_off_2fa(db, u["id"])
+        accounts.turn_off_2fa(db, u["id"], passkeys_too=True)
         activity.log(db, "2fa.reset", detail={"username": u["username"]}, actor=activity.COMMAND_LINE)
-        print(f"Two-factor sign-in is off for {u['username']}; they're signed out everywhere."
+        print(f"Two-factor sign-in (authenticator app and passkeys) is off for {u['username']}; they're signed out everywhere."
               + (" Their password was only allowed with it, so they'll choose a new one at sign-in." if u["pw_short"] else ""))
     elif cmd == "create-profile" and len(args) == 2:
         u = _user(db, args[1])
