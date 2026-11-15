@@ -284,6 +284,47 @@ class Api(unittest.TestCase):
         self.assertIsNone(db.execute("SELECT 1 FROM activity WHERE actor='old'").fetchone())
         db.close()
 
+    def test_remove_account(self):
+        from server import accounts, manage, profiles as prof
+        db = dbm.connect()
+        ids = {}
+        for name in ("rita", "kai", "lou"):
+            row = db.execute("SELECT id FROM users WHERE username=?", (name,)).fetchone()
+            ids[name] = row[0] if row else accounts.create(db, name, password=f"{name} keeps a long passphrase")[0]
+        pid = prof.create_profile(db, "Rita's", owner_id=ids["rita"])
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (ids["kai"], pid))
+        rita = self.login("rita", "rita keeps a long passphrase")
+        rita.patch(f"/api/profiles/{pid}", json={"name": "Rita's records"}, headers=H)   # something in the log
+        ben = self.login("ben")
+        # only admins, and not themselves
+        self.assertEqual(rita.request("DELETE", f"/api/users/{ids['kai']}", json={}, headers=H).status_code, 403)
+        self.assertEqual(ben.request("DELETE", "/api/users/1", json={}, headers=H).status_code, 400)
+        # a sole owner: asked first, then their profile is handed over in the same step
+        r = ben.request("DELETE", f"/api/users/{ids['rita']}", json={}, headers=H)
+        self.assertEqual((r.status_code, r.json()["detail"]["sole_owner_of"]), (409, ["Rita's records"]))
+        self.assertEqual(ben.request("DELETE", f"/api/users/{ids['rita']}", json={"hand_to": "nobody-here"}, headers=H).status_code, 404)
+        r = ben.request("DELETE", f"/api/users/{ids['rita']}", json={"hand_to": "kai"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["handed_over"]), (200, ["Rita's records"]))
+        # gone: can't sign in, signed out, not in sharing lists; the other member is unaffected and now owns it
+        self.assertEqual(client().post("/api/login", json={"username": "rita", "password": "rita keeps a long passphrase"}, headers=H).status_code, 401)
+        self.assertEqual(rita.get("/api/me").status_code, 401)
+        kai = self.login("kai", "kai keeps a long passphrase")
+        self.assertEqual([(m["username"], m["role"]) for m in kai.get(f"/api/profiles/{pid}/members").json()], [("kai", "owner")])
+        self.assertNotIn("rita", [u["username"] for u in ben.get("/api/users").json()])
+        # their past activity stays, marked as removed
+        renamed = next(e for e in kai.get(f"/api/profiles/{pid}/activity").json() if e["action"] == "rename")
+        self.assertEqual((renamed["actor"], renamed["actor_removed"]), ("rita", True))
+        event = ben.get("/api/activity").json()[0]
+        self.assertEqual((event["action"], event["detail"]["username"]), ("account.remove", "rita"))
+        # --force leaves the profile without an owner; the command line works too
+        pid2 = prof.create_profile(db, "Lou's", owner_id=ids["lou"])
+        with self.assertRaises(SystemExit):
+            manage.run(["remove-user", "lou"])   # asks for --hand-to or --force
+        manage.run(["remove-user", "lou", "--force"])
+        self.assertIsNone(db.execute("SELECT 1 FROM users WHERE username='lou'").fetchone())
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM memberships WHERE profile_id=?", (pid2,)).fetchone()[0], 0)
+        db.close()
+
     def test_delete_profile(self):
         from server import accounts, manage, profiles as prof
         db = dbm.connect()

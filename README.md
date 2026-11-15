@@ -64,6 +64,7 @@ Optional: `corrections.json` (milestones and hand corrections; see `corrections.
 | `docker compose run --rm setup rebuild` | Rebuild the data after adding or updating exports |
 | `docker compose exec app python -m server.manage reset-password NAME` | One-time password for a locked-out account |
 | `docker compose exec app python -m server.manage list` | Accounts, profiles and who has which role |
+| `docker compose exec app python -m server.manage remove-user NAME --hand-to OTHER` | Delete an account for good (also under **Account**); profiles only it owned go to OTHER |
 | `docker compose exec app python -m server.manage disable-2fa NAME` | Turn off two-factor sign-in for someone who lost their phone and recovery codes |
 | `git pull && docker compose up -d --build` | Update Sanguity |
 

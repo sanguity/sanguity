@@ -65,6 +65,30 @@ def turn_off_2fa(db, uid):
     sign_out_everywhere(db, uid)
 
 
+def sole_owned(db, uid):
+    """Profiles this account is the only active owner of: [(id, name)]. Without it nobody could share or rename them."""
+    return [(r["id"], r["name"]) for r in db.execute(
+        """SELECT p.id, p.name FROM memberships m JOIN profiles p ON p.id = m.profile_id
+           WHERE m.user_id=? AND m.role='owner' ORDER BY p.name COLLATE NOCASE""", (uid,)).fetchall()
+        if not dbm.active_owners(db, r["id"], excluding=uid)]
+
+
+def remove(db, uid, hand_to=None):
+    """Delete an account for good: its sessions, known browsers, recovery codes and memberships go with it (the
+    schema cascades); its activity entries stay, under its old name. hand_to (another account's id) first becomes
+    owner of the profiles this one was the only active owner of. Returns {"username", "handed_over": [names]}."""
+    u = db.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()
+    handed = []
+    with dbm.transaction(db):
+        if hand_to is not None:
+            for pid, name in sole_owned(db, uid):
+                db.execute("""INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'owner')
+                              ON CONFLICT(user_id, profile_id) DO UPDATE SET role='owner'""", (hand_to, pid))
+                handed.append(name)
+        db.execute("DELETE FROM users WHERE id=?", (uid,))
+    return {"username": u["username"], "handed_over": handed}
+
+
 def two_factor_required(db):
     return dbm.meta_get(db, "require_2fa") == "1"
 
