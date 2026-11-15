@@ -49,6 +49,7 @@ $("#logout").onclick = async () => { try { await api("logout", {method: "POST"})
     if (!m.ok) throw new Error(m.status + " " + m.statusText);
     ME = await m.json();
     if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
+    if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
     $("#who").textContent = ME.user.username;
     if (!ME.profiles.length) { emptyCard("No health profiles are shared with you yet. ", el("a", {href: "account.html#profiles", text: "Create one"}), " or ask a profile's owner to share it with ", el("b", {text: ME.user.username}), "."); return; }
     let want; try { want = +localStorage.getItem("ht-profile"); } catch (e) {}

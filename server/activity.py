@@ -9,6 +9,8 @@ Profile events (profile_id set), readable by the profile's owners:
 Account events (no profile), readable by admins:
   setup         the first account                                password   changed their own password
   account.create / account.disable / account.enable / account.admin / account.unadmin / account.reset   {"username"}
+  2fa.on / 2fa.off / 2fa.codes (new recovery codes) / 2fa.recovery (signed in with one, {"left"})
+  2fa.reset {"username"}: an admin turned someone's off            settings.require_2fa {"on"}
 
 Entries keep the actor's username as it was, so they read the same after an account is gone. A profile's entries
 go with the profile. Entries older than ACTIVITY_DAYS are pruned (at most once a day, when something is logged).
@@ -19,7 +21,8 @@ from . import config, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
-                   "account.unadmin", "account.reset")
+                   "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
+                   "settings.require_2fa")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
 
 

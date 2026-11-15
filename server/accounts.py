@@ -47,6 +47,28 @@ def forget_setup_code(db):
         pass
 
 
+def new_recovery_codes(db, uid):
+    """Replace an account's recovery codes; returns the new ones (shown once, stored only as hashes)."""
+    from . import twofactor
+    codes = twofactor.new_recovery_codes()
+    db.execute("DELETE FROM recovery_codes WHERE user_id=?", (uid,))
+    db.executemany("INSERT INTO recovery_codes(user_id, code_hash) VALUES(?, ?)", [(uid, twofactor.recovery_hash(c)) for c in codes])
+    return codes
+
+
+def turn_off_2fa(db, uid):
+    """Two-factor sign-in off: secret and recovery codes gone, signed out everywhere, and a password that was only
+    allowed because of the second factor has to be replaced at the next sign-in."""
+    db.execute("""UPDATE users SET totp_secret=NULL, totp_pending=NULL, totp_last_step=0,
+                  must_change_pw=CASE WHEN pw_short THEN 1 ELSE must_change_pw END WHERE id=?""", (uid,))
+    db.execute("DELETE FROM recovery_codes WHERE user_id=?", (uid,))
+    sign_out_everywhere(db, uid)
+
+
+def two_factor_required(db):
+    return dbm.meta_get(db, "require_2fa") == "1"
+
+
 def claim_unowned(db, uid):
     """Make uid the owner of every profile nobody has access to yet (the records already on a new install), and
     finish first-time setup. Returns those profile ids."""

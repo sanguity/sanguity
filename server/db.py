@@ -72,6 +72,18 @@ SCHEMA = [
     CREATE INDEX activity_profile ON activity(profile_id, id);
     CREATE INDEX activity_seen ON activity(session_id, profile_id, action);
     """,
+    # version 4: two-factor sign-in (see twofactor.py)
+    """
+    ALTER TABLE users ADD COLUMN totp_secret TEXT;                    -- set: two-factor sign-in is on
+    ALTER TABLE users ADD COLUMN totp_pending TEXT;                   -- being set up, not confirmed yet
+    ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0;   -- the last code's step: no reuse
+    ALTER TABLE users ADD COLUMN pw_short INTEGER NOT NULL DEFAULT 0; -- password shorter than the one-factor minimum
+    CREATE TABLE recovery_codes(
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash TEXT NOT NULL,                   -- SHA-256 of the code; the code itself is shown once
+        used_at INTEGER,
+        PRIMARY KEY(user_id, code_hash));
+    """,
 ]
 
 

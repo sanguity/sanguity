@@ -107,6 +107,65 @@ $("#profNew").onsubmit = async ev => {
   catch (e) { say("#profMsg", e.message, true); }
 };
 
+/* ---------------------------------------------------------------- two-factor sign-in */
+const APPS = "an authenticator app such as Google Authenticator, Microsoft Authenticator, 1Password or Bitwarden";
+async function loadTwoFactor() {
+  const st = await call("me/2fa"), body = $("#tfBody");
+  say("#tfMsg", "");
+  if (!st.on) {
+    $("#tfHint").textContent = `Ask for a code from ${APPS} as well as your password, so a stolen password alone can't ` +
+      "open your records." + (st.required ? " This server requires it." : "");
+    body.replaceChildren(el("button", {class: "btn primary", type: "button", text: "Turn on", onclick: startTwoFactor}));
+    return;
+  }
+  $("#tfHint").textContent = `On. You have ${st.recovery_codes_left} recovery code${st.recovery_codes_left === 1 ? "" : "s"} left` +
+    (st.recovery_codes_left <= 3 ? ": make new ones soon." : ".");
+  const code = el("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "Code from the app", "aria-label": "Code from your authenticator app"});
+  const pw = el("input", {type: "password", autocomplete: "current-password", placeholder: "Your password", "aria-label": "Your password"});
+  body.replaceChildren(
+    el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
+      try { showRecoveryCodes((await call("me/2fa/recovery-codes", "POST", {code: code.value})).recovery_codes); } catch (e) { say("#tfMsg", e.message, true); } }},
+      code, el("button", {class: "btn small", type: "submit", text: "Make new recovery codes"})),
+    st.required ? el("p", {class: "hint", text: "This server requires two-factor sign-in, so it can't be turned off."}) :
+    el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
+      if (!confirm("Turn off two-factor sign-in? Every other device will be signed out.")) return;
+      try {
+        const r = await call("me/2fa/off", "POST", {password: pw.value});
+        if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
+        loadTwoFactor(); loadSessions();
+      } catch (e) { say("#tfMsg", e.message, true); } }},
+      pw, el("button", {class: "btn small", type: "submit", text: "Turn off"})));
+}
+async function startTwoFactor() {
+  let s;
+  try { s = await call("me/2fa/start", "POST"); } catch (e) { return say("#tfMsg", e.message, true); }
+  const code = el("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "123 456", "aria-label": "Code from your authenticator app", required: true});
+  $("#tfHint").textContent = `Scan this with ${APPS}, then enter the code it shows. If you can't scan, type the key instead.`;
+  $("#tfBody").replaceChildren(
+    el("div", {class: "tf-setup"},
+      el("img", {src: s.qr, alt: "QR code for your authenticator app", width: 180, height: 180}),
+      el("div", {}, el("div", {class: "muted", text: "Key"}), el("code", {class: "tf-key", text: s.secret.match(/.{1,4}/g).join(" ")}))),
+    el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
+      try { showRecoveryCodes((await call("me/2fa/confirm", "POST", {code: code.value})).recovery_codes, true); } catch (e) { say("#tfMsg", e.message, true); } }},
+      code, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),
+      el("button", {class: "btn small", type: "button", text: "Cancel", onclick: loadTwoFactor})));
+  code.focus();
+}
+function showRecoveryCodes(codes, justTurnedOn) {
+  const text = "Sanguity recovery codes for " + ME.user.username + "\nEach works once, in place of a code from your app.\n\n" + codes.join("\n") + "\n";
+  $("#tfHint").textContent = (justTurnedOn ? "Two-factor sign-in is on. " : "") +
+    "Save these recovery codes somewhere safe, away from your phone. Each one signs you in once if you lose your phone. " +
+    "They won't be shown again.";
+  const done = el("button", {class: "btn primary small", type: "button", text: "I've saved them", onclick: () => {
+    if (ME.user.needs_two_factor) { location.replace("./"); return; }
+    loadTwoFactor(); loadSessions(); }});
+  $("#tfBody").replaceChildren(
+    el("pre", {class: "tf-codes", text: codes.join("\n")}),
+    el("div", {class: "row"},
+      el("a", {class: "btn small", download: "sanguity-recovery-codes.txt", href: "data:text/plain;charset=utf-8," + encodeURIComponent(text), text: "Download"}),
+      done));
+}
+
 /* ---------------------------------------------------------------- activity */
 const WHAT = {
   view: () => "opened the records",
@@ -125,6 +184,12 @@ const WHAT = {
   "account.admin": d => `made ${d.username} an admin`,
   "account.unadmin": d => `removed ${d.username}’s admin role`,
   "account.reset": d => `reset ${d.username}’s password`,
+  "2fa.on": () => "turned on two-factor sign-in",
+  "2fa.off": () => "turned off two-factor sign-in",
+  "2fa.codes": () => "made new recovery codes",
+  "2fa.recovery": d => `signed in with a recovery code (${d.left} left)`,
+  "2fa.reset": d => `turned off two-factor sign-in for ${d.username}`,
+  "settings.require_2fa": d => d.on ? "required two-factor sign-in for everyone" : "stopped requiring two-factor sign-in",
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"]];
@@ -171,7 +236,7 @@ function showTemp(username, pw) {
 async function loadUsers() {
   const list = await call("users");
   $("#userList").replaceChildren(el("table", {class: "tbl"},
-    el("thead", {}, el("tr", {}, ...["Account", "Status", "Devices", ""].map(h => el("th", {text: h})))),
+    el("thead", {}, el("tr", {}, ...["Account", "Status", "2FA", "Devices", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...list.map(u => {
       const self = u.id === ME.user.id;
       const act = (label, body, done) => el("button", {class: "btn small", type: "button", text: label, disabled: self || null,
@@ -189,11 +254,15 @@ async function loadUsers() {
       return el("tr", {},
         el("td", {}, u.username, u.is_admin ? el("span", {class: "tag", text: "admin"}) : null, self ? el("span", {class: "muted", text: " (you)"}) : null),
         el("td", {text: u.disabled ? "disabled" : u.must_change_pw ? "hasn't chosen a password yet" : "active"}),
+        el("td", {text: u.two_factor ? "on" : "off"}),
         el("td", {text: u.sessions}),
         el("td", {class: "acts"},
           act(u.disabled ? "Enable" : "Disable", {disabled: !u.disabled}),
           act(u.is_admin ? "Remove admin" : "Make admin", {is_admin: !u.is_admin}),
-          act("Reset password", {reset_password: true}, r => setTimeout(() => showTemp(u.username, r.temporary_password)))));
+          act("Reset password", {reset_password: true}, r => setTimeout(() => showTemp(u.username, r.temporary_password))),
+          u.two_factor ? el("button", {class: "btn small", type: "button", text: "Turn off 2FA", disabled: self || null, onclick: async () => {
+            if (!confirm(`Turn off two-factor sign-in for ${u.username}? Do this only if they lost both their phone and their recovery codes. They'll be signed out everywhere.`)) return;
+            try { await call("users/" + u.id, "PATCH", {disable_2fa: true}); loadUsers(); } catch (e) { say("#userMsg", e.message, true); } }}) : null));
     }))));
 }
 $("#userNew").onsubmit = async ev => {
@@ -209,11 +278,25 @@ $("#userNew").onsubmit = async ev => {
   $("#pwHint").textContent = `At least ${ME.password_min} characters. A few unrelated words make a strong password you can remember.`;
   if (ME.user.must_change_pw) {   // nothing else is available until the one-time password is replaced
     $("#mustChange").hidden = false; $("#back").hidden = true;
-    for (const id of ["#sessions", "#profiles", "#users"]) $(id).hidden = true;
+    for (const id of ["#sessions", "#profiles", "#users", "#twofa"]) $(id).hidden = true;
     $("#pwCur").focus();
     return;
   }
-  await Promise.all([loadSessions(), loadProfiles(), ME.user.is_admin ? loadUsers() : null]);
+  if (ME.user.needs_two_factor) {   // the server requires it: set it up before anything else
+    $("#needTf").hidden = false; $("#back").hidden = true;
+    for (const id of ["#sessions", "#profiles", "#users"]) $(id).hidden = true;
+    await loadTwoFactor();
+    return;
+  }
+  await Promise.all([loadSessions(), loadProfiles(), loadTwoFactor(), ME.user.is_admin ? loadUsers() : null]);
+  if (ME.user.is_admin) {
+    const req = $("#reqTf");
+    req.checked = (await call("settings")).require_2fa;
+    req.onchange = async () => {
+      try { await call("settings", "PATCH", {require_2fa: req.checked}); say("#userMsg", req.checked ? "Everyone now needs two-factor sign-in." : "Two-factor sign-in is now optional."); }
+      catch (e) { req.checked = !req.checked; say("#userMsg", e.message, true); }
+    };
+  }
   if (ME.user.is_admin) {   // account events only: who created, disabled or reset which account (no records)
     const panel = activityPanel("activity");
     panel.firstChild.textContent = "Account activity";
