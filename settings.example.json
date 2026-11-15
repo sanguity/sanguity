@@ -1,0 +1,19 @@
+{
+  "overview": {
+    "keyLabs": ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Lymphocytes Absolute", "Creatinine",
+                "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"]
+  },
+  "trends": {
+    "defaultLabs": ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "ALT"]
+  },
+  "labNicknames": {
+    "Automated Abs Neutrophil Cnt": "Neutrophils (absolute)",
+    "Platelet Count": "Platelets"
+  },
+  "sources": {
+    "EXT": "Outside lab"
+  },
+  "visitWorkouts": [
+    {"match": "^physical therapy\\b", "name": "Physical therapy", "minutes": 45}
+  ]
+}

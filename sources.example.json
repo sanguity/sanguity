@@ -1,0 +1,13 @@
+{
+  "root": "/srv/records",
+  "primary": {"dir": "mychart-*", "org": "Example Health System"},
+  "epic": [
+    {"dir": "otherhospital-*", "org": "Other Hospital", "tag": "OH"}
+  ],
+  "carespace": {"dir": "carespace-*", "org": "Example Cancer Clinic", "tag": "ECC"},
+  "claims": [
+    {"format": "uhc", "dir": "uhc-*", "insurer": "UnitedHealthcare"},
+    {"format": "bcbs", "dir": "bcbs-*", "insurer": "Blue Cross Blue Shield"}
+  ],
+  "payments": {"dir": "payments-*"}
+}

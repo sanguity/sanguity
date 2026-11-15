@@ -1,0 +1,327 @@
+{
+ "_about": "Canonical lab series names, their LOINC codes where known, and other spellings that map onto them. Matching is case-insensitive. Add a lab by adding an entry; add a spelling by appending to its aliases.",
+ "labs": {
+  "Albumin": {
+   "loinc": "1751-7",
+   "aliases": [
+    "ALBUMIN"
+   ]
+  },
+  "Alkaline Phosphatase": {
+   "loinc": "6768-6",
+   "aliases": [
+    "ALK PHOS"
+   ]
+  },
+  "ALT": {
+   "loinc": "1742-6",
+   "aliases": []
+  },
+  "Amylase": {
+   "loinc": "1798-8",
+   "aliases": [
+    "Amylase, Bld (External)"
+   ]
+  },
+  "Antithrombin Activity": {
+   "aliases": [
+    "antithromb 3"
+   ]
+  },
+  "AST": {
+   "loinc": "1920-8",
+   "aliases": []
+  },
+  "Automated Abs Neutrophil Cnt": {
+   "loinc": "751-8",
+   "aliases": [
+    "ANC",
+    "neut absolute",
+    "neutrophils abs",
+    "Neutrophils Absolute (External)"
+   ]
+  },
+  "Bands Relative": {
+   "aliases": [
+    "banded neutrophils percent"
+   ]
+  },
+  "Basophils %": {
+   "loinc": "706-2",
+   "aliases": [
+    "BASO%",
+    "basophils percent"
+   ]
+  },
+  "Basophils Absolute": {
+   "loinc": "704-7",
+   "aliases": [
+    "BASO#",
+    "Basophil Absolute (External)"
+   ]
+  },
+  "BUN": {
+   "loinc": "3094-0",
+   "aliases": []
+  },
+  "Calcium": {
+   "loinc": "17861-6",
+   "aliases": [
+    "CALCIUM"
+   ]
+  },
+  "Chloride, Blood": {
+   "loinc": "2075-0",
+   "aliases": [
+    "chloride",
+    "CHLORIDE",
+    "Chloride Blood (External)"
+   ]
+  },
+  "CKD-EPI eGFR": {
+   "loinc": "98979-8",
+   "aliases": [
+    "EGFR CKD-EPI 2021",
+    "gfr estimate"
+   ]
+  },
+  "CMV PCR": {
+   "aliases": [
+    "CMV Qnt by NAAT, Plasma IU/mL"
+   ]
+  },
+  "CMV PCR (log)": {
+   "aliases": [
+    "CMV Qnt by NAAT, Plasma log IU/mL"
+   ]
+  },
+  "CO2": {
+   "loinc": "2028-9",
+   "aliases": []
+  },
+  "Creatinine": {
+   "loinc": "2160-0",
+   "aliases": [
+    "CREAT"
+   ]
+  },
+  "CRP": {
+   "loinc": "1988-5",
+   "aliases": [
+    "CRP (C-Reactive Protein)"
+   ]
+  },
+  "D-Dimer": {
+   "aliases": [
+    "D-DIMER",
+    "d-dimer quantitative"
+   ]
+  },
+  "Eosinophils %": {
+   "loinc": "713-8",
+   "aliases": [
+    "EOS%",
+    "eosinophils percent"
+   ]
+  },
+  "Eosinophils Absolute": {
+   "loinc": "711-2",
+   "aliases": [
+    "EOS#",
+    "Eosinophil Absolute (External)"
+   ]
+  },
+  "Ferritin": {
+   "loinc": "2276-4",
+   "aliases": [
+    "FERRITIN"
+   ]
+  },
+  "Fibrinogen": {
+   "loinc": "3255-7",
+   "aliases": [
+    "FIBRINOGEN"
+   ]
+  },
+  "Glucose, Blood": {
+   "loinc": "2345-7",
+   "aliases": [
+    "glucose",
+    "GLUCOSE",
+    "Glucose (External)"
+   ]
+  },
+  "Hematocrit": {
+   "loinc": "4544-3",
+   "aliases": [
+    "HCT"
+   ]
+  },
+  "Hemoglobin": {
+   "loinc": "718-7",
+   "aliases": [
+    "HGB"
+   ]
+  },
+  "Immature Granulocytes %": {
+   "aliases": [
+    "IMMATURE GRAN %"
+   ]
+  },
+  "Immature Granulocytes Absolute": {
+   "aliases": [
+    "IMMATURE GRAN #",
+    "immature granulocytes abs"
+   ]
+  },
+  "INR": {
+   "loinc": "6301-6",
+   "aliases": []
+  },
+  "LD": {
+   "loinc": "2532-0",
+   "aliases": [
+    "LDH",
+    "ldh, total"
+   ]
+  },
+  "Lipase": {
+   "loinc": "3040-3",
+   "aliases": [
+    "Lipase, Bld (External)"
+   ]
+  },
+  "Lymphocytes %": {
+   "loinc": "736-9",
+   "aliases": [
+    "LYMPH%",
+    "lymphs %"
+   ]
+  },
+  "Lymphocytes Absolute": {
+   "loinc": "731-0",
+   "aliases": [
+    "LYMPH#",
+    "Lymphcyte Absolute (External)",
+    "lymphs abs"
+   ]
+  },
+  "Magnesium": {
+   "loinc": "19123-9",
+   "aliases": [
+    "MAGNESIUM"
+   ]
+  },
+  "MCH": {
+   "loinc": "785-6",
+   "aliases": []
+  },
+  "MCHC": {
+   "loinc": "786-4",
+   "aliases": []
+  },
+  "MCV": {
+   "loinc": "787-2",
+   "aliases": []
+  },
+  "Metamyelocytes Relative": {
+   "aliases": [
+    "metamyelocytes %"
+   ]
+  },
+  "Monocytes %": {
+   "loinc": "5905-5",
+   "aliases": [
+    "MONO%"
+   ]
+  },
+  "Monocytes Absolute": {
+   "loinc": "742-7",
+   "aliases": [
+    "MONO#",
+    "Monocyte Absolute (External)",
+    "monocytes abs"
+   ]
+  },
+  "Myelocytes Relative": {
+   "aliases": [
+    "myelocytes percent"
+   ]
+  },
+  "Neutrophils %": {
+   "loinc": "770-8",
+   "aliases": [
+    "NEUT%"
+   ]
+  },
+  "NRBC": {
+   "aliases": [
+    "nrbc",
+    "NRBC %",
+    "nucleated rbci's"
+   ]
+  },
+  "Platelet Count": {
+   "loinc": "777-3",
+   "aliases": [
+    "PLAT"
+   ]
+  },
+  "Potassium, Blood": {
+   "loinc": "2823-3",
+   "aliases": [
+    "potassium",
+    "POTASSIUM",
+    "Potassium (External)"
+   ]
+  },
+  "PTT": {
+   "loinc": "3173-2",
+   "aliases": [
+    "aptt",
+    "PARTIAL THROMBOPLASTIN TIME (PLASMA)"
+   ]
+  },
+  "RBC": {
+   "loinc": "789-8",
+   "aliases": []
+  },
+  "Segs Relative": {
+   "aliases": [
+    "segmented neuts %"
+   ]
+  },
+  "Sodium, Blood": {
+   "loinc": "2951-2",
+   "aliases": [
+    "sodium",
+    "SODIUM",
+    "Sodium (External)"
+   ]
+  },
+  "Total Bilirubin": {
+   "loinc": "1975-2",
+   "aliases": [
+    "Bilirubin, Total (External)",
+    "TOTAL BILI"
+   ]
+  },
+  "Total Protein": {
+   "loinc": "2885-2",
+   "aliases": [
+    "Protein, Total (External)",
+    "TOTAL PROTEIN"
+   ]
+  },
+  "Triglycerides": {
+   "loinc": "2571-8",
+   "aliases": [
+    "TRIGLYCERIDE"
+   ]
+  },
+  "WBC": {
+   "loinc": "6690-2",
+   "aliases": []
+  }
+ }
+}

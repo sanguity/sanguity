@@ -1,0 +1,11 @@
+{
+ "_help": "Copy to corrections.json on the server (never commit the real one). build.py applies these, then run rebuild.sh. 'org' is the source name shown in the app ('' for the main portal).",
+ "milestones": [
+  {"date": "YYYY-MM-DD", "label": "Diagnosis", "primary": true, "_why": "primary = the date the Overview and default 'since' views count from (first milestone if none is marked)"},
+  {"date": "YYYY-MM-DD", "label": "Surgery"},
+  {"date": "YYYY-MM-DD", "label": "Treatment start"}
+ ],
+ "not_hospital_stays": [
+  {"date": "YYYY-MM-DD", "org": "Example Health", "title": "Outpatient CT", "why": "Coded as an inpatient encounter, but it was outpatient"}
+ ]
+}

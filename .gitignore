@@ -1,0 +1,21 @@
+# Never commit health data, financial data or secrets.
+www/data.json
+www/settings.json
+www/data.json.tmp
+www/watch/
+www/files*/
+auth/
+corrections.json
+sources.json
+*.db
+*.db-*
+*.json.gz
+*.zip
+*.pdf
+*.xml
+raw/
+public/
+__pycache__/
+.env
+watch-data/
+records/

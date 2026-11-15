@@ -1,0 +1,44 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python files compile
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py
+
+      - name: JSON templates parse
+        run: for f in *.example.json lab-aliases.json; do python -m json.tool "$f" > /dev/null || exit 1; done
+
+      - name: compose.yaml is valid
+        run: docker compose config --quiet
+
+      - name: Demo data is deterministic
+        run: |
+          python -I demo/generate.py --end 2026-11-15
+          sha256sum www/data.json > /tmp/first
+          python -I demo/generate.py --end 2026-11-15
+          sha256sum -c /tmp/first
+
+      - name: Install Playwright and Chromium
+        run: |
+          python -m pip install playwright==1.65.2
+          python -m playwright install --with-deps chromium
+
+      - name: Browser check (every tab, drawer, pan/zoom, no errors or NaN)
+        run: python tests/browser_check.py
