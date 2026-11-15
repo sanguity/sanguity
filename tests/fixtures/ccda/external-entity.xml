@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ClinicalDocument [ <!ENTITY secret SYSTEM "file:///etc/passwd"> ]>
+<!-- Hostile test file: an external entity that tries to read a file on the server. -->
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <templateId root="2.16.840.1.113883.10.20.22.1.2"/>
+  <custodian><assignedCustodian><representedCustodianOrganization><name>&secret;</name></representedCustodianOrganization></assignedCustodian></custodian>
+</ClinicalDocument>

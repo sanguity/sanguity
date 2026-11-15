@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fictional test data. Riverbend Health and Robin Example do not exist. A per-visit record in the style of a second
+     portal: a prefixed namespace, sections found by LOINC code only, names only in the narrative, values as strings,
+     ranges as text, weight in pounds, and "no known problems". -->
+<v3:ClinicalDocument xmlns:v3="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <v3:typeId root="2.16.840.1.113883.1.3" extension="POCD_HD000040"/>
+  <v3:templateId root="2.16.840.1.113883.10.20.22.1.1"/>
+  <v3:templateId root="2.16.840.1.113883.10.20.22.1.4"/>
+  <v3:id root="2.16.840.1.113883.19.5.88888.1" extension="TEST-VISIT-0002"/>
+  <v3:code code="11506-3" codeSystem="2.16.840.1.113883.6.1" displayName="Progress note"/>
+  <v3:effectiveTime value="20260815"/>
+  <v3:recordTarget><v3:patientRole><v3:id extension="000000" root="2.16.840.1.113883.19.5.88888.2"/>
+    <v3:patient><v3:name><v3:given>Robin</v3:given><v3:family>Example</v3:family></v3:name></v3:patient></v3:patientRole></v3:recordTarget>
+  <v3:custodian><v3:assignedCustodian><v3:representedCustodianOrganization><v3:name>Riverbend Health</v3:name></v3:representedCustodianOrganization></v3:assignedCustodian></v3:custodian>
+  <v3:componentOf>
+    <v3:encompassingEncounter>
+      <v3:code code="EMER" codeSystem="2.16.840.1.113883.5.4" displayName="Emergency"/>
+      <v3:effectiveTime><v3:low value="202608142210"/><v3:high value="202608150140"/></v3:effectiveTime>
+      <v3:encounterParticipant typeCode="ATND"><v3:assignedEntity><v3:assignedPerson><v3:name><v3:given>Morgan</v3:given><v3:family>Quill</v3:family><v3:suffix>MD</v3:suffix></v3:name></v3:assignedPerson></v3:assignedEntity></v3:encounterParticipant>
+      <v3:location><v3:healthCareFacility><v3:location><v3:name>Riverbend Emergency Department</v3:name></v3:location></v3:healthCareFacility></v3:location>
+    </v3:encompassingEncounter>
+  </v3:componentOf>
+  <v3:component>
+    <v3:structuredBody>
+      <v3:component>
+        <v3:section>
+          <v3:code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>
+          <v3:title>Lab Results</v3:title>
+          <v3:text>
+            <v3:table><v3:tbody>
+              <v3:tr><v3:td ID="lab-panel">BASIC CHEMISTRY</v3:td></v3:tr>
+              <v3:tr><v3:td ID="lab-na">SODIUM</v3:td><v3:td>128</v3:td><v3:td ID="rng-na">135-145 mmol/L</v3:td></v3:tr>
+              <v3:tr><v3:td ID="lab-trop">TROPONIN I</v3:td><v3:td>&lt;0.01</v3:td></v3:tr>
+            </v3:tbody></v3:table>
+          </v3:text>
+          <v3:entry>
+            <v3:organizer classCode="BATTERY" moodCode="EVN">
+              <v3:code nullFlavor="UNK"><v3:originalText><v3:reference value="#lab-panel"/></v3:originalText></v3:code>
+              <v3:statusCode code="completed"/>
+              <v3:effectiveTime value="202608142235"/>
+              <v3:component>
+                <v3:observation classCode="OBS" moodCode="EVN">
+                  <v3:code code="2951-2" codeSystem="2.16.840.1.113883.6.1"><v3:originalText><v3:reference value="#lab-na"/></v3:originalText></v3:code>
+                  <v3:value xsi:type="ST">128</v3:value>
+                  <v3:interpretationCode code="LL"/>
+                  <v3:referenceRange><v3:observationRange><v3:text><v3:reference value="#rng-na"/></v3:text></v3:observationRange></v3:referenceRange>
+                </v3:observation>
+              </v3:component>
+              <v3:component>
+                <v3:observation classCode="OBS" moodCode="EVN">
+                  <v3:code code="10839-9" codeSystem="2.16.840.1.113883.6.1"><v3:originalText><v3:reference value="#lab-trop"/></v3:originalText></v3:code>
+                  <v3:value xsi:type="ST">&lt;0.01</v3:value>
+                  <v3:interpretationCode code="N"/>
+                </v3:observation>
+              </v3:component>
+            </v3:organizer>
+          </v3:entry>
+        </v3:section>
+      </v3:component>
+      <v3:component>
+        <v3:section>
+          <v3:code code="8716-3" codeSystem="2.16.840.1.113883.6.1"/>
+          <v3:title>Vitals</v3:title>
+          <v3:text>Weight 176 lb.</v3:text>
+          <v3:entry>
+            <v3:observation classCode="OBS" moodCode="EVN">
+              <v3:code code="29463-7" codeSystem="2.16.840.1.113883.6.1"/>
+              <v3:effectiveTime value="202608142215"/>
+              <v3:value xsi:type="PQ" value="176" unit="[lb_av]"/>
+            </v3:observation>
+          </v3:entry>
+          <v3:entry>
+            <v3:observation classCode="OBS" moodCode="EVN">
+              <v3:code code="59408-5" codeSystem="2.16.840.1.113883.6.1"/>
+              <v3:effectiveTime value="202608142215"/>
+              <v3:value xsi:type="PQ" value="96" unit="%"/>
+            </v3:observation>
+          </v3:entry>
+        </v3:section>
+      </v3:component>
+      <v3:component>
+        <v3:section>
+          <v3:code code="10160-0" codeSystem="2.16.840.1.113883.6.1"/>
+          <v3:title>Medications Given</v3:title>
+          <v3:text>Ondansetron 4 mg IV once.</v3:text>
+          <v3:entry>
+            <v3:substanceAdministration classCode="SBADM" moodCode="EVN">
+              <v3:statusCode code="completed"/>
+              <v3:effectiveTime value="202608142250"/>
+              <v3:consumable><v3:manufacturedProduct><v3:manufacturedMaterial>
+                <v3:code nullFlavor="OTH"/>
+                <v3:name>Ondansetron 4 mg/2 mL injection</v3:name>
+              </v3:manufacturedMaterial></v3:manufacturedProduct></v3:consumable>
+              <v3:entryRelationship typeCode="SUBJ" inversionInd="true">
+                <v3:act classCode="ACT" moodCode="INT">
+                  <v3:templateId root="2.16.840.1.113883.10.20.22.4.20"/>
+                  <v3:text>4 mg IV once for nausea</v3:text>
+                </v3:act>
+              </v3:entryRelationship>
+            </v3:substanceAdministration>
+          </v3:entry>
+        </v3:section>
+      </v3:component>
+      <v3:component>
+        <v3:section>
+          <v3:code code="11450-4" codeSystem="2.16.840.1.113883.6.1"/>
+          <v3:title>Problems</v3:title>
+          <v3:text>No known problems.</v3:text>
+          <v3:entry>
+            <v3:act classCode="ACT" moodCode="EVN">
+              <v3:statusCode code="active"/>
+              <v3:entryRelationship typeCode="SUBJ">
+                <v3:observation classCode="OBS" moodCode="EVN" negationInd="true">
+                  <v3:code code="55607006" codeSystem="2.16.840.1.113883.6.96" displayName="Problem"/>
+                  <v3:value xsi:type="CD" code="55607006" codeSystem="2.16.840.1.113883.6.96" displayName="Problem"/>
+                </v3:observation>
+              </v3:entryRelationship>
+            </v3:act>
+          </v3:entry>
+          <v3:entry>
+            <v3:act classCode="ACT" moodCode="EVN">
+              <v3:statusCode code="active"/>
+              <v3:entryRelationship typeCode="SUBJ">
+                <v3:observation classCode="OBS" moodCode="EVN">
+                  <v3:code code="282291009" codeSystem="2.16.840.1.113883.6.96" displayName="diagnosis"/>
+                  <v3:effectiveTime><v3:low value="20260814"/></v3:effectiveTime>
+                  <v3:value xsi:type="CD" code="E87.1" codeSystem="2.16.840.1.113883.6.90"><v3:originalText>Low sodium (hyponatremia)</v3:originalText></v3:value>
+                </v3:observation>
+              </v3:entryRelationship>
+            </v3:act>
+          </v3:entry>
+        </v3:section>
+      </v3:component>
+    </v3:structuredBody>
+  </v3:component>
+</v3:ClinicalDocument>
