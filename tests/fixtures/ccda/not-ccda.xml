@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fictional test data: XML that is not a C-CDA (a FHIR resource in XML). -->
+<Bundle xmlns="http://hl7.org/fhir">
+  <type value="collection"/>
+  <entry><resource><Patient><id value="example"/><name><family value="Example"/></name></Patient></resource></entry>
+</Bundle>
