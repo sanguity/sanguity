@@ -23,7 +23,9 @@ KEY_FILE = os.environ.get("SANGUITY_KEY_FILE", "/run/secrets/sanguity/data_key")
 SETUP_CODE_FILE = os.path.join(DATA_DIR, "setup-code.txt")
 BACKUP_DIR = os.environ.get("SANGUITY_BACKUPS", os.path.join(DATA_DIR, "backups"))   # where server.manage backup writes
 
-SESSION_DAYS = _int("SESSION_DAYS", 30)                 # a session ends this long after sign-in
+SESSION_DAYS = _int("SESSION_DAYS", 30)                 # a session ends this long after sign-in...
+# ...or this many hours after it, while the account has no second factor (0 = SESSION_DAYS for everyone)
+SESSION_HOURS_WITHOUT_2FA = _int("SESSION_HOURS_WITHOUT_2FA", 12)
 SESSION_IDLE_MINUTES = _int("SESSION_IDLE_MINUTES", 0)  # also end it after this long unused (0 = off)
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "auto").lower()   # auto = Secure when the request came over HTTPS
 COOKIE = "sg_session"
