@@ -185,7 +185,7 @@ class Ndjson(Shape, unittest.TestCase):
         self.assertDataShape(self.data)
 
     def test_series_across_days(self):
-        g = series(self.data, "Glucose")
+        g = series(self.data, "Glucose, Blood")
         self.assertEqual([p[1] for p in g["pts"]], [104, 92])   # the entered-in-error 999 is dropped
         self.assertEqual([p[4] for p in g["pts"]], ["H", ""])
         self.assertEqual(len(by_kind(self.data, "lab")), 2)
@@ -205,7 +205,7 @@ class Ndjson(Shape, unittest.TestCase):
         with open(p, "a", encoding="utf-8") as f:
             f.write('{"resourceType": "Observation", "id": \n')
         out = fhir.parse({"Observation.ndjson": p})
-        self.assertEqual(series(out["data"], "Glucose")["n"], 2)
+        self.assertEqual(series(out["data"], "Glucose, Blood")["n"], 2)
         self.assertTrue(any("1 line" in w for w in out["warnings"]))
 
 
@@ -319,7 +319,7 @@ class Keys(unittest.TestCase):
         ks = [s["key"] for s in labs]
         self.assertEqual(len(ks), len(set(ks)))
         self.assertEqual(sorted(ks), ["loinc:2160-0", "loinc:2345-7|mg/dL", "loinc:2345-7|mmol/L"])
-        self.assertEqual(series({"labs": labs}, "Glucose (mmol/L)")["pts"][0][1], 5.4)
+        self.assertEqual(series({"labs": labs}, "Glucose, Blood (mmol/L)")["pts"][0][1], 5.4)
         for d in ("bundle", "ndjson", "apple-health"):   # no split: plain keys, still unique
             ks = [s["key"] for s in fhir.parse(upload(os.path.join(FIX, d)))["data"]["labs"] if "key" in s]
             self.assertEqual(len(ks), len(set(ks)), d)

@@ -19,14 +19,15 @@ What becomes what:
     Encounter                      `visit`; inpatient classes become a `stay` with `end`; planned ones go to `upcoming`
     DocumentReference              `document` events pointing at the attached file inside the upload
 
-Lab names stay as reported, with the LOINC code on the series; mapping to canonical names is a later step (#23).
+Lab series take their canonical names from lab-aliases.json (by LOINC code, then name or alias), so the same test
+from different sources lines up; names it doesn't know stay as reported, for the mapping step (#23).
 Inline (base64) attachments are skipped with a warning for now: the upload has no place to write them yet.
 """
 import hashlib, json, posixpath, re
 from collections import Counter, defaultdict
 from datetime import datetime
 
-from .common import unit_key
+from .common import canonical_lab, unit_key
 
 NAME = "fhir"
 LABEL = "FHIR records (Apple Health, Blue Button, patient portals)"
@@ -503,10 +504,10 @@ def parse(files):
         lo, hi, rtxt = _range(value_src if value_src.get("referenceRange") else o)
         flag = _flag(value_src.get("interpretation") or o.get("interpretation"), v, lo, hi)
         loinc = (codes(code_cc, LOINC) or [None])[0]
-        key = name
+        base = key = canonical_lab(name, loinc) or name   # the series: lab-aliases.json's name when it knows the test
         s = labs.get(key)
         if s and s["unit"] and unit and unit_key(s["unit"]) != unit_key(unit):   # same name, other unit: keep apart
-            key = f"{name} ({unit})"
+            key = f"{base} ({unit})"
             s = labs.get(key)
         if s is None:
             s = labs[key] = {"unit": unit, "loinc": loinc, "code": None, "pts": [], "txt": [], "panels": Counter()}
