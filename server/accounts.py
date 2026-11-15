@@ -24,12 +24,30 @@ def create(db, username, is_admin=False, password=None):
         raise AccountError("That username is taken.", 409)
     temp = None if password is not None else temp_password()
     try:
-        uid = db.execute("INSERT INTO users(username, pw_hash, is_admin, must_change_pw, created) VALUES(?, ?, ?, ?, ?)",
+        uid = db.execute("""INSERT INTO users(username, pw_hash, is_admin, must_change_pw, temp_pw_expires, created)
+                            VALUES(?, ?, ?, ?, ?, ?)""",
                          (name, sec.hash_password(password if password is not None else temp), int(is_admin),
-                          int(temp is not None), dbm.now())).lastrowid
+                          int(temp is not None), temp_expiry() if temp is not None else None, dbm.now())).lastrowid
     except sqlite3.IntegrityError:   # created by someone else since the check above (the UNIQUE index decides)
         raise AccountError("That username is taken.", 409)
     return uid, temp
+
+
+def temp_expiry():
+    return dbm.now() + config.TEMP_PASSWORD_DAYS * 86400
+
+
+def set_temp_password(db, uid):
+    """Give an account a new one-time password (an admin's reset): it must be replaced at the next sign-in, stops
+    working after TEMP_PASSWORD_DAYS, and every session and known browser of the account ends. Returns it."""
+    pw = temp_password()
+    db.execute("UPDATE users SET pw_hash=?, must_change_pw=1, temp_pw_expires=? WHERE id=?", (sec.hash_password(pw), temp_expiry(), uid))
+    sign_out_everywhere(db, uid)
+    return pw
+
+
+def temp_password_expired(u):
+    return bool(u["temp_pw_expires"]) and u["temp_pw_expires"] <= dbm.now()
 
 
 def sign_out_everywhere(db, uid):

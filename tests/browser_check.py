@@ -80,7 +80,36 @@ def main():
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        # the pages under their real Content-Security-Policy (no inline or eval'd script): every page's own scripts
+        # run, with no violation reported. Only page.evaluate here, which the CSP doesn't apply to.
+        strict = browser.new_page(viewport={"width": 1400, "height": 900})
+        csp_problems = []
+        strict.on("pageerror", lambda e: csp_problems.append(f"script error: {e}"))
+        strict.on("console", lambda m: m.type == "error" and "Content Security Policy" in m.text and csp_problems.append(m.text))
+        r = strict.goto(base + "/setup.html")
+        check("pages are sent with a CSP that allows no inline script", "script-src 'self';" in (r.headers.get("content-security-policy") or ""))
+        strict.wait_for_url("**/login.html", timeout=10000)   # setup.js ran: setup is done, so it sends you to sign in
+        strict.evaluate("localStorage.setItem('ht-theme', 'dark')")
+        strict.reload()
+        check("under the CSP: theme.js runs", strict.evaluate("document.documentElement.dataset.theme") == "dark")
+        strict.fill("#u", USER)
+        strict.fill("#p", PW)
+        strict.click("#b")
+        for _ in range(100):   # login.js signs in, then the app loads the records
+            if strict.evaluate("location.pathname.endsWith('/') && typeof EV !== 'undefined' && EV.length > 0"):
+                break
+            strict.wait_for_timeout(200)
+        check("under the CSP: login.js signs in and the app starts", strict.evaluate("typeof EV !== 'undefined' && EV.length > 0"))
+        strict.goto(base + "/account.html")
+        strict.wait_for_selector("#logout", state="visible")
+        strict.wait_for_timeout(500)
+        strict.click("#logout")
+        strict.wait_for_url("**/login.html", timeout=10000)
+        check("under the CSP: no violations", not csp_problems, "; ".join(csp_problems)[:500])
+        strict.evaluate("localStorage.clear()")
+        strict.close()
+        # the checks below drive the page with Playwright's waits, which evaluate script the CSP would refuse
+        page = browser.new_page(viewport={"width": 1400, "height": 900}, bypass_csp=True)
         page.add_init_script(NAN_HOOK)
         page.on("pageerror", lambda e: problems.append(f"script error: {e}"))
         page.on("console", lambda m: m.type == "error" and problems.append(f"console error: {m.text}"))
@@ -316,7 +345,7 @@ def main():
             # refuse an IP address like 127.0.0.1). Same server; this session's cookie carried over to that name.
             local = base.replace("127.0.0.1", "localhost")
             SIGNED_IN_OR_ERROR = "!location.pathname.endsWith('login.html') || (document.getElementById('e') || {}).textContent"
-            ctx = browser.new_context(viewport={"width": 1400, "height": 900})
+            ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
             ctx.add_cookies([{**{k: c[k] for k in ("name", "value", "path", "httpOnly", "sameSite")}, "domain": "localhost"}
                              for c in page.context.cookies() if c["name"] == "sg_session"])
             pk = ctx.new_page()

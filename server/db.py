@@ -107,6 +107,11 @@ SCHEMA = [
         last_used INTEGER);
     CREATE INDEX passkeys_user ON passkeys(user_id);
     """,
+    # version 7: one-time passwords expire (accounts.set_temp_password). NULL: the password is the person's own
+    # (or a one-time one from before this version, which keeps working until it's replaced).
+    """
+    ALTER TABLE users ADD COLUMN temp_pw_expires INTEGER;
+    """,
 ]
 
 

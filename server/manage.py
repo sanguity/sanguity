@@ -26,7 +26,7 @@
 """
 import os, sys
 
-from . import accounts, activity, atrest, backup, crypto, db as dbm, export, main, profiles as prof, security as sec
+from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, main, profiles as prof
 
 
 def _user(db, name):
@@ -89,17 +89,16 @@ def _command(db, argv):
                      actor=activity.COMMAND_LINE)
         if "--admin" in args:   # an admin created here also finishes first-time setup
             accounts.claim_unowned(db, uid)
-        print(f"Created {args[0].strip()}. One-time password: {pw}  (they choose their own at first sign-in)")
+        print(f"Created {args[0].strip()}. One-time password: {pw}  (they choose their own at first sign-in, within {config.TEMP_PASSWORD_DAYS} days)")
     elif cmd == "reset-password" and args:
-        u, pw = _user(db, args[0]), accounts.temp_password()
-        enable = "--enable" in args
-        db.execute("UPDATE users SET pw_hash=?, must_change_pw=1, disabled=CASE WHEN ? THEN 0 ELSE disabled END WHERE id=?",
-                   (sec.hash_password(pw), enable, u["id"]))
-        accounts.sign_out_everywhere(db, u["id"])
+        u, enable = _user(db, args[0]), "--enable" in args
+        pw = accounts.set_temp_password(db, u["id"])
+        if enable:
+            db.execute("UPDATE users SET disabled=0 WHERE id=?", (u["id"],))
         activity.log(db, "account.reset", detail={"username": u["username"]}, actor=activity.COMMAND_LINE)
         if enable and u["disabled"]:
             activity.log(db, "account.enable", detail={"username": u["username"]}, actor=activity.COMMAND_LINE)
-        print(f"One-time password for {u['username']}: {pw}  (signed out everywhere; they choose a new one at sign-in)")
+        print(f"One-time password for {u['username']}: {pw}  (signed out everywhere; they choose a new one at sign-in, within {config.TEMP_PASSWORD_DAYS} days)")
         if u["disabled"] and not enable:
             print("Note: this account is disabled, so it still can't sign in. Add --enable to turn it back on.")
         elif u["disabled"]:
