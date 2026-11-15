@@ -79,6 +79,17 @@ def has_second_factor(db, u):
     return bool(u["totp_secret"]) or db.execute("SELECT 1 FROM passkeys WHERE user_id=? LIMIT 1", (u["id"],)).fetchone() is not None
 
 
+def solo_install(db):
+    """One account and nobody else on the server."""
+    return db.execute("SELECT COUNT(*) FROM users").fetchone()[0] <= 1
+
+
+def admin_needs_second_factor(db, u):
+    """Admin actions need the admin's own second factor (ASVS 4.3.1), except on a one-person install: there the
+    admin is the only account, so the rule starts once a second account exists."""
+    return bool(u["is_admin"]) and not has_second_factor(db, u) and not solo_install(db)
+
+
 def short_password_check(db, uid):
     """After a second factor went: a password only allowed because of it has to be replaced at the next sign-in."""
     u = db.execute("SELECT id, totp_secret FROM users WHERE id=?", (uid,)).fetchone()

@@ -268,6 +268,7 @@ details.res > div{padding:0 12px 10px}
 main.acct{max-width:860px;margin:0 auto;padding:20px}
 .acct .card h2{margin-bottom:4px}
 .acct .warn{border-color:var(--c-study);font-weight:550}
+.acct .reauth{border-left:3px solid var(--c-study);padding:4px 0 4px 12px;margin:10px 0}
 .acct .form{display:grid;gap:10px;max-width:420px}
 .acct .form.inline{display:flex;flex-wrap:wrap;align-items:flex-end;max-width:none;margin-top:12px}
 .acct label{display:grid;gap:4px;font-size:13px;color:var(--ink2);font-weight:550}

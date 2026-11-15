@@ -71,15 +71,21 @@
     <h2>Accounts <span class="tag">admin</span></h2>
     <p class="hint">Create an account for each person who signs in. They get a one-time password and choose their own at first sign-in.
       Being an admin lets someone manage accounts; it doesn't show them anyone's records.</p>
-    <label class="check"><input type="checkbox" id="reqTf"> Require two-factor sign-in for everyone</label>
-    <div id="userList"></div>
-    <div id="ownerless"></div>
-    <div id="acctLog"></div>
-    <form id="userNew" class="form inline">
-      <label>Username <input id="userName" autocapitalize="none" spellcheck="false" required></label>
-      <label class="check"><input type="checkbox" id="userAdmin"> Admin</label>
-      <button class="btn" type="submit">Create account</button><span class="msg" id="userMsg" role="status"></span>
-    </form>
+    <p class="warn" id="adminTf" hidden>To manage accounts, turn on two-factor sign-in (the authenticator app) or add a
+      passkey for your own account, above. Admins need one as soon as the server has more than one account.</p>
+    <div id="reauth" class="reauth" hidden></div>
+    <div id="adminTools">
+      <label class="check"><input type="checkbox" id="reqTf"> Require two-factor sign-in for everyone</label>
+      <div id="userList"></div>
+      <div id="ownerless"></div>
+      <div id="acctLog"></div>
+      <form id="userNew" class="form inline">
+        <label>Username <input id="userName" autocapitalize="none" spellcheck="false" required></label>
+        <label class="check"><input type="checkbox" id="userAdmin"> Admin</label>
+        <button class="btn" type="submit">Create account</button>
+      </form>
+    </div>
+    <span class="msg" id="userMsg" role="status"></span>
   </section>
 </main>
 <script src="js/util.js"></script>

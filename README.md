@@ -120,6 +120,12 @@ portal's export doesn't import, please open an issue with an anonymised sample.
 - **Every request for records or documents checks the account's role on that profile.** Documents are served
   only through that check, read-only, with scripts blocked; no folder of health data is served directly.
 - **Admins manage accounts, not records:** being an admin doesn't show anyone's records.
+- **Admins need a second factor:** once the server has more than one account, an admin needs an authenticator app
+  or a passkey on their own account to use any admin action under **Account**; until then the page says to set one
+  up. A one-person install (one admin, no other accounts) is exempt. Resetting someone's password, turning off their
+  two-factor sign-in or making someone an admin also asks the admin to confirm it's them (password, code or passkey)
+  unless they did so, or signed in, within the last 5 minutes (`REAUTH_MINUTES` in `.env`). The command line
+  (`server.manage`) needs neither, so it stays the way back in, for example after an admin loses their phone.
 - **Export everything:** owners and editors can download a profile as one zip (records, documents, settings, watch
   data and activity) under **Account**, and load it into another install with `server.manage create-profile` and
   `import`.

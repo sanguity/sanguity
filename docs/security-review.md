@@ -57,7 +57,7 @@ Each fix has a test in `tests/test_api.py` or `tests/browser_check.py`.
 All five are in the Phase 1 milestone.
 
 - #74 Pepper password hashes and strengthen recovery codes (2.4.5, 2.6.2): fixed; the pepper is kept encrypted with the data key, and recovery codes stay 8 characters, now salted
-- #75 Second factor for admin actions (4.3.1, 4.3.3)
+- #75 Second factor for admin actions (4.3.1, 4.3.3): done, admins need a second factor (a one-person install is exempt) and a fresh check before the most powerful actions
 - #76 Decide session lifetime defaults (3.3.2): decided, see [Accepted deviations](#accepted-deviations)
 - #77 Automatic dependency updates, and an update path that pulls patched images (14.2.1): done, see 14.2.1
 - #78 Confirm or change the accepted ASVS deviations (2.1.1, 6.4.2, 8.1.4, 9.1.1, 9.2.2, 14.4.5): decided, see [Accepted deviations](#accepted-deviations)
@@ -200,9 +200,9 @@ The issue asked for these items in particular.
 | 4.1.5 | Fails securely | Met | Errors are raised before any data is read. A profile that isn't shared with you is a 404 (`need`). |
 | 4.2.1 | No insecure direct object references | Met | Every profile route calls `need()`. Documents are looked up by random id within the profile (`_document`). Sessions and passkeys are matched to the caller's `user_id`. Tests cover access across accounts. |
 | 4.2.2 | CSRF protection | Met | `X-Sanguity` header plus Origin check on every state-changing `/api/` call (`main.guard`), and SameSite=Strict (`test_csrf`). |
-| 4.3.1 | Admin interfaces use multi-factor | **Issue #75** | Only when the server requires 2FA for everyone. |
+| 4.3.1 | Admin interfaces use multi-factor | Met (#75) | The `admin` dependency refuses every admin route (`admin_two_factor_required`) until the admin has an authenticator app or a passkey, once the server has more than one account (`accounts.admin_needs_second_factor`). The owner exempted a one-person install: with no other accounts there is nobody to manage. `server.manage` on the command line needs no second factor, and stays the way back in. |
 | 4.3.2 | No directory browsing or metadata files | Met | nginx serves an allow-list of paths, with no autoindex. `.git` and the config files aren't reachable. |
-| 4.3.3 | Step-up for lower-value systems | **Issue #75** | Same as 4.3.1. |
+| 4.3.3 | Step-up for lower-value systems | Met (#75) | Resetting a password, turning off someone's two-factor sign-in and making someone an admin (`main.fresh`) need the password, a code or a passkey within `REAUTH_MINUTES` (5). Signing in counts. `POST /api/me/reauth` and `/api/me/reauth/passkey` renew it. Schema version 9 adds `sessions.verified_at`; sessions from before it ask at their next such action. |
 
 ## V5 Validation, sanitization and encoding
 
