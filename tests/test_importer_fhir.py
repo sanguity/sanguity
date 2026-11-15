@@ -286,6 +286,17 @@ class Keys(unittest.TestCase):
         nd = fhir.parse(self.bundle_as_ndjson())["data"]
         self.assertEqual(keys(nd), keys(self.bundle))
 
+    def test_series_keys_unique_when_one_code_has_two_units(self):
+        labs = fhir.parse(upload(os.path.join(FIX, "two-units")))["data"]["labs"]
+        ks = [s["key"] for s in labs]
+        self.assertEqual(len(ks), len(set(ks)))
+        self.assertEqual(sorted(ks), ["loinc:2160-0", "loinc:2345-7|mg/dL", "loinc:2345-7|mmol/L"])
+        self.assertEqual(series({"labs": labs}, "Glucose (mmol/L)")["pts"][0][1], 5.4)
+        for d in ("bundle", "ndjson", "apple-health"):   # no split: plain keys, still unique
+            ks = [s["key"] for s in fhir.parse(upload(os.path.join(FIX, d)))["data"]["labs"] if "key" in s]
+            self.assertEqual(len(ks), len(set(ks)), d)
+            self.assertFalse(any("|" in k for k in ks if k.startswith("loinc:")), d)
+
     def test_resource_without_id(self):
         obs = {"resourceType": "Observation", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
                "code": {"coding": [{"system": "http://loinc.org", "code": "2345-7"}]},

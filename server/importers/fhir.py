@@ -759,6 +759,13 @@ def parse(files):
                        **({"loinc": s["loinc"]} if s["loinc"] else {}),
                        **({"key": f"loinc:{s['loinc']}"} if s["loinc"] else {"key": f"fhir:{s['code']}"} if s["code"] else {}),
                        "pts": pts, "txt": sorted(s["txt"], key=lambda p: p[0])[-50:]})
+    # series keys are unique within an import: one test code split by unit gets "|<unit as reported>" on each,
+    # and (rarely) the same code and unit under two reported names gets "|<name>" as well
+    for extra in (lambda s: s["unit"], lambda s: s["name"]):
+        seen = Counter(s["key"] for s in series if "key" in s)
+        for s in series:
+            if seen.get(s.get("key"), 0) > 1:
+                s["key"] += f"|{extra(s)}"
     series.sort(key=lambda s: (-s["n"], s["name"]))
     b.events.sort(key=lambda e: e["t"])
     problems.sort(key=lambda p: (p["date"] or "", p["name"]))
