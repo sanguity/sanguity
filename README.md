@@ -1,4 +1,9 @@
-# Sanguity
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/sanguity-wordmark-dark.svg">
+    <img src="docs/logo/sanguity-wordmark.svg" alt="Sanguity" width="300">
+  </picture>
+</h1>
 
 **Your medical records, insurance claims and wearable data on one private timeline, on your own server.**
 
