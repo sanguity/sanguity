@@ -30,6 +30,15 @@
     </form>
   </section>
 
+  <div class="card warn" id="needTf" hidden>This server requires two-factor sign-in. Turn it on below to continue.</div>
+
+  <section class="card" id="twofa">
+    <h2>Two-factor sign-in</h2>
+    <p class="hint" id="tfHint"></p>
+    <div id="tfBody"></div>
+    <span class="msg" id="tfMsg" role="status"></span>
+  </section>
+
   <section class="card" id="sessions">
     <h2>Where you're signed in</h2>
     <p class="hint">Sign out any device you don't recognise. Changing your password also signs out every other device.</p>
@@ -52,6 +61,7 @@
     <h2>Accounts <span class="tag">admin</span></h2>
     <p class="hint">Create an account for each person who signs in. They get a one-time password and choose their own at first sign-in.
       Being an admin lets someone manage accounts; it doesn't show them anyone's records.</p>
+    <label class="check"><input type="checkbox" id="reqTf"> Require two-factor sign-in for everyone</label>
     <div id="userList"></div>
     <div id="acctLog"></div>
     <form id="userNew" class="form inline">

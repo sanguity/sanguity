@@ -284,6 +284,93 @@ class Api(unittest.TestCase):
         self.assertIsNone(db.execute("SELECT 1 FROM activity WHERE actor='old'").fetchone())
         db.close()
 
+    def test_two_factor(self):
+        import time
+        from server import accounts, manage, twofactor
+        step = lambda: int(time.time() // twofactor.PERIOD)
+        code = lambda secret, ahead=0: twofactor._code(secret, step() + ahead)
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='tess'").fetchone():
+            accounts.create(db, "tess", password="tess keeps a long passphrase")
+        tess_id = db.execute("SELECT id FROM users WHERE username='tess'").fetchone()[0]
+        tess = self.login("tess", "tess keeps a long passphrase")
+        other = self.login("tess", "tess keeps a long passphrase")   # a second device, signed in before 2FA
+        # turning it on: a secret to scan, confirmed with a first code, then 10 recovery codes shown once
+        self.assertFalse(tess.get("/api/me/2fa").json()["on"])
+        started = tess.post("/api/me/2fa/start", headers=H).json()
+        secret = started["secret"]
+        self.assertTrue(started["uri"].startswith("otpauth://totp/Sanguity:tess?") and started["qr"].startswith("data:image/svg+xml;base64,"))
+        self.assertEqual(tess.post("/api/me/2fa/confirm", json={"code": "000000"}, headers=H).status_code, 400)
+        first_code = code(secret)   # kept: the same code must not work again
+        r = tess.post("/api/me/2fa/confirm", json={"code": first_code}, headers=H)
+        recovery = r.json()["recovery_codes"]
+        self.assertEqual(len(recovery), 10)
+        self.assertTrue(tess.get("/api/me").json()["user"]["two_factor"])
+        self.assertEqual(tess.get("/api/me").json()["password_min"], 8)
+        # signing in: the password alone gives a ticket, not a session
+        c = client()
+        first = c.post("/api/login", json={"username": "tess", "password": "tess keeps a long passphrase"}, headers=H).json()
+        self.assertTrue(first["two_factor"])
+        self.assertEqual(c.get("/api/me").status_code, 401)
+        self.assertEqual(c.post("/api/login/code", json={"ticket": first["ticket"], "code": first_code}, headers=H).status_code, 401)   # already used
+        self.assertEqual(c.post("/api/login/code", json={"ticket": "made-up", "code": code(secret, 1)}, headers=H).status_code, 401)
+        self.assertEqual(c.post("/api/login/code", json={"ticket": first["ticket"], "code": code(secret, 1)}, headers=H).status_code, 200)
+        self.assertEqual(c.get("/api/me").status_code, 200)
+        # five wrong codes and the ticket is gone, even before the throttle
+        c2 = client()
+        t = c2.post("/api/login", json={"username": "tess", "password": "tess keeps a long passphrase"}, headers=H).json()["ticket"]
+        for _ in range(5):
+            c2.post("/api/login/code", json={"ticket": t, "code": "123456"}, headers=H)
+        self.assertIn(c2.post("/api/login/code", json={"ticket": t, "code": code(secret, 1)}, headers=H).status_code, (401, 429))
+        sec.throttle.clear(*list(sec.throttle._fails))
+        # a recovery code: works once, signs out every other session, says how many are left
+        c3 = client()
+        t = c3.post("/api/login", json={"username": "tess", "password": "tess keeps a long passphrase"}, headers=H).json()["ticket"]
+        r = c3.post("/api/login/code", json={"ticket": t, "code": recovery[0].upper().replace("-", " ")}, headers=H)
+        self.assertEqual((r.status_code, r.json().get("recovery_codes_left")), (200, 9))
+        self.assertEqual(other.get("/api/me").status_code, 401)
+        self.assertEqual(tess.get("/api/me").status_code, 401)
+        t = client().post("/api/login", json={"username": "tess", "password": "tess keeps a long passphrase"}, headers=H).json()["ticket"]
+        self.assertEqual(client().post("/api/login/code", json={"ticket": t, "code": recovery[0]}, headers=H).status_code, 401)
+        # with 2FA on, an 8-character password is allowed; turning 2FA off then asks for a 15-character one
+        tess = c3
+        r = tess.post("/api/me/password", json={"current": "tess keeps a long passphrase", "new": "kq7 zv3m"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(tess.post("/api/me/2fa/off", json={"password": "wrong password!!"}, headers=H).status_code, 403)
+        r = tess.post("/api/me/2fa/off", json={"password": "kq7 zv3m"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["must_change_pw"]), (200, True))
+        self.assertTrue(tess.get("/api/me").json()["user"]["must_change_pw"])
+        r = tess.post("/api/me/password", json={"current": "kq7 zv3m", "new": "kq7 zv3m again"}, headers=H)
+        self.assertEqual(r.status_code, 400)   # 15 characters again without the second factor
+        tess.post("/api/me/password", json={"current": "kq7 zv3m", "new": "tess keeps a long passphrase 2"}, headers=H)
+        self.assertEqual(client().post("/api/login", json={"username": "tess", "password": "tess keeps a long passphrase 2"},
+                                       headers=H).json(), {"must_change_pw": False})   # no second step any more
+        # require it for everyone: only an admin who has it on can; others must set it up before seeing records
+        ben = self.login("ben")
+        self.assertEqual(ben.patch("/api/settings", json={"require_2fa": True}, headers=H).status_code, 409)
+        db.execute("UPDATE users SET is_admin=1 WHERE id=?", (tess_id,))
+        secret = tess.post("/api/me/2fa/start", headers=H).json()["secret"]
+        tess.post("/api/me/2fa/confirm", json={"code": code(secret)}, headers=H)
+        self.assertEqual(tess.patch("/api/settings", json={"require_2fa": True}, headers=H).status_code, 200)
+        try:
+            self.assertEqual(ben.get("/api/profiles/1/data").json()["detail"], "two_factor_required")
+            self.assertTrue(ben.get("/api/me").json()["user"]["needs_two_factor"])
+            self.assertEqual(ben.post("/api/me/2fa/start", headers=H).status_code, 200)   # setting it up is still allowed
+            self.assertEqual(tess.post("/api/me/2fa/off", json={"password": "tess keeps a long passphrase 2"}, headers=H).status_code, 409)
+        finally:
+            tess.patch("/api/settings", json={"require_2fa": False}, headers=H)
+        self.assertEqual(ben.get("/api/profiles/1/data").status_code, 200)
+        # an admin, or the command line, can turn someone's off (lost phone and codes): signed out everywhere
+        self.assertEqual(ben.patch(f"/api/users/{tess_id}", json={"disable_2fa": True}, headers=H).status_code, 200)
+        self.assertEqual(tess.get("/api/me").status_code, 401)
+        self.assertEqual(client().post("/api/login", json={"username": "tess", "password": "tess keeps a long passphrase 2"},
+                                       headers=H).json(), {"must_change_pw": False})
+        manage.run(["disable-2fa", "tess"])
+        actions = {r[0] for r in db.execute("SELECT action FROM activity WHERE profile_id IS NULL")}
+        self.assertTrue({"2fa.on", "2fa.off", "2fa.recovery", "2fa.reset", "settings.require_2fa"} <= actions)
+        db.execute("UPDATE users SET is_admin=0 WHERE id=?", (tess_id,))
+        db.close()
+
     def test_breached_and_context_passwords_are_refused(self):
         from server import accounts
         breached = ("correct horse battery staple", "Correct Horse Battery Staple 1!", "iloveyouiloveyou", "passwordpassword1")

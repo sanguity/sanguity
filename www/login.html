@@ -33,8 +33,15 @@ button:disabled{opacity:.6;cursor:wait}
   </div>
   <label for="u">Username</label>
   <input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
-  <label for="p">Password</label>
-  <input id="p" name="password" type="password" autocomplete="current-password" required>
+  <div id="step1">
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="current-password" required>
+  </div>
+  <div id="step2" hidden>
+    <label for="c">Code from your authenticator app</label>
+    <input id="c" name="code" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" placeholder="123 456">
+    <div class="note" style="margin-top:6px">Lost your phone? Enter one of your recovery codes instead.</div>
+  </div>
   <button id="b" type="submit">Sign in</button>
   <div class="err" id="e" role="alert"></div>
   <div class="note">Private medical records. You'll stay signed in on this device until you log out, for up to 30 days.</div>
@@ -43,17 +50,35 @@ button:disabled{opacity:.6;cursor:wait}
 <script>
 const f = document.getElementById("f"), btn = document.getElementById("b"), err = document.getElementById("e");
 api("setup").then(r => r.json()).then(s => { if (s.needed) location.replace("setup.html"); }).catch(() => {});
+let ticket = null;   // after a correct password, when the account has two-factor sign-in on
+function codeStep(on) {
+  ticket = on || null;
+  document.getElementById("step1").hidden = !!on; document.getElementById("step2").hidden = !on;
+  document.getElementById("u").readOnly = !!on; document.getElementById("p").required = !on;
+  btn.textContent = on ? "Continue" : "Sign in";
+  if (on) document.getElementById("c").focus();
+}
 f.addEventListener("submit", async ev => {
   ev.preventDefault();
   const username = document.getElementById("u").value.trim(), password = document.getElementById("p").value;
   btn.disabled = true; err.textContent = "";
   try {
-    const r = await api("login", {method: "POST", body: JSON.stringify({username, password})});
+    const r = ticket
+      ? await api("login/code", {method: "POST", body: JSON.stringify({ticket, code: document.getElementById("c").value})})
+      : await api("login", {method: "POST", body: JSON.stringify({username, password})});
     const j = await r.json().catch(() => ({}));
-    if (r.ok) { location.replace(j.must_change_pw ? "account.html#password" : "./"); return; }
+    if (r.ok && j.two_factor) { codeStep(j.ticket); btn.disabled = false; return; }
+    if (r.ok) {
+      if (j.recovery_codes_left != null)   // a recovery code was used: say what that means before going on
+        alert(`Signed in with a recovery code. You have ${j.recovery_codes_left} left, and every other device was signed out. ` +
+              "If you lost your phone, set up two-factor sign-in again under Account.");
+      location.replace(j.must_change_pw ? "account.html#password" : "./"); return;
+    }
     err.textContent = j.detail || "Sign-in failed (" + r.status + ").";
+    if (ticket && /too long/.test(j.detail || "")) { codeStep(null); document.getElementById("p").value = ""; }
   } catch (e) { err.textContent = "Couldn't reach the server."; }
-  btn.disabled = false; document.getElementById("p").select();
+  btn.disabled = false;
+  (ticket ? document.getElementById("c") : document.getElementById("p")).select();
 });
 </script>
 </body>

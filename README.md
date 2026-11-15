@@ -64,6 +64,7 @@ Optional: `corrections.json` (milestones and hand corrections; see `corrections.
 | `docker compose run --rm setup rebuild` | Rebuild the data after adding or updating exports |
 | `docker compose exec app python -m server.manage reset-password NAME` | One-time password for a locked-out account |
 | `docker compose exec app python -m server.manage list` | Accounts, profiles and who has which role |
+| `docker compose exec app python -m server.manage disable-2fa NAME` | Turn off two-factor sign-in for someone who lost their phone and recovery codes |
 | `git pull && docker compose up -d --build` | Update Sanguity |
 
 **Upgrading from a version without accounts:**
@@ -95,6 +96,8 @@ portal's export doesn't import, please open an issue with an anonymised sample.
   public breaches are refused, checked against a bundled list on your server, see `server/passwords/`), sign-in throttling,
   and server-side sessions you can see and sign out under **Account**. Optionally sign people out after a period
   of inactivity (`SESSION_IDLE_MINUTES` in `.env`).
+- **Two-factor sign-in** with an authenticator app (codes that can't be reused) and one-time recovery codes, under
+  **Account**; admins can require it for everyone. With it on, a password may be as short as 8 characters.
 - **Every request for records or documents checks the account's role on that profile.** Documents are served
   only through that check, read-only, with scripts blocked; no folder of health data is served directly.
 - **Admins manage accounts, not records:** being an admin doesn't show anyone's records.

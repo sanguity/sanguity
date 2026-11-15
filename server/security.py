@@ -100,11 +100,13 @@ def _variants(pw):
     return {v for v in out if len(v) >= 8}
 
 
-def password_problem(pw, username=""):
-    """Why a new password is refused, or None. Per NIST SP 800-63B: a minimum length, no composition rules, and
-    nothing from lists of breached passwords or built from this service's name or the username."""
-    if not isinstance(pw, str) or len(pw) < config.PASSWORD_MIN:
-        return f"Use at least {config.PASSWORD_MIN} characters. A few unrelated words make a strong, memorable password."
+def password_problem(pw, username="", minimum=None):
+    """Why a new password is refused, or None. Per NIST SP 800-63B: a minimum length (shorter with two-factor
+    sign-in on), no composition rules, and nothing from lists of breached passwords or built from this service's
+    name or the username."""
+    minimum = minimum or config.PASSWORD_MIN
+    if not isinstance(pw, str) or len(pw) < minimum:
+        return f"Use at least {minimum} characters. A few unrelated words make a strong, memorable password."
     if len(pw) > config.PASSWORD_MAX:
         return f"Use at most {config.PASSWORD_MAX} characters."
     if len(set(pw)) < 4:

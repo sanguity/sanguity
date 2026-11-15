@@ -251,6 +251,20 @@ def main():
             page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.textContent.includes('disabled'))", timeout=10000)
             problems[before:] = [x for x in problems[before:] if "409" not in x]   # the refusal that prompts the question
             check("disabling a profile's only owner asks first", asked and "only owner of Alex's records" in asked[0], asked[:1])
+            # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
+            from server import twofactor
+            import time as _time
+            totp = lambda key, ahead=0: twofactor._code(key, int(_time.time() // twofactor.PERIOD) + ahead)
+            page.locator("#twofa").get_by_role("button", name="Turn on").click()
+            page.wait_for_selector("#twofa .tf-key")
+            key = js("document.querySelector('#twofa .tf-key').textContent").replace(" ", "")
+            check("2FA setup shows a QR code", js("document.querySelector('#twofa .tf-setup img').naturalWidth > 100"))
+            page.locator("#twofa input").fill(totp(key))
+            page.locator("#twofa").get_by_role("button", name="Confirm").click()
+            page.wait_for_selector("#twofa .tf-codes")
+            check("2FA confirmed, 10 recovery codes shown", len(js("document.querySelector('#twofa .tf-codes').textContent").split()) == 10)
+            page.locator("#twofa").get_by_role("button", name="I've saved them").click()
+            page.wait_for_function("document.getElementById('tfHint').textContent.startsWith('On.')")
             # log out ends the session: the API now refuses
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
@@ -258,6 +272,16 @@ def main():
             page.click("#logout")
             page.wait_for_url("**/login.html", timeout=10000)
             check("log out ends the session", js("fetch('api/me').then(r => r.status)") == 401)
+            # signing in again takes the password, then a code
+            page.fill("#u", USER)
+            page.fill("#p", PW)
+            page.click("#b")
+            page.wait_for_selector("#c", state="visible")
+            check("2FA: the password alone doesn't sign in", js("fetch('api/me').then(r => r.status)") == 401)
+            page.fill("#c", totp(key, 1))
+            page.click("#b")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            check("2FA: the code signs in", js("fetch('api/me').then(r => r.status)") == 200)
             problems[before:] = [x for x in problems[before:] if "401" not in x]   # only the 401s after logging out were the point
         except Exception as e:   # report what was caught so far instead of a bare traceback
             problems.append(f"check stopped: {str(e).splitlines()[0]}")

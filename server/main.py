@@ -3,7 +3,7 @@
 Roles on a profile:  owner (view, import/edit, share, delete) · editor (view, import/edit) · viewer (view).
 Admin is an account flag for managing accounts only; it gives no access to anyone's records.
 """
-import logging, os, secrets, string
+import logging, os, secrets, string, threading
 from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, backup, config, db as dbm, profiles as prof, security as sec
+from . import accounts, activity, backup, config, db as dbm, profiles as prof, security as sec, twofactor
 
 log = logging.getLogger("sanguity")
 RANK = {"viewer": 1, "editor": 2, "owner": 3}
@@ -136,10 +136,18 @@ def any_user(request: Request, db=Depends(get_db)):
     return s
 
 
-def user(s=Depends(any_user)):
-    """Signed in, with no pending password change."""
+def settled(s=Depends(any_user)):
+    """Signed in, with no pending password change (two-factor setup may still be due)."""
     if s["must_change_pw"]:
         raise HTTPException(403, "password_change_required")
+    return s
+
+
+def user(s=Depends(settled), db=Depends(get_db)):
+    """Signed in, with nothing left to set up: no pending password change, and two-factor sign-in on if the server
+    requires it."""
+    if not s["totp_secret"] and accounts.two_factor_required(db):
+        raise HTTPException(403, "two_factor_required")
     return s
 
 
@@ -250,9 +258,89 @@ def login(body: Login, request: Request, response: Response, db=Depends(get_db))
     sec.throttle.clear(keys[0])   # this person on this device got in; the address and account counts age out
     if sec.needs_rehash(u["pw_hash"]):
         db.execute("UPDATE users SET pw_hash=? WHERE id=?", (sec.hash_password(pw), u["id"]))
+    if u["totp_secret"]:   # the password was right; now the code
+        return {"two_factor": True, "ticket": _tickets.issue(u["id"])}
     _remember_device(request, response, db, u["id"])
     _start_session(request, response, db, u["id"])
     return {"must_change_pw": bool(u["must_change_pw"])}
+
+
+class _Tickets:
+    """Between a correct password and a correct code: a short-lived, single-account ticket. In memory (a restart
+    means entering the password again); five wrong codes and it's gone, besides the sign-in throttle."""
+    TTL, TRIES, MAX = 300, 5, 10000
+
+    def __init__(self):
+        self._t, self._lock = {}, threading.Lock()
+
+    def issue(self, uid):
+        token, now = sec.new_token(), dbm.now()
+        with self._lock:
+            if len(self._t) >= self.MAX:
+                self._t = {k: v for k, v in self._t.items() if v[1] > now}
+            self._t[sec.token_hash(token)] = [uid, now + self.TTL, 0]
+        return token
+
+    def get(self, token):
+        with self._lock:
+            t = self._t.get(sec.token_hash(token or ""))
+            return t[0] if t and t[1] > dbm.now() else None
+
+    def failed(self, token):
+        with self._lock:
+            t = self._t.get(sec.token_hash(token))
+            if t:
+                t[2] += 1
+                if t[2] >= self.TRIES:
+                    del self._t[sec.token_hash(token)]
+
+    def used(self, token):
+        with self._lock:
+            self._t.pop(sec.token_hash(token), None)
+
+
+_tickets = _Tickets()
+
+
+class LoginCode(BaseModel):
+    ticket: str
+    code: str
+
+
+@app.post("/api/login/code")
+def login_code(body: LoginCode, request: Request, response: Response, db=Depends(get_db)):
+    """The second step: a code from the authenticator app, or a recovery code."""
+    uid = _tickets.get(body.ticket[:200])
+    u = db.execute("SELECT * FROM users WHERE id=? AND disabled=0", (uid,)).fetchone() if uid else None
+    if not u or not u["totp_secret"]:
+        raise HTTPException(401, "That took too long. Enter your password again.")
+    keys = ("pair:2fa|" + str(uid) + "|" + _client_ip(request), "user:2fa|" + str(uid))
+    if (w := sec.throttle.wait(*keys)):
+        raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.", headers={"Retry-After": str(w)})
+    out = {"must_change_pw": bool(u["must_change_pw"])}
+    if twofactor.looks_like_code(body.code):
+        step = twofactor.verify(u["totp_secret"], body.code, u["totp_last_step"])
+        if step is None:
+            sec.throttle.fail(*keys)
+            _tickets.failed(body.ticket)
+            raise HTTPException(401, "That code isn't right. Check your authenticator app's time, or use a recovery code.")
+        db.execute("UPDATE users SET totp_last_step=? WHERE id=?", (step, uid))
+    else:
+        hit = db.execute("UPDATE recovery_codes SET used_at=? WHERE user_id=? AND code_hash=? AND used_at IS NULL",
+                         (dbm.now(), uid, twofactor.recovery_hash(body.code))).rowcount
+        if not hit:
+            sec.throttle.fail(*keys)
+            _tickets.failed(body.ticket)
+            raise HTTPException(401, "That recovery code isn't right, or it was used already.")
+        accounts.sign_out_everywhere(db, uid)   # a recovery code may mean a lost phone: end every other sign-in
+        out["recovery_codes_left"] = left = db.execute(
+            "SELECT COUNT(*) FROM recovery_codes WHERE user_id=? AND used_at IS NULL", (uid,)).fetchone()[0]
+        activity.log(db, "2fa.recovery", u, detail={"left": left}, ip=_client_ip(request))
+    _tickets.used(body.ticket)
+    sec.throttle.clear(keys[0])
+    _remember_device(request, response, db, uid)
+    _start_session(request, response, db, uid)
+    return out
 
 
 def _known_device(request, db, u):
@@ -302,10 +390,18 @@ def _profiles_for(db, uid):
 
 @app.get("/api/me")
 def me(s=Depends(any_user), db=Depends(get_db)):
+    required = accounts.two_factor_required(db)
+    needs_2fa = required and not s["totp_secret"]
     return {"user": {"id": s["id"], "username": s["username"], "is_admin": bool(s["is_admin"]),
-                     "must_change_pw": bool(s["must_change_pw"])},
-            "profiles": _profiles_for(db, s["id"]) if not s["must_change_pw"] else [],
-            "password_min": config.PASSWORD_MIN}
+                     "must_change_pw": bool(s["must_change_pw"]), "two_factor": bool(s["totp_secret"]),
+                     "needs_two_factor": needs_2fa},
+            "two_factor_required": required,
+            "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
+            "password_min": _password_min(s)}
+
+
+def _password_min(s):
+    return config.PASSWORD_MIN_2FA if s["totp_secret"] else config.PASSWORD_MIN
 
 
 class PasswordChange(BaseModel):
@@ -321,14 +417,102 @@ def change_password(body: PasswordChange, request: Request, s=Depends(any_user),
     if not sec.verify_password(s["pw_hash"], body.current[:config.PASSWORD_MAX]):
         sec.throttle.fail(*keys)
         raise HTTPException(403, "Your current password is wrong.")
-    if (p := sec.password_problem(body.new, s["username"])):
+    if (p := sec.password_problem(body.new, s["username"], _password_min(s))):
         raise HTTPException(400, p)
     if sec.verify_password(s["pw_hash"], body.new):
         raise HTTPException(400, "Choose a password different from the current one.")
-    db.execute("UPDATE users SET pw_hash=?, must_change_pw=0 WHERE id=?", (sec.hash_password(body.new), s["id"]))
+    db.execute("UPDATE users SET pw_hash=?, must_change_pw=0, pw_short=? WHERE id=?",
+               (sec.hash_password(body.new), int(len(body.new) < config.PASSWORD_MIN), s["id"]))
     n = db.execute("DELETE FROM sessions WHERE user_id=? AND id<>?", (s["id"], s["sid"])).rowcount
     activity.log(db, "password", s, ip=_client_ip(request))
     return {"ok": True, "signed_out_elsewhere": n}
+
+
+# ---------------------------------------------------------------- two-factor sign-in, for the signed-in account
+
+class TwoFactorCode(BaseModel):
+    code: str
+
+
+class TwoFactorOff(BaseModel):
+    password: str
+
+
+@app.get("/api/me/2fa")
+def two_factor_state(s=Depends(settled), db=Depends(get_db)):
+    left = db.execute("SELECT COUNT(*) FROM recovery_codes WHERE user_id=? AND used_at IS NULL", (s["id"],)).fetchone()[0]
+    return {"on": bool(s["totp_secret"]), "recovery_codes_left": left if s["totp_secret"] else 0,
+            "required": accounts.two_factor_required(db)}
+
+
+@app.post("/api/me/2fa/start")
+def two_factor_start(s=Depends(settled), db=Depends(get_db)):
+    """A new secret to scan; it takes effect only once a code from it is confirmed."""
+    if s["totp_secret"]:
+        raise HTTPException(409, "Two-factor sign-in is already on.")
+    secret = twofactor.new_secret()
+    db.execute("UPDATE users SET totp_pending=? WHERE id=?", (secret, s["id"]))
+    link = twofactor.uri(secret, s["username"])
+    return {"secret": secret, "uri": link, "qr": twofactor.qr_data_uri(link)}
+
+
+@app.post("/api/me/2fa/confirm")
+def two_factor_confirm(body: TwoFactorCode, request: Request, s=Depends(settled), db=Depends(get_db)):
+    if s["totp_secret"]:
+        raise HTTPException(409, "Two-factor sign-in is already on.")
+    keys = ("pair:2fa|" + str(s["id"]) + "|" + _client_ip(request),)
+    if (w := sec.throttle.wait(*keys)):
+        raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.")
+    step = twofactor.verify(s["totp_pending"], body.code)
+    if step is None:
+        sec.throttle.fail(*keys)
+        raise HTTPException(400, "That code doesn't match. Scan the QR code again, and check the time on your phone.")
+    with dbm.transaction(db):
+        db.execute("UPDATE users SET totp_secret=totp_pending, totp_pending=NULL, totp_last_step=? WHERE id=?", (step, s["id"]))
+        codes = accounts.new_recovery_codes(db, s["id"])
+        activity.log(db, "2fa.on", s, ip=_client_ip(request))
+    return {"recovery_codes": codes}
+
+
+@app.post("/api/me/2fa/recovery-codes")
+def two_factor_new_codes(body: TwoFactorCode, request: Request, s=Depends(settled), db=Depends(get_db)):
+    """Replace the recovery codes; needs a current code from the app."""
+    if not s["totp_secret"]:
+        raise HTTPException(409, "Two-factor sign-in is off.")
+    keys = ("pair:2fa|" + str(s["id"]) + "|" + _client_ip(request),)
+    if (w := sec.throttle.wait(*keys)):
+        raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.")
+    step = twofactor.verify(s["totp_secret"], body.code, s["totp_last_step"])
+    if step is None:
+        sec.throttle.fail(*keys)
+        raise HTTPException(400, "That code isn't right.")
+    with dbm.transaction(db):
+        db.execute("UPDATE users SET totp_last_step=? WHERE id=?", (step, s["id"]))
+        codes = accounts.new_recovery_codes(db, s["id"])
+        activity.log(db, "2fa.codes", s, ip=_client_ip(request))
+    return {"recovery_codes": codes}
+
+
+@app.post("/api/me/2fa/off")
+def two_factor_off(body: TwoFactorOff, request: Request, s=Depends(settled), db=Depends(get_db)):
+    """Turn it off; needs the password. Signs out everywhere else."""
+    if not s["totp_secret"]:
+        raise HTTPException(409, "Two-factor sign-in is already off.")
+    if accounts.two_factor_required(db):
+        raise HTTPException(409, "This server requires two-factor sign-in, so it can't be turned off.")
+    keys = ("pair:pw|" + s["username"].lower() + "|" + _client_ip(request),)
+    if (w := sec.throttle.wait(*keys)):
+        raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
+    if not sec.verify_password(s["pw_hash"], body.password[:config.PASSWORD_MAX]):
+        sec.throttle.fail(*keys)
+        raise HTTPException(403, "Your password is wrong.")
+    with dbm.transaction(db):
+        accounts.turn_off_2fa(db, s["id"])
+        activity.log(db, "2fa.off", s, ip=_client_ip(request))
+    # turn_off_2fa ended every session, this one too: start a fresh one so the page keeps working
+    response = JSONResponse({"ok": True, "must_change_pw": bool(s["pw_short"])})
+    _start_session(request, response, db, s["id"])
+    return response
 
 
 @app.get("/api/sessions")
@@ -547,7 +731,7 @@ def document_part(pid: int, doc: str, part: str, request: Request, s=Depends(use
 @app.get("/api/users")
 def users(s=Depends(admin), db=Depends(get_db)):
     return [dict(r) for r in db.execute(
-        """SELECT id, username, is_admin, disabled, must_change_pw, created,
+        """SELECT id, username, is_admin, disabled, must_change_pw, created, totp_secret IS NOT NULL AS two_factor,
                   (SELECT COUNT(*) FROM sessions x WHERE x.user_id = users.id AND x.expires > ?) AS sessions
            FROM users ORDER BY username COLLATE NOCASE""", (dbm.now(),))]
 
@@ -580,11 +764,12 @@ class UserPatch(BaseModel):
     is_admin: Optional[bool] = None
     reset_password: bool = False
     force: bool = False   # disable even though the account is the only active owner of some profiles
+    disable_2fa: bool = False   # for someone who lost both their phone and their recovery codes
 
 
 @app.patch("/api/users/{uid}")
 def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=Depends(get_db)):
-    if uid == s["id"] and (body.disabled is not None or body.is_admin is not None or body.reset_password):
+    if uid == s["id"] and (body.disabled is not None or body.is_admin is not None or body.reset_password or body.disable_2fa):
         raise HTTPException(400, "You can't change your own admin role, disable yourself or reset your own password here.")
     target = db.execute("SELECT username, is_admin, disabled FROM users WHERE id=?", (uid,)).fetchone()
     if not target:
@@ -614,7 +799,29 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
         db.execute("UPDATE users SET pw_hash=?, must_change_pw=1 WHERE id=?", (sec.hash_password(pw), uid))
         accounts.sign_out_everywhere(db, uid)   # a reset may follow a lost or stolen device
         note("account.reset")
+    if body.disable_2fa:
+        accounts.turn_off_2fa(db, uid)
+        note("2fa.reset")
     return out
+
+
+class ServerSettings(BaseModel):
+    require_2fa: bool
+
+
+@app.get("/api/settings")
+def server_settings(s=Depends(admin), db=Depends(get_db)):
+    return {"require_2fa": accounts.two_factor_required(db)}
+
+
+@app.patch("/api/settings")
+def change_server_settings(body: ServerSettings, request: Request, s=Depends(admin), db=Depends(get_db)):
+    if body.require_2fa != accounts.two_factor_required(db):
+        if body.require_2fa and not s["totp_secret"]:
+            raise HTTPException(409, "Turn on two-factor sign-in for your own account first.")
+        dbm.meta_set(db, "require_2fa", "1" if body.require_2fa else None)
+        activity.log(db, "settings.require_2fa", s, detail={"on": body.require_2fa}, ip=_client_ip(request))
+    return {"require_2fa": body.require_2fa}
 
 
 # ---------------------------------------------------------------- health check, and static pages for development

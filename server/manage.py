@@ -9,6 +9,8 @@
   sync                                   re-import the setup build into the profiles linked to it
   backup [DEST] [--keep N]               write a backup archive (default folder: /backups in Docker), keeping the
                                          newest N there; safe while the app runs
+  disable-2fa USERNAME                   turn off someone's two-factor sign-in (lost phone and recovery codes);
+                                         signs them out everywhere
   verify ARCHIVE                         check a backup is complete and undamaged
   restore ARCHIVE [--yes]                replace the database, profiles and setup build with a backup's; the app must
                                          be stopped: docker compose run --rm --no-deps app python -m server.manage restore ...
@@ -117,6 +119,12 @@ def _command(db, argv):
             raise
         activity.log(db, "import", profile_id=pid, detail={"documents": n}, actor=activity.COMMAND_LINE)
         print(f"Imported {args[1]} into profile {pid} ({n} documents).")
+    elif cmd == "disable-2fa" and args:
+        u = _user(db, args[0])
+        accounts.turn_off_2fa(db, u["id"])
+        activity.log(db, "2fa.reset", detail={"username": u["username"]}, actor=activity.COMMAND_LINE)
+        print(f"Two-factor sign-in is off for {u['username']}; they're signed out everywhere."
+              + (" Their password was only allowed with it, so they'll choose a new one at sign-in." if u["pw_short"] else ""))
     elif cmd == "sync":
         failed = prof.sync_build(db)
         if failed:
