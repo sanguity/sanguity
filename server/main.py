@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, passkeys, profiles as prof, security as sec, twofactor
+from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, export, passkeys, profiles as prof, security as sec, twofactor
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -93,6 +93,8 @@ def _audit(event, request=None, user=None, warn=True, **fields):
         line["user"], line["uid"] = user["username"], user["id"]
     line.update(fields)
     audit.log(logging.WARNING if warn else logging.INFO, "security %s", json.dumps(line, separators=(",", ":")))
+    if event == "login.fail":   # also kept, so admins see bursts (alerts.py)
+        alerts.record(line.get("ip"), line.get("uid"), fields.get("step"))
 
 
 @app.exception_handler(passkeys.PasskeyError)
@@ -1100,6 +1102,19 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
         accounts.turn_off_2fa(db, uid, passkeys_too=True)
         note("2fa.reset")
     return out
+
+
+@app.get("/api/security/notice")
+def security_notice(s=Depends(admin), db=Depends(get_db)):
+    """A burst of failed sign-ins since the last dismissal, or null (ASVS 8.1.4)."""
+    return {"notice": alerts.notice(db)}
+
+
+@app.post("/api/security/notice/dismiss")
+def security_notice_dismiss(request: Request, s=Depends(admin), db=Depends(get_db)):
+    alerts.dismiss(db)
+    activity.log(db, "security.notice_dismissed", s, ip=_client_ip(request))
+    return {"ok": True}
 
 
 class ServerSettings(BaseModel):

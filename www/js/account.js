@@ -171,6 +171,22 @@ function showRecoveryCodes(codes, justTurnedOn) {
       done));
 }
 
+/* ---------------------------------------------------------------- failed sign-in bursts (admins) */
+async function loadNotice() {
+  const n = (await call("security/notice")).notice, box = $("#secNotice");
+  box.hidden = !n;
+  if (!n) return;
+  const list = (rows, key) => rows.map(r => `${r[key]} (${r.failures})`).join(", ");
+  box.replaceChildren(
+    el("b", {text: `${n.total} failed sign-in${n.total === 1 ? "" : "s"} since ${when(n.since)}`}), " (last at ", when(n.last), "). ",
+    n.addresses.length ? `From: ${list(n.addresses, "ip")}. ` : "",
+    n.accounts.length ? `Accounts tried: ${list(n.accounts, "username")}. ` : "",
+    "Throttling slows guessing down; if you don't recognise this, check that the accounts tried have strong passwords " +
+    "or two-factor sign-in, and look at the app's log (docker compose logs app) for details. ",
+    el("button", {class: "btn small", type: "button", text: "Dismiss", onclick: async () => {
+      try { await call("security/notice/dismiss", "POST"); box.hidden = true; } catch (e) { alert(e.message); } }}));
+}
+
 /* ---------------------------------------------------------------- passkeys */
 const guessName = () => { const d = device(navigator.userAgent); return d === "Browser" ? "Passkey" : d.replace(/^\w+ on /, ""); };
 async function loadPasskeys() {
@@ -270,6 +286,7 @@ const WHAT = {
   "2fa.codes": () => "made new recovery codes",
   "2fa.recovery": d => `signed in with a recovery code (${d.left} left)`,
   "2fa.reset": d => `turned off two-factor sign-in for ${d.username}`,
+  "security.notice_dismissed": () => "dismissed the failed sign-ins notice",
   "passkey.add": d => `added the passkey “${d.name}”`,
   "passkey.remove": d => `removed the passkey “${d.name}”`,
   "settings.require_2fa": d => d.on ? "required two-factor sign-in for everyone" : "stopped requiring two-factor sign-in",
@@ -413,6 +430,7 @@ $("#userNew").onsubmit = async ev => {
 (async () => {
   try { ME = await call("me"); } catch (e) { return; }
   $("#who").textContent = ME.user.username;
+  { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   $("#pwHint").textContent = `At least ${ME.password_min} characters. A few unrelated words make a strong password you can remember.`;
   if (ME.user.must_change_pw) {   // nothing else is available until the one-time password is replaced
     $("#mustChange").hidden = false; $("#back").hidden = true;
@@ -426,7 +444,8 @@ $("#userNew").onsubmit = async ev => {
     await Promise.all([loadTwoFactor(), loadPasskeys()]);
     return;
   }
-  await Promise.all([loadSessions(), loadProfiles(), loadTwoFactor(), loadPasskeys(), ME.user.is_admin ? loadUsers() : null]);
+  await Promise.all([loadSessions(), loadProfiles(), loadTwoFactor(), loadPasskeys(), ME.user.is_admin ? loadUsers() : null,
+    ME.user.is_admin ? loadNotice() : null]);
   if (ME.user.is_admin) {
     const req = $("#reqTf");
     req.checked = (await call("settings")).require_2fa;

@@ -1,5 +1,6 @@
 const f = document.getElementById("f"), btn = document.getElementById("b"), err = document.getElementById("e");
 api("setup").then(r => r.json()).then(s => { if (s.needed) location.replace("setup.html"); }).catch(() => {});
+{ const w = plainHttpWarning(), box = document.getElementById("insecure"); if (w) { box.textContent = w; box.hidden = false; } }
 let ticket = null;   // after a correct password, when the account has two-factor sign-in on
 const pkBtn = document.getElementById("pk"), pkBox = document.getElementById("pkBox");
 pkBox.hidden = !passkeysWork();   // only over HTTPS (or localhost), in a browser that has them

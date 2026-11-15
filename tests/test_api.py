@@ -1333,6 +1333,37 @@ class Api(unittest.TestCase):
             db.commit()
             db.close()
 
+    def test_failed_sign_in_notice(self):   # ASVS 8.1.4: admins see bursts of failed sign-ins
+        from server import accounts, alerts
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='nora'").fetchone():
+            accounts.create(db, "nora", password="nora keeps a long passphrase")
+        nora_id = db.execute("SELECT id FROM users WHERE username='nora'").fetchone()[0]
+        dbm.meta_set(db, alerts.SEEN, str(dbm.now() - 1))   # start from a clean slate (other tests fail sign-ins too)
+        # failures are kept: the account when the name is real, never a typed name that isn't one
+        before = db.execute("SELECT COUNT(*) FROM signin_failures").fetchone()[0]
+        client().post("/api/login", json={"username": "nora", "password": "not it at all, nope"}, headers=H)
+        client().post("/api/login", json={"username": "maybe-my-password", "password": "x"}, headers=H)
+        rows = db.execute("SELECT user_id, step FROM signin_failures ORDER BY rowid DESC LIMIT 2").fetchall()
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM signin_failures").fetchone()[0], before + 2)
+        self.assertEqual(sorted((r[0] or 0, r[1]) for r in rows), [(0, "password"), (nora_id, "password")])
+        ben = self.login("ben")
+        self.assertIsNone(ben.get("/api/security/notice").json()["notice"])   # two failures: nothing stands out
+        for _ in range(9):
+            alerts.record("203.0.113.9", None, "password")
+        self.assertIsNone(ben.get("/api/security/notice").json()["notice"])   # 9 from one address: not yet
+        alerts.record("203.0.113.9", nora_id, "password")
+        n = ben.get("/api/security/notice").json()["notice"]
+        self.assertEqual(n["addresses"][0], {**n["addresses"][0], "ip": "203.0.113.9", "failures": 10})
+        self.assertIn("nora", [a["username"] for a in n["accounts"]])
+        nora = self.login("nora", "nora keeps a long passphrase")
+        self.assertEqual(nora.get("/api/security/notice").status_code, 403)   # admins only
+        self.assertEqual(nora.post("/api/security/notice/dismiss", headers=H).status_code, 403)
+        self.assertEqual(ben.post("/api/security/notice/dismiss", headers=H).status_code, 200)
+        self.assertIsNone(ben.get("/api/security/notice").json()["notice"])
+        self.assertEqual(ben.get("/api/activity").json()[0]["action"], "security.notice_dismissed")
+        db.close()
+
     def test_manage_import_failure_keeps_link(self):
         from server import manage
         db = dbm.connect()

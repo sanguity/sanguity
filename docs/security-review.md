@@ -17,7 +17,7 @@ the activity log, encryption at rest, backups and export, and the default Docker
 | **Met** | The requirement holds. The reason says where in the code. |
 | **Fixed** | Not met on `main`. Fixed in the branch that added this document (see [Fixes made](#fixes-made)). |
 | **Issue #n** | Not met. The work, or the decision, is in that issue. |
-| **Accepted (#78)** | Not met as written, on purpose for a self-hosted household app. #78 asks the owner to confirm each one. |
+| **Accepted** | Not met as written, on purpose for a self-hosted household app; the owner confirmed each one in #78 (see [Accepted deviations](#accepted-deviations)). |
 | **N/A** | Sanguity has no such feature. |
 
 ## Summary
@@ -60,7 +60,18 @@ All five are in the Phase 1 milestone.
 - #75 Second factor for admin actions (4.3.1, 4.3.3)
 - #76 Decide session lifetime defaults (3.3.2)
 - #77 Automatic dependency updates, and an update path that pulls patched images (14.2.1)
-- #78 Confirm or change the accepted ASVS deviations (2.1.1, 6.4.2, 8.1.4, 9.1.1, 9.2.2, 14.4.5)
+- #78 Confirm or change the accepted ASVS deviations (2.1.1, 6.4.2, 8.1.4, 9.1.1, 9.2.2, 14.4.5): decided, see [Accepted deviations](#accepted-deviations)
+
+## Accepted deviations
+
+Decided by the owner in #78:
+
+| # | Decision | Why |
+|---|---|---|
+| 2.1.1 | Accepted as is: 15 characters, or 8 with a second factor | NIST SP 800-63B's rule. A short password must be replaced if the second factor is removed. |
+| 6.4.2 | Accepted; the README documents keeping the key in a secret store | A vault or HSM is unusual on a home server. `SANGUITY_KEY_FILE` can name a Docker/Podman secret or a systemd credential, since those are files too. |
+| 8.1.4 | Changed: admins see bursts of failed sign-ins | `alerts.py`, `/api/security/notice`, shown under **Account**. Per-endpoint rate limits for signed-in requests stay out of scope. |
+| 9.1.1, 9.2.1–9.2.2, 14.4.5 | Accepted: HTTPS is the proxy's; plus a plain-HTTP warning and proxy guidance | The pages warn when opened over plain HTTP from outside the home network or a tailnet; the README covers `COOKIE_SECURE=1` and HSTS. nginx to the app stays on the compose network. |
 
 ## Deployment defaults
 
@@ -72,7 +83,7 @@ The issue asked for these items in particular.
   `frame-ancestors 'none'`. `style-src` still allows `'unsafe-inline'`, because the charts set inline styles; that
   can't run script. `server_tokens off` hides the nginx version. Only the four pages, `css/`, `js/` and `/api/`
   are served; everything else is a 404. HSTS isn't sent, because nginx speaks plain HTTP and HTTPS is your proxy's
-  job (Accepted, #78).
+  job (Accepted; the README says how to turn it on at the proxy).
 - **Cookie flags behind a reverse proxy:**
   - The session cookie is HttpOnly, SameSite=Strict and `Path=/`, and gets the `__Host-` prefix over HTTPS (fixed).
   - Secure is set when the request came over HTTPS. The app learns that from `X-Forwarded-Proto`, which nginx
@@ -108,7 +119,7 @@ The issue asked for these items in particular.
 
 | # | Requirement | Result | Why / where |
 |---|---|---|---|
-| 2.1.1 | Passwords at least 12 characters | Accepted (#78) | 15 characters (`PASSWORD_MIN_LENGTH`), or 8 with two-factor sign-in on, per NIST SP 800-63B (`config.PASSWORD_MIN_2FA`). If the second factor goes, a short password must be replaced (`accounts.short_password_check`). |
+| 2.1.1 | Passwords at least 12 characters | Accepted | 15 characters (`PASSWORD_MIN_LENGTH`), or 8 with two-factor sign-in on, per NIST SP 800-63B (`config.PASSWORD_MIN_2FA`). If the second factor goes, a short password must be replaced (`accounts.short_password_check`). |
 | 2.1.2 | Passwords of 64+ characters allowed, at most 128 | Met | Up to 256 (`config.PASSWORD_MAX`). |
 | 2.1.3 | No truncation | Met | New passwords over 256 are refused, not cut. Sign-in cuts at 256, which no stored password exceeds. |
 | 2.1.4 | Any printable Unicode allowed | Met | No character rules (`security.password_problem`). |
@@ -230,7 +241,7 @@ The issue asked for these items in particular.
 | 6.3.1 | Approved random generator | Met | `secrets` everywhere. |
 | 6.3.2 | Random GUIDs | N/A | None. |
 | 6.4.1 | Key management | Met | Key file outside the data and the backups, mode 600, rotation documented (`crypto.py`, README). |
-| 6.4.2 | Key kept in an isolated module | Accepted (#78) | The key is held in the app's memory. |
+| 6.4.2 | Key kept in an isolated module | Accepted | The key is a file (`SANGUITY_KEY_FILE`, default `auth/data_key`, mode 600, read-only mount) held in the app's memory. The README shows how to keep it in a Docker/Podman secret or a systemd credential instead. |
 
 ## V7 Errors and logging
 
@@ -256,7 +267,7 @@ The issue asked for these items in particular.
 | 8.1.1 | Sensitive data kept out of caches | Met | `Cache-Control: no-store` on pages and the API. |
 | 8.1.2 | Cached copies on the server purged | N/A | No server cache. |
 | 8.1.3 | Few parameters, no sensitive ones in URLs | Met | Sensitive values go in request bodies. |
-| 8.1.4 | Abnormal request volume detected | Accepted (#78) | Sign-ins are throttled and now logged. Nothing alerts. |
+| 8.1.4 | Abnormal request volume detected | Fixed (#78) | Failed sign-ins are throttled, logged and kept 30 days (`alerts.py`); admins see a notice under **Account** when one address or account fails 10 times in a day, or 30 failures pile up (`/api/security/notice`). Other endpoints need a signed-in session and aren't rate-limited (Accepted). |
 | 8.1.5 | Backups made | Met | `server.manage backup`: a consistent SQLite copy plus files, with a manifest of SHA-256 hashes. Verify and restore are tested. |
 | 8.1.6 | Backups stored securely | Met | The data in them is encrypted, and the key isn't included. |
 | 8.2.1 | Anti-caching headers | Met | As 8.1.1. |
@@ -275,9 +286,9 @@ The issue asked for these items in particular.
 
 | # | Requirement | Result | Why / where |
 |---|---|---|---|
-| 9.1.1 | TLS for all client connectivity | Accepted (#78) | HTTPS is the owner's reverse proxy or Tailscale. The README tells people to use HTTPS outside the home network. Passkeys need it. |
+| 9.1.1 | TLS for all client connectivity | Accepted | HTTPS is the owner's reverse proxy or Tailscale, and passkeys need it. The sign-in and Account pages warn when opened over plain HTTP from outside the home network or a tailnet (`plainHttpWarning` in `www/js/util.js`); the README covers `COOKIE_SECURE=1` and HSTS at the proxy. |
 | 9.1.2–9.1.3 | Strong TLS settings | N/A | Sanguity terminates no TLS. |
-| 9.2.1–9.2.2 | Server-to-server TLS | Accepted (#78) | nginx to the app runs over the compose network. There are no outbound connections. |
+| 9.2.1–9.2.2 | Server-to-server TLS | Accepted | nginx to the app runs over the compose network. There are no outbound connections. |
 
 ## V12 Files and resources
 
@@ -333,7 +344,7 @@ The issue asked for these items in particular.
 | 14.4.2 | API answers carry `Content-Disposition: attachment` | **Fixed** | `main.guard`. |
 | 14.4.3 | CSP | **Fixed** | No inline script. See [Deployment defaults](#deployment-defaults). |
 | 14.4.4 | `nosniff` | Met | nginx and the API. |
-| 14.4.5 | HSTS | Accepted (#78) | Your HTTPS proxy's job. |
+| 14.4.5 | HSTS | Accepted | Your HTTPS proxy's job; the README gives the header to set there. |
 | 14.4.6 | Referrer-Policy | Met | `no-referrer`. |
 | 14.4.7 | Framing controlled | Met | Pages: `frame-ancestors 'none'` and `DENY`. Documents: framed by the app only (`SAMEORIGIN`, `frame-ancestors 'self'`). |
 | 14.5.1 | Only needed methods | Met | As 13.2.1. |

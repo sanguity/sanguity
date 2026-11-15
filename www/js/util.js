@@ -19,6 +19,21 @@ const el = (tag, attrs = {}, ...kids) => {
 const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,
   headers: {...(opts.method && opts.method !== "GET" ? {"X-Sanguity": "1", "Content-Type": "application/json"} : {}), ...opts.headers}});
 
+/* A warning when this page came over plain HTTP from somewhere other than this machine, the home network or a
+   tailnet (where WireGuard already encrypts): passwords and records would cross the internet readable (ASVS 9.1.1). */
+function plainHttpWarning() {
+  if (location.protocol !== "http:") return null;
+  const h = location.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const ip4 = h.match(/^(\d+)\.(\d+)\.\d+\.\d+$/);
+  const local = h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".lan") ||
+    h.endsWith(".home.arpa") || h.endsWith(".internal") || h.endsWith(".ts.net") || !h.includes(".") && !h.includes(":") ||
+    (ip4 && (+ip4[1] === 10 || +ip4[1] === 127 || (+ip4[1] === 192 && +ip4[2] === 168) || (+ip4[1] === 172 && +ip4[2] >= 16 && +ip4[2] <= 31) ||
+             (+ip4[1] === 169 && +ip4[2] === 254) || (+ip4[1] === 100 && +ip4[2] >= 64 && +ip4[2] <= 127))) ||
+    h === "::1" || /^f[cd]/.test(h) || h.startsWith("fe80:");
+  return local ? null : "This page isn't using HTTPS, so your password and records travel unencrypted. " +
+    "Put Sanguity behind HTTPS (a reverse proxy or Tailscale) before using it over the internet.";
+}
+
 /* passkeys (WebAuthn): the server's JSON options in, the browser's answer back out as JSON (base64url) */
 const b64u = {
   dec: s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0)).buffer,
