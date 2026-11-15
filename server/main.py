@@ -158,7 +158,7 @@ def _session(request, db):
     token = request.cookies.get(config.COOKIE_HOST) or request.cookies.get(config.COOKIE)
     if not token or len(token) > 200:
         return None
-    s = db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, u.* FROM sessions s
+    s = db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, s.verified_at, u.* FROM sessions s
                       JOIN users u ON u.id = s.user_id WHERE s.token_hash=? AND u.disabled=0""",
                    (sec.token_hash(token),)).fetchone()
     now = dbm.now()
@@ -200,11 +200,24 @@ def user(s=Depends(settled), db=Depends(get_db)):
     return s
 
 
-def admin(request: Request, s=Depends(user)):
+def admin(request: Request, s=Depends(user), db=Depends(get_db)):
+    """An admin with a second factor of their own, an authenticator app or a passkey (ASVS 4.3.1), unless they are
+    the only account on the server. The command line (server.manage) needs none: it stays the way back in."""
     if not s["is_admin"]:
         _audit("access.denied", request, s, need="admin", path=request.url.path)
         raise HTTPException(403, "Only an admin can do that.")
+    if accounts.admin_needs_second_factor(db, s):
+        _audit("access.denied", request, s, need="admin second factor", path=request.url.path)
+        raise HTTPException(403, "admin_two_factor_required")
     return s
+
+
+def fresh(request, s, action):
+    """Before the most powerful admin actions (ASVS 4.3.3): this session's person proved it was them within
+    REAUTH_MINUTES, by signing in or with POST /api/me/reauth (password or code) or /api/me/reauth/passkey."""
+    if (s["verified_at"] or 0) <= dbm.now() - config.REAUTH_MINUTES * 60:
+        _audit("reauth.needed", request, s, warn=False, action=action)
+        raise HTTPException(403, "reauth_required")
 
 
 def role_of(db, uid, pid):
@@ -239,9 +252,10 @@ def _start_session(request, response, db, uid, how=None):
     token, now = sec.new_token(), dbm.now()
     life = _lifetime(db, db.execute("SELECT id, totp_secret FROM users WHERE id=?", (uid,)).fetchone())
     db.execute("DELETE FROM sessions WHERE expires<=?", (now,))
-    db.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent) VALUES(?,?,?,?,?,?,?)",
+    # every caller has just checked the person (password, code or passkey), so the session starts verified
+    db.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) VALUES(?,?,?,?,?,?,?,?)",
                (sec.token_hash(token), uid, now, now, now + life,
-                _client_ip(request), (request.headers.get("user-agent") or "")[:300]))
+                _client_ip(request), (request.headers.get("user-agent") or "")[:300], now))
     secure = _secure(request)
     response.set_cookie(config.COOKIE_HOST if secure else config.COOKIE, token, max_age=life,
                         path="/", httponly=True, samesite="strict", secure=secure)
@@ -531,8 +545,8 @@ def me(s=Depends(any_user), db=Depends(get_db)):
     needs_2fa = required and not second
     return {"user": {"id": s["id"], "username": s["username"], "is_admin": bool(s["is_admin"]),
                      "must_change_pw": bool(s["must_change_pw"]), "two_factor": second,
-                     "needs_two_factor": needs_2fa},
-            "two_factor_required": required,
+                     "needs_two_factor": needs_2fa, "admin_needs_two_factor": accounts.admin_needs_second_factor(db, s)},
+            "two_factor_required": required, "reauth_minutes": config.REAUTH_MINUTES,
             "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
             "password_min": _password_min(db, s)}
 
@@ -564,6 +578,64 @@ def change_password(body: PasswordChange, request: Request, s=Depends(any_user),
     n = db.execute("DELETE FROM sessions WHERE user_id=? AND id<>?", (s["id"], s["sid"])).rowcount
     activity.log(db, "password", s, ip=_client_ip(request))
     return {"ok": True, "signed_out_elsewhere": n}
+
+
+class FreshCheck(BaseModel):
+    secret: str   # the password, or a current code from the authenticator app
+
+
+def _verified(db, s):
+    now = dbm.now()
+    db.execute("UPDATE sessions SET verified_at=? WHERE id=?", (now, s["sid"]))
+    return {"ok": True, "until": now + config.REAUTH_MINUTES * 60}
+
+
+@app.post("/api/me/reauth")
+def reauth(body: FreshCheck, request: Request, s=Depends(user), db=Depends(get_db)):
+    """The fresh check before a powerful admin action (see fresh): the password, or a code from the app."""
+    if s["totp_secret"] and twofactor.looks_like_code(body.secret):   # no password is 6 digits (8 at least)
+        keys = ("pair:2fa|" + str(s["id"]) + "|" + _client_ip(request), "user:2fa|" + str(s["id"]))
+        if (w := sec.throttle.wait(*keys)):
+            raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.", headers={"Retry-After": str(w)})
+        step = twofactor.verify(crypto.dec(s["totp_secret"]), body.secret, s["totp_last_step"])
+        if step is None:
+            sec.throttle.fail(*keys)
+            _audit("reauth.fail", request, s, action="fresh check", step="code")
+            raise HTTPException(403, "That code isn't right, or it was used already. Wait for the next one.")
+        db.execute("UPDATE users SET totp_last_step=? WHERE id=?", (step, s["id"]))
+    else:
+        keys = ("pair:pw|" + s["username"].lower() + "|" + _client_ip(request),)
+        if (w := sec.throttle.wait(*keys)):
+            raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.", headers={"Retry-After": str(w)})
+        if not sec.verify_password(s["pw_hash"], body.secret[:config.PASSWORD_MAX]):
+            sec.throttle.fail(*keys)
+            _audit("reauth.fail", request, s, action="fresh check", step="password")
+            raise HTTPException(403, "Your password is wrong." + (" Or enter a code from your authenticator app."
+                                                                 if s["totp_secret"] else ""))
+    return _verified(db, s)
+
+
+@app.post("/api/me/reauth/passkey/options")
+def reauth_passkey_options(request: Request, s=Depends(user), db=Depends(get_db)):
+    state, options = passkeys.authentication_options(db, request.headers.get("origin"), s["id"])
+    return {"state": state, "options": options}
+
+
+@app.post("/api/me/reauth/passkey")
+def reauth_passkey(body: PasskeyFinish, request: Request, s=Depends(user), db=Depends(get_db)):
+    """The fresh check with one of the account's own passkeys."""
+    keys = ("ip:passkey|" + _client_ip(request),)
+    if (w := sec.throttle.wait(*keys)):
+        raise HTTPException(429, f"Too many failed tries. Try again in {w} seconds.", headers={"Retry-After": str(w)})
+    try:
+        uid, _ = passkeys.authenticate(db, body.state[:200], body.credential)
+    except passkeys.PasskeyError as e:
+        sec.throttle.fail(*keys)
+        _audit("reauth.fail", request, s, action="fresh check", step="passkey", reason=str(e)[:200])
+        raise
+    if uid != s["id"]:   # the state was issued for this account's passkeys, so this can't happen
+        raise HTTPException(401, passkeys.STALE)
+    return _verified(db, s)
 
 
 # ---------------------------------------------------------------- two-factor sign-in, for the signed-in account
@@ -995,13 +1067,16 @@ class UserIn(BaseModel):
 @app.post("/api/users")
 def new_user(body: UserIn, request: Request, s=Depends(admin), db=Depends(get_db)):
     """Create an account with a one-time password; its owner chooses their own at first sign-in."""
+    if body.is_admin:
+        fresh(request, s, "make an admin")
     try:
         uid, pw = accounts.create(db, body.username, is_admin=body.is_admin)
     except accounts.AccountError as e:
         raise HTTPException(e.status, str(e))
     activity.log(db, "account.create", s, detail={"username": body.username.strip(), **({"admin": True} if body.is_admin else {})},
                  ip=_client_ip(request))
-    return {"id": uid, "username": body.username.strip(), "temporary_password": pw, "temporary_days": config.TEMP_PASSWORD_DAYS}
+    return {"id": uid, "username": body.username.strip(), "temporary_password": pw, "temporary_days": config.TEMP_PASSWORD_DAYS,
+            "admin_needs_two_factor": accounts.admin_needs_second_factor(db, s)}   # no longer the only account
 
 
 @app.get("/api/activity")
@@ -1099,6 +1174,9 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
     if not target:
         raise HTTPException(404, "No such account.")
     note = lambda action: activity.log(db, action, s, detail={"username": target["username"]}, ip=_client_ip(request))
+    if body.reset_password or body.disable_2fa or (body.is_admin and not target["is_admin"]):   # a way into the account
+        fresh(request, s, "reset a password" if body.reset_password else "turn off two-factor sign-in"
+              if body.disable_2fa else "make an admin")
     if body.disabled and not body.force:
         sole = [name for _, name in accounts.sole_owned(db, uid)]
         if sole:   # nobody else could then share or rename these; the client asks, then resends with force

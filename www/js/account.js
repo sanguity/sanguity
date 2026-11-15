@@ -163,6 +163,7 @@ function showRecoveryCodes(codes, justTurnedOn) {
     "They won't be shown again.";
   const done = el("button", {class: "btn primary small", type: "button", text: "I've saved them", onclick: () => {
     if (ME.user.needs_two_factor) { location.replace("./"); return; }
+    if (ME.user.admin_needs_two_factor) { location.reload(); return; }
     loadTwoFactor(); loadPasskeys(); loadSessions(); }});
   $("#tfBody").replaceChildren(
     el("pre", {class: "tf-codes", text: codes.join("\n")}),
@@ -230,6 +231,7 @@ async function loadPasskeys() {
       try { credential = await passkeyCreate(o.options); } catch (e) { throw new Error(passkeyProblem(e)); }
       const r = await call("me/passkeys", "POST", {state: o.state, credential, name: nm.value});
       if (ME.user.needs_two_factor) { location.replace("./"); return; }
+      if (ME.user.admin_needs_two_factor) { location.reload(); return; }
       await loadPasskeys(); say("#pkMsg", `Added “${r.name}”.`); loadTwoFactor(); ME = await call("me");
     } catch (e) { say("#pkMsg", e.message, true); } }},
     nm, pw, el("button", {class: "btn primary small", type: "submit", text: "Add a passkey"})));
@@ -334,6 +336,48 @@ function activityPanel(path, members) {
 }
 
 /* ---------------------------------------------------------------- accounts (admin) */
+/* admins need a second factor of their own once the server has more than one account: until then, say so */
+function adminGate() {
+  $("#adminTf").hidden = false; $("#adminTools").hidden = true; $("#users").hidden = false;
+}
+/* resetting a password, turning off someone's 2FA or making an admin needs a fresh check (the password, a code or a
+   passkey within a few minutes): when the server asks, ask the person, then try again */
+async function fresh(action) {
+  try { return await action(); }
+  catch (e) { if (e.detail !== "reauth_required") throw e; }
+  await confirmIdentity();
+  return action();
+}
+function confirmIdentity() {
+  return new Promise((resolve, reject) => {
+    const box = $("#reauth"), msg = el("span", {class: "msg", role: "status"});
+    const secret = el("input", {type: "password", autocomplete: "current-password", placeholder: "Password or code",
+      "aria-label": "Your password, or a code from your authenticator app", required: true});
+    const done = ok => { box.hidden = true; box.replaceChildren(); ok ? resolve() : reject(new Error("Not done: you didn't confirm it's you.")); };
+    const failed = e => { msg.textContent = e.message; msg.classList.add("bad"); };
+    const viaPasskey = async () => {
+      try {
+        const o = await call("me/reauth/passkey/options", "POST");
+        let credential;
+        try { credential = await passkeyGet(o.options); } catch (e) { throw new Error(passkeyProblem(e)); }
+        await call("me/reauth/passkey", "POST", {state: o.state, credential});
+        done(true);
+      } catch (e) { failed(e); }
+    };
+    box.replaceChildren(
+      el("p", {}, el("b", {text: "Confirm it's you. "}), `This needs your password, a code from your authenticator app or a passkey ` +
+        `(it then isn't asked again for ${ME.reauth_minutes} minutes).`),
+      el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
+        try { await call("me/reauth", "POST", {secret: secret.value}); done(true); } catch (e) { failed(e); } }},
+        secret, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),
+        passkeysWork() ? el("button", {class: "btn small", type: "button", text: "Use a passkey", onclick: viaPasskey}) : null,
+        el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => done(false)})),
+      msg);
+    box.hidden = false;
+    box.scrollIntoView({block: "nearest"});
+    secret.focus();
+  });
+}
 function showTemp(username, pw, days) {
   say("#userMsg", "");
   $("#userMsg").replaceChildren(`One-time password for ${username}: `, el("code", {text: pw}),
@@ -350,7 +394,7 @@ async function loadUsers() {
         onclick: async () => {
           try {
             let r;
-            try { r = await call("users/" + u.id, "PATCH", body); }
+            try { r = await fresh(() => call("users/" + u.id, "PATCH", body)); }
             catch (e) {   // disabling the only owner of a profile: ask first
               if (!(e.detail && e.detail.sole_owner_of) || !confirm(e.message)) throw e.detail && e.detail.sole_owner_of ? new Error("Not disabled.") : e;
               r = await call("users/" + u.id, "PATCH", {...body, force: true});
@@ -370,7 +414,7 @@ async function loadUsers() {
           self ? null : el("button", {class: "btn small", type: "button", text: "Remove", onclick: () => removeAccount(u)}),
           u.two_factor ? el("button", {class: "btn small", type: "button", text: "Turn off 2FA", disabled: self || null, onclick: async () => {
             if (!confirm(`Turn off two-factor sign-in for ${u.username}? Do this only if they lost both their phone and their recovery codes. They'll be signed out everywhere.`)) return;
-            try { await call("users/" + u.id, "PATCH", {disable_2fa: true}); loadUsers(); } catch (e) { say("#userMsg", e.message, true); } }}) : null));
+            try { await fresh(() => call("users/" + u.id, "PATCH", {disable_2fa: true})); loadUsers(); } catch (e) { say("#userMsg", e.message, true); } }}) : null));
     }))));
 }
 /* profiles nobody can manage (every owner disabled or removed): an admin names a new owner; never shows records */
@@ -422,8 +466,14 @@ async function removeAccount(u) {
 }
 $("#userNew").onsubmit = async ev => {
   ev.preventDefault();
-  try { const r = await call("users", "POST", {username: $("#userName").value.trim(), is_admin: $("#userAdmin").checked}); $("#userNew").reset(); await loadUsers(); showTemp(r.username, r.temporary_password, r.temporary_days); }
-  catch (e) { say("#userMsg", e.message, true); }
+  try {
+    const body = {username: $("#userName").value.trim(), is_admin: $("#userAdmin").checked};
+    const r = await fresh(() => call("users", "POST", body));
+    $("#userNew").reset();
+    if (r.admin_needs_two_factor) { ME.user.admin_needs_two_factor = true; adminGate(); }   // not the only account any more
+    else await loadUsers();
+    showTemp(r.username, r.temporary_password, r.temporary_days);
+  } catch (e) { say("#userMsg", e.message, true); }
 };
 
 /* ---------------------------------------------------------------- start */
@@ -444,8 +494,10 @@ $("#userNew").onsubmit = async ev => {
     await Promise.all([loadTwoFactor(), loadPasskeys()]);
     return;
   }
-  await Promise.all([loadSessions(), loadProfiles(), loadTwoFactor(), loadPasskeys(), ME.user.is_admin ? loadUsers() : null,
-    ME.user.is_admin ? loadNotice() : null]);
+  const admin = ME.user.is_admin && !ME.user.admin_needs_two_factor;
+  await Promise.all([loadSessions(), loadProfiles(), loadTwoFactor(), loadPasskeys(), admin ? loadUsers() : null,
+    admin ? loadNotice() : null]);
+  if (ME.user.is_admin && !admin) { adminGate(); return; }
   if (ME.user.is_admin) {
     const req = $("#reqTf");
     req.checked = (await call("settings")).require_2fa;

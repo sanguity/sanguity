@@ -122,6 +122,11 @@ SCHEMA = [
         step TEXT);
     CREATE INDEX signin_failures_at ON signin_failures(at);
     """,
+    # version 9: when the session's person last proved it was them (signing in, or the fresh check before the most
+    # powerful admin actions, main.fresh). NULL, for sessions from before: the next such action asks.
+    """
+    ALTER TABLE sessions ADD COLUMN verified_at INTEGER;
+    """,
 ]
 
 

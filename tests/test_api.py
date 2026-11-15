@@ -102,6 +102,8 @@ class other_key:
             os.remove(self.path)
 PW = {"ben": "kettle orbit marsh velvet", "alex": "purple monkey dishwasher", "sam": "seven wild otters dancing"}
 CODE = "TEST-CODE-1234"
+O = {**H, "Origin": SoftKey.ORIGIN}   # passkeys need an HTTPS origin
+KEYS = {}   # name -> SoftKey, for accounts whose sign-in finishes with a passkey (Ben: admins need a second factor)
 
 
 def client():
@@ -129,7 +131,20 @@ class Api(unittest.TestCase):
         c = client()
         r = c.post("/api/login", json={"username": name, "password": pw or PW[name]}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
+        if r.json().get("two_factor") and name in KEYS:   # the second step, with the account's passkey
+            ticket = r.json()["ticket"]
+            o = c.post("/api/login/passkey/options", json={"ticket": ticket}, headers=O).json()
+            r = c.post("/api/login/passkey", json={"state": o["state"], "credential": KEYS[name].get(o["options"]), "ticket": ticket}, headers=O)
+            self.assertEqual(r.status_code, 200, r.text)
         return c
+
+    def add_passkey(self, c, pw, key, name="Phone"):
+        o = c.post("/api/me/passkeys/options", json={"password": pw}, headers=O)
+        self.assertEqual(o.status_code, 200, o.text)
+        o = o.json()
+        r = c.post("/api/me/passkeys", json={"state": o["state"], "credential": key.create(o["options"]), "name": name}, headers=O)
+        self.assertEqual(r.status_code, 200, r.text)
+        return r.json()["id"]
 
     def make_user(self, admin_c, name):
         """Admin creates an account; its owner signs in with the one-time password and sets their own."""
@@ -177,8 +192,24 @@ class Api(unittest.TestCase):
         self.assertEqual(ben.get("/api/profiles/1/watch").status_code, 200)
         self.assertIn("visitWorkouts", ben.get("/api/profiles/1/settings").json())
 
+        # ---- admins need a second factor of their own, except on a one-person install (issue #75)
+        self.assertFalse(me["user"]["admin_needs_two_factor"])
+        self.assertEqual(ben.get("/api/users").status_code, 200)   # the only account: no second factor needed
+        r = ben.post("/api/users", json={"username": "alex"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(r.json()["admin_needs_two_factor"])   # not alone any more
+        alex_temp = r.json()["temporary_password"]
+        self.assertEqual(ben.get("/api/users").json()["detail"], "admin_two_factor_required")
+        self.assertTrue(ben.get("/api/me").json()["user"]["admin_needs_two_factor"])
+        self.assertEqual(ben.get("/api/profiles/1/data").status_code, 200)   # only admin actions wait for it
+        KEYS["ben"] = SoftKey()
+        self.add_passkey(ben, PW["ben"], KEYS["ben"])
+        self.assertEqual(ben.get("/api/users").status_code, 200)
+        self.assertFalse(ben.get("/api/me").json()["user"]["admin_needs_two_factor"])
+
         # ---- two more accounts; a second profile; sharing
-        alex = self.make_user(ben, "alex")
+        alex = self.login("alex", alex_temp)
+        alex.post("/api/me/password", json={"current": alex_temp, "new": PW["alex"]}, headers=H)
         sam = self.make_user(ben, "sam")
         self.assertEqual(alex.get("/api/me").json()["profiles"], [])
         self.assertEqual(alex.get("/api/profiles/1/data").status_code, 404)   # not shared: reported as not found
@@ -689,21 +720,26 @@ class Api(unittest.TestCase):
         tess.post("/api/me/password", json={"current": "kq7 zv3m", "new": "tess keeps a long passphrase 2"}, headers=H)
         self.assertEqual(client().post("/api/login", json={"username": "tess", "password": "tess keeps a long passphrase 2"},
                                        headers=H).json(), {"must_change_pw": False})   # no second step any more
-        # require it for everyone: only an admin who has it on can; others must set it up before seeing records
+        # require it for everyone: only an admin who has it on can (any admin action needs it, with other accounts
+        # around); others must set it up before seeing records
         ben = self.login("ben")
-        self.assertEqual(ben.patch("/api/settings", json={"require_2fa": True}, headers=H).status_code, 409)
+        if not db.execute("SELECT 1 FROM users WHERE username='uma'").fetchone():
+            accounts.create(db, "uma", password="uma keeps a long passphrase")
+        uma = self.login("uma", "uma keeps a long passphrase")
         db.execute("UPDATE users SET is_admin=1 WHERE id=?", (tess_id,))
+        self.assertEqual(tess.patch("/api/settings", json={"require_2fa": True}, headers=H).json()["detail"], "admin_two_factor_required")
         secret = tess.post("/api/me/2fa/start", headers=H).json()["secret"]
         tess.post("/api/me/2fa/confirm", json={"code": code(secret)}, headers=H)
         self.assertEqual(tess.patch("/api/settings", json={"require_2fa": True}, headers=H).status_code, 200)
         try:
-            self.assertEqual(ben.get("/api/profiles/1/data").json()["detail"], "two_factor_required")
-            self.assertTrue(ben.get("/api/me").json()["user"]["needs_two_factor"])
-            self.assertEqual(ben.post("/api/me/2fa/start", headers=H).status_code, 200)   # setting it up is still allowed
+            self.assertEqual(uma.get("/api/profiles/1/data").json()["detail"], "two_factor_required")
+            self.assertTrue(uma.get("/api/me").json()["user"]["needs_two_factor"])
+            self.assertEqual(uma.post("/api/me/2fa/start", headers=H).status_code, 200)   # setting it up is still allowed
+            self.assertEqual(ben.get("/api/profiles/1/data").status_code, 200)   # Ben's passkey counts
             self.assertEqual(tess.post("/api/me/2fa/off", json={"password": "tess keeps a long passphrase 2"}, headers=H).status_code, 409)
         finally:
             tess.patch("/api/settings", json={"require_2fa": False}, headers=H)
-        self.assertEqual(ben.get("/api/profiles/1/data").status_code, 200)
+        self.assertEqual(uma.get("/api/profiles/1/data").status_code, 404)   # past the gate: just not shared
         # an admin, or the command line, can turn someone's off (lost phone and codes): signed out everywhere
         self.assertEqual(ben.patch(f"/api/users/{tess_id}", json={"disable_2fa": True}, headers=H).status_code, 200)
         self.assertEqual(tess.get("/api/me").status_code, 401)
@@ -713,6 +749,103 @@ class Api(unittest.TestCase):
         actions = {r[0] for r in db.execute("SELECT action FROM activity WHERE profile_id IS NULL")}
         self.assertTrue({"2fa.on", "2fa.off", "2fa.recovery", "2fa.reset", "settings.require_2fa"} <= actions)
         db.execute("UPDATE users SET is_admin=0 WHERE id=?", (tess_id,))
+        db.close()
+
+    def test_admin_second_factor_and_fresh_check(self):   # ASVS 4.3.1 and 4.3.3 (issue #75)
+        import time
+        from server import accounts, config, manage, twofactor
+        code = lambda secret, ahead=0: twofactor._code(secret, int(time.time() // twofactor.PERIOD) + ahead)
+        db = dbm.connect()
+        for name, admin in (("ada", True), ("ivo", False)):
+            if not db.execute("SELECT 1 FROM users WHERE username=?", (name,)).fetchone():
+                accounts.create(db, name, is_admin=admin, password=f"{name} keeps a long passphrase")
+        ada_id, ivo_id = (db.execute("SELECT id FROM users WHERE username=?", (n,)).fetchone()[0] for n in ("ada", "ivo"))
+        ivo = self.login("ivo", "ivo keeps a long passphrase")   # a passkey before Ada resets the password, below
+        self.add_passkey(ivo, "ivo keeps a long passphrase", ivo_key := SoftKey())
+        ada = self.login("ada", "ada keeps a long passphrase")
+        # an admin without a second factor can't use any admin action, and is told to set one up
+        self.assertTrue(ada.get("/api/me").json()["user"]["admin_needs_two_factor"])
+        with self.assertLogs("sanguity.security", "WARNING") as logged:
+            for method, path, body in (("GET", "/api/users", None), ("POST", "/api/users", {"username": "nobody-new"}),
+                                       ("PATCH", f"/api/users/{ivo_id}", {"disabled": True}), ("GET", "/api/activity", None),
+                                       ("GET", "/api/ownerless", None), ("GET", "/api/settings", None),
+                                       ("PATCH", "/api/settings", {"require_2fa": False}), ("GET", "/api/security/notice", None),
+                                       ("DELETE", f"/api/users/{ivo_id}", {})):
+                r = ada.request(method, path, json=body, headers=H)
+                self.assertEqual((r.status_code, r.json()["detail"]), (403, "admin_two_factor_required"), path)
+        self.assertIn('"need":"admin second factor"', logged.output[0])
+        self.assertEqual(ada.get("/api/profiles/1/data").status_code, 404)   # the rest of the account works
+        # an authenticator app is enough
+        secret = ada.post("/api/me/2fa/start", headers=H).json()["secret"]
+        self.assertEqual(ada.post("/api/me/2fa/confirm", json={"code": code(secret)}, headers=H).status_code, 200)
+        self.assertEqual(ada.get("/api/users").status_code, 200)
+        self.assertFalse(ada.get("/api/me").json()["user"]["admin_needs_two_factor"])
+
+        # the most powerful actions need a fresh check; signing in counts, for REAUTH_MINUTES
+        stale = lambda: db.execute("UPDATE sessions SET verified_at=? WHERE user_id=?", (dbm.now() - config.REAUTH_MINUTES * 60 - 1, ada_id))
+        stale()
+        powerful = ({"reset_password": True}, {"disable_2fa": True}, {"is_admin": True})
+        for body in powerful:
+            r = ada.patch(f"/api/users/{ivo_id}", json=body, headers=H)
+            self.assertEqual((r.status_code, r.json()["detail"]), (403, "reauth_required"), body)
+        r = ada.post("/api/users", json={"username": "new-admin", "is_admin": True}, headers=H)
+        self.assertEqual((r.status_code, r.json()["detail"]), (403, "reauth_required"))
+        self.assertIsNone(db.execute("SELECT 1 FROM users WHERE username='new-admin'").fetchone())
+        self.assertFalse(db.execute("SELECT is_admin FROM users WHERE id=?", (ivo_id,)).fetchone()[0])   # nothing changed
+        # the everyday ones don't
+        self.assertEqual(ada.patch(f"/api/users/{ivo_id}", json={"disabled": True}, headers=H).status_code, 200)
+        self.assertEqual(ada.patch(f"/api/users/{ivo_id}", json={"disabled": False}, headers=H).status_code, 200)
+        # the password renews it
+        with self.assertLogs("sanguity.security", "WARNING") as logged:
+            self.assertEqual(ada.post("/api/me/reauth", json={"secret": "not my password at all"}, headers=H).status_code, 403)
+        self.assertIn('"event":"reauth.fail"', logged.output[0])
+        r = ada.post("/api/me/reauth", json={"secret": "ada keeps a long passphrase"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertAlmostEqual(r.json()["until"], dbm.now() + config.REAUTH_MINUTES * 60, delta=5)
+        r = ada.patch(f"/api/users/{ivo_id}", json={"reset_password": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("temporary_password", r.json())
+        # so does a code from the app, once
+        stale()
+        c = code(secret, 1)
+        self.assertEqual(ada.post("/api/me/reauth", json={"secret": "000000"}, headers=H).status_code, 403)
+        self.assertEqual(ada.post("/api/me/reauth", json={"secret": c}, headers=H).status_code, 200)
+        self.assertEqual(ada.patch(f"/api/users/{ivo_id}", json={"is_admin": True}, headers=H).status_code, 200)
+        self.assertEqual(ada.patch(f"/api/users/{ivo_id}", json={"is_admin": False}, headers=H).status_code, 200)   # removing: no check
+        stale()
+        self.assertEqual(ada.post("/api/me/reauth", json={"secret": c}, headers=H).status_code, 403)   # already used
+        # and a passkey of the account's own
+        key = SoftKey()
+        self.add_passkey(ada, "ada keeps a long passphrase", key)
+        stale()
+        o = ada.post("/api/me/reauth/passkey/options", headers=O).json()
+        self.assertEqual(ada.post("/api/me/reauth/passkey", json={"state": o["state"], "credential": SoftKey().get(o["options"])},
+                                  headers=O).status_code, 401)   # a passkey Sanguity doesn't know
+        o = ada.post("/api/me/reauth/passkey/options", headers=O).json()
+        r = ada.post("/api/me/reauth/passkey", json={"state": o["state"], "credential": key.get(o["options"])}, headers=O)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(ada.post("/api/users", json={"username": "new-admin", "is_admin": True}, headers=H).status_code, 200)
+        # someone else's passkey doesn't renew this session
+        stale()
+        o = ada.post("/api/me/reauth/passkey/options", headers=O).json()
+        self.assertEqual(ada.post("/api/me/reauth/passkey", json={"state": o["state"], "credential": ivo_key.get(o["options"])},
+                                  headers=O).status_code, 401)
+        self.assertEqual(ada.patch(f"/api/users/{ivo_id}", json={"disable_2fa": True}, headers=H).json()["detail"], "reauth_required")
+        # a session from before the fresh check existed asks too; a new sign-in doesn't
+        db.execute("UPDATE sessions SET verified_at=NULL WHERE user_id=?", (ada_id,))
+        self.assertEqual(ada.patch(f"/api/users/{ivo_id}", json={"disable_2fa": True}, headers=H).json()["detail"], "reauth_required")
+        c2 = client()
+        t = c2.post("/api/login", json={"username": "ada", "password": "ada keeps a long passphrase"}, headers=H).json()["ticket"]
+        o = c2.post("/api/login/passkey/options", json={"ticket": t}, headers=O).json()
+        self.assertEqual(c2.post("/api/login/passkey", json={"state": o["state"], "credential": key.get(o["options"]), "ticket": t},
+                                 headers=O).status_code, 200)
+        self.assertEqual(c2.patch(f"/api/users/{ivo_id}", json={"disable_2fa": True}, headers=H).status_code, 200)
+        # the command line stays the way back in: no second factor, no fresh check
+        manage.run(["disable-2fa", "ada"])
+        self.assertFalse(accounts.has_second_factor(db, db.execute("SELECT * FROM users WHERE id=?", (ada_id,)).fetchone()))
+        for name in ("ada", "ivo", "new-admin"):   # leave the others' tests as they were
+            db.execute("UPDATE users SET is_admin=0 WHERE username=?", (name,))
+        db.execute("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username IN ('ada', 'ivo', 'new-admin'))")
         db.close()
 
     def test_breached_and_context_passwords_are_refused(self):

@@ -33,6 +33,9 @@ COOKIE = "sg_session"
 # this exact host (no subdomain can set or overwrite it); plain HTTP can't carry that prefix, so it keeps COOKIE
 COOKIE_HOST = "__Host-" + COOKIE
 TEMP_PASSWORD_DAYS = _int("TEMP_PASSWORD_DAYS", 7)   # a one-time password from an admin stops working after this
+# the fresh check before an admin resets a password, turns off someone's two-factor sign-in or makes someone an
+# admin: the password, a code or a passkey within this many minutes (signing in counts)
+REAUTH_MINUTES = _int("REAUTH_MINUTES", 5)
 DEVICE_COOKIE, DEVICE_DAYS = "sg_device", 365   # marks a browser that has signed in to an account before
 # Addresses people open Sanguity at, when a reverse proxy in front changes the Host header and doesn't send
 # X-Forwarded-Host, e.g. "https://health.example.com" (comma-separated)

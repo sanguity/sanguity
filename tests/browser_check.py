@@ -253,6 +253,25 @@ def main():
             page.click("#userNew button[type=submit]")
             page.wait_for_function("document.querySelector('#userMsg code')", timeout=10000)
             check("admin creates an account with a one-time password", len(js("document.querySelector('#userMsg code').textContent")) >= 20)
+            # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
+            check("with a second account, the admin is asked for a second factor",
+                  js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
+            # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
+            from server import twofactor
+            import time as _time
+            totp = lambda key, ahead=0: twofactor._code(key, int(_time.time() // twofactor.PERIOD) + ahead)
+            page.locator("#twofa").get_by_role("button", name="Turn on").click()
+            page.wait_for_selector("#twofa .tf-key")
+            key = js("document.querySelector('#twofa .tf-key').textContent").replace(" ", "")
+            check("2FA setup shows a QR code", js("document.querySelector('#twofa .tf-setup img').naturalWidth > 100"))
+            page.locator("#twofa input").fill(totp(key))
+            page.locator("#twofa").get_by_role("button", name="Confirm").click()
+            page.wait_for_selector("#twofa .tf-codes")
+            check("2FA confirmed, 10 recovery codes shown", len(js("document.querySelector('#twofa .tf-codes').textContent").split()) == 10)
+            page.locator("#twofa").get_by_role("button", name="I've saved them").click()
+            page.wait_for_function("document.getElementById('tfHint').textContent.startsWith('On.') && "
+                                   "!document.getElementById('adminTools').hidden && document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
+            check("with 2FA on, the account tools are back", js("document.getElementById('adminTf').hidden"))
             # activity: the profile's log shows the records being opened (by this run), and filters by kind;
             # the admin's account log shows the account just created
             mine = page.locator("#profList .prof", has_text="My records")
@@ -289,9 +308,21 @@ def main():
             gone_from = len(problems)
             check("deleting a profile removes it", js("fetch('api/profiles/2/data').then(r => r.status)") == 404)
             problems[gone_from:] = [x for x in problems[gone_from:] if "404" not in x]   # that 404 was the point
-            # disabling the only owner of a profile asks first; accepting disables the account
+            # resetting a password needs a fresh check: once the sign-in is more than a few minutes old, it asks first
             from server import db as dbm, profiles
             db = dbm.connect()
+            db.execute("UPDATE sessions SET verified_at=0")
+            before = len(problems)
+            page.locator("#userList tr", has_text="alex").get_by_role("button", name="Reset password").click()
+            page.wait_for_selector("#reauth input", state="visible", timeout=10000)
+            check("resetting a password asks to confirm it's you", "Confirm it's you" in page.inner_text("#reauth"))
+            page.fill("#reauth input", PW)
+            page.locator("#reauth").get_by_role("button", name="Confirm").click()
+            page.wait_for_function("document.getElementById('reauth').hidden && document.querySelector('#userMsg code') && "
+                                   "document.getElementById('userMsg').textContent.includes('alex')", timeout=10000)
+            check("after the password, the reset goes ahead", True)
+            problems[before:] = [x for x in problems[before:] if "403" not in x]   # the refusal that asks
+            # disabling the only owner of a profile asks first; accepting disables the account
             alex = db.execute("SELECT id FROM users WHERE username='alex'").fetchone()[0]
             profiles.create_profile(db, "Alex's records", owner_id=alex)
             db.close()
@@ -316,20 +347,6 @@ def main():
             problems[before_remove:] = [x for x in problems[before_remove:] if "409" not in x]   # the question's refusal
             page.wait_for_function("[...document.querySelectorAll('#profList .prof')].some(p => p.textContent.includes(\"Alex's records\"))", timeout=10000)
             check("removing a sole owner hands their profile to whoever is named", True)
-            # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
-            from server import twofactor
-            import time as _time
-            totp = lambda key, ahead=0: twofactor._code(key, int(_time.time() // twofactor.PERIOD) + ahead)
-            page.locator("#twofa").get_by_role("button", name="Turn on").click()
-            page.wait_for_selector("#twofa .tf-key")
-            key = js("document.querySelector('#twofa .tf-key').textContent").replace(" ", "")
-            check("2FA setup shows a QR code", js("document.querySelector('#twofa .tf-setup img').naturalWidth > 100"))
-            page.locator("#twofa input").fill(totp(key))
-            page.locator("#twofa").get_by_role("button", name="Confirm").click()
-            page.wait_for_selector("#twofa .tf-codes")
-            check("2FA confirmed, 10 recovery codes shown", len(js("document.querySelector('#twofa .tf-codes').textContent").split()) == 10)
-            page.locator("#twofa").get_by_role("button", name="I've saved them").click()
-            page.wait_for_function("document.getElementById('tfHint').textContent.startsWith('On.')")
             # log out ends the session: the API now refuses
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
