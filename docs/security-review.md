@@ -58,18 +58,19 @@ All five are in the Phase 1 milestone.
 
 - #74 Pepper password hashes and strengthen recovery codes (2.4.5, 2.6.2): fixed; the pepper is kept encrypted with the data key, and recovery codes stay 8 characters, now salted
 - #75 Second factor for admin actions (4.3.1, 4.3.3)
-- #76 Decide session lifetime defaults (3.3.2)
+- #76 Decide session lifetime defaults (3.3.2): decided, see [Accepted deviations](#accepted-deviations)
 - #77 Automatic dependency updates, and an update path that pulls patched images (14.2.1): done, see 14.2.1
 - #78 Confirm or change the accepted ASVS deviations (2.1.1, 6.4.2, 8.1.4, 9.1.1, 9.2.2, 14.4.5): decided, see [Accepted deviations](#accepted-deviations)
 
 ## Accepted deviations
 
-Decided by the owner in #78:
+Decided by the owner in #78, and for 3.3.2 in #76:
 
 | # | Decision | Why |
 |---|---|---|
 | 2.1.1 | Accepted as is: 15 characters, or 8 with a second factor | NIST SP 800-63B's rule. A short password must be replaced if the second factor is removed. |
 | 6.4.2 | Accepted; the README documents keeping the key in a secret store | A vault or HSM is unusual on a home server. `SANGUITY_KEY_FILE` can name a Docker/Podman secret or a systemd credential, since those are files too. |
+| 3.3.2 | Changed (#76): 12 hours without a second factor; 30 days with one, and no idle limit, accepted | On a shared household tablet, signing in again every 12 hours or after 30 idle minutes would be constant friction. A second factor stops a stolen password, so long sessions are kept for accounts that have one; password-only accounts get the 12 hours ASVS asks for. Removing the second factor (or upgrading) ends sessions older than 12 hours. All three limits can be changed in `.env`. |
 | 8.1.4 | Changed: admins see bursts of failed sign-ins | `alerts.py`, `/api/security/notice`, shown under **Account**. Per-endpoint rate limits for signed-in requests stay out of scope. |
 | 9.1.1, 9.2.1–9.2.2, 14.4.5 | Accepted: HTTPS is the proxy's; plus a plain-HTTP warning and proxy guidance | The pages warn when opened over plain HTTP from outside the home network or a tailnet; the README covers `COOKIE_SECURE=1` and HSTS. nginx to the app stays on the compose network. |
 
@@ -178,7 +179,7 @@ The issue asked for these items in particular.
 | 3.2.3 | Stored safely in the browser | Met | HttpOnly cookie. Only its SHA-256 is in the database. |
 | 3.2.4 | Approved random generator | Met | `secrets`. |
 | 3.3.1 | Sign-out ends the session on the server | Met | `POST /api/logout` deletes the session row. |
-| 3.3.2 | Re-authentication after 12 hours, or 30 minutes idle | **Issue #76** | 30 days. The idle limit (`SESSION_IDLE_MINUTES`) is off by default. |
+| 3.3.2 | Re-authentication after 12 hours, or 30 minutes idle | **Changed** (#76; partly Accepted) | 12 hours from sign-in on an account without a second factor (`SESSION_HOURS_WITHOUT_2FA`), 30 days on one with an authenticator app or passkey (`SESSION_DAYS`), judged from sign-in on every request (`main._lifetime`). The idle limit (`SESSION_IDLE_MINUTES`) is off by default. See [Accepted deviations](#accepted-deviations). |
 | 3.3.3 | Option to end other sessions after a password change | Met | They end automatically (`change_password`). |
 | 3.3.4 | Users can see and end their sessions | Met | `GET/DELETE /api/sessions`, `revoke-others`, and the Account page. |
 | 3.4.1 | Secure attribute | Met | Set over HTTPS (`main._secure`). `COOKIE_SECURE=1` forces it. |

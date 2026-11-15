@@ -145,17 +145,30 @@ def _client_ip(request):
     return request.client.host if request.client else "?"
 
 
+def _lifetime(db, u):
+    """How long, in seconds, a session of account u lasts from sign-in: SESSION_DAYS with a second factor, and
+    SESSION_HOURS_WITHOUT_2FA (if shorter) without one."""
+    days, hours = config.SESSION_DAYS * 86400, config.SESSION_HOURS_WITHOUT_2FA * 3600
+    if hours and hours < days and not accounts.has_second_factor(db, u):
+        return hours
+    return days
+
+
 def _session(request, db):
     token = request.cookies.get(config.COOKIE_HOST) or request.cookies.get(config.COOKIE)
     if not token or len(token) > 200:
         return None
-    s = db.execute("""SELECT s.id AS sid, s.last_seen, s.expires, u.* FROM sessions s JOIN users u ON u.id = s.user_id
-                      WHERE s.token_hash=? AND u.disabled=0""", (sec.token_hash(token),)).fetchone()
+    s = db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, u.* FROM sessions s
+                      JOIN users u ON u.id = s.user_id WHERE s.token_hash=? AND u.disabled=0""",
+                   (sec.token_hash(token),)).fetchone()
     now = dbm.now()
     if not s:
         return None
     idle = config.SESSION_IDLE_MINUTES * 60
-    if s["expires"] <= now or (idle and now - s["last_seen"] > idle):
+    # judged from sign-in as well as from the stored end, so a session from before the second factor went (or from
+    # before this limit existed) ends on the shorter limit too
+    if (s["expires"] <= now or now - s["s_created"] >= _lifetime(db, s)
+            or (idle and now - s["last_seen"] > idle)):
         db.execute("DELETE FROM sessions WHERE id=?", (s["sid"],))
         return None
     # note use at most once a minute, or more often when the idle limit is short enough for that to matter
@@ -224,12 +237,13 @@ def _start_session(request, response, db, uid, how=None):
     """A new session for uid. how: the way they signed in, for the security log (None: a fresh session after a
     change, not a sign-in)."""
     token, now = sec.new_token(), dbm.now()
+    life = _lifetime(db, db.execute("SELECT id, totp_secret FROM users WHERE id=?", (uid,)).fetchone())
     db.execute("DELETE FROM sessions WHERE expires<=?", (now,))
     db.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent) VALUES(?,?,?,?,?,?,?)",
-               (sec.token_hash(token), uid, now, now, now + config.SESSION_DAYS * 86400,
+               (sec.token_hash(token), uid, now, now, now + life,
                 _client_ip(request), (request.headers.get("user-agent") or "")[:300]))
     secure = _secure(request)
-    response.set_cookie(config.COOKIE_HOST if secure else config.COOKIE, token, max_age=config.SESSION_DAYS * 86400,
+    response.set_cookie(config.COOKIE_HOST if secure else config.COOKIE, token, max_age=life,
                         path="/", httponly=True, samesite="strict", secure=secure)
     if secure and request.cookies.get(config.COOKIE):   # one from before the prefix, or from plain HTTP
         response.delete_cookie(config.COOKIE, path="/", httponly=True, samesite="strict")
@@ -249,7 +263,10 @@ class Setup(BaseModel):
 
 @app.get("/api/setup")
 def setup_state(db=Depends(get_db)):
-    return {"needed": db.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None}
+    """Whether first-run setup is due, and how long a sign-in lasts (for the note on the sign-in page)."""
+    return {"needed": db.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None,
+            "session": {"days": config.SESSION_DAYS, "hours_without_2fa": config.SESSION_HOURS_WITHOUT_2FA,
+                        "idle_minutes": config.SESSION_IDLE_MINUTES}}
 
 
 @app.post("/api/setup")
@@ -720,9 +737,10 @@ def passkey_remove(pk: int, request: Request, s=Depends(settled), db=Depends(get
 
 @app.get("/api/sessions")
 def sessions(s=Depends(any_user), db=Depends(get_db)):
-    return [{**dict(r), "current": r["id"] == s["sid"]} for r in db.execute(
-        "SELECT id, created, last_seen, expires, ip, agent FROM sessions WHERE user_id=? AND expires>? ORDER BY last_seen DESC",
-        (s["id"], dbm.now()))]
+    now, life = dbm.now(), _lifetime(db, s)
+    return [{**dict(r), "expires": min(r["expires"], r["created"] + life), "current": r["id"] == s["sid"]}
+            for r in db.execute("SELECT id, created, last_seen, expires, ip, agent FROM sessions WHERE user_id=? AND "
+                                "expires>? AND created>? ORDER BY last_seen DESC", (s["id"], now, now - life))]
 
 
 @app.delete("/api/sessions/{sid}")

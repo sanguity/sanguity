@@ -801,6 +801,55 @@ class Api(unittest.TestCase):
             config.SESSION_IDLE_MINUTES = old
             db.close()
 
+    def test_session_lifetime_follows_second_factor(self):
+        from server import config, twofactor
+        import time
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='lasting'").fetchone():
+            db.execute("INSERT INTO users(username, pw_hash, created) VALUES('lasting', ?, 0)", (sec.hash_password(PW["ben"]),))
+        who = "user_id=(SELECT id FROM users WHERE username='lasting')"
+        try:
+            # without a second factor: 12 hours from sign-in, in the session row and the cookie
+            c = client()
+            r = c.post("/api/login", json={"username": "lasting", "password": PW["ben"]}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertIn("Max-Age=43200", r.headers["set-cookie"])
+            r = db.execute(f"SELECT created, expires FROM sessions WHERE {who}").fetchone()
+            self.assertEqual(r["expires"] - r["created"], 12 * 3600)
+            db.execute(f"UPDATE sessions SET created=created-11*3600 WHERE {who}")
+            self.assertEqual(c.get("/api/me").status_code, 200)   # 11 hours in: still signed in
+            db.execute(f"UPDATE sessions SET created=created-3600 WHERE {who}")
+            self.assertEqual(c.get("/api/me").status_code, 401)   # 12 hours in: signed out, though used just now
+            # with an authenticator app: 30 days
+            secret = twofactor.new_secret()
+            db.execute("UPDATE users SET totp_secret=? WHERE username='lasting'", (secret,))
+            c = client()
+            t = c.post("/api/login", json={"username": "lasting", "password": PW["ben"]}, headers=H).json()["ticket"]
+            r = c.post("/api/login/code", json={"ticket": t, "code": twofactor._code(secret, int(time.time() // twofactor.PERIOD))}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertIn("Max-Age=2592000", r.headers["set-cookie"])
+            r = db.execute(f"SELECT created, expires FROM sessions WHERE {who}").fetchone()
+            self.assertEqual(r["expires"] - r["created"], 30 * 86400)
+            db.execute(f"UPDATE sessions SET created=created-13*3600 WHERE {who}")
+            self.assertEqual(c.get("/api/me").status_code, 200)   # 13 hours in: fine with a second factor
+            self.assertEqual(len(c.get("/api/sessions").json()), 1)
+            # the second factor gone without a sign-out (or a session from before this limit): it ends at 12 hours too
+            db.execute("UPDATE users SET totp_secret=NULL, totp_last_step=0 WHERE username='lasting'")
+            self.assertEqual(c.get("/api/me").status_code, 401)
+            # SESSION_HOURS_WITHOUT_2FA=0: SESSION_DAYS for everyone, as before
+            old = config.SESSION_HOURS_WITHOUT_2FA
+            config.SESSION_HOURS_WITHOUT_2FA = 0
+            try:
+                r = client().post("/api/login", json={"username": "lasting", "password": PW["ben"]}, headers=H)
+                self.assertIn("Max-Age=2592000", r.headers["set-cookie"])
+                self.assertEqual(client().get("/api/setup").json()["session"], {"days": 30, "hours_without_2fa": 0, "idle_minutes": 0})
+            finally:
+                config.SESSION_HOURS_WITHOUT_2FA = old
+            self.assertEqual(client().get("/api/setup").json()["session"]["hours_without_2fa"], 12)
+        finally:
+            db.execute("UPDATE users SET totp_secret=NULL, totp_last_step=0 WHERE username='lasting'")
+            db.close()
+
     def test_disabling_the_only_owner_asks_first(self):
         from server import accounts, profiles as prof
         admin_c = self.login("ben")

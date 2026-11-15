@@ -110,8 +110,9 @@ portal's export doesn't import, please open an issue with an anonymised sample.
   public breaches are refused, checked against a bundled list on your server, see `server/passwords/`). Password and
   recovery-code hashes are peppered with a server secret that only the encryption key unlocks, so a copied database
   alone can't be used to guess them. Sign-in throttling,
-  and server-side sessions you can see and sign out under **Account**. Optionally sign people out after a period
-  of inactivity (`SESSION_IDLE_MINUTES` in `.env`).
+  and server-side sessions you can see and sign out under **Account**. A sign-in lasts 30 days on an account with
+  a second factor and 12 hours on one without (`SESSION_DAYS`, `SESSION_HOURS_WITHOUT_2FA` in `.env`); optionally
+  sign people out after a period of inactivity too (`SESSION_IDLE_MINUTES`).
 - **Two-factor sign-in** with an authenticator app (codes that can't be reused) and one-time recovery codes, under
   **Account**; admins can require it for everyone. With it on, a password may be as short as 8 characters.
 - **Passkeys** (Face ID, Touch ID, Windows Hello, a phone or a security key), under **Account**: sign in with one on
