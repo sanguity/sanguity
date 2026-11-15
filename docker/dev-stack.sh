@@ -10,6 +10,7 @@
 # Everything lives under --dir and nothing else is written:
 #   src/       the checked-out code (replaced on every run; don't edit here)
 #   data/      the test copy's database and profiles     watch/   its own watch receiver
+#   backups/   its backups (server.manage backup)
 #   auth/      its secrets                               config/  your sources.json, corrections.json and
 #                                                                 settings.json (copied into src/ on each run)
 # Record exports given with --records and the watch summary given with --watch-public are mounted read-only,
@@ -91,7 +92,7 @@ case "$ACTION" in
     exit 0 ;;
 esac
 
-mkdir -p "$DIR/data" "$DIR/watch" "$DIR/auth" "$DIR/config" "$DIR/records"
+mkdir -p "$DIR/data" "$DIR/backups" "$DIR/watch" "$DIR/auth" "$DIR/config" "$DIR/records"
 
 # ---- code: the branch's latest commit (git if this machine has it, otherwise GitHub's archive)
 if command -v git >/dev/null; then
@@ -127,6 +128,7 @@ COMPOSE_PROJECT_NAME=$NAME
 WEB_PORT=$PORT
 RECEIVER_PORT=$((PORT + 1))
 DATA_DIR=$DIR/data
+BACKUP_DIR=$DIR/backups
 WATCH_DIR=$DIR/watch
 RECORDS_DIR=${RECORDS:-$DIR/records}
 TZ=$TZONE
