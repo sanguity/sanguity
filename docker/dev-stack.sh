@@ -189,7 +189,7 @@ fi
 # ---- wait until it answers
 printf 'Waiting for the test copy'
 for _ in $(seq 1 90); do
-  if curl -fsS -o /dev/null "http://127.0.0.1:$PORT/api/healthz"; then break; fi
+  if curl -fs -o /dev/null "http://127.0.0.1:$PORT/api/healthz"; then break; fi
   printf .; sleep 2
 done
 echo
