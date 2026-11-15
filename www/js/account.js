@@ -203,7 +203,8 @@ const WHAT = {
   document: d => `opened ${d.name || "a document"}`,
   create: () => "created the profile",
   rename: d => `renamed the profile from “${d.from}” to “${d.to}”`,
-  share: d => d.from ? `changed ${d.username}’s role from ${d.from} to ${d.role}` : `shared it with ${d.username} as ${d.role}`,
+  share: d => d.repair ? `made ${d.username} an owner, as an admin (the profile had no active owner)` :
+    d.from ? `changed ${d.username}’s role from ${d.from} to ${d.role}` : `shared it with ${d.username} as ${d.role}`,
   unshare: (d, e) => d.username === e.actor ? "left the profile" : `removed ${d.username}’s access`,
   import: d => `imported records (${d.documents} documents)`,
   reload: () => "loaded the latest records",
@@ -224,6 +225,7 @@ const WHAT = {
   "settings.require_2fa": d => d.on ? "required two-factor sign-in for everyone" : "stopped requiring two-factor sign-in",
   "account.remove": d => `removed the account ${d.username}` +
     (d.handed_over && d.handed_over.length ? `, handing ${d.handed_over.join(", ")} to someone else` : ""),
+  "profile.repair": d => `made ${d.username} owner of “${d.name}”, which had no active owner`,
   "profile.delete": d => `deleted the profile “${d.name}”${d.members > 1 ? ` (shared with ${d.members - 1} other${d.members > 2 ? "s" : ""})` : ""}`,
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
@@ -271,6 +273,7 @@ function showTemp(username, pw) {
 }
 async function loadUsers() {
   const list = await call("users");
+  loadOwnerless();
   $("#userList").replaceChildren(el("table", {class: "tbl"},
     el("thead", {}, el("tr", {}, ...["Account", "Status", "2FA", "Devices", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...list.map(u => {
@@ -302,6 +305,33 @@ async function loadUsers() {
             try { await call("users/" + u.id, "PATCH", {disable_2fa: true}); loadUsers(); } catch (e) { say("#userMsg", e.message, true); } }}) : null));
     }))));
 }
+/* profiles nobody can manage (every owner disabled or removed): an admin names a new owner; never shows records */
+async function loadOwnerless() {
+  const list = await call("ownerless"), box = $("#ownerless");
+  if (!list.length) { box.replaceChildren(); return; }
+  box.replaceChildren(el("div", {class: "danger-zone ownerless"},
+    el("p", {}, el("b", {text: "Profiles without an owner. "}), "Every owner of these was disabled or removed, so nobody can ",
+      "share or rename them. Give each an owner who should look after it. Whoever you choose can see its records."),
+    ...list.map(p => {
+      const active = p.members.filter(m => !m.disabled);
+      const pick = el("select", {"aria-label": `New owner of ${p.name}`},
+        ...active.map(m => el("option", {value: m.username, text: `${m.username} (now ${m.role})`})),
+        el("option", {value: "", text: "Another account…"}));
+      const other = el("input", {placeholder: "username", autocapitalize: "none", spellcheck: "false", "aria-label": "Another account", hidden: active.length > 0});
+      pick.onchange = () => { other.hidden = pick.value !== ""; if (!other.hidden) other.focus(); };
+      const go = el("button", {class: "btn small", type: "button", text: "Make owner", onclick: async () => {
+        const who = (pick.value || other.value).trim();
+        if (!who) return;
+        if (who.toLowerCase() === ME.user.username.toLowerCase() && !confirm(`This gives you access to ${p.name}'s records. Continue?`)) return;
+        try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); say("#userMsg", `${who} now owns ${p.name}.`); loadOwnerless(); loadProfiles(); }
+        catch (e) { say("#userMsg", e.message, true); }
+      }});
+      return el("div", {class: "row"}, el("b", {text: p.name}),
+        el("span", {class: "muted", text: p.members.length ? p.members.map(m => `${m.username} (${m.role}${m.disabled ? ", disabled" : ""})`).join(", ") : "no members"}),
+        pick, other, go);
+    })));
+}
+
 /* removing an account for good: if they alone own profiles, ask who takes those over first */
 async function removeAccount(u) {
   if (!confirm(`Remove the account ${u.username} for good? They're signed out and lose access to every profile. ` +
@@ -316,7 +346,7 @@ async function removeAccount(u) {
     } catch (e) {
       if (!(e.detail && e.detail.sole_owner_of)) { say("#userMsg", e.message, true); return; }
       const who = prompt(e.message + "\n\nType the username of the new owner, or leave it empty to remove anyway " +
-                         "(the profile can be given an owner later from the command line).", "");
+                         "(an admin can give it an owner later, under Accounts).", "");
       if (who === null) { say("#userMsg", "Not removed."); return; }
       body = who.trim() ? {hand_to: who.trim()} : {force: true};
     }

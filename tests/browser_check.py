@@ -265,6 +265,8 @@ def main():
             page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.textContent.includes('disabled'))", timeout=10000)
             problems[before:] = [x for x in problems[before:] if "409" not in x]   # the refusal that prompts the question
             check("disabling a profile's only owner asks first", asked and "only owner of Alex's records" in asked[0], asked[:1])
+            page.wait_for_function("document.querySelector('#ownerless') && document.querySelector('#ownerless').textContent.includes(\"Alex's records\")", timeout=10000)
+            check("an admin sees profiles left without an owner", True)
             # removing that account: confirmed, then asked who owns Alex's records instead (this admin)
             answers = iter([True, USER])
             def answer(d):
