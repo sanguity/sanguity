@@ -824,6 +824,47 @@ def remove_user(uid: int, body: UserRemove, request: Request, s=Depends(admin), 
     return {"ok": True, **gone}
 
 
+# ---------------------------------------------------------------- profiles nobody can manage (admin repair)
+
+@app.get("/api/ownerless")
+def ownerless(s=Depends(admin), db=Depends(get_db)):
+    """Profiles with no active owner (every owner disabled or removed): names and members only, never records."""
+    out = []
+    for p in db.execute("SELECT id, name FROM profiles ORDER BY name COLLATE NOCASE").fetchall():
+        if dbm.active_owners(db, p["id"]):
+            continue
+        members = [dict(r) for r in db.execute(
+            """SELECT u.id AS user_id, u.username, m.role, u.disabled FROM memberships m JOIN users u ON u.id = m.user_id
+               WHERE m.profile_id=? ORDER BY u.username COLLATE NOCASE""", (p["id"],))]
+        out.append({"id": p["id"], "name": p["name"], "members": members})
+    return out
+
+
+class OwnerIn(BaseModel):
+    username: str
+
+
+@app.post("/api/ownerless/{pid}/owner")
+def repair_owner(pid: int, body: OwnerIn, request: Request, s=Depends(admin), db=Depends(get_db)):
+    """Give a profile that has no active owner a new one. Only for such profiles: any other is its owners' to share."""
+    p = db.execute("SELECT name FROM profiles WHERE id=?", (pid,)).fetchone()
+    if not p:
+        raise HTTPException(404, "No such profile.")
+    u = db.execute("SELECT id, username FROM users WHERE username=? AND disabled=0", (body.username.strip(),)).fetchone()
+    if not u:
+        raise HTTPException(404, "No active account with that username.")
+    with dbm.transaction(db):
+        if dbm.active_owners(db, pid):
+            raise HTTPException(409, "That profile has an active owner, who can share it.")
+        old = role_of(db, u["id"], pid)
+        db.execute("""INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'owner')
+                      ON CONFLICT(user_id, profile_id) DO UPDATE SET role='owner'""", (u["id"], pid))
+    ip = _client_ip(request)   # in both logs: the profile's owners see who was given it, and by whom
+    activity.log(db, "share", s, pid, {"username": u["username"], "role": "owner", **({"from": old} if old else {}), "repair": True}, ip)
+    activity.log(db, "profile.repair", s, detail={"name": p["name"], "username": u["username"]}, ip=ip)
+    return {"ok": True}
+
+
 @app.patch("/api/users/{uid}")
 def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=Depends(get_db)):
     if uid == s["id"] and (body.disabled is not None or body.is_admin is not None or body.reset_password or body.disable_2fa):
@@ -837,8 +878,8 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
         if sole:   # nobody else could then share or rename these; the client asks, then resends with force
             raise HTTPException(409, {"sole_owner_of": sole, "message":
                 f"This account is the only owner of {', '.join(sole)}. While it is disabled, nobody can share or rename "
-                f"{'that profile' if len(sole) == 1 else 'those profiles'} (a server admin can still add an owner with "
-                f"server.manage share). Disable it anyway?"})
+                f"{'that profile' if len(sole) == 1 else 'those profiles'} until an admin gives "
+                f"{'it' if len(sole) == 1 else 'them'} a new owner under Accounts. Disable it anyway?"})
     out = {"ok": True}
     if body.is_admin is not None and body.is_admin != bool(target["is_admin"]):
         db.execute("UPDATE users SET is_admin=? WHERE id=?", (int(body.is_admin), uid))

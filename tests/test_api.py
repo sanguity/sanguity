@@ -284,6 +284,37 @@ class Api(unittest.TestCase):
         self.assertIsNone(db.execute("SELECT 1 FROM activity WHERE actor='old'").fetchone())
         db.close()
 
+    def test_repair_ownerless(self):
+        from server import accounts, profiles as prof
+        db = dbm.connect()
+        ids = {}
+        for name in ("ola", "mia"):
+            row = db.execute("SELECT id FROM users WHERE username=?", (name,)).fetchone()
+            ids[name] = row[0] if row else accounts.create(db, name, password=f"{name} keeps a long passphrase")[0]
+        pid = prof.create_profile(db, "Ola's", owner_id=ids["ola"])
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (ids["mia"], pid))
+        ben = self.login("ben")
+        ben.patch(f"/api/users/{ids['ola']}", json={"disabled": True, "force": True}, headers=H)   # now nobody can manage it
+        listed = next(p for p in ben.get("/api/ownerless").json() if p["id"] == pid)
+        self.assertEqual(set(listed), {"id", "name", "members"})   # names and members only, never records
+        self.assertEqual([(m["username"], m["role"], m["disabled"]) for m in listed["members"]], [("mia", "viewer", 0), ("ola", "owner", 1)])
+        self.assertNotIn(1, [p["id"] for p in ben.get("/api/ownerless").json()])   # profile 1 has an active owner
+        # admins only, and only for profiles with no active owner
+        mia = self.login("mia", "mia keeps a long passphrase")
+        self.assertEqual(mia.get("/api/ownerless").status_code, 403)
+        self.assertEqual(mia.post(f"/api/ownerless/{pid}/owner", json={"username": "mia"}, headers=H).status_code, 403)
+        self.assertEqual(ben.post("/api/ownerless/1/owner", json={"username": "mia"}, headers=H).status_code, 409)
+        self.assertEqual(ben.post(f"/api/ownerless/{pid}/owner", json={"username": "ola"}, headers=H).status_code, 404)   # disabled
+        # repaired: the member is owner and can manage it again; it's off the list; both logs say so
+        self.assertEqual(ben.post(f"/api/ownerless/{pid}/owner", json={"username": "mia"}, headers=H).status_code, 200)
+        self.assertEqual(mia.get(f"/api/profiles/{pid}/members").status_code, 200)
+        self.assertNotIn(pid, [p["id"] for p in ben.get("/api/ownerless").json()])
+        shared = mia.get(f"/api/profiles/{pid}/activity?action=share").json()[0]
+        self.assertEqual((shared["actor"], shared["detail"]), ("ben", {"username": "mia", "role": "owner", "from": "viewer", "repair": True}))
+        self.assertEqual(ben.get("/api/activity").json()[0]["action"], "profile.repair")
+        self.assertEqual(ben.get(f"/api/profiles/{pid}/data").status_code, 404)   # the admin still can't see its records
+        db.close()
+
     def test_remove_account(self):
         from server import accounts, manage, profiles as prof
         db = dbm.connect()

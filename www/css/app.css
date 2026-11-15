@@ -297,6 +297,8 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .acct .danger-zone{margin-top:8px;padding:10px 12px;border:1px solid var(--crit);border-radius:10px;max-width:560px}
 .acct .danger-zone p{margin:0 0 8px;font-size:13px}
 .acct .danger-zone label{margin-top:8px}
+.acct .ownerless{margin-top:12px;max-width:none}
+.acct .ownerless .row{border-top:1px solid var(--grid);padding-top:8px}
 .acct .activity{margin-top:6px}
 .acct .activity td.nowrap{white-space:nowrap}
 #acctLog{margin-top:12px}
