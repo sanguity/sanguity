@@ -6,10 +6,14 @@ name: sanguity
 services:
   # one-shot: secrets and folders, then the built data in DATA_DIR/build (your exports via sources.json, or the demo)
   setup:
-    image: python:3.12-alpine
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    image: sanguity-app   # the app's image: setup encrypts the build with the app's own code
     user: "0:0"            # creates missing folders, then hands every file it writes to PUID:PGID
     restart: "no"
     command: ["python3", "-I", "/app/docker/setup.py"]
+    working_dir: /app
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
@@ -35,6 +39,7 @@ services:
         condition: service_completed_successfully
     environment:
       SANGUITY_DATA: /data
+      SANGUITY_KEY_FILE: /run/secrets/sanguity/data_key
       SANGUITY_BACKUPS: /backups
       SANGUITY_RECORDS: /srv/records
       SANGUITY_WATCH_FILE: /srv/watch/daily.json
@@ -50,6 +55,7 @@ services:
       - /tmp
     volumes:
       - ./server:/app/server:ro
+      - ./auth:/run/secrets/sanguity:ro   # data_key: the encryption key, kept apart from the data and its backups
       - ${DATA_DIR:-./data}:/data
       - ${BACKUP_DIR:-./backups}:/backups   # server.manage backup writes here
       - ${RECORDS_DIR:-./records}:/srv/records:ro

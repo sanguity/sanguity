@@ -15,7 +15,7 @@ moved to DATA_DIR/before-restore-<time>/, never deleted, and an older backup's d
 """
 import contextlib, datetime, glob, hashlib, io, json, os, re, shutil, sqlite3, tarfile, tempfile
 
-from . import config, db as dbm
+from . import config, crypto, db as dbm
 
 FORMAT = 1
 NAME = re.compile(r"^sanguity-backup-\d{8}-\d{6}\.tar\.gz$")
@@ -157,6 +157,24 @@ def verify(archive):
         raise BackupError(f"Can't read {archive}: {e}") from None
 
 
+def _check_key(archive):
+    """Refuse a backup this install's key can't open, before anything is replaced."""
+    with tarfile.open(archive, "r:gz") as tar:
+        for m in tar.getmembers():
+            if m.name in ("manifest.json", "sanguity.db"):
+                continue
+            data = tar.extractfile(m).read()
+            if crypto.encrypted(data):
+                try:
+                    crypto.keyring.load()
+                    crypto.unseal(data)
+                except crypto.KeyError_ as e:
+                    raise BackupError(f"This backup can't be read with this install's encryption key ({e}) It was "
+                                      f"made with a different key: put that key file at {config.KEY_FILE} "
+                                      "(or add its line to the key file), then restore again.") from None
+                return
+
+
 def restore(archive):
     """Replace DATA_DIR's database, profiles and build with the archive's. Returns (manifest, where the old data went)."""
     if _app_is_running():
@@ -165,6 +183,7 @@ def restore(archive):
     manifest = verify(archive)
     if manifest.get("schema", 0) > len(dbm.SCHEMA):
         raise BackupError("This backup was made by a newer version of Sanguity. Update first, then restore.")
+    _check_key(archive)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     aside = os.path.join(config.DATA_DIR, f"before-restore-{stamp}")
     os.makedirs(aside)

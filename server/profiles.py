@@ -8,7 +8,7 @@ and nothing else on disk can be reached.
 import contextlib, json, os, secrets, shutil, threading
 from urllib.parse import quote
 
-from . import activity, config, db as dbm
+from . import activity, config, crypto, db as dbm
 
 _lock = threading.Lock()
 _failed = {}   # profile id -> (build mtime, why): a build that couldn't be loaded, so it isn't retried on every request
@@ -77,10 +77,12 @@ def document_url(pid, doc, path, ext):
 
 
 def _write_json(path, obj):
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(obj, f, separators=(",", ":"))
-    os.replace(tmp, path)
+    crypto.write_file(path, json.dumps(obj, separators=(",", ":")).encode("utf-8"))
+
+
+def read_json(path):
+    """A JSON file Sanguity wrote (encrypted) or was given (plaintext)."""
+    return json.loads(crypto.read_file(path))
 
 
 def import_dataset(db, pid, src_dir, version=None, mirror_settings=False):
@@ -90,12 +92,11 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False):
     Document ids stay the same across re-imports for the same file, so links people saved keep working.
     Returns the number of documents indexed.
     """
-    with open(os.path.join(src_dir, "data.json"), encoding="utf-8") as f:
-        data = json.load(f)
+    data = read_json(os.path.join(src_dir, "data.json"))
     if not isinstance(data, dict) or not isinstance(data.get("events"), list) or not isinstance(data.get("details", {}), dict):
         raise ValueError("it isn't a Sanguity data file (expected an object with an \"events\" list)")
     os.makedirs(profile_dir(pid), exist_ok=True)
-    known = {r["path"]: (r["id"], r["ext"]) for r in db.execute("SELECT id, path, ext FROM documents WHERE profile_id=?", (pid,))}
+    known = {crypto.dec(r["path"]): (r["id"], r["ext"]) for r in db.execute("SELECT id, path, ext FROM documents WHERE profile_id=?", (pid,))}
     keep, n = set(), 0
     with dbm.transaction(db):
         for d in (data.get("details") or {}).values():
@@ -109,7 +110,7 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False):
             doc, had = known.get(path, (None, None))
             if not doc:
                 doc = secrets.token_urlsafe(16)
-                db.execute("INSERT INTO documents(id, profile_id, path, ext) VALUES(?, ?, ?, ?)", (doc, pid, path, ext))
+                db.execute("INSERT INTO documents(id, profile_id, path, ext) VALUES(?, ?, ?, ?)", (doc, pid, crypto.enc(path), ext))
             elif had != ext:   # same file, newly described as another type
                 db.execute("UPDATE documents SET ext=? WHERE id=?", (ext, doc))
             known[path] = (doc, ext)
@@ -123,7 +124,7 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False):
         _write_json(data_path(pid), data)
         src_settings = os.path.join(src_dir, "settings.json")
         if os.path.isfile(src_settings):
-            shutil.copyfile(src_settings, settings_path(pid))
+            crypto.write_file(settings_path(pid), crypto.read_file(src_settings))
         elif mirror_settings and os.path.isfile(settings_path(pid)):
             os.remove(settings_path(pid))
         db.execute("UPDATE profiles SET build_mtime=? WHERE id=?", (version, pid))

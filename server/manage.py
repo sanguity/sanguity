@@ -18,13 +18,15 @@
                                          --force, are left without an owner)
   disable-2fa USERNAME                   turn off someone's two-factor sign-in (lost phone and recovery codes);
                                          signs them out everywhere
+  reencrypt                              with the app stopped, after adding a key (setup new-key): re-encrypt everything
+                                         with it, so the old key can be removed (starting the app does this too)
   verify ARCHIVE                         check a backup is complete and undamaged
   restore ARCHIVE [--yes]                replace the database, profiles and setup build with a backup's; the app must
                                          be stopped: docker compose run --rm --no-deps app python -m server.manage restore ...
 """
 import os, sys
 
-from . import accounts, activity, backup, db as dbm, export, main, profiles as prof, security as sec
+from . import accounts, activity, atrest, backup, crypto, db as dbm, export, main, profiles as prof, security as sec
 
 
 def _user(db, name):
@@ -157,6 +159,13 @@ def _command(db, argv):
         if failed:
             sys.exit(f"Linked, but the build couldn't be loaded: {failed[pid]}")
         print(f"Profile {pid} now shows the setup build, and follows every rebuild.")
+    elif cmd == "reencrypt":
+        if backup._app_is_running():   # it would go on writing with the key it loaded, and lose the new one
+            sys.exit("The app is running: restart it instead (docker compose restart app), which re-encrypts as it starts.")
+        atrest.check_key(db)
+        done = atrest.seal_everything(db)
+        print(f"Re-encrypted {done['files']} files and {done['fields']} database fields with the newest key "
+              f"({crypto.current_key_id().hex()}). Older keys can now be removed from the key file.")
     elif cmd == "sync":
         failed = prof.sync_build(db)
         if failed:

@@ -12,7 +12,8 @@ TMP = tempfile.mkdtemp(prefix="sanguity-test-")
 atexit.register(shutil.rmtree, TMP, True)   # after every test class (Backups uses what Api left)
 os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"),
                   SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"), PASSWORD_MIN_LENGTH="15",
-                  SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"), PUBLIC_ORIGINS="https://health.example.com/")
+                  SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"), PUBLIC_ORIGINS="https://health.example.com/",
+                  SANGUITY_KEY_FILE=os.path.join(TMP, "keys", "data_key"))   # outside the data folder, as in Docker
 os.makedirs(os.path.join(TMP, "records"))
 subprocess.run([sys.executable, "-I", os.path.join(ROOT, "demo", "generate.py"), os.path.join(TMP, "build"),
                 "--end", "2026-11-15", "--watch", os.path.join(TMP, "watch")], check=True, stdout=subprocess.DEVNULL)
@@ -23,6 +24,29 @@ from fastapi.testclient import TestClient   # noqa: E402
 from server import db as dbm, main, security as sec   # noqa: E402
 
 H = {"X-Sanguity": "1"}
+
+
+class other_key:
+    """Point the app at a different key file for a while (missing, or holding a key that didn't write the data)."""
+    def __init__(self, make=True):
+        self.path, self.make = os.path.join(TMP, "keys", "other_key"), make
+
+    def __enter__(self):
+        from server import config, crypto
+        if os.path.exists(self.path):
+            os.remove(self.path)
+        if self.make:
+            crypto.make_key_file(self.path)
+        self.saved = (config.KEY_FILE, crypto.keyring.path)
+        config.KEY_FILE = crypto.keyring.path = self.path
+        crypto.keyring.reset()
+
+    def __exit__(self, *exc):
+        from server import config, crypto
+        config.KEY_FILE, crypto.keyring.path = self.saved
+        crypto.keyring.reset()
+        if os.path.exists(self.path):
+            os.remove(self.path)
 PW = {"ben": "kettle orbit marsh velvet", "alex": "purple monkey dishwasher", "sam": "seven wild otters dancing"}
 CODE = "TEST-CODE-1234"
 
@@ -187,8 +211,8 @@ class Api(unittest.TestCase):
         os.utime(built, (later, later))   # only settings.json changed, not data.json
         self.assertEqual(ben.get("/api/profiles/1/settings").json(), {"sources": {"EXT": "Outside lab"}})
         data_file = os.path.join(TMP, "build", "data.json")   # a data.json restored with an older date is noticed too
-        with open(data_file, encoding="utf-8") as f:
-            d = json.load(f)
+        from server import crypto
+        d = json.loads(crypto.read_file(data_file))   # the app encrypts the build at start-up
         d["source"] = "Restored copy"
         with open(data_file, "w", encoding="utf-8") as f:
             json.dump(d, f)
@@ -892,6 +916,61 @@ class Api(unittest.TestCase):
         self.assertEqual(prof.resolve_document("files-mychart/../data.json", base), os.path.realpath(os.path.join(base, "data.json")))
         self.assertIsNone(prof.resolve_document("files-mychart/../../www/data.json", base))
 
+    def test_encryption_at_rest(self):   # after test_a_flow: profile 1 holds the demo build, Ben signs in
+        import glob
+        from server import atrest, config, crypto, manage
+        files = glob.glob(os.path.join(TMP, "profiles", "*", "data.json"))
+        self.assertTrue(files)
+        for p in files:   # nothing Sanguity keeps is readable from the disk alone
+            with open(p, "rb") as f:
+                self.assertEqual(f.read(4), crypto.MAGIC, p)
+        db = dbm.connect()
+        for table, col in (("documents", "path"), ("activity", "detail")):
+            vals = [r[0] for r in db.execute(f"SELECT {col} FROM {table} WHERE {col} IS NOT NULL")]
+            self.assertTrue(vals, table)
+            self.assertTrue(all(v.startswith(crypto.FIELD) for v in vals), table)
+        if os.name != "nt":
+            self.assertEqual(os.stat(config.KEY_FILE).st_mode & 0o777, 0o600)
+        ben = self.login("ben")
+        records = ben.get("/api/profiles/1/data").json()
+        # a missing key isn't replaced by a new one once data is encrypted; a different key is refused
+        with other_key(make=False), self.assertRaises(SystemExit) as e:
+            atrest.check_key(db)
+        self.assertIn("encrypted", str(e.exception))
+        self.assertFalse(os.path.exists(os.path.join(TMP, "keys", "other_key")))
+        with other_key(), self.assertRaises(SystemExit) as e:
+            atrest.check_key(db)
+        self.assertIn("isn't the one", str(e.exception))
+        # rotation: a new first key, re-encrypt, then the old line can go
+        old = crypto.current_key_id()
+        crypto.add_key(config.KEY_FILE)
+        crypto.keyring.reset()
+        self.assertEqual(ben.get("/api/profiles/1/data").json(), records)   # old data still opens with the old line
+        from server import backup
+        if backup.fcntl:   # the app is running here: it would keep writing with the old key
+            with self.assertRaises(SystemExit):
+                manage.run(["reencrypt"])
+            atrest.seal_everything(db)   # what the app does as it starts
+        else:
+            manage.run(["reencrypt"])
+        # that covered the setup build too, which the tests above rewrote in plaintext (in Docker, setup seals it)
+        files += glob.glob(os.path.join(TMP, "build", "*.json"))
+        new = crypto.current_key_id()
+        self.assertNotEqual(old, new)
+        for p in files:
+            with open(p, "rb") as f:
+                self.assertEqual(f.read(8), crypto.MAGIC + new, p)
+        self.assertEqual(atrest.seal_everything(db), {"files": 0, "fields": 0})   # nothing left on the old key
+        with open(config.KEY_FILE, encoding="ascii") as f:
+            lines = [l for l in f.read().splitlines() if l and not l.startswith("#")]
+        with open(config.KEY_FILE, "w", encoding="ascii") as f:
+            f.write(lines[0] + "\n")
+        crypto.keyring.reset()
+        self.assertEqual(ben.get("/api/profiles/1/data").json(), records)
+        doc = db.execute("SELECT id FROM documents WHERE profile_id=1 LIMIT 1").fetchone()[0]
+        self.assertEqual(ben.get(f"/api/profiles/1/documents/{doc}").status_code, 200)
+        db.close()
+
     def test_manage_import_failure_keeps_link(self):
         from server import manage
         db = dbm.connect()
@@ -907,7 +986,7 @@ class Backups(unittest.TestCase):
     so this class is listed explicitly below): it restores an older state, which the other tests don't expect."""
 
     def test_backup_verify_restore(self):
-        import io, tarfile
+        import glob, io, tarfile
         from server import backup
         with client() as c:   # the app is running (and holds its lock) while the backup is taken
             if backup.fcntl:
@@ -946,6 +1025,11 @@ class Backups(unittest.TestCase):
                 dst.addfile(info, io.BytesIO(b"{}"))
         with self.assertRaises(backup.BackupError):
             backup.verify(evil)
+        # a backup another key wrote is refused before anything is replaced
+        with other_key(), self.assertRaises(backup.BackupError) as e:
+            backup.restore(path)
+        self.assertIn("different key", str(e.exception))
+        self.assertFalse(glob.glob(os.path.join(TMP, "before-restore-*")))
         # restore (app stopped): the state at backup time comes back, the replaced data is kept aside
         m, aside = backup.restore(path)
         self.assertTrue(os.path.isfile(os.path.join(aside, "sanguity.db")))

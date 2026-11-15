@@ -82,6 +82,14 @@ jobs:
       - name: First run (setup, sign-in, records, documents, nothing served that shouldn't be)
         run: python3 tests/docker_smoke.py --code "$SETUP_CODE" --receiver http://127.0.0.1:8731
 
+      - name: Records on disk are encrypted, and the key is kept apart from the data
+        run: |
+          test -s auth/data_key
+          for f in data/build/data.json data/profiles/*/data.json; do
+            [ "$(head -c 4 "$f")" = SGE1 ] || { echo "$f is not encrypted"; exit 1; }
+          done
+          ! grep -rlq '"source"' data/build data/profiles || { echo "plaintext records found in data/"; exit 1; }
+
       - name: After a restart (the database and records carry over)
         run: |
           docker compose up -d --force-recreate
