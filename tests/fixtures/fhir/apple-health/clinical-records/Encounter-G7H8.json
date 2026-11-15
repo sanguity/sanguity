@@ -1,0 +1,9 @@
+{
+  "resourceType": "Encounter",
+  "id": "G7H8",
+  "status": "finished",
+  "class": "inpatient",
+  "type": [{"text": "Inpatient admission"}],
+  "period": {"start": "2024-02-03T18:00:00Z"},
+  "serviceProvider": {"display": "Harbor View Hospital"}
+}

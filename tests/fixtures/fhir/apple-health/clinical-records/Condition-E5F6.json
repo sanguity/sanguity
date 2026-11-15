@@ -1,0 +1,8 @@
+{
+  "resourceType": "Condition",
+  "id": "E5F6",
+  "clinicalStatus": "active",
+  "verificationStatus": "confirmed",
+  "code": {"text": "Seasonal allergic rhinitis"},
+  "dateRecorded": "2023-04-02"
+}

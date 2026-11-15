@@ -1,0 +1,6 @@
+{
+  "resourceType": "Observation",
+  "id": "broken",
+  "status": "final",
+  "code": {"text": "Hemoglobin"},
+  "valueQuantity": {"value": 13.2, "unit": "g/dL"
