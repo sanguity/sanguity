@@ -16,6 +16,9 @@ RECORDS_DIR = os.environ.get("SANGUITY_RECORDS", "/srv/records")  # record expor
 LEGACY_WWW = os.environ.get("SANGUITY_LEGACY_WWW", "/srv/www")
 WATCH_FILE = os.environ.get("SANGUITY_WATCH_FILE", "/srv/watch/daily.json")     # the receiver's daily summary
 DB_PATH = os.path.join(DATA_DIR, "sanguity.db")
+# the first-run setup code is printed to the log and also written here (readable only by the app's own user),
+# for when the log is hard to reach; it is removed as soon as the first account exists
+SETUP_CODE_FILE = os.path.join(DATA_DIR, "setup-code.txt")
 
 SESSION_DAYS = _int("SESSION_DAYS", 30)                 # a session ends this long after sign-in
 SESSION_IDLE_MINUTES = _int("SESSION_IDLE_MINUTES", 0)  # also end it after this long unused (0 = off)

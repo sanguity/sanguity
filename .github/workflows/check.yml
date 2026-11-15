@@ -22,6 +22,9 @@ jobs:
       - name: Python files compile
         run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/docker_smoke.py server/*.py
 
+      - name: Shell scripts parse
+        run: bash -n docker/dev-stack.sh
+
       - name: JSON templates parse
         run: for f in *.example.json lab-aliases.json; do python -m json.tool "$f" > /dev/null || exit 1; done
 

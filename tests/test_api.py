@@ -34,6 +34,8 @@ class Api(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.ctx = client().__enter__()   # runs startup: database, demo build into profile 1, setup code
+        with open(os.path.join(TMP, "setup-code.txt"), encoding="utf-8") as f:   # also written to a private file
+            assert len(f.read().strip()) == 14, "setup-code.txt doesn't hold a code"
         db = dbm.connect()
         dbm.meta_set(db, "setup_code", sec.token_hash(CODE))
         db.close()
@@ -78,6 +80,7 @@ class Api(unittest.TestCase):
         r = ben.post("/api/setup", json={**bad, "code": CODE.lower()}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(anon.post("/api/setup", json={**bad, "code": CODE}, headers=H).status_code, 409)
+        self.assertFalse(os.path.exists(os.path.join(TMP, "setup-code.txt")))   # the code's file is gone with it
         self.assertFalse(anon.get("/api/setup").json()["needed"])
 
         me = ben.get("/api/me").json()

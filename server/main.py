@@ -23,14 +23,19 @@ WWW = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
 def _setup_code(db):
     """While no account exists, the first one is created in the browser with a one-time code from the logs."""
     if db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
-        dbm.meta_set(db, "setup_code", None)
+        accounts.forget_setup_code(db)
         return
     alphabet = string.ascii_uppercase.translate(str.maketrans("", "", "IO")) + "23456789"
     code = "-".join("".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3))
     dbm.meta_set(db, "setup_code", sec.token_hash(code))
+    fd = os.open(config.SETUP_CODE_FILE + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:   # readable only by the app's own user, like its database
+        f.write(code + "\n")
+    os.replace(config.SETUP_CODE_FILE + ".tmp", config.SETUP_CODE_FILE)
     bar = "=" * 64
     print(f"\n{bar}\n  Finish setting up Sanguity in your browser.\n  Setup code: {code}\n"
-          f"  (A new code is printed each time the app starts until the first account exists.)\n{bar}\n", flush=True)
+          f"  (also in {config.SETUP_CODE_FILE}; a new code is made each time the app starts until the\n"
+          f"  first account exists)\n{bar}\n", flush=True)
 
 
 @asynccontextmanager
