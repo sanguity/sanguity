@@ -84,6 +84,13 @@ SCHEMA = [
         used_at INTEGER,
         PRIMARY KEY(user_id, code_hash));
     """,
+    # version 5: encryption at rest (crypto.py). Activity details are encrypted, so the key that makes a view
+    # "once per session" (a document id) moves to its own column.
+    """
+    ALTER TABLE activity ADD COLUMN item TEXT;
+    DROP INDEX activity_seen;
+    CREATE INDEX activity_seen ON activity(session_id, profile_id, action, item);
+    """,
 ]
 
 

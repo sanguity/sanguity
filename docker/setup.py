@@ -20,6 +20,10 @@ sys.stdout.reconfigure(line_buffering=True)   # keep our messages in order with 
 APP = os.environ.get("SANGUITY_APP", "/app")   # container paths; overridable for running outside Docker
 WWW, AUTH = os.path.join(APP, "www"), os.path.join(APP, "auth")
 DATA = os.environ.get("SANGUITY_DATA", "/data")
+os.environ.setdefault("SANGUITY_KEY_FILE", os.path.join(AUTH, "data_key"))
+os.environ.setdefault("SANGUITY_DATA", DATA)
+sys.path.insert(0, APP)
+from server import crypto   # noqa: E402  (the app's own encryption, so the build is stored like the app stores it)
 BUILD = os.path.join(DATA, "build")
 BACKUPS = os.environ.get("SANGUITY_BACKUPS", "/backups")
 WATCH = os.environ.get("SANGUITY_WATCH", "/watch")
@@ -59,6 +63,10 @@ def secrets_and_dirs():
     if not os.path.isfile(ws):
         write(ws, secrets.token_hex(32) + "\n")
         print("Created the watch receiver secret (auth/watch_secret); the phone app signs its uploads with it.")
+    if crypto.make_key_file(os.environ["SANGUITY_KEY_FILE"]):
+        own(os.environ["SANGUITY_KEY_FILE"])
+        print("Created the encryption key (auth/data_key). Back it up somewhere other than the data folder and its "
+              "backups: without it, the records can't be read.")
     old = [n for n in ("htpasswd", "token.conf") if os.path.isfile(os.path.join(AUTH, n))]
     if old:   # the single shared login is gone; accounts are in the app's database now
         print(f"Note: auth/{' and auth/'.join(old)} from the old single login are no longer used and can be deleted.")
@@ -66,10 +74,18 @@ def secrets_and_dirs():
 
 def is_demo(path):
     try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f).get("source", "").startswith("Sanguity demo")
-    except (OSError, ValueError):
+        return json.loads(crypto.read_file(path)).get("source", "").startswith("Sanguity demo")
+    except (OSError, ValueError, crypto.KeyError_):
         return False
+
+
+def seal_build():
+    """Encrypt what the build scripts wrote in plaintext (the app reads either, but stores only sealed files)."""
+    for root, dirs, files in os.walk(BUILD):
+        for n in files:
+            p = os.path.join(root, n)
+            if not n.endswith(".tmp") and crypto.needs_resealing(open(p, "rb").read(8)):
+                crypto.write_file(p, crypto.read_file(p))
 
 
 def run(cmd, env=None):
@@ -100,9 +116,10 @@ def build_data():
     if not is_demo(data):   # the demo writes its own
         src = next((p for p in (os.path.join(APP, "settings.json"), os.path.join(WWW, "settings.json")) if os.path.isfile(p)), None)
         if src:
-            shutil.copyfile(src, built)
+            crypto.write_file(built, crypto.read_file(src))
         elif os.path.isfile(built):
             os.remove(built)   # settings.json was removed: back to the defaults
+    seal_build()
     own_tree(BUILD)
     for n in os.listdir(os.path.join(WATCH, "public")):
         own(os.path.join(WATCH, "public", n))
@@ -113,6 +130,11 @@ if __name__ == "__main__":
     if cmd == "password":
         sys.exit("Logins are accounts in the app now. To reset one:\n"
                  "  docker compose exec app python -m server.manage reset-password USERNAME")
+    elif cmd == "new-key":   # rotation: a new first key; the app re-encrypts with it when it next starts
+        crypto.add_key(os.environ["SANGUITY_KEY_FILE"])
+        own(os.environ["SANGUITY_KEY_FILE"])
+        print("Added a new encryption key to auth/data_key (the first line). Restart the app (docker compose restart\n"
+              "app): it re-encrypts everything with the new key as it starts. After that the old key's line can go.")
     elif cmd == "rebuild":
         secrets_and_dirs()
         build_data()

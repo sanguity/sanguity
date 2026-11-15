@@ -22,7 +22,7 @@ go with the profile. Entries older than ACTIVITY_DAYS are pruned (at most once a
 """
 import json
 
-from . import config, db as dbm
+from . import config, crypto, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
@@ -32,22 +32,22 @@ COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
 SYSTEM = (COMMAND_LINE, SETUP_BUILD)
 
 
-def log(db, action, who=None, profile_id=None, detail=None, ip=None, session_id=None, actor=None):
+def log(db, action, who=None, profile_id=None, detail=None, ip=None, session_id=None, actor=None, item=None):
     """Record an event. who is the signed-in account (a session row) or None for the system; actor names it
     otherwise (COMMAND_LINE, SETUP_BUILD)."""
-    db.execute("INSERT INTO activity(at, profile_id, actor_id, actor, action, detail, ip, session_id) VALUES(?,?,?,?,?,?,?,?)",
+    db.execute("INSERT INTO activity(at, profile_id, actor_id, actor, action, detail, ip, session_id, item) VALUES(?,?,?,?,?,?,?,?,?)",
                (dbm.now(), profile_id, who["id"] if who is not None else None,
                 who["username"] if who is not None else (actor or SETUP_BUILD), action,
-                json.dumps(detail, separators=(",", ":")) if detail else None, ip, session_id))
+                crypto.enc(json.dumps(detail, separators=(",", ":"))) if detail else None, ip, session_id, item))
     _prune_now_and_then(db)
 
 
 def once(db, s, profile_id, action, ip, detail=None, key=None):
     """Log action for this session and profile unless it's already logged (key tells documents apart)."""
-    if db.execute("SELECT 1 FROM activity WHERE session_id=? AND profile_id=? AND action=? AND IFNULL(json_extract(detail, '$.key'), '')=?",
+    if db.execute("SELECT 1 FROM activity WHERE session_id=? AND profile_id=? AND action=? AND IFNULL(item, '')=?",
                   (s["sid"], profile_id, action, key or "")).fetchone():
         return
-    log(db, action, s, profile_id, {**(detail or {}), **({"key": key} if key else {})} or None, ip, s["sid"])
+    log(db, action, s, profile_id, detail, ip, s["sid"], item=key)
 
 
 def _prune_now_and_then(db):
@@ -66,8 +66,8 @@ def _rows(db, where, args, before, limit):
     out = []
     for r in db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, min(max(limit, 1), 500))):
         d = dict(r)
-        d["detail"] = json.loads(d["detail"]) if d["detail"] else {}
-        d["detail"].pop("key", None)
+        d["detail"] = json.loads(crypto.dec(d["detail"])) if d["detail"] else {}
+        d["detail"].pop("key", None)   # entries from before the item column
         d["actor_removed"] = d["actor_id"] is None and d["actor"] not in SYSTEM   # the account was removed since
         out.append(d)
     return out

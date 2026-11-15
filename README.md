@@ -110,7 +110,10 @@ portal's export doesn't import, please open an issue with an anonymised sample.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
   changed it, and when (**Account > Activity**); admins see account changes. Entries are kept for a year
   (`ACTIVITY_DAYS` in `.env`).
-- **Secrets are generated on first start** (watch-receiver key, a one-time setup code).
+- **Encrypted at rest** (AES-256-GCM): records, documents, settings and the sensitive database fields are
+  unreadable without the key in `auth/data_key`, so a copied data folder or backup gives nothing away. See
+  [Encryption at rest](#encryption-at-rest).
+- **Secrets are generated on first start** (encryption key, watch-receiver key, a one-time setup code).
 - Records, built data, watch data, logins and secrets are never committed (see `.gitignore`).
 - Put Sanguity behind HTTPS (a reverse proxy, Tailscale or similar) before using it outside your home network.
   If sign-in then says "Request refused (cross-site check)", set `PUBLIC_ORIGINS` in `.env` to the address you
@@ -127,7 +130,7 @@ Health records are worth more than uptime: keep copies off this machine.
 | Accounts, profiles, records as loaded | `DATA_DIR` (default `./data`) | `docker compose exec app python -m server.manage backup` writes one checked archive to `BACKUP_DIR` (default `./backups`), safe while the app runs; `--keep 14` keeps the newest 14 |
 | Your original exports | `RECORDS_DIR` | copy them; Sanguity only reads them |
 | Watch and scale data | `WATCH_DIR` | `watch.db` plus `raw/`, the receiver's archive of every upload (`receiver.py --reprocess` rebuilds the database from it) |
-| Secrets and configuration | `auth/`, `.env`, `sources.json`, `corrections.json`, `settings.json` | copy them |
+| Secrets and configuration | `auth/`, `.env`, `sources.json`, `corrections.json`, `settings.json` | copy them; keep `auth/data_key` somewhere other than the backups (see below) |
 
 Run the backup every night, for example from cron on the host (on TrueNAS: **System > Advanced > Cron Jobs**):
 
@@ -146,6 +149,33 @@ docker compose stop app web
 docker compose run --rm --no-deps app python -m server.manage restore /backups/sanguity-backup-YYYYMMDD-HHMMSS.tar.gz
 docker compose up -d
 ```
+
+**Restoring on another machine** needs the `auth/data_key` the backup was made with: put it in place first.
+A restore checks the backup opens with the key before replacing anything.
+
+### Encryption at rest
+
+The setup service makes a key on first start, `auth/data_key`, and the app encrypts with it everything it keeps in
+`DATA_DIR`: each profile's records and settings, its documents, the setup build, and the database fields that hold
+document names, activity details and two-factor secrets. An existing install is encrypted on its first start after
+updating. The key is mounted read-only into the app and is never in `DATA_DIR` or a backup.
+
+- **Back up the key file on its own** (a password manager, a USB stick in a drawer). Without it the data and every
+  backup are unreadable, and nobody can recover them. With it, a stolen backup is as readable as without encryption,
+  so keep the two apart.
+- **Not covered:** account and profile names; your original exports in `RECORDS_DIR` (only read, never copied in
+  plaintext); downloads from **Export everything** (portable on purpose); the watch receiver's data in `WATCH_DIR`.
+- **For a stolen disk or server,** also encrypt the disk, which covers those too: an encrypted ZFS dataset (TrueNAS),
+  LUKS (Linux), FileVault (macOS) or BitLocker (Windows). The key file sits in the Sanguity folder, so on a disk that
+  isn't encrypted it is next to the data.
+- **Rotate the key** (for example after a copy of `auth/` may have leaked):
+
+  ```sh
+  docker compose run --rm setup python3 -I /app/docker/setup.py new-key   # adds a new first line to auth/data_key
+  docker compose restart app   # re-encrypts everything with the new key as it starts
+  ```
+
+  When `docker compose logs app` shows it has started, delete the old (second) line from `auth/data_key`. Backups made before then still need the old key.
 
 ## Testing a branch beside your real install
 
@@ -173,7 +203,7 @@ Keep `--dir` private (for example mode 750) when it holds a copy of your records
 ```sh
 pip install --require-hashes -r requirements-dev.txt && playwright install chromium   # exact, hash-checked versions
 python3 -I demo/generate.py dev-data/build --watch dev-data/watch    # fictional demo data
-SANGUITY_DATA=dev-data SANGUITY_RECORDS=dev-data/records SANGUITY_WATCH_FILE=dev-data/watch/daily.json   SANGUITY_SERVE_STATIC=1 PORT=8000 python3 -m server               # then open http://127.0.0.1:8000/ (setup code in the output)
+SANGUITY_DATA=dev-data SANGUITY_KEY_FILE=dev-keys/data_key SANGUITY_RECORDS=dev-data/records SANGUITY_WATCH_FILE=dev-data/watch/daily.json   SANGUITY_SERVE_STATIC=1 PORT=8000 python3 -m server               # then open http://127.0.0.1:8000/ (setup code in the output)
 python3 tests/test_api.py                      # API tests: sign-in, sessions, roles, sharing, documents
 python3 tests/browser_check.py                 # the same browser check CI runs on every pull request
 docker compose up -d --build && python3 tests/docker_smoke.py --code <setup code from docker compose logs app>

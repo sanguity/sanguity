@@ -16,6 +16,8 @@ RECORDS_DIR = os.environ.get("SANGUITY_RECORDS", "/srv/records")  # record expor
 LEGACY_WWW = os.environ.get("SANGUITY_LEGACY_WWW", "/srv/www")
 WATCH_FILE = os.environ.get("SANGUITY_WATCH_FILE", "/srv/watch/daily.json")     # the receiver's daily summary
 DB_PATH = os.path.join(DATA_DIR, "sanguity.db")
+# the encryption key file: kept apart from DATA_DIR (and backed up separately); see crypto.py
+KEY_FILE = os.environ.get("SANGUITY_KEY_FILE", "/run/secrets/sanguity/data_key")
 # the first-run setup code is printed to the log and also written here (readable only by the app's own user),
 # for when the log is hard to reach; it is removed as soon as the first account exists
 SETUP_CODE_FILE = os.path.join(DATA_DIR, "setup-code.txt")

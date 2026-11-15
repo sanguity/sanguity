@@ -3,7 +3,7 @@
 Roles on a profile:  owner (view, import/edit, share, delete) · editor (view, import/edit) · viewer (view).
 Admin is an account flag for managing accounts only; it gives no access to anyone's records.
 """
-import logging, os, secrets, string, threading
+import logging, os, secrets, string, threading, urllib.parse
 from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, backup, config, db as dbm, export, profiles as prof, security as sec, twofactor
+from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, profiles as prof, security as sec, twofactor
 
 log = logging.getLogger("sanguity")
 RANK = {"viewer": 1, "editor": 2, "owner": 3}
@@ -44,6 +44,10 @@ async def lifespan(app):
         dbm.init()
         db = dbm.connect()
         try:
+            atrest.check_key(db)   # stops here, saying why, if the key is missing or wrong
+            sealed = atrest.seal_everything(db)
+            if sealed["files"] or sealed["fields"]:
+                print(f"Encrypted {sealed['files']} files and {sealed['fields']} database fields that weren't yet.", flush=True)
             pid = prof.bootstrap(db)
             if pid:
                 print(f"Loaded the existing records into profile {pid} (\"My records\").", flush=True)
@@ -319,7 +323,7 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
         raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.", headers={"Retry-After": str(w)})
     out = {"must_change_pw": bool(u["must_change_pw"])}
     if twofactor.looks_like_code(body.code):
-        step = twofactor.verify(u["totp_secret"], body.code, u["totp_last_step"])
+        step = twofactor.verify(crypto.dec(u["totp_secret"]), body.code, u["totp_last_step"])
         if step is None:
             sec.throttle.fail(*keys)
             _tickets.failed(body.ticket)
@@ -451,7 +455,7 @@ def two_factor_start(s=Depends(settled), db=Depends(get_db)):
     if s["totp_secret"]:
         raise HTTPException(409, "Two-factor sign-in is already on.")
     secret = twofactor.new_secret()
-    db.execute("UPDATE users SET totp_pending=? WHERE id=?", (secret, s["id"]))
+    db.execute("UPDATE users SET totp_pending=? WHERE id=?", (crypto.enc(secret), s["id"]))
     link = twofactor.uri(secret, s["username"])
     return {"secret": secret, "uri": link, "qr": twofactor.qr_data_uri(link)}
 
@@ -463,7 +467,7 @@ def two_factor_confirm(body: TwoFactorCode, request: Request, s=Depends(settled)
     keys = ("pair:2fa|" + str(s["id"]) + "|" + _client_ip(request),)
     if (w := sec.throttle.wait(*keys)):
         raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.")
-    step = twofactor.verify(s["totp_pending"], body.code)
+    step = twofactor.verify(crypto.dec(s["totp_pending"]), body.code)
     if step is None:
         sec.throttle.fail(*keys)
         raise HTTPException(400, "That code doesn't match. Scan the QR code again, and check the time on your phone.")
@@ -482,7 +486,7 @@ def two_factor_new_codes(body: TwoFactorCode, request: Request, s=Depends(settle
     keys = ("pair:2fa|" + str(s["id"]) + "|" + _client_ip(request),)
     if (w := sec.throttle.wait(*keys)):
         raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.")
-    step = twofactor.verify(s["totp_secret"], body.code, s["totp_last_step"])
+    step = twofactor.verify(crypto.dec(s["totp_secret"]), body.code, s["totp_last_step"])
     if step is None:
         sec.throttle.fail(*keys)
         raise HTTPException(400, "That code isn't right.")
@@ -651,8 +655,7 @@ def profile_activity(pid: int, actor: Optional[int] = None, action: Optional[str
 def _json_file(path):
     """Read the whole file in one go: a re-import replaces it with os.replace, and an open file keeps the version
     it opened, whereas FileResponse stats and opens separately and could mix two versions' length and bytes."""
-    with open(path, "rb") as f:
-        return Response(f.read(), media_type="application/json")
+    return Response(crypto.read_file(path), media_type="application/json")   # decrypted, if Sanguity wrote it
 
 
 @app.get("/api/profiles/{pid}/data")
@@ -708,8 +711,12 @@ PART_TYPES = prof.PART_TYPES
 
 def _serve(path, ext, types):
     media = types.get(ext) or "application/octet-stream"   # unknown types download instead of rendering
-    resp = FileResponse(path, media_type=media, content_disposition_type="inline" if ext in types else "attachment",
-                        filename=os.path.basename(path))
+    disposition = "inline" if ext in types else "attachment"
+    if crypto.file_is_encrypted(path):   # imported into the profile's folder: decrypted here, whole
+        resp = Response(crypto.read_file(path), media_type=media,
+                        headers={"Content-Disposition": f'{disposition}; filename="{urllib.parse.quote(os.path.basename(path))}"'})
+    else:   # an original export: streamed as it is
+        resp = FileResponse(path, media_type=media, content_disposition_type=disposition, filename=os.path.basename(path))
     # shown in the app's own frame; no scripts, plugins or base URL inside records, and nothing fetched from
     # anywhere else (a remote image in a portal message would tell its sender when the record was read)
     resp.headers["X-Frame-Options"] = "SAMEORIGIN"
@@ -720,6 +727,7 @@ def _serve(path, ext, types):
 def _document(db, s, pid, doc):
     need(db, s, pid, "viewer")
     r = db.execute("SELECT path, ext FROM documents WHERE id=? AND profile_id=?", (doc[:64], pid)).fetchone()
+    r = {"path": crypto.dec(r["path"]), "ext": r["ext"]} if r else None
     if not r or not os.path.isfile(r["path"]):
         raise HTTPException(404, "Document not found.")
     return r

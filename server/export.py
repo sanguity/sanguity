@@ -11,7 +11,7 @@ It's written as it's sent, a piece at a time, so a large profile never sits in m
 """
 import datetime, json, os, re, shutil, urllib.parse, zipfile
 
-from . import profiles as prof
+from . import crypto, profiles as prof
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
 REF = re.compile(r"""(?:src|href)\s*=\s*["']([^"'#?]+)""", re.I)
@@ -21,10 +21,10 @@ STORED = ("pdf", "jpg", "jpeg", "png", "gif", "webp", "zip", "gz")   # already c
 def plan(db, pid):
     """Everything the export needs, gathered now: the stream runs after the request's database connection closes."""
     p = db.execute("SELECT name, watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
-    docs = {r["id"]: (r["path"], r["ext"]) for r in db.execute("SELECT id, path, ext FROM documents WHERE profile_id=?", (pid,))}
+    docs = {r["id"]: (crypto.dec(r["path"]), r["ext"]) for r in db.execute("SELECT id, path, ext FROM documents WHERE profile_id=?", (pid,))}
     log = [dict(r) for r in db.execute("SELECT at, actor, action, detail, ip FROM activity WHERE profile_id=? ORDER BY id", (pid,))]
     for e in log:
-        e["detail"] = json.loads(e["detail"]) if e["detail"] else {}
+        e["detail"] = json.loads(crypto.dec(e["detail"])) if e["detail"] else {}
         e["detail"].pop("key", None)
     return {"pid": pid, "name": p["name"], "docs": docs, "activity": log,
             "data": prof.data_path(pid) if os.path.isfile(prof.data_path(pid)) else None,
@@ -64,8 +64,7 @@ def _parts(path):
     """The pictures and stylesheets an HTML record links to inside its own folder, as paths relative to it."""
     folder, out = os.path.dirname(path), []
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            html = f.read(5_000_000)
+        html = crypto.read_file(path)[:5_000_000].decode("utf-8", "replace")
     except OSError:
         return out
     for ref in dict.fromkeys(REF.findall(html)):
@@ -96,6 +95,10 @@ def stream(p, exported_by):
         return sink.take()
 
     def add_file(name, path, compress=True):
+        if crypto.file_is_encrypted(path):   # Sanguity's own copy: decrypted whole (an export is plaintext on purpose)
+            zf.writestr(info(name, compress), crypto.read_file(path))
+            yield sink.take()
+            return
         with open(path, "rb") as src, zf.open(info(name, compress), "w", force_zip64=True) as dst:
             while chunk := src.read(1 << 20):
                 dst.write(chunk)
@@ -105,8 +108,7 @@ def stream(p, exported_by):
     # records, with document links pointing into the zip
     missing, included = [], {}
     if p["data"]:
-        with open(p["data"], encoding="utf-8") as f:
-            data = json.load(f)
+        data = prof.read_json(p["data"])
         for d in (data.get("details") or {}).values():
             if not isinstance(d, dict) or d.get("type") != "file" or not d.get("url"):
                 continue
@@ -178,8 +180,7 @@ def import_archive(db, pid, archive):
                 raise ValueError(f"unexpected entry in the zip: {i.filename}")
             target = os.path.join(new, *parts)
             os.makedirs(os.path.dirname(target), exist_ok=True)
-            with zf.open(i) as src, open(target, "wb") as out:
-                shutil.copyfileobj(src, out)
+            crypto.write_file(target, zf.read(i))   # kept encrypted in the profile's folder
     shutil.rmtree(dest, ignore_errors=True)
     os.replace(new, dest)
     n = prof.import_dataset(db, pid, dest)

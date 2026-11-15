@@ -48,7 +48,7 @@ def add_html_record(build):
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
-                      SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"))
+                      SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"), SANGUITY_KEY_FILE=os.path.join(TMP, "keys", "data_key"))
     subprocess.run([sys.executable, "-I", os.path.join(ROOT, "demo", "generate.py"), os.path.join(TMP, "build"), "--end", "2026-11-15",
                     "--watch", os.path.join(TMP, "watch")], check=True, stdout=subprocess.DEVNULL)
     add_html_record(os.path.join(TMP, "build"))
