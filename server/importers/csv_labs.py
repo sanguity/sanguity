@@ -24,6 +24,8 @@ import os
 import re
 from datetime import datetime
 
+from .common import canonical_lab, loinc_of
+
 NAME = "csv"
 LABEL = "Lab results spreadsheet (CSV)"
 SOURCE = "CSV"   # source tag on lab points and lab-day events
@@ -579,17 +581,28 @@ def _dedupe(results):
     return keep, len(results) - len(keep)
 
 
+def _base_name(r):
+    """The series a test belongs to: its canonical name when lab-aliases.json knows it (by LOINC code, then by name
+    or alias), else the name as reported. Names nobody knows are mapped later (#23)."""
+    return canonical_lab(r["test"], r["loinc"]) or r["test"]
+
+
 def _series_names(results):
-    """Series name per (test, unit): as reported, with the unit added when one test comes in two units."""
+    """Series name per (test, unit): the base name, with the unit added when one series comes in two units. Units are
+    counted per series, so two spellings of one test ("HGB", "Hemoglobin") never mix units."""
+    base = {r["test"]: _base_name(r) for r in results}
     units = collections.defaultdict(collections.Counter)
     for r in results:
         if r["x"] is not None:
-            units[r["test"]][_unit_key(r["unit"])] += 1
+            units[base[r["test"]]][_unit_key(r["unit"])] += 1
     names = {}
-    for test, c in units.items():
+    for test, b in base.items():
+        c = units.get(b)
+        if not c:
+            continue
         main = c.most_common(1)[0][0]
         for u in c:
-            names[(test, u)] = test if u == main else f"{test} ({u or 'no unit'})"
+            names[(test, u)] = b if u == main else f"{b} ({u or 'no unit'})"
     return names
 
 
@@ -636,14 +649,17 @@ def _build(results):
     for r in results:   # text results go with the test's main series, or one of their own
         if r["x"] is not None:
             continue
-        name = names.get((r["test"], _unit_key(r["unit"])), r["test"])
+        name = names.get((r["test"], _unit_key(r["unit"])), _base_name(r))
         s = series.setdefault(name, {"unit": r["unit"], "pts": [], "txt": []})
         s["txt"].append([r["t"], r["reported"]])
         panels[name][r["panel"]] += 1
     loinc = collections.defaultdict(collections.Counter)
     for r in results:
         if r["loinc"]:
-            loinc[names.get((r["test"], _unit_key(r["unit"])), r["test"])][r["loinc"]] += 1
+            loinc[names.get((r["test"], _unit_key(r["unit"])), _base_name(r))][r["loinc"]] += 1
+    for name in series:   # a canonical series without a code in the file takes lab-aliases.json's
+        if not loinc[name] and loinc_of(name):
+            loinc[name][loinc_of(name)] += 1
     labs = [{"name": name, "key": f"loinc:{loinc[name].most_common(1)[0][0]}" if loinc[name] else
              f"csv:{' '.join(name.split()).lower()}|{s['unit'].strip()}",
              "unit": s["unit"], "panel": panels[name].most_common(1)[0][0] if panels[name] else "",

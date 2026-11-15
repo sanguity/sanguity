@@ -189,7 +189,7 @@ class Values(unittest.TestCase):
         self.assertEqual(self.eu["warnings"], [])
 
     def test_value_with_unit_in_one_cell(self):
-        g = series(self.tab["data"], "Glucose")
+        g = series(self.tab["data"], "Glucose, Blood")
         self.assertEqual(g["unit"], "mmol/L")
         self.assertEqual([p[1:5] for p in g["pts"]], [[5.2, 3.9, 5.5, ""], [6.1, 3.9, 5.5, "H"]])
 
@@ -232,7 +232,7 @@ class Dates(Written):
 
     def test_ambiguous_dates_warned(self):
         out = csv_labs.parse(fixture("ambiguous_dates.csv"))
-        self.assertEqual([p[0][:10] for p in series(out["data"], "Sodium")["pts"]], ["2025-03-04", "2025-05-06"])
+        self.assertEqual([p[0][:10] for p in series(out["data"], "Sodium, Blood")["pts"]], ["2025-03-04", "2025-05-06"])
         self.assertEqual(len(out["warnings"]), 1)
         self.assertIn("month/day", out["warnings"][0])
 
@@ -259,7 +259,7 @@ class Layouts(Written):
 
     def test_quoted_decimal_commas_in_comma_file(self):
         f = self.write("q.csv", 'Date,Test,Value,Unit,Range\n2025-02-01,Potassium,"3,2",mmol/L,"3,5 - 5,1"\n')
-        p = series(csv_labs.parse(f)["data"], "Potassium")["pts"][0]
+        p = series(csv_labs.parse(f)["data"], "Potassium, Blood")["pts"][0]
         self.assertEqual(p[1:5], [3.2, 3.5, 5.1, "L"])
 
     def test_flag_column_wins_and_words(self):
@@ -272,8 +272,8 @@ class Layouts(Written):
         f = self.write("u.csv", "Date,Test,Value,Unit\n2025-01-01,Glucose,95,mg/dL\n2025-02-01,Glucose,100,mg/dL\n"
                                 "2025-03-01,Glucose,5.4,mmol/L\n")
         d = csv_labs.parse(f)["data"]
-        self.assertEqual(series(d, "Glucose")["n"], 2)
-        self.assertEqual(series(d, "Glucose (mmol/l)")["unit"], "mmol/L")
+        self.assertEqual(series(d, "Glucose, Blood")["n"], 2)
+        self.assertEqual(series(d, "Glucose, Blood (mmol/l)")["unit"], "mmol/L")
 
     def test_several_files_and_duplicates(self):
         files = {**self.write("a/one.csv", "Date,Test,Value\n2025-01-01,A,1\n2025-01-02,A,2\n"),
@@ -320,7 +320,7 @@ class Keys(Written):
         self.assertEqual(len(ka[0]), 6)   # four labitems, two days
         self.assertEqual(set(ka[1]), set(kb[1]))
         self.assertIn("csv:labday:2025-04-02", ka[0])
-        self.assertIn("csv:hemoglobin|g/dL", ka[1])
+        self.assertIn("loinc:718-7", ka[1])   # hemoglobin: lab-aliases.json gives the code
 
     def test_extended_file_keeps_old_keys(self):
         a = self.write("a.csv", "Date,Test,Value,Unit\n2025-01-01,A,1,mg\n")
