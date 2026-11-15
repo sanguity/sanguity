@@ -12,7 +12,7 @@ It's written as it's sent, a piece at a time, so a large profile never sits in m
 """
 import datetime, json, os, re, shutil, urllib.parse, zipfile
 
-from . import crypto, profiles as prof, records, uploads
+from . import crypto, profiles as prof, records, uploads, watch_store
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
 REF = re.compile(r"""(?:src|href)\s*=\s*["']([^"'#?]+)""", re.I)
@@ -30,7 +30,7 @@ def plan(db, pid):
     return {"pid": pid, "name": p["name"], "docs": docs, "activity": log,
             "data": records.assemble(db, pid), "uploads": uploads.stored_files(db, pid),
             "settings": prof.settings_path(pid) if os.path.isfile(prof.settings_path(pid)) else None,
-            "watch": p["watch_file"] if p["watch_file"] and os.path.isfile(p["watch_file"]) else None}
+            "watch": watch_store.load(db, pid)}   # the merged summary (receiver + imports), or None
 
 
 def filename(name, now=None):
@@ -131,7 +131,7 @@ def stream(p, exported_by):
                 yield from add_file(f"documents/{doc_id}/{rel}", os.path.join(os.path.dirname(path), *rel.split("/")),
                                     not rel.lower().endswith(STORED))
     if p["watch"]:
-        yield from add_file("watch/daily.json", p["watch"])
+        yield add_bytes("watch/daily.json", json.dumps(p["watch"], separators=(",", ":")).encode())
     for upload_id, rel, path in p["uploads"]:
         if os.path.isfile(path):
             yield from add_file(f"uploads/{upload_id}/{rel}", path, not rel.lower().endswith(STORED))

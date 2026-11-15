@@ -379,7 +379,7 @@ class _Aggregates:
                 if a[k]:
                     put(f"sleep_{k}_min", d, a[k] / 60)
         metrics = [{"key": k, "name": META[k][0], "unit": META[k][1], "group": META[k][2],
-                    "pts": sorted(out[k].items())} for k in META if k in out]
+                    "pts": [[d, v] for d, v in sorted(out[k].items())]} for k in META if k in out]
         exercise = sorted(self.workouts.values(), key=lambda x: x["start"])
         exported = self.exported.isoformat() if self.exported else None
         tz = self.tz or (self.exported.strftime("UTC%z") if self.exported else "UTC")
