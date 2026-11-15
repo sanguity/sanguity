@@ -1,0 +1,9 @@
+{
+  "resourceType": "MedicationOrder",
+  "id": "C3D4",
+  "status": "completed",
+  "dateWritten": "2024-09-12",
+  "medicationCodeableConcept": {"text": "Amoxicillin 500 mg capsule"},
+  "prescriber": {"display": "Dr. Jamie Patel"},
+  "dosageInstruction": [{"text": "Take 1 capsule three times daily for 10 days"}]
+}

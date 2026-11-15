@@ -1,0 +1,1 @@
+{"resourceType":"MedicationStatement","id":"ms1","status":"active","medicationCodeableConcept":{"text":"Metformin 500 mg tablet"},"effectivePeriod":{"start":"2025-01-15"},"dosage":[{"text":"Take 1 tablet twice daily with meals"}]}

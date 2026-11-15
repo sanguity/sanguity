@@ -1,0 +1,1 @@
+{"resourceType":"Condition","id":"c1","clinicalStatus":{"coding":[{"code":"active"}]},"code":{"text":"Prediabetes"},"onsetDateTime":"2025-01-08"}
