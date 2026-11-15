@@ -250,6 +250,21 @@ class Keys(unittest.TestCase):
         self.assertEqual({labs["Hemoglobin"], labs["HGB"]}, {"loinc:718-7|Hemoglobin", "loinc:718-7|HGB"})
         self.assertEqual(labs["Color of Urine"], "ccda:1.2.3.4.99|UCOLOR")
 
+    def test_one_code_in_two_units(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(FIX, "maple-grove-ccd.xml"), encoding="utf-8") as f:
+            s = f.read()
+        # the June hemoglobin reported in mmol/L: a series of its own, and both series' keys name their unit
+        s = s.replace('<value xsi:type="PQ" value="13.9" unit="g/dL"/>', '<value xsi:type="PQ" value="8.6" unit="mmol/L"/>')
+        p = os.path.join(tmp, "x.xml")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(s)
+        labs = {x["name"]: x.get("key") for x in ccda.parse({"x.xml": p})["data"]["labs"]}
+        self.assertEqual(labs["Hemoglobin"], "loinc:718-7|g/dL")
+        self.assertEqual(labs["Hemoglobin (mmol/L)"], "loinc:718-7|mmol/L")
+        self.assertEqual(labs["Glucose"], "loinc:2345-7")      # no split, no suffix
+
 
 class Refuse(unittest.TestCase):
     def test_no_ccda(self):

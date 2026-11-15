@@ -266,12 +266,12 @@ class _Out:
 
     def series(self, name, unit, loinc=None, code=None):
         """The series for a test; `code` is (code system OID, code) when the code isn't LOINC."""
-        s, split = self.labs.get(name), False
+        s = self.labs.get(name)
         if s is not None and unit and s["unit"] and s["unit"].replace(" ", "").lower() != unit.replace(" ", "").lower():
-            name, split = f"{name} ({unit})", True   # same test reported in another unit: its own series, never mixed
+            name = f"{name} ({unit})"        # same test reported in another unit: its own series, never mixed
             s = self.labs.get(name)
         if s is None:
-            s = self.labs[name] = {"unit": unit or "", "pts": [], "txt": [], "loinc": loinc, "code": code, "split": split}
+            s = self.labs[name] = {"unit": unit or "", "pts": [], "txt": [], "loinc": loinc, "code": code}
         if loinc and not s["loinc"]:
             s["loinc"] = loinc
         if code and not s["code"]:
@@ -280,9 +280,8 @@ class _Out:
 
     @staticmethod
     def series_key(s):
-        """"loinc:<code>", else "ccda:<code system>|<code>"; a series split off by unit adds "|<unit>" to stay unique."""
-        k = f"loinc:{s['loinc']}" if s["loinc"] else f"ccda:{s['code'][0]}|{s['code'][1]}" if s["code"] else None
-        return f"{k}|{s['unit']}" if k and s["split"] else k
+        """"loinc:<code>", else "ccda:<code system>|<code>" (made unique across series in parse())."""
+        return f"loinc:{s['loinc']}" if s["loinc"] else f"ccda:{s['code'][0]}|{s['code'][1]}" if s["code"] else None
 
 
 def _value(obs):
@@ -627,10 +626,20 @@ def parse(files):
                        **({"loinc": s["loinc"]} if s["loinc"] else {}),
                        **({"key": _Out.series_key(s)} if _Out.series_key(s) else {}), "n": len(pts), "pts": pts,
                        "txt": sorted(s["txt"])[-50:]})
+    # one code in several units: every one of those series adds "|<unit as reported>" (loinc:2345-7|mg/dL, ...|mmol/L)
+    groups = collections.defaultdict(list)
+    for s in series:
+        if s.get("key"):
+            groups[s["key"]].append(s)
+    for group in groups.values():
+        if len(group) > 1 and len({g["unit"] for g in group}) > 1:
+            for g in group:
+                g["key"] += f"|{g['unit']}"
+    # still shared: two reported names, one code and one unit ("Hemoglobin" and "HGB", both g/dL); each adds "|<name>"
     shared = collections.Counter(s.get("key") for s in series)
-    for s in series:        # two reported names with one code ("Hemoglobin", "HGB"): each keeps its own key
+    for s in series:
         if s.get("key") and shared[s["key"]] > 1:
-            s["key"] += "|" + s["name"]
+            s["key"] += f"|{s['name']}"
     series.sort(key=lambda s: (-s["n"], s["name"]))
     out.events.sort(key=lambda e: e["t"])
     if not (out.events or series or out.problems or out.weights):
