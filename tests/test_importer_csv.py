@@ -97,31 +97,35 @@ class Shape(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(self.data["events"], sorted(self.data["events"], key=lambda e: e["t"]))
         for e in self.data["events"]:
-            self.assertEqual(set(e) - {"abn", "hidden", "src"}, {"id", "t", "k", "title", "sub"})
+            self.assertEqual(set(e) - {"abn", "hidden", "src"}, {"id", "t", "k", "title", "sub", "key"})
             self.assertIn(e["k"], ("lab", "labitem"))
             self.assertIn(e["id"], self.data["details"])
 
-    def test_labitems_per_panel_and_day(self):
+    def test_labitems_per_test_and_day(self):
         items = [e for e in self.data["events"] if e["k"] == "labitem"]
         self.assertTrue(all(e["hidden"] == 1 for e in items))
         self.assertEqual(sorted((e["t"][:10], e["title"]) for e in items),
-                         [("2025-03-14", "CBC"), ("2025-03-14", "Lipid Panel"), ("2025-03-14", "Urinalysis"),
-                          ("2025-04-02", "CBC"), ("2025-04-02", "CRP")])   # no panel column value: one per test
-        cbc = next(e for e in items if e["title"] == "CBC" and e["t"].startswith("2025-03-14"))
-        det = self.data["details"][cbc["id"]]
+                         [("2025-03-14", "HDL Cholesterol"), ("2025-03-14", "Hemoglobin"),
+                          ("2025-03-14", "LDL Cholesterol"), ("2025-03-14", "Platelet Count"),
+                          ("2025-03-14", "Urine Protein"), ("2025-04-02", "CRP"), ("2025-04-02", "Hemoglobin")])
+        hb = next(e for e in items if e["title"] == "Hemoglobin" and e["t"].startswith("2025-03-14"))
+        det = self.data["details"][hb["id"]]
         self.assertEqual(det["type"], "result")
-        self.assertEqual(det["rows"], [["Hemoglobin", "12.9", "g/dL", "13.5 - 17.5", "L"],
-                                       ["Platelet Count", "1,200", "K/uL", "150-400", "H"]])
+        self.assertEqual(det["order"], "CBC")
+        self.assertEqual(det["rows"], [["Hemoglobin", "12.9", "g/dL", "13.5 - 17.5", "L"]])
         self.assertEqual(det["report"], [])
-        self.assertEqual(cbc["abn"], 2)
+        self.assertEqual((hb["abn"], hb["sub"]), (1, "CBC"))
+        self.assertRegex(hb["key"], r"^csv:h:[0-9a-f]{16}$")
 
     def test_lab_day_links_its_items(self):
         days = [e for e in self.data["events"] if e["k"] == "lab"]
         self.assertEqual(len(days), 2)
         first = days[0]
+        self.assertEqual(first["key"], "csv:labday:2025-03-14")
+        self.assertEqual(first["sub"], "CBC, Lipid Panel, Urinalysis")
         det = self.data["details"][first["id"]]
         self.assertEqual(det["type"], "labday")
-        self.assertEqual(len(det["ids"]), 3)
+        self.assertEqual(len(det["ids"]), 5)
         for i in det["ids"]:
             self.assertEqual(self.data["details"][i]["type"], "result")
         self.assertEqual(first["title"], "5 lab results")
@@ -130,7 +134,7 @@ class Shape(unittest.TestCase):
 
     def test_series(self):
         for s in self.data["labs"]:
-            self.assertEqual(set(s), {"name", "unit", "panel", "n", "pts", "txt"})
+            self.assertEqual(set(s), {"name", "key", "unit", "panel", "n", "pts", "txt"})
             self.assertEqual(s["n"], len(s["pts"]))
             for p in s["pts"]:
                 self.assertEqual(len(p), 7)
@@ -294,6 +298,52 @@ class Layouts(Written):
         self.assertEqual(len(w), 1)
         self.assertIn("Skipped 12 rows with no value", w[0])
         self.assertIn("and 7 more", w[0])
+
+
+class Keys(Written):
+    """Stable source keys, so a re-import matches instead of duplicating."""
+
+    ROWS = [("2025-03-14", "Hemoglobin", "12.9", "g/dL", "CBC"), ("2025-03-14", "Platelet Count", "250", "K/uL", "CBC"),
+            ("2025-04-02", "CRP", "<5", "mg/L", ""), ("2025-04-02", "Urine Protein", "Negative", "", "")]
+
+    @staticmethod
+    def keys(data):
+        return ({e["key"]: (e["k"], e["title"]) for e in data["events"]}, {s["key"]: s["name"] for s in data["labs"]})
+
+    def test_reordered_file_with_other_delimiter_same_keys(self):
+        a = self.write("a.csv", "Date,Test,Value,Unit,Panel\n" + "".join(",".join(r) + "\n" for r in self.ROWS))
+        # other columns order, semicolons, US dates, other test-name case and spacing, rows reversed, an extra column
+        b = self.write("export/b.csv", "Panel;Units;Result;Analyte;Collected;Notes\n" + "".join(
+            f"{p};{u};{v};  {t.upper()} ;{d[5:7]}/{d[8:]}/{d[:4]};x\n" for d, t, v, u, p in reversed(self.ROWS)))
+        ka, kb = self.keys(csv_labs.parse(a)["data"]), self.keys(csv_labs.parse(b)["data"])
+        self.assertEqual(set(ka[0]), set(kb[0]))
+        self.assertEqual(len(ka[0]), 6)   # four labitems, two days
+        self.assertEqual(set(ka[1]), set(kb[1]))
+        self.assertIn("csv:labday:2025-04-02", ka[0])
+        self.assertIn("csv:hemoglobin|g/dL", ka[1])
+
+    def test_extended_file_keeps_old_keys(self):
+        a = self.write("a.csv", "Date,Test,Value,Unit\n2025-01-01,A,1,mg\n")
+        b = self.write("b.csv", "Date,Test,Value,Unit\n2025-01-01,A,1,mg\n2025-01-01,B,2,mg\n2025-02-01,A,3,mg\n")
+        ka, kb = self.keys(csv_labs.parse(a)["data"]), self.keys(csv_labs.parse(b)["data"])
+        self.assertLessEqual(set(ka[0]), set(kb[0]))
+        self.assertEqual(len(kb[0]), 5)
+
+    def test_changed_value_new_key(self):
+        a = self.write("a.csv", "Date,Test,Value\n2025-01-01,A,1\n")
+        b = self.write("b.csv", "Date,Test,Value\n2025-01-01,A,1.5\n")
+        item = lambda f: next(k for k, v in self.keys(csv_labs.parse(f)["data"])[0].items() if v[0] == "labitem")  # noqa: E731
+        self.assertNotEqual(item(a), item(b))
+
+    def test_duplicate_rows_kept_once(self):
+        f = self.write("d.csv", "Date,Test,Value\n2025-01-01,A,1\n2025-01-01, a ,1\n")
+        out = csv_labs.parse(f)
+        self.assertEqual(sum(e["k"] == "labitem" for e in out["data"]["events"]), 1)
+        self.assertIn("appeared twice", " ".join(out["warnings"]))
+
+    def test_loinc_series_key(self):
+        f = self.write("l.csv", "Date,Test,Value,Unit,LOINC Code\n2025-01-01,Hemoglobin,14,g/dL,718-7\n")
+        self.assertEqual(csv_labs.parse(f)["data"]["labs"][0]["key"], "loinc:718-7")
 
 
 class Mapping(unittest.TestCase):

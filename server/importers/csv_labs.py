@@ -8,11 +8,17 @@ Comma, semicolon and tab delimiters, a UTF-8 or UTF-16 byte order mark, quoted f
 common US/European dates, "<5" and ">200" style values and ranges like "13.5 - 17.5", "<200" or ">60" are read.
 Rows that can't be read are skipped with a warning. Lab names are kept as reported.
 
-The result is the data.json shape that build.py writes: one hidden `labitem` event per panel (or per test, when
-there is no panel column) and day, one `lab` event per day linking to them, and a `labs` series per test.
+The result is the data.json shape that build.py writes: one hidden `labitem` event per test and time, one `lab`
+event per day linking to them, and a `labs` series per test.
+
+Every event and series carries a stable source `key`, so a re-import of the same or an extended file matches
+instead of duplicating: "csv:h:" + 16 hex characters of a SHA-256 over date-time, test (trimmed, lower case),
+value as reported and unit for a labitem; "csv:labday:<YYYY-MM-DD>" for a day; "loinc:<code>" or
+"csv:<test lower case>|<unit>" for a series. File names, row numbers and column order are left out.
 """
 import collections
 import csv
+import hashlib
 import io
 import os
 import re
@@ -55,6 +61,7 @@ FIELDS = {
               "battery", "profile", "test panel"],
     "lab": ["lab", "laboratory", "performing lab", "performing laboratory", "lab name performing", "source",
             "provider", "facility", "performed at", "resulting lab"],
+    "loinc": ["loinc", "loinc code", "loinc number", "loinc id", "loinc num"],
 }
 REQUIRED = ("date", "test", "value")
 DESCRIBE = {"date": "the date", "test": "the test name", "value": "the result value"}
@@ -540,6 +547,7 @@ def parse(files, mapping=None):
             flag = _flag(flag_text, x, cmp, lo, hi)
             results.append({"t": t, "test": test, "x": x, "reported": reported, "unit": unit, "range": range_text,
                             "lo": lo, "hi": hi, "flag": flag, "panel": get(cells, "panel"), "lab": get(cells, "lab"),
+                            "loinc": get(cells, "loinc"),
                             "file": rel})
     results, dupes = _dedupe(results)
     if dupes:
@@ -550,10 +558,20 @@ def parse(files, mapping=None):
     return {"data": _build(results), "warnings": warn.list()}
 
 
+def _identity(r):
+    """The fields that identify a result, normalised so a re-exported or reordered file gives the same ones."""
+    return r["t"], " ".join(r["test"].split()).lower(), r["reported"].strip(), r["unit"].strip()
+
+
+def _key(r):
+    """Stable source key of a result's labitem: no file name, row number or column order in it."""
+    return "csv:h:" + hashlib.sha256("\x1f".join(_identity(r)).encode("utf-8")).hexdigest()[:16]
+
+
 def _dedupe(results):
     seen, keep = set(), []
     for r in results:
-        k = (r["t"][:10], r["test"].lower(), r["reported"], r["unit"].lower())
+        k = _identity(r)
         if k in seen:
             continue
         seen.add(k)
@@ -589,27 +607,22 @@ def _build(results):
         events.append(e)
         return e["id"]
 
+    # one hidden labitem per test and time, so each has a stable key; one visible lab event per day
     days = collections.OrderedDict()
-    for r in sorted(results, key=lambda r: (r["t"], r["file"])):
-        group = r["panel"] or r["test"]
-        days.setdefault(r["t"][:10], collections.OrderedDict()).setdefault(group, []).append(r)
-    for day, groups in days.items():
-        ids, abn_day = [], 0
-        first = min(r["t"] for rs in groups.values() for r in rs)
-        for group, rs in groups.items():
-            rows = [[r["test"], r["reported"], r["unit"], r["range"], r["flag"]] for r in rs]
-            abn = sum(1 for r in rs if r["flag"])
-            abn_day += abn
-            labs_named = sorted({r["lab"] for r in rs if r["lab"]})
-            lab = ", ".join(labs_named) or None
-            t = min(r["t"] for r in rs)
-            det = {"type": "result", "order": group, "name": group, "collected": _display(t), "lab": lab,
-                   "dx": [], "rows": rows, "report": [], "comments": [], "src": SOURCE}
-            sub = " · ".join(x for x in [lab, "Imported from " + ", ".join(sorted({r["file"] for r in rs}))] if x)
-            ids.append(add(t, "labitem", group, sub, det, abn=abn, hidden=1))
-        n = sum(len(rs) for rs in groups.values())
-        add(first, "lab", f"{n} lab result{'s' if n != 1 else ''}", ", ".join(sorted(groups))[:160],
-            {"type": "labday", "ids": ids}, abn=abn_day, src=SOURCE)
+    for r in sorted(results, key=lambda r: (r["t"], (r["panel"] or r["test"]).lower(), r["test"].lower())):
+        days.setdefault(r["t"][:10], []).append(r)
+    for day, rs in days.items():
+        ids = []
+        for r in rs:
+            order = r["panel"] or r["test"]
+            det = {"type": "result", "order": order, "name": r["test"], "collected": _display(r["t"]),
+                   "lab": r["lab"] or None, "dx": [], "rows": [[r["test"], r["reported"], r["unit"], r["range"], r["flag"]]],
+                   "report": [], "comments": [], "src": SOURCE}
+            sub = " · ".join(x for x in [r["panel"] if r["panel"] != r["test"] else "", r["lab"]] if x) or "Imported spreadsheet"
+            ids.append(add(r["t"], "labitem", r["test"], sub, det, key=_key(r), abn=int(bool(r["flag"])), hidden=1))
+        orders = sorted({r["panel"] or r["test"] for r in rs})
+        add(rs[0]["t"], "lab", f"{len(rs)} lab result{'s' if len(rs) != 1 else ''}", ", ".join(orders)[:160],
+            {"type": "labday", "ids": ids}, key=f"csv:labday:{day}", abn=sum(1 for r in rs if r["flag"]), src=SOURCE)
 
     names = _series_names(results)
     series, panels = {}, collections.defaultdict(collections.Counter)
@@ -627,7 +640,13 @@ def _build(results):
         s = series.setdefault(name, {"unit": r["unit"], "pts": [], "txt": []})
         s["txt"].append([r["t"], r["reported"]])
         panels[name][r["panel"]] += 1
-    labs = [{"name": name, "unit": s["unit"], "panel": panels[name].most_common(1)[0][0] if panels[name] else "",
+    loinc = collections.defaultdict(collections.Counter)
+    for r in results:
+        if r["loinc"]:
+            loinc[names.get((r["test"], _unit_key(r["unit"])), r["test"])][r["loinc"]] += 1
+    labs = [{"name": name, "key": f"loinc:{loinc[name].most_common(1)[0][0]}" if loinc[name] else
+             f"csv:{' '.join(name.split()).lower()}|{s['unit'].strip()}",
+             "unit": s["unit"], "panel": panels[name].most_common(1)[0][0] if panels[name] else "",
              "n": len(s["pts"]), "pts": sorted(s["pts"], key=lambda p: (p[0], p[1])), "txt": sorted(s["txt"])[-50:]}
             for name, s in series.items()]
     labs.sort(key=lambda s: (-s["n"], s["name"]))
