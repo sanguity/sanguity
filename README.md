@@ -50,6 +50,12 @@ docker compose up -d --build
 docker compose logs app         # shows the one-time setup code
 ```
 
+**Platforms:** x86-64 and 64-bit ARM (a Raspberry Pi 3, 4 or 5 on 64-bit Raspberry Pi OS) install prebuilt
+packages, so the first build takes a minute or two. 32-bit ARM (a Pi on a 32-bit OS) works too, and CI checks it
+every week, but the first build compiles several packages, including `cryptography` with Rust, which can take an
+hour or more on the Pi itself (a Pi with 1 GB of memory may need swap). Later builds reuse it until
+`requirements.txt` changes.
+
 Open `http://<this machine>:8730` and enter the setup code to create the first account. It becomes the admin
 and owns the records already on the server; until you add your own, that is the fictional demo. Add accounts for
 other people under **Account**, then share profiles with them there.

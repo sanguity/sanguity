@@ -1,0 +1,71 @@
+# The install on 32-bit ARM (a Raspberry Pi on a 32-bit OS), emulated with QEMU: build the images for linux/arm/v7,
+# start the stack, and run the same smoke test as the Docker job in check.yml. Slow (several packages are compiled,
+# cryptography with Rust), so it runs weekly, when the Dockerfile or the dependencies change, and on request.
+name: arm
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"   # Mondays
+  workflow_dispatch:
+  push:
+    branches: [main, arm-check]
+    paths: [docker/app.Dockerfile, requirements.txt, compose.yaml, .github/workflows/arm.yml]
+
+jobs:
+  armv7:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      COMPOSE_PROJECT_NAME: sanguity-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+
+      - name: Run the containers as this runner's user; build and pull every image as 32-bit ARM from here on
+        run: |
+          echo "DOCKER_DEFAULT_PLATFORM=linux/arm/v7" >> "$GITHUB_ENV"
+          echo "PUID=$(id -u)" >> "$GITHUB_ENV"
+          echo "PGID=$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Build the app image for linux/arm/v7 (compiles what has no prebuilt package)
+        run: |
+          start=$(date +%s)
+          docker compose build app
+          echo "Built in $(( ($(date +%s) - start) / 60 )) minutes"
+          docker run --rm sanguity-app python -c "import platform, cryptography, webauthn, argon2, Crypto; print(platform.machine(), 'cryptography', cryptography.__version__)"
+
+      - name: Start (docker compose up -d)
+        run: docker compose up -d
+
+      - name: Wait for the app and its setup code (emulated, so slower to start)
+        run: |
+          for i in $(seq 1 300); do
+            code=$(docker compose logs app 2>/dev/null | grep -o 'Setup code: [A-Z0-9-]*' | tail -1 | cut -d' ' -f3)
+            if [ -n "$code" ] && curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz; then
+              echo "::add-mask::$code"
+              echo "SETUP_CODE=$code" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "The app didn't come up with a setup code within 15 minutes"; exit 1
+
+      - name: Smoke test (setup, sign-in, records, documents, encryption, nothing served that shouldn't be)
+        run: |
+          python3 tests/docker_smoke.py --code "$SETUP_CODE" --receiver http://127.0.0.1:8731
+          for f in data/build/data.json data/profiles/*/data.json; do
+            [ "$(head -c 4 "$f")" = SGE1 ] || { echo "$f is not encrypted"; exit 1; }
+          done
+
+      - name: Show the containers and their logs
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color
+
+      - name: Stop and remove
+        if: always()
+        run: docker compose down -v
