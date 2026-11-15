@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sanguity account</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M5 18h6l3-8 4 13 3-7h6' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+<script>try{const t=localStorage.getItem("ht-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body class="acct-page">
+<header>
+  <h1>Sanguity</h1>
+  <a class="iconbtn acct" id="back" href="./">← Back to records</a>
+  <span class="spacer"></span>
+  <span class="meta" id="who"></span>
+  <button class="iconbtn acct" id="logout" type="button">Log out</button>
+</header>
+<main class="acct">
+  <div class="card warn" id="mustChange" hidden>Choose your own password to continue. The one you signed in with was for one use only.</div>
+
+  <section class="card" id="password">
+    <h2>Password</h2>
+    <p class="hint" id="pwHint"></p>
+    <form id="pwForm" class="form">
+      <label>Current password <input type="password" id="pwCur" autocomplete="current-password" required></label>
+      <label>New password <input type="password" id="pwNew" autocomplete="new-password" required></label>
+      <label>Repeat new password <input type="password" id="pwNew2" autocomplete="new-password" required></label>
+      <div class="row"><button class="btn primary" type="submit">Change password</button><span class="msg" id="pwMsg" role="status"></span></div>
+    </form>
+  </section>
+
+  <section class="card" id="sessions">
+    <h2>Where you're signed in</h2>
+    <p class="hint">Sign out any device you don't recognise. Changing your password also signs out every other device.</p>
+    <div id="sessList"></div>
+    <div class="row"><button class="btn" id="sessOthers" type="button">Sign out all other devices</button><span class="msg" id="sessMsg" role="status"></span></div>
+  </section>
+
+  <section class="card" id="profiles">
+    <h2>Health profiles</h2>
+    <p class="hint">A profile is one person whose records are tracked. Owners can share a profile with other accounts:
+      <b>owner</b> (view, change and share), <b>editor</b> (view and change), <b>viewer</b> (view only).</p>
+    <div id="profList"></div>
+    <form id="profNew" class="form inline">
+      <label>New profile <input id="profName" maxlength="80" placeholder="Person's name" required></label>
+      <button class="btn" type="submit">Create</button><span class="msg" id="profMsg" role="status"></span>
+    </form>
+  </section>
+
+  <section class="card" id="users" hidden>
+    <h2>Accounts <span class="tag">admin</span></h2>
+    <p class="hint">Create an account for each person who signs in. They get a one-time password and choose their own at first sign-in.
+      Being an admin lets someone manage accounts; it doesn't show them anyone's records.</p>
+    <div id="userList"></div>
+    <form id="userNew" class="form inline">
+      <label>Username <input id="userName" autocapitalize="none" spellcheck="false" required></label>
+      <label class="check"><input type="checkbox" id="userAdmin"> Admin</label>
+      <button class="btn" type="submit">Create account</button><span class="msg" id="userMsg" role="status"></span>
+    </form>
+  </section>
+</main>
+<script src="js/util.js"></script>
+<script src="js/account.js"></script>
+</body>
+</html>

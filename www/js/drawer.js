@@ -64,7 +64,9 @@ function openEvent(e) {
   else if (d.type === "file") {
     body.append(el("div", {class: "btns"}, el("a", {class: "btn", href: d.url, target: "_blank", rel: "noopener", text: "Open in new tab"}), el("a", {class: "btn", href: d.url, download: "", text: "Download"})));
     // documents fill the panel's remaining height so the viewer's own scrollbar and toolbar stay on screen
-    if (d.ext === "html") { body.classList.add("fill"); body.append(el("iframe", {class: "doc", src: d.url, sandbox: "", title: e.title})); }
+    // HTML records: no scripts (the sandbox has no allow-scripts, and the server sends script-src 'none'), but
+    // same-origin, so the record can load the pictures and stylesheet saved beside it (an opaque origin can't)
+    if (d.ext === "html" || d.ext === "htm") { body.classList.add("fill"); body.append(el("iframe", {class: "doc", src: d.url, sandbox: "allow-same-origin", title: e.title})); }
     else if (["jpg","jpeg","png","gif"].includes(d.ext)) body.append(el("img", {src: d.url, alt: e.title, style: {maxWidth: "100%", borderRadius: "8px"}}));
     else if (d.ext === "pdf") { body.classList.add("fill"); body.append(el("iframe", {class: "doc", src: d.url + (d.url.includes("#") ? "" : "#view=FitH"), title: e.title})); }
     else if (d.ext === "tif" || d.ext === "tiff") body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "Scanned TIFF document — browsers can't preview TIFF; use Download and open it in Photos or a PDF viewer."}));

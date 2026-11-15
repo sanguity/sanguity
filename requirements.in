@@ -1,0 +1,7 @@
+# Backend (server/) dependencies. Edit this, then regenerate the pinned, hash-checked lock files with uv
+# (pip install uv), resolving for Python 3.12 (the Docker image's) and later on every platform:
+#   uv pip compile --universal --python-version 3.12 --generate-hashes requirements.in -o requirements.txt
+#   uv pip compile --universal --python-version 3.12 --generate-hashes requirements-dev.in -o requirements-dev.txt
+fastapi>=0.163
+uvicorn>=0.54
+argon2-cffi>=25.1

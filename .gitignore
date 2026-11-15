@@ -17,5 +17,8 @@ raw/
 public/
 __pycache__/
 .env
+dev-data/
 watch-data/
+data/
+settings.json
 records/
