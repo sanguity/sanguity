@@ -217,6 +217,18 @@ def main():
             page.click("#userNew button[type=submit]")
             page.wait_for_function("document.querySelector('#userMsg code')", timeout=10000)
             check("admin creates an account with a one-time password", len(js("document.querySelector('#userMsg code').textContent")) >= 20)
+            # activity: the profile's log shows the records being opened (by this run), and filters by kind;
+            # the admin's account log shows the account just created
+            mine = page.locator("#profList .prof", has_text="My records")
+            mine.get_by_role("button", name="Activity").click()
+            page.wait_for_function("[...document.querySelectorAll('#profList .activity tbody tr')].some(r => r.textContent.includes('opened the records'))", timeout=10000)
+            check("profile activity shows the records being opened", True)
+            mine.locator(".activity select").nth(1).select_option("document")
+            page.wait_for_function("[...document.querySelectorAll('#profList .activity tbody tr')].every(r => r.textContent.includes('opened') && !r.textContent.includes('opened the records'))", timeout=10000)
+            check("activity filters by kind", js("document.querySelector('#profList .activity tbody').textContent.includes('demo-report.pdf') || document.querySelector('#profList .activity tbody').textContent.includes('Nothing yet')"))
+            page.locator("#acctLog").get_by_role("button", name="Account activity").click()
+            page.wait_for_function("document.querySelector('#acctLog tbody') && document.querySelector('#acctLog tbody').textContent.includes('created the account alex')", timeout=10000)
+            check("admin sees account activity", True)
             # sharing with someone who already has access asks before changing their role; declining keeps it
             asked_share = []
             page.once("dialog", lambda d: (asked_share.append(d.message), d.dismiss()))

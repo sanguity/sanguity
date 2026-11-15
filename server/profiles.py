@@ -8,7 +8,7 @@ and nothing else on disk can be reached.
 import contextlib, json, os, secrets, shutil, threading
 from urllib.parse import quote
 
-from . import config, db as dbm
+from . import activity, config, db as dbm
 
 _lock = threading.Lock()
 _failed = {}   # profile id -> (build mtime, why): a build that couldn't be loaded, so it isn't retried on every request
@@ -160,6 +160,7 @@ def sync_build(db, pid=None):
             try:
                 import_dataset(db, p, config.BUILD_DIR, m, mirror_settings=True)
                 _failed.pop(p, None)
+                activity.log(db, "reload", profile_id=p, actor=activity.SETUP_BUILD)
             except Exception as e:
                 _failed[p] = (m, f"{type(e).__name__}: {e}")
                 print(f"Couldn't load the built records into profile {p}: {_failed[p][1]}", flush=True)

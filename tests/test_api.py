@@ -229,6 +229,61 @@ class Api(unittest.TestCase):
             db.close()
         self.assertEqual(ben.get("/api/profiles/1/data").status_code, 200)   # a fixed rebuild is picked up again
 
+    def test_activity_log(self):   # after test_a_flow: Ben owns profile 1, which he shared along the way
+        from server import accounts, activity
+        ben = self.login("ben")
+        log = lambda c, q="": c.get("/api/profiles/1/activity" + q).json()
+        start = log(ben)[0]["id"] if log(ben) else 0
+        newer = lambda entries: [e for e in entries if e["id"] > start]
+        # viewing: once per session for the records, once per session for each document
+        data = ben.get("/api/profiles/1/data").json()
+        ben.get("/api/profiles/1/data")
+        doc = next(d["url"] for d in data["details"].values() if isinstance(d, dict) and d.get("type") == "file")
+        ben.get("/" + doc)
+        ben.get("/" + doc)
+        mine = newer(log(ben))
+        self.assertEqual([e["action"] for e in mine].count("view"), 1)
+        self.assertEqual([e["action"] for e in mine].count("document"), 1)
+        opened = next(e for e in mine if e["action"] == "document")
+        self.assertEqual((opened["actor"], opened["detail"]), ("ben", {"name": "demo-report.pdf"}))
+        self.login("ben").get("/api/profiles/1/data")   # a new session is a new view
+        self.assertEqual([e["action"] for e in newer(log(ben))].count("view"), 2)
+        # sharing and renaming are recorded with what changed
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='vic'").fetchone():
+            accounts.create(db, "vic", password="vic has a long passphrase")
+        db.close()
+        ben.put("/api/profiles/1/members", json={"username": "vic", "role": "viewer"}, headers=H)
+        ben.put("/api/profiles/1/members", json={"username": "vic", "role": "viewer"}, headers=H)   # no change, no entry
+        ben.patch("/api/profiles/1", json={"name": "Ben (renamed)"}, headers=H)
+        ben.patch("/api/profiles/1", json={"name": "Ben"}, headers=H)
+        recent = newer(log(ben))
+        shares = [e for e in recent if e["action"] == "share" and e["detail"]["username"] == "vic"]
+        self.assertEqual([e["detail"] for e in shares], [{"username": "vic", "role": "viewer"}])
+        self.assertEqual([e["detail"] for e in recent if e["action"] == "rename"],
+                         [{"from": "Ben (renamed)", "to": "Ben"}, {"from": "Ben", "to": "Ben (renamed)"}])   # newest first
+        # filters and paging
+        self.assertTrue(all(e["action"] == "view" for e in log(ben, "?action=view")))
+        self.assertTrue(all(e["actor_id"] == 1 for e in log(ben, "?actor=1")))
+        page = log(ben, "?limit=2")
+        self.assertEqual(len(page), 2)
+        self.assertTrue(all(e["id"] < page[-1]["id"] for e in log(ben, f"?before={page[-1]['id']}")))
+        # who may read it: owners of the profile; a viewer can't, and admins see account events only
+        vic = self.login("vic", "vic has a long passphrase")
+        self.assertEqual(vic.get("/api/profiles/1/activity").status_code, 403)
+        self.assertEqual(vic.get("/api/activity").status_code, 403)
+        accounts_log = ben.get("/api/activity").json()
+        self.assertTrue(accounts_log and all(e["profile_id"] is None for e in accounts_log))
+        self.assertTrue({"setup", "account.create", "password"} <= {e["action"] for e in accounts_log})
+        self.assertFalse({"view", "document"} & {e["action"] for e in accounts_log})
+        # old entries are pruned (at most once a day, when something is logged)
+        db = dbm.connect()
+        db.execute("INSERT INTO activity(at, actor, action) VALUES(?, 'old', 'password')", (dbm.now() - 400 * 86400,))
+        dbm.meta_set(db, "activity_pruned", "0")
+        activity.log(db, "password", actor="test")
+        self.assertIsNone(db.execute("SELECT 1 FROM activity WHERE actor='old'").fetchone())
+        db.close()
+
     def test_breached_and_context_passwords_are_refused(self):
         from server import accounts
         breached = ("correct horse battery staple", "Correct Horse Battery Staple 1!", "iloveyouiloveyou", "passwordpassword1")

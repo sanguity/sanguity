@@ -34,4 +34,5 @@ PUBLIC_ORIGINS = {o.strip().lower().rstrip("/") for o in os.environ.get("PUBLIC_
 PASSWORD_MIN = _int("PASSWORD_MIN_LENGTH", 15)
 PASSWORD_MAX = 256
 HASH_PARALLEL = _int("HASH_PARALLEL", 2)   # password hashes run at once (64 MiB each); more wait their turn
-HASH_WAIT = 2   # seconds a sign-in waits for its turn before the API answers 503 "busy, try again"
+HASH_WAIT = 2
+ACTIVITY_DAYS = _int("ACTIVITY_DAYS", 365)   # how long the activity log keeps entries   # seconds a sign-in waits for its turn before the API answers 503 "busy, try again"

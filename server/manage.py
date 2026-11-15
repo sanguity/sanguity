@@ -15,7 +15,7 @@
 """
 import sys
 
-from . import accounts, backup, db as dbm, main, profiles as prof, security as sec
+from . import accounts, activity, backup, db as dbm, main, profiles as prof, security as sec
 
 
 def _user(db, name):
@@ -74,6 +74,8 @@ def _command(db, argv):
             uid, pw = accounts.create(db, args[0], is_admin="--admin" in args)
         except accounts.AccountError as e:
             sys.exit(str(e))
+        activity.log(db, "account.create", detail={"username": args[0].strip(), **({"admin": True} if "--admin" in args else {})},
+                     actor=activity.COMMAND_LINE)
         if "--admin" in args:   # an admin created here also finishes first-time setup
             accounts.claim_unowned(db, uid)
         print(f"Created {args[0].strip()}. One-time password: {pw}  (they choose their own at first sign-in)")
@@ -83,6 +85,9 @@ def _command(db, argv):
         db.execute("UPDATE users SET pw_hash=?, must_change_pw=1, disabled=CASE WHEN ? THEN 0 ELSE disabled END WHERE id=?",
                    (sec.hash_password(pw), enable, u["id"]))
         accounts.sign_out_everywhere(db, u["id"])
+        activity.log(db, "account.reset", detail={"username": u["username"]}, actor=activity.COMMAND_LINE)
+        if enable and u["disabled"]:
+            activity.log(db, "account.enable", detail={"username": u["username"]}, actor=activity.COMMAND_LINE)
         print(f"One-time password for {u['username']}: {pw}  (signed out everywhere; they choose a new one at sign-in)")
         if u["disabled"] and not enable:
             print("Note: this account is disabled, so it still can't sign in. Add --enable to turn it back on.")
@@ -92,8 +97,12 @@ def _command(db, argv):
         pid, u = int(args[0]), _user(db, args[1])
         if not db.execute("SELECT 1 FROM profiles WHERE id=?", (pid,)).fetchone():
             sys.exit(f"No profile {pid}.")
+        old = main.role_of(db, u["id"], pid)
         db.execute("""INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, ?)
                       ON CONFLICT(user_id, profile_id) DO UPDATE SET role=excluded.role""", (u["id"], pid, args[2]))
+        if old != args[2]:
+            activity.log(db, "share", profile_id=pid, detail={"username": u["username"], "role": args[2], **({"from": old} if old else {})},
+                         actor=activity.COMMAND_LINE)
         print(f"{u['username']} is now {args[2]} of profile {pid}.")
     elif cmd == "import" and len(args) == 2:
         pid = int(args[0])
@@ -106,6 +115,7 @@ def _command(db, argv):
         except BaseException:   # ...unless the import failed: then it stays as it was
             db.execute("UPDATE profiles SET linked_build=? WHERE id=?", (linked, pid))
             raise
+        activity.log(db, "import", profile_id=pid, detail={"documents": n}, actor=activity.COMMAND_LINE)
         print(f"Imported {args[1]} into profile {pid} ({n} documents).")
     elif cmd == "sync":
         failed = prof.sync_build(db)
