@@ -3,7 +3,8 @@
 Reads the header encounter and the Results, Vital Signs, Medications, Problems, Allergies and Encounters sections of
 one or more C-CDA documents (CCD summaries or per-visit records) into the data.json shape build.py writes.
 
-Lab names stay as reported, with their LOINC codes on the series; mapping onto canonical names happens later (#23).
+Lab series take their canonical names from lab-aliases.json (by LOINC code, then name or alias), so the same test
+from different sources lines up; names it doesn't know stay as reported, for the mapping step (#23).
 Vitals use the series names build.py gives them, and body weight goes to clinicWeights as it does there.
 
 Standard library only. Documents that declare a DOCTYPE or ENTITY are refused before parsing, so entity expansion
@@ -14,6 +15,8 @@ import hashlib
 import re
 import xml.etree.ElementTree as ET
 from datetime import date
+
+from .common import canonical_lab
 
 NAME = "ccda"
 LABEL = "C-CDA health summary (XML)"
@@ -265,7 +268,9 @@ class _Out:
         return self.eid
 
     def series(self, name, unit, loinc=None, code=None):
-        """The series for a test; `code` is (code system OID, code) when the code isn't LOINC."""
+        """The series for a test; `code` is (code system OID, code) when the code isn't LOINC. Named canonically
+        when lab-aliases.json knows the test (by LOINC code, then name), so labs from other sources line up."""
+        name = canonical_lab(name, loinc) or name
         s = self.labs.get(name)
         if s is not None and unit and s["unit"] and s["unit"].replace(" ", "").lower() != unit.replace(" ", "").lower():
             name = f"{name} ({unit})"        # same test reported in another unit: its own series, never mixed

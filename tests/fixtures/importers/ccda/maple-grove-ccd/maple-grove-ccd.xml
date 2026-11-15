@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fictional test data. Maple Grove Clinic and Robin Example do not exist. CCD summary in the style of
+     a portal that sends section templateIds, displayNames and narrative references. -->
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:sdtc="urn:hl7-org:sdtc">
+  <realmCode code="US"/>
+  <typeId root="2.16.840.1.113883.1.3" extension="POCD_HD000040"/>
+  <templateId root="2.16.840.1.113883.10.20.22.1.1" extension="2015-08-01"/>
+  <templateId root="2.16.840.1.113883.10.20.22.1.2" extension="2015-08-01"/>
+  <id root="2.16.840.1.113883.19.5.99999.1" extension="TEST-CCD-0001"/>
+  <code code="34133-9" codeSystem="2.16.840.1.113883.6.1" displayName="Summarization of Episode Note"/>
+  <title>Health Summary</title>
+  <effectiveTime value="20260701093000-0500"/>
+  <confidentialityCode code="N" codeSystem="2.16.840.1.113883.5.25"/>
+  <recordTarget>
+    <patientRole>
+      <id root="2.16.840.1.113883.19.5.99999.2" extension="000000"/>
+      <patient><name><given>Robin</given><family>Example</family></name></patient>
+    </patientRole>
+  </recordTarget>
+  <author>
+    <time value="20260701"/>
+    <assignedAuthor><id nullFlavor="NI"/><representedOrganization><name>Maple Grove EHR</name></representedOrganization></assignedAuthor>
+  </author>
+  <custodian>
+    <assignedCustodian><representedCustodianOrganization><id root="2.16.840.1.113883.19.5.99999.3"/><name>Maple Grove Clinic</name></representedCustodianOrganization></assignedCustodian>
+  </custodian>
+  <component>
+    <structuredBody>
+
+      <!-- ============================== Encounters -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.22.1" extension="2015-08-01"/>
+          <code code="46240-8" codeSystem="2.16.840.1.113883.6.1"/>
+          <title>Encounters</title>
+          <text>Office visit 2026-03-02; hospital admission 2026-04-10 to 2026-04-13.</text>
+          <entry>
+            <encounter classCode="ENC" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.49" extension="2015-08-01"/>
+              <id root="2.16.840.1.113883.19.5.99999.10" extension="ENC-1001"/>
+              <code code="AMB" codeSystem="2.16.840.1.113883.5.4" displayName="Ambulatory"/>
+              <effectiveTime><low value="20260302091500-0500"/><high value="20260302094500-0500"/></effectiveTime>
+              <performer><assignedEntity><assignedPerson><name><prefix>Dr.</prefix><given>Casey</given><family>Fairweather</family></name></assignedPerson></assignedEntity></performer>
+              <participant typeCode="LOC"><participantRole classCode="SDLOC"><playingEntity classCode="PLC"><name>Maple Grove Family Practice</name></playingEntity></participantRole></participant>
+              <entryRelationship typeCode="RSON">
+                <act classCode="ACT" moodCode="EVN">
+                  <templateId root="2.16.840.1.113883.10.20.22.4.80"/>
+                  <entryRelationship typeCode="SUBJ">
+                    <observation classCode="OBS" moodCode="EVN">
+                      <code code="282291009" codeSystem="2.16.840.1.113883.6.96" displayName="Diagnosis"/>
+                      <value xsi:type="CD" code="38341003" codeSystem="2.16.840.1.113883.6.96" displayName="Essential hypertension"/>
+                    </observation>
+                  </entryRelationship>
+                </act>
+              </entryRelationship>
+            </encounter>
+          </entry>
+          <entry>
+            <encounter classCode="ENC" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.49" extension="2015-08-01"/>
+              <code code="IMP" codeSystem="2.16.840.1.113883.5.4" displayName="Inpatient Encounter"/>
+              <effectiveTime><low value="20260410143000-0500"/><high value="20260413110000-0500"/></effectiveTime>
+              <participant typeCode="LOC"><participantRole classCode="SDLOC"><playingEntity classCode="PLC"><name>Maple Grove Hospital, 4 West</name></playingEntity></participantRole></participant>
+            </encounter>
+          </entry>
+        </section>
+      </component>
+
+      <!-- ============================== Results -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.3.1" extension="2015-08-01"/>
+          <code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>
+          <title>Results</title>
+          <text>
+            <table>
+              <tr><td ID="res-hgb">Hemoglobin</td><td>11.2 g/dL</td><td ID="rng-hgb">13.5 - 17.5 g/dL</td></tr>
+            </table>
+          </text>
+          <entry typeCode="DRIV">
+            <organizer classCode="BATTERY" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.1" extension="2015-08-01"/>
+              <id root="2.16.840.1.113883.19.5.99999.20" extension="LAB-2001"/>
+              <code code="58410-2" codeSystem="2.16.840.1.113883.6.1" displayName="CBC panel - Blood by Automated count"/>
+              <statusCode code="completed"/>
+              <effectiveTime><low value="20260302081000-0500"/></effectiveTime>
+              <component>
+                <observation classCode="OBS" moodCode="EVN">
+                  <templateId root="2.16.840.1.113883.10.20.22.4.2" extension="2015-08-01"/>
+                  <code code="718-7" codeSystem="2.16.840.1.113883.6.1"><originalText><reference value="#res-hgb"/></originalText></code>
+                  <statusCode code="completed"/>
+                  <effectiveTime value="20260302081000-0500"/>
+                  <value xsi:type="PQ" value="11.2" unit="g/dL"/>
+                  <interpretationCode code="L" codeSystem="2.16.840.1.113883.5.83"/>
+                  <referenceRange><observationRange><text><reference value="#rng-hgb"/></text>
+                    <value xsi:type="IVL_PQ"><low value="13.5" unit="g/dL"/><high value="17.5" unit="g/dL"/></value></observationRange></referenceRange>
+                </observation>
+              </component>
+              <component>
+                <observation classCode="OBS" moodCode="EVN">
+                  <templateId root="2.16.840.1.113883.10.20.22.4.2" extension="2015-08-01"/>
+                  <code code="6690-2" codeSystem="2.16.840.1.113883.6.1" displayName="WBC"/>
+                  <statusCode code="completed"/>
+                  <effectiveTime value="20260302081000-0500"/>
+                  <value xsi:type="PQ" value="7.1" unit="10*3/uL"/>
+                  <interpretationCode code="N" codeSystem="2.16.840.1.113883.5.83"/>
+                  <referenceRange><observationRange>
+                    <value xsi:type="IVL_PQ"><low value="4.0" unit="10*3/uL"/><high value="11.0" unit="10*3/uL"/></value></observationRange></referenceRange>
+                </observation>
+              </component>
+              <component>
+                <observation classCode="OBS" moodCode="EVN">
+                  <templateId root="2.16.840.1.113883.10.20.22.4.2" extension="2015-08-01"/>
+                  <code code="777-3" codeSystem="2.16.840.1.113883.6.1" displayName="Platelets"/>
+                  <statusCode code="completed"/>
+                  <effectiveTime value="20260302081000-0500"/>
+                  <value xsi:type="PQ" value="455" unit="10*3/uL"/>
+                  <referenceRange><observationRange>
+                    <value xsi:type="IVL_PQ"><low value="150" unit="10*3/uL"/><high value="400" unit="10*3/uL"/></value></observationRange></referenceRange>
+                </observation>
+              </component>
+            </organizer>
+          </entry>
+          <entry typeCode="DRIV">
+            <organizer classCode="BATTERY" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.1" extension="2015-08-01"/>
+              <code code="51990-0" codeSystem="2.16.840.1.113883.6.1" displayName="Basic metabolic panel"/>
+              <statusCode code="completed"/>
+              <effectiveTime value="20260302081000-0500"/>
+              <component>
+                <observation classCode="OBS" moodCode="EVN">
+                  <code code="2345-7" codeSystem="2.16.840.1.113883.6.1" displayName="Glucose"/>
+                  <statusCode code="completed"/>
+                  <value xsi:type="PQ" value="104" unit="mg/dL"/>
+                  <interpretationCode code="H" codeSystem="2.16.840.1.113883.5.83"/>
+                  <referenceRange><observationRange>
+                    <value xsi:type="IVL_PQ"><low value="70" unit="mg/dL"/><high value="99" unit="mg/dL"/></value></observationRange></referenceRange>
+                </observation>
+              </component>
+              <component>
+                <observation classCode="OBS" moodCode="EVN">
+                  <code code="5778-6" codeSystem="2.16.840.1.113883.6.1" displayName="Color of Urine"/>
+                  <statusCode code="completed"/>
+                  <value xsi:type="ST">Yellow</value>
+                </observation>
+              </component>
+            </organizer>
+          </entry>
+          <entry typeCode="DRIV">
+            <organizer classCode="BATTERY" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.1" extension="2015-08-01"/>
+              <code code="58410-2" codeSystem="2.16.840.1.113883.6.1" displayName="CBC panel - Blood by Automated count"/>
+              <statusCode code="completed"/>
+              <effectiveTime value="20260610074500-0500"/>
+              <component>
+                <observation classCode="OBS" moodCode="EVN">
+                  <code code="718-7" codeSystem="2.16.840.1.113883.6.1" displayName="Hemoglobin"/>
+                  <statusCode code="completed"/>
+                  <value xsi:type="PQ" value="13.9" unit="g/dL"/>
+                  <interpretationCode code="N" codeSystem="2.16.840.1.113883.5.83"/>
+                  <referenceRange><observationRange>
+                    <value xsi:type="IVL_PQ"><low value="13.5" unit="g/dL"/><high value="17.5" unit="g/dL"/></value></observationRange></referenceRange>
+                </observation>
+              </component>
+            </organizer>
+          </entry>
+        </section>
+      </component>
+
+      <!-- ============================== Vital signs -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.4.1" extension="2015-08-01"/>
+          <code code="8716-3" codeSystem="2.16.840.1.113883.6.1"/>
+          <title>Vital Signs</title>
+          <text>Vitals 2026-03-02.</text>
+          <entry typeCode="DRIV">
+            <organizer classCode="CLUSTER" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.26" extension="2015-08-01"/>
+              <code code="46680005" codeSystem="2.16.840.1.113883.6.96" displayName="Vital signs"/>
+              <statusCode code="completed"/>
+              <effectiveTime value="20260302091800-0500"/>
+              <component><observation classCode="OBS" moodCode="EVN"><code code="29463-7" codeSystem="2.16.840.1.113883.6.1" displayName="Body weight"/>
+                <value xsi:type="PQ" value="80" unit="kg"/></observation></component>
+              <component><observation classCode="OBS" moodCode="EVN"><code code="8302-2" codeSystem="2.16.840.1.113883.6.1" displayName="Body height"/>
+                <value xsi:type="PQ" value="175" unit="cm"/></observation></component>
+              <component><observation classCode="OBS" moodCode="EVN"><code code="8480-6" codeSystem="2.16.840.1.113883.6.1" displayName="Systolic blood pressure"/>
+                <value xsi:type="PQ" value="128" unit="mm[Hg]"/></observation></component>
+              <component><observation classCode="OBS" moodCode="EVN"><code code="8462-4" codeSystem="2.16.840.1.113883.6.1" displayName="Diastolic blood pressure"/>
+                <value xsi:type="PQ" value="82" unit="mm[Hg]"/></observation></component>
+              <component><observation classCode="OBS" moodCode="EVN"><code code="8310-5" codeSystem="2.16.840.1.113883.6.1" displayName="Body temperature"/>
+                <value xsi:type="PQ" value="37" unit="Cel"/></observation></component>
+              <component><observation classCode="OBS" moodCode="EVN"><code code="8867-4" codeSystem="2.16.840.1.113883.6.1" displayName="Heart rate"/>
+                <value xsi:type="PQ" value="72" unit="/min"/></observation></component>
+            </organizer>
+          </entry>
+        </section>
+      </component>
+
+      <!-- ============================== Medications -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.1.1" extension="2014-06-09"/>
+          <code code="10160-0" codeSystem="2.16.840.1.113883.6.1"/>
+          <title>Medications</title>
+          <text><list><item ID="sig-lis">Take 1 tablet by mouth once daily</item></list></text>
+          <entry>
+            <substanceAdministration classCode="SBADM" moodCode="INT">
+              <templateId root="2.16.840.1.113883.10.20.22.4.16" extension="2014-06-09"/>
+              <id root="2.16.840.1.113883.19.5.99999.30" extension="MED-3001"/>
+              <text><reference value="#sig-lis"/></text>
+              <statusCode code="active"/>
+              <effectiveTime xsi:type="IVL_TS"><low value="20250115"/></effectiveTime>
+              <effectiveTime xsi:type="PIVL_TS" institutionSpecified="true" operator="A"><period value="24" unit="h"/></effectiveTime>
+              <consumable><manufacturedProduct classCode="MANU"><manufacturedMaterial>
+                <code code="314076" codeSystem="2.16.840.1.113883.6.88" displayName="Lisinopril 10 MG Oral Tablet"/>
+              </manufacturedMaterial></manufacturedProduct></consumable>
+            </substanceAdministration>
+          </entry>
+          <entry>
+            <substanceAdministration classCode="SBADM" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.16" extension="2014-06-09"/>
+              <statusCode code="completed"/>
+              <effectiveTime xsi:type="IVL_TS"><low value="20260410"/><high value="20260420"/></effectiveTime>
+              <consumable><manufacturedProduct classCode="MANU"><manufacturedMaterial>
+                <code code="308191" codeSystem="2.16.840.1.113883.6.88" displayName="Amoxicillin 500 MG Oral Capsule"/>
+              </manufacturedMaterial></manufacturedProduct></consumable>
+            </substanceAdministration>
+          </entry>
+          <entry>
+            <substanceAdministration classCode="SBADM" moodCode="INT">
+              <templateId root="2.16.840.1.113883.10.20.22.4.16" extension="2014-06-09"/>
+              <statusCode code="active"/>
+              <effectiveTime xsi:type="IVL_TS"><low nullFlavor="UNK"/></effectiveTime>
+              <consumable><manufacturedProduct classCode="MANU"><manufacturedMaterial>
+                <code code="198440" codeSystem="2.16.840.1.113883.6.88" displayName="Acetaminophen 500 MG Oral Tablet"/>
+              </manufacturedMaterial></manufacturedProduct></consumable>
+            </substanceAdministration>
+          </entry>
+        </section>
+      </component>
+
+      <!-- ============================== Problems -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.5.1" extension="2015-08-01"/>
+          <code code="11450-4" codeSystem="2.16.840.1.113883.6.1"/>
+          <title>Problems</title>
+          <text>Essential hypertension (active); iron deficiency anemia (resolved).</text>
+          <entry>
+            <act classCode="ACT" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.3" extension="2015-08-01"/>
+              <id root="2.16.840.1.113883.19.5.99999.40" extension="PRB-4001"/>
+              <code code="CONC" codeSystem="2.16.840.1.113883.5.6"/>
+              <statusCode code="active"/>
+              <effectiveTime><low value="20250115"/></effectiveTime>
+              <entryRelationship typeCode="SUBJ">
+                <observation classCode="OBS" moodCode="EVN">
+                  <templateId root="2.16.840.1.113883.10.20.22.4.4" extension="2015-08-01"/>
+                  <code code="55607006" codeSystem="2.16.840.1.113883.6.96" displayName="Problem"/>
+                  <statusCode code="completed"/>
+                  <effectiveTime><low value="20250115"/></effectiveTime>
+                  <value xsi:type="CD" code="38341003" codeSystem="2.16.840.1.113883.6.96" displayName="Essential hypertension"/>
+                </observation>
+              </entryRelationship>
+            </act>
+          </entry>
+          <entry>
+            <act classCode="ACT" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.3" extension="2015-08-01"/>
+              <code code="CONC" codeSystem="2.16.840.1.113883.5.6"/>
+              <statusCode code="completed"/>
+              <entryRelationship typeCode="SUBJ">
+                <observation classCode="OBS" moodCode="EVN">
+                  <templateId root="2.16.840.1.113883.10.20.22.4.4" extension="2015-08-01"/>
+                  <code code="282291009" codeSystem="2.16.840.1.113883.6.96" displayName="Diagnosis"/>
+                  <statusCode code="completed"/>
+                  <effectiveTime><low value="20260302"/><high value="20260610"/></effectiveTime>
+                  <value xsi:type="CD" code="D50.9" codeSystem="2.16.840.1.113883.6.90" displayName="Iron deficiency anemia, unspecified"/>
+                </observation>
+              </entryRelationship>
+            </act>
+          </entry>
+        </section>
+      </component>
+
+      <!-- ============================== Allergies -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.6.1" extension="2015-08-01"/>
+          <code code="48765-2" codeSystem="2.16.840.1.113883.6.1"/>
+          <title>Allergies</title>
+          <text>Penicillin: hives.</text>
+          <entry>
+            <act classCode="ACT" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.30" extension="2015-08-01"/>
+              <code code="CONC" codeSystem="2.16.840.1.113883.5.6"/>
+              <statusCode code="active"/>
+              <entryRelationship typeCode="SUBJ">
+                <observation classCode="OBS" moodCode="EVN">
+                  <templateId root="2.16.840.1.113883.10.20.22.4.7" extension="2014-06-09"/>
+                  <code code="ASSERTION" codeSystem="2.16.840.1.113883.5.4"/>
+                  <effectiveTime><low value="2010"/></effectiveTime>
+                  <value xsi:type="CD" code="419199007" codeSystem="2.16.840.1.113883.6.96" displayName="Allergy to substance"/>
+                  <participant typeCode="CSM"><participantRole classCode="MANU"><playingEntity classCode="MMAT">
+                    <code code="7980" codeSystem="2.16.840.1.113883.6.88" displayName="Penicillin G"/>
+                  </playingEntity></participantRole></participant>
+                  <entryRelationship typeCode="MFST" inversionInd="true">
+                    <observation classCode="OBS" moodCode="EVN">
+                      <templateId root="2.16.840.1.113883.10.20.22.4.9" extension="2014-06-09"/>
+                      <code code="ASSERTION" codeSystem="2.16.840.1.113883.5.4"/>
+                      <value xsi:type="CD" code="247472004" codeSystem="2.16.840.1.113883.6.96" displayName="Hives"/>
+                    </observation>
+                  </entryRelationship>
+                </observation>
+              </entryRelationship>
+            </act>
+          </entry>
+        </section>
+      </component>
+
+    </structuredBody>
+  </component>
+</ClinicalDocument>

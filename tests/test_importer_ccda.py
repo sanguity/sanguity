@@ -105,7 +105,7 @@ class Parse(unittest.TestCase):
         self.assertEqual(hgb["panel"], "CBC panel - Blood by Automated count")
         self.assertEqual(hgb["pts"][0], ["2026-03-02T08:10:00-05:00", 11.2, 13.5, 17.5, "L", "11.2", "Maple Grove Clinic"])
         self.assertEqual(hgb["pts"][1][4], "")
-        self.assertEqual(self.labs["Glucose"]["pts"][0][2:5], [70, 99, "H"])
+        self.assertEqual(self.labs["Glucose, Blood"]["pts"][0][2:5], [70, 99, "H"])
         for s in self.d["labs"]:
             self.assertLessEqual({"name", "unit", "panel", "n", "txt", "pts"}, set(s))
             self.assertEqual(s["n"], len(s["pts"]))
@@ -115,7 +115,7 @@ class Parse(unittest.TestCase):
                 self.assertIn(p[4], ("", "H", "L"))
 
     def test_second_portal_style(self):
-        na = self.labs["SODIUM"]                       # kept as reported; canonical names are another step's job
+        na = self.labs["Sodium, Blood"]                # "SODIUM" as reported, under lab-aliases.json's name
         self.assertEqual(na["loinc"], "2951-2")
         self.assertEqual(na["unit"], "mmol/L")         # only in the range text
         self.assertEqual(na["pts"][0][1:6], [128, 135.0, 145.0, "L", "128"])   # interpretation LL
@@ -247,7 +247,8 @@ class Keys(unittest.TestCase):
         meds = [e["key"] for e in d["events"] if e["k"] == "med"]
         self.assertEqual(len(meds), len(set(meds)))
         labs = {x["name"]: x.get("key") for x in d["labs"]}
-        self.assertEqual({labs["Hemoglobin"], labs["HGB"]}, {"loinc:718-7|Hemoglobin", "loinc:718-7|HGB"})
+        self.assertNotIn("HGB", labs)                   # the second name is hemoglobin by its code: one series
+        self.assertEqual(labs["Hemoglobin"], "loinc:718-7")
         self.assertEqual(labs["Color of Urine"], "ccda:1.2.3.4.99|UCOLOR")
 
     def test_one_code_in_two_units(self):
@@ -263,7 +264,7 @@ class Keys(unittest.TestCase):
         labs = {x["name"]: x.get("key") for x in ccda.parse({"x.xml": p})["data"]["labs"]}
         self.assertEqual(labs["Hemoglobin"], "loinc:718-7|g/dL")
         self.assertEqual(labs["Hemoglobin (mmol/L)"], "loinc:718-7|mmol/L")
-        self.assertEqual(labs["Glucose"], "loinc:2345-7")      # no split, no suffix
+        self.assertEqual(labs["Glucose, Blood"], "loinc:2345-7")      # no split, no suffix
 
 
 class Refuse(unittest.TestCase):
