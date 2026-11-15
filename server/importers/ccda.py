@@ -644,6 +644,6 @@ def parse(files):
     out.events.sort(key=lambda e: e["t"])
     if not (out.events or series or out.problems or out.weights):
         out.warnings.append("The C-CDA document was read but held no visits, results, vitals, medications or problems.")
-    data = {"events": out.events, "details": out.details, "labs": series, "problems": out.problems,
+    data = {"events": out.events, "details": out.details, "labs": series, "costs": [], "problems": out.problems,
             "clinicWeights": sorted(out.weights.values())}
     return {"data": data, "warnings": out.warnings}

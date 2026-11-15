@@ -302,5 +302,14 @@ class Refuse(unittest.TestCase):
             ccda.parse({"u16.xml": p})
 
 
+class Contract(unittest.TestCase):
+    def test_output_passes_the_registry_check(self):   # the shape the app stores (server/importers/__init__.py)
+        from server import importers as registry
+        for name in ['maple-grove-ccd.xml', 'riverbend-visit.xml']:
+            with self.subTest(name):
+                files = {name: os.path.join(FIX, name)}
+                self.assertEqual(registry.check(ccda.parse(files), files), [])
+
+
 if __name__ == "__main__":
     unittest.main()
