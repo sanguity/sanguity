@@ -7,7 +7,7 @@ upload. The registry must pick <NAME> for each, and parse() must keep to the con
 <case>.expected.json next to the folder holds the exact {"data", "warnings"} parse() should return. A new importer
 needs no change here: add its module and a fixture folder.
 
-  python -m pytest tests/test_importers.py
+  python -m unittest discover -s tests -p "test_importer*.py" -v
 """
 import json, os, re, subprocess, sys, tempfile, types, unittest
 
@@ -103,10 +103,22 @@ class Registry(unittest.TestCase):
         self.assertIn("sanguity", names)
         self.assertNotIn("common", names)
         self.assertEqual(names, sorted(names))
-        for m in reg.importers():   # NAME is the file name, so reg.get() and fixture folders line up
-            self.assertEqual(m.NAME, m.__name__.rsplit(".", 1)[1])
+        self.assertEqual(len(names), len(set(names)))   # the file name is free, NAME must be unique
+        for m in reg.importers():
+            self.assertRegex(m.NAME, reg.NAME_RE)
             self.assertTrue(m.LABEL)
         self.assertEqual(reg.get("sanguity").NAME, "sanguity")
+
+    def test_names_checked(self):
+        def mod(file, name):
+            m = fake(name, 0.0)
+            m.__name__ = f"server.importers.{file}"
+            return m
+        with self.assertLogs("sanguity.importers", "WARNING") as logs:
+            got = reg.accept([mod("csv_labs", "csv"), mod("apple_health", "apple-health"), mod("a", "Bad_Name"),
+                              mod("b", "9lives"), mod("one", "dup"), mod("two", "dup")])
+        self.assertEqual([m.NAME for m in got], ["apple-health", "csv"])
+        self.assertTrue(any("'dup'" in line and "one" in line and "two" in line for line in logs.output))
 
 
 class Fixtures(unittest.TestCase):

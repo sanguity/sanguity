@@ -12,7 +12,7 @@ Sanguity's own data.json and exports). Copy it to start.
 
 ```python
 # server/importers/myportal.py
-NAME = "myportal"              # short id: the file name, lower case
+NAME = "myportal"              # short id: lower-case letters, digits and dashes, unique among the importers
 LABEL = "MyPortal export"      # shown to whoever is importing
 
 def detect(files) -> float:    # 0.0 = not this format ... 1.0 = certain
@@ -21,6 +21,10 @@ def detect(files) -> float:    # 0.0 = not this format ... 1.0 = certain
 def parse(files) -> dict:      # {"data": {...}, "warnings": ["...", ...]}
     ...
 ```
+
+`NAME` matches `^[a-z][a-z0-9-]*$` (`"csv"`, `"apple-health"`) and names your importer everywhere: in source
+keys, in the fixture folder, in `get(name)`. The file name is free (`csv_labs.py` can have `NAME = "csv"`). Two
+modules with the same `NAME` are both left out, and the error is logged.
 
 ### `files`
 
@@ -163,8 +167,10 @@ It's optional, but give one whenever you can.
   there: `"fhir:DiagnosticReport/1"`, `"fhir:DiagnosticReport/1#presentedForm/1"`, `"fhir:DiagnosticReport/1#presentedForm/2"`.
 - **Lab series:** `"loinc:<code>"` when there's a LOINC code, otherwise `"<NAME>:<code system>|<code>"`. If you split
   one test code into several series because the source reports it in different units, add `"|<unit as reported>"`
-  to each: `"loinc:2345-7|mg/dL"` and `"loinc:2345-7|mmol/L"`. Never number them (`#1`, `#2`): the numbers would
-  change with what else is in the upload.
+  to each: `"loinc:2345-7|mg/dL"` and `"loinc:2345-7|mmol/L"`. As a last resort, if two series still share a key
+  after that (two names under one code and one unit, which C-CDA documents produce), add `"|<name lower-cased and
+  trimmed>"`: `"loinc:2345-7|mg/dL|glucose, fasting"`. Never number them (`#1`, `#2`) or use any other counter:
+  the numbers would change with what else is in the upload.
 - **Result points** (`pts`) have no key. A point is identified by its series key, its time and the value as reported.
 - **`problems` and `upcoming`** entries may carry a key too, by the same rules, unique within their own list.
 
@@ -232,14 +238,15 @@ tests/fixtures/importers/myportal/
 `tests/test_importers.py` finds them by itself. For every fixture folder it checks that the registry picks
 `<NAME>` (so your `detect` beats everyone else's on your files), that `parse` keeps to the contract, and, where
 there's an `.expected.json`, that the output matches it exactly. Write an `.expected.json` by running your
-importer once and reading the result carefully. Add your own `tests/test_<NAME>.py` for edge cases (bad input
-raising `ValueError`, warnings).
+importer once and reading the result carefully. Add your own `tests/test_importer_<name>.py` (unittest, like
+the others) for edge cases (bad input raising `ValueError`, warnings). CI runs every `tests/test_importer*.py`,
+so it needs no change for a new importer.
 
 Fixture files of every type are committed (the `.gitignore` rules that keep out health data, such as `*.xml` and
 `*.pdf`, make an exception for `tests/fixtures/`), so a fixture must be fictional.
 
 ```sh
-python -m pytest tests/test_importers.py
+python -m unittest discover -s tests -p "test_importer*.py" -v      # what CI runs: the registry and every importer
 python -c "from server import importers as i; print(i.run(i.files_in('tests/fixtures/importers/myportal/minimal'))['warnings'])"
 ```
 
@@ -247,7 +254,7 @@ python -c "from server import importers as i; print(i.run(i.files_in('tests/fixt
 
 | Function | |
 |---|---|
-| `importers()` | Every importer module, by `NAME`. A module that fails to import or lacks `NAME`, `LABEL`, `detect` or `parse` is logged and left out. Modules starting with `_`, and `common`, aren't importers. |
+| `importers()` | Every importer module, by `NAME`. A module that fails to import or lacks `NAME`, `LABEL`, `detect` or `parse` is logged and left out, as is one whose `NAME` doesn't match the pattern or is shared with another module. Modules starting with `_`, and `common`, aren't importers. |
 | `get(name)` | One importer by `NAME`. |
 | `files_in(folder)` | The `files` dict for an unpacked upload. |
 | `scores(files)` | `[(score, module)]`, best first. |

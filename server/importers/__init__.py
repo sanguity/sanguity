@@ -2,8 +2,8 @@
 
 The contract (docs/importers.md has the full version, with an example):
 
-    server/importers/<name>.py
-        NAME  = "<name>"             short id, the module's file name
+    server/importers/<any_file_name>.py
+        NAME  = "<name>"             short id: lower-case letters, digits, dashes; unique among the importers
         LABEL = "Human name"         shown to whoever is importing
         def detect(files) -> float   0.0 (not this format) to 1.0 (certain); read only what you need
         def parse(files) -> {"data": <data.json shape>, "warnings": [str, ...]}
@@ -15,7 +15,7 @@ every time the same source data is parsed and unique within one parse's output.
 
 Standard library only here, so build.py can import common.py through this package.
 """
-import importlib, logging, os, pkgutil
+import collections, importlib, logging, os, pkgutil, re
 
 log = logging.getLogger("sanguity.importers")
 
@@ -26,6 +26,9 @@ REQUIRED_KEYS = {"events": list, "details": dict, "labs": list, "costs": list}
 OPTIONAL_KEYS = {"upcoming": list, "problems": list, "milestones": list, "clinicWeights": list, "outOfPocket": dict}
 
 
+NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+
+
 def importers():
     """Every importer module in this package, sorted by NAME. A module that fails to import or lacks part of the
     contract is logged and left out, so one broken importer doesn't stop the others."""
@@ -34,16 +37,29 @@ def importers():
         if info.name.startswith("_") or info.name in NOT_IMPORTERS or info.ispkg:
             continue
         try:
-            mod = importlib.import_module(f"{__name__}.{info.name}")
+            found.append(importlib.import_module(f"{__name__}.{info.name}"))
         except Exception:
             log.exception("importer %s failed to load", info.name)
-            continue
+    return accept(found)
+
+
+def accept(mods):
+    """The modules that keep to the contract, sorted by NAME: NAME, LABEL, detect and parse present, NAME matching
+    NAME_RE, and no NAME shared with another module (every module claiming a shared NAME is left out, since neither
+    can be told apart in a key or a fixture folder). The rest are logged."""
+    ok = []
+    for mod in mods:
         missing = [a for a in ("NAME", "LABEL", "detect", "parse") if not hasattr(mod, a)]
         if missing:
-            log.warning("importer %s left out: no %s", info.name, ", ".join(missing))
-            continue
-        found.append(mod)
-    return sorted(found, key=lambda m: m.NAME)
+            log.warning("importer %s left out: no %s", mod.__name__, ", ".join(missing))
+        elif not isinstance(mod.NAME, str) or not NAME_RE.match(mod.NAME):
+            log.warning("importer %s left out: NAME %r isn't lower-case letters, digits and dashes", mod.__name__, mod.NAME)
+        else:
+            ok.append(mod)
+    counts = collections.Counter(m.NAME for m in ok)
+    for name in sorted(n for n, c in counts.items() if c > 1):
+        log.error("importers %s all have NAME %r: all left out", ", ".join(sorted(m.__name__ for m in ok if m.NAME == name)), name)
+    return sorted((m for m in ok if counts[m.NAME] == 1), key=lambda m: m.NAME)
 
 
 def get(name):
