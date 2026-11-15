@@ -164,7 +164,9 @@ fi
 
 # ---- build and start
 if [ "$MODE" = compose ]; then
-  compose up -d --build --remove-orphans
+  compose pull --quiet --ignore-buildable   # newer nginx (Compose 2.15 or later)
+  compose build --pull                      # and the app's image on a newer Python base image
+  compose up -d --remove-orphans
 else
   # The repo's compose.yaml with .env filled in and every path made absolute (a custom app has no folder of its
   # own), plus the override; the backend image is built from src/ on every deploy instead of being pulled.

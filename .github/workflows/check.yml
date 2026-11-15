@@ -28,6 +28,25 @@ jobs:
       - name: JSON templates parse
         run: for f in *.example.json lab-aliases.json; do python -m json.tool "$f" > /dev/null || exit 1; done
 
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.13.8"
+
+      # Each lock must be what `uv pip compile` makes from its .in file with the options in requirements.in,
+      # keeping the pins it already has: every package of the .in, with hashes and platform markers. Comments
+      # are left out of the comparison, so a different uv version's annotations don't matter.
+      - name: Lock files match requirements.in (also checks Dependabot's regenerated locks)
+        run: |
+          mkdir -p /tmp/locks
+          for lock in requirements.txt requirements-dev.txt; do
+            head -2 "$lock" | grep -q "uv pip compile --universal --python-version 3.12 --generate-hashes ${lock%.txt}.in -o $lock" \
+              || { echo "$lock: header isn't the uv command from requirements.in"; exit 1; }
+            cp "$lock" "/tmp/locks/$lock"
+            uv pip compile --quiet --universal --python-version 3.12 --generate-hashes "${lock%.txt}.in" -o "/tmp/locks/$lock"
+            diff <(grep -v '^ *#' "$lock") <(grep -v '^ *#' "/tmp/locks/$lock") \
+              || { echo "$lock doesn't match ${lock%.txt}.in: regenerate it as requirements.in says"; exit 1; }
+          done
+
       - name: compose.yaml is valid
         run: docker compose config --quiet
 

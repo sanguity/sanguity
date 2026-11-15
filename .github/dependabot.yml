@@ -1,0 +1,45 @@
+# Weekly update proposals (ASVS 14.2.1). Security updates arrive as soon as an advisory is published, when
+# Dependabot security updates are on in the repository settings.
+version: 2
+updates:
+  # requirements.in -> requirements.txt and requirements-dev.txt. The uv ecosystem, not pip: it regenerates the
+  # locks with `uv pip compile`, keeping the options they were made with (--universal, --python-version 3.12,
+  # --generate-hashes) and their header. The pip ecosystem would rewrite them with pip-compile. CI checks that the
+  # result is exactly what uv makes from requirements.in ("Lock files match requirements.in" in check.yml).
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      python:
+        patterns: ["*"]
+
+  # The app's base image (docker/app.Dockerfile). A new Python minor version (3.12 -> 3.13) is left for a
+  # deliberate change: the locks are resolved for 3.12. Patches within 3.12-alpine come in through the update
+  # command in the README, which pulls the base image again.
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+      day: monday
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  # nginx in compose.yaml
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+
+  # The actions in .github/workflows/
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
