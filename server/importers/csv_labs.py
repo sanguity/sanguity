@@ -651,7 +651,7 @@ def _build(results):
             for name, s in series.items()]
     labs.sort(key=lambda s: (-s["n"], s["name"]))
     events.sort(key=lambda e: e["t"])
-    return {"events": events, "details": details, "labs": labs}
+    return {"events": events, "details": details, "labs": labs, "costs": []}
 
 
 def _display(t):

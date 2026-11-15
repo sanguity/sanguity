@@ -89,7 +89,7 @@ class Shape(unittest.TestCase):
         cls.data = cls.out["data"]
 
     def test_top_level(self):
-        self.assertEqual(set(self.data), {"events", "details", "labs"})
+        self.assertEqual(set(self.data), {"events", "details", "labs", "costs"})
         self.assertIsInstance(self.out["warnings"], list)
 
     def test_events(self):
@@ -382,6 +382,15 @@ class Errors(Written):
     def test_no_readable_rows(self):
         with self.assertRaisesRegex(ValueError, "No lab results could be read.*no value"):
             csv_labs.parse(self.write("e.csv", "Date,Test,Value\n2025-01-01,A,\n"))
+
+
+class Contract(unittest.TestCase):
+    def test_output_passes_the_registry_check(self):   # the shape the app stores (server/importers/__init__.py)
+        from server import importers as registry
+        for name in ['ambiguous_dates.csv', 'european_semicolon.csv', 'excel_utf16.txt', 'tab_iso.tsv', 'us_comma.csv']:
+            with self.subTest(name):
+                files = {name: os.path.join(FIX, name)}
+                self.assertEqual(registry.check(csv_labs.parse(files), files), [])
 
 
 if __name__ == "__main__":
