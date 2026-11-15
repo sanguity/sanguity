@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 6 216 74" role="img" aria-label="Sanguity">
+  <text x="137.5" y="66" text-anchor="end" font-family="system-ui,-apple-system,'Segoe UI',Roboto,sans-serif" font-size="48" font-weight="600" fill="#ece9e4">Sangu</text>
+  <text x="144" y="66" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',Roboto,sans-serif" font-size="48" font-weight="600" fill="#ece9e4">&#x131;</text>
+  <text x="150.5" y="66" text-anchor="start" font-family="system-ui,-apple-system,'Segoe UI',Roboto,sans-serif" font-size="48" font-weight="600" fill="#ece9e4">ty</text>
+  <g transform="translate(128.64 5.84) scale(0.48)"><path d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z" fill="#b4485e"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke="#1c1a19" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/></g>
+</svg>

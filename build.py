@@ -12,6 +12,10 @@ import json, os, re, sys, glob, html, zipfile, collections
 from datetime import datetime, timezone, timedelta
 import xml.etree.ElementTree as ET
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # -I leaves the script's folder off the path
+from server.importers.common import (iso, strip_html, num, ymd, unit_key, lab_defs, lab_alias, ext_alias,   # noqa: E402
+                                     resolve_name as _resolve_name, stay, inferred_stays)
+
 
 def _arg(flag):
     return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv[:-1] else None
@@ -45,10 +49,7 @@ EPIC_EXTRA = [[d, s.get("org", ""), s.get("tag", ""), files_prefix(s, d)] for s 
 
 
 # lab names: canonical series, LOINC codes and other spellings (lab-aliases.json next to this script)
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lab-aliases.json"), encoding="utf-8") as f:
-    LAB_DEFS = json.load(f)["labs"]
-LAB_ALIAS = {a.lower(): c for c, d in LAB_DEFS.items() for a in [c] + d.get("aliases", [])}
-EXT_ALIAS = {a: c for c, d in LAB_DEFS.items() for a in d.get("aliases", []) if a.endswith(" (External)")}
+LAB_DEFS, LAB_ALIAS, EXT_ALIAS = lab_defs(), lab_alias(), ext_alias()
 
 
 def load(p):
@@ -60,23 +61,6 @@ def exp_file(sub, name):
     """Primary-export file whose name ends with `name`; export tools prefix it with the portal (<portal>_letters.json)."""
     hits = sorted(glob.glob(os.path.join(EXP, sub, "*" + name)))
     return os.path.relpath(hits[0], EXP).replace(os.sep, "/") if hits else None
-
-
-def iso(s):
-    """Normalise to an ISO string with offset (local -05/-06 kept when present)."""
-    if not s:
-        return None
-    s = s.strip()
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
-        return s + "T12:00:00"
-    return s.replace("Z", "+00:00")
-
-
-TAG_RE = re.compile(r"<[^>]+>")
-
-
-def strip_html(h):
-    return html.unescape(TAG_RE.sub(" ", h or "")).replace("\xa0", " ")
 
 
 events, details, labs = [], {}, {}
@@ -106,38 +90,9 @@ panel_votes = collections.defaultdict(collections.Counter)
 
 
 
-def unit_norm(u):
-    u = (u or "").strip().lower().replace(" ", "").replace("µ", "u")
-    for a, c in (("gm/dl", "g/dl"), ("x10e3/ul", "k/ul"), ("10*3/ul", "k/ul"), ("x10e6/ul", "m/ul"), ("10*6/ul", "m/ul"),
-                 ("iu/l", "u/l"), ("ml/min/1.73m2", "ml/min"), ("/100wbc", "")):
-        u = u.replace(a, c)
-    return u
-
-
-MONOVALENT = {"Sodium, Blood", "Potassium, Blood", "Chloride, Blood", "Anion Gap", "CO2"}
-
-
-def unit_for(canon, u):
-    u = unit_norm(u)
-    for a, c in (("tho/cmm", "k/ul"), ("thou/cmm", "k/ul"), ("k/cmm", "k/ul"), ("mil/cmm", "m/ul"), ("m/cmm", "m/ul"),
-                 ("seconds", "sec"), ("secs", "sec")):
-        u = u.replace(a, c)
-    if canon in MONOVALENT:
-        u = u.replace("meq/l", "mmol/l")
-    if canon == "MCHC":
-        u = u.replace("%", "g/dl")
-    return u
-
-
 def resolve_name(name, unit, org):
     """Map another Epic system's component name onto an existing series when the units agree."""
-    lower = {k.lower(): k for k in labs}
-    canon = LAB_ALIAS.get(name.lower()) or lower.get(name.lower())
-    if not canon:
-        return name
-    if canon in labs and labs[canon]["unit"] and unit and unit_for(canon, labs[canon]["unit"]) != unit_for(canon, unit):
-        return f"{canon} ({org})"
-    return canon
+    return _resolve_name(name, unit, org, labs)
 
 
 def epic_results(tr, src=None, org="", infer_stays=True):
@@ -220,23 +175,8 @@ def epic_results(tr, src=None, org="", infer_stays=True):
     # hospital stays inferred from lab results, only when the source has no real admit/discharge data
     if not infer_stays:
         return
-    for adm, ts in admissions.items():
-        try:
-            start = datetime.strptime(adm, "%b %d, %Y").strftime("%Y-%m-%dT00:00:00")
-        except ValueError:
-            continue
-        add(start, "stay", "Hospital stay" + (f" · {org}" if org else ""), f"Admitted {adm} · last inpatient result {max(ts)[:10]}",
-            {"type": "stay", "admit": adm, "lastResult": max(ts), "results": len(ts)}, end=max(ts)[:10] + "T23:59:00")
-    clusters = []
-    for t in sorted(inpatient_ts):
-        if clusters and (datetime.fromisoformat(t[:19]) - datetime.fromisoformat(clusters[-1][-1][:19])).days <= 2:
-            clusters[-1].append(t)
-        else:
-            clusters.append([t])
-    for c in clusters:
-        add(c[0][:10] + "T00:00:00", "stay", "Hospital stay" + (f" · {org}" if org else ""),
-            f"Inpatient results {c[0][:10]} – {c[-1][:10]}",
-            {"type": "stay", "admit": c[0][:10], "lastResult": c[-1], "results": len(c)}, end=c[-1][:10] + "T23:59:00")
+    for st in inferred_stays(admissions, inpatient_ts, org):
+        add(st["t"], "stay", st["title"], st["sub"], st["detail"], end=st["end"])
 
 
 tr = load(exp_file("test-results", "test_results_raw.json") or sys.exit(f"no test-results/*test_results_raw.json in {EXP}"))
@@ -256,12 +196,8 @@ def add_stay(admit, discharge, where, org, how, exact=None):
     if key in stay_days or key in NOT_STAYS:
         return
     stay_days.add(key)
-    a = exact[0] if exact else admit[:10] + "T00:00:00"
-    d = exact[1] if exact else discharge[:10] + "T23:59:00"
-    nights = (datetime.fromisoformat(discharge[:10]) - datetime.fromisoformat(admit[:10])).days
-    add(a, "stay", "Hospital stay" + (f" · {org}" if org else ""),
-        f"{where} · {nights} night{'s' if nights != 1 else ''}" if nights else f"{where} · same day",
-        {"type": "stay", "admit": admit, "discharge": discharge, "where": where, "how": how}, end=d)
+    st = stay(admit, discharge, where, org, how, exact)
+    add(st["t"], "stay", st["title"], st["sub"], st["detail"], end=st["end"])
 
 
 if os.path.exists(ADM_FILE):
@@ -459,19 +395,6 @@ CS_TAG = _CS.get("tag", "CS")
 upcoming, problems = [], []
 
 
-def unit_key(u):
-    u = (u or "").strip().lower().replace(" ", "").replace("µ", "u").replace("μ", "u")
-    for a, b in (("x10e3/ul", "k/ul"), ("10*3/ul", "k/ul"), ("thou/ul", "k/ul"), ("x10e6/ul", "m/ul"), ("10*6/ul", "m/ul"),
-                 ("mil/ul", "m/ul"), ("iu/l", "u/l"), ("ml/min/1.73m2", "ml/min"), ("ml/min/1.73m^2", "ml/min"), ("ratio", "")):
-        u = u.replace(a, b)
-    return u
-
-
-def num(s):
-    m = re.match(r"^\s*([<>]=?)?\s*(-?\d+(?:\.\d+)?)\s*$", str(s or ""))
-    return float(m.group(2)) if m else None
-
-
 def cs_table(root, title):
     NS = {"h": "urn:hl7-org:v3"}
     for sec in root.iter("{urn:hl7-org:v3}section"):
@@ -488,11 +411,6 @@ def cs_table(root, title):
                     rows.append(dict(zip(hdr, tds)))
             return rows
     return []
-
-
-def ymd(s):
-    m = re.match(r"(\d{4})-?(\d{2})-?(\d{2})", (s or "").strip())
-    return f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else None
 
 
 if CS and os.path.isdir(CS):

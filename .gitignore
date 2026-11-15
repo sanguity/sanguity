@@ -25,3 +25,6 @@ records/
 compose.override.yaml
 backups/
 dev-keys/
+
+# fictional test fixtures (no real records): the patterns above would otherwise hide them
+!tests/fixtures/**

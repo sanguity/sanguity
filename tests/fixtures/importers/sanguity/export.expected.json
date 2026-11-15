@@ -1,0 +1,160 @@
+{
+ "data": {
+  "built": "2026-11-15T09:00:00+00:00",
+  "source": "Sanguity demo data (fictional)",
+  "events": [
+   {
+    "id": 1,
+    "t": "2026-03-02T08:30:00",
+    "k": "lab",
+    "title": "2 lab results",
+    "sub": "CBC",
+    "abn": 1
+   },
+   {
+    "id": 2,
+    "t": "2026-03-02T08:30:00",
+    "k": "labitem",
+    "title": "CBC",
+    "sub": "Dr. Sam Okafor",
+    "abn": 1,
+    "hidden": 1
+   },
+   {
+    "id": 3,
+    "t": "2026-03-05T12:00:00",
+    "k": "document",
+    "title": "Pathology report",
+    "sub": "PDF",
+    "key": "fhir:DocumentReference/doc-0003"
+   },
+   {
+    "id": 4,
+    "t": "2026-04-01T12:00:00",
+    "k": "document",
+    "title": "Lost scan",
+    "sub": "PNG"
+   },
+   {
+    "id": 5,
+    "t": "2026-04-10T10:00:00",
+    "k": "claim",
+    "title": "Office visit",
+    "sub": "Lakeside Family Medicine · Example Health Plan",
+    "key": "csv:h:5f1c0a9e2b7d4c61"
+   }
+  ],
+  "details": {
+   "1": {
+    "type": "labday",
+    "ids": [
+     2
+    ]
+   },
+   "2": {
+    "type": "result",
+    "order": "CBC",
+    "name": "CBC",
+    "rows": [
+     [
+      "Hemoglobin",
+      "11.2",
+      "g/dL",
+      "12 - 16",
+      "L"
+     ],
+     [
+      "WBC",
+      "6.1",
+      "K/uL",
+      "4 - 11",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": []
+   },
+   "3": {
+    "type": "file",
+    "url": "documents/3/report.pdf#page=2",
+    "ext": "pdf"
+   },
+   "4": {
+    "type": "file",
+    "url": null,
+    "ext": "png"
+   },
+   "5": {
+    "type": "claim",
+    "insurer": "Example Health Plan",
+    "billed": 180.0,
+    "paid": 92.5,
+    "owe": 20.0,
+    "status": "PAID"
+   }
+  },
+  "labs": [
+   {
+    "name": "Hemoglobin",
+    "unit": "g/dL",
+    "panel": "CBC",
+    "n": 1,
+    "loinc": "718-7",
+    "pts": [
+     [
+      "2026-03-02T08:30:00",
+      11.2,
+      12,
+      16,
+      "L",
+      "11.2"
+     ]
+    ],
+    "txt": [],
+    "key": "loinc:718-7"
+   },
+   {
+    "name": "WBC",
+    "unit": "K/uL",
+    "panel": "CBC",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-02T08:30:00",
+      6.1,
+      4,
+      11,
+      "",
+      "6.1"
+     ]
+    ],
+    "txt": []
+   }
+  ],
+  "costs": [
+   {
+    "id": 5,
+    "d": "2026-04-10",
+    "ins": "Example Health Plan",
+    "billed": 180.0,
+    "paid": 92.5,
+    "owe": 20.0,
+    "status": "PAID",
+    "kind": "medical",
+    "cat": "Doctor visits",
+    "prov": "Lakeside Family Medicine",
+    "title": "Office visit"
+   }
+  ],
+  "milestones": [
+   {
+    "date": "2026-03-05",
+    "label": "Diagnosis",
+    "primary": true
+   }
+  ]
+ },
+ "warnings": [
+  "1 document is linked in data.json but not in the upload; the records are kept without them."
+ ]
+}

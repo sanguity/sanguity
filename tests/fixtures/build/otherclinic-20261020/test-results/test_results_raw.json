@@ -1,0 +1,73 @@
+{
+ "groups": [
+  {
+   "resultList": [
+    "o1"
+   ],
+   "isInpatient": true
+  }
+ ],
+ "details": {
+  "o1": {
+   "orderName": "Chem",
+   "results": [
+    {
+     "name": "Chem",
+     "orderMetadata": {
+      "prioritizedInstantISO": "2026-04-01T08:00:00-05:00",
+      "resultType": "LAB",
+      "orderProviderName": "Dr. Sam Okafor",
+      "resultStatus": "Final"
+     },
+     "resultComponents": [
+      {
+       "componentInfo": {
+        "name": "SODIUM",
+        "units": "mEq/L"
+       },
+       "componentResultInfo": {
+        "numericValue": 140,
+        "value": "140",
+        "referenceRange": {
+         "low": 135,
+         "high": 145,
+         "formattedReferenceRange": "135 - 145"
+        }
+       }
+      },
+      {
+       "componentInfo": {
+        "name": "HGB",
+        "units": "g/L"
+       },
+       "componentResultInfo": {
+        "numericValue": 120,
+        "value": "120",
+        "referenceRange": {
+         "low": 120,
+         "high": 160,
+         "formattedReferenceRange": "120 - 160"
+        }
+       }
+      },
+      {
+       "componentInfo": {
+        "name": "WBC",
+        "units": "10*3/uL"
+       },
+       "componentResultInfo": {
+        "numericValue": 5.0,
+        "value": "5.0",
+        "referenceRange": {
+         "low": 4,
+         "high": 11,
+         "formattedReferenceRange": "4 - 11"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  }
+ }
+}
