@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import accounts, backup, config, db as dbm, profiles as prof, security as sec
+from . import accounts, activity, backup, config, db as dbm, profiles as prof, security as sec
 
 log = logging.getLogger("sanguity")
 RANK = {"viewer": 1, "editor": 2, "owner": 3}
@@ -216,11 +216,14 @@ def setup(body: Setup, request: Request, response: Response, db=Depends(get_db))
         except accounts.AccountError as e:
             raise HTTPException(e.status, str(e))
         owned = accounts.claim_unowned(db, uid)   # the records already on this server
+        first = {"id": uid, "username": body.username.strip()}
+        activity.log(db, "setup", first, ip=_client_ip(request))
         label = (body.profile_name or "").strip()[:80]
         if label and owned:
             db.execute("UPDATE profiles SET name=? WHERE id=?", (label, owned[0]))
         elif not owned:
-            prof.create_profile(db, label or body.username.strip(), owner_id=uid)
+            pid = prof.create_profile(db, label or body.username.strip(), owner_id=uid)
+            activity.log(db, "create", first, pid, ip=_client_ip(request))
     sec.throttle.clear(*keys)
     _start_session(request, response, db, uid)
     return {"ok": True}
@@ -324,6 +327,7 @@ def change_password(body: PasswordChange, request: Request, s=Depends(any_user),
         raise HTTPException(400, "Choose a password different from the current one.")
     db.execute("UPDATE users SET pw_hash=?, must_change_pw=0 WHERE id=?", (sec.hash_password(body.new), s["id"]))
     n = db.execute("DELETE FROM sessions WHERE user_id=? AND id<>?", (s["id"], s["sid"])).rowcount
+    activity.log(db, "password", s, ip=_client_ip(request))
     return {"ok": True, "signed_out_elsewhere": n}
 
 
@@ -361,15 +365,19 @@ def _profile_name(name):
 
 
 @app.post("/api/profiles")
-def new_profile(body: ProfileIn, s=Depends(user), db=Depends(get_db)):
+def new_profile(body: ProfileIn, request: Request, s=Depends(user), db=Depends(get_db)):
     pid = prof.create_profile(db, _profile_name(body.name), owner_id=s["id"])
+    activity.log(db, "create", s, pid, ip=_client_ip(request))
     return {"id": pid}
 
 
 @app.patch("/api/profiles/{pid}")
-def rename_profile(pid: int, body: ProfileIn, s=Depends(user), db=Depends(get_db)):
+def rename_profile(pid: int, body: ProfileIn, request: Request, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "owner")
-    db.execute("UPDATE profiles SET name=? WHERE id=?", (_profile_name(body.name), pid))
+    name, old = _profile_name(body.name), db.execute("SELECT name FROM profiles WHERE id=?", (pid,)).fetchone()["name"]
+    if name != old:
+        db.execute("UPDATE profiles SET name=? WHERE id=?", (name, pid))
+        activity.log(db, "rename", s, pid, {"from": old, "to": name}, _client_ip(request))
     return {"ok": True}
 
 
@@ -397,22 +405,25 @@ def _keep_an_owner(db, pid, before):
 
 
 @app.put("/api/profiles/{pid}/members")
-def share(pid: int, body: MemberIn, s=Depends(user), db=Depends(get_db)):
+def share(pid: int, body: MemberIn, request: Request, s=Depends(user), db=Depends(get_db)):
     """Share the profile with an account, or change that account's role."""
     need(db, s, pid, "owner")
-    u = db.execute("SELECT id FROM users WHERE username=? AND disabled=0", (body.username.strip(),)).fetchone()
+    u = db.execute("SELECT id, username FROM users WHERE username=? AND disabled=0", (body.username.strip(),)).fetchone()
     if not u:
         raise HTTPException(404, "No active account with that username. An admin can create it under Account.")
     with dbm.transaction(db):
-        before = dbm.active_owners(db, pid)
+        before, old = dbm.active_owners(db, pid), role_of(db, u["id"], pid)
         db.execute("""INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, ?)
                       ON CONFLICT(user_id, profile_id) DO UPDATE SET role=excluded.role""", (u["id"], pid, body.role))
         _keep_an_owner(db, pid, before)
+        if old != body.role:
+            activity.log(db, "share", s, pid, {"username": u["username"], "role": body.role, **({"from": old} if old else {})},
+                         _client_ip(request))
     return {"ok": True}
 
 
 @app.delete("/api/profiles/{pid}/members/{uid}")
-def unshare(pid: int, uid: int, s=Depends(user), db=Depends(get_db)):
+def unshare(pid: int, uid: int, request: Request, s=Depends(user), db=Depends(get_db)):
     """An owner removes someone's access; anyone may remove their own (leave the profile)."""
     if uid != s["id"]:
         need(db, s, pid, "owner")
@@ -422,7 +433,17 @@ def unshare(pid: int, uid: int, s=Depends(user), db=Depends(get_db)):
         before = dbm.active_owners(db, pid)
         db.execute("DELETE FROM memberships WHERE user_id=? AND profile_id=?", (uid, pid))
         _keep_an_owner(db, pid, before)
+        name = db.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()["username"]
+        activity.log(db, "unshare", s, pid, {"username": name}, _client_ip(request))
     return {"ok": True}
+
+
+@app.get("/api/profiles/{pid}/activity")
+def profile_activity(pid: int, actor: Optional[int] = None, action: Optional[str] = None, before: Optional[int] = None,
+                     limit: int = 100, s=Depends(user), db=Depends(get_db)):
+    """The profile's activity log, newest first (owners only). actor: an account id; before: an entry id."""
+    need(db, s, pid, "owner")
+    return activity.for_profile(db, pid, actor, action, before, limit)
 
 
 # ---------------------------------------------------------------- a profile's records
@@ -435,7 +456,7 @@ def _json_file(path):
 
 
 @app.get("/api/profiles/{pid}/data")
-def profile_data(pid: int, s=Depends(user), db=Depends(get_db)):
+def profile_data(pid: int, request: Request, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "viewer")
     prof.sync_build(db, pid)
     path = prof.data_path(pid)
@@ -443,6 +464,7 @@ def profile_data(pid: int, s=Depends(user), db=Depends(get_db)):
         if (why := prof.build_error(pid)):
             raise HTTPException(500, f"The built records couldn't be loaded ({why}). Details are in the app's log.")
         return Response(status_code=204)   # the profile exists but has no records yet
+    activity.once(db, s, pid, "view", _client_ip(request))
     return _json_file(path)
 
 
@@ -494,17 +516,23 @@ def _document(db, s, pid, doc):
     return r
 
 
+def _opened(db, s, pid, doc, r, request):
+    activity.once(db, s, pid, "document", _client_ip(request), {"name": os.path.basename(r["path"])}, key=doc[:64])
+
+
 @app.get("/api/profiles/{pid}/documents/{doc}")
-def document(pid: int, doc: str, s=Depends(user), db=Depends(get_db)):
+def document(pid: int, doc: str, request: Request, s=Depends(user), db=Depends(get_db)):
     r = _document(db, s, pid, doc)
+    _opened(db, s, pid, doc, r, request)
     return _serve(r["path"], r["ext"], DOC_TYPES)
 
 
 @app.get("/api/profiles/{pid}/documents/{doc}/{part:path}")
-def document_part(pid: int, doc: str, part: str, s=Depends(user), db=Depends(get_db)):
+def document_part(pid: int, doc: str, part: str, request: Request, s=Depends(user), db=Depends(get_db)):
     """An HTML record by its own file name, or a picture or stylesheet in its folder that it links to."""
     r = _document(db, s, pid, doc)
     if part == os.path.basename(r["path"]):
+        _opened(db, s, pid, doc, r, request)
         return _serve(r["path"], r["ext"], DOC_TYPES)
     folder = os.path.dirname(r["path"])
     target = os.path.join(folder, *part.split("/"))
@@ -530,13 +558,21 @@ class UserIn(BaseModel):
 
 
 @app.post("/api/users")
-def new_user(body: UserIn, s=Depends(admin), db=Depends(get_db)):
+def new_user(body: UserIn, request: Request, s=Depends(admin), db=Depends(get_db)):
     """Create an account with a one-time password; its owner chooses their own at first sign-in."""
     try:
         uid, pw = accounts.create(db, body.username, is_admin=body.is_admin)
     except accounts.AccountError as e:
         raise HTTPException(e.status, str(e))
+    activity.log(db, "account.create", s, detail={"username": body.username.strip(), **({"admin": True} if body.is_admin else {})},
+                 ip=_client_ip(request))
     return {"id": uid, "username": body.username.strip(), "temporary_password": pw}
+
+
+@app.get("/api/activity")
+def account_activity(before: Optional[int] = None, limit: int = 100, s=Depends(admin), db=Depends(get_db)):
+    """Account events, newest first (admins only; no profile's records or views)."""
+    return activity.for_accounts(db, before, limit)
 
 
 class UserPatch(BaseModel):
@@ -547,11 +583,13 @@ class UserPatch(BaseModel):
 
 
 @app.patch("/api/users/{uid}")
-def edit_user(uid: int, body: UserPatch, s=Depends(admin), db=Depends(get_db)):
+def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=Depends(get_db)):
     if uid == s["id"] and (body.disabled is not None or body.is_admin is not None or body.reset_password):
         raise HTTPException(400, "You can't change your own admin role, disable yourself or reset your own password here.")
-    if not db.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
+    target = db.execute("SELECT username, is_admin, disabled FROM users WHERE id=?", (uid,)).fetchone()
+    if not target:
         raise HTTPException(404, "No such account.")
+    note = lambda action: activity.log(db, action, s, detail={"username": target["username"]}, ip=_client_ip(request))
     if body.disabled and not body.force:
         sole = [r["name"] for r in db.execute(
             """SELECT p.id, p.name FROM memberships m JOIN profiles p ON p.id = m.profile_id
@@ -563,16 +601,19 @@ def edit_user(uid: int, body: UserPatch, s=Depends(admin), db=Depends(get_db)):
                 f"{'that profile' if len(sole) == 1 else 'those profiles'} (a server admin can still add an owner with "
                 f"server.manage share). Disable it anyway?"})
     out = {"ok": True}
-    if body.is_admin is not None:
+    if body.is_admin is not None and body.is_admin != bool(target["is_admin"]):
         db.execute("UPDATE users SET is_admin=? WHERE id=?", (int(body.is_admin), uid))
-    if body.disabled is not None:
+        note("account.admin" if body.is_admin else "account.unadmin")
+    if body.disabled is not None and body.disabled != bool(target["disabled"]):
         db.execute("UPDATE users SET disabled=? WHERE id=?", (int(body.disabled), uid))
         if body.disabled:
             accounts.sign_out_everywhere(db, uid)
+        note("account.disable" if body.disabled else "account.enable")
     if body.reset_password:
         out["temporary_password"] = pw = accounts.temp_password()
         db.execute("UPDATE users SET pw_hash=?, must_change_pw=1 WHERE id=?", (sec.hash_password(pw), uid))
         accounts.sign_out_everywhere(db, uid)   # a reset may follow a lost or stolen device
+        note("account.reset")
     return out
 
 

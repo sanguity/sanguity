@@ -90,6 +90,7 @@ async function loadProfiles() {
         if (had && !confirm(`${had.username} already has access as ${had.role}. Change them to ${role.value}?`)) return;
         try { await call(`profiles/${p.id}/members`, "PUT", {username: name, role: role.value}); loadProfiles(); } catch (e) { fail(e); } }},
         el("span", {class: "muted", text: "Share with"}), who, "as", role, el("button", {class: "btn small", type: "submit", text: "Share"})));
+      body.push(activityPanel(`profiles/${p.id}/activity`, members));
     } else {
       body.push(el("div", {class: "row"}, el("button", {class: "btn small", type: "button", text: "Leave this profile",
         onclick: async () => { if (!confirm(`Stop having access to ${p.name}? An owner can share it with you again.`)) return;
@@ -105,6 +106,62 @@ $("#profNew").onsubmit = async ev => {
   try { await call("profiles", "POST", {name: $("#profName").value}); $("#profNew").reset(); say("#profMsg", "Created."); loadProfiles(); }
   catch (e) { say("#profMsg", e.message, true); }
 };
+
+/* ---------------------------------------------------------------- activity */
+const WHAT = {
+  view: () => "opened the records",
+  document: d => `opened ${d.name || "a document"}`,
+  create: () => "created the profile",
+  rename: d => `renamed the profile from “${d.from}” to “${d.to}”`,
+  share: d => d.from ? `changed ${d.username}’s role from ${d.from} to ${d.role}` : `shared it with ${d.username} as ${d.role}`,
+  unshare: (d, e) => d.username === e.actor ? "left the profile" : `removed ${d.username}’s access`,
+  import: d => `imported records (${d.documents} documents)`,
+  reload: () => "loaded the latest records",
+  setup: () => "set up Sanguity with the first account",
+  password: () => "changed their password",
+  "account.create": d => `created the account ${d.username}${d.admin ? " (admin)" : ""}`,
+  "account.disable": d => `disabled ${d.username}`,
+  "account.enable": d => `enabled ${d.username}`,
+  "account.admin": d => `made ${d.username} an admin`,
+  "account.unadmin": d => `removed ${d.username}’s admin role`,
+  "account.reset": d => `reset ${d.username}’s password`,
+};
+const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
+  ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"]];
+const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
+function activityRows(list) {
+  return list.map(e => el("tr", {},
+    el("td", {class: "nowrap", text: when(e.at)}), el("td", {text: e.actor}), el("td", {text: describe(e)}),
+    el("td", {class: "muted", text: e.ip || ""})));
+}
+/* a log that opens on demand: newest first, filtered by person (profile logs) and kind, older entries on request */
+function activityPanel(path, members) {
+  const box = el("div", {class: "activity", hidden: true});
+  const who = members ? el("select", {"aria-label": "Person"}, el("option", {value: "", text: "Everyone"}),
+    ...members.map(m => el("option", {value: m.user_id, text: m.username}))) : null;
+  const what = members ? el("select", {"aria-label": "Kind of activity"}, ...FILTERS.map(([v, t]) => el("option", {value: v, text: t}))) : null;
+  const tbody = el("tbody"), more = el("button", {class: "btn small", type: "button", text: "Show older", hidden: true});
+  let oldest = null;
+  async function load(reset) {
+    const q = new URLSearchParams({limit: 50});
+    if (who && who.value) q.set("actor", who.value);
+    if (what && what.value) q.set("action", what.value);
+    if (!reset && oldest) q.set("before", oldest);
+    const list = await call(`${path}?${q}`);
+    if (reset) tbody.replaceChildren();
+    tbody.append(...activityRows(list));
+    if (reset && !list.length) tbody.append(el("tr", {}, el("td", {colspan: 4, class: "muted", text: "Nothing yet."})));
+    oldest = list.length ? list[list.length - 1].id : oldest;
+    more.hidden = list.length < 50;
+  }
+  for (const s of [who, what]) if (s) s.onchange = () => load(true);
+  more.onclick = () => load(false);
+  box.append(...(members ? [el("div", {class: "row"}, who, what)] : []),
+    el("table", {class: "tbl"}, el("thead", {}, el("tr", {}, ...["When", "Who", "What", "Address"].map(h => el("th", {text: h})))), tbody), more);
+  const toggle = el("button", {class: "btn small", type: "button", text: "Activity", "aria-expanded": "false",
+    onclick: async () => { box.hidden = !box.hidden; toggle.setAttribute("aria-expanded", !box.hidden); if (!box.hidden) await load(true); }});
+  return el("div", {class: "activity-wrap"}, toggle, box);
+}
 
 /* ---------------------------------------------------------------- accounts (admin) */
 function showTemp(username, pw) {
@@ -157,6 +214,11 @@ $("#userNew").onsubmit = async ev => {
     return;
   }
   await Promise.all([loadSessions(), loadProfiles(), ME.user.is_admin ? loadUsers() : null]);
+  if (ME.user.is_admin) {   // account events only: who created, disabled or reset which account (no records)
+    const panel = activityPanel("activity");
+    panel.firstChild.textContent = "Account activity";
+    $("#acctLog").replaceChildren(panel);
+  }
   $("#users").hidden = !ME.user.is_admin;
   if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
 })();

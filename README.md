@@ -98,6 +98,9 @@ portal's export doesn't import, please open an issue with an anonymised sample.
 - **Every request for records or documents checks the account's role on that profile.** Documents are served
   only through that check, read-only, with scripts blocked; no folder of health data is served directly.
 - **Admins manage accounts, not records:** being an admin doesn't show anyone's records.
+- **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
+  changed it, and when (**Account > Activity**); admins see account changes. Entries are kept for a year
+  (`ACTIVITY_DAYS` in `.env`).
 - **Secrets are generated on first start** (watch-receiver key, a one-time setup code).
 - Records, built data, watch data, logins and secrets are never committed (see `.gitignore`).
 - Put Sanguity behind HTTPS (a reverse proxy, Tailscale or similar) before using it outside your home network.

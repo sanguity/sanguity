@@ -57,6 +57,21 @@ SCHEMA = [
         PRIMARY KEY(token_hash, user_id));
     CREATE INDEX devices_user ON devices(user_id);
     """,
+    # version 3: the activity log (see activity.py)
+    """
+    CREATE TABLE activity(
+        id INTEGER PRIMARY KEY,
+        at INTEGER NOT NULL,
+        profile_id INTEGER REFERENCES profiles(id) ON DELETE CASCADE,   -- NULL: an account event
+        actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        actor TEXT NOT NULL,                       -- the username then (or "command line", "setup build")
+        action TEXT NOT NULL,
+        detail TEXT,                               -- JSON
+        ip TEXT,
+        session_id INTEGER);                       -- to log a view once per session
+    CREATE INDEX activity_profile ON activity(profile_id, id);
+    CREATE INDEX activity_seen ON activity(session_id, profile_id, action);
+    """,
 ]
 
 
