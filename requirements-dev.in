@@ -1,0 +1,5 @@
+# Tests: tests/test_api.py (FastAPI's TestClient needs httpx) and tests/browser_check.py (Playwright).
+-c requirements.txt
+-r requirements.in
+httpx
+playwright

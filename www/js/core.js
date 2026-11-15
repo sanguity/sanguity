@@ -39,35 +39,28 @@ function applySettings(u) {
 const srcName = tag => CFG.sources[tag] || tag;
 const DAY = 864e5;
 
-const $ = s => document.querySelector(s);
-const el = (tag, attrs = {}, ...kids) => {
-  const e = tag.startsWith("svg:") ? document.createElementNS("http://www.w3.org/2000/svg", tag.slice(4)) : document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v == null || v === false) continue;
-    if (k === "text") e.textContent = v;
-    else if (k === "class") e.setAttribute("class", v);
-    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
-    else if (k === "style" && typeof v === "object") Object.assign(e.style, v);
-    else e.setAttribute(k, v);
-  }
-  for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(c));
-  return e;
-};
 const fmtD = t => new Date(t).toLocaleDateString(undefined, {year:"numeric", month:"short", day:"numeric"});
 const fmtDT = t => new Date(t).toLocaleString(undefined, {year:"numeric", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"});
 const fmtMonth = t => new Date(t).toLocaleDateString(undefined, {year:"numeric", month:"long"});
 const isoDay = t => { const d = new Date(t); return new Date(d.getTime() - d.getTimezoneOffset()*6e4).toISOString().slice(0,10); };
 const fmtNum = v => Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? (+v.toFixed(1)).toString() : (+v.toFixed(2)).toString();
 
+/* ---------------------------------------------------------------- the account and profile being viewed (api() is in util.js) */
+let ME = null, PROFILE = null;   // the signed-in account and the profile being viewed
+const stateKey = () => "ht-state" + (PROFILE ? ":" + PROFILE.id : "");
+
 let DATA, EV = [], STAYS = [], SERIES = [], byId = new Map(), WATCH = null, STEPS = [];
 const hasLane = c => DATA.events.some(e => CAT_OF[e.k] === c) || (c.k === "watch" && STEPS.length > 0);
 const state = { from: 0, to: 0, min: 0, max: 0, preset: "2y", cats: new Set(CATS.map(c => c.k).filter(k => k !== "claim")), q: "", tab: "overview", marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
 
 /* ---------------------------------------------------------------- persistence */
-function save() { try { localStorage.setItem("ht-state", JSON.stringify({preset: state.preset, from: state.from, to: state.to, cats: [...state.cats], known: CATS.map(c => c.k), tab: state.tab, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
+function save() { try { localStorage.setItem(stateKey(), JSON.stringify({preset: state.preset, from: state.from, to: state.to, cats: [...state.cats], known: CATS.map(c => c.k), tab: state.tab, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
 function restore() {
   try {
-    const s = JSON.parse(localStorage.getItem("ht-state") || "null"); if (!s) return;
+    let raw = localStorage.getItem(stateKey());
+    // the one view saved before profiles existed goes to the first profile opened after the upgrade
+    if (raw == null && (raw = localStorage.getItem("ht-state")) != null) localStorage.removeItem("ht-state");
+    const s = JSON.parse(raw || "null"); if (!s) return;
     if (s.cats) { const known = new Set(s.known || CATS.filter(c => c.k !== "watch").map(c => c.k)); state.cats = new Set([...s.cats, ...CATS.filter(c => !known.has(c.k) && c.k !== "claim").map(c => c.k)]); }
     if (s.sel) state.sel = new Set(s.sel);
     if (s.tab && s.v === 2) state.tab = s.tab; if (s.preset) state.preset = s.preset;

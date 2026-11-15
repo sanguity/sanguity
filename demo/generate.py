@@ -391,8 +391,9 @@ def pdf(path, pages):
     x = len(out)
     out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n" + "".join(f"{o:010d} 00000 n \n" for o in offs)
     out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{x}\n%%EOF\n"
-    with open(path, "w", encoding="latin-1") as f:
+    with open(path + ".tmp", "w", encoding="latin-1") as f:
         f.write(out)
+    os.replace(path + ".tmp", path)
 
 
 # ------------------------------------------------------------------ write
@@ -409,17 +410,21 @@ data = {"built": at(END, 6), "source": "Sanguity demo data (fictional)", "events
 WATCH_DIR = WATCH_DIR or os.path.join(OUT, "watch")
 os.makedirs(WATCH_DIR, exist_ok=True)
 os.makedirs(os.path.join(OUT, "files"), exist_ok=True)
-with open(os.path.join(OUT, "data.json"), "w", encoding="utf-8") as f:
-    json.dump(data, f, separators=(",", ":"))
-with open(os.path.join(WATCH_DIR, "daily.json"), "w", encoding="utf-8") as f:
-    json.dump(watch, f, separators=(",", ":"))
-with open(os.path.join(OUT, "settings.json"), "w", encoding="utf-8") as f:   # count the demo's PT visits as workouts
-    json.dump({"visitWorkouts": [{"match": "^physical therapy\\b", "name": "Physical therapy", "minutes": 45}]}, f, indent=2)
+def write_json(path, obj, **kw):   # write then rename, so a running app never reads half a file
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(obj, f, **kw)
+    os.replace(path + ".tmp", path)
+
+
+write_json(os.path.join(WATCH_DIR, "daily.json"), watch, separators=(",", ":"))
+write_json(os.path.join(OUT, "settings.json"),   # count the demo's PT visits as workouts
+           {"visitWorkouts": [{"match": "^physical therapy\\b", "name": "Physical therapy", "minutes": 45}]}, indent=2)
 pdf(os.path.join(OUT, "files", "demo-report.pdf"),
     [["Northfield General Hospital - Imaging Report", "", "FICTIONAL DEMO DOCUMENT - not a real patient", "",
       f"Exam: PET/CT end of treatment     Date: {(TX_END + timedelta(days=21)).isoformat()}", "",
       "Impression: No residual abnormal uptake.", "Complete metabolic response."],
      ["Page 2", "", "This file exists so the document viewer has something to show.", "It contains no real health information."]])
+write_json(os.path.join(OUT, "data.json"), data, separators=(",", ":"))   # last: the app re-imports when it changes
 kinds = {}
 for e in events:
     kinds[e["k"]] = kinds.get(e["k"], 0) + 1

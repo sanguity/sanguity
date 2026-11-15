@@ -2,8 +2,18 @@
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---------------------------------------------------------------- health (watch + scale, no hospital data) */
-const hState = (() => { try { return Object.assign({period: "90d", stays: true}, JSON.parse(localStorage.getItem("ht-health") || "{}"), {custom: null}); } catch (e) { return {period: "90d", stays: true, custom: null}; } })();
-function hSave() { try { localStorage.setItem("ht-health", JSON.stringify({period: hState.period === "custom" ? "90d" : hState.period, stays: hState.stays})); } catch (e) {} }
+/* period and options, saved per profile (milestone periods belong to one person's dates); hLoad runs once the
+   profile is known. The one setting saved before profiles existed goes to the first profile opened. */
+const hState = {period: "90d", stays: true, custom: null};
+const hKey = () => "ht-health" + (PROFILE ? ":" + PROFILE.id : "");
+function hLoad() {
+  try {
+    let raw = localStorage.getItem(hKey());
+    if (raw == null && (raw = localStorage.getItem("ht-health")) != null) localStorage.removeItem("ht-health");
+    Object.assign(hState, {period: "90d", stays: true}, JSON.parse(raw || "{}"), {custom: null});
+  } catch (e) {}
+}
+function hSave() { try { localStorage.setItem(hKey(), JSON.stringify({period: hState.period === "custom" ? "90d" : hState.period, stays: hState.stays})); } catch (e) {} }
 function openHealth(a, b) { hState.custom = [a, b]; hState.period = "custom"; closeDrawer(); switchTab("health"); }
 const hPeriods = () => [["30d", "30 days"], ["90d", "90 days"], ["1y", "1 year"], ...msPeriods(), ["all", "All"]];
 function hData() {

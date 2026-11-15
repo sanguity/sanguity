@@ -1,4 +1,4 @@
-/* Sanguity · tabs, render dispatch and startup (loads data.json, settings.json, watch data).
+/* Sanguity · tabs, render dispatch and startup (signs in, picks the profile, loads its data, settings and watch data).
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---------------------------------------------------------------- tabs & boot */
@@ -29,10 +29,36 @@ function renderAll() {
   else renderOverview();
   save();
 }
+/* no records to show (an empty profile, none shared, or an error): a message instead of the tabs, and none of the
+   controls that would render them, since those need DATA and the tab sections this replaces */
+function emptyCard(...kids) {
+  $(".tabs").hidden = true; $(".filters").hidden = true;
+  document.querySelector("main").replaceChildren(el("div", {class: "card empty"}, ...kids));
+}
+function renderProfileMenu() {
+  const sel = $("#profile"), list = ME.profiles;
+  sel.replaceChildren(...list.map(p => el("option", {value: p.id, text: p.name + (p.role === "viewer" ? " (view only)" : "")})));
+  sel.value = PROFILE.id; sel.hidden = list.length < 2;
+  sel.onchange = () => { try { localStorage.setItem("ht-profile", sel.value); } catch (e) {} location.reload(); };
+}
+$("#logout").onclick = async () => { try { await api("logout", {method: "POST"}); } catch (e) {} location.replace("login.html"); };
 (async function boot() {
   try {
-    const r = await fetch("data.json", {cache: "no-cache"});
-    if (r.redirected && /login\.html/.test(r.url)) { location.replace("/login.html"); return; }
+    const m = await api("me");
+    if (m.status === 401) { const s = await api("setup").then(r => r.json()).catch(() => ({})); location.replace(s.needed ? "setup.html" : "login.html"); return; }
+    if (!m.ok) throw new Error(m.status + " " + m.statusText);
+    ME = await m.json();
+    if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
+    $("#who").textContent = ME.user.username;
+    if (!ME.profiles.length) { emptyCard("No health profiles are shared with you yet. ", el("a", {href: "account.html#profiles", text: "Create one"}), " or ask a profile's owner to share it with ", el("b", {text: ME.user.username}), "."); return; }
+    let want; try { want = +localStorage.getItem("ht-profile"); } catch (e) {}
+    PROFILE = ME.profiles.find(p => p.id === want) || ME.profiles[0];
+    hLoad();
+    renderProfileMenu();
+    const r = await api(`profiles/${PROFILE.id}/data`);
+    if (r.status === 401) { location.replace("login.html"); return; }
+    if (r.status >= 500) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || r.status + " " + r.statusText); }
+    if (r.status === 204) { emptyCard(`${PROFILE.name} has no records yet. Importing records in the app is coming in a later release; for now an admin can load a built data.json with `, el("code", {text: `python -m server.manage import ${PROFILE.id} DIR`}), "."); return; }
     if (!r.ok) throw new Error(r.status + " " + r.statusText);
     DATA = await r.json();
     // milestones (older data.json files carry a single dxDate instead)
@@ -41,12 +67,12 @@ function renderAll() {
     // the saved "dx" period, or a milestone that no longer exists, falls back to the primary milestone or All
     if (isMsKey(costState.period) && !msOf(costState.period) || costState.period === "dx") costState.period = msKey(primaryMs());
     if (isMsKey(hState.period) && !msOf(hState.period) || hState.period === "dx") hState.period = primaryMs() ? msKey(primaryMs()) : "all";
-  } catch (e) { document.querySelector("main").replaceChildren(el("div", {class: "card empty", text: "Couldn't load data.json: " + e.message})); return; }
-  // optional per-install preferences; a missing or broken file keeps the defaults
+  } catch (e) { emptyCard("Couldn't load the records: " + e.message); return; }
+  // this profile's preferences; missing or broken settings keep the defaults
   try {
-    const s = await fetch("settings.json", {cache: "no-cache"});
-    if (s.ok && !s.redirected) applySettings(await s.json());
-  } catch (e) { console.warn("settings.json ignored:", e.message); }
+    const s = await api(`profiles/${PROFILE.id}/settings`);
+    if (s.ok) applySettings(await s.json());
+  } catch (e) { console.warn("settings ignored:", e.message); }
   for (const e of DATA.events) {
     e.ts = Date.parse(e.t); e.te = e.end ? Date.parse(e.end) : e.ts;
     e._q = (e.title + " " + (e.sub || "") + " " + (KIND_LABEL[e.k] || "")).toLowerCase();
@@ -60,8 +86,8 @@ function renderAll() {
   SERIES = DATA.labs; for (const s of SERIES) for (const p of s.pts) p.ts = Date.parse(p[0]);
   // optional: watch data from the Health Connect receiver
   try {
-    const w = await fetch("watch/daily.json", {cache: "no-cache"});
-    if (w.ok && !w.redirected) WATCH = await w.json();
+    const w = await api(`profiles/${PROFILE.id}/watch`);
+    if (w.status === 200) WATCH = await w.json();
   } catch (e) {}
   if (WATCH) {
     const M = Object.fromEntries((WATCH.metrics || []).map(m => [m.key, m]));

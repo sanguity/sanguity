@@ -1,9 +1,10 @@
-# Sanguity.  Start:  docker compose up -d        Settings: copy .env.example to .env
-# The first start prints a login (docker compose logs setup) and shows demo data until you add sources.json.
+# Sanguity.  Start:  docker compose up -d --build        Settings: copy .env.example to .env
+# The first start prints a setup code (docker compose logs app) for creating the first account in the browser,
+# and shows demo data until you add sources.json.
 name: sanguity
 
 services:
-  # one-shot: secrets, first login, then www/data.json (your exports via sources.json, or the demo)
+  # one-shot: secrets and folders, then the built data in DATA_DIR/build (your exports via sources.json, or the demo)
   setup:
     image: python:3.12-alpine
     user: "0:0"            # creates missing folders, then hands every file it writes to PUID:PGID
@@ -15,29 +16,62 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
     volumes:
       - ./:/app:ro
-      - ./www:/app/www
       - ./auth:/app/auth
+      - ${DATA_DIR:-./data}:/data
       - ${WATCH_DIR:-./watch-data}:/watch
       - ${RECORDS_DIR:-./records}:/srv/records:ro
+
+  # backend: accounts, sessions, profiles and roles; the only way to reach records and documents
+  app:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    image: sanguity-app
+    user: "${PUID:-1000}:${PGID:-1000}"
+    restart: unless-stopped
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    environment:
+      SANGUITY_DATA: /data
+      SANGUITY_RECORDS: /srv/records
+      SANGUITY_WATCH_FILE: /srv/watch/daily.json
+      SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-0}
+      COOKIE_SECURE: ${COOKIE_SECURE:-auto}
+      PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
+      HASH_PARALLEL: ${HASH_PARALLEL:-2}
+      FORWARDED_ALLOW_IPS: "*"   # the app has no published port; only nginx reaches it, and nginx sets the header
+    # no ports: only nginx (web) reaches it, over the compose network
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./server:/app/server:ro
+      - ${DATA_DIR:-./data}:/data
+      - ${RECORDS_DIR:-./records}:/srv/records:ro
+      - ${WATCH_DIR:-./watch-data}/public:/srv/watch:ro
+      - ./www:/srv/www:ro   # only for documents of older installs kept in www/files*/ (see sources.json "files")
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
 
   web:
     image: nginxinc/nginx-unprivileged:1.27-alpine
     user: "${PUID:-1000}:0"
     restart: unless-stopped
     depends_on:
-      setup:
-        condition: service_completed_successfully
+      app:
+        condition: service_started
     ports:
-      - "${WEB_PORT:-8080}:8080"
+      - "${WEB_PORT:-8730}:8080"   # this machine : container (nginx always listens on 8080 inside)
     read_only: true
     tmpfs:
       - /tmp
     volumes:
       - ./www:/usr/share/nginx/html:ro
-      - ${WATCH_DIR:-./watch-data}/public:/srv/watch:ro   # its own path: www is read-only, so nothing may mount inside it
-      - ${RECORDS_DIR:-./records}:/srv/records:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./auth:/etc/nginx/auth:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 60s
@@ -59,7 +93,7 @@ services:
       TZ_DEFAULT: ${TZ:-UTC}
       PYTHONDONTWRITEBYTECODE: "1"
     ports:
-      - "${RECEIVER_PORT:-8081}:8080"
+      - "${RECEIVER_PORT:-8731}:8080"
     read_only: true
     tmpfs:
       - /tmp

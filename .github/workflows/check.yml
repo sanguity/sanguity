@@ -20,7 +20,7 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/docker_smoke.py server/*.py
 
       - name: JSON templates parse
         run: for f in *.example.json lab-aliases.json; do python -m json.tool "$f" > /dev/null || exit 1; done
@@ -30,15 +30,62 @@ jobs:
 
       - name: Demo data is deterministic
         run: |
-          python -I demo/generate.py --end 2026-11-15
-          sha256sum www/data.json > /tmp/first
-          python -I demo/generate.py --end 2026-11-15
+          python -I demo/generate.py /tmp/demo --end 2026-11-15
+          sha256sum /tmp/demo/data.json > /tmp/first
+          python -I demo/generate.py /tmp/demo --end 2026-11-15
           sha256sum -c /tmp/first
 
-      - name: Install Playwright and Chromium
+      - name: Install dependencies, Playwright and Chromium
         run: |
-          python -m pip install playwright==1.65.2
+          python -m pip install --require-hashes -r requirements-dev.txt
           python -m playwright install --with-deps chromium
 
-      - name: Browser check (every tab, drawer, pan/zoom, no errors or NaN)
+      - name: API tests (sign-in, sessions, roles, sharing, documents)
+        run: python tests/test_api.py
+
+      - name: Browser check (sign-in, every tab, drawer, pan/zoom, profiles, account page, no errors or NaN)
         run: python tests/browser_check.py
+
+  # The install as the README describes it: build the images, start the stack, then set up and use it through nginx
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: sanguity-ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start (docker compose up -d --build)
+        run: PUID=$(id -u) PGID=$(id -g) docker compose up -d --build
+
+      - name: Wait for the app and its setup code
+        run: |
+          for i in $(seq 1 90); do
+            code=$(docker compose logs app 2>/dev/null | grep -o 'Setup code: [A-Z0-9-]*' | tail -1 | cut -d' ' -f3)
+            if [ -n "$code" ] && curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz; then
+              echo "::add-mask::$code"
+              echo "SETUP_CODE=$code" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "The app didn't come up with a setup code within 3 minutes"; exit 1
+
+      - name: First run (setup, sign-in, records, documents, nothing served that shouldn't be)
+        run: python3 tests/docker_smoke.py --code "$SETUP_CODE" --receiver http://127.0.0.1:8731
+
+      - name: After a restart (the database and records carry over)
+        run: |
+          PUID=$(id -u) PGID=$(id -g) docker compose up -d --force-recreate
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && break; sleep 2; done
+          python3 tests/docker_smoke.py --receiver http://127.0.0.1:8731
+
+      - name: Show the containers and their logs
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color
+
+      - name: Stop and remove
+        if: always()
+        run: docker compose down -v

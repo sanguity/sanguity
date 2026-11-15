@@ -29,8 +29,13 @@ All screenshots use the built-in **fictional demo data**. No real person's recor
 
 Charts on Trends, Health and the heatmap move together: drag to pan, scroll or pinch to zoom, double-click to
 see everything. **Milestones** (diagnosis, surgery, treatment start…) appear on every chart and as "since"
-periods. To track another person today, run a second copy in its own folder with its own
-`COMPOSE_PROJECT_NAME` and ports in `.env`; shared multi-person accounts are on the roadmap.
+periods.
+
+**Several people, one install.** Each person who signs in has their own account, and each person whose health
+is tracked has a **profile**. One account can look after several profiles (a parent and a child), and a profile
+can be shared with several accounts (a caregiver), each as **owner** (view, change and share), **editor** (view
+and change) or **viewer** (view only). Everyone sees only the profiles shared with them; switch between them
+from the header.
 
 | Health | Timeline | Costs |
 |---|---|---|
@@ -40,23 +45,35 @@ periods. To track another person today, run a second copy in its own folder with
 
 ```sh
 git clone https://github.com/sanguity/sanguity.git && cd sanguity
-cp .env.example .env            # optional: ports, folders, time zone, your user id
-docker compose up -d
-docker compose logs setup       # shows the first login (user admin and a random password)
+cp .env.example .env            # optional: ports (default 8730 web, 8731 phone uploads), folders, time zone, your user id
+docker compose up -d --build
+docker compose logs app         # shows the one-time setup code
 ```
 
-Open `http://<this machine>:8080`. Until you add your own records it shows the fictional demo.
+Open `http://<this machine>:8730` and enter the setup code to create the first account. It becomes the admin
+and owns the records already on the server; until you add your own, that is the fictional demo. Add accounts for
+other people under **Account**, then share profiles with them there.
 
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy
-`sources.example.json` to `sources.json` and describe them, then `docker compose run --rm setup rebuild`.
+`sources.example.json` to `sources.json` and describe them, then `docker compose run --rm setup rebuild`; the first profile picks up the rebuild automatically.
 Optional: `corrections.json` (milestones and hand corrections; see `corrections.example.json`) and
-`www/settings.json` (dashboard preferences; see `settings.example.json`).
+`settings.json` (that profile's dashboard preferences; see `settings.example.json`), both next to `compose.yaml`.
 
 | Command | What it does |
 |---|---|
 | `docker compose run --rm setup rebuild` | Rebuild the data after adding or updating exports |
-| `docker compose run --rm setup password` | Set or replace the login |
-| `git pull && docker compose up -d` | Update Sanguity |
+| `docker compose exec app python -m server.manage reset-password NAME` | One-time password for a locked-out account |
+| `docker compose exec app python -m server.manage list` | Accounts, profiles and who has which role |
+| `git pull && docker compose up -d --build` | Update Sanguity |
+
+**Upgrading from a version without accounts:**
+
+- The old single login (`auth/htpasswd`) no longer works. After updating, `docker compose logs app` shows a setup
+  code; the account you create with it owns your existing records.
+- The default ports changed from 8080 and 8081 (often taken by other apps) to **8730** for the web app and **8731**
+  for the phone app's uploads. If you relied on the old defaults, either keep them by adding `WEB_PORT=8080` and
+  `RECEIVER_PORT=8081` to `.env`, or update your bookmarks, reverse proxy and the upload address in the phone app.
+  Otherwise watch data quietly stops arriving.
 
 ### Supported sources today
 
@@ -74,31 +91,45 @@ portal's export doesn't import, please open an issue with an anonymised sample.
 ## Privacy and security
 
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.
-- **Login required for everything**, including documents, which are served read-only with scripts blocked.
-- **Secrets are generated on first start** (session key, watch-receiver key, a random first password).
+- **Accounts with Argon2id-hashed passwords** (at least 15 characters, per NIST SP 800-63B), sign-in throttling,
+  and server-side sessions you can see and sign out under **Account**. Optionally sign people out after a period
+  of inactivity (`SESSION_IDLE_MINUTES` in `.env`).
+- **Every request for records or documents checks the account's role on that profile.** Documents are served
+  only through that check, read-only, with scripts blocked; no folder of health data is served directly.
+- **Admins manage accounts, not records:** being an admin doesn't show anyone's records.
+- **Secrets are generated on first start** (watch-receiver key, a one-time setup code).
 - Records, built data, watch data, logins and secrets are never committed (see `.gitignore`).
 - Put Sanguity behind HTTPS (a reverse proxy, Tailscale or similar) before using it outside your home network.
+  If sign-in then says "Request refused (cross-site check)", set `PUBLIC_ORIGINS` in `.env` to the address you
+  open it at; to see visitors' real addresses on the device list, trust your proxy in `nginx.conf` (see the comment there).
 
 ## Development
 
 ```sh
-python3 demo/generate.py                       # fictional demo data into www/
-python3 -m http.server -d www 8000             # then open http://127.0.0.1:8000/
-pip install playwright && playwright install chromium
+pip install --require-hashes -r requirements-dev.txt && playwright install chromium   # exact, hash-checked versions
+python3 -I demo/generate.py dev-data/build --watch dev-data/watch    # fictional demo data
+SANGUITY_DATA=dev-data SANGUITY_RECORDS=dev-data/records SANGUITY_WATCH_FILE=dev-data/watch/daily.json   SANGUITY_SERVE_STATIC=1 PORT=8000 python3 -m server               # then open http://127.0.0.1:8000/ (setup code in the output)
+python3 tests/test_api.py                      # API tests: sign-in, sessions, roles, sharing, documents
 python3 tests/browser_check.py                 # the same browser check CI runs on every pull request
+docker compose up -d --build && python3 tests/docker_smoke.py --code <setup code from docker compose logs app>
+                                               # the whole install through nginx, as CI does too
 ```
 
 ```
-compose.yaml        setup (one-shot), web (nginx) and receiver services
-docker/setup.py     First-run secrets and login, data rebuilds, password changes
-build.py            Builds www/data.json from the exports listed in sources.json (standard-library Python 3)
+compose.yaml        setup (one-shot), app (the API), web (nginx) and receiver services
+server/             The API (FastAPI + SQLite): accounts, sessions, profiles, roles, records and documents
+requirements.in     The API's dependencies; requirements.txt and requirements-dev.txt are their pinned,
+                    hash-checked lock files (regenerate with uv, as requirements.in says)
+docker/setup.py     First-run secrets and folders, data rebuilds
+build.py            Builds a profile's data.json from the exports listed in sources.json (standard-library Python 3)
 lab-aliases.json    Canonical lab names, LOINC codes and other spellings that map onto them
-nginx.conf          Web server: cookie login, security headers, read-only /records/ documents
+nginx.conf          Web server: the app's pages and security headers; passes /api/ to the app
 watch/receiver.py   Health Connect webhook receiver: archives payloads, folds them into SQLite, writes public/daily.json
-www/                index.html (markup), css/app.css, js/*.js (one plain script per tab, loaded in order), login.html
+www/                index.html (markup), css/app.css, js/*.js (one plain script per tab, loaded in order),
+                    login.html, setup.html (first account), account.html (password, devices, profiles, accounts)
 demo/               Fictional demo dataset generator
-tests/              Headless browser check (runs in CI)
-*.example.json      Templates for sources.json, corrections.json and www/settings.json; .env.example for .env
+tests/              API tests, a headless browser check and a smoke test of the Docker install (all run in CI)
+*.example.json      Templates for sources.json, corrections.json and settings.json; .env.example for .env
 ```
 
 ## License

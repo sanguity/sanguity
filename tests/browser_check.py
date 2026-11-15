@@ -1,33 +1,78 @@
 #!/usr/bin/env python3
-"""Headless browser check of the app with the fictional demo data.
+"""Headless browser check of the app with the fictional demo data, served by the real backend.
 
-Serves www/, opens every tab and checks its main content rendered, opens the detail drawer for every kind
-of event, drags and scroll-zooms the charts, toggles the event sort, and fails on any script error,
-console error, failed request or NaN written into an SVG attribute.
+Starts the API (with www/ served by it) on a temporary data folder holding the demo build, signs in through the
+login page, opens every tab and checks its main content rendered, opens the detail drawer for every kind of
+event, drags and scroll-zooms the charts, toggles the event sort, switches profiles, opens the account page,
+and fails on any script error, console error, failed request or NaN written into an SVG attribute.
 
-  python3 demo/generate.py --end 2026-11-15     # writes the demo data into www/
-  python3 tests/browser_check.py                # needs: pip install playwright && playwright install chromium
+  pip install -r requirements-dev.txt && playwright install chromium
+  python3 tests/browser_check.py
 """
-import functools, http.server, os, sys, threading
+import json, os, shutil, socket, subprocess, sys, tempfile, threading, time
 
 from playwright.sync_api import sync_playwright
 
-WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "www")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TMP = tempfile.mkdtemp(prefix="sanguity-browser-")
+USER, PW = "demo", "a long demo passphrase"
 NAN_HOOK = """window.__nan = []; const sa = Element.prototype.setAttribute;
 Element.prototype.setAttribute = function (k, v) { if (String(v) === "NaN") window.__nan.push(this.tagName + "." + k); return sa.call(this, k, v); };"""
 
 
-class Quiet(http.server.SimpleHTTPRequestHandler):
-    def log_message(self, *a):
-        pass
+HTML_RECORD = 990001
+
+
+def add_html_record(build):
+    """An .htm record with a stylesheet and a picture saved beside it, like portal exports have (the demo's only
+    document is a PDF), so the drawer is checked with a record that loads its own parts."""
+    folder = os.path.join(build, "files", "visit summary_files")
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(build, "files", "visit summary.htm"), "w", encoding="utf-8") as f:
+        f.write('<link rel="stylesheet" href="visit summary_files/style.css"><p id="t">Visit summary</p>'
+                '<img id="i" src="visit summary_files/logo.png">')
+    with open(os.path.join(folder, "style.css"), "w", encoding="utf-8") as f:
+        f.write("#t { color: rgb(255, 0, 0) }")
+    with open(os.path.join(folder, "logo.png"), "wb") as f:   # a 1x1 PNG
+        f.write(bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c63"
+                              "f8ffff3f0005fe02fea7d6a4ba0000000049454e44ae426082"))
+    path = os.path.join(build, "data.json")
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    data["events"].append({"id": HTML_RECORD, "t": "2025-10-01T10:00:00", "k": "document", "title": "Visit summary (HTM)", "sub": "Test"})
+    data["details"][str(HTML_RECORD)] = {"type": "file", "ext": "htm", "url": "files/visit summary.htm"}
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
+
+def start_app():
+    """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
+    os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
+                      SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"))
+    subprocess.run([sys.executable, "-I", os.path.join(ROOT, "demo", "generate.py"), os.path.join(TMP, "build"), "--end", "2026-11-15",
+                    "--watch", os.path.join(TMP, "watch")], check=True, stdout=subprocess.DEVNULL)
+    add_html_record(os.path.join(TMP, "build"))
+    sys.path.insert(0, ROOT)
+    import uvicorn
+    from server import db as dbm, main, profiles, security
+    dbm.init()
+    db = dbm.connect()
+    profiles.bootstrap(db)
+    uid = db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, ?, 1, 0)", (USER, security.hash_password(PW))).lastrowid
+    db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'owner')", (uid,))
+    profiles.create_profile(db, "Second person", owner_id=uid)
+    db.close()
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
+    srv = uvicorn.Server(uvicorn.Config(main.app, host="127.0.0.1", port=port, log_level="warning"))
+    threading.Thread(target=srv.run, daemon=True).start()
+    while not srv.started:
+        time.sleep(0.05)
+    return srv, f"http://127.0.0.1:{port}"
 
 
 def main():
-    if not os.path.isfile(os.path.join(WWW, "data.json")):
-        sys.exit("www/data.json is missing: run demo/generate.py first")
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=WWW))   # threaded: Chrome opens idle spare connections that would block a single-threaded server
-    base = f"http://127.0.0.1:{srv.server_address[1]}"
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    srv, base = start_app()
     problems, passed = [], []
 
     def check(name, ok, detail=""):
@@ -40,7 +85,18 @@ def main():
         page.on("pageerror", lambda e: problems.append(f"script error: {e}"))
         page.on("console", lambda m: m.type == "error" and problems.append(f"console error: {m.text}"))
         page.on("response", lambda r: r.status >= 400 and problems.append(f"HTTP {r.status}: {r.url}"))
-        page.goto(base + "/index.html")
+        page.goto(base + "/")
+        page.wait_for_url("**/login.html", timeout=10000)   # signed out: the app sends you to sign in
+        page.fill("#u", USER)
+        page.fill("#p", "wrong password")
+        page.click("#b")
+        page.wait_for_function("document.getElementById('e').textContent.length > 0")
+        check("wrong password refused", "Wrong username or password" in page.inner_text("#e"))
+        problems[:] = [x for x in problems if "401" not in x]   # signed out so far: the 401s were the point
+        page.evaluate("localStorage.setItem('ht-state', JSON.stringify({tab: 'heatmap', preset: '1y', v: 2}))")   # a view saved before profiles
+        page.evaluate("localStorage.setItem('ht-health', JSON.stringify({period: '1y', stays: false}))")
+        page.fill("#p", PW)
+        page.click("#b")
         try:
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
         except Exception:
@@ -50,6 +106,8 @@ def main():
             sys.exit(1)
         settle = lambda ms=500: page.wait_for_timeout(ms)
         js = page.evaluate
+        check("Health setting saved before profiles carries over", js("hState.period === '1y' && hState.stays === false && localStorage.getItem('ht-health') === null"))
+        check("view saved before profiles carries over", js("state.tab === 'heatmap' && state.preset === '1y' && localStorage.getItem('ht-state') === null && !!localStorage.getItem('ht-state:1')"))
 
         try:
             # ---- every tab renders its main content
@@ -76,6 +134,18 @@ def main():
                 check(f"drawer opens for {k}", ok)
                 page.keyboard.press("Escape")
             check("drawer closes on Escape", not js("document.getElementById('drawer').classList.contains('open')"))
+
+            # ---- an HTML record shows in the drawer with the stylesheet and picture saved beside it, scripts off
+            js(f"openEvent(byId.get({HTML_RECORD}))")
+            page.wait_for_function("""(() => { const f = document.querySelector('#dbody iframe.doc'), d = f && f.contentDocument;
+                return d && d.getElementById('i') && d.getElementById('i').complete && d.readyState === 'complete'; })()""", timeout=10000)
+            settle(300)
+            look = js("""(() => { const f = document.querySelector('#dbody iframe.doc'), d = f.contentDocument;
+                return {color: getComputedStyle(d.getElementById('t')).color, img: d.getElementById('i').naturalWidth,
+                        sandbox: f.getAttribute('sandbox')}; })()""")
+            check("HTML record loads its own stylesheet and picture", look["color"] == "rgb(255, 0, 0)" and look["img"] == 1, look)
+            check("HTML record can't run scripts", "allow-scripts" not in (look["sandbox"] or "") and look["sandbox"] is not None, look["sandbox"])
+            page.keyboard.press("Escape")
 
             # ---- Trends: drag pans every chart together, ctrl+wheel zooms, milestones drawn on All
             page.click("#tab-labs")
@@ -125,10 +195,64 @@ def main():
 
             nan = js("window.__nan")
             check("no NaN SVG attributes", not nan, nan[:5] if nan else "")
+
+            # ---- profile switcher: the second profile has no records yet, and its own saved view
+            check("profile switcher shown", js("!document.getElementById('profile').hidden && document.getElementById('profile').options.length === 2"))
+            js("hState.period = '30d'; hSave()")
+            page.select_option("#profile", label="Second person")
+            page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
+            check("Health period is kept per profile", js("hState.period") == "90d", js("hState.period"))
+            check("empty profile explains itself", "no records yet" in page.inner_text("main"))
+            check("empty profile hides the tabs and filters", js("document.querySelector('.tabs').hidden && document.querySelector('.filters').hidden && getComputedStyle(document.querySelector('.tabs')).display === 'none'"))
+            page.select_option("#profile", label="My records")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            check("switching back restores the profile's tab", js("state.tab") == "timeline", js("state.tab"))
+            check("switching back restores the profile's Health period", js("hState.period") == "30d", js("hState.period"))
+
+            # ---- account page: password, devices, profiles with sharing, accounts (admin)
+            page.goto(base + "/account.html")
+            page.wait_for_function("document.querySelectorAll('#sessList tbody tr').length > 0 && document.querySelectorAll('#profList .prof').length === 2 && !document.getElementById('users').hidden", timeout=10000)
+            check("account page lists devices, profiles and accounts", True)
+            page.fill("#userName", "alex")
+            page.click("#userNew button[type=submit]")
+            page.wait_for_function("document.querySelector('#userMsg code')", timeout=10000)
+            check("admin creates an account with a one-time password", len(js("document.querySelector('#userMsg code').textContent")) >= 20)
+            # sharing with someone who already has access asks before changing their role; declining keeps it
+            asked_share = []
+            page.once("dialog", lambda d: (asked_share.append(d.message), d.dismiss()))
+            form = page.locator("#profList .prof", has_text="Second person").locator("form")
+            form.locator("input").fill(USER)
+            form.locator("select").select_option("viewer")
+            form.get_by_role("button", name="Share").click()
+            settle(300)
+            check("sharing with an existing member asks first", asked_share and "already has access as owner" in asked_share[0], asked_share[:1])
+            check("declining keeps their role", js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m[0].role)") == "owner")
+            # disabling the only owner of a profile asks first; accepting disables the account
+            from server import db as dbm, profiles
+            db = dbm.connect()
+            alex = db.execute("SELECT id FROM users WHERE username='alex'").fetchone()[0]
+            profiles.create_profile(db, "Alex's records", owner_id=alex)
+            db.close()
+            asked, before = [], len(problems)
+            page.once("dialog", lambda d: (asked.append(d.message), d.accept()))
+            page.locator("#userList tr", has_text="alex").get_by_role("button", name="Disable").click()
+            page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.textContent.includes('disabled'))", timeout=10000)
+            problems[before:] = [x for x in problems[before:] if "409" not in x]   # the refusal that prompts the question
+            check("disabling a profile's only owner asks first", asked and "only owner of Alex's records" in asked[0], asked[:1])
+            # log out ends the session: the API now refuses
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            before = len(problems)
+            page.click("#logout")
+            page.wait_for_url("**/login.html", timeout=10000)
+            check("log out ends the session", js("fetch('api/me').then(r => r.status)") == 401)
+            problems[before:] = [x for x in problems[before:] if "401" not in x]   # only the 401s after logging out were the point
         except Exception as e:   # report what was caught so far instead of a bare traceback
             problems.append(f"check stopped: {str(e).splitlines()[0]}")
         browser.close()
-    srv.shutdown()
+    srv.should_exit = True
+    time.sleep(0.3)
+    shutil.rmtree(TMP, ignore_errors=True)
 
     for x in passed:
         print("ok    ", x)
