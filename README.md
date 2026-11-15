@@ -107,7 +107,9 @@ portal's export doesn't import, please open an issue with an anonymised sample.
 
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.
 - **Accounts with Argon2id-hashed passwords** (at least 15 characters, per NIST SP 800-63B; passwords found in
-  public breaches are refused, checked against a bundled list on your server, see `server/passwords/`), sign-in throttling,
+  public breaches are refused, checked against a bundled list on your server, see `server/passwords/`). Password and
+  recovery-code hashes are peppered with a server secret that only the encryption key unlocks, so a copied database
+  alone can't be used to guess them. Sign-in throttling,
   and server-side sessions you can see and sign out under **Account**. Optionally sign people out after a period
   of inactivity (`SESSION_IDLE_MINUTES` in `.env`).
 - **Two-factor sign-in** with an authenticator app (codes that can't be reused) and one-time recovery codes, under
@@ -196,14 +198,15 @@ A restore checks the backup opens with the key before replacing anything.
 
 The setup service makes a key on first start, `auth/data_key`, and the app encrypts with it everything it keeps in
 `DATA_DIR`: each profile's records and settings, its documents, the setup build, and the database fields that hold
-document names, activity details and two-factor secrets. The watch receiver encrypts what it keeps in `WATCH_DIR`
+document names, activity details and two-factor secrets, and the pepper that password and recovery-code hashes are
+made with. The watch receiver encrypts what it keeps in `WATCH_DIR`
 with the same key: its archive of uploads (`raw/`), its database (`watch.db`, a sealed snapshot of the copy it keeps
 in memory) and the daily summary the app shows. An existing install is encrypted on its first start after
 updating. The key is mounted read-only into the app and the receiver, and is never in `DATA_DIR`, `WATCH_DIR` or a
 backup.
 
 - **Back up the key file on its own** (a password manager, a USB stick in a drawer). Without it the data and every
-  backup are unreadable, and nobody can recover them. With it, a stolen backup is as readable as without encryption,
+  backup are unreadable, and nobody can recover them, or sign in: passwords are checked with the pepper it unlocks. With it, a stolen backup is as readable as without encryption,
   so keep the two apart.
 - **Keeping the key elsewhere:** the app and the receiver read whatever file `SANGUITY_KEY_FILE` names, so it can be
   a Docker or Podman secret (`/run/secrets/<name>`), a systemd credential (`$CREDENTIALS_DIRECTORY/<name>`) or a
@@ -223,6 +226,7 @@ backup.
   ```
 
   When `docker compose logs app receiver` shows both have started, delete the old (second) line from `auth/data_key`. Backups made before then still need the old key.
+  Passwords and recovery codes keep working: the pepper is re-encrypted with the new key, never changed.
 
 ## Testing a branch beside your real install
 

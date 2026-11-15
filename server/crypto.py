@@ -2,7 +2,7 @@
 
 What it covers: every file Sanguity writes under DATA_DIR (each profile's records and settings, imported documents,
 the setup build), the database fields that hold health details or secrets (document file names, activity
-details, two-factor secrets), and everything the watch receiver writes under WATCH_DIR (its archive of uploads,
+details, two-factor secrets, the pepper for password hashes), and everything the watch receiver writes under WATCH_DIR (its archive of uploads,
 its database, kept in memory and saved as a sealed snapshot, and the daily.json the app reads; see
 watch/receiver.py). So a copied data folder or a backup is unreadable without the key. Not covered: usernames and
 profile names (identity, needed for sign-in and sorting), the original exports in RECORDS_DIR (your own files,

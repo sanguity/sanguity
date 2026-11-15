@@ -55,6 +55,7 @@ async def lifespan(app):
         db = dbm.connect()
         try:
             atrest.check_key(db)   # stops here, saying why, if the key is missing or wrong
+            atrest.load_pepper(db)
             sealed = atrest.seal_everything(db)
             if sealed["files"] or sealed["fields"]:
                 print(f"Encrypted {sealed['files']} files and {sealed['fields']} database fields that weren't yet.", flush=True)
@@ -384,8 +385,10 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
             raise HTTPException(401, "That code isn't right. Check your authenticator app's time, or use a recovery code.")
         db.execute("UPDATE users SET totp_last_step=? WHERE id=?", (step, uid))
     else:
-        hit = db.execute("UPDATE recovery_codes SET used_at=? WHERE user_id=? AND code_hash=? AND used_at IS NULL",
-                         (dbm.now(), uid, twofactor.recovery_hash(body.code))).rowcount
+        rows = db.execute("SELECT code_hash FROM recovery_codes WHERE user_id=? AND used_at IS NULL", (uid,)).fetchall()
+        match = next((r[0] for r in rows if twofactor.recovery_matches(r[0], body.code)), None)
+        hit = match is not None and db.execute("UPDATE recovery_codes SET used_at=? WHERE user_id=? AND code_hash=? AND used_at IS NULL",
+                                               (dbm.now(), uid, match)).rowcount
         if not hit:
             sec.throttle.fail(*keys)
             _tickets.failed(body.ticket)

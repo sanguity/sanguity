@@ -54,9 +54,11 @@ def start_app():
     add_html_record(os.path.join(TMP, "build"))
     sys.path.insert(0, ROOT)
     import uvicorn
-    from server import db as dbm, main, profiles, security
+    from server import atrest, db as dbm, main, profiles, security
     dbm.init()
     db = dbm.connect()
+    atrest.check_key(db)   # as the app does at start-up: the key, then the pepper passwords are hashed with
+    atrest.load_pepper(db)
     profiles.bootstrap(db)
     uid = db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, ?, 1, 0)", (USER, security.hash_password(PW))).lastrowid
     db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'owner')", (uid,))

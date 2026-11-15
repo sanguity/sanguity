@@ -1,8 +1,9 @@
 """Keeping everything at rest encrypted with the current key: the start-up check and migration, and
-server.manage reencrypt after a key rotation (see crypto.py)."""
-import glob, os
+server.manage reencrypt after a key rotation (see crypto.py). Also the pepper for password and recovery-code
+hashes (load_pepper)."""
+import base64, glob, os, secrets
 
-from . import config, crypto
+from . import config, crypto, db as dbm, security as sec
 
 
 def _files():
@@ -23,6 +24,8 @@ def anything_encrypted(db):
     for table, _, col in FIELDS:
         if db.execute(f"SELECT 1 FROM {table} WHERE {col} LIKE ? LIMIT 1", (crypto.FIELD + "%",)).fetchone():
             return True
+    if (dbm.meta_get(db, "pepper") or "").startswith(crypto.FIELD):
+        return True
     return any(crypto.file_is_encrypted(p) for p in glob.glob(os.path.join(config.DATA_DIR, "profiles", "*", "data.json")))
 
 
@@ -45,11 +48,35 @@ def check_key(db):
         print(f"Made a new encryption key at {config.KEY_FILE}. Back it up somewhere other than the data: "
               "without it, the records and backups can't be read.", flush=True)
     sample = db.execute("SELECT path FROM documents WHERE path LIKE ? LIMIT 1", (crypto.FIELD + "%",)).fetchone()
+    sample = sample["path"] if sample else dbm.meta_get(db, "pepper")
     try:
         if sample:
-            crypto.dec(sample["path"])
+            crypto.dec(sample)
     except crypto.KeyError_ as e:
         raise SystemExit(f"{e} The key file at {config.KEY_FILE} isn't the one this install's records were encrypted with.")
+
+
+def load_pepper(db):
+    """Load the pepper (security.py), making it on the first start: 32 random bytes kept in the meta table,
+    encrypted with the data key like any secret field. It never changes, so password hashes don't either; a key
+    rotation only re-encrypts it (seal_everything). Call after check_key."""
+    stored = dbm.meta_get(db, "pepper")
+    if stored is None:
+        peppered = db.execute("""SELECT 1 FROM users WHERE pw_hash LIKE ? UNION ALL
+                                 SELECT 1 FROM recovery_codes WHERE code_hash LIKE 'h1:%' LIMIT 1""", (sec.PEPPERED + "%",)).fetchone()
+        if peppered:   # a new pepper would quietly lock everyone out
+            raise SystemExit("The database's pepper (meta table, key 'pepper') is missing, but passwords were hashed with "
+                             "it. Restore the database from a backup.")
+        db.execute("INSERT OR IGNORE INTO meta(k, v) VALUES('pepper', ?)",   # another process may have just made one
+                   (crypto.enc(base64.b64encode(secrets.token_bytes(32)).decode()),))
+        stored = dbm.meta_get(db, "pepper")
+    try:
+        pepper = base64.b64decode(crypto.dec(stored))
+    except crypto.KeyError_ as e:
+        raise SystemExit(f"{e} The password pepper can't be opened: the key file at {config.KEY_FILE} isn't the one "
+                         "this database was written with.") from None
+    sec.set_pepper(pepper)
+    return pepper
 
 
 def seal_everything(db):
@@ -69,4 +96,8 @@ def seal_everything(db):
             if crypto.field_needs_resealing(r[col]):
                 db.execute(f"UPDATE {table} SET {col}=? WHERE {key}=?", (crypto.enc(crypto.dec(r[col])), r[key]))
                 fields += 1
+    pepper = dbm.meta_get(db, "pepper")
+    if pepper is not None and crypto.field_needs_resealing(pepper):
+        dbm.meta_set(db, "pepper", crypto.enc(crypto.dec(pepper)))
+        fields += 1
     return {"files": files, "fields": fields}

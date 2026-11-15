@@ -5,7 +5,7 @@ a profile is shared with. Uses the fictional demo data in a temporary folder.
   pip install -r requirements-dev.txt
   python3 tests/test_api.py
 """
-import atexit, json, os, shutil, subprocess, sys, tempfile, unittest
+import atexit, base64, json, os, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-test-")
@@ -550,6 +550,84 @@ class Api(unittest.TestCase):
             export.import_archive(db, copy, bad)
         db.close()
 
+    def test_pepper(self):
+        """Password and recovery-code hashes can't be checked without the pepper (which the database holds only
+        encrypted with the data key); hashes from before it still work, and passwords are upgraded at sign-in."""
+        import hashlib, secrets, time
+        from server import accounts, atrest, crypto, twofactor
+        db = dbm.connect()
+        stored = dbm.meta_get(db, "pepper")
+        self.assertTrue(stored.startswith(crypto.FIELD))   # not readable from the database alone
+        pepper = sec._pepper
+        self.assertEqual(len(pepper), 32)
+        self.assertEqual(atrest.load_pepper(db), pepper)   # made once, the same at every start
+        # a password hash: Argon2id of HMAC(pepper, password); neither the password nor another pepper checks it
+        pw = "pepper grinder on the windowsill"
+        if not db.execute("SELECT 1 FROM users WHERE username='pep'").fetchone():
+            accounts.create(db, "pep", password=pw)
+        h = db.execute("SELECT pw_hash FROM users WHERE username='pep'").fetchone()[0]
+        self.assertTrue(h.startswith(sec.PEPPERED + "$argon2id$"))
+        self.assertTrue(sec.verify_password(h, pw))
+        self.assertFalse(sec.needs_rehash(h))
+        self.assertFalse(sec.verify_password(h[len(sec.PEPPERED):], pw))   # the Argon2 part alone, cracked as usual
+        code = twofactor.new_recovery_codes()[0]
+        ch = twofactor.recovery_hash(code)
+        self.assertNotEqual(ch, twofactor.recovery_hash(code))   # a unique salt per code
+        self.assertTrue(twofactor.recovery_matches(ch, code.upper()))
+        self.assertFalse(twofactor.recovery_matches(ch, "abcd-efgh"))
+        sec.set_pepper(secrets.token_bytes(32))
+        try:
+            self.assertFalse(sec.verify_password(h, pw))
+            self.assertFalse(twofactor.recovery_matches(ch, code))
+            sec.set_pepper(None)   # nothing is hashed without it
+            with self.assertRaises(RuntimeError):
+                sec.hash_password(pw)
+            with self.assertRaises(RuntimeError):
+                twofactor.recovery_hash(code)
+        finally:
+            sec.set_pepper(pepper)
+        # a password hashed before the pepper still signs in, and is replaced by a peppered one as it does
+        db.execute("UPDATE users SET pw_hash=? WHERE username='pep'", (sec._ph.hash(pw),))
+        self.assertTrue(sec.needs_rehash(db.execute("SELECT pw_hash FROM users WHERE username='pep'").fetchone()[0]))
+        self.assertEqual(client().post("/api/login", json={"username": "pep", "password": "not the password at all"}, headers=H).status_code, 401)
+        self.login("pep", pw)
+        h = db.execute("SELECT pw_hash FROM users WHERE username='pep'").fetchone()[0]
+        self.assertTrue(h.startswith(sec.PEPPERED))
+        self.login("pep", pw)
+        # recovery codes from before the pepper (plain SHA-256) work until new ones are made, which are peppered
+        uid = db.execute("SELECT id FROM users WHERE username='pep'").fetchone()[0]
+        secret = twofactor.new_secret()
+        db.execute("UPDATE users SET totp_secret=? WHERE id=?", (crypto.enc(secret), uid))
+        old = ["ab2c-de3f", "gh4j-km5n"]
+        db.execute("DELETE FROM recovery_codes WHERE user_id=?", (uid,))
+        db.executemany("INSERT INTO recovery_codes(user_id, code_hash) VALUES(?, ?)",
+                       [(uid, hashlib.sha256(c.replace("-", "").encode()).hexdigest()) for c in old])
+
+        def with_code(code):
+            t = client().post("/api/login", json={"username": "pep", "password": pw}, headers=H).json()["ticket"]
+            return client().post("/api/login/code", json={"ticket": t, "code": code}, headers=H)
+        r = with_code(old[1])
+        self.assertEqual((r.status_code, r.json().get("recovery_codes_left")), (200, 1))
+        self.assertEqual(with_code(old[1]).status_code, 401)   # once only
+        new = accounts.new_recovery_codes(db, uid)
+        rows = [r[0] for r in db.execute("SELECT code_hash FROM recovery_codes WHERE user_id=?", (uid,))]
+        self.assertTrue(len(rows) == 10 and all(r.startswith("h1:") for r in rows))
+        self.assertEqual(with_code(old[0]).status_code, 401)   # replaced
+        r = with_code(new[3])
+        self.assertEqual((r.status_code, r.json().get("recovery_codes_left")), (200, 9))
+        sec.throttle.clear(*list(sec.throttle._fails))
+        # losing the pepper row never silently makes a new one that would lock everyone out
+        db.execute("DELETE FROM meta WHERE k='pepper'")
+        try:
+            with self.assertRaises(SystemExit) as e:
+                atrest.load_pepper(db)
+            self.assertIn("missing", str(e.exception))
+        finally:
+            dbm.meta_set(db, "pepper", stored)
+        self.assertEqual(atrest.load_pepper(db), pepper)
+        db.execute("DELETE FROM users WHERE id=?", (uid,))
+        db.close()
+
     def test_two_factor(self):
         import time
         from server import accounts, manage, twofactor
@@ -1078,6 +1156,7 @@ class Api(unittest.TestCase):
     def test_encryption_at_rest(self):   # after test_a_flow: profile 1 holds the demo build, Ben signs in
         import glob
         from server import atrest, config, crypto, manage
+        pepper = sec._pepper
         files = glob.glob(os.path.join(TMP, "profiles", "*", "data.json"))
         self.assertTrue(files)
         for p in files:   # nothing Sanguity keeps is readable from the disk alone
@@ -1128,6 +1207,11 @@ class Api(unittest.TestCase):
         self.assertEqual(ben.get("/api/profiles/1/data").json(), records)
         doc = db.execute("SELECT id FROM documents WHERE profile_id=1 LIMIT 1").fetchone()[0]
         self.assertEqual(ben.get(f"/api/profiles/1/documents/{doc}").status_code, 200)
+        # the pepper was re-encrypted with the new key, not replaced: after a restart, passwords still work
+        stored = dbm.meta_get(db, "pepper")
+        self.assertEqual(base64.b64decode(stored[len(crypto.FIELD):])[:4], new)
+        self.assertEqual(atrest.load_pepper(db), pepper)
+        self.login("ben")
         db.close()
 
     def test_passkeys(self):

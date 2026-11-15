@@ -72,6 +72,9 @@ def run(argv):
 
 def _command(db, argv):
     cmd, args = (argv[0], argv[1:]) if argv else ("", [])
+    if cmd not in ("", "list"):   # passwords are hashed with the pepper, which the data key unlocks
+        atrest.check_key(db)
+        atrest.load_pepper(db)
     if cmd == "list":
         for u in db.execute("SELECT * FROM users ORDER BY username COLLATE NOCASE"):
             flags = [f for f, on in (("admin", u["is_admin"]), ("disabled", u["disabled"]), ("must change password", u["must_change_pw"])) if on]

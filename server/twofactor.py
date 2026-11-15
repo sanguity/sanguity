@@ -4,11 +4,16 @@ browser fetches nothing from elsewhere.
 
 TOTP here: SHA-1, 6 digits, 30-second steps, accepting the step before and after for clock drift, and never the
 same step twice for an account (so a code seen over someone's shoulder can't be replayed).
-Recovery codes: 10 per account, 8 characters each (about 40 bits), stored only as SHA-256 hashes, each usable once.
+Recovery codes: 10 per account, 8 characters each (about 40 bits), each usable once. Each is stored as
+"h1:" + a random 128-bit salt + HMAC-SHA256(pepper, salt + code) (ASVS 2.6.2: a unique salt per code when it has
+under 112 bits; the pepper, see security.py, means a copied database alone can't be searched for them). Codes made
+before that are plain SHA-256 and keep working until the account's codes are replaced.
 """
 import base64, hashlib, hmac, io, re, secrets, struct, time, urllib.parse
 
 import segno
+
+from . import security as sec
 
 ISSUER, DIGITS, PERIOD, DRIFT = "Sanguity", 6, 30, 1
 RECOVERY_COUNT = 10
@@ -62,5 +67,21 @@ def new_recovery_codes():
     return [f"{c[:4]}-{c[4:]}" for c in codes]
 
 
+def _plain(code):
+    return re.sub(r"[\s-]", "", (code or "").lower()).encode()
+
+
 def recovery_hash(code):
-    return hashlib.sha256(re.sub(r"[\s-]", "", (code or "").lower()).encode()).hexdigest()
+    """How a new recovery code is stored: salted and peppered."""
+    salt = secrets.token_bytes(16)
+    return "h1:" + salt.hex() + ":" + sec.pepper_mac(salt + _plain(code)).hex()
+
+
+def recovery_matches(stored, code):
+    """Whether code is the one stored (as recovery_hash makes it, or plain SHA-256 from before the pepper)."""
+    if stored.startswith("h1:"):
+        _, salt, mac = stored.split(":", 2)
+        expected = sec.pepper_mac(bytes.fromhex(salt) + _plain(code)).hex()
+    else:
+        mac, expected = stored, hashlib.sha256(_plain(code)).hexdigest()
+    return hmac.compare_digest(mac, expected)
