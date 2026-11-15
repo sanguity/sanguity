@@ -91,6 +91,12 @@ class Registry(unittest.TestCase):
                                                                     "event 2: key must be a non-empty string"])
         self.assertEqual(reg.check(out([], [{"key": "loinc:1"}, {"key": "loinc:1"}])), ["lab series 'L1': key 'loinc:1' is used twice"])
         self.assertEqual(reg.check(out([{"key": "x:1"}], [{"key": "x:1"}])), [])   # events and series are separate spaces
+        split = out([], [{"key": "loinc:2345-7|mg/dL"}, {"key": "loinc:2345-7|mmol/L"}])   # one code split by unit
+        self.assertEqual(reg.check(split), [])
+        o = out([{"key": "x:1"}])
+        o["data"]["problems"] = [{"name": "A", "key": "x:p1"}, {"name": "B", "key": "x:p1"}]
+        o["data"]["upcoming"] = [{"t": "2026-12-01", "key": "x:1"}, {"t": "2026-12-02", "key": ""}]
+        self.assertEqual(reg.check(o), ["problems 1: key 'x:p1' is used twice", "upcoming 1: key must be a non-empty string"])
 
     def test_discovery(self):
         names = [m.NAME for m in reg.importers()]

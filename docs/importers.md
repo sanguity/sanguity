@@ -153,11 +153,24 @@ It's optional, but give one whenever you can.
       return NAME + ":h:" + hashlib.sha256("\x1f".join(str(f).strip().lower() for f in fields).encode()).hexdigest()[:16]
   ```
 
-- **Lab series:** `"loinc:<code>"` when there's a LOINC code, otherwise `"<NAME>:<code system>|<code>"`.
+- **One event for several records** (a `labitem` for a panel's results, a `lab` day for its draws): the event takes
+  the key of the source record that groups them, such as the FHIR DiagnosticReport behind a `labitem`. Where nothing
+  in the source groups them, use a key scoped to the day: `"<NAME>:labitem:<YYYY-MM-DD>"` (with `"|<org>"` added
+  when one upload has several organisations' results on the same day) and `"<NAME>:labday:<YYYY-MM-DD>"` for the
+  `lab` day event.
+- **Several events from one record** (the attachments of one report or document): the first event gets the record's
+  plain key, and each of the others adds `#<part>/<i>`, naming the part of the record it came from and its position
+  there: `"fhir:DiagnosticReport/1"`, `"fhir:DiagnosticReport/1#presentedForm/1"`, `"fhir:DiagnosticReport/1#presentedForm/2"`.
+- **Lab series:** `"loinc:<code>"` when there's a LOINC code, otherwise `"<NAME>:<code system>|<code>"`. If you split
+  one test code into several series because the source reports it in different units, add `"|<unit as reported>"`
+  to each: `"loinc:2345-7|mg/dL"` and `"loinc:2345-7|mmol/L"`. Never number them (`#1`, `#2`): the numbers would
+  change with what else is in the upload.
 - **Result points** (`pts`) have no key. A point is identified by its series key, its time and the value as reported.
+- **`problems` and `upcoming`** entries may carry a key too, by the same rules, unique within their own list.
 
 The app ignores fields it doesn't know and keeps an event's fields as they are, so a key costs nothing anywhere else.
-`check()` refuses a key that isn't a non-empty string, or that is used twice. It doesn't check the prefix: the
+`check()` refuses a key that isn't a non-empty string, or that is used twice within one import: among the events,
+among the lab series, among `problems` and among `upcoming` (each list separately). It doesn't check the prefix: the
 `sanguity` importer passes keys through unchanged, so a re-imported export keeps the keys the original importer gave.
 
 ### `costs`: one row per claim

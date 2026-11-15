@@ -163,4 +163,9 @@ def check(out, files=None):
             p.append(f"lab series {i} needs a name and a pts list")
             continue
         key_ok(f"lab series {s['name']!r}", s, lab_keys)
+    for k in ("problems", "upcoming"):   # entries may carry keys too, unique within their own list
+        seen = set()
+        for i, x in enumerate(data.get(k) or []):
+            if isinstance(x, dict):
+                key_ok(f"{k} {i}", x, seen)
     return p
