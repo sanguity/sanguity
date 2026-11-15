@@ -1,7 +1,7 @@
 """Creating accounts, shared by the API (setup wizard, admin page) and the command line (server.manage)."""
-import secrets, sqlite3
+import os, secrets, sqlite3
 
-from . import db as dbm, security as sec
+from . import config, db as dbm, security as sec
 
 
 class AccountError(ValueError):
@@ -38,11 +38,20 @@ def sign_out_everywhere(db, uid):
     db.execute("DELETE FROM devices WHERE user_id=?", (uid,))
 
 
+def forget_setup_code(db):
+    """First-time setup is over: the code no longer works, and its file is gone."""
+    dbm.meta_set(db, "setup_code", None)
+    try:
+        os.remove(config.SETUP_CODE_FILE)
+    except FileNotFoundError:
+        pass
+
+
 def claim_unowned(db, uid):
     """Make uid the owner of every profile nobody has access to yet (the records already on a new install), and
     finish first-time setup. Returns those profile ids."""
     pids = [r[0] for r in db.execute("SELECT id FROM profiles WHERE id NOT IN (SELECT profile_id FROM memberships) ORDER BY id")]
     for pid in pids:
         db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'owner')", (uid, pid))
-    dbm.meta_set(db, "setup_code", None)
+    forget_setup_code(db)
     return pids
