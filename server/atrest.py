@@ -7,7 +7,7 @@ from . import config, crypto, db as dbm, security as sec
 
 
 def _files():
-    """Every file Sanguity wrote that holds records: each profile's folder and the setup build."""
+    """Every file Sanguity wrote that holds records: each profile's folder (with its uploads) and the setup build."""
     for top in (os.path.join(config.DATA_DIR, "profiles"), config.BUILD_DIR):
         for root, dirs, files in os.walk(top):
             dirs[:] = [d for d in dirs if not d.startswith(".deleting-")]
@@ -18,7 +18,7 @@ def _files():
 
 FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "id", "totp_secret"), ("users", "id", "totp_pending"),
           ("imports", "id", "meta"), ("events", "id", "body"), ("events", "id", "detail"), ("events", "id", "cost"),
-          ("series", "id", "body"), ("results", "id", "body"))
+          ("series", "id", "body"), ("results", "id", "body"), ("uploads", "id", "manifest"), ("upload_files", "rowid", "path"))
 
 
 def anything_encrypted(db):
@@ -88,9 +88,12 @@ def seal_everything(db):
     for path in _files():
         with open(path, "rb") as f:
             head = f.read(8)
-        if crypto.encrypted(head[:4]) and head[4:8] == crypto.current_key_id():
+        if crypto.file_is_current(head):
             continue
-        crypto.write_file(path, crypto.read_file(path))
+        if head[:4] == crypto.STREAM:   # an upload's file, possibly large: a chunk at a time
+            crypto.reseal_stream(path)
+        else:
+            crypto.write_file(path, crypto.read_file(path))
         files += 1
     fields = 0
     for table, key, col in FIELDS:

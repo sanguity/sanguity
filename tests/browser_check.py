@@ -3,7 +3,8 @@
 
 Starts the API (with www/ served by it) on a temporary data folder holding the demo build, signs in through the
 login page, opens every tab and checks its main content rendered, opens the detail drawer for every kind of
-event, drags and scroll-zooms the charts, toggles the event sort, switches profiles, opens the account page,
+event, drags and scroll-zooms the charts, toggles the event sort, switches profiles, uploads a zip and files on
+the import page, opens the account page,
 and fails on any script error, console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -106,6 +107,9 @@ def main():
                 break
             strict.wait_for_timeout(200)
         check("under the CSP: login.js signs in and the app starts", strict.evaluate("typeof EV !== 'undefined' && EV.length > 0"))
+        strict.goto(base + "/import.html")
+        strict.wait_for_selector("#importer", state="visible", timeout=10000)
+        check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
         strict.goto(base + "/account.html")
         strict.wait_for_selector("#logout", state="visible")
         strict.wait_for_timeout(500)
@@ -240,6 +244,50 @@ def main():
             check("Health period is kept per profile", js("hState.period") == "90d", js("hState.period"))
             check("empty profile explains itself", "no records yet" in page.inner_text("main"))
             check("empty profile hides the tabs and filters", js("document.querySelector('.tabs').hidden && document.querySelector('.filters').hidden && getComputedStyle(document.querySelector('.tabs')).display === 'none'"))
+            check("empty profile links to the import page", js("document.querySelector('main .empty a').getAttribute('href')") == "import.html?profile=2")
+            check("the header links to the import page", js("!document.getElementById('importLink').hidden"))
+
+            # ---- import page: upload a small fictional zip into the empty profile, then single files with #20's hook
+            page.click("main .empty a")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            check("import page offers the profiles you can import into, the linked one chosen",
+                  js("[...document.querySelectorAll('#profile option')].map(o => o.textContent)") == ["My records", "Second person"]
+                  and js("document.getElementById('profile').value") == "2")
+            import io, zipfile
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                z.writestr("export/labs.csv", "date,test,value,unit\n2026-01-05,Hemoglobin,13.9,g/dL\n")
+                z.writestr("export/summary.xml", '<ClinicalDocument xmlns="urn:hl7-org:v3"><title>Fictional</title></ClinicalDocument>')
+            page.set_input_files("#pickZip", files=[{"name": "portal-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
+            check("the chosen zip is listed", "portal-export.zip" in page.inner_text("#list"))
+            page.click("#go")
+            page.wait_for_function("document.getElementById('msg').textContent.startsWith('Uploaded')", timeout=20000)
+            msg = page.inner_text("#msg")
+            check("a zip uploads through the page", msg == "Uploaded 1 file (2 once unpacked). Uploaded; importing comes next.", msg)
+            check("each file's progress reaches the end", js("[...document.querySelectorAll('#list progress')].every(p => p.value === 1)"))
+            from server import db as dbm, uploads
+            db = dbm.connect()
+            up = db.execute("SELECT id, state FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
+            check("the upload is stored, unpacked and ready", up and up["state"] == "ready" and
+                  sorted(uploads.manifest(db, 2, up["id"])) == ["export/labs.csv", "export/summary.xml"])
+            js("window.__hook = []; window.sanguityImport = {uploaded: a => window.__hook.push(a)}")
+            page.click("#tab-files")
+            page.set_input_files("#pickFiles", files=[{"name": n, "mimeType": "text/csv", "buffer": b"date,test,value\n2026-02-01,WBC,6.1\n"}
+                                                      for n in ("a.csv", "b.csv")])
+            page.click("#go")
+            page.wait_for_function("window.__hook.length === 1", timeout=20000)
+            hook = js("window.__hook[0]")
+            last = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()["id"]
+            check("after the upload, #20's hook is called with the profile and upload", hook == {"profileId": 2, "uploadId": last}, hook)
+            check("…and the page says how many were uploaded", page.inner_text("#msg") == "Uploaded 2 files.", page.inner_text("#msg"))
+            db.close()
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("import page fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + "/")
+            page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
             page.select_option("#profile", label="My records")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             check("switching back restores the profile's tab", js("state.tab") == "timeline", js("state.tab"))

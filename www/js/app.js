@@ -51,6 +51,8 @@ $("#logout").onclick = async () => { try { await api("logout", {method: "POST"})
     if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
     if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
     $("#who").textContent = ME.user.username;
+    const canImport = p => p.role === "owner" || p.role === "editor";
+    $("#importLink").hidden = !ME.profiles.some(canImport);
     if (!ME.profiles.length) { emptyCard("No health profiles are shared with you yet. ", el("a", {href: "account.html#profiles", text: "Create one"}), " or ask a profile's owner to share it with ", el("b", {text: ME.user.username}), "."); return; }
     let want; try { want = +localStorage.getItem("ht-profile"); } catch (e) {}
     PROFILE = ME.profiles.find(p => p.id === want) || ME.profiles[0];
@@ -59,7 +61,12 @@ $("#logout").onclick = async () => { try { await api("logout", {method: "POST"})
     const r = await api(`profiles/${PROFILE.id}/data`);
     if (r.status === 401) { location.replace("login.html"); return; }
     if (r.status >= 500) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || r.status + " " + r.statusText); }
-    if (r.status === 204) { emptyCard(`${PROFILE.name} has no records yet. Importing records in the app is coming in a later release; for now an admin can load a built data.json with `, el("code", {text: `python -m server.manage import ${PROFILE.id} DIR`}), "."); return; }
+    if (r.status === 204) {
+      if (canImport(PROFILE)) emptyCard(`${PROFILE.name} has no records yet. `, el("a", {href: `import.html?profile=${PROFILE.id}`, text: "Import records"}),
+        " from a patient portal or app: upload the zip, folder or files it gave you.");
+      else emptyCard(`${PROFILE.name} has no records yet. Its owner, or an editor, can import them.`);
+      return;
+    }
     if (!r.ok) throw new Error(r.status + " " + r.statusText);
     DATA = await r.json();
     // milestones (older data.json files carry a single dxDate instead)

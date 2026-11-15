@@ -170,6 +170,29 @@ SCHEMA = [
     ALTER TABLE documents ADD COLUMN import_id INTEGER REFERENCES imports(id) ON DELETE CASCADE;
     ALTER TABLE profiles ADD COLUMN records_rev INTEGER NOT NULL DEFAULT 0;   -- bumped by every change to its records
     """,
+    # version 11: uploads, the raw files of an import as the browser sent them (uploads.py). The files are in
+    # profiles/<id>/uploads/<upload id>/ under random names; which name holds which path is in the manifest,
+    # encrypted like any health detail (file names can say whose records they are).
+    """
+    CREATE TABLE uploads(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        created INTEGER NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,   -- NULL: the command line, or a removed account
+        state TEXT NOT NULL CHECK(state IN ('receiving', 'ready', 'discarded')),
+        files INTEGER NOT NULL DEFAULT 0,
+        bytes INTEGER NOT NULL DEFAULT 0,
+        manifest TEXT);                            -- JSON: [{"f": name on disk, "p": relative path, "n": bytes}],
+                                                   -- written when the upload is finished (ready)
+    CREATE INDEX uploads_profile ON uploads(profile_id);
+    CREATE TABLE upload_files(                     -- the files of an upload still receiving, one row each so a
+        upload_id INTEGER NOT NULL REFERENCES uploads(id) ON DELETE CASCADE,   -- folder of thousands doesn't
+        name TEXT NOT NULL,                        -- rewrite the manifest each time; they become the manifest
+        file TEXT NOT NULL,                        -- its random name on disk
+        path TEXT NOT NULL,                        -- relative path, encrypted
+        bytes INTEGER NOT NULL,
+        PRIMARY KEY(upload_id, name));             -- name: a keyed hash of the path, so a path can't come twice
+    """,
 ]
 
 

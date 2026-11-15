@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sanguity import</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M5 18h6l3-8 4 13 3-7h6' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+<script src="js/theme.js"></script>
+</head>
+<body class="acct-page">
+<header>
+  <h1>Sanguity</h1>
+  <a class="iconbtn acct" id="back" href="./">← Back to records</a>
+  <span class="spacer"></span>
+  <span class="meta" id="who"></span>
+  <button class="iconbtn acct" id="logout" type="button">Log out</button>
+</header>
+<main class="acct imp">
+  <div class="card warn" id="insecure" role="alert" hidden></div>
+
+  <section class="card" id="noProfiles" hidden>
+    <h2>Import records</h2>
+    <p>You can import into a profile you own or edit, and none is shared with you that way yet.
+      <a href="account.html#profiles">Create a profile</a>, or ask its owner to make you an editor.</p>
+  </section>
+
+  <section class="card" id="importer" hidden>
+    <h2>Import records</h2>
+    <p class="hint">Upload the export you downloaded from a patient portal or app: a zip, a folder, or single files. Files go to
+      your Sanguity server only, and are kept there encrypted as the import's original files.</p>
+    <div class="form inline">
+      <label>Profile <select id="profile"></select></label>
+    </div>
+
+    <div class="tabs acct-tabs imp-tabs" role="tablist" aria-label="What to upload" id="kindTabs">
+      <button role="tab" id="tab-zip" aria-controls="panel-zip" aria-selected="true">A zip</button>
+      <button role="tab" id="tab-folder" aria-controls="panel-folder" aria-selected="false" tabindex="-1">A folder</button>
+      <button role="tab" id="tab-files" aria-controls="panel-files" aria-selected="false" tabindex="-1">Single files</button>
+    </div>
+    <div role="tabpanel" id="panel-zip" aria-labelledby="tab-zip">
+      <p class="hint">Most portals give you a zip (MyChart, Apple Health's export.zip, Blue Button). Upload it as it is: it's
+        unpacked on the server.</p>
+      <label class="btn pick">Choose a zip… <input type="file" id="pickZip" accept=".zip,application/zip"></label>
+    </div>
+    <div role="tabpanel" id="panel-folder" aria-labelledby="tab-folder" hidden>
+      <p class="hint">An export you've already unpacked. Everything in the folder is sent, with its folders kept.</p>
+      <label class="btn pick">Choose a folder… <input type="file" id="pickFolder" webkitdirectory multiple></label>
+    </div>
+    <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" hidden>
+      <p class="hint">One or more files: a C-CDA or FHIR file, a CSV of lab results…</p>
+      <label class="btn pick">Choose files… <input type="file" id="pickFiles" multiple></label>
+    </div>
+
+    <div class="drop" id="drop" tabindex="-1">Or drop a zip, a folder or files here</div>
+
+    <div id="chosen" hidden>
+      <div class="row imp-sum"><b id="sum"></b><button class="btn small" id="clear" type="button">Clear</button></div>
+      <ul class="imp-list" id="list" aria-label="Files to upload"></ul>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="go" type="button" disabled>Upload</button>
+      <span class="msg" id="msg" role="status"></span>
+    </div>
+  </section>
+</main>
+<script src="js/util.js"></script>
+<script src="js/import.js"></script>
+</body>
+</html>

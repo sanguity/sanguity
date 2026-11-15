@@ -6,12 +6,13 @@ The zip:
   settings.json       the profile's dashboard preferences (if it has any)
   documents/<id>/...  every document, and for HTML records the pictures and stylesheets they show
   watch/daily.json    the watch and scale summary shown with the profile (if any)
+  uploads/<id>/...    the files uploaded on the import page, as they were (zips unpacked), one folder per upload
   activity.json       the profile's activity log
 It's written as it's sent, a piece at a time, so a large profile never sits in memory or on disk.
 """
 import datetime, json, os, re, shutil, urllib.parse, zipfile
 
-from . import crypto, profiles as prof, records
+from . import crypto, profiles as prof, records, uploads
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
 REF = re.compile(r"""(?:src|href)\s*=\s*["']([^"'#?]+)""", re.I)
@@ -27,7 +28,7 @@ def plan(db, pid):
         e["detail"] = json.loads(crypto.dec(e["detail"])) if e["detail"] else {}
         e["detail"].pop("key", None)
     return {"pid": pid, "name": p["name"], "docs": docs, "activity": log,
-            "data": records.assemble(db, pid),
+            "data": records.assemble(db, pid), "uploads": uploads.stored_files(db, pid),
             "settings": prof.settings_path(pid) if os.path.isfile(prof.settings_path(pid)) else None,
             "watch": p["watch_file"] if p["watch_file"] and os.path.isfile(p["watch_file"]) else None}
 
@@ -95,13 +96,11 @@ def stream(p, exported_by):
         return sink.take()
 
     def add_file(name, path, compress=True):
-        if crypto.file_is_encrypted(path):   # Sanguity's own copy: decrypted whole (an export is plaintext on purpose)
-            zf.writestr(info(name, compress), crypto.read_file(path))
-            yield sink.take()
-            return
-        with open(path, "rb") as src, zf.open(info(name, compress), "w", force_zip64=True) as dst:
-            while chunk := src.read(1 << 20):
-                dst.write(chunk)
+        # Sanguity's own copies are decrypted (an export is plaintext on purpose): a stream a chunk at a time, so
+        # a large upload never sits in memory whole
+        with zf.open(info(name, compress), "w", force_zip64=True) as dst:
+            for piece in crypto.iter_file(path):
+                dst.write(piece)
                 yield sink.take()
         yield sink.take()
 
@@ -133,6 +132,9 @@ def stream(p, exported_by):
                                     not rel.lower().endswith(STORED))
     if p["watch"]:
         yield from add_file("watch/daily.json", p["watch"])
+    for upload_id, rel, path in p["uploads"]:
+        if os.path.isfile(path):
+            yield from add_file(f"uploads/{upload_id}/{rel}", path, not rel.lower().endswith(STORED))
     yield add_bytes("activity.json", json.dumps(p["activity"], indent=1).encode())
     readme = f"""Sanguity export: {p['name']}
 Exported {now:%Y-%m-%d %H:%M} by {exported_by}.
@@ -144,6 +146,7 @@ no longer need.
   settings.json      dashboard preferences{'' if p['settings'] else ' (none)'}
   documents/         the documents, one folder each
   watch/daily.json   watch and scale summary{'' if p['watch'] else ' (none)'}
+  uploads/           the files uploaded to import, as they were sent (zips unpacked): {len({u for u, _, _ in p['uploads']})} upload(s)
   activity.json      who opened, shared or changed this profile, and when
 {f'''
 {len(missing)} document link(s) pointed at files that are no longer on the server and are left out.
@@ -159,7 +162,8 @@ To load it into a Sanguity install (into an empty profile, or replacing one's re
 
 # ---------------------------------------------------------------- loading an export
 
-ALLOWED = re.compile(r"^(data\.json|settings\.json|README\.txt|activity\.json|watch/daily\.json|documents/[^/]+/.+)$")
+ALLOWED = re.compile(r"^(data\.json|settings\.json|README\.txt|activity\.json|watch/daily\.json|documents/[^/]+/.+|uploads/\d+/.+)$")
+UPLOAD = re.compile(r"^uploads/(\d+)/(.+)$")
 # a zip that unpacks to more than this is refused before anything is written (a damaged or hostile archive could
 # otherwise fill the disk); far above any real profile's records
 MAX_ENTRIES, MAX_BYTES = 100_000, 16 * 2**30
@@ -167,7 +171,8 @@ MAX_ENTRIES, MAX_BYTES = 100_000, 16 * 2**30
 
 def import_archive(db, pid, archive):
     """Unpack an export into the profile's own folder (so its documents stay) and load it. Returns the number of
-    documents. The activity log in the zip is history from the other install and isn't merged in."""
+    documents. Its uploads become the profile's uploads again, ready, as they were. The activity log in the zip is
+    history from the other install and isn't merged in."""
     dest = os.path.join(prof.profile_dir(pid), "imported")
     new = dest + ".new"
     shutil.rmtree(new, ignore_errors=True)
@@ -178,20 +183,32 @@ def import_archive(db, pid, archive):
         if len(files) > MAX_ENTRIES or sum(i.file_size for i in files) > MAX_BYTES:
             raise ValueError(f"this zip holds more than {MAX_ENTRIES} files or {MAX_BYTES // 2**30} GB unpacked: "
                              "too big to be a Sanguity export")
-        for i in zf.infolist():
-            if i.is_dir():
-                continue
+        sent = {}   # upload id in the zip -> its entries
+        for i in files:
             parts = i.filename.split("/")
             if not ALLOWED.match(i.filename) or ".." in parts or "" in parts:
                 raise ValueError(f"unexpected entry in the zip: {i.filename}")
+            if (m := UPLOAD.match(i.filename)):
+                sent.setdefault(int(m.group(1)), []).append((m.group(2), i))
+                continue
             target = os.path.join(new, *parts)
             os.makedirs(os.path.dirname(target), exist_ok=True)
             crypto.write_file(target, zf.read(i))   # kept encrypted in the profile's folder
-    shutil.rmtree(dest, ignore_errors=True)
-    os.replace(new, dest)
-    n = prof.import_dataset(db, pid, dest)
-    watch = os.path.join(dest, "watch", "daily.json")
-    if os.path.isfile(watch):
-        db.execute("UPDATE profiles SET watch_file=? WHERE id=? AND (watch_file IS NULL OR watch_file LIKE ?)",
-                   (watch, pid, os.path.join(prof.profile_dir(pid), "%")))
+        shutil.rmtree(dest, ignore_errors=True)
+        os.replace(new, dest)
+        n = prof.import_dataset(db, pid, dest)
+        watch = os.path.join(dest, "watch", "daily.json")
+        if os.path.isfile(watch):
+            db.execute("UPDATE profiles SET watch_file=? WHERE id=? AND (watch_file IS NULL OR watch_file LIKE ?)",
+                       (watch, pid, os.path.join(prof.profile_dir(pid), "%")))
+        for _, entries in sorted(sent.items()):
+            upload_id = uploads.create(db, pid, None)
+            try:
+                for rel, i in entries:
+                    with zf.open(i) as src:
+                        uploads.add_file(db, pid, upload_id, rel, src)
+                uploads.finish(db, pid, upload_id, unzip=False)   # unpacked already: zips left in it stay zips
+            except uploads.UploadError as e:
+                uploads.discard(db, pid, upload_id)
+                raise ValueError(f"an upload in the zip can't be kept: {e}") from None
     return n

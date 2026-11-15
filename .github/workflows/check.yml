@@ -20,7 +20,7 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/docker_smoke.py server/*.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/docker_smoke.py server/*.py
 
       - name: Shell scripts parse
         run: bash -n docker/dev-stack.sh
@@ -64,6 +64,9 @@ jobs:
 
       - name: API tests (sign-in, sessions, roles, sharing, documents)
         run: python tests/test_api.py
+
+      - name: Upload tests (who may upload, refused paths and zips, limits, encryption, export, cleanup)
+        run: python tests/test_uploads.py
 
       - name: Browser check (sign-in, every tab, drawer, pan/zoom, profiles, account page, no errors or NaN)
         run: python tests/browser_check.py
