@@ -222,6 +222,8 @@ const WHAT = {
   "2fa.recovery": d => `signed in with a recovery code (${d.left} left)`,
   "2fa.reset": d => `turned off two-factor sign-in for ${d.username}`,
   "settings.require_2fa": d => d.on ? "required two-factor sign-in for everyone" : "stopped requiring two-factor sign-in",
+  "account.remove": d => `removed the account ${d.username}` +
+    (d.handed_over && d.handed_over.length ? `, handing ${d.handed_over.join(", ")} to someone else` : ""),
   "profile.delete": d => `deleted the profile “${d.name}”${d.members > 1 ? ` (shared with ${d.members - 1} other${d.members > 2 ? "s" : ""})` : ""}`,
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
@@ -230,7 +232,7 @@ const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document"
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},
-    el("td", {class: "nowrap", text: when(e.at)}), el("td", {text: e.actor}), el("td", {text: describe(e)}),
+    el("td", {class: "nowrap", text: when(e.at)}), el("td", {text: e.actor + (e.actor_removed ? " (removed)" : "")}), el("td", {text: describe(e)}),
     el("td", {class: "muted", text: e.ip || ""})));
 }
 /* a log that opens on demand: newest first, filtered by person (profile logs) and kind, older entries on request */
@@ -294,10 +296,31 @@ async function loadUsers() {
           act(u.disabled ? "Enable" : "Disable", {disabled: !u.disabled}),
           act(u.is_admin ? "Remove admin" : "Make admin", {is_admin: !u.is_admin}),
           act("Reset password", {reset_password: true}, r => setTimeout(() => showTemp(u.username, r.temporary_password))),
+          self ? null : el("button", {class: "btn small", type: "button", text: "Remove", onclick: () => removeAccount(u)}),
           u.two_factor ? el("button", {class: "btn small", type: "button", text: "Turn off 2FA", disabled: self || null, onclick: async () => {
             if (!confirm(`Turn off two-factor sign-in for ${u.username}? Do this only if they lost both their phone and their recovery codes. They'll be signed out everywhere.`)) return;
             try { await call("users/" + u.id, "PATCH", {disable_2fa: true}); loadUsers(); } catch (e) { say("#userMsg", e.message, true); } }}) : null));
     }))));
+}
+/* removing an account for good: if they alone own profiles, ask who takes those over first */
+async function removeAccount(u) {
+  if (!confirm(`Remove the account ${u.username} for good? They're signed out and lose access to every profile. ` +
+               "Their past activity stays in the logs, marked as removed. Their profiles' records stay.")) return;
+  let body = {};
+  for (;;) {
+    try {
+      const r = await call("users/" + u.id, "DELETE", body);
+      say("#userMsg", `Removed ${u.username}.` + (r.handed_over.length ? ` ${body.hand_to} now owns ${r.handed_over.join(", ")}.` : ""));
+      loadUsers(); loadProfiles();
+      return;
+    } catch (e) {
+      if (!(e.detail && e.detail.sole_owner_of)) { say("#userMsg", e.message, true); return; }
+      const who = prompt(e.message + "\n\nType the username of the new owner, or leave it empty to remove anyway " +
+                         "(the profile can be given an owner later from the command line).", "");
+      if (who === null) { say("#userMsg", "Not removed."); return; }
+      body = who.trim() ? {hand_to: who.trim()} : {force: true};
+    }
+  }
 }
 $("#userNew").onsubmit = async ev => {
   ev.preventDefault();

@@ -13,6 +13,7 @@ Account events (no profile), readable by admins:
   2fa.on / 2fa.off / 2fa.codes (new recovery codes) / 2fa.recovery (signed in with one, {"left"})
   2fa.reset {"username"}: an admin turned someone's off            settings.require_2fa {"on"}
   profile.delete {"name", "members"}: a profile and all its records deleted (its own log goes with it)
+  account.remove {"username", "handed_over"}: an account deleted; profiles it alone owned went to someone else
 
 Entries keep the actor's username as it was, so they read the same after an account is gone. A profile's entries
 go with the profile. Entries older than ACTIVITY_DAYS are pruned (at most once a day, when something is logged).
@@ -24,8 +25,9 @@ from . import config, db as dbm
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
-                   "settings.require_2fa", "profile.delete")
+                   "settings.require_2fa", "profile.delete", "account.remove")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
+SYSTEM = (COMMAND_LINE, SETUP_BUILD)
 
 
 def log(db, action, who=None, profile_id=None, detail=None, ip=None, session_id=None, actor=None):
@@ -64,6 +66,7 @@ def _rows(db, where, args, before, limit):
         d = dict(r)
         d["detail"] = json.loads(d["detail"]) if d["detail"] else {}
         d["detail"].pop("key", None)
+        d["actor_removed"] = d["actor_id"] is None and d["actor"] not in SYSTEM   # the account was removed since
         out.append(d)
     return out
 

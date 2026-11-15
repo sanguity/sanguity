@@ -13,6 +13,9 @@
   sync                                   re-import the setup build into the profiles linked to it
   backup [DEST] [--keep N]               write a backup archive (default folder: /backups in Docker), keeping the
                                          newest N there; safe while the app runs
+  remove-user USERNAME [--hand-to NAME] [--force]
+                                         delete an account for good; profiles it alone owned go to NAME (or, with
+                                         --force, are left without an owner)
   disable-2fa USERNAME                   turn off someone's two-factor sign-in (lost phone and recovery codes);
                                          signs them out everywhere
   verify ARCHIVE                         check a backup is complete and undamaged
@@ -123,6 +126,18 @@ def _command(db, argv):
             raise
         activity.log(db, "import", profile_id=pid, detail={"documents": n}, actor=activity.COMMAND_LINE)
         print(f"Imported {args[1]} into profile {pid} ({n} documents).")
+    elif cmd == "remove-user" and args:
+        u = _user(db, args[0])
+        hand = _user(db, args[args.index("--hand-to") + 1]) if "--hand-to" in args else None
+        sole = [name for _, name in accounts.sole_owned(db, u["id"])]
+        if sole and not hand and "--force" not in args:
+            sys.exit(f"{u['username']} is the only owner of {', '.join(sole)}. Add --hand-to USERNAME, or --force to leave "
+                     "them without an owner.")
+        if u["is_admin"] and db.execute("SELECT COUNT(*) FROM users WHERE is_admin=1 AND disabled=0 AND id<>?", (u["id"],)).fetchone()[0] == 0:
+            sys.exit("That's the last active admin.")
+        gone = accounts.remove(db, u["id"], hand["id"] if hand else None)
+        activity.log(db, "account.remove", detail=gone, actor=activity.COMMAND_LINE)
+        print(f"Removed {gone['username']}." + (f" {hand['username']} now owns {', '.join(gone['handed_over'])}." if gone["handed_over"] else ""))
     elif cmd == "disable-2fa" and args:
         u = _user(db, args[0])
         accounts.turn_off_2fa(db, u["id"])

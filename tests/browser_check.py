@@ -265,6 +265,19 @@ def main():
             page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.textContent.includes('disabled'))", timeout=10000)
             problems[before:] = [x for x in problems[before:] if "409" not in x]   # the refusal that prompts the question
             check("disabling a profile's only owner asks first", asked and "only owner of Alex's records" in asked[0], asked[:1])
+            # removing that account: confirmed, then asked who owns Alex's records instead (this admin)
+            answers = iter([True, USER])
+            def answer(d):
+                a = next(answers)
+                d.accept(a) if isinstance(a, str) else d.accept()
+            page.on("dialog", answer)
+            before_remove = len(problems)
+            page.locator("#userList tr", has_text="alex").get_by_role("button", name="Remove").click()
+            page.wait_for_function("!document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
+            page.remove_listener("dialog", answer)
+            problems[before_remove:] = [x for x in problems[before_remove:] if "409" not in x]   # the question's refusal
+            page.wait_for_function("[...document.querySelectorAll('#profList .prof')].some(p => p.textContent.includes(\"Alex's records\"))", timeout=10000)
+            check("removing a sole owner hands their profile to whoever is named", True)
             # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
             from server import twofactor
             import time as _time

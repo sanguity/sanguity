@@ -792,6 +792,38 @@ class UserPatch(BaseModel):
     disable_2fa: bool = False   # for someone who lost both their phone and their recovery codes
 
 
+class UserRemove(BaseModel):
+    hand_to: Optional[str] = None   # username to become owner of the profiles this account alone owned
+    force: bool = False             # remove anyway, leaving those profiles without an active owner
+
+
+@app.delete("/api/users/{uid}")
+def remove_user(uid: int, body: UserRemove, request: Request, s=Depends(admin), db=Depends(get_db)):
+    """Delete an account for good (admins; not your own, not the last admin)."""
+    if uid == s["id"]:
+        raise HTTPException(400, "You can't remove your own account here.")
+    target = db.execute("SELECT username, is_admin FROM users WHERE id=?", (uid,)).fetchone()
+    if not target:
+        raise HTTPException(404, "No such account.")
+    if target["is_admin"] and db.execute("SELECT COUNT(*) FROM users WHERE is_admin=1 AND disabled=0 AND id<>?", (uid,)).fetchone()[0] == 0:
+        raise HTTPException(409, "That's the last active admin.")
+    hand_to = None
+    if body.hand_to:
+        h = db.execute("SELECT id FROM users WHERE username=? AND disabled=0", (body.hand_to.strip(),)).fetchone()
+        if not h or h["id"] == uid:
+            raise HTTPException(404, "No other active account with that username to hand the profiles to.")
+        hand_to = h["id"]
+    sole = [name for _, name in accounts.sole_owned(db, uid)]
+    if sole and hand_to is None and not body.force:   # the client asks who should own them, then resends
+        raise HTTPException(409, {"sole_owner_of": sole, "message":
+            f"{target['username']} is the only owner of {', '.join(sole)}. Who should own "
+            f"{'it' if len(sole) == 1 else 'them'} instead? Without an owner nobody can share or rename "
+            f"{'it' if len(sole) == 1 else 'them'}."})
+    gone = accounts.remove(db, uid, hand_to)
+    activity.log(db, "account.remove", s, detail=gone, ip=_client_ip(request))
+    return {"ok": True, **gone}
+
+
 @app.patch("/api/users/{uid}")
 def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=Depends(get_db)):
     if uid == s["id"] and (body.disabled is not None or body.is_admin is not None or body.reset_password or body.disable_2fa):
@@ -801,10 +833,7 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
         raise HTTPException(404, "No such account.")
     note = lambda action: activity.log(db, action, s, detail={"username": target["username"]}, ip=_client_ip(request))
     if body.disabled and not body.force:
-        sole = [r["name"] for r in db.execute(
-            """SELECT p.id, p.name FROM memberships m JOIN profiles p ON p.id = m.profile_id
-               WHERE m.user_id=? AND m.role='owner' ORDER BY p.name COLLATE NOCASE""", (uid,)).fetchall()
-                if not dbm.active_owners(db, r["id"], excluding=uid)]
+        sole = [name for _, name in accounts.sole_owned(db, uid)]
         if sole:   # nobody else could then share or rename these; the client asks, then resends with force
             raise HTTPException(409, {"sole_owner_of": sole, "message":
                 f"This account is the only owner of {', '.join(sole)}. While it is disabled, nobody can share or rename "
