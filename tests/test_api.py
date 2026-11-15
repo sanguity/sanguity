@@ -1120,6 +1120,111 @@ class Api(unittest.TestCase):
         self.assertTrue({"passkey.add", "passkey.remove"} <= actions)
         db.close()
 
+    def test_watch_receiver_encrypts_at_rest(self):   # the real receiver, with the app's key
+        import glob, gzip, hashlib, hmac, socket, sqlite3, time, urllib.request
+        from server import config, crypto
+        top = os.path.join(TMP, "watch-rx")
+        os.makedirs(os.path.join(top, "raw", "2026", "11", "01"))
+        os.makedirs(os.path.join(top, "public"))
+        with open(os.path.join(TMP, "keys", "watch_secret"), "w") as f:
+            f.write("test-watch-secret\n")
+        env = {**os.environ, "DATA": top, "SECRET_FILE": os.path.join(TMP, "keys", "watch_secret"),
+               "SANGUITY_KEY_FILE": config.KEY_FILE, "TZ_DEFAULT": "UTC"}
+        receiver = os.path.join(ROOT, "watch", "receiver.py")
+
+        def payload(day, kg, uuid):
+            return json.dumps({"source": "health_connect", "timezone": "UTC", "timestamp": f"{day}T09:00:00Z",
+                               "weight": [{"time": f"{day}T08:00:00Z", "kilograms": kg, "uuid": uuid}]}).encode()
+
+        def weights():
+            daily = json.loads(crypto.read_file(os.path.join(top, "public", "daily.json")))
+            return dict(next((m["pts"] for m in daily["metrics"] if m["key"] == "weight"), []))
+
+        lb = lambda kg: round(kg * 2.20462, 2)
+
+        # an install from before encryption: a plaintext upload, an SQLite file in WAL mode, a plaintext summary
+        with gzip.open(os.path.join(top, "raw", "2026", "11", "01", "080000000000-old.json.gz"), "wb") as f:
+            f.write(payload("2026-11-01", 80.5, "w-old"))
+        old = sqlite3.connect(os.path.join(TMP, "old-watch.db"))
+        old.executescript("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE samples(type TEXT, uuid TEXT, t INTEGER, day TEXT, v REAL, "
+                          "v2 REAL, src TEXT, PRIMARY KEY(type, uuid)); INSERT INTO samples VALUES('weight', 'w-db', 0, "
+                          "'2026-10-31', 79.25, NULL, NULL);")   # only in the database (raw/ would have it too, really)
+        with open(os.path.join(top, "public", "daily.json"), "w") as f:
+            f.write('{"metrics": []}')
+
+        def start():
+            with socket.socket() as sk:
+                sk.bind(("127.0.0.1", 0))
+                port = sk.getsockname()[1]
+            proc = subprocess.Popen([sys.executable, "-I", receiver], env={**env, "PORT": str(port)},
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for _ in range(100):
+                try:
+                    urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=1)
+                    return proc, port
+                except OSError:
+                    time.sleep(0.1)
+            proc.kill()
+            self.fail("the receiver didn't start")
+
+        def post(port, body):
+            sig = "sha256=" + hmac.new(b"test-watch-secret", body, hashlib.sha256).hexdigest()
+            r = urllib.request.Request(f"http://127.0.0.1:{port}/ingest", data=body, headers={"X-Signature": sig})
+            self.assertEqual(urllib.request.urlopen(r, timeout=5).status, 200)
+
+        def until(cond):
+            for _ in range(200):
+                if cond():
+                    return
+                time.sleep(0.1)
+            self.fail("the receiver didn't write its summary")
+
+        def all_sealed():
+            files = [p for p in glob.glob(os.path.join(top, "**", "*"), recursive=True) if os.path.isfile(p)]
+            self.assertTrue(files)
+            for p in files:
+                with open(p, "rb") as f:
+                    self.assertEqual(f.read(8), crypto.MAGIC + crypto.current_key_id(), p)
+
+        for ext in ("", "-wal"):   # copied while open, as after an unclean stop: the row is only in the -wal
+            shutil.copyfile(os.path.join(TMP, "old-watch.db" + ext), os.path.join(top, "watch.db" + ext))
+        old.close()
+        proc, port = start()
+        try:
+            all_sealed()   # migrated as it started: the old WAL folded in, nothing left in plaintext
+            self.assertFalse(os.path.exists(os.path.join(top, "watch.db-wal")))
+            post(port, payload("2026-11-02", 81.234, "w-new"))
+            until(lambda: "2026-11-02" in weights())
+            self.assertEqual(weights(), {"2026-10-31": lb(79.25), "2026-11-02": lb(81.234)})   # the old database carried over
+            all_sealed()
+            # a crash before the next snapshot: the upload is in raw/, and folded in again on start
+            post(port, payload("2026-11-03", 82.0, "w-late"))
+        finally:
+            proc.kill(); proc.wait()
+        proc, port = start()
+        try:
+            self.assertEqual(weights(), {"2026-10-31": lb(79.25), "2026-11-02": lb(81.234), "2026-11-03": lb(82.0)})
+        finally:
+            proc.kill(); proc.wait()
+        all_sealed()
+        # --reprocess rebuilds from the sealed archive alone (and the old plaintext upload, now sealed)
+        subprocess.run([sys.executable, "-I", receiver, "--reprocess"], env=env, check=True, stdout=subprocess.DEVNULL)
+        self.assertEqual(weights(), {"2026-11-01": lb(80.5), "2026-11-02": lb(81.234), "2026-11-03": lb(82.0)})
+        all_sealed()
+        # the app shows the sealed summary
+        db = dbm.connect()
+        saved = db.execute("SELECT watch_file FROM profiles WHERE id=1").fetchone()[0]
+        db.execute("UPDATE profiles SET watch_file=? WHERE id=1", (os.path.join(top, "public", "daily.json"),))
+        db.commit()
+        try:
+            r = self.login("ben").get("/api/profiles/1/watch")
+            self.assertEqual(r.status_code, 200)
+            self.assertIn(["2026-11-03", lb(82.0)], next(m for m in r.json()["metrics"] if m["key"] == "weight")["pts"])
+        finally:
+            db.execute("UPDATE profiles SET watch_file=? WHERE id=1", (saved,))
+            db.commit()
+            db.close()
+
     def test_manage_import_failure_keeps_link(self):
         from server import manage
         db = dbm.connect()

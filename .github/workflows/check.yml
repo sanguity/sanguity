@@ -90,6 +90,22 @@ jobs:
           done
           ! grep -rlq '"source"' data/build data/profiles || { echo "plaintext records found in data/"; exit 1; }
 
+      - name: Watch data on disk is encrypted (a signed upload, then everything in watch-data/ is sealed)
+        run: |
+          python3 - <<'PY'
+          import hashlib, hmac, json, urllib.request
+          body = json.dumps({"source": "health_connect", "timezone": "UTC", "timestamp": "2026-11-01T09:00:00Z",
+                             "weight": [{"time": "2026-11-01T08:00:00Z", "kilograms": 80.0, "uuid": "ci"}]}).encode()
+          sig = "sha256=" + hmac.new(open("auth/watch_secret", "rb").read().strip(), body, hashlib.sha256).hexdigest()
+          r = urllib.request.Request("http://127.0.0.1:8731/ingest", data=body, headers={"X-Signature": sig})
+          assert urllib.request.urlopen(r, timeout=10).status == 200
+          PY
+          for i in $(seq 1 30); do [ -f watch-data/watch.db ] && break; sleep 1; done
+          test -f watch-data/watch.db && test -n "$(find watch-data/raw -type f)"
+          find watch-data -type f | while read -r f; do
+            [ "$(head -c 4 "$f")" = SGE1 ] || { echo "$f is not encrypted"; exit 1; }
+          done
+
       - name: After a restart (the database and records carry over)
         run: |
           docker compose up -d --force-recreate
