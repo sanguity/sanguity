@@ -1,5 +1,11 @@
-"""Passwords (Argon2id), session tokens, and sign-in throttling."""
-import array, contextlib, gzip, hashlib, heapq, hmac, os, re, secrets, threading, time
+"""Passwords (Argon2id, peppered), session tokens, and sign-in throttling.
+
+Passwords are stored as "pepper1:" + Argon2id of HMAC-SHA256(pepper, password). The pepper is a server secret kept
+out of the database's reach (atrest.load_pepper: stored in it only encrypted with the data key), so a copied
+sanguity.db can't be checked against guesses without the key file too. Hashes from before the pepper (plain
+Argon2id) still verify, and are replaced at the person's next sign-in (needs_rehash).
+"""
+import array, base64, contextlib, gzip, hashlib, heapq, hmac, os, re, secrets, threading, time
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
@@ -13,6 +19,27 @@ _ph = PasswordHasher()   # Argon2id with the library's current recommended param
 # hold the worker threads every other request needs.
 _slots = threading.BoundedSemaphore(max(1, config.HASH_PARALLEL))
 _DUMMY = _ph.hash(secrets.token_urlsafe(24))   # verified against when the username doesn't exist, so timing doesn't tell
+
+
+PEPPERED = "pepper1:"
+_pepper = None
+
+
+def set_pepper(value):
+    """The 32-byte server secret mixed into password and recovery-code hashes (atrest.load_pepper sets it)."""
+    global _pepper
+    _pepper = value
+
+
+def pepper_mac(data):
+    """HMAC-SHA256(pepper, data). Refuses to run without the pepper, so nothing is ever stored unpeppered."""
+    if _pepper is None:
+        raise RuntimeError("The pepper isn't loaded (atrest.load_pepper runs at start-up).")
+    return hmac.new(_pepper, data, hashlib.sha256).digest()
+
+
+def _peppered(pw):
+    return base64.b64encode(pepper_mac(pw.encode("utf-8"))).decode()
 
 
 class Busy(Exception):
@@ -30,12 +57,16 @@ def _slot():
 
 
 def hash_password(pw):
+    peppered = _peppered(pw)
     with _slot():
-        return _ph.hash(pw)
+        return PEPPERED + _ph.hash(peppered)
 
 
 def verify_password(stored, pw):
-    """True when pw matches. A missing account still costs one hash, so response time doesn't reveal usernames."""
+    """True when pw matches. A missing account still costs one hash, so response time doesn't reveal usernames.
+    A hash from before the pepper (plain Argon2id) is checked the old way."""
+    if stored and stored.startswith(PEPPERED):
+        stored, pw = stored[len(PEPPERED):], _peppered(pw)
     with _slot():
         try:
             return _ph.verify(stored or _DUMMY, pw) and stored is not None
@@ -44,8 +75,11 @@ def verify_password(stored, pw):
 
 
 def needs_rehash(stored):
+    """True for a hash from before the pepper, or one made with weaker Argon2 parameters than today's."""
+    if not stored.startswith(PEPPERED):
+        return stored.startswith("$argon2")
     try:
-        return _ph.check_needs_rehash(stored)
+        return _ph.check_needs_rehash(stored[len(PEPPERED):])
     except InvalidHashError:
         return False
 

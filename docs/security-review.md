@@ -56,7 +56,7 @@ Each fix has a test in `tests/test_api.py` or `tests/browser_check.py`.
 
 All five are in the Phase 1 milestone.
 
-- #74 Pepper password hashes and strengthen recovery codes (2.4.5, 2.6.2)
+- #74 Pepper password hashes and strengthen recovery codes (2.4.5, 2.6.2): fixed; the pepper is kept encrypted with the data key, and recovery codes stay 8 characters, now salted
 - #75 Second factor for admin actions (4.3.1, 4.3.3)
 - #76 Decide session lifetime defaults (3.3.2)
 - #77 Automatic dependency updates, and an update path that pulls patched images (14.2.1)
@@ -140,7 +140,7 @@ The issue asked for these items in particular.
 | 2.4.1 | Passwords stored with an approved slow hash | Met | Argon2id with argon2-cffi's parameters (RFC 9106 low-memory profile), rehashed when they change (`security.needs_rehash`). |
 | 2.4.2 | Salt of at least 32 bits | Met | 128-bit random salt per hash (argon2-cffi). |
 | 2.4.3 / 2.4.4 | PBKDF2 / bcrypt parameters | N/A | Argon2id is used. |
-| 2.4.5 | Extra step with a secret salt (pepper) | **Issue #74** | No pepper. A copied database can be attacked offline, slowed only by Argon2. |
+| 2.4.5 | Extra step with a secret salt (pepper) | Fixed (#74) | Passwords are stored as Argon2id of HMAC-SHA256(pepper, password) (`security.hash_password`). The pepper is 256 random bits, made on first start and kept in the `meta` table encrypted with the data key (`atrest.load_pepper`), so a copied database can't be checked against guesses without the key file. It never changes: a key rotation re-encrypts it (`atrest.seal_everything`). Hashes from before it are replaced at the next sign-in (`security.needs_rehash`). |
 | 2.5.1 | Activation and recovery secrets not sent in clear | Met | One-time passwords are shown once to the admin, never stored in clear and never sent anywhere. |
 | 2.5.2 | No password hints or security questions | Met | None. |
 | 2.5.3 | Recovery doesn't reveal the password | Met | An admin reset makes a new one-time password. |
@@ -149,7 +149,7 @@ The issue asked for these items in particular.
 | 2.5.6 | Forgotten password recovery is secure | Met | Only an admin, or the command line, can reset. Every session and known browser of the account ends (`accounts.set_temp_password`). |
 | 2.5.7 | Lost authenticator needs identity checks | Met | Recovery codes, or an admin's reset (`disable_2fa`), which removes the authenticator app and every passkey and signs the person out everywhere. |
 | 2.6.1 | Lookup secrets single-use | Met | `recovery_codes.used_at`. Using one also signs out every other session. |
-| 2.6.2 | Lookup secrets of 112 bits, or salted | **Issue #74** | Recovery codes are about 40 bits, stored as unsalted SHA-256. They only replace the second step, so the password is still needed. |
+| 2.6.2 | Lookup secrets of 112 bits, or salted | Fixed (#74) | Recovery codes stay 8 characters (about 40 bits), so they're easy to type. Each is stored with its own random 128-bit salt as HMAC-SHA256(pepper, salt + code) (`twofactor.recovery_hash`), so a copied database alone gives nothing to search. Codes made before this are plain SHA-256 and keep working until the account's codes are replaced. They only replace the second step, so the password is still needed. |
 | 2.6.3 | Lookup secrets not guessable | Met | `secrets.choice`, throttled per account. |
 | 2.7.x | Out-of-band verifiers | N/A | None. |
 | 2.8.1 | Time-based OTPs have a short life | Met | 30-second steps, plus or minus one step for clock drift (`twofactor.DRIFT`). |
