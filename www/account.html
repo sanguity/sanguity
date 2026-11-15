@@ -21,6 +21,13 @@
   <div class="card warn" id="secNotice" hidden></div>
   <div class="card warn" id="mustChange" hidden>Choose your own password to continue. The one you signed in with was for one use only.</div>
 
+  <div class="tabs acct-tabs" role="tablist" aria-label="Account settings" id="acctTabs" hidden>
+    <button role="tab" id="tab-security" aria-controls="panel-security" aria-selected="true">Sign-in &amp; security</button>
+    <button role="tab" id="tab-profiles" aria-controls="panel-profiles" aria-selected="false" tabindex="-1">Profiles</button>
+    <button role="tab" id="tab-admin" aria-controls="panel-admin" aria-selected="false" tabindex="-1" hidden>Admin</button>
+  </div>
+
+  <div role="tabpanel" id="panel-security" aria-labelledby="tab-security">
   <section class="card" id="password">
     <h2>Password</h2>
     <p class="hint" id="pwHint"></p>
@@ -55,7 +62,9 @@
     <div id="sessList"></div>
     <div class="row"><button class="btn" id="sessOthers" type="button">Sign out all other devices</button><span class="msg" id="sessMsg" role="status"></span></div>
   </section>
+  </div>
 
+  <div role="tabpanel" id="panel-profiles" aria-labelledby="tab-profiles" hidden>
   <section class="card" id="profiles">
     <h2>Health profiles</h2>
     <p class="hint">A profile is one person whose records are tracked. Owners can share a profile with other accounts:
@@ -66,13 +75,15 @@
       <button class="btn" type="submit">Create</button><span class="msg" id="profMsg" role="status"></span>
     </form>
   </section>
+  </div>
 
+  <div role="tabpanel" id="panel-admin" aria-labelledby="tab-admin" hidden>
   <section class="card" id="users" hidden>
     <h2>Accounts <span class="tag">admin</span></h2>
     <p class="hint">Create an account for each person who signs in. They get a one-time password and choose their own at first sign-in.
       Being an admin lets someone manage accounts; it doesn't show them anyone's records.</p>
     <p class="warn" id="adminTf" hidden>To manage accounts, turn on two-factor sign-in (the authenticator app) or add a
-      passkey for your own account, above. Admins need one as soon as the server has more than one account.</p>
+      passkey for your own account, under <a href="#security">Sign-in &amp; security</a>. Admins need one as soon as the server has more than one account.</p>
     <div id="reauth" class="reauth" hidden></div>
     <div id="adminTools">
       <label class="check"><input type="checkbox" id="reqTf"> Require two-factor sign-in for everyone</label>
@@ -87,6 +98,7 @@
     </div>
     <span class="msg" id="userMsg" role="status"></span>
   </section>
+  </div>
 </main>
 <script src="js/util.js"></script>
 <script src="js/account.js"></script>
