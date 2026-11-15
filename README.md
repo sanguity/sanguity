@@ -120,6 +120,10 @@ With `--records`, put your `sources.json` (and `corrections.json` / `settings.js
 test copy's `config/` folder. `--down` stops it, `--logs` follows its logs, `--reset` starts it over; `--help`
 lists everything.
 
+On TrueNAS the script works without sudo: when Docker isn't reachable it deploys the test copy as a custom app
+(it appears on the Apps page and starts with the server), and the setup code is in its `data/setup-code.txt`.
+Keep `--dir` private (for example mode 750) when it holds a copy of your records.
+
 ## Development
 
 ```sh
