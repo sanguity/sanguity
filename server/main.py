@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, export, passkeys, profiles as prof, security as sec, twofactor
+from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, export, passkeys, profiles as prof, records, security as sec, twofactor
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -59,6 +59,8 @@ async def lifespan(app):
             sealed = atrest.seal_everything(db)
             if sealed["files"] or sealed["fields"]:
                 print(f"Encrypted {sealed['files']} files and {sealed['fields']} database fields that weren't yet.", flush=True)
+            if (moved := prof.migrate_files(db)):
+                print(f"Moved the records of {moved} profile(s) into the database.", flush=True)
             pid = prof.bootstrap(db)
             if pid:
                 print(f"Loaded the existing records into profile {pid} (\"My records\").", flush=True)
@@ -951,13 +953,13 @@ def _json_file(path):
 def profile_data(pid: int, request: Request, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "viewer")
     prof.sync_build(db, pid)
-    path = prof.data_path(pid)
-    if not os.path.isfile(path):
+    body = records.served(db, pid)
+    if body is None:
         if (why := prof.build_error(pid)):
             raise HTTPException(500, f"The built records couldn't be loaded ({why}). Details are in the app's log.")
         return Response(status_code=204)   # the profile exists but has no records yet
     activity.once(db, s, pid, "view", _client_ip(request))
-    return _json_file(path)
+    return Response(body, media_type="application/json")
 
 
 @app.get("/api/profiles/{pid}/export")

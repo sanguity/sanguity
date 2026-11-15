@@ -118,7 +118,7 @@ $("#logout").onclick = async () => { try { await api("logout", {method: "POST"})
     }
     const folded = new Set(["weight", "hr_avg", "hr_min", "hr_max", "sleep_h", "sleep_deep_min", "sleep_rem_min", "sleep_light_min", "sleep_awake_min", "steps"]);
     for (const m of WATCH.metrics || []) if (!folded.has(m.key)) add(m);
-    let wid = 1e7;
+    let wid = DATA.events.reduce((m, e) => Math.max(m, +e.id || 0), 1e7);   // after every record's id
     for (const x of WATCH.exercise || []) {
       const ev = {id: ++wid, t: x.start, end: x.end, k: "exercise", title: x.name.replace(/_/g, " "), sub: `${x.minutes} min`};
       ev.ts = Date.parse(ev.t); ev.te = Date.parse(ev.end); ev._q = (ev.title + " workout exercise").toLowerCase();

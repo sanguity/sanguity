@@ -1,14 +1,20 @@
-"""Per-profile data on disk: profiles/<id>/data.json and settings.json, plus the documents they link to.
+"""Loading records into a profile, and what a profile keeps on disk: profiles/<id>/settings.json, plus the
+documents its records link to.
 
-Until the import tool (Phase 2) stores records in the database, a profile's records are one built data.json, as
-before. What changes is how it is reached: only through the API, after a role check. Each document link in the
-data is replaced by a random document id; the id maps to a file under the records folder or the build folder,
-and nothing else on disk can be reached.
+A profile's records are rows in the database (records.py), each belonging to the import that brought it in. A
+data.json (what build.py, the demo and "Export everything" write) is loaded as one import: the setup build into
+the profiles linked to it, replacing the build's previous import; anything else with server.manage import,
+replacing the profile's records. They are reached only through the API, after a role check. Each document link
+is replaced by a random document id; the id maps to a file under the records folder, the build folder or the
+profile's own folder, and nothing else on disk can be reached.
+
+Before schema version 10 a profile's records were profiles/<id>/data.json; migrate_files loads such a file into
+the tables at start-up and keeps it beside them as data-before-v10.json.
 """
 import contextlib, json, os, secrets, shutil, threading
 from urllib.parse import quote
 
-from . import activity, config, crypto, db as dbm
+from . import activity, config, crypto, db as dbm, records
 
 _lock = threading.Lock()
 _failed = {}   # profile id -> (build mtime, why): a build that couldn't be loaded, so it isn't retried on every request
@@ -19,6 +25,7 @@ def profile_dir(pid):
 
 
 def data_path(pid):
+    """Where a profile's records were kept before schema version 10 (see migrate_files)."""
     return os.path.join(profile_dir(pid), "data.json")
 
 
@@ -76,29 +83,36 @@ def document_url(pid, doc, path, ext):
     return url
 
 
-def _write_json(path, obj):
-    crypto.write_file(path, json.dumps(obj, separators=(",", ":")).encode("utf-8"))
-
-
 def read_json(path):
     """A JSON file Sanguity wrote (encrypted) or was given (plaintext)."""
     return json.loads(crypto.read_file(path))
 
 
-def import_dataset(db, pid, src_dir, version=None, mirror_settings=False):
-    """Load src_dir/data.json (and settings.json, when there is one) into profile pid. With mirror_settings, a
-    missing settings.json also removes the profile's (the setup build is the only source of a linked profile's).
+def _check(data):
+    if not isinstance(data, dict) or not isinstance(data.get("events"), list) or not isinstance(data.get("details") or {}, dict) \
+            or not isinstance(data.get("labs") or [], list) or not isinstance(data.get("costs") or [], list):
+        raise ValueError("it isn't a Sanguity data file (expected an object with an \"events\" list)")
+
+
+def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin="dataset"):
+    """Load src_dir/data.json (and settings.json, when there is one) into profile pid as one import. It replaces
+    the profile's records, or with origin "build" only what the setup build brought before. With mirror_settings,
+    a missing settings.json also removes the profile's (the setup build is the only source of a linked profile's).
 
     Document ids stay the same across re-imports for the same file, so links people saved keep working.
     Returns the number of documents indexed.
     """
     data = read_json(os.path.join(src_dir, "data.json"))
-    if not isinstance(data, dict) or not isinstance(data.get("events"), list) or not isinstance(data.get("details", {}), dict):
-        raise ValueError("it isn't a Sanguity data file (expected an object with an \"events\" list)")
+    _check(data)
+    shown = {str(e.get("id")) for e in data["events"] if isinstance(e, dict)}
+    data["details"] = {k: v for k, v in (data.get("details") or {}).items() if str(k) in shown}   # what the page can open
     os.makedirs(profile_dir(pid), exist_ok=True)
-    known = {crypto.dec(r["path"]): (r["id"], r["ext"]) for r in db.execute("SELECT id, path, ext FROM documents WHERE profile_id=?", (pid,))}
     keep, n = set(), 0
     with dbm.transaction(db):
+        old = records.imports(db, pid, "build" if origin == "build" else None)
+        q = """SELECT id, path, ext FROM documents
+               WHERE profile_id=? AND (import_id IS NULL OR import_id IN (SELECT value FROM json_each(?)))"""
+        known = {crypto.dec(r["path"]): (r["id"], r["ext"]) for r in db.execute(q, (pid, json.dumps(old)))}
         for d in (data.get("details") or {}).values():
             if not isinstance(d, dict) or d.get("type") != "file":
                 continue
@@ -118,10 +132,10 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False):
             frag = d["url"].split("#", 1)[1] if "#" in d["url"] else ""
             d["url"] = document_url(pid, doc, path, ext) + ("#" + frag if frag else "")
             n += 1
-        for path, (doc, _) in known.items():
-            if doc not in keep:
-                db.execute("DELETE FROM documents WHERE id=?", (doc,))
-        _write_json(data_path(pid), data)
+        iid = records.store(db, pid, data, origin)
+        db.executemany("UPDATE documents SET import_id=? WHERE id=?", [(iid, d) for d in keep])
+        records.drop(db, pid, old)   # and, by cascade, the documents the new import no longer links to
+        db.execute("DELETE FROM documents WHERE profile_id=? AND import_id IS NULL", (pid,))
         src_settings = os.path.join(src_dir, "settings.json")
         if os.path.isfile(src_settings):
             crypto.write_file(settings_path(pid), crypto.read_file(src_settings))
@@ -153,16 +167,16 @@ def sync_build(db, pid=None):
         return {}
     q = "SELECT id, build_mtime FROM profiles WHERE linked_build=1" + (" AND id=?" if pid is not None else "")
     rows = db.execute(q, (pid,) if pid is not None else ()).fetchall()
-    stale = [r["id"] for r in rows if r["build_mtime"] != m or not os.path.isfile(data_path(r["id"]))]
+    stale = [r["id"] for r in rows if r["build_mtime"] != m or not records.imports(db, r["id"], "build")]
     with _lock if stale else contextlib.nullcontext():   # don't queue behind another profile's import for nothing
         for p in stale:
             cur = db.execute("SELECT build_mtime FROM profiles WHERE id=?", (p,)).fetchone()
-            if not cur or (cur["build_mtime"] == m and os.path.isfile(data_path(p))) or _failed.get(p, (None,))[0] == m:
+            if not cur or (cur["build_mtime"] == m and records.imports(db, p, "build")) or _failed.get(p, (None,))[0] == m:
                 continue
             # a bad build must not take the app down: the profile keeps its last good copy (if any) and the
             # problem goes to the log; the next rebuild is tried afresh
             try:
-                import_dataset(db, p, config.BUILD_DIR, m, mirror_settings=True)
+                import_dataset(db, p, config.BUILD_DIR, m, mirror_settings=True, origin="build")
                 _failed.pop(p, None)
                 activity.log(db, "reload", profile_id=p, actor=activity.SETUP_BUILD)
             except Exception as e:
@@ -178,7 +192,7 @@ def build_error(pid):
 
 
 def delete_profile(db, pid):
-    """Remove a profile: its folder (records, settings, anything imported), document index, memberships and
+    """Remove a profile: its records, its folder (settings, anything imported), document index, memberships and
     activity. The folder is moved aside first and removed only once the database change is committed, so a
     failure leaves the profile whole. Original exports and the watch receiver's data are never touched.
     Returns what was deleted: {"name", "members", "linked_build"}."""
@@ -190,7 +204,7 @@ def delete_profile(db, pid):
         os.replace(folder, aside)
     try:
         with dbm.transaction(db):
-            db.execute("DELETE FROM profiles WHERE id=?", (pid,))   # cascades: memberships, documents, activity
+            db.execute("DELETE FROM profiles WHERE id=?", (pid,))   # cascades: records, memberships, documents, activity
             if p["linked_build"]:   # don't bring it back from the build on the next start
                 dbm.meta_set(db, "build_unlinked", "1")
     except BaseException:
@@ -199,6 +213,7 @@ def delete_profile(db, pid):
         raise
     shutil.rmtree(aside, ignore_errors=True)
     _failed.pop(pid, None)
+    records.forget(pid)
     return {"name": p["name"], "members": members, "linked_build": bool(p["linked_build"])}
 
 
@@ -229,3 +244,32 @@ def bootstrap(db):
     pid = create_profile(db, "My records", linked_build=True, watch_file=config.WATCH_FILE)
     sync_build(db, pid)
     return pid
+
+
+MIGRATED = "data-before-v10.json"
+
+
+def migrate_files(db):
+    """Load each profile's data.json, where its records were kept before schema version 10, into the tables as one
+    import (the setup build's, for a linked profile, so the next rebuild replaces it), and keep the file beside
+    them as data-before-v10.json. Its document links already point at the profile's documents, which become the
+    import's. Returns the number of profiles loaded."""
+    n = 0
+    for r in db.execute("SELECT id, linked_build FROM profiles ORDER BY id").fetchall():
+        pid, path = r["id"], data_path(r["id"])
+        if not os.path.isfile(path):
+            continue
+        if not records.imports(db, pid):   # else loaded already, by a start that stopped before moving the file
+            try:
+                data = read_json(path)
+                _check(data)
+            except Exception as e:   # left where it is, for someone to look at; the app still starts
+                print(f"Couldn't move profile {pid}'s records into the database ({type(e).__name__}: {e}); "
+                      f"{path} is left as it was.", flush=True)
+                continue
+            with dbm.transaction(db):
+                iid = records.store(db, pid, data, "build" if r["linked_build"] else "dataset")
+                db.execute("UPDATE documents SET import_id=? WHERE profile_id=? AND import_id IS NULL", (iid, pid))
+            n += 1
+        os.replace(path, os.path.join(profile_dir(pid), MIGRATED))
+    return n

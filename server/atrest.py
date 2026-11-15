@@ -16,7 +16,9 @@ def _files():
                     yield os.path.join(root, n)
 
 
-FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "id", "totp_secret"), ("users", "id", "totp_pending"))
+FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "id", "totp_secret"), ("users", "id", "totp_pending"),
+          ("imports", "id", "meta"), ("events", "id", "body"), ("events", "id", "detail"), ("events", "id", "cost"),
+          ("series", "id", "body"), ("results", "id", "body"))
 
 
 def anything_encrypted(db):

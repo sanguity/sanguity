@@ -172,7 +172,7 @@ def main():
             check("drawer closes on Escape", not js("document.getElementById('drawer').classList.contains('open')"))
 
             # ---- an HTML record shows in the drawer with the stylesheet and picture saved beside it, scripts off
-            js(f"openEvent(byId.get({HTML_RECORD}))")
+            js("openEvent(DATA.events.find(e => e.title === 'Visit summary (HTM)'))")   # ids are the database's
             page.wait_for_function("""(() => { const f = document.querySelector('#dbody iframe.doc'), d = f && f.contentDocument;
                 return d && d.getElementById('i') && d.getElementById('i').complete && d.readyState === 'complete'; })()""", timeout=10000)
             settle(300)

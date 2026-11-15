@@ -127,6 +127,49 @@ SCHEMA = [
     """
     ALTER TABLE sessions ADD COLUMN verified_at INTEGER;
     """,
+    # version 10: records as rows instead of one data.json per profile (records.py). Each row belongs to a profile
+    # and to the import that brought it in, so an import can be replaced or undone as a unit. What the rows hold
+    # is health information, so it is encrypted (crypto.enc): only ids and the links between rows are plain.
+    # Each profile's existing data.json is loaded into these tables at the next start (records.migrate_files).
+    """
+    CREATE TABLE imports(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        at INTEGER NOT NULL,
+        origin TEXT NOT NULL,                      -- build: the setup build; dataset: a data.json folder or an
+                                                   -- export zip (server.manage import)
+        format TEXT NOT NULL,                      -- the reader that produced it ("sanguity-data": a data.json)
+        meta TEXT);                                -- JSON: when it was built, its source, and the profile-wide
+                                                   -- lists it brought (upcoming visits, problems, payments...)
+    CREATE INDEX imports_profile ON imports(profile_id);
+    CREATE TABLE events(                           -- a visit, stay, document, claim, lab draw, message...
+        id INTEGER PRIMARY KEY,                    -- the id the page sees
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        import_id INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,                        -- JSON: the event as the page reads it, without its id
+        detail TEXT,                               -- JSON: what the drawer shows for it
+        cost TEXT,                                 -- JSON: its row on the Costs tab (claims)
+        cost_seq INTEGER);                         -- where that row came in the import's list of costs
+    CREATE INDEX events_profile ON events(profile_id);
+    CREATE INDEX events_import ON events(import_id);
+    CREATE TABLE series(                           -- a lab or metric across time
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        import_id INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE,
+        body TEXT NOT NULL);                       -- JSON: name, unit, panel, LOINC code, text results
+    CREATE INDEX series_profile ON series(profile_id);
+    CREATE INDEX series_import ON series(import_id);
+    CREATE TABLE results(                          -- one value of a series
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        import_id INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE,
+        series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+        body TEXT NOT NULL);                       -- JSON: [time, value, low, high, flag, as reported, source]
+    CREATE INDEX results_series ON results(series_id);
+    CREATE INDEX results_import ON results(import_id);
+    ALTER TABLE documents ADD COLUMN import_id INTEGER REFERENCES imports(id) ON DELETE CASCADE;
+    ALTER TABLE profiles ADD COLUMN records_rev INTEGER NOT NULL DEFAULT 0;   -- bumped by every change to its records
+    """,
 ]
 
 

@@ -5,7 +5,7 @@ FROM python:3.12-alpine
 WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 # Prebuilt packages exist for x86-64 and 64-bit ARM. Where one is missing (32-bit ARM, e.g. a Raspberry Pi on a
-# 32-bit OS), cffi, argon2, pycryptodome and cryptography (for passkeys; it needs Rust, so this takes a while) are
+# 32-bit OS), cffi, argon2 and cryptography (encryption at rest and passkeys; it needs Rust, so this takes a while) are
 # compiled: the compilers are installed only for that and removed again.
 RUN pip install --no-cache-dir --disable-pip-version-check --require-hashes -r /app/requirements.txt \
  || (apk add --no-cache --virtual .build-deps gcc musl-dev libffi-dev openssl-dev cargo \
