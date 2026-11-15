@@ -37,6 +37,7 @@
           <entry>
             <encounter classCode="ENC" moodCode="EVN">
               <templateId root="2.16.840.1.113883.10.20.22.4.49" extension="2015-08-01"/>
+              <id root="2.16.840.1.113883.19.5.99999.10" extension="ENC-1001"/>
               <code code="AMB" codeSystem="2.16.840.1.113883.5.4" displayName="Ambulatory"/>
               <effectiveTime><low value="20260302091500-0500"/><high value="20260302094500-0500"/></effectiveTime>
               <performer><assignedEntity><assignedPerson><name><prefix>Dr.</prefix><given>Casey</given><family>Fairweather</family></name></assignedPerson></assignedEntity></performer>
@@ -79,6 +80,7 @@
           <entry typeCode="DRIV">
             <organizer classCode="BATTERY" moodCode="EVN">
               <templateId root="2.16.840.1.113883.10.20.22.4.1" extension="2015-08-01"/>
+              <id root="2.16.840.1.113883.19.5.99999.20" extension="LAB-2001"/>
               <code code="58410-2" codeSystem="2.16.840.1.113883.6.1" displayName="CBC panel - Blood by Automated count"/>
               <statusCode code="completed"/>
               <effectiveTime><low value="20260302081000-0500"/></effectiveTime>
@@ -205,6 +207,7 @@
           <entry>
             <substanceAdministration classCode="SBADM" moodCode="INT">
               <templateId root="2.16.840.1.113883.10.20.22.4.16" extension="2014-06-09"/>
+              <id root="2.16.840.1.113883.19.5.99999.30" extension="MED-3001"/>
               <text><reference value="#sig-lis"/></text>
               <statusCode code="active"/>
               <effectiveTime xsi:type="IVL_TS"><low value="20250115"/></effectiveTime>
@@ -247,6 +250,7 @@
           <entry>
             <act classCode="ACT" moodCode="EVN">
               <templateId root="2.16.840.1.113883.10.20.22.4.3" extension="2015-08-01"/>
+              <id root="2.16.840.1.113883.19.5.99999.40" extension="PRB-4001"/>
               <code code="CONC" codeSystem="2.16.840.1.113883.5.6"/>
               <statusCode code="active"/>
               <effectiveTime><low value="20250115"/></effectiveTime>

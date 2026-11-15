@@ -10,6 +10,7 @@ Standard library only. Documents that declare a DOCTYPE or ENTITY are refused be
 (billion laughs) and external entities can't happen.
 """
 import collections
+import hashlib
 import re
 import xml.etree.ElementTree as ET
 from datetime import date
@@ -152,6 +153,21 @@ def _num(s):
     return float(m.group(2)) if m else None
 
 
+def _idkey(el):
+    """Source key from an entry's first usable <id>: "ccda:<root>^<extension>" (or "ccda:<root>"); None without one."""
+    for i in _all(el, "h:id"):
+        root, ext = (i.get("root") or "").strip(), (i.get("extension") or "").strip()
+        if root and not i.get("nullFlavor"):
+            return f"ccda:{root}^{ext}" if ext else f"ccda:{root}"
+    return None
+
+
+def _hkey(*fields):
+    """Source key for an entry without an id: a hash of its normalised identifying fields (never of input order)."""
+    norm = "\x1f".join(" ".join(str(f if f is not None else "").split()).lower() for f in fields)
+    return "ccda:h:" + hashlib.sha256(norm.encode("utf-8")).hexdigest()[:16]
+
+
 def _clean(x):
     return int(x) if isinstance(x, float) and x.is_integer() and abs(x) < 1e15 else x
 
@@ -220,12 +236,26 @@ class _Out:
         self.labs, self.panel_votes = {}, collections.defaultdict(collections.Counter)
         self.problems, self.weights, self.warnings = [], {}, []
         self.seen_visits, self.seen_meds, self.seen_problems, self.seen_results = set(), set(), set(), set()
+        self.keys = set()
 
-    def add(self, t, kind, title, sub="", detail=None, end=None, **extra):   # same as build.py's add()
+    def unique(self, key, *fields):
+        """`key`, or (when another record already holds it) a content hash; a numbered suffix only for identical content."""
+        if key in self.keys:
+            key = _hkey(*fields)
+        base, n = key, 1
+        while key in self.keys:
+            n += 1
+            key = f"{base}:{n}"
+        self.keys.add(key)
+        return key
+
+    def add(self, t, kind, title, sub="", detail=None, end=None, key=None, **extra):   # build.py's add(), plus a source key
         if not t:
             return None
         self.eid += 1
         e = {"id": self.eid, "t": t, "k": kind, "title": title, "sub": sub}
+        if key:
+            e["key"] = self.unique(key, t, kind, title, sub)
         if end:
             e["end"] = end
         e.update({k: v for k, v in extra.items() if v not in (None, "", [])})
@@ -234,16 +264,25 @@ class _Out:
         self.events.append(e)
         return self.eid
 
-    def series(self, name, unit, loinc=None):
-        s = self.labs.get(name)
+    def series(self, name, unit, loinc=None, code=None):
+        """The series for a test; `code` is (code system OID, code) when the code isn't LOINC."""
+        s, split = self.labs.get(name), False
         if s is not None and unit and s["unit"] and s["unit"].replace(" ", "").lower() != unit.replace(" ", "").lower():
-            name = f"{name} ({unit})"        # same test reported in another unit: its own series, never mixed
+            name, split = f"{name} ({unit})", True   # same test reported in another unit: its own series, never mixed
             s = self.labs.get(name)
         if s is None:
-            s = self.labs[name] = {"unit": unit or "", "pts": [], "txt": [], "loinc": loinc}
+            s = self.labs[name] = {"unit": unit or "", "pts": [], "txt": [], "loinc": loinc, "code": code, "split": split}
         if loinc and not s["loinc"]:
             s["loinc"] = loinc
+        if code and not s["code"]:
+            s["code"] = code
         return name, s
+
+    @staticmethod
+    def series_key(s):
+        """"loinc:<code>", else "ccda:<code system>|<code>"; a series split off by unit adds "|<unit>" to stay unique."""
+        k = f"loinc:{s['loinc']}" if s["loinc"] else f"ccda:{s['code'][0]}|{s['code'][1]}" if s["code"] else None
+        return f"{k}|{s['unit']}" if k and s["split"] else k
 
 
 def _value(obs):
@@ -318,6 +357,8 @@ def _results(doc, out):
                 code = _f(obs, "h:code")
                 name = doc.name(code) or "?"
                 loinc = code.get("code") if code is not None and code.get("codeSystem") == "2.16.840.1.113883.6.1" else None
+                other = (code.get("codeSystem"), code.get("code")) if code is not None and not loinc \
+                    and code.get("codeSystem") and code.get("code") else None
                 t = _when(obs) or t_org
                 x, raw, unit = _value(obs)
                 lo, hi, rng = _range(doc, obs)
@@ -335,7 +376,7 @@ def _results(doc, out):
                 t_first = min(t_first or t, t)
                 abn += bool(flag)
                 rows.append([name, raw, unit, rng, flag])
-                sname, s = out.series(name, unit, loinc)
+                sname, s = out.series(name, unit, loinc, other)
                 out.panel_votes[sname][panel] += 1
                 if x is not None:
                     s["pts"].append([t, _clean(x), _clean(lo), _clean(hi), flag if flag in ("H", "L") else "", raw, doc.src])
@@ -351,14 +392,19 @@ def _results(doc, out):
                    "lab": doc.org or None, "dx": [], "rows": rows, "report": [], "comments": []}
             sub = " · ".join(x for x in [performer, status, doc.org] if x)
             day = days[t_first[:10]]
-            day["ids"].append(out.add(t_first, "labitem", panel, sub, det, abn=abn or None, hidden=1))
+            # the organizer is the labitem here (one event per panel), so its id is the key
+            pcode = _f(org, "h:code")
+            key = _idkey(org) or _hkey(t_first, "labitem", (pcode.get("code") if pcode is not None else None) or panel,
+                                       *("|".join(r[:3]) for r in rows))
+            day["ids"].append(out.add(t_first, "labitem", panel, sub, det, key=key, abn=abn or None, hidden=1))
             day["abn"] += abn
             day["n"] += 1
             day["orders"].add(panel)
     for d, day in days.items():     # one visible "lab draw" event per day, linking to that day's results
         first = min((e for e in out.events if e["id"] in day["ids"]), key=lambda e: e["t"])
         out.add(first["t"], "lab", f"{day['n']} lab result{'s' if day['n'] != 1 else ''}" + (f" · {doc.org}" if doc.org else ""),
-                ", ".join(sorted(day["orders"]))[:160], {"type": "labday", "ids": day["ids"]}, abn=day["abn"] or None, src=doc.src)
+                ", ".join(sorted(day["orders"]))[:160], {"type": "labday", "ids": day["ids"]}, abn=day["abn"] or None, src=doc.src,
+                key=_hkey(d, "lab", doc.src, *sorted(e["key"] for e in out.events if e["id"] in day["ids"])))
 
 
 def _vitals(doc, out):
@@ -432,7 +478,8 @@ def _meds(doc, out):
                 det["end"] = end
             if code is not None and code.get("codeSystem") == "2.16.840.1.113883.6.88" and code.get("code"):
                 det["rxnorm"] = code.get("code")
-            out.add(t, "med", name, " · ".join(x for x in [instr, status] if x), det)
+            out.add(t, "med", name, " · ".join(x for x in [instr, status] if x), det,
+                    key=_idkey(sa) or _hkey(t, "med", det.get("rxnorm") or name, instr))
     if skipped:
         out.warnings.append(f"{doc.rel}: skipped {skipped} medication{'s' if skipped != 1 else ''} with no start date.")
 
@@ -473,6 +520,8 @@ def _problems(doc, out):
         key = (name.lower(), p["date"])
         if key not in out.seen_problems:
             out.seen_problems.add(key)
+            p["key"] = out.unique(_idkey(act) or _hkey(p["date"], "problem", p.get("code") or name),
+                                  p["date"], "problem", p.get("code") or name, status)
             out.problems.append(p)
 
 
@@ -494,6 +543,9 @@ def _allergies(doc, out):
         key = (p["name"].lower(), p["date"])
         if key not in out.seen_problems:
             out.seen_problems.add(key)
+            agent_code = agent.get("code") if agent is not None else None
+            p["key"] = out.unique(_idkey(act) or _hkey(p["date"], "allergy", agent_code or name),
+                                  p["date"], "allergy", agent_code or name, p["name"])
             out.problems.append(p)
 
 
@@ -521,16 +573,17 @@ def _visit(doc, out, enc):
         return
     out.seen_visits.add(key)
     end = end if end and end > t else None
+    key = _idkey(enc) or _hkey(t, "visit", (code.get("code") if code is not None else None) or vtype, where)
     if vtype == "Hospital admission":
         nights = (date.fromisoformat(end[:10]) - date.fromisoformat(t[:10])).days if end else 0
         out.add(t, "stay", "Hospital stay" + (f" · {doc.org}" if doc.org else ""),
                 f"{where} · {nights} night{'s' if nights != 1 else ''}" if nights else f"{where} · same day",
                 {"type": "stay", "admit": t, "discharge": end or t, "where": where, "how": "C-CDA encounter"},
-                end=end or t[:10] + "T23:59:00")
+                end=end or t[:10] + "T23:59:00", key=key + ":stay")     # the stay comes from the same encounter
     det = {"type": "visit", "who": who, "where": where, "dx": dx, "src": doc.src, "procs": []}
     if raw_type and raw_type != vtype and raw_type not in VISIT_TITLES:
         det["note"] = f"Recorded as: {raw_type}"
-    out.add(t, "visit", vtype, " · ".join(x for x in [who, where, doc.org] if x), det, end=end)
+    out.add(t, "visit", vtype, " · ".join(x for x in [who, where, doc.org] if x), det, end=end, key=key)
 
 
 def _visits(doc, out):
@@ -571,8 +624,13 @@ def parse(files):
         pts = sorted(s["pts"], key=lambda p: p[0])
         votes = out.panel_votes[name]
         series.append({"name": name, "unit": s["unit"], "panel": votes.most_common(1)[0][0] if votes else "",
-                       **({"loinc": s["loinc"]} if s["loinc"] else {}), "n": len(pts), "pts": pts,
+                       **({"loinc": s["loinc"]} if s["loinc"] else {}),
+                       **({"key": _Out.series_key(s)} if _Out.series_key(s) else {}), "n": len(pts), "pts": pts,
                        "txt": sorted(s["txt"])[-50:]})
+    shared = collections.Counter(s.get("key") for s in series)
+    for s in series:        # two reported names with one code ("Hemoglobin", "HGB"): each keeps its own key
+        if s.get("key") and shared[s["key"]] > 1:
+            s["key"] += "|" + s["name"]
     series.sort(key=lambda s: (-s["n"], s["name"]))
     out.events.sort(key=lambda e: e["t"])
     if not (out.events or series or out.problems or out.weights):

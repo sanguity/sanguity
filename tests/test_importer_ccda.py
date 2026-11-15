@@ -71,7 +71,7 @@ class Parse(unittest.TestCase):
         self.assertEqual([e["t"] for e in self.d["events"]], sorted(e["t"] for e in self.d["events"]))
         for e in self.d["events"]:
             self.assertLessEqual({"id", "t", "k", "title", "sub"}, set(e))
-            self.assertLessEqual(set(e), {"id", "t", "k", "title", "sub", "end", "abn", "hidden", "src"})
+            self.assertLessEqual(set(e), {"id", "t", "k", "title", "sub", "end", "abn", "hidden", "src", "key"})
             self.assertRegex(e["t"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
         self.assertLessEqual(set(self.d["details"]), set(ids))
 
@@ -151,7 +151,8 @@ class Parse(unittest.TestCase):
 
     def test_problems(self):
         probs = {p["name"]: p for p in self.d["problems"]}
-        htn = probs["Essential hypertension"]
+        htn = dict(probs["Essential hypertension"])
+        self.assertEqual(htn.pop("key"), "ccda:2.16.840.1.113883.19.5.99999.40^PRB-4001")
         self.assertEqual(htn, {"name": "Essential hypertension", "type": "Problem", "date": "2025-01-15", "status": "Active",
                                "src": "Maple Grove Clinic", "code": "38341003", "system": "SNOMED CT"})
         ida = probs["Iron deficiency anemia, unspecified"]
@@ -179,6 +180,75 @@ class Parse(unittest.TestCase):
         r = ccda.parse({"a.xml": os.path.join(FIX, "maple-grove-ccd.xml"), "b/a.xml": os.path.join(FIX, "maple-grove-ccd.xml")})
         self.assertEqual(len(r["data"]["events"]), len(ccda.parse(files("maple-grove-ccd.xml"))["data"]["events"]))
         self.assertEqual({s["name"]: s["n"] for s in r["data"]["labs"]}["Hemoglobin"], 2)
+
+
+class Keys(unittest.TestCase):
+    """Stable source keys: the same file gives the same keys, and no two records share one."""
+    BOTH = ("maple-grove-ccd.xml", "riverbend-visit.xml")
+
+    @staticmethod
+    def keys(r):
+        d = r["data"]
+        return ([(e["k"], e["title"], e["t"], e.get("key")) for e in d["events"]], [(p["name"], p.get("key")) for p in d["problems"]],
+                [(s["name"], s.get("key")) for s in d["labs"]])
+
+    def test_stable_across_parses_and_input_order(self):
+        a = ccda.parse(files(*self.BOTH))
+        b = ccda.parse(files(*self.BOTH))
+        self.assertEqual(self.keys(a), self.keys(b))
+        tmp = tempfile.mkdtemp()     # same documents under other names and in the other order: same keys per record
+        self.addCleanup(shutil.rmtree, tmp)
+        swapped = {}
+        for i, n in enumerate(reversed(self.BOTH)):
+            shutil.copy(os.path.join(FIX, n), os.path.join(tmp, f"{i}.xml"))
+            swapped[f"{i}.xml"] = os.path.join(tmp, f"{i}.xml")
+        c = ccda.parse(swapped)
+        by = lambda r: {(e["k"], e["t"], e["title"]): e["key"] for e in r["data"]["events"]}
+        self.assertEqual(by(a), by(c))
+
+    def test_every_record_keyed_and_unique(self):
+        d = ccda.parse(files(*self.BOTH))["data"]
+        keys = [e["key"] for e in d["events"]] + [p["key"] for p in d["problems"]]
+        self.assertTrue(all(isinstance(k, str) and k.startswith("ccda:") for k in keys))
+        self.assertEqual(len(keys), len(set(keys)))
+        series = [s["key"] for s in d["labs"] if "key" in s]
+        self.assertEqual(len(series), len(set(series)))
+        for s in d["labs"]:
+            for p in s["pts"]:
+                self.assertEqual(len(p), 7)       # points stay positional, no key
+
+    def test_key_forms(self):
+        d = ccda.parse(files("maple-grove-ccd.xml"))["data"]
+        ev = {(e["k"], e["title"], e["t"][:10]): e["key"] for e in d["events"]}
+        self.assertEqual(ev[("visit", "Outpatient visit", "2026-03-02")], "ccda:2.16.840.1.113883.19.5.99999.10^ENC-1001")
+        self.assertEqual(ev[("labitem", "CBC panel - Blood by Automated count", "2026-03-02")], "ccda:2.16.840.1.113883.19.5.99999.20^LAB-2001")
+        self.assertEqual(ev[("med", "Lisinopril 10 MG Oral Tablet", "2025-01-15")], "ccda:2.16.840.1.113883.19.5.99999.30^MED-3001")
+        self.assertRegex(ev[("med", "Amoxicillin 500 MG Oral Capsule", "2026-04-10")], r"^ccda:h:[0-9a-f]{16}$")   # no id: hashed
+        self.assertRegex(ev[("visit", "Hospital admission", "2026-04-10")], r"^ccda:h:[0-9a-f]{16}$")
+        self.assertEqual(ev[("stay", "Hospital stay · Maple Grove Clinic", "2026-04-10")], ev[("visit", "Hospital admission", "2026-04-10")] + ":stay")
+        labs = {s["name"]: s.get("key") for s in d["labs"]}
+        self.assertEqual(labs["Hemoglobin"], "loinc:718-7")
+        self.assertEqual(labs["Height"], "loinc:8302-2")
+
+    def test_reused_id_and_shared_code(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(FIX, "maple-grove-ccd.xml"), encoding="utf-8") as f:
+            s = f.read()
+        # a portal that reuses one id for every medication, and sends hemoglobin under a second name, with a local code
+        s = s.replace('<templateId root="2.16.840.1.113883.10.20.22.4.16" extension="2014-06-09"/>',
+                      '<templateId root="2.16.840.1.113883.10.20.22.4.16" extension="2014-06-09"/><id root="1.2.3" extension="X"/>')
+        s = s.replace('displayName="Hemoglobin"/>', 'displayName="HGB"/>').replace(
+            '<code code="5778-6" codeSystem="2.16.840.1.113883.6.1"', '<code code="UCOLOR" codeSystem="1.2.3.4.99"')
+        p = os.path.join(tmp, "x.xml")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(s)
+        d = ccda.parse({"x.xml": p})["data"]
+        meds = [e["key"] for e in d["events"] if e["k"] == "med"]
+        self.assertEqual(len(meds), len(set(meds)))
+        labs = {x["name"]: x.get("key") for x in d["labs"]}
+        self.assertEqual({labs["Hemoglobin"], labs["HGB"]}, {"loinc:718-7|Hemoglobin", "loinc:718-7|HGB"})
+        self.assertEqual(labs["Color of Urine"], "ccda:1.2.3.4.99|UCOLOR")
 
 
 class Refuse(unittest.TestCase):
