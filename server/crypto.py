@@ -1,15 +1,18 @@
 """Encryption at rest: AES-256-GCM with keys from a key file kept apart from the data.
 
 What it covers: every file Sanguity writes under DATA_DIR (each profile's records and settings, imported documents,
-the setup build) and the database fields that hold health details or secrets (document file names, activity
-details, two-factor secrets). So a copied data folder or a backup is unreadable without the key. Not covered:
-usernames and profile names (identity, needed for sign-in and sorting), the original exports in RECORDS_DIR (your
-own files, only read), downloads from "Export everything" (portable on purpose), and the watch receiver's data.
-For a stolen disk, also use the platform's disk encryption (ZFS, LUKS, FileVault, BitLocker).
+the setup build), the database fields that hold health details or secrets (document file names, activity
+details, two-factor secrets), and everything the watch receiver writes under WATCH_DIR (its archive of uploads,
+its database, kept in memory and saved as a sealed snapshot, and the daily.json the app reads; see
+watch/receiver.py). So a copied data folder or a backup is unreadable without the key. Not covered: usernames and
+profile names (identity, needed for sign-in and sorting), the original exports in RECORDS_DIR (your own files,
+only read), and downloads from "Export everything" (portable on purpose). For a stolen disk, also use the
+platform's disk encryption (ZFS, LUKS, FileVault, BitLocker).
 
 The key file (SANGUITY_KEY_FILE, default auth/data_key, made on first start) holds one base64 key per line. The
 first line encrypts; any line decrypts what was written with it, so a key can be rotated: add a new first line
-(setup new-key), restart the app (start-up re-encrypts everything with it), then drop the old line.
+(setup new-key), restart the app and the receiver (each re-encrypts its files with it as it starts), then drop
+the old line.
 server.manage reencrypt does the same with the app stopped.
 
 Formats (both carry the id of the key that wrote them, so the right line is used):

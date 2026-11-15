@@ -22,6 +22,8 @@
 #   --port N               web port; the watch receiver gets N+1 (default: 8740)
 #   --records DIR          folder holding your record exports (read-only); without it the demo data is used
 #   --watch-public DIR     a real install's watch summary folder (WATCH_DIR/public) to show, read-only
+#   --watch-key FILE       that install's key file (auth/data_key): the summary is encrypted with it. Added after
+#                          the test copy's own key in its key file, so it is used only to read the summary
 #   --puid N --pgid N      user and group the containers run as; use the owner of --records (default: 568:568)
 #   --tz ZONE              time zone (default: this machine's)
 #   --public-origin URL    an HTTPS address in front of it (e.g. tailscale serve), for passkeys and the CSRF check
@@ -33,7 +35,7 @@
 set -euo pipefail
 
 REPO=https://github.com/sanguity/sanguity
-DIR="" BRANCH=main NAME=sanguity-dev PORT=8740 RECORDS="" WATCH_PUBLIC="" PUID=568 PGID=568 ACTION=up MODE="" ORIGIN=""
+DIR="" BRANCH=main NAME=sanguity-dev PORT=8740 RECORDS="" WATCH_PUBLIC="" WATCH_KEY="" PUID=568 PGID=568 ACTION=up MODE="" ORIGIN=""
 TZONE=$(cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -43,6 +45,7 @@ while [ $# -gt 0 ]; do
     --port) PORT=$2; shift ;;
     --records) RECORDS=$2; shift ;;
     --watch-public) WATCH_PUBLIC=$2; shift ;;
+    --watch-key) WATCH_KEY=$2; shift ;;
     --puid) PUID=$2; shift ;;
     --pgid) PGID=$2; shift ;;
     --tz) TZONE=$2; shift ;;
@@ -52,7 +55,7 @@ while [ $# -gt 0 ]; do
     --logs) ACTION=logs ;;
     --reset) ACTION=reset ;;
     --remove) ACTION=remove ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
   shift
@@ -63,6 +66,7 @@ for p in "$RECORDS" "$WATCH_PUBLIC"; do
   [ -z "$p" ] || [ -d "$p" ] || { echo "No such folder: $p" >&2; exit 2; }
   case "$p" in "$DIR"/*) echo "Keep $p outside --dir." >&2; exit 2 ;; esac
 done
+[ -z "$WATCH_KEY" ] || [ -r "$WATCH_KEY" ] || { echo "Can't read $WATCH_KEY (run as root, or as its owner)." >&2; exit 2; }
 if [ -z "$MODE" ]; then
   if docker info >/dev/null 2>&1; then MODE=compose
   elif command -v midclt >/dev/null; then MODE=app
@@ -95,6 +99,17 @@ case "$ACTION" in
 esac
 
 mkdir -p "$DIR/data" "$DIR/backups" "$DIR/watch" "$DIR/auth" "$DIR/config" "$DIR/records"
+if [ -n "$WATCH_KEY" ]; then   # read the real install's (encrypted) watch summary: its keys after this copy's own
+  KEY="$DIR/auth/data_key"
+  if [ ! -s "$KEY" ]; then
+    { echo "# The test copy's encryption key (the first line encrypts). Lines after it come from --watch-key and"
+      echo "# are only used to read the real install's watch summary."
+      python3 -c 'import base64, os; print(base64.b64encode(os.urandom(32)).decode())'; } > "$KEY"
+  fi
+  grep -v '^#' "$WATCH_KEY" | grep . | while read -r line; do grep -qxF "$line" "$KEY" || echo "$line" >> "$KEY"; done
+  chmod 600 "$KEY"
+  chown "$PUID:$PGID" "$KEY" 2>/dev/null || echo "Note: couldn't hand $KEY to $PUID:$PGID; the app must be able to read it." >&2
+fi
 
 # ---- code: the branch's latest commit (git if this machine has it, otherwise GitHub's archive)
 if command -v git >/dev/null; then

@@ -147,7 +147,7 @@ Health records are worth more than uptime: keep copies off this machine.
 |---|---|---|
 | Accounts, profiles, records as loaded | `DATA_DIR` (default `./data`) | `docker compose exec app python -m server.manage backup` writes one checked archive to `BACKUP_DIR` (default `./backups`), safe while the app runs; `--keep 14` keeps the newest 14 |
 | Your original exports | `RECORDS_DIR` | copy them; Sanguity only reads them |
-| Watch and scale data | `WATCH_DIR` | `watch.db` plus `raw/`, the receiver's archive of every upload (`receiver.py --reprocess` rebuilds the database from it) |
+| Watch and scale data | `WATCH_DIR` | `watch.db` plus `raw/`, the receiver's archive of every upload (`receiver.py --reprocess` rebuilds the database from it); encrypted, so they need `auth/data_key` too |
 | Secrets and configuration | `auth/`, `.env`, `sources.json`, `corrections.json`, `settings.json` | copy them; keep `auth/data_key` somewhere other than the backups (see below) |
 
 Run the backup every night, for example from cron on the host (on TrueNAS: **System > Advanced > Cron Jobs**):
@@ -175,14 +175,17 @@ A restore checks the backup opens with the key before replacing anything.
 
 The setup service makes a key on first start, `auth/data_key`, and the app encrypts with it everything it keeps in
 `DATA_DIR`: each profile's records and settings, its documents, the setup build, and the database fields that hold
-document names, activity details and two-factor secrets. An existing install is encrypted on its first start after
-updating. The key is mounted read-only into the app and is never in `DATA_DIR` or a backup.
+document names, activity details and two-factor secrets. The watch receiver encrypts what it keeps in `WATCH_DIR`
+with the same key: its archive of uploads (`raw/`), its database (`watch.db`, a sealed snapshot of the copy it keeps
+in memory) and the daily summary the app shows. An existing install is encrypted on its first start after
+updating. The key is mounted read-only into the app and the receiver, and is never in `DATA_DIR`, `WATCH_DIR` or a
+backup.
 
 - **Back up the key file on its own** (a password manager, a USB stick in a drawer). Without it the data and every
   backup are unreadable, and nobody can recover them. With it, a stolen backup is as readable as without encryption,
   so keep the two apart.
 - **Not covered:** account and profile names; your original exports in `RECORDS_DIR` (only read, never copied in
-  plaintext); downloads from **Export everything** (portable on purpose); the watch receiver's data in `WATCH_DIR`.
+  plaintext); downloads from **Export everything** (portable on purpose).
 - **For a stolen disk or server,** also encrypt the disk, which covers those too: an encrypted ZFS dataset (TrueNAS),
   LUKS (Linux), FileVault (macOS) or BitLocker (Windows). The key file sits in the Sanguity folder, so on a disk that
   isn't encrypted it is next to the data.
@@ -190,10 +193,10 @@ updating. The key is mounted read-only into the app and is never in `DATA_DIR` o
 
   ```sh
   docker compose run --rm setup python3 -I /app/docker/setup.py new-key   # adds a new first line to auth/data_key
-  docker compose restart app   # re-encrypts everything with the new key as it starts
+  docker compose restart app receiver   # each re-encrypts its files with the new key as it starts
   ```
 
-  When `docker compose logs app` shows it has started, delete the old (second) line from `auth/data_key`. Backups made before then still need the old key.
+  When `docker compose logs app receiver` shows both have started, delete the old (second) line from `auth/data_key`. Backups made before then still need the old key.
 
 ## Testing a branch beside your real install
 
@@ -205,10 +208,11 @@ exports and watch summary can be shown read-only, or it uses the demo data.
 curl -fsSLO https://raw.githubusercontent.com/sanguity/sanguity/main/docker/dev-stack.sh
 sudo bash dev-stack.sh --dir /mnt/POOL/apps/sanguity-dev                       # main, demo data
 sudo bash dev-stack.sh --dir /mnt/POOL/apps/sanguity-dev --branch my-feature   # switch to a branch (also: update)
-sudo bash dev-stack.sh --dir /mnt/POOL/apps/sanguity-dev --records /path/to/exports     --watch-public /path/to/watch-data/public --puid UID --pgid GID              # your data, read-only
+sudo bash dev-stack.sh --dir /mnt/POOL/apps/sanguity-dev --records /path/to/exports     --watch-public /path/to/watch-data/public --watch-key /path/to/auth/data_key --puid UID --pgid GID   # your data, read-only
 ```
 
-With `--records`, put your `sources.json` (and `corrections.json` / `settings.json` if you use them) in the
+`--watch-key` is the real install's key file: the watch summary is encrypted with it, so the test copy adds it to
+its own key file, after its own key, only to read the summary. With `--records`, put your `sources.json` (and `corrections.json` / `settings.json` if you use them) in the
 test copy's `config/` folder. `--down` stops it, `--logs` follows its logs, `--reset` starts it over; `--help`
 lists everything.
 

@@ -106,7 +106,8 @@ def build_data():
         print("Moved your existing www/data.json into the app's data folder. You can delete www/data.json.")
     elif not os.path.exists(data) or is_demo(data):
         # demo: regenerated on each start so its dates stay current; real watch data is never overwritten
-        watch_args = [] if os.path.exists(os.path.join(WATCH, "watch.db")) else ["--watch", os.path.join(WATCH, "public")]
+        real_watch = any(os.path.exists(os.path.join(WATCH, n)) for n in ("watch.db", "raw"))
+        watch_args = [] if real_watch else ["--watch", os.path.join(WATCH, "public")]
         run([sys.executable, "-I", os.path.join(APP, "demo", "generate.py"), BUILD, *watch_args])
         print("No sources.json found: showing the fictional demo data. See sources.example.json to use your own records.")
     else:
@@ -122,7 +123,10 @@ def build_data():
     seal_build()
     own_tree(BUILD)
     for n in os.listdir(os.path.join(WATCH, "public")):
-        own(os.path.join(WATCH, "public", n))
+        p = os.path.join(WATCH, "public", n)
+        if n == "daily.json" and not crypto.file_is_encrypted(p):   # the demo's, written in plaintext
+            crypto.write_file(p, crypto.read_file(p))
+        own(p)
 
 
 if __name__ == "__main__":

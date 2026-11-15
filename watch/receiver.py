@@ -3,18 +3,31 @@
 
 - Verifies X-Signature (HMAC-SHA256 of the raw body) with the secret in $SECRET_FILE.
 - Archives every payload, gzipped, under $DATA/raw/YYYY/MM/DD/ (the source of truth).
-- Folds records into $DATA/watch.db (SQLite) following docs/webhook.md:
+- Folds records into an SQLite database following docs/webhook.md:
   dedupe on uuid / sequence, bucket replace-vs-combine, deletions.
 - Writes $DATA/public/daily.json (per-day summaries) for Sanguity.
 
+Encrypted at rest with the app's key ($SANGUITY_KEY_FILE, see server/crypto.py): every file here is sealed, so
+it runs on the app's image and imports server.crypto. The database is kept in memory and saved as a sealed
+snapshot, $DATA/watch.db, once uploads have been folded in; on start it is loaded back and the uploads archived
+since the last snapshot are folded in again (a crash loses nothing raw/ holds). Plaintext files from before
+encryption, and files sealed with an older key, are re-sealed with the current key on start.
+
 Run:  python3 receiver.py            (serve on :8080)
-      python3 receiver.py --reprocess (rebuild watch.db and daily.json from raw/)
-Stdlib only.
+      python3 receiver.py --reprocess (rebuild watch.db and daily.json from raw/; with the receiver stopped)
 """
 import gzip, hashlib, hmac, json, os, queue, sqlite3, sys, threading, time, traceback
-from datetime import datetime, timezone, date as Date
+from datetime import datetime, timedelta, timezone, date as Date
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+for _d in (HERE, os.path.dirname(HERE)):   # /app in the container, the repository's root otherwise
+    if os.path.isfile(os.path.join(_d, "server", "crypto.py")):
+        sys.path.insert(0, _d)
+        break
+os.environ.setdefault("SANGUITY_KEY_FILE", "/run/secrets/sanguity/data_key")
+from server import crypto   # noqa: E402  (the app's own encryption and key file)
 
 DATA = os.environ.get("DATA", "/data")
 SECRET_FILE = os.environ.get("SECRET_FILE", "/run/secret/watch_secret")
@@ -55,11 +68,68 @@ def parse_t(s):
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
+def zone(name):
+    try:
+        return ZoneInfo(name)
+    except ZoneInfoNotFoundError:
+        if name in ("UTC", "Etc/UTC"):   # a system without a time zone database (Windows without tzdata)
+            return timezone.utc
+        raise
+
+
+STAMP = "%Y%m%d%H%M%S%f"   # raw/ file names sort by this (YYYY/MM/DD/HHMMSSffffff-...)
+
+
+def raw_files():
+    """(stamp, path) of every archived upload, oldest first."""
+    top = os.path.join(DATA, "raw")
+    out = []
+    for r, _, fs in os.walk(top):
+        for f in fs:
+            if f.endswith(".json.gz"):
+                p = os.path.join(r, f)
+                out.append(("".join(os.path.relpath(p, top).split(os.sep))[:20], p))
+    return sorted(out)
+
+
+def read_raw(path):
+    return gzip.decompress(crypto.read_file(path))   # sealed, or plaintext from before encryption
+
+
+def migrate():
+    """Seal what is still plaintext, or sealed with an older key, with the current key. Returns the count."""
+    n = 0
+    db = os.path.join(DATA, "watch.db")
+    if os.path.isfile(db) and not crypto.file_is_encrypted(db):   # an SQLite file from before encryption
+        con = sqlite3.connect(db)
+        con.execute("PRAGMA journal_mode=DELETE")   # folds in and removes its -wal; an in-memory copy can't use WAL
+        image = con.serialize()
+        con.close()
+        crypto.write_file(db, image)
+        for ext in ("-wal", "-shm"):
+            if os.path.exists(db + ext):
+                os.remove(db + ext)
+        n += 1
+    paths = [p for _, p in raw_files()] + [db, os.path.join(DATA, "public", "daily.json")]
+    for p in paths:
+        if os.path.isfile(p):
+            with open(p, "rb") as f:
+                head = f.read(8)
+            if crypto.needs_resealing(head):
+                crypto.write_file(p, crypto.read_file(p))
+                n += 1
+    return n
+
+
 class Store:
+    """The database, in memory; save() writes it to `path` sealed, and a new Store loads it from there."""
     def __init__(self, path):
-        self.db = sqlite3.connect(path, check_same_thread=False)
+        self.path = path
+        self.db = sqlite3.connect(":memory:", check_same_thread=False)
+        self.loaded = os.path.isfile(path)
+        if self.loaded:
+            self.db.deserialize(crypto.read_file(path))
         self.db.executescript("""
-        PRAGMA journal_mode=WAL;
         CREATE TABLE IF NOT EXISTS processed(seq INTEGER, digest TEXT PRIMARY KEY, at TEXT);
         CREATE TABLE IF NOT EXISTS samples(type TEXT, uuid TEXT, t INTEGER, day TEXT, v REAL, v2 REAL, src TEXT,
             PRIMARY KEY(type, uuid));
@@ -80,12 +150,36 @@ class Store:
             return r[0] if r else None
         self.db.execute("INSERT OR REPLACE INTO meta VALUES(?,?)", (k, str(v)))
 
+    def save(self):
+        """Write the database to disk, sealed (atomically: a crash leaves the previous snapshot)."""
+        self.meta("saved", datetime.now(timezone.utc).strftime(STAMP))
+        self.db.commit()
+        crypto.write_file(self.path, self.db.serialize())
+
+    def catch_up(self):
+        """Fold in the uploads archived since the last snapshot (all of raw/ for a new database). Returns how many
+        were new. Those already in it are recognised by their digest and skipped."""
+        saved = self.meta("saved")
+        if self.loaded and not saved:
+            return 0   # a database from before snapshots: it was written as uploads came in, so it is current
+        since = (datetime.strptime(saved, STAMP) - timedelta(minutes=10)).strftime(STAMP) if saved else ""
+        n = 0
+        for stamp, p in raw_files():
+            if stamp < since:
+                continue
+            try:
+                body = read_raw(p)
+                n += self.ingest(json.loads(body), hashlib.sha256(body).hexdigest()) not in ("skipped", "duplicate")
+            except Exception as e:
+                log("skip", p, e)
+        return n
+
     def ingest(self, p, digest):
         if p.get("test") or p.get("source") not in ("health_connect", None):
             return "skipped"
         if self.db.execute("SELECT 1 FROM processed WHERE digest=?", (digest,)).fetchone():
             return "duplicate"
-        tz = ZoneInfo(p.get("timezone") or self.meta("tz") or DEFAULT_TZ)
+        tz = zone(p.get("timezone") or self.meta("tz") or DEFAULT_TZ)
         if p.get("timezone"):
             self.meta("tz", p["timezone"])
         day = lambda dt: dt.astimezone(tz).date().isoformat()
@@ -248,10 +342,7 @@ class Store:
     def write_summary(self):
         pub = os.path.join(DATA, "public")
         os.makedirs(pub, exist_ok=True)
-        tmp = os.path.join(pub, "daily.json.tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(self.summary(), f, separators=(",", ":"))
-        os.replace(tmp, os.path.join(pub, "daily.json"))
+        crypto.write_file(os.path.join(pub, "daily.json"), json.dumps(self.summary(), separators=(",", ":")).encode())
 
 
 def archive(body):
@@ -260,8 +351,7 @@ def archive(body):
     os.makedirs(d, exist_ok=True)
     digest = hashlib.sha256(body).hexdigest()
     path = os.path.join(d, f"{now.strftime('%H%M%S%f')}-{digest[:12]}.json.gz")
-    with gzip.open(path, "wb") as f:
-        f.write(body)
+    crypto.write_file(path, gzip.compress(body))   # still named .json.gz: gzipped, then sealed
     return digest
 
 
@@ -276,7 +366,7 @@ def worker(store):
         except queue.Empty:
             if dirty:
                 try:
-                    store.write_summary(); log("summary written")
+                    store.save(); store.write_summary(); log("summary written")
                 except Exception:
                     traceback.print_exc()
                 dirty = False
@@ -334,25 +424,32 @@ def reprocess():
         if os.path.exists(db + ext):
             os.remove(db + ext)
     store = Store(db)
-    files = sorted(os.path.join(r, f) for r, _, fs in os.walk(os.path.join(DATA, "raw")) for f in fs if f.endswith(".json.gz"))
-    for p in files:
-        with gzip.open(p, "rb") as f:
-            body = f.read()
-        try:
-            store.ingest(json.loads(body), hashlib.sha256(body).hexdigest())
-        except Exception as e:
-            log("skip", p, e)
+    n = store.catch_up()   # a new database: every upload in raw/
+    store.save()
     store.write_summary()
-    log(f"reprocessed {len(files)} payloads")
+    log(f"reprocessed {len(raw_files())} payloads ({n} with new records)")
+
+
+def load_key():
+    try:
+        crypto.keyring.load()
+    except crypto.KeyError_ as e:
+        sys.exit(f"{e} The setup service makes it (docker compose up); the receiver uses the app's key.")
 
 
 if __name__ == "__main__":
     os.makedirs(DATA, exist_ok=True)
+    load_key()
     if "--reprocess" in sys.argv:
         reprocess(); sys.exit(0)
     secret()  # fail fast when the secret is missing
+    if (n := migrate()):
+        log(f"encrypted {n} files with the current key")
     store = Store(os.path.join(DATA, "watch.db"))
-    if not os.path.exists(os.path.join(DATA, "public", "daily.json")):
+    if (n := store.catch_up()):
+        log(f"folded in {n} uploads archived since the last snapshot")
+        store.save(); store.write_summary()
+    elif not os.path.exists(os.path.join(DATA, "public", "daily.json")):
         store.write_summary()
     threading.Thread(target=worker, args=(store,), daemon=True).start()
     log(f"listening on :{PORT}")

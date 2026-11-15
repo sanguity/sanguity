@@ -90,7 +90,10 @@ services:
 
   # Health Connect webhook receiver: the phone app posts watch and scale data here
   receiver:
-    image: python:3.12-alpine
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    image: sanguity-app   # the app's image: the receiver encrypts WATCH_DIR with the app's own code and key
     user: "${PUID:-1000}:${PGID:-1000}"
     restart: unless-stopped
     depends_on:
@@ -100,6 +103,7 @@ services:
     environment:
       DATA: /data
       SECRET_FILE: /run/secrets/sanguity/watch_secret
+      SANGUITY_KEY_FILE: /run/secrets/sanguity/data_key
       TZ_DEFAULT: ${TZ:-UTC}
       PYTHONDONTWRITEBYTECODE: "1"
     ports:
@@ -110,7 +114,8 @@ services:
     volumes:
       - ${WATCH_DIR:-./watch-data}:/data
       - ./watch/receiver.py:/app/receiver.py:ro
-      - ./auth:/run/secrets/sanguity:ro
+      - ./server:/app/server:ro
+      - ./auth:/run/secrets/sanguity:ro   # watch_secret, and data_key (the encryption key)
       - /usr/share/zoneinfo:/usr/share/zoneinfo:ro
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=3)"]
