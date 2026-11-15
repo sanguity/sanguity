@@ -6,5 +6,5 @@ fastapi>=0.163
 uvicorn>=0.54
 argon2-cffi>=25.1
 segno>=1.6        # QR codes for setting up two-factor sign-in, drawn on the server (no outside requests)
-pycryptodome>=3.20   # AES-256-GCM for encryption at rest (builds with a plain C compiler where no wheel exists)
-webauthn>=2.5       # passkeys (WebAuthn): checks registrations and sign-ins; needs `cryptography` (Rust to build on 32-bit ARM)
+cryptography>=44     # AES-256-GCM for encryption at rest; passkeys need it too (Rust to build on 32-bit ARM)
+webauthn>=2.5       # passkeys (WebAuthn): checks registrations and sign-ins

@@ -90,6 +90,10 @@ arrive with `git pull`.
   `RECEIVER_PORT=8081` to `.env`, or update your bookmarks, reverse proxy and the upload address in the phone app.
   Otherwise watch data quietly stops arriving.
 
+**Records move into the database:** each profile's records used to be one file, `DATA_DIR/profiles/<id>/data.json`.
+On the first start after updating they are loaded into the database, with nothing to do and nothing that looks
+different; the file stays beside them as `data-before-v10.json`, and can be deleted once you've checked the app.
+
 ### Supported sources today
 
 | Source | What is read |
@@ -204,8 +208,8 @@ A restore checks the backup opens with the key before replacing anything.
 ### Encryption at rest
 
 The setup service makes a key on first start, `auth/data_key`, and the app encrypts with it everything it keeps in
-`DATA_DIR`: each profile's records and settings, its documents, the setup build, and the database fields that hold
-document names, activity details and two-factor secrets, and the pepper that password and recovery-code hashes are
+`DATA_DIR`: each profile's settings and documents, the setup build, and the database fields that hold the records
+themselves, document names, activity details and two-factor secrets, and the pepper that password and recovery-code hashes are
 made with. The watch receiver encrypts what it keeps in `WATCH_DIR`
 with the same key: its archive of uploads (`raw/`), its database (`watch.db`, a sealed snapshot of the copy it keeps
 in memory) and the daily summary the app shows. An existing install is encrypted on its first start after

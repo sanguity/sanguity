@@ -1,8 +1,8 @@
 """Encryption at rest: AES-256-GCM with keys from a key file kept apart from the data.
 
-What it covers: every file Sanguity writes under DATA_DIR (each profile's records and settings, imported documents,
-the setup build), the database fields that hold health details or secrets (document file names, activity
-details, two-factor secrets, the pepper for password hashes), and everything the watch receiver writes under WATCH_DIR (its archive of uploads,
+What it covers: every file Sanguity writes under DATA_DIR (each profile's settings, imported documents, the setup
+build), the database fields that hold health details or secrets (the records themselves, document file names,
+activity details, two-factor secrets, the pepper for password hashes), and everything the watch receiver writes under WATCH_DIR (its archive of uploads,
 its database, kept in memory and saved as a sealed snapshot, and the daily.json the app reads; see
 watch/receiver.py). So a copied data folder or a backup is unreadable without the key. Not covered: usernames and
 profile names (identity, needed for sign-in and sorting), the original exports in RECORDS_DIR (your own files,
@@ -23,7 +23,8 @@ start-up migration.
 """
 import base64, hashlib, os, secrets, threading
 
-from Crypto.Cipher import AES
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from . import config
 
@@ -61,6 +62,7 @@ class Keyring:
     def reset(self):
         with self._lock:
             self._keys = None
+            _ciphers.clear()
 
 
 keyring = Keyring(config.KEY_FILE)
@@ -98,11 +100,20 @@ def encrypted(data):
     return data[:4] == MAGIC
 
 
+_ciphers = {}   # key -> AESGCM: made once per key, as a database row is encrypted or decrypted one field at a time
+
+
+def _cipher(key):
+    c = _ciphers.get(key)
+    if c is None:
+        c = _ciphers[key] = AESGCM(key)
+    return c
+
+
 def _seal(data):
     key, _ = keyring.load()
     nonce = secrets.token_bytes(12)
-    ct, tag = AES.new(key, AES.MODE_GCM, nonce=nonce).encrypt_and_digest(data)
-    return _key_id(key) + nonce + ct + tag
+    return _key_id(key) + nonce + _cipher(key).encrypt(nonce, data, None)   # ciphertext, then the 16-byte tag
 
 
 def _open(blob):
@@ -111,8 +122,8 @@ def _open(blob):
     if key is None:
         raise KeyError_("This was encrypted with a key that isn't in the key file.")
     try:
-        return AES.new(key, AES.MODE_GCM, nonce=blob[4:16]).decrypt_and_verify(blob[16:-16], blob[-16:])
-    except ValueError:
+        return _cipher(key).decrypt(blob[4:16], blob[16:], None)
+    except (InvalidTag, ValueError):
         raise KeyError_("Encrypted data failed its integrity check (damaged, or not made with this key).") from None
 
 

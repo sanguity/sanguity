@@ -106,6 +106,28 @@ O = {**H, "Origin": SoftKey.ORIGIN}   # passkeys need an HTTPS origin
 KEYS = {}   # name -> SoftKey, for accounts whose sign-in finishes with a passkey (Ben: admins need a second factor)
 
 
+def same_records(data):
+    """Records without the event ids the database gave them, which a re-import changes: the details, costs and
+    lab-day lists in event order instead."""
+    data = json.loads(json.dumps(data))
+    order = {e["id"]: n for n, e in enumerate(data["events"])}
+    pos = lambda i: order.get(i, -1)
+    details = [data["details"].get(str(e["id"])) for e in data["events"]]
+    for d in details:
+        if d and isinstance(d.get("ids"), list):
+            d["ids"] = [pos(i) for i in d["ids"]]
+    return {**data, "events": [{k: v for k, v in e.items() if k != "id"} for e in data["events"]], "details": details,
+            "costs": [{**c, "id": pos(c["id"])} for c in data["costs"]]}
+
+
+def db_count(sql, *args):
+    db = dbm.connect()
+    try:
+        return db.execute(sql, args).fetchone()[0]
+    finally:
+        db.close()
+
+
 def client():
     return TestClient(main.app, base_url="http://testserver")
 
@@ -493,7 +515,8 @@ class Api(unittest.TestCase):
         self.assertEqual((r.status_code, r.json()["unlinked_build"]), (200, False))
         # gone from disk and the database; the original files and other profiles are untouched
         self.assertFalse(os.path.exists(prof.profile_dir(pid)))
-        for table in ("profiles WHERE id", "memberships WHERE profile_id", "documents WHERE profile_id", "activity WHERE profile_id"):
+        for table in ("profiles WHERE id", "memberships WHERE profile_id", "documents WHERE profile_id", "activity WHERE profile_id",
+                      "imports WHERE profile_id", "events WHERE profile_id", "series WHERE profile_id", "results WHERE profile_id"):
             self.assertEqual(db.execute(f"SELECT COUNT(*) FROM {table}=?", (pid,)).fetchone()[0], 0, table)
         self.assertTrue(os.path.isfile(os.path.join(src, "docs", "letter.pdf")))
         self.assertEqual(ben.get(f"/api/profiles/{pid}/data").status_code, 404)
@@ -1095,16 +1118,22 @@ class Api(unittest.TestCase):
         with open(os.path.join(src, "docs", "no-extension"), "wb") as f:
             f.write(b"<link rel=stylesheet href=style.css>")
         with open(os.path.join(src, "data.json"), "w", encoding="utf-8") as f:
-            json.dump({"events": [], "details": {"1": {"type": "file", "url": "docs/visit summary.htm", "ext": "htm"},
-                                                 "2": {"type": "file", "url": "docs/report.pdf", "ext": "pdf"},
-                                                 "3": {"type": "file", "url": "docs/no-extension", "ext": "html"}}}, f)
+            json.dump({"events": [{"id": i, "t": f"2026-01-0{i}T09:00:00", "k": "document", "title": t, "sub": ""}
+                                  for i, t in ((1, "Visit summary"), (2, "Report"), (3, "Bare"))],
+                       "details": {"1": {"type": "file", "url": "docs/visit summary.htm", "ext": "htm"},
+                                   "2": {"type": "file", "url": "docs/report.pdf", "ext": "pdf"},
+                                   "3": {"type": "file", "url": "docs/no-extension", "ext": "html"},
+                                   "4": {"type": "file", "url": "docs/style.css", "ext": "css"}}}, f)   # 4: no event
         db = dbm.connect()
         pid = prof.create_profile(db, "HTML", owner_id=1)
         prof.import_dataset(db, pid, src)
         db.close()
         ben = self.login("ben")
         data = ben.get(f"/api/profiles/{pid}/data").json()
-        html_url, pdf_url = data["details"]["1"]["url"], data["details"]["2"]["url"]
+        det = {e["title"]: data["details"][str(e["id"])] for e in data["events"]}   # ids are the database's own
+        self.assertEqual(len(data["details"]), 3)   # a detail no event shows isn't kept, nor its document
+        self.assertEqual(db_count("SELECT COUNT(*) FROM documents WHERE profile_id=?", pid), 3)
+        html_url, pdf_url = det["Visit summary"]["url"], det["Report"]["url"]
         self.assertTrue(html_url.endswith("/visit%20summary.htm"), html_url)
         self.assertEqual(ben.get("/" + html_url).headers["content-type"], "text/html; charset=utf-8")
         base = "/" + html_url.rsplit("/", 1)[0]
@@ -1114,7 +1143,7 @@ class Api(unittest.TestCase):
         self.assertEqual(ben.get(base + "/../secret.png").status_code, 404)        # nothing outside its folder
         self.assertEqual(ben.get(base + "/..%2Fsecret.png").status_code, 404)
         self.assertEqual(ben.get("/" + pdf_url + "/style.css").status_code, 404)   # only HTML records have parts
-        bare = data["details"]["3"]["url"]   # described as HTML in data.json though its name has no extension
+        bare = det["Bare"]["url"]   # described as HTML in data.json though its name has no extension
         self.assertTrue(bare.endswith("/no-extension"), bare)
         self.assertEqual(ben.get("/" + bare.rsplit("/", 1)[0] + "/style.css").status_code, 200)
         self.assertEqual(self.login("alex", "another long passphrase").get(base + "/style.css").status_code, 404)   # not shared
@@ -1337,15 +1366,15 @@ class Api(unittest.TestCase):
 
     def test_encryption_at_rest(self):   # after test_a_flow: profile 1 holds the demo build, Ben signs in
         import glob
-        from server import atrest, config, crypto, manage
+        from server import atrest, config, crypto, manage, records as rec
         pepper = sec._pepper
-        files = glob.glob(os.path.join(TMP, "profiles", "*", "data.json"))
-        self.assertTrue(files)
+        files = [p for p in glob.glob(os.path.join(TMP, "profiles", "**", "*"), recursive=True) if os.path.isfile(p)]
         for p in files:   # nothing Sanguity keeps is readable from the disk alone
             with open(p, "rb") as f:
                 self.assertEqual(f.read(4), crypto.MAGIC, p)
         db = dbm.connect()
-        for table, col in (("documents", "path"), ("activity", "detail")):
+        for table, col in (("documents", "path"), ("activity", "detail"), ("imports", "meta"), ("events", "body"),
+                           ("events", "detail"), ("events", "cost"), ("series", "body"), ("results", "body")):
             vals = [r[0] for r in db.execute(f"SELECT {col} FROM {table} WHERE {col} IS NOT NULL")]
             self.assertTrue(vals, table)
             self.assertTrue(all(v.startswith(crypto.FIELD) for v in vals), table)
@@ -1365,7 +1394,8 @@ class Api(unittest.TestCase):
         old = crypto.current_key_id()
         crypto.add_key(config.KEY_FILE)
         crypto.keyring.reset()
-        self.assertEqual(ben.get("/api/profiles/1/data").json(), records)   # old data still opens with the old line
+        rec.forget()   # read the rows again, not what the last request put together
+        self.assertEqual(same_records(ben.get("/api/profiles/1/data").json()), same_records(records))   # old data still opens with the old line
         from server import backup
         if backup.fcntl:   # the app is running here: it would keep writing with the old key
             with self.assertRaises(SystemExit):
@@ -1386,7 +1416,8 @@ class Api(unittest.TestCase):
         with open(config.KEY_FILE, "w", encoding="ascii") as f:
             f.write(lines[0] + "\n")
         crypto.keyring.reset()
-        self.assertEqual(ben.get("/api/profiles/1/data").json(), records)
+        rec.forget()
+        self.assertEqual(same_records(ben.get("/api/profiles/1/data").json()), same_records(records))   # rebuilt: new ids
         doc = db.execute("SELECT id FROM documents WHERE profile_id=1 LIMIT 1").fetchone()[0]
         self.assertEqual(ben.get(f"/api/profiles/1/documents/{doc}").status_code, 200)
         # the pepper was re-encrypted with the new key, not replaced: after a restart, passwords still work
@@ -1395,6 +1426,143 @@ class Api(unittest.TestCase):
         self.assertEqual(atrest.load_pepper(db), pepper)
         self.login("ben")
         db.close()
+
+    def test_records_are_rows(self):   # issue #17
+        from server import crypto, profiles as prof, records as rec
+        src = os.path.join(TMP, "rows-src")
+        os.makedirs(os.path.join(src, "docs"), exist_ok=True)
+        with open(os.path.join(src, "docs", "scan.pdf"), "wb") as f:
+            f.write(b"%PDF-1.4 scan")
+        data = {"built": "2026-01-02T03:04:05+00:00", "source": "rows test",
+                "events": [{"id": 50, "t": "2026-01-01T08:00:00", "k": "labitem", "title": "CBC", "sub": "", "hidden": 1},
+                           {"id": 51, "t": "2026-01-01T08:00:00", "k": "lab", "title": "1 lab result", "sub": "CBC"},
+                           {"id": 60, "t": "2026-01-03T09:00:00", "k": "claim", "title": "Office visit", "sub": "Plan", "abn": 1},
+                           {"id": 70, "t": "2026-01-04T10:00:00", "k": "document", "title": "Scan", "sub": ""}],
+                "details": {"50": {"type": "result", "order": "CBC", "rows": [["Hemoglobin", "14.8", "g/dL", "13.5 - 17.5", ""]]},
+                            "51": {"type": "labday", "ids": [50, 99]},   # 99: not an event, so not listed
+                            "60": {"type": "claim", "billed": 120.0, "owe": 20.0},
+                            "70": {"type": "file", "url": "docs/scan.pdf", "ext": "pdf"},
+                            "80": {"type": "file", "url": "docs/scan.pdf", "ext": "pdf"}},   # no event: dropped
+                "costs": [{"id": 60, "d": "2026-01-03", "billed": 120.0, "owe": 20.0, "title": "Office visit"},
+                          {"id": 61, "d": "2026-01-05", "billed": 5.0, "owe": 5.0, "title": "No event of its own"}],
+                "labs": [{"name": "Hemoglobin", "unit": "g/dL", "panel": "CBC", "n": 2, "loinc": "718-7", "txt": [],
+                          "pts": [["2025-12-01T08:00:00", 15.1, 13.5, 17.5, "", "15.1"],
+                                  ["2026-01-01T08:00:00", 14.8, 13.5, 17.5, "", "14.8", "EXT"]]}],
+                "upcoming": [{"t": "2026-02-01", "title": "Follow-up"}], "problems": [], "milestones": [{"date": "2025-06-01", "label": "Diagnosis"}],
+                "outOfPocket": {"payments": [{"d": "2026-01-06", "amount": 10.0}], "exported": "2026-01-07"}, "clinicWeights": []}
+        with open(os.path.join(src, "data.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        db = dbm.connect()
+        pid = prof.create_profile(db, "Rows", owner_id=1)
+        prof.import_dataset(db, pid, src)
+        self.assertFalse(os.path.exists(os.path.join(prof.profile_dir(pid), "data.json")))   # rows, not a file
+        counts = {t: db_count(f"SELECT COUNT(*) FROM {t} WHERE profile_id=?", pid) for t in ("imports", "events", "series", "results", "documents")}
+        self.assertEqual(counts, {"imports": 1, "events": 4, "series": 1, "results": 2, "documents": 1})
+        iid = db.execute("SELECT id FROM imports WHERE profile_id=?", (pid,)).fetchone()[0]
+        for t in ("events", "series", "results", "documents"):   # every row belongs to the import that brought it
+            self.assertEqual(db_count(f"SELECT COUNT(*) FROM {t} WHERE profile_id=? AND import_id IS NOT ?", pid, iid), 0, t)
+        ben = self.login("ben")
+        got = ben.get(f"/api/profiles/{pid}/data").json()
+        ids = [e["id"] for e in got["events"]]
+        lab, claim, doc = ids[1], ids[2], ids[3]
+        self.assertEqual(got["details"][str(lab)]["ids"], [ids[0]])
+        self.assertEqual(got["costs"][0]["id"], claim)   # in the order they came
+        self.assertEqual(got["costs"][1], {**data["costs"][1], "id": None})   # kept for the Costs tab
+        self.assertNotIn("80", got["details"])
+        url = got["details"][str(doc)]["url"]
+        self.assertRegex(url, rf"^api/profiles/{pid}/documents/[^/]+$")
+        self.assertEqual(ben.get("/" + url).content, b"%PDF-1.4 scan")
+        expect = json.loads(json.dumps(data))
+        del expect["details"]["80"]
+        expect["details"]["51"]["ids"] = [50]
+        expect["details"]["70"]["url"] = url
+        expect["costs"][1]["id"] = None
+        self.assertEqual(same_records(got), same_records(expect))
+        # replacing the records (server.manage import) leaves nothing of the old import behind
+        data["events"], data["details"], data["costs"], data["labs"] = data["events"][:1], {}, [], []
+        with open(os.path.join(src, "data.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        prof.import_dataset(db, pid, src)
+        counts = {t: db_count(f"SELECT COUNT(*) FROM {t} WHERE profile_id=?", pid) for t in ("imports", "events", "series", "results", "documents")}
+        self.assertEqual(counts, {"imports": 1, "events": 1, "series": 0, "results": 0, "documents": 0})
+        self.assertEqual(len(ben.get(f"/api/profiles/{pid}/data").json()["events"]), 1)   # not the cached copy
+        # several imports: lists are joined, events interleaved by time, single values from the newest
+        with dbm.transaction(db):
+            rec.store(db, pid, {"source": "second", "events": [{"id": 1, "t": "2025-01-01T00:00:00", "k": "visit", "title": "Earlier"}],
+                                "upcoming": [{"t": "2026-03-01", "title": "Another"}], "outOfPocket": {"payments": [{"d": "2026-02-01", "amount": 1.0}]}}, "dataset")
+        both = ben.get(f"/api/profiles/{pid}/data").json()
+        self.assertEqual([e["title"] for e in both["events"]], ["Earlier", "CBC"])
+        self.assertEqual((both["source"], len(both["upcoming"]), len(both["outOfPocket"]["payments"]), both["outOfPocket"]["exported"]),
+                         ("second", 2, 2, "2026-01-07"))
+        # a profile that takes a deleted one's id doesn't see the deleted one's records
+        ben.request("DELETE", f"/api/profiles/{pid}", json={"confirm_name": "Rows"}, headers=H)
+        again = prof.create_profile(db, "Rows again", owner_id=1)
+        if again == pid:
+            self.assertEqual(ben.get(f"/api/profiles/{again}/data").status_code, 204)
+        ben.request("DELETE", f"/api/profiles/{again}", json={"confirm_name": "Rows again"}, headers=H)
+        db.close()
+
+    def test_build_is_served_as_built(self):   # issue #17: the demo build, through the rows, as the page always read it
+        from server import crypto, profiles as prof
+        ben = self.login("ben")
+        prof.sync_build(dbm.connect())
+        got = ben.get("/api/profiles/1/data").json()
+        built = json.loads(crypto.read_file(os.path.join(TMP, "build", "data.json")))
+        for d in (got, built):
+            for v in d["details"].values():
+                if v.get("type") == "file":
+                    v["url"] = "-"
+        self.assertEqual(same_records(got), same_records(built))
+        events = {e["id"]: e for e in got["events"]}
+        for c in got["costs"]:
+            self.assertEqual(events[c["id"]]["k"] in ("claim", "rx"), True, c)
+        for v in got["details"].values():
+            if v.get("type") == "labday":
+                self.assertTrue(v["ids"] and all(events[i]["k"] == "labitem" for i in v["ids"]), v)
+
+    def test_existing_data_json_moves_into_the_database(self):   # issue #17: an install from before schema version 10
+        from server import crypto, profiles as prof
+        db = dbm.connect()
+        pid = prof.create_profile(db, "Old install", owner_id=1)
+        os.makedirs(os.path.join(prof.profile_dir(pid), "imported"), exist_ok=True)
+        pdf = os.path.join(prof.profile_dir(pid), "imported", "letter.pdf")
+        crypto.write_file(pdf, b"%PDF-1.4 old")
+        db.execute("INSERT INTO documents(id, profile_id, path, ext) VALUES('olddoc', ?, ?, 'pdf')", (pid, crypto.enc(pdf)))
+        url = f"api/profiles/{pid}/documents/olddoc"   # links were rewritten when the file was written
+        old = {"source": "before v10", "events": [{"id": 1, "t": "2024-05-01T00:00:00", "k": "letter", "title": "Letter"}],
+               "details": {"1": {"type": "file", "url": url, "ext": "pdf"}}, "labs": [], "costs": [], "milestones": []}
+        crypto.write_file(prof.data_path(pid), json.dumps(old).encode())
+        broken = prof.create_profile(db, "Broken", owner_id=1)
+        crypto.write_file(prof.data_path(broken), b"[1]")
+        self.assertEqual(prof.migrate_files(db), 1)   # the broken one is left for someone to look at
+        self.assertTrue(os.path.isfile(prof.data_path(broken)))
+        self.assertFalse(os.path.exists(prof.data_path(pid)))
+        self.assertTrue(os.path.isfile(os.path.join(prof.profile_dir(pid), prof.MIGRATED)))
+        self.assertEqual(db.execute("SELECT origin FROM imports WHERE profile_id=?", (pid,)).fetchone()[0], "dataset")
+        self.assertIsNotNone(db.execute("SELECT import_id FROM documents WHERE id='olddoc'").fetchone()[0])
+        ben = self.login("ben")
+        got = ben.get(f"/api/profiles/{pid}/data").json()
+        self.assertEqual(same_records(got), same_records(old))
+        self.assertEqual(ben.get("/" + url).content, b"%PDF-1.4 old")
+        self.assertEqual(prof.migrate_files(db), 0)   # once
+        for p in (pid, broken):
+            ben.request("DELETE", f"/api/profiles/{p}", json={"confirm_name": "Old install" if p == pid else "Broken"}, headers=H)
+        db.close()
+
+    def test_encryption_format_is_unchanged(self):   # written by the pycryptodome version, read by this one
+        from server import crypto
+        with other_key(make=False):
+            with open(crypto.keyring.path, "w", encoding="ascii") as f:
+                f.write("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=\n")   # bytes 0..31
+            crypto.keyring.reset()
+            field = "enc:1:Yw3NKRgA52TPXHy3iamfyRSp+vy/X3R9Ut//yB6JzcOV06RNHHVtMNf66qp5S5/bVDMUcQ=="
+            self.assertEqual(crypto.dec(field), "Hemoglobin 14.8 g/dL")
+            blob = base64.b64decode("U0dFMWMNzSkvYFQIP0/xBVZKiNAaqqwJyeQ+fD4t2h4bdAJHuWCDsh5guvTzj+5JBA==")
+            self.assertEqual(crypto.unseal(blob), b'{"events":[]}')
+            self.assertEqual(crypto.unseal(crypto.seal(b"round trip")), b"round trip")
+            for bad in (blob[:-1] + bytes([blob[-1] ^ 1]), blob[:20]):   # a changed tag, or cut short
+                with self.assertRaises(crypto.KeyError_):
+                    crypto.unseal(bad)
 
     def test_passkeys(self):
         from server import accounts, manage

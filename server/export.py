@@ -11,7 +11,7 @@ It's written as it's sent, a piece at a time, so a large profile never sits in m
 """
 import datetime, json, os, re, shutil, urllib.parse, zipfile
 
-from . import crypto, profiles as prof
+from . import crypto, profiles as prof, records
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
 REF = re.compile(r"""(?:src|href)\s*=\s*["']([^"'#?]+)""", re.I)
@@ -27,7 +27,7 @@ def plan(db, pid):
         e["detail"] = json.loads(crypto.dec(e["detail"])) if e["detail"] else {}
         e["detail"].pop("key", None)
     return {"pid": pid, "name": p["name"], "docs": docs, "activity": log,
-            "data": prof.data_path(pid) if os.path.isfile(prof.data_path(pid)) else None,
+            "data": records.assemble(db, pid),
             "settings": prof.settings_path(pid) if os.path.isfile(prof.settings_path(pid)) else None,
             "watch": p["watch_file"] if p["watch_file"] and os.path.isfile(p["watch_file"]) else None}
 
@@ -108,7 +108,7 @@ def stream(p, exported_by):
     # records, with document links pointing into the zip
     missing, included = [], {}
     if p["data"]:
-        data = prof.read_json(p["data"])
+        data = p["data"]
         for d in (data.get("details") or {}).values():
             if not isinstance(d, dict) or d.get("type") != "file" or not d.get("url"):
                 continue

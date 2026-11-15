@@ -234,7 +234,7 @@ The issue asked for these items in particular.
 | 6.1.1–6.1.2 | Private and health data encrypted at rest | Met | AES-256-GCM for every file Sanguity writes and every sensitive database field (`crypto.py`, `atrest.py`). What isn't covered is listed in `crypto.py`: usernames and profile names, your own original exports (read-only) and downloads from "Export everything". The watch receiver's data uses the same key since #73. |
 | 6.1.3 | Financial data encrypted | Met | The costs are part of a profile's encrypted records. |
 | 6.2.1 | Fails securely | Met | A failed GCM tag check raises an error, and nothing is returned. Start-up stops with a reason if the key is missing or wrong (`atrest.check_key`). |
-| 6.2.2 | Proven primitives | Met | pycryptodome AES-GCM. Python's `secrets`, `hashlib` and `hmac`. |
+| 6.2.2 | Proven primitives | Met | AES-GCM from `cryptography` (OpenSSL); pycryptodome until #17. Python's `secrets`, `hashlib` and `hmac`. |
 | 6.2.3 | Safe modes, IVs and padding | Met | GCM with a random 96-bit nonce for each encryption, and a 128-bit tag. |
 | 6.2.4 | Algorithms can be replaced | Met | Formats carry a version marker (`SGE1`, `enc:1:`) and a key id. Keys rotate with `setup new-key` and re-encryption at start-up. |
 | 6.2.5 | No weak algorithms | Met | SHA-1 only inside HMAC for TOTP, as RFC 6238 specifies. |
