@@ -104,10 +104,15 @@ jobs:
       - name: Records on disk are encrypted, and the key is kept apart from the data
         run: |
           test -s auth/data_key
-          for f in data/build/data.json data/profiles/*/data.json; do
+          # the setup build and every file a profile keeps (settings, imported documents)
+          test -n "$(find data/build data/profiles -type f ! -name '*.tmp')"
+          find data/build data/profiles -type f ! -name '*.tmp' -print0 | while IFS= read -r -d '' f; do
             [ "$(head -c 4 "$f")" = SGE1 ] || { echo "$f is not encrypted"; exit 1; }
           done
           ! grep -rlq '"source"' data/build data/profiles || { echo "plaintext records found in data/"; exit 1; }
+          # the records themselves are database rows (#17): none of the demo's text is readable in the database
+          ls data/sanguity.db*
+          ! grep -alq -e 'Lakeside Family Medicine' -e '"title"' data/sanguity.db* || { echo "plaintext records found in the database"; exit 1; }
 
       - name: Watch data on disk is encrypted (a signed upload, then everything in watch-data/ is sealed)
         run: |
