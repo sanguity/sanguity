@@ -476,24 +476,64 @@ $("#userNew").onsubmit = async ev => {
   } catch (e) { say("#userMsg", e.message, true); }
 };
 
+/* ---------------------------------------------------------------- tabs */
+/* Sign-in & security, Profiles, Admin. The address (#security, #profiles, #admin) keeps the tab across a reload, and
+   older links to a section (#password, #twofa, #passkeys, #sessions, #users) open the tab that holds it. */
+const TAB_OF = {security: "security", password: "security", twofa: "security", passkeys: "security", sessions: "security",
+  profiles: "profiles", admin: "admin", users: "admin"};
+const TAB_NAMES = ["security", "profiles", "admin"];
+let tabsOn = false;
+function showTab(name, {focus = false, remember = true} = {}) {
+  if (!TAB_NAMES.includes(name) || $("#tab-" + name).hidden) name = "security";
+  for (const t of TAB_NAMES) {
+    const on = t === name, btn = $("#tab-" + t);
+    btn.setAttribute("aria-selected", on); btn.tabIndex = on ? 0 : -1;
+    $("#panel-" + t).hidden = !on;
+  }
+  if (focus) $("#tab-" + name).focus();
+  if (remember && tabsOn && location.hash.slice(1) !== name && TAB_OF[location.hash.slice(1)] !== name)
+    history.replaceState(null, "", "#" + name);
+  return name;
+}
+function openFromHash() {
+  const key = location.hash.slice(1), tab = showTab(TAB_OF[key] || "security", {remember: false});
+  const target = key && key !== tab && document.getElementById(key);
+  if (target && !target.hidden) target.scrollIntoView({block: "start"});
+}
+$("#acctTabs").addEventListener("click", ev => {
+  const b = ev.target.closest("[role=tab]");
+  if (b) showTab(b.id.slice(4));
+});
+$("#acctTabs").addEventListener("keydown", ev => {   // arrow keys move between tabs, as for any tab list
+  const shown = TAB_NAMES.filter(t => !$("#tab-" + t).hidden), i = shown.indexOf(document.activeElement.id.slice(4));
+  if (i < 0) return;
+  const next = ev.key === "ArrowRight" ? shown[(i + 1) % shown.length] : ev.key === "ArrowLeft" ? shown[(i + shown.length - 1) % shown.length]
+    : ev.key === "Home" ? shown[0] : ev.key === "End" ? shown[shown.length - 1] : null;
+  if (next) { ev.preventDefault(); showTab(next, {focus: true}); }
+});
+addEventListener("hashchange", () => { if (tabsOn) openFromHash(); });
+
 /* ---------------------------------------------------------------- start */
 (async () => {
   try { ME = await call("me"); } catch (e) { return; }
   $("#who").textContent = ME.user.username;
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   $("#pwHint").textContent = `At least ${ME.password_min} characters. A few unrelated words make a strong password you can remember.`;
-  if (ME.user.must_change_pw) {   // nothing else is available until the one-time password is replaced
+  if (ME.user.must_change_pw) {   // nothing else is available until the one-time password is replaced (no tabs)
     $("#mustChange").hidden = false; $("#back").hidden = true;
     for (const id of ["#sessions", "#profiles", "#users", "#twofa", "#passkeys"]) $(id).hidden = true;
     $("#pwCur").focus();
     return;
   }
-  if (ME.user.needs_two_factor) {   // the server requires it: set it up before anything else
+  if (ME.user.needs_two_factor) {   // the server requires it: set it up before anything else (no tabs)
     $("#needTf").hidden = false; $("#back").hidden = true;
     for (const id of ["#sessions", "#profiles", "#users"]) $(id).hidden = true;
     await Promise.all([loadTwoFactor(), loadPasskeys()]);
     return;
   }
+  $("#tab-admin").hidden = !ME.user.is_admin;
+  $("#acctTabs").hidden = false; tabsOn = true;
+  openFromHash();
   const admin = ME.user.is_admin && !ME.user.admin_needs_two_factor;
   await Promise.all([loadSessions(), loadProfiles(), loadTwoFactor(), loadPasskeys(), admin ? loadUsers() : null,
     admin ? loadNotice() : null]);
@@ -512,5 +552,5 @@ $("#userNew").onsubmit = async ev => {
     $("#acctLog").replaceChildren(panel);
   }
   $("#users").hidden = !ME.user.is_admin;
-  if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
+  openFromHash();   // again: the cards above have their content now, so a section link lands where it should
 })();

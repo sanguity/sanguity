@@ -266,6 +266,8 @@ details.res > div{padding:0 12px 10px}
 @media (forced-colors:active){.chip .key,.row .key{forced-color-adjust:none}}
 /* ---- account page */
 main.acct{max-width:860px;margin:0 auto;padding:20px}
+.acct .acct-tabs{display:inline-flex;margin:0 0 14px;max-width:100%}
+.acct [role="tabpanel"]:focus{outline:none}
 .acct .card h2{margin-bottom:4px}
 .acct .warn{border-color:var(--c-study);font-weight:550}
 .acct .reauth{border-left:3px solid var(--c-study);padding:4px 0 4px 12px;margin:10px 0}

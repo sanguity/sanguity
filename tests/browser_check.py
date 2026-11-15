@@ -249,6 +249,20 @@ def main():
             page.goto(base + "/account.html")
             page.wait_for_function("document.querySelectorAll('#sessList tbody tr').length > 0 && document.querySelectorAll('#profList .prof').length === 2 && !document.getElementById('users').hidden", timeout=10000)
             check("account page lists devices, profiles and accounts", True)
+            # three tabs: Sign-in & security first; Admin only for admins; the address keeps the tab, old links still land
+            vis = lambda sel: js(f"!document.querySelector('{sel}').hidden")
+            check("account tabs: security shown first, Admin offered", vis("#panel-security") and not vis("#panel-profiles") and vis("#tab-admin"))
+            page.click("#tab-profiles")
+            check("a tab shows its panel and goes in the address", vis("#panel-profiles") and not vis("#panel-security") and js("location.hash") == "#profiles")
+            page.reload()
+            page.wait_for_function("document.querySelectorAll('#profList .prof').length === 2", timeout=10000)
+            check("the tab survives a reload", vis("#panel-profiles"))
+            page.goto(base + "/account.html#twofa")
+            page.wait_for_function("document.getElementById('tfHint').textContent.length > 0", timeout=10000)
+            check("an old section link opens the tab that holds it", vis("#panel-security") and js("location.hash") == "#twofa")
+            page.focus("#tab-security"); page.keyboard.press("ArrowRight")
+            check("arrow keys move between tabs", vis("#panel-profiles") and js("document.activeElement.id") == "tab-profiles")
+            page.click("#tab-admin")
             page.fill("#userName", "alex")
             page.click("#userNew button[type=submit]")
             page.wait_for_function("document.querySelector('#userMsg code')", timeout=10000)
@@ -260,6 +274,10 @@ def main():
             from server import twofactor
             import time as _time
             totp = lambda key, ahead=0: twofactor._code(key, int(_time.time() // twofactor.PERIOD) + ahead)
+            check("the admin's note links to the security tab", js("document.querySelector('#adminTf a').getAttribute('href')") == "#security")
+            page.click("#adminTf a")
+            page.wait_for_function("!document.getElementById('panel-security').hidden", timeout=5000)
+            check("which opens it", vis("#panel-security") and not vis("#panel-admin"))
             page.locator("#twofa").get_by_role("button", name="Turn on").click()
             page.wait_for_selector("#twofa .tf-key")
             key = js("document.querySelector('#twofa .tf-key').textContent").replace(" ", "")
@@ -274,6 +292,7 @@ def main():
             check("with 2FA on, the account tools are back", js("document.getElementById('adminTf').hidden"))
             # activity: the profile's log shows the records being opened (by this run), and filters by kind;
             # the admin's account log shows the account just created
+            page.click("#tab-profiles")
             mine = page.locator("#profList .prof", has_text="My records")
             mine.get_by_role("button", name="Activity").click()
             page.wait_for_function("[...document.querySelectorAll('#profList .activity tbody tr')].some(r => r.textContent.includes('opened the records'))", timeout=10000)
@@ -281,6 +300,7 @@ def main():
             mine.locator(".activity select").nth(1).select_option("document")
             page.wait_for_function("[...document.querySelectorAll('#profList .activity tbody tr')].every(r => r.textContent.includes('opened') && !r.textContent.includes('opened the records'))", timeout=10000)
             check("activity filters by kind", js("document.querySelector('#profList .activity tbody').textContent.includes('demo-report.pdf') || document.querySelector('#profList .activity tbody').textContent.includes('Nothing yet')"))
+            page.click("#tab-admin")
             page.locator("#acctLog").get_by_role("button", name="Account activity").click()
             page.wait_for_function("document.querySelector('#acctLog tbody') && document.querySelector('#acctLog tbody').textContent.includes('created the account alex')", timeout=10000)
             check("admin sees account activity", True)
@@ -288,6 +308,7 @@ def main():
             head = js(f"fetch('{href}').then(r => r.arrayBuffer()).then(b => [...new Uint8Array(b.slice(0, 2))])")
             check("Export everything downloads a zip", head == [0x50, 0x4B], head)
             # sharing with someone who already has access asks before changing their role; declining keeps it
+            page.click("#tab-profiles")
             asked_share = []
             page.once("dialog", lambda d: (asked_share.append(d.message), d.dismiss()))
             form = page.locator("#profList .prof", has_text="Second person").locator("form")
@@ -313,6 +334,7 @@ def main():
             db = dbm.connect()
             db.execute("UPDATE sessions SET verified_at=0")
             before = len(problems)
+            page.click("#tab-admin")
             page.locator("#userList tr", has_text="alex").get_by_role("button", name="Reset password").click()
             page.wait_for_selector("#reauth input", state="visible", timeout=10000)
             check("resetting a password asks to confirm it's you", "Confirm it's you" in page.inner_text("#reauth"))
