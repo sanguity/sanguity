@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient   # noqa: E402
 from server import db as dbm, main, security as sec   # noqa: E402
 
 H = {"X-Sanguity": "1"}
-PW = {"ben": "correct horse battery staple", "alex": "purple monkey dishwasher", "sam": "seven wild otters dancing"}
+PW = {"ben": "kettle orbit marsh velvet", "alex": "purple monkey dishwasher", "sam": "seven wild otters dancing"}
 CODE = "TEST-CODE-1234"
 
 
@@ -228,6 +228,25 @@ class Api(unittest.TestCase):
             db.execute("DELETE FROM profiles WHERE id=?", (fresh,))
             db.close()
         self.assertEqual(ben.get("/api/profiles/1/data").status_code, 200)   # a fixed rebuild is picked up again
+
+    def test_breached_and_context_passwords_are_refused(self):
+        from server import accounts
+        breached = ("correct horse battery staple", "Correct Horse Battery Staple 1!", "iloveyouiloveyou", "passwordpassword1")
+        for pw in breached:
+            self.assertIn("breached passwords", sec.password_problem(pw, "someone") or "", pw)
+        self.assertIn("Sanguity", sec.password_problem("sanguity sanguity 2026", "x"))
+        self.assertIn("username", sec.password_problem("benjamin benjamin 12", "benjamin"))
+        self.assertIsNone(sec.password_problem("kettle orbit marsh velvet", "ben"))
+        # refused wherever a password is chosen: a password change (setup and accounts.create use the same check)
+        ben = self.login("ben")
+        r = ben.post("/api/me/password", json={"current": PW["ben"], "new": "correct horse battery staple"}, headers=H)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("breached passwords", r.json()["detail"])
+        db = dbm.connect()
+        with self.assertRaises(accounts.AccountError):
+            accounts.create(db, "famous", password="Correct Horse Battery Staple")
+        db.close()
+        self.assertEqual(self.login("ben").get("/api/me").status_code, 200)   # the old password still works
 
     def test_csrf(self):
         c = client()

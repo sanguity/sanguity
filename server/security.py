@@ -1,5 +1,5 @@
 """Passwords (Argon2id), session tokens, and sign-in throttling."""
-import contextlib, hashlib, heapq, hmac, secrets, threading, time
+import array, contextlib, gzip, hashlib, heapq, hmac, os, re, secrets, threading, time
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
@@ -50,16 +50,72 @@ def needs_rehash(stored):
         return False
 
 
+class _Breached:
+    """passwords/common.txt.gz (see its README): about half a million breached passwords, sorted. Kept as one block
+    of bytes plus line offsets and searched by bisection, so it costs about 7 MB instead of a set's 40-odd, and is
+    loaded only the first time a password is chosen."""
+    PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "passwords", "common.txt.gz")
+
+    def __init__(self):
+        self._blob, self._starts, self._lock = None, None, threading.Lock()
+
+    def _load(self):
+        with self._lock:
+            if self._blob is None:
+                with gzip.open(self.PATH, "rb") as f:
+                    blob = f.read()
+                starts = array.array("I", [0])
+                i = blob.find(b"\n")
+                while i != -1:
+                    starts.append(i + 1)
+                    i = blob.find(b"\n", i + 1)
+                self._blob, self._starts = blob, starts   # the last start is the end of the blob
+
+    def __contains__(self, word):
+        if self._blob is None:
+            self._load()
+        key, blob, starts = word.encode("utf-8"), self._blob, self._starts
+        lo, hi = 0, len(starts) - 1
+        while lo < hi:
+            mid = (lo + hi) // 2
+            line = blob[starts[mid]:starts[mid + 1] - 1]
+            if line < key:
+                lo = mid + 1
+            elif line > key:
+                hi = mid
+            else:
+                return True
+        return False
+
+
+BREACHED = _Breached()
+
+
+def _variants(pw):
+    """The forms of a password checked against the list: as typed, without spaces, and without digits or
+    symbols tacked on at either end ("Correct horse battery staple 1!" is still a famous phrase)."""
+    p = pw.strip().lower()
+    out = {p, re.sub(r"\s+", "", p)}
+    out |= {re.sub(r"^[\W\d_]+|[\W\d_]+$", "", v) for v in list(out)}
+    return {v for v in out if len(v) >= 8}
+
+
 def password_problem(pw, username=""):
-    """Why a new password is refused, or None. Length only, per NIST SP 800-63B: no composition rules."""
+    """Why a new password is refused, or None. Per NIST SP 800-63B: a minimum length, no composition rules, and
+    nothing from lists of breached passwords or built from this service's name or the username."""
     if not isinstance(pw, str) or len(pw) < config.PASSWORD_MIN:
         return f"Use at least {config.PASSWORD_MIN} characters. A few unrelated words make a strong, memorable password."
     if len(pw) > config.PASSWORD_MAX:
         return f"Use at most {config.PASSWORD_MAX} characters."
-    if username and pw.strip().lower() == username.strip().lower():
-        return "The password can't be the same as the username."
     if len(set(pw)) < 4:
         return "That password is too repetitive."
+    letters, name = re.sub(r"[^a-z]", "", pw.lower()), re.sub(r"[^a-z]", "", (username or "").lower())
+    context = "|".join(re.escape(w) for w in ("sanguity", name) if w)
+    if not letters or re.fullmatch(f"(?:{context})+", letters):
+        return "Don't build the password from the username or the word Sanguity."
+    if any(v in BREACHED for v in _variants(pw)):
+        return ("That password appears in lists of breached passwords that attackers try first. "
+                "Pick something less common: a few unrelated words work well.")
     return None
 
 
