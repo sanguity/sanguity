@@ -87,11 +87,13 @@ pkBtn.addEventListener("click", async () => {
     let r = await api("login/passkey/options", {method: "POST", body: JSON.stringify({ticket})});
     let j = await r.json().catch(() => ({}));
     if (r.ok) {
+      const rpId = j.options.rpId;
       let credential;
       try { credential = await passkeyGet(j.options); } catch (e) { throw new Error(passkeyProblem(e)); }
       r = await api("login/passkey", {method: "POST", body: JSON.stringify({state: j.state, credential, ticket})});
       j = await r.json().catch(() => ({}));
       if (r.ok) { signedIn(j); return; }
+      if (/isn't registered here/.test(j.detail || "")) passkeySignalUnknown(rpId, credential.id);   // the device may delete it
     }
     err.textContent = j.detail || "Sign-in failed (" + r.status + ").";
     if (ticket && /too long. Enter your password/.test(j.detail || "")) { codeStep(null); document.getElementById("p").value = ""; }

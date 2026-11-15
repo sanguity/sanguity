@@ -180,6 +180,8 @@ async function loadPasskeys() {
   $("#pkHint").textContent = "Sign in with Face ID, Touch ID, Windows Hello, your phone or a security key: on its own, " +
     "or as the step after your password. A passkey can't be phished or guessed, and your password still works too." +
     (usable ? "" : " " + (st.problem || "This browser can't make passkeys here: open Sanguity at its https:// address."));
+  if (usable && st.user_handle)   // the device can forget passkeys removed here (or on another device)
+    passkeySignalAccepted(st.site, st.user_handle, st.passkeys.filter(k => k.here).map(k => k.credential_id));
   const last = st.passkeys.length === 1 && st.required && !st.authenticator_app;
   $("#pkList").replaceChildren(st.passkeys.length ? el("table", {class: "tbl"},
     el("thead", {}, el("tr", {}, ...["Name", "Added", "Last used", ""].map(h => el("th", {text: h})))),

@@ -40,6 +40,14 @@ async function passkeyGet(o) {
     response: {clientDataJSON: b64u.enc(r.clientDataJSON), authenticatorData: b64u.enc(r.authenticatorData),
       signature: b64u.enc(r.signature), userHandle: r.userHandle && r.userHandle.byteLength ? b64u.enc(r.userHandle) : null}};
 }
+/* Tell the device which passkeys Sanguity no longer accepts, so it can delete them (the WebAuthn Signal API;
+   browsers without it just skip this). */
+function passkeySignalUnknown(rpId, credentialId) {
+  try { if (PublicKeyCredential.signalUnknownCredential) PublicKeyCredential.signalUnknownCredential({rpId, credentialId}).catch(() => {}); } catch (e) {}
+}
+function passkeySignalAccepted(rpId, userId, ids) {
+  try { if (PublicKeyCredential.signalAllAcceptedCredentials) PublicKeyCredential.signalAllAcceptedCredentials({rpId, userId, allAcceptedCredentialIds: ids}).catch(() => {}); } catch (e) {}
+}
 /* the browser's refusal, in words: cancelled, timed out, or not allowed here */
 const passkeyProblem = e => e && e.name === "NotAllowedError" ? "The passkey request was cancelled or timed out."
   : e && e.name === "InvalidStateError" ? "This device already has a passkey for your account."

@@ -1051,7 +1051,8 @@ class Api(unittest.TestCase):
         self.assertEqual((r.status_code, r.json()["name"]), (200, "Phone"))
         self.assertEqual(add(pia, "pia", key).status_code, 409)   # the same one twice
         listed = pia.get("/api/me/passkeys", params={"origin": SoftKey.ORIGIN}).json()
-        self.assertEqual([(k["name"], k["here"]) for k in listed["passkeys"]], [("Phone", True)])
+        self.assertEqual([(k["name"], k["here"], k["credential_id"]) for k in listed["passkeys"]], [("Phone", True, SoftKey.b64(key.cid))])
+        self.assertEqual(listed["user_handle"], key.handle)   # what the page tells the device still counts
         self.assertTrue(pia.get("/api/me").json()["user"]["two_factor"])
         # a state is single-use, and only for the account it was made for
         o = pia.post("/api/me/passkeys/options", json={"password": "pia keeps a long passphrase"}, headers=O).json()
@@ -1086,7 +1087,9 @@ class Api(unittest.TestCase):
         self.assertEqual(alone(key, verified=False)[1].status_code, 401)
         self.assertEqual(alone(key, origin="https://evil.example")[1].status_code, 401)
         self.assertEqual(alone(key, rp_id="evil.example")[1].status_code, 401)
-        self.assertEqual(alone(SoftKey())[1].status_code, 401)
+        r = alone(SoftKey())[1]   # a passkey the device has but Sanguity doesn't: says to delete it from the device
+        self.assertEqual(r.status_code, 401)
+        self.assertIn("Delete it from this device", r.json()["detail"])
         stale = SoftKey(); stale.key, stale.cid, stale.handle = key.key, key.cid, key.handle   # a cloned key: its count is behind
         self.assertEqual(alone(stale)[1].status_code, 401)
         # with someone else's ticket, pia's passkey doesn't sign in as them

@@ -27,6 +27,11 @@ PER_ACCOUNT = 20
 TRANSPORTS = {t.value for t in AuthenticatorTransport}
 
 
+# a passkey the device still has but Sanguity doesn't (removed under Account, or from another install)
+STALE = ("That passkey isn't registered here: it was probably removed under Account. Delete it from this device's "
+         "passkeys (or password manager), then try again; you can pick a passkey on another device, such as your phone.")
+
+
 class PasskeyError(Exception):
     def __init__(self, message, status=400):
         super().__init__(message)
@@ -99,7 +104,12 @@ def count(db, uid):
 
 def listing(db, uid, rp_id=None):
     return [{**dict(r), "here": r["rp_id"] == rp_id} for r in db.execute(
-        "SELECT id, name, rp_id, created, last_used FROM passkeys WHERE user_id=? ORDER BY created", (uid,))]
+        "SELECT id, name, rp_id, credential_id, created, last_used FROM passkeys WHERE user_id=? ORDER BY created", (uid,))]
+
+
+def user_handle(db, uid):
+    """The handle, if the account has ever made a passkey (for telling the device which ones still count)."""
+    return db.execute("SELECT webauthn_handle FROM users WHERE id=?", (uid,)).fetchone()[0]
 
 
 # ---------------------------------------------------------------- adding one
@@ -167,10 +177,10 @@ def authenticate(db, state, credential):
     cid = credential.get("id") if isinstance(credential, dict) else None
     row = db.execute("SELECT * FROM passkeys WHERE credential_id=? AND rp_id=?", (str(cid)[:1400], c["rp_id"])).fetchone() if cid else None
     if not row or (c["uid"] is not None and row["user_id"] != c["uid"]):
-        raise PasskeyError("That passkey isn't registered here.", 401)
+        raise PasskeyError(STALE, 401)
     handle = (credential.get("response") or {}).get("userHandle")
     if handle and handle != db.execute("SELECT webauthn_handle FROM users WHERE id=?", (row["user_id"],)).fetchone()[0]:
-        raise PasskeyError("That passkey isn't registered here.", 401)
+        raise PasskeyError(STALE, 401)
     try:
         v = webauthn.verify_authentication_response(credential=credential, expected_challenge=c["challenge"],
                                                     expected_rp_id=c["rp_id"], expected_origin=c["origin"],

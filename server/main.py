@@ -394,7 +394,7 @@ def login_passkey(body: PasskeyFinish, request: Request, response: Response, db=
             _tickets.failed(body.ticket[:200])
         raise
     if want is not None and uid != want:   # the state was issued for this ticket's account, so this can't happen
-        raise HTTPException(401, "That passkey isn't registered here.")
+        raise HTTPException(401, passkeys.STALE)
     u = db.execute("SELECT * FROM users WHERE id=? AND disabled=0", (uid,)).fetchone()
     if not u:
         sec.throttle.fail(*keys)
@@ -606,6 +606,7 @@ def my_passkeys(origin: str = "", s=Depends(settled), db=Depends(get_db)):
     except passkeys.PasskeyError as e:
         here, problem = None, str(e)
     return {"passkeys": passkeys.listing(db, s["id"], here), "site": here, "problem": problem,
+            "user_handle": passkeys.user_handle(db, s["id"]),
             "required": accounts.two_factor_required(db), "authenticator_app": bool(s["totp_secret"])}
 
 
