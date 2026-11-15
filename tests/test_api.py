@@ -284,6 +284,72 @@ class Api(unittest.TestCase):
         self.assertIsNone(db.execute("SELECT 1 FROM activity WHERE actor='old'").fetchone())
         db.close()
 
+    def test_export_and_import(self):
+        import io, zipfile
+        from server import accounts, manage, profiles as prof
+        ben = self.login("ben")
+        r = ben.get("/api/profiles/1/export")
+        self.assertEqual(r.status_code, 200, r.text[:200])
+        self.assertEqual(r.headers["content-type"], "application/zip")
+        self.assertRegex(r.headers["content-disposition"], r'attachment; filename="sanguity-[a-z0-9-]+-\d{8}\.zip"')
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        names = set(z.namelist())
+        self.assertTrue({"data.json", "README.txt", "activity.json", "watch/daily.json"} <= names, names)
+        self.assertEqual("settings.json" in names, bool(ben.get("/api/profiles/1/settings").json()))   # only when it has some
+        data = json.loads(z.read("data.json"))
+        links = [d["url"] for d in data["details"].values() if isinstance(d, dict) and d.get("type") == "file" and d.get("url")]
+        self.assertTrue(links and all(u.split("#")[0] in names for u in links), links)   # every link points into the zip
+        self.assertEqual(z.read(links[0].split("#")[0]), ben.get("/" + ben.get("/api/profiles/1/data").json()["details"][
+            next(k for k, d in data["details"].items() if isinstance(d, dict) and d.get("url") == links[0])]["url"]).content)
+        self.assertIn("health records", z.read("README.txt").decode())
+        self.assertEqual(ben.get("/api/profiles/1/activity?action=export").json()[0]["actor"], "ben")
+        # who may: owners and editors, not viewers
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='vera'").fetchone():
+            accounts.create(db, "vera", password="vera reads but never exports")
+        ben.put("/api/profiles/1/members", json={"username": "vera", "role": "viewer"}, headers=H)
+        vera = self.login("vera", "vera reads but never exports")
+        self.assertEqual(vera.get("/api/profiles/1/export").status_code, 403)
+        ben.put("/api/profiles/1/members", json={"username": "vera", "role": "editor"}, headers=H)
+        self.assertEqual(vera.get("/api/profiles/1/export").status_code, 200)
+        # an HTML record goes with the pictures and stylesheet it uses, and nothing else from its folder
+        src = os.path.join(TMP, "export-html")
+        os.makedirs(os.path.join(src, "docs", "v_files"), exist_ok=True)
+        for rel, body in {"docs/v.htm": b'<link href="v_files/s.css" rel=stylesheet><img src="v_files/a%20b.png">',
+                          "docs/v_files/s.css": b"p{}", "docs/v_files/a b.png": b"\x89PNG", "docs/private.txt": b"no"}.items():
+            with open(os.path.join(src, *rel.split("/")), "wb") as f:
+                f.write(body)
+        with open(os.path.join(src, "data.json"), "w", encoding="utf-8") as f:
+            json.dump({"events": [{"id": 1, "t": "2025-01-01T00:00:00", "k": "document", "title": "V"}],
+                       "details": {"1": {"type": "file", "url": "docs/v.htm", "ext": "htm"}}}, f)
+        hp = prof.create_profile(db, "HTML export", owner_id=1)
+        prof.import_dataset(db, hp, src)
+        hz = zipfile.ZipFile(io.BytesIO(ben.get(f"/api/profiles/{hp}/export").content))
+        docs = sorted(n for n in hz.namelist() if n.startswith("documents/"))
+        self.assertEqual([n.split("/", 2)[2] for n in docs], ["v.htm", "v_files/a b.png", "v_files/s.css"])
+        # round trip: load the export into a new profile with the command line; everything matches
+        archive = os.path.join(TMP, "export-1.zip")
+        with open(archive, "wb") as f:
+            f.write(r.content)
+        manage.run(["create-profile", "Copy of Ben", "ben"])
+        copy = db.execute("SELECT id FROM profiles WHERE name='Copy of Ben'").fetchone()[0]
+        manage.run(["import", str(copy), archive])
+        original, copied = ben.get("/api/profiles/1/data").json(), ben.get(f"/api/profiles/{copy}/data").json()
+        self.assertEqual(len(copied["events"]), len(original["events"]))
+        self.assertEqual(ben.get(f"/api/profiles/{copy}/settings").json(), ben.get("/api/profiles/1/settings").json())
+        self.assertEqual(ben.get(f"/api/profiles/{copy}/watch").status_code, 200)
+        doc_copy = next(d["url"] for d in copied["details"].values() if isinstance(d, dict) and d.get("type") == "file" and d.get("url"))
+        self.assertEqual(ben.get("/" + doc_copy).content, z.read(links[0].split("#")[0]))
+        # a zip with anything unexpected is refused
+        bad = os.path.join(TMP, "bad.zip")
+        with zipfile.ZipFile(bad, "w") as bz:
+            bz.writestr("data.json", "{}")
+            bz.writestr("../escape.txt", "x")
+        with self.assertRaises(ValueError):
+            from server import export
+            export.import_archive(db, copy, bad)
+        db.close()
+
     def test_two_factor(self):
         import time
         from server import accounts, manage, twofactor

@@ -1,0 +1,190 @@
+"""Export everything in a profile as one zip, and load such a zip into a profile.
+
+The zip:
+  README.txt          what this is and how to load it again
+  data.json           the records, with each document link pointing at the copy in documents/
+  settings.json       the profile's dashboard preferences (if it has any)
+  documents/<id>/...  every document, and for HTML records the pictures and stylesheets they show
+  watch/daily.json    the watch and scale summary shown with the profile (if any)
+  activity.json       the profile's activity log
+It's written as it's sent, a piece at a time, so a large profile never sits in memory or on disk.
+"""
+import datetime, json, os, re, shutil, urllib.parse, zipfile
+
+from . import profiles as prof
+
+DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
+REF = re.compile(r"""(?:src|href)\s*=\s*["']([^"'#?]+)""", re.I)
+STORED = ("pdf", "jpg", "jpeg", "png", "gif", "webp", "zip", "gz")   # already compressed
+
+
+def plan(db, pid):
+    """Everything the export needs, gathered now: the stream runs after the request's database connection closes."""
+    p = db.execute("SELECT name, watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
+    docs = {r["id"]: (r["path"], r["ext"]) for r in db.execute("SELECT id, path, ext FROM documents WHERE profile_id=?", (pid,))}
+    log = [dict(r) for r in db.execute("SELECT at, actor, action, detail, ip FROM activity WHERE profile_id=? ORDER BY id", (pid,))]
+    for e in log:
+        e["detail"] = json.loads(e["detail"]) if e["detail"] else {}
+        e["detail"].pop("key", None)
+    return {"pid": pid, "name": p["name"], "docs": docs, "activity": log,
+            "data": prof.data_path(pid) if os.path.isfile(prof.data_path(pid)) else None,
+            "settings": prof.settings_path(pid) if os.path.isfile(prof.settings_path(pid)) else None,
+            "watch": p["watch_file"] if p["watch_file"] and os.path.isfile(p["watch_file"]) else None}
+
+
+def filename(name, now=None):
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "profile"
+    return f"sanguity-{slug}-{(now or datetime.datetime.now()):%Y%m%d}.zip"
+
+
+class _Sink:
+    """Where the zip is written: collects bytes until the stream hands them on. Not seekable, so zipfile writes
+    each entry's sizes after its data (data descriptors) and nothing has to be revisited."""
+    def __init__(self):
+        self.buf, self.pos = bytearray(), 0
+
+    def write(self, b):
+        self.buf += b
+        self.pos += len(b)
+        return len(b)
+
+    def tell(self):
+        return self.pos
+
+    def flush(self):
+        pass
+
+    def take(self):
+        out = bytes(self.buf)
+        self.buf.clear()
+        return out
+
+
+def _parts(path):
+    """The pictures and stylesheets an HTML record links to inside its own folder, as paths relative to it."""
+    folder, out = os.path.dirname(path), []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            html = f.read(5_000_000)
+    except OSError:
+        return out
+    for ref in dict.fromkeys(REF.findall(html)):
+        rel = urllib.parse.unquote(ref.strip())
+        if ":" in rel or rel.startswith(("/", "\\")):
+            continue
+        target = os.path.join(folder, *rel.split("/"))
+        ext = os.path.splitext(target)[1].lstrip(".").lower()
+        if ext in prof.PART_TYPES and prof._inside(target, folder) and os.path.isfile(target):
+            out.append(os.path.relpath(os.path.realpath(target), os.path.realpath(folder)).replace(os.sep, "/"))
+    return out
+
+
+def stream(p, exported_by):
+    now = datetime.datetime.now()
+    stamp = now.timetuple()[:6]
+    sink = _Sink()
+    zf = zipfile.ZipFile(sink, "w", zipfile.ZIP_DEFLATED, compresslevel=6)
+
+    def info(name, compress=True):
+        i = zipfile.ZipInfo(name, stamp)
+        i.compress_type = zipfile.ZIP_DEFLATED if compress else zipfile.ZIP_STORED
+        i.external_attr = 0o600 << 16
+        return i
+
+    def add_bytes(name, data):
+        zf.writestr(info(name), data)
+        return sink.take()
+
+    def add_file(name, path, compress=True):
+        with open(path, "rb") as src, zf.open(info(name, compress), "w", force_zip64=True) as dst:
+            while chunk := src.read(1 << 20):
+                dst.write(chunk)
+                yield sink.take()
+        yield sink.take()
+
+    # records, with document links pointing into the zip
+    missing, included = [], {}
+    if p["data"]:
+        with open(p["data"], encoding="utf-8") as f:
+            data = json.load(f)
+        for d in (data.get("details") or {}).values():
+            if not isinstance(d, dict) or d.get("type") != "file" or not d.get("url"):
+                continue
+            m = DOC_URL.match(d["url"])
+            doc = p["docs"].get(m.group(1)) if m else None
+            if not doc or not os.path.isfile(doc[0]):
+                missing.append(d["url"])
+                d["url"] = None
+                continue
+            frag = d["url"].split("#", 1)[1] if "#" in d["url"] else ""
+            name = f"documents/{m.group(1)}/{os.path.basename(doc[0])}"
+            included[m.group(1)] = (name, doc)
+            d["url"] = name + ("#" + frag if frag else "")   # a plain path, as build.py writes them
+        yield add_bytes("data.json", json.dumps(data, separators=(",", ":")).encode())
+    if p["settings"]:
+        yield from add_file("settings.json", p["settings"])
+    for doc_id, (name, (path, ext)) in included.items():
+        yield from add_file(name, path, ext not in STORED)
+        if ext in prof.HTML_DOCS:
+            for rel in _parts(path):
+                yield from add_file(f"documents/{doc_id}/{rel}", os.path.join(os.path.dirname(path), *rel.split("/")),
+                                    not rel.lower().endswith(STORED))
+    if p["watch"]:
+        yield from add_file("watch/daily.json", p["watch"])
+    yield add_bytes("activity.json", json.dumps(p["activity"], indent=1).encode())
+    readme = f"""Sanguity export: {p['name']}
+Exported {now:%Y-%m-%d %H:%M} by {exported_by}.
+
+This file holds someone's health records. Keep it somewhere private, ideally encrypted, and delete copies you
+no longer need.
+
+  data.json          the records ({len(included)} documents linked)
+  settings.json      dashboard preferences{'' if p['settings'] else ' (none)'}
+  documents/         the documents, one folder each
+  watch/daily.json   watch and scale summary{'' if p['watch'] else ' (none)'}
+  activity.json      who opened, shared or changed this profile, and when
+{f'''
+{len(missing)} document link(s) pointed at files that are no longer on the server and are left out.
+''' if missing else ''}
+To load it into a Sanguity install (into an empty profile, or replacing one's records):
+  python -m server.manage create-profile "Name" USERNAME      (prints the new profile's number)
+  python -m server.manage import PROFILE_NUMBER /path/to/this.zip
+"""
+    yield add_bytes("README.txt", readme.encode())
+    zf.close()
+    yield sink.take()
+
+
+# ---------------------------------------------------------------- loading an export
+
+ALLOWED = re.compile(r"^(data\.json|settings\.json|README\.txt|activity\.json|watch/daily\.json|documents/[^/]+/.+)$")
+
+
+def import_archive(db, pid, archive):
+    """Unpack an export into the profile's own folder (so its documents stay) and load it. Returns the number of
+    documents. The activity log in the zip is history from the other install and isn't merged in."""
+    dest = os.path.join(prof.profile_dir(pid), "imported")
+    new = dest + ".new"
+    shutil.rmtree(new, ignore_errors=True)
+    with zipfile.ZipFile(archive) as zf:
+        names = [i.filename for i in zf.infolist() if not i.is_dir()]
+        if "data.json" not in names:
+            raise ValueError("this zip has no data.json: it isn't a Sanguity export")
+        for i in zf.infolist():
+            if i.is_dir():
+                continue
+            parts = i.filename.split("/")
+            if not ALLOWED.match(i.filename) or ".." in parts or "" in parts:
+                raise ValueError(f"unexpected entry in the zip: {i.filename}")
+            target = os.path.join(new, *parts)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with zf.open(i) as src, open(target, "wb") as out:
+                shutil.copyfileobj(src, out)
+    shutil.rmtree(dest, ignore_errors=True)
+    os.replace(new, dest)
+    n = prof.import_dataset(db, pid, dest)
+    watch = os.path.join(dest, "watch", "daily.json")
+    if os.path.isfile(watch):
+        db.execute("UPDATE profiles SET watch_file=? WHERE id=? AND (watch_file IS NULL OR watch_file LIKE ?)",
+                   (watch, pid, os.path.join(prof.profile_dir(pid), "%")))
+    return n

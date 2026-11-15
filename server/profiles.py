@@ -61,6 +61,9 @@ def resolve_document(url, base_dir):
 
 
 HTML_DOCS = ("html", "htm")
+# what an HTML record may load from its own folder: pictures and stylesheets, nothing that runs
+PART_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif",
+              "webp": "image/webp", "bmp": "image/bmp", "css": "text/css; charset=utf-8"}
 
 
 def document_url(pid, doc, path, ext):
