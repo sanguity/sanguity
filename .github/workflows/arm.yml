@@ -17,7 +17,6 @@ jobs:
     timeout-minutes: 240
     env:
       COMPOSE_PROJECT_NAME: sanguity-arm
-      DOCKER_DEFAULT_PLATFORM: linux/arm/v7   # every image built and pulled as 32-bit ARM
     steps:
       - uses: actions/checkout@v4
 
@@ -25,8 +24,9 @@ jobs:
         with:
           platforms: arm
 
-      - name: Run the containers as this runner's user
+      - name: Run the containers as this runner's user; build and pull every image as 32-bit ARM from here on
         run: |
+          echo "DOCKER_DEFAULT_PLATFORM=linux/arm/v7" >> "$GITHUB_ENV"
           echo "PUID=$(id -u)" >> "$GITHUB_ENV"
           echo "PGID=$(id -g)" >> "$GITHUB_ENV"
 
