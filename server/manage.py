@@ -5,7 +5,9 @@
   reset-password USERNAME [--enable]     new one-time password; signs the account out everywhere
                                          (--enable also turns a disabled account back on)
   share PROFILE_ID USERNAME ROLE         give an account owner, editor or viewer access (or change it)
-  import PROFILE_ID DIR                  load DIR/data.json (and settings.json) into a profile
+  create-profile NAME USERNAME           a new, empty profile owned by USERNAME (prints its number)
+  import PROFILE_ID DIR|EXPORT.zip       load DIR/data.json (and settings.json), or an export from the Account page,
+                                         into a profile (replacing its records)
   sync                                   re-import the setup build into the profiles linked to it
   backup [DEST] [--keep N]               write a backup archive (default folder: /backups in Docker), keeping the
                                          newest N there; safe while the app runs
@@ -15,9 +17,9 @@
   restore ARCHIVE [--yes]                replace the database, profiles and setup build with a backup's; the app must
                                          be stopped: docker compose run --rm --no-deps app python -m server.manage restore ...
 """
-import sys
+import os, sys
 
-from . import accounts, activity, backup, db as dbm, main, profiles as prof, security as sec
+from . import accounts, activity, backup, db as dbm, export, main, profiles as prof, security as sec
 
 
 def _user(db, name):
@@ -113,7 +115,7 @@ def _command(db, argv):
         linked = db.execute("SELECT linked_build FROM profiles WHERE id=?", (pid,)).fetchone()[0]
         db.execute("UPDATE profiles SET linked_build=0 WHERE id=?", (pid,))   # it now holds its own data...
         try:
-            n = prof.import_dataset(db, pid, args[1])
+            n = (export.import_archive if os.path.isfile(args[1]) else prof.import_dataset)(db, pid, args[1])
         except BaseException:   # ...unless the import failed: then it stays as it was
             db.execute("UPDATE profiles SET linked_build=? WHERE id=?", (linked, pid))
             raise
@@ -125,6 +127,11 @@ def _command(db, argv):
         activity.log(db, "2fa.reset", detail={"username": u["username"]}, actor=activity.COMMAND_LINE)
         print(f"Two-factor sign-in is off for {u['username']}; they're signed out everywhere."
               + (" Their password was only allowed with it, so they'll choose a new one at sign-in." if u["pw_short"] else ""))
+    elif cmd == "create-profile" and len(args) == 2:
+        u = _user(db, args[1])
+        pid = prof.create_profile(db, args[0].strip()[:80] or "Profile", owner_id=u["id"])
+        activity.log(db, "create", profile_id=pid, actor=activity.COMMAND_LINE)
+        print(f"Created profile {pid}, \"{args[0].strip()[:80]}\", owned by {u['username']}.")
     elif cmd == "sync":
         failed = prof.sync_build(db)
         if failed:

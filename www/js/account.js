@@ -70,6 +70,10 @@ async function loadProfiles() {
     const head = el("div", {class: "prof-hd"}, el("b", {text: p.name}), el("span", {class: "tag", text: p.role}),
       el("span", {class: "muted", text: p.members > 1 ? `shared with ${p.members - 1} other${p.members > 2 ? "s" : ""}` : "only you"}));
     const body = [head];
+    if (p.role !== "viewer")   // owners and editors can take everything with them
+      body.push(el("div", {class: "row"},
+        el("a", {class: "btn small", href: `api/profiles/${p.id}/export`, download: "", text: "Export everything"}),
+        el("span", {class: "muted", text: "a zip of the records, documents, settings and activity; keep it private"})));
     if (p.role === "owner") {
       const name = el("input", {value: p.name, maxlength: 80, "aria-label": "Profile name"});
       body.push(el("div", {class: "row"}, name, el("button", {class: "btn small", type: "button", text: "Rename",
@@ -176,6 +180,7 @@ const WHAT = {
   unshare: (d, e) => d.username === e.actor ? "left the profile" : `removed ${d.username}’s access`,
   import: d => `imported records (${d.documents} documents)`,
   reload: () => "loaded the latest records",
+  export: () => "exported everything",
   setup: () => "set up Sanguity with the first account",
   password: () => "changed their password",
   "account.create": d => `created the account ${d.username}${d.admin ? " (admin)" : ""}`,
@@ -192,7 +197,8 @@ const WHAT = {
   "settings.require_2fa": d => d.on ? "required two-factor sign-in for everyone" : "stopped requiring two-factor sign-in",
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
-  ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"]];
+  ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
+  ["export", "Exports"]];
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},

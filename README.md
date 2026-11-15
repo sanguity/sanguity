@@ -101,6 +101,9 @@ portal's export doesn't import, please open an issue with an anonymised sample.
 - **Every request for records or documents checks the account's role on that profile.** Documents are served
   only through that check, read-only, with scripts blocked; no folder of health data is served directly.
 - **Admins manage accounts, not records:** being an admin doesn't show anyone's records.
+- **Export everything:** owners and editors can download a profile as one zip (records, documents, settings, watch
+  data and activity) under **Account**, and load it into another install with `server.manage create-profile` and
+  `import`.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
   changed it, and when (**Account > Activity**); admins see account changes. Entries are kept for a year
   (`ACTIVITY_DAYS` in `.env`).

@@ -229,6 +229,9 @@ def main():
             page.locator("#acctLog").get_by_role("button", name="Account activity").click()
             page.wait_for_function("document.querySelector('#acctLog tbody') && document.querySelector('#acctLog tbody').textContent.includes('created the account alex')", timeout=10000)
             check("admin sees account activity", True)
+            href = js("document.querySelector('#profList .prof a[download]').getAttribute('href')")
+            head = js(f"fetch('{href}').then(r => r.arrayBuffer()).then(b => [...new Uint8Array(b.slice(0, 2))])")
+            check("Export everything downloads a zip", head == [0x50, 0x4B], head)
             # sharing with someone who already has access asks before changing their role; declining keeps it
             asked_share = []
             page.once("dialog", lambda d: (asked_share.append(d.message), d.dismiss()))

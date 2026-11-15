@@ -8,10 +8,10 @@ from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, backup, config, db as dbm, profiles as prof, security as sec, twofactor
+from . import accounts, activity, backup, config, db as dbm, export, profiles as prof, security as sec, twofactor
 
 log = logging.getLogger("sanguity")
 RANK = {"viewer": 1, "editor": 2, "owner": 3}
@@ -652,6 +652,17 @@ def profile_data(pid: int, request: Request, s=Depends(user), db=Depends(get_db)
     return _json_file(path)
 
 
+@app.get("/api/profiles/{pid}/export")
+def profile_export(pid: int, request: Request, s=Depends(user), db=Depends(get_db)):
+    """Everything in the profile as one zip, streamed (owners and editors)."""
+    need(db, s, pid, "editor")
+    prof.sync_build(db, pid)
+    p = export.plan(db, pid)
+    activity.log(db, "export", s, pid, ip=_client_ip(request))
+    return StreamingResponse(export.stream(p, s["username"]), media_type="application/zip",
+                             headers={"Content-Disposition": f'attachment; filename="{export.filename(p["name"])}"'})
+
+
 @app.get("/api/profiles/{pid}/settings")
 def profile_settings(pid: int, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "viewer")
@@ -676,9 +687,7 @@ DOC_TYPES = {"pdf": "application/pdf", "html": "text/html; charset=utf-8", "htm"
              "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif", "tif": "image/tiff", "tiff": "image/tiff"}
 
 
-# what an HTML record may load from its own folder: pictures and stylesheets, nothing that runs
-PART_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif",
-              "webp": "image/webp", "bmp": "image/bmp", "css": "text/css; charset=utf-8"}
+PART_TYPES = prof.PART_TYPES
 
 
 def _serve(path, ext, types):
