@@ -1,0 +1,12 @@
+Date,Test,Result,Units,Reference Range,Flag,Panel
+03/14/2025,Hemoglobin,12.9,g/dL,13.5 - 17.5,L,CBC
+03/14/2025,Platelet Count,"1,200",K/uL,150-400,,CBC
+03/14/2025,LDL Cholesterol,131,mg/dL,<100,,Lipid Panel
+03/14/2025,HDL Cholesterol,72,mg/dL,>40,,Lipid Panel
+03/14/2025,Urine Protein,Negative,,Negative,,Urinalysis
+
+04/02/2025,Hemoglobin,13.8,g/dL,13.5 - 17.5,,CBC
+04/02/2025,CRP,<5,mg/L,<10,,
+04/02/2025,,4.4,,,,
+04/31/2025,Hemoglobin,14.0,g/dL,13.5 - 17.5,,CBC
+04/09/2025,Ferritin,,ng/mL,30-400,,
