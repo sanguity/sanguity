@@ -312,7 +312,8 @@ transaction, the import's records and documents (they cascade from its `imports`
 another import still uses them, and its watch data. Each import's `watch` is kept as its own sealed file
 (`<profile>/watch/imports/<import id>.json`) and the merged file is rebuilt from those, so undoing one takes away
 exactly the days and workouts it brought. Anything an importer writes outside its `parse()` result can't be undone:
-don't.
+don't. Records typed in on the import page (`server/routes_manual.py`, origin `manual`) are one import per save, built in
+the same shape as an importer's output and undone the same way, with the uploads that hold their attached files.
 
 | Route | |
 |---|---|

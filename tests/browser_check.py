@@ -7,7 +7,8 @@ event, drags and scroll-zooms the charts, toggles the event sort, switches profi
 the import page (a fictional C-CDA and a FHIR export, previewed, saved in the background and then shown on the timeline;
 the C-CDA again, previewed as all duplicates and cancelled; the FHIR one then undone from the import history, and
 gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab; a CareSpace and an Epic MyChart
-export), types two lab results in on the import page and finds them on Trends, uploads a lab with a spelling Sanguity
+export), types two lab results in on the import page and finds them on Trends, types a visit, a medication, a
+claim and a letter with a PDF into their own forms, finds them on the timeline and Costs and opens the PDF, uploads a lab with a spelling Sanguity
 doesn't know, accepts the series suggested at the preview and finds it on Trends, then sees it matched as before on
 the next upload, opens the account page (where the match is listed for admins), and fails
 on any script error, console error, failed request or NaN written into an SVG attribute.
@@ -599,6 +600,85 @@ def main():
                   sorted(map(tuple, [(n, tuple(map(tuple, p))) for n, p in typed])) == [("Ferritin", ((88, ""),)), ("Hemoglobin", ((12.4, "L"),))], typed)
             charts = page.inner_text("#charts")
             check("…with a chart for each", "Hemoglobin" in charts and "Ferritin" in charts, charts[:300])
+
+            # ---- the other kinds typed in: a visit, a medication, a claim and a letter with a PDF, saved as one import;
+            # the visit on the timeline, the claim on Costs, the letter opening in the drawer
+            page.goto(base + "/import.html?profile=2")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            page.click("#tab-manual")
+            card = lambda i, f: f".man-item:nth-child({i}) [data-f={f}]"
+
+            def add_record(kind):
+                page.select_option("#manKind", kind)
+                page.click("#manAddKind")
+            add_record("visit")
+            check("a record's form opens with its date filled in and the next field focused",
+                  js("document.querySelectorAll('.man-item').length === 1 && /^\\d{4}-\\d\\d-\\d\\d$/.test(document.querySelector('.man-item [data-f=date]').value)")
+                  and js("document.activeElement.dataset.f") == "time", js("document.activeElement.dataset.f"))
+            page.fill(card(1, "date"), "2026-11-03")
+            page.fill(card(1, "date"), "2026-13-03")
+            page.fill(card(1, "title"), "Typed follow-up visit")
+            page.wait_for_function("document.querySelector('.man-item [data-f=date]').getAttribute('aria-invalid') === 'true'", timeout=5000)
+            check("a field that can't be read is marked, with why", "couldn't be read" in js("document.querySelector('.man-item .man-err').textContent")
+                  and page.is_disabled("#manSave"), js("document.querySelector('.man-item .man-err').textContent"))
+            page.fill(card(1, "date"), "2026-11-03")
+            page.fill(card(1, "who"), "Dr. Ada Quill (fictional)")
+            page.fill(card(1, "where"), "Lakeside Clinic (fictional)")
+            add_record("med")
+            page.fill(card(2, "name"), "Typed ferrous sulfate 325 mg")
+            page.fill(card(2, "instructions"), "1 tablet daily")
+            add_record("claim")
+            page.fill(card(3, "provider"), "Lakeside Clinic (fictional)")
+            page.fill(card(3, "title"), "Typed office visit claim")
+            page.fill(card(3, "billed"), "$250.00")
+            page.fill(card(3, "paid"), "200")
+            page.fill(card(3, "owe"), "50")
+            add_record("document")
+            page.fill(card(4, "title"), "Typed referral letter")
+            page.select_option(card(4, "doctype"), "letter")
+            pdf_path = os.path.join(TMP, "typed-letter.pdf")
+            with open(pdf_path, "wb") as f:   # a one-page PDF with fictional text
+                body = b"BT /F1 12 Tf 72 720 Td (Fictional referral letter) Tj ET"
+                objs = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+                        b"<< /Length %d >>\nstream\n" % len(body) + body + b"\nendstream", b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+                out, offs = b"%PDF-1.4\n", []
+                for i, o in enumerate(objs):
+                    offs.append(len(out))
+                    out += b"%d 0 obj\n" % (i + 1) + o + b"\nendobj\n"
+                xref = len(out)
+                out += b"xref\n0 6\n0000000000 65535 f \n" + b"".join(b"%010d 00000 n \n" % o for o in offs)
+                out += b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % xref
+                f.write(out)
+            page.set_input_files(card(4, "file"), pdf_path)
+            page.wait_for_function("document.querySelector('.man-item:nth-child(4) .man-file').textContent.includes('uploaded')", timeout=10000)
+            page.wait_for_function("document.getElementById('manMsg').textContent === '4 records ready to save.' && !document.getElementById('manSave').disabled", timeout=5000)
+            checks = js("[...document.querySelectorAll('.man-item .man-check')].map(c => c.textContent)")
+            check("each record says what it became", "Typed follow-up visit" in checks[0] and "Doctor visits" in checks[2]
+                  and "typed-letter.pdf" in checks[3], checks)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the record forms fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            check("the typed records save as one import", page.inner_text("#manMsg").startswith("Saved 4 records."), page.inner_text("#manMsg"))
+            page.click("#manMsg a")   # "See them on the timeline"
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && "
+                                   "!document.getElementById('view-timeline').hidden", timeout=20000)
+            typed = js("['Typed follow-up visit', 'Typed ferrous sulfate 325 mg', 'Typed referral letter'].map(t => (EV.find(e => e.title === t) || {}).k)")
+            check("the visit, the medication and the letter are on the timeline", typed == ["visit", "med", "letter"], typed)
+            js("openEvent(EV.find(e => e.title === 'Typed referral letter'))")
+            page.wait_for_selector("#drawer.open #dbody iframe.doc", timeout=5000)
+            src = js("document.querySelector('#dbody iframe.doc').getAttribute('src')")
+            got = js(f"fetch({json.dumps(src.split('#')[0])}).then(async r => [r.status, r.headers.get('content-type'), (await r.text()).slice(0, 8)])")
+            check("…and the letter's PDF opens in the drawer", "/documents/" in src and got == [200, "application/pdf", "%PDF-1.4"], [src, got])
+            js("closeDrawer(); switchTab('costs')")
+            page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
+            js("costState.period = 'all'; renderCosts()")
+            settle(300)
+            costs = page.inner_text("#view-costs")
+            check("the typed claim is on Costs, under its care category", "Typed office visit claim" in costs and "Doctor visits" in costs, costs[:300])
 
             # ---- lab names matched on import (#23): a spelling lab-aliases.json doesn't know is suggested the profile's
             # Hemoglobin series at the preview; accepted, its point is charted with Hemoglobin; uploaded again, it's

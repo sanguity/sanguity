@@ -2,7 +2,10 @@
 """Lab results typed in on the import page (server/routes_manual.py, issue #27): typed rows become lab results with
 their ranges, flags and canonical names; the same rows typed and in an imported CSV get the same keys; rows that
 can't be read are refused with their reasons and nothing is saved; viewers can't save; the save is one import,
-logged with its counts. Fictional data only.
+logged with its counts. Every other kind of record (visits, stays, studies, medications and fills, problems, claims,
+payments, appointments, vitals, home measurements, workouts and documents with a file) lands where the page reads its
+kind; mixed kinds save as one import that undo removes whole, watch data and the document's file included; typed
+records the profile has already are flagged and left out. Fictional data only.
 
   python3 tests/test_manual.py
 """
@@ -21,7 +24,7 @@ import io, logging   # noqa: E402
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, activity, db as dbm, main, profiles as prof, uploads   # noqa: E402
+from server import accounts, activity, crypto, db as dbm, main, profiles as prof, uploads   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -67,6 +70,8 @@ class Manual(unittest.TestCase):
         cls.csv_pid = prof.create_profile(db, "Robin's spreadsheet (fictional)", owner_id=uids["robin"])
         cls.typed_pid = prof.create_profile(db, "Robin typed (fictional)", owner_id=uids["robin"])
         cls.bad_pid = prof.create_profile(db, "Robin refused (fictional)", owner_id=uids["robin"])
+        cls.kinds_pid, cls.mixed_pid, cls.dup_pid, cls.refuse_pid = (
+            prof.create_profile(db, f"Robin {n} (fictional)", owner_id=uids["robin"]) for n in ("kinds", "mixed", "again", "items refused"))
         db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (uids["kim"], cls.pid))
         db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (uids["ash"], cls.pid))
         db.close()
@@ -222,6 +227,227 @@ class Manual(unittest.TestCase):
         self.assertEqual(r.status_code, 422)
         r = self.post([{"date": "2026-01-01", "test": "x" * 500, "value": "5"}])
         self.assertEqual(r.status_code, 422)
+
+    # ---------------------------------------------------------------- every other kind of record
+
+    def items(self, items, save=True, pid=None, c=None, rows=None, **extra):
+        body = {"items": items, "save": save, **extra}
+        if rows is not None:
+            body["rows"] = rows
+        return (c or self.robin).post(f"/api/profiles/{pid or self.pid}/manual", json=body, headers=H)
+
+    def upload(self, pid, name, content):
+        """A file sent the way the page sends one: a new upload, the file, finished."""
+        up = self.robin.post(f"/api/profiles/{pid}/uploads", headers=H).json()["id"]
+        r = self.robin.put(f"/api/profiles/{pid}/uploads/{up}/files", params={"path": name}, content=content, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/uploads/{up}/finish", headers=H).status_code, 200)
+        return up
+
+    def watch(self, pid):
+        r = self.robin.get(f"/api/profiles/{pid}/watch")
+        return None if r.status_code == 204 else r.json()
+
+    def test_each_kind_lands_where_the_page_reads_it(self):
+        pid = self.kinds_pid
+        r = self.items([
+            {"kind": "visit", "date": "2026-05-04", "time": "09:30", "title": "Follow-up visit", "who": "Dr. Ada Quill (fictional)",
+             "where": "Lakeside Clinic (fictional)", "dx": "Anemia", "note": "Recheck in 3 months."},
+            {"kind": "stay", "admit": "2026-05-10", "admit_time": "21:40", "discharge": "2026-05-13", "where": "Harbor Hospital (fictional)",
+             "how": "Emergency", "note": "Discharged home."},
+            {"kind": "procedure", "date": "2026-05-11", "title": "Bone marrow biopsy", "where": "Harbor Hospital (fictional)", "text": "Tolerated well."},
+            {"kind": "imaging", "date": "2026-05-12", "title": "Chest X-ray", "who": "Dr. Ben Ito (fictional)", "text": "No acute findings."},
+            {"kind": "study", "date": "2026-05-14", "title": "Pathology report", "text": "Normal cellularity."},
+            {"kind": "med", "name": "Ferrous sulfate 325 mg tablet", "instructions": "1 tablet daily", "start": "2026-05-04",
+             "stop": "2026-08-04", "prescriber": "Dr. Ada Quill (fictional)"},
+            {"kind": "rx", "date": "2026-05-05", "drug": "Ferrous sulfate 325 mg tablet", "pharmacy": "Corner Pharmacy (fictional)",
+             "supply": "30", "billed": "$12.00", "paid": "8", "owe": "4.00", "insurer": "Example Health (fictional)"},
+            {"kind": "problem", "name": "Iron deficiency anemia", "status": "Active", "since": "2026-05-04"},
+            {"kind": "claim", "date": "2026-05-04", "provider": "Lakeside Clinic (fictional)", "title": "Office visit",
+             "billed": "$240.00", "paid": "180", "owe": "60", "status": "Paid", "insurer": "Example Health (fictional)"},
+            {"kind": "payment", "date": "2026-06-01", "payee": "Lakeside Clinic (fictional)", "amount": "60", "group": "Medical bills"},
+            {"kind": "upcoming", "date": "2026-12-03", "time": "10:00", "title": "Follow-up visit", "who": "Dr. Ada Quill (fictional)",
+             "where": "Lakeside Clinic (fictional)"},
+            {"kind": "vitals", "date": "2026-05-04", "time": "09:35", "where": "Lakeside Clinic (fictional)", "bp": "118/76", "hr": "72",
+             "temp": "37", "temp_unit": "C", "height": "170", "height_unit": "cm", "spo2": "98", "weight": "80", "weight_unit": "kg"},
+            {"kind": "home", "date": "2026-05-06", "weight": "176.4", "steps": "8,210"},
+            {"kind": "workout", "date": "2026-05-06", "time": "07:00", "minutes": "40", "activity": "Brisk walk"},
+        ], pid=pid)
+        self.assertEqual(r.status_code, 200, r.text)
+        j = r.json()
+        self.assertEqual(j["counts"]["typed"], {"claim": 1, "home": 1, "imaging": 1, "med": 1, "payment": 1, "problem": 1, "procedure": 1,
+                                                "rx": 1, "stay": 1, "study": 1, "upcoming": 1, "visit": 1, "vitals": 1, "workout": 1})
+        self.assertEqual((j["counts"]["watch_days"], j["counts"]["workouts"]), (1, 1))
+        data = self.data(pid)
+        ev = {e["k"]: e for e in data["events"]}
+        det = lambda k: data["details"][str(ev[k]["id"])]
+        self.assertTrue(all(e["key"].startswith("manual:h:") for e in data["events"]), [e["key"] for e in data["events"]])
+        self.assertEqual((ev["visit"]["t"], ev["visit"]["title"], ev["visit"]["sub"]),
+                         ("2026-05-04T09:30:00", "Follow-up visit", "Dr. Ada Quill (fictional) · Lakeside Clinic (fictional)"))
+        self.assertEqual({k: det("visit")[k] for k in ("type", "who", "where", "dx", "note", "procs")},
+                         {"type": "visit", "who": "Dr. Ada Quill (fictional)", "where": "Lakeside Clinic (fictional)", "dx": "Anemia",
+                          "note": "Recheck in 3 months.", "procs": []})
+        self.assertEqual((ev["stay"]["t"], ev["stay"]["end"]), ("2026-05-10T21:40:00", "2026-05-13T23:59:00"))
+        self.assertIn("3 nights", ev["stay"]["sub"])
+        self.assertEqual({k: det("stay")[k] for k in ("type", "where", "admission", "note")},
+                         {"type": "stay", "where": "Harbor Hospital (fictional)", "admission": "Emergency", "note": "Discharged home."})
+        self.assertTrue(det("stay")["discharge"])   # the drawer shows admit and discharge times from it
+        for k, text in (("procedure", "Tolerated well."), ("imaging", "No acute findings."), ("study", "Normal cellularity.")):
+            self.assertEqual((det(k)["type"], det(k)["report"]), ("result", [["Findings", text, 0]]))
+        self.assertEqual(det("imaging")["provider"], "Dr. Ben Ito (fictional)")
+        self.assertEqual((ev["med"]["t"], det("med")["instructions"], det("med")["status"], det("med")["end"][:10], det("med")["prescriber"]),
+                         ("2026-05-04T12:00:00", "1 tablet daily", "Stopped", "2026-08-04", "Dr. Ada Quill (fictional)"))
+        costs = {c["kind"]: c for c in data["costs"]}
+        self.assertEqual({k: costs["pharmacy"][k] for k in ("id", "d", "billed", "paid", "owe", "cat", "title")},
+                         {"id": ev["rx"]["id"], "d": "2026-05-05", "billed": 12.0, "paid": 8.0, "owe": 4.0, "cat": "Pharmacy",
+                          "title": "Ferrous sulfate 325 mg tablet"})
+        self.assertEqual((det("rx")["type"], det("rx")["kind"]), ("claim", "Pharmacy"))
+        self.assertEqual({k: costs["medical"][k] for k in ("id", "d", "ins", "billed", "paid", "owe", "status", "cat", "prov", "title")},
+                         {"id": ev["claim"]["id"], "d": "2026-05-04", "ins": "Example Health (fictional)", "billed": 240.0, "paid": 180.0,
+                          "owe": 60.0, "status": "Paid", "cat": "Doctor visits", "prov": "Lakeside Clinic (fictional)", "title": "Office visit"})
+        self.assertEqual((det("claim")["type"], det("claim")["kind"], det("claim")["visit"]),
+                         ("claim", "Medical", {"date": "2026-05-04", "provider": "Lakeside Clinic (fictional)"}))
+        self.assertEqual({k: data["problems"][0][k] for k in ("name", "status", "date", "type")},
+                         {"name": "Iron deficiency anemia", "status": "Active", "date": "2026-05-04", "type": "Diagnosis"})
+        pay = data["outOfPocket"]["payments"][0]
+        self.assertEqual({k: pay[k] for k in ("d", "payee", "amount", "group", "est")},
+                         {"d": "2026-06-01", "payee": "Lakeside Clinic (fictional)", "amount": 60.0, "group": "Medical bills", "est": False})
+        self.assertEqual({k: data["upcoming"][0][k] for k in ("t", "title", "who", "where")},
+                         {"t": "2026-12-03T10:00:00", "title": "Follow-up visit", "who": "Dr. Ada Quill (fictional)", "where": "Lakeside Clinic (fictional)"})
+        labs = {s["name"]: s for s in data["labs"]}
+        self.assertEqual({n: (labs[n]["panel"], labs[n]["key"], labs[n]["unit"], labs[n]["pts"][0][1]) for n in labs},
+                         {"Blood pressure, systolic": ("Vitals", "loinc:8480-6", "mmHg", 118), "Blood pressure, diastolic": ("Vitals", "loinc:8462-4", "mmHg", 76),
+                          "Heart rate (clinic)": ("Vitals", "loinc:8867-4", "bpm", 72), "Temperature": ("Vitals", "loinc:8310-5", "°F", 98.6),
+                          "Height": ("Vitals", "loinc:8302-2", "in", 66.9), "SpO2 (clinic)": ("Vitals", "loinc:59408-5", "%", 98)})
+        self.assertEqual(labs["Heart rate (clinic)"]["pts"][0], ["2026-05-04T09:35:00", 72, None, None, "", "72 bpm", "Typed in"])
+        self.assertEqual(data["clinicWeights"], [["2026-05-04T09:35:00", 176.4, "Lakeside Clinic (fictional)"]])
+        w = self.watch(pid)
+        self.assertEqual({m["key"]: (m["group"], m["unit"], m["pts"]) for m in w["metrics"]},
+                         {"weight": ("Body", "lb", [["2026-05-06", 176.4]]), "steps": ("Activity", "steps", [["2026-05-06", 8210]])})
+        self.assertEqual({k: w["exercise"][0][k] for k in ("start", "end", "name", "kind", "minutes")},
+                         {"start": "2026-05-06T07:00:00", "end": "2026-05-06T07:40:00", "name": "Brisk walk", "kind": "brisk_walk", "minutes": 40})
+        self.assertTrue(w["exercise"][0]["key"].startswith("manual:h:"))
+        db = dbm.connect()
+        try:
+            log = activity.for_profile(db, pid, action="import")[0]
+            self.assertEqual((log["detail"]["importer"], log["detail"]["counts"]["typed"]["visit"]), ("manual", 1))
+        finally:
+            db.close()
+
+    def test_mixed_kinds_one_import_and_undo_removes_all(self):
+        pid = self.mixed_pid
+        pdf = b"%PDF-1.4\n% A fictional letter\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n"
+        up = self.upload(pid, "letter.pdf", pdf)
+        before = count(pid)
+        r = self.items([{"kind": "visit", "date": "2026-07-01", "title": "Annual exam", "where": "Lakeside Clinic (fictional)"},
+                        {"kind": "home", "date": "2026-07-02", "steps": "5000"},
+                        {"kind": "document", "date": "2026-07-01", "title": "Referral letter", "doctype": "letter",
+                         "where": "Lakeside Clinic (fictional)", "upload": str(up), "file": "letter.pdf"}],
+                       rows=[{"date": "2026-07-01", "test": "WBC", "value": "6.2", "unit": "K/uL"}], pid=pid)
+        self.assertEqual(r.status_code, 200, r.text)
+        iid = r.json()["import_id"]
+        self.assertEqual(r.json()["counts"]["documents"], 1)
+        after = count(pid)
+        self.assertEqual(after["imports"], before["imports"] + 1)   # one import for all of it
+        data = self.data(pid)
+        doc = next(e for e in data["events"] if e["k"] == "letter")
+        d = data["details"][str(doc["id"])]
+        self.assertEqual((d["type"], d["ext"]), ("file", "pdf"))
+        got = self.robin.get("/" + d["url"])
+        self.assertEqual((got.status_code, got.content, got.headers["content-type"]), (200, pdf, "application/pdf"))
+        # the file is kept sealed on disk, as the upload stored it
+        db = dbm.connect()
+        try:
+            path = crypto.dec(db.execute("SELECT path FROM documents WHERE import_id=?", (iid,)).fetchone()["path"])
+        finally:
+            db.close()
+        self.assertTrue(os.path.isfile(path))
+        with open(path, "rb") as f:
+            raw = f.read()
+        self.assertNotIn(b"%PDF", raw)
+        self.assertNotIn(b"fictional letter", raw)
+        self.assertTrue(crypto.file_is_encrypted(path))
+        self.assertTrue(self.watch(pid))
+        r = self.robin.post(f"/api/profiles/{pid}/imports/{iid}/undo", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(count(pid), before)
+        self.assertIsNone(self.watch(pid))   # the steps went with it
+        self.assertFalse(os.path.exists(path))   # and the document's file, its upload discarded
+        self.assertFalse(os.path.isdir(uploads.folder(pid, up)))
+        self.assertEqual(self.robin.get("/" + d["url"]).status_code, 404)
+
+    def test_typed_records_already_there_are_flagged_and_left_out(self):
+        pid = self.dup_pid
+        visit = {"kind": "visit", "date": "2026-08-01", "time": "10:00", "title": "Office visit", "where": "Lakeside Clinic (fictional)"}
+        claim = {"kind": "claim", "date": "2026-08-01", "provider": "Lakeside Clinic (fictional)", "title": "Office visit", "billed": "200"}
+        steps = {"kind": "home", "date": "2026-08-01", "steps": "4000"}
+        row = {"date": "2026-08-01", "test": "WBC", "value": "6.0", "unit": "K/uL"}
+        self.assertEqual(self.items([visit, claim, steps], rows=[row], pid=pid).status_code, 200)
+        before = count(pid)
+        problem = {"kind": "problem", "name": "Hypertension", "since": "2026-08-01"}
+        r = self.items([dict(visit, title="  office VISIT "), claim, steps, problem], rows=[row], save=False, pid=pid)
+        j = r.json()
+        self.assertEqual([x["duplicate"] for x in j["items"]], [True, True, True, False])   # the same, typed again
+        self.assertEqual([x["duplicate"] for x in j["rows"]], [True])
+        self.assertEqual(j["duplicates"], 4)
+        r = self.items([visit, claim, steps], rows=[row], pid=pid)
+        self.assertEqual(r.status_code, 400, r.text)
+        self.assertIn("in this profile already", r.json()["detail"])
+        self.assertEqual(count(pid), before)
+        r = self.items([visit, claim, problem], pid=pid)   # the new one is saved; the others are left out
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((r.json()["skipped"], r.json()["counts"]["typed"]), (2, {"problem": 1}))
+        self.assertEqual(count(pid)["events"], before["events"])
+        r = self.items([visit], pid=pid, keep_duplicates=True)   # saved again, as asked
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(count(pid)["events"], before["events"] + 1)
+
+    def test_bad_fields_refused_with_reasons_and_nothing_saved(self):
+        pid = self.refuse_pid
+        before = count(pid)
+        r = self.items([{"kind": "visit", "date": "2026-13-40", "title": "Visit"},
+                        {"kind": "claim", "date": "2026-02-01", "provider": "Clinic (fictional)", "billed": "lots"},
+                        {"kind": "vitals", "date": "2026-02-01", "bp": "120", "hr": "720"},
+                        {"kind": "med", "instructions": "daily"},
+                        {"kind": "stay", "admit": "2026-02-05", "discharge": "2026-02-01"},
+                        {"kind": "document", "date": "2026-02-01", "title": "Scan", "upload": "999999", "file": "scan.pdf"},
+                        {"kind": "telepathy", "date": "2026-02-01"},
+                        {"kind": "visit", "date": "2026-02-02", "title": "Fine visit"},
+                        {"kind": "visit", "date": "2026-02-02", "title": "Fine visit"}],
+                       rows=[{"date": "2026-02-01", "test": "WBC", "value": "6"}], pid=pid)
+        self.assertEqual(r.status_code, 400, r.text)
+        j = r.json()
+        fields = [x["fields"] for x in j["items"]]
+        self.assertEqual(fields[0], {"date": "has a date that couldn't be read (2026-13-40)"})
+        self.assertEqual(fields[1], {"billed": "has an amount billed that isn't an amount (lots)"})
+        self.assertEqual(set(fields[2]), {"bp", "hr"})
+        self.assertEqual(set(fields[3]), {"name", "start"})
+        self.assertEqual(fields[4], {"discharge": "has a discharge before the admission"})
+        self.assertEqual(set(fields[5]), {"upload"})
+        self.assertIn("kind", fields[6])
+        self.assertEqual([x["ok"] for x in j["items"]], [False] * 7 + [True, False])
+        self.assertEqual(j["items"][8]["problems"], ["repeats record 8"])
+        self.assertTrue(j["detail"].startswith("Record 1 (visit) has a date that couldn't be read") and j["detail"].endswith("Nothing was saved."), j["detail"])
+        self.assertEqual(len(j["problems"]), 8)
+        self.assertEqual(count(pid), before)   # not even the good ones
+        self.assertIsNone(self.watch(pid))
+        r = self.items([{"kind": "visit", "date": "03/04/2026", "title": "Which day?"}], pid=pid)
+        self.assertIn("YYYY-MM-DD", r.json()["items"][0]["fields"]["date"])
+        r = self.items([{"kind": "visit", "note": "x" * 5000, "date": "2026-02-02"}], pid=pid)
+        self.assertIn("longer than", r.json()["items"][0]["fields"]["note"])
+        r = self.items([{"kind": "visit"}, {"kind": "vitals", "temp_unit": "F", "weight_unit": "lb"}], pid=pid)   # empty records
+        self.assertEqual((r.status_code, r.json()["detail"]), (400, "There's nothing to save: type a result first."))
+        self.assertEqual(self.items([{"kind": "visit", "date": "2026-01-01"}] * 101, pid=pid).status_code, 422)
+        self.assertEqual(count(pid), before)
+
+    def test_viewer_cant_save_records(self):
+        before = count(self.pid)
+        item = [{"kind": "visit", "date": "2026-04-01", "title": "Visit typed by a viewer"}]
+        self.assertEqual(self.items(item, c=self.kim).status_code, 403)
+        self.assertEqual(self.items(item, save=False, c=self.kim).status_code, 403)
+        r = self.robin.post(f"/api/profiles/{self.pid}/manual", json={"items": item, "save": True})   # no X-Sanguity
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(count(self.pid), before)
 
 
 if __name__ == "__main__":

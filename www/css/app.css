@@ -375,6 +375,30 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .imp .man-check.bad{color:var(--crit)}
 .imp .man-check .abn{color:var(--crit);font-weight:600}
 .imp .man-row input[aria-invalid="true"]{border-color:var(--crit)}
+.imp .man-check .dup{color:var(--ink2);font-weight:600}
+/* other records typed in (import-records.js): one form per record, its fields flowing into as many columns as fit */
+.imp .man-pick{margin:12px 0 4px;flex-wrap:wrap;align-items:end}
+.imp .man-pick label{min-width:0;max-width:100%}
+.imp .man-items{display:grid;gap:10px;margin:8px 0}
+.imp .man-items:empty{display:none}
+.imp .man-item{position:relative;border:1px solid var(--grid);border-radius:10px;padding:8px 12px 10px;margin:0;min-width:0}
+.imp .man-item legend{font-size:13px;font-weight:650;padding:0 4px}
+.imp .rec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(9.5em,100%),1fr));gap:6px 8px;padding-right:1.6em}
+.imp .rec-f{display:flex;flex-direction:column;font-size:11px;gap:2px;min-width:0}
+.imp .rec-f input,.imp .rec-f select,.imp .rec-f textarea{width:100%;min-width:0;padding:5px 6px;font:inherit;font-size:13px;box-sizing:border-box}
+.imp .rec-f textarea{resize:vertical;min-height:2.4em}
+.imp .rec-long,.imp .rec-wide{grid-column:1 / -1}
+.imp .rec-f [aria-invalid="true"]{border-color:var(--crit)}
+.imp .man-err{color:var(--crit);font-size:11px}
+.imp .man-err:empty{display:none}
+.imp .man-file{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.imp .man-file:empty{display:none}
+.imp .man-item .del{position:absolute;top:6px;right:6px;border:0;background:none;cursor:pointer;color:var(--muted);font-size:15px;padding:4px 6px;border-radius:6px}
+.imp .man-item .del:hover{color:var(--crit);background:var(--hover)}
+.imp .man-item .man-check{margin-top:6px;overflow-wrap:anywhere}
+.imp .man-h{font-size:14px;margin:16px 0 2px}
+.imp .man-save{flex-wrap:wrap;gap:8px 12px;margin-top:10px}
+.imp .man-keep{display:flex;align-items:center;gap:6px;font-size:13px}
 @media (max-width:640px){
   .imp .imp-list li{grid-template-columns:minmax(0,1fr) auto}
   .imp .imp-list progress{grid-column:1 / -1}
