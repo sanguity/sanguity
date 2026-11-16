@@ -189,6 +189,12 @@ A series whose name `lab-aliases.json` doesn't know is offered an existing serie
 by LOINC code, then by a similar name with a compatible unit), and the person's choice is remembered for later
 imports. Only the series' `name` changes; its key stays, so name a series however the source does and key it by LOINC
 code (`"loinc:<code>"`, or a `loinc` field) when the source gives one.
+Keys only recognise a record coming back from the same source. The same lab result from two sources (a file, then a
+connected source's sync) is spotted by `server/crossmatch.py` instead: the same LOINC code (or canonical series), the
+same collection time to the minute (any time that day when one side has only a date) and the same value once units
+are made comparable by exact conversions only. It is flagged at the preview and in the result's details, never merged
+by itself; the person's "same result" shows it once, with both sources. For it to work, give each point the time as
+the source wrote it (a bare date as noon, `common.iso`), the value as reported in `pts[5]`, and the series' unit.
 `check()` refuses a key that isn't a non-empty string, or that is used twice within one import: among the events,
 among the lab series, among `problems` and among `upcoming` (each list separately). It doesn't check the prefix: the
 `sanguity` importer passes keys through unchanged, so a re-imported export keeps the keys the original importer gave.
