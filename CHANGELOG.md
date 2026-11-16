@@ -39,7 +39,7 @@ Everything on `main` so far; it becomes the first tagged release.
 - Imports run in the background with format detection (#111).
 - An importer plug-in contract and registry (#104), with importers for C-CDA (#105), generic lab CSV (#106),
   FHIR R4 bundles (#108), Apple Health `export.xml` (#112), insurer claims from UHC, BCBS and a generic EOB CSV
-  (#114), CareSpace / OncoEMR (#115) and Epic MyChart JSON (#120).
+  (#114), CareSpace / OncoEMR (#115) and Epic MyChart JSON (#120), and SMART Health Links and Cards (#127).
 - A preview before an import is saved, showing what is new and what is already there, matched on stable source
   keys (#118).
 - Import history with undo (#117).
