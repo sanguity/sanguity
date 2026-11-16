@@ -1,7 +1,8 @@
 """CareSpace / OncoEMR importer (server/importers/carespace.py) against fictional exports in
 tests/fixtures/importers/carespace/ (tests/test_importers.py also checks the registry picks it for each one).
 
-The port must read an export the way build.py does: BuildParity runs build.py on the same fictional export (through
+The port must read an export the way build.py did (build.py now reads it through this importer, so BuildParity also
+checks build.py's joining leaves one source's records alone): BuildParity runs build.py on the same fictional export (through
 a sources.json in a temporary folder, beside an empty Epic export, which build.py requires) and compares. Allowed
 differences: event ids, keys and document URLs.
 

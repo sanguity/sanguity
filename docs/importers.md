@@ -204,7 +204,7 @@ care categories and drug names. A claim's detail also carries `visit`, a hint fo
 from another import: `{"date", "end" (when it spans days), "provider", "facility": true (a facility bill)}`. Within
 one import, a facility bill inside one of that import's stays is filed under "Hospital stay (facility)", as build.py
 does; a claims-only upload has no stays, so linking across imports (and re-filing those bills) is left to a later
-step that reads the hint.
+step that reads the hint. build.py is one such step: it re-files them against the stays from all its sources.
 ### The optional keys
 
 | Key | Shape |
@@ -233,6 +233,13 @@ The pieces build.py uses, as plain functions (standard library only):
 The stay helpers return `{"t", "title", "sub", "detail", "end"}`; add an `id` and `"k": "stay"`. If a helper is
 missing something your format needs, add to it rather than copying it, and keep build.py's output unchanged
 (`tests/test_importers.py` checks).
+
+build.py reads each export in sources.json with its importer (`epic_mychart`, `carespace`, `claims_uhc`,
+`claims_bcbs`), imported by name so that it never loads an importer needing more than the standard library, and
+joins the results into one data.json: new ids in source order, document links under each source's served prefix,
+no source keys (edits to a setup build find events by their content), lab series of the same name shared when the
+units agree (else `"<name> (<org>)"`), facility bills re-filed into another source's stays, and transfers between
+hospitals. Those modules, and `common.py`, must stay standard-library only.
 
 ## Rules
 
