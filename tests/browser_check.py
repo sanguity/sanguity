@@ -125,6 +125,9 @@ def main():
         strict.goto(base + "/import.html")
         strict.wait_for_selector("#importer", state="visible", timeout=10000)
         check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
+        strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
+        strict.wait_for_selector(".dir-hit", timeout=10000)
+        check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
         strict.goto(base + "/account.html")
         strict.wait_for_selector("#logout", state="visible")
         strict.wait_for_timeout(500)

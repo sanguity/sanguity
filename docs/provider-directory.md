@@ -1,0 +1,48 @@
+# Find your provider: the endpoint directory (#93)
+
+People know their hospital's or insurer's name, not its FHIR base URL. The **Find your provider** page
+(`providers.html`, linked from the import page) searches a directory of endpoints and shows, for the one chosen, its
+vendor, the FHIR base URL to copy, and what connecting needs under the decision in
+[connected-sources-oauth.md](connected-sources-oauth.md) (option 1: each install registers its own app with each
+vendor). The **Connect** button stays disabled until sign-in arrives with #32.
+
+## Where the list comes from
+
+| Source | In the release? | Why |
+|---|---|---|
+| Epic's [User-access Brands bundle](https://open.epic.com/MyApps/Endpoints) (R4) | No | open.epic's [Terms of Use](https://open.epic.com/Home/TermsOfUse) allow keeping a copy for yourself and sharing only by linking to it. |
+| Oracle Health's [Millennium patient R4 endpoints](https://github.com/oracle-samples/ignite-endpoints) | No | Copyright Oracle, with no licence granted. |
+| Medicare Blue Button 2.0 (sandbox and production) | Yes | A US government work. |
+| Epic's, Oracle Health's and Blue Button's sandboxes | Yes | Single base URLs from each vendor's documentation. |
+
+CMS publishes no single list of payers' patient-access endpoints; each payer publishes its own (#92).
+
+So a fresh install finds only the sandboxes and Medicare. To add Epic's and Oracle Health's lists, an admin runs,
+from the Sanguity folder on the host (Python 3.9 or later, nothing to install):
+
+```bash
+python3 tools/build_directory.py
+```
+
+It downloads the two lists (about 100 MB from Epic, 4 MB from Oracle) and writes
+`data/directory/providers.json.gz` (or under `$DATA_DIR` if set in the environment): about 2,600 entries, 1.1 MB
+gzipped, in November 2026. The app reads it on the next search; no restart. Run it again now and then (Epic suggests
+weekly) to pick up new hospitals. This is the only part that downloads anything, and only when you run it.
+
+`server/directory/providers.json` is the bundled file. Maintainers regenerate it with
+`python3 tools/build_directory.py --bundled`, which uses no network; `tests/test_directory.py` checks it matches.
+
+## What the app does and doesn't do
+
+- **No lookups.** Searching reads the files above; the server contacts no one. Logos and portal addresses a list
+  carries are passed on as published, never fetched; the page shows a logo only when the file holds it as a
+  `data:` image.
+- **Search** matches each word of the query against names, location names, the health system, and city or state
+  (a state by its abbreviation or name): exactly, as the start of a word, or with one typing mistake in words of
+  four to six letters and two in longer ones.
+- **API** (any signed-in account; public data): `GET /api/directory?q=…` and `GET /api/directory/entry?id=…`.
+  Each entry has `id`, `name`, `vendor`, `kind`, `fhir_base`, `fhir_version`, `org`, `places`, `aliases`, `logo`,
+  `portal`, `source` and `retrieved`. The answer also has `vendors` (developer site, steps, scopes, whether a client
+  secret is needed, and whether the vendor is realistic for a home install) and `return_addresses` (each of
+  `PUBLIC_ORIGINS`, and the address the page was opened at, plus `/connect/return`, with whether vendors are likely
+  to accept it). See `server/routes_directory.py`.

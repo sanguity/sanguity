@@ -442,3 +442,39 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
   .imp .man-row .f-value,.imp .man-row .f-unit,.imp .man-row .f-range,.imp .man-row .f-flag{grid-column:span 2}
   .imp .man-row .del{grid-column:span 1}
 }
+/* find your provider (providers.js, #93) */
+.dir .dir-src{border-left:3px solid var(--c-study);padding:4px 0 4px 12px;margin:6px 0 12px;font-size:13px}
+.dir .dir-src p{margin:0 0 6px}
+.dir .dir-src pre{margin:0 0 6px;white-space:pre-wrap}
+.dir .dir-src code,.dir .dir-steps code{background:var(--hover);padding:1px 5px;border-radius:5px}
+.dir .dir-src ul{margin:0;padding-left:18px;color:var(--ink2)}
+.dir .form{max-width:none}
+.dir .form input{width:100%;font-size:15px}
+.dir #status{margin-top:8px;color:var(--ink2)}
+.dir .dir-results{list-style:none;margin:8px 0 0;padding:0}
+.dir .dir-hit{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--grid);padding:9px 6px;color:var(--ink);font:inherit;cursor:pointer;border-radius:6px}
+.dir .dir-results li:first-child .dir-hit{border-top:0}
+.dir .dir-hit:hover,.dir .dir-hit.sel{background:var(--hover)}
+.dir .dir-hit-t{display:grid;gap:1px;min-width:0;overflow-wrap:anywhere}
+.dir .dir-hit-t b{font-weight:600}
+.dir .dir-mono{flex:none;display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--hover);color:var(--ink2);font-weight:650;font-size:14px}
+.dir .dir-mono.big,.dir .dir-logo{width:44px;height:44px;font-size:20px;border-radius:10px;object-fit:contain}
+.dir .dir-hd{display:flex;gap:12px;align-items:flex-start;margin-bottom:6px}
+.dir .dir-hd h2{font-size:16px;overflow-wrap:anywhere}
+.dir .dir-hd .tag:first-child{margin-left:0}
+.dir .dir-hd p{margin:4px 0 0}
+.dir #detail h3.sub{margin:16px 0 6px}
+.dir .dir-copy{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.dir .dir-copy-v{flex:1 1 220px;font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.dir .dir-back{margin-bottom:8px}
+.dir .dir-back p{margin:4px 0 0}
+.dir .bad{color:var(--crit)}
+.dir .dir-real{border-left:3px solid var(--good);padding:4px 0 4px 12px;margin:0 0 8px;font-size:13px}
+.dir .dir-real.caution{border-color:var(--c-study)}
+.dir .dir-steps{margin:6px 0 0;padding-left:20px;font-size:13px}
+.dir .dir-steps li{margin-bottom:4px}
+.dir .dir-places,.dir .dir-aka p{overflow-wrap:anywhere}
+.dir .dir-aka{margin-top:14px;font-size:13px}
+.dir .dir-aka summary{cursor:pointer;color:var(--ink2)}
+.dir .dir-from{margin-top:12px}
+.dir a{overflow-wrap:anywhere}
