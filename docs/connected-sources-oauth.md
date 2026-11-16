@@ -1,8 +1,8 @@
 # Connected sources: how OAuth sign-in works for a self-hosted install
 
-**Status: proposal. You decide.** This document is for issue #90. It sets out the options, the vendor rules that
-limit them, a recommendation and its threat model. Nothing here is built yet, and no app has been registered with
-any vendor. The recommendation is there to argue against; the choice, and the open questions at the end, are yours.
+**Status: decided (option 1, for now).** This document is for issue #90. It sets out the options, the vendor rules
+that limit them, the decision and its threat model. The analysis of option 2, a project registration with a relay
+page, stays below for when it's added. Nothing here is built yet, and no app has been registered with any vendor.
 
 **Why it has to be decided first.** Sign-in to a provider's or insurer's FHIR API (#32, #92), scheduled sync with
 stored tokens (#91) and the provider directory (#93) all depend on how an install gets the authorization code back
@@ -13,9 +13,84 @@ has its own address, and many have no public address at all.
 from forum posts, third-party guides, or nowhere; check it before relying on it. The pages were read in
 November 2026. Epic's documentation is one very long page, so section names are given.
 
-## Summary
+## Decision: option 1, each user registers their own app
 
-- **Recommendation:** the project registers one public client with each vendor that allows it. A static relay page
+Sanguity starts with **option 1**: each install connects through an app its owner registers with each vendor, and
+the vendor sends the sign-in straight back to the install's own address. Option 2 may be added later if enough
+people want live connections; the code is built so that adding it changes only where a sign-in returns to.
+
+**Why.** The project takes on no vendor registrations, terms, privacy duties or hosting, and SMART's rule against
+forwarding authorization codes (see [SMART App Launch](#smart-app-launch-2x-hl7)) doesn't arise, because nothing
+forwards them. Each install can also keep a client secret on its server where a vendor issues one. File imports
+remain the main way records come in; live connections are an extra for those who can set them up.
+
+**What it reaches, and what it doesn't** (from the vendor facts below):
+
+| Source | Under option 1 |
+|---|---|
+| Epic sandbox | Works. Enough to build and test sign-in and sync completely (#32, #91), and for #32's done-when. |
+| Epic production (real hospitals) | Possible for installs with a proper HTTPS address. Whether Epic accepts and distributes an app registered by one person, and accepts a tailnet name such as `*.ts.net`, is *unverified*: check before promising it. |
+| Oracle Health | Effectively out for home installs: it wants a valid certificate and a DNS TXT record the user controls on the redirect host, which a LAN address or a `ts.net` name can't provide. |
+| Medicare Blue Button 2.0 | Sandbox only. Its production review is impractical for an individual. |
+| Other insurers' patient-access APIs (#92) | Only those that let individuals register, one by one. |
+| Installs on a LAN address or plain HTTP | Unlikely to be accepted by vendors in production. The app says so. |
+
+**The open questions, answered:**
+
+1. *Option 2 or option 1?* Option 1 for now; option 2 if there's demand.
+2. *SMART's "SHALL NOT forward" rule:* doesn't arise under option 1. Revisit it, with the community and Epic, before
+   building option 2.
+3. *Blue Button and other confidential-only payers:* through option 1, which can hold a client secret. In
+   practice that means their sandboxes until a payer's review is practical for an individual. No token-exchange
+   server.
+4. *A commercial aggregator:* not planned.
+5. *Who hosts a relay:* not needed until option 2.
+6. *Release timing:* built in Phase 2b, as an advanced setting next to file imports.
+7. *Forks:* each install, fork or not, registers its own app.
+
+### What gets built
+
+- **One sign-in flow** (#32), with its settings per vendor: client ID, client secret where the vendor issues one,
+  scopes, and the return address. Today the return address is the install's own `/connect/return`; with option 2
+  it would be the relay. Nothing else depends on which.
+  - Discovery from the issuer's `.well-known/smart-configuration`.
+  - PKCE (S256) and a single-use `state` bound to the signed-in session.
+  - Checks on return: `state`, issuer, `aud`, and the token exchange against the stored issuer.
+  - Epic's dynamic client registration where available, so long-lived access uses a key the install generates.
+- **A guided setup screen per vendor:** where to register, the exact return address to paste (from
+  `PUBLIC_ORIGINS`), the scopes to request, and a "test this connection" button that works against Epic's sandbox.
+  It warns when the install's address is unlikely to be accepted (LAN, plain HTTP).
+- **Connections and sync** (#91), as the issue describes: a connection per profile and source, tokens and secrets
+  encrypted with `crypto.enc`, a reconnect prompt when access ends, and disconnecting revokes and deletes them.
+- **A local count of connections per vendor**, shown to admins and never sent anywhere, so demand for option 2 is
+  something the project can ask about rather than guess.
+- **The directory** (#93) says per entry what option 1 needs there (the vendor's developer site, whether a client
+  ID is enough), rather than "enabled".
+
+### Threat model (option 1)
+
+| Party | Sees | Doesn't see |
+|---|---|---|
+| Vendor | The user's sign-in and consent, the install's IP, every FHIR call, and the registered return address (the install's own address). | Anything else on the install. |
+| Network between the user's browser and the install | On plain HTTP, the authorization code in transit. It's useless without the PKCE verifier, which stays on the server, and redeeming it needs the session cookie. | The verifier, tokens, secrets. |
+| Someone with a copy of the database | Encrypted tokens, client secrets and keys. | Their plaintext, without `auth/data_key`. |
+
+- **Forged or replayed returns:** `state` is random, single use, short lived and bound to the session that started
+  the sign-in, so a link crafted by someone else (to attach their records, or to fish for a code) is refused. The
+  code is bound to the install's PKCE challenge.
+- **A wrong or hostile FHIR server:** the issuer comes from the user's choice or the directory and is shown before
+  sign-in; tokens are only ever sent to that issuer's token endpoint, and the `aud` check stops a token being used
+  elsewhere.
+- **A leaked client secret:** it identifies the user's own app, not a patient. Someone holding it still needs the
+  patient's sign-in and consent. It's encrypted at rest, and rotating it is a setting.
+- **Disconnecting** revokes the token where the vendor supports revocation, deletes the token, secret and key, and
+  stops all contact with that host. What happens to the records already pulled is the user's choice.
+- **Outside requests** stay opt-in: nothing contacts a vendor until the user connects it, and every connection is
+  listed with its host (#97, #59).
+
+## Summary of the proposal (before the decision)
+
+- **Recommendation at the time (not chosen for now):** the project registers one public client with each vendor that allows it. A static relay page
   at a project-owned HTTPS address (no server, nothing stored) is the registered redirect URI. It passes the code to
   the install's own address, which it reads from `state`. PKCE keeps the code useless to anyone but the install that
   started the sign-in. On Epic, the install then registers its own dynamic client with a key pair it generates and
@@ -195,7 +270,7 @@ secret. It would see access tokens, so it is a server holding health-data creden
 default. If you want Blue Button, the realistic routes are option 1 for the few willing users (sandbox is easy;
 production isn't), or this variant as a separately opted-in service.
 
-## Recommendation: option 2, with Epic's dynamic registration where available
+## Option 2 in detail (for later): project registration and a relay, with Epic's dynamic registration
 
 **Why.** It is the only option where a typical user can connect a hospital in a few clicks without becoming an app
 developer. Health data still goes only between the vendor and the install. Epic's auto-download covers the
@@ -241,7 +316,7 @@ own client ID"). It costs little to support: it is the same flow without the rel
      grant. Elsewhere it keeps the refresh token, if one was issued;
    - stores the refresh token or private key encrypted with `crypto.enc`, per profile and source (#91).
 
-### Threat model
+### Threat model (option 2)
 
 **What each party sees**
 
@@ -325,7 +400,7 @@ vendor's token and FHIR endpoints; that is the outside connection listed under #
 | **Tailscale or other private DNS** (`https://sanguity.tail1234.ts.net`, with MagicDNS and HTTPS certs) | Works. The relay never resolves the name, and only the user's browser, on the tailnet, needs to. | Registrable as a redirect URI, but the vendor can't reach it, and Oracle Health's DNS TXT step needs the user to control the eTLD+1, which they don't on `ts.net`. |
 | **Several addresses for one install** (LAN and tailnet) | Each address is confirmed once in each browser. The return address is the one the sign-in started from. | One registration per address, or pick one. |
 
-## What #32 and #91 build under this recommendation
+## What #32 and #91 would build under option 2 (for later)
 
 **Project setup (one-off, by you, outside the code):**
 - a domain for the relay;
@@ -364,7 +439,7 @@ vendor's token and FHIR endpoints; that is the outside connection listed under #
 **#93, the directory:** a bundled list, showing for each entry whether the project's client is enabled there (Epic
 auto-download status), and "not enabled here" otherwise.
 
-## Open questions for you
+## Open questions (as asked before the decision; answered above)
 
 1. **Option 2 or option 1?** Option 2 asks you to run the relay domain and hold vendor registrations in the
    project's name, which means accepting Epic's, Oracle's and payers' terms, privacy-policy obligations, and being
