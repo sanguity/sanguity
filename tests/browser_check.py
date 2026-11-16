@@ -4,7 +4,7 @@
 Starts the API (with www/ served by it) on a temporary data folder holding the demo build, signs in through the
 login page, opens every tab and checks its main content rendered, opens the detail drawer for every kind of
 event, drags and scroll-zooms the charts, toggles the event sort, switches profiles, uploads a zip and files on
-the import page (a fictional C-CDA, imported in the background and then shown on the timeline), opens the
+the import page (a fictional C-CDA and a FHIR export, imported in the background and then shown on the timeline), opens the
 account page,
 and fails on any script error, console error, failed request or NaN written into an SVG attribute.
 
@@ -281,6 +281,26 @@ def main():
                   card.startswith("Imported.") and "C-CDA" in card and "visit" in card and "lab result" in card, card)
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
             check("the job is done, read by the C-CDA importer", job is not None and tuple(job) == ("done", "ccda"), job and tuple(job))
+            # ...and a fictional FHIR export (a Bundle with two PDF attachments) into the same profile: Phase 2 is done
+            # when both a C-CDA file and a FHIR export import without a terminal
+            fhir_dir = os.path.join(ROOT, "tests", "fixtures", "importers", "fhir", "bundle")
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                for d, _, names in os.walk(fhir_dir):
+                    for n in names:
+                        full = os.path.join(d, n)
+                        z.write(full, "fhir-export/" + os.path.relpath(full, fhir_dir).replace(os.sep, "/"))
+            page.set_input_files("#pickZip", files=[{"name": "fhir-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
+            page.click("#go")
+            page.wait_for_function("document.querySelectorAll('.import-job').length >= 2 && "
+                                   "/^(Imported|Not imported)/.test([...document.querySelectorAll('.import-job')].pop().textContent)", timeout=30000)
+            card = js("[...document.querySelectorAll('.import-job')].pop().textContent")
+            check("a FHIR export uploads and is imported in the background, as FHIR",
+                  card.startswith("Imported.") and "FHIR" in card and "document" in card, card)
+            up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
+            job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
+            check("the job is done, read by the FHIR importer", job is not None and tuple(job) == ("done", "fhir"), job and tuple(job))
             js("window.__hook = []; window.sanguityImport = {uploaded: a => window.__hook.push(a)}")
             page.click("#tab-files")
             page.set_input_files("#pickFiles", files=[{"name": n, "mimeType": "text/csv", "buffer": b"date,test,value\n2026-02-01,WBC,6.1\n"}
@@ -301,6 +321,13 @@ def main():
                                    "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)   # the saved view restored
             check("the imported records open on the timeline of the profile they went into", js("state.tab") == "timeline", js("state.tab"))
             check("…where the C-CDA's visits are listed", "Outpatient visit" in page.inner_text("#list"), page.inner_text("#list")[:300])
+            listed = page.inner_text("#list")
+            check("…and the FHIR export's stay and documents, beside them", "Riverside General Hospital" in listed and "Discharge summary" in listed,
+                  listed[:400])
+            doc = js("""(async () => { const e = EV.find(e => e.title === 'Discharge summary'), d = e && DATA.details[e.id];
+                if (!d || !d.url) return null; const r = await fetch(d.url);
+                return {status: r.status, type: r.headers.get('content-type'), pdf: (await r.text()).startsWith('%PDF')}; })()""")
+            check("…whose attached PDF, stored with the upload, opens", doc == {"status": 200, "type": "application/pdf", "pdf": True}, doc)
             page.select_option("#profile", label="My records")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             check("switching back restores the profile's tab", js("state.tab") == "timeline", js("state.tab"))
