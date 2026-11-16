@@ -4,8 +4,9 @@
 
   python3 -I tests/fixtures/importers/pdf-labs/generate.py      # rewrites the fixtures next to this file
 
-Standard library only, and deterministic: the same script writes the same bytes (tests/test_importer_pdf_labs.py
-checks the committed fixtures match). tests/test_importer_pdf_labs.py also builds variants with quest() and write().
+Standard library only, and deterministic: the same script writes the same content (tests/test_importer_pdf_labs.py
+checks the committed fixtures match, stream by stream decompressed, since zlib builds compress differently).
+tests/test_importer_pdf_labs.py also builds variants with quest() and write().
 """
 import os, sys, zlib
 

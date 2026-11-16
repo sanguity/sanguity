@@ -6,7 +6,7 @@ whose tables are the source of truth here: every value, unit, range and flag pri
 
   python3 tests/test_importer_pdf_labs.py
 """
-import hashlib, os, shutil, sys, tempfile, types, unittest
+import hashlib, os, re, shutil, sys, tempfile, types, unittest, zlib
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,6 +27,24 @@ def rows_of(out):
     """{(order, test): [name, value, unit, range, flag]} from the labitems."""
     d = out["data"]
     return {(e["title"], r[0]): r for e in d["events"] if e["k"] == "labitem" for r in d["details"][e["id"]]["rows"]}
+
+
+_STREAM = re.compile(rb"stream\n(.*?)\nendstream", re.S)
+
+
+def pdf_content(raw):
+    """What a fixture PDF holds, whatever zlib compressed it: its objects with every stream decompressed, and without
+    the stream lengths and byte offsets that depend on how well the streams compressed (zlib builds differ)."""
+    parts = _STREAM.split(raw)   # [text, stream, text, stream, ..., text]
+    out = []
+    for i, part in enumerate(parts):
+        if i % 2:
+            out.append(zlib.decompress(part))
+        else:
+            part = re.sub(rb"/Length \d+", b"/Length ?", part)
+            part = re.sub(rb"xref\n.*?trailer", b"xref ? trailer", part, flags=re.S)
+            out.append(re.sub(rb"startxref\n\d+", b"startxref ?", part))
+    return out
 
 
 class Base(unittest.TestCase):
@@ -252,7 +270,8 @@ class Layouts(unittest.TestCase):
             gen.main(d)
             for rel in ("quest/quest-report.pdf", "labcorp/labcorp-report.pdf", "unrecognised.pdf", "scanned.pdf"):
                 with open(os.path.join(d, rel), "rb") as a, open(os.path.join(BASE, rel), "rb") as b:
-                    self.assertEqual(a.read(), b.read(), f"{rel}: run tests/fixtures/importers/pdf-labs/generate.py")
+                    self.assertEqual(pdf_content(a.read()), pdf_content(b.read()),
+                                     f"{rel}: run tests/fixtures/importers/pdf-labs/generate.py")
 
     def test_helpers(self):
         from server.importers.pdf_layouts import bounds, is_range, is_unit, is_value, range_and_unit
