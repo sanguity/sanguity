@@ -335,6 +335,11 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .imp .imp-list .path{overflow-wrap:anywhere}
 .imp .imp-list progress{width:100%;height:8px;accent-color:var(--accent)}
 .imp .imp-list li.muted{display:block}
+.import-job .imp-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.import-job .imp-dups ul{list-style:none;margin:6px 0 0;padding:0;max-height:300px;overflow-y:auto;font-size:13px}
+.import-job .imp-dups li{border-top:1px solid var(--grid);padding:5px 0;overflow-wrap:anywhere}
+.import-job .imp-dups label{display:block;cursor:pointer}
+.import-job .imp-dups .d{color:var(--muted);font-variant-numeric:tabular-nums}
 @media (max-width:640px){
   .imp .imp-list li{grid-template-columns:minmax(0,1fr) auto}
   .imp .imp-list progress{grid-column:1 / -1}

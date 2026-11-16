@@ -14,9 +14,12 @@ together. An event's id is its row's, so the ids an import arrives with are mapp
 day lists (details[...].ids) included. With several imports, lists in their meta are joined and single values
 come from the newest.
 
-Everything a row holds is encrypted (crypto.enc); only ids and the links between rows are plain.
+Everything a row holds is encrypted (crypto.enc); only ids and the links between rows are plain. The one exception
+is key_hash (schema version 13) on events and series: a keyed hash of the source key the importer gave (the key
+itself stays inside the encrypted body), so an import preview finds records it has seen before without decrypting
+every row. '' means the record has no key; NULL, not worked out yet (backfill_key_hashes, at start-up).
 """
-import json, threading
+import hashlib, hmac, json, threading
 from contextlib import contextmanager
 
 from . import crypto
@@ -63,7 +66,7 @@ def store(db, pid, data, origin, fmt=FORMAT, now=None):
 
     iid = db.execute("INSERT INTO imports(profile_id, at, origin, format, meta) VALUES(?, ?, ?, ?, ?)",
                      (pid, now or dbm.now(), origin, fmt, _enc(meta))).lastrowid
-    rows = []
+    rows, secret = [], _key_secret(db)
     for n, e in enumerate(events, start=base + 1):
         key = str(e.get("id"))
         first = ids[key] == n
@@ -72,18 +75,118 @@ def store(db, pid, data, origin, fmt=FORMAT, now=None):
             d = {**d, "ids": [ids[str(i)] for i in d["ids"] if str(i) in ids]}
         seq, c = costs.get(key, (None, None)) if first else (None, None)
         rows.append((n, pid, iid, _enc({k: v for k, v in e.items() if k != "id"}),
-                     None if d is None else _enc(d), None if c is None else _enc({**c, "id": n}), seq))
-    db.executemany("INSERT INTO events(id, profile_id, import_id, body, detail, cost, cost_seq) VALUES(?, ?, ?, ?, ?, ?, ?)", rows)
+                     None if d is None else _enc(d), None if c is None else _enc({**c, "id": n}), seq, _hash(secret, e.get("key"))))
+    db.executemany("INSERT INTO events(id, profile_id, import_id, body, detail, cost, cost_seq, key_hash) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", rows)
 
     for s in data.get("labs") or []:
         if not isinstance(s, dict):
             continue
-        sid = db.execute("INSERT INTO series(profile_id, import_id, body) VALUES(?, ?, ?)",
-                         (pid, iid, _enc({k: v for k, v in s.items() if k != "pts"}))).lastrowid
+        sid = db.execute("INSERT INTO series(profile_id, import_id, body, key_hash) VALUES(?, ?, ?, ?)",
+                         (pid, iid, _enc({k: v for k, v in s.items() if k != "pts"}), _hash(secret, s.get("key")))).lastrowid
         db.executemany("INSERT INTO results(profile_id, import_id, series_id, body) VALUES(?, ?, ?, ?)",
                        [(pid, iid, sid, _enc(p)) for p in s.get("pts") or []])
     _bump(db, pid)
     return iid
+
+
+# ---------------------------------------------------------------- source keys, found without decrypting (#22, #89)
+
+def _key_secret(db):
+    """The HMAC key for key_hash: derived from the pepper (atrest.load_pepper), which never changes, so the hashes
+    stay valid across a rotation of the data key."""
+    from . import atrest, security as sec
+    if sec._pepper is None:
+        atrest.load_pepper(db)
+    return hashlib.sha256(b"sanguity source keys\x00" + sec._pepper).digest()
+
+
+def _hash(secret, key):
+    if not isinstance(key, str) or not key.strip():
+        return ""
+    return hmac.new(secret, key.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+
+
+def key_hashes(db, keys):
+    """{source key: its key_hash} for the keys given (others skipped)."""
+    secret = _key_secret(db)
+    return {k: _hash(secret, k) for k in keys if isinstance(k, str) and k.strip()}
+
+
+def backfill_key_hashes(db):
+    """Work out key_hash for rows written before schema version 13. Safe to repeat. Returns how many rows."""
+    from . import db as dbm
+    secret, n = _key_secret(db), 0
+    for table in ("events", "series"):
+        rows = db.execute(f"SELECT id, body FROM {table} WHERE key_hash IS NULL").fetchall()
+        if rows:
+            with dbm.transaction(db):
+                db.executemany(f"UPDATE {table} SET key_hash=? WHERE id=?",
+                               [(_hash(secret, (_dec(r["body"]) or {}).get("key")), r["id"]) for r in rows])
+            n += len(rows)
+    return n
+
+
+def known_event_keys(db, pid, hashes):
+    """Which of these key hashes the profile's events already have."""
+    return _known(db, "events", pid, hashes)
+
+
+def known_series(db, pid, hashes):
+    """{key hash: [series id]} for the profile's series with these key hashes."""
+    out = {}
+    for h in _chunks(sorted(set(hashes))):
+        q = f"SELECT id, key_hash FROM series WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))})"
+        for r in db.execute(q, (pid, *h)):
+            out.setdefault(r["key_hash"], []).append(r["id"])
+    return out
+
+
+def _known(db, table, pid, hashes):
+    found = set()
+    for h in _chunks(sorted(set(hashes))):
+        q = f"SELECT DISTINCT key_hash FROM {table} WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))})"
+        found.update(r[0] for r in db.execute(q, (pid, *h)))
+    return found
+
+
+def _chunks(items, n=500):
+    for i in range(0, len(items), n):
+        yield items[i:i + n]
+
+
+def series_points(db, pid, series_ids):
+    """The results (pts) of these series, and their text results (txt), as stored."""
+    pts, txt = [], []
+    for ids in _chunks(sorted(set(series_ids))):
+        marks = ",".join("?" * len(ids))
+        pts += [_dec(r["body"]) for r in db.execute(f"SELECT body FROM results WHERE profile_id=? AND series_id IN ({marks})", (pid, *ids))]
+        for r in db.execute(f"SELECT body FROM series WHERE profile_id=? AND id IN ({marks})", (pid, *ids)):
+            txt += (_dec(r["body"]) or {}).get("txt") or []
+    return pts, txt
+
+
+def keyless(db, pid, fmt):
+    """Events and series without a source key that imports of format fmt brought: ([event body], [series body
+    with its pts]). For the duplicate check's fallback (same importer, date, kind and content); importers give keys
+    nowadays, so these are few."""
+    events = [_dec(r["body"]) for r in db.execute("""SELECT e.body FROM events e JOIN imports i ON i.id = e.import_id
+                                                     WHERE e.profile_id=? AND i.format=? AND e.key_hash=''""", (pid, fmt))]
+    series = []
+    for r in db.execute("""SELECT s.id, s.body FROM series s JOIN imports i ON i.id = s.import_id
+                           WHERE s.profile_id=? AND i.format=? AND s.key_hash=''""", (pid, fmt)):
+        pts = [_dec(p["body"]) for p in db.execute("SELECT body FROM results WHERE series_id=?", (r["id"],))]
+        series.append({**(_dec(r["body"]) or {}), "pts": pts})
+    return events, series
+
+
+def metas(db, pid):
+    """The profile-wide part (imports.meta) of each of its imports, merged as assemble() does."""
+    out = {}
+    for r in db.execute("SELECT meta FROM imports WHERE profile_id=? ORDER BY id", (pid,)):
+        meta = _dec(r["meta"]) or {}
+        meta.pop("costs", None)
+        _merge(out, meta)
+    return out
 
 
 def imports(db, pid, origin=None):

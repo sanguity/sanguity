@@ -1,12 +1,19 @@
 """Imports that run in the background, so a large export doesn't hold up the page that uploaded it.
 
-An import of an upload (uploads.py) is a row in jobs (schema version 12), which the page polls:
+An import of an upload (uploads.py) is a row in jobs (schema versions 12 and 13), which the page polls:
 
-  queued -> running (stage: detecting -> parsing -> saving) -> done | failed
+  queued -> running (detecting, parsing) -> preview -> confirm: queued -> running (saving) -> done | failed
+                                                    -> discard: discarded (the upload too, unless another job uses it)
+
+The preview (#22) holds the parsed records, sealed in profiles/<id>/previews/<job id> (crypto.write_file), and says
+what they would add: counts by kind, the date range, and the duplicates of what the profile has (preview.py), which
+are skipped unless chosen to keep anyway. Confirming looks for duplicates again (the profile may have changed since)
+and runs importers.check() on what's left before saving it. The file goes once the job is done, failed or discarded.
 
 One worker thread takes jobs in turn from an in-process queue, which is enough: SQLite has a single writer anyway.
 A job opens the upload's files decrypted (uploads.open_plain), picks the importer (importers.match, unless one was
-asked for), parses, checks the output against the contract (importers.check), then saves it in one transaction:
+asked for), parses, checks the output against the contract (importers.check) and previews it; once confirmed, it
+saves it in one transaction:
 the records (records.store, origin "upload", adding to the profile's records) with their document links, and the
 job's own "done". Anything that goes wrong rolls all of that back, so a failed import leaves nothing behind. The job
 then says why in plain language; the traceback goes only to the log.
@@ -15,11 +22,12 @@ A document link in the importer's output names a file in the upload ({"type": "f
 indexed to the stored, sealed copy in profiles/<id>/uploads/<upload id>/ (uploads.stored_files), never to the
 decrypted temporary one. The stored copy has a random name, so the document's type comes from the path in the upload.
 
-Jobs left queued or running when the app stopped never committed, so at start-up (recover) they are marked failed.
+Jobs left queued or running when the app stopped never committed, so at start-up (recover) they are marked failed,
+except one that was saving a confirmed preview: it goes back to "preview".
 """
 import collections, contextlib, json, logging, os, posixpath, queue, re, threading
 
-from . import activity, crypto, db as dbm, importers as registry, profiles as prof, records, uploads, watch_store
+from . import activity, config, crypto, db as dbm, importers as registry, preview, profiles as prof, records, uploads, watch_store
 
 log = logging.getLogger("sanguity.jobs")
 
@@ -56,9 +64,24 @@ _q, _thread, _ips = None, None, {}   # _ips: job id -> address of whoever starte
 
 
 def recover(db):
-    """At start-up: jobs a stop left queued or running never saved anything; mark them failed. Returns how many."""
-    return db.execute("UPDATE jobs SET state='failed', stage=NULL, message=?, finished=? WHERE state IN ('queued', 'running')",
-                      (crypto.enc(INTERRUPTED), dbm.now())).rowcount
+    """At start-up: jobs a stop left queued or running never saved anything. One that was saving a confirmed
+    preview goes back to its preview (still there), to be confirmed again; the others are marked failed. Preview
+    files no waiting job owns are removed. Returns how many failed."""
+    for r in db.execute("SELECT id, profile_id FROM jobs WHERE state IN ('queued', 'running') AND stage='saving'").fetchall():
+        if os.path.isfile(preview_path(r["profile_id"], r["id"])):
+            db.execute("UPDATE jobs SET state='preview', stage=NULL WHERE id=?", (r["id"],))
+    n = db.execute("UPDATE jobs SET state='failed', stage=NULL, message=?, finished=? WHERE state IN ('queued', 'running')",
+                   (crypto.enc(INTERRUPTED), dbm.now())).rowcount
+    waiting = {(r[0], r[1]) for r in db.execute("SELECT profile_id, id FROM jobs WHERE state='preview'")}
+    base = os.path.join(config.DATA_DIR, "profiles")
+    for p in os.listdir(base) if os.path.isdir(base) else ():
+        folder = os.path.join(base, p, "previews")
+        if not p.isdigit() or not os.path.isdir(folder):
+            continue
+        for f in os.listdir(folder):
+            if not (f.isdigit() and (int(p), int(f)) in waiting):
+                _remove(os.path.join(folder, f))
+    return n
 
 
 def start():
@@ -105,14 +128,17 @@ def run(jid):
         j = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
         if not j or j["state"] != "queued":
             return
-        db.execute("UPDATE jobs SET state='running', stage='detecting', started=? WHERE id=?", (dbm.now(), jid))
+        saving = j["stage"] == "saving"   # confirmed after its preview
+        db.execute("UPDATE jobs SET state='running', stage=?, started=IFNULL(started, ?) WHERE id=?",
+                   ("saving" if saving else "detecting", dbm.now(), jid))
         try:
-            _import(db, j)
+            _save(db, j) if saving else _import(db, j)
         except Exception as e:
             stage = (db.execute("SELECT stage FROM jobs WHERE id=?", (jid,)).fetchone() or {"stage": None})["stage"]
             log.exception("import job %s (profile %s, upload %s) failed while %s", jid, j["profile_id"], j["upload_id"], stage)
             db.execute("UPDATE jobs SET state='failed', message=?, finished=? WHERE id=?",
                        (crypto.enc(_explain(e, stage)), dbm.now(), jid))
+            _remove(preview_path(j["profile_id"], jid))
     finally:
         _ips.pop(jid, None)
         db.close()
@@ -137,6 +163,8 @@ def _stage(db, jid, stage, importer=None):
 
 
 def _import(db, j):
+    """Detect, parse and check, then stop: the parsed records go into the job's sealed preview file, and the job
+    waits in state "preview" for confirm() or discard()."""
     jid, pid, upload_id = j["id"], j["profile_id"], j["upload_id"]
     with contextlib.ExitStack() as stack:
         try:
@@ -144,34 +172,141 @@ def _import(db, j):
         except uploads.UploadError as e:   # not finished, or discarded since
             raise Failed(str(e)) from None
         mod, data, warnings = _read(db, jid, j["importer"], files)
-        names = set(files)
+        names = sorted(files)
 
-    _stage(db, jid, "saving")
-    sealed = {rel: path for uid, rel, path in uploads.stored_files(db, pid) if uid == upload_id and rel in names}
     for d in data["details"].values():   # stored under a random name, so the type comes from the path in the upload
         if isinstance(d, dict) and d.get("type") == "file" and isinstance(d.get("url"), str) and not d.get("ext"):
             d["ext"] = posixpath.splitext(d["url"].split("#", 1)[0])[1].lstrip(".").lower()
+    watch = data.pop("watch", None)   # daily wearable data: saved with watch_store, not as records
+    report = preview.report(data, preview.find(db, pid, mod.NAME, data), summarise)
+    if watch:
+        report["counts"].update(_watch_counts(watch))
+        report["new"] = True
+    path = preview_path(pid, jid)
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    crypto.write_file(path, json.dumps({"importer": mod.NAME, "data": data, "watch": watch, "paths": names},
+                                       separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+    try:
+        n = db.execute("UPDATE jobs SET state='preview', stage=NULL, warnings=?, summary=? WHERE id=? AND state='running'",
+                       (crypto.enc(json.dumps(warnings)), crypto.enc(json.dumps(report)), jid)).rowcount
+    except BaseException:
+        _remove(path)
+        raise
+    if not n:
+        _remove(path)
+
+
+def _watch_counts(watch):
+    days = {str(p[0]) for m in watch.get("metrics") or [] if isinstance(m, dict)
+            for p in m.get("pts") or [] if isinstance(p, list) and p}
+    return {"watch_days": len(days), "workouts": len(watch.get("exercise") or [])}
+
+
+def _save(db, j):
+    """Save a confirmed preview: what it found, less what the profile has by now (unless chosen to keep anyway),
+    checked again, in one transaction with the job's "done"."""
+    jid, pid, upload_id = j["id"], j["profile_id"], j["upload_id"]
+    path = preview_path(pid, jid)
+    try:
+        held = json.loads(crypto.read_file(path))
+    except FileNotFoundError:
+        raise Failed("The preview of this import is gone; start it again.") from None
+    name = held["importer"]
+    mod = registry.get(name)
+    label = mod.LABEL if mod else name
+    data, watch, names = held["data"], held.get("watch"), set(held.get("paths") or ())
+    keep = json.loads(j["keep"]) if j["keep"] else []
+    dups = preview.keep(data, preview.find(db, pid, name, data), keep)
+    new = preview.trim(data, dups)
+    problems = registry.check({"data": new, "warnings": []}, names)   # a trimmed lab day must still hold together
+    if problems:
+        raise Failed(f"Without the duplicates, the {label} records couldn't be loaded: " + "; ".join(problems[:5]) + ".")
+    skipped = preview.report(data, dups, summarise)["duplicates"]
+
+    sealed = {rel: p for uid, rel, p in uploads.stored_files(db, pid) if uid == upload_id and rel in names}
 
     def stored(url):
         """The sealed copy of the file a document link names, or None."""
-        path = sealed.get(url.split("#", 1)[0]) if isinstance(url, str) else None
-        return os.path.realpath(path) if path and os.path.isfile(path) else None
+        p = sealed.get(url.split("#", 1)[0]) if isinstance(url, str) else None
+        return os.path.realpath(p) if p and os.path.isfile(p) else None
 
-    watch = data.pop("watch", None)   # daily wearable data: saved with watch_store, not as records
-    summary = summarise(data)
-    who = db.execute("SELECT id, username FROM users WHERE id=?", (j["created_by"],)).fetchone() if j["created_by"] else None
+    summary = summarise(new)
+    summary["counts"]["documents"] = 0
+    summary["skipped"] = {k: skipped[k] for k in ("events", "results", "other")}
+    who_id = j["confirmed_by"] or j["created_by"]
+    who = db.execute("SELECT id, username FROM users WHERE id=?", (who_id,)).fetchone() if who_id else None
     with dbm.transaction(db):
-        keep, n = prof.index_documents(db, pid, data["details"], stored)
-        summary["counts"]["documents"] = n
-        iid = records.store(db, pid, data, "upload", fmt=mod.NAME)
-        prof.link_documents(db, iid, keep)
+        iid = None
+        if preview.adds_anything(new):   # all duplicates: nothing to add, not even an empty import
+            keepdocs, n = prof.index_documents(db, pid, new["details"], stored)
+            summary["counts"]["documents"] = n
+            iid = records.store(db, pid, new, "upload", fmt=name)
+            prof.link_documents(db, iid, keepdocs)
         if watch:   # last, so a failure before it leaves no file behind
             saved = watch_store.save_import(db, pid, watch)
             summary["counts"].update(watch_days=saved["days"], workouts=saved["workouts"])
-        activity.log(db, "import", who, pid, {"importer": mod.NAME, "counts": summary["counts"], "job": jid},
+        activity.log(db, "import", who, pid, {"importer": name, "counts": summary["counts"], "job": jid,
+                                              "skipped": summary["skipped"], "kept": len(keep)},
                      ip=_ips.get(jid), actor=None if who else "removed account")
-        db.execute("""UPDATE jobs SET state='done', stage=NULL, import_id=?, warnings=?, summary=?, finished=? WHERE id=?""",
-                   (iid, crypto.enc(json.dumps(warnings)), crypto.enc(json.dumps(summary)), dbm.now(), jid))
+        db.execute("UPDATE jobs SET state='done', stage=NULL, import_id=?, summary=?, finished=? WHERE id=?",
+                   (iid, crypto.enc(json.dumps(summary)), dbm.now(), jid))
+    _remove(path)
+
+
+# ---------------------------------------------------------------- preview: confirm or discard
+
+def preview_path(pid, jid):
+    """The job's parsed records, sealed (crypto.write_file), while it waits in "preview"."""
+    return os.path.join(prof.profile_dir(pid), "previews", str(int(jid)))
+
+
+def _remove(path):
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(path)
+
+
+class Refused(Exception):
+    def __init__(self, message, status=409):
+        super().__init__(message)
+        self.status = status
+
+
+def confirm(db, pid, jid, uid, keep=None, ip=None):
+    """Save a previewed import, in the background like the parse: duplicates are skipped, except those whose refs
+    (preview.keep) are in keep. Refused unless the job is waiting in "preview"."""
+    keep = [str(r)[:40] for r in keep or []][:20000]
+    n = db.execute("""UPDATE jobs SET state='queued', stage='saving', confirmed_by=?, keep=? WHERE id=? AND profile_id=?
+                      AND state='preview'""", (uid, json.dumps(keep) if keep else None, jid, pid)).rowcount
+    if not n:
+        _refuse_not_preview(db, pid, jid)
+    _ips[jid] = ip
+    if _q is not None:
+        _q.put(jid)
+
+
+def discard(db, pid, jid, who, ip=None):
+    """Throw a previewed import away: its preview file, and its upload too unless another job uses it."""
+    with dbm.transaction(db):
+        r = db.execute("SELECT * FROM jobs WHERE id=? AND profile_id=?", (jid, pid)).fetchone()
+        if not r or r["state"] != "preview":
+            _refuse_not_preview(db, pid, jid)
+        db.execute("UPDATE jobs SET state='discarded', finished=?, confirmed_by=? WHERE id=?", (dbm.now(), who["id"], jid))
+        others = db.execute("""SELECT 1 FROM jobs WHERE upload_id=? AND id != ?
+                               AND state IN ('queued', 'running', 'preview', 'done') LIMIT 1""", (r["upload_id"], jid)).fetchone()
+        activity.log(db, "discard", who, pid, {"importer": r["importer"], "job": jid, "upload": r["upload_id"]}, ip)
+    _remove(preview_path(pid, jid))
+    if not others:
+        with contextlib.suppress(uploads.UploadError):
+            uploads.discard(db, pid, r["upload_id"])
+
+
+def _refuse_not_preview(db, pid, jid):
+    r = db.execute("SELECT state FROM jobs WHERE id=? AND profile_id=?", (jid, pid)).fetchone()
+    if not r:
+        raise Refused("No such import.", 404)
+    raise Refused({"queued": "This import is being saved already.", "running": "This import is still being read.",
+                   "done": "This import has been saved already.", "discarded": "This import was cancelled.",
+                   "failed": "This import failed; start it again."}.get(r["state"], "This import can't be changed now."))
 
 
 def _read(db, jid, name, files):
@@ -219,7 +354,8 @@ def describe(r):
     summary = json.loads(crypto.dec(r["summary"])) if r["summary"] else {}
     return {"id": r["id"], "upload_id": r["upload_id"], "state": r["state"], "stage": r["stage"],
             "importer": r["importer"], "label": mod.LABEL if mod else r["importer"],
-            "counts": summary.get("counts"), "range": summary.get("range"),
+            "counts": summary.get("counts"), "range": summary.get("range"), "total": summary.get("total"),
+            "duplicates": summary.get("duplicates"), "new": summary.get("new"), "skipped": summary.get("skipped"),
             "warnings": json.loads(crypto.dec(r["warnings"])) if r["warnings"] else [],
             "message": crypto.dec(r["message"]) if r["message"] else None, "import_id": r["import_id"],
             "created": r["created"], "started": r["started"], "finished": r["finished"]}
