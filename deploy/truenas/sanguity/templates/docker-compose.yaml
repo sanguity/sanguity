@@ -1,0 +1,86 @@
+{% set tpl = ix_lib.base.render.Render(values) %}
+
+{# The same four services and mounts as the repo's compose.release.yaml, on the released image #}
+{% set perm_container = tpl.deps.perms(values.consts.perms_container_name) %}
+{% set perms_config = {"uid": values.run_as.user, "gid": values.run_as.group, "mode": "check"} %}
+{% set tmp = {"type": "tmpfs", "tmpfs_config": {"size": 64}} %}
+{% set key_ro = dict(values.storage.key, read_only=true) %}
+{% set records_ro = dict(values.storage.records, read_only=true) %}
+{% set config_ro = dict(values.storage.config, read_only=true) %}
+{% set watch_public_ro = dict(values.storage.watch, read_only=true) %}
+
+{# setup: one-shot. Secrets and folders, then the built data (the demo, until records are added) #}
+{% set setup = tpl.add_container(values.consts.setup_container_name, "image") %}
+{% do setup.set_user(values.run_as.user, values.run_as.group) %}
+{% do setup.restart.set_policy("on-failure", 1) %}
+{% do setup.healthcheck.disable() %}
+{% do setup.set_read_only(true) %}
+{% do setup.set_command(["python3", "-I", "/app/docker/setup.py"]) %}
+{% do setup.environment.add_env("SANGUITY_KEY_FILE", "%s/data_key" | format(values.consts.key_path)) %}
+{% do setup.add_storage("/tmp", tmp) %}
+{% do setup.add_storage(values.consts.key_path, values.storage.key) %}
+{% do setup.add_storage("/config", config_ro) %}
+{% do setup.add_storage("/data", values.storage.data) %}
+{% do setup.add_storage("/backups", values.storage.backups) %}
+{% do setup.add_storage("/watch", values.storage.watch) %}
+{% do setup.add_storage("/srv/records", records_ro) %}
+
+{# app: accounts, sessions, profiles and roles; the only way to reach records and documents. No published port #}
+{% set app = tpl.add_container(values.consts.app_container_name, "image") %}
+{% do app.set_user(values.run_as.user, values.run_as.group) %}
+{% do app.set_read_only(true) %}
+{% do app.set_command(["python3", "-m", "server"]) %}
+{% do app.depends.add_dependency(values.consts.setup_container_name, "service_completed_successfully") %}
+{% do app.healthcheck.set_custom_test(["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3)"]) %}
+{% do app.environment.add_env("COOKIE_SECURE", values.sanguity.cookie_secure) %}
+{% do app.environment.add_env("PUBLIC_ORIGINS", values.sanguity.public_origins) %}
+{% do app.environment.add_env("FORWARDED_ALLOW_IPS", "*") %}
+{% do app.environment.add_user_envs(values.sanguity.additional_envs) %}
+{% do app.add_storage("/tmp", tmp) %}
+{% do app.add_storage(values.consts.key_path, key_ro) %}
+{% do app.add_storage("/data", values.storage.data) %}
+{% do app.add_storage("/backups", values.storage.backups) %}
+{% do app.add_storage("/srv/records", records_ro) %}
+{% do app.add_storage("/watch", watch_public_ro) %}
+{% for store in values.storage.additional_storage %}
+  {% do app.add_storage(store.mount_path, store) %}
+  {% do perm_container.add_or_skip_action(store.mount_path, store, perms_config) %}
+{% endfor %}
+
+{# web: nginx from the same image, serving the pages and passing /api/ to the app #}
+{% set web = tpl.add_container(values.consts.web_container_name, "image") %}
+{% do web.set_user(values.run_as.user, values.run_as.group) %}
+{% do web.set_read_only(true) %}
+{% do web.set_command(["nginx", "-e", "stderr", "-g", "daemon off;"]) %}
+{% do web.depends.add_dependency(values.consts.app_container_name, "service_started") %}
+{% do web.healthcheck.set_test("wget", {"port": 8080, "path": "/healthz", "busybox": true, "spider": false}) %}
+{% do web.add_port(values.network.web_port, {"container_port": 8080}) %}
+{% do web.add_storage("/tmp", tmp) %}
+
+{# receiver: the phone app posts watch and scale data here #}
+{% set receiver = tpl.add_container(values.consts.receiver_container_name, "image") %}
+{% do receiver.set_user(values.run_as.user, values.run_as.group) %}
+{% do receiver.set_read_only(true) %}
+{% do receiver.set_command(["python3", "-I", "/app/receiver.py"]) %}
+{% do receiver.depends.add_dependency(values.consts.setup_container_name, "service_completed_successfully") %}
+{% do receiver.healthcheck.set_custom_test(["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=3)"]) %}
+{% do receiver.environment.add_env("DATA", "/watch") %}
+{% do receiver.environment.add_env("SECRET_FILE", "%s/watch_secret" | format(values.consts.key_path)) %}
+{% do receiver.environment.add_env("TZ_DEFAULT", values.TZ) %}
+{% do receiver.add_port(values.network.receiver_port, {"container_port": 8080}) %}
+{% do receiver.add_storage("/tmp", tmp) %}
+{% do receiver.add_storage("/watch", values.storage.watch) %}
+{% do receiver.add_storage(values.consts.key_path, key_ro) %}
+
+{# every folder belongs to the run-as user before anything starts #}
+{% for name in ["data", "key", "backups", "watch", "records", "config"] %}
+  {% do perm_container.add_or_skip_action(name, values.storage[name], perms_config) %}
+{% endfor %}
+{% if perm_container.has_actions() %}
+  {% do perm_container.activate() %}
+  {% do setup.depends.add_dependency(values.consts.perms_container_name, "service_completed_successfully") %}
+{% endif %}
+
+{% do tpl.portals.add(values.network.web_port) %}
+
+{{ tpl.render() | tojson }}

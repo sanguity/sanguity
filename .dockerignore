@@ -1,0 +1,25 @@
+# The build context is the checkout, which on a running install also holds health data and secrets. None of it
+# belongs in an image (the Dockerfile copies only code), and leaving it out keeps it from being sent to the builder.
+.git
+.github
+.env
+auth/
+data/
+backups/
+records/
+watch-data/
+dev-data/
+dev-keys/
+www/data.json
+www/data.json.tmp
+www/settings.json
+www/watch/
+www/files*/
+config/
+sources.json
+corrections.json
+settings.json
+compose.override.yaml
+**/__pycache__
+**/*.db
+**/*.db-*

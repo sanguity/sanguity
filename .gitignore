@@ -28,3 +28,5 @@ dev-keys/
 
 # fictional test fixtures (no real records): the patterns above would otherwise hide them
 !tests/fixtures/**
+# the install templates (an Unraid template is .xml): no data in them
+!deploy/**

@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Sanguity</Name>
+  <Repository>ghcr.io/sanguity/sanguity:latest</Repository>
+  <Registry>https://github.com/sanguity/sanguity/pkgs/container/sanguity</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/sanguity/sanguity/issues</Support>
+  <Project>https://github.com/sanguity/sanguity</Project>
+  <Overview>Your medical records, insurance claims and wearable data on one private timeline, on your own server. Sanguity turns the exports you download from patient portals and insurers, plus watch and smart-scale data from your phone, into one place to see lab trends, visits, hospital stays, documents and what your care cost. Several people, each with their own account and profiles; records are encrypted at rest.[br][br]After the first start, open the Web UI and enter the one-time setup code from the container's log to create the first account. Keep a copy of the Encryption key folder somewhere other than the data and its backups: without it, the records can't be read.</Overview>
+  <Changes>[b]See the changelog:[/b] https://github.com/sanguity/sanguity/blob/main/CHANGELOG.md</Changes>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/sanguity/sanguity/main/deploy/unraid/sanguity.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/sanguity/sanguity/main/docs/logo/sanguity-avatar.png</Icon>
+  <ExtraParams>--read-only --tmpfs /tmp</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Web UI port" Target="8080" Default="8730" Mode="tcp" Description="The web app." Type="Port" Display="always" Required="true" Mask="false">8730</Config>
+  <Config Name="Watch receiver port" Target="8081" Default="8731" Mode="tcp" Description="Where the phone app (Health Connect webhook) uploads watch and smart-scale data." Type="Port" Display="always" Required="true" Mask="false">8731</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/sanguity/data" Mode="rw" Description="The database and each profile's files." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/sanguity/data</Config>
+  <Config Name="Encryption key" Target="/run/secrets/sanguity" Default="/mnt/user/appdata/sanguity-key" Mode="rw" Description="The encryption key and the watch receiver's secret, kept apart from the data and its backups. Keep a copy somewhere safe (not with the backups): without it the records can't be read." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/sanguity-key</Config>
+  <Config Name="Backups" Target="/backups" Default="/mnt/user/appdata/sanguity/backups" Mode="rw" Description="Where backups are written (python -m server.manage backup). Copy them off this server too." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/sanguity/backups</Config>
+  <Config Name="Watch data" Target="/watch" Default="/mnt/user/appdata/sanguity/watch" Mode="rw" Description="Watch and smart-scale data from the phone app." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/sanguity/watch</Config>
+  <Config Name="Record exports" Target="/srv/records" Default="/mnt/user/appdata/sanguity/records" Mode="ro" Description="Optional: record exports described in sources.json (read-only). Records can also be uploaded in the app." Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/sanguity/records</Config>
+  <Config Name="Config files" Target="/config" Default="/mnt/user/appdata/sanguity/config" Mode="ro" Description="Optional: sources.json, settings.json and corrections.json (read-only)." Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/sanguity/config</Config>
+  <Config Name="Time zone" Target="TZ" Default="UTC" Mode="" Description="Used to assign watch readings to days, e.g. America/Chicago or Europe/London." Type="Variable" Display="always" Required="true" Mask="false">UTC</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User the app runs as and owns its files (99 = nobody)." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group the app runs as (100 = users)." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="Public origins" Target="PUBLIC_ORIGINS" Default="" Mode="" Description="Only if sign-in says &quot;Request refused (cross-site check)&quot; behind your own reverse proxy: the address you open Sanguity at, e.g. https://health.example.com. Passkeys need an HTTPS address." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Secure cookie" Target="COOKIE_SECURE" Default="auto" Mode="" Description="Mark the session cookie Secure: auto (when your reverse proxy says the request came over HTTPS), 1 or 0." Type="Variable" Display="advanced" Required="false" Mask="false">auto</Config>
+</Container>
