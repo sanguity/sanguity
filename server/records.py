@@ -8,6 +8,8 @@ to data.json, and each part of it has its place:
   costs      [{id: event id, d, billed, paid, owe...}]       events.cost, the claim's own row
   labs       [{name, unit, panel, loinc, n, txt, pts}]       series, with each point of pts a row in results
   the rest   built, source, upcoming, problems, outOfPocket, milestones, clinicWeights...   imports.meta
+  edits      [{id, action, found, ids...}]                   the edits table: corrections made in the app, applied
+                                                             last (edits.py), never part of an import
 
 store() takes such an object apart into the rows of one import; assemble() puts a profile's imports back
 together. An event's id is its row's, so the ids an import arrives with are mapped on the way in, the ones a lab
@@ -22,7 +24,7 @@ every row. '' means the record has no key; NULL, not worked out yet (backfill_ke
 import hashlib, hmac, json, threading
 from contextlib import contextmanager
 
-from . import crypto
+from . import crypto, edits
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
@@ -259,7 +261,7 @@ def _assemble(db, pid):
         pts.setdefault(r["series_id"], []).append(_dec(r["body"]))
     labs = [{**_dec(r["body"]), "pts": pts.get(r["id"], [])}
             for r in db.execute("SELECT id, body FROM series WHERE profile_id=? ORDER BY id", (pid,))]
-    return {**out, "events": events, "details": details, "labs": labs, "costs": costs}
+    return edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
 
 
 # the page asks for a profile's records on every load; putting them together decrypts every row, so the result

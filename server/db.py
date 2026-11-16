@@ -269,6 +269,24 @@ SCHEMA = [
         entry TEXT NOT NULL);                      -- JSON: the history entry as it was just before (history.py)
     CREATE INDEX import_undos_profile ON import_undos(profile_id);
     """,
+    # version 15: corrections made in the app (edits.py). An edit belongs to the profile, never to an import, so
+    # undoing or replacing an import keeps it; it points at an event by the event's source key (or, for events
+    # without one, a key made from what the event says), so it finds the event again after a re-import gives it a
+    # new id. target is a keyed hash of that key, for looking it up; the key itself and the value are encrypted.
+    """
+    CREATE TABLE edits(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        target TEXT NOT NULL,                      -- keyed hash (security.pepper_mac) of the event's key
+        target_key TEXT NOT NULL,                  -- the key, encrypted
+        action TEXT NOT NULL CHECK(action IN ('hide', 'rename', 'date', 'not_stay', 'merge')),
+        other TEXT,                                -- merge: the keyed hash of the event folded into the target
+        other_key TEXT,                            -- merge: its key, encrypted
+        value TEXT,                                -- JSON, encrypted: the new title or time, and what the event was
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,   -- NULL: the corrections.json migration
+        at INTEGER NOT NULL);
+    CREATE INDEX edits_target ON edits(profile_id, target);
+    """,
 ]
 
 

@@ -189,6 +189,51 @@ def main():
             check("HTML record can't run scripts", "allow-scripts" not in (look["sandbox"] or "") and look["sandbox"] is not None, look["sandbox"])
             page.keyboard.press("Escape")
 
+            # ---- corrections (#33): hide an event from the drawer, see it leave the timeline, undo; rename shows "Edited"
+            page.click("#tab-timeline")
+            js("applyPreset('all')")
+            settle()
+            pick = js("""(() => { const e = EV.find(e => !['exercise', 'labitem', 'lab'].includes(e.k) && EV.filter(x => x.title === e.title).length === 1);
+                return e && {id: e.id, t: e.t, title: e.title}; })()""")
+            there = "t => EV.some(e => e.title === t.title && e.t === t.t)"
+            listed = "t => [...document.querySelectorAll('#list .row')].some(r => r.textContent.includes(t.title))"
+            check("an event to correct is on the timeline", pick and js(f"({there})", pick) and js(f"({listed})", pick), pick)
+            js("id => openEvent(byId.get(id))", pick["id"])
+            settle(200)
+            page.click("#dbody .edit-acts button:text-is('Hide')")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && document.getElementById('drawer').classList.contains('open') && "
+                                   "document.getElementById('dtitle').textContent === 'Edits to these records'", timeout=20000)
+            settle()
+            check("hidden from the drawer: the event leaves the timeline", not js(f"({there})", pick) and not js(f"({listed})", pick))
+            check("…and the panel lists the edit, with Undo", pick["title"] in page.inner_text("#dbody") and page.locator("#dbody button[data-edit]").count() == 1,
+                  page.inner_text("#dbody")[:200])
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the edits panel fits 375 px", js("document.documentElement.scrollWidth <= 375 && document.getElementById('dbody').scrollWidth <= document.getElementById('dbody').clientWidth"),
+                  js("[document.documentElement.scrollWidth, document.getElementById('dbody').scrollWidth]"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#dbody button[data-edit]")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && (DATA.edits || []).length === 0", timeout=20000)
+            settle()
+            check("undoing the edit brings it back", js(f"({there})", pick) and js(f"({listed})", pick))
+            again = js(f"(t => EV.find(e => e.title === t.title && e.t === t.t).id)", pick)
+            js("id => openEvent(byId.get(id))", again)
+            settle(200)
+            page.click("#dbody .edit-acts button:text-is('Rename')")
+            page.fill("#dbody .edit-form input", "Renamed in the browser check")
+            page.click("#dbody .edit-form button:text-is('Save')")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && document.getElementById('dtitle').textContent === 'Renamed in the browser check'", timeout=20000)
+            check("a rename shows in the drawer, marked Edited", "Edited" in page.inner_text("#dbody .edited") and page.locator("#dbody .edited button[data-edit]").count() == 1)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the event panel with its corrections fits 375 px", js("document.documentElement.scrollWidth <= 375 && document.getElementById('dbody').scrollWidth <= document.getElementById('dbody').clientWidth"),
+                  js("[document.documentElement.scrollWidth, document.getElementById('dbody').scrollWidth]"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#dbody .edited button[data-edit]")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && (DATA.edits || []).length === 0", timeout=20000)
+            check("…and undoing it restores the title", js(f"({there})", pick))
+            page.keyboard.press("Escape")
+
             # ---- Trends: drag pans every chart together, ctrl+wheel zooms, milestones drawn on All
             page.click("#tab-labs")
             js("applyPreset('1y')")

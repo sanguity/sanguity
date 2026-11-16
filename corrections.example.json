@@ -1,11 +1,8 @@
 {
- "_help": "Copy to corrections.json on the server (never commit the real one). build.py applies these, then run rebuild.sh. 'org' is the source name shown in the app ('' for the main portal).",
+ "_help": "Copy to corrections.json next to compose.yaml (never commit the real one), then rebuild. It holds your milestones. Corrections to events (hide, rename, fix a date, not a hospital stay, merge) are made in the app, in the event's panel; an older not_hospital_stays list here was moved into the app once and isn't read any more.",
  "milestones": [
   {"date": "YYYY-MM-DD", "label": "Diagnosis", "primary": true, "_why": "primary = the date the Overview and default 'since' views count from (first milestone if none is marked)"},
   {"date": "YYYY-MM-DD", "label": "Surgery"},
   {"date": "YYYY-MM-DD", "label": "Treatment start"}
- ],
- "not_hospital_stays": [
-  {"date": "YYYY-MM-DD", "org": "Example Health", "title": "Outpatient CT", "why": "Coded as an inpatient encounter, but it was outpatient"}
  ]
 }

@@ -206,6 +206,18 @@ table.data tr.link:hover td{background:var(--hover)}
 #drawer .db.fill .btns{flex:none}
 #drawer .db.fill iframe.doc{flex:1 1 auto;min-height:320px}
 @media (max-width:700px){#dwide{display:none}}
+/* corrections in the event panel (drawer.js) */
+.edits{margin-top:18px;border-top:1px solid var(--grid);padding-top:10px;font-size:13px}
+.edits .edited{background:var(--raised);border:1px solid var(--ring);border-radius:8px;padding:8px 10px;margin-bottom:10px}
+.edits .edit-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:4px 0}
+.edits .edit-line>span{flex:1 1 200px;min-width:0;overflow-wrap:anywhere}
+.edits .edit-line .btn{margin:0}
+.edits .missing{color:var(--crit);font-style:normal}
+.edits .btn.small{padding:3px 9px;font-size:12px}
+.edits .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.edits .edit-form label{display:flex;flex-direction:column;gap:4px;margin:6px 0 8px;color:var(--ink2)}
+.edits .edit-form input,.edits .edit-form select{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:6px 9px;max-width:100%;min-width:0;font:inherit}
+.edits .edit-msg:empty{display:none}
 .kv{display:grid;grid-template-columns:110px 1fr;gap:3px 12px;font-size:13px;margin-bottom:12px}
 .kv dt{color:var(--muted)}
 .kv dd{margin:0}
