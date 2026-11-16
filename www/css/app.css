@@ -352,6 +352,22 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .import-job .imp-dups li{border-top:1px solid var(--grid);padding:5px 0;overflow-wrap:anywhere}
 .import-job .imp-dups label{display:block;cursor:pointer}
 .import-job .imp-dups .d{color:var(--muted);font-variant-numeric:tabular-nums}
+.imp .off{display:none !important}
+.imp .btn.primary:disabled{color:var(--ink);border-color:var(--ring)}   /* not white on white */
+/* results typed in (import-manual.js): one grid row per result, captions on the first row only, all on a phone */
+.imp .man-rows{display:grid;gap:2px;margin:10px 0 4px}
+.imp .man-row{display:grid;grid-template-columns:7.6em 4.6em minmax(8em,1.6fr) 5.4em 5em 7em 4.8em minmax(5em,1fr) 2em;gap:4px 6px;align-items:end;padding:4px 0;border-top:1px solid var(--grid)}
+.imp .man-row:first-child{border-top:0}
+.imp .man-row label{font-size:11px;gap:2px;min-width:0}
+.imp .man-row input,.imp .man-row select{width:100%;padding:5px 6px;font-size:13px}
+.imp .man-row:not(:first-child) .cap{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.imp .man-row .del{border:0;background:none;cursor:pointer;color:var(--muted);font-size:15px;padding:5px 0;border-radius:6px}
+.imp .man-row .del:hover{color:var(--crit);background:var(--hover)}
+.imp .man-check{grid-column:1 / -1;font-size:12px;color:var(--muted);min-height:0}
+.imp .man-check:empty{display:none}
+.imp .man-check.bad{color:var(--crit)}
+.imp .man-check .abn{color:var(--crit);font-weight:600}
+.imp .man-row input[aria-invalid="true"]{border-color:var(--crit)}
 @media (max-width:640px){
   .imp .imp-list li{grid-template-columns:minmax(0,1fr) auto}
   .imp .imp-list progress{grid-column:1 / -1}
@@ -368,3 +384,11 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .imp .hist li.undone .hd b,.imp .hist li.undone .what{color:var(--muted)}
 .imp .hist .confirm{margin-top:8px;padding:8px 10px;border:1px solid var(--crit);border-radius:10px;max-width:560px}
 .imp .hist .confirm p{margin:0 0 6px}
+@media (max-width:760px){
+  .imp .man-row{grid-template-columns:repeat(6,minmax(0,1fr));padding:8px 0}
+  .imp .man-row:not(:first-child) .cap{position:static;width:auto;height:auto;overflow:visible;clip:auto}
+  .imp .man-row .f-date,.imp .man-row .f-time,.imp .man-row .f-lab{grid-column:span 3}
+  .imp .man-row .f-test{grid-column:1 / -1}
+  .imp .man-row .f-value,.imp .man-row .f-unit,.imp .man-row .f-range,.imp .man-row .f-flag{grid-column:span 2}
+  .imp .man-row .del{grid-column:span 1}
+}
