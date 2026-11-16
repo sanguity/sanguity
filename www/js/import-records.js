@@ -56,7 +56,7 @@
   let seq = 0, changed = () => {};
 
   const pid = () => +$("#profile").value;
-  const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+  const today = zToday;   // dates.js
   const cards = () => [...box.querySelectorAll(".man-item")];
   const size = n => n >= 2 ** 20 ? (n / 2 ** 20).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " bytes";
 

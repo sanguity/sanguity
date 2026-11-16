@@ -47,6 +47,8 @@ services:
       SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-0}
       COOKIE_SECURE: ${COOKIE_SECURE:-auto}
       PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
+      RECEIVER_PORT: ${RECEIVER_PORT:-8731}   # for the upload address shown on the Settings page (#46)
+      WATCH_UPLOAD_URL: ${WATCH_UPLOAD_URL:-}
       HASH_PARALLEL: ${HASH_PARALLEL:-2}
       ACTIVITY_DAYS: ${ACTIVITY_DAYS:-365}
       REAUTH_MINUTES: ${REAUTH_MINUTES:-5}
@@ -65,6 +67,7 @@ services:
       - ${BACKUP_DIR:-./backups}:/backups   # server.manage backup writes here
       - ${RECORDS_DIR:-./records}:/srv/records:ro
       - ${WATCH_DIR:-./watch-data}/public:/watch/public:ro
+      - ${WATCH_DIR:-./watch-data}/keys:/watch/keys   # the app writes the receiver's per-profile secrets here (#46)
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3)"]
       interval: 60s

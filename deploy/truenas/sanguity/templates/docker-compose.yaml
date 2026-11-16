@@ -7,7 +7,6 @@
 {% set key_ro = dict(values.storage.key, read_only=true) %}
 {% set records_ro = dict(values.storage.records, read_only=true) %}
 {% set config_ro = dict(values.storage.config, read_only=true) %}
-{% set watch_public_ro = dict(values.storage.watch, read_only=true) %}
 
 {# setup: one-shot. Secrets and folders, then the built data (the demo, until records are added) #}
 {% set setup = tpl.add_container(values.consts.setup_container_name, "image") %}
@@ -41,7 +40,8 @@
 {% do app.add_storage("/data", values.storage.data) %}
 {% do app.add_storage("/backups", values.storage.backups) %}
 {% do app.add_storage("/srv/records", records_ro) %}
-{% do app.add_storage("/watch", watch_public_ro) %}
+{# the whole watch dataset: the app reads public/ and writes keys/, the receiver's per-profile secrets (#46) #}
+{% do app.add_storage("/watch", values.storage.watch) %}
 {% for store in values.storage.additional_storage %}
   {% do app.add_storage(store.mount_path, store) %}
   {% do perm_container.add_or_skip_action(store.mount_path, store, perms_config) %}

@@ -81,6 +81,7 @@ async function syncWarning(pid) {
   box.hidden = false;
 }
 (async function boot() {
+  const dates = datesReady();   // this person's time zone and date format (dates.js), read alongside the rest
   try {
     const m = await api("me");
     if (m.status === 401) { const s = await api("setup").then(r => r.json()).catch(() => ({})); location.replace(s.needed ? "setup.html" : "login.html"); return; }
@@ -123,8 +124,9 @@ async function syncWarning(pid) {
   } catch (e) { emptyCard("Couldn't load the records: " + e.message); return; }
   applyTabs(CFG.tabs);
   applyTheme(CFG.theme);   // this user's default theme (#45), unless this browser has its own (the ◐ toggle)
+  await dates;   // before any time is read: one without an offset is this person's wall-clock time
   for (const e of DATA.events) {
-    e.ts = Date.parse(e.t); e.te = e.end ? Date.parse(e.end) : e.ts;
+    e.ts = zParse(e.t); e.te = e.end ? zParse(e.end) : e.ts;
     e._q = (e.title + " " + (e.sub || "") + " " + (KIND_LABEL[e.k] || "")).toLowerCase();
     byId.set(e.id, e);
     if (e.k === "lab") { const d = DATA.details[e.id]; e.n = d ? d.ids.length : 1; }
@@ -133,7 +135,7 @@ async function syncWarning(pid) {
   STAYS = DATA.events.filter(e => e.k === "stay");
   // let search hit lab-day events through their child results' names
   for (const e of DATA.events) if (e.k === "lab") { const d = DATA.details[e.id]; if (d) e._q += " " + d.ids.map(i => (byId.get(i)?.title || "")).join(" ").toLowerCase(); }
-  for (const s of DATA.labs) for (const p of s.pts) p.ts = Date.parse(p[0]);
+  for (const s of DATA.labs) for (const p of s.pts) p.ts = zParse(p[0]);
   SERIES = joinSeries(DATA.labs);   // one chart per test, whichever imports brought it (same.js)
   // optional: watch data from the Health Connect receiver
   try {
@@ -143,7 +145,7 @@ async function syncWarning(pid) {
   if (WATCH) {
     const M = Object.fromEntries((WATCH.metrics || []).map(m => [m.key, m]));
     const byDay = k => Object.fromEntries(M[k] ? M[k].pts : []);
-    const mkPts = m => m.pts.map(([d, v]) => { const p = [d + "T12:00:00", v, null, null, "", ""]; p.ts = Date.parse(p[0]); p.day = d; return p; });
+    const mkPts = m => m.pts.map(([d, v]) => { const p = [d + "T12:00:00", v, null, null, "", ""]; p.ts = dayTs(d); p.day = d; return p; });
     const add = (m, extra) => { const pts = mkPts(m); const s = {name: m.name, unit: m.unit, panel: m.group === "Body" ? "Body · smart scale" : "Watch · " + m.group, n: pts.length, pts, txt: [], watch: true, key: m.key, kind: "line", ...extra}; SERIES.push(s); return s; };
     if (M.hr_avg) {   // one chart: daily average inside a low–high band
       const lo = byDay("hr_min"), hi = byDay("hr_max");
@@ -155,14 +157,14 @@ async function syncWarning(pid) {
       const s = add(M.sleep_h, {name: "Sleep", key: "sleep", kind: "stack"});
       for (const p of s.pts) p.parts = {deep: (parts.deep[p.day] || 0) / 60, rem: (parts.rem[p.day] || 0) / 60, light: (parts.light[p.day] || 0) / 60};
     }
-    if (M.steps) { add(M.steps, {kind: "bars"}); STEPS = mkPts(M.steps).map(p => [Date.parse(p.day + "T00:00:00"), p[1]]); }
+    if (M.steps) { add(M.steps, {kind: "bars"}); STEPS = mkPts(M.steps).map(p => [zParse(p.day + "T00:00:00"), p[1]]); }
     const cw = DATA.clinicWeights || [];
     if (M.weight || cw.length) {
       const s = add(M.weight || {key: "weight", name: "Weight", unit: "lb", group: "Body", pts: []}, {name: "Body weight", key: "weight"});
       const have = new Set(s.pts.map(p => p.day));
       for (const [t, v, org] of cw) {
         const day = t.slice(0, 10); if (have.has(day)) continue; have.add(day);
-        const p = [day + "T12:00:00", v, null, null, "", "", "Clinic"]; p.ts = Date.parse(p[0]); p.day = day; p.org = org; s.pts.push(p);
+        const p = [day + "T12:00:00", v, null, null, "", "", "Clinic"]; p.ts = dayTs(day); p.day = day; p.org = org; s.pts.push(p);
       }
       s.pts.sort((a, b) => a.ts - b.ts); s.n = s.pts.length;
     }
@@ -171,7 +173,7 @@ async function syncWarning(pid) {
     let wid = DATA.events.reduce((m, e) => Math.max(m, +e.id || 0), 1e7);   // after every record's id
     for (const x of WATCH.exercise || []) {
       const ev = {id: ++wid, t: x.start, end: x.end, k: "exercise", title: x.name.replace(/_/g, " "), sub: `${x.minutes} min`};
-      ev.ts = Date.parse(ev.t); ev.te = Date.parse(ev.end); ev._q = (ev.title + " workout exercise").toLowerCase();
+      ev.ts = zParse(ev.t); ev.te = zParse(ev.end); ev._q = (ev.title + " workout exercise").toLowerCase();
       DATA.events.push(ev); byId.set(ev.id, ev); DATA.details[ev.id] = {type: "exercise", kind: x.kind, minutes: x.minutes};
     }
     EV = DATA.events;

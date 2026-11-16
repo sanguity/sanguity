@@ -4,7 +4,7 @@
 /* ---------------------------------------------------------------- overview */
 // hint text built from the data, so no provider or insurer names live in the page
 const listOf = (xs, sep = " and ") => { const u = [...new Set(xs.filter(Boolean))]; return u.length < 2 ? (u[0] || "") : u.slice(0, -1).join(", ") + sep + u.at(-1); };
-const monthYear = d => new Date(Date.parse(d.slice(0, 10) + "T12:00:00")).toLocaleDateString(undefined, {month: "short", year: "numeric"});
+const monthYear = d => zdate(dayTs(d.slice(0, 10))).toLocaleDateString(undefined, {month: "short", year: "numeric"});
 function insurerSpans(rows) {   // [[insurer, first date, last date]] in order of first claim
   const by = new Map();
   for (const r of rows) { if (!r.ins) continue; const v = by.get(r.ins); if (!v) by.set(r.ins, [r.d, r.d]); else { if (r.d < v[0]) v[0] = r.d; if (r.d > v[1]) v[1] = r.d; } }
@@ -95,7 +95,7 @@ function renderOverview() {
     const avg = (s, a, b) => { const v = s.pts.filter(p => p.ts > a && p.ts <= b).map(p => p[1]); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; };
     for (const s of ws) {
       if (s.key === "weight") {
-        const last = s.pts[s.pts.length - 1], pm = primaryMs(), dx = pm ? Date.parse(pm.date + "T12:00:00") : NaN;
+        const last = s.pts[s.pts.length - 1], pm = primaryMs(), dx = pm ? dayTs(pm.date) : NaN;
         const at = pm ? s.pts.filter(p => Math.abs(p.ts - dx) < 75 * DAY).sort((a, b) => Math.abs(a.ts - dx) - Math.abs(b.ts - dx))[0] : null;
         const d = at && last !== at ? last[1] - at[1] : null;
         grid.append(el("button", {class: "tile", onclick: () => { hState.period = msKey(pm); hState.custom = null; switchTab("health"); }},
@@ -122,16 +122,16 @@ function renderOverview() {
   if (up.length) {
     const uc = el("div", {class: "card"}, el("h2", {text: "Upcoming"}), listOf(up.map(u => u.where)) ? el("p", {class: "hint", text: "Scheduled at " + listOf(up.map(u => u.where))}) : null);
     for (const u of up.slice(0, 6)) uc.append(el("div", {class: "ov-row", style: {cursor: "default"}},
-      el("span", {class: "n", text: u.title}), el("span", {class: "r", text: fmtD(Date.parse(u.t + "T12:00:00"))}), el("span", {}),
+      el("span", {class: "n", text: u.title}), el("span", {class: "r", text: fmtD(dayTs(u.t))}), el("span", {}),
       el("span", {class: "s", text: [u.who, u.where].filter(Boolean).join(" · ")})));
-    if (up.length > 6) uc.append(el("p", {class: "hint", style: {marginTop: "6px"}, text: `${up.length - 6} more scheduled through ${fmtD(Date.parse(up[up.length - 1].t + "T12:00:00"))}`}));
+    if (up.length > 6) uc.append(el("p", {class: "hint", style: {marginTop: "6px"}, text: `${up.length - 6} more scheduled through ${fmtD(dayTs(up[up.length - 1].t))}`}));
     right.append(uc);
   }
   // insurance cost summary
   if ((DATA.costs || []).length) {
     const rows = DATA.costs, pm = primaryMs(), dx = pm ? rows.filter(r => r.d >= pm.date) : rows;
     const cc = el("div", {class: "card"}, el("h2", {text: pm ? `Insurance costs since ${lcLabel(pm.label)}` : "Insurance costs"}),
-      dx.length ? el("p", {class: "hint", text: `Claims from ${fmtD(Date.parse(dx.reduce((m, r) => r.d < m ? r.d : m, dx[0].d) + "T12:00:00"))} on (${listOf(insurerSpans(dx).map(s => s[0]), ", then ")}).`}) : null);
+      dx.length ? el("p", {class: "hint", text: `Claims from ${fmtD(dayTs(dx.reduce((m, r) => r.d < m ? r.d : m, dx[0].d)))} on (${listOf(insurerSpans(dx).map(s => s[0]), ", then ")}).`}) : null);
     const mini = (l, v) => el("div", {}, el("div", {style: {fontSize: "20px", fontWeight: 650}, text: v}), el("div", {class: "hint", style: {margin: 0}, text: l}));
     cc.append(el("div", {style: {display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "10px", margin: "6px 0 10px"}},
       mini("billed", usd(sumOf(dx, "billed"))), mini("paid by insurance", usd(sumOf(dx, "paid"))), mini("your share", usd(sumOf(dx, "owe")))),
@@ -142,7 +142,7 @@ function renderOverview() {
   const probs =(DATA.problems || []).filter(p => (p.status || "").toLowerCase() === "active");
   if (probs.length) {
     const pc = el("div", {class: "card"}, el("h2", {text: `Active problem list (${probs.length})`}), listOf(probs.map(p => p.src)) ? el("p", {class: "hint", text: "As recorded by " + listOf(probs.map(p => p.src))}) : null);
-    for (const p of probs) pc.append(el("div", {class: "ov-row", style: {cursor: "default"}}, el("span", {class: "n", style: {fontWeight: 450}, text: p.name}), el("span", {class: "r", text: p.date ? fmtD(Date.parse(p.date + "T12:00:00")) : ""}), el("span", {})));
+    for (const p of probs) pc.append(el("div", {class: "ov-row", style: {cursor: "default"}}, el("span", {class: "n", style: {fontWeight: 450}, text: p.name}), el("span", {class: "r", text: p.date ? fmtD(dayTs(p.date)) : ""}), el("span", {})));
     left.append(pc);
   }
   // recent events

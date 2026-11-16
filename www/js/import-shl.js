@@ -18,7 +18,7 @@
     if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || `The server answered ${r.status}.`);
     return j;
   }
-  const when = s => new Date(s * 1000).toLocaleString(undefined, {year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
+  const when = s => fmtDT(s * 1000);   // dates.js
 
   /* ---------------------------------------------------------------- what the link says: nothing fetched */
   function clear() { seen = null; about.hidden = true; pass.value = ""; }

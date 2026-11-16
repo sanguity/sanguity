@@ -25,9 +25,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 IMAGE = "ghcr.io/sanguity/sanguity"
 SERVICES = {"setup", "app", "web", "receiver"}
-# Where the TrueNAS app can't match compose.release.yaml exactly: its library mounts a whole dataset, so the app
-# sees the watch folder (read-only) rather than only its public/ summary
-TRUENAS_SAME = {("app", "/watch"): "/watch/public"}
+# Where the TrueNAS app can't match compose.release.yaml exactly: its library mounts a whole dataset, so the app's one
+# writable /watch stands for both of compose's mounts, public/ (read-only there) and keys/ (#46, written by the app)
+TRUENAS_SAME = {("app", "/watch"): ("/watch/public", "/watch/keys")}
 failed, passed = [], []
 
 
@@ -87,7 +87,13 @@ def compare(label, want, got, same=None):
     check(f"{label}: the same services as compose.release.yaml", set(got) == set(want), sorted(got))
     for name in sorted(set(want) & set(got)):
         w, g = want[name], got[name]
-        gm = {same.get((name, t), t): ro for t, ro in g["mounts"].items()}
+        gm = {}
+        for t, ro in g["mounts"].items():
+            stands_for = same.get((name, t), t)
+            if isinstance(stands_for, tuple):   # one mount for several of compose's: each as compose has it
+                gm.update({s: w["mounts"].get(s, ro) for s in stands_for})
+            else:
+                gm[stands_for] = ro
         check(f"{label}: {name} mounts the same folders", set(gm) == set(w["mounts"]),
               f"missing {sorted(set(w['mounts']) - set(gm))}, extra {sorted(set(gm) - set(w['mounts']))}")
         wrong = sorted(t for t in set(gm) & set(w["mounts"]) if gm[t] != w["mounts"][t])
@@ -113,7 +119,7 @@ def release_shape():
         for v in svc.get("volumes", []):
             src = source(v)
             check(f"compose.release.yaml: {name} mounts nothing from a checkout ({src})",
-                  src.startswith("${") and src.endswith(("}", "}/public")), src)
+                  src.startswith("${") and src.endswith(("}", "}/public", "}/keys")), src)
     s = shape(compose)
     key = "/run/secrets/sanguity"
     sources = {target(v): source(v) for svc in compose["services"].values() for v in svc.get("volumes", [])}

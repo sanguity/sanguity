@@ -506,6 +506,12 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .sets .set-preview .set-wide,.sets .set-preview>p{grid-column:1 / -1;margin:0}
 .sets .set-radios{border:0;padding:0;margin:4px 0;display:flex;gap:16px;flex-wrap:wrap}
 .sets .set-radios label{display:flex;align-items:center;gap:4px}
+/* Settings: dates and times (#42), watch and scale (#46) */
+.sets .set-select{max-width:100%}
+.sets .w-kv{grid-template-columns:120px minmax(0,1fr)}
+.sets .w-kv dd>div{margin-bottom:4px}
+.sets code.w-addr,.sets code.w-secret{background:var(--hover);padding:1px 5px;border-radius:5px;user-select:all;overflow-wrap:anywhere}
+@media (max-width:600px){ .sets .w-kv{grid-template-columns:1fr} }
 /* find your provider (providers.js, #93) */
 .dir .dir-src{border-left:3px solid var(--c-study);padding:4px 0 4px 12px;margin:6px 0 12px;font-size:13px}
 .dir .dir-src p{margin:0 0 6px}

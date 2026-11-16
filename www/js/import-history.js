@@ -15,7 +15,7 @@
                 med: ["medication", "medications"], rx: ["pharmacy fill", "pharmacy fills"], claim: ["claim", "claims"]};
   const ORIGIN = {upload: "Uploaded", dataset: "Loaded from the command line", build: "From the setup build"};
   const n = (k, [one, many]) => `${k.toLocaleString()} ${k === 1 ? one : many}`;
-  const when = t => new Date(t * 1000).toLocaleString(undefined, {year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
+  const when = t => fmtDT(t * 1000);   // dates.js
   let ME = null, PID = null, seq = 0;
 
   const section = el("section", {class: "card", id: "history", hidden: true, "aria-labelledby": "historyTitle"},

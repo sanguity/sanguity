@@ -18,18 +18,18 @@ function openHealth(a, b) { hState.custom = [a, b]; hState.period = "custom"; cl
 const hPeriods = () => [["30d", "30 days"], ["90d", "90 days"], ["1y", "1 year"], ...msPeriods(), ["all", "All"]];
 function hData() {
   const M = Object.fromEntries(((WATCH || {}).metrics || []).map(m => [m.key, m]));
-  const ser = k => (M[k] ? M[k].pts : []).map(([d, v]) => [Date.parse(d + "T12:00:00"), v]);
+  const ser = k => (M[k] ? M[k].pts : []).map(([d, v]) => [dayTs(d), v]);
   // drop readings that sit >12% away from the median of the other weights within 90 days (e.g. a profile weight typed into another app)
-  const rawW = ser("weight"), cwRaw = (DATA.clinicWeights || []).map(([t, v]) => [Date.parse(t.slice(0, 10) + "T12:00:00"), v]);
+  const rawW = ser("weight"), cwRaw = (DATA.clinicWeights || []).map(([t, v]) => [dayTs(t.slice(0, 10)), v]);
   const ref = [...rawW, ...cwRaw];
   const scale = rawW.filter(p => { const near = ref.filter(q => q !== p && Math.abs(q[0] - p[0]) < 90 * DAY).map(q => q[1]).sort((x, y) => x - y);
     return near.length < 3 || Math.abs(p[1] - near[near.length >> 1]) / near[near.length >> 1] <= 0.12; });
   const scaleDays = new Set(scale.map(p => isoDay(p[0])));
-  const clinic = (DATA.clinicWeights || []).map(([t, v, org]) => [Date.parse(t.slice(0, 10) + "T12:00:00"), v, org]).filter(p => !scaleDays.has(isoDay(p[0])));
+  const clinic = (DATA.clinicWeights || []).map(([t, v, org]) => [dayTs(t.slice(0, 10)), v, org]).filter(p => !scaleDays.has(isoDay(p[0])));
   const sleep = ser("sleep_h").map(([t, v]) => { const d = isoDay(t), g = k => ((M[k] ? Object.fromEntries(M[k].pts) : {})[d] || 0) / 60; return [t, v, g("sleep_deep_min"), g("sleep_rem_min"), g("sleep_light_min")]; });
   const lo = M.hr_min ? Object.fromEntries(M.hr_min.pts) : {}, hi = M.hr_max ? Object.fromEntries(M.hr_max.pts) : {};
   const hr = ser("hr_avg").map(([t, v]) => [t, v, lo[isoDay(t)], hi[isoDay(t)]]);
-  const ex = ((WATCH || {}).exercise || []).map(x => ({t: Date.parse(x.start), name: (x.name || "").replace(/_/g, " "), kind: x.kind, min: x.minutes || 0}));
+  const ex = ((WATCH || {}).exercise || []).map(x => ({t: zParse(x.start), name: (x.name || "").replace(/_/g, " "), kind: x.kind, min: x.minutes || 0}));
   // visits matching a settings rule (e.g. physical therapy) count as workouts: one per rule per day, past visits only.
   // A rule's text is found anywhere in the title, ignoring case; with "regex" it is a regular expression the server
   // checked is safe to run (server/settings.py, whose rule_matches does the same)
@@ -57,7 +57,7 @@ function hRange() {
   const days = {"30d": 30, "90d": 90, "1y": 365}[hState.period];
   if (days) return [end - days * DAY, end];
   const m = msOf(hState.period);
-  if (m) return [Math.min(Date.parse(m.date + "T00:00:00"), end - 7 * DAY), end];
+  if (m) return [Math.min(zParse(m.date + "T00:00:00"), end - 7 * DAY), end];
   return [H.first - DAY / 2, end];
 }
 const inR = (pts, a, b) => pts.filter(p => p[0] >= a && p[0] <= b);
@@ -73,7 +73,7 @@ function rolling(pts, days = 7) {  // trailing mean over the last `days` calenda
 }
 function weekly(pts, fn = mean) {  // [[t, v...]] -> weekly buckets (Monday), averaging each column
   const m = new Map();
-  for (const p of pts) { const d = new Date(p[0]); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); const k = d.getTime(); if (!m.has(k)) m.set(k, []); m.get(k).push(p); }
+  for (const p of pts) { const d = zdate(p[0]); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); const k = d.getTime(); if (!m.has(k)) m.set(k, []); m.get(k).push(p); }
   return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([k, ps]) => [k + 3 * DAY, ...ps[0].slice(1).map((_, i) => fn(ps.map(p => p[i + 1] || 0)))]);
 }
 
@@ -101,8 +101,8 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
     g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
     const span = (b - a) / DAY, fmtX = span > 500 ? {year: "numeric"} : span > 75 ? {month: "short"} : {month: "short", day: "numeric"};
     const step = span > 500 ? 365 : span > 75 ? 30.4 : 7, n = Math.max(1, Math.ceil(span / step / Math.max(2, Math.floor((R - L) / 64))));
-    const d0 = new Date(a); if (span > 500) d0.setMonth(0, 1); else if (span > 75) d0.setDate(1); d0.setHours(12);
-    for (let d = new Date(d0), i = 0; d.getTime() <= b; i++) {
+    const d0 = zdate(a); if (span > 500) d0.setMonth(0, 1); else if (span > 75) d0.setDate(1); d0.setHours(12);
+    for (let d = zdate(d0), i = 0; d.getTime() <= b; i++) {
       if (d.getTime() >= a && i % n === 0) g.push(el("svg:text", {x: x(d.getTime()), y: h - 5, "text-anchor": "middle", text: d.toLocaleDateString(undefined, fmtX)}));
       if (span > 500) d.setFullYear(d.getFullYear() + 1); else if (span > 75) d.setMonth(d.getMonth() + 1); else d.setDate(d.getDate() + 7);
     }
@@ -226,7 +226,7 @@ function renderHealth() {
   const cal = el("div", {style: {marginTop: "12px"}}, el("h3", {class: "sub", text: `Workouts · ${exIn.length} in this period${exIn.some(x => x.pt) ? ` (${listOf([...new Set(exIn.filter(x => x.pt).map(x => x.rule))].map(r => { const xs = exIn.filter(x => x.pt && x.rule === r); return `${xs.length} ${r.toLowerCase()} appointment${xs.length === 1 ? "" : "s"}, counted as ${xs[0].min} min each`; }))})` : ""}`}));
   act.append(cal);
   requestAnimationFrame(() => {
-    const start = new Date(a); start.setHours(12, 0, 0, 0); start.setDate(start.getDate() - (start.getDay() + 6) % 7);
+    const start = zdate(a); start.setHours(12, 0, 0, 0); start.setDate(start.getDate() - (start.getDay() + 6) % 7);
     const weeks = Math.ceil((b - start.getTime()) / (7 * DAY)), w = Math.max(300, cal.clientWidth), L = 28;
     const cs = Math.max(3, Math.min(20, Math.floor((w - L) / weeks) - 2)), gap = cs > 6 ? 2 : 1, hh = 7 * (cs + gap) + 16;
     const byDay = new Map(); for (const x of exIn) { const k = isoDay(x.t); const v = byDay.get(k) || {min: 0, list: []}; v.min += x.min; v.list.push(x); byDay.set(k, v); }
@@ -236,7 +236,7 @@ function renderHealth() {
     for (let wk = 0; wk < weeks; wk++) for (let dd = 0; dd < 7; dd++) {
       const t = start.getTime() + (wk * 7 + dd) * DAY; if (t < a - DAY || t > b) continue;
       const k = isoDay(t), v = byDay.get(k), cx = L + wk * (cs + gap), cy = 14 + dd * (cs + gap);
-      const m = new Date(t).getMonth(); if (dd === 0 && m !== lastM && (weeks < 60 || m % 3 === 0)) { lastM = m; g.push(el("svg:text", {x: cx, y: 10, text: new Date(t).toLocaleDateString(undefined, weeks > 60 ? {month: "short", year: "2-digit"} : {month: "short"}), style: "font-size:10px"})); }
+      const m = zdate(t).getMonth(); if (dd === 0 && m !== lastM && (weeks < 60 || m % 3 === 0)) { lastM = m; g.push(el("svg:text", {x: cx, y: 10, text: zdate(t).toLocaleDateString(undefined, weeks > 60 ? {month: "short", year: "2-digit"} : {month: "short"}), style: "font-size:10px"})); }
       const fill = !v ? "var(--grid)" : v.min >= 60 ? "var(--seq1)" : v.min >= 30 ? "var(--seq2)" : "var(--seq3)";
       const r = el("svg:rect", {x: cx, y: cy, width: cs, height: cs, rx: cs > 6 ? 2 : 0, fill});
       if (v) { r.style.cursor = "default"; r.addEventListener("pointermove", ev => showTip([el("div", {class: "v", text: fmtD(t)}), ...v.list.map(x => el("div", {class: "s", text: x.pt ? `${x.rule} appointment${x.who ? " with " + x.who : ""} · counted as ${x.min} min` : `${x.name} · ${x.min} min`}))], ev)); r.addEventListener("pointerleave", hideTip); }

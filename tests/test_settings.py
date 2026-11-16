@@ -4,6 +4,9 @@ settings.example.json round-trips through the API, defaults and the precedence o
 user), who may change what by scope, bad values refused, reset per section, the CSRF check and the activity log,
 settings.json moved into the database once at the upgrade (each profile's, and the setup build's only for a new
 linked profile, never over what was changed in the app), export and import, and values encrypted at rest.
+Also each person's own time zone and date format (#42), and a watch receiver secret per profile (#46), checked with
+the real receiver: two profiles each get their own uploads, and the install's single secret from before keeps working
+for the first profile until it makes one of its own.
 Fictional data only.
 
   python3 tests/test_settings.py
@@ -14,16 +17,18 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-settings-test-")
 BUILD = os.path.join(TMP, "build")
 os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_BUILD=BUILD,
-                  SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"), SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"),
+                  SANGUITY_WATCH_FILE=os.path.join(TMP, "watch-rx", "public", "daily.json"), SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"),
+                  SANGUITY_WATCH_KEYS=os.path.join(TMP, "watch-rx", "keys", "receiver-secrets.json"), RECEIVER_PORT="8731",
+                  PUBLIC_ORIGINS="https://health.example.test",
                   PASSWORD_MIN_LENGTH="15", SANGUITY_KEY_FILE=os.path.join(TMP, "keys", "data_key"),
                   SANGUITY_CORRECTIONS=os.path.join(TMP, "config", "corrections.json"))
-for d in ("records", "keys", "build", "config", "profiles"):
+for d in ("records", "keys", "build", "config", "profiles", os.path.join("watch-rx", "keys"), os.path.join("watch-rx", "public")):
     os.makedirs(os.path.join(TMP, d), exist_ok=True)
 sys.path.insert(0, ROOT)
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, crypto, db as dbm, export, main, profiles as prof, settings   # noqa: E402
+from server import accounts, config, crypto, db as dbm, export, main, profiles as prof, settings, watch_keys, watch_store   # noqa: E402
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -454,6 +459,198 @@ class Settings(unittest.TestCase):
         prof.delete_profile(db, pid)
         self.assertEqual(db.execute("SELECT COUNT(*) FROM settings WHERE profile_id=?", (pid,)).fetchone()[0], 0)
         db.close()
+
+    # ---------------------------------------------------------------- dates and times (#42)
+
+    def test_dates_are_each_persons_own(self):
+        def mine(who):
+            r = self.c[who].get("/api/settings/user")
+            self.assertEqual(r.status_code, 200, r.text)
+            return r.json()
+
+        def set_mine(who, key, value, status=200):
+            r = self.c[who].put(f"/api/settings/user/{key}", json={"value": value}, headers=H)
+            self.assertEqual(r.status_code, status, r.text)
+            return r.json()
+        # not chosen until the first page after signing in sets them from the browser
+        self.assertEqual((mine("zed")["dates.timeZone"], mine("zed")["dates.format"]), ("", ""))
+        self.assertEqual(client().get("/api/settings/user").status_code, 401)
+        set_mine("robin", "dates.timeZone", "America/Los_Angeles")
+        set_mine("robin", "dates.format", "mdy")
+        set_mine("lee", "dates.timeZone", "Pacific/Auckland")
+        set_mine("lee", "dates.format", "ymd")
+        set_mine("zed", "dates.timeZone", "Europe/Paris")   # someone with no profile at all
+        self.assertEqual((mine("robin")["dates.timeZone"], mine("lee")["dates.timeZone"], mine("zed")["dates.timeZone"]),
+                         ("America/Los_Angeles", "Pacific/Auckland", "Europe/Paris"))
+        # the same on every profile, in the merged settings the dashboard reads, and only for that person
+        for pid in (1, 2):
+            self.assertEqual(self.merged(pid, "lee")["dates"], {"timeZone": "Pacific/Auckland", "format": "ymd"})
+        self.assertEqual(self.merged(1, "robin")["dates"], {"timeZone": "America/Los_Angeles", "format": "mdy"})
+        self.assertEqual(self.merged(1, "kim")["dates"], {"timeZone": "", "format": ""})
+        set_mine("kim", "dates.timeZone", "Asia/Tokyo")   # a viewer sets their own
+        self.assertEqual(self.merged(1, "kim")["dates"]["timeZone"], "Asia/Tokyo")
+        # refused: not a zone name, a zone that doesn't exist (where there's a time zone database), a format it doesn't have
+        set_mine("robin", "dates.timeZone", "not a zone; DROP", 400)
+        set_mine("robin", "dates.timeZone", 5, 400)
+        if settings._zones():
+            set_mine("robin", "dates.timeZone", "Mars/Olympus_Mons", 400)
+        set_mine("robin", "dates.format", "yyyy/dd", 400)
+        set_mine("robin", "sources", {}, 404)   # a profile's setting isn't changed here
+        set_mine("robin", "no.such", 1, 404)
+        self.assertEqual(self.c["robin"].put("/api/settings/user/dates.format", json={"value": "dmy"}).status_code, 403)   # CSRF
+        self.assertEqual(mine("robin")["dates.format"], "mdy")
+        acct = [e for e in self.c["ada"].get("/api/activity").json() if e["action"] == "settings.user"]
+        self.assertIn({"setting": "dates.timeZone", "label": "Time zone"}, [e["detail"] for e in acct])
+        self.assertNotIn("Pacific/Auckland", json.dumps(acct))   # which setting, never its value
+        secs = {s["key"]: s for sec in self.c["kim"].get("/api/profiles/1/settings/sections").json()["sections"] for s in sec["settings"]}
+        self.assertEqual((secs["dates.timeZone"]["kind"], secs["dates.timeZone"]["scope"], secs["dates.timeZone"]["can_change"]),
+                         ("timezone", "user", True))
+        for who in ("robin", "lee", "kim"):
+            for key in ("dates.timeZone", "dates.format"):
+                self.c[who].delete(f"/api/profiles/1/settings/{key}", headers=H)
+
+    # ---------------------------------------------------------------- a watch receiver secret per profile (#46)
+
+    def keys_file(self):
+        with open(config.WATCH_KEYS, "rb") as f:
+            self.assertEqual(f.read(4), crypto.MAGIC)   # sealed, like everything the receiver keeps
+        return json.loads(crypto.read_file(config.WATCH_KEYS))
+
+    def rotate(self, pid, who="robin", status=200):
+        r = self.c[who].post(f"/api/profiles/{pid}/watch/receiver/rotate", headers=H)
+        self.assertEqual(r.status_code, status, r.text)
+        return r.json()
+
+    def test_watch_import_stays_beside_the_receiver(self):
+        pid = self.fresh_profile("Imported watch (fictional)")
+        db = dbm.connect()
+        watch_store.save_import(db, pid, {"metrics": [{"key": "steps", "name": "Steps", "unit": "steps", "group": "Activity",
+                                                        "pts": [["2026-09-01", 4000]]}], "exercise": []})
+        self.assertTrue(os.path.isfile(watch_store.own_path(pid)))
+        db.close()
+        made = self.rotate(pid)
+        db = dbm.connect()
+        row = db.execute("SELECT watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
+        self.assertEqual(row["watch_file"], watch_keys.summary_path(str(pid)))   # the receiver's summary, in its own slot
+        self.assertFalse(os.path.isfile(watch_store.own_path(pid)))             # the import moved beside it
+        self.assertEqual(watch_store.load(db, pid)["metrics"][0]["pts"], [["2026-09-01", 4000]])
+        sealed = db.execute("SELECT value, sealed FROM settings WHERE key=? AND profile_id=?", (watch_keys.KEY, pid)).fetchone()
+        self.assertIsNone(sealed["value"])
+        self.assertTrue(sealed["sealed"].startswith(crypto.FIELD) and made["secret"] not in sealed["sealed"])
+        self.assertNotIn(watch_keys.KEY.split(".")[0], json.dumps(self.merged(pid)))   # never in the settings the page reads
+        # deleting the profile takes its secret out of the receiver's file
+        self.assertIn(made["secret"], [p["secret"] for p in self.keys_file()["profiles"]])
+        db.close()
+        r = self.c["robin"].request("DELETE", f"/api/profiles/{pid}", json={"confirm_name": "Imported watch (fictional)"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertNotIn(made["secret"], [p["secret"] for p in self.keys_file()["profiles"]])
+
+    def test_watch_two_profiles_with_the_real_receiver(self):
+        import hashlib, hmac, socket, subprocess, time, urllib.error, urllib.request
+        top = os.path.dirname(os.path.dirname(config.WATCH_KEYS))   # the receiver's DATA (WATCH_DIR)
+        legacy = os.path.join(TMP, "keys", "watch_secret")
+        with open(legacy, "w") as f:
+            f.write("the-install-secret-from-before\n")
+        db = dbm.connect()
+        first = watch_keys.first_profile(db)
+        if first is None:
+            first = 1
+            db.execute("UPDATE profiles SET watch_file=? WHERE id=1", (config.WATCH_FILE,))
+        db.close()
+        other = self.fresh_profile("Second watch (fictional)")
+        # who may see and change it: owners and editors; not viewers, and not someone it isn't shared with
+        db = dbm.connect()
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (self.uid["kim"], other))
+        db.close()
+        self.assertEqual(self.c["zed"].get(f"/api/profiles/{other}/watch/receiver").status_code, 404)   # not shared
+        self.assertEqual(self.c["kim"].get(f"/api/profiles/{other}/watch/receiver").status_code, 403)   # a viewer
+        self.rotate(other, "kim", 403)
+        self.assertEqual(self.c["robin"].post(f"/api/profiles/{other}/watch/receiver/rotate").status_code, 403)   # CSRF
+        st = self.c["lee"].get(f"/api/profiles/{first}/watch/receiver").json()
+        self.assertEqual((st["legacy"], st["has_secret"], st["ready"]), (True, False, True))
+        self.assertEqual(st["addresses"], ["http://health.example.test:8731/ingest"])   # PUBLIC_ORIGINS' host, the receiver's port
+        self.assertFalse(self.c["lee"].get(f"/api/profiles/{other}/watch/receiver").json()["legacy"])
+
+        env = {**os.environ, "DATA": top, "SECRET_FILE": legacy, "KEYS_FILE": config.WATCH_KEYS,
+               "SANGUITY_KEY_FILE": config.KEY_FILE, "TZ_DEFAULT": "UTC"}
+
+        def start():
+            with socket.socket() as sk:
+                sk.bind(("127.0.0.1", 0))
+                port = sk.getsockname()[1]
+            proc = subprocess.Popen([sys.executable, "-I", os.path.join(ROOT, "watch", "receiver.py")], env={**env, "PORT": str(port)},
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for _ in range(100):
+                try:
+                    urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=1)
+                    return proc, port
+                except OSError:
+                    time.sleep(0.1)
+            proc.kill()
+            self.fail("the receiver didn't start")
+
+        def post(port, secret, day, kg):
+            body = json.dumps({"source": "health_connect", "timezone": "UTC", "timestamp": f"{day}T09:00:00Z",
+                               "weight": [{"time": f"{day}T08:00:00Z", "kilograms": kg, "uuid": f"w-{day}-{kg}"}]}).encode()
+            sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+            try:
+                return urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/ingest", data=body,
+                                                                     headers={"X-Signature": sig}), timeout=5).status
+            except urllib.error.HTTPError as e:
+                return e.code
+
+        def days(pid):
+            r = self.c["robin"].get(f"/api/profiles/{pid}/watch")
+            if r.status_code == 204:
+                return {}
+            return dict(next((m["pts"] for m in r.json()["metrics"] if m["key"] == "weight"), []))
+
+        def until(cond):
+            for _ in range(200):
+                if cond():
+                    return
+                time.sleep(0.1)
+            self.fail("the receiver didn't write the summary")
+
+        proc, port = start()
+        try:
+            # an install from before #46: its single secret is the first profile's
+            self.assertEqual(post(port, "the-install-secret-from-before", "2026-10-01", 70), 200)
+            until(lambda: "2026-10-01" in days(first))
+            # the second profile makes its own secret; its phone's uploads are its own
+            made = self.rotate(other, "lee")
+            self.assertEqual((made["has_secret"], made["legacy"], made["masked"][-4:]), (True, False, made["secret"][-4:]))
+            self.assertNotIn(made["secret"], self.c["lee"].get(f"/api/profiles/{other}/watch/receiver").text)   # shown once
+            self.assertEqual(post(port, made["secret"], "2026-10-02", 60), 200)
+            until(lambda: "2026-10-02" in days(other))
+            self.assertNotIn("2026-10-02", days(first))
+            self.assertNotIn("2026-10-01", days(other))
+            self.assertEqual(post(port, "a guess", "2026-10-03", 99), 401)
+            # the first profile makes one of its own: the old secret stops working, and its history carries on
+            mine = self.rotate(first)
+            self.assertFalse(self.keys_file()["legacy"])
+            self.assertEqual({p["profile"]: p["slot"] for p in self.keys_file()["profiles"]}[first], "")
+            self.assertEqual(post(port, "the-install-secret-from-before", "2026-10-04", 71), 401)
+            self.assertEqual(post(port, mine["secret"], "2026-10-05", 72), 200)
+            until(lambda: "2026-10-05" in days(first))
+            self.assertEqual(sorted(days(first)), ["2026-10-01", "2026-10-05"])
+            # a new secret for the second profile: the old one stops working
+            again = self.rotate(other)
+            self.assertNotEqual(again["secret"], made["secret"])
+            self.assertEqual(post(port, made["secret"], "2026-10-06", 61), 401)
+            self.assertEqual(post(port, again["secret"], "2026-10-07", 62), 200)
+            until(lambda: "2026-10-07" in days(other))
+            self.assertEqual(sorted(days(other)), ["2026-10-02", "2026-10-07"])
+        finally:
+            proc.kill(); proc.wait()
+        # each profile's data in its own place, sealed
+        for path in (os.path.join(top, "public", "daily.json"), os.path.join(top, "public", "profiles", str(other), "daily.json"),
+                     os.path.join(top, "profiles", str(other), "watch.db")):
+            with open(path, "rb") as f:
+                self.assertEqual(f.read(4), crypto.MAGIC, path)
+        log = self.c["robin"].get(f"/api/profiles/{other}/activity?action=watch.secret").json()
+        self.assertEqual([(e["actor"], e["detail"]) for e in log], [("robin", {"rotated": True}), ("lee", {"rotated": False})])
+        self.assertNotIn(again["secret"], json.dumps(log))
 
     def test_page_served_with_the_csp(self):
         self.assertIn("settings", open(os.path.join(ROOT, "nginx.conf"), encoding="utf-8").read())

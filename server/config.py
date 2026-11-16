@@ -71,3 +71,11 @@ CONNECT_ALLOW_HTTP = os.environ.get("CONNECT_ALLOW_HTTP", "") == "1"
 SHL_MAX_BYTES = _int("SHL_MAX_MB", 64) * MB
 SHL_MAX_FILES = _int("SHL_MAX_FILES", 50)
 SHL_TIMEOUT = _int("SHL_TIMEOUT", 20)
+# the watch receiver, one secret per profile (#46: watch_keys.py). The app writes the profiles' secrets here, sealed,
+# for the receiver (compose: WATCH_DIR/keys); each profile's summary is <dirname(WATCH_FILE)>/profiles/<id>/daily.json,
+# except the first profile's, which stays WATCH_FILE. Setup instructions give the upload address: WATCH_UPLOAD_URL
+# when set (a receiver behind a reverse proxy), else each PUBLIC_ORIGINS host (or the address the page was opened
+# at) on RECEIVER_PORT.
+WATCH_KEYS = os.environ.get("SANGUITY_WATCH_KEYS", "/srv/watch-keys/receiver-secrets.json")
+RECEIVER_PORT = _int("RECEIVER_PORT", 8731)
+WATCH_UPLOAD_URL = os.environ.get("WATCH_UPLOAD_URL", "").strip()

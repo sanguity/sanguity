@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Receiver for Life Dashboard Companion (Health Connect) webhooks.
 
-- Verifies X-Signature (HMAC-SHA256 of the raw body) with the secret in $SECRET_FILE.
-- Archives every payload, gzipped, under $DATA/raw/YYYY/MM/DD/ (the source of truth).
+- Verifies X-Signature (HMAC-SHA256 of the raw body) with one profile's secret (below), which says whose upload it is.
+- Archives every payload, gzipped, under <slot>/raw/YYYY/MM/DD/ (the source of truth).
 - Folds records into an SQLite database following docs/webhook.md:
   dedupe on uuid / sequence, bucket replace-vs-combine, deletions.
-- Writes $DATA/public/daily.json (per-day summaries) for Sanguity.
+- Writes per-day summaries for Sanguity: $DATA/public/daily.json, or public/profiles/<slot>/daily.json.
+
+One secret per profile (#46). The app makes each profile's secret on its Settings page and writes them all, sealed,
+to $KEYS_FILE (server/watch_keys.py); an upload goes to the profile whose secret signed it. Each profile has a slot:
+"" is the receiver's top folder ($DATA/watch.db, $DATA/raw/, public/daily.json), as before #46; any other is the
+profile's id, with its own $DATA/profiles/<slot>/watch.db and raw/, and public/profiles/<slot>/daily.json. The
+install's single secret from before, $SECRET_FILE, still works for slot "" until that profile (the first) makes one
+of its own in the app ("legacy": false in $KEYS_FILE), and always while there's no $KEYS_FILE.
 
 Encrypted at rest with the app's key ($SANGUITY_KEY_FILE, see server/crypto.py): every file here is sealed, so
 it runs on the app's image and imports server.crypto. The database is kept in memory and saved as a sealed
@@ -31,6 +38,7 @@ from server import crypto   # noqa: E402  (the app's own encryption and key file
 
 DATA = os.environ.get("DATA", "/data")
 SECRET_FILE = os.environ.get("SECRET_FILE", "/run/secret/watch_secret")
+KEYS_FILE = os.environ.get("KEYS_FILE") or os.path.join(DATA, "keys", "receiver-secrets.json")
 DEFAULT_TZ = os.environ.get("TZ_DEFAULT", "UTC")
 PORT = int(os.environ.get("PORT", "8080"))
 MAX_BODY = 32 * 1024 * 1024
@@ -60,8 +68,64 @@ def log(*a):
 
 
 def secret():
-    with open(SECRET_FILE, "rb") as f:
-        return f.read().strip()
+    """The install's single secret from before #46 (slot ""), or None."""
+    try:
+        with open(SECRET_FILE, "rb") as f:
+            return f.read().strip() or None
+    except FileNotFoundError:
+        return None
+
+
+_keys = {"sig": False, "doc": None}
+
+
+def keys():
+    """[(slot, secret)] the receiver takes now: every profile's from $KEYS_FILE (read again when it changes), and
+    the install's single secret for slot "" while that's still in use."""
+    try:
+        st = os.stat(KEYS_FILE)
+        sig = (st.st_mtime_ns, st.st_size)
+    except FileNotFoundError:
+        sig = None
+    if sig != _keys["sig"]:
+        doc = None
+        if sig is not None:
+            try:
+                doc = json.loads(crypto.read_file(KEYS_FILE))
+            except Exception as e:   # unreadable: keep what was read last, and try again next time
+                log("couldn't read", KEYS_FILE, type(e).__name__, e)
+                return _from(_keys["doc"])
+        _keys.update(sig=sig, doc=doc)
+    return _from(_keys["doc"])
+
+
+def _from(doc):
+    out = []
+    if isinstance(doc, dict):
+        for p in doc.get("profiles") or []:
+            slot, sec = str(p.get("slot", "")), p.get("secret")
+            if (slot == "" or slot.isdigit()) and isinstance(sec, str) and sec:
+                out.append((slot, sec.encode()))
+    if not isinstance(doc, dict) or doc.get("legacy", True):
+        if (old := secret()):
+            out.append(("", old))
+    return out
+
+
+def slot_dir(slot):
+    return DATA if slot == "" else os.path.join(DATA, "profiles", slot)
+
+
+def summary_file(slot):
+    if slot == "":
+        return os.path.join(DATA, "public", "daily.json")
+    return os.path.join(DATA, "public", "profiles", slot, "daily.json")
+
+
+def slots_on_disk():
+    """"" and every profile slot that has a folder."""
+    top = os.path.join(DATA, "profiles")
+    return [""] + sorted((n for n in (os.listdir(top) if os.path.isdir(top) else ()) if n.isdigit()), key=int)
 
 
 def parse_t(s):
@@ -80,9 +144,9 @@ def zone(name):
 STAMP = "%Y%m%d%H%M%S%f"   # raw/ file names sort by this (YYYY/MM/DD/HHMMSSffffff-...)
 
 
-def raw_files():
-    """(stamp, path) of every archived upload, oldest first."""
-    top = os.path.join(DATA, "raw")
+def raw_files(slot=""):
+    """(stamp, path) of every archived upload of a slot, oldest first."""
+    top = os.path.join(slot_dir(slot), "raw")
     out = []
     for r, _, fs in os.walk(top):
         for f in fs:
@@ -98,8 +162,12 @@ def read_raw(path):
 
 def migrate():
     """Seal what is still plaintext, or sealed with an older key, with the current key. Returns the count."""
+    return sum(_migrate(slot) for slot in slots_on_disk())
+
+
+def _migrate(slot):
     n = 0
-    db = os.path.join(DATA, "watch.db")
+    db = os.path.join(slot_dir(slot), "watch.db")
     if os.path.isfile(db) and not crypto.file_is_encrypted(db):   # an SQLite file from before encryption
         con = sqlite3.connect(db)
         con.execute("PRAGMA journal_mode=DELETE")   # folds in and removes its -wal; an in-memory copy can't use WAL
@@ -110,7 +178,7 @@ def migrate():
             if os.path.exists(db + ext):
                 os.remove(db + ext)
         n += 1
-    paths = [p for _, p in raw_files()] + [db, os.path.join(DATA, "public", "daily.json")]
+    paths = [p for _, p in raw_files(slot)] + [db, summary_file(slot)]
     for p in paths:
         if os.path.isfile(p):
             with open(p, "rb") as f:
@@ -122,9 +190,11 @@ def migrate():
 
 
 class Store:
-    """The database, in memory; save() writes it to `path` sealed, and a new Store loads it from there."""
-    def __init__(self, path):
-        self.path = path
+    """One slot's database, in memory; save() writes it to its watch.db sealed, and a new Store loads it from there."""
+    def __init__(self, slot=""):
+        self.slot = slot
+        os.makedirs(slot_dir(slot), exist_ok=True)
+        self.path = path = os.path.join(slot_dir(slot), "watch.db")
         self.db = sqlite3.connect(":memory:", check_same_thread=False)
         self.loaded = os.path.isfile(path)
         if self.loaded:
@@ -164,7 +234,7 @@ class Store:
             return 0   # a database from before snapshots: it was written as uploads came in, so it is current
         since = (datetime.strptime(saved, STAMP) - timedelta(minutes=10)).strftime(STAMP) if saved else ""
         n = 0
-        for stamp, p in raw_files():
+        for stamp, p in raw_files(self.slot):
             if stamp < since:
                 continue
             try:
@@ -340,14 +410,14 @@ class Store:
                 "last_payload": self.meta("last_payload"), "metrics": metrics, "exercise": exercises}
 
     def write_summary(self):
-        pub = os.path.join(DATA, "public")
-        os.makedirs(pub, exist_ok=True)
-        crypto.write_file(os.path.join(pub, "daily.json"), json.dumps(self.summary(), separators=(",", ":")).encode())
+        path = summary_file(self.slot)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        crypto.write_file(path, json.dumps(self.summary(), separators=(",", ":")).encode())
 
 
-def archive(body):
+def archive(body, slot=""):
     now = datetime.now(timezone.utc)
-    d = os.path.join(DATA, "raw", now.strftime("%Y/%m/%d"))
+    d = os.path.join(slot_dir(slot), "raw", now.strftime("%Y/%m/%d"))
     os.makedirs(d, exist_ok=True)
     digest = hashlib.sha256(body).hexdigest()
     path = os.path.join(d, f"{now.strftime('%H%M%S%f')}-{digest[:12]}.json.gz")
@@ -358,24 +428,28 @@ def archive(body):
 work = queue.Queue()
 
 
-def worker(store):
-    dirty = False
+def worker(stores):
+    """Folds uploads in, one at a time; a slot's snapshot and summary are written once uploads stop coming."""
+    dirty = set()
     while True:
         try:
             item = work.get(timeout=5)
         except queue.Empty:
-            if dirty:
+            for slot in sorted(dirty):
                 try:
-                    store.save(); store.write_summary(); log("summary written")
+                    stores[slot].save(); stores[slot].write_summary(); log("summary written:", slot or "first profile")
                 except Exception:
                     traceback.print_exc()
-                dirty = False
+            dirty = set()
             continue
-        body, digest = item
+        slot, body, digest = item
         try:
-            res = store.ingest(json.loads(body), digest)
-            log("ingested", res)
-            dirty = dirty or res not in ("skipped", "duplicate")
+            if slot not in stores:
+                stores[slot] = Store(slot)
+            res = stores[slot].ingest(json.loads(body), digest)
+            log("ingested", res, "for", slot or "first profile")
+            if res not in ("skipped", "duplicate"):
+                dirty.add(slot)
         except Exception:
             log("FAILED to process payload", digest[:12]); traceback.print_exc()
 
@@ -402,16 +476,20 @@ class H(BaseHTTPRequestHandler):
         if n <= 0 or n > MAX_BODY:
             return self._send(413 if n > MAX_BODY else 400)
         body = self.rfile.read(n)
-        expected = "sha256=" + hmac.new(secret(), body, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected.encode(), (self.headers.get("X-Signature") or "").encode()):
+        given, slot = (self.headers.get("X-Signature") or "").encode(), None
+        for s, key in keys():   # every one compared, so the time taken doesn't say which matched
+            expected = ("sha256=" + hmac.new(key, body, hashlib.sha256).hexdigest()).encode()
+            if hmac.compare_digest(expected, given) and slot is None:
+                slot = s
+        if slot is None:
             log("rejected: bad signature from", self.client_address[0])
             return self._send(401)
         try:
             json.loads(body)
         except ValueError:
             return self._send(400)
-        digest = archive(body)
-        work.put((body, digest))
+        digest = archive(body, slot)
+        work.put((slot, body, digest))
         self._send(200, b"ok")
 
     def log_message(self, *a):
@@ -419,15 +497,16 @@ class H(BaseHTTPRequestHandler):
 
 
 def reprocess():
-    db = os.path.join(DATA, "watch.db")
-    for ext in ("", "-wal", "-shm"):
-        if os.path.exists(db + ext):
-            os.remove(db + ext)
-    store = Store(db)
-    n = store.catch_up()   # a new database: every upload in raw/
-    store.save()
-    store.write_summary()
-    log(f"reprocessed {len(raw_files())} payloads ({n} with new records)")
+    for slot in slots_on_disk():
+        db = os.path.join(slot_dir(slot), "watch.db")
+        for ext in ("", "-wal", "-shm"):
+            if os.path.exists(db + ext):
+                os.remove(db + ext)
+        store = Store(slot)
+        n = store.catch_up()   # a new database: every upload in raw/
+        store.save()
+        store.write_summary()
+        log(f"reprocessed {len(raw_files(slot))} payloads of {slot or 'the first profile'} ({n} with new records)")
 
 
 def load_key():
@@ -442,15 +521,19 @@ if __name__ == "__main__":
     load_key()
     if "--reprocess" in sys.argv:
         reprocess(); sys.exit(0)
-    secret()  # fail fast when the secret is missing
+    if secret() is None and not os.path.isfile(KEYS_FILE):   # fail fast when there's no secret at all
+        sys.exit(f"No secret: neither {SECRET_FILE} nor {KEYS_FILE} exists.")
     if (n := migrate()):
         log(f"encrypted {n} files with the current key")
-    store = Store(os.path.join(DATA, "watch.db"))
-    if (n := store.catch_up()):
-        log(f"folded in {n} uploads archived since the last snapshot")
-        store.save(); store.write_summary()
-    elif not os.path.exists(os.path.join(DATA, "public", "daily.json")):
-        store.write_summary()
-    threading.Thread(target=worker, args=(store,), daemon=True).start()
+    stores = {}
+    for slot in slots_on_disk():
+        store = stores[slot] = Store(slot)
+        if (n := store.catch_up()):
+            log(f"folded in {n} uploads of {slot or 'the first profile'} archived since the last snapshot")
+            store.save(); store.write_summary()
+        elif not os.path.exists(summary_file(slot)):
+            store.write_summary()
+    log(f"taking uploads signed with {len(keys())} secret(s)")
+    threading.Thread(target=worker, args=(stores,), daemon=True).start()
     log(f"listening on :{PORT}")
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()

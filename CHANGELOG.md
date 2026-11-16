@@ -91,6 +91,12 @@ Everything on `main` so far; it becomes the first tagged release.
   and an "Install on this device" card under Account with the button, Safari's Add to Home Screen steps on
   iPhone and iPad, or a link to the install's HTTPS address when the page was opened over plain HTTP (#56).
 
+**Settings and dashboard configuration (Phase 3)**
+- Each person's own time zone and date format, set from the browser on first sign-in and changed in Settings: the
+  timeline, Health, Costs, the drawer and the import pages split days at that person's midnight (#42).
+- A watch receiver secret per profile, made and replaced on the Settings page with the upload address to give the
+  phone app, so each person's phone uploads to their own profile (#46).
+
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for
   linux/amd64, linux/arm64 and linux/arm/v7 (#63).
@@ -125,6 +131,12 @@ From an install that keeps records in `data.json` (before #103):
 - Milestones, from `corrections.json` and from the records' `data.json`, are moved into each profile's settings
   once, at the first start (#39). After that `corrections.json` isn't read and can be deleted; `build.py` no
   longer reads it. A `visitWorkouts` rule written before #43 keeps working as the regular expression it was.
+
+From an install with one watch receiver secret (before #46):
+- Nothing to do for the phone that's already set up: `auth/watch_secret` keeps working as the first profile's
+  secret until that profile makes its own on the Settings page. With your own compose file or install template, give
+  the app write access to `WATCH_DIR/keys` (`compose.yaml` and `compose.release.yaml` mount it), or secrets made in
+  Settings can't reach the receiver; the TrueNAS template doesn't mount it yet.
 
 Moving an install from a git checkout to the published image: see [Upgrading to a release](README.md#upgrading-to-a-release).
 

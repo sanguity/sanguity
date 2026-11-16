@@ -190,6 +190,15 @@ Standard formats (FHIR, C-CDA labs, Apple Health, CSV) and an import tool in the
 portal's export doesn't import, please open an issue with an anonymised sample, or write an importer for it:
 [docs/importers.md](docs/importers.md) explains how (one Python file and a fictional test fixture).
 
+### Connecting a phone (watch and scale data)
+
+Each profile has its own receiver secret, so each person's phone uploads to their own profile. On **Settings**, a
+profile's owners and editors see **Watch and scale**: the upload address to give the phone app (each
+`PUBLIC_ORIGINS` host on `RECEIVER_PORT`, or `WATCH_UPLOAD_URL` if the receiver is behind your own HTTPS proxy) and
+**Make a secret**. The secret is shown once, to copy into the app; **Make a new secret** replaces it (the old one
+stops working). An install from before kept working: `auth/watch_secret` stays the first profile's secret until that
+profile makes one here. The app hands the secrets to the receiver, encrypted, in `WATCH_DIR/keys/`.
+
 ### Uploading records in the app
 
 **Import** (in the header, or on an empty profile) uploads a portal's or app's export to a profile you own or edit:

@@ -15,7 +15,7 @@ function renderCosts() {
   if (!(DATA.costs || []).length) { box.append(el("div", {class: "card empty", text: "No insurance claims imported yet."})); return; }
   const rows = costRows();
   const pm = msOf(costState.period);
-  const periodLabel = pm ? `since ${lcLabel(pm.label)} (${fmtD(Date.parse(pm.date + "T12:00:00"))})` : costState.period === "all" || isMsKey(costState.period) ? "all claims on file" : costState.period;
+  const periodLabel = pm ? `since ${lcLabel(pm.label)} (${fmtD(dayTs(pm.date))})` : costState.period === "all" || isMsKey(costState.period) ? "all claims on file" : costState.period;
   // period switch
   box.append(el("div", {class: "toolbar"},
     el("div", {class: "seg"}, ...costPeriods().map(([k, l]) => el("button", {"aria-pressed": costState.period === k, text: l, onclick: () => { costState.period = k; costState.limit = 200; paidState.q = ""; renderCosts(); }}))),
@@ -55,7 +55,7 @@ function renderCosts() {
     pc.append(el("div", {class: "tablewrap", style: {maxHeight: "360px"}}, el("table", {class: "data"},
       el("thead", {}, el("tr", {}, ["Drug", "Fills", "First", "Last", "Insurance paid", "Your share"].map(h => el("th", {text: h})))),
       el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; renderCosts(); $("#costTable").scrollIntoView({behavior: "smooth"}); }},
-        el("td", {text: x.key}), el("td", {text: x.n}), el("td", {text: fmtD(Date.parse(x.first + "T12:00:00"))}), el("td", {text: fmtD(Date.parse(x.last + "T12:00:00"))}),
+        el("td", {text: x.key}), el("td", {text: x.n}), el("td", {text: fmtD(dayTs(x.first))}), el("td", {text: fmtD(dayTs(x.last))}),
         el("td", {text: usd(x.paid)}), el("td", {text: usd(x.owe)})))))));
     box.append(pc);
   }
@@ -97,13 +97,13 @@ function renderPaid(box, claimRows, periodLabel) {
   card.append(el("h2", {text: `Actually paid · ${periodLabel}`}));
   if (!all.length) { card.append(el("p", {class: "hint", text: "No out-of-pocket payments imported yet."})); box.append(card); return; }
   const rows = paidRows();
-  const exp = meta.exported ? fmtD(Date.parse(meta.exported + "T12:00:00")) : "";
+  const exp = meta.exported ? fmtD(dayTs(meta.exported)) : "";
   card.append(el("p", {class: "hint", text: `Money that left your bank and card accounts, from your finance records (exported ${exp}). ${meta.excluded ? "Not counted: " + meta.excluded + "." : ""}`}));
   const sumG = g => rows.filter(r => r.group === g).reduce((a, r) => a + r.amount, 0);
   const total = rows.reduce((a, r) => a + r.amount, 0), bills = sumG("Medical bills");
   const prem = sumG("Health insurance premiums") + sumG("Dental insurance premiums");
   const share = sumOf(claimRows, "owe"), gap = share - bills;
-  const bal = meta.balance || {}, settled = bal.owed === 0 && bal.asOf ? fmtD(Date.parse(bal.asOf + "T12:00:00")) : "";
+  const bal = meta.balance || {}, settled = bal.owed === 0 && bal.asOf ? fmtD(dayTs(bal.asOf)) : "";
   const tile = (label, value, sub) => el("div", {class: "stat"},
     el("div", {class: "n", text: value}), el("div", {class: "l", text: label}), sub ? el("div", {class: "l", style: {marginTop: "2px"}, text: sub}) : null);
   card.append(el("div", {class: "stats", style: {marginTop: "10px"}},
@@ -151,7 +151,7 @@ function renderPaid(box, claimRows, periodLabel) {
 function drawPaidCum(svg, claimRows, payRows, settled) {
   const pts = [...claimRows.filter(r => r.owe).map(r => ({d: r.d, a: r.owe, s: 0})), ...payRows.map(r => ({d: r.d, a: r.amount, s: 1}))].sort((a, b) => a.d.localeCompare(b.d));
   if (!pts.length) { svg.replaceChildren(); return; }
-  const day = d => Date.parse(d + "T12:00:00");
+  const day = d => dayTs(d);
   const t0 = day(pts[0].d), t1 = Math.max(day(pts[pts.length - 1].d), t0 + 864e5 * 30);
   const series = [[], []], acc = [0, 0];
   for (const p of pts) { acc[p.s] += p.a; series[p.s].push([day(p.d), acc[p.s]]); }
@@ -164,7 +164,7 @@ function drawPaidCum(svg, claimRows, payRows, settled) {
   for (const v of niceTicks(0, max, 4)) { g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)})); g.push(el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${v}`})); }
   g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
   const months = Math.max(1, Math.round((t1 - t0) / 2.63e9)), step = Math.max(1, Math.ceil(months / Math.max(2, Math.floor((R - L) / 60))));
-  for (let d = new Date(new Date(t0).getFullYear(), new Date(t0).getMonth() + 1, 1), i = 0; d.getTime() <= t1; d.setMonth(d.getMonth() + 1), i++)
+  for (let d = zdate(t0), i = (d.setDate(1), d.setHours(0, 0, 0, 0), d.setMonth(d.getMonth() + 1), 0); d.getTime() <= t1; d.setMonth(d.getMonth() + 1), i++)
     if (i % step === 0) g.push(el("svg:text", {x: x(d.getTime()), y: h - 6, "text-anchor": "middle", text: d.toLocaleDateString(undefined, {month: "short", year: "2-digit"})}));
   const color = ["var(--c-imaging)", "var(--c-procedure)"], label = ["Your share", "Bills paid"];
   series.forEach((s, i) => {
@@ -218,7 +218,7 @@ function drawCostMonths(svg, rows) {
   if (!rows.length) { svg.replaceChildren(); return; }
   const months = new Map();
   const first = rows.reduce((a, r) => r.d < a ? r.d : a, rows[0].d), last = rows.reduce((a, r) => r.d > a ? r.d : a, rows[0].d);
-  for (let d = new Date(first.slice(0, 7) + "-01T12:00:00"); d <= new Date(last.slice(0, 7) + "-01T12:00:00"); d.setMonth(d.getMonth() + 1)) months.set(d.toISOString().slice(0, 7), {paid: 0, owe: 0, billed: 0, n: 0});
+  for (let d = zdate(dayTs(first.slice(0, 7) + "-01")); d <= dayTs(last.slice(0, 7) + "-01"); d.setMonth(d.getMonth() + 1)) months.set(d.iso().slice(0, 7), {paid: 0, owe: 0, billed: 0, n: 0});
   for (const r of rows) { const m = months.get(r.d.slice(0, 7)); if (m) { m.paid += r.paid || 0; m.owe += r.owe || 0; m.billed += r.billed || 0; m.n++; } }
   const keys = [...months.keys()];
   const w = Math.max(320, svg.parentElement.clientWidth - 32), h = 220, L = 64, R = w - 10, T = 10, B = h - 24;
@@ -237,9 +237,9 @@ function drawCostMonths(svg, rows) {
     const yp = y(m.paid), yo = y(m.paid + m.owe);
     if (m.paid > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yp, width: bw, height: Math.max(0, B - yp), fill: "var(--c-lab)", rx: m.owe > 0 && B - yo > 3 ? 0 : 2}));
     if (m.owe > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yo, width: bw, height: Math.max(1, yp - yo - (m.paid > 0 ? 1 : 0)), fill: "var(--c-imaging)", rx: 2}));
-    if (i % every === 0) g.push(el("svg:text", {x: cx, y: h - 6, "text-anchor": "middle", text: new Date(k + "-15T12:00:00").toLocaleDateString(undefined, {month: "short", year: "2-digit"})}));
+    if (i % every === 0) g.push(el("svg:text", {x: cx, y: h - 6, "text-anchor": "middle", text: zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "short", year: "2-digit"})}));
     const hit = el("svg:rect", {x: L + slot * i, y: T, width: slot, height: B - T, fill: "transparent", style: "cursor:pointer"});
-    hit.addEventListener("pointermove", ev => showTip([el("div", {class: "v", text: usd(m.paid + m.owe)}), el("div", {class: "s", text: new Date(k + "-15T12:00:00").toLocaleDateString(undefined, {month: "long", year: "numeric"})}),
+    hit.addEventListener("pointermove", ev => showTip([el("div", {class: "v", text: usd(m.paid + m.owe)}), el("div", {class: "s", text: zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"})}),
       el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-lab)"}}), `Insurance paid ${usd(m.paid)}`),
       el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-imaging)"}}), `Your share ${usd(m.owe)}`),
       el("div", {class: "s", text: `${m.n} claims · billed ${usd(m.billed)}`})], ev));

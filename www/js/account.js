@@ -12,7 +12,7 @@ async function call(path, method = "GET", body) {
   return j;
 }
 const say = (id, text, bad = false) => { const m = $(id); m.textContent = text; m.classList.toggle("bad", bad); };
-const when = t => new Date(t * 1000).toLocaleString(undefined, {year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
+const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and date format
 const device = ua => {
   if (!ua) return "Unknown device";
   const b = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser";
@@ -311,6 +311,7 @@ const WHAT = {
   journal: d => `${{add: "added", change: "changed", delete: "deleted"}[d.action] || "changed"} a journal ${({symptom: "symptom", side_effect: "side effect"})[d.kind] || "note"}`,
   settings: d => d.section ? `reset the ${d.label || d.section} settings to their defaults`
     : d.reset ? `reset “${d.label || d.setting}” to its default` : `changed the setting “${d.label || d.setting}”`,
+  "watch.secret": d => d.rotated ? "made a new watch receiver secret (the old one stopped working)" : "made the watch receiver secret",
   "settings.user": d => d.section ? `reset their own ${d.label || d.section} settings` : `changed their own setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
   "settings.install": d => d.section ? `reset the server's ${d.label || d.section} settings` : `changed the server setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
   calendar: d => ({create: `made a calendar feed (${d.details === "full" ? "full" : "minimal"} details)`, rotate: "gave their calendar feed a new address",
@@ -599,6 +600,7 @@ addEventListener("hashchange", () => { if (tabsOn) openFromHash(); });
 /* ---------------------------------------------------------------- start */
 (async () => {
   try { ME = await call("me"); } catch (e) { return; }
+  await datesReady();   // dates in this person's time zone and format (dates.js)
   $("#who").textContent = ME.user.username;
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   $("#pwHint").textContent = `At least ${ME.password_min} characters. A few unrelated words make a strong password you can remember.`;

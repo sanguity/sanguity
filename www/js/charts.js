@@ -80,12 +80,12 @@ panZoom($("#view-health"), {minSpan: 3 * DAY,
   draw: () => { const [a, b] = hRange(); $("#view-health").querySelectorAll("svg").forEach(s => s._draw && s._draw(a, b)); },
   end: () => renderHealth(), reset: () => { hState.period = "all"; hState.custom = null; hSave(); renderHealth(); }});
 /* milestone rules on a time chart: accent dashed line from y0 to y1, label on its own row at labelY (null = no labels) */
-const msInRange = (a, b) => MILESTONES.some(m => { const t = Date.parse(m.date + "T12:00:00"); return t >= a && t <= b; });
+const msInRange = (a, b) => MILESTONES.some(m => { const t = dayTs(m.date); return t >= a && t <= b; });
 function msMarks(g, x, a, b, y0, y1, R, labelY) {
   const textW = s => s.length * 6.4 + 8;   // ~10.5px semibold
   const groups = [];   // a milestone whose label would run into the previous label joins it: "Diagnosis · Treatment start"
   for (const m of MILESTONES) {
-    const t = Date.parse(m.date + "T12:00:00"); if (t < a || t > b) continue;
+    const t = dayTs(m.date); if (t < a || t > b) continue;
     const mx = x(t);
     g.push(el("svg:line", {class: "msmark", x1: mx, x2: mx, y1: y0, y2: y1}));
     const last = groups[groups.length - 1];

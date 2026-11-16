@@ -60,7 +60,7 @@ def write(path, text, mode=0o600):
 
 
 def secrets_and_dirs():
-    for d in (AUTH, DATA, BUILD, BACKUPS, WATCH, os.path.join(WATCH, "public")):
+    for d in (AUTH, DATA, BUILD, BACKUPS, WATCH, os.path.join(WATCH, "public"), os.path.join(WATCH, "keys")):   # keys: per-profile secrets (#46)
         os.makedirs(d, exist_ok=True)
         own(d)
     ws = os.path.join(AUTH, "watch_secret")

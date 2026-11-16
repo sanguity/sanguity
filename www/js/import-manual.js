@@ -28,7 +28,7 @@
   const tell = (text, isBad = false, link = null) => {
     msg.replaceChildren(text, ...(link ? [" ", link] : [])); msg.classList.toggle("bad", isBad);
   };
-  const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+  const today = zToday;   // dates.js
   const rows = () => [...box.querySelectorAll(".man-row")];
   const valueOf = r => Object.fromEntries(FIELDS.map(([f]) => [f, r.querySelector(`[data-f=${f}]`).value.trim()]));
   // a row with only what a new row is given (date, time, lab) is still empty

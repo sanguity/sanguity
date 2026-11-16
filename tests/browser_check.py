@@ -20,7 +20,9 @@ Costs, sees the source's and the Health Link's hosts under Settings → Outside 
 Settings page and resets them (a milestone added there marked on Trends and a "since" period on Health; a
 workout rule, a catastrophic pattern refused first, counted on Health; drags and keyboard-moves the key-lab tiles, hides and
 reorders tabs, sets a default theme a fresh browser picks up), builds a visit summary (sections, a lab, questions
-kept as a draft), previews it and downloads the PDF, reading it back, opens the account
+kept as a draft), previews it and downloads the PDF, reading it back, has two accounts in different time zones each see days split at their own midnight and
+dates in their own format (#42), makes the profile's watch receiver secret on the Settings page, shown once and then
+masked (#46), opens the account
 page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap, links the
 same result from a file and the sync at the first pull's preview and sees it once on Trends and in the drawer (undone
 and linked again there)
@@ -38,6 +40,7 @@ from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-browser-")
 USER, PW = "demo", "a long demo passphrase"
+USER2, PW2 = "pat", "another long demo passphrase"   # a second account, viewing profile 1 from another time zone (#42)
 SHL = None   # the local HTTPS host of a fictional SMART Health Link (tests/shl_server.py), started with the app
 NAN_HOOK = """window.__nan = []; const sa = Element.prototype.setAttribute;
 Element.prototype.setAttribute = function (k, v) { if (String(v) === "NaN") window.__nan.push(this.tagName + "." + k); return sa.call(this, k, v); };"""
@@ -71,7 +74,9 @@ def add_html_record(build):
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
-                      SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"), SANGUITY_KEY_FILE=os.path.join(TMP, "keys", "data_key"))
+                      SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"), SANGUITY_KEY_FILE=os.path.join(TMP, "keys", "data_key"),
+                      SANGUITY_WATCH_KEYS=os.path.join(TMP, "watch-keys", "receiver-secrets.json"))
+    os.makedirs(os.path.join(TMP, "watch-keys"), exist_ok=True)
     subprocess.run([sys.executable, "-I", os.path.join(ROOT, "demo", "generate.py"), os.path.join(TMP, "build"), "--end", "2026-11-15",
                     "--watch", os.path.join(TMP, "watch")], check=True, stdout=subprocess.DEVNULL)
     add_html_record(os.path.join(TMP, "build"))
@@ -149,7 +154,9 @@ def main():
         check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 8)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 9)
+        strict.wait_for_selector("#watch h2", timeout=10000)
+        check("under the CSP: the watch card shows the upload address", strict.evaluate("document.querySelector('#watch .w-addr').textContent").endswith(":8731/ingest"))
         strict.goto(base + "/summary.html")   # the visit summary page (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
         check("under the CSP: summary.js runs", strict.evaluate("document.querySelectorAll('#sections input').length") == 5)
@@ -966,7 +973,7 @@ def main():
             page.click("#settingsLink")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Trends", "Names", "Health", "Connected sources", "Milestones", "Tabs", "Appearance"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Trends", "Names", "Health", "Connected sources", "Milestones", "Tabs", "Appearance", "Dates and times"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…with the server's attachment and sync defaults as a switch, numbers and choices (#101, #102)",
                   js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length]") == [5, 3],
                   js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
@@ -1184,6 +1191,8 @@ def main():
             # ---- milestones (#39) and visits counted as workouts (#43) on the Settings page: a milestone added (primary)
             # shows as a marker on Trends and a "since" period on Health; a rule (a bad regular expression refused
             # first) makes the Health tab count the matching visits; both sections reset
+            page.goto(base + "/")   # from the main page, after the visit summary checks above
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.name === 'My records'", timeout=20000)
             check("the demo's milestones moved into the settings", js("MILESTONES.length") > 0, js("MILESTONES"))
             visit = js("(() => { const n = {}; for (const e of DATA.events) if (e.k === 'visit' && e.ts < Date.now()) n[e.title] = (n[e.title] || 0) + 1;"
                        " return Object.entries(n).sort((a, b) => b[1] - a[1])[0][0]; })()")
@@ -1250,6 +1259,91 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             check("…both reset", js("MILESTONES.length === 0 && !CFG.visitWorkouts.length"), js("[MILESTONES, CFG.visitWorkouts]"))
+            # ---- each person's own time zone and date format (#42): two accounts on one install, their browsers both
+            # in Chicago, each set from the browser on first sign-in; then one chooses Los Angeles on the Settings page
+            # and the other Auckland, and each sees days split at their own midnight
+            def sign_in(ctx, user, pw):
+                pg = ctx.new_page()
+                pg.on("pageerror", lambda e: problems.append(f"script error ({user}): {e}"))
+                pg.goto(base + "/login.html")
+                pg.fill("#u", user)
+                pg.fill("#p", pw)
+                pg.click("#b")
+                pg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.id === 1", timeout=20000)
+                return pg
+            from server import db as dbm, security   # a second account only for this (with two, an admin needs a second factor)
+            sdb = dbm.connect()
+            uid2 = sdb.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, ?, 0, 0)", (USER2, security.hash_password(PW2))).lastrowid
+            sdb.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'viewer')", (uid2,))
+            zctx = {u: browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True, timezone_id="America/Chicago")
+                    for u in (USER, USER2)}
+            za, zb = sign_in(zctx[USER], USER, PW), sign_in(zctx[USER2], USER2, PW2)
+            mine = lambda pg: pg.evaluate("fetch('api/settings/user').then(r => r.json())")
+            check("time zone and date format set from the browser on first sign-in",
+                  mine(zb)["dates.timeZone"] == "America/Chicago" and mine(zb)["dates.format"] == "mdy", mine(zb))
+            before = mine(za)   # the demo account's, put back afterwards for the checks below
+            za.goto(base + "/settings.html?profile=1")
+            za.wait_for_selector("#sec-dates select", timeout=10000)
+            za.select_option("[data-key='dates.timeZone'] select", "America/Los_Angeles")
+            za.click("[data-key='dates.timeZone'] button:text-is('Save')")
+            za.wait_for_function("document.querySelector('#sec-dates > .msg').textContent.startsWith('Saved')", timeout=10000)
+            za.select_option("[data-key='dates.format'] select", "dmy")
+            za.click("[data-key='dates.format'] button:text-is('Save')")
+            za.wait_for_function("document.querySelector('#sec-dates > .msg').textContent.startsWith('Saved')", timeout=10000)
+            check("…changed on the Settings page, just for that person", mine(za)["dates.timeZone"] == "America/Los_Angeles"
+                  and mine(zb)["dates.timeZone"] == "America/Chicago", (mine(za), mine(zb)))
+            zb.evaluate("""Promise.all([['dates.timeZone', 'Pacific/Auckland'], ['dates.format', 'ymd']].map(([k, v]) =>
+                api('settings/user/' + k, {method: 'PUT', body: JSON.stringify({value: v})})))""")
+            for pg in (za, zb):
+                pg.goto(base + "/")
+                pg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.id === 1", timeout=20000)
+            late = "Date.parse('2026-03-10T23:30:00Z')"   # 4:30 pm in Los Angeles, 12:30 pm the next day in Auckland
+            # the timeline's day ticks at each person's midnight: 07:00 UTC in Los Angeles (PDT), 11:00 UTC in Auckland (NZDT)
+            first_tick = "new Date(ticks(Date.parse('2026-03-09T12:00:00Z'), Date.parse('2026-03-13T12:00:00Z'), 1000)[0][0]).toISOString()"
+            got = {u: (pg.evaluate(f"isoDay({late})"), pg.evaluate(first_tick), pg.evaluate(f"fmtD({late})"))
+                   for u, pg in ((USER, za), (USER2, zb))}
+            check("two people in different time zones each see days split at their own midnight",
+                  got[USER][:2] == ("2026-03-10", "2026-03-10T07:00:00.000Z") and got[USER2][:2] == ("2026-03-11", "2026-03-10T11:00:00.000Z"), got)
+            check("…and dates in their own format", got[USER][2] == "10 Mar 2026" and got[USER2][2] == "2026-03-11", got)
+            # Health's daily charts and workout calendar, the drawer and Costs by month bin with the same days
+            weekly_key = "new Date(weekly([[Date.parse('2026-03-08T20:00:00Z'), 1]])[0][0] - 3 * DAY).toISOString()"
+            check("…Health's weekly bins start at their own Monday",
+                  (za.evaluate(weekly_key), zb.evaluate(weekly_key)) == ("2026-03-02T20:00:00.000Z", "2026-03-08T23:00:00.000Z"),
+                  (za.evaluate(weekly_key), zb.evaluate(weekly_key)))
+            zb.click("#tab-timeline")
+            zb.wait_for_selector("#list .row .d", timeout=10000)
+            shown = zb.evaluate("document.querySelector('#list .row .d').textContent")
+            check("…the timeline's event list in that format", bool(__import__("re").fullmatch(r"\d{4}-\d{2}-\d{2}", shown)), shown)
+            check("…and the header", " built 20" in zb.evaluate("document.getElementById('meta').textContent"), zb.evaluate("document.getElementById('meta').textContent"))
+            zb.goto(base + "/import.html")
+            zb.wait_for_selector("#importer", state="attached", timeout=10000)
+            check("…the import pages read them too", zb.evaluate("DATES.zone") == "Pacific/Auckland" and zb.evaluate("zToday()") == zb.evaluate(
+                "new Intl.DateTimeFormat('en-CA', {timeZone: 'Pacific/Auckland'}).format(new Date())"), zb.evaluate("DATES.zone"))
+            za.evaluate("""v => Promise.all(Object.entries(v).map(([k, x]) =>
+                api('settings/user/' + k, {method: 'PUT', body: JSON.stringify({value: x})})))""", before)
+            for c in zctx.values():
+                c.close()
+            sdb.execute("DELETE FROM users WHERE id=?", (uid2,))
+            sdb.close()
+
+            # ---- a watch receiver secret per profile (#46): made on the Settings page, shown once, then masked
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#watch #watchRotate", timeout=10000)
+            check("watch card: the server's original secret is still this profile's", "original receiver secret" in page.inner_text("#watch"),
+                  page.inner_text("#watch")[:300])
+            page.once("dialog", lambda d: d.accept())
+            page.click("#watchRotate")
+            page.wait_for_selector("#watchSecret", timeout=10000)
+            made = js("document.getElementById('watchSecret').textContent")
+            check("…makes a secret and shows it once, with a copy button", len(made) >= 40 and js("!!document.querySelector('#watch button[aria-label=\"Copy the secret\"]')"), made)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("…and the card fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.reload()
+            page.wait_for_selector("#watch .w-secret", timeout=10000)
+            masked = js("document.querySelector('#watch .w-secret').textContent")
+            check("…then only its last characters", masked.endswith(made[-4:]) and made not in page.content(), masked)
             # ---- connected sources (#32, #91), against the fake SMART on FHIR server standing in for an Epic sandbox:
             # an admin sets the source up and tests it, the profile connects by signing in, the first pull is previewed
             # and saved, Sync now brings a new result, and when the patient ends access the page asks to reconnect
