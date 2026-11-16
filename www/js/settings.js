@@ -85,7 +85,22 @@ function jsonEditor(value, changed, ro) {
   ta.value = JSON.stringify(value, null, 1);
   return {node: ta, get: () => { try { return JSON.parse(ta.value); } catch (e) { return ta.value; } }};
 }
-const EDITORS = {labs: labsEditor, names: namesEditor, rules: rulesEditor};
+/* a whole number, on or off, some of a few choices (the install's sync.* settings, #101) */
+function numberEditor(value, changed, ro) {
+  const input = el("input", {type: "number", step: 1, min: 1, value, disabled: ro, oninput: changed, class: "set-num", "aria-label": "Value"});
+  return {node: input, get: () => input.value === "" ? null : +input.value};
+}
+function toggleEditor(value, changed, ro) {
+  const input = el("input", {type: "checkbox", checked: value ? "" : null, disabled: ro, onchange: changed});
+  return {node: el("label", {class: "check"}, input, "On"), get: () => input.checked};
+}
+function choicesEditor(value, changed, ro, setting) {
+  const boxes = Object.entries(setting.choices || {}).map(([id, label]) => el("label", {class: "check"},
+    el("input", {type: "checkbox", value: id, checked: value.includes(id) ? "" : null, disabled: ro, onchange: changed}), label));
+  return {node: el("div", {class: "row set-choices"}, ...boxes),
+    get: () => boxes.map(b => b.querySelector("input")).filter(i => i.checked).map(i => i.value)};
+}
+const EDITORS = {labs: labsEditor, names: namesEditor, rules: rulesEditor, number: numberEditor, toggle: toggleEditor, choices: choicesEditor};
 
 /* ---------------------------------------------------------------- the sections */
 const FROM = {default: "default", install: "set for this server", profile: "set for this profile", user: "your own"};

@@ -226,7 +226,19 @@ records in place by their source key, and each pull is an import you can undo fr
 access, the page asks you to sign in again; "vendor unavailable" is retried with backoff instead. Disconnecting
 revokes the token where the vendor supports it, deletes the stored tokens and key, and keeps or removes the records,
 as you choose. The count of connections per source is shown to admins and never sent anywhere. Other settings in
-`.env`: `SYNC_MAX_RESOURCES` (20000 per pull), `SYNC_MAX_ATTACHMENT_MB` (50), `CONNECT_TIMEOUT` (30 seconds).
+`.env`: `SYNC_MAX_RESOURCES` (20000 per pull), `SYNC_MAX_ATTACHMENT_MB` (50, the most any attachment can be),
+`CONNECT_TIMEOUT` (30 seconds).
+
+When connecting, you choose what to pull: lab results, vital signs, visits and stays, problems, medications,
+documents, and claims where the source offers them, and how far back. Sanguity asks the vendor only for the scopes
+that choice needs. **What it pulls…** on a connection changes the choice for future pulls; a kind turned off keeps
+what it brought unless you remove it, which is an entry in the import history that undoing puts back. Attachments
+(visit notes, scans, reports) follow rules set for the whole server on the Settings page (fetched automatically or
+only when asked, which kinds of file, the largest, and a total per connection), which each connection can change;
+the ones left out are listed with **Fetch anyway**. When a connection stops syncing (several failures in a row,
+access ended, or no successful sync for `Warn when a connection hasn't synced` days, 3 by default), the profile's
+main page says so with a link, the profile's activity log notes it once, and admins see it on the Account page.
+Nothing is sent anywhere: no email or push.
 
 ### Typing records in
 

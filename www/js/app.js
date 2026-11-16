@@ -42,6 +42,20 @@ function renderProfileMenu() {
   sel.onchange = () => { try { localStorage.setItem("ht-profile", sel.value); } catch (e) {} location.reload(); };
 }
 $("#logout").onclick = async () => { try { await api("logout", {method: "POST"}); } catch (e) {} location.replace("login.html"); };
+/* a connected source that stopped syncing (#102): one line under the header, linking to it. Owners and editors can
+   fix it, so theirs is a warning; viewers get a quieter note that the records may be behind */
+async function syncWarning(pid) {
+  let d;
+  try { const r = await api(`profiles/${pid}/connections/warnings`); if (!r.ok) return; d = await r.json(); } catch (e) { return; }
+  const w = d.warnings, box = $("#syncWarn");
+  if (!w.length) { box.hidden = true; return; }
+  const more = w.length > 1 ? ` (and ${w.length - 1} more)` : "";
+  const link = el("a", {href: `connect.html?profile=${pid}&connection=${w[0].connection}`, text: d.can_fix ? "Connected sources →" : "Details →"});
+  box.classList.toggle("quiet", !d.can_fix);
+  box.replaceChildren(d.can_fix ? el("span", {text: "⚠ " + w[0].text + more}) :
+    el("span", {text: `Records from ${w[0].source} may be out of date: ${w[0].text.replace(/^[^:]*: /, "")}${more}`}), link);
+  box.hidden = false;
+}
 (async function boot() {
   try {
     const m = await api("me");
@@ -58,6 +72,7 @@ $("#logout").onclick = async () => { try { await api("logout", {method: "POST"})
     PROFILE = ME.profiles.find(p => p.id === want) || ME.profiles[0];
     hLoad();
     renderProfileMenu();
+    syncWarning(PROFILE.id);
     $("#settingsLink").href = `settings.html?profile=${PROFILE.id}`;
     const r = await api(`profiles/${PROFILE.id}/data`);
     if (r.status === 401) { location.replace("login.html"); return; }

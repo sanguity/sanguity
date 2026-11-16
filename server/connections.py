@@ -38,7 +38,7 @@ was for, and refuses any host the source's setup doesn't name (#97).
 """
 import hashlib, ipaddress, json, re, secrets, time, urllib.parse
 
-from . import activity, config, crypto, db as dbm, outside, smart
+from . import activity, config, crypto, db as dbm, outside, settings, smart
 
 PENDING_SECONDS = 600          # a sign-in must come back within this
 EARLY = 60                     # renew an access token this long before it runs out
@@ -46,6 +46,7 @@ RETURN_PATH = "/connect/return"
 AUTHS = ("public", "confidential", "dynamic")
 STATES = ("active", "needs reconnect", "disconnected")
 SYNC_ACTOR = {"id": None, "username": activity.SCHEDULED_SYNC}
+FAILURES_WARN = 3              # pulls failed in a row before the profile's page warns (#102)
 
 # the resource types a pull reads (sync.py), and the scopes asked for by default: SMART v2 where discovery says the
 # server has it, else v1 (Epic's documentation still uses .read)
@@ -55,6 +56,115 @@ BINARY_FOR = ("DocumentReference", "DiagnosticReport")
 # an insurer's patient-access API (CARIN Blue Button, #92): claims, the coverage they're under, and the patient
 INSURER_TYPES = ("Patient", "ExplanationOfBenefit", "Coverage")
 CLINICAL_TYPES = tuple(t for t in TYPES if t != "Coverage") + ("Binary",)
+
+# what a person can choose to pull (#99), in plain language: id -> (label, what it brings, the FHIR types it reads).
+# A kind is offered when the access (the source's scopes, then what the vendor granted) lets its first type be
+# searched; documents need either of theirs. Labs and vitals are both Observations, told apart by category.
+KINDS = {
+    "labs": ("Lab results", "Blood tests and other lab results with their reference ranges, and the reports that "
+             "group them.", ("Observation", "DiagnosticReport")),
+    "vitals": ("Vital signs", "Blood pressure, pulse, temperature and weight measured at visits.", ("Observation",)),
+    "visits": ("Visits and hospital stays", "Past visits and admissions, and upcoming appointments.", ("Encounter",)),
+    "problems": ("Problems", "The problem list: diagnoses and health concerns.", ("Condition",)),
+    "medications": ("Medications", "Prescriptions, with their instructions and status.", ("MedicationRequest",)),
+    "documents": ("Documents", "Visit notes, letters and reports, with their attached files (PDFs, images, text).",
+                  ("DocumentReference", "DiagnosticReport", "Binary")),
+    "claims": ("Claims", "What was billed and paid, and the plan it was under, where the source offers it (usually "
+               "insurers).", ("ExplanationOfBenefit", "Coverage")),
+}
+OBS_CATEGORY = {"labs": "laboratory", "vitals": "vital-signs"}
+_SCOPE = re.compile(r"^(patient|user)/(\*|[A-Za-z]+)\.(read|write|\*|[cruds]+)(\?.*)?$")
+
+
+def scope_allows(scopes, rtype, op="s"):
+    """Whether SMART scopes (v1 .read/.*, v2 .rs/.cruds, a ?query suffix ignored) let rtype be searched (op "s")
+    or read (op "r")."""
+    for s in (scopes or "").split():
+        m = _SCOPE.match(s)
+        if m and m.group(2) in ("*", rtype) and (m.group(3) in ("read", "*") or op in m.group(3)):
+            return True
+    return False
+
+
+def kind_allowed(kind, scopes):
+    types = KINDS[kind][2]
+    if kind == "documents":
+        return scope_allows(scopes, "DocumentReference") or scope_allows(scopes, "DiagnosticReport")
+    return scope_allows(scopes, types[0])
+
+
+def offered(scopes):
+    """The kinds, each with whether this access allows it: [{id, label, brings, allowed}]."""
+    return [{"id": k, "label": v[0], "brings": v[1], "allowed": kind_allowed(k, scopes)} for k, v in KINDS.items()]
+
+
+def clean_kinds(kinds, scopes=None):
+    """A choice of kinds, checked: None (everything the access allows) or a non-empty list in KINDS order. With
+    scopes, every kind chosen must be allowed by them."""
+    if kinds is None:
+        return None
+    if not isinstance(kinds, list) or not all(isinstance(k, str) for k in kinds):
+        raise Problem("Choose the kinds of records as a list.", 400)
+    unknown = [k for k in kinds if k not in KINDS]
+    if unknown:
+        raise Problem("There's no kind of record called " + ", ".join(unknown[:3]) + ".", 400)
+    if not kinds:
+        raise Problem("Choose at least one kind of record to pull.", 400)
+    if scopes is not None:
+        missing = [KINDS[k][0] for k in kinds if not kind_allowed(k, scopes)]
+        if missing:
+            raise Problem("The access this source gave doesn't cover " + ", ".join(missing) + ". Sign in again "
+                          "with them ticked to add them.", 409)
+    return [k for k in KINDS if k in kinds]
+
+
+def clean_since(since):
+    if since in (None, ""):
+        return None
+    if not isinstance(since, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", since):
+        raise Problem("Give the start date as YYYY-MM-DD.", 400)
+    try:
+        time.strptime(since, "%Y-%m-%d")
+    except ValueError:
+        raise Problem("That start date isn't a real date.", 400) from None
+    if since > time.strftime("%Y-%m-%d"):
+        raise Problem("The start date can't be in the future.", 400)
+    return since
+
+
+def chosen_kinds(c):
+    """The kinds a connection row pulls: its choice, or every kind its granted scopes allow."""
+    kinds = json.loads(c["kinds"]) if c["kinds"] else None
+    if kinds is None:
+        return [k for k in KINDS if kind_allowed(k, c["scopes"])]
+    return kinds
+
+
+def narrow_scopes(scopes, kinds, conf=None):
+    """The scopes to ask for when only these kinds are pulled: a type-specific scope stays only if a chosen kind
+    reads that type, and a wildcard (patient/*.read) becomes one scope per type needed, unless the vendor's
+    discovery lists the wildcard but not the narrower ones (then it can't be narrowed). Other scopes (launch/patient,
+    offline_access, openid...) stay. kinds None: the scopes as they are."""
+    if kinds is None:
+        return scopes
+    need = list(dict.fromkeys(["Patient"] + [t for k in kinds for t in KINDS[k][2]]))
+    supported = (conf or {}).get("scopes_supported")
+    supported = set(supported) if isinstance(supported, list) else None
+    out = []
+    for s in scopes.split():
+        m = _SCOPE.match(s)
+        if not m:
+            out.append(s)
+        elif m.group(2) != "*":
+            if m.group(2) in need:
+                out.append(s)
+        else:
+            narrow = [f"{m.group(1)}/{t}.{m.group(3)}" for t in need]
+            if supported is not None and s in supported and not all(x in supported for x in narrow):
+                out.append(s)
+            else:
+                out += narrow
+    return " ".join(dict.fromkeys(out))
 
 
 def default_scopes(conf=None, vendor=None):
@@ -275,8 +385,10 @@ def setup(db):
 
 
 def choices(db):
-    """For owners and editors: the sources they can connect a profile to (set up and tested by an admin)."""
-    return [{"id": r["id"], "name": r["name"], "vendor": r["vendor"], "issuer": r["issuer"], "host": smart.host_of(r["issuer"])}
+    """For owners and editors: the sources they can connect a profile to (set up and tested by an admin), each with
+    the kinds of records its scopes allow (#99)."""
+    return [{"id": r["id"], "name": r["name"], "vendor": r["vendor"], "issuer": r["issuer"], "host": smart.host_of(r["issuer"]),
+             "kinds": offered(r["scopes"])}
             for r in db.execute("SELECT * FROM smart_clients WHERE tested IS NOT NULL ORDER BY name, id")]
 
 
@@ -401,8 +513,13 @@ def _resolve(db, vendor=None, issuer=None):
     return r
 
 
-def start(db, s, pid, vendor=None, issuer=None, connection_id=None, ip=None):
-    """Begin a sign-in for profile pid (the caller has checked the role). Returns the vendor's authorization address."""
+KEEP = object()   # start(): the connection's own choice, when reconnecting
+
+
+def start(db, s, pid, vendor=None, issuer=None, connection_id=None, ip=None, kinds=KEEP, since=KEEP):
+    """Begin a sign-in for profile pid (the caller has checked the role). Returns the vendor's authorization address.
+    kinds and since (#99): what to pull, None for everything; only the scopes those kinds need are asked for. A
+    reconnect keeps the connection's choice unless told otherwise."""
     r = _resolve(db, vendor, issuer)
     if not r["tested"]:
         raise Problem("An admin needs to test this source's setup first (Test this connection).", 409)
@@ -415,6 +532,12 @@ def start(db, s, pid, vendor=None, issuer=None, connection_id=None, ip=None):
             raise Problem("No such connection.", 404)
         if c["client_id"] != r["id"]:
             raise Problem("This connection belongs to another source.", 409)
+        if kinds is KEEP:
+            kinds = json.loads(c["kinds"]) if c["kinds"] else None
+        if since is KEEP:
+            since = c["since"]
+    kinds = clean_kinds(None if kinds is KEEP else kinds, r["scopes"])
+    since = clean_since(None if since is KEEP else since)
     allowed = hosts_for(r)
     http = smart.Client(outside.for_source(db, r["id"], "Connected source: sign-in", pid, s, ip, issuer_only=True))
     try:
@@ -427,13 +550,14 @@ def start(db, s, pid, vendor=None, issuer=None, connection_id=None, ip=None):
     verifier, challenge = smart.pkce()
     state = secrets.token_urlsafe(32)   # 256 bits; SMART asks for at least 122
     now = dbm.now()
+    scopes = narrow_scopes(r["scopes"], kinds, conf)
     with dbm.transaction(db):
         db.execute("DELETE FROM connect_pending WHERE expires <= ?", (now,))
         db.execute("""INSERT INTO connect_pending(state_hash, session_id, profile_id, client_id, connection_id, verifier,
-                      redirect_uri, scopes, token_url, expires) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                   (_hash(state), s["sid"], pid, r["id"], connection_id, crypto.enc(verifier), uri, r["scopes"],
-                    conf["token_endpoint"], now + PENDING_SECONDS))
-    return smart.authorize_url(conf, r["client_id"], uri, r["scopes"], state, challenge, r["issuer"])
+                      redirect_uri, scopes, token_url, expires, kinds, since) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (_hash(state), s["sid"], pid, r["id"], connection_id, crypto.enc(verifier), uri, scopes,
+                    conf["token_endpoint"], now + PENDING_SECONDS, json.dumps(kinds) if kinds else None, since))
+    return smart.authorize_url(conf, r["client_id"], uri, scopes, state, challenge, r["issuer"])
 
 
 def _claims(token):
@@ -544,18 +668,19 @@ def finish(db, s, code=None, state=None, error=None, error_description=None, ip=
                     cid = c["id"]
         if cid is not None:
             db.execute("""UPDATE connections SET client_id=?, patient=?, credential=?, secret=?, scopes=?, expires=?,
-                          state='active', error_kind=NULL, last_error=NULL, failures=0,
+                          state='active', error_kind=NULL, last_error=NULL, failures=0, warned=NULL, kinds=?, since=?,
                           next_sync=CASE WHEN cursor IS NOT NULL OR first_job IS NULL THEN ? ELSE next_sync END WHERE id=?""",
-                       (r["id"], crypto.enc(patient), kind, _jenc(cred), granted, expires, now, cid))
+                       (r["id"], crypto.enc(patient), kind, _jenc(cred), granted, expires, p["kinds"], p["since"], now, cid))
             reconnected = True
         else:
             cid = db.execute("""INSERT INTO connections(profile_id, client_id, source, issuer, fhir_base, patient, credential,
-                                secret, scopes, expires, state, next_sync, created, created_by)
-                                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)""",
+                                secret, scopes, expires, state, next_sync, created, created_by, kinds, since)
+                                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)""",
                              (pid, r["id"], r["name"], r["issuer"], r["issuer"], crypto.enc(patient), kind, _jenc(cred),
-                              granted, expires, now, now, s["id"])).lastrowid
+                              granted, expires, now, now, s["id"], p["kinds"], p["since"])).lastrowid
             reconnected = False
-        activity.log(db, "connect", s, pid, {"source": r["name"], "host": host, **({"reconnect": True} if reconnected else {})}, ip)
+        activity.log(db, "connect", s, pid, {"source": r["name"], "host": host, **({"reconnect": True} if reconnected else {}),
+                                             "kinds": json.loads(p["kinds"]) if p["kinds"] else None, "since": p["since"]}, ip)
     sync.wake()
     return {"profile": pid, "connection": cid, "reconnected": reconnected}
 
@@ -630,7 +755,11 @@ def describe(db, c):
             "error": crypto.dec(c["last_error"]) if c["last_error"] else None, "report": _jdec(c["report"]),
             "first_job": c["first_job"], "first_job_state": job["state"] if job else None,
             "created": c["created"], "disconnected": c["disconnected"],
-            "imports": db.execute("SELECT COUNT(*) FROM imports WHERE connection_id=?", (c["id"],)).fetchone()[0]}
+            "imports": db.execute("SELECT COUNT(*) FROM imports WHERE connection_id=?", (c["id"],)).fetchone()[0],
+            "kinds": offered(c["scopes"]) if c["state"] != "disconnected" else [], "chosen": chosen_kinds(c),
+            "all_kinds": not c["kinds"], "since": c["since"],
+            "attach": attach_rules(db, c), "attach_own": json.loads(c["attach"]) if c["attach"] else {},
+            "attach_bytes": c["attach_bytes"], "skipped": skipped(db, c["id"]), "warning": warning(db, c)}
 
 
 def for_profile(db, pid):
@@ -694,3 +823,161 @@ def disconnect(db, who, pid, cid, remove_records=False, ip=None):
                 pass
     activity.log(db, "disconnect", who, pid, {"source": c["source"], "revoked": revoked, "removed": removed}, ip)
     return {"revoked": revoked, "removed": removed}
+
+
+# ---------------------------------------------------------------- what a connection pulls, and its attachments (#99, #101)
+
+ATTACH_KEYS = {"auto": "sync.attachAuto", "max_mb": "sync.attachMaxMB", "types": "sync.attachTypes",
+               "budget_mb": "sync.attachBudgetMB"}
+
+
+def attach_rules(db, c, install=None):
+    """The attachment rules a connection pulls by: its own, over the install's (settings sync.*), the size never
+    above SYNC_MAX_ATTACHMENT_MB. {auto, max_mb, types, budget_mb, ceiling_mb}"""
+    install = install or settings.install_values(db, "sync.attach")
+    own = json.loads(c["attach"]) if c["attach"] else {}
+    out = {k: own.get(k, install[key]) for k, key in ATTACH_KEYS.items()}
+    out["max_mb"] = min(out["max_mb"], settings.CEILING_MB)
+    out["ceiling_mb"] = settings.CEILING_MB
+    return out
+
+
+def clean_attach(data):
+    """A connection's own attachment rules, each checked as its install setting is: {key: value}, a None value
+    going back to the install's."""
+    if not isinstance(data, dict):
+        raise Problem("The attachment rules must be an object.", 400)
+    out = {}
+    for k, v in data.items():
+        if k not in ATTACH_KEYS:
+            raise Problem(f"There's no attachment rule called {k}.", 400)
+        if v is None:
+            out[k] = None
+            continue
+        try:
+            out[k] = settings.get_def(ATTACH_KEYS[k]).clean(v)
+        except settings.SettingError as e:
+            raise Problem(str(e), 400) from None
+    return out
+
+
+def set_options(db, who, pid, cid, data, ip=None):
+    """Change what a connection pulls (#99: kinds, since) and its attachment rules (#101). Future pulls only: a kind
+    turned off keeps what it brought (sync.remove_kind takes that out, undoably). A kind the granted access doesn't
+    cover is refused: signing in again with it ticked (start with connection_id) adds it."""
+    c = get(db, pid, cid)
+    if c["state"] == "disconnected":
+        raise Problem("This source is disconnected.", 409)
+    sets, args, change = [], [], {}
+    if "kinds" in data:
+        kinds = clean_kinds(data["kinds"], c["scopes"])
+        if kinds is not None and set(kinds) == {k for k in KINDS if kind_allowed(k, c["scopes"])}:
+            kinds = None   # everything allowed: also whatever a reconnect allows later
+        sets.append("kinds=?")
+        args.append(json.dumps(kinds) if kinds else None)
+        change["kinds"] = kinds
+    if "since" in data:
+        since = clean_since(data["since"])
+        sets.append("since=?")
+        args.append(since)
+        change["since"] = since
+    if "attach" in data:
+        own = json.loads(c["attach"]) if c["attach"] else {}
+        for k, v in clean_attach(data["attach"] or {}).items():
+            if v is None:
+                own.pop(k, None)
+            else:
+                own[k] = v
+        sets.append("attach=?")
+        args.append(json.dumps(own) if own else None)
+        change["attach"] = own
+    if not sets:
+        raise Problem("Nothing to change.", 400)
+    with dbm.transaction(db):
+        db.execute(f"UPDATE connections SET {', '.join(sets)} WHERE id=?", (*args, cid))
+        activity.log(db, "connect", who, pid, {"source": c["source"], "change": "options", **change}, ip)
+    return describe(db, get(db, pid, cid))
+
+
+def skipped(db, cid, limit=200):
+    """The attachments pulls left out that nobody has fetched since, newest first."""
+    out = []
+    for r in db.execute("SELECT id, detail, found FROM sync_skipped WHERE connection_id=? AND import_id IS NULL "
+                        "ORDER BY found DESC, id DESC LIMIT ?", (cid, limit)):
+        d = _jdec(r["detail"])
+        out.append({"id": r["id"], "found": r["found"],
+                    **{k: d.get(k) for k in ("title", "type", "content_type", "size", "why", "record")}})
+    return out
+
+
+# ---------------------------------------------------------------- when a connection stops syncing (#102)
+
+def stale_days(db):
+    return settings.install_values(db, "sync.staleDays")["sync.staleDays"]
+
+
+def warning(db, c, days=None):
+    """Why this connection needs looking at, or None: {kind, text, since (its last pull that worked)}.
+      access   the vendor ended access, or it ran out ("needs reconnect")
+      failing  FAILURES_WARN pulls or more failed in a row
+      stale    no pull has worked for longer than the sync.staleDays setting (a first pull waiting for its preview
+               to be saved doesn't count: that waits on a person, and the connections page says so)"""
+    if c["state"] == "needs reconnect":
+        return {"kind": "access", "since": c["last_sync"],
+                "text": f"{c['source']}: access ended. Sign in again to keep these records up to date."}
+    if c["state"] != "active":
+        return None
+    if c["failures"] >= FAILURES_WARN:
+        return {"kind": "failing", "since": c["last_sync"],
+                "text": f"{c['source']}: the last {c['failures']} syncs failed" +
+                        (", the vendor being unavailable." if c["error_kind"] == "unavailable" else ".")}
+    days = days or stale_days(db)
+    last = c["last_sync"] or c["created"]
+    waiting = c["cursor"] is None and c["first_job"] is not None
+    if not waiting and last < dbm.now() - days * 86400:
+        n = (dbm.now() - last) // 86400
+        return {"kind": "stale", "since": c["last_sync"],
+                "text": f"{c['source']} hasn't synced for {n} day{'s' if n != 1 else ''}."}
+    return None
+
+
+def warnings_for(db, pid):
+    """The profile's connections that need looking at: [{connection, source, kind, text, since}]."""
+    days = stale_days(db)
+    out = []
+    for c in db.execute("SELECT * FROM connections WHERE profile_id=? AND state != 'disconnected' ORDER BY id", (pid,)):
+        w = warning(db, c, days)
+        if w:
+            out.append({"connection": c["id"], "source": c["source"], **w})
+    return out
+
+
+def note_warnings(db):
+    """Once per spell, put each connection's warning in its profile's activity log (the sync thread calls this
+    every tick). warned is cleared when a pull works or the connection is signed in again. Access ending is
+    logged when it happens (needs_reconnect), so only failing and stale are noted here. Returns how many."""
+    days = stale_days(db)
+    n = 0
+    for c in db.execute("SELECT * FROM connections WHERE state='active' AND warned IS NULL").fetchall():
+        w = warning(db, c, days)
+        if not w:
+            continue
+        with dbm.transaction(db):
+            if db.execute("UPDATE connections SET warned=? WHERE id=? AND warned IS NULL", (dbm.now(), c["id"])).rowcount:
+                activity.log(db, "connect", SYNC_ACTOR, c["profile_id"],
+                             {"source": c["source"], "change": "warning", "why": w["kind"], "text": w["text"]})
+                n += 1
+    return n
+
+
+def install_warnings(db):
+    """For the admins' notices (alerts.py): per source, how many connections need looking at, by why. No profile
+    names or records: admins needn't be members of those profiles."""
+    days = stale_days(db)
+    out = {}
+    for c in db.execute("SELECT * FROM connections WHERE state != 'disconnected'"):
+        w = warning(db, c, days)
+        if w:
+            x = out.setdefault(c["source"], {"source": c["source"], "access": 0, "failing": 0, "stale": 0})
+            x[w["kind"]] += 1
+    return sorted(out.values(), key=lambda x: x["source"])

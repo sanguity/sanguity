@@ -18,7 +18,10 @@ By origin:
   upload    undone as above: the profile is as it was before the import.
   manual    the same: records typed in on the import page (routes_manual.py), their files and watch data.
   sync      a connected source's scheduled pull (sync.py): what it added goes, and the records it updated in place
-            get back what they were (sync_changes); the connection keeps pulling what's new from then on.
+            get back what they were (sync_changes); the connection keeps pulling what's new from then on. Two
+            more come from a connection (imports.note says which, #99, #101): taking out the records of a kind it
+            brought (undone, they come back) and an attachment fetched on request (undone, the file goes and the
+            attachment is listed as left out again).
   dataset   undone, but it replaced the profile's records when it was loaded, and those can't be brought back.
   build     refused: the profile is kept in step with the setup build, so the next rebuild would bring it back.
 """
@@ -81,7 +84,14 @@ def _entry(db, pid, imp):
     else:
         by = BY.get(origin, activity.COMMAND_LINE)
     names = _names(db, pid, job["upload_id"]) if job else []
-    return {"id": iid, "at": imp["at"], "origin": origin, "format": imp["format"], "label": label(imp["format"], origin),
+    note = None
+    if origin == "sync":
+        r = db.execute("SELECT note FROM imports WHERE id=?", (iid,)).fetchone()
+        note = json.loads(crypto.dec(r["note"])) if r and r["note"] else None
+    if note:
+        summary = {**summary, "counts": note.get("counts")}
+    return {"id": iid, "at": imp["at"], "origin": origin, "format": imp["format"],
+            "label": (note or {}).get("label") or label(imp["format"], origin), "removal": bool(note and note.get("removed")),
             "by": by, "job": job["id"] if job else None, "upload": job["upload_id"] if job else None,
             "files": names[:FILES_SHOWN], "file_count": len(names),
             "counts": summary.get("counts") or _counts(db, iid), "range": summary.get("range"),

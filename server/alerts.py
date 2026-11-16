@@ -1,4 +1,4 @@
-"""Bursts of failed sign-ins, for admins to see (ASVS 8.1.4).
+"""Notices for admins: bursts of failed sign-ins (ASVS 8.1.4), and connected sources that stopped syncing (#102).
 
 Every failed sign-in is also written to the log (main._audit); here it is kept for KEEP_DAYS in the database too:
 when, from which address, and which account if the name was a real one (a typed name that matches no account is
@@ -50,3 +50,11 @@ def notice(db):
 
 def dismiss(db):
     dbm.meta_set(db, SEEN, str(dbm.now()))
+
+
+def sync_notice(db):
+    """Connections on this install that need looking at, per source: [{source, access, failing, stale}] (counts
+    only: no profile names or records). It lasts while it's true; there is nothing to dismiss. Nothing is sent
+    anywhere: the Account page shows it."""
+    from . import connections
+    return connections.install_warnings(db)

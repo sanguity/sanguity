@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Connected sources (#32 sign-in, #91 connections and sync), against the fake SMART on FHIR server
+"""Connected sources (#32 sign-in, #91 connections and sync, #99 choosing what to pull, #101 attachments, #102
+warnings when a connection stops syncing), against the fake SMART on FHIR server
 (tests/fakefhir). Fictional patients only; nothing real is contacted.
 
   python3 tests/test_connections.py
 """
-import http.client, json, os, sqlite3, sys, tempfile, time, unittest, urllib.parse
+import base64, http.client, json, os, sqlite3, sys, tempfile, time, unittest, urllib.parse
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -375,6 +376,10 @@ class Connections(unittest.TestCase):
         self.assertEqual(after["imports"], before["imports"] + 1)
         changed = [e for e in self.data()["events"] if e["id"] in title_before and e != title_before[e["id"]]]
         self.assertTrue(changed, "an existing event changed in place, keeping its id")
+        details = self.data()["details"]
+        self.assertTrue(all(details.get(str(e["id"])) for e in changed), "and kept its details")
+        new = [e for e in self.data()["events"] if e["id"] not in title_before and e["k"] == "labitem"]
+        self.assertTrue(new and all(details.get(str(e["id"])) for e in new), "a new record comes with its details")
 
         # the sync is in the history, and undoing it puts things back
         hist = self.robin.get(f"/api/profiles/{self.pid}/imports").json()["imports"]
@@ -651,6 +656,320 @@ class Connections(unittest.TestCase):
         self.assertTrue(conns.granted("patient/Coverage.rs?category=x", "Coverage"))
         self.assertTrue(conns.granted("launch/patient offline_access", "Observation"))   # no resource scopes named
         self.assertTrue(conns.granted(None, "Observation"))
+
+    # ---------------------------------------------------------------- choosing what a connection pulls (#99)
+
+    def listed(self, cid, c=None):
+        return next(x for x in (c or self.robin).get(f"/api/profiles/{self.pid}/connections").json()["connections"] if x["id"] == cid)
+
+    def patch(self, cid, body, c=None):
+        return (c or self.robin).patch(f"/api/profiles/{self.pid}/connections/{cid}", json=body, headers=H)
+
+    def fhir_paths(self):
+        return [r for r in self.fake.requests if r.path.startswith("/fhir/") and not r.path.startswith("/fhir/.well-known")]
+
+    def test_choosing_kinds_asks_for_less_and_pulls_only_those(self):
+        sid = self.source()
+        offered = {k["id"]: k for k in self.robin.get(f"/api/profiles/{self.pid}/connections").json()["sources"][0]["kinds"]}
+        self.assertTrue(all(k["allowed"] for k in offered.values()), offered)   # the default scopes cover every kind
+        self.assertIn("reference ranges", offered["labs"]["brings"])
+        r = self.robin.post(f"/api/profiles/{self.pid}/connect/start", headers=H,
+                            json={"source": sid, "kinds": ["medications", "labs"], "since": "2025-01-01"})
+        self.assertEqual(r.status_code, 200, r.text)
+        scopes = q(r.json()["url"])["scope"].split()
+        types = {s.split("/")[1].split(".")[0] for s in scopes if s.startswith("patient/")}
+        self.assertEqual(types, {"Patient", "Observation", "DiagnosticReport", "MedicationRequest"}, scopes)
+        self.assertIn("offline_access", scopes)
+        back = self.back(self.fake.authorize(r.json()["url"], patient="pat-1"))
+        cid = back.json()["connection"]
+        c = self.listed(cid)
+        self.assertEqual((c["chosen"], c["since"]), (["labs", "medications"], "2025-01-01"))
+        self.assertFalse({k["id"]: k["allowed"] for k in c["kinds"]}["visits"])   # not granted, so not offered
+        self.fake.clear_requests()
+        self.first_pull(cid)
+        searched = {(r.path, r.query.get("category")) for r in self.fhir_paths() if r.path != "/fhir/Patient/pat-1"}
+        self.assertEqual(searched, {("/fhir/Observation", "laboratory"), ("/fhir/DiagnosticReport", None),
+                                    ("/fhir/MedicationRequest", None)}, searched)
+        self.assertTrue(all(r.query.get("date") == "ge2025-01-01" for r in self.fhir_paths()
+                            if r.path in ("/fhir/Observation", "/fhir/DiagnosticReport")))
+        d = self.data()
+        kinds = {e["k"] for e in d["events"]}
+        self.assertIn("med", kinds)
+        self.assertFalse(kinds & {"visit", "stay", "document"}, kinds)
+        self.assertFalse([s for s in d["labs"] if s.get("panel") == "Vitals"], "no vital signs")
+        self.assertFalse(d.get("problems"), "no problems")
+        self.assertTrue(self.counts()["results"])
+        # a kind the access doesn't cover can't just be ticked: signing in again with it asks for its scope
+        r = self.patch(cid, {"kinds": ["labs", "medications", "visits"]})
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("Sign in again", r.json()["detail"])
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/reconnect", headers=H,
+                            json={"kinds": ["labs", "medications", "visits"]})
+        self.assertTrue(any(s.startswith("patient/Encounter.") for s in q(r.json()["url"])["scope"].split()))
+        self.assertEqual(self.back(self.fake.authorize(r.json()["url"], patient="pat-1")).json()["reconnected"], True)
+        self.assertEqual(self.listed(cid)["chosen"], ["labs", "visits", "medications"])   # in KINDS order
+        # the visits come in at the next pull, from the beginning (their search is new), and the rest goes on as before
+        self.fake.clear_requests()
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        enc = [r for r in self.fhir_paths() if r.path == "/fhir/Encounter"]
+        self.assertTrue(enc and "_lastUpdated" not in enc[0].query, enc)
+        obs = [r for r in self.fhir_paths() if r.path == "/fhir/Observation"]
+        self.assertTrue(obs and obs[0].query.get("_lastUpdated", "").startswith("gt"), obs)
+        self.assertIn("visit", {e["k"] for e in self.data()["events"]})
+        # a later start date: older records are left out even when the server ignores date=
+        old = dict(NEW_OBS, effectiveDateTime="2024-05-01T08:00:00Z", valueQuantity={"value": 88, "unit": "mg/dL"})
+        self.fake.add(old, patient="pat-1")
+        self.fake.add(NEW_OBS, patient="pat-1")
+        self.assertEqual(self.patch(cid, {"since": "2026-01-01"}).status_code, 200)
+        before = self.counts()["results"]
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(self.counts()["results"], before + 1)   # the 2026 glucose, not the 2024 one
+        # the change is in the activity log
+        log = self.robin.get(f"/api/profiles/{self.pid}/activity?action=connect").json()
+        rows = log if isinstance(log, list) else log.get("entries", log.get("items", []))
+        self.assertTrue(any(e["detail"].get("change") == "options" and e["detail"].get("since") == "2026-01-01" for e in rows), rows)
+        # viewers can't change it
+        self.assertEqual(self.patch(cid, {"since": None}, c=self.kim).status_code, 403)
+        self.assertEqual(self.patch(cid, {"kinds": []}).status_code, 400)
+        self.assertEqual(self.patch(cid, {"since": "2999-01-01"}).status_code, 400)
+
+    def test_narrowing_scopes(self):
+        all_ = "launch/patient offline_access patient/*.read"
+        self.assertEqual(conns.narrow_scopes(all_, ["problems"]), "launch/patient offline_access patient/Patient.read patient/Condition.read")
+        # a vendor that lists only the wildcard keeps it
+        self.assertEqual(conns.narrow_scopes(all_, ["problems"], {"scopes_supported": ["patient/*.read", "launch/patient"]}), all_)
+        self.assertEqual(conns.narrow_scopes(all_, None), all_)
+        self.assertEqual(conns.narrow_scopes("patient/Observation.rs patient/Binary.rs openid", ["documents"]), "patient/Binary.rs openid")
+        self.assertTrue(conns.scope_allows("patient/Observation.rs?category=laboratory", "Observation"))
+        self.assertFalse(conns.scope_allows("patient/Observation.r", "Observation"))   # read by id, but no search
+        self.assertTrue(conns.kind_allowed("documents", "patient/DiagnosticReport.read"))
+
+    def test_turning_a_kind_off_and_removing_what_it_brought(self):
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        visits = lambda: [e for e in self.data()["events"] if e["k"] in ("visit", "stay")]
+        before, had = self.counts(), len(visits())
+        self.assertTrue(had)
+        # turned off: future pulls don't ask for visits; what they brought stays
+        kinds = [k for k in conns.KINDS if k != "visits"]
+        self.assertEqual(self.patch(cid, {"kinds": kinds}).status_code, 200)
+        self.fake.clear_requests()
+        self.assertTrue(self.pull(cid)["ok"])
+        self.assertFalse([r for r in self.fhir_paths() if r.path == "/fhir/Encounter"])
+        self.assertEqual(len(visits()), had)
+        # removed on request, as an entry in the import history...
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "visits"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(visits(), [])
+        self.assertFalse(self.data().get("upcoming"), "the upcoming appointments went too")
+        hist = self.robin.get(f"/api/profiles/{self.pid}/imports").json()["imports"]
+        self.assertTrue(hist[0]["removal"], hist[0])
+        self.assertIn("removed", hist[0]["label"])
+        self.assertEqual(sum(hist[0]["counts"]["kinds"].values()), had)
+        raw = sqlite3.connect(os.path.join(TMP, "sanguity.db"))
+        self.assertTrue(all(v.startswith(crypto.FIELD) for (v,) in raw.execute("SELECT row FROM sync_removed")))
+        raw.close()
+        self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "visits"},
+                                         headers=H).status_code, 409)   # nothing left to remove
+        # ...that undoing puts back
+        r = self.robin.post(f"/api/profiles/{self.pid}/imports/{hist[0]['id']}/undo", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(len(visits()), had)
+        self.assertTrue(self.data().get("upcoming"))
+        self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {k: v for k, v in before.items() if k != "imports"})
+        # labs work the same way, series and all
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "labs"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertFalse([s for s in self.data()["labs"] if s.get("panel") != "Vitals"])
+        self.assertTrue([s for s in self.data()["labs"] if s.get("panel") == "Vitals"], "vitals stay")
+        self.robin.post(f"/api/profiles/{self.pid}/imports/{r.json()['import']}/undo", headers=H)
+        self.assertEqual(self.counts()["results"], before["results"])
+        self.assertEqual(self.kim.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "labs"},
+                                       headers=H).status_code, 403)   # viewers can't
+
+    # ---------------------------------------------------------------- attachments (#101)
+
+    def big_document(self, size):
+        """A DocumentReference whose Binary is size bytes, its size not given in the record."""
+        b = self.fake.add({"resourceType": "Binary", "contentType": "application/pdf",
+                           "data": base64.b64encode(b"%PDF-1.4 " + b"x" * (size - 9)).decode()})
+        self.fake._owner[("Binary", b["id"])] = "pat-1"
+        return self.fake.add({"resourceType": "DocumentReference", "status": "current", "date": "2026-11-11T10:00:00Z",
+                              "description": "Scanned referral letter (fictional)",
+                              "content": [{"attachment": {"contentType": "application/pdf", "url": f"Binary/{b['id']}"}}]},
+                             patient="pat-1")
+
+    def set_install(self, key, value):
+        r = self.robin.put(f"/api/profiles/{self.pid}/settings/{key}", json={"value": value}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.addCleanup(lambda: self.robin.delete(f"/api/profiles/{self.pid}/settings/{key}", headers=H))
+
+    def test_attachment_rules_skip_list_and_fetch_anyway(self):
+        self.set_install("sync.attachTypes", ["text"])   # install-wide: only text attachments
+        shown = {s["key"]: s for sec in self.robin.get(f"/api/profiles/{self.pid}/settings/sections").json()["sections"]
+                 for s in sec["settings"]}
+        self.assertEqual(shown["sync.attachTypes"]["value"], ["text"])
+        self.assertEqual(shown["sync.attachMaxMB"]["scope"], "install")
+        r = self.robin.put(f"/api/profiles/{self.pid}/settings/sync.attachMaxMB", json={"value": 51}, headers=H)
+        self.assertEqual(r.status_code, 400)   # SYNC_MAX_ATTACHMENT_MB (50) is the ceiling
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        bins = {r.path for r in self.fake.requests if r.path.startswith("/fhir/Binary/")}
+        self.assertEqual(bins, {"/fhir/Binary/bin-dr-xr-1"}, bins)   # the text one; the PDFs left out
+        c = self.listed(cid)
+        self.assertEqual(sorted((x["type"], x["why"]) for x in c["skipped"]), [("pdf", "type"), ("pdf", "type")])
+        self.assertTrue(any("Left out 2 attachments" in w for w in c["report"]["warnings"]), c["report"])
+        self.assertEqual(c["attach"]["types"], ["text"])
+        docs = lambda: {e["title"]: self.data()["details"][str(e["id"])] for e in self.data()["events"] if e["k"] == "document"}
+        letter = next(x for x in c["skipped"] if x["record"].startswith("fhir:DocumentReference/"))
+        self.assertFalse([d for d in docs().values() if d.get("url") and "pdf" in str(d.get("ext"))], docs())
+        # fetch anyway: the file comes in, linked to its record, as an import of its own
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/attachments/{letter['id']}/fetch", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["size"], 102)
+        self.assertEqual(len(self.listed(cid)["skipped"]), 1)
+        linked = [d for d in docs().values() if d.get("url") and d.get("ext") == "pdf"]
+        self.assertEqual(len(linked), 1, docs())
+        doc = self.robin.get("/" + linked[0]["url"].split("#")[0])
+        self.assertEqual(doc.status_code, 200)
+        self.assertTrue(doc.content.startswith(b"%PDF"))
+        hist = self.robin.get(f"/api/profiles/{self.pid}/imports").json()["imports"]
+        self.assertIn("fetched", hist[0]["label"])
+        self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/attachments/{letter['id']}/fetch",
+                                         headers=H).status_code, 409)   # once
+        # undone from the history: the file goes, and it's listed again
+        self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/imports/{hist[0]['id']}/undo", headers=H).status_code, 200)
+        self.assertEqual(len(self.listed(cid)["skipped"]), 2)
+        self.assertFalse([d for d in docs().values() if d.get("url") and "Referral" in str(d)])
+        # viewers can't fetch
+        self.assertEqual(self.kim.post(f"/api/profiles/{self.pid}/connections/{cid}/attachments/{letter['id']}/fetch",
+                                       headers=H).status_code, 403)
+        # the connection's own rules: every kind, but at most 1 MB; a bigger one is left out, and fetched anyway
+        r = self.patch(cid, {"attach": {"types": ["pdf", "image", "text", "html"], "max_mb": 1}})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["attach"]["max_mb"], 1)
+        self.big_document(int(1.5 * 2**20))
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        big = next(x for x in self.listed(cid)["skipped"] if x["why"] == "size")
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/attachments/{big['id']}/fetch", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["size"], int(1.5 * 2**20))
+        # only when asked: nothing is fetched by itself
+        self.assertEqual(self.patch(cid, {"attach": {"auto": False}}).status_code, 200)
+        self.fake.update("DocumentReference", self.fake.resources("DocumentReference", patient="pat-1")[0]["id"], {})
+        self.fake.clear_requests()
+        self.assertTrue(self.pull(cid)["ok"])
+        self.assertFalse([r for r in self.fake.requests if r.path.startswith("/fhir/Binary/")])
+        self.assertTrue(any(x["why"] == "ask" for x in self.listed(cid)["skipped"]))
+        # a total per connection
+        self.assertEqual(self.patch(cid, {"attach": {"auto": None, "budget_mb": 1}}).status_code, 200)
+        self.big_document(2**19)
+        self.assertTrue(self.pull(cid)["ok"])
+        self.assertTrue(any(x["why"] == "budget" for x in self.listed(cid)["skipped"]))
+        # back to the install's rules
+        self.assertEqual(self.patch(cid, {"attach": {"types": None, "max_mb": None, "budget_mb": None}}).json()["attach_own"], {})
+        raw = sqlite3.connect(os.path.join(TMP, "sanguity.db"))
+        self.assertTrue(all(v.startswith(crypto.FIELD) for (v,) in raw.execute("SELECT detail FROM sync_skipped")))
+        raw.close()
+        for _, rel, path in self._stored_files():
+            if rel.startswith("Binary/"):
+                self.assertTrue(crypto.file_is_encrypted(path), rel)
+
+    def _stored_files(self):
+        db = dbm.connect()
+        try:
+            from server import uploads
+            return uploads.stored_files(db, self.pid)
+        finally:
+            db.close()
+
+    # ---------------------------------------------------------------- warnings when a connection stops syncing (#102)
+
+    def warnings(self, c=None):
+        r = (c or self.robin).get(f"/api/profiles/{self.pid}/connections/warnings")
+        self.assertEqual(r.status_code, 200, r.text)
+        return r.json()
+
+    def admin_sync_notice(self):
+        return self.robin.get("/api/security/notice").json()["sync"]
+
+    def note(self):
+        db = dbm.connect()
+        try:
+            return conns.note_warnings(db)
+        finally:
+            db.close()
+
+    def warning_log(self):
+        log = self.robin.get(f"/api/profiles/{self.pid}/activity?action=connect").json()
+        rows = log if isinstance(log, list) else log.get("entries", log.get("items", []))
+        return [e for e in rows if e["detail"].get("change") == "warning"]
+
+    def test_warnings_after_failures_staleness_and_revocation(self):
+        sid = self.source()
+        cid = self.connect(sid)
+        self.first_pull(cid)
+        name = self.listed(cid)["source"]
+        self.assertEqual(self.warnings()["warnings"], [])
+        # the vendor down, pull after pull
+        self.fake.fail(503, times=None, path="/fhir/")
+        for _ in range(conns.FAILURES_WARN):
+            self.assertEqual(self.pull(cid)["kind"], "unavailable")
+        w = self.warnings()
+        self.assertEqual([x["kind"] for x in w["warnings"]], ["failing"])
+        self.assertTrue(w["can_fix"])
+        self.assertIn("3 syncs failed", w["warnings"][0]["text"])
+        kim = self.warnings(self.kim)   # a viewer sees it too, to show as a quieter note
+        self.assertEqual((kim["can_fix"], len(kim["warnings"])), (False, 1))
+        self.assertEqual(self.lee.get(f"/api/profiles/{self.pid}/connections/warnings").status_code, 404)
+        mine = next(x for x in self.admin_sync_notice() if x["source"] == name)
+        self.assertEqual(mine["failing"], 1)
+        self.assertNotIn("Robin", json.dumps(self.admin_sync_notice()))   # counts only: no profile names
+        self.assertEqual(self.kim.get("/api/security/notice").status_code, 403)
+        # once in the activity log, however many ticks
+        self.assertEqual(self.note(), 1)
+        self.assertEqual(self.note(), 0)
+        self.assertEqual(len(self.warning_log()), 1)
+        self.assertEqual(self.warning_log()[0]["detail"]["why"], "failing")
+        # working again: the warning goes
+        self.fake.clear_faults()
+        self.assertTrue(self.pull(cid)["ok"])
+        self.assertEqual(self.warnings()["warnings"], [])
+        self.assertFalse([x for x in self.admin_sync_notice() if x["source"] == name])
+        # not synced for longer than the setting (the vendor stopped answering, then nobody noticed)
+        db = dbm.connect()
+        db.execute("UPDATE connections SET last_sync=? WHERE id=?", (dbm.now() - 4 * 86400, cid))
+        db.close()
+        w = self.warnings()["warnings"]
+        self.assertEqual([x["kind"] for x in w], ["stale"])
+        self.assertIn("4 days", w[0]["text"])
+        self.assertEqual(self.note(), 1)
+        self.assertEqual(self.warning_log()[0]["detail"]["why"], "stale")
+        self.set_install("sync.staleDays", 7)
+        self.assertEqual(self.warnings()["warnings"], [])   # the setting says how long is too long
+        # access ended
+        self.fake.revoke_all("pat-1")
+        self.fake.expire_access_tokens()
+        self.assertEqual(self.pull(cid)["kind"], "access")
+        w = self.warnings()["warnings"]
+        self.assertEqual([x["kind"] for x in w], ["access"])
+        self.assertIn("Sign in again", w[0]["text"])
+        self.assertEqual(next(x for x in self.admin_sync_notice() if x["source"] == name)["access"], 1)
+        # disconnected: nothing to warn about
+        self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/disconnect", headers=H)
+        self.assertEqual(self.warnings()["warnings"], [])
+
+    def test_first_pull_waiting_for_its_preview_isnt_stale(self):
+        cid = self.connect(self.source())
+        res = self.pull(cid)   # a preview, not yet saved
+        self.assertTrue(res["ok"])
+        db = dbm.connect()
+        db.execute("UPDATE connections SET last_sync=?, created=? WHERE id=?", (dbm.now() - 9 * 86400, dbm.now() - 9 * 86400, cid))
+        db.close()
+        self.assertEqual(self.warnings()["warnings"], [])
 
     # ---------------------------------------------------------------- the setup screen
 

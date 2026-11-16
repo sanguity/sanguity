@@ -1215,8 +1215,9 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
 
 @app.get("/api/security/notice")
 def security_notice(s=Depends(admin), db=Depends(get_db)):
-    """A burst of failed sign-ins since the last dismissal, or null (ASVS 8.1.4)."""
-    return {"notice": alerts.notice(db)}
+    """A burst of failed sign-ins since the last dismissal, or null (ASVS 8.1.4); and connected sources that stopped
+    syncing, per source (#102)."""
+    return {"notice": alerts.notice(db), "sync": alerts.sync_notice(db)}
 
 
 @app.post("/api/security/notice/dismiss")
