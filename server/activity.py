@@ -14,6 +14,11 @@ Profile events (profile_id set), readable by the profile's owners:
   undo          {"import", "origin", "importer", "label", "counts", "uploads"}: an import undone, with everything it brought
                 (history.py)
   edit          {"action", "title", "to"?, "undone"?}: a correction made to an event, or undone (edits.py)
+  outside       {"host", "purpose"}: Sanguity contacted another server for this profile, after the person confirmed
+                (outside.py; so far a SMART Health Link and a Health Card issuer's keys, shl.py)
+  connect       {"source", "host", "reconnect"?}: connected a source by signing in to it (connections.py, #32)
+  disconnect    {"source", "revoked", "removed"}: disconnected one, keeping or removing the records it brought;
+                {"source", "ended": true}: the vendor ended access, so it needs a reconnect
 Account events (no profile), readable by admins:
   setup         the first account                                password   changed their own password
   account.create / account.disable / account.enable / account.admin / account.unadmin / account.reset   {"username"}
@@ -25,6 +30,10 @@ Account events (no profile), readable by admins:
                 profile itself, as a share with "repair": true)
   labmap.change {"name", "importer", "from", "to"} / labmap.remove {"name", "importer", "target"}: an admin changed or
                 removed a lab name matched during import (labmap.py; target null: kept as a series of its own)
+  connect.source {"name", "issuer", "change"}: an admin set up, changed or removed a connected source's settings
+                (connections.py; change is "add", "edit" or "remove")
+  outside       {"host", "purpose"}: Sanguity contacted a vendor with no profile involved (an admin's "Test this
+                connection", connections.py)
 
 Entries keep the actor's username as it was, so they read the same after an account is gone. A profile's entries
 go with the profile. Entries older than ACTIVITY_DAYS are pruned (at most once a day, when something is logged).
@@ -33,13 +42,15 @@ import json
 
 from . import config, crypto, db as dbm
 
-PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit")
+PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside",
+                   "connect", "disconnect")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
-                   "labmap.remove")
+                   "labmap.remove", "connect.source", "outside")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
-SYSTEM = (COMMAND_LINE, SETUP_BUILD)
+SCHEDULED_SYNC = "scheduled sync"   # a connected source's pull on its schedule (sync.py)
+SYSTEM = (COMMAND_LINE, SETUP_BUILD, SCHEDULED_SYNC)
 
 
 def log(db, action, who=None, profile_id=None, detail=None, ip=None, session_id=None, actor=None, item=None):

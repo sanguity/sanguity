@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sanguity connected sources</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cstyle%3E@media (prefers-color-scheme:dark){.d{fill:%23b4485e}}%3C/style%3E%3Cpath class='d' d='M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z' fill='%238a2438'/%3E%3Cpath d='M18 43.5h5.5l4.5-9 5.5 15 4-9h8' fill='none' stroke='%23fbf4f1' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+<script src="js/theme.js"></script>
+</head>
+<body class="acct-page">
+<header>
+  <h1><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</h1>
+  <a class="iconbtn acct" href="./">← Back to records</a>
+  <a class="iconbtn acct" href="import.html">Import</a>
+  <span class="spacer"></span>
+  <span class="meta" id="who"></span>
+  <button class="iconbtn acct" id="logout" type="button">Log out</button>
+</header>
+<main class="acct conn">
+  <div class="card warn" id="insecure" role="alert" hidden></div>
+  <div class="card warn" id="problem" role="alert" hidden></div>
+
+  <section class="card" id="mine" hidden>
+    <h2>Connected sources</h2>
+    <p class="hint">Instead of downloading exports, connect a patient portal by signing in to it. Sanguity then pulls what's
+      new on a schedule, straight from the vendor to this server. Every pull is an import you can undo from the import
+      history, and nothing is contacted until you connect a source.</p>
+    <div class="form inline">
+      <label>Profile <select id="profile"></select></label>
+    </div>
+    <div id="reconnect" class="conn-alert" role="alert" hidden></div>
+    <div id="connList" aria-live="polite"></div>
+    <h3 class="sub">Connect a source</h3>
+    <p class="hint" id="noSources" hidden>No source is set up on this install yet. Each install registers its own app with each
+      vendor, so an admin sets each one up first (below, for admins).</p>
+    <p class="hint" id="viewerNote" hidden>You can view this profile's connections; its owners and editors can connect sources.</p>
+    <div class="row" id="sourceButtons"></div>
+    <section id="import-status"></section>
+  </section>
+
+  <section class="card" id="admin" hidden>
+    <h2>Set up a source <span class="tag">admins</span></h2>
+    <p class="hint">Under the option this project chose (docs/connected-sources-oauth.md), this install registers its own app
+      with each vendor, and the vendor sends sign-ins straight back here. Nothing is shared with the Sanguity project:
+      the count of connections below stays on this server.</p>
+    <dl class="kv">
+      <dt>Return address</dt><dd><code id="returnAddr"></code> <button class="btn small" id="copyReturn" type="button">Copy</button></dd>
+    </dl>
+    <ul class="conn-warn" id="addrWarn"></ul>
+    <div id="sourceList"></div>
+    <h3 class="sub" id="formTitle">Add a source</h3>
+    <form id="srcForm" class="form">
+      <label>Vendor <select id="fVendor"><option value="epic">Epic (MyChart)</option><option value="oracle">Oracle Health (Cerner)</option><option value="other">Another SMART on FHIR server</option></select></label>
+      <div class="conn-guide" id="guide"></div>
+      <label>Name people see <input id="fName" maxlength="80" required placeholder="Epic sandbox"></label>
+      <label>FHIR base address (the issuer) <input id="fIssuer" required inputmode="url" placeholder="https://fhir.example.org/api/FHIR/R4"></label>
+      <label>Client ID <input id="fClient" required autocomplete="off"></label>
+      <label>How the app signs in <select id="fAuth">
+        <option value="public">Public client (no secret)</option>
+        <option value="confidential">Confidential client (with a client secret)</option>
+        <option value="dynamic">Epic dynamic registration (the install makes its own key)</option></select></label>
+      <label id="fSecretWrap" hidden>Client secret <input id="fSecret" type="password" autocomplete="off"></label>
+      <label>Scopes to ask for <input id="fScopes"></label>
+      <div class="row"><button class="btn primary" type="submit" id="fSave">Save</button>
+        <button class="btn" type="button" id="fCancel" hidden>Cancel</button><span class="msg" id="fMsg" role="status"></span></div>
+    </form>
+  </section>
+</main>
+<script src="js/util.js"></script>
+<script src="js/import-jobs.js"></script>
+<script src="js/connect.js"></script>
+</body>
+</html>

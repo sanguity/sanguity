@@ -261,6 +261,8 @@ def _save(db, j):
                      ip=_ips.get(jid), actor=None if who else "removed account")
         db.execute("UPDATE jobs SET state='done', stage=NULL, import_id=?, summary=?, finished=? WHERE id=?",
                    (iid, crypto.enc(json.dumps(summary)), dbm.now(), jid))
+        from . import sync   # the first pull of a connected source (#91): its import and cursor go to the connection
+        sync.first_saved(db, jid, iid)
     _remove(path)
 
 

@@ -423,3 +423,13 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
   .imp .man-row .f-value,.imp .man-row .f-unit,.imp .man-row .f-range,.imp .man-row .f-flag{grid-column:span 2}
   .imp .man-row .del{grid-column:span 1}
 }
+/* connected sources (connect.html) */
+.conn code{background:var(--hover);padding:1px 5px;border-radius:5px;user-select:all;overflow-wrap:anywhere}
+.conn .conn-item.conn-bad{border-left:3px solid var(--crit);padding-left:10px}
+.conn .conn-alert{border-left:3px solid var(--crit);padding:6px 0 6px 12px;margin:10px 0;font-weight:550}
+.conn .conn-warn li{color:var(--ink2);font-size:13px;margin:4px 0}
+.conn .conn-guide{font-size:13px;border:1px solid var(--grid);border-radius:8px;padding:8px 12px}
+.conn .conn-guide ol{padding-left:18px;margin:6px 0}
+.conn .conn-disc{border-top:1px solid var(--grid);margin-top:8px;padding-top:8px}
+.conn a.btn{text-decoration:none;color:inherit}
+.conn p,.conn dd{overflow-wrap:anywhere}

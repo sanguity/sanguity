@@ -57,3 +57,12 @@ UPLOAD_MAX_TOTAL = _int("UPLOAD_MAX_TOTAL_MB", 16384) * MB
 UPLOAD_MAX_FILES = _int("UPLOAD_MAX_FILES", 20000)
 # a file unpacked from a zip may be at most this many times its compressed size (a zip bomb is thousands)
 UPLOAD_MAX_ZIP_RATIO = _int("UPLOAD_MAX_ZIP_RATIO", 200)
+
+# connected sources (#32, #91: connections.py, smart.py, sync.py). Nothing is contacted until someone connects a
+# source an admin has set up; then only that source's issuer, and the hosts its discovery names.
+SYNC_HOURS = _int("SYNC_HOURS", 12)                  # how often each connection pulls what's new
+SYNC_MAX_RESOURCES = _int("SYNC_MAX_RESOURCES", 20000)   # the most one pull fetches; the rest come next time
+SYNC_MAX_ATTACHMENT = _int("SYNC_MAX_ATTACHMENT_MB", 50) * MB   # a bigger attachment is left out, with a warning
+CONNECT_TIMEOUT = _int("CONNECT_TIMEOUT", 30)        # seconds to wait for a vendor's answer
+# plain-HTTP issuers (only for a test server on this machine, like tests/fakefhir): never for a real vendor
+CONNECT_ALLOW_HTTP = os.environ.get("CONNECT_ALLOW_HTTP", "") == "1"

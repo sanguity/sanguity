@@ -3,7 +3,8 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 16**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 18** (version 17 is the settings table, #35, on its own branch: a
+placeholder step until it merges). When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -272,6 +273,94 @@ erDiagram
     }
 ```
 
+## Connected sources
+
+A profile can be connected to a provider's or insurer's FHIR API by signing in to it (#32), and is then kept up to
+date on a schedule (#91; `server/connections.py`, `server/smart.py`, `server/sync.py`). How sign-in works is decided
+in [connected-sources-oauth.md](connected-sources-oauth.md): each install registers its own app with each vendor.
+
+- **smart_clients** is what an admin set up per source (install-wide): the FHIR base (issuer), the client ID, the
+  client secret where the vendor issued one, how the app authenticates and the scopes to ask for, and the discovery
+  its last test read. The server contacts no host for that source other than the issuer's and those its discovery
+  names for the token, revocation and registration endpoints.
+- **connections**: one per profile and source. The access token, the refresh token or (with Epic's dynamic
+  registration) the private key and dynamic client ID are one encrypted JSON value, deleted on disconnect, as is the
+  patient id. `cursor` is the `_lastUpdated` to ask after, per resource type; `state` is `active`, `needs reconnect`
+  (the vendor ended access) or `disconnected` (kept, without credentials, so the count and the history can name it).
+- **connect_pending**: a sign-in between leaving for the vendor and coming back, at most 10 minutes. Only a hash of
+  `state` is stored; the PKCE verifier is encrypted; it is bound to the session that started it and used up on
+  return, whatever the outcome.
+- **imports.connection_id**: the connection an import came from (the first pull, then each sync, origin `sync`).
+- **sync_changes**: what a sync changed in place (an event, or an entry of an import's profile-wide lists), with what
+  it was before, so undoing that sync puts it back. A later sync that changed the same record again inherits the
+  "before".
+
+Beside the rows, each connection keeps every FHIR resource it has read, the newest version of each, sealed in
+`profiles/<id>/connections/<connection id>` (a lab day is rebuilt from all of them); it is deleted on disconnect.
+Each pull's raw answer is kept as an upload, like an import's files.
+
+```mermaid
+erDiagram
+    profiles ||--o{ connections : "connected to"
+    smart_clients |o--o{ connections : "set up for"
+    connections ||--o{ imports : "brought"
+    imports ||--o{ sync_changes : "changed in place"
+    events |o--o{ sync_changes : "was"
+    sessions ||--o{ connect_pending : "started"
+    jobs |o--o| connections : "first pull"
+
+    smart_clients {
+        int id PK
+        text name
+        text vendor "epic, oracle, other"
+        text issuer "FHIR base (unique)"
+        text client_id
+        text secret "🔒 NULL: public client"
+        text auth "public, confidential, dynamic"
+        text scopes
+        text discovery "JSON, public"
+        int tested
+    }
+    connections {
+        int id PK
+        int profile_id FK
+        int client_id FK
+        text source "name when connected"
+        text issuer
+        text patient "🔒"
+        text credential "refresh, jwt, access"
+        text secret "🔒 JSON: tokens or key"
+        text scopes "granted"
+        int expires
+        text state "active, needs reconnect, disconnected"
+        text cursor "JSON per type"
+        int first_job FK
+        int last_sync
+        int next_sync
+        int failures
+        text error_kind "unavailable, access, other"
+        text last_error "🔒"
+        text report "🔒 JSON per type"
+    }
+    connect_pending {
+        text state_hash PK "SHA-256"
+        int session_id FK
+        int profile_id FK
+        int client_id FK
+        int connection_id FK "a reconnect"
+        text verifier "🔒"
+        text token_url
+        int expires
+    }
+    sync_changes {
+        int id PK
+        int import_id FK
+        int event_id FK
+        int meta_import FK
+        text previous "🔒 JSON"
+    }
+```
+
 ## What is encrypted
 
 | Table | Encrypted columns |
@@ -286,6 +375,10 @@ erDiagram
 | `import_undos` | `entry` |
 | `edits` | `target_key`, `other_key`, `value` |
 | `labmaps` | `source`, `target` |
+| `smart_clients` | `secret` |
+| `connections` | `patient`, `secret`, `last_error`, `report` |
+| `connect_pending` | `verifier` |
+| `sync_changes` | `previous` |
 | `activity` | `detail` |
 | `users` | `totp_secret`, `totp_pending` |
 | `meta` | the pepper |
@@ -302,4 +395,5 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 | A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, undo history, its activity | the original exports |
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
-| An account | sessions, devices, passkeys, recovery codes, memberships | activity, uploads, jobs and lab-name matches it made (their links become `NULL`) |
+| A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen | the row, as disconnected |
+| An account | sessions, devices, passkeys, recovery codes, memberships, pending sign-ins | activity, uploads, jobs and lab-name matches it made (their links become `NULL`) |
