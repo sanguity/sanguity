@@ -241,7 +241,9 @@ only**; editing those in the app comes with Phase 3 (#39).
 
 ## Privacy and security
 
-- **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.
+- **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry. The one
+  exception is one you ask for: importing a pasted SMART Health Link fetches it from its host (and, for a Health Card,
+  the issuer's public keys) after you confirm, HTTPS only, and the host is noted in the profile's activity log.
   Planned sign-in to providers' and insurers' APIs will be opt-in, through an app each install registers with
   the vendor itself (decided in [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)).
 - **Accounts with Argon2id-hashed passwords** (at least 15 characters, per NIST SP 800-63B; passwords found in
