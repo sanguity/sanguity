@@ -35,8 +35,9 @@ Failures: the vendor unavailable (429, 5xx, no answer after smart.Client's retri
 up to SYNC_HOURS; the vendor ending access makes the connection "needs reconnect", and the page asks to sign in
 again; anything else is shown as it is and retried with the same backoff.
 
-imports.synced (#100, record sources) isn't on main yet: when it lands, set it here on the sync's import and on
-those whose records a sync updated in place.
+Each successful pull, new records or not, marks every import of the connection as up to date then
+(imports.synced, #100): the page shows it as "last synced" beside each record's source. The first pull's import gets
+it when its preview is saved.
 """
 import contextlib, io, json, logging, os, shutil, tempfile, threading, urllib.parse
 
@@ -320,7 +321,7 @@ def first_saved(db, jid, iid):
     if not c:
         return
     if iid is not None:
-        db.execute("UPDATE imports SET connection_id=? WHERE id=?", (c["id"], iid))
+        db.execute("UPDATE imports SET connection_id=?, synced=? WHERE id=?", (c["id"], dbm.now(), iid))
     db.execute("""UPDATE connections SET cursor=IFNULL(pending_cursor, '{}'), pending_cursor=NULL,
                   next_sync=CASE WHEN state='active' THEN ? ELSE NULL END WHERE id=?""",
                (dbm.now() + config.SYNC_HOURS * 3600, c["id"]))
@@ -496,6 +497,11 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
 
 
 def _done(db, c, got, report):
+    """A pull worked: the connection's cursor moves on, and its imports are up to date as of now (imports.synced,
+    which the page shows, so the profile's records_rev moves too)."""
+    now = dbm.now()
+    if db.execute("UPDATE imports SET synced=? WHERE connection_id=?", (now, c["id"])).rowcount:
+        records._bump(db, db.execute("SELECT profile_id FROM connections WHERE id=?", (c["id"],)).fetchone()["profile_id"])
     db.execute("""UPDATE connections SET cursor=?, last_sync=?, next_sync=?, failures=0, error_kind=NULL, last_error=NULL,
                   report=? WHERE id=?""",
                (json.dumps(got["cursor"]), dbm.now(), dbm.now() + config.SYNC_HOURS * 3600, conns._jenc(report), c["id"]))

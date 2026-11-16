@@ -317,6 +317,28 @@ class Connections(unittest.TestCase):
         docs = [e for e in self.data()["events"] if e["k"] == "document"]
         self.assertTrue(docs, "the DocumentReference's Binary came in as a document")
 
+    def test_records_show_when_they_were_last_synced(self):   # imports.synced, shown beside each record's source (#100)
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        synced = lambda: {i: v["synced"] for i, v in self.data()["imports"].items()
+                          if v["origin"] in ("upload", "sync") and v["synced"] is not None}
+        first = synced()
+        self.assertEqual(len(first), 1, self.data()["imports"])   # the first pull's import, once saved
+        db = dbm.connect()
+        db.execute("UPDATE imports SET synced=synced-3600 WHERE connection_id=?", (cid,))   # an hour ago
+        db.close()
+        res = self.pull(cid)   # nothing new: still, the records are up to date as of now
+        self.assertTrue(res["ok"], res)
+        self.assertIsNone(res["import"])
+        now = synced()
+        self.assertEqual(set(now), set(first))
+        self.assertTrue(all(now[i] >= first[i] for i in now), (first, now))   # moved on, and the page sees it
+        self.fake.add(NEW_OBS, patient="pat-1")
+        res = self.pull(cid)
+        latest = synced()
+        self.assertIn(str(res["import"]), latest)   # a sync that brought records is marked too
+        self.assertEqual(len(set(latest.values())), 1, latest)
+
     def test_incremental_pull_adds_only_new_and_changed(self):
         cid = self.connect(self.source())
         self.first_pull(cid)
