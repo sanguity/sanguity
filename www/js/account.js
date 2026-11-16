@@ -273,7 +273,8 @@ const WHAT = {
     d.from ? `changed ${d.username}’s role from ${d.from} to ${d.role}` : `shared it with ${d.username} as ${d.role}`,
   unshare: (d, e) => d.username === e.actor ? "left the profile" : `removed ${d.username}’s access`,
   import: d => d.counts ? `imported an upload${d.skipped && (d.skipped.events || d.skipped.results)
-    ? `, skipping ${d.skipped.events + d.skipped.results} duplicate${d.skipped.events + d.skipped.results === 1 ? "" : "s"}` : ""}`
+    ? `, skipping ${d.skipped.events + d.skipped.results} duplicate${d.skipped.events + d.skipped.results === 1 ? "" : "s"}` : ""}` +
+    (d.labs && d.labs.matched ? `, matching ${d.labs.matched} lab name${d.labs.matched === 1 ? "" : "s"} to existing series` : "")
     : `imported records (${d.documents} documents)`,
   reload: () => "loaded the latest records",
   export: () => "exported everything",
@@ -303,6 +304,8 @@ const WHAT = {
     (d.handed_over && d.handed_over.length ? `, handing ${d.handed_over.join(", ")} to someone else` : ""),
   "profile.repair": d => `made ${d.username} owner of “${d.name}”, which had no active owner`,
   "profile.delete": d => `deleted the profile “${d.name}”${d.members > 1 ? ` (shared with ${d.members - 1} other${d.members > 2 ? "s" : ""})` : ""}`,
+  "labmap.change": d => `changed the lab name match for “${d.name}” from ${d.from ? `“${d.from}”` : "its own series"} to ${d.to ? `“${d.to}”` : "its own series"}`,
+  "labmap.remove": d => `removed the lab name match for “${d.name}”${d.target ? ` (to “${d.target}”)` : ""}`,
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
@@ -424,6 +427,43 @@ async function loadUsers() {
             try { await fresh(() => call("users/" + u.id, "PATCH", {disable_2fa: true})); loadUsers(); } catch (e) { say("#userMsg", e.message, true); } }}) : null));
     }))));
 }
+/* lab names matched during imports (#23): install-wide, so admins change or remove them; never shows results */
+async function loadLabmaps() {
+  const [list, names] = await Promise.all([call("labmaps"), call("lab-names").catch(() => [])]);
+  $("#labmapNames").replaceChildren(...[...new Set([...names, ...list.map(m => m.target).filter(Boolean)])].map(n => el("option", {value: n})));
+  $("#labmaps").hidden = false;
+  if (!list.length) { $("#labmapList").replaceChildren(el("p", {class: "muted", text: "None yet: they're made when an import's lab names are matched at its preview."})); return; }
+  const as = m => m.target ? `charted as “${m.target}”` : "kept as a series of its own";
+  $("#labmapList").replaceChildren(el("table", {class: "tbl"},
+    el("thead", {}, el("tr", {}, ...["Reported as", "Goes to", "From", "Added", ""].map(h => el("th", {text: h})))),
+    el("tbody", {}, ...list.map(m => {
+      const goes = el("td", {class: "lm-target", text: m.target || "its own series"});
+      const edit = () => {
+        const input = el("input", {type: "text", list: "labmapNames", value: m.target || "", maxlength: 120, "aria-label": `Series for ${m.name}`,
+                                   placeholder: "Leave empty to keep it separate"});
+        const ok = el("button", {class: "btn small primary", type: "submit", text: "Save"});
+        const no = el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => loadLabmaps()});
+        goes.replaceChildren(el("form", {class: "lm-edit", onsubmit: async ev => {
+          ev.preventDefault();
+          try { const r = await call("labmaps/" + m.id, "PATCH", {target: input.value.trim() || null}); say("#labmapMsg", `“${r.name}” is now ${as(r)}.`); loadLabmaps(); }
+          catch (e) { say("#labmapMsg", e.message, true); }
+        }}, input, ok, no));
+        input.focus();
+      };
+      return el("tr", {"data-labmap": m.id},
+        el("td", {}, el("b", {text: m.name}), el("span", {class: "muted", text: [m.unit, m.loinc && "LOINC " + m.loinc].filter(Boolean).map(x => " · " + x).join("")})),
+        goes,
+        el("td", {text: m.label}),
+        el("td", {}, `${when(m.created)} by ${m.created_by}`, m.changed ? el("div", {class: "muted", text: `changed ${when(m.changed)} by ${m.changed_by}`}) : null),
+        el("td", {class: "acts"},
+          el("button", {class: "btn small", type: "button", text: "Change", onclick: edit}),
+          el("button", {class: "btn small", type: "button", text: "Remove", onclick: async () => {
+            if (!confirm(`Forget the match for “${m.name}”? The next import that has it will ask again. Results already saved keep their series.`)) return;
+            try { await call("labmaps/" + m.id, "DELETE"); say("#labmapMsg", `Forgot the match for “${m.name}”.`); loadLabmaps(); }
+            catch (e) { say("#labmapMsg", e.message, true); }
+          }})));
+    }))));
+}
 /* profiles nobody can manage (every owner disabled or removed): an admin names a new owner; never shows records */
 async function loadOwnerless() {
   const list = await call("ownerless"), box = $("#ownerless");
@@ -543,7 +583,7 @@ addEventListener("hashchange", () => { if (tabsOn) openFromHash(); });
   openFromHash();
   const admin = ME.user.is_admin && !ME.user.admin_needs_two_factor;
   await Promise.all([loadSessions(), loadProfiles(), loadTwoFactor(), loadPasskeys(), admin ? loadUsers() : null,
-    admin ? loadNotice() : null]);
+    admin ? loadNotice() : null, admin ? loadLabmaps() : null]);
   if (ME.user.is_admin && !admin) { adminGate(); return; }
   if (ME.user.is_admin) {
     const req = $("#reqTf");

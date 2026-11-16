@@ -98,6 +98,16 @@
     </div>
     <span class="msg" id="userMsg" role="status"></span>
   </section>
+  <section class="card" id="labmaps" hidden>
+    <h2>Lab name matches <span class="tag">admin</span></h2>
+    <p class="hint">When an import has a lab test spelled in a way Sanguity doesn't know, the person importing it picks the
+      series it belongs to (or keeps it separate), and that choice is used for later imports from the same source.
+      These matches apply to every profile on this server, so only admins can change or remove them. They name tests,
+      never anyone's results or profiles. A change applies to later imports; results already saved keep their series.</p>
+    <div id="labmapList"></div>
+    <datalist id="labmapNames"></datalist>
+    <span class="msg" id="labmapMsg" role="status"></span>
+  </section>
   </div>
 </main>
 <script src="js/util.js"></script>

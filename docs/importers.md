@@ -185,6 +185,10 @@ ticks it to keep anyway; a series adds only the points (time and value as report
 record without a key falls back to the same importer, date, kind and content, which is slower and easier to fool, so
 give keys. A lab day stays while any of its results is new and goes when all of them are duplicates; `check()` runs
 again on what's left before it's saved.
+A series whose name `lab-aliases.json` doesn't know is offered an existing series at the preview (`server/labmap.py`:
+by LOINC code, then by a similar name with a compatible unit), and the person's choice is remembered for later
+imports. Only the series' `name` changes; its key stays, so name a series however the source does and key it by LOINC
+code (`"loinc:<code>"`, or a `loinc` field) when the source gives one.
 `check()` refuses a key that isn't a non-empty string, or that is used twice within one import: among the events,
 among the lab series, among `problems` and among `upcoming` (each list separately). It doesn't check the prefix: the
 `sanguity` importer passes keys through unchanged, so a re-imported export keeps the keys the original importer gave.

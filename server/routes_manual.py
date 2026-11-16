@@ -8,7 +8,9 @@ A row has date, time, test, value, unit, range (or low and high), flag and lab, 
 importer's own row reader (csv_labs.read_row) and the result is built by its build(), so a typed result is the same
 as that result in a spreadsheet: the same source keys, canonical names, ranges and flags. Only the source tag on the
 points ("Typed in") differs. Unlike a spreadsheet, where unreadable rows are skipped with a warning, a typed row that
-can't be read is refused with its reason, and nothing is saved until every row reads.
+can't be read is refused with its reason, and nothing is saved until every row reads. A test name matched to a
+series on an earlier import's preview (labmap.py: remembered for hand entry, else for a spreadsheet) goes into that
+series here too, in the readback and when saved.
 
 A save is one import (records.store, origin "manual", format "manual") in a transaction with its activity log entry
 ("import", {"importer": "manual", "counts"}), so undoing an import covers it like any other. Owners and editors
@@ -20,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import activity, db as dbm, importers as registry, jobs, records
+from . import activity, db as dbm, importers as registry, jobs, labmap, records
 from .importers import common, csv_labs
 from .main import _client_ip, get_db, need, user
 
@@ -28,6 +30,7 @@ router = APIRouter()
 
 NAME = "manual"            # imports.origin and imports.format, and the activity log's importer
 SOURCE = "Typed in"        # source tag on the points, shown on Trends
+MATCHED_AS = (NAME, csv_labs.NAME)   # whose remembered lab-name matches apply, in this order: typed rows are built as a CSV's
 MAX_ROWS = 200             # the API's bodies stay under nginx's 64 KB cap
 FIELDS = ("date", "time", "test", "value", "unit", "range", "low", "high", "flag", "lab")
 WHY = {"with no test name": "needs a test name", "with no date": "needs a date",
@@ -94,10 +97,17 @@ def read(rows):
     return out
 
 
-def _describe(n, r, problems, notes):
+def _matched(db, got):
+    """{row number: series name} for rows whose test name was matched to a series before (labmap.remembered)."""
+    idents = {n: (r["test"], r["unit"], r["loinc"] or "") for n, r, _, _ in got
+              if r and not common.canonical_lab(r["test"], r["loinc"])}
+    return {n: f["target"] for n, f in labmap.remembered(db, MATCHED_AS, idents).items() if f["target"]}
+
+
+def _describe(n, r, problems, notes, matched=None):
     d = {"row": n, "ok": not problems, "problems": problems, "notes": notes}
     if r:
-        d.update(date=_display(r["t"]), name=common.canonical_lab(r["test"], r["loinc"]) or r["test"],
+        d.update(date=_display(r["t"]), name=(matched or {}).get(n) or common.canonical_lab(r["test"], r["loinc"]) or r["test"],
                  value=r["x"], text=r["reported"] if r["x"] is None else None, unit=r["unit"], low=r["lo"], high=r["hi"],
                  flag=r["flag"])
     return d
@@ -108,7 +118,8 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
     """Check typed results, and with save, store them. A refusal (400) says which rows and why, and saves nothing."""
     need(db, s, pid, "editor")
     got = read(body.rows)
-    shown = [_describe(*x) for x in got]
+    matched = _matched(db, got)
+    shown = [_describe(*x, matched) for x in got]
     bad = [f"Row {n} {'; '.join(p)}." for n, _, p, _ in got if p]
     if not body.save:
         return {"rows": shown, "problems": bad}
@@ -119,7 +130,8 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
         msg = " ".join(bad[:5]) + (f" And {len(bad) - 5} more." if len(bad) > 5 else "") + " Nothing was saved."
         return JSONResponse({"detail": msg, "rows": shown, "problems": bad}, status_code=400)
     results = [r for _, r, _, _ in got]
-    out = {"data": csv_labs.build(results, source=SOURCE, sub=SOURCE), "warnings": []}
+    data, _ = labmap.apply_remembered(db, MATCHED_AS, csv_labs.build(results, source=SOURCE, sub=SOURCE))
+    out = {"data": data, "warnings": []}
     problems = registry.check(out)
     if problems:   # a bug, not the typist's doing
         raise HTTPException(500, "The typed results came out in a shape Sanguity can't load. Nothing was saved.")
