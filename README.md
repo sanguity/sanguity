@@ -110,6 +110,7 @@ different; the file stays beside them as `data-before-v10.json`, and can be dele
 | Insurance claims exports (`uhc`, `bcbs` formats) | Claims, billed / paid / your share, denials |
 | Payments export (`payments.json`) | Out-of-pocket payments and premiums |
 | Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition |
+| Typed in by hand on the import page (**Type them in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
 
 Standard formats (FHIR, C-CDA labs, Apple Health, CSV) and an import tool in the app are planned; if your
 portal's export doesn't import, please open an issue with an anonymised sample, or write an importer for it:
@@ -131,6 +132,24 @@ higher, raise `client_max_body_size` in `nginx.conf` too. Refused: paths that ar
 than `UPLOAD_MAX_ZIP_RATIO` (200) times its compressed size (a zip bomb). An upload left unfinished for a day is
 removed when the app next starts. While an import reads an upload, a decrypted copy sits in the app container's
 `/tmp`, which is in memory, and is removed straight after.
+
+### Typing records in
+
+For records on paper, or from a portal that has no export, **Type them in** on the import page takes every kind of
+record Sanguity can import. Lab results go one per row, as in a spreadsheet (and rows copied from one can be pasted
+in); everything else has a form of its own, picked from **Add a record**: a visit, a hospital stay, a procedure, an
+imaging scan or a report, a medication or a pharmacy fill with its cost, a problem or diagnosis, an insurance claim,
+an out-of-pocket payment, an upcoming appointment, vitals taken at a visit (blood pressure, heart rate, temperature,
+height, SpO2, breathing rate, weight), a weight or step count measured at home, a workout, or a letter or document
+with its PDF or picture attached. Dates take the forms a lab spreadsheet does (`2026-03-04`, `4 Mar 2026`, and
+`03/04/2026` when the other dates settle which is the day).
+
+Each entry is checked as you type and says what it will become, or which field is wrong and why; one the profile has
+already is pointed out and left out of the save unless you tick **Save again what's already there**. **Save** stores
+everything as one import, which shows wherever imported records do (the timeline and its panel, Trends, Health and
+Costs) and can be undone from the import history as a whole, the attached files and the home measurements included.
+Owners and editors only. An attached file is sent as an upload, so the upload limits above apply to it; it is kept
+encrypted like any other.
 
 ### Correcting records
 
