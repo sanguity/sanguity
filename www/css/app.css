@@ -366,6 +366,17 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .import-job .imp-labs .why{color:var(--muted);font-size:12px}
 .import-job .imp-labs .before{font-size:12px;font-weight:600}
 .imp .off{display:none !important}
+/* a SMART Health Link pasted or scanned (import-shl.js) */
+.imp .shl-text{display:grid;gap:4px;margin:6px 0}
+.imp .shl-text textarea{width:100%;box-sizing:border-box;font:13px/1.4 ui-monospace,monospace;padding:6px 8px;overflow-wrap:anywhere}
+.imp .shl-video{display:block;width:100%;max-width:420px;border-radius:10px;margin:8px 0;background:#000}
+.imp .shl-about{border-top:1px solid var(--grid);margin-top:10px;padding-top:6px}
+.imp .shl-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:6px 0;font-size:14px}
+.imp .shl-facts dt{color:var(--muted)}
+.imp .shl-facts dd{margin:0;overflow-wrap:anywhere}
+.imp .shl-pass{display:grid;gap:4px;max-width:260px;margin:8px 0}
+.imp .shl-card{font-size:13px;margin:8px 0}
+.imp .shl-card .bad{color:var(--crit)}
 .imp .btn.primary:disabled{color:var(--ink);border-color:var(--ring)}   /* not white on white */
 /* results typed in (import-manual.js): one grid row per result, captions on the first row only, all on a phone */
 .imp .man-rows{display:grid;gap:2px;margin:10px 0 4px}

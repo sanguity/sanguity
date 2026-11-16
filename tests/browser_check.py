@@ -10,8 +10,10 @@ gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab
 export), types two lab results in on the import page and finds them on Trends, types a visit, a medication, a
 claim and a letter with a PDF into their own forms, finds them on the timeline and Costs and opens the PDF, uploads a lab with a spelling Sanguity
 doesn't know, accepts the series suggested at the preview and finds it on Trends, then sees it matched as before on
-the next upload, opens the account page (where the match is listed for admins), sees each record's source in the
-drawer, on Trends and on the heatmap and follows its link to the import history, and fails
+the next upload, pastes a fictional SMART Health Link served by a local HTTPS server (what it says is shown and
+nothing is fetched until Fetch; then its preview, and saved), opens the account page (where the match is listed for
+admins), sees each record's source in the drawer, on Trends and on the heatmap and follows its link to the import
+history, and fails
 on any script error, console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -24,6 +26,7 @@ from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-browser-")
 USER, PW = "demo", "a long demo passphrase"
+SHL = None   # the local HTTPS host of a fictional SMART Health Link (tests/shl_server.py), started with the app
 NAN_HOOK = """window.__nan = []; const sa = Element.prototype.setAttribute;
 Element.prototype.setAttribute = function (k, v) { if (String(v) === "NaN") window.__nan.push(this.tagName + "." + k); return sa.call(this, k, v); };"""
 
@@ -74,6 +77,11 @@ def start_app():
     db.close()
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
+    global SHL
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    import shl_server
+    SHL = shl_server.Server().start()   # a local HTTPS host for a SMART Health Link (#94); server.shl may reach it
+    SHL.trust()
     srv = uvicorn.Server(uvicorn.Config(main.app, host="127.0.0.1", port=port, log_level="warning"))
     threading.Thread(target=srv.run, daemon=True).start()
     while not srv.started:
@@ -767,6 +775,36 @@ def main():
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
             check("…and saved into Hemoglobin again", js(f"{last_card}.textContent").startswith("Imported."))
+
+            # ---- a SMART Health Link pasted (#94): its host, label and passcode flag are shown and nothing is fetched;
+            # Fetch and preview fetches it once and shows the import's preview, which saves like an upload
+            import shl_server
+            SHL.seen.clear()
+            link = SHL.share(shl_server.bundle("2026-11-10", 13.9), passcode="fictional-2468", label="Fictional clinic",
+                             viewer="https://viewer.example.org/")
+            page.goto(base + "/import.html?profile=2")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            page.click("#tab-link")
+            check("the Paste a link tab hides the file drop", js("!document.getElementById('panel-link').hidden && getComputedStyle(document.getElementById('drop')).display === 'none'"))
+            page.fill("#shlText", link)
+            page.wait_for_selector("#shlAbout", state="visible", timeout=5000)
+            facts = page.inner_text("#shlFacts")
+            check("the pasted link's host, label and passcode flag are shown", f"localhost:{SHL.port}" in facts and "Fictional clinic" in facts
+                  and "needed" in facts and js("!document.getElementById('shlPassRow').hidden"), facts)
+            check("…and nothing was fetched from it", SHL.seen == [], SHL.seen)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the Paste a link tab fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.fill("#shlPass", "fictional-2468")
+            page.click("#shlGo")
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length && /^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.textContent")
+            check("Fetch and preview fetches it once and shows the preview", card.startswith("Ready to import") and "FHIR" in card
+                  and len(SHL.seen) == 1, (card[:200], len(SHL.seen)))
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            check("…and saves it", js(f"{last_card}.textContent").startswith("Imported."), js(f"{last_card}.textContent")[:200])
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
             page.select_option("#profile", label="My records")
@@ -966,6 +1004,7 @@ def main():
                 problems.append(f"passkey page at {pk.url}: " + str(pk.evaluate("document.body.innerText.slice(0, 300)")))
         browser.close()
     srv.should_exit = True
+    SHL.stop()
     time.sleep(0.3)
     shutil.rmtree(TMP, ignore_errors=True)
 
