@@ -142,6 +142,9 @@ class Manual(unittest.TestCase):
         jid, end = r.json()["id"], time.time() + 20
         while (j := self.robin.get(f"/api/profiles/{self.csv_pid}/jobs/{jid}").json())["state"] not in ("done", "failed"):
             self.assertLess(time.time(), end, j)
+            if j["state"] == "preview":   # an import waits at its preview (#22): save it, as the page's Save does
+                c = self.robin.post(f"/api/profiles/{self.csv_pid}/jobs/{jid}/confirm", json={}, headers=H)
+                self.assertEqual(c.status_code, 202, c.text)
             time.sleep(0.05)
         self.assertEqual((j["state"], j["importer"]), ("done", "csv"), j)
         r = self.post(TYPED, pid=self.typed_pid)
