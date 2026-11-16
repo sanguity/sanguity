@@ -152,6 +152,8 @@ only**; editing those in the app comes with Phase 3 (#39).
 ## Privacy and security
 
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.
+  Planned sign-in to providers' and insurers' APIs would be opt-in; the proposed design is in
+  [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md).
 - **Accounts with Argon2id-hashed passwords** (at least 15 characters, per NIST SP 800-63B; passwords found in
   public breaches are refused, checked against a bundled list on your server, see `server/passwords/`). Password and
   recovery-code hashes are peppered with a server secret that only the encryption key unlocks, so a copied database
