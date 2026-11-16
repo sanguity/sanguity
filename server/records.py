@@ -8,6 +8,7 @@ to data.json, and each part of it has its place:
   costs      [{id: event id, d, billed, paid, owe...}]       events.cost, the claim's own row
   labs       [{name, unit, panel, loinc, n, txt, pts}]       series, with each point of pts a row in results
   the rest   built, source, upcoming, problems, outOfPocket, milestones, clinicWeights...   imports.meta
+             (milestones there are no longer what the page shows: they are a setting since #39, milestones.py)
   edits      [{id, action, found, ids...}]                   the edits table: corrections made in the app, applied
                                                              after the rows (edits.py), never part of an import
   same       [{id, same, found, sides...}]                   the same_results table: results from two sources the

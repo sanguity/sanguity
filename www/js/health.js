@@ -30,12 +30,17 @@ function hData() {
   const lo = M.hr_min ? Object.fromEntries(M.hr_min.pts) : {}, hi = M.hr_max ? Object.fromEntries(M.hr_max.pts) : {};
   const hr = ser("hr_avg").map(([t, v]) => [t, v, lo[isoDay(t)], hi[isoDay(t)]]);
   const ex = ((WATCH || {}).exercise || []).map(x => ({t: Date.parse(x.start), name: (x.name || "").replace(/_/g, " "), kind: x.kind, min: x.minutes || 0}));
-  // visits matching a settings rule (e.g. physical therapy) count as workouts: one per rule per day, past visits only
+  // visits matching a settings rule (e.g. physical therapy) count as workouts: one per rule per day, past visits only.
+  // A rule's text is found anywhere in the title, ignoring case; with "regex" it is a regular expression the server
+  // checked is safe to run (server/settings.py, whose rule_matches does the same)
+  const head = t => (t || "").replace(/\s+/g, " ").trim().slice(0, 200);   // a title's first 200 characters (TITLE_MAX)
   for (const rule of CFG.visitWorkouts) {
-    let re; try { re = new RegExp(rule.match, "i"); } catch (e) { continue; }
+    let test;
+    if (rule.regex) { try { const re = new RegExp(rule.match, "i"); test = t => re.test(head(t)); } catch (e) { continue; } }
+    else { const want = String(rule.match || "").toLowerCase(); if (!want) continue; test = t => head(t).toLowerCase().includes(want); }
     const name = rule.name || rule.match, days = new Set();
     for (const e of DATA.events) {
-      if (e.k !== "visit" || !re.test(e.title) || e.ts > Date.now()) continue;
+      if (e.k !== "visit" || !test(e.title) || e.ts > Date.now()) continue;
       const d = isoDay(e.ts); if (days.has(d)) continue; days.add(d);
       ex.push({t: e.ts, name, kind: "visit_workout", min: +rule.minutes || 30, pt: true, rule: name, who: (e.sub || "").split(" · ")[0]});
     }

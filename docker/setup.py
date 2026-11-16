@@ -102,9 +102,8 @@ def build_data():
     data, sources = os.path.join(BUILD, "data.json"), os.path.join(CONFIG, "sources.json")
     legacy = os.path.join(WWW, "data.json")   # where data lived before accounts; nginx no longer serves it
     if os.path.isfile(sources):
-        corrections = os.path.join(CONFIG, "corrections.json")   # its milestones
         run([sys.executable, "-I", os.path.join(APP, "build.py"), "--config", sources, "--out", data + ".tmp"],
-            {"RECORDS_ROOT": RECORDS, **({"SANGUITY_CORRECTIONS": corrections} if os.path.isfile(corrections) else {})})
+            {"RECORDS_ROOT": RECORDS})
         own(data + ".tmp")
         os.replace(data + ".tmp", data)
     elif not os.path.exists(data) and os.path.isfile(legacy) and not is_demo(legacy):
@@ -127,7 +126,8 @@ def build_data():
             crypto.write_file(built, crypto.read_file(src))
         elif os.path.isfile(built):
             os.remove(built)   # settings.json was removed (settings made in the app stay)
-    # corrections.json next to compose.yaml: the app moves its event corrections into edits once (server/edits.py)
+    # corrections.json next to compose.yaml, from before #33 and #39: the app moves its event corrections into edits
+    # and its milestones into settings once, at start-up (server/edits.py, server/milestones.py)
     built = os.path.join(BUILD, "corrections.json")
     if os.path.isfile(os.path.join(CONFIG, "corrections.json")):
         crypto.write_file(built, crypto.read_file(os.path.join(CONFIG, "corrections.json")))

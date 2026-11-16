@@ -17,7 +17,8 @@ preview, sees the attachments the install's rules left out and fetches one anywa
 the connection pulls, and is asked to reconnect when access ends, with a warning on the profile's main page, uploads a
 Blue Button export and connects a health plan's patient-access API (the fake again) and finds both sets of claims on
 Costs, sees the source's and the Health Link's hosts under Settings → Outside connections, changes settings on the
-Settings page and resets them (drags and keyboard-moves the key-lab tiles, hides and
+Settings page and resets them (a milestone added there marked on Trends and a "since" period on Health; a
+workout rule, a catastrophic pattern refused first, counted on Health; drags and keyboard-moves the key-lab tiles, hides and
 reorders tabs, sets a default theme a fresh browser picks up), builds a visit summary (sections, a lab, questions
 kept as a draft), previews it and downloads the PDF, reading it back, opens the account
 page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap, links the
@@ -148,7 +149,7 @@ def main():
         check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 7)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 8)
         strict.goto(base + "/summary.html")   # the visit summary page (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
         check("under the CSP: summary.js runs", strict.evaluate("document.querySelectorAll('#sections input').length") == 5)
@@ -965,7 +966,7 @@ def main():
             page.click("#settingsLink")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Trends", "Names", "Health", "Connected sources", "Tabs", "Appearance"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Trends", "Names", "Health", "Connected sources", "Milestones", "Tabs", "Appearance"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…with the server's attachment and sync defaults as a switch, numbers and choices (#101, #102)",
                   js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length]") == [5, 3],
                   js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
@@ -1180,6 +1181,75 @@ def main():
             page.fill("#questions", "")   # leave no draft behind
             page.wait_for_function("document.getElementById('qMsg').textContent === 'Draft saved.'", timeout=10000)
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
+            # ---- milestones (#39) and visits counted as workouts (#43) on the Settings page: a milestone added (primary)
+            # shows as a marker on Trends and a "since" period on Health; a rule (a bad regular expression refused
+            # first) makes the Health tab count the matching visits; both sections reset
+            check("the demo's milestones moved into the settings", js("MILESTONES.length") > 0, js("MILESTONES"))
+            visit = js("(() => { const n = {}; for (const e of DATA.events) if (e.k === 'visit' && e.ts < Date.now()) n[e.title] = (n[e.title] || 0) + 1;"
+                       " return Object.entries(n).sort((a, b) => b[1] - a[1])[0][0]; })()")
+            want = visit.split(" ")[0].lower()
+            days = js(f"new Set(DATA.events.filter(e => e.k === 'visit' && e.ts < Date.now() && e.title.replace(/\\s+/g, ' ').trim().slice(0, 200).toLowerCase().includes({json.dumps(want)})).map(e => isoDay(e.ts))).size")
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sec-milestones [data-key=milestones] .set-row:not(.set-head)", timeout=10000)
+            check("Settings shows the Milestones section", "Milestones" in js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+            ms = "[data-key=milestones]"
+            page.click(f"{ms} button:text-is('Add a row')")
+            page.fill(f"{ms} .set-row:last-child input[data-k=date]", "2026-08-01")
+            page.fill(f"{ms} .set-row:last-child input[data-k=label]", "Browser check milestone")
+            page.check(f"{ms} .set-row:last-child input[data-k=primary]")
+            check("…one primary at a time", js(f"document.querySelectorAll('{ms} input[data-k=primary]:checked').length") == 1)
+            page.click(f"{ms} button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-milestones > .msg').textContent.startsWith('Saved')", timeout=10000)
+            rules = "[data-key=visitWorkouts]"
+            page.click(f"{rules} button:text-is('Add a row')")
+            page.fill(f"{rules} .set-row:last-child input[data-k=match]", "(a+)+$")
+            page.fill(f"{rules} .set-row:last-child input[data-k=name]", "Browser check rule")
+            page.fill(f"{rules} .set-row:last-child input[data-k=minutes]", "40")
+            page.check(f"{rules} .set-row:last-child input[data-k=regex]")
+            n0 = len(problems)
+            page.click(f"{rules} button:text-is('Save')")
+            page.wait_for_function(f"document.querySelector('{rules} .msg').textContent.includes('very slow')", timeout=10000)
+            settle(200)
+            refused = [p for p in problems[n0:] if ("HTTP 400" in p and p.endswith("/settings/visitWorkouts")) or "status of 400" in p]
+            problems[n0:] = [p for p in problems[n0:] if p not in refused]   # this refusal is the point, not a fault
+            check("a catastrophic regular expression is refused before saving",
+                  "very slow" in js(f"document.querySelector('{rules} .msg').textContent") and len(refused) == 2, refused)
+            page.fill(f"{rules} .set-row:last-child input[data-k=match]", want)
+            page.uncheck(f"{rules} .set-row:last-child input[data-k=regex]")
+            page.click(f"{rules} button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-health > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the milestones and workout rules fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            page.click("#tab-labs")
+            js("applyPreset('all')")
+            settle()
+            check("…the new milestone is marked on Trends",
+                  js("[...document.querySelectorAll('#charts .mslabel')].some(t => t.textContent.includes('Browser check milestone'))"))
+            page.click("#tab-health")
+            settle()
+            page.click("#view-health .seg button:text-is('Since browser check milestone')")
+            settle()
+            check("…and is a “since” period on Health", js("isoDay(hRange()[0])") == "2026-08-01",
+                  js("[hState.period, new Date(hRange()[0]).toISOString()]"))
+            check("…the primary one, the Overview counts from", js("primaryMs().label") == "Browser check milestone")
+            page.click("#view-health .seg button:text-is('All')")
+            settle()
+            counted = js("H.ex.filter(x => x.pt && x.rule === 'Browser check rule').length")
+            check("the Health tab counts visits matching the rule", counted == days and days > 0, f"{counted} of {days} days ({want})")
+            check("…and says so", f"{days} browser check rule appointment" in js("document.getElementById('view-health').innerText"))
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sec-milestones", timeout=10000)
+            for sec in ("milestones", "health"):
+                page.once("dialog", lambda d: d.accept())
+                page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
+                page.wait_for_function(f"document.querySelector('#sec-{sec} > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            check("…both reset", js("MILESTONES.length === 0 && !CFG.visitWorkouts.length"), js("[MILESTONES, CFG.visitWorkouts]"))
             # ---- connected sources (#32, #91), against the fake SMART on FHIR server standing in for an Epic sandbox:
             # an admin sets the source up and tests it, the profile connects by signing in, the first pull is previewed
             # and saved, Sync now brings a new result, and when the patient ends access the page asks to reconnect

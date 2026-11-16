@@ -59,25 +59,31 @@ Everything on `main` so far; it becomes the first tagged release.
 - Claims as FHIR: CARIN Blue Button ExplanationOfBenefit (insurers' patient-access APIs, Medicare Blue Button
   exports) becomes claims and pharmacy fills on the Costs tab, and an "Insurer" connected source pulls them on a
   schedule (#92).
+- What a connection pulls is the person's choice (kinds of records, from a date), attachments follow the install's
+  rules with a size budget and "fetch anyway", and a connection that stops syncing says so on the profile's main
+  page (#99, #101, #102).
+
+**Settings and dashboard configuration (Phase 3)**
+- A Settings page per profile on a settings registry: every setting with its default, who may change it and
+  Reset to defaults; settings.json moved in once, settings exported and encrypted (#33).
+- The Overview's key-lab tiles chosen and ordered by drag, keyboard or buttons (#36); tabs shown, hidden and
+  reordered per profile (#40); a per-user default theme (#45).
+- Milestones are added, changed and removed on the Settings page, one marked primary (#39). Visits counted as
+  workouts are a rules list there: plain text by default, a regular expression as an option, checked for patterns
+  that could make matching slow (#43).
 
 **Sharing and new features (Phase 4)**
 - Reminders as a calendar feed (#51): a private iCalendar address per person and profile, made on the Settings page,
   that your own calendar app (iPhone, Mac, Google Calendar, Outlook) subscribes to. It lists upcoming appointments
   and, for labs drawn at a steady rhythm, the next expected draw as a tentative all-day event. Minimal details
   ("Appointment") by default; rotate or turn it off any time. Sanguity still sends nothing: the calendar app fetches.
-
-**Sharing and new features (Phase 4)**
 - A journal of dated notes, symptoms and side effects, with a 0–10 severity and an optional link to one of the
   profile's medications (#49). Entries have their own timeline lane, show as markers on Trends (bigger means more
   severe), can be added from any event's panel, and are listed with filters under Journal. Owners and editors
   write them, viewers read them; they're encrypted, kept when imports are undone, and included in exports.
-
-**Sharing and new features (Phase 4)**
 - A visit summary to bring to an appointment: one or two printable pages (PDF) with results out of range since
   the last visit (each against its own report's range), trends of the key labs, current medications, upcoming
   appointments and your own questions, kept as a draft per profile (#48).
-
-**Sharing and new features (Phase 4)**
 - Install as a phone app: a web app manifest and home-screen icons, and a service worker that keeps the app's
   pages so it opens offline. Offline records are opt-in per device (Account), read-only, and deleted on sign-out,
   when the sign-in ends, or when turned off (#56). Needs HTTPS (or localhost).
@@ -116,6 +122,9 @@ From an install that keeps records in `data.json` (before #103):
   (schema version 10) and kept beside it as `data-before-v10.json`, which can be deleted once you've checked
   the app. A file that can't be read is left alone with a message in the log, and the app still starts.
 - `corrections.json`'s `not_hospital_stays` are moved into the app's corrections once, at the first start.
+- Milestones, from `corrections.json` and from the records' `data.json`, are moved into each profile's settings
+  once, at the first start (#39). After that `corrections.json` isn't read and can be deleted; `build.py` no
+  longer reads it. A `visitWorkouts` rule written before #43 keeps working as the regular expression it was.
 
 Moving an install from a git checkout to the published image: see [Upgrading to a release](README.md#upgrading-to-a-release).
 

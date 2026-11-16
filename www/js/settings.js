@@ -42,15 +42,18 @@ function labsEditor(value, changed, ro) {
   return {node: box, get: () => list};
 }
 
-/* rows of inputs (a table on wide screens, stacked on phones); cols: [{key, label, type, ...attrs}] */
-function rowsEditor(rows, cols, changed, ro, blank) {
-  const body = el("div", {class: "set-rows c" + cols.length});
+/* rows of inputs (a table on wide screens, stacked on phones); cols: [{key, label, type, only, ...attrs}]. A
+   checkbox column with only: true is ticked in one row at most (ticking it in one row unticks the others). */
+function rowsEditor(rows, cols, changed, ro, blank, cls = "") {
+  const body = el("div", {class: "set-rows c" + cols.length + (cls ? " " + cls : "")});
   const head = el("div", {class: "set-row set-head", "aria-hidden": "true"}, ...cols.map(c => el("span", {text: c.label})), el("span"));
+  const tick = c => c.type === "checkbox";
+  const only = (c, input) => { if (c.only && input.checked) for (const x of body.querySelectorAll(`[data-k="${c.key}"]`)) if (x !== input) x.checked = false; };
   const make = r => {
-    const row = el("div", {class: "set-row"}, ...cols.map(c => el("label", {},
+    const row = el("div", {class: "set-row"}, ...cols.map(c => el("label", {class: tick(c) ? "set-tick" : null},
       el("span", {class: "set-lbl", text: c.label}),
-      el("input", {"data-k": c.key, type: c.type || "text", value: r[c.key] ?? "", disabled: ro, oninput: changed,
-        ...(c.attrs || {})}))));
+      el("input", {"data-k": c.key, type: c.type || "text", value: tick(c) ? null : r[c.key] ?? "", checked: tick(c) ? !!r[c.key] : null,
+        disabled: ro, oninput: ev => { if (tick(c)) only(c, ev.target); changed(); }, ...(c.attrs || {})}))));
     row.append(ro ? el("span") : small("Remove", "Remove this row", () => { row.remove(); changed(); }));
     return row;
   };
@@ -59,7 +62,8 @@ function rowsEditor(rows, cols, changed, ro, blank) {
   if (!ro) box.append(el("div", {class: "set-add"}, el("button", {class: "btn small", type: "button", text: "Add a row",
     onclick: () => { const r = make(blank); body.append(r); r.querySelector("input").focus(); changed(); }})));
   const read = () => [...body.querySelectorAll(".set-row:not(.set-head)")].map(row =>
-    Object.fromEntries(cols.map(c => { const v = row.querySelector(`[data-k="${c.key}"]`).value; return [c.key, c.type === "number" ? (v === "" ? null : +v) : v.trim()]; })));
+    Object.fromEntries(cols.map(c => { const i = row.querySelector(`[data-k="${c.key}"]`), v = i.value;
+      return [c.key, tick(c) ? i.checked : c.type === "number" ? (v === "" ? null : +v) : v.trim()]; })));
   return {node: box, read};
 }
 
@@ -71,12 +75,28 @@ function namesEditor(value, changed, ro, setting) {
   return {node: r.node, get: () => Object.fromEntries(r.read().filter(x => x.from || x.to).map(x => [x.from, x.to]))};
 }
 
+/* ---------------------------------------------------------------- #43 visits counted as workouts: "visits titled X
+   count as workouts of N minutes". The text is found anywhere in the title; "Regular expression" (advanced) makes
+   it a pattern, which the server checks is valid and safe before saving (server/settings.py safe_regex). */
 function rulesEditor(value, changed, ro) {
-  const cols = [{key: "match", label: "Visit title matches", attrs: {maxlength: 200, placeholder: "^physical therapy\\b"}},
+  const cols = [{key: "match", label: "Visit title contains", attrs: {maxlength: 200, placeholder: "physical therapy"}},
                 {key: "name", label: "Count as", attrs: {maxlength: 80, placeholder: "Physical therapy"}},
-                {key: "minutes", label: "Minutes", type: "number", attrs: {min: 1, max: 600, step: 1}}];
-  const r = rowsEditor(value, cols, changed, ro, {match: "", name: "", minutes: 30});
-  return {node: r.node, get: () => r.read().filter(x => x.match || x.name)};
+                {key: "minutes", label: "Minutes", type: "number", attrs: {min: 1, max: 600, step: 1}},
+                {key: "regex", label: "Regular expression", type: "checkbox"}];
+  const r = rowsEditor(value, cols, changed, ro, {match: "", name: "", minutes: 45, regex: false}, "rules");
+  return {node: r.node, get: () => r.read().filter(x => x.match || x.name)
+    .map(x => ({match: x.match, regex: x.regex, name: x.name, minutes: x.minutes}))};   // the server's order, for same()
+}
+
+/* ---------------------------------------------------------------- #39 milestones: a date and a name each, one of
+   them primary (or none: then the first counts). The server keeps them in date order. */
+function milestonesEditor(value, changed, ro) {
+  const cols = [{key: "date", label: "Date", type: "date", attrs: {min: "1900-01-01", max: "2100-12-31", required: true}},
+                {key: "label", label: "Name", attrs: {maxlength: 60, placeholder: "Diagnosis"}},
+                {key: "primary", label: "Primary", type: "checkbox", only: true}];
+  const r = rowsEditor(value, cols, changed, ro, {date: "", label: "", primary: false}, "ms");
+  return {node: r.node, get: () => r.read().filter(x => x.date || x.label)
+    .map(x => ({date: x.date, label: x.label, ...(x.primary ? {primary: true} : {})}))};
 }
 
 /* any other value: its JSON, for a kind this page has no editor for yet */
@@ -246,7 +266,8 @@ function themeEditor(value, changed, ro) {
   return {node: el("div", {}, box, note.childNodes.length ? note : null), get: () => box.querySelector("input:checked")?.value || value};
 }
 const EDITORS = {labs: labsEditor, tiles: tilesEditor, names: namesEditor, rules: rulesEditor, tabs: tabsEditor, theme: themeEditor,
-  number: numberEditor, toggle: toggleEditor, choices: choicesEditor};
+  number: numberEditor, toggle: toggleEditor, choices: choicesEditor,
+  milestones: milestonesEditor};
 
 /* ---------------------------------------------------------------- the sections */
 const FROM = {default: "default", install: "set for this server", profile: "set for this profile", user: "your own"};

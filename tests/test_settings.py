@@ -155,7 +155,7 @@ class Settings(unittest.TestCase):
         self.assertIn("Moved the settings.json of 2 profile(s) into the database", self.startup)
         m = self.merged(1)
         self.assertEqual(m["trends"]["defaultLabs"], ["Glucose"])
-        self.assertEqual(m["visitWorkouts"], OLD_FILE["visitWorkouts"])
+        self.assertEqual(m["visitWorkouts"], [{**OLD_FILE["visitWorkouts"][0], "regex": True}])   # a pattern, as before #43
         # a name map in the file added to the default names, as the page used to merge it
         self.assertEqual(m["labNicknames"], {**settings.SETTINGS["labNicknames"].default, "Glucose": "Sugar"})
         self.assertEqual(m["overview"]["keyLabs"], settings.KEY_LABS)   # not in the file: the default
@@ -261,6 +261,8 @@ class Settings(unittest.TestCase):
 
     def test_bad_values_refused(self):
         bad = [("visitWorkouts", [{"match": "([unclosed", "name": "X", "minutes": 10}]),
+               ("visitWorkouts", [{"match": "(a+)+$", "regex": True, "name": "X", "minutes": 10}]),   # more: test_milestones.py
+               ("milestones", [{"date": "2026-02-30", "label": "No such day"}]),
                ("visitWorkouts", [{"match": "x", "name": "X", "minutes": 0}]),
                ("visitWorkouts", [{"match": "x", "name": "X", "minutes": 30.5}]),
                ("visitWorkouts", "not a list"),

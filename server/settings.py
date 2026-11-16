@@ -23,7 +23,7 @@ table once at start-up (migrate_files) and kept beside it as settings-before-v18
 only seeds a linked profile's settings the first time the build is loaded into it, filling what isn't set; after
 that a rebuild never changes settings, and says so in the log when the build's settings.json differs from them.
 """
-import json, os, re
+import datetime, json, os, re
 
 from . import config, crypto, db as dbm
 
@@ -114,6 +114,78 @@ def name_map(most=500):
     return check
 
 
+# ---------------------------------------------------------------- #43 visits counted as workouts: rule checks
+# A rule matches visit titles either as plain text (anywhere in the title, ignoring case: the default) or, as an
+# advanced option, as a regular expression. Both the server and the page (www/js/health.js) run the pattern, so a
+# regular expression is held to a small, safe subset that means the same in Python and JavaScript, and that can't
+# backtrack catastrophically: short; few quantifiers, and at most two that repeat more than once (*, +, {2,}...),
+# since even side by side, as in a*a*a*b, each one more multiplies the work on a title that doesn't match; no
+# quantifier around something that is itself repeated or has alternatives (the "(a+)+" shape); no backreferences,
+# lookarounds or inline flags. And only a title's first TITLE_MAX characters are matched, which bounds what's left.
+
+PATTERN_MAX, REGEX_MAX, REGEX_REPEATS, REGEX_WIDE, REGEX_BOUND, TITLE_MAX = 200, 100, 8, 2, 100, 200
+_REGEX_SIGNS = re.compile(r"[\\^$.|?*+()\[\]{}]")
+
+
+def safe_regex(pattern):
+    """Raise SettingError unless pattern is a valid regular expression of the safe subset described above."""
+    from re import _constants as C, _parser as P
+    if len(pattern) > REGEX_MAX:
+        raise SettingError(f"A regular expression can be at most {REGEX_MAX} characters.")
+    try:
+        tree = P.parse(pattern)
+    except re.error as e:
+        raise SettingError(f"“{pattern}” isn't a valid regular expression ({e}).") from None
+    if tree.state.groupdict or "(?#" in pattern:   # written differently in JavaScript, or not at all
+        raise SettingError("Regular expressions here can't use named groups or (?#…) comments.")
+    if tree.state.flags != P.parse("").state.flags:   # (?i) and the like at the start
+        raise SettingError("Regular expressions here can't set flags; matching always ignores case.")
+    repeats = wide = 0
+    REPEAT = {C.MAX_REPEAT, C.MIN_REPEAT}
+    BANNED = {C.GROUPREF, C.GROUPREF_EXISTS, C.ASSERT, C.ASSERT_NOT, C.ATOMIC_GROUP, C.POSSESSIVE_REPEAT}
+
+    def complex_(items):   # does this part repeat, or have alternatives, inside?
+        for op, av in items:
+            if op in REPEAT and av[1] > 1 or op == C.BRANCH:
+                return True
+            if op == C.SUBPATTERN and complex_(av[3]):
+                return True
+        return False
+
+    def walk(items):
+        nonlocal repeats, wide
+        for op, av in items:
+            if op in BANNED:
+                raise SettingError("Regular expressions here can't use backreferences, lookarounds (?=…), atomic groups "
+                                   "or possessive repeats (++).")
+            if op == C.AT and av in (C.AT_BEGINNING_STRING, C.AT_END_STRING):
+                raise SettingError("Use ^ and $ for the start and end of the title (\\A and \\Z aren't supported).")
+            if op in REPEAT:
+                lo, hi, body = av
+                repeats += 1
+                if repeats > REGEX_REPEATS:
+                    raise SettingError(f"A regular expression can repeat at most {REGEX_REPEATS} things (*, +, ? or {{…}}).")
+                if hi != C.MAXREPEAT and hi > REGEX_BOUND or lo > REGEX_BOUND:
+                    raise SettingError(f"A repeat count can be at most {REGEX_BOUND}.")
+                wide += hi > 1
+                if wide > REGEX_WIDE:
+                    raise SettingError(f"A regular expression can have at most {REGEX_WIDE} repeats that match more "
+                                       "than once (*, + or {…}): more can make matching very slow.")
+                if hi > 1 and complex_(body):
+                    raise SettingError("A repeat around something that itself repeats or has alternatives, like (a+)+ "
+                                       "or (a|b)*, can make matching very slow, so it isn't allowed.")
+                walk(body)
+            elif op == C.SUBPATTERN:
+                if av[1] or av[2]:
+                    raise SettingError("Regular expressions here can't set flags; matching always ignores case.")
+                walk(av[3])
+            elif op == C.BRANCH:
+                for b in av[1]:
+                    walk(b)
+    walk(tree)
+    return pattern
+
+
 def workout_rules(most=50):
     def check(v):
         if not isinstance(v, list):
@@ -121,19 +193,26 @@ def workout_rules(most=50):
         out = []
         for r in v:
             if not isinstance(r, dict):
-                raise SettingError("Each rule needs a pattern, a name and minutes.")
+                raise SettingError("Each rule needs the text visit titles match, a name and minutes.")
             match = r.get("match")
-            if not isinstance(match, str) or not match.strip() or len(match) > 200:
-                raise SettingError("Each rule needs a pattern to match visit titles (at most 200 characters).")
-            try:
-                re.compile(match, re.I)
-            except re.error as e:
-                raise SettingError(f"The pattern “{match}” isn't a valid regular expression ({e}).") from None
+            if not isinstance(match, str) or not match.strip() or len(match) > PATTERN_MAX:
+                raise SettingError(f"Each rule needs the text visit titles match (at most {PATTERN_MAX} characters).")
+            # a rule from before #43 has no "regex": its pattern was always a regular expression (one without any
+            # of their signs means the same as plain text, so it's shown as plain text)
+            regex = r.get("regex")
+            if regex is None:
+                regex = bool(_REGEX_SIGNS.search(match))
+            if not isinstance(regex, bool):
+                raise SettingError("“Regular expression” must be on or off.")
+            if regex:
+                safe_regex(match)
+            else:
+                match = " ".join(match.split())
             name = _text(r.get("name") or match, "A rule's name", 80)
             minutes = r.get("minutes", 30)
             if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or not 1 <= minutes <= 600 or minutes != int(minutes):
                 raise SettingError(f"Minutes for “{name}” must be a whole number from 1 to 600.")
-            out.append({"match": match, "name": name, "minutes": int(minutes)})
+            out.append({"match": match, "regex": regex, "name": name, "minutes": int(minutes)})
         if len(out) > most:
             raise SettingError(f"At most {most} rules.")
         return out
@@ -166,6 +245,14 @@ def some_of(choices, what):
             raise SettingError(f"{what}: there's no choice called {bad[0]}.")
         return [c for c in choices if c in v]
     return check
+
+
+def rule_matches(rule, title):
+    """Whether a visit title (its first TITLE_MAX characters) matches a rule, as www/js/health.js does it."""
+    title = " ".join((title or "").split())[:TITLE_MAX]
+    if rule.get("regex"):
+        return re.search(rule["match"], title, re.I) is not None
+    return rule["match"].casefold() in title.casefold()
 
 
 # ---------------------------------------------------------------- the registry: every key of settings.example.json
@@ -214,8 +301,49 @@ define("sync.staleDays", "sync", "Warn when a connection hasn't synced for (days
 CHOICES = {"sync.attachTypes": ATTACHMENT_TYPES}
 
 define("visitWorkouts", "health", "Visits that count as workouts", [], workout_rules(), kind="rules",
-       help="Past visits whose title matches a pattern count as a workout of that many minutes, once a day per rule. "
-            "Patterns are regular expressions, matched ignoring case.")
+       help="Past visits whose title contains the text count as a workout of that many minutes, once a day per rule, "
+            "ignoring case. Tick “Regular expression” to match a pattern instead (an advanced option).")
+
+
+# ---------------------------------------------------------------- #39 milestones
+# Named dates (diagnosis, surgery, treatment start...): markers on every chart and "since" periods on Health and
+# Costs. They were corrections.json's, carried into the setup build's data.json; since #39 they are this profile
+# setting (encrypted, like every private one), moved in once at start-up (server/milestones.py).
+
+def milestone_list(most=50):
+    def check(v):
+        if not isinstance(v, list):
+            raise SettingError("This must be a list of milestones.")
+        out = {}
+        for m in v:
+            if not isinstance(m, dict):
+                raise SettingError("Each milestone needs a date and a name.")
+            d = m.get("date")
+            try:
+                day = datetime.date.fromisoformat(d[:10]) if isinstance(d, str) else None
+            except ValueError:
+                day = None
+            if day is None or not 1900 <= day.year <= 2100:
+                raise SettingError(f"“{d}” isn't a date (year-month-day, like 2026-03-01).")
+            label = _text(m.get("label") or "Milestone", "A milestone's name", 60)
+            primary = m.get("primary", False)
+            if not isinstance(primary, bool):
+                raise SettingError("“Primary” must be on or off.")
+            key = (day.isoformat(), label)
+            out[key] = out.get(key, False) or primary   # the same date and name twice: one milestone
+        if sum(out.values()) > 1:
+            raise SettingError("Only one milestone can be the primary one.")
+        if len(out) > most:
+            raise SettingError(f"At most {most} milestones.")
+        return [{"date": d, "label": n, **({"primary": True} if p else {})} for (d, n), p in sorted(out.items())]
+    return check
+
+
+section("milestones", "Milestones", "Named dates, like a diagnosis, a surgery or the start of a treatment: marked on "
+        "every chart, and periods on Health and Costs count “since” each one.")
+define("milestones", "milestones", "Milestones", [], milestone_list(), kind="milestones",
+       help="The primary milestone is the one the Overview counts from and Health and Costs start at (the first, "
+            "if none is marked).")
 
 
 # ---------------------------------------------------------------- tabs (#40) and theme (#45)

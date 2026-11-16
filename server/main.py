@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, edits, export, jobs, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, uploads, watch_store
+from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, edits, export, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, uploads, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -71,11 +71,13 @@ async def lifespan(app):
             if pid:
                 print(f"Loaded the existing records into profile {pid} (\"My records\").", flush=True)
             if (made := edits.migrate_corrections(db)):
-                print(f"Moved corrections.json's event corrections into {made} edit(s) on the first profile; "
-                      "corrections.json is read only for milestones now.", flush=True)
+                print(f"Moved corrections.json's event corrections into {made} edit(s) on the first profile.", flush=True)
             elif dbm.meta_get(db, edits.MIGRATED) and edits.leftover_corrections():
                 print("corrections.json still lists not_hospital_stays: those were moved into the app's edits once "
                       "and aren't read any more. Make event corrections in the app's event panel.", flush=True)
+            if (moved := milestones.migrate(db)):
+                print(f"Moved the milestones of {moved} profile(s) into their settings; milestones are changed on the "
+                      "Settings page now, and corrections.json is no longer needed.", flush=True)
             prof.sync_build(db)
             if (gone := uploads.cleanup(db)):
                 print(f"Removed {gone} upload(s) left unfinished for over a day.", flush=True)

@@ -476,6 +476,15 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .sets .set-row label{gap:2px}
 .sets .set-lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .sets .set-row input{width:100%}
+/* #39 milestones and #43 workout rules (settings.js): a checkbox column */
+.sets .ms .set-row{grid-template-columns:170px minmax(0,1fr) 64px 72px}
+.sets .rules .set-row{grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) 80px 96px 72px}
+.sets .set-row .set-tick{align-self:center}
+.sets .set-row .set-tick input{width:auto;min-height:22px}
+@media (max-width:600px){
+  .sets .ms .set-row,.sets .rules .set-row{grid-template-columns:1fr}
+  .sets .set-row .set-tick{display:flex;flex-direction:row;align-items:center;gap:8px}
+}
 .sets .set-json{width:100%;max-width:560px;font:12px ui-monospace,Consolas,monospace;border:1px solid var(--ring);border-radius:8px;background:var(--raised);color:var(--ink);padding:6px}
 @media (max-width:600px){
   .sets .set-head{display:none}

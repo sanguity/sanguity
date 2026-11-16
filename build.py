@@ -11,7 +11,7 @@ Re-run whenever new exports are added.
 Each export is read by its importer plug-in (server/importers/: epic_mychart, carespace, claims_uhc, claims_bcbs),
 the same code the in-app import uses. What's left here is building one profile from several sources: the names and
 options in sources.json, joining the sources' records, lab series shared between sources, facility bills inside
-another source's hospital stays, transfers between hospitals, payments, milestones and writing the file.
+another source's hospital stays, transfers between hospitals, payments and writing the file.
 
 Standard library only: the plug-ins are imported by name, never through the registry, so an importer that needs
 more than the standard library (the PDF one) is never loaded here.
@@ -188,17 +188,9 @@ if _PAID and os.path.exists(os.path.join(_PAID, "payments.json")):
         paid_out = [{k: x.get(k) for k in ("d", "payee", "group", "amount", "account", "memo", "est")} for x in pj.get("payments") or []]
         paid_meta = {"exported": pj.get("exported"), "range": pj.get("range"), "excluded": pj.get("excluded"), "balance": pj.get("balance")}
 
-# corrections.json next to build.py: only its milestones are read here now. Corrections to events (its older
-# "not_hospital_stays") are edits made in the app, applied to every import of this build (server/edits.py); the
-# app moved an existing corrections.json's into edits once, at start-up
-CORR_FILE = os.environ.get("SANGUITY_CORRECTIONS") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "corrections.json")
-CORR = json.load(open(CORR_FILE, encoding="utf-8")) if os.path.exists(CORR_FILE) else {}
-# named dates (diagnosis, surgery, treatment start...) for chart markers and "since" periods;
-# the older single "diagnosis_date" still works and becomes a "Diagnosis" milestone
-MILESTONES = sorted(({"date": m["date"][:10], "label": m.get("label") or "Milestone", **({"primary": True} if m.get("primary") else {})}
-                     for m in CORR.get("milestones") or [] if m.get("date")), key=lambda m: m["date"])
-if not MILESTONES and CORR.get("diagnosis_date"):
-    MILESTONES = [{"date": CORR["diagnosis_date"][:10], "label": "Diagnosis"}]
+# corrections.json isn't read any more: corrections to events are edits made in the app (#33, server/edits.py),
+# and milestones are a setting on the app's Settings page (#39, server/milestones.py). The app moved an existing
+# corrections.json's of both in once, at start-up. "milestones" stays in data.json, always empty, as part of its shape
 
 events.sort(key=lambda e: (e["t"], e["id"]))
 upcoming.sort(key=lambda x: x["t"])
@@ -206,7 +198,7 @@ data = {"built": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": os.path.basename(os.path.abspath(EXP)),
         "events": events, "details": dict(sorted(details.items())), "labs": series, "upcoming": upcoming, "problems": problems, "costs": costs,
         "outOfPocket": {"payments": paid_out, **(paid_meta if paid_out else {})},
-        "milestones": MILESTONES,
+        "milestones": [],
         "clinicWeights": sorted(weights.values())}
 with open(OUT, "w", encoding="utf-8") as f:
     json.dump(data, f, separators=(",", ":"))

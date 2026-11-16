@@ -212,8 +212,6 @@ class BuildUnchanged(unittest.TestCase):
     source's hospital stays are covered too."""
 
     def build(self, config, wrapper=None):
-        if os.path.exists(os.path.join(ROOT, "corrections.json")):
-            self.skipTest("a corrections.json next to build.py changes its output")
         with tempfile.TemporaryDirectory() as d:
             out = os.path.join(d, "data.json")
             env = {k: v for k, v in os.environ.items() if k != "RECORDS_ROOT"}

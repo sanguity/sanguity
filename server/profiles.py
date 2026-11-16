@@ -14,7 +14,7 @@ the tables at start-up and keeps it beside them as data-before-v10.json.
 import contextlib, json, os, secrets, shutil, threading
 from urllib.parse import quote
 
-from . import activity, config, crypto, db as dbm, edits, records, settings
+from . import activity, config, crypto, db as dbm, edits, milestones, records, settings
 
 _lock = threading.Lock()
 _failed = {}   # profile id -> (build mtime, why): a build that couldn't be loaded, so it isn't retried on every request
@@ -123,7 +123,10 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin
         if mirror_settings:
             settings.from_build(db, pid, src_settings)
         elif os.path.isfile(src_settings):
-            settings.replace_profile(db, pid, settings.from_file(settings.read_file(src_settings), where=src_settings))
+            values = settings.from_file(settings.read_file(src_settings), where=src_settings)
+            if "milestones" not in values and milestones.old(data):   # an export from before #39 kept them in data.json
+                values["milestones"] = milestones.clean(milestones.old(data), src_settings)
+            settings.replace_profile(db, pid, values)
             db.execute("UPDATE profiles SET settings_seeded=1 WHERE id=?", (pid,))
         db.execute("UPDATE profiles SET build_mtime=? WHERE id=?", (version, pid))
     return n

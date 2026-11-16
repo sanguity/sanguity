@@ -1,8 +1,7 @@
 {
- "_help": "Copy to corrections.json next to compose.yaml (never commit the real one), then rebuild. It holds your milestones. Corrections to events (hide, rename, fix a date, not a hospital stay, merge) are made in the app, in the event's panel; an older not_hospital_stays list here was moved into the app once and isn't read any more.",
+ "_help": "corrections.json is no longer needed. Corrections to events (hide, rename, fix a date, not a hospital stay, merge) are made in the app, in the event's panel, and milestones on the Settings page. An existing corrections.json's not_hospital_stays and milestones were moved into the app once, at the first start of a version with #33 and #39, and the file isn't read any more: you can delete it. Its old shape, for reference:",
  "milestones": [
-  {"date": "YYYY-MM-DD", "label": "Diagnosis", "primary": true, "_why": "primary = the date the Overview and default 'since' views count from (first milestone if none is marked)"},
-  {"date": "YYYY-MM-DD", "label": "Surgery"},
-  {"date": "YYYY-MM-DD", "label": "Treatment start"}
+  {"date": "2026-01-15", "label": "Diagnosis", "primary": true},
+  {"date": "2026-04-01", "label": "Surgery"}
  ]
 }
