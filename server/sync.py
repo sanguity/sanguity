@@ -7,11 +7,12 @@ what it saves goes in one transaction at the end, so it never holds SQLite's sin
 vendor, and a failure saves nothing.
 
 A pull reads, with an access token from connections.Tokens (renewed as needed; a rotated refresh token is saved at
-once): the Patient, then a search per type (connections.TYPES) for the patient, page by page, with
-_lastUpdated=gt<the last pull's Bundle.meta.lastUpdated> once there was one, and the Binary attachments that new or
-changed DocumentReferences and DiagnosticReports point at (up to SYNC_MAX_ATTACHMENT each). One pull reads at most
-SYNC_MAX_RESOURCES; the rest come next time. A type the access granted doesn't cover (403) is reported as such, not
-skipped quietly: the connection's report says, type by type, what was pulled.
+once): the Patient, then a search per type (connections.TYPES) that the granted scopes cover, for the patient, page
+by page, with _lastUpdated=gt<the last pull's Bundle.meta.lastUpdated> once there was one, and the Binary
+attachments that new or changed DocumentReferences and DiagnosticReports point at (up to SYNC_MAX_ATTACHMENT each).
+One pull reads at most SYNC_MAX_RESOURCES; the rest come next time. A type refused anyway (403) is reported as such,
+not skipped quietly: the connection's report says, type by type, what was pulled. An insurer's connection (#92)
+reads only Patient, ExplanationOfBenefit and Coverage, by its scopes.
 
 What a pull read is kept as an upload (pull.json, a Bundle, and Binary/<id>), sealed like any upload, so its files
 are the import's original files. The connection also keeps every resource it has read so far, sealed in
@@ -26,7 +27,8 @@ is rebuilt from all of them.
     - records whose source key the profile doesn't have are added, as an upload's would be; lab results the
       profile has already are skipped, and remembered lab-name matches applied (labmap.py)
     - records whose source key it has are updated in place (the row keeps its id, import and corrections), when
-      what the vendor sends now differs; sync_changes keeps what each was, so undoing the sync puts it back
+      what the vendor sends now differs (a claim's Costs row with it); sync_changes keeps what each was, so undoing
+      the sync puts it back
     - only records that come from what this pull read count: one undone from the history doesn't come back
       unless the vendor changes it
   Each is recorded in the import history (#24) with a done job, and can be undone there.
@@ -50,6 +52,7 @@ TICK = 30                    # seconds between looks for connections that are du
 PAGE = 100                   # _count asked for per page
 BACKOFF_FIRST = 300          # a failed pull is tried again after this, doubling up to SYNC_HOURS
 REF_TYPES = {"DiagnosticReport": "result"}   # a report groups its results: changed results touch the report too
+PATIENT_PARAM = {"Coverage": "beneficiary"}   # the search parameter naming the patient, where it isn't `patient`
 
 _thread, _stop, _wake = None, threading.Event(), threading.Event()
 
@@ -151,7 +154,7 @@ def pull(db, cid, who=None, ip=None):
     try:
         tokens = conns.Tokens(db, cid, http)
         reader = smart.Reader(http, c["fhir_base"], tokens)
-        got = _fetch(reader, crypto.dec(c["patient"]), None if first else json.loads(c["cursor"]))
+        got = _fetch(reader, crypto.dec(c["patient"]), None if first else json.loads(c["cursor"]), c["scopes"])
     except (smart.AccessEnded, smart.TokenRejected) as e:
         conns.needs_reconnect(db, cid, str(e) + " Sign in again to keep this source up to date.")
         return {"ok": False, "error": str(e), "kind": "access"}
@@ -201,8 +204,9 @@ def _attachment_urls(r, base):
     return out
 
 
-def _fetch(reader, patient, cursor):
-    """Read what's new: {"resources", "binaries" {rel: bytes}, "cursor", "report", "warnings"}."""
+def _fetch(reader, patient, cursor, scopes=None):
+    """Read what's new: {"resources", "binaries" {rel: bytes}, "cursor", "report", "warnings"}. Types the granted
+    scopes don't cover aren't asked for (an insurer connection reads only Patient, claims and coverage)."""
     left, resources, report, warnings = config.SYNC_MAX_RESOURCES, [], {}, []
     new_cursor = dict(cursor or {})
     try:
@@ -215,10 +219,12 @@ def _fetch(reader, patient, cursor):
     except smart.Refused as e:
         report["Patient"] = {"n": 0, "status": "failed", "why": str(e)}
     for t in conns.TYPES[1:]:
+        if not conns.granted(scopes, t):
+            continue
         if left <= len(resources):
             report[t] = {"n": 0, "status": "next time"}
             continue
-        params = {"patient": patient, "_count": PAGE}
+        params = {PATIENT_PARAM.get(t, "patient"): patient, "_count": PAGE}
         if cursor and cursor.get(t):
             params["_lastUpdated"] = cursor[t]
         try:
@@ -343,7 +349,8 @@ def _with_ext(data):
 
 
 def _touched(delta, delta_resources, store):
-    """Source keys of the events what this pull read makes: its own, and the reports grouping a result it read."""
+    """Source keys of the events what this pull read makes: its own, the reports grouping a result it read, and the
+    claims an adjusted claim it read replaces."""
     keys = {e["key"] for e in delta["events"] if isinstance(e, dict) and isinstance(e.get("key"), str)}
     read = {f"Observation/{r.get('id')}" for r in delta_resources if r.get("resourceType") == "Observation"}
     for r in store["resources"].values():
@@ -352,6 +359,13 @@ def _touched(delta, delta_resources, store):
         refs = {"/".join(str((x or {}).get("reference") or "").split("/_history")[0].split("/")[-2:]) for x in r.get("result") or []}
         if refs & read:
             keys.add(f"fhir:DiagnosticReport/{r.get('id')}")
+    # an adjusted claim read now marks the one it replaces, saved by an earlier pull, as replaced (#92)
+    from .importers import _fhir_claims
+    older = set().union(*(_fhir_claims.replaces(r) for r in delta_resources if r.get("resourceType") == "ExplanationOfBenefit"))
+    if older:
+        for r in store["resources"].values():
+            if r.get("resourceType") == "ExplanationOfBenefit" and _fhir_claims.names_of(r) & older:
+                keys.add(f"fhir:ExplanationOfBenefit/{r.get('id')}")
     return keys
 
 
@@ -444,8 +458,10 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         new_events.append(e)
         src[e["id"]] = delta.get("details", {}).get(e["id"][1:])
     ids = {str(e.get("id")) for e in new_events}
+    costs = _costs_by_id(full, delta)   # a claim's Costs row goes with its event (#92)
     data = {**{k: v for k, v in rest.items() if k not in records.ROWS}, "events": [dict(e) for e in new_events],
-            "details": {i: json.loads(json.dumps(src[i])) for i in ids if src.get(i) is not None}, "labs": rest["labs"], "costs": []}
+            "details": {i: json.loads(json.dumps(src[i])) for i in ids if src.get(i) is not None}, "labs": rest["labs"],
+            "costs": [{**costs[str(e["id"])], "id": e["id"]} for e in new_events if str(e["id"]) in costs]}
     for d in data["details"].values():   # a lab day's results are linked after saving, when they all have rows
         if isinstance(d, dict) and d.get("type") == "labday":
             d["ids"] = [i for i in d.get("ids") or [] if str(i) in ids]
@@ -475,7 +491,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         iid = records.store(db, pid, data, "sync", fmt="fhir")
         prof.link_documents(db, iid, keepdocs)
         db.execute("UPDATE imports SET connection_id=? WHERE id=?", (cid, iid))
-        changed = _update_in_place(db, pid, iid, updates, {**full.get("details", {}), **src}, stored)
+        changed = _update_in_place(db, pid, iid, updates, {**full.get("details", {}), **src}, stored, costs)
         changed += _apply_meta(db, iid, meta_changes)
         _link_labdays(db, pid, iid, full, set(full_by_key) & (touched | {e.get("key") for e in new_events}))
         summary["counts"]["documents"] = n_docs
@@ -515,16 +531,27 @@ def _comparable(d):
     return {k: v for k, v in d.items() if k not in ("url", "ids")} if isinstance(d, dict) else d
 
 
-def _update_in_place(db, pid, iid, updates, details, stored):
-    """Change the events whose source key the profile has, where the vendor's version differs; keep what each was."""
+def _costs_by_id(full, delta):
+    """{event id as _save numbers them: the whole set's, or "d<id>" for this pull's own: Costs row}."""
+    out = {f"d{c.get('id')}": c for c in (delta or {}).get("costs") or [] if isinstance(c, dict) and c.get("id") is not None}
+    out.update({str(c.get("id")): c for c in (full or {}).get("costs") or [] if isinstance(c, dict) and c.get("id") is not None})
+    return out
+
+
+def _update_in_place(db, pid, iid, updates, details, stored, costs=None):
+    """Change the events whose source key the profile has, where the vendor's version differs; keep what each was.
+    A claim's Costs row changes with it (an adjusted claim's new amounts)."""
     n = 0
     for e in updates:
         h = records.key_hashes(db, [e["key"]])[e["key"]]
         body = {k: v for k, v in e.items() if k != "id"}
         new_d = details.get(str(e.get("id")))
-        for r in db.execute("SELECT id, body, detail FROM events WHERE profile_id=? AND key_hash=?", (pid, h)).fetchall():
+        new_c = (costs or {}).get(str(e.get("id")))
+        for r in db.execute("SELECT id, body, detail, cost FROM events WHERE profile_id=? AND key_hash=?", (pid, h)).fetchall():
             old_b, old_d = records._dec(r["body"]), records._dec(r["detail"])
-            if _same(old_b, body) and _same(_comparable(old_d), _comparable(new_d)):
+            old_c = records._dec(r["cost"]) if r["cost"] is not None else None
+            cost = {**new_c, "id": r["id"]} if new_c is not None else old_c   # a row the vendor's version lacks stays
+            if _same(old_b, body) and _same(_comparable(old_d), _comparable(new_d)) and _same(old_c, cost):
                 continue
             d = _file_url(old_d, new_d)
             if isinstance(d, dict) and d.get("type") == "labday":
@@ -535,8 +562,9 @@ def _update_in_place(db, pid, iid, updates, details, stored):
                 prof.link_documents(db, iid, keep)
                 d = one["x"]
             db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)",
-                       (iid, r["id"], records._enc({"body": old_b, "detail": old_d})))
-            db.execute("UPDATE events SET body=?, detail=? WHERE id=?", (records._enc(body), None if d is None else records._enc(d), r["id"]))
+                       (iid, r["id"], records._enc({"body": old_b, "detail": old_d, "cost": old_c})))
+            db.execute("UPDATE events SET body=?, detail=?, cost=?, cost_seq=IFNULL(cost_seq, 0) WHERE id=?",
+                       (records._enc(body), None if d is None else records._enc(d), None if cost is None else records._enc(cost), r["id"]))
             n += 1
     return n
 
@@ -625,6 +653,9 @@ def unapply(db, iid):
             else:
                 db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
                            (records._enc(prev["body"]), None if prev["detail"] is None else records._enc(prev["detail"]), r["event_id"]))
+                if "cost" in prev:   # kept since #92; older entries didn't change the Costs row
+                    db.execute("UPDATE events SET cost=? WHERE id=?",
+                               (None if prev["cost"] is None else records._enc(prev["cost"]), r["event_id"]))
             continue
         later = None
         for x in db.execute("SELECT id, previous FROM sync_changes WHERE meta_import=? AND id > ? ORDER BY id",

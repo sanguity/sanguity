@@ -288,7 +288,7 @@ class Keys(unittest.TestCase):
 
     def test_registry_accepts_every_fixture(self):
         from server import importers as reg
-        for d in ("bundle", "ndjson", "apple-health", "two-units"):
+        for d in ("bundle", "ndjson", "apple-health", "two-units", "blue-button"):
             with self.subTest(d):
                 files = reg.files_in(os.path.join(FIX, d))
                 self.assertEqual(reg.match(files)["importer"].NAME, "fhir")
