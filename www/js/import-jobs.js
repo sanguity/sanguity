@@ -103,15 +103,18 @@
       busy(true); msg.textContent = "Cancelling…";
       if (!(await onCancel())) busy(false);
     });
-    card.replaceChildren(head, j.new && items.length ? node("ul", {}, items) : null, dupList, notes(j),
-                         node("div", {class: "imp-actions"}, save, cancel, msg));
+    fill(card, head, j.new && items.length ? node("ul", {}, items) : null, dupList, notes(j),
+         node("div", {class: "imp-actions"}, save, cancel, msg));
     return t => { msg.textContent = t; };
   }
+
+  // replaceChildren turns a null into the text "null"; parts that aren't there are left out instead
+  function fill(card, ...parts) { card.replaceChildren(...parts.filter(p => p != null)); }
 
   function showDone(card, pid, j) {
     const c = j.counts || {}, items = countItems(c), sk = j.skipped || {};
     const skipped = (sk.events || 0) + (sk.results || 0);
-    card.replaceChildren(
+    fill(card,
       node("p", {}, node("b", {text: "Imported."}), ` Read as ${j.label || j.importer}${rangeText(j.range)}.`),
       items.length ? node("ul", {}, items) : node("p", {text: skipped ? "Nothing new: it was all in the profile already." : "The files held no records to show."}),
       skipped ? node("p", {class: "hint", text: `${plural(skipped, ["duplicate", "duplicates"])} skipped.`}) : null,

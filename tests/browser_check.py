@@ -398,10 +398,13 @@ def main():
                         z.writestr(f"{name}-claims/claims.json", raw)
                     page.set_input_files("#pickZip", files=[{"name": f"{name}-claims.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
                 page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
+                cards = js("document.querySelectorAll('.import-job').length")
                 page.click("#go")
-                page.wait_for_function(f"document.querySelectorAll('.import-job').length >= {3 + n} && "
-                                       "/^(Imported|Not imported)/.test([...document.querySelectorAll('.import-job')].pop().textContent)", timeout=30000)
-                card = js("[...document.querySelectorAll('.import-job')].pop().textContent")
+                page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
+                                       f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+                js(f"{last_card}.querySelector('.imp-actions .primary')?.click()")   # Save, at its preview (#22)
+                page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+                card = js(f"{last_card}.textContent")
                 up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
                 job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
                 check(f"claims upload is imported in the background by the {name} importer",
@@ -465,7 +468,8 @@ def main():
             page.select_option("#profile", label="Second person")
             page.wait_for_selector("#history li[data-format='fhir']", timeout=10000)
             hist = js("[...document.querySelectorAll('#history li[data-import]')].map(li => li.dataset.format)")
-            check("the import history lists the C-CDA and FHIR imports, newest first", hist == ["fhir", "ccda"], hist)
+            check("the import history lists the C-CDA, FHIR and claims imports, newest first",
+                  hist == ["claims-csv", "bcbs", "uhc", "fhir", "ccda"], hist)
             check("…with the uploaded files", "fhir-export/" in page.inner_text("#history li[data-format='fhir'] .files"))
             page.click("#history li[data-format='fhir'] button.undo")
             page.click("#history li[data-format='fhir'] .confirm button.danger")
@@ -477,6 +481,8 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && "
                                    "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)
+            js("switchTab('timeline')")   # the claims check left the profile on Costs
+            settle(300)
             listed = page.inner_text("#list")
             check("…and the FHIR export's records leave the timeline, the C-CDA's staying",
                   "Riverside General Hospital" not in listed and "Discharge summary" not in listed and "Outpatient visit" in listed, listed[:400])
