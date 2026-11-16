@@ -22,18 +22,19 @@ the same format:
   describe(link) -> dict              what to show before anything is fetched: host, label, flags; never the key
   encode(url, key, ...) -> str        a shlink:/ text           encrypt(data, key, cty) -> compact JWE
   decrypt(jwe, key) -> (bytes, cty)
-  fetch(link, passcode, on_contact) -> [{"cty", "data"}]   the one outbound fetch (plus a GET per file the manifest
-                                                           doesn't embed), decrypted
-  read_cards(data, on_contact) -> [card]   Health Cards: payload, FHIR bundle, signature verified / invalid / unchecked
+  fetch(link, passcode, permit) -> [{"cty", "data"}]   the one outbound fetch (plus a GET per file the manifest
+                                                       doesn't embed), decrypted
+  read_cards(data, permit) -> [card]   Health Cards: payload, FHIR bundle, signature verified / invalid / unchecked
   sign_card(payload, private_key, kid) -> JWS   for tests and #47
 
-Outbound requests (_request): HTTPS only; the host's addresses must all be public (no loopback, private, link-local
-or reserved address: SSRF), and the connection goes to the address that was checked, so a DNS answer can't change
-in between; redirects only to the same host; a timeout and a size cap (config.SHL_*). on_contact(host, purpose) is
-called before each request, so the caller can record whom Sanguity contacted (outside.record). The key and the
+Outbound requests (_request) go through net.py under a permit (outside.for_link: the host of the link the person
+confirmed, plus the file locations and Health Card issuers that link itself names): HTTPS only; the host's addresses
+must all be public (no loopback, private, link-local or reserved address: SSRF), and the connection goes to the
+address that was checked, so a DNS answer can't change in between; redirects only to the same host; a timeout and a
+size cap (config.SHL_*). net.py records each host before anything is sent to it (outside.record). The key and the
 passcode are never logged, never stored and never part of an error message.
 """
-import base64, http.client, ipaddress, json, os, re, socket, ssl, time, urllib.parse, zlib
+import base64, ipaddress, json, os, re, ssl, time, urllib.parse, zlib
 
 from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives import hashes
@@ -41,7 +42,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature, encode_dss_signature
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from . import config
+from . import config, net
 
 RECIPIENT = "Sanguity (self-hosted personal health records)"   # who is asking; never the person's name
 FHIR, CARD = "application/fhir+json", "application/smart-health-card"
@@ -240,17 +241,6 @@ def decrypt(jwe, key, limit=None):
 
 # ---------------------------------------------------------------- outbound requests
 
-class _Pinned(http.client.HTTPSConnection):
-    """HTTPS to host, connecting to an address checked beforehand; the certificate is checked for host."""
-    def __init__(self, host, port, ip, timeout, context):
-        super().__init__(host, port, timeout=timeout, context=context)
-        self._ip = ip
-
-    def connect(self):
-        sock = socket.create_connection((self._ip, self.port), self.timeout)
-        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
-
-
 def _allowed(ip):
     a = ipaddress.ip_address(ip)
     if isinstance(a, ipaddress.IPv6Address) and a.ipv4_mapped:
@@ -264,12 +254,13 @@ def _context():
     return ctx
 
 
-def _addresses(host, port):
+def _addresses(permit, url, host):
     try:
-        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    except (socket.gaierror, UnicodeError):
+        ips = net.resolve(permit, url)
+    except net.Refused as e:
+        raise Refused(str(e)) from None
+    except (OSError, UnicodeError):
         raise Refused(f"{host} couldn't be found (no such host, or no connection to the internet).", 502) from None
-    ips = list(dict.fromkeys(i[4][0] for i in infos))
     if not ips:
         raise Refused(f"{host} couldn't be found.", 502)
     if not ALLOW_PRIVATE and not all(_allowed(ip) for ip in ips):
@@ -300,17 +291,20 @@ def check_url(url):
     return u.hostname.lower(), port, (u.path or "/") + (f"?{u.query}" if u.query else "")
 
 
-def _request(method, url, body=None, headers=None, limit=None, on_contact=None, purpose=""):
-    """One HTTPS request under the rules above: (status, content type, body bytes)."""
+def _request(method, url, body=None, headers=None, limit=None, permit=None, purpose="SMART Health Link"):
+    """One HTTPS request under the rules above: (status, content type, body bytes). permit: a net.Permit for the
+    host (none: nothing is allowed)."""
     limit = limit or config.SHL_MAX_BYTES
+    permit = permit or net.NOTHING
     for _ in range(4):   # the request and up to three redirects on the same host
         host, port, path = check_url(url)
-        ips = _addresses(host, port)
-        if on_contact:   # recorded once the address is allowed, before anything is sent
-            on_contact(host_of(url), purpose)
+        ips = _addresses(permit, url, host)
         conn, err = None, None
         for ip in ips:
-            conn = _Pinned(host, port, ip, config.SHL_TIMEOUT, _context())
+            try:   # net records the host once the address is allowed, before anything is sent
+                conn = net.connection(permit, url, purpose, ip, config.SHL_TIMEOUT, _context())
+            except net.Refused as e:
+                raise Refused(str(e)) from None
             try:
                 conn.request(method, path, body=body, headers={"User-Agent": "Sanguity", "Accept-Encoding": "identity",
                                                                **(headers or {})})
@@ -319,11 +313,11 @@ def _request(method, url, body=None, headers=None, limit=None, on_contact=None, 
             except ssl.SSLCertVerificationError:
                 conn.close()
                 raise Refused(f"{host}'s certificate couldn't be verified, so nothing was fetched.", 502) from None
-            except (OSError, http.client.HTTPException) as e:
+            except net.Errors as e:
                 conn.close()
                 conn, err = None, e
         if conn is None:
-            timed_out = isinstance(err, (socket.timeout, TimeoutError))
+            timed_out = isinstance(err, TimeoutError)
             raise Refused(f"{host} {'took too long to answer' if timed_out else 'could not be reached'}. Try again later.", 502)
         try:
             if resp.status in (301, 302, 303, 307, 308):
@@ -344,7 +338,7 @@ def _request(method, url, body=None, headers=None, limit=None, on_contact=None, 
             if len(data) > limit:
                 raise Refused(f"{host} sent more than Sanguity takes from a link ({limit // config.MB} MB).", 413)
             return resp.status, (resp.getheader("Content-Type") or "").split(";")[0].strip().lower(), data
-        except (OSError, http.client.HTTPException):
+        except net.Errors:
             raise Refused(f"The connection to {host} broke off. Try again later.", 502) from None
         finally:
             conn.close()
@@ -353,7 +347,7 @@ def _request(method, url, body=None, headers=None, limit=None, on_contact=None, 
 
 # ---------------------------------------------------------------- fetching a link's files
 
-def fetch(link, passcode=None, on_contact=None, now=None):
+def fetch(link, passcode=None, permit=None, now=None):
     """Fetch and decrypt what a SMART Health Link holds: [{"cty", "data"}]. One request to the link's address (the
     manifest, or the file itself for a U link), then a GET for each file the manifest lists by location instead
     of embedding it. Refused: expired links, a missing or wrong passcode, more files or bytes than config.SHL_*."""
@@ -367,7 +361,7 @@ def fetch(link, passcode=None, on_contact=None, now=None):
     budget = [config.SHL_MAX_BYTES]
 
     def get(method, url, body=None, headers=None, purpose="SMART Health Link"):
-        status, ctype, data = _request(method, url, body, headers, budget[0], on_contact, purpose)
+        status, ctype, data = _request(method, url, body, headers, budget[0], permit, purpose)
         budget[0] -= len(data)
         return status, ctype, data
 
@@ -407,6 +401,8 @@ def fetch(link, passcode=None, on_contact=None, now=None):
         if isinstance(f.get("embedded"), str):
             jwe = f["embedded"]
         elif isinstance(f.get("location"), str):
+            if permit:   # a file the confirmed link's own manifest points to
+                permit.also(host_of(f["location"]))
             status, _, body = get("GET", f["location"], purpose="SMART Health Link file")
             _status_ok(status, link)
             jwe = body.decode("ascii", "replace")
@@ -496,7 +492,7 @@ def _verify(header, signed, sig, jwks):
     return False
 
 
-def check_card(jws, on_contact=None, jwks_cache=None):
+def check_card(jws, permit=None, jwks_cache=None):
     """A Health Card read and its signature checked against its issuer's keys when they can be fetched:
     {"issuer", "bundle", "signature": "verified" | "invalid" | "unchecked", "why"}."""
     header, _, sig, signed = _jws_parts(jws)
@@ -514,8 +510,10 @@ def check_card(jws, on_contact=None, jwks_cache=None):
     cache = jwks_cache if jwks_cache is not None else {}
     if iss not in cache:
         try:
+            if permit:   # the issuer the confirmed card itself names
+                permit.also(host_of(iss))
             status, _, data = _request("GET", iss.rstrip("/") + "/.well-known/jwks.json", limit=256 * 1024,
-                                       on_contact=on_contact, purpose="Health Card issuer's keys")
+                                       permit=permit, purpose="Health Card issuer's keys")
             cache[iss] = json.loads(data) if status == 200 else f"its issuer's keys weren't available ({int(status)})"
         except Refused as e:
             cache[iss] = f"its issuer's keys couldn't be fetched: {e}"
@@ -531,7 +529,7 @@ def check_card(jws, on_contact=None, jwks_cache=None):
     return card
 
 
-def read_cards(data, on_contact=None, jwks_cache=None):
+def read_cards(data, permit=None, jwks_cache=None):
     """The Health Cards in an application/smart-health-card file ({"verifiableCredential": [JWS, ...]})."""
     try:
         doc = json.loads(data)
@@ -542,12 +540,12 @@ def read_cards(data, on_contact=None, jwks_cache=None):
     if len(vcs) > config.SHL_MAX_FILES:
         raise Refused(f"A Health Card file holds {len(vcs)} cards; Sanguity takes at most {config.SHL_MAX_FILES}.", 413)
     cache = {} if jwks_cache is None else jwks_cache
-    return [check_card(v, on_contact, cache) for v in vcs]
+    return [check_card(v, permit, cache) for v in vcs]
 
 
 # ---------------------------------------------------------------- what a link brought, as files to import
 
-def prepare(items, on_contact=None):
+def prepare(items, permit=None):
     """The decrypted files of a link (fetch) as files for an import: {"files": {path: bytes}, "cards": [{"issuer",
     "host", "signature", "why"}], "notes": [str]}. A FHIR file is kept as it came; a Health Card file is kept too
     (as .smart-health-card, which the FHIR importer doesn't read) and the bundle of each card whose signature isn't
@@ -566,7 +564,7 @@ def prepare(items, on_contact=None):
             files[f"smart-health-link/file-{n}.json"] = data
         elif cty == CARD:
             files[f"smart-health-link/file-{n}.smart-health-card"] = data
-            for m, c in enumerate(read_cards(data, on_contact, cache), 1):
+            for m, c in enumerate(read_cards(data, permit, cache), 1):
                 cards.append({k: c[k] for k in ("issuer", "host", "signature", "why")})
                 if c["signature"] == "invalid":
                     notes.append(f"A Health Card from {c['host'] or 'an unnamed issuer'} was left out: {c['why']}.")

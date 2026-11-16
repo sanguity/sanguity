@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 19**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 20**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -392,6 +392,31 @@ erDiagram
     }
 ```
 
+## Outside contacts
+
+Every request Sanguity's server makes to another host goes through `server/net.py` under a permit from
+`server/outside.py` (#97, #59): a connected source's hosts (as its admin-tested discovery names them), or the host of
+a SMART Health Link someone confirmed. Each contact is recorded before anything is sent: in the activity log, and in
+**outside_contacts** (schema 20), one row per profile, purpose and host with the first and last contact and a count,
+for the outside-connections view on the Settings page. Only the host is kept, encrypted (a Health Link's host can say
+where someone is treated); never a path, query, token or key. `profile_id` is `NULL` for a contact with no profile
+involved (an admin's "Test this connection"); a profile's rows go with it.
+
+```mermaid
+erDiagram
+    profiles |o--o{ outside_contacts : "contacted for"
+
+    outside_contacts {
+        int id PK
+        int profile_id FK "NULL: no profile"
+        text purpose "Connected source: sync, SMART Health Link, ..."
+        text host "🔒 host[:port]"
+        int first
+        int last
+        int count
+    }
+```
+
 ## What is encrypted
 
 | Table | Encrypted columns |
@@ -412,6 +437,7 @@ erDiagram
 | `connect_pending` | `verifier` |
 | `sync_changes` | `previous` |
 | `activity` | `detail` |
+| `outside_contacts` | `host` |
 | `users` | `totp_secret`, `totp_pending` |
 | `meta` | the pepper |
 
@@ -424,8 +450,8 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, settings, undo history, its activity | the original exports |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, settings, undo history, its activity and outside contacts | the original exports |
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
-| A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen | the row, as disconnected |
+| A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |
 | An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, pending sign-ins | activity, uploads, jobs and lab-name matches it made (their links become `NULL`) |

@@ -13,11 +13,12 @@ doesn't know, accepts the series suggested at the preview and finds it on Trends
 the next upload, pastes a fictional SMART Health Link served by a local HTTPS server (what it says is shown and
 nothing is fetched until Fetch; then its preview, and saved), sets up a connected source against the fake SMART on
 FHIR server (tests/fakefhir), connects a profile by signing in, saves its first pull's preview, syncs a new result
-and is asked to reconnect when access ends, changes settings on the Settings page and resets them, opens the account
+and is asked to reconnect when access ends, sees the source's and the Health Link's hosts under Settings →
+Outside connections, changes settings on the Settings page and resets them, opens the account
 page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap
 and follows its link to the import history, checks the "not medical advice" notice on every tab and beside
 out-of-range highlighting, and fails
-on any script error, console error, failed request or NaN written into an SVG attribute.
+on any script error, console error, failed request, request to another host or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
   python3 tests/browser_check.py
@@ -107,6 +108,13 @@ def main():
         # the pages under their real Content-Security-Policy (no inline or eval'd script): every page's own scripts
         # run, with no violation reported. Only page.evaluate here, which the CSP doesn't apply to.
         strict = browser.new_page(viewport={"width": 1400, "height": 900})
+        # no page contacts another host (#59): only the app itself, and the fake vendor's sign-in page while a test
+        # signs in there (the browser visits a vendor's sign-in; the server never contacts anything unlisted)
+        allowed = {base}
+        origin = lambda u: "/".join(u.split("/")[:3])
+        elsewhere = lambda r: (not r.url.startswith(("data:", "blob:", "about:")) and origin(r.url) not in allowed
+                               and problems.append(f"request to another host: {r.url}"))
+        strict.on("request", elsewhere)
         csp_problems = []
         strict.on("pageerror", lambda e: csp_problems.append(f"script error: {e}"))
         strict.on("console", lambda m: m.type == "error" and "Content Security Policy" in m.text and csp_problems.append(m.text))
@@ -151,6 +159,7 @@ def main():
         page.on("pageerror", lambda e: problems.append(f"script error: {e}"))
         page.on("console", lambda m: m.type == "error" and problems.append(f"console error: {m.text}"))
         page.on("response", lambda r: r.status >= 400 and problems.append(f"HTTP {r.status}: {r.url}"))
+        page.on("request", elsewhere)
         page.goto(base + "/")
         page.wait_for_url("**/login.html", timeout=10000)   # signed out: the app sends you to sign in
         page.fill("#u", USER)
@@ -902,6 +911,7 @@ def main():
             fake = FakeFHIR(patients=["robin-example"]).start()
             fake.signin_patient = "pat-1"   # who "signs in" at the fake's authorize page
             fake.register_client("sanguity-browser-check", [base + "/connect/return"])
+            allowed.add(origin(fake.fhir_base))   # its sign-in page, which the browser visits
             page.goto(base + "/connect.html")
             page.wait_for_selector("#sourceList", state="attached")
             page.wait_for_function("document.getElementById('returnAddr').textContent.length > 5 && !document.getElementById('admin').hidden", timeout=10000)
@@ -957,6 +967,21 @@ def main():
             check("when access ends, the page asks to sign in again", "access ended" in page.inner_text("#reconnect")
                   and page.get_by_role("button", name="Sign in again").count() == 1, page.inner_text("#connList")[:300])
             check("only the source's own host was contacted", fake.hosts() == {f"127.0.0.1:{fake.port}"}, fake.hosts())
+
+            # ---- outside connections (#97, #59): Settings lists every host the install may contact, by purpose
+            page.goto(base + "/settings.html#outside")
+            page.wait_for_function("document.getElementById('outsideBody').textContent.includes('May contact now')", timeout=10000)
+            out = page.inner_text("#outside")
+            check("Settings says plainly that nothing else is contacted", "Nothing else leaves this server" in out, out[:200])
+            check("…lists the connected source with its host, scopes and last contact",
+                  "Fake Epic sandbox" in out and f"127.0.0.1:{fake.port}" in out and "patient/Observation" in out
+                  and "Second person" in out and "Last contact" in out, out[:600])
+            check("…and the Health Link's host", f"localhost:{SHL.port}" in out and "SMART Health Link" in out, out[-600:])
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the outside connections fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            allowed.discard(origin(fake.fhir_base))
             fake.stop()
 
             # ---- account page: password, devices, profiles with sharing, accounts (admin)

@@ -16,8 +16,9 @@ Profile events (profile_id set), readable by the profile's owners:
   edit          {"action", "title", "to"?, "undone"?}: a correction made to an event, or undone (edits.py)
   settings      {"setting", "label"} a profile setting changed, {"setting", "label", "reset": true} put back to its
                 default, or {"section", "label", "settings", "reset": true} a section reset (settings.py; never values)
-  outside       {"host", "purpose"}: Sanguity contacted another server for this profile, after the person confirmed
-                (outside.py; so far a SMART Health Link and a Health Card issuer's keys, shl.py)
+  outside       {"host", "purpose"}: Sanguity contacted another server for this profile (outside.py, through net.py):
+                a SMART Health Link and a Health Card issuer's keys after the person confirmed (shl.py), or a
+                connected source's hosts ("Connected source: sign-in", "sync", "disconnect"; connections.py, sync.py)
   connect       {"source", "host", "reconnect"?}: connected a source by signing in to it (connections.py, #32)
   disconnect    {"source", "revoked", "removed"}: disconnected one, keeping or removing the records it brought;
                 {"source", "ended": true}: the vendor ended access, so it needs a reconnect

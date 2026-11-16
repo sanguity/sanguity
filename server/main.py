@@ -1267,6 +1267,7 @@ app.include_router(__import__("server.routes_settings", fromlist=["router"]).rou
 app.include_router(__import__("server.routes_shl", fromlist=["router"]).router)       # SMART Health Links and Cards (#94)
 app.include_router(__import__("server.routes_directory", fromlist=["router"]).router)  # find your provider (#93)
 app.include_router(__import__("server.routes_connect", fromlist=["router"]).router)   # connected sources: sign-in and sync (#32, #91)
+app.include_router(__import__("server.routes_outside", fromlist=["router"]).router)   # outside connections (#59, #97)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here

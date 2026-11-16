@@ -277,8 +277,12 @@ can't be shipped with Sanguity, so an admin adds them once: `python3 tools/build
   Outside contact happens only when you ask for it: importing a pasted SMART Health Link fetches it from its host
   (and, for a Health Card, the issuer's public keys) after you confirm, HTTPS only; and once you connect a source
   ([Connected sources](#connected-sources)), the server talks to that vendor only, through an app your install
-  registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)). Each host contacted is
-  in the profile's activity log.
+  registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)). **Settings →
+  [Outside connections](www/settings.html)** (`settings.html#outside` on your install) lists every host the install
+  may contact, grouped by purpose, with the scopes asked for and granted and when each was last contacted; admins
+  see the whole install, owners and editors their profiles. Every outbound request goes through one gateway
+  (`server/net.py`) that refuses any host not listed there, and disconnecting a source stops all contact with it.
+  Each host contacted is also in the profile's activity log.
 - **Accounts with Argon2id-hashed passwords** (at least 15 characters, per NIST SP 800-63B; passwords found in
   public breaches are refused, checked against a bundled list on your server, see `server/passwords/`). Password and
   recovery-code hashes are peppered with a server secret that only the encryption key unlocks, so a copied database

@@ -3,9 +3,9 @@ token endpoint's grants, Epic's dynamic client registration, revocation, and FHI
 Nothing here touches the database; connections.py keeps what it returns, encrypted.
 
 Every request goes through a Client, which:
-  - contacts only the hosts it was given (the issuer's, and the hosts its discovery names for the token,
-    revocation and registration endpoints) and refuses any other, redirects and "next" links included;
-  - calls on_contact(host) before the first request to each host, so it is recorded (outside.record, #97);
+  - contacts only the hosts its permit allows (net.Permit, made by outside.py from the source's setup: the issuer's,
+    and the hosts its discovery names for the token, revocation and registration endpoints) and refuses any other,
+    redirects and "next" links included; the connection itself is made by net.py, which records each host (#97);
   - retries 429 and 5xx (and a server that doesn't answer) with backoff, honouring Retry-After, up to a cap;
   - says why it failed, so the page can tell the cases apart:
       Unavailable   the vendor didn't answer, or still answered 429 / 5xx after the retries: try again later
@@ -15,12 +15,12 @@ Every request goes through a Client, which:
 
 Standard library and cryptography (already a dependency, for the RSA key of Epic's dynamic registration).
 """
-import base64, hashlib, http.client, json, secrets, ssl, time, urllib.parse
+import base64, hashlib, json, secrets, time, urllib.parse
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from . import config
+from . import config, net
 
 TRIES = 4            # attempts per request on 429 / 5xx / no answer
 MAX_WAIT = 60        # seconds: a Retry-After longer than this isn't waited for in a pull; the next pull is later
@@ -122,23 +122,21 @@ def _retry_after(resp):
 
 
 class Client:
-    def __init__(self, hosts, on_contact=None, timeout=None):
-        self.hosts = {h.lower() for h in hosts}
-        self.on_contact = on_contact
+    def __init__(self, permit, timeout=None):
+        self.permit = permit
         self.timeout = timeout or config.CONNECT_TIMEOUT
-        self.contacted = set()
+
+    @property
+    def hosts(self):
+        return self.permit.hosts()
 
     def request(self, method, url, headers=None, body=None, max_bytes=MAX_BODY, retry=True):
         url = check_url(url)
         u = urllib.parse.urlsplit(url)
         host = u.netloc.lower()
-        if host not in self.hosts:
+        if not self.permit.allows(host):
             raise Refused(f"Sanguity won't contact {host}: it isn't one of this source's hosts "
-                          f"({', '.join(sorted(self.hosts))}).")
-        if host not in self.contacted:
-            self.contacted.add(host)
-            if self.on_contact:
-                self.on_contact(host)
+                          f"({', '.join(sorted(self.hosts)) or 'none, now'}).")
         headers = {"User-Agent": UA, **(headers or {})}
         path = (u.path or "/") + (f"?{u.query}" if u.query else "")
         wait, err = 0, None
@@ -147,7 +145,9 @@ class Client:
                 resp = self._once(u, method, path, headers, body, max_bytes)
             except TooBig:
                 raise
-            except (OSError, http.client.HTTPException) as e:
+            except net.Refused as e:
+                raise Refused(str(e)) from None
+            except net.Errors as e:
                 err = Unavailable(f"{host} didn't answer ({type(e).__name__}).")
                 wait = 2 ** attempt
             else:
@@ -164,11 +164,7 @@ class Client:
         raise err
 
     def _once(self, u, method, path, headers, body, max_bytes):
-        port = u.port
-        if u.scheme == "https":
-            conn = http.client.HTTPSConnection(u.hostname, port, timeout=self.timeout, context=ssl.create_default_context())
-        else:
-            conn = http.client.HTTPConnection(u.hostname, port, timeout=self.timeout)
+        conn = net.connection(self.permit, urllib.parse.urlunsplit(u), timeout=self.timeout)
         try:
             conn.request(method, path, body=body, headers=headers)
             r = conn.getresponse()
