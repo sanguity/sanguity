@@ -67,7 +67,7 @@ def main():
     services = {
         "app": (["python3", "-m", "server"], {**base, "HOST": "127.0.0.1", "PORT": "8000",
                                                "FORWARDED_ALLOW_IPS": "127.0.0.1"}),
-        "web": (["nginx", "-e", "/dev/stderr", "-c", os.path.join(NGINX_TMP, "nginx.conf"), "-g", "daemon off;"], base),
+        "web": (["nginx", "-e", "stderr", "-c", os.path.join(NGINX_TMP, "nginx.conf"), "-g", "daemon off;"], base),
         "receiver": (["python3", "-I", "/app/receiver.py"], {**base, "DATA": WATCH, "PORT": "8081", "TZ_DEFAULT": tz,
                                                           "SECRET_FILE": os.path.join(AUTH, "watch_secret")}),
     }

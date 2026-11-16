@@ -252,7 +252,7 @@ jobs:
           assert all(os.path.isfile(f) for f in need), [f for f in need if not os.path.isfile(f)]
           assert not any(os.path.exists(f) for f in never), [f for f in never if os.path.exists(f)]
           assert os.environ['SANGUITY_VERSION'] == 'ci'"
-          docker run --rm --user 1000:1000 --read-only --tmpfs /tmp --add-host app:127.0.0.1 sanguity-release:ci nginx -t -e /dev/stderr
+          docker run --rm --user 1000:1000 --read-only --tmpfs /tmp --add-host app:127.0.0.1 sanguity-release:ci nginx -t -e stderr
 
       - name: Start compose.release.yaml
         run: docker compose -f compose.release.yaml up -d

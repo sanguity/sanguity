@@ -51,7 +51,7 @@
 {% set web = tpl.add_container(values.consts.web_container_name, "image") %}
 {% do web.set_user(values.run_as.user, values.run_as.group) %}
 {% do web.set_read_only(true) %}
-{% do web.set_command(["nginx", "-e", "/dev/stderr", "-g", "daemon off;"]) %}
+{% do web.set_command(["nginx", "-e", "stderr", "-g", "daemon off;"]) %}
 {% do web.depends.add_dependency(values.consts.app_container_name, "service_started") %}
 {% do web.healthcheck.set_test("wget", {"port": 8080, "path": "/healthz", "busybox": true, "spider": false}) %}
 {% do web.add_port(values.network.web_port, {"container_port": 8080}) %}

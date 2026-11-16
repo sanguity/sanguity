@@ -59,7 +59,7 @@ services:
     image: ghcr.io/sanguity/sanguity:0.1.0
     user: $PUID:$PGID
     restart: unless-stopped
-    command: ["nginx", "-e", "/dev/stderr", "-g", "daemon off;"]
+    command: ["nginx", "-e", "stderr", "-g", "daemon off;"]
     depends_on:
       app:
         condition: service_started
