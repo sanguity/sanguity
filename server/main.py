@@ -1273,6 +1273,7 @@ app.include_router(__import__("server.routes_directory", fromlist=["router"]).ro
 app.include_router(__import__("server.routes_connect", fromlist=["router"]).router)   # connected sources: sign-in and sync (#32, #91)
 app.include_router(__import__("server.routes_outside", fromlist=["router"]).router)   # outside connections (#59, #97)
 app.include_router(__import__("server.routes_calendar", fromlist=["router"]).router)  # calendar feeds (#51)
+app.include_router(__import__("server.routes_journal", fromlist=["router"]).router)   # the journal: notes, symptoms, side effects (#49)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here

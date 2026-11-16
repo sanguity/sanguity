@@ -26,6 +26,9 @@ function renderSeriesList() {
   }
 }
 let hoverT = null;
+/* extra rows under each chart's time axis, one per layer: {space() -> its height in px (0: nothing to show),
+   draw(g, x, top, R)} draws it from y = top, x(t) being the chart's time scale. journal.js adds the journal's markers. */
+const CHART_LAYERS = [];
 function renderCharts() {
   const box = $("#charts"); box.replaceChildren();
   const sel = SERIES.filter(s => !s.watch && state.sel.has(s.name));
@@ -86,8 +89,9 @@ function chartCard(s) {
 function drawChart(svg, s, pts, read) {
   if (!svg.isConnected) return;
   const marks = markEvents(), hasMs = msInRange(state.from, state.to);
-  const w = Math.max(320, svg.parentElement.clientWidth - 28), h = (s.kind === "stack" || s.kind === "bars" ? 150 : 170) + (hasMs ? 14 : 0);
-  const L = 52, R = w - 12, T = (marks.length ? 24 : 10) + (hasMs ? 14 : 0), B = h - 22;
+  const layers = CHART_LAYERS.map(l => [l, l.space()]).filter(([, n]) => n > 0), below = layers.reduce((a, [, n]) => a + n, 0);
+  const w = Math.max(320, svg.parentElement.clientWidth - 28), h = (s.kind === "stack" || s.kind === "bars" ? 150 : 170) + (hasMs ? 14 : 0) + below;
+  const L = 52, R = w - 12, T = (marks.length ? 24 : 10) + (hasMs ? 14 : 0), B = h - 22 - below;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, w};
   const x = t => L + (t - state.from) / (state.to - state.from) * (R - L);
   const smoothOn = state.smooth && s.watch && pts.length > 3;
@@ -162,6 +166,7 @@ function drawChart(svg, s, pts, read) {
   const dot = el("svg:circle", {r: 5.5, fill: "none", stroke: "var(--ink)", "stroke-width": 2, visibility: "hidden", "pointer-events": "none"});
   const hit = el("svg:rect", {x: L, y: T - 12, width: R - L, height: B - T + 12, fill: "transparent"});
   g.push(cross, dot, hit);
+  { let top = B + 1; for (const [l, n] of layers) { l.draw(g, x, top, R); top += n; } }   // after hit, so their marks take the pointer
   svg.replaceChildren(...g.filter(Boolean));
   const lastP = pts[pts.length - 1];
   const setRead = p => {

@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 23**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 24**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -13,7 +13,7 @@ Two things hold everywhere:
   counts are plain. Where a value must be found without decrypting every row, a keyed hash (HMAC) of it is stored
   beside it (`key_hash`, `target`).
 - **Everything belongs to a profile, and goes with it.** Deleting a profile removes its records, imports, uploads,
-  jobs, edits, same-result links, settings, memberships and activity by `ON DELETE CASCADE`. Records also belong to the import that brought them
+  jobs, edits, same-result links, journal entries, settings, memberships and activity by `ON DELETE CASCADE`. Records also belong to the import that brought them
   in, so undoing an import removes exactly its rows.
 
 ## Accounts and access
@@ -130,6 +130,9 @@ it. **Edits** (corrections) belong to the profile instead, keyed by a hash of ea
 survive re-imports and undo. So do **same_results**: the person's decision that a lab result from one source is the
 same as one from another (shown once, with both sources) or not (no longer flagged), found by both results' point
 keys (`server/crossmatch.py`, #96).
+survive re-imports and undo. So do **journal** entries (#49, `server/journal.py`): notes, symptoms and side effects
+the people using the profile write themselves. They aren't records from anywhere, so no import owns them; the
+records the page loads list them as `journal`, and an export carries them in its `data.json`.
 
 ```mermaid
 erDiagram
@@ -147,6 +150,7 @@ erDiagram
     events }o..o{ edits : "matched by key hash"
     profiles ||--o{ same_results : "has"
     results }o..o{ same_results : "matched by point key"
+    profiles ||--o{ journal : "has"
 
     profiles {
         int id PK
@@ -260,6 +264,16 @@ erDiagram
         text value "🔒 JSON: both sides when decided"
         int created_by FK
         int at
+    journal {
+        int id PK
+        int profile_id FK
+        text body "🔒 JSON: kind (note | symptom | side_effect), date, what, severity 0-10, note, medication"
+        int created_by FK
+        text created_name "the username then"
+        int created
+        int changed_by FK
+        text changed_name
+        int changed
     }
 ```
 
@@ -526,6 +540,7 @@ One row per profile and user (unique).
 | `import_undos` | `entry` |
 | `edits` | `target_key`, `other_key`, `value` |
 | `same_results` | `a_key`, `b_key`, `value` |
+| `journal` | `body` |
 | `labmaps` | `source`, `target` |
 | `settings` | `sealed` |
 | `smart_clients` | `secret` |
@@ -548,8 +563,8 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, settings, calendar feeds, undo history, its activity and outside contacts | the original exports |
-| An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits and same-result links (they belong to the profile) |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries, settings, calendar feeds, undo history, its activity and outside contacts | the original exports |
+| An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links and journal entries (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |
-| An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, its calendar feeds, pending sign-ins | activity, uploads, jobs and lab-name matches it made (their links become `NULL`) |
+| An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, its calendar feeds, pending sign-ins | activity, uploads, jobs, journal entries and lab-name matches it made (their links become `NULL`) |

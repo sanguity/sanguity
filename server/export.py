@@ -2,7 +2,8 @@
 
 The zip:
   README.txt          what this is and how to load it again
-  data.json           the records, with each document link pointing at the copy in documents/
+  data.json           the records, with each document link pointing at the copy in documents/, and the journal
+                      (notes, symptoms and side effects people wrote, journal.py) as its "journal" list
   settings.json       the settings set for the profile, shaped like settings.example.json (none: all at their defaults)
   documents/<id>/...  every document, and for HTML records the pictures and stylesheets they show
   watch/daily.json    the watch and scale summary shown with the profile (if any)
@@ -142,7 +143,7 @@ Exported {now:%Y-%m-%d %H:%M} by {exported_by}.
 This file holds someone's health records. Keep it somewhere private, ideally encrypted, and delete copies you
 no longer need.
 
-  data.json          the records ({len(included)} documents linked)
+  data.json          the records ({len(included)} documents linked), and the journal ("journal": {len(data.get('journal') or []) if p['data'] else 0} entries)
   settings.json      the profile's settings{'' if len(p['settings']) > 1 else ' (none set: all at their defaults)'}
   documents/         the documents, one folder each
   watch/daily.json   watch and scale summary{'' if p['watch'] else ' (none)'}

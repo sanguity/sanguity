@@ -18,6 +18,9 @@ to data.json, and each part of it has its place:
                                                              Each event and lab series names its import as "imp"; a
                                                              series' results are all of its import. Sent once here,
                                                              so no row repeats its importer's label
+  journal    [{id, kind, t, title, severity, note, med, by...}]  the journal table: notes, symptoms and side
+                                                             effects people wrote (journal.py), never part of an
+                                                             import; left out while there are none
 
 store() takes such an object apart into the rows of one import; assemble() puts a profile's imports back
 together. An event's id is its row's, so the ids an import arrives with are mapped on the way in, the ones a lab
@@ -32,11 +35,11 @@ every row. '' means the record has no key; NULL, not worked out yet (backfill_ke
 import hashlib, hmac, json, threading
 from contextlib import contextmanager
 
-from . import crossmatch, crypto, edits
+from . import crossmatch, crypto, edits, journal
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
-SERVED = ("imports", "edits", "same", "possible")   # parts assemble() adds: never stored from an import (an export's data.json has them)
+SERVED = ("imports", "edits", "same", "possible", "journal")   # parts assemble() adds: never stored from an import (an export's data.json has them)
 
 
 def _enc(obj):
@@ -284,8 +287,10 @@ def _assemble(db, pid):
         pts.setdefault(r["series_id"], []).append(_dec(r["body"]))
     labs = [{**_dec(r["body"]), "imp": r["import_id"], "pts": pts.get(r["id"], [])}
             for r in db.execute("SELECT id, import_id, body FROM series WHERE profile_id=? ORDER BY id", (pid,))]
-    data = edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
-    return crossmatch.apply(db, pid, data)
+    out = crossmatch.apply(db, pid, edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs}))
+    if (entries := journal.listing(db, pid)):   # only when there are some, like edits
+        out["journal"] = entries
+    return out
 
 
 # the page asks for a profile's records on every load; putting them together decrypts every row, so the result
