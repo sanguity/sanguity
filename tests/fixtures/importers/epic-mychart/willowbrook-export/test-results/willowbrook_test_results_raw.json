@@ -1,0 +1,224 @@
+{
+ "groups": [
+  {
+   "resultList": [
+    "a1",
+    "a2",
+    "a3"
+   ],
+   "contactType": "Office Visit"
+  },
+  {
+   "resultList": [
+    "a4",
+    "a5"
+   ],
+   "isInpatient": true
+  }
+ ],
+ "details": {
+  "a1": {
+   "orderName": "CBC w/ diff",
+   "results": [
+    {
+     "name": "CBC",
+     "orderMetadata": {
+      "prioritizedInstantISO": "2026-02-14T07:45:00-06:00",
+      "resultType": "LAB",
+      "orderProviderName": "Dr. Rowan Ellis",
+      "resultStatus": "Final",
+      "collectionTimestampsDisplay": "Feb 14, 2026 7:40 AM",
+      "resultTimestampDisplay": "Feb 14, 2026 9:02 AM",
+      "specimensDisplay": "Blood",
+      "resultingLab": {
+       "name": "Willowbrook Central Lab"
+      },
+      "associatedDiagnoses": [
+       "Fatigue"
+      ]
+     },
+     "resultComponents": [
+      {
+       "componentInfo": {
+        "name": "HGB",
+        "units": "g/dL"
+       },
+       "componentResultInfo": {
+        "value": "13.1",
+        "numericValue": 13.1,
+        "referenceRange": {
+         "low": 12,
+         "high": 16,
+         "formattedReferenceRange": "12.0 - 16.0"
+        }
+       }
+      },
+      {
+       "componentInfo": {
+        "name": "WBC",
+        "units": "x10E3/uL"
+       },
+       "componentResultInfo": {
+        "value": "11.8",
+        "numericValue": 11.8,
+        "referenceRange": {
+         "low": 4,
+         "high": 11,
+         "formattedReferenceRange": "4.0 - 11.0"
+        }
+       }
+      },
+      {
+       "componentInfo": {
+        "name": "Sodium",
+        "units": "mmol/L"
+       },
+       "componentResultInfo": {
+        "value": "141",
+        "numericValue": 141,
+        "referenceRange": {
+         "low": 135,
+         "high": 145,
+         "formattedReferenceRange": "135 - 145"
+        }
+       }
+      }
+     ],
+     "providerComments": [
+      {
+       "text": "<p>White count a little high; recheck in a month.</p>"
+      }
+     ]
+    }
+   ]
+  },
+  "a2": {
+   "orderName": "XR Chest 2 Views",
+   "results": [
+    {
+     "name": "XR Chest",
+     "orderMetadata": {
+      "prioritizedInstantISO": "2026-02-14T10:20:00-06:00",
+      "resultType": "IMAGING",
+      "orderProviderName": "Dr. Rowan Ellis",
+      "resultStatus": "Final"
+     },
+     "resultComponents": [],
+     "studyResult": {
+      "impression": {
+       "hasContent": true,
+       "contentAsHtml": "<p>No acute <b>cardiopulmonary</b> process.</p>"
+      },
+      "narrative": {
+       "hasContent": true,
+       "contentAsString": "Two views of the chest. Lungs are clear.",
+       "contentAsHtml": "Two views of the chest. Lungs are clear."
+      },
+      "addenda": [
+       {
+        "text": "Compared with no prior study."
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "a3": {
+   "orderName": "Undated order",
+   "results": [
+    {
+     "name": "Lost",
+     "orderMetadata": {
+      "resultType": "LAB"
+     },
+     "resultComponents": []
+    }
+   ]
+  },
+  "a4": {
+   "orderName": "Basic metabolic panel",
+   "results": [
+    {
+     "name": "BMP",
+     "orderMetadata": {
+      "prioritizedInstantISO": "2026-03-09T05:30:00-05:00",
+      "resultType": "LAB",
+      "orderProviderName": "Dr. Rowan Ellis",
+      "resultStatus": "Final"
+     },
+     "resultComponents": [
+      {
+       "componentInfo": {
+        "name": "Sodium",
+        "units": "mmol/L"
+       },
+       "componentResultInfo": {
+        "value": "132",
+        "numericValue": 132,
+        "referenceRange": {
+         "low": 135,
+         "high": 145,
+         "formattedReferenceRange": "135 - 145"
+        }
+       }
+      },
+      {
+       "componentInfo": {
+        "name": "Potassium (External)",
+        "units": "mmol/L"
+       },
+       "componentResultInfo": {
+        "value": "3.4",
+        "numericValue": 3.4,
+        "referenceRange": {
+         "low": 3.5,
+         "high": 5.1,
+         "formattedReferenceRange": "3.5 - 5.1"
+        }
+       }
+      },
+      {
+       "componentInfo": {
+        "name": "Potassium",
+        "units": "mmol/L"
+       },
+       "componentResultInfo": {
+        "value": "3.6",
+        "numericValue": 3.6,
+        "referenceRange": {
+         "low": 3.5,
+         "high": 5.1,
+         "formattedReferenceRange": "3.5 - 5.1"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "a5": {
+   "orderName": "Bone marrow biopsy",
+   "results": [
+    {
+     "name": "Procedure",
+     "orderMetadata": {
+      "prioritizedInstantISO": "2026-03-10T13:00:00-05:00",
+      "resultType": 4,
+      "orderProviderName": "Dr. Rowan Ellis",
+      "resultStatus": "Final"
+     },
+     "resultComponents": [
+      {
+       "componentInfo": {
+        "name": "Cellularity"
+       },
+       "componentResultInfo": {
+        "value": "40%"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

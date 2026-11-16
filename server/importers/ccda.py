@@ -99,6 +99,12 @@ def _load(rel, path):
     """Parse one file, refusing anything that declares a DOCTYPE or entities. Raises ValueError in plain language."""
     with open(path, "rb") as f:
         raw = f.read(MAX_BYTES + 1)
+    return load_bytes(rel, raw)
+
+
+def load_bytes(rel, raw):
+    """_load for a document already read into memory (a member of a zip, say): the same refusals, in the same words.
+    `rel` names it in messages; pass at most MAX_BYTES + 1 bytes."""
     if len(raw) > MAX_BYTES:
         raise ValueError(f"{rel} is larger than {MAX_BYTES // 1024 ** 2} MB, too large for a health summary.")
     if DECL.search(raw) or (raw[:2] in (b"\xff\xfe", b"\xfe\xff") and DECL16.search(raw.decode("utf-16", "ignore"))):
