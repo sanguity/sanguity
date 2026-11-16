@@ -283,6 +283,19 @@ yourself, and the return address and scopes to paste. Signing in comes with #32.
 can't be shipped with Sanguity, so an admin adds them once: `python3 tools/build_directory.py` (about 1 MB; see
 [docs/provider-directory.md](docs/provider-directory.md)). The app never looks anything up itself.
 
+### Calendar reminders
+
+**Settings → Calendar feed** gives you a private address for your own calendar app (iPhone or Mac Calendar, Google
+Calendar, Outlook) to subscribe to. It lists the profile's upcoming appointments, imported or typed in, and, where
+a lab panel has been drawn at a steady rhythm, the next expected draw as a tentative all-day event marked
+"expected, not scheduled". Sanguity sends no notifications: your calendar app fetches the feed every few hours.
+Events say only "Appointment" or "Labs expected" unless you choose full details (title, place, panels, source),
+since calendars often sync to a phone maker's or email provider's cloud; results and diagnoses are never included.
+Anyone who can view a profile can make a feed of it for themself. The address is the only credential, so it's
+shown once; get a new one or turn the feed off there any time, and a feed stops when its person's access ends.
+Google Calendar and Outlook on the web fetch from their own servers, so they need Sanguity reachable over HTTPS
+from the internet; a phone on your home network or tailnet works without that.
+
 ## Privacy and security
 
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.

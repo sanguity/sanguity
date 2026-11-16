@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 22**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 23**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -483,6 +483,35 @@ erDiagram
     }
 ```
 
+## Calendar feeds
+
+A **calendar feed** (`server/calendar.py`, #51) is the private address a person's own calendar app fetches to show the
+profile's upcoming appointments and expected lab draws. There is one per person and profile. The address carries a
+random token, and only its SHA-256 is kept in `token_hash`, as for sessions. A feed works only while its person can
+still view the profile: the membership and the account are checked at every fetch. Fetches aren't logged, only the
+time of the last one; making, rotating and revoking a feed are logged in the profile's activity (`calendar`).
+
+```mermaid
+erDiagram
+    profiles ||--o{ calendar_feeds : "is shown in"
+    users ||--o{ calendar_feeds : "subscribes with"
+
+    calendar_feeds {
+        int id PK
+        int profile_id FK
+        int user_id FK
+        text token_hash "SHA-256 of the address's token, unique"
+        text details "minimal (default) or full"
+        int labs "also expected lab draws"
+        text tz "the zone of the browser that set it up"
+        int created
+        int rotated "when the token was last replaced"
+        int last_fetched
+    }
+```
+
+One row per profile and user (unique).
+
 ## What is encrypted
 
 | Table | Encrypted columns |
@@ -519,8 +548,8 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, settings, undo history, its activity and outside contacts | the original exports |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, settings, calendar feeds, undo history, its activity and outside contacts | the original exports |
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits and same-result links (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |
-| An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, pending sign-ins | activity, uploads, jobs and lab-name matches it made (their links become `NULL`) |
+| An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, its calendar feeds, pending sign-ins | activity, uploads, jobs and lab-name matches it made (their links become `NULL`) |

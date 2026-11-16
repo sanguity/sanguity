@@ -145,7 +145,9 @@ async def guard(request: Request, call_next):
             return JSONResponse({"detail": "Request refused (cross-site check)."}, status_code=403)
     resp = await call_next(request)
     if request.url.path.startswith("/api/"):
-        resp.headers["Cache-Control"] = "no-store"
+        # a calendar feed (routes_calendar.py) may be kept by the calendar app itself, never by a shared cache
+        if not resp.headers.get("Cache-Control", "").startswith("private"):
+            resp.headers["Cache-Control"] = "no-store"
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["Referrer-Policy"] = "no-referrer"
@@ -1270,6 +1272,7 @@ app.include_router(__import__("server.routes_shl", fromlist=["router"]).router) 
 app.include_router(__import__("server.routes_directory", fromlist=["router"]).router)  # find your provider (#93)
 app.include_router(__import__("server.routes_connect", fromlist=["router"]).router)   # connected sources: sign-in and sync (#32, #91)
 app.include_router(__import__("server.routes_outside", fromlist=["router"]).router)   # outside connections (#59, #97)
+app.include_router(__import__("server.routes_calendar", fromlist=["router"]).router)  # calendar feeds (#51)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here

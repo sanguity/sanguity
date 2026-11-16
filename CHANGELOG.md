@@ -60,6 +60,12 @@ Everything on `main` so far; it becomes the first tagged release.
   exports) becomes claims and pharmacy fills on the Costs tab, and an "Insurer" connected source pulls them on a
   schedule (#92).
 
+**Sharing and new features (Phase 4)**
+- Reminders as a calendar feed (#51): a private iCalendar address per person and profile, made on the Settings page,
+  that your own calendar app (iPhone, Mac, Google Calendar, Outlook) subscribes to. It lists upcoming appointments
+  and, for labs drawn at a steady rhythm, the next expected draw as a tentative all-day event. Minimal details
+  ("Appointment") by default; rotate or turn it off any time. Sanguity still sends nothing: the calendar app fetches.
+
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for
   linux/amd64, linux/arm64 and linux/arm/v7 (#63).
