@@ -574,7 +574,9 @@ def me(s=Depends(any_user), db=Depends(get_db)):
                      "needs_two_factor": needs_2fa, "admin_needs_two_factor": accounts.admin_needs_second_factor(db, s)},
             "two_factor_required": required, "reauth_minutes": config.REAUTH_MINUTES,
             "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
-            "password_min": _password_min(db, s), "session_ends": _session_ends(db, s)}
+            "password_min": _password_min(db, s), "session_ends": _session_ends(db, s),
+            # the install's HTTPS address (PUBLIC_ORIGINS), for "install from this address" on a plain-HTTP page (#56)
+            "https_address": next((o for o in sorted(config.PUBLIC_ORIGINS) if o.startswith("https://")), None)}
 
 
 def _session_ends(db, s):

@@ -382,7 +382,10 @@ who lost the phone holding them.
 
 Sanguity installs to a phone's home screen with its own icon: **Add to Home Screen** in Safari's share menu on
 iPhone, or **Install app** in Chrome's menu on Android. Like passkeys, this needs **HTTPS** (or `http://localhost`):
-browsers don't install from, or run the offline part at, a plain-HTTP address.
+browsers don't install from, or run the offline part at, a plain-HTTP address. The app offers it too: an
+**Install app** button in the header when the browser can install it (Chrome, Edge, Samsung Internet), and an
+**Install on this device** card under **Account** with the steps for iPhone and iPad, or a link to your HTTPS
+address (from `PUBLIC_ORIGINS`) when the page was opened over plain HTTP.
 
 Installed, it opens without a connection, but by default shows no records then: the app's pages are kept on the
 phone, its records aren't. **Account > Offline records on this device** keeps a copy of the last profile you opened,
