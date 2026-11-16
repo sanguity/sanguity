@@ -130,6 +130,11 @@ with `cryptography`, which is already a dependency.
   [`tests/fixtures/fakefhir/`](../fixtures/fakefhir):
   - `pat-1`, Robin Example: the FHIR importer's fictional bundle, plus Coverage and two ExplanationOfBenefit claims.
   - `pat-2`, Sam Sample: diabetes follow-up, six Observations, a note held in a Binary, and a pharmacy claim.
+  - `mem-1`, Casey Member, in [`payer/`](../fixtures/fakefhir/payer): a health plan's member for #92, loaded only with
+    `FakeFHIR(fixtures=PAYER_FIXTURES)` (`from tests.fakefhir import PAYER_FIXTURES`), so the fake plays an
+    insurer's patient-access API. Patient, Coverage and five CARIN Blue Button ExplanationOfBenefit claims: an
+    office visit, an outpatient facility bill with a denied line, a denied MRI, a claim later adjusted, and a
+    pharmacy fill. The default fixtures don't include it.
 
   Each type that #32 and #91 pull exists for both patients: Patient, Observation, Condition, MedicationRequest,
   Encounter, DocumentReference, DiagnosticReport and ExplanationOfBenefit. Every loaded resource has
@@ -138,7 +143,7 @@ with `cryptography`, which is already a dependency.
   with `url: Binary/<id>`. `GET Binary/<id>` returns the raw bytes with their content type. With
   `Accept: application/fhir+json`, it returns the Binary resource instead.
 - **Search parameters.**
-  - `patient` and `subject` accept `pat-1`, `Patient/pat-1` or an absolute URL.
+  - `patient`, `subject` and `beneficiary` (Coverage) accept `pat-1`, `Patient/pat-1` or an absolute URL.
   - `_id`.
   - `category`, `code` and `type` accept `code` or `system|code`, with commas for OR.
   - `_lastUpdated` with `gt`, `ge`, `lt`, `le`, `eq` and `ne`, repeatable. A date means the whole day.

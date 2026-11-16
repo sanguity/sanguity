@@ -53,6 +53,9 @@ Everything on `main` so far; it becomes the first tagged release.
   token, revocation and registration hosts, scopes and last contact; Health Link fetches; Health Card issuers'
   keys). All outbound requests go through one gateway that refuses unlisted hosts, and a test fails if any code
   contacts one (#97, #59).
+- Claims as FHIR: CARIN Blue Button ExplanationOfBenefit (insurers' patient-access APIs, Medicare Blue Button
+  exports) becomes claims and pharmacy fills on the Costs tab, and an "Insurer" connected source pulls them on a
+  schedule (#92).
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for

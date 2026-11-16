@@ -206,6 +206,21 @@ one import, a facility bill inside one of that import's stays is filed under "Ho
 does; a claims-only upload has no stays, so linking across imports (and re-filing those bills) is left to a later
 step that reads the hint. build.py is one such step: it re-files them against the stays from all its sources.
 
+**Claims as FHIR (#92).** The FHIR importer reads CARIN Blue Button `ExplanationOfBenefit` resources, what insurers'
+patient-access APIs and Medicare Blue Button 2.0 give (in a Bundle, a bulk export's NDJSON, or a sync's pull), into
+the same records (`server/importers/_fhir_claims.py`, which uses `_claims.py`'s care categories and drug names):
+a `claim` event per medical EOB and an `rx` event per pharmacy one, keyed `fhir:ExplanationOfBenefit/<id>`, with the
+claim detail above (plus `plan`, `network`, and for fills `drug`, `ndc`, `daysSupply`) and a Costs row. Amounts
+come from the EOB's `total`, else its items' `adjudication`, by category code: billed = `submitted`, plan paid =
+`benefit` (else `paidtoprovider` + `paidtopatient`, else `payment.amount`), your share = `memberliability` (else
+`copay` + `deductible` + `coinsurance`). Institutional lines carry their revenue code padded to five digits, as
+UHC's do, so facility bills are recognised the same way, and one inside a stay from the same import (an Encounter)
+is "Hospital stay (facility)". Status is `Denied` (the whole claim; denied lines are listed on the line), `Pending`,
+`Paid` or `Processed`. A claim that an adjusted claim replaces (`related` "prior", or "replacedby") is kept hidden,
+with status `Replaced` and amounts of 0 (its own under `original`), so nothing counts twice, and a sync that brings
+the adjustment later marks the one it saved before. Coverage only names the insurer and plan; cancelled and
+entered-in-error EOBs are left out with a warning.
+
 ### PDF lab reports: layouts
 
 `pdf_labs.py` (`NAME = "pdf-labs"`) reads the lab reports that Quest's and Labcorp's patient portals give as PDFs.

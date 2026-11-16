@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 FIXTURES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fixtures", "fakefhir")
+PAYER_FIXTURES = os.path.join(FIXTURES, "payer")   # an insurer's patient-access API (#92): FakeFHIR(fixtures=PAYER_FIXTURES)
 
 # Where each patient-compartment resource names its patient; types not listed here aren't in a patient's compartment
 # (Organization, Practitioner, Location, Medication...) and anyone with the scope may read them.
@@ -897,7 +898,7 @@ def _handler(fake: FakeFHIR):
             if not scope_allows(token.grant.scopes, rtype, "s"):
                 return self._forbidden(f"no scope to search {rtype}")
             params = self.query
-            asked = params.get("patient", []) + params.get("subject", [])
+            asked = params.get("patient", []) + params.get("subject", []) + params.get("beneficiary", [])
             if rtype == "Patient":
                 asked += params.get("_id", [])
             if any(ref_id(a) != token.grant.patient for a in asked):

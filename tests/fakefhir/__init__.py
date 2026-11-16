@@ -2,4 +2,4 @@
 
     from tests.fakefhir import FakeFHIR, pkce
 """
-from .server import FIXTURES, Client, FakeFHIR, Redirect, Request, pkce, rsa_verify, scope_allows   # noqa: F401
+from .server import FIXTURES, PAYER_FIXTURES, Client, FakeFHIR, Redirect, Request, pkce, rsa_verify, scope_allows   # noqa: F401

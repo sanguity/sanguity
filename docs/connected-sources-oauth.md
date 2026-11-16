@@ -236,6 +236,27 @@ From the [CARIN IG for Blue Button 2.2.0, Security and Privacy](https://hl7.org/
   above).
 - In practice this is payer by payer: a checklist in #92, not one rule.
 
+**In Sanguity (#92).** An admin sets a payer up under Connected sources with the vendor type "Insurer
+(patient-access API)". Its guide asks for the CARIN Blue Button scopes, `patient/ExplanationOfBenefit.read`,
+`patient/Coverage.read` and `patient/Patient.read` (`.rs` on SMART v2), with `launch/patient` and `offline_access`,
+and a sync then searches only the types the granted scopes cover (Coverage by `beneficiary`). Where a payer issues a
+client secret, option 1 handles it: the install keeps it encrypted on its own server. Claims land on the Costs tab
+(docs/importers.md, "Claims as FHIR"). Where individuals may be able to register, read November 2026; only Blue
+Button's terms come from its own documentation, the rest are *(unverified)*:
+
+| Payer | Developer portal | What we found |
+|---|---|---|
+| Medicare Blue Button 2.0 | [bluebutton.cms.gov/developers](https://bluebutton.cms.gov/developers/) | Self-service sandbox with synthetic beneficiaries; confidential clients only; PKCE S256. Production review impractical for one person (below). |
+| Humana | [developers.humana.com](https://developers.humana.com/apis/registerapp) | A FHIR sandbox with synthetic members; apps register through its Data Exchange portal. Production approval for an individual *(unverified)*. |
+| Cigna | [developer.cigna.com](https://developer.cigna.com) | Developer registration, then a sandbox client on request *(unverified: a Cigna sandbox guide shared on chat.fhir.org)*. |
+| Aetna | [developerportal.aetna.com](https://developerportal.aetna.com) | Self-registration asks for a company email *(unverified: a third-party guide)*. |
+| Elevance Health (Anthem) | [anthem.com/developers](https://anthem.com/developers) | Sandbox, then a separate production request form *(unverified for individuals)*. |
+| UnitedHealthcare | [uhc.com, interoperability APIs](https://www.uhc.com/legal/interoperability-apis) | Its registration route wasn't confirmed: the page refused automated reading *(unverified)*. |
+| VA Lighthouse Patient Health API | [developer.va.gov](https://developer.va.gov) | Sandbox by application; the client type for patient apps *(unverified)*. Not tried with Sanguity. |
+
+None of these has been registered with or contacted by the project: the tests use the fake FHIR server
+(`tests/fakefhir`, its payer fixtures) in Blue Button's place.
+
 ### Medicare Blue Button 2.0
 
 From [Blue Button authorization](https://bluebutton.cms.gov/api-documentation/authorization),
