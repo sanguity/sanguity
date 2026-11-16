@@ -319,7 +319,8 @@ docker compose up -d --build && python3 tests/docker_smoke.py --code <setup code
 
 ```
 compose.yaml        setup (one-shot), app (the API), web (nginx) and receiver services
-server/             The API (FastAPI + SQLite): accounts, sessions, profiles, roles, records and documents
+server/             The API (FastAPI + SQLite): accounts, sessions, profiles, roles, records and documents;
+                    its database design, with diagrams, is in docs/database.md
 server/importers/   One module per record format, the registry that picks one, shared helpers (docs/importers.md)
 requirements.in     The API's dependencies; requirements.txt and requirements-dev.txt are their pinned,
                     hash-checked lock files (regenerate with uv, as requirements.in says; Dependabot proposes

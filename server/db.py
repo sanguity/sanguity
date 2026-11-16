@@ -4,6 +4,7 @@ from contextlib import contextmanager
 
 from . import config
 
+# docs/database.md has diagrams of what these steps build; update them when you add one
 SCHEMA = [
     # version 1: accounts, profiles, roles, sessions, documents
     """
