@@ -292,6 +292,7 @@ const WHAT = {
     : `imported records (${d.documents} documents)`,
   reload: () => "loaded the latest records",
   export: () => "exported everything",
+  summary: d => `made a visit summary${d.for ? ` for the appointment on ${d.for}` : ""}`,
   upload: d => d.source === "smart-health-link" ? `imported a SMART Health Link from ${d.host}` : `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
   outside: d => `had Sanguity contact ${d.host} (${d.purpose})`,
   discard: () => "cancelled an import at its preview",
@@ -344,7 +345,7 @@ const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document"
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
   ["export", "Exports"], ["upload", "Uploads"], ["discard", "Cancelled imports"], ["undo", "Undone imports"], ["edit", "Edits"],
   ["outside", "Outside connections"], ["settings", "Settings"], ["connect", "Connected sources"], ["calendar", "Calendar feeds"],
-  ["journal", "Journal"]];
+  ["journal", "Journal"], ["summary", "Visit summaries"]];
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},

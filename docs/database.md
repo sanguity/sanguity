@@ -341,6 +341,10 @@ erDiagram
 
 One row per key and owner (a unique index on `key`, `IFNULL(profile_id, 0)`, `IFNULL(user_id, 0)`).
 
+One key outside the registry lives here too: `summary.questions`, a profile's draft of questions for the visit
+summary (`server/summary.py`, #48), always in `sealed`. Not being in the registry, it never shows on the Settings
+screen or in a settings export, and it goes with the profile.
+
 ## Connected sources
 
 A profile can be connected to a provider's or insurer's FHIR API by signing in to it (#32), and is then kept up to

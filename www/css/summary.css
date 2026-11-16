@@ -1,0 +1,21 @@
+/* Sanguity · the visit summary page (summary.html, #48) */
+.sum textarea{width:100%;box-sizing:border-box;border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:8px 10px;font:inherit;font-size:14px;resize:vertical}
+.sum .form.inline select{max-width:100%}
+.sum .form.inline label{min-width:0;max-width:100%}
+.sum-sections{display:flex;flex-wrap:wrap;gap:4px 18px;margin:6px 0 12px}
+.sum-picked{list-style:none;margin:4px 0 8px;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.sum-picked li{display:inline-flex;align-items:center;gap:6px;background:var(--hover);border-radius:999px;padding:2px 4px 2px 10px;font-size:13px}
+.sum-picked li .btn{padding:0 7px;line-height:18px}
+.sum-add{display:flex;gap:6px;max-width:420px}
+.sum-add input{flex:1 1 auto}
+.sum-notice{margin:10px 0 0}
+.sum-preview h3{font-size:13px;font-weight:650;margin:16px 0 2px}
+.sum-preview .sum-head{border-bottom:1px solid var(--grid);padding-bottom:8px}
+.sum-preview .sum-head p{margin:2px 0;font-size:13px}
+.sum-preview .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.sum-preview .tbl td,.sum-preview .tbl th{white-space:nowrap}
+.sum-preview .tbl td.wrap{white-space:normal;min-width:9em}
+.sum-preview .flag{color:var(--crit);font-weight:600}
+.sum-preview ol{margin:4px 0;padding-left:22px;font-size:13px}
+.sum-preview .spark{width:70px;height:16px;vertical-align:middle}
+.sum-preview .fitwarn{color:var(--crit);font-size:13px;font-weight:550;margin:8px 0 0}
