@@ -6,7 +6,7 @@ Profile events (profile_id set), readable by the profile's owners:
   share         {"username", "role", "from"}: gave access or changed a role ("from" is the old role, if any)
   unshare       {"username"}: removed someone's access, or left (the actor is then that person)
   import        {"documents"}: records loaded with server.manage; {"importer", "counts", "job"}: an upload imported in
-                the browser (jobs.py)                             reload     records reloaded from the setup build
+                the browser (jobs.py), with {"labs": {"matched", "remembered"}} when lab names were matched (labmap.py)                             reload     records reloaded from the setup build
   export        downloaded everything in the profile as a zip
   upload        {"upload", "files", "bytes"}: files uploaded on the import page (uploads.py)
   discard       {"importer", "job", "upload"}: an import cancelled at its preview (jobs.py); an import confirmed
@@ -23,6 +23,8 @@ Account events (no profile), readable by admins:
   account.remove {"username", "handed_over"}: an account deleted; profiles it alone owned went to someone else
   profile.repair {"name", "username"}: an admin gave a profile with no active owner a new one (also logged on the
                 profile itself, as a share with "repair": true)
+  labmap.change {"name", "importer", "from", "to"} / labmap.remove {"name", "importer", "target"}: an admin changed or
+                removed a lab name matched during import (labmap.py; target null: kept as a series of its own)
 
 Entries keep the actor's username as it was, so they read the same after an account is gone. A profile's entries
 go with the profile. Entries older than ACTIVITY_DAYS are pruned (at most once a day, when something is logged).
@@ -34,7 +36,8 @@ from . import config, crypto, db as dbm
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
-                   "settings.require_2fa", "profile.delete", "account.remove", "profile.repair")
+                   "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
+                   "labmap.remove")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
 SYSTEM = (COMMAND_LINE, SETUP_BUILD)
 

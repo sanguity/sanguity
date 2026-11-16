@@ -7,7 +7,9 @@ event, drags and scroll-zooms the charts, toggles the event sort, switches profi
 the import page (a fictional C-CDA and a FHIR export, previewed, saved in the background and then shown on the timeline;
 the C-CDA again, previewed as all duplicates and cancelled; the FHIR one then undone from the import history, and
 gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab; a CareSpace and an Epic MyChart
-export), types two lab results in on the import page and finds them on Trends, opens the account page, and fails
+export), types two lab results in on the import page and finds them on Trends, uploads a lab with a spelling Sanguity
+doesn't know, accepts the series suggested at the preview and finds it on Trends, then sees it matched as before on
+the next upload, opens the account page (where the match is listed for admins), and fails
 on any script error, console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -597,6 +599,52 @@ def main():
                   sorted(map(tuple, [(n, tuple(map(tuple, p))) for n, p in typed])) == [("Ferritin", ((88, ""),)), ("Hemoglobin", ((12.4, "L"),))], typed)
             charts = page.inner_text("#charts")
             check("…with a chart for each", "Hemoglobin" in charts and "Ferritin" in charts, charts[:300])
+
+            # ---- lab names matched on import (#23): a spelling lab-aliases.json doesn't know is suggested the profile's
+            # Hemoglobin series at the preview; accepted, its point is charted with Hemoglobin; uploaded again, it's
+            # matched as before without being asked
+            def upload_csv(name, body):
+                page.goto(base + "/import.html?profile=2")
+                page.wait_for_selector("#importer", state="visible", timeout=10000)
+                page.click("#tab-files")
+                page.set_input_files("#pickFiles", files=[{"name": name, "mimeType": "text/csv", "buffer": body}])
+                page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
+                page.click("#go")
+                page.wait_for_function(f"document.querySelectorAll('.import-job').length && "
+                                       f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            lab_csv = "Date,Test,Result,Units,Reference Range\n{},Hemoglobin Whole Bld,{},g/dL,13.5 - 17.5\n"
+            upload_csv("other-lab.csv", lab_csv.format("2026-11-09", "12.9").encode())
+            labs = js(f"""(() => {{ const li = {last_card}.querySelector('.imp-labs li'); if (!li) return null;
+                const sel = li.querySelector('select'); return {{text: li.textContent, value: sel.value,
+                chosen: sel.selectedOptions[0].textContent, options: sel.options.length}}; }})()""")
+            check("the preview lists the unknown lab name, with the profile's Hemoglobin series suggested and chosen",
+                  labs is not None and "Hemoglobin Whole Bld" in labs["text"] and labs["value"] == "Hemoglobin"
+                  and "similar name, same unit" in labs["chosen"] and labs["options"] > 3, labs)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the preview with lab names to match fits 375 px", js("document.documentElement.scrollWidth") <= 375,
+                  js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")   # Save, accepting the suggestion
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.textContent")
+            check("…saved, saying the name went into an existing series", card.startswith("Imported.") and "1 lab name put in an existing series" in card, card)
+            page.goto(base + "/")
+            page.wait_for_function("typeof SERIES !== 'undefined' && SERIES.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
+            js("switchTab('labs')")
+            settle(300)
+            hgb = js("SERIES.filter(s => s.name === 'Hemoglobin').flatMap(s => s.pts.map(p => [p[0].slice(0, 10), p[1]]))")
+            check("…and its result is on Trends in the existing Hemoglobin series",
+                  ["2026-11-09", 12.9] in hgb and not js("SERIES.some(s => s.name === 'Hemoglobin Whole Bld')"), hgb)
+            check("…charted there", "Hemoglobin" in page.inner_text("#charts"), page.inner_text("#charts")[:200])
+            upload_csv("other-lab-again.csv", lab_csv.format("2026-11-12", "13.2").encode())
+            again = js(f"(() => {{ const li = {last_card}.querySelector('.imp-labs li'); return li && [li.textContent, li.querySelector('select').value]; }})()")
+            check("uploaded again, the name is matched as before", again is not None and "Matched as before" in again[0] and again[1] == "Hemoglobin", again)
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            check("…and saved into Hemoglobin again", js(f"{last_card}.textContent").startswith("Imported."))
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
             page.select_option("#profile", label="My records")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
 
@@ -604,6 +652,11 @@ def main():
             page.goto(base + "/account.html")
             page.wait_for_function("document.querySelectorAll('#sessList tbody tr').length > 0 && document.querySelectorAll('#profList .prof').length === 2 && !document.getElementById('users').hidden", timeout=10000)
             check("account page lists devices, profiles and accounts", True)
+            page.wait_for_function("document.querySelector('#labmapList tr[data-labmap]')", timeout=10000)
+            lm = js("[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => tr.textContent)")
+            check("the admin tab lists the lab name match, who made it and from what, with Change and Remove (#23)",
+                  any("Hemoglobin Whole Bld" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "Change" in t and "Remove" in t for t in lm)
+                  and "only admins can change or remove" in page.inner_text("#labmaps"), lm)
             # three tabs: Sign-in & security first; Admin only for admins; the address keeps the tab, old links still land
             vis = lambda sel: js(f"!document.querySelector('{sel}').hidden")
             check("account tabs: security shown first, Admin offered", vis("#panel-security") and not vis("#panel-profiles") and vis("#tab-admin"))

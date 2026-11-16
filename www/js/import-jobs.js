@@ -2,7 +2,8 @@
      window.sanguityImport.uploaded({profileId, uploadId[, container][, importer]})
    once an upload is finished. This starts the import, polls it (about once a second, slower the longer it runs),
    shows the stage, then its preview (#22): what it would add by kind, the dates it covers, and the duplicates of
-   what the profile has, skipped unless ticked to keep, with Save and Cancel. Saving polls again and shows what came
+   what the profile has, skipped unless ticked to keep, lab names Sanguity doesn't know with a series suggested for
+   each (#23: confirm it, pick another or keep it separate; remembered for later imports), with Save and Cancel. Saving polls again and shows what came
    in, with a link to the timeline; cancelling throws the import and its upload away.
    Self-contained plain script: no inline code (the pages' CSP allows scripts from js/ only), nothing it needs
    from other files. */
@@ -71,6 +72,51 @@
   const notes = j => (j.warnings || []).length ? node("details", {}, node("summary", {text: plural(j.warnings.length, ["note", "notes"]) + " from the import"}),
                                                  node("ul", {}, j.warnings.map(w => node("li", {text: w})))) : null;
 
+  // lab names the preview asks about (#23): one select each, the suggestion (or the match made before) chosen first
+  function labChoices(j) {
+    const listed = j.labs || [];
+    if (!listed.length) return {part: null, picked: () => ({})};
+    const targets = j.lab_targets || [];
+    const unitText = u => u ? ` (${u})` : "";
+    const KEEP = "";   // no series has an empty name
+    const rows = listed.map(l => {
+      const sel = node("select", {"aria-label": `Series for ${l.name}`, "data-ref": l.ref});
+      const before = l.before;
+      const opts = [], seen = new Set();
+      const add = (value, text, group) => { if (seen.has(value)) return; seen.add(value); (group || opts).push(node("option", {value, text})); };
+      // first, so chosen unless changed: the match made before, else a suggestion whose unit (or code) agrees
+      const sure = (l.suggestions || []).filter(s => s.sure), unsure = (l.suggestions || []).filter(s => !s.sure);
+      if (before) add(before.target == null ? KEEP : before.target, before.target == null ? "Keep it as a series of its own (as before)" : `${before.target} (matched as before)`);
+      for (const s of sure) add(s.name, `${s.name}${unitText(s.unit)}: ${s.reason}`);
+      add(KEEP, "Keep it as a new series of its own");
+      for (const s of unsure) add(s.name, `${s.name}: ${s.reason}`);
+      const other = node("optgroup", {label: "Another series"}), more = [];
+      for (const t of targets) add(t.name, t.name + unitText(t.unit), more);
+      other.append(...more);
+      sel.append(...opts);
+      if (more.length) sel.append(other);
+      const top = before ? null : sure[0] || unsure[0];
+      const why = before ? node("span", {class: "before", text: before.target == null ? "Kept separate as before" : "Matched as before"})
+                         : top ? node("span", {class: "why", text: `${top.sure ? "Suggested" : "Possibly"}: ${top.name}, ${top.reason}.`})
+                         : node("span", {class: "why", text: "Nothing in this profile looks like it."});
+      return {l, sel, initial: sel.value, li: node("li", {"data-ref": l.ref},
+        node("span", {}, node("b", {text: l.name}), ` ${unitText(l.unit).trim()}`, l.loinc ? ` · LOINC ${l.loinc}` : "",
+             ` · ${plural(l.n || 0, ["result", "results"])}`), why, sel)};
+    });
+    const part = node("details", {class: "imp-labs", open: ""},
+      node("summary", {text: `${plural(listed.length, ["lab name", "lab names"])} to match`}),
+      node("p", {class: "hint", text: "Sanguity doesn't know these test names. Put each in the series it belongs to, so it's charted with the same test " +
+        "from other labs, or keep it separate. Only the series changes: each result keeps the name the lab gave it. Your choice is used " +
+        "for later imports from this source, on every profile of this server. A match made before can be changed here for this import; " +
+        "to change it for good, ask an admin (Account, Admin)."}),
+      node("ul", {}, rows.map(r => r.li)));
+    // sent, and remembered for later imports: a suggestion left chosen, or any choice changed by hand. A name matched
+    // before is sent only when changed (for this import only); "keep it separate" left as it was isn't sent
+    const picked = () => Object.fromEntries(rows.filter(r => r.sel.value !== r.initial || (!r.l.before && r.initial !== KEEP))
+      .map(r => [r.l.ref, r.sel.value === KEEP ? null : r.sel.value]));
+    return {part, picked};
+  }
+
   function showPreview(card, j, onSave, onCancel) {
     const d = j.duplicates || {items: []}, items = countItems(j.counts || {});
     const nDup = (d.events || 0) + (d.results || 0);
@@ -91,19 +137,20 @@
       })),
       d.more ? node("p", {class: "hint", text: `…and ${d.more.toLocaleString()} more.`}) : null)
       : nDup ? node("p", {text: `${plural(nDup, ["duplicate", "duplicates"])} skipped.`}) : null;
+    const labs = labChoices(j);
     const msg = node("span", {class: "msg", role: "status"});
     const save = node("button", {class: "btn primary", type: "button", text: "Save"});
     const cancel = node("button", {class: "btn", type: "button", text: "Cancel"});
     const busy = on => { save.disabled = cancel.disabled = on; };
     save.addEventListener("click", async () => {
       busy(true); msg.textContent = "Saving…";
-      if (!(await onSave(boxes.filter(b => b.checked).map(b => b.value)))) busy(false);
+      if (!(await onSave(boxes.filter(b => b.checked).map(b => b.value), labs.picked()))) busy(false);
     });
     cancel.addEventListener("click", async () => {
       busy(true); msg.textContent = "Cancelling…";
       if (!(await onCancel())) busy(false);
     });
-    fill(card, head, j.new && items.length ? node("ul", {}, items) : null, dupList, notes(j),
+    fill(card, head, j.new && items.length ? node("ul", {}, items) : null, labs.part, dupList, notes(j),
          node("div", {class: "imp-actions"}, save, cancel, msg));
     return t => { msg.textContent = t; };
   }
@@ -113,11 +160,12 @@
 
   function showDone(card, pid, j) {
     const c = j.counts || {}, items = countItems(c), sk = j.skipped || {};
-    const skipped = (sk.events || 0) + (sk.results || 0);
+    const skipped = (sk.events || 0) + (sk.results || 0), ln = j.lab_names || {};
     fill(card,
       node("p", {}, node("b", {text: "Imported."}), ` Read as ${j.label || j.importer}${rangeText(j.range)}.`),
       items.length ? node("ul", {}, items) : node("p", {text: skipped ? "Nothing new: it was all in the profile already." : "The files held no records to show."}),
       skipped ? node("p", {class: "hint", text: `${plural(skipped, ["duplicate", "duplicates"])} skipped.`}) : null,
+      ln.matched ? node("p", {class: "hint", text: `${plural(ln.matched, ["lab name", "lab names"])} put in an existing series.`}) : null,
       notes(j),
       node("p", {}, node("a", {href: "index.html", onclick: () => openTimeline(pid), text: "See them on the timeline"})));
   }
@@ -193,8 +241,8 @@
         return true;
       };
       say = showPreview(card, j,
-        async keep => {
-          if (!(await act("confirm", {keep}))) return false;
+        async (keep, labs) => {
+          if (!(await act("confirm", {keep, labs}))) return false;
           const status = node("p", {text: STAGES.saving});
           card.replaceChildren(status);
           done(poll(card, pid, j.id, status));

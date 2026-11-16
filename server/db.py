@@ -287,6 +287,27 @@ SCHEMA = [
         at INTEGER NOT NULL);
     CREATE INDEX edits_target ON edits(profile_id, target);
     """,
+    # version 16: lab names matched during import (labmap.py, #23). A lab spelled in a way lab-aliases.json doesn't
+    # know, once matched to a series (or kept as its own) on an import's preview, is matched the same way in later
+    # imports, on every profile of the install. lookup is a keyed hash (security.pepper_mac) of the importer, the
+    # name as reported, its unit and LOINC code, all normalised; the name, unit and code themselves (source) and the
+    # series it goes to (target) are encrypted. target NULL: kept as a series of its own. jobs.labs holds the choices
+    # sent with a preview's confirm, encrypted, until the job saves them.
+    """
+    CREATE TABLE labmaps(
+        id INTEGER PRIMARY KEY,
+        lookup TEXT NOT NULL UNIQUE,
+        importer TEXT NOT NULL,                    -- the importer's NAME ("manual" for hand entry)
+        source TEXT NOT NULL,                      -- JSON {name, unit, loinc}, encrypted
+        target TEXT,                               -- the series name, encrypted; NULL: keep as its own series
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,                -- the username then
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    ALTER TABLE jobs ADD COLUMN labs TEXT;
+    """,
 ]
 
 

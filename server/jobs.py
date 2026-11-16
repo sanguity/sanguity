@@ -7,7 +7,8 @@ An import of an upload (uploads.py) is a row in jobs (schema versions 12 and 13)
 
 The preview (#22) holds the parsed records, sealed in profiles/<id>/previews/<job id> (crypto.write_file), and says
 what they would add: counts by kind, the date range, and the duplicates of what the profile has (preview.py), which
-are skipped unless chosen to keep anyway. Confirming looks for duplicates again (the profile may have changed since)
+are skipped unless chosen to keep anyway, and lab names lab-aliases.json doesn't know, with a series to put each in
+(labmap.py: remembered choices are applied first, before duplicates are found). Confirming looks for duplicates again (the profile may have changed since)
 and runs importers.check() on what's left before saving it. The file goes once the job is done, failed or discarded.
 
 One worker thread takes jobs in turn from an in-process queue, which is enough: SQLite has a single writer anyway.
@@ -27,7 +28,7 @@ except one that was saving a confirmed preview: it goes back to "preview".
 """
 import collections, contextlib, json, logging, os, posixpath, queue, re, threading
 
-from . import activity, config, crypto, db as dbm, importers as registry, preview, profiles as prof, records, uploads, watch_store
+from . import activity, config, crypto, db as dbm, importers as registry, labmap, preview, profiles as prof, records, uploads, watch_store
 
 log = logging.getLogger("sanguity.jobs")
 
@@ -178,13 +179,16 @@ def _import(db, j):
         if isinstance(d, dict) and d.get("type") == "file" and isinstance(d.get("url"), str) and not d.get("ext"):
             d["ext"] = posixpath.splitext(d["url"].split("#", 1)[0])[1].lstrip(".").lower()
     watch = data.pop("watch", None)   # daily wearable data: saved with watch_store, not as records
-    report = preview.report(data, preview.find(db, pid, mod.NAME, data), summarise)
+    labs = labmap.plan(db, pid, mod.NAME, data)   # lab names to match; remembered ones go before duplicates are found
+    named = labmap.apply(data, labs["auto"])
+    report = preview.report(named, preview.find(db, pid, mod.NAME, named), summarise)
+    report["labs"], report["lab_targets"] = labs["listed"], labs["targets"]
     if watch:
         report["counts"].update(_watch_counts(watch))
         report["new"] = True
     path = preview_path(pid, jid)
     os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-    crypto.write_file(path, json.dumps({"importer": mod.NAME, "data": data, "watch": watch, "paths": names},
+    crypto.write_file(path, json.dumps({"importer": mod.NAME, "data": data, "watch": watch, "paths": names, "labs": labs},
                                        separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
     try:
         n = db.execute("UPDATE jobs SET state='preview', stage=NULL, warnings=?, summary=? WHERE id=? AND state='running'",
@@ -216,6 +220,8 @@ def _save(db, j):
     label = mod.LABEL if mod else name
     data, watch, names = held["data"], held.get("watch"), set(held.get("paths") or ())
     keep = json.loads(j["keep"]) if j["keep"] else []
+    sent = json.loads(crypto.dec(j["labs"])) if j["labs"] else {}
+    raw, data = data, labmap.apply(data, labmap.choices(held.get("labs"), sent))   # series names as matched
     dups = preview.keep(data, preview.find(db, pid, name, data), keep)
     new = preview.trim(data, dups)
     problems = registry.check({"data": new, "warnings": []}, names)   # a trimmed lab day must still hold together
@@ -246,8 +252,12 @@ def _save(db, j):
         if watch:   # last, so a failure before it leaves no file behind
             saved = watch_store.save_import(db, pid, watch, import_id=iid)
             summary["counts"].update(watch_days=saved["days"], workouts=saved["workouts"])
+        remembered = labmap.remember(db, name, held.get("labs"), sent, raw, who)
+        matched = sum(1 for t in labmap.choices(held.get("labs"), sent).values() if t)
+        summary["lab_names"] = {"matched": matched, "remembered": remembered}
         activity.log(db, "import", who, pid, {"importer": name, "counts": summary["counts"], "job": jid,
-                                              "skipped": summary["skipped"], "kept": len(keep)},
+                                              "skipped": summary["skipped"], "kept": len(keep),
+                                              **({"labs": summary["lab_names"]} if matched or remembered else {})},
                      ip=_ips.get(jid), actor=None if who else "removed account")
         db.execute("UPDATE jobs SET state='done', stage=NULL, import_id=?, summary=?, finished=? WHERE id=?",
                    (iid, crypto.enc(json.dumps(summary)), dbm.now(), jid))
@@ -272,12 +282,15 @@ class Refused(Exception):
         self.status = status
 
 
-def confirm(db, pid, jid, uid, keep=None, ip=None):
+def confirm(db, pid, jid, uid, keep=None, ip=None, labs=None):
     """Save a previewed import, in the background like the parse: duplicates are skipped, except those whose refs
-    (preview.keep) are in keep. Refused unless the job is waiting in "preview"."""
+    (preview.keep) are in keep; lab series the preview listed go under the names in labs ({ref: series name or
+    None}, labmap.py). Refused unless the job is waiting in "preview"."""
     keep = [str(r)[:40] for r in keep or []][:20000]
-    n = db.execute("""UPDATE jobs SET state='queued', stage='saving', confirmed_by=?, keep=? WHERE id=? AND profile_id=?
-                      AND state='preview'""", (uid, json.dumps(keep) if keep else None, jid, pid)).rowcount
+    labs = {str(k)[:20]: labmap.clean_target(v) for k, v in list((labs or {}).items())[:5000]}
+    n = db.execute("""UPDATE jobs SET state='queued', stage='saving', confirmed_by=?, keep=?, labs=? WHERE id=?
+                      AND profile_id=? AND state='preview'""",
+                   (uid, json.dumps(keep) if keep else None, crypto.enc(json.dumps(labs)) if labs else None, jid, pid)).rowcount
     if not n:
         _refuse_not_preview(db, pid, jid)
     _ips[jid] = ip
@@ -357,6 +370,7 @@ def describe(r):
             "importer": r["importer"], "label": mod.LABEL if mod else r["importer"],
             "counts": summary.get("counts"), "range": summary.get("range"), "total": summary.get("total"),
             "duplicates": summary.get("duplicates"), "new": summary.get("new"), "skipped": summary.get("skipped"),
+            "labs": summary.get("labs"), "lab_targets": summary.get("lab_targets"), "lab_names": summary.get("lab_names"),
             "warnings": json.loads(crypto.dec(r["warnings"])) if r["warnings"] else [],
             "message": crypto.dec(r["message"]) if r["message"] else None, "import_id": r["import_id"],
             "created": r["created"], "started": r["started"], "finished": r["finished"]}
