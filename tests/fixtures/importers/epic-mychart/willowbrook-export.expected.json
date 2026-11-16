@@ -1,0 +1,500 @@
+{
+ "data": {
+  "events": [
+   {
+    "id": 14,
+    "t": "2026-02-14T07:30:00-06:00",
+    "k": "visit",
+    "title": "Outpatient visit",
+    "sub": "Dr. Rowan Ellis · Willowbrook Hematology Clinic · Willowbrook Health System",
+    "key": "epic-mychart:1.2.840.114350.1.13.999.2.7.3.698084.8^4400123",
+    "end": "2026-02-14T08:15:00-06:00"
+   },
+   {
+    "id": 1,
+    "t": "2026-02-14T07:45:00-06:00",
+    "k": "labitem",
+    "title": "CBC w/ diff",
+    "sub": "Dr. Rowan Ellis · Final · Office Visit · Willowbrook Health System",
+    "key": "epic-mychart:h:3ba9cbddd712ecce",
+    "abn": 1,
+    "hidden": 1
+   },
+   {
+    "id": 5,
+    "t": "2026-02-14T07:45:00-06:00",
+    "k": "lab",
+    "title": "1 lab result · Willowbrook Health System",
+    "sub": "CBC w/ diff",
+    "key": "epic-mychart:labday:2026-02-14|Willowbrook Health System",
+    "abn": 1,
+    "src": "Willowbrook Health System"
+   },
+   {
+    "id": 2,
+    "t": "2026-02-14T10:20:00-06:00",
+    "k": "imaging",
+    "title": "XR Chest 2 Views",
+    "sub": "Dr. Rowan Ellis · Final · Office Visit · Willowbrook Health System",
+    "key": "epic-mychart:h:c679c018af788686"
+   },
+   {
+    "id": 12,
+    "t": "2026-02-14T12:00:00",
+    "k": "document",
+    "title": "Lab_Report",
+    "sub": "PDF · Willowbrook Health System",
+    "key": "epic-mychart:document:documents/2026-02-14_Lab_Report.pdf"
+   },
+   {
+    "id": 13,
+    "t": "2026-02-14T12:00:00",
+    "k": "document",
+    "title": "After_Visit_Summary",
+    "sub": "HTML · Willowbrook Health System",
+    "key": "epic-mychart:document:documents/visit2/2026-02-14_After_Visit_Summary_2.html"
+   },
+   {
+    "id": 8,
+    "t": "2026-02-15T08:00:00-06:00",
+    "k": "message",
+    "title": "Question about my white count",
+    "sub": "2 messages · Dr. Rowan Ellis · Willowbrook Health System",
+    "key": "epic-mychart:h:d269ce01826fdf7c",
+    "end": "2026-02-15T13:30:00-06:00"
+   },
+   {
+    "id": 11,
+    "t": "2026-02-20T12:00:00",
+    "k": "letter",
+    "title": "Insurance authorization: Bone marrow biopsy (AUTH-55120)",
+    "sub": "Willowbrook Hematology",
+    "key": "epic-mychart:h:ca6143a5e5dbd7a8"
+   },
+   {
+    "id": 9,
+    "t": "2026-03-01T09:00:00-06:00",
+    "k": "appt_msg",
+    "title": "Appointment reminder",
+    "sub": "1 message · Jordan Pike, RN · Willowbrook Health System",
+    "key": "epic-mychart:h:650153fc75b00f93"
+   },
+   {
+    "id": 7,
+    "t": "2026-03-08T00:00:00",
+    "k": "stay",
+    "title": "Hospital stay · Willowbrook Health System",
+    "sub": "Willowbrook Medical Center · 3 nights",
+    "key": "epic-mychart:h:d7f4d091efefa79c",
+    "end": "2026-03-11T23:59:00"
+   },
+   {
+    "id": 15,
+    "t": "2026-03-08T20:15:00-05:00",
+    "k": "visit",
+    "title": "Hospital admission",
+    "sub": "Dr. Rowan Ellis · Willowbrook Medical Center · Willowbrook Health System",
+    "key": "epic-mychart:1.2.840.114350.1.13.999.2.7.3.698084.8^4400188",
+    "end": "2026-03-11T11:00:00-05:00"
+   },
+   {
+    "id": 3,
+    "t": "2026-03-09T05:30:00-05:00",
+    "k": "labitem",
+    "title": "Basic metabolic panel",
+    "sub": "Dr. Rowan Ellis · Final · Willowbrook Health System",
+    "key": "epic-mychart:h:d2bef630b5b38ab5",
+    "abn": 2,
+    "hidden": 1
+   },
+   {
+    "id": 6,
+    "t": "2026-03-09T05:30:00-05:00",
+    "k": "lab",
+    "title": "1 lab result · Willowbrook Health System",
+    "sub": "Basic metabolic panel",
+    "key": "epic-mychart:labday:2026-03-09|Willowbrook Health System",
+    "abn": 2,
+    "src": "Willowbrook Health System"
+   },
+   {
+    "id": 4,
+    "t": "2026-03-10T13:00:00-05:00",
+    "k": "procedure",
+    "title": "Bone marrow biopsy",
+    "sub": "Dr. Rowan Ellis · Final · Willowbrook Health System",
+    "key": "epic-mychart:h:46e698bde35ada9c"
+   },
+   {
+    "id": 10,
+    "t": "2026-03-12T07:00:00-05:00",
+    "k": "auto_msg",
+    "title": "(no subject)",
+    "sub": "1 message · Willowbrook MyChart · Willowbrook Health System",
+    "key": "epic-mychart:h:73c6823374a0876a"
+   }
+  ],
+  "details": {
+   "1": {
+    "type": "result",
+    "order": "CBC w/ diff",
+    "name": "CBC",
+    "collected": "Feb 14, 2026 7:40 AM",
+    "resulted": "Feb 14, 2026 9:02 AM",
+    "provider": "Dr. Rowan Ellis",
+    "status": "Final",
+    "specimen": "Blood",
+    "lab": "Willowbrook Central Lab",
+    "dx": [
+     "Fatigue"
+    ],
+    "rows": [
+     [
+      "HGB",
+      "13.1",
+      "g/dL",
+      "12.0 - 16.0",
+      ""
+     ],
+     [
+      "WBC",
+      "11.8",
+      "x10E3/uL",
+      "4.0 - 11.0",
+      "H"
+     ],
+     [
+      "Sodium",
+      "141",
+      "mmol/L",
+      "135 - 145",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": [
+     "{\"text\": \" White count a little high; recheck in a month. \"}"
+    ]
+   },
+   "2": {
+    "type": "result",
+    "order": "XR Chest 2 Views",
+    "name": "XR Chest",
+    "collected": null,
+    "resulted": null,
+    "provider": "Dr. Rowan Ellis",
+    "status": "Final",
+    "specimen": null,
+    "lab": null,
+    "dx": [],
+    "rows": [],
+    "report": [
+     [
+      "impression",
+      "<p>No acute <b>cardiopulmonary</b> process.</p>",
+      1
+     ],
+     [
+      "narrative",
+      "Two views of the chest. Lungs are clear.",
+      0
+     ],
+     [
+      "addendum",
+      "{\n \"text\": \"Compared with no prior study.\"\n}",
+      0
+     ]
+    ],
+    "comments": []
+   },
+   "3": {
+    "type": "result",
+    "order": "Basic metabolic panel",
+    "name": "BMP",
+    "collected": null,
+    "resulted": null,
+    "provider": "Dr. Rowan Ellis",
+    "status": "Final",
+    "specimen": null,
+    "lab": null,
+    "dx": [],
+    "rows": [
+     [
+      "Sodium",
+      "132",
+      "mmol/L",
+      "135 - 145",
+      "L"
+     ],
+     [
+      "Potassium (External)",
+      "3.4",
+      "mmol/L",
+      "3.5 - 5.1",
+      "L"
+     ],
+     [
+      "Potassium",
+      "3.6",
+      "mmol/L",
+      "3.5 - 5.1",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": []
+   },
+   "4": {
+    "type": "result",
+    "order": "Bone marrow biopsy",
+    "name": "Procedure",
+    "collected": null,
+    "resulted": null,
+    "provider": "Dr. Rowan Ellis",
+    "status": "Final",
+    "specimen": null,
+    "lab": null,
+    "dx": [],
+    "rows": [
+     [
+      "Cellularity",
+      "40%",
+      "",
+      "",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": []
+   },
+   "5": {
+    "type": "labday",
+    "ids": [
+     1
+    ]
+   },
+   "6": {
+    "type": "labday",
+    "ids": [
+     3
+    ]
+   },
+   "7": {
+    "type": "stay",
+    "admit": "2026-03-08",
+    "discharge": "2026-03-11",
+    "where": "Willowbrook Medical Center",
+    "how": "Visit list"
+   },
+   "8": {
+    "type": "conversation",
+    "subject": "  Question about my white count ",
+    "messages": [
+     {
+      "t": "2026-02-15T08:00:00-06:00",
+      "from": "You",
+      "body": "Should I worry about the WBC?",
+      "att": []
+     },
+     {
+      "t": "2026-02-15T13:30:00-06:00",
+      "from": "Dr. Rowan Ellis",
+      "body": "Mildly high; we'll recheck.",
+      "att": []
+     }
+    ]
+   },
+   "9": {
+    "type": "conversation",
+    "subject": "Appointment reminder",
+    "messages": [
+     {
+      "t": "2026-03-01T09:00:00-06:00",
+      "from": "Jordan Pike, RN",
+      "body": "See you on March 9.",
+      "att": [
+       "directions.pdf"
+      ]
+     }
+    ]
+   },
+   "10": {
+    "type": "conversation",
+    "subject": "",
+    "messages": [
+     {
+      "t": "2026-03-12T07:00:00-05:00",
+      "from": "Willowbrook MyChart",
+      "body": "<p>A new test result is available.</p>",
+      "att": []
+     }
+    ]
+   },
+   "11": {
+    "type": "letter",
+    "html": "<p>February 20, 2026</p>\n<p>Dear Patient,</p>\n<p>Your insurer has approved the following.</p>\n<p>Procedures: 38221 (Custom) - Bone marrow biopsy</p>\n<p>Authorization: AUTH-55120</p>"
+   },
+   "12": {
+    "type": "file",
+    "url": "documents/2026-02-14_Lab_Report.pdf",
+    "ext": "pdf"
+   },
+   "13": {
+    "type": "file",
+    "url": "documents/visit2/2026-02-14_After_Visit_Summary_2.html",
+    "ext": "html"
+   },
+   "14": {
+    "type": "visit",
+    "who": "Dr. Rowan Ellis",
+    "where": "Willowbrook Hematology Clinic",
+    "dx": "",
+    "src": "Willowbrook Health System",
+    "procs": [],
+    "note": "Recorded as: Office Visit"
+   },
+   "15": {
+    "type": "visit",
+    "who": "Dr. Rowan Ellis",
+    "where": "Willowbrook Medical Center",
+    "dx": "",
+    "src": "Willowbrook Health System",
+    "procs": []
+   }
+  },
+  "labs": [
+   {
+    "name": "Potassium, Blood",
+    "unit": "mmol/L",
+    "panel": "Basic metabolic panel",
+    "n": 2,
+    "loinc": "2823-3",
+    "key": "loinc:2823-3",
+    "pts": [
+     [
+      "2026-03-09T05:30:00-05:00",
+      3.4,
+      3.5,
+      5.1,
+      "L",
+      "3.4",
+      "EXT"
+     ],
+     [
+      "2026-03-09T05:30:00-05:00",
+      3.6,
+      3.5,
+      5.1,
+      "",
+      "3.6",
+      "Willowbrook Health System"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Sodium, Blood",
+    "unit": "mmol/L",
+    "panel": "CBC w/ diff",
+    "n": 2,
+    "loinc": "2951-2",
+    "key": "loinc:2951-2",
+    "pts": [
+     [
+      "2026-02-14T07:45:00-06:00",
+      141,
+      135,
+      145,
+      "",
+      "141",
+      "Willowbrook Health System"
+     ],
+     [
+      "2026-03-09T05:30:00-05:00",
+      132,
+      135,
+      145,
+      "L",
+      "132",
+      "Willowbrook Health System"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Hemoglobin",
+    "unit": "g/dL",
+    "panel": "CBC w/ diff",
+    "n": 1,
+    "loinc": "718-7",
+    "key": "loinc:718-7",
+    "pts": [
+     [
+      "2026-02-14T07:45:00-06:00",
+      13.1,
+      12,
+      16,
+      "",
+      "13.1",
+      "Willowbrook Health System"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "WBC",
+    "unit": "x10E3/uL",
+    "panel": "CBC w/ diff",
+    "n": 1,
+    "loinc": "6690-2",
+    "key": "loinc:6690-2",
+    "pts": [
+     [
+      "2026-02-14T07:45:00-06:00",
+      11.8,
+      4,
+      11,
+      "H",
+      "11.8",
+      "Willowbrook Health System"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Cellularity",
+    "unit": "",
+    "panel": "Bone marrow biopsy",
+    "n": 0,
+    "key": "epic-mychart:name|cellularity",
+    "pts": [],
+    "txt": [
+     [
+      "2026-03-10T13:00:00-05:00",
+      "40%"
+     ]
+    ]
+   }
+  ],
+  "costs": [],
+  "upcoming": [],
+  "problems": [],
+  "clinicWeights": [
+   [
+    "2026-02-14T07:40:00-06:00",
+    162.5,
+    "Willowbrook Health System"
+   ],
+   [
+    "2026-03-08T20:30:00-05:00",
+    160.1,
+    "Willowbrook Health System"
+   ]
+  ]
+ },
+ "warnings": [
+  "1 result in test-results/willowbrook_test_results_raw.json had no date and was left out.",
+  "1 letter had no date and was left out.",
+  "1 file in documents/ wasn't named like an Epic export's documents (<date>_<name>.<ext>) and was left out."
+ ]
+}

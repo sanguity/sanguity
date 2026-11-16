@@ -1,0 +1,22 @@
+{
+ "departments": {
+  "d7": {
+   "name": "Willowbrook Hematology"
+  }
+ },
+ "letters": [
+  {
+   "dateISO": "2026-02-20",
+   "depId": "d7",
+   "detail": {
+    "bodyHTML": "<p>February 20, 2026</p>\n<p>Dear Patient,</p>\n<p>Your insurer has approved the following.</p>\n<p>Procedures: 38221 (Custom) - Bone marrow biopsy</p>\n<p>Authorization: AUTH-55120</p>"
+   }
+  },
+  {
+   "depId": "d7",
+   "detail": {
+    "bodyHTML": "<p>No date on this one.</p>"
+   }
+  }
+ ]
+}

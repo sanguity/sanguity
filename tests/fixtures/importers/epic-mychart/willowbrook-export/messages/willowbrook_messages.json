@@ -1,0 +1,70 @@
+{
+ "users": {
+  "e1": {
+   "name": "Dr. Rowan Ellis"
+  },
+  "e2": {
+   "name": "Jordan Pike, RN"
+  }
+ },
+ "list": {
+  "c1": {
+   "folders": [
+    1
+   ]
+  },
+  "c2": {
+   "folders": [
+    7
+   ]
+  },
+  "c3": {
+   "folders": [
+    6
+   ]
+  }
+ },
+ "details": {
+  "c1": {
+   "subject": "  Question about my white count ",
+   "messages": [
+    {
+     "deliveryInstantISO": "2026-02-15T08:00:00-06:00",
+     "author": {
+      "displayName": ""
+     },
+     "body": "Should I worry about the WBC?"
+    }
+   ]
+  },
+  "c2": {
+   "subject": "Appointment reminder",
+   "messages": [
+    {
+     "deliveryInstantISO": "2026-03-01T09:00:00-06:00",
+     "author": {
+      "empKey": "e2"
+     },
+     "body": "See you on March 9.",
+     "attachments": [
+      {
+       "name": "directions.pdf"
+      }
+     ]
+    }
+   ]
+  },
+  "c3": {
+   "subject": "",
+   "messages": [
+    {
+     "deliveryInstantISO": "2026-03-12T07:00:00-05:00",
+     "author": {
+      "displayName": "Willowbrook MyChart"
+     },
+     "body": "<p>A new test result is available.</p>"
+    }
+   ]
+  }
+ }
+}

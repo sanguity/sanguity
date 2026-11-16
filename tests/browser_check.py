@@ -6,9 +6,9 @@ login page, opens every tab and checks its main content rendered, opens the deta
 event, drags and scroll-zooms the charts, toggles the event sort, switches profiles, uploads a zip and files on
 the import page (a fictional C-CDA and a FHIR export, previewed, saved in the background and then shown on the timeline;
 the C-CDA again, previewed as all duplicates and cancelled; the FHIR one then undone from the import history, and
-gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab; a CareSpace export), types two lab
-results in on the import page and finds them on Trends, opens the account page, and fails on any script error,
-console error, failed request or NaN written into an SVG attribute.
+gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab; a CareSpace and an Epic MyChart
+export), types two lab results in on the import page and finds them on Trends, opens the account page, and fails
+on any script error, console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
   python3 tests/browser_check.py
@@ -432,6 +432,29 @@ def main():
             up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
             check("the job is done, read by the CareSpace importer", job is not None and tuple(job) == ("done", "carespace"), job and tuple(job))
+            # ...and the fictional Epic MyChart export build.py reads (#28): its JSON, documents and C-CDA visit record
+            epic_dir = os.path.join(ROOT, "tests", "fixtures", "build", "mychart-20261101")
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                for d, _, names in os.walk(epic_dir):
+                    for n in names:
+                        full = os.path.join(d, n)
+                        z.write(full, "mychart-20261101/" + os.path.relpath(full, epic_dir).replace(os.sep, "/"))
+            page.set_input_files("#pickZip", files=[{"name": "mychart-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
+            cards = js("document.querySelectorAll('.import-job').length")
+            page.click("#go")
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
+                                   f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            js(f"{last_card}.querySelector('.imp-actions .primary')?.click()")   # Save, at its preview (#22)
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.textContent")
+            check("an Epic MyChart export uploads and is imported in the background, as Epic MyChart",
+                  card.startswith("Imported.") and "Epic MyChart" in card and "lab result" in card, card)
+            up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
+            job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
+            check("the job is done, read by the Epic MyChart importer", job is not None and tuple(job) == ("done", "epic-mychart"),
+                  job and tuple(job))
             js("window.__hook = []; window.sanguityImport = {uploaded: a => window.__hook.push(a)}")
             page.click("#tab-files")
             page.set_input_files("#pickFiles", files=[{"name": n, "mimeType": "text/csv", "buffer": b"date,test,value\n2026-02-01,WBC,6.1\n"}
@@ -454,6 +477,8 @@ def main():
             check("…where the C-CDA's visits are listed", "Outpatient visit" in page.inner_text("#list"), page.inner_text("#list")[:300])
             listed = page.inner_text("#list")
             check("…and the FHIR export's stay and documents, beside them", "Riverside General Hospital" in listed and "Discharge summary" in listed,
+                  listed[:400])
+            check("…and the Epic MyChart export's conversation and hospital admission", "Lab question" in listed and "Hospital admission" in listed,
                   listed[:400])
             doc = js("""(async () => { const e = EV.find(e => e.title === 'Discharge summary'), d = e && DATA.details[e.id];
                 if (!d || !d.url) return null; const r = await fetch(d.url);
@@ -490,8 +515,8 @@ def main():
             page.select_option("#profile", label="Second person")
             page.wait_for_selector("#history li[data-format='fhir']", timeout=10000)
             hist = js("[...document.querySelectorAll('#history li[data-import]')].map(li => li.dataset.format)")
-            check("the import history lists the C-CDA, FHIR, claims and CareSpace imports, newest first",
-                  hist == ["carespace", "claims-csv", "bcbs", "uhc", "fhir", "ccda"], hist)
+            check("the import history lists the C-CDA, FHIR, claims, CareSpace and Epic imports, newest first",
+                  hist == ["epic-mychart", "carespace", "claims-csv", "bcbs", "uhc", "fhir", "ccda"], hist)
             check("…with the uploaded files", "fhir-export/" in page.inner_text("#history li[data-format='fhir'] .files"))
             page.click("#history li[data-format='fhir'] button.undo")
             page.click("#history li[data-format='fhir'] .confirm button.danger")
