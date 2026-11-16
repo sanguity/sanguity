@@ -14,7 +14,7 @@ the tables at start-up and keeps it beside them as data-before-v10.json.
 import contextlib, json, os, secrets, shutil, threading
 from urllib.parse import quote
 
-from . import activity, config, crypto, db as dbm, records
+from . import activity, config, crypto, db as dbm, edits, records
 
 _lock = threading.Lock()
 _failed = {}   # profile id -> (build mtime, why): a build that couldn't be loaded, so it isn't retried on every request
@@ -109,6 +109,9 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin
     os.makedirs(profile_dir(pid), exist_ok=True)
     with dbm.transaction(db):
         old = records.imports(db, pid, "build" if origin == "build" else None)
+        before = [records._dec(r["body"]) for r in db.execute(
+            "SELECT body FROM events WHERE profile_id=? AND import_id IN (SELECT value FROM json_each(?))",
+            (pid, json.dumps(old)))] if origin == "build" else []
         q = """SELECT id, path, ext FROM documents
                WHERE profile_id=? AND (import_id IS NULL OR import_id IN (SELECT value FROM json_each(?)))"""
         known = {crypto.dec(r["path"]): (r["id"], r["ext"]) for r in db.execute(q, (pid, json.dumps(old)))}
@@ -116,6 +119,8 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin
         iid = records.store(db, pid, data, origin)
         link_documents(db, iid, keep)
         records.drop(db, pid, old)   # and, by cascade, the documents the new import no longer links to
+        if before:   # a rebuild: edits on build events whose title changed follow them
+            edits.follow_rebuild(db, pid, before, data["events"])
         db.execute("DELETE FROM documents WHERE profile_id=? AND import_id IS NULL", (pid,))
         src_settings = os.path.join(src_dir, "settings.json")
         if os.path.isfile(src_settings):

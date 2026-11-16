@@ -85,7 +85,8 @@ function renderHeatmap() {
     const s = seriesBy(d.s), p = s.pts.filter(p => isoDay(p.ts) === d.k).pop(); if (!p) return;
     const st = statusOf(p);
     showTip([el("div", {class: "v", text: `${p[5] || fmtNum(p[1])} ${s.unit}`}), el("div", {class: "s", text: s.name}), el("div", {class: "s", text: `${fmtDT(p.ts)} · ref ${p[2] ?? ""}–${p[3] ?? ""}`}),
-      st ? el("div", {class: "s", style: {color: st.cls === "ok" ? "var(--good-text)" : "var(--crit)"}, text: st.text}) : null], ev);
+      st ? el("div", {class: "s", style: {color: st.cls === "ok" ? "var(--good-text)" : "var(--crit)"}, text: st.text}) : null,
+      sourceOf(s.imp) ? el("div", {class: "s", text: "From " + sourceText(s.imp)}) : null], ev);
   };
   svg.onpointerleave = hideTip;
   svg.onclick = ev => {

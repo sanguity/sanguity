@@ -46,6 +46,7 @@ Everything on `main` so far; it becomes the first tagged release.
 - Typing records in by hand on the Import page: lab results (#116), then every kind of record the app imports
   (#124).
 - Corrections in the app, kept through later re-imports (#119).
+- The source of every record, shown in its details (#131).
 - Unknown lab names are matched during import, with LOINC and similar-name suggestions; the choice is remembered
   (#122).
 

@@ -10,7 +10,8 @@ gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab
 export), types two lab results in on the import page and finds them on Trends, types a visit, a medication, a
 claim and a letter with a PDF into their own forms, finds them on the timeline and Costs and opens the PDF, uploads a lab with a spelling Sanguity
 doesn't know, accepts the series suggested at the preview and finds it on Trends, then sees it matched as before on
-the next upload, opens the account page (where the match is listed for admins), and fails
+the next upload, opens the account page (where the match is listed for admins), sees each record's source in the
+drawer, on Trends and on the heatmap and follows its link to the import history, and fails
 on any script error, console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -171,6 +172,12 @@ def main():
                 n = js(probe)
                 visible = js(f"!document.getElementById('view-{tab}').hidden")
                 check(f"{tab} tab renders", visible and all(int(x) > 0 for x in str(n).split(",")), n)
+                if tab == "heatmap":   # a cell's tooltip says where the result came from (#100)
+                    page.hover("#hm rect.cell[data-s]")
+                    settle(100)
+                    tipped = js("document.getElementById('tip').innerText")
+                    check("hovering a heatmap cell shows its source", "From Setup build, imported" in tipped, tipped[:200])
+                    page.mouse.move(0, 0)
 
             # ---- detail drawer for every kind of event
             for k in js("[...new Set(EV.filter(e => !e.hidden).map(e => e.k))].sort()"):
@@ -238,6 +245,32 @@ def main():
             check("…and undoing it restores the title", js(f"({there})", pick))
             page.keyboard.press("Escape")
 
+            # ---- where each record came from (#100): a Source line in the drawer, linking to the import in the history
+            visit = js("EV.find(e => e.k === 'visit' && !e.hidden).id")
+            js("id => openEvent(byId.get(id))", visit)
+            settle(200)
+            src = page.locator("#dbody p.source")
+            text = src.inner_text() if src.count() == 1 else ""
+            check("the drawer shows an event's source and when it was imported", "Setup build" in text and "imported" in text, text)
+            js("openEvent(EV.find(e => e.k === 'lab' && (DATA.details[e.id] || {}).ids && DATA.details[e.id].ids.length > 1))")
+            settle(200)
+            n = js("DATA.details[state.selEv].ids.filter(i => DATA.details[i] && byId.get(i)).length")
+            check("each result of a lab day shows its source", n > 1 and page.locator("#dbody details.res p.source").count() == n,
+                  (n, page.locator("#dbody details.res p.source").count()))
+            js("id => openEvent(byId.get(id))", visit)
+            settle(200)
+            page.focus("#dbody p.source a")   # by keyboard: the link takes focus and Enter follows it
+            page.keyboard.press("Enter")
+            page.wait_for_url("**/import.html?profile=1#import-*", timeout=10000)
+            page.wait_for_selector("#historyList li.hl", timeout=10000)
+            check("the source link opens that import in the history, highlighted and focused",
+                  js("document.querySelectorAll('#historyList li.hl').length === 1 && document.activeElement.id === location.hash.slice(1)"
+                     " && document.activeElement.classList.contains('hl') && document.activeElement.textContent.includes('setup build')"),
+                  js("[location.hash, document.activeElement.id, document.activeElement.textContent.slice(0, 80)]"))
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            settle()
+
             # ---- Trends: drag pans every chart together, ctrl+wheel zooms, milestones drawn on All
             page.click("#tab-labs")
             js("applyPreset('1y')")
@@ -262,6 +295,17 @@ def main():
             js("applyPreset('all')")
             settle()
             check("milestones drawn on Trends", js("document.querySelectorAll('#charts .msmark').length") > 0)
+            # hovering a point shows where it came from (#100)
+            box = page.locator("#charts .chart svg").first.bounding_box()
+            tipped = ""
+            for f in (0.5, 0.6, 0.4, 0.7, 0.3, 0.8, 0.2, 0.9):
+                page.mouse.move(box["x"] + box["width"] * f, box["y"] + box["height"] * 0.5)
+                settle(100)
+                tipped = js("getComputedStyle(document.getElementById('tip')).display === 'block' ? document.getElementById('tip').innerText : ''")
+                if "From " in tipped:
+                    break
+            check("hovering a Trends point shows its source and import date", "From Setup build, imported" in tipped, tipped[:200])
+            page.mouse.move(0, 0)
 
             # ---- Health: drag changes its own period
             page.click("#tab-health")

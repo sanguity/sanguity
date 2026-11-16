@@ -14,11 +14,12 @@ One upload may hold several exports, each in its own folder (one per health syst
 export and any number of others. They're read in folder order into one set of records, so a test measured in other
 units at the second system gets its own series, as in build.py.
 
-This is build.py's Epic reader, moved here (#28). Its output matches build.py's for the same export, except:
+This was build.py's Epic reader, moved here (#28); build.py now reads every Epic export in sources.json through
+parse(files, org=..., tag=...). Compared with the old reader in build.py, its output differs only in these ways:
 - lab series take their canonical names from lab-aliases.json for every export (build.py does that only for the
   extra ones), so "Sodium" from one system and "SODIUM" from another share the "Sodium, Blood" chart;
-- the organisation comes from the export itself (the C-CDA visit records' custodian), never from sources.json. An
-  export without visit records has none, so its events carry no organisation and its lab points no source tag, and
+- the organisation comes from the export itself (the C-CDA visit records' custodian), unless the caller names it
+  (build.py, from sources.json). An export without visit records has none, so its events carry no organisation and its lab points no source tag, and
   a test it reports in other units is named "<test> (<unit>)" rather than "<test> (<organisation>)";
 - C-CDA visit records are read with the C-CDA importer's own functions (ccda.py): their times keep the document's
   UTC offset, and a visit's details have "type": "visit" (build.py overwrote it with the encounter type, so the
@@ -407,11 +408,15 @@ def _weights(out, doc, org):
 
 # ------------------------------------------------------------------ the importer
 
-def _export(out, files, root, parts):
+def _export(out, files, root, parts, org=None, tag=None):
     docs = _cda_docs(out, files, root)
-    orgs = collections.Counter(d.org for d in docs if d.org)
-    org = orgs.most_common(1)[0][0] if orgs else ""   # the health system, as its own visit records name it
-    tag = org or None
+    if org is None:
+        orgs = collections.Counter(d.org for d in docs if d.org)
+        org = orgs.most_common(1)[0][0] if orgs else ""   # the health system, as its own visit records name it
+    else:   # named by the caller (build.py, from sources.json): the visit records' stays and visits use it too
+        for d in docs:
+            d.org = org
+    tag = (org or None) if tag is None else (tag or None)
     adm_rel = root + "admissions.json"
     if parts.get("results"):
         tr = _load_json(files, parts["results"], out)
@@ -492,15 +497,18 @@ def _series_list(out):
     return series
 
 
-def parse(files):
-    """Turn the Epic MyChart exports in an upload into data.json-shaped records: {"data": {...}, "warnings": [...]}."""
+def parse(files, org=None, tag=None):
+    """Turn the Epic MyChart exports in an upload into data.json-shaped records: {"data": {...}, "warnings": [...]}.
+
+    `org` names the health system instead of the visit records' custodian ("" for none), and `tag` is the source tag
+    on lab points and lab days instead of the organisation's name ("" for none): build.py takes both from sources.json."""
     roots = _roots(files)
     if not roots:
         raise ValueError("This doesn't look like an Epic MyChart export: there's no test-results/, messages/ or "
                          "letters/ folder with the JSON files the export tool writes.")
     out = _Out()
     for root, parts in roots.items():
-        _export(out, files, root, parts)
+        _export(out, files, root, parts, org, tag)
     _fold_external(out)
     series = _series_list(out)
     out.events.sort(key=lambda e: e["t"])

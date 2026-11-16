@@ -50,7 +50,7 @@ function openEvent(e) {
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
       const abn = (r.rows || []).filter(x => x[4]).length;
-      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {style: {color: "var(--muted)", fontSize: "12px", fontWeight: 400}, text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", text: abn}) : null), el("div", {}, ...resultBody(r)));
+      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {style: {color: "var(--muted)", fontSize: "12px", fontWeight: 400}, text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", text: abn}) : null), el("div", {}, ...resultBody(r), eventSource(ev2)));
       body.append(det);
     }
   } else if (d.type === "conversation") {
@@ -108,6 +108,7 @@ function openEvent(e) {
       ["Stopped", d.end ? fmtD(d.end) : ""], ["Prescribed by", d.prescriber], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
       typed ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "From the clinic's medication list. The date is when it was recorded there, not necessarily when you started it."}));
   }
+  const src = eventSource(e); if (src) body.append(src);   // where it came from (sources.js)
   if (e.k !== "exercise") body.append(editPanel(e));
   showDrawer();
   renderTimeline(); document.querySelectorAll(".row").forEach(r => r.classList.remove("sel"));

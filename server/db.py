@@ -309,6 +309,12 @@ SCHEMA = [
         changed INTEGER);
     ALTER TABLE jobs ADD COLUMN labs TEXT;
     """,
+    # version 17: where each record came from (#100). imports.synced: when a live connection (#91) last brought this
+    # import up to date; NULL for an import that is read once (an upload, typed in, the setup build). The page shows
+    # it beside each record's source; whatever sets it must bump profiles.records_rev, as any change to records does.
+    """
+    ALTER TABLE imports ADD COLUMN synced INTEGER;
+    """,
 ]
 
 
