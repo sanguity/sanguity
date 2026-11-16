@@ -127,7 +127,8 @@ class Fixtures(unittest.TestCase):
     def test_every_fixture(self):
         base = os.path.join(FIXTURES, "importers")
         cases = [(n, c) for n in sorted(os.listdir(base)) if os.path.isdir(os.path.join(base, n))
-                 for c in sorted(os.listdir(os.path.join(base, n))) if os.path.isdir(os.path.join(base, n, c))]
+                 for c in sorted(os.listdir(os.path.join(base, n))) if os.path.isdir(os.path.join(base, n, c))
+                 and not c.startswith(("_", "."))]   # __pycache__ beside a fixture script isn't a case
         self.assertIn(("sanguity", "export"), cases)
         known = {m.NAME for m in reg.importers()}
         for name, case in cases:
