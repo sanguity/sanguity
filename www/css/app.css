@@ -571,3 +571,16 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .sync-warn.quiet{border-left-color:var(--grid);color:var(--ink2);font-size:13px}
 .sync-warn a{margin-left:6px;white-space:nowrap}
 @media (max-width:600px){.sync-warn{margin:8px 12px 0}}
+/* calendar feed on the Settings page (settings-calendar.js, #51) */
+.cal .cal-opts{border:0;padding:0;margin:8px 0;display:grid;gap:6px;max-width:640px}
+.cal .cal-opts legend{font-size:13px;font-weight:550;color:var(--ink2);padding:0;margin-bottom:4px}
+.cal label.check{align-items:flex-start;font-weight:400;padding-bottom:0}
+.cal label.check input{margin-top:3px;flex:none}
+.cal .cal-opts p{margin:0}
+.cal .cal-setup{margin-top:12px;border-left:3px solid var(--accent);padding:4px 0 4px 12px}
+.cal .cal-url{display:flex;gap:6px;max-width:720px;flex-wrap:wrap}
+.cal .cal-url input{flex:1 1 220px;font:12px ui-monospace,Consolas,monospace}
+.cal .cal-steps{padding-left:18px;font-size:13px;max-width:720px}
+.cal .cal-steps li{margin:4px 0;overflow-wrap:anywhere}
+.cal #calStatus{font-size:13px;margin:6px 0}
+.cal .tbl td{overflow-wrap:anywhere}

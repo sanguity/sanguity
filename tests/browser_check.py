@@ -29,7 +29,7 @@ on any script error, console error, failed request, request to another host or N
   pip install -r requirements-dev.txt && playwright install chromium
   python3 tests/browser_check.py
 """
-import json, os, shutil, socket, subprocess, sys, tempfile, threading, time
+import json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.request
 
 from playwright.sync_api import sync_playwright
 
@@ -891,7 +891,29 @@ def main():
             page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Renamed in Settings")
             page.click("[data-key=labNicknames] button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-names > .msg').textContent.startsWith('Saved')", timeout=10000)
+            # ---- calendar feed (#51): made on the Settings page, its address shown once with setup steps, and the
+            # address works for a calendar app with no session
+            page.wait_for_selector("#calendar:not([hidden]) #calNew:not([hidden])", timeout=10000)
+            check("calendar feed: minimal details are the default", js("document.querySelector('input[name=calDetails]:checked').value") == "minimal")
+            page.click("#calCreate")
+            page.wait_for_selector("#calSetup:not([hidden])", timeout=10000)
+            feed_url = js("document.getElementById('calUrl').value")
+            steps = page.inner_text("#calSetup")
+            check("…creating one shows its address and setup steps for each calendar app",
+                  re.match(re.escape(base) + r"/api/profiles/1/calendar\.ics\?token=[\w-]{40,}$", feed_url) is not None
+                  and all(w in steps for w in ("iPhone", "Mac", "Google Calendar", "Outlook")) and page.locator("#calCopy").is_visible(), feed_url)
+            check("…and warns that a local plain-HTTP address won't reach a calendar elsewhere", "plain HTTP" in page.inner_text("#calReach"))
+            with urllib.request.urlopen(feed_url) as resp:
+                ics = resp.read().decode("utf-8")
+                cache = resp.headers.get("Cache-Control")
+            check("…the address gives an iCalendar feed with the upcoming visit, titles only",
+                  ics.startswith("BEGIN:VCALENDAR\r\n") and "SUMMARY:Appointment\r\n" in ics and "Follow-up" not in ics and cache.startswith("private"), ics[:200])
+            check("…the owner sees it among the profile's feeds", USER in page.inner_text("#calList"))
             page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the calendar feed's setup panel fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.click("#calDone")
+            check("…and the address isn't kept on the page once done", js("document.getElementById('calUrl').value") == "")
             settle(200)
             check("the Settings page fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})

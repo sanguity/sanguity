@@ -35,6 +35,55 @@
   </section>
 
   <div id="sections"></div>
+
+  <!-- calendar feed (#51): its own block, script and styles (settings-calendar.js) -->
+  <section class="card cal" id="calendar" hidden>
+    <h2>Calendar feed</h2>
+    <p class="hint">Add this profile's upcoming appointments, and lab draws expected from their usual rhythm, to your own
+      calendar app. Sanguity sends nothing: your calendar app fetches a private address every few hours. The feed is yours
+      alone and shows only what you can already see here.</p>
+    <div id="calNew" hidden>
+      <fieldset class="cal-opts">
+        <legend>What each event says</legend>
+        <label class="check"><input type="radio" name="calDetails" value="minimal" checked> Minimal: “Appointment” or “Labs expected”, the time and a link back here</label>
+        <label class="check"><input type="radio" name="calDetails" value="full"> Full: the visit's title, where and with whom, which lab panels, and the source it came from</label>
+        <p class="muted">Calendars often sync to your phone maker's or email provider's cloud. Minimal keeps health details out of it.
+          Neither ever includes results or diagnoses.</p>
+        <label class="check"><input type="checkbox" id="calLabs" checked> Also show expected lab draws (tentative, all-day, “expected, not scheduled”)</label>
+      </fieldset>
+      <div class="row"><button class="btn primary" id="calCreate" type="button">Create my calendar feed</button></div>
+    </div>
+    <div id="calHave" hidden>
+      <p id="calStatus"></p>
+      <div class="form inline">
+        <label>What each event says <select id="calDetailsNow"><option value="minimal">Minimal</option><option value="full">Full</option></select></label>
+        <label class="check"><input type="checkbox" id="calLabsNow"> Expected lab draws</label>
+      </div>
+      <div class="row">
+        <button class="btn" id="calRotate" type="button">Get a new address</button>
+        <button class="btn danger" id="calRevoke" type="button">Turn off my feed</button>
+      </div>
+    </div>
+    <div id="calSetup" class="cal-setup" hidden>
+      <h3 class="sub">Your feed's address</h3>
+      <p class="muted">Shown only now. Anyone with it can see what the feed shows, so keep it private; if it gets out, get a new address.</p>
+      <div class="cal-url"><input id="calUrl" readonly aria-label="Calendar feed address"><button class="btn primary" id="calCopy" type="button">Copy</button></div>
+      <p class="msg bad" id="calReach" hidden></p>
+      <ul class="cal-steps">
+        <li><b>iPhone or iPad:</b> Settings → Apps → Calendar → Calendar Accounts → Add Account → Other → Add Subscribed Calendar. Paste the address.</li>
+        <li><b>Mac (Calendar):</b> File → New Calendar Subscription. Paste the address; set Auto-refresh to every hour or day.</li>
+        <li><b>Google Calendar:</b> on the web, Other calendars → + → From URL. Paste the address. Google fetches it from its own servers, so this server must be reachable from the internet, and it refreshes only every several hours.</li>
+        <li><b>Outlook:</b> Add calendar → Subscribe from web. Paste the address and give it a name.</li>
+      </ul>
+      <button class="btn small" id="calDone" type="button">Done</button>
+    </div>
+    <div id="calOthers" hidden>
+      <h3 class="sub">Everyone's feeds of this profile</h3>
+      <p class="muted">As an owner you can turn off anyone's feed. A feed also stops when its person's access to the profile ends.</p>
+      <table class="tbl"><thead><tr><th>Person</th><th>Says</th><th>Last fetched</th><th></th></tr></thead><tbody id="calList"></tbody></table>
+    </div>
+    <span class="msg" id="calMsg" role="status"></span>
+  </section>
   <datalist id="labNames"></datalist>
 
   <section class="card out" id="outside" aria-labelledby="outsideTitle">
@@ -48,5 +97,6 @@
 <script src="js/util.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/outside.js"></script>
+<script src="js/settings-calendar.js"></script>
 </body>
 </html>

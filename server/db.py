@@ -486,6 +486,24 @@ SCHEMA = [
         UNIQUE(profile_id, pair));
     ALTER TABLE jobs ADD COLUMN same TEXT;         -- JSON: refs of the preview's possible matches confirmed
     """,
+    # version 23: calendar feeds (#51; calendar.py). One per person and profile: the address their calendar app
+    # fetches carries a random token, of which only the SHA-256 is kept. Fetches aren't logged, only the last one's
+    # time; making, rotating and revoking a feed are (activity "calendar").
+    """
+    CREATE TABLE calendar_feeds(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,           -- SHA-256 of the token in the address; the token is never stored
+        details TEXT NOT NULL DEFAULT 'minimal' CHECK(details IN ('minimal', 'full')),
+        labs INTEGER NOT NULL DEFAULT 1,           -- 1: also expected lab draws (a guess from their rhythm)
+        tz TEXT,                                   -- the zone of the browser that set it up (records' times are local)
+        created INTEGER NOT NULL,
+        rotated INTEGER,                           -- when the token was last replaced
+        last_fetched INTEGER,                      -- the calendar app's last fetch (to the minute)
+        UNIQUE(profile_id, user_id));
+    CREATE INDEX calendar_feeds_user ON calendar_feeds(user_id);
+    """,
 ]
 
 
