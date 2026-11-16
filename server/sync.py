@@ -7,12 +7,25 @@ what it saves goes in one transaction at the end, so it never holds SQLite's sin
 vendor, and a failure saves nothing.
 
 A pull reads, with an access token from connections.Tokens (renewed as needed; a rotated refresh token is saved at
-once): the Patient, then a search per type (connections.TYPES) that the granted scopes cover, for the patient, page
-by page, with _lastUpdated=gt<the last pull's Bundle.meta.lastUpdated> once there was one, and the Binary
-attachments that new or changed DocumentReferences and DiagnosticReports point at (up to SYNC_MAX_ATTACHMENT each).
-One pull reads at most SYNC_MAX_RESOURCES; the rest come next time. A type refused anyway (403) is reported as such,
-not skipped quietly: the connection's report says, type by type, what was pulled. An insurer's connection (#92)
-reads only Patient, ExplanationOfBenefit and Coverage, by its scopes.
+once): the Patient, then a search per type for the patient, page by page, with _lastUpdated=gt<the last pull's
+Bundle.meta.lastUpdated> once there was one, and the Binary attachments that new or changed DocumentReferences and
+DiagnosticReports point at. One pull reads at most SYNC_MAX_RESOURCES; the rest come next time. A type the access
+granted doesn't cover (403) is reported as such, not skipped quietly: the connection's report says, type by type,
+what was pulled. Types the granted scopes don't cover aren't asked for at all: an insurer's connection (#92)
+reads only Patient, ExplanationOfBenefit and Coverage (Coverage searched by beneficiary).
+
+What it searches is the connection's choice (#99, plan()): the kinds of records (connections.KINDS) and how far
+back. Labs and vitals are Observations by category; DiagnosticReports come for labs or documents; a start date is
+sent as date=ge<it> where the type has that search, and checked on each resource too (a server may ignore it;
+undated resources are kept). Each search has its own cursor, named by its parameters, so a kind turned on later
+(or an earlier start date) is pulled from the beginning, and what the profile has already is matched by source key
+as always. Turning a kind off stops it being pulled; remove_kind() takes out what it brought, as an import in the
+history that undoing puts back.
+
+Attachments (#101) follow the connection's rules (connections.attach_rules, over the install's sync.* settings):
+fetched automatically or only when asked, the kinds allowed (PDF, images, text, HTML), a size limit per attachment
+(never above SYNC_MAX_ATTACHMENT_MB) and a total per connection. One left out is listed (sync_skipped) with why,
+and fetch_anyway() brings it in later, as its own import, linked to its record.
 
 What a pull read is kept as an upload (pull.json, a Bundle, and Binary/<id>), sealed like any upload, so its files
 are the import's original files. The connection also keeps every resource it has read so far, sealed in
@@ -35,13 +48,15 @@ is rebuilt from all of them.
 
 Failures: the vendor unavailable (429, 5xx, no answer after smart.Client's retries) backs off, 5 minutes doubling
 up to SYNC_HOURS; the vendor ending access makes the connection "needs reconnect", and the page asks to sign in
-again; anything else is shown as it is and retried with the same backoff.
+again; anything else is shown as it is and retried with the same backoff. Each tick also notes, once, in the
+profile's activity log a connection that has stopped syncing (connections.note_warnings, #102); the profile's main
+page shows it too.
 
 Each successful pull, new records or not, marks every import of the connection as up to date then
 (imports.synced, #100): the page shows it as "last synced" beside each record's source. The first pull's import gets
 it when its preview is saved.
 """
-import contextlib, io, json, logging, os, shutil, tempfile, threading, urllib.parse
+import contextlib, hashlib, io, json, logging, os, shutil, tempfile, threading, urllib.parse
 
 from . import activity, config, connections as conns, crypto, db as dbm, importers as registry, jobs, labmap, outside
 from . import preview, profiles as prof, records, smart, uploads
@@ -53,6 +68,7 @@ PAGE = 100                   # _count asked for per page
 BACKOFF_FIRST = 300          # a failed pull is tried again after this, doubling up to SYNC_HOURS
 REF_TYPES = {"DiagnosticReport": "result"}   # a report groups its results: changed results touch the report too
 PATIENT_PARAM = {"Coverage": "beneficiary"}   # the search parameter naming the patient, where it isn't `patient`
+DATE_PARAM = {"Observation": "date", "Encounter": "date", "DiagnosticReport": "date", "DocumentReference": "date"}
 
 _thread, _stop, _wake = None, threading.Event(), threading.Event()
 
@@ -100,6 +116,10 @@ def run_due(now=None):
                 pull(db, cid)
             except Exception:
                 log.exception("sync of connection %s", cid)
+        try:
+            conns.note_warnings(db)
+        except Exception:
+            log.exception("noting connections that stopped syncing")
         return len(due)
     finally:
         db.close()
@@ -154,7 +174,8 @@ def pull(db, cid, who=None, ip=None):
     try:
         tokens = conns.Tokens(db, cid, http)
         reader = smart.Reader(http, c["fhir_base"], tokens)
-        got = _fetch(reader, crypto.dec(c["patient"]), None if first else json.loads(c["cursor"]), c["scopes"])
+        got = _fetch(reader, crypto.dec(c["patient"]), None if first else json.loads(c["cursor"]),
+                     plan(c), _rules(db, c), c["attach_bytes"], c["scopes"])
     except (smart.AccessEnded, smart.TokenRejected) as e:
         conns.needs_reconnect(db, cid, str(e) + " Sign in again to keep this source up to date.")
         return {"ok": False, "error": str(e), "kind": "access"}
@@ -189,26 +210,189 @@ def _newest(resources):
 
 
 def _attachment_urls(r, base):
-    """The Binary attachments of a DocumentReference or DiagnosticReport on this server: [(relative path, url)]."""
-    atts = [(c or {}).get("attachment") for c in r.get("content") or []] if r["resourceType"] == "DocumentReference" \
-        else list(r.get("presentedForm") or [])
+    """The Binary attachments of a DocumentReference or DiagnosticReport on this server: [(relative path, url,
+    the source key of the document record the FHIR importer makes for it, the attachment)]."""
+    doc = r["resourceType"] == "DocumentReference"
+    atts = [(c or {}).get("attachment") for c in r.get("content") or []] if doc else list(r.get("presentedForm") or [])
     out = []
-    for a in atts:
+    for i, a in enumerate(atts, 1):
         url = (a or {}).get("url") if isinstance(a, dict) else None
         if not isinstance(url, str) or a.get("data"):
             continue
         rel = url[len(base) + 1:] if url.startswith(base + "/") else url
         parts = rel.split("/")
         if len(parts) == 2 and parts[0] == "Binary" and parts[1] and "?" not in rel and "#" not in rel:
-            out.append((rel, base + "/" + rel))
+            key = f"fhir:{r['resourceType']}/{r.get('id')}" + ((f"#content/{i}" if i > 1 else "") if doc else f"#presentedForm/{i}")
+            out.append((rel, base + "/" + rel, key, a))
     return out
 
 
-def _fetch(reader, patient, cursor, scopes=None):
-    """Read what's new: {"resources", "binaries" {rel: bytes}, "cursor", "report", "warnings"}. Types the granted
-    scopes don't cover aren't asked for (an insurer connection reads only Patient, claims and coverage)."""
+# ---------------------------------------------------------------- what a pull asks for (#99)
+
+def _codes(cc):
+    out = set()
+    for c in cc if isinstance(cc, list) else [cc]:
+        for x in (c or {}).get("coding") or [] if isinstance(c, dict) else []:
+            if isinstance(x, dict) and isinstance(x.get("code"), str):
+                out.add(x["code"].lower())
+        if isinstance(c, dict) and isinstance(c.get("text"), str):
+            out.add(c["text"].lower())
+    return out
+
+
+def _is_lab_report(r):
+    return bool(_codes(r.get("category")) & {"lab", "laboratory"})
+
+
+def _date_of(r):
+    """The date a resource is about, for a start date: YYYY-MM-DD..., or None (kept: nothing to go by)."""
+    for k in ("effectiveDateTime", "effectiveInstant", "issued", "authoredOn", "onsetDateTime", "recordedDate",
+              "date", "created"):
+        if isinstance(r.get(k), str):
+            return r[k]
+    for k in ("effectivePeriod", "period", "onsetPeriod", "billablePeriod"):
+        if isinstance(r.get(k), dict) and isinstance(r[k].get("start"), str):
+            return r[k]["start"]
+    ctx = (r.get("context") or {}).get("period") if isinstance(r.get("context"), dict) else None
+    return ctx.get("start") if isinstance(ctx, dict) and isinstance(ctx.get("start"), str) else None
+
+
+def plan(c):
+    """The searches a pull of connection row c makes: [(FHIR type, extra parameters, cursor key, keep)], keep(r)
+    saying whether a resource the search returned belongs to the chosen kinds and dates, and a set of the kinds."""
+    kinds = json.loads(c["kinds"]) if c["kinds"] else None
+    since = c["since"]
+    k = set(kinds) if kinds is not None else set(conns.KINDS)
+    searches = []
+
+    def add(t, params=None, keep=None):
+        params = dict(params or {})
+        if since and t in DATE_PARAM:
+            params[DATE_PARAM[t]] = "ge" + since
+        key = t + ("?" + urllib.parse.urlencode(sorted(params.items())) if params else "")
+
+        def ok(r):
+            if since:
+                d = _date_of(r)
+                if d and d[:10] < since:
+                    return False
+            return keep(r) if keep else True
+        searches.append((t, params, key, ok))
+
+    if kinds is None:
+        for t in conns.TYPES[1:]:
+            add(t)
+        return searches, k
+    obs = [x for x in ("labs", "vitals") if x in k]
+    if len(obs) == 2:
+        add("Observation")
+    elif obs == ["labs"]:
+        add("Observation", {"category": "laboratory"}, lambda r: "vital-signs" not in _codes(r.get("category")))
+    elif obs == ["vitals"]:
+        add("Observation", {"category": "vital-signs"}, lambda r: "vital-signs" in _codes(r.get("category")))
+    for kind, t in (("problems", "Condition"), ("medications", "MedicationRequest"), ("visits", "Encounter")):
+        if kind in k:
+            add(t)
+    if "documents" in k:
+        add("DocumentReference")
+    if "labs" in k or "documents" in k:
+        add("DiagnosticReport", None, None if "documents" in k else _is_lab_report)
+    if "claims" in k:
+        add("ExplanationOfBenefit")   # mapped to claims on the Costs tab by the FHIR importer (#92)
+        add("Coverage")               # the insurer and plan the claims are under
+    order = {t: i for i, t in enumerate(conns.TYPES)}
+    searches.sort(key=lambda s: order.get(s[0], 99))
+    return searches, k
+
+
+# ---------------------------------------------------------------- attachments (#101)
+
+def _att_type(content_type):
+    ct = (content_type or "").split(";")[0].strip().lower()
+    if ct == "application/pdf":
+        return "pdf"
+    if ct.startswith("image/"):
+        return "image"
+    if ct in ("text/html", "application/xhtml+xml"):
+        return "html"
+    if ct.startswith("text/") or ct in ("application/xml", "application/json", "application/rtf"):
+        return "text"
+    return "other"
+
+
+def _rules(db, c):
+    return conns.attach_rules(db, c)
+
+
+def _ref(c, rel):
+    return hashlib.sha256((c["fhir_base"] + "/" + rel).encode()).hexdigest()
+
+
+def _title(r):
+    if r["resourceType"] == "DocumentReference":
+        t = r.get("description") or ((r.get("type") or {}).get("text") if isinstance(r.get("type"), dict) else None)
+    else:
+        t = (r.get("code") or {}).get("text") if isinstance(r.get("code"), dict) else None
+    return (t or r["resourceType"])[:160]
+
+
+def _attachments(reader, resources, rules, used):
+    """Fetch what the rules allow: ({rel: bytes}, [what was left out], bytes fetched, could not be read)."""
+    binaries, left_out, added, missing = {}, [], 0, 0
+    limit, budget = rules["max_mb"] * config.MB, rules["budget_mb"] * config.MB
+    for r in resources:
+        if r.get("resourceType") not in conns.BINARY_FOR:
+            continue
+        for rel, url, key, a in _attachment_urls(r, reader.base):
+            if rel in binaries:
+                continue
+            ct = a.get("contentType") if isinstance(a.get("contentType"), str) else None
+            size = a.get("size") if isinstance(a.get("size"), int) and not isinstance(a.get("size"), bool) else None
+            info = {"rel": rel, "record": key, "title": _title(r), "content_type": ct, "type": _att_type(ct), "size": size}
+            why = ("ask" if not rules["auto"] else
+                   "type" if ct and info["type"] not in rules["types"] else
+                   "size" if size is not None and size > limit else
+                   "budget" if used + added + (size or 0) > budget else None)
+            if why:
+                left_out.append({**info, "why": why})
+                continue
+            try:
+                resp = reader.get(url, accept="*/*", max_bytes=limit)
+            except smart.TooBig:
+                left_out.append({**info, "why": "size"})
+                continue
+            except smart.Refused:
+                missing += 1
+                continue
+            body = resp.body
+            if not ct:   # only the answer says what it is
+                ct = resp.headers.get("content-type")
+                info.update(content_type=ct, type=_att_type(ct))
+                if info["type"] not in rules["types"]:
+                    left_out.append({**info, "size": len(body), "why": "type"})
+                    continue
+            if used + added + len(body) > budget:
+                left_out.append({**info, "size": len(body), "why": "budget"})
+                continue
+            binaries[rel] = body
+            added += len(body)
+    return binaries, left_out, added, missing
+
+
+WHY = {"ask": "only fetched when you ask", "type": "a kind of file this connection doesn't fetch",
+       "size": "bigger than this connection's limit", "budget": "over this connection's total for attachments"}
+
+
+def _fetch(reader, patient, cursor, searches=None, rules=None, used=0, scopes=None):
+    """Read what's new: {"resources", "binaries" {rel: bytes}, "cursor", "report", "warnings", "left_out", "added"}.
+    searches: plan()'s (every type, as before #99, when None); rules: the attachment rules (#101);
+    scopes: the granted scopes; a type they don't cover isn't asked for (#92)."""
     left, resources, report, warnings = config.SYNC_MAX_RESOURCES, [], {}, []
-    new_cursor = dict(cursor or {})
+    searches, kinds = searches or ([(t, {}, t, None) for t in conns.TYPES[1:]], set(conns.KINDS))
+    rules = rules or {"auto": True, "types": ["pdf", "image", "text", "html", "other"], "budget_mb": 1 << 30,
+                      "max_mb": config.SYNC_MAX_ATTACHMENT // config.MB}
+    cursor = cursor or {}
+    new_cursor = {}   # only the searches made now: one dropped (a kind turned off) starts over when it comes back
     try:
         p = reader.get("Patient/" + urllib.parse.quote(patient, safe="")).json()
         if isinstance(p, dict) and p.get("resourceType") == "Patient":
@@ -218,15 +402,17 @@ def _fetch(reader, patient, cursor, scopes=None):
         report["Patient"] = {"n": 0, "status": "not allowed"}
     except smart.Refused as e:
         report["Patient"] = {"n": 0, "status": "failed", "why": str(e)}
-    for t in conns.TYPES[1:]:
+    for t, extra, key, keep in searches:
         if not conns.granted(scopes, t):
             continue
+        if key in cursor:
+            new_cursor[key] = cursor[key]   # kept unless this pull moves it on
         if left <= len(resources):
             report[t] = {"n": 0, "status": "next time"}
             continue
-        params = {PATIENT_PARAM.get(t, "patient"): patient, "_count": PAGE}
-        if cursor and cursor.get(t):
-            params["_lastUpdated"] = cursor[t]
+        params = {PATIENT_PARAM.get(t, "patient"): patient, "_count": PAGE, **extra}
+        if cursor.get(key):
+            params["_lastUpdated"] = cursor[key]
         try:
             got, stamp, cut = reader.search(t, params, left - len(resources))
         except smart.Forbidden:
@@ -235,37 +421,31 @@ def _fetch(reader, patient, cursor, scopes=None):
         except smart.Refused as e:   # this type only; the vendor being down or access ending stops the pull
             report[t] = {"n": 0, "status": "failed", "why": str(e)}
             continue
+        newest = _newest(got)   # of everything read, kept or not, so the cursor moves past both
+        got = [r for r in got if keep is None or keep(r)]
         resources += got
-        newest = _newest(got)
         if cut:   # the rest next time: from the newest read (ge, since others may share its time)
             if newest:
-                new_cursor[t] = "ge" + newest
+                new_cursor[key] = "ge" + newest
             report[t] = {"n": len(got), "status": "more next time"}
         else:
             if stamp:
-                new_cursor[t] = "gt" + stamp
+                new_cursor[key] = "gt" + stamp
             elif newest:
-                new_cursor[t] = "ge" + newest
+                new_cursor[key] = "ge" + newest
             report[t] = {"n": len(got), "status": "ok"}
-    binaries, too_big, missing = {}, 0, 0
-    for r in resources:
-        if r.get("resourceType") not in conns.BINARY_FOR:
-            continue
-        for rel, url in _attachment_urls(r, reader.base):
-            if rel in binaries:
-                continue
-            try:
-                binaries[rel] = reader.get(url, accept="*/*", max_bytes=config.SYNC_MAX_ATTACHMENT).body
-            except smart.TooBig:
-                too_big += 1
-            except smart.Refused:
-                missing += 1
-    if too_big:
-        warnings.append(f"Left out {too_big} attachment{'s' if too_big != 1 else ''} bigger than "
-                        f"{config.SYNC_MAX_ATTACHMENT // 2**20} MB (SYNC_MAX_ATTACHMENT_MB).")
+    binaries, left_out, added, missing = {}, [], 0, 0
+    if "documents" in kinds:
+        binaries, left_out, added, missing = _attachments(reader, resources, rules, used)
+    if left_out:
+        n = len(left_out)
+        warnings.append(f"Left out {n} attachment{'s' if n != 1 else ''} ("
+                        + ", ".join(sorted({WHY[x['why']] for x in left_out})) + "): listed under Attachments left out, "
+                        "to fetch if you want them.")
     if missing:
         warnings.append(f"{missing} attachment{'s' if missing != 1 else ''} couldn't be read from the vendor.")
-    return {"resources": resources, "binaries": binaries, "cursor": new_cursor, "report": report, "warnings": warnings}
+    return {"resources": resources, "binaries": binaries, "cursor": new_cursor, "report": report, "warnings": warnings,
+            "left_out": left_out, "added": added}
 
 
 def _upload(db, c, got):
@@ -300,10 +480,12 @@ def _first(db, c, got, who, ip):
     cid, pid = c["id"], c["profile_id"]
     _save_store(pid, cid, _merge_store(c, got))
     if len(got["resources"]) <= 1:   # the patient, nothing else: no import to preview; later pulls bring what comes
-        db.execute("""UPDATE connections SET cursor=?, pending_cursor=NULL, last_sync=?, next_sync=?, failures=0,
-                      error_kind=NULL, last_error=NULL, report=? WHERE id=? AND state='active'""",
-                   (json.dumps(got["cursor"]), dbm.now(), dbm.now() + config.SYNC_HOURS * 3600,
-                    conns._jenc(_report(got)), cid))
+        with dbm.transaction(db):
+            db.execute("""UPDATE connections SET cursor=?, pending_cursor=NULL, last_sync=?, next_sync=?, failures=0,
+                          error_kind=NULL, last_error=NULL, report=?, warned=NULL WHERE id=? AND state='active'""",
+                       (json.dumps(got["cursor"]), dbm.now(), dbm.now() + config.SYNC_HOURS * 3600,
+                        conns._jenc(_report(got)), cid))
+            _note_attachments(db, c, got)
         return {"ok": True, "first": True, "job": None}
     up = _upload(db, c, got)
     if db.execute("SELECT state FROM connections WHERE id=?", (cid,)).fetchone()["state"] != "active":
@@ -311,10 +493,27 @@ def _first(db, c, got, who, ip):
         return {"ok": False, "error": "This source was disconnected during the pull.", "kind": "other"}
     # committed before the worker can see it (submit queues the job at once)
     jid = jobs.submit(db, pid, up, (who or {}).get("id") or c["created_by"], "fhir", ip)
-    db.execute("""UPDATE connections SET first_job=?, pending_cursor=?, last_sync=?, next_sync=NULL, failures=0,
-                  error_kind=NULL, last_error=NULL, report=? WHERE id=?""",
-               (jid, json.dumps(got["cursor"]), dbm.now(), conns._jenc(_report(got)), cid))
+    with dbm.transaction(db):
+        db.execute("""UPDATE connections SET first_job=?, pending_cursor=?, last_sync=?, next_sync=NULL, failures=0,
+                      error_kind=NULL, last_error=NULL, report=?, warned=NULL WHERE id=?""",
+                   (jid, json.dumps(got["cursor"]), dbm.now(), conns._jenc(_report(got)), cid))
+        _note_attachments(db, c, got)
     return {"ok": True, "first": True, "job": jid}
+
+
+def _note_attachments(db, c, got):
+    """In the pull's transaction: list the attachments it left out (once each), take those it fetched off the
+    list, and count what it fetched toward the connection's total."""
+    now = dbm.now()
+    for x in got.get("left_out") or []:
+        db.execute("""INSERT INTO sync_skipped(connection_id, profile_id, ref_hash, detail, found) VALUES(?, ?, ?, ?, ?)
+                      ON CONFLICT(connection_id, ref_hash) DO UPDATE SET detail=excluded.detail, found=excluded.found,
+                      import_id=NULL""",
+                   (c["id"], c["profile_id"], _ref(c, x["rel"]), conns._jenc(x), now))
+    for rel in got.get("binaries") or {}:
+        db.execute("DELETE FROM sync_skipped WHERE connection_id=? AND ref_hash=? AND import_id IS NULL", (c["id"], _ref(c, rel)))
+    if got.get("added"):
+        db.execute("UPDATE connections SET attach_bytes=attach_bytes+? WHERE id=?", (got["added"], c["id"]))
 
 
 def first_saved(db, jid, iid):
@@ -334,9 +533,14 @@ def first_saved(db, jid, iid):
 
 def _parse(files):
     try:
-        return registry.get("fhir").parse(files)["data"]
+        data = registry.get("fhir").parse(files)["data"]
     except ValueError:   # nothing in it Sanguity shows (only claims or patients, say)
         return None
+    # details by event id as text, as everything here looks them up (and as a job's saved preview has them): the
+    # importer numbers them with ints, and without this a later pull's new records lost their details, and a record
+    # updated in place had its details cleared
+    data["details"] = {str(k): v for k, v in (data.get("details") or {}).items()}
+    return data
 
 
 def _with_ext(data):
@@ -516,8 +720,9 @@ def _done(db, c, got, report):
     if db.execute("UPDATE imports SET synced=? WHERE connection_id=?", (now, c["id"])).rowcount:
         records._bump(db, db.execute("SELECT profile_id FROM connections WHERE id=?", (c["id"],)).fetchone()["profile_id"])
     db.execute("""UPDATE connections SET cursor=?, last_sync=?, next_sync=?, failures=0, error_kind=NULL, last_error=NULL,
-                  report=? WHERE id=?""",
+                  report=?, warned=NULL WHERE id=?""",
                (json.dumps(got["cursor"]), dbm.now(), dbm.now() + config.SYNC_HOURS * 3600, conns._jenc(report), c["id"]))
+    _note_attachments(db, c, got)
 
 
 def _file_url(old, new):
@@ -642,7 +847,9 @@ def _apply_meta(db, iid, changes):
 
 def unapply(db, iid):
     """Put back what sync import iid changed in place. A later sync that changed the same record again keeps its
-    version, and what it says was there before becomes what this one found. Call before the import's rows go."""
+    version, and what it says was there before becomes what this one found. Call before the import's rows go.
+    An import that removed a kind's records (remove_kind) puts them back."""
+    _put_back(db, iid)
     for r in db.execute("SELECT * FROM sync_changes WHERE import_id=? ORDER BY id DESC", (iid,)).fetchall():
         prev = records._dec(r["previous"])
         if r["event_id"] is not None:
@@ -675,3 +882,183 @@ def unapply(db, iid):
                 items[i] = prev["entry"]
         db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(meta), r["meta_import"]))
     db.execute("DELETE FROM sync_changes WHERE import_id=?", (iid,))
+
+
+def _put_back(db, iid):
+    """Undoing a removal (remove_kind): its rows go back where they were, with their ids where those are free."""
+    for x in db.execute("SELECT * FROM sync_removed WHERE import_id=? ORDER BY id", (iid,)).fetchall():
+        row = records._dec(x["row"])
+        if x["what"] == "event":
+            cols = ["profile_id", "import_id", "body", "detail", "cost", "cost_seq", "key_hash"]
+            free = not db.execute("SELECT 1 FROM events WHERE id=?", (row["id"],)).fetchone()
+            names = (["id"] if free else []) + cols
+            db.execute(f"INSERT INTO events({', '.join(names)}) VALUES({', '.join('?' * len(names))})",
+                       [row[k] for k in names])
+        elif x["what"] == "series":
+            free = not db.execute("SELECT 1 FROM series WHERE id=?", (row["id"],)).fetchone()
+            names = (["id"] if free else []) + ["profile_id", "import_id", "body", "key_hash"]
+            sid = db.execute(f"INSERT INTO series({', '.join(names)}) VALUES({', '.join('?' * len(names))})",
+                             [row[k] for k in names]).lastrowid
+            db.executemany("INSERT INTO results(profile_id, import_id, series_id, body) VALUES(?, ?, ?, ?)",
+                           [(row["profile_id"], row["import_id"], sid, b) for b in row["results"]])
+        else:
+            m = db.execute("SELECT meta FROM imports WHERE id=?", (x["home_import"],)).fetchone()
+            meta = records._dec(m["meta"]) or {}
+            top, _, sub = row["path"].partition(".")
+            holder = meta.setdefault(top, {}) if sub else meta
+            have = holder.get(sub or top)
+            holder[sub or top] = row["items"] + (have if isinstance(have, list) else [])
+            db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(meta), x["home_import"]))
+    db.execute("DELETE FROM sync_removed WHERE import_id=?", (iid,))
+
+
+# ---------------------------------------------------------------- taking out what a kind brought (#99)
+
+KIND_EVENTS = {"labs": {"lab", "labitem"}, "visits": {"visit", "stay"}, "medications": {"med"},
+               "documents": {"document", "study", "imaging"}, "claims": {"claim"}}
+KIND_META = {"visits": ("upcoming",), "problems": ("problems",), "vitals": ("clinicWeights",)}
+
+
+def _of_kind(kind, body):
+    if body.get("k") in KIND_EVENTS.get(kind, ()):
+        return True
+    return kind == "claims" and str(body.get("key") or "").startswith("fhir:ExplanationOfBenefit/")
+
+
+def remove_kind(db, who, pid, cid, kind, ip=None):
+    """Take out the records of one kind that this connection brought, as one entry in the import history: undoing
+    it there puts them back (_put_back). Records of that kind from elsewhere (uploads, other sources) stay.
+    Returns {"import", "counts"}."""
+    c = conns.get(db, pid, cid)
+    if kind not in conns.KINDS:
+        raise conns.Problem("There's no kind of record called that.", 400)
+    label = conns.KINDS[kind][0]
+    with dbm.transaction(db):
+        homes = [r[0] for r in db.execute("SELECT id FROM imports WHERE connection_id=? AND profile_id=? AND note IS NULL "
+                                          "ORDER BY id", (cid, pid))]
+        events, series, lists, kinds = [], [], [], {}
+        for h in homes:
+            for r in db.execute("SELECT * FROM events WHERE import_id=? ORDER BY id", (h,)).fetchall():
+                b = records._dec(r["body"])
+                if _of_kind(kind, b):
+                    events.append(r)
+                    kinds[b.get("k")] = kinds.get(b.get("k"), 0) + 1
+            if kind in ("labs", "vitals"):
+                for r in db.execute("SELECT * FROM series WHERE import_id=? ORDER BY id", (h,)).fetchall():
+                    if ("vitals" if (records._dec(r["body"]) or {}).get("panel") == "Vitals" else "labs") == kind:
+                        series.append(r)
+            for path in KIND_META.get(kind, ()):
+                meta = records._dec(db.execute("SELECT meta FROM imports WHERE id=?", (h,)).fetchone()["meta"]) or {}
+                items = _meta_list(meta, path)
+                if isinstance(items, list) and items:
+                    lists.append((h, path, list(items)))
+                    items.clear()
+                    db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(meta), h))
+        results = sum(db.execute("SELECT COUNT(*) FROM results WHERE series_id=?", (r["id"],)).fetchone()[0] for r in series)
+        counts = {"kinds": kinds, "series": len(series), "results": results,
+                  **({"entries": sum(len(x[2]) for x in lists)} if lists else {})}
+        if not (events or series or lists):
+            raise conns.Problem(f"There's nothing to remove: {c['source']} hasn't brought any {label.lower()} that are "
+                                "still here.", 409)
+        rid = records.store(db, pid, {"events": []}, "sync", fmt="fhir")
+        note = {"removed": kind, "label": f"{label} from {c['source']}, removed", "counts": counts}
+        db.execute("UPDATE imports SET connection_id=?, note=? WHERE id=?", (cid, records._enc(note), rid))
+        for r in events:
+            db.execute("INSERT INTO sync_removed(import_id, home_import, what, row) VALUES(?, ?, 'event', ?)",
+                       (rid, r["import_id"], records._enc(dict(r))))
+            db.execute("DELETE FROM events WHERE id=?", (r["id"],))
+        for r in series:
+            pts = [x[0] for x in db.execute("SELECT body FROM results WHERE series_id=? ORDER BY id", (r["id"],))]
+            db.execute("INSERT INTO sync_removed(import_id, home_import, what, row) VALUES(?, ?, 'series', ?)",
+                       (rid, r["import_id"], records._enc({**dict(r), "results": pts})))
+            db.execute("DELETE FROM series WHERE id=?", (r["id"],))   # its results by cascade
+        for h, path, items in lists:
+            db.execute("INSERT INTO sync_removed(import_id, home_import, what, row) VALUES(?, ?, 'meta', ?)",
+                       (rid, h, records._enc({"path": path, "items": items})))
+        activity.log(db, "connect", who, pid, {"source": c["source"], "change": "remove", "kind": kind, "label": label,
+                                               "counts": counts, "import": rid}, ip)
+        records._bump(db, pid)
+    return {"import": rid, "counts": counts}
+
+
+# ---------------------------------------------------------------- fetching a left-out attachment (#101)
+
+def fetch_anyway(db, who, pid, cid, sid, ip=None):
+    """Fetch one attachment a pull left out, whatever the connection's rules say (SYNC_MAX_ATTACHMENT_MB still
+    holds), and link it to its record, as an import of its own: undoing it from the history takes the file away and
+    lists it again. Returns {"import", "size"}."""
+    c = conns.get(db, pid, cid)
+    if c["state"] != "active":
+        raise conns.Problem("This connection needs signing in again first." if c["state"] == "needs reconnect"
+                            else "This source is disconnected.", 409)
+    row = db.execute("SELECT * FROM sync_skipped WHERE id=? AND connection_id=?", (sid, cid)).fetchone()
+    if not row:
+        raise conns.Problem("No such attachment.", 404)
+    if row["import_id"] is not None:
+        raise conns.Problem("This attachment was fetched already.", 409)
+    d = conns._jdec(row["detail"])
+    h = records.key_hashes(db, [d["record"]])[d["record"]]
+    targets = db.execute("SELECT id, detail FROM events WHERE profile_id=? AND key_hash=?", (pid, h)).fetchall()
+    if not targets:
+        raise conns.Problem("The record this attachment belongs to isn't in the profile: save the first pull's preview "
+                            "first, or it was undone or removed.", 409)
+    http = smart.Client(outside.for_connection(db, cid, "Connected source: sync", who, ip))   # the one way out (#97)
+    try:
+        reader = smart.Reader(http, c["fhir_base"], conns.Tokens(db, cid, http))
+        body = reader.get(c["fhir_base"] + "/" + d["rel"], accept="*/*", max_bytes=config.SYNC_MAX_ATTACHMENT).body
+    except (smart.AccessEnded, smart.TokenRejected) as e:
+        conns.needs_reconnect(db, cid, str(e) + " Sign in again to keep this source up to date.")
+        raise conns.Problem(str(e) + " Sign in again, then fetch it.", 409) from None
+    except smart.TooBig:
+        raise conns.Problem(f"It's bigger than {config.SYNC_MAX_ATTACHMENT // config.MB} MB, the most this server "
+                            "fetches (SYNC_MAX_ATTACHMENT_MB, set by whoever runs it).", 409) from None
+    except smart.SmartError as e:
+        raise conns.Problem("The vendor didn't send it: " + str(e), 502) from None
+    uid = who["id"] if who is not None else None
+    up = uploads.create(db, pid, uid or c["created_by"])
+    try:
+        uploads.add_file(db, pid, up, d["rel"], io.BytesIO(body))
+        uploads.finish(db, pid, up, unzip=False)
+        sealed = {rel: p for uid, rel, p in uploads.stored_files(db, pid) if uid == up}
+
+        def stored(url):
+            p = sealed.get(url) if isinstance(url, str) else None
+            return os.path.realpath(p) if p and os.path.isfile(p) else None
+
+        with dbm.transaction(db):
+            iid = records.store(db, pid, {"events": []}, "sync", fmt="fhir")
+            note = {"fetched": d.get("title"), "label": f"Attachment from {c['source']}, fetched", "counts": {"documents": 1}}
+            db.execute("UPDATE imports SET connection_id=?, note=? WHERE id=?", (cid, records._enc(note), iid))
+            linked = 0
+            for e in targets:
+                old = records._dec(e["detail"])
+                if not (isinstance(old, dict) and old.get("type") == "file"):
+                    continue
+                one = {"x": {**old, "url": d["rel"]}}
+                keep, n = prof.index_documents(db, pid, one, stored)
+                prof.link_documents(db, iid, keep)
+                if not n:
+                    continue
+                db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)",
+                           (iid, e["id"], records._enc({"body": records._dec(db.execute("SELECT body FROM events WHERE id=?",
+                                                                                         (e["id"],)).fetchone()["body"]),
+                                                         "detail": old})))
+                db.execute("UPDATE events SET detail=? WHERE id=?", (records._enc(one["x"]), e["id"]))
+                linked += 1
+            if not linked:
+                raise conns.Problem("The record this attachment belongs to has no place for a file.", 409)
+            db.execute("""INSERT INTO jobs(profile_id, upload_id, created_by, state, importer, warnings, summary, import_id,
+                          created, started, finished) VALUES(?, ?, ?, 'done', 'fhir', ?, ?, ?, ?, ?, ?)""",
+                       (pid, up, uid, crypto.enc("[]"),
+                        crypto.enc(json.dumps({"counts": {"documents": 1}, "connection": c["source"]})), iid,
+                        dbm.now(), dbm.now(), dbm.now()))
+            db.execute("UPDATE sync_skipped SET import_id=? WHERE id=?", (iid, sid))
+            db.execute("UPDATE connections SET attach_bytes=attach_bytes+? WHERE id=?", (len(body), cid))
+            activity.log(db, "connect", who, pid, {"source": c["source"], "change": "fetch", "title": d.get("title"),
+                                                   "size": len(body), "import": iid}, ip)
+            records._bump(db, pid)
+    except BaseException:
+        with contextlib.suppress(uploads.UploadError):
+            uploads.discard(db, pid, up)
+        raise
+    return {"import": iid, "size": len(body)}

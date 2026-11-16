@@ -8,8 +8,15 @@ Profiles (anyone the profile is shared with sees its connections; owners and edi
                                                             a FHIR base} (a provider directory entry's, #93)
   POST /api/connect/return                                   {code, state, error?, error_description?} from the
                                                             /connect/return page: {"profile", "connection"}
+  POST /api/profiles/{pid}/connect/start also takes {"kinds": [...], "since": "YYYY-MM-DD"}: what to pull (#99); only
+                                                            the scopes those need are asked for
+  GET  /api/profiles/{pid}/connections/warnings              connections that stopped syncing (#102), for the main page
+  PATCH /api/profiles/{pid}/connections/{id}                {"kinds", "since", "attach": {auto, max_mb, types,
+                                                            budget_mb}}: future pulls (#99, #101)
+  POST /api/profiles/{pid}/connections/{id}/remove          {"kind"}: take out what that kind brought, undoably (#99)
+  POST /api/profiles/{pid}/connections/{id}/attachments/{sid}/fetch   fetch a left-out attachment anyway (#101)
   POST /api/profiles/{pid}/connections/{id}/sync            pull now
-  POST /api/profiles/{pid}/connections/{id}/reconnect       sign in again: {"url"}
+  POST /api/profiles/{pid}/connections/{id}/reconnect       sign in again: {"url"}; {"kinds", "since"} to change them
   POST /api/profiles/{pid}/connections/{id}/disconnect      {"remove_records": false}: revoke, delete the tokens
 Admins (vendor settings, option 1: each install registers its own app):
   GET    /api/connect/sources                               the setup screen: return address, guides, sources, counts
@@ -23,13 +30,13 @@ SameSite=Strict, so it isn't sent on the vendor's redirect, and the page posts w
 """
 import os
 import urllib.parse
-from typing import Optional
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
-from . import connections as conns, db as dbm
+from . import connections as conns, db as dbm, sync
 from .main import PAGE_CSP, WWW, _client_ip, admin, get_db, need, user
 
 router = APIRouter()
@@ -52,6 +59,14 @@ class Start(BaseModel):
     source: Optional[int] = None
     issuer: Optional[str] = None
     connection: Optional[int] = None
+    kinds: Optional[list] = None
+    since: Optional[str] = None
+
+
+def _choice(body):
+    """kinds and since from a body, or conns.KEEP where it didn't say (a reconnect keeps the connection's)."""
+    given = body.model_fields_set if body else set()
+    return {k: getattr(body, k) if k in given else conns.KEEP for k in ("kinds", "since")}
 
 
 @router.get("/api/profiles/{pid}/connect/start")
@@ -71,7 +86,7 @@ def start_post(pid: int, body: Start, request: Request, s=Depends(user), db=Depe
     need(db, s, pid, "editor")
     try:
         return {"url": conns.start(db, s, pid, vendor=body.source, issuer=body.issuer, connection_id=body.connection,
-                                   ip=_client_ip(request))}
+                                   ip=_client_ip(request), **_choice(body))}
     except conns.Problem as e:
         raise _problem(e) from None
 
@@ -101,14 +116,61 @@ def sync_now(pid: int, cid: int, s=Depends(user), db=Depends(get_db)):
         raise _problem(e) from None
 
 
+class Choice(BaseModel):
+    kinds: Optional[list] = None
+    since: Optional[str] = None
+
+
 @router.post("/api/profiles/{pid}/connections/{cid}/reconnect")
-def reconnect(pid: int, cid: int, request: Request, s=Depends(user), db=Depends(get_db)):
+def reconnect(pid: int, cid: int, request: Request, body: Optional[Choice] = None, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     try:
         c = conns.get(db, pid, cid)
         if c["client_id"] is None:
             raise conns.Problem("This connection's source was removed; an admin can set it up again.", 409)
-        return {"url": conns.start(db, s, pid, vendor=c["client_id"], connection_id=cid, ip=_client_ip(request))}
+        return {"url": conns.start(db, s, pid, vendor=c["client_id"], connection_id=cid, ip=_client_ip(request),
+                                   **_choice(body))}
+    except conns.Problem as e:
+        raise _problem(e) from None
+
+
+@router.get("/api/profiles/{pid}/connections/warnings")
+def warnings(pid: int, s=Depends(user), db=Depends(get_db)):
+    """For the profile's main page (#102): owners and editors get the warning, viewers a quieter note."""
+    role = need(db, s, pid, "viewer")
+    return {"can_fix": role in ("owner", "editor"), "warnings": conns.warnings_for(db, pid)}
+
+
+@router.patch("/api/profiles/{pid}/connections/{cid}")
+def change(pid: int, cid: int, request: Request, body: dict[str, Any] = Body(...), s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    unknown = set(body) - {"kinds", "since", "attach"}
+    if unknown:
+        raise HTTPException(400, "Only kinds, since and attach can be changed.")
+    try:
+        return conns.set_options(db, s, pid, cid, body, _client_ip(request))
+    except conns.Problem as e:
+        raise _problem(e) from None
+
+
+class Remove(BaseModel):
+    kind: str
+
+
+@router.post("/api/profiles/{pid}/connections/{cid}/remove")
+def remove_kind(pid: int, cid: int, body: Remove, request: Request, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    try:
+        return sync.remove_kind(db, s, pid, cid, body.kind, _client_ip(request))
+    except conns.Problem as e:
+        raise _problem(e) from None
+
+
+@router.post("/api/profiles/{pid}/connections/{cid}/attachments/{sid}/fetch")
+def fetch_anyway(pid: int, cid: int, sid: int, request: Request, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    try:
+        return sync.fetch_anyway(db, s, pid, cid, sid, _client_ip(request))
     except conns.Problem as e:
         raise _problem(e) from None
 

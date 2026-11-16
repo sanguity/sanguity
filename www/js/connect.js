@@ -1,7 +1,9 @@
 /* Sanguity · connected sources (#32, #91): a profile's connections (sign in to a source, its first pull previewed like
    an upload, then synced on a schedule; Sync now, Reconnect when access ended, Disconnect keeping or removing the
    records), and for admins the guided setup of each source (option 1: this install's own app with each vendor).
-   window.sanguityImport.follow (import-jobs.js) shows the first pull's preview. */
+   What each connection pulls is chosen when connecting and changed later (#99: kinds of records, a start date,
+   removing what a kind brought), with its attachment rules and the attachments left out (#101), and a warning when
+   it stopped syncing (#102). window.sanguityImport.follow (import-jobs.js) shows the first pull's preview. */
 "use strict";   // $, el and api come from util.js
 async function call(path, method = "GET", body) {
   const r = await api(path, {method, body: body ? JSON.stringify(body) : undefined});
@@ -12,6 +14,11 @@ async function call(path, method = "GET", body) {
 }
 const when = t => t ? new Date(t * 1000).toLocaleString(undefined, {year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}) : "—";
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const size = b => b == null ? "size unknown" : b < 1024 ? `${b} bytes` : b < 2 ** 20 ? `${Math.round(b / 1024)} KB` : `${(b / 2 ** 20).toFixed(1)} MB`;
+const ATT_TYPES = {pdf: "PDF", image: "Images", text: "Text", html: "Web pages (HTML)"};
+const WHY = {ask: "fetched only when you ask", type: "a kind of file this connection doesn't fetch",
+  size: "bigger than this connection's limit", budget: "over this connection's total for attachments"};
+const today = () => new Date().toISOString().slice(0, 10);
 const params = new URLSearchParams(location.search);
 let ME, PID = null, followed = new Set(), timer = null, SETUP = null, editing = null;
 
@@ -37,10 +44,128 @@ function reportLine(rep) {
   return el("p", {class: "muted", text: "Last pull, by kind: " + parts.join(" · ")});
 }
 
+/* the kinds of records, as checkboxes: those the access allows, and (for a connection) those it would need signing
+   in again for; returns {node, get(): [ids]} */
+function kindPicker(kinds, chosen, name, reconnectNote) {
+  const box = el("fieldset", {class: "conn-kinds"}, el("legend", {text: "What to pull"}));
+  for (const k of kinds) {
+    const input = el("input", {type: "checkbox", name, value: k.id, checked: chosen.includes(k.id) ? "" : null,
+      disabled: !k.allowed && !reconnectNote ? "" : null});
+    box.append(el("label", {class: "check conn-kind"}, input, el("span", {},
+      el("b", {text: k.label}), " ", el("span", {class: "muted", text: k.brings +
+        (k.allowed ? "" : reconnectNote ? " " + reconnectNote : " This source's setup doesn't ask for it.")}))));
+  }
+  return {node: box, get: () => [...box.querySelectorAll("input:checked")].map(i => i.value)};
+}
+
+function sincePicker(value, id) {
+  const input = el("input", {type: "date", id, max: today(), value: value || ""});
+  return {node: el("label", {}, "From (leave empty for everything) ", input), get: () => input.value || null};
+}
+
+/* "Connect X…": choose what to pull, then on to the vendor's sign-in with only the scopes that needs */
+function connectForm(s) {
+  const all = s.kinds.filter(k => k.allowed).map(k => k.id);
+  const kinds = kindPicker(s.kinds, all, "k-new-" + s.id), since = sincePicker(null, "since-new-" + s.id);
+  const msg = el("span", {class: "msg", role: "status"});
+  const go = el("button", {class: "btn primary", type: "button", text: `Sign in at ${s.host}`, onclick: async () => {
+    msg.textContent = ""; msg.classList.remove("bad");
+    const chosen = kinds.get();
+    if (!chosen.length) { msg.textContent = "Choose at least one kind of record."; msg.classList.add("bad"); return; }
+    try {
+      const r = await call(`profiles/${PID}/connect/start`, "POST",
+        {source: s.id, kinds: chosen.length === all.length ? null : chosen, since: since.get()});
+      location.assign(r.url);
+    } catch (e) { msg.textContent = e.message; msg.classList.add("bad"); }
+  }});
+  return el("div", {class: "conn-choose", id: "choose-" + s.id},
+    el("p", {class: "hint", text: "Sanguity asks the vendor only for what you choose here, and you can change it later."}),
+    kinds.node, since.node,
+    el("div", {class: "row"}, go, el("button", {class: "btn", type: "button", text: "Cancel", onclick: ev => ev.target.closest(".conn-choose").remove()}), msg));
+}
+
+function chosenLine(c) {
+  const names = c.kinds.filter(k => c.chosen.includes(k.id)).map(k => k.label);
+  return `Pulls ${c.all_kinds ? "everything it's allowed" : names.join(", ").toLowerCase() || "nothing"}` +
+    (c.all_kinds && names.length ? ` (${names.join(", ").toLowerCase()})` : "") + (c.since ? `, from ${c.since}` : "") +
+    `. Attachments: ${c.attach.auto ? `fetched automatically (${c.attach.types.map(t => ATT_TYPES[t]).join(", ") || "none"}, up to ${c.attach.max_mb} MB each)` : "only when you ask"}.`;
+}
+
+/* changing what a connection pulls and its attachment rules; kinds turned off can have what they brought removed */
+function optionsForm(c, box) {
+  const kinds = kindPicker(c.kinds, c.chosen, "k-" + c.id, "Needs signing in again.");
+  const since = sincePicker(c.since, "since-" + c.id);
+  const own = c.attach_own || {}, a = c.attach;
+  const auto = el("input", {type: "checkbox", checked: a.auto ? "" : null});
+  const types = Object.entries(ATT_TYPES).map(([id, label]) => el("label", {class: "check"},
+    el("input", {type: "checkbox", value: id, checked: a.types.includes(id) ? "" : null}), label));
+  const num = (v, max, label) => el("input", {type: "number", min: 1, max, step: 1, value: v, "aria-label": label, class: "conn-num"});
+  const maxMb = num(a.max_mb, a.ceiling_mb, "Largest attachment, MB"), budget = num(a.budget_mb, 1048576, "Total for attachments, MB");
+  const msg = el("span", {class: "msg", role: "status"});
+  const removeRow = el("div", {class: "conn-remove"});
+  const drawRemove = chosen => {
+    const off = c.kinds.filter(k => !chosen.includes(k.id));
+    removeRow.replaceChildren(...(off.length && c.imports ? [el("p", {class: "hint", text: "Kinds turned off aren't pulled any more; what they brought stays. To take it out (you can put it back from the import history):"}),
+      el("div", {class: "row"}, ...off.map(k => el("button", {class: "btn small", type: "button", text: `Remove ${k.label.toLowerCase()} it brought`,
+        onclick: async ev => {
+          ev.target.disabled = true;
+          try {
+            const r = await call(`profiles/${PID}/connections/${c.id}/remove`, "POST", {kind: k.id});
+            load(`Removed the ${k.label.toLowerCase()} ${c.source} brought. Undo it from the import history to put them back.`);
+          } catch (e) { msg.textContent = e.message; msg.classList.add("bad"); ev.target.disabled = false; }
+        }})))] : []));
+  };
+  drawRemove(c.chosen);
+  const save = el("button", {class: "btn small primary", type: "button", text: "Save", onclick: async () => {
+    msg.textContent = ""; msg.classList.remove("bad");
+    const chosen = kinds.get();
+    if (!chosen.length) { msg.textContent = "Choose at least one kind of record."; msg.classList.add("bad"); return; }
+    const attach = {auto: auto.checked, types: types.map(l => l.querySelector("input")).filter(i => i.checked).map(i => i.value),
+      max_mb: +maxMb.value, budget_mb: +budget.value};
+    try {
+      const needSignIn = c.kinds.some(k => chosen.includes(k.id) && !k.allowed);
+      await call(`profiles/${PID}/connections/${c.id}`, "PATCH", {attach, since: since.get(),
+        ...(needSignIn ? {} : {kinds: chosen})});
+      if (needSignIn) {   // a kind the access doesn't cover: sign in again, asking for it too
+        location.assign((await call(`profiles/${PID}/connections/${c.id}/reconnect`, "POST", {kinds: chosen, since: since.get()})).url);
+        return;
+      }
+      load("Saved. The next sync pulls by the new choice.");
+    } catch (e) { msg.textContent = e.message; msg.classList.add("bad"); }
+  }});
+  kinds.node.addEventListener("change", () => drawRemove(kinds.get()));
+  return el("div", {class: "conn-options"},
+    kinds.node, since.node,
+    el("fieldset", {class: "conn-att"}, el("legend", {text: "Attachments"}),
+      el("label", {class: "check"}, auto, "Fetch automatically (off: only when you ask, from the list below)"),
+      el("div", {class: "row conn-types"}, ...types),
+      el("label", {}, "Largest, in MB ", maxMb, el("span", {class: "muted", text: ` (this server allows up to ${a.ceiling_mb})`})),
+      el("label", {}, "In all, for this connection, in MB ", budget, el("span", {class: "muted", text: ` (fetched so far: ${size(c.attach_bytes)})`})),
+      Object.keys(own).length ? el("button", {class: "btn small", type: "button", text: "Use this server's defaults", onclick: async () => {
+        try { await call(`profiles/${PID}/connections/${c.id}`, "PATCH", {attach: {auto: null, types: null, max_mb: null, budget_mb: null}}); load("Back to this server's attachment defaults."); }
+        catch (e) { msg.textContent = e.message; msg.classList.add("bad"); } }}) : null),
+    removeRow,
+    el("div", {class: "row"}, save, el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => box.querySelector(".conn-options").remove()}), msg));
+}
+
+function skippedList(c, canEdit) {
+  if (!c.skipped.length) return null;
+  return el("details", {class: "conn-skipped"}, el("summary", {text: `Attachments left out (${c.skipped.length})`}),
+    el("ul", {}, ...c.skipped.map(x => {
+      const msg = el("span", {class: "msg", role: "status"});
+      return el("li", {}, el("span", {text: `${x.title} · ${ATT_TYPES[x.type] || x.content_type || "unknown kind"} · ${size(x.size)} · ${WHY[x.why] || x.why}`}), " ",
+        canEdit && c.state === "active" ? el("button", {class: "btn small", type: "button", text: "Fetch anyway", onclick: async ev => {
+          ev.target.disabled = true; msg.textContent = "Fetching…"; msg.classList.remove("bad");
+          try { const r = await call(`profiles/${PID}/connections/${c.id}/attachments/${x.id}/fetch`, "POST"); load(`Fetched “${x.title}” (${size(r.size)}).`); }
+          catch (e) { msg.textContent = e.message; msg.classList.add("bad"); ev.target.disabled = false; } }}) : null, msg);
+    })));
+}
+
 function card(c, canEdit) {
-  const box = el("div", {class: "prof conn-item" + (c.state === "needs reconnect" ? " conn-bad" : "")});
+  const box = el("div", {class: "prof conn-item" + (c.state === "needs reconnect" || c.warning ? " conn-bad" : ""), id: "conn-" + c.id});
   box.append(el("b", {text: c.source}), el("span", {class: "tag", text: c.host}));
   box.append(el("p", {text: PHASE[c.phase] || c.phase}));
+  if (c.warning && c.warning.kind !== "access") box.append(el("p", {class: "msg bad conn-warning", text: c.warning.text}));
   if (c.error && c.state === "active") {
     box.append(el("p", {class: c.error_kind === "unavailable" ? "muted" : "msg bad",
       text: (c.error_kind === "unavailable" ? "Vendor unavailable: " : "Last pull failed: ") + c.error}));
@@ -48,9 +173,12 @@ function card(c, canEdit) {
   if (c.state !== "disconnected") {
     box.append(el("p", {class: "muted", text: `Last pull ${when(c.last_sync)}` + (c.next_sync && c.state === "active" ? ` · next ${when(c.next_sync)}` : "")
       + ` · ${plural(c.imports, "import")} in the history` + (c.credential === "access" ? " · no refresh token: sign in again when access runs out" : "")}));
+    box.append(el("p", {class: "muted conn-chosen", text: chosenLine(c)}));
     const rep = reportLine(c.report);
     if (rep) box.append(rep);
     for (const w of (c.report && c.report.warnings) || []) box.append(el("p", {class: "muted", text: w}));
+    const sk = skippedList(c, canEdit);
+    if (sk) box.append(sk);
   } else box.append(el("p", {class: "muted", text: `Disconnected ${when(c.disconnected)}`}));
   if (!canEdit || c.state === "disconnected") return box;
   const row = el("div", {class: "row"}), msg = el("span", {class: "msg", role: "status"});
@@ -61,6 +189,10 @@ function card(c, canEdit) {
   if (c.state === "active" && !["first pull preview", "first pull saving"].includes(c.phase))
     row.append(act(c.phase.startsWith("first pull ") ? "Pull again" : "Sync now", async () => {
       await call(`profiles/${PID}/connections/${c.id}/sync`, "POST"); msg.textContent = "Pulling…"; load(); }));
+  row.append(act("What it pulls…", async () => {
+    if (box.querySelector(".conn-options")) return;
+    box.insertBefore(optionsForm(c, box), row.nextSibling);
+  }));
   row.append(act("Disconnect…", async () => {
     const form = el("div", {class: "conn-disc"},
       el("p", {text: "Disconnecting revokes Sanguity's access where the vendor allows it and deletes the stored tokens. The records it brought:"}),
@@ -95,10 +227,15 @@ async function load(note) {
   const ended = live.filter(c => c.state === "needs reconnect");
   $("#reconnect").hidden = !ended.length;
   $("#reconnect").textContent = ended.length ? `${ended.map(c => c.source).join(", ")}: access ended. Sign in again below to keep the records up to date.` : "";
+  if (params.get("connection")) { const t = document.getElementById("conn-" + params.get("connection")); if (t) t.scrollIntoView({block: "center"}); params.delete("connection"); }
   $("#viewerNote").hidden = d.can_connect;
   $("#noSources").hidden = !!d.sources.length || !d.can_connect;
   $("#sourceButtons").replaceChildren(...(d.can_connect ? d.sources : []).map(s =>
-    el("a", {class: "btn", href: `api/profiles/${PID}/connect/start?source=${s.id}`, text: `Connect ${s.name}`, title: `Signs in at ${s.host}`})));
+    el("button", {class: "btn", type: "button", text: `Connect ${s.name}…`, title: `Signs in at ${s.host}`, onclick: () => {
+      const open = document.getElementById("choose-" + s.id);
+      if (open) { open.remove(); return; }
+      $("#sourceButtons").after(connectForm(s));
+    }})));
   for (const c of live) {   // the first pull's preview, as on the import page
     if (c.first_job && ["queued", "running", "preview"].includes(c.first_job_state) && !followed.has(c.first_job) && d.can_connect) {
       followed.add(c.first_job);

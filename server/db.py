@@ -431,6 +431,42 @@ SCHEMA = [
         count INTEGER NOT NULL DEFAULT 1);
     CREATE INDEX outside_contacts_profile ON outside_contacts(profile_id, purpose);
     """,
+    # version 21: what a connection pulls and how it warns (#99, #101, #102; connections.py, sync.py). kinds and
+    # since are the person's choice of records (NULL: every kind the access allows, from the beginning), also asked
+    # at sign-in (connect_pending). attach is the connection's own attachment rules over the install's (settings
+    # sync.*), attach_bytes what it has fetched so far, for its budget. warned is when its "stopped syncing" warning
+    # went into the activity log, so it goes in once. sync_skipped lists the attachments a pull left out, for "fetch
+    # anyway"; sync_removed keeps the rows "remove the records of a kind" took out, so undoing it from the import
+    # history puts them back; imports.note says what such an import did.
+    """
+    ALTER TABLE connections ADD COLUMN kinds TEXT;          -- JSON list of kinds (connections.KINDS); NULL: all allowed
+    ALTER TABLE connections ADD COLUMN since TEXT;          -- YYYY-MM-DD: records from then on; NULL: everything
+    ALTER TABLE connections ADD COLUMN attach TEXT;         -- JSON {auto, max_mb, types, budget_mb}; NULL: install's
+    ALTER TABLE connections ADD COLUMN attach_bytes INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE connections ADD COLUMN warned INTEGER;
+    ALTER TABLE connect_pending ADD COLUMN kinds TEXT;
+    ALTER TABLE connect_pending ADD COLUMN since TEXT;
+    CREATE TABLE sync_skipped(
+        id INTEGER PRIMARY KEY,
+        connection_id INTEGER NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        ref_hash TEXT NOT NULL,                    -- SHA-256 of the attachment's address: listed once
+        detail TEXT NOT NULL,                      -- JSON, encrypted: address, record, title, type, size, why
+        found INTEGER NOT NULL,
+        import_id INTEGER REFERENCES imports(id) ON DELETE SET NULL);   -- set: fetched anyway, by that import
+    CREATE UNIQUE INDEX sync_skipped_ref ON sync_skipped(connection_id, ref_hash);
+    CREATE INDEX sync_skipped_profile ON sync_skipped(profile_id);
+    CREATE TABLE sync_removed(
+        id INTEGER PRIMARY KEY,
+        import_id INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE,   -- the removal, in the history
+        home_import INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE, -- where the row was
+        what TEXT NOT NULL CHECK(what IN ('event', 'series', 'meta')),
+        row TEXT NOT NULL);                        -- JSON, encrypted: the row (a series with its results; a meta
+                                                   -- entry with its list's path)
+    CREATE INDEX sync_removed_import ON sync_removed(import_id);
+    ALTER TABLE imports ADD COLUMN note TEXT;     -- JSON, encrypted: what a sync import that isn't a pull did (a
+                                                  -- kind's records removed, an attachment fetched), for the history
+    """,
 ]
 
 

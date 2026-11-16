@@ -63,6 +63,14 @@ remain the main way records come in; live connections are an extra for those who
   It warns when the install's address is unlikely to be accepted (LAN, plain HTTP).
 - **Connections and sync** (#91), as the issue describes: a connection per profile and source, tokens and secrets
   encrypted with `crypto.enc`, a reconnect prompt when access ends, and disconnecting revokes and deletes them.
+- **Choosing what a connection pulls** (#99): kinds of records and a start date, chosen before signing in. The
+  sign-in asks only for the scopes those kinds need: a type-specific scope the admin set up stays only if a chosen
+  kind reads that type, and a wildcard (`patient/*.read`) becomes one scope per type, unless the vendor's discovery
+  lists the wildcard but not the narrower scopes. Kinds the granted scopes don't cover aren't offered later without
+  signing in again. Narrower SMART v2 scopes with a `?category=` query (labs only, say) aren't asked for yet: the
+  category goes in the search instead.
+- **Attachment limits** (#101) and **a warning when a connection stops syncing** (#102), on the profile's main page
+  and in the admins' notices, never by email or push.
 - **A local count of connections per vendor**, shown to admins and never sent anywhere, so demand for option 2 is
   something the project can ask about rather than guess.
 - **The directory** (#93) says per entry what option 1 needs there (the vendor's developer site, whether a client

@@ -536,3 +536,18 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .out ul.out-list li:first-child{border-top:0}
 .out .out-conn{margin:6px 0 0 0;padding:6px 0 0 10px;border-left:2px solid var(--ring)}
 @media (max-width:520px){.out dl{grid-template-columns:minmax(0,1fr);gap:0}.out dd{margin-bottom:5px}}
+.conn fieldset{border:1px solid var(--grid);border-radius:8px;padding:6px 12px 10px;margin:10px 0;min-width:0}
+.conn legend{font-size:13px;font-weight:600;padding:0 4px}
+.conn .conn-kind{display:flex;gap:8px;align-items:flex-start;margin:6px 0}
+.conn .conn-kind input{margin-top:3px;flex:none}
+.conn .conn-kind span{min-width:0;overflow-wrap:anywhere}
+.conn .conn-choose,.conn .conn-options{border-top:1px solid var(--grid);margin-top:8px;padding-top:8px}
+.conn .conn-num{width:6em}
+.conn .conn-types{flex-wrap:wrap;gap:4px 14px}
+.conn .conn-skipped ul{padding-left:18px;margin:6px 0}
+.conn .conn-skipped li{margin:4px 0;overflow-wrap:anywhere}
+.conn .conn-warning{font-weight:550}
+.sync-warn{margin:10px 20px 0;padding:8px 12px;border-left:3px solid var(--crit);background:var(--surface);border-radius:6px;font-size:14px;overflow-wrap:anywhere}
+.sync-warn.quiet{border-left-color:var(--grid);color:var(--ink2);font-size:13px}
+.sync-warn a{margin-left:6px;white-space:nowrap}
+@media (max-width:600px){.sync-warn{margin:8px 12px 0}}
