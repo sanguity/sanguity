@@ -335,6 +335,11 @@ from the internet; a phone on your home network or tailnet works without that.
   nicknames, visits counted as workouts) are changed on the **Settings** page by its owners and editors, with
   "Reset to defaults" per section. They live in the database (backed up and exported with the profile); a
   `settings.json` from before is moved in once at the upgrade and kept as `settings-before-v18.json`.
+- **Visit summary:** one or two printable pages to bring to an appointment (**Visit summary** in the header):
+  results out of range since the last visit, each against the range on its own report, trends of the key labs and
+  any others picked, current medications, upcoming appointments and your own questions (kept as a draft for the
+  profile). Anyone the profile is shared with can make one, viewers included; it's made on request, never stored,
+  and each one is in the activity log.
 - **Delete profile:** an owner can delete a profile and everything in it under **Account**, after typing its name;
   the original exports and older backups are left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or

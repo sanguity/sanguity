@@ -18,7 +18,8 @@ the connection pulls, and is asked to reconnect when access ends, with a warning
 Blue Button export and connects a health plan's patient-access API (the fake again) and finds both sets of claims on
 Costs, sees the source's and the Health Link's hosts under Settings → Outside connections, changes settings on the
 Settings page and resets them (drags and keyboard-moves the key-lab tiles, hides and
-reorders tabs, sets a default theme a fresh browser picks up), opens the account
+reorders tabs, sets a default theme a fresh browser picks up), builds a visit summary (sections, a lab, questions
+kept as a draft), previews it and downloads the PDF, reading it back, opens the account
 page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap, links the
 same result from a file and the sync at the first pull's preview and sees it once on Trends and in the drawer (undone
 and linked again there)
@@ -148,6 +149,9 @@ def main():
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
         check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 7)
+        strict.goto(base + "/summary.html")   # the visit summary page (#48)
+        strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
+        check("under the CSP: summary.js runs", strict.evaluate("document.querySelectorAll('#sections input').length") == 5)
         strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
         strict.wait_for_selector(".dir-hit", timeout=10000)
         check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
@@ -1128,6 +1132,54 @@ def main():
             page.wait_for_function("document.querySelector('#sec-appearance > .msg').textContent.includes('back to their defaults')", timeout=10000)
             check("…and Reset to defaults follows the system again",
                   js("document.documentElement.dataset.theme === undefined && localStorage.getItem('ht-theme-default') === null"))
+            # ---- visit summary (#48): pick the visit and sections, add a lab, type questions (kept as a draft),
+            # preview, then download the PDF and read it back
+            page.goto(base + "/")   # from the main page, after the settings checks above
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            check("the header links to the visit summary", js("document.getElementById('summaryLink').getAttribute('href')") == "summary.html")
+            was_profile = js("localStorage.getItem('ht-profile')")   # the summary page remembers the profile picked, as Settings does
+            page.goto(base + "/summary.html?profile=2")   # the second profile: results from several imports, Ferritin typed in
+            page.wait_for_selector("#build:not([hidden])", timeout=10000)
+            check("the summary page offers every section", js("[...document.querySelectorAll('#sections input')].map(i => i.value)") ==
+                  ["out_of_range", "trends", "medications", "appointments", "questions"])
+            check("…the last visit is the default since point", js("document.querySelector('#since option').textContent.startsWith('The last visit (')"))
+            page.uncheck("#sections input[value=appointments]")
+            page.fill("#labIn", "Ferritin")
+            page.click("#labAdd")
+            check("…a lab added to the trends", js("PICKED") == ["Ferritin"], js("PICKED"))
+            page.fill("#questions", "Is the ferritin result worth rechecking?\nShould the next draw be fasting?")
+            page.wait_for_function("document.getElementById('qMsg').textContent === 'Draft saved.'", timeout=10000)
+            page.click("#previewBtn")
+            page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+            heads = js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent.replace(/ \\(\\d+\\)$/, ''))")
+            check("…the preview shows the ticked sections", len(heads) == 4 and heads[0].startswith("Out of range since") and heads[-1] == "My questions", heads)
+            check("…with the questions and the notice", "Should the next draw be fasting?" in js("document.getElementById('preview').textContent")
+                  and "isn't medical advice" in js("document.getElementById('preview').textContent"))
+            check("…and Ferritin among the trends", "Ferritin" in js("document.getElementById('preview').textContent"))
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the summary page and its preview fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            with page.expect_download(timeout=20000) as dl:
+                page.click("#download")
+            pdf_path = os.path.join(TMP, "summary-download.pdf")
+            dl.value.save_as(pdf_path)
+            from pypdf import PdfReader
+            reader = PdfReader(pdf_path)
+            text = "\n".join(p_.extract_text() for p_ in reader.pages)
+            check("the summary downloads as a PDF of one or two pages", dl.value.suggested_filename.startswith("visit-summary-Second-person-")
+                  and len(reader.pages) in (1, 2), (dl.value.suggested_filename, len(reader.pages)))
+            check("…holding the sections, the questions and the notice",
+                  all(w in text for w in ("Visit summary", "Second person", "Out of range since", "Trends since", "Ferritin",
+                                          "Current medications", "Should the next draw be fasting?", "isn't medical advice"))
+                  and "Upcoming appointments" not in text, text[:300])
+            page.wait_for_function("document.getElementById('buildMsg').textContent.startsWith('Downloaded')", timeout=5000)
+            page.reload()
+            page.wait_for_selector("#build:not([hidden])", timeout=10000)
+            check("…and the questions draft is still there", js("document.getElementById('questions').value").startswith("Is the ferritin result"))
+            page.fill("#questions", "")   # leave no draft behind
+            page.wait_for_function("document.getElementById('qMsg').textContent === 'Draft saved.'", timeout=10000)
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- connected sources (#32, #91), against the fake SMART on FHIR server standing in for an Epic sandbox:
             # an admin sets the source up and tests it, the profile connects by signing in, the first pull is previewed
             # and saved, Sync now brings a new result, and when the patient ends access the page asks to reconnect

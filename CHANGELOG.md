@@ -72,6 +72,11 @@ Everything on `main` so far; it becomes the first tagged release.
   severe), can be added from any event's panel, and are listed with filters under Journal. Owners and editors
   write them, viewers read them; they're encrypted, kept when imports are undone, and included in exports.
 
+**Sharing and new features (Phase 4)**
+- A visit summary to bring to an appointment: one or two printable pages (PDF) with results out of range since
+  the last visit (each against its own report's range), trends of the key labs, current medications, upcoming
+  appointments and your own questions, kept as a draft per profile (#48).
+
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for
   linux/amd64, linux/arm64 and linux/arm/v7 (#63).
