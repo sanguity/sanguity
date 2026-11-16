@@ -69,6 +69,9 @@ header .meta{color:var(--muted);font-size:12px}
 .chip[aria-pressed="false"] .key{background:var(--muted)!important}
 .search{border:1px solid var(--ring);background:var(--raised);border-radius:8px;padding:5px 10px;min-width:200px}
 main{padding:16px 20px 60px;max-width:1500px;margin:0 auto}
+footer.notice{max-width:1500px;margin:0 auto;padding:12px 20px 24px;border-top:1px solid var(--grid);color:var(--ink2);font-size:12px;box-sizing:border-box}
+.range-note{color:var(--ink2);font-size:12px;margin:6px 0 8px}
+.tiles + .range-note{margin:-8px 0 18px}
 .card{background:var(--surface);border:1px solid var(--ring);border-radius:12px;padding:14px 16px;margin-bottom:16px}
 .card h2{font-size:14px;margin:0 0 2px;font-weight:650}
 .card .hint{color:var(--muted);font-size:12px;margin:0 0 8px}

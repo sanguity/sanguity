@@ -13,7 +13,7 @@ doesn't know, accepts the series suggested at the preview and finds it on Trends
 the next upload, pastes a fictional SMART Health Link served by a local HTTPS server (what it says is shown and
 nothing is fetched until Fetch; then its preview, and saved), opens the account page (where the match is listed for
 admins), sees each record's source in the drawer, on Trends and on the heatmap and follows its link to the import
-history, and fails
+history, checks the "not medical advice" notice on every tab and beside out-of-range highlighting, and fails
 on any script error, console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -189,6 +189,38 @@ def main():
                     tipped = js("document.getElementById('tip').innerText")
                     check("hovering a heatmap cell shows its source", "From Setup build, imported" in tipped, tipped[:200])
                     page.mouse.move(0, 0)
+                page.locator("#notice").scroll_into_view_if_needed()
+                check(f"{tab} tab: the 'not medical advice' notice shows in the footer",
+                      page.is_visible("#notice") and "Not medical advice." in page.inner_text("#notice")
+                      and "your care team interprets them" in page.inner_text("#notice"))
+
+            # ---- next to out-of-range highlighting (#57): a caption on each tab that colours it, in light and dark, at 375 px
+            flagged = {   # the tab's out-of-range highlighting, and its caption
+                "overview": "#view-overview .tile .st.hi, #view-overview .tile .st.lo",
+                "labs": "#charts .pt.abn",
+                "heatmap": "#hm rect.cell[style*='--div-hi'], #hm rect.cell[style*='--div-lo']",
+            }
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 375 else 800})
+                    for tab, marks in flagged.items():
+                        page.click(f"#tab-{tab}")
+                        settle(300)
+                        note = page.locator(f"#view-{tab} .range-note")
+                        shown = note.count() == 1 and note.is_visible()
+                        text = note.inner_text() if shown else ""
+                        check(f"{tab} ({theme}, {width} px): caption beside the out-of-range highlighting",
+                              shown and js(f"document.querySelectorAll({marks!r}).length") > 0
+                              and "reference ranges in your own lab reports" in text and "isn't medical advice" in text, text)
+                        legible = js("""(() => { const n = document.querySelector('#view-%s .range-note'), f = document.getElementById('notice');
+                            const bg = getComputedStyle(document.body).backgroundColor;
+                            return getComputedStyle(n).color !== bg && getComputedStyle(f).color !== bg; })()""" % tab)
+                        check(f"{tab} ({theme}, {width} px): caption and footer readable, page fits",
+                              legible and js("document.documentElement.scrollWidth") <= width, js("document.documentElement.scrollWidth"))
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- detail drawer for every kind of event
             for k in js("[...new Set(EV.filter(e => !e.hidden).map(e => e.k))].sort()"):

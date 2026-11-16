@@ -336,6 +336,9 @@ Keep `--dir` private (for example mode 750) when it holds a copy of your records
 
 ## Development
 
+New here? [CONTRIBUTING.md](CONTRIBUTING.md) covers setting up with the demo data, running every test suite as CI
+does, writing an importer, the rules the project keeps, and how changes are reviewed.
+
 ```sh
 pip install --require-hashes -r requirements-dev.txt && playwright install chromium   # exact, hash-checked versions
 python3 -I demo/generate.py dev-data/build --watch dev-data/watch    # fictional demo data
