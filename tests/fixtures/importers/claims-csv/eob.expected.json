@@ -1,0 +1,237 @@
+{
+ "data": {
+  "events": [
+   {
+    "id": 1,
+    "t": "2026-01-14T12:00:00",
+    "k": "claim",
+    "title": "Office visit established patient",
+    "sub": "Dr. Morgan Ellis · Insurance",
+    "key": "claims-csv:PX-26-0001"
+   },
+   {
+    "id": 2,
+    "t": "2026-02-03T12:00:00",
+    "k": "claim",
+    "title": "Complete blood count",
+    "sub": "Valley Reference Laboratory · Insurance",
+    "key": "claims-csv:PX-26-0002"
+   },
+   {
+    "id": 3,
+    "t": "2026-02-17T12:00:00",
+    "k": "claim",
+    "title": "CT chest with contrast",
+    "sub": "Lakeside Imaging Center · Insurance · denied",
+    "abn": 1,
+    "key": "claims-csv:PX-26-0003"
+   },
+   {
+    "id": 4,
+    "t": "2026-02-20T12:00:00",
+    "k": "rx",
+    "title": "Ondansetron 8mg tablet",
+    "sub": "Pharmacy fill · Corner Pharmacy · Insurance",
+    "key": "claims-csv:PX-26-0004"
+   },
+   {
+    "id": 5,
+    "t": "2026-03-09T12:00:00",
+    "k": "claim",
+    "title": "Chemo IV infusion first hour",
+    "sub": "Riverbend Infusion Clinic · Insurance",
+    "key": "claims-csv:h:3e3c0011e8e151a0"
+   }
+  ],
+  "details": {
+   "1": {
+    "type": "claim",
+    "insurer": "Insurance",
+    "kind": "Medical",
+    "provider": "Dr. Morgan Ellis",
+    "claimId": "PX-26-0001",
+    "billed": 310.0,
+    "paid": 188.62,
+    "owe": 35.0,
+    "status": "Processed",
+    "lines": [
+     {
+      "date": "2026-01-14",
+      "desc": "Office visit established patient",
+      "code": "99214",
+      "billed": 310.0,
+      "denied": []
+     }
+    ],
+    "visit": {
+     "date": "2026-01-14",
+     "provider": "Dr. Morgan Ellis"
+    }
+   },
+   "2": {
+    "type": "claim",
+    "insurer": "Insurance",
+    "kind": "Medical",
+    "provider": "Valley Reference Laboratory",
+    "claimId": "PX-26-0002",
+    "billed": 200.0,
+    "paid": 92.38,
+    "owe": 17.45,
+    "status": "Processed",
+    "lines": [
+     {
+      "date": "2026-02-03",
+      "desc": "Complete blood count",
+      "code": "85025",
+      "billed": 58.0,
+      "denied": []
+     },
+     {
+      "date": "2026-02-03",
+      "desc": "Comprehensive metabolic panel",
+      "code": "80053",
+      "billed": 142.0,
+      "denied": []
+     }
+    ],
+    "visit": {
+     "date": "2026-02-03",
+     "provider": "Valley Reference Laboratory"
+    }
+   },
+   "3": {
+    "type": "claim",
+    "insurer": "Insurance",
+    "kind": "Medical",
+    "provider": "Lakeside Imaging Center",
+    "claimId": "PX-26-0003",
+    "billed": 1840.0,
+    "paid": 0.0,
+    "owe": 1840.0,
+    "status": "Denied",
+    "lines": [
+     {
+      "date": "2026-02-17",
+      "desc": "CT chest with contrast",
+      "code": "71260",
+      "billed": 1840.0,
+      "denied": []
+     }
+    ],
+    "visit": {
+     "date": "2026-02-17",
+     "provider": "Lakeside Imaging Center"
+    }
+   },
+   "4": {
+    "type": "claim",
+    "insurer": "Insurance",
+    "kind": "Pharmacy",
+    "drug": "ONDANSETRON TAB 8MG",
+    "provider": "Corner Pharmacy",
+    "claimId": "PX-26-0004",
+    "billed": 64.1,
+    "paid": 54.1,
+    "owe": 10.0,
+    "status": "Paid",
+    "visit": {
+     "date": "2026-02-20",
+     "provider": "Corner Pharmacy"
+    }
+   },
+   "5": {
+    "type": "claim",
+    "insurer": "Insurance",
+    "kind": "Medical",
+    "provider": "Riverbend Infusion Clinic",
+    "claimId": null,
+    "billed": 980.0,
+    "paid": 784.0,
+    "owe": 196.0,
+    "status": "Processed",
+    "lines": [
+     {
+      "date": "2026-03-09",
+      "desc": "Chemo IV infusion first hour",
+      "code": "96413",
+      "billed": 980.0,
+      "denied": []
+     }
+    ],
+    "visit": {
+     "date": "2026-03-09",
+     "provider": "Riverbend Infusion Clinic"
+    }
+   }
+  },
+  "labs": [],
+  "costs": [
+   {
+    "id": 1,
+    "d": "2026-01-14",
+    "ins": "Insurance",
+    "billed": 310.0,
+    "paid": 188.62,
+    "owe": 35.0,
+    "status": "Processed",
+    "kind": "medical",
+    "cat": "Doctor visits",
+    "prov": "Dr. Morgan Ellis",
+    "title": "Office visit established patient"
+   },
+   {
+    "id": 2,
+    "d": "2026-02-03",
+    "ins": "Insurance",
+    "billed": 200.0,
+    "paid": 92.38,
+    "owe": 17.45,
+    "status": "Processed",
+    "kind": "medical",
+    "cat": "Lab & pathology",
+    "prov": "Valley Reference Laboratory",
+    "title": "Complete blood count"
+   },
+   {
+    "id": 3,
+    "d": "2026-02-17",
+    "ins": "Insurance",
+    "billed": 1840.0,
+    "paid": 0.0,
+    "owe": 1840.0,
+    "status": "Denied",
+    "kind": "medical",
+    "cat": "Imaging & tests",
+    "prov": "Lakeside Imaging Center",
+    "title": "CT chest with contrast"
+   },
+   {
+    "id": 4,
+    "d": "2026-02-20",
+    "ins": "Insurance",
+    "billed": 64.1,
+    "paid": 54.1,
+    "owe": 10.0,
+    "status": "Paid",
+    "kind": "pharmacy",
+    "cat": "Pharmacy",
+    "prov": "Corner Pharmacy",
+    "title": "Ondansetron 8mg tablet"
+   },
+   {
+    "id": 5,
+    "d": "2026-03-09",
+    "ins": "Insurance",
+    "billed": 980.0,
+    "paid": 784.0,
+    "owe": 196.0,
+    "status": "Processed",
+    "kind": "medical",
+    "cat": "Chemo, infusions & drugs",
+    "prov": "Riverbend Infusion Clinic",
+    "title": "Chemo IV infusion first hour"
+   }
+  ]
+ },
+ "warnings": []
+}
