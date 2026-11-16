@@ -218,6 +218,22 @@ class Jobs(unittest.TestCase):
         r = self.robin.post(f"/api/profiles/{self.pid}/uploads/{j['upload_id']}/import", headers=H)
         self.assertEqual(r.status_code, 409)
 
+    def test_lab_report_pdf_upload(self):   # a PDF on its own reaches the PDF lab importer (#95)
+        base = os.path.join(ROOT, "tests", "fixtures", "importers", "pdf-labs")
+        with open(os.path.join(base, "quest", "quest-report.pdf"), "rb") as f:
+            up = self.upload({"Quest results.pdf": f.read()})
+        before = count(self.pid)
+        j = self.wait(self.start(up))
+        self.assertEqual((j["state"], j["importer"], j["warnings"]), ("done", "pdf-labs", []), j)
+        after = count(self.pid)
+        self.assertEqual(after["results"] - before["results"], 26)   # 27 results; the text one is kept with its series
+        self.assertEqual(after["documents"] - before["documents"], 1)   # the report itself opens beside its results
+        with open(os.path.join(base, "unrecognised.pdf"), "rb") as f:
+            j = self.wait(self.start(self.upload({"letter.pdf": f.read()})))
+        self.assertEqual((j["state"], j["importer"]), ("failed", "pdf-labs"), j)
+        self.assertIn("letter.pdf isn't a lab report layout Sanguity knows", j["message"])
+        self.assertEqual(count(self.pid), after)
+
     def test_uploads_add_to_the_records(self):
         first = self.wait(self.start(self.upload({"withdoc.txt": "x", "notes/visit.txt": "Fictional note."})))
         n = len(self.robin.get(f"/api/profiles/{self.pid}/data").json()["events"])

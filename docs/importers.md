@@ -205,6 +205,32 @@ from another import: `{"date", "end" (when it spans days), "provider", "facility
 one import, a facility bill inside one of that import's stays is filed under "Hospital stay (facility)", as build.py
 does; a claims-only upload has no stays, so linking across imports (and re-filing those bills) is left to a later
 step that reads the hint.
+
+### PDF lab reports: layouts
+
+`pdf_labs.py` (`NAME = "pdf-labs"`) reads the lab reports that Quest's and Labcorp's patient portals give as PDFs.
+It takes an upload of PDFs only (a PDF that came with other files is another export's document) and extracts each
+page's text with [pypdf](https://pypi.org/project/pypdf/), in a separate Python process with a size cap
+(`MAX_BYTES`), a page cap (`MAX_PAGES`), a time limit (`TIMEOUT`) and, where the system has one, a memory limit.
+There's no OCR: a scan with no text layer is refused with a message saying so.
+
+Each lab's layout is a small module in [`server/importers/pdf_layouts/`](../server/importers/pdf_layouts/) (`quest.py`,
+`labcorp.py`): `recognise(lines)` says whether page 1 is that lab's report, regexes find the table's column
+headings (`HEADER`), the collection date, ordering provider and specimen number above it, panel headings, and lines to
+skip; and `row(cells)` reads one table line, split into cells at gaps of two or more spaces, into its name, value,
+flag, unit and range, or returns None. **Never guess:** a line in the table that `row` doesn't read is a warning
+naming its page and line, and a PDF no layout recognises (or two do) is refused. The package's docstring has the
+contract, and its helpers (`is_value`, `is_unit`, `is_range`, `range_and_unit`, `bounds`) read the parts most
+layouts share.
+
+To add a layout:
+
+1. Copy `quest.py` or `labcorp.py` to `pdf_layouts/<lab>.py` and change the names, regexes and `row`.
+2. Add a function for a fictional report in that layout to `tests/fixtures/importers/pdf-labs/generate.py`, write it
+   to `<lab>/<lab>-report.pdf` from `main()`, and run `python3 -I tests/fixtures/importers/pdf-labs/generate.py`.
+3. Write `<lab>.expected.json` from the importer's output once you've checked every row against the PDF (the fixture
+   test and `tests/test_importer_pdf_labs.py` check that every layout has one).
+
 ### The optional keys
 
 | Key | Shape |
@@ -236,8 +262,9 @@ missing something your format needs, add to it rather than copying it, and keep 
 
 ## Rules
 
-- **Standard library first.** Importers run inside the app, so the packages in requirements.txt are there, but a
-  new dependency means changing requirements.in and its lock files. Parse XML with `xml.etree.ElementTree` (its
+- **Standard library first.** Importers run inside the app, so the packages in requirements.txt are there (pypdf, for
+  `pdf_labs.py`, is one), but a new dependency means changing requirements.in and its lock files, and it must install
+  on 32-bit ARM. Keep it out of `common.py` and the registry, which build.py imports with the standard library only. Parse XML with `xml.etree.ElementTree` (its
   expat parser doesn't fetch external entities) and never with anything that does.
 - **Treat every upload as hostile.** Don't open paths that aren't in `files`, don't follow paths from inside a
   file to elsewhere on disk, don't run anything from it, and stream large files rather than reading them whole.

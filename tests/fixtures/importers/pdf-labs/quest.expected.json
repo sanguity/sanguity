@@ -1,0 +1,924 @@
+{
+ "data": {
+  "events": [
+   {
+    "id": 1,
+    "t": "2026-03-14T08:32:00-04:00",
+    "k": "document",
+    "title": "Quest Diagnostics lab report",
+    "sub": "LIN, AVERY",
+    "key": "pdf-labs:file:9c7a4a530308b708",
+    "src": "Quest"
+   },
+   {
+    "id": 2,
+    "t": "2026-03-14T08:32:00-04:00",
+    "k": "labitem",
+    "title": "CBC (INCLUDES DIFF/PLT)",
+    "sub": "Quest Diagnostics · LIN, AVERY",
+    "key": "pdf-labs:quest:ZX918273A|cbc (includes diff/plt)",
+    "abn": 1,
+    "hidden": 1,
+    "src": "Quest"
+   },
+   {
+    "id": 3,
+    "t": "2026-03-14T08:32:00-04:00",
+    "k": "labitem",
+    "title": "COMPREHENSIVE METABOLIC PANEL",
+    "sub": "Quest Diagnostics · LIN, AVERY",
+    "key": "pdf-labs:quest:ZX918273A|comprehensive metabolic panel",
+    "abn": 2,
+    "hidden": 1,
+    "src": "Quest"
+   },
+   {
+    "id": 4,
+    "t": "2026-03-14T08:32:00-04:00",
+    "k": "labitem",
+    "title": "HEMOGLOBIN A1c",
+    "sub": "Quest Diagnostics · LIN, AVERY",
+    "key": "pdf-labs:quest:ZX918273A|hemoglobin a1c",
+    "hidden": 1,
+    "src": "Quest"
+   },
+   {
+    "id": 5,
+    "t": "2026-03-14T08:32:00-04:00",
+    "k": "labitem",
+    "title": "HEPATITIS C ANTIBODY",
+    "sub": "Quest Diagnostics · LIN, AVERY",
+    "key": "pdf-labs:quest:ZX918273A|hepatitis c antibody",
+    "hidden": 1,
+    "src": "Quest"
+   },
+   {
+    "id": 6,
+    "t": "2026-03-14T08:32:00-04:00",
+    "k": "labitem",
+    "title": "LIPID PANEL",
+    "sub": "Quest Diagnostics · LIN, AVERY",
+    "key": "pdf-labs:quest:ZX918273A|lipid panel",
+    "abn": 2,
+    "hidden": 1,
+    "src": "Quest"
+   },
+   {
+    "id": 7,
+    "t": "2026-03-14T08:32:00-04:00",
+    "k": "labitem",
+    "title": "TSH",
+    "sub": "Quest Diagnostics · LIN, AVERY",
+    "key": "pdf-labs:quest:ZX918273A|tsh",
+    "abn": 1,
+    "hidden": 1,
+    "src": "Quest"
+   },
+   {
+    "id": 8,
+    "t": "2026-03-14T08:32:00-04:00",
+    "k": "lab",
+    "title": "27 lab results",
+    "sub": "CBC (INCLUDES DIFF/PLT), COMPREHENSIVE METABOLIC PANEL, HEMOGLOBIN A1c, HEPATITIS C ANTIBODY, LIPID PANEL, TSH",
+    "key": "pdf-labs:labday:2026-03-14",
+    "abn": 6,
+    "src": "Quest"
+   }
+  ],
+  "details": {
+   "1": {
+    "type": "file",
+    "url": "quest-report.pdf",
+    "ext": "pdf"
+   },
+   "2": {
+    "type": "result",
+    "order": "CBC (INCLUDES DIFF/PLT)",
+    "name": "CBC (INCLUDES DIFF/PLT)",
+    "collected": "2026-03-14 08:32",
+    "provider": "LIN, AVERY",
+    "lab": "Quest Diagnostics",
+    "specimen": "ZX918273A",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "WHITE BLOOD CELL COUNT",
+      "6.1",
+      "Thousand/uL",
+      "3.8-10.8",
+      ""
+     ],
+     [
+      "RED BLOOD CELL COUNT",
+      "4.02",
+      "Million/uL",
+      "3.80-5.10",
+      ""
+     ],
+     [
+      "HEMOGLOBIN",
+      "11.4",
+      "g/dL",
+      "11.7-15.5",
+      "L"
+     ],
+     [
+      "HEMATOCRIT",
+      "35.2",
+      "%",
+      "35.0-45.0",
+      ""
+     ],
+     [
+      "MCV",
+      "87.6",
+      "fL",
+      "80.0-100.0",
+      ""
+     ],
+     [
+      "PLATELET COUNT",
+      "245",
+      "Thousand/uL",
+      "140-400",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Quest"
+   },
+   "3": {
+    "type": "result",
+    "order": "COMPREHENSIVE METABOLIC PANEL",
+    "name": "COMPREHENSIVE METABOLIC PANEL",
+    "collected": "2026-03-14 08:32",
+    "provider": "LIN, AVERY",
+    "lab": "Quest Diagnostics",
+    "specimen": "ZX918273A",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "GLUCOSE",
+      "88",
+      "mg/dL",
+      "65-99",
+      ""
+     ],
+     [
+      "UREA NITROGEN (BUN)",
+      "14",
+      "mg/dL",
+      "7-25",
+      ""
+     ],
+     [
+      "CREATININE",
+      "1.32",
+      "mg/dL",
+      "0.50-1.05",
+      "H"
+     ],
+     [
+      "EGFR",
+      "47",
+      "mL/min/1.73m2",
+      "> OR = 60",
+      "L"
+     ],
+     [
+      "SODIUM",
+      "140",
+      "mmol/L",
+      "135-146",
+      ""
+     ],
+     [
+      "POTASSIUM",
+      "4.3",
+      "mmol/L",
+      "3.5-5.3",
+      ""
+     ],
+     [
+      "CHLORIDE",
+      "103",
+      "mmol/L",
+      "98-110",
+      ""
+     ],
+     [
+      "CARBON DIOXIDE",
+      "26",
+      "mmol/L",
+      "20-32",
+      ""
+     ],
+     [
+      "CALCIUM",
+      "9.4",
+      "mg/dL",
+      "8.6-10.4",
+      ""
+     ],
+     [
+      "PROTEIN, TOTAL",
+      "7.0",
+      "g/dL",
+      "6.1-8.1",
+      ""
+     ],
+     [
+      "ALBUMIN",
+      "4.3",
+      "g/dL",
+      "3.6-5.1",
+      ""
+     ],
+     [
+      "ALKALINE PHOSPHATASE",
+      "71",
+      "U/L",
+      "37-153",
+      ""
+     ],
+     [
+      "AST",
+      "22",
+      "U/L",
+      "10-35",
+      ""
+     ],
+     [
+      "ALT",
+      "19",
+      "U/L",
+      "6-29",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Quest"
+   },
+   "4": {
+    "type": "result",
+    "order": "HEMOGLOBIN A1c",
+    "name": "HEMOGLOBIN A1c",
+    "collected": "2026-03-14 08:32",
+    "provider": "LIN, AVERY",
+    "lab": "Quest Diagnostics",
+    "specimen": "ZX918273A",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "HEMOGLOBIN A1c",
+      "5.4",
+      "% of total Hgb",
+      "<5.7",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Quest"
+   },
+   "5": {
+    "type": "result",
+    "order": "HEPATITIS C ANTIBODY",
+    "name": "HEPATITIS C ANTIBODY",
+    "collected": "2026-03-14 08:32",
+    "provider": "LIN, AVERY",
+    "lab": "Quest Diagnostics",
+    "specimen": "ZX918273A",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "HEPATITIS C ANTIBODY",
+      "NON-REACTIVE",
+      "",
+      "NON-REACTIVE",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Quest"
+   },
+   "6": {
+    "type": "result",
+    "order": "LIPID PANEL",
+    "name": "LIPID PANEL",
+    "collected": "2026-03-14 08:32",
+    "provider": "LIN, AVERY",
+    "lab": "Quest Diagnostics",
+    "specimen": "ZX918273A",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "CHOLESTEROL, TOTAL",
+      "212",
+      "mg/dL",
+      "<200",
+      "H"
+     ],
+     [
+      "HDL CHOLESTEROL",
+      "58",
+      "mg/dL",
+      "> OR = 50",
+      ""
+     ],
+     [
+      "TRIGLYCERIDES",
+      "96",
+      "mg/dL",
+      "<150",
+      ""
+     ],
+     [
+      "LDL-CHOLESTEROL",
+      "134",
+      "mg/dL",
+      "<100",
+      "H"
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Quest"
+   },
+   "7": {
+    "type": "result",
+    "order": "TSH",
+    "name": "TSH",
+    "collected": "2026-03-14 08:32",
+    "provider": "LIN, AVERY",
+    "lab": "Quest Diagnostics",
+    "specimen": "ZX918273A",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "TSH",
+      "<0.01",
+      "mIU/L",
+      "0.40-4.50",
+      "L"
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Quest"
+   },
+   "8": {
+    "type": "labday",
+    "ids": [
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   }
+  },
+  "labs": [
+   {
+    "name": "ALT",
+    "key": "loinc:1742-6",
+    "unit": "U/L",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      19,
+      6,
+      29,
+      "",
+      "19",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "1742-6"
+   },
+   {
+    "name": "AST",
+    "key": "loinc:1920-8",
+    "unit": "U/L",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      22,
+      10,
+      35,
+      "",
+      "22",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "1920-8"
+   },
+   {
+    "name": "Albumin",
+    "key": "loinc:1751-7",
+    "unit": "g/dL",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      4.3,
+      3.6,
+      5.1,
+      "",
+      "4.3",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "1751-7"
+   },
+   {
+    "name": "Alkaline Phosphatase",
+    "key": "loinc:6768-6",
+    "unit": "U/L",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      71,
+      37,
+      153,
+      "",
+      "71",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "6768-6"
+   },
+   {
+    "name": "BUN",
+    "key": "loinc:3094-0",
+    "unit": "mg/dL",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      14,
+      7,
+      25,
+      "",
+      "14",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "3094-0"
+   },
+   {
+    "name": "CHOLESTEROL, TOTAL",
+    "key": "pdf-labs:cholesterol, total|mg/dL",
+    "unit": "mg/dL",
+    "panel": "LIPID PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      212,
+      null,
+      200,
+      "H",
+      "212",
+      "Quest"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "CO2",
+    "key": "loinc:2028-9",
+    "unit": "mmol/L",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      26,
+      20,
+      32,
+      "",
+      "26",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2028-9"
+   },
+   {
+    "name": "Calcium",
+    "key": "loinc:17861-6",
+    "unit": "mg/dL",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      9.4,
+      8.6,
+      10.4,
+      "",
+      "9.4",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "17861-6"
+   },
+   {
+    "name": "Chloride, Blood",
+    "key": "loinc:2075-0",
+    "unit": "mmol/L",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      103,
+      98,
+      110,
+      "",
+      "103",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2075-0"
+   },
+   {
+    "name": "Creatinine",
+    "key": "loinc:2160-0",
+    "unit": "mg/dL",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      1.32,
+      0.5,
+      1.05,
+      "H",
+      "1.32",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2160-0"
+   },
+   {
+    "name": "EGFR",
+    "key": "pdf-labs:egfr|mL/min/1.73m2",
+    "unit": "mL/min/1.73m2",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      47,
+      60,
+      null,
+      "L",
+      "47",
+      "Quest"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Glucose, Blood",
+    "key": "loinc:2345-7",
+    "unit": "mg/dL",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      88,
+      65,
+      99,
+      "",
+      "88",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2345-7"
+   },
+   {
+    "name": "HDL CHOLESTEROL",
+    "key": "pdf-labs:hdl cholesterol|mg/dL",
+    "unit": "mg/dL",
+    "panel": "LIPID PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      58,
+      50,
+      null,
+      "",
+      "58",
+      "Quest"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "HEMOGLOBIN A1c",
+    "key": "pdf-labs:hemoglobin a1c|% of total Hgb",
+    "unit": "% of total Hgb",
+    "panel": "",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      5.4,
+      null,
+      5.7,
+      "",
+      "5.4",
+      "Quest"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Hematocrit",
+    "key": "loinc:4544-3",
+    "unit": "%",
+    "panel": "CBC (INCLUDES DIFF/PLT)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      35.2,
+      35.0,
+      45.0,
+      "",
+      "35.2",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "4544-3"
+   },
+   {
+    "name": "Hemoglobin",
+    "key": "loinc:718-7",
+    "unit": "g/dL",
+    "panel": "CBC (INCLUDES DIFF/PLT)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      11.4,
+      11.7,
+      15.5,
+      "L",
+      "11.4",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "718-7"
+   },
+   {
+    "name": "LDL-CHOLESTEROL",
+    "key": "pdf-labs:ldl-cholesterol|mg/dL",
+    "unit": "mg/dL",
+    "panel": "LIPID PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      134,
+      null,
+      100,
+      "H",
+      "134",
+      "Quest"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "MCV",
+    "key": "loinc:787-2",
+    "unit": "fL",
+    "panel": "CBC (INCLUDES DIFF/PLT)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      87.6,
+      80.0,
+      100.0,
+      "",
+      "87.6",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "787-2"
+   },
+   {
+    "name": "Platelet Count",
+    "key": "loinc:777-3",
+    "unit": "Thousand/uL",
+    "panel": "CBC (INCLUDES DIFF/PLT)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      245,
+      140,
+      400,
+      "",
+      "245",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "777-3"
+   },
+   {
+    "name": "Potassium, Blood",
+    "key": "loinc:2823-3",
+    "unit": "mmol/L",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      4.3,
+      3.5,
+      5.3,
+      "",
+      "4.3",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2823-3"
+   },
+   {
+    "name": "RBC",
+    "key": "loinc:789-8",
+    "unit": "Million/uL",
+    "panel": "CBC (INCLUDES DIFF/PLT)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      4.02,
+      3.8,
+      5.1,
+      "",
+      "4.02",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "789-8"
+   },
+   {
+    "name": "Sodium, Blood",
+    "key": "loinc:2951-2",
+    "unit": "mmol/L",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      140,
+      135,
+      146,
+      "",
+      "140",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2951-2"
+   },
+   {
+    "name": "TSH",
+    "key": "pdf-labs:tsh|mIU/L",
+    "unit": "mIU/L",
+    "panel": "",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      0.01,
+      0.4,
+      4.5,
+      "L",
+      "<0.01",
+      "Quest"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Total Protein",
+    "key": "loinc:2885-2",
+    "unit": "g/dL",
+    "panel": "COMPREHENSIVE METABOLIC PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      7.0,
+      6.1,
+      8.1,
+      "",
+      "7.0",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2885-2"
+   },
+   {
+    "name": "Triglycerides",
+    "key": "loinc:2571-8",
+    "unit": "mg/dL",
+    "panel": "LIPID PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      96,
+      null,
+      150,
+      "",
+      "96",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2571-8"
+   },
+   {
+    "name": "WBC",
+    "key": "loinc:6690-2",
+    "unit": "Thousand/uL",
+    "panel": "CBC (INCLUDES DIFF/PLT)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      6.1,
+      3.8,
+      10.8,
+      "",
+      "6.1",
+      "Quest"
+     ]
+    ],
+    "txt": [],
+    "loinc": "6690-2"
+   },
+   {
+    "name": "HEPATITIS C ANTIBODY",
+    "key": "pdf-labs:hepatitis c antibody|",
+    "unit": "",
+    "panel": "",
+    "n": 0,
+    "pts": [],
+    "txt": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      "NON-REACTIVE"
+     ]
+    ]
+   }
+  ],
+  "costs": []
+ },
+ "warnings": []
+}
