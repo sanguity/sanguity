@@ -66,6 +66,12 @@ Everything on `main` so far; it becomes the first tagged release.
   and, for labs drawn at a steady rhythm, the next expected draw as a tentative all-day event. Minimal details
   ("Appointment") by default; rotate or turn it off any time. Sanguity still sends nothing: the calendar app fetches.
 
+**Sharing and new features (Phase 4)**
+- A journal of dated notes, symptoms and side effects, with a 0–10 severity and an optional link to one of the
+  profile's medications (#49). Entries have their own timeline lane, show as markers on Trends (bigger means more
+  severe), can be added from any event's panel, and are listed with filters under Journal. Owners and editors
+  write them, viewers read them; they're encrypted, kept when imports are undone, and included in exports.
+
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for
   linux/amd64, linux/arm64 and linux/arm/v7 (#63).

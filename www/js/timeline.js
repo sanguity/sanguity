@@ -50,6 +50,7 @@ function renderTimeline() {
     const evs = EV.filter(e => !e.hidden && CAT_OF[e.k] === c && inRange(e) && matchQ(e));
     for (const e of evs) {
       const x = S.x(e.ts);
+      if (e.k === "journal") { g.push(journalMark(e, x, y, state.selEv === e.id)); continue; }   // shape by kind, size by severity (journal.js)
       if (e.end && e.te - e.ts > DAY && S.x(e.te) - x > 4) {
         g.push(el("svg:line", {x1: x, x2: Math.min(S.R, S.x(e.te)), y1: y, y2: y, stroke: c.color, "stroke-width": 2, "stroke-opacity": .45, "stroke-linecap": "round", "pointer-events": "none"}));
       }

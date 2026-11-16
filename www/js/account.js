@@ -307,6 +307,7 @@ const WHAT = {
     : d.change === "fetch" ? `fetched the attachment “${d.title}” from ${d.source}`
     : `${d.reconnect ? "signed in again to" : "connected"} ${d.source}` + (d.kinds ? ` (${d.kinds.join(", ")})` : ""),
   disconnect: d => d.ended ? `lost access to ${d.source} (the vendor ended it)` : `disconnected ${d.source}` + (d.removed ? `, removing ${d.removed} import${d.removed === 1 ? "" : "s"}` : ""),
+  journal: d => `${{add: "added", change: "changed", delete: "deleted"}[d.action] || "changed"} a journal ${({symptom: "symptom", side_effect: "side effect"})[d.kind] || "note"}`,
   settings: d => d.section ? `reset the ${d.label || d.section} settings to their defaults`
     : d.reset ? `reset “${d.label || d.setting}” to its default` : `changed the setting “${d.label || d.setting}”`,
   "settings.user": d => d.section ? `reset their own ${d.label || d.section} settings` : `changed their own setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
@@ -342,7 +343,8 @@ const WHAT = {
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
   ["export", "Exports"], ["upload", "Uploads"], ["discard", "Cancelled imports"], ["undo", "Undone imports"], ["edit", "Edits"],
-  ["outside", "Outside connections"], ["settings", "Settings"], ["connect", "Connected sources"], ["calendar", "Calendar feeds"]];
+  ["outside", "Outside connections"], ["settings", "Settings"], ["connect", "Connected sources"], ["calendar", "Calendar feeds"],
+  ["journal", "Journal"]];
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},
