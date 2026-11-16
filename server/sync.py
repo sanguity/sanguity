@@ -145,11 +145,8 @@ def pull(db, cid, who=None, ip=None):
     c = db.execute("SELECT * FROM connections WHERE id=?", (cid,)).fetchone()
     if not c or c["state"] != "active":
         return {"ok": False, "error": "This connection isn't active.", "kind": "other"}
-    pid = c["profile_id"]
     actor = who or conns.SYNC_ACTOR
-    k = db.execute("SELECT * FROM smart_clients WHERE id=?", (c["client_id"],)).fetchone() if c["client_id"] else None
-    hosts = conns.hosts_for(k) if k else {smart.host_of(c["issuer"])}
-    http = smart.Client(hosts, on_contact=lambda h: outside.record(db, pid, h, "Connected source: sync", actor, ip))
+    http = smart.Client(outside.for_connection(db, cid, "Connected source: sync", actor, ip))
     first = c["cursor"] is None
     try:
         tokens = conns.Tokens(db, cid, http)

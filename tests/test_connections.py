@@ -20,7 +20,8 @@ sys.path.insert(0, ROOT)
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, connections as conns, crypto, db as dbm, main, profiles as prof, smart, sync   # noqa: E402
+from server import accounts, connections as conns, crypto, db as dbm, main, net, profiles as prof, smart, sync   # noqa: E402
+from tests import netguard   # noqa: E402
 from tests.fakefhir import FakeFHIR   # noqa: E402
 import logging   # noqa: E402
 
@@ -38,6 +39,15 @@ REAL_START = sync.start
 
 def client():
     return TestClient(main.app, base_url="http://testserver")
+
+
+def setUpModule():   # the whole run under the socket guard: only the test servers started here may be contacted (#97)
+    netguard.install()
+
+
+def tearDownModule():
+    netguard.uninstall()
+    netguard.check()
 
 
 def q(url):
@@ -520,7 +530,7 @@ class Connections(unittest.TestCase):
         rows = log if isinstance(log, list) else log.get("entries", log.get("items", []))
         self.assertTrue(rows and {e["detail"]["host"] for e in rows} == {own}, log)
         # a "next" link to another host is refused rather than followed
-        http_ = smart.Client({own})
+        http_ = smart.Client(net.Permit("test", {own}))
         with self.assertRaises(smart.Refused):
             http_.request("GET", "http://127.0.0.2:9/fhir/Observation")
 

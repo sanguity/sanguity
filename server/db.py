@@ -415,6 +415,22 @@ SCHEMA = [
     CREATE INDEX sync_changes_event ON sync_changes(event_id);
     CREATE INDEX sync_changes_meta ON sync_changes(meta_import);
     """,
+    # version 20: outside contacts (#97, #59; outside.py, net.py). One row per profile, purpose and host Sanguity's
+    # server has contacted, with when it first and last did and how often, for the outside-connections view (the
+    # activity log has each contact too, but is pruned and its details are encrypted). The host is encrypted like
+    # an activity detail (a Health Link's host can say where someone is treated); the purpose is one of a few fixed
+    # phrases. profile_id NULL: no profile involved (an admin's "Test this connection").
+    """
+    CREATE TABLE outside_contacts(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER REFERENCES profiles(id) ON DELETE CASCADE,
+        purpose TEXT NOT NULL,                     -- "Connected source: sync", "SMART Health Link", ...
+        host TEXT NOT NULL,                        -- host[:port], encrypted; never a path or query
+        first INTEGER NOT NULL,
+        last INTEGER NOT NULL,
+        count INTEGER NOT NULL DEFAULT 1);
+    CREATE INDEX outside_contacts_profile ON outside_contacts(profile_id, purpose);
+    """,
 ]
 
 

@@ -26,8 +26,9 @@ import logging   # noqa: E402
 from cryptography.hazmat.primitives.asymmetric import ec   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, activity, config, crypto, db as dbm, main, outside, profiles as prof, shl, uploads   # noqa: E402
+from server import accounts, activity, config, crypto, db as dbm, main, net, outside, profiles as prof, shl, uploads   # noqa: E402
 import shl_server   # noqa: E402
+from tests import netguard   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -37,6 +38,15 @@ PASSCODE = "fictional-1234"
 
 def client():
     return TestClient(main.app, base_url="http://testserver")
+
+
+def setUpModule():   # the whole run under the socket guard: only the test servers started here may be contacted (#97)
+    netguard.install()
+
+
+def tearDownModule():
+    netguard.uninstall()
+    netguard.check()
 
 
 class Parsing(unittest.TestCase):
@@ -89,7 +99,7 @@ class Parsing(unittest.TestCase):
                     shl._request("GET", url)
             with mock.patch("socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.1.20", 443))]):
                 with self.assertRaises(shl.Refused) as e:   # a public-looking name that resolves to the home network
-                    shl._request("GET", "https://records.example.org/m")
+                    shl._request("GET", "https://records.example.org/m", permit=net.Permit("test", {"records.example.org"}))
                 self.assertIn("private or local", str(e.exception))
             conn.assert_not_called()
 

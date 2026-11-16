@@ -3,7 +3,7 @@
   POST /api/profiles/{pid}/shl/inspect  {"link"}                          what the link says (host, label, flags,
                                                                          expiry): nothing is fetched
   POST /api/profiles/{pid}/shl/import   {"link", "passcode"?, "confirm": true}   fetch it (the one outside request,
-                                         recorded by outside.record), decrypt, store the files as an upload and queue
+                                         made through net.py and recorded), decrypt, store the files as an upload and queue
                                          its import: {"upload", "job", "host", "cards", "notes"}
 
 The import then goes as any upload's does (jobs.py): the page polls the job to its preview, then saves or cancels.
@@ -56,12 +56,10 @@ def import_link(pid: int, body: Fetch, request: Request, s=Depends(user), db=Dep
         raise HTTPException(400, "Nothing was fetched: confirm first.")
     ip = _client_ip(request)
 
-    def contact(host, purpose):
-        outside.record(db, pid, host, purpose, s, ip)
-
+    permit = outside.for_link(db, pid, shl.describe(link)["host"] if link.kind == "link" else None, s, ip)
     try:
-        items = shl.card_items(link) if link.kind == "card" else shl.fetch(link, body.passcode, contact)
-        got = shl.prepare(items, contact)
+        items = shl.card_items(link) if link.kind == "card" else shl.fetch(link, body.passcode, permit)
+        got = shl.prepare(items, permit)
     except shl.Refused as e:
         raise _refused(e) from None
     host = shl.describe(link)["host"]

@@ -521,3 +521,18 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .conn .conn-disc{border-top:1px solid var(--grid);margin-top:8px;padding-top:8px}
 .conn a.btn{text-decoration:none;color:inherit}
 .conn p,.conn dd{overflow-wrap:anywhere}
+/* Settings · Outside connections (#59, #97) */
+.out .out-lead{font-weight:550;margin:4px 0 6px;font-size:13px}
+.out h3.sub{margin-top:14px}
+.out .out-hosts{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 0;padding:0;list-style:none}
+.out code{background:var(--hover);border-radius:5px;padding:1px 6px;font-size:12px;overflow-wrap:anywhere}
+.out .out-src{border-top:1px solid var(--ring);margin-top:10px;padding-top:10px}
+.out .out-src h4{font-size:13px;margin:0 0 4px;font-weight:650}
+.out dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 12px;margin:4px 0;font-size:13px}
+.out dt{color:var(--muted)}
+.out dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.out ul.out-list{list-style:none;margin:4px 0 0;padding:0;font-size:13px}
+.out ul.out-list li{padding:5px 0;border-top:1px solid var(--ring);overflow-wrap:anywhere}
+.out ul.out-list li:first-child{border-top:0}
+.out .out-conn{margin:6px 0 0 0;padding:6px 0 0 10px;border-left:2px solid var(--ring)}
+@media (max-width:520px){.out dl{grid-template-columns:minmax(0,1fr);gap:0}.out dd{margin-bottom:5px}}

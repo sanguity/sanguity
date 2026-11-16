@@ -49,6 +49,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - The source of every record, shown in its details (#131).
 - Unknown lab names are matched during import, with LOINC and similar-name suggestions; the choice is remembered
   (#122).
+- Outside connections on the Settings page: every host the install may contact (connected sources with their
+  token, revocation and registration hosts, scopes and last contact; Health Link fetches; Health Card issuers'
+  keys). All outbound requests go through one gateway that refuses unlisted hosts, and a test fails if any code
+  contacts one (#97, #59).
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for

@@ -33,7 +33,8 @@ app with each vendor, and the vendor sends the sign-in straight back to the inst
 
   counts() is the local count of connections per vendor, for admins. It is never sent anywhere.
 
-Every host contacted is recorded first (outside.record), with the profile it was for.
+Every request goes through net.py under a permit from outside.py, which records each host first, with the profile it
+was for, and refuses any host the source's setup doesn't name (#97).
 """
 import hashlib, ipaddress, json, re, secrets, time, urllib.parse
 
@@ -280,8 +281,7 @@ def test_client(db, who, cid, ip=None):
     """"Test this connection": read the source's discovery (no sign-in), keep it, and say what it found. Only the
     issuer's host is contacted, and it is recorded first."""
     r = _client(db, cid)
-    http = smart.Client({smart.host_of(r["issuer"])},
-                        on_contact=lambda h: outside.record(db, None, h, "Connected source: test", who, ip))
+    http = smart.Client(outside.for_source(db, cid, "Connected source: test", None, who, ip, issuer_only=True))
     old = _discovery(r)
     try:
         conf = smart.discover(http, r["issuer"], (old or {}).get("issuer"))
@@ -352,7 +352,7 @@ def start(db, s, pid, vendor=None, issuer=None, connection_id=None, ip=None):
         if c["client_id"] != r["id"]:
             raise Problem("This connection belongs to another source.", 409)
     allowed = hosts_for(r)
-    http = smart.Client({smart.host_of(r["issuer"])}, on_contact=lambda h: outside.record(db, pid, h, "Connected source: sign-in", s, ip))
+    http = smart.Client(outside.for_source(db, r["id"], "Connected source: sign-in", pid, s, ip, issuer_only=True))
     try:
         conf = smart.discover(http, r["issuer"], (_discovery(r) or {}).get("issuer"))
     except smart.SmartError as e:
@@ -437,7 +437,7 @@ def finish(db, s, code=None, state=None, error=None, error_description=None, ip=
     allowed = hosts_for(r)
     if smart.host_of(p["token_url"]) not in allowed:
         raise Problem("This source's token endpoint isn't one an admin tested.", 409)
-    http = smart.Client(allowed, on_contact=lambda h: outside.record(db, pid, h, "Connected source: sign-in", s, ip))
+    http = smart.Client(outside.for_source(db, r["id"], "Connected source: sign-in", pid, s, ip))
     secret = crypto.dec(r["secret"]) if r["secret"] else None
     try:
         tok = smart.exchange_code(http, {"token_endpoint": p["token_url"]}, r["client_id"], secret, code,
@@ -607,7 +607,7 @@ def disconnect(db, who, pid, cid, remove_records=False, ip=None):
         url = (_discovery(r) or {}).get("revocation_endpoint") if r else None
         cred = _jdec(c["secret"])
         if url:
-            http = smart.Client(hosts_for(r), on_contact=lambda h: outside.record(db, pid, h, "Connected source: disconnect", who, ip))
+            http = smart.Client(outside.for_connection(db, cid, "Connected source: disconnect", who, ip))
             app = (cred.get("dyn_client"), None) if c["credential"] == "jwt" else (r["client_id"], crypto.dec(r["secret"]) if r["secret"] else None)
             token, hint = (cred["refresh"], "refresh_token") if cred.get("refresh") else (cred["access"], "access_token")
             try:
