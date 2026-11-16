@@ -340,6 +340,81 @@ SCHEMA = [
     UPDATE profiles SET settings_seeded=1 WHERE build_mtime IS NOT NULL;   -- the build is loaded: its settings are in
                                                                            -- the profile's settings.json, migrated
     """,
+    # version 19: connected sources (#32, #91; connections.py, sync.py). smart_clients holds what an admin set up
+    # for each vendor under option 1 (docs/connected-sources-oauth.md): the app registered with it, its client ID
+    # and secret (encrypted), the scopes to ask for. connections is one per profile and source: the tokens, refresh
+    # token or private key it signs in with, encrypted, its state and its sync times. connect_pending holds a
+    # sign-in between leaving for the vendor and coming back: a hash of its state, bound to the session that started
+    # it, with the PKCE verifier encrypted. sync_changes is what a scheduled sync changed in place (an event, or an
+    # entry of an import's profile-wide lists), with what it was before, so undoing the sync puts it back.
+    """
+    CREATE TABLE smart_clients(
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,                        -- what people see ("Epic sandbox", "Riverside Health")
+        vendor TEXT NOT NULL,                      -- which setup guide: epic, oracle, other
+        issuer TEXT NOT NULL UNIQUE,               -- the FHIR base: the issuer, and the aud sent at sign-in
+        client_id TEXT NOT NULL,                   -- from the vendor's developer site
+        secret TEXT,                               -- the client secret, encrypted; NULL: a public client
+        auth TEXT NOT NULL CHECK(auth IN ('public', 'confidential', 'dynamic')),   -- dynamic: Epic's registration
+        scopes TEXT NOT NULL,                      -- asked for at sign-in, space-separated
+        discovery TEXT,                            -- JSON: .well-known/smart-configuration as last read (public)
+        tested INTEGER,                            -- when discovery last worked
+        created INTEGER NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed INTEGER);
+    CREATE TABLE connections(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        client_id INTEGER REFERENCES smart_clients(id) ON DELETE SET NULL,
+        source TEXT NOT NULL,                      -- the vendor setting's name when it connected
+        issuer TEXT NOT NULL,
+        fhir_base TEXT NOT NULL,
+        patient TEXT,                              -- the patient's id at the vendor, encrypted
+        credential TEXT CHECK(credential IN ('refresh', 'jwt', 'access')),   -- how it gets new access tokens
+        secret TEXT,                               -- JSON, encrypted: the access token, the refresh token or the
+                                                   -- private key and dynamic client id; NULL once disconnected
+        scopes TEXT,                               -- as granted
+        expires INTEGER,                           -- when the access token runs out
+        state TEXT NOT NULL CHECK(state IN ('active', 'needs reconnect', 'disconnected')),
+        cursor TEXT,                               -- JSON {type: _lastUpdated to ask after}; NULL until the first
+                                                   -- pull is saved
+        pending_cursor TEXT,                       -- the first pull's, which becomes the cursor when it's saved
+        first_job INTEGER REFERENCES jobs(id) ON DELETE SET NULL,   -- the first pull, previewed like an upload
+        last_sync INTEGER,                         -- the last pull that worked
+        next_sync INTEGER,
+        failures INTEGER NOT NULL DEFAULT 0,       -- pulls failed in a row, for the backoff
+        error_kind TEXT,                           -- unavailable (try later), access (reconnect), other
+        last_error TEXT,                           -- encrypted
+        report TEXT,                               -- JSON, encrypted: the last pull, type by type
+        created INTEGER NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        disconnected INTEGER);
+    CREATE INDEX connections_profile ON connections(profile_id);
+    CREATE INDEX connections_due ON connections(state, next_sync);
+    CREATE TABLE connect_pending(
+        state_hash TEXT PRIMARY KEY,               -- SHA-256 of state; state itself is only in the browser's URL
+        session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        client_id INTEGER NOT NULL REFERENCES smart_clients(id) ON DELETE CASCADE,
+        connection_id INTEGER REFERENCES connections(id) ON DELETE CASCADE,   -- set: reconnecting this one
+        verifier TEXT NOT NULL,                    -- the PKCE code_verifier, encrypted
+        redirect_uri TEXT NOT NULL,
+        scopes TEXT NOT NULL,
+        token_url TEXT NOT NULL,                   -- from discovery at the start: the code goes nowhere else
+        expires INTEGER NOT NULL);
+    ALTER TABLE imports ADD COLUMN connection_id INTEGER REFERENCES connections(id) ON DELETE SET NULL;
+    CREATE INDEX imports_connection ON imports(connection_id);
+    CREATE TABLE sync_changes(
+        id INTEGER PRIMARY KEY,
+        import_id INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE,   -- the sync that made the change
+        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,             -- an event updated in place...
+        meta_import INTEGER REFERENCES imports(id) ON DELETE CASCADE,         -- ...or an entry of this import's meta
+        previous TEXT NOT NULL,                    -- JSON, encrypted: what it was before
+        CHECK((event_id IS NULL) != (meta_import IS NULL)));
+    CREATE INDEX sync_changes_import ON sync_changes(import_id);
+    CREATE INDEX sync_changes_event ON sync_changes(event_id);
+    CREATE INDEX sync_changes_meta ON sync_changes(meta_import);
+    """,
 ]
 
 

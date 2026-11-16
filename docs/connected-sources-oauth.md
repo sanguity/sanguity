@@ -2,7 +2,8 @@
 
 **Status: decided (option 1, for now).** This document is for issue #90. It sets out the options, the vendor rules
 that limit them, the decision and its threat model. The analysis of option 2, a project registration with a relay
-page, stays below for when it's added. Nothing here is built yet, and no app has been registered with any vendor.
+page, stays below for when it's added. Option 1 is built (#32, #91: `server/connections.py`, `server/smart.py`,
+`server/sync.py`); the project has registered no app with any vendor.
 
 **Why it has to be decided first.** Sign-in to a provider's or insurer's FHIR API (#32, #92), scheduled sync with
 stored tokens (#91) and the provider directory (#93) all depend on how an install gets the authorization code back

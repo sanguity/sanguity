@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, edits, export, jobs, passkeys, profiles as prof, records, security as sec, settings, twofactor, uploads, watch_store
+from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, edits, export, jobs, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, uploads, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -85,9 +85,11 @@ async def lifespan(app):
         finally:
             db.close()
         jobs.start()
+        sync.start()   # connected sources' scheduled pulls (#91)
         try:
             yield
         finally:
+            sync.stop()
             jobs.stop()
 
 
@@ -1264,6 +1266,7 @@ app.include_router(__import__("server.routes_labmaps", fromlist=["router"]).rout
 app.include_router(__import__("server.routes_settings", fromlist=["router"]).router)  # settings (#35)
 app.include_router(__import__("server.routes_shl", fromlist=["router"]).router)       # SMART Health Links and Cards (#94)
 app.include_router(__import__("server.routes_directory", fromlist=["router"]).router)  # find your provider (#93)
+app.include_router(__import__("server.routes_connect", fromlist=["router"]).router)   # connected sources: sign-in and sync (#32, #91)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here

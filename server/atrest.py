@@ -23,6 +23,9 @@ FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "
           ("import_undos", "id", "entry"),
           ("edits", "id", "target_key"), ("edits", "id", "other_key"), ("edits", "id", "value"),
           ("labmaps", "id", "source"), ("labmaps", "id", "target"), ("jobs", "id", "labs"),
+          ("smart_clients", "id", "secret"), ("connections", "id", "patient"), ("connections", "id", "secret"),
+          ("connections", "id", "last_error"), ("connections", "id", "report"), ("connect_pending", "state_hash", "verifier"),
+          ("sync_changes", "id", "previous"),
           ("settings", "id", "sealed"))
 
 

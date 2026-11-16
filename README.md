@@ -206,6 +206,28 @@ than `UPLOAD_MAX_ZIP_RATIO` (200) times its compressed size (a zip bomb). An upl
 removed when the app next starts. While an import reads an upload, a decrypted copy sits in the app container's
 `/tmp`, which is in memory, and is removed straight after.
 
+### Connected sources
+
+Instead of downloading exports, a profile can be connected to a patient portal's FHIR API (SMART on FHIR, Epic's
+first) under **Connected sources** (`connect.html`, linked from the import page). Each install registers its own app
+with each vendor ([why](docs/connected-sources-oauth.md)), so an admin sets each source up once:
+
+1. Set `PUBLIC_ORIGINS` in `.env` to the address you open Sanguity at; the return address is that plus
+   `/connect/return`. The setup screen shows it, and warns when it's plain HTTP or only on your own network, which
+   vendors are unlikely to accept in production.
+2. Register an app on the vendor's developer site (the screen has a guide per vendor) with that return address, and
+   paste its client ID (and secret, for a confidential client) into Sanguity. For Epic, "dynamic registration"
+   makes this install generate its own key for long-lived access.
+3. **Test this connection** reads the vendor's discovery and lists the hosts Sanguity will contact for it.
+
+Then owners and editors connect a profile by signing in at the vendor. The first pull is previewed like an upload
+(duplicates, lab names, Save or Cancel); after that Sanguity pulls what's new every `SYNC_HOURS` (12), updating
+records in place by their source key, and each pull is an import you can undo from the history. When the vendor ends
+access, the page asks you to sign in again; "vendor unavailable" is retried with backoff instead. Disconnecting
+revokes the token where the vendor supports it, deletes the stored tokens and key, and keeps or removes the records,
+as you choose. The count of connections per source is shown to admins and never sent anywhere. Other settings in
+`.env`: `SYNC_MAX_RESOURCES` (20000 per pull), `SYNC_MAX_ATTACHMENT_MB` (50), `CONNECT_TIMEOUT` (30 seconds).
+
 ### Typing records in
 
 For records on paper, or from a portal that has no export, **Type them in** on the import page takes every kind of
@@ -251,11 +273,12 @@ can't be shipped with Sanguity, so an admin adds them once: `python3 tools/build
 
 ## Privacy and security
 
-- **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry. The one
-  exception is one you ask for: importing a pasted SMART Health Link fetches it from its host (and, for a Health Card,
-  the issuer's public keys) after you confirm, HTTPS only, and the host is noted in the profile's activity log.
-  Planned sign-in to providers' and insurers' APIs will be opt-in, through an app each install registers with
-  the vendor itself (decided in [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)).
+- **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.
+  Outside contact happens only when you ask for it: importing a pasted SMART Health Link fetches it from its host
+  (and, for a Health Card, the issuer's public keys) after you confirm, HTTPS only; and once you connect a source
+  ([Connected sources](#connected-sources)), the server talks to that vendor only, through an app your install
+  registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)). Each host contacted is
+  in the profile's activity log.
 - **Accounts with Argon2id-hashed passwords** (at least 15 characters, per NIST SP 800-63B; passwords found in
   public breaches are refused, checked against a bundled list on your server, see `server/passwords/`). Password and
   recovery-code hashes are peppered with a server secret that only the encryption key unlocks, so a copied database

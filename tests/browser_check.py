@@ -11,9 +11,12 @@ export), types two lab results in on the import page and finds them on Trends, t
 claim and a letter with a PDF into their own forms, finds them on the timeline and Costs and opens the PDF, uploads a lab with a spelling Sanguity
 doesn't know, accepts the series suggested at the preview and finds it on Trends, then sees it matched as before on
 the next upload, pastes a fictional SMART Health Link served by a local HTTPS server (what it says is shown and
-nothing is fetched until Fetch; then its preview, and saved), opens the account page (where the match is listed for
-admins), sees each record's source in the drawer, on Trends and on the heatmap and follows its link to the import
-history, checks the "not medical advice" notice on every tab and beside out-of-range highlighting, and fails
+nothing is fetched until Fetch; then its preview, and saved), sets up a connected source against the fake SMART on
+FHIR server (tests/fakefhir), connects a profile by signing in, saves its first pull's preview, syncs a new result
+and is asked to reconnect when access ends, changes settings on the Settings page and resets them, opens the account
+page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap
+and follows its link to the import history, checks the "not medical advice" notice on every tab and beside
+out-of-range highlighting, and fails
 on any script error, console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -77,6 +80,9 @@ def start_app():
     db.close()
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
+    from server import config
+    config.PUBLIC_ORIGINS.add(f"http://127.0.0.1:{port}")   # the return address connected sources sign in back to
+    config.CONNECT_ALLOW_HTTP = True                         # the fake SMART on FHIR server is plain HTTP on this machine
     global SHL
     sys.path.insert(0, os.path.join(ROOT, "tests"))
     import shl_server
@@ -889,6 +895,69 @@ def main():
             js("switchTab('overview')")
             settle(300)
             check("…and Reset to defaults brings them back", js(tiles) == before, js(tiles)[:3])
+            # ---- connected sources (#32, #91), against the fake SMART on FHIR server standing in for an Epic sandbox:
+            # an admin sets the source up and tests it, the profile connects by signing in, the first pull is previewed
+            # and saved, Sync now brings a new result, and when the patient ends access the page asks to reconnect
+            from tests.fakefhir import FakeFHIR
+            fake = FakeFHIR(patients=["robin-example"]).start()
+            fake.signin_patient = "pat-1"   # who "signs in" at the fake's authorize page
+            fake.register_client("sanguity-browser-check", [base + "/connect/return"])
+            page.goto(base + "/connect.html")
+            page.wait_for_selector("#sourceList", state="attached")
+            page.wait_for_function("document.getElementById('returnAddr').textContent.length > 5 && !document.getElementById('admin').hidden", timeout=10000)
+            check("connected sources: the setup screen gives the exact return address to register",
+                  js("document.getElementById('returnAddr').textContent") == base + "/connect/return", js("document.getElementById('returnAddr').textContent"))
+            check("…and warns that a plain-HTTP, LAN-only address is unlikely to be accepted",
+                  "plain HTTP" in page.inner_text("#addrWarn") and "own network" in page.inner_text("#addrWarn"), page.inner_text("#addrWarn"))
+            check("…with a guide per vendor: where to register, and the scopes", "fhir.epic.com" in page.inner_text("#guide")
+                  and "patient/Observation" in js("document.getElementById('fScopes').value"))
+            page.fill("#fName", "Fake Epic sandbox")
+            page.fill("#fIssuer", fake.fhir_base)
+            page.fill("#fClient", "sanguity-browser-check")
+            page.click("#fSave")
+            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Fake Epic sandbox')", timeout=10000)
+            page.locator("#sourceList .prof", has_text="Fake Epic sandbox").get_by_role("button", name="Test this connection").click()
+            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Discovery works') || document.getElementById('sourceList').textContent.includes('tested ')", timeout=10000)
+            page.reload()
+            page.select_option("#profile", label="Second person")
+            page.wait_for_selector("#sourceButtons a", timeout=10000)
+            conn_pid = js("+document.getElementById('profile').value")
+            page.click("#sourceButtons a")   # to the fake's sign-in, which approves and sends the browser back
+            page.wait_for_url("**/connect.html**", timeout=20000)
+            page.wait_for_selector("#import-status button.primary", timeout=30000)   # the first pull's preview
+            check("signing in connects the source, and its first pull is previewed like an upload",
+                  "Ready to import" in page.inner_text("#import-status"), page.inner_text("#import-status")[:300])
+            page.click("#import-status button.primary")
+            page.wait_for_function("document.getElementById('import-status').textContent.includes('Imported.')", timeout=30000)
+            page.wait_for_function("document.getElementById('connList').textContent.includes('New records come in on a schedule')", timeout=20000)
+            check("…saved, and the connection then syncs on a schedule", True)
+            imports = lambda: js(f"fetch('api/profiles/{conn_pid}/connections').then(r => r.json()).then(j => j.connections[0].imports)")
+            fake.add({"resourceType": "Observation", "status": "final", "effectiveDateTime": "2026-11-12T08:00:00Z",
+                      "category": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/observation-category", "code": "laboratory"}]}],
+                      "code": {"coding": [{"system": "http://loinc.org", "code": "2345-7"}], "text": "Glucose"},
+                      "valueQuantity": {"value": 101, "unit": "mg/dL"}}, patient="pat-1")
+            page.get_by_role("button", name="Sync now").click()
+            for _ in range(100):
+                if imports() == 2:
+                    break
+                page.wait_for_timeout(200)
+            check("Sync now brings the new result in, as an import of its own", imports() == 2, imports())
+            page.set_viewport_size({"width": 375, "height": 800})
+            page.reload()
+            page.wait_for_function("document.getElementById('connList').textContent.includes('Fake Epic sandbox')", timeout=10000)
+            check("connected sources fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            fake.revoke_all("pat-1")    # the patient ends access in their portal
+            fake.expire_access_tokens()
+            page.reload()
+            page.get_by_role("button", name="Sync now").click()
+            page.wait_for_timeout(1500)
+            page.reload()
+            page.wait_for_selector("#reconnect:not([hidden])", timeout=20000)
+            check("when access ends, the page asks to sign in again", "access ended" in page.inner_text("#reconnect")
+                  and page.get_by_role("button", name="Sign in again").count() == 1, page.inner_text("#connList")[:300])
+            check("only the source's own host was contacted", fake.hosts() == {f"127.0.0.1:{fake.port}"}, fake.hosts())
+            fake.stop()
 
             # ---- account page: password, devices, profiles with sharing, accounts (admin)
             page.goto(base + "/account.html")

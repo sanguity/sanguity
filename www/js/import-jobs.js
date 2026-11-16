@@ -257,5 +257,12 @@
     });
   }
 
-  window.sanguityImport = {uploaded};
+  // an import someone else started (a connected source's first pull, connect.js): its progress and preview here
+  function follow(opts) {
+    const card = box(opts && opts.container), status = node("p", {text: "Reading the records…"});
+    card.replaceChildren(status);
+    return poll(card, opts.profileId, opts.jobId, status);
+  }
+
+  window.sanguityImport = {uploaded, follow};
 })();

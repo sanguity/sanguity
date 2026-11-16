@@ -8,7 +8,7 @@ Fictional data only.
 
   python3 tests/test_directory.py
 """
-import contextlib, gzip, io, json, os, shutil, socket, sys, tempfile, unittest, urllib.request
+import contextlib, gzip, io, json, os, re, shutil, socket, sys, tempfile, unittest, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIX = os.path.join(ROOT, "tests", "fixtures", "directory")
@@ -270,8 +270,9 @@ class Api(unittest.TestCase):
         self.assertEqual(self.c.get("/api/directory/entry", params={"id": "epic:nope"}).status_code, 404)
 
     def test_page_is_served_and_listed(self):
-        with open(os.path.join(ROOT, "nginx.conf"), encoding="utf-8") as f:
-            self.assertIn("|providers)\\.html$", f.read())
+        with open(os.path.join(ROOT, "nginx.conf"), encoding="utf-8") as f:   # among the pages nginx serves
+            pages = re.search(r"location ~ \^/\(([a-z|]+)\)\\\.html\$", f.read())
+        self.assertIn("providers", pages.group(1).split("|"))
         with open(os.path.join(ROOT, "www", "import.html"), encoding="utf-8") as f:
             self.assertIn('href="providers.html"', f.read())
         with open(os.path.join(ROOT, "www", "providers.html"), encoding="utf-8") as f:
