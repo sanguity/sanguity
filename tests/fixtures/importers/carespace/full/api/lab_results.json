@@ -1,0 +1,241 @@
+{
+ "data": [
+  {
+   "id": "lr-001",
+   "name": "HGB",
+   "value": {
+    "value": "11.2",
+    "unit": "g/dL"
+   },
+   "referenceRange": {
+    "lowerLimit": 12,
+    "upperLimit": 16,
+    "unit": "g/dL"
+   },
+   "referenceRangeDisplay": "12.0-16.0",
+   "interpretationCode": "L",
+   "observationDateTz": "2026-03-02T08:30:00-06:00",
+   "labPanelRecordId": "pn-101"
+  },
+  {
+   "id": "lr-002",
+   "name": "WBC",
+   "value": {
+    "value": "6.1",
+    "unit": "x10E3/uL"
+   },
+   "referenceRange": {
+    "lowerLimit": 4,
+    "upperLimit": 11,
+    "unit": "x10E3/uL"
+   },
+   "referenceRangeDisplay": "4.0-11.0",
+   "interpretationCode": null,
+   "observationDateTz": "2026-03-02T08:30:00-06:00",
+   "labPanelRecordId": "pn-101"
+  },
+  {
+   "id": "lr-003",
+   "name": "Platelet count",
+   "value": {
+    "value": "210",
+    "unit": "x10E3/uL"
+   },
+   "referenceRange": {
+    "lowerLimit": 150,
+    "upperLimit": 400,
+    "unit": "x10E3/uL"
+   },
+   "referenceRangeDisplay": "150-400",
+   "interpretationCode": null,
+   "observationDateTz": "2026-03-02T08:30:00-06:00",
+   "labPanelRecordId": "pn-101"
+  },
+  {
+   "id": "lr-004",
+   "name": "HCT",
+   "value": {
+    "value": "34.0",
+    "unit": "%"
+   },
+   "referenceRange": {
+    "lowerLimit": 36,
+    "upperLimit": 46,
+    "unit": "%"
+   },
+   "referenceRangeDisplay": "36-46",
+   "interpretationCode": null,
+   "observationDateTz": "2026-03-02T08:30:00-06:00",
+   "labPanelRecordId": "pn-101"
+  },
+  {
+   "id": "lr-005",
+   "name": "CREAT",
+   "value": {
+    "value": "0.9",
+    "unit": "mg/dL"
+   },
+   "referenceRange": {
+    "lowerLimit": 0.6,
+    "upperLimit": 1.1,
+    "unit": "mg/dL"
+   },
+   "referenceRangeDisplay": "0.6-1.1",
+   "interpretationCode": null,
+   "observationDateTz": "2026-03-02T08:31:00-06:00",
+   "labPanelRecordId": "pn-102"
+  },
+  {
+   "id": "lr-006",
+   "name": "GLUCOSE",
+   "value": {
+    "value": "105",
+    "unit": "mg/dL"
+   },
+   "referenceRange": {
+    "lowerLimit": 70,
+    "upperLimit": 99,
+    "unit": "mg/dL"
+   },
+   "referenceRangeDisplay": "70-99",
+   "interpretationCode": null,
+   "observationDateTz": "2026-03-02T08:31:00-06:00",
+   "labPanelRecordId": "pn-102"
+  },
+  {
+   "id": "lr-007",
+   "name": "POTASSIUM",
+   "value": {
+    "value": "4.1",
+    "unit": "mmol/L"
+   },
+   "referenceRange": {
+    "lowerLimit": 3.5,
+    "upperLimit": 5.1,
+    "unit": "mmol/L"
+   },
+   "referenceRangeDisplay": "3.5-5.1",
+   "interpretationCode": null,
+   "observationDateTz": "2026-03-02T08:31:00-06:00",
+   "labPanelRecordId": "pn-102"
+  },
+  {
+   "id": "lr-008",
+   "name": "CRP",
+   "value": {
+    "value": "<0.5",
+    "unit": "mg/dL"
+   },
+   "referenceRange": {
+    "lowerLimit": null,
+    "upperLimit": 1.0,
+    "unit": "mg/dL"
+   },
+   "referenceRangeDisplay": "<1.0",
+   "interpretationCode": null,
+   "observationDateTz": "2026-03-02T08:31:00-06:00",
+   "labPanelRecordId": "pn-102"
+  },
+  {
+   "id": "lr-009",
+   "name": "Urine color",
+   "value": {
+    "value": "Yellow",
+    "unit": ""
+   },
+   "referenceRange": {
+    "lowerLimit": null,
+    "upperLimit": null,
+    "unit": ""
+   },
+   "referenceRangeDisplay": "",
+   "interpretationCode": null,
+   "observationDateTz": "2026-03-02T08:40:00-06:00"
+  },
+  {
+   "id": "lr-010",
+   "name": "HGB",
+   "value": {
+    "value": "12.4",
+    "unit": "g/dL"
+   },
+   "referenceRange": {
+    "lowerLimit": 12,
+    "upperLimit": 16,
+    "unit": "g/dL"
+   },
+   "referenceRangeDisplay": "12.0-16.0",
+   "interpretationCode": null,
+   "observationDateTz": "2026-04-01T07:45:00-05:00",
+   "labPanelRecordId": "pn-103"
+  },
+  {
+   "id": "lr-011",
+   "name": "WBC",
+   "value": {
+    "value": "5.2",
+    "unit": "x10E3/uL"
+   },
+   "referenceRange": {
+    "lowerLimit": 4,
+    "upperLimit": 11,
+    "unit": "x10E3/uL"
+   },
+   "referenceRangeDisplay": "4.0-11.0",
+   "interpretationCode": null,
+   "observationDateTz": "2026-04-01T07:45:00-05:00",
+   "labPanelRecordId": "pn-103"
+  },
+  {
+   "id": "lr-012",
+   "name": "HGB",
+   "value": {
+    "value": "12.4",
+    "unit": "g/dL"
+   },
+   "referenceRange": {
+    "lowerLimit": 12,
+    "upperLimit": 16,
+    "unit": "g/dL"
+   },
+   "referenceRangeDisplay": "12.0-16.0",
+   "interpretationCode": null,
+   "observationDateTz": "2026-04-01T07:45:00-05:00",
+   "labPanelRecordId": "pn-104"
+  },
+  {
+   "id": "lr-013",
+   "name": "GLUCOSE",
+   "value": {
+    "value": "5.8",
+    "unit": "mmol/L"
+   },
+   "referenceRange": {
+    "lowerLimit": 3.9,
+    "upperLimit": 5.5,
+    "unit": "mmol/L"
+   },
+   "referenceRangeDisplay": "3.9-5.5",
+   "interpretationCode": "H",
+   "observationDateTz": "2026-04-01T07:45:00-05:00",
+   "labPanelRecordId": "pn-104"
+  },
+  {
+   "id": "lr-014",
+   "name": "ALT",
+   "value": {
+    "value": "88",
+    "unit": "U/L"
+   },
+   "referenceRange": {
+    "lowerLimit": 7,
+    "upperLimit": 35,
+    "unit": "U/L"
+   },
+   "referenceRangeDisplay": "7-35",
+   "interpretationCode": "HH",
+   "observationDate": "2026-04-12",
+   "labPanelRecordId": "pn-105"
+  }
+ ]
+}

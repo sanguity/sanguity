@@ -6,9 +6,9 @@ login page, opens every tab and checks its main content rendered, opens the deta
 event, drags and scroll-zooms the charts, toggles the event sort, switches profiles, uploads a zip and files on
 the import page (a fictional C-CDA and a FHIR export, previewed, saved in the background and then shown on the timeline;
 the C-CDA again, previewed as all duplicates and cancelled; the FHIR one then undone from the import history, and
-gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab), types two lab results in on the
-import page and finds them on Trends, opens the account page, and fails on any script error, console error, failed
-request or NaN written into an SVG attribute.
+gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab; a CareSpace export), types two lab
+results in on the import page and finds them on Trends, opens the account page, and fails on any script error,
+console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
   python3 tests/browser_check.py
@@ -410,6 +410,28 @@ def main():
                 check(f"claims upload is imported in the background by the {name} importer",
                       card.startswith("Imported.") and job is not None and tuple(job) == ("done", name), (card, job and tuple(job)))
             page.click("#tab-zip")
+            # ...and a fictional CareSpace / OncoEMR portal export (api/*.json, its C-CDA and two PDFs), zipped in a folder
+            cs_dir = os.path.join(ROOT, "tests", "fixtures", "importers", "carespace", "full")
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                for d, _, names in os.walk(cs_dir):
+                    for n in names:
+                        full = os.path.join(d, n)
+                        z.write(full, "carespace-export/" + os.path.relpath(full, cs_dir).replace(os.sep, "/"))
+            page.set_input_files("#pickZip", files=[{"name": "carespace-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
+            cards = js("document.querySelectorAll('.import-job').length")
+            page.click("#go")
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
+                                   f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            js(f"{last_card}.querySelector('.imp-actions .primary')?.click()")   # Save, at its preview (#22)
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.textContent")
+            check("a CareSpace export uploads and is imported in the background, as CareSpace",
+                  card.startswith("Imported.") and "CareSpace" in card and "lab result" in card, card)
+            up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
+            job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
+            check("the job is done, read by the CareSpace importer", job is not None and tuple(job) == ("done", "carespace"), job and tuple(job))
             js("window.__hook = []; window.sanguityImport = {uploaded: a => window.__hook.push(a)}")
             page.click("#tab-files")
             page.set_input_files("#pickFiles", files=[{"name": n, "mimeType": "text/csv", "buffer": b"date,test,value\n2026-02-01,WBC,6.1\n"}
@@ -468,8 +490,8 @@ def main():
             page.select_option("#profile", label="Second person")
             page.wait_for_selector("#history li[data-format='fhir']", timeout=10000)
             hist = js("[...document.querySelectorAll('#history li[data-import]')].map(li => li.dataset.format)")
-            check("the import history lists the C-CDA, FHIR and claims imports, newest first",
-                  hist == ["claims-csv", "bcbs", "uhc", "fhir", "ccda"], hist)
+            check("the import history lists the C-CDA, FHIR, claims and CareSpace imports, newest first",
+                  hist == ["carespace", "claims-csv", "bcbs", "uhc", "fhir", "ccda"], hist)
             check("…with the uploaded files", "fhir-export/" in page.inner_text("#history li[data-format='fhir'] .files"))
             page.click("#history li[data-format='fhir'] button.undo")
             page.click("#history li[data-format='fhir'] .confirm button.danger")

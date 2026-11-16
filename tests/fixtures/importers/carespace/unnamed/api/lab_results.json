@@ -1,0 +1,106 @@
+{
+ "data": [
+  {
+   "id": "lr-001",
+   "name": "HGB",
+   "value": {
+    "value": "11.2",
+    "unit": "g/dL"
+   },
+   "referenceRange": {
+    "lowerLimit": 12,
+    "upperLimit": 16,
+    "unit": "g/dL"
+   },
+   "referenceRangeDisplay": "12.0-16.0",
+   "interpretationCode": "L",
+   "observationDateTz": "2026-03-02T08:30:00-06:00",
+   "labPanelRecordId": "pn-101"
+  },
+  {
+   "id": "lr-002",
+   "name": "WBC",
+   "value": {
+    "value": "6.1",
+    "unit": "x10E3/uL"
+   },
+   "referenceRange": {
+    "lowerLimit": 4,
+    "upperLimit": 11,
+    "unit": "x10E3/uL"
+   },
+   "referenceRangeDisplay": "4.0-11.0",
+   "interpretationCode": null,
+   "observationDateTz": "2026-03-02T08:30:00-06:00",
+   "labPanelRecordId": "pn-101"
+  },
+  {
+   "id": "lr-003",
+   "name": "Platelet count",
+   "value": {
+    "value": "210",
+    "unit": "x10E3/uL"
+   },
+   "referenceRange": {
+    "lowerLimit": 150,
+    "upperLimit": 400,
+    "unit": "x10E3/uL"
+   },
+   "referenceRangeDisplay": "150-400",
+   "interpretationCode": null,
+   "observationDateTz": "2026-03-02T08:30:00-06:00",
+   "labPanelRecordId": "pn-101"
+  },
+  {
+   "id": "lr-004",
+   "name": "HCT",
+   "value": {
+    "value": "34.0",
+    "unit": "%"
+   },
+   "referenceRange": {
+    "lowerLimit": 36,
+    "upperLimit": 46,
+    "unit": "%"
+   },
+   "referenceRangeDisplay": "36-46",
+   "interpretationCode": null,
+   "observationDateTz": "2026-03-02T08:30:00-06:00",
+   "labPanelRecordId": "pn-101"
+  },
+  {
+   "id": "lr-010",
+   "name": "HGB",
+   "value": {
+    "value": "12.4",
+    "unit": "g/dL"
+   },
+   "referenceRange": {
+    "lowerLimit": 12,
+    "upperLimit": 16,
+    "unit": "g/dL"
+   },
+   "referenceRangeDisplay": "12.0-16.0",
+   "interpretationCode": null,
+   "observationDateTz": "2026-04-01T07:45:00-05:00",
+   "labPanelRecordId": "pn-103"
+  },
+  {
+   "id": "lr-011",
+   "name": "WBC",
+   "value": {
+    "value": "5.2",
+    "unit": "x10E3/uL"
+   },
+   "referenceRange": {
+    "lowerLimit": 4,
+    "upperLimit": 11,
+    "unit": "x10E3/uL"
+   },
+   "referenceRangeDisplay": "4.0-11.0",
+   "interpretationCode": null,
+   "observationDateTz": "2026-04-01T07:45:00-05:00",
+   "labPanelRecordId": "pn-103"
+  }
+ ]
+}
