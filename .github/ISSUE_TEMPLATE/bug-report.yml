@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in Sanguity doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. **Don't paste or attach real health records, names or dates of birth here**:
+        issues are public. Describe what you see, or use the fictional demo data to show it.
+
+        A security problem? Don't open an issue; follow [SECURITY.md](https://github.com/sanguity/sanguity/blob/main/SECURITY.md) instead.
+        An export from a patient portal that doesn't import? Use the **My portal's export doesn't import** form.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The release, or the commit you're on (`git rev-parse --short HEAD` in the Sanguity folder).
+      placeholder: v1.2.0, or 2cd5ceb
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install type
+      options:
+        - Docker Compose, as the README describes
+        - TrueNAS app or dev-stack.sh test copy
+        - From source (python -m server)
+        - Other (say below)
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      description: Only if it's a problem in the page itself.
+      placeholder: Firefox 140 on Windows 11; Safari on an iPhone
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Trends
+        2. Pick the last year
+        3. Drag the chart to the left
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead. Error messages and log lines (`docker compose logs app`) help; take out anything personal first.
+    validations:
+      required: true
