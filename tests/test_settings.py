@@ -339,6 +339,62 @@ class Settings(unittest.TestCase):
         self.assertEqual(self.merged(1, "kim")["test"], {"mine": "light", "server": 40})
         self.c["ada"].delete("/api/profiles/1/settings/test.server", headers=H)
 
+    # ---------------------------------------------------------------- #36 key-lab tiles, #40 tabs, #45 theme
+
+    def test_key_labs_editor(self):
+        """#36 extends the key-labs setting: the same key, its own editor, kept in the order given"""
+        d = settings.SETTINGS["overview.keyLabs"]
+        self.assertEqual((d.scope, d.section, d.kind, d.default), ("profile", "overview", "tiles", settings.KEY_LABS))
+        pid = self.fresh_profile()
+        self.assertEqual(self.put("overview.keyLabs", ["Glucose", "Ferritin", "Hemoglobin"], pid=pid)["overview"]["keyLabs"],
+                         ["Glucose", "Ferritin", "Hemoglobin"])
+        self.put("overview.keyLabs", ["Ferritin", "Glucose"], pid=pid, who="kim", status=404)   # not shared with kim
+        log = self.c["robin"].get(f"/api/profiles/{pid}/activity?action=settings").json()
+        self.assertEqual(log[0]["detail"], {"setting": "overview.keyLabs", "label": "Key labs"})
+
+    def test_tabs(self):
+        d = settings.SETTINGS["tabs"]
+        self.assertEqual((d.scope, d.section, d.kind), ("profile", "tabs", "tabs"))
+        pid = self.fresh_profile()
+        self.assertEqual(self.merged(pid)["tabs"], {"order": list(settings.TABS), "hidden": []})
+        # reordered and hidden; the hidden listed in the tabs' order, and a tab left out goes at the end, shown
+        m = self.put("tabs", {"order": ["timeline", "overview", "costs", "labs", "health"], "hidden": ["costs", "health"]}, pid=pid)
+        self.assertEqual(m["tabs"], {"order": ["timeline", "overview", "costs", "labs", "health", "heatmap"], "hidden": ["costs", "health"]})
+        self.assertEqual(self.put("tabs", {"hidden": ["costs"]}, pid=pid)["tabs"], {"order": list(settings.TABS), "hidden": ["costs"]})
+        for bad in ({"order": ["overview", "nope"]}, {"hidden": list(settings.TABS)}, {"order": "overview"}, ["overview"],
+                    {"hidden": [3]}, {"order": [], "hidden": [], "extra": 1}):
+            self.put("tabs", bad, pid=pid, status=400)
+        self.put("tabs", {"hidden": ["costs"]}, pid=pid, who="kim", status=404)
+        self.put("tabs", {"hidden": ["costs"]}, pid=1, who="kim", status=403)   # a viewer of profile 1
+        self.put("tabs", {"hidden": ["costs"]}, pid=pid, who="lee")              # an editor
+        # its own section, with Reset to defaults; logged in the profile's activity
+        r = self.c["robin"].post(f"/api/profiles/{pid}/settings/reset", json={"section": "tabs"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["reset"]), (200, ["tabs"]))
+        self.assertEqual(self.merged(pid)["tabs"]["hidden"], [])
+        actions = [(e["actor"], e["detail"].get("setting") or e["detail"].get("section")) for e in
+                   self.c["robin"].get(f"/api/profiles/{pid}/activity?action=settings").json()]
+        self.assertEqual(actions[:2], [("robin", "tabs"), ("lee", "tabs")])
+
+    def test_theme(self):
+        d = settings.SETTINGS["theme"]
+        self.assertEqual((d.scope, d.section, d.kind, d.default, d.private), ("user", "appearance", "theme", "system", False))
+        for bad in ("blue", "", None, 1, ["dark"]):
+            self.put("theme", bad, who="kim", status=400)
+        # each person's own, on every profile, a viewer too; logged as an account event
+        self.put("theme", "dark", who="kim")
+        self.assertEqual((self.merged(1, "kim")["theme"], self.merged(2, "kim")["theme"], self.merged(1, "robin")["theme"]),
+                         ("dark", "dark", "system"))
+        acct = [e for e in self.c["ada"].get("/api/activity").json() if e["action"] == "settings.user" and e["actor"] == "kim"]
+        self.assertEqual(acct[0]["detail"], {"setting": "theme", "label": "Theme"})
+        secs = {s["key"]: s for sec in self.c["kim"].get("/api/profiles/1/settings/sections").json()["sections"] for s in sec["settings"]}
+        self.assertEqual((secs["theme"]["value"], secs["theme"]["from"], secs["theme"]["can_change"]), ("dark", "user", True))
+        # Reset to defaults on its section, by the person themself
+        r = self.c["kim"].post("/api/profiles/1/settings/reset", json={"section": "appearance"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["reset"]), (200, ["theme"]))
+        self.assertEqual(self.merged(2, "kim")["theme"], "system")
+        # not part of a profile's settings.json (it's a person's, not the profile's)
+        self.assertNotIn("theme", settings.from_file({"theme": "dark"}))
+
     # ---------------------------------------------------------------- storage, export, import
 
     def test_encrypted_at_rest(self):
