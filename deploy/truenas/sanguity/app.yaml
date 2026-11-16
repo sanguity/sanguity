@@ -1,0 +1,38 @@
+annotations:
+  min_scale_version: 24.10.2.2
+app_version: 0.1.0
+capabilities: []
+categories:
+- productivity
+changelog_url: https://github.com/sanguity/sanguity/blob/main/CHANGELOG.md
+date_added: '2026-11-15'
+description: Your medical records, insurance claims and wearable data on one private timeline, on your own server
+home: https://github.com/sanguity/sanguity
+host_mounts: []
+icon: https://raw.githubusercontent.com/sanguity/sanguity/main/docs/logo/sanguity-avatar.png
+keywords:
+- health
+- medical records
+- lab results
+- wearables
+lib_version: 2.3.19
+lib_version_hash: ''
+maintainers:
+- email: dev@truenas.com
+  name: truenas
+  url: https://www.truenas.com/
+name: sanguity
+run_as_context:
+- description: Containers [setup], [app], [web] and [receiver] can run as any non-root user and group.
+  gid: 568
+  group_name: Host group is [apps]
+  uid: 568
+  user_name: Host user is [apps]
+screenshots:
+- https://raw.githubusercontent.com/sanguity/sanguity/main/docs/screenshots/overview.png
+- https://raw.githubusercontent.com/sanguity/sanguity/main/docs/screenshots/trends.png
+sources:
+- https://github.com/sanguity/sanguity
+title: Sanguity
+train: community
+version: 1.0.0

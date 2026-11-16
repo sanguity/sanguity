@@ -48,6 +48,38 @@ from the header.
 
 ## Install (Docker)
 
+There are two ways to run it, with the same folders, ports and settings (`.env`):
+
+- **From a release** (`compose.release.yaml`): every service runs the published image,
+  `ghcr.io/sanguity/sanguity`, built for x86-64, 64-bit ARM and 32-bit ARM. Nothing to build and no git
+  checkout; you upgrade by choosing a newer version. For most installs.
+- **From a git checkout** (`compose.yaml`): the image is built on your machine and the code is mounted from the
+  checkout, so `git pull` updates it. For following `main` or trying a branch (see also
+  [Testing a branch](#testing-a-branch-beside-your-real-install)).
+
+They're two compose files rather than one with an image setting because a checkout install mounts `server/`,
+`www/` and the other code from the checkout over whatever is in the image. Pointing it at a released image would
+run that release's Python packages with the checkout's code. A released install has no checkout to mount
+from, so `compose.release.yaml` mounts only your data folders. The TrueNAS, Unraid and CasaOS templates in
+[`deploy/`](deploy/) run the same image.
+
+> No version has been tagged yet. Until the first release, install from a git checkout.
+
+**From a release**, in an empty folder:
+
+```sh
+curl -fsSL -o compose.yaml https://github.com/sanguity/sanguity/releases/latest/download/compose.release.yaml
+curl -fsSL -o .env https://raw.githubusercontent.com/sanguity/sanguity/main/.env.example   # optional: ports, folders, time zone, your user id
+docker compose up -d
+docker compose logs app         # shows the one-time setup code
+```
+
+The downloaded file starts the version it came from; `SANGUITY_VERSION` in `.env` picks another. Your
+`sources.json`, `settings.json` and `corrections.json` go in `./config` (`CONFIG_DIR`), and the encryption key is
+kept in `./auth` (`AUTH_DIR`), apart from the data.
+
+**From a git checkout:**
+
 ```sh
 git clone https://github.com/sanguity/sanguity.git && cd sanguity
 cp .env.example .env            # optional: ports (default 8730 web, 8731 phone uploads), folders, time zone, your user id
@@ -59,7 +91,7 @@ docker compose logs app         # shows the one-time setup code
 packages, so the first build takes a minute or two. 32-bit ARM (a Pi on a 32-bit OS) works too, and CI checks it
 every week, but the first build compiles several packages, including `cryptography` with Rust, which can take an
 hour or more on the Pi itself (a Pi with 1 GB of memory may need swap). Later builds reuse it until
-`requirements.txt` changes.
+`requirements.txt` changes. The released image is already built for all three.
 
 Open `http://<this machine>:8730` and enter the setup code to create the first account. It becomes the admin
 and owns the records already on the server; until you add your own, that is the fictional demo. Add accounts for
@@ -68,7 +100,8 @@ other people under **Account**, then share profiles with them there.
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy
 `sources.example.json` to `sources.json` and describe them, then `docker compose run --rm setup rebuild`; the first profile picks up the rebuild automatically.
 Optional: `corrections.json` (your milestones; see `corrections.example.json`) and `settings.json` (that profile's
-dashboard preferences; see `settings.example.json`), both next to `compose.yaml`. Corrections to events are made in
+dashboard preferences; see `settings.example.json`). On a checkout install all three go next to `compose.yaml`;
+on a release install, in `./config`. Corrections to events are made in
 the app (see [Correcting records](#correcting-records)); an older `corrections.json`'s `not_hospital_stays` are moved
 into the app once, at the first start of a version that has them, and aren't read from the file after that.
 
@@ -79,14 +112,52 @@ into the app once, at the first start of a version that has them, and aren't rea
 | `docker compose exec app python -m server.manage list` | Accounts, profiles and who has which role |
 | `docker compose exec app python -m server.manage remove-user NAME --hand-to OTHER` | Delete an account for good (also under **Account**); profiles only it owned go to OTHER |
 | `docker compose exec app python -m server.manage disable-2fa NAME` | Turn off two-factor sign-in for someone who lost their phone and recovery codes |
-| `git pull && docker compose pull --ignore-buildable && docker compose build --pull && docker compose up -d` | Update Sanguity, and the images it runs on |
+| `git pull && docker compose pull --ignore-buildable && docker compose build --pull && docker compose up -d` | Update a checkout install, and the images it runs on |
 
-**Updating:** run the update command above at least once a month, and soon after a security fix is announced
-(watch the repository's releases). Besides the code, it pulls the newest nginx image and rebuilds the app on the
-newest Python base image, so the operating system and Python get their security patches; `docker compose up -d
---build` alone keeps the images of the day you installed. It needs Docker Compose 2.15 or later (`docker compose
-version`). Dependency updates are proposed weekly in this repository by Dependabot (`.github/dependabot.yml`) and
-arrive with `git pull`.
+### Updating
+
+**Database migrations run at start-up.** Each time the app starts, it upgrades its database to the version it
+needs (`server/db.py`): every schema step not yet applied runs in order, each in a transaction. Other changes a
+release makes to stored data (such as records moving into the database, below) happen the same way. There is no
+separate migrate command. Going back to an older version isn't supported: restore the backup you took before
+upgrading instead. [`CHANGELOG.md`](CHANGELOG.md) lists what each release changes and anything to do when
+upgrading to it. CI checks every change by upgrading the previous release's data with it.
+
+**A release install:** back up, then pick the new version and start it:
+
+```sh
+docker compose exec app python -m server.manage backup
+curl -fsSL -o compose.yaml https://github.com/sanguity/sanguity/releases/latest/download/compose.release.yaml   # or set SANGUITY_VERSION in .env
+docker compose pull && docker compose up -d
+```
+
+Read the **Upgrade notes** in `CHANGELOG.md` for every release since yours first. Each release image is built on
+the Python and Alpine images of its day, so upgrading also brings their security patches.
+
+**A checkout install:** run the update command in the table above at least once a month, and soon after a
+security fix is announced (watch the repository's releases). Besides the code, it pulls the newest nginx image and
+rebuilds the app on the newest Python base image, so the operating system and Python get their security patches;
+`docker compose up -d --build` alone keeps the images of the day you installed. It needs Docker Compose 2.15 or
+later (`docker compose version`). Dependency updates are proposed weekly in this repository by Dependabot
+(`.github/dependabot.yml`) and arrive with `git pull`. To follow releases rather than `main`, check out a tag:
+`git fetch --tags && git checkout v1.2.0`.
+
+### Upgrading to a release
+
+To move a checkout install onto the published image, keeping its data, key and settings:
+
+1. Back up: `docker compose exec app python -m server.manage backup`.
+2. Stop it: `docker compose down`.
+3. In the checkout folder, move your configuration into `./config`:
+   `mkdir -p config && for f in sources.json settings.json corrections.json; do [ -f "$f" ] && mv "$f" config/; done`.
+   `auth/`, `data/`, `backups/`, `watch-data/` and `records/` stay where they are (or wherever `.env` points).
+4. Download the release's compose file into the same folder and start it:
+   `curl -fsSL -O https://github.com/sanguity/sanguity/releases/latest/download/compose.release.yaml`, then
+   `docker compose -f compose.release.yaml up -d`. `.env` is read as before. The project name is the same, so the
+   new containers replace the old ones.
+
+Documents kept in an older install's `www/files*/` (sources.json `"files"`) are only served by a checkout install;
+stay on `compose.yaml` until they're imported.
 
 **Upgrading from a version without accounts:**
 
@@ -339,7 +410,10 @@ docker compose up -d --build && python3 tests/docker_smoke.py --code <setup code
 ```
 
 ```
-compose.yaml        setup (one-shot), app (the API), web (nginx) and receiver services
+compose.yaml        setup (one-shot), app (the API), web (nginx) and receiver services, built from this checkout
+compose.release.yaml The same services on the published image, ghcr.io/sanguity/sanguity (no checkout needed)
+CHANGELOG.md        What each release changes, with upgrade notes; release.yml publishes a release from a v* tag
+deploy/             Install templates for the TrueNAS, Unraid and CasaOS app catalogs, and deploy/check.py
 server/             The API (FastAPI + SQLite): accounts, sessions, profiles, roles, records and documents;
                     its database design, with diagrams, is in docs/database.md
 server/importers/   One module per record format, the registry that picks one, shared helpers (docs/importers.md)
@@ -347,6 +421,7 @@ requirements.in     The API's dependencies; requirements.txt and requirements-de
                     hash-checked lock files (regenerate with uv, as requirements.in says; Dependabot proposes
                     updates weekly, and CI checks the locks match)
 docker/setup.py     First-run secrets and folders, data rebuilds
+docker/allinone.py  The published image's default command: every service in one container (the Unraid template)
 docker/dev-stack.sh A test copy from any branch beside a real install (see above)
 build.py            Builds a profile's data.json from the exports listed in sources.json (standard-library Python 3)
 lab-aliases.json    Canonical lab names, LOINC codes and other spellings that map onto them

@@ -1,0 +1,153 @@
+# Sanguity for the CasaOS / ZimaOS AppStore: the four services of the repo's compose.release.yaml, on the
+# released image. CasaOS fills in $AppID, $PUID, $PGID and $TZ.
+name: sanguity
+
+services:
+  # one-shot: secrets and folders, then the built data (the demo, until records are added)
+  setup:
+    container_name: sanguity-setup
+    image: ghcr.io/sanguity/sanguity:0.1.0
+    user: "0:0"   # creates missing folders, then hands every file it writes to PUID:PGID
+    restart: "no"
+    command: ["python3", "-I", "/app/docker/setup.py"]
+    environment:
+      PUID: $PUID
+      PGID: $PGID
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - /DATA/AppData/$AppID/key:/run/secrets/sanguity   # the encryption key, apart from the data and its backups
+      - /DATA/AppData/$AppID/config:/config:ro
+      - /DATA/AppData/$AppID/data:/data
+      - /DATA/AppData/$AppID/backups:/backups
+      - /DATA/AppData/$AppID/watch:/watch
+      - /DATA/AppData/$AppID/records:/srv/records:ro
+
+  # backend: accounts, sessions, profiles and roles; no published port, only nginx (web) reaches it
+  app:
+    container_name: sanguity-app
+    image: ghcr.io/sanguity/sanguity:0.1.0
+    user: $PUID:$PGID
+    restart: unless-stopped
+    command: ["python3", "-m", "server"]
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    environment:
+      COOKIE_SECURE: auto
+      PUBLIC_ORIGINS: ""
+      FORWARDED_ALLOW_IPS: "*"
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - /DATA/AppData/$AppID/key:/run/secrets/sanguity:ro
+      - /DATA/AppData/$AppID/data:/data
+      - /DATA/AppData/$AppID/backups:/backups
+      - /DATA/AppData/$AppID/records:/srv/records:ro
+      - /DATA/AppData/$AppID/watch/public:/watch/public:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  # nginx from the same image: the pages, and /api/ passed to the app
+  web:
+    container_name: sanguity-web
+    image: ghcr.io/sanguity/sanguity:0.1.0
+    user: $PUID:$PGID
+    restart: unless-stopped
+    command: ["nginx", "-e", "/dev/stderr", "-g", "daemon off;"]
+    depends_on:
+      app:
+        condition: service_started
+    ports:
+      - "8730:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  # Health Connect webhook receiver: the phone app posts watch and scale data here
+  receiver:
+    container_name: sanguity-receiver
+    image: ghcr.io/sanguity/sanguity:0.1.0
+    user: $PUID:$PGID
+    restart: unless-stopped
+    command: ["python3", "-I", "/app/receiver.py"]
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    environment:
+      DATA: /watch
+      SECRET_FILE: /run/secrets/sanguity/watch_secret
+      TZ_DEFAULT: $TZ
+    ports:
+      - "8731:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - /DATA/AppData/$AppID/watch:/watch
+      - /DATA/AppData/$AppID/key:/run/secrets/sanguity:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+x-casaos:
+  id: com.github.sanguity.sanguity
+  architectures:
+    - amd64
+    - arm64
+    - arm
+  main: web
+  index: /
+  port_map: "8730"
+  scheme: http
+  author: Sanguity
+  developer: Sanguity
+  category: Productivity
+  version: "0.1.0"
+  website: https://github.com/sanguity/sanguity
+  repo: https://github.com/sanguity/sanguity
+  support: https://github.com/sanguity/sanguity/issues
+  docs: https://github.com/sanguity/sanguity#readme
+  icon: https://raw.githubusercontent.com/sanguity/sanguity/main/docs/logo/sanguity-avatar.png
+  screenshot_link:
+    - https://raw.githubusercontent.com/sanguity/sanguity/main/docs/screenshots/overview.png
+    - https://raw.githubusercontent.com/sanguity/sanguity/main/docs/screenshots/trends.png
+    - https://raw.githubusercontent.com/sanguity/sanguity/main/docs/screenshots/timeline.png
+  thumbnail: https://raw.githubusercontent.com/sanguity/sanguity/main/docs/screenshots/overview.png
+  title:
+    en_US: Sanguity
+  tagline:
+    en_US: Your medical records, claims and wearable data on one private timeline
+  description:
+    en_US: |
+      Sanguity takes the exports you can download from patient portals and insurers, plus watch and smart-scale
+      data from your phone, and turns them into one place to see lab trends, visits, hospital stays, documents and
+      what your care actually cost. It runs on hardware you control; nothing is sent anywhere else.
+
+      Several people, one install: each person signs in with their own account, and profiles can be shared as
+      owner, editor or viewer. Records are encrypted at rest.
+
+      Not medical advice: Sanguity shows what your records say. It does not diagnose, interpret results or
+      recommend treatment.
+  tips:
+    before_install:
+      en_US: |
+        After installing, open Sanguity and enter the one-time setup code to create the first account. Find it in
+        the logs of the sanguity-app container (or in /DATA/AppData/sanguity/data/setup-code.txt).
+
+        The encryption key is kept in /DATA/AppData/sanguity/key, apart from the data. Keep a copy of it somewhere
+        other than the data and its backups: without it, the records can't be read.
+  release_notes:
+    en_US: See https://github.com/sanguity/sanguity/blob/main/CHANGELOG.md

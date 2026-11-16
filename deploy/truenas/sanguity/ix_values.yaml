@@ -1,0 +1,12 @@
+images:
+  image:
+    repository: ghcr.io/sanguity/sanguity
+    tag: "0.1.0"
+
+consts:
+  setup_container_name: setup
+  app_container_name: app
+  web_container_name: web
+  receiver_container_name: receiver
+  perms_container_name: permissions
+  key_path: /run/secrets/sanguity

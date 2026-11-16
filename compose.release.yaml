@@ -1,0 +1,119 @@
+# Sanguity from a published release: no checkout and nothing to build. All four services run the released image,
+# ghcr.io/sanguity/sanguity, which holds the code, the web pages and nginx.
+#
+#   Start:    docker compose -f compose.release.yaml up -d          (or save this file as compose.yaml)
+#   Upgrade:  set SANGUITY_VERSION in .env to the new release, then: docker compose -f compose.release.yaml pull
+#             and up -d again. The database is upgraded when the app starts (see CHANGELOG.md for each release).
+#
+# Settings go in .env next to this file (see .env.example): SANGUITY_VERSION, ports, folders, time zone, PUID/PGID.
+# compose.yaml is the other way to run Sanguity: built from a git checkout, for following main or a branch.
+name: sanguity
+
+x-image: &image ${SANGUITY_IMAGE:-ghcr.io/sanguity/sanguity}:${SANGUITY_VERSION:-latest}
+
+services:
+  # one-shot: secrets and folders, then the built data in DATA_DIR/build (your exports via sources.json, or the demo)
+  setup:
+    image: *image
+    user: "0:0"            # creates missing folders, then hands every file it writes to PUID:PGID
+    restart: "no"
+    command: ["python3", "-I", "/app/docker/setup.py"]
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - ${AUTH_DIR:-./auth}:/run/secrets/sanguity   # data_key and watch_secret, kept apart from the data
+      - ${CONFIG_DIR:-./config}:/config:ro          # optional: sources.json, settings.json, corrections.json
+      - ${DATA_DIR:-./data}:/data
+      - ${BACKUP_DIR:-./backups}:/backups
+      - ${WATCH_DIR:-./watch-data}:/watch
+      - ${RECORDS_DIR:-./records}:/srv/records:ro
+
+  # backend: accounts, sessions, profiles and roles; the only way to reach records and documents
+  app:
+    image: *image
+    user: "${PUID:-1000}:${PGID:-1000}"
+    restart: unless-stopped
+    command: ["python3", "-m", "server"]
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    environment:
+      SESSION_DAYS: ${SESSION_DAYS:-30}
+      SESSION_HOURS_WITHOUT_2FA: ${SESSION_HOURS_WITHOUT_2FA:-12}
+      SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-0}
+      COOKIE_SECURE: ${COOKIE_SECURE:-auto}
+      PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
+      HASH_PARALLEL: ${HASH_PARALLEL:-2}
+      ACTIVITY_DAYS: ${ACTIVITY_DAYS:-365}
+      REAUTH_MINUTES: ${REAUTH_MINUTES:-5}
+      UPLOAD_MAX_FILE_MB: ${UPLOAD_MAX_FILE_MB:-4096}
+      UPLOAD_MAX_TOTAL_MB: ${UPLOAD_MAX_TOTAL_MB:-16384}
+      UPLOAD_MAX_FILES: ${UPLOAD_MAX_FILES:-20000}
+      UPLOAD_MAX_ZIP_RATIO: ${UPLOAD_MAX_ZIP_RATIO:-200}
+      FORWARDED_ALLOW_IPS: "*"   # the app has no published port; only nginx reaches it, and nginx sets the header
+    # no ports: only nginx (web) reaches it, over the compose network
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - ${AUTH_DIR:-./auth}:/run/secrets/sanguity:ro   # data_key: the encryption key, kept apart from the data and its backups
+      - ${DATA_DIR:-./data}:/data
+      - ${BACKUP_DIR:-./backups}:/backups   # server.manage backup writes here
+      - ${RECORDS_DIR:-./records}:/srv/records:ro
+      - ${WATCH_DIR:-./watch-data}/public:/watch/public:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  # nginx from the same image: the pages, and /api/ passed to the app
+  web:
+    image: *image
+    user: "${PUID:-1000}:${PGID:-1000}"
+    restart: unless-stopped
+    command: ["nginx", "-e", "/dev/stderr", "-g", "daemon off;"]
+    depends_on:
+      app:
+        condition: service_started
+    ports:
+      - "${WEB_PORT:-8730}:8080"   # this machine : container (nginx always listens on 8080 inside)
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  # Health Connect webhook receiver: the phone app posts watch and scale data here
+  receiver:
+    image: *image
+    user: "${PUID:-1000}:${PGID:-1000}"
+    restart: unless-stopped
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    command: ["python3", "-I", "/app/receiver.py"]
+    environment:
+      DATA: /watch
+      SECRET_FILE: /run/secrets/sanguity/watch_secret
+      TZ_DEFAULT: ${TZ:-UTC}
+    ports:
+      - "${RECEIVER_PORT:-8731}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - ${WATCH_DIR:-./watch-data}:/watch
+      - ${AUTH_DIR:-./auth}:/run/secrets/sanguity:ro   # watch_secret, and data_key (the encryption key)
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
