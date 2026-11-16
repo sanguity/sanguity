@@ -5,9 +5,9 @@ Starts the API (with www/ served by it) on a temporary data folder holding the d
 login page, opens every tab and checks its main content rendered, opens the detail drawer for every kind of
 event, drags and scroll-zooms the charts, toggles the event sort, switches profiles, uploads a zip and files on
 the import page (a fictional C-CDA and a FHIR export, previewed, saved in the background and then shown on the timeline;
-the C-CDA again, previewed as all duplicates and cancelled), opens the
-account page,
-and fails on any script error, console error, failed request or NaN written into an SVG attribute.
+the C-CDA again, previewed as all duplicates and cancelled; the FHIR one then undone from the import history, and
+gone from the timeline), opens the account page, and fails on any script error, console error, failed request or
+NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
   python3 tests/browser_check.py
@@ -368,6 +368,34 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             check("switching back restores the profile's tab", js("state.tab") == "timeline", js("state.tab"))
             check("switching back restores the profile's Health period", js("hState.period") == "30d", js("hState.period"))
+
+            # ---- import history (#24): the C-CDA and FHIR imports are listed; undoing the FHIR one takes its records
+            # off the timeline and leaves the C-CDA's. The setup build's import can't be undone, and says why.
+            page.goto(base + "/import.html?profile=1")
+            page.wait_for_selector("#history li[data-import]", timeout=10000)
+            check("the setup build's import is listed, with why it can't be undone and no Undo",
+                  js("(() => { const li = document.querySelector('#history li[data-import]'); return !!li.querySelector('.note') && "
+                     "li.querySelector('.note').textContent.includes('rebuild') && !li.querySelector('button.undo'); })()"))
+            page.select_option("#profile", label="Second person")
+            page.wait_for_selector("#history li[data-format='fhir']", timeout=10000)
+            hist = js("[...document.querySelectorAll('#history li[data-import]')].map(li => li.dataset.format)")
+            check("the import history lists the C-CDA and FHIR imports, newest first", hist == ["fhir", "ccda"], hist)
+            check("…with the uploaded files", "fhir-export/" in page.inner_text("#history li[data-format='fhir'] .files"))
+            page.click("#history li[data-format='fhir'] button.undo")
+            page.click("#history li[data-format='fhir'] .confirm button.danger")
+            page.wait_for_selector("#history li.undone[data-format='fhir']", timeout=10000)
+            check("…undoing the FHIR one marks it undone, the C-CDA one still there",
+                  js("!document.querySelector(\"#history li[data-format='ccda']\").classList.contains('undone')") and
+                  page.inner_text("#historyMsg").startswith("Undone"), page.inner_text("#historyMsg"))
+            js("localStorage.setItem('ht-profile', '2')")
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && "
+                                   "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)
+            listed = page.inner_text("#list")
+            check("…and the FHIR export's records leave the timeline, the C-CDA's staying",
+                  "Riverside General Hospital" not in listed and "Discharge summary" not in listed and "Outpatient visit" in listed, listed[:400])
+            page.select_option("#profile", label="My records")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
 
             # ---- account page: password, devices, profiles with sharing, accounts (admin)
             page.goto(base + "/account.html")

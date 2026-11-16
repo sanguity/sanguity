@@ -11,6 +11,8 @@ Profile events (profile_id set), readable by the profile's owners:
   upload        {"upload", "files", "bytes"}: files uploaded on the import page (uploads.py)
   discard       {"importer", "job", "upload"}: an import cancelled at its preview (jobs.py); an import confirmed
                 there is logged as import, with {"skipped", "kept"} duplicates
+  undo          {"import", "origin", "importer", "label", "counts", "uploads"}: an import undone, with everything it brought
+                (history.py)
 Account events (no profile), readable by admins:
   setup         the first account                                password   changed their own password
   account.create / account.disable / account.enable / account.admin / account.unadmin / account.reset   {"username"}
@@ -28,7 +30,7 @@ import json
 
 from . import config, crypto, db as dbm
 
-PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard")
+PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair")

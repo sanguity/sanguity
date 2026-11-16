@@ -202,7 +202,7 @@ where `id` is the claim's event.
 | `milestones` | `[{"date", "label", "primary": true}]`: named dates for chart markers |
 | `clinicWeights` | `[[time, pounds, where]]`: weights measured at visits, charted with the scale's |
 | `outOfPocket` | `{"payments": [{"d", "payee", "group", "amount", "account", "memo", "est"}], "exported", "range", "excluded", "balance"}` |
-| `watch` | `{"metrics": [{"key", "name", "unit", "group", "pts": [[day, value]]}], "exercise": [{"key", "start", "end", "name", "kind", "minutes"}]}`: daily wearable data in the shape `watch/receiver.py` writes. It isn't kept with the records: an import saves it with `watch_store.save_import`, merged day by day with what the profile already has (see the Apple Health importer) |
+| `watch` | `{"metrics": [{"key", "name", "unit", "group", "pts": [[day, value]]}], "exercise": [{"key", "start", "end", "name", "kind", "minutes"}]}`: daily wearable data in the shape `watch/receiver.py` writes. It isn't kept with the records: an import saves it with `watch_store.save_import`, as that import's own (so undo can take it away), merged day by day with what the profile already has (see the Apple Health importer) |
 
 ## Shared helpers: `server/importers/common.py`
 
@@ -292,3 +292,17 @@ adds to the profile's records and never replaces them.
 | `POST /api/profiles/{pid}/uploads/{upload_id}/import` | Owners and editors. Optional `{"importer": NAME}`. Returns `{"id"}` (202). |
 | `GET /api/profiles/{pid}/jobs/{id}` | `state` (queued, running, done, failed), `stage` (detecting, parsing, saving), `importer`, `label`, `counts`, `range`, `warnings`, `message`. |
 | `GET /api/profiles/{pid}/jobs` | The profile's 20 most recent jobs, newest first. |
+
+## Import history and undo: `server/history.py`
+
+Every import can be undone as a unit, so an importer never needs a clean-up of its own. Undo removes, in one
+transaction, the import's records and documents (they cascade from its `imports` row), the upload's raw files unless
+another import still uses them, and its watch data. Each import's `watch` is kept as its own sealed file
+(`<profile>/watch/imports/<import id>.json`) and the merged file is rebuilt from those, so undoing one takes away
+exactly the days and workouts it brought. Anything an importer writes outside its `parse()` result can't be undone:
+don't.
+
+| Route | |
+|---|---|
+| `GET /api/profiles/{pid}/imports` | Anyone the profile is shared with. `{"can_undo", "imports": [...]}`, newest first: `id`, `at`, `origin`, `label`, `by`, `files`, `counts`, `range`, `state` (active, undone), `can_undo`, `note`. |
+| `POST /api/profiles/{pid}/imports/{id}/undo` | Owners and editors. A setup build import is refused (409): the next rebuild would bring it back. A command-line import is undone, but what it replaced can't come back. |

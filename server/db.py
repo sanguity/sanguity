@@ -255,6 +255,20 @@ SCHEMA = [
     CREATE INDEX jobs_state ON jobs(state);
     CREATE INDEX jobs_upload ON jobs(upload_id);
     """,
+    # version 14: import history with undo (#24). An undone import's row is deleted with everything it brought
+    # (records.drop), so what the history showed for it is kept here, encrypted like any health detail: its
+    # importer, file names and counts.
+    """
+    CREATE TABLE import_undos(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        import_id INTEGER NOT NULL,                -- no reference: the import is gone (and its id may come again)
+        at INTEGER NOT NULL,                       -- when it was undone
+        by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        by_name TEXT NOT NULL,                     -- the username then
+        entry TEXT NOT NULL);                      -- JSON: the history entry as it was just before (history.py)
+    CREATE INDEX import_undos_profile ON import_undos(profile_id);
+    """,
 ]
 
 
