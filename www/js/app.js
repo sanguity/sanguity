@@ -176,6 +176,7 @@ async function syncWarning(pid) {
     }
     EV = DATA.events;
   }
+  journalLoad();   // the journal's entries join EV as events of kind "journal" (journal.js)
   const ts = DATA.events.map(e => e.ts).filter(isFinite); state.min = Math.min(...ts); state.max = Math.max(...ts);
   for (const s of SERIES) if (s.watch && s.pts.length) state.max = Math.max(state.max, s.pts[s.pts.length - 1].ts);
   $("#meta").textContent = `${DATA.source} · built ${fmtD(DATA.built)}` + (WATCH && WATCH.last_payload ? ` · watch synced ${fmtDT(WATCH.last_payload)}` : "");
@@ -186,4 +187,5 @@ async function syncWarning(pid) {
   switchTab(state.tab);
   booted = true;
   drawerResume();   // after an edit's reload (drawer.js)
+  journalResume();  // after a journal entry was saved (journal.js)
 })();

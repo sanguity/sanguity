@@ -40,6 +40,7 @@ function resultBody(d, eid) {
 }
 function openEvent(e) {
   if (!e) return;
+  if (e.k === "journal") return openJournal(e);   // journal.js
   const d = DATA.details[e.id] || {}, c = CAT_OF[e.k] || CATS[2];
   state.selEv = e.id;
   $("#dkey").style.background = c.color; $("#dtitle").textContent = e.title;
@@ -110,6 +111,7 @@ function openEvent(e) {
       typed ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "From the clinic's medication list. The date is when it was recorded there, not necessarily when you started it."}));
   }
   const src = eventSource(e); if (src) body.append(src);   // where it came from (sources.js)
+  body.append(journalAddAction(e));   // "Add a journal note" for this day (journal.js)
   if (e.k !== "exercise") body.append(editPanel(e));
   showDrawer();
   renderTimeline(); document.querySelectorAll(".row").forEach(r => r.classList.remove("sel"));

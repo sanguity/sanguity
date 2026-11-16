@@ -504,6 +504,23 @@ SCHEMA = [
         UNIQUE(profile_id, user_id));
     CREATE INDEX calendar_feeds_user ON calendar_feeds(user_id);
     """,
+    # version 24: the journal (journal.py, #49): dated notes, symptoms and side effects written by the people who use
+    # the profile. Like edits, an entry belongs to the profile, never to an import, so undoing or replacing imports
+    # leaves it. Everything it says (kind, date, what, severity, note, the medication it's linked to) is in body,
+    # encrypted; only who wrote or last changed it, and when, are plain.
+    """
+    CREATE TABLE journal(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,                        -- JSON, encrypted: {kind, t, title, severity, note, med}
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,                -- the username then
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    CREATE INDEX journal_profile ON journal(profile_id);
+    """,
 ]
 
 

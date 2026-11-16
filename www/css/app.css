@@ -4,7 +4,7 @@
   --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
   --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10); --hover:rgba(11,11,11,.04);
   --c-lab:#2a78d6; --c-imaging:#eb6834; --c-procedure:#1baf7a; --c-study:#eda100;
-  --c-letter:#e87ba4; --c-visit:#008300; --c-message:#6250d6;
+  --c-letter:#e87ba4; --c-visit:#008300; --c-message:#6250d6; --c-journal:#0d7f86;
   --stay:rgba(11,11,11,.07); --stay-line:#898781;
   --range:rgba(42,120,214,.10);
   --crit:#d03b3b; --good:#0ca30c;
@@ -20,7 +20,7 @@
     --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
     --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
     --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
-    --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9;
+    --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9; --c-journal:#3bb8bf;
     --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#3987e5;
     --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
     --seq1:#9ec5f4; --seq2:#5598e7; --seq3:#1c5cab;
@@ -33,7 +33,7 @@
   --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
   --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
   --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
-  --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9;
+  --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9; --c-journal:#3bb8bf;
   --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#3987e5;
   --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
   --seq1:#9ec5f4; --seq2:#5598e7; --seq3:#1c5cab;
@@ -584,3 +584,38 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .cal .cal-steps li{margin:4px 0;overflow-wrap:anywhere}
 .cal #calStatus{font-size:13px;margin:6px 0}
 .cal .tbl td{overflow-wrap:anywhere}
+/* ---- the journal (journal.js, #49): marks sized by severity, shaped by kind */
+.jmark{cursor:pointer}
+.jmark:hover,.jmark:focus-visible,.jmark.sel{stroke:var(--ink);stroke-width:2;outline:none}
+.jrow-label{font-size:10px;fill:var(--muted)}
+.jlegend svg{flex:none}
+.jfilters{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 6px}
+.jfilters select,.jfilters input[type=search]{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:5px 9px;min-width:0;max-width:100%}
+.jfilters input[type=search]{flex:1 1 160px}
+.jinrange{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2)}
+.jlist{display:flex;flex-direction:column;margin-bottom:12px}
+.jrow{display:grid;grid-template-columns:86px 18px 1fr auto;gap:8px;align-items:center;text-align:left;border:0;border-bottom:1px solid var(--grid);background:none;padding:8px 6px;cursor:pointer;border-radius:6px;width:100%}
+.jrow:hover,.jrow:focus-visible{background:var(--hover)}
+.jrow .d{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.jrow .t{min-width:0;display:flex;flex-direction:column;overflow-wrap:anywhere}
+.jrow .s{color:var(--ink2);font-size:12px}
+.jnote{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 12px}
+.jsev{display:inline-flex;align-items:center;gap:8px}
+.jsev-bar{display:inline-block;width:90px;height:8px;border-radius:4px;border:1px solid var(--ring);background:var(--raised);overflow:hidden}
+.jsev-bar span{display:block;height:100%;background:var(--c-journal)}
+.jform{display:flex;flex-direction:column;gap:10px;max-width:520px}
+.jfield{display:flex;flex-direction:column;gap:4px;color:var(--ink2);font-size:13px;min-width:0}
+.jfield input:not([type=range]),.jfield select,.jfield textarea{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:6px 9px;max-width:100%;min-width:0;font:inherit}
+.jfield textarea{resize:vertical}
+.jwhen{display:flex;flex-wrap:wrap;gap:10px}
+.jwhen .jfield{flex:1 1 140px}
+.jkinds{align-self:flex-start;max-width:100%}
+.jkinds button[aria-checked="true"]{background:var(--hover);color:var(--ink);font-weight:650}
+.jsev-in{display:flex;align-items:center;gap:10px}
+.jsev-in input{flex:1;min-width:0;accent-color:var(--c-journal)}
+.jsev-out{font-variant-numeric:tabular-nums;color:var(--ink);min-width:9.5em}
+.jform .btn.primary,#dbody .btns .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.jadd{margin-top:14px}
+.jform .edit-msg:empty,#dbody .edit-msg:empty{display:none}
+@media (max-width:640px){.jrow{grid-template-columns:72px 18px 1fr auto}}
+@media (forced-colors:active){.jmark,.jsev-bar span{forced-color-adjust:none}}
