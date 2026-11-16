@@ -4,7 +4,9 @@
      POST api/profiles/{pid}/imports/{id}/undo    removes everything that import brought
    It follows the page's Profile choice; someone who only views a profile gets a choice of their own here (the
    upload form only lists profiles they can import into). After an import finishes through window.sanguityImport
-   (import-jobs.js), the list is read again. Plain script in its own scope; $, el and api come from util.js. */
+   (import-jobs.js), the list is read again. Each import is #import-<id>: a record's Source link on the main page
+   (sources.js, #100) opens import.html?profile=<pid>#import-<id>, and that import is scrolled to and highlighted.
+   Plain script in its own scope; $, el and api come from util.js. */
 "use strict";
 (function () {
   const KIND = {visit: ["visit", "visits"], lab: ["lab draw", "lab draws"], imaging: ["imaging study", "imaging studies"],
@@ -48,7 +50,7 @@
 
   function item(e, canUndo) {
     const undone = e.state === "undone";
-    const li = el("li", {class: undone ? "undone" : null, "data-import": e.id, "data-format": e.format},
+    const li = el("li", {class: undone ? "undone" : null, id: "import-" + e.id, tabindex: "-1", "data-import": e.id, "data-format": e.format},
       el("div", {class: "hd"}, el("b", {text: e.label}), el("span", {class: "muted", text: `${ORIGIN[e.origin] || e.origin} ${when(e.at)} · ${e.by}`}),
         undone ? el("span", {class: "tag", text: "undone"}) : null),
       e.files && e.files.length ? el("p", {class: "files muted", text: "Files: " + e.files.join(", ") +
@@ -102,7 +104,23 @@
     const list = r.imports || [];
     $("#historyList").replaceChildren(...(list.length ? list.map(e => item(e, r.can_undo))
       : [el("li", {class: "muted", text: "Nothing has been imported into this profile yet."})]));
+    highlight(true);
   }
+
+  // the import a record's Source link names (#import-<id>): scrolled to, highlighted and focused, once per link followed
+  let shown = null;
+  function highlight(fromLoad) {
+    const m = /^#import-(\d+)$/.exec(location.hash);
+    document.querySelectorAll("#historyList > li.hl").forEach(li => li.classList.remove("hl"));
+    const li = m && document.getElementById("import-" + m[1]);
+    if (!li) return;
+    li.classList.add("hl");
+    if (fromLoad && shown === location.hash) return;   // a reload of the list after an undo: leave the focus where it is
+    shown = location.hash;
+    li.scrollIntoView({block: "center"});
+    li.focus({preventScroll: true});
+  }
+  addEventListener("hashchange", () => highlight(false));
 
   function choose(pid) {
     pid = +pid || null;

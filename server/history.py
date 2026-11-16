@@ -42,7 +42,13 @@ class Refused(Exception):
         self.status = status
 
 
-def label(fmt):
+# imports named for how they got there rather than the format they're in; the page's Source lines use the same (#100)
+BY_ORIGIN = {"build": "Setup build", "manual": "Typed in"}
+
+
+def label(fmt, origin=None):
+    if origin in BY_ORIGIN:
+        return BY_ORIGIN[origin]
     if fmt == records.FORMAT:
         return "Sanguity data file"
     mod = registry.get(fmt)
@@ -73,7 +79,7 @@ def _entry(db, pid, imp):
     else:
         by = BY.get(origin, activity.COMMAND_LINE)
     names = _names(db, pid, job["upload_id"]) if job else []
-    return {"id": iid, "at": imp["at"], "origin": origin, "format": imp["format"], "label": label(imp["format"]),
+    return {"id": iid, "at": imp["at"], "origin": origin, "format": imp["format"], "label": label(imp["format"], origin),
             "by": by, "job": job["id"] if job else None, "upload": job["upload_id"] if job else None,
             "files": names[:FILES_SHOWN], "file_count": len(names),
             "counts": summary.get("counts") or _counts(db, iid), "range": summary.get("range"),
