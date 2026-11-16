@@ -13,7 +13,9 @@ Profile events (profile_id set), readable by the profile's owners:
                 there is logged as import, with {"skipped", "kept"} duplicates
   undo          {"import", "origin", "importer", "label", "counts", "uploads"}: an import undone, with everything it brought
                 (history.py)
-  edit          {"action", "title", "to"?, "undone"?}: a correction made to an event, or undone (edits.py)
+  edit          {"action", "title", "to"?, "undone"?}: a correction made to an event, or undone (edits.py); action
+                "same" / "not_same": two lab results from different sources linked as one, or marked apart
+                (crossmatch.py, title: the test)
   settings      {"setting", "label"} a profile setting changed, {"setting", "label", "reset": true} put back to its
                 default, or {"section", "label", "settings", "reset": true} a section reset (settings.py; never values)
   outside       {"host", "purpose"}: Sanguity contacted another server for this profile (outside.py, through net.py):

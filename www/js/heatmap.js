@@ -86,7 +86,7 @@ function renderHeatmap() {
     const st = statusOf(p);
     showTip([el("div", {class: "v", text: `${p[5] || fmtNum(p[1])} ${s.unit}`}), el("div", {class: "s", text: s.name}), el("div", {class: "s", text: `${fmtDT(p.ts)} · ref ${p[2] ?? ""}–${p[3] ?? ""}`}),
       st ? el("div", {class: "s", style: {color: st.cls === "ok" ? "var(--good-text)" : "var(--crit)"}, text: st.text}) : null,
-      sourceOf(s.imp) ? el("div", {class: "s", text: "From " + sourceText(s.imp)}) : null], ev);
+      pointSources(s, p) ? el("div", {class: "s", text: "From " + pointSources(s, p)}) : null], ev);   // with any linked as the same (#96)
   };
   svg.onpointerleave = hideTip;
   svg.onclick = ev => {

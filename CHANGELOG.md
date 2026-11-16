@@ -47,6 +47,9 @@ Everything on `main` so far; it becomes the first tagged release.
   (#124).
 - Corrections in the app, kept through later re-imports (#119).
 - The source of every record, shown in its details (#131).
+- The same lab result from two sources (a file and a connected source's sync, say) is flagged in the import preview
+  and in the result's details, never merged by itself; once the person confirms it, it shows once, with both
+  sources, until they undo the link (#96).
 - Unknown lab names are matched during import, with LOINC and similar-name suggestions; the choice is remembered
   (#122).
 - Outside connections on the Settings page: every host the install may contact (connected sources with their
