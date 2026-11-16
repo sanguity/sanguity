@@ -3,7 +3,8 @@
    once an upload is finished. This starts the import, polls it (about once a second, slower the longer it runs),
    shows the stage, then its preview (#22): what it would add by kind, the dates it covers, and the duplicates of
    what the profile has, skipped unless ticked to keep, lab names Sanguity doesn't know with a series suggested for
-   each (#23: confirm it, pick another or keep it separate; remembered for later imports), with Save and Cancel. Saving polls again and shows what came
+   each (#23: confirm it, pick another or keep it separate; remembered for later imports), results possibly the same as
+   one another source brought (#96: ticked to show once), with Save and Cancel. Saving polls again and shows what came
    in, with a link to the timeline; cancelling throws the import and its upload away.
    Self-contained plain script: no inline code (the pages' CSP allows scripts from js/ only), nothing it needs
    from other files. */
@@ -117,6 +118,29 @@
     return {part, picked};
   }
 
+  // results that look like ones already in the profile from another source (#96): flagged, never merged unless ticked
+  const when = t => { const d = new Date(String(t).length === 10 ? t + "T12:00:00" : t); if (isNaN(d)) return String(t); const o = {year: "numeric", month: "short", day: "numeric"};
+    return /T(00:00|12:00):00$/.test(t) || String(t).length === 10 ? d.toLocaleDateString(undefined, o) : d.toLocaleString(undefined, {...o, hour: "numeric", minute: "2-digit"}); };
+  const valueText = x => `${x.value} ${x.unit || ""}`.trim();
+  function sameChoices(j) {
+    const listed = j.possible || [];
+    if (!listed.length) return {part: null, picked: () => []};
+    const boxes = [];
+    const part = node("details", {class: "imp-same", open: ""},
+      node("summary", {text: `${plural(listed.length, ["result", "results"])} possibly in the profile already, from another source`}),
+      node("p", {class: "hint", text: "Each of these has the same test, time and value (units converted) as a result another source brought. " +
+        "Tick the ones that are the same result to show them once, with both sources listed. Nothing is merged unless you tick it; " +
+        "you can undo a link later from the result's panel."}),
+      node("ul", {}, listed.map(x => {
+        const b = node("input", {type: "checkbox", value: x.ref, "aria-label": `Same result: ${x.name} ${valueText(x)}`});
+        boxes.push(b);
+        return node("li", {"data-ref": x.ref}, node("label", {}, b, " Same result"),
+          node("span", {}, node("b", {text: x.name}), ` ${valueText(x)} · ${when(x.t)} · from ${j.label || j.importer}`),
+          node("span", {class: "why", text: `Possibly the same result as ${x.other.name} ${valueText(x.other)} · ${when(x.other.t)} · from ${x.other.label || "another import"}`}));
+      })));
+    return {part, picked: () => boxes.filter(b => b.checked).map(b => b.value)};
+  }
+
   function showPreview(card, j, onSave, onCancel) {
     const d = j.duplicates || {items: []}, items = countItems(j.counts || {});
     const nDup = (d.events || 0) + (d.results || 0);
@@ -137,20 +161,20 @@
       })),
       d.more ? node("p", {class: "hint", text: `…and ${d.more.toLocaleString()} more.`}) : null)
       : nDup ? node("p", {text: `${plural(nDup, ["duplicate", "duplicates"])} skipped.`}) : null;
-    const labs = labChoices(j);
+    const labs = labChoices(j), same = sameChoices(j);
     const msg = node("span", {class: "msg", role: "status"});
     const save = node("button", {class: "btn primary", type: "button", text: "Save"});
     const cancel = node("button", {class: "btn", type: "button", text: "Cancel"});
     const busy = on => { save.disabled = cancel.disabled = on; };
     save.addEventListener("click", async () => {
       busy(true); msg.textContent = "Saving…";
-      if (!(await onSave(boxes.filter(b => b.checked).map(b => b.value), labs.picked()))) busy(false);
+      if (!(await onSave(boxes.filter(b => b.checked).map(b => b.value), labs.picked(), same.picked()))) busy(false);
     });
     cancel.addEventListener("click", async () => {
       busy(true); msg.textContent = "Cancelling…";
       if (!(await onCancel())) busy(false);
     });
-    fill(card, head, j.new && items.length ? node("ul", {}, items) : null, labs.part, dupList, notes(j),
+    fill(card, head, j.new && items.length ? node("ul", {}, items) : null, labs.part, same.part, dupList, notes(j),
          node("div", {class: "imp-actions"}, save, cancel, msg));
     return t => { msg.textContent = t; };
   }
@@ -166,6 +190,7 @@
       items.length ? node("ul", {}, items) : node("p", {text: skipped ? "Nothing new: it was all in the profile already." : "The files held no records to show."}),
       skipped ? node("p", {class: "hint", text: `${plural(skipped, ["duplicate", "duplicates"])} skipped.`}) : null,
       ln.matched ? node("p", {class: "hint", text: `${plural(ln.matched, ["lab name", "lab names"])} put in an existing series.`}) : null,
+      j.linked ? node("p", {class: "hint", text: `${plural(j.linked, ["result", "results"])} shown once, as the same result from another source.`}) : null,
       notes(j),
       node("p", {}, node("a", {href: "index.html", onclick: () => openTimeline(pid), text: "See them on the timeline"})));
   }
@@ -241,8 +266,8 @@
         return true;
       };
       say = showPreview(card, j,
-        async (keep, labs) => {
-          if (!(await act("confirm", {keep, labs}))) return false;
+        async (keep, labs, same) => {
+          if (!(await act("confirm", {keep, labs, same}))) return false;
           const status = node("p", {text: STAGES.saving});
           card.replaceChildren(status);
           done(poll(card, pid, j.id, status));

@@ -107,7 +107,8 @@ async function syncWarning(pid) {
   STAYS = DATA.events.filter(e => e.k === "stay");
   // let search hit lab-day events through their child results' names
   for (const e of DATA.events) if (e.k === "lab") { const d = DATA.details[e.id]; if (d) e._q += " " + d.ids.map(i => (byId.get(i)?.title || "")).join(" ").toLowerCase(); }
-  SERIES = DATA.labs; for (const s of SERIES) for (const p of s.pts) p.ts = Date.parse(p[0]);
+  for (const s of DATA.labs) for (const p of s.pts) p.ts = Date.parse(p[0]);
+  SERIES = joinSeries(DATA.labs);   // one chart per test, whichever imports brought it (same.js)
   // optional: watch data from the Health Connect receiver
   try {
     const w = await api(`profiles/${PROFILE.id}/watch`);

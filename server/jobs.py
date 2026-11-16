@@ -28,7 +28,7 @@ except one that was saving a confirmed preview: it goes back to "preview".
 """
 import collections, contextlib, json, logging, os, posixpath, queue, re, threading
 
-from . import activity, config, crypto, db as dbm, importers as registry, labmap, preview, profiles as prof, records, uploads, watch_store
+from . import activity, config, crossmatch, crypto, db as dbm, importers as registry, labmap, preview, profiles as prof, records, uploads, watch_store
 
 log = logging.getLogger("sanguity.jobs")
 
@@ -181,7 +181,9 @@ def _import(db, j):
     watch = data.pop("watch", None)   # daily wearable data: saved with watch_store, not as records
     labs = labmap.plan(db, pid, mod.NAME, data)   # lab names to match; remembered ones go before duplicates are found
     named = labmap.apply(data, labs["auto"])
-    report = preview.report(named, preview.find(db, pid, mod.NAME, named), summarise)
+    dups = preview.find(db, pid, mod.NAME, named)
+    report = preview.report(named, dups, summarise)
+    report["possible"] = crossmatch.public(crossmatch.for_preview(db, pid, named, dups))   # from other sources (#96)
     report["labs"], report["lab_targets"] = labs["listed"], labs["targets"]
     if watch:
         report["counts"].update(_watch_counts(watch))
@@ -228,6 +230,8 @@ def _save(db, j):
     if problems:
         raise Failed(f"Without the duplicates, the {label} records couldn't be loaded: " + "; ".join(problems[:5]) + ".")
     skipped = preview.report(data, dups, summarise)["duplicates"]
+    chosen = set(json.loads(j["same"]) if j["same"] else [])   # possible matches confirmed as the same (#96)
+    same = [x for x in crossmatch.for_preview(db, pid, data, dups) if x["ref"] in chosen] if chosen else []
 
     sealed = {rel: p for uid, rel, p in uploads.stored_files(db, pid) if uid == upload_id and rel in names}
 
@@ -239,6 +243,8 @@ def _save(db, j):
     summary = summarise(new)
     summary["counts"]["documents"] = 0
     summary["skipped"] = {k: skipped[k] for k in ("events", "results", "other")}
+    if same:
+        summary["linked"] = len(same)
     who_id = j["confirmed_by"] or j["created_by"]
     who = db.execute("SELECT id, username FROM users WHERE id=?", (who_id,)).fetchone() if who_id else None
     with dbm.transaction(db):
@@ -252,11 +258,15 @@ def _save(db, j):
         if watch:   # last, so a failure before it leaves no file behind
             saved = watch_store.save_import(db, pid, watch, import_id=iid)
             summary["counts"].update(watch_days=saved["days"], workouts=saved["workouts"])
+        for x in same if iid else ():
+            crossmatch.decide(db, pid, who["id"] if who else None, x["other_key"], x["key"], True,
+                              [x["other"], {k: x[k] for k in ("name", "t", "value", "unit")}])
         remembered = labmap.remember(db, name, held.get("labs"), sent, raw, who)
         matched = sum(1 for t in labmap.choices(held.get("labs"), sent).values() if t)
         summary["lab_names"] = {"matched": matched, "remembered": remembered}
         activity.log(db, "import", who, pid, {"importer": name, "counts": summary["counts"], "job": jid,
                                               "skipped": summary["skipped"], "kept": len(keep),
+                                              **({"same": len(same)} if same else {}),
                                               **({"labs": summary["lab_names"]} if matched or remembered else {})},
                      ip=_ips.get(jid), actor=None if who else "removed account")
         db.execute("UPDATE jobs SET state='done', stage=NULL, import_id=?, summary=?, finished=? WHERE id=?",
@@ -284,15 +294,18 @@ class Refused(Exception):
         self.status = status
 
 
-def confirm(db, pid, jid, uid, keep=None, ip=None, labs=None):
+def confirm(db, pid, jid, uid, keep=None, ip=None, labs=None, same=None):
     """Save a previewed import, in the background like the parse: duplicates are skipped, except those whose refs
     (preview.keep) are in keep; lab series the preview listed go under the names in labs ({ref: series name or
-    None}, labmap.py). Refused unless the job is waiting in "preview"."""
+    None}, labmap.py); the possible matches from other sources whose refs are in same are linked as the same result
+    once it's saved (crossmatch.py). Refused unless the job is waiting in "preview"."""
     keep = [str(r)[:40] for r in keep or []][:20000]
     labs = {str(k)[:20]: labmap.clean_target(v) for k, v in list((labs or {}).items())[:5000]}
-    n = db.execute("""UPDATE jobs SET state='queued', stage='saving', confirmed_by=?, keep=?, labs=? WHERE id=?
+    same = [str(r)[:40] for r in same or [] if str(r).startswith("m:")][:crossmatch.LISTED]
+    n = db.execute("""UPDATE jobs SET state='queued', stage='saving', confirmed_by=?, keep=?, labs=?, same=? WHERE id=?
                       AND profile_id=? AND state='preview'""",
-                   (uid, json.dumps(keep) if keep else None, crypto.enc(json.dumps(labs)) if labs else None, jid, pid)).rowcount
+                   (uid, json.dumps(keep) if keep else None, crypto.enc(json.dumps(labs)) if labs else None,
+                    json.dumps(same) if same else None, jid, pid)).rowcount
     if not n:
         _refuse_not_preview(db, pid, jid)
     _ips[jid] = ip
@@ -373,6 +386,7 @@ def describe(r):
             "counts": summary.get("counts"), "range": summary.get("range"), "total": summary.get("total"),
             "duplicates": summary.get("duplicates"), "new": summary.get("new"), "skipped": summary.get("skipped"),
             "labs": summary.get("labs"), "lab_targets": summary.get("lab_targets"), "lab_names": summary.get("lab_names"),
+            "possible": summary.get("possible") or [], "linked": summary.get("linked"),
             "warnings": json.loads(crypto.dec(r["warnings"])) if r["warnings"] else [],
             "message": crypto.dec(r["message"]) if r["message"] else None, "import_id": r["import_id"],
             "created": r["created"], "started": r["started"], "finished": r["finished"]}

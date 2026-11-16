@@ -27,11 +27,12 @@ function resultTable(rows) {
     el("tbody", {}, rows.map(([n, v, u, rr, f]) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", title: "Show trend", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
       el("td", {text: n}), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : "", text: f ? (f === "H" ? "▲ High" : "▼ Low") : ""}))))));
 }
-function resultBody(d) {
+function resultBody(d, eid) {
   const out = [];
   const kv = [["Order", d.order], ["Collected", d.collected], ["Resulted", d.resulted], ["Ordered by", d.provider], ["Status", d.status], ["Specimen", d.specimen], ["Lab", d.lab], ["Diagnosis", (d.dx || []).join("; ")]].filter(x => x[1]);
   out.push(el("dl", {class: "kv"}, kv.flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
   const t = resultTable(d.rows); if (t) out.push(el("div", {class: "sect", text: "Results"}), t);
+  const same = sameNotes(eid, d); if (same) out.push(same);   // the same result from another source (same.js)
   for (const [k, h, isHtml] of d.report || []) out.push(el("div", {class: "sect", text: k === "combinedRTFNarrativeImpression" ? "Report" : k}),
     isHtml ? docFrame(h) : el("pre", {class: "report", text: h.replace(/\r\n/g, "\n").trim()}));
   if (d.comments && d.comments.length) out.push(el("div", {class: "sect", text: "Provider comments"}), ...d.comments.map(c => el("p", {text: c})));
@@ -44,13 +45,13 @@ function openEvent(e) {
   $("#dkey").style.background = c.color; $("#dtitle").textContent = e.title;
   $("#dsub").textContent = `${KIND_LABEL[e.k]} · ${e.end && e.te - e.ts > DAY ? fmtD(e.ts) + " – " + fmtD(e.te) : fmtDT(e.ts)}${e.sub ? " · " + e.sub : ""}`;
   const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
-  if (d.type === "result") body.append(...resultBody(d));
+  if (d.type === "result") body.append(...resultBody(d, e.id));
   else if (d.type === "labday") {
     body.append(el("div", {}, el("button", {class: "btn", text: "Show this day in Lab trends", onclick: () => { setRange(e.ts - 45*DAY, e.ts + 45*DAY); switchTab("labs"); }})));
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
       const abn = (r.rows || []).filter(x => x[4]).length;
-      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {style: {color: "var(--muted)", fontSize: "12px", fontWeight: 400}, text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", text: abn}) : null), el("div", {}, ...resultBody(r), eventSource(ev2)));
+      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {style: {color: "var(--muted)", fontSize: "12px", fontWeight: 400}, text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", text: abn}) : null), el("div", {}, ...resultBody(r, id), eventSource(ev2)));
       body.append(det);
     }
   } else if (d.type === "conversation") {
@@ -184,16 +185,17 @@ function editPanel(e) {
         ...near.map(x => el("option", {value: x.id, text: `${fmtDT(x.ts)} · ${KIND_LABEL[x.k] || x.k} · ${x.title}`})));
       form("Fold this event into the open one (it keeps its own title and date)", sel, () => post({action: "merge", other: +sel.value}));
     }}),
-    (DATA.edits || []).length ? el("button", {class: "btn", type: "button", text: `All edits (${DATA.edits.length})`, onclick: openEdits}) : null);
+    (DATA.edits || []).length + (DATA.same || []).length ? el("button", {class: "btn", type: "button", text: `All edits (${(DATA.edits || []).length + (DATA.same || []).length})`, onclick: openEdits}) : null);
   box.append(el("div", {class: "sect", text: "Correct this event"}), acts, forms, msg);
   return box;
 }
 /* every edit to these records, including those whose event is gone (its import undone, or changed at the source) */
 function openEdits() {
-  const list = DATA.edits || [], msg = el("p", {class: "hint edit-msg", role: "status"});
+  const list = DATA.edits || [], msg = el("p", {class: "hint edit-msg", role: "status"}), links = sameLines(msg);
   state.selEv = null;
   $("#dkey").style.background = "var(--muted)"; $("#dtitle").textContent = "Edits to these records";
-  $("#dsub").textContent = list.length ? `${list.length} edit${list.length === 1 ? "" : "s"}, applied every time the records load` : "No edits";
+  const n = list.length + links.length;
+  $("#dsub").textContent = n ? `${n} edit${n === 1 ? "" : "s"}, applied every time the records load` : "No edits";
   const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
   body.append(el("div", {class: "edits"}, ...list.map(x => {
     const ev = x.found && x.action !== "hide" ? byId.get(x.ids[0]) : null;
@@ -201,7 +203,7 @@ function openEdits() {
       el("span", {}, describeEdit(x), x.by ? ` · by ${x.by}` : "", x.found ? null : el("em", {class: "missing", text: " · not found in the current records"})),
       ev ? el("button", {class: "btn small", type: "button", text: "Open", onclick: () => openEvent(ev)}) : null,
       canEdit() ? undoButton(x, msg, {edits: true}) : null);
-  }), msg));
+  }), ...links, msg));
   showDrawer();
   renderTimeline();
 }
@@ -211,6 +213,7 @@ function drawerResume() {
   try { r = JSON.parse(sessionStorage.getItem("sg-after-edit") || "null"); sessionStorage.removeItem("sg-after-edit"); } catch (e) {}
   if (!r) return;
   if (r.event && byId.has(r.event)) openEvent(byId.get(r.event));
+  else if (r.alt && byId.has(r.alt)) openEvent(byId.get(r.alt));   // a result linked away: the other side's day
   else openEdits();
 }
 

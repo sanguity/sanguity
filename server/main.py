@@ -1262,6 +1262,7 @@ app.include_router(__import__("server.routes_uploads", fromlist=["router"]).rout
 app.include_router(__import__("server.routes_jobs", fromlist=["router"]).router)      # importing them (#20)
 app.include_router(__import__("server.routes_imports", fromlist=["router"]).router)   # import history and undo (#24)
 app.include_router(__import__("server.routes_edits", fromlist=["router"]).router)     # corrections in the app (#33)
+app.include_router(__import__("server.routes_same", fromlist=["router"]).router)      # same result from two sources (#96)
 app.include_router(__import__("server.routes_manual", fromlist=["router"]).router)    # results typed in (#27)
 app.include_router(__import__("server.routes_labmaps", fromlist=["router"]).router)   # lab names matched on import (#23)
 app.include_router(__import__("server.routes_settings", fromlist=["router"]).router)  # settings (#35)

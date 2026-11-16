@@ -18,7 +18,9 @@ the connection pulls, and is asked to reconnect when access ends, with a warning
 Blue Button export and connects a health plan's patient-access API (the fake again) and finds both sets of claims on
 Costs, sees the source's and the Health Link's hosts under Settings → Outside connections, changes settings on the
 Settings page and resets them, opens the account
-page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap
+page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap, links the
+same result from a file and the sync at the first pull's preview and sees it once on Trends and in the drawer (undone
+and linked again there)
 and follows its link to the import history, checks the "not medical advice" notice on every tab and beside
 out-of-range highlighting, and fails
 on any script error, console error, failed request, request to another host or NaN written into an SVG attribute.
@@ -938,6 +940,30 @@ def main():
             page.select_option("#profile", label="Second person")
             page.wait_for_selector("#sourceButtons button", timeout=10000)
             conn_pid = js("+document.getElementById('profile').value")
+            # the same results (#96): a spreadsheet of the fake patient's 4 March 2025 labs, with dates only and
+            # Hemoglobin in g/L, saved in the profile first; the first pull below brings them again
+            from server import uploads as up_mod
+            db = dbm.connect()
+            try:
+                csv_up = up_mod.create(db, conn_pid, None)
+                up_mod.add_file(db, conn_pid, csv_up, "labs.csv", io.BytesIO(
+                    b"Date,Test,Result,Units,Reference Range,Flag,Panel\n03/04/2025,Hemoglobin,121,g/L,135-175,L,CBC\n"
+                    b"06/02/2025,Hemoglobin,128,g/L,135-175,L,CBC\n"))
+                up_mod.finish(db, conn_pid, csv_up)
+            finally:
+                db.close()
+            write = "{method: 'POST', credentials: 'same-origin', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: '{}'}"
+            csv_job = js(f"fetch('api/profiles/{conn_pid}/uploads/{csv_up}/import', {write}).then(r => r.json()).then(j => j.id)")
+            job_state = lambda: js(f"fetch('api/profiles/{conn_pid}/jobs/{csv_job}').then(r => r.json()).then(j => j.state)")
+            for want in ("preview", "done"):
+                for _ in range(150):
+                    if job_state() == want:
+                        break
+                    page.wait_for_timeout(200)
+                if want == "preview":
+                    js(f"fetch('api/profiles/{conn_pid}/jobs/{csv_job}/confirm', {write})")
+            check("the same results from a file are in the profile before the source connects", job_state() == "done", job_state())
+            csv_label = js(f"fetch('api/profiles/{conn_pid}/jobs/{csv_job}').then(r => r.json()).then(j => j.label)")
             # the install's attachment rules (#101, settings registry): only text attachments are fetched by themselves
             check("the attachment defaults are install settings", js(f"api('profiles/{conn_pid}/settings/sync.attachTypes', "
                   "{method: 'PUT', body: JSON.stringify({value: ['text']})}).then(r => r.status)") == 200)
@@ -951,8 +977,17 @@ def main():
             page.wait_for_selector("#import-status button.primary", timeout=30000)   # the first pull's preview
             check("signing in connects the source, and its first pull is previewed like an upload",
                   "Ready to import" in page.inner_text("#import-status"), page.inner_text("#import-status")[:300])
+            same_li = page.locator("#import-status .imp-same li", has_text="Hemoglobin")
+            flag = same_li.inner_text() if same_li.count() == 1 else page.inner_text("#import-status")[:600]
+            check("…flagging a result the file brought as possibly the same, with both sources named (#96)",
+                  "Hemoglobin 12.1 g/dL" in flag and "Possibly the same result as Hemoglobin 121 g/L" in flag
+                  and f"from {csv_label}" in flag, flag)
+            check("…and nothing ticked until the person says so", js("[...document.querySelectorAll('#import-status .imp-same input')].every(b => !b.checked)"))
+            same_li.get_by_label("Same result: Hemoglobin 12.1 g/dL").check()
             page.click("#import-status button.primary")
             page.wait_for_function("document.getElementById('import-status').textContent.includes('Imported.')", timeout=30000)
+            check("…saved, with the result shown once", "shown once, as the same result from another source" in page.inner_text("#import-status"),
+                  page.inner_text("#import-status")[:400])
             page.wait_for_function("document.getElementById('connList').textContent.includes('New records come in on a schedule')", timeout=20000)
             check("…saved, and the connection then syncs on a schedule", True)
             page.reload()
@@ -967,6 +1002,47 @@ def main():
             page.locator(".conn-skipped li").first.get_by_role("button", name="Fetch anyway").click()
             page.wait_for_function("document.getElementById('connList').textContent.includes('Fetched')", timeout=20000)
             check("…and Fetch anyway brings one in", "Attachments left out (1)" in page.inner_text("#connList"), page.inner_text("#connList")[:400])
+            # on Trends: one Hemoglobin chart, one point on 4 March 2025 listing both sources; the drawer the same
+            profile_before_96 = js("localStorage.getItem('ht-profile')")
+            js(f"localStorage.setItem('ht-profile', '{conn_pid}')")
+            page.goto(base + "/")
+            page.wait_for_function(f"typeof SERIES !== 'undefined' && PROFILE && PROFILE.id === {conn_pid} && SERIES.length > 0", timeout=20000)
+            hgb_day = ("(() => { const s = SERIES.filter(s => s.name === 'Hemoglobin' && !s.watch); "
+                       "return s.map(x => x.pts.filter(p => p[0].startsWith('2025-03-04')).map(p => pointSources(x, p))).flat(); })()")
+            on_day = js(hgb_day)
+            check("Trends: the same result from the file and the sync is one point, with both sources (#96)",
+                  len(on_day) == 1 and on_day[0].count(";") == 1 and "same result" in on_day[0], on_day)
+            js("setRange(Date.parse('2025-01-01'), Date.parse('2025-12-31')); state.sel = new Set(['Hemoglobin']); state.tables.add('Hemoglobin'); switchTab('labs')")
+            page.wait_for_selector("#charts table.data tbody tr", timeout=10000)
+            rows = js("[...document.querySelectorAll('#charts .chart')].filter(c => c.querySelector('.name').textContent === 'Hemoglobin')"
+                      ".map(c => c.querySelectorAll('tbody tr').length)")
+            check("…one Hemoglobin chart with 2025's results (the C-CDA's g/dL one has none then), one row per result",
+                  [n for n in rows if n] == [2], rows)
+            check("…the table says the 4 March result came from one more source, and lists both",
+                  "same result from 1 more source" in page.inner_text("#charts") and "Sources" in page.inner_text("#charts .source"),
+                  page.inner_text("#charts")[:400])
+            page.set_viewport_size({"width": 375, "height": 800})
+            day_ev = js("DATA.events.find(e => e.k === 'lab' && e.t.startsWith('2025-03-04') && "
+                        "(DATA.details[e.id]?.ids || []).some(i => (DATA.details[i]?.same || []).length)).id")
+            js(f"openEvent(byId.get({day_ev}))")
+            page.wait_for_selector("#dbody .same-line", timeout=5000)
+            check("the drawer: the result once, saying the same result also came from the sync, with Undo link",
+                  "the same result also came from" in page.inner_text("#dbody .same")
+                  and page.locator("#dbody .same button", has_text="Undo link").count() == 1
+                  and js("[...document.querySelectorAll('#dbody td')].filter(td => td.textContent === 'Hemoglobin').length") == 1,
+                  page.inner_text("#dbody")[:500])
+            check("…and fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.click("#dbody .same button:has-text('Undo link')")
+            page.wait_for_selector("#dbody .same-line.possible", timeout=20000)   # reloaded, the panel reopened
+            check("undoing the link shows both again, flagged as possibly the same", len(js(hgb_day)) == 2
+                  and page.locator("#dbody .same-line.possible button", has_text="Same result").count() >= 1, js(hgb_day))
+            page.click("#dbody .same-line.possible:has-text('Hemoglobin') button:has-text('Same result')")
+            page.wait_for_selector("#dbody .same-line:not(.possible)", timeout=20000)
+            check("…and linking it again from the drawer shows it once", len(js(hgb_day)) == 1, js(hgb_day))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + "/connect.html")
+            page.select_option("#profile", label="Second person")
+            page.wait_for_function("document.getElementById('connList').textContent.includes('New records come in on a schedule')", timeout=20000)
             imports = lambda: js(f"fetch('api/profiles/{conn_pid}/connections').then(r => r.json()).then(j => j.connections[0].imports)")
             fake.add({"resourceType": "Observation", "status": "final", "effectiveDateTime": "2026-11-12T08:00:00Z",
                       "category": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/observation-category", "code": "laboratory"}]}],
@@ -1034,6 +1110,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             allowed.discard(origin(fake.fhir_base))
             fake.stop()
+            js("(p => p == null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', p))", profile_before_96)   # as before #96's visit
 
             # ---- insurers (#92): a Blue Button bulk export (NDJSON) uploaded on the import page, then a health plan's
             # patient-access API (the fake, standing in for Blue Button's sandbox: a confidential client) set up as an

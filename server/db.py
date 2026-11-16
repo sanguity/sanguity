@@ -467,6 +467,25 @@ SCHEMA = [
     ALTER TABLE imports ADD COLUMN note TEXT;     -- JSON, encrypted: what a sync import that isn't a pull did (a
                                                   -- kind's records removed, an attachment fetched), for the history
     """,
+    # version 22: the same lab result from two sources (#96, crossmatch.py). same_results is the person's decision on
+    # a pair of results the rule flagged: "same result" (shown once) or "not the same" (not flagged again). Like
+    # edits it belongs to the profile, not to an import, and finds its results by their point keys (encrypted), so
+    # it survives re-imports and undo; pair is a keyed hash of both keys, for finding a pair without decrypting.
+    # jobs.same: the preview's possible matches the person confirmed, linked when the import is saved.
+    """
+    CREATE TABLE same_results(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        pair TEXT NOT NULL,                        -- HMAC of both point keys (crossmatch.pair_hash)
+        a_key TEXT NOT NULL,                       -- the two point keys, encrypted
+        b_key TEXT NOT NULL,
+        same INTEGER NOT NULL CHECK(same IN (0, 1)),   -- 1 same result, 0 not the same
+        value TEXT,                                -- JSON, encrypted: what each side was when decided
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        at INTEGER NOT NULL,
+        UNIQUE(profile_id, pair));
+    ALTER TABLE jobs ADD COLUMN same TEXT;         -- JSON: refs of the preview's possible matches confirmed
+    """,
 ]
 
 
