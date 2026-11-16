@@ -125,6 +125,9 @@ def main():
         strict.goto(base + "/import.html")
         strict.wait_for_selector("#importer", state="visible", timeout=10000)
         check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
+        strict.goto(base + "/settings.html")
+        strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 4)
         strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
         strict.wait_for_selector(".dir-hit", timeout=10000)
         check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
@@ -844,6 +847,48 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
             page.select_option("#profile", label="My records")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+
+            # ---- Settings (#35): change settings on the screen, and the dashboard follows; reset a section
+            tiles = "[...document.querySelectorAll('#view-overview .tiles .tile .lbl span[title]')].map(s => [s.title, s.textContent])"
+            js("switchTab('overview')")
+            settle(300)
+            before = js(tiles)
+            check("the header links to Settings for this profile", js("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1")
+            page.click("#settingsLink")
+            page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
+            check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
+                  ["Overview", "Trends", "Names", "Health"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+            first = before[0][0]
+            page.click(f"#sec-overview button[aria-label='Move {first} down']")
+            page.click("#sec-overview .set button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-overview > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("[data-key=labNicknames] button:text-is('Add a row')")
+            page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=from]", first)
+            page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Renamed in Settings")
+            page.click("[data-key=labNicknames] button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-names > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the Settings page fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            js("switchTab('overview')")
+            settle(300)
+            after = js(tiles)
+            check("…the Overview tiles follow the new order and name",
+                  [t for t, _ in after[:2]] == [before[1][0], first] and after[1][1] == "Renamed in Settings", after[:3])
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
+            for sec in ("overview", "names"):
+                page.once("dialog", lambda d: d.accept())
+                page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
+                page.wait_for_function(f"document.querySelector('#sec-{sec} > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            js("switchTab('overview')")
+            settle(300)
+            check("…and Reset to defaults brings them back", js(tiles) == before, js(tiles)[:3])
 
             # ---- account page: password, devices, profiles with sharing, accounts (admin)
             page.goto(base + "/account.html")

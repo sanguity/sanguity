@@ -99,9 +99,11 @@ other people under **Account**, then share profiles with them there.
 
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy
 `sources.example.json` to `sources.json` and describe them, then `docker compose run --rm setup rebuild`; the first profile picks up the rebuild automatically.
-Optional: `corrections.json` (your milestones; see `corrections.example.json`) and `settings.json` (that profile's
-dashboard preferences; see `settings.example.json`). On a checkout install all three go next to `compose.yaml`;
-on a release install, in `./config`. Corrections to events are made in
+Optional: `corrections.json` (your milestones; see `corrections.example.json`): on a checkout install it goes next to
+`compose.yaml`, on a release install in `./config`. Dashboard preferences (key labs, lab nicknames, workout
+rules...) are changed on the **Settings** page, per profile; a `settings.json` in the same place (see
+`settings.example.json`) only gives a new profile linked to the build its first settings, and a rebuild never
+changes settings made in the app (the log says when the file differs from them). Corrections to events are made in
 the app (see [Correcting records](#correcting-records)); an older `corrections.json`'s `not_hospital_stays` are moved
 into the app once, at the first start of a version that has them, and aren't read from the file after that.
 
@@ -277,6 +279,10 @@ can't be shipped with Sanguity, so an admin adds them once: `python3 tools/build
 - **Export everything:** owners and editors can download a profile as one zip (records, documents, settings, watch
   data, uploaded files and activity) under **Account**, and load it into another install with `server.manage create-profile` and
   `import`.
+- **Settings:** each profile's dashboard preferences (key lab tiles, the labs Trends starts with, lab and source
+  nicknames, visits counted as workouts) are changed on the **Settings** page by its owners and editors, with
+  "Reset to defaults" per section. They live in the database (backed up and exported with the profile); a
+  `settings.json` from before is moved in once at the upgrade and kept as `settings-before-v18.json`.
 - **Delete profile:** an owner can delete a profile and everything in it under **Account**, after typing its name;
   the original exports and older backups are left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
@@ -326,7 +332,7 @@ Health records are worth more than uptime: keep copies off this machine.
 | Accounts, profiles, records as loaded | `DATA_DIR` (default `./data`) | `docker compose exec app python -m server.manage backup` writes one checked archive to `BACKUP_DIR` (default `./backups`), safe while the app runs; `--keep 14` keeps the newest 14 |
 | Your original exports | `RECORDS_DIR` | copy them; Sanguity only reads them |
 | Watch and scale data | `WATCH_DIR` | `watch.db` plus `raw/`, the receiver's archive of every upload (`receiver.py --reprocess` rebuilds the database from it); encrypted, so they need `auth/data_key` too |
-| Secrets and configuration | `auth/`, `.env`, `sources.json`, `corrections.json`, `settings.json` | copy them; keep `auth/data_key` somewhere other than the backups (see below) |
+| Secrets and configuration | `auth/`, `.env`, `sources.json`, `corrections.json` (settings are in the database) | copy them; keep `auth/data_key` somewhere other than the backups (see below) |
 
 Run the backup every night, for example from cron on the host (on TrueNAS: **System > Advanced > Cron Jobs**):
 
@@ -352,8 +358,8 @@ A restore checks the backup opens with the key before replacing anything.
 ### Encryption at rest
 
 The setup service makes a key on first start, `auth/data_key`, and the app encrypts with it everything it keeps in
-`DATA_DIR`: each profile's settings, documents and uploaded files, the setup build, and the database fields that hold the records
-themselves, document names, activity details and two-factor secrets, and the pepper that password and recovery-code hashes are
+`DATA_DIR`: each profile's documents and uploaded files, the setup build, and the database fields that hold the records
+themselves, settings that name labs, document names, activity details and two-factor secrets, and the pepper that password and recovery-code hashes are
 made with. The watch receiver encrypts what it keeps in `WATCH_DIR`
 with the same key: its archive of uploads (`raw/`), its database (`watch.db`, a sealed snapshot of the copy it keeps
 in memory) and the daily summary the app shows. An existing install is encrypted on its first start after
@@ -445,7 +451,8 @@ www/                index.html (markup), css/app.css, js/*.js (one plain script 
                     import.html (uploading a portal's export)
 demo/               Fictional demo dataset generator
 tests/              API and upload tests, a headless browser check and a smoke test of the Docker install (all run in CI)
-*.example.json      Templates for sources.json, corrections.json (milestones) and settings.json; .env.example for .env
+*.example.json      Templates for sources.json, corrections.json (milestones) and settings.json (a new build-linked
+                    profile's first settings; settings are changed in the app); .env.example for .env
 ```
 
 ## License

@@ -1,8 +1,9 @@
 """Backups of everything the app keeps in DATA_DIR, and restoring them.
 
 A backup is one archive, sanguity-backup-YYYYMMDD-HHMMSS.tar.gz:
-  sanguity.db      a consistent copy made with SQLite's online backup API, so the app can keep running
-  profiles/...     each profile's records, settings and uploads
+  sanguity.db      a consistent copy made with SQLite's online backup API, so the app can keep running: accounts,
+                   records, settings
+  profiles/...     each profile's documents and uploads
   build/...        the setup build (what linked profiles are loaded from)
   manifest.json    format, time, database schema version, and the SHA-256 of every file above
 

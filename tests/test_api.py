@@ -311,15 +311,17 @@ class Api(unittest.TestCase):
         self.assertEqual(ben.post("/api/logout", headers=H).status_code, 200)
         self.assertEqual(ben.get("/api/me").status_code, 401)
 
-    def test_b_settings_follow_the_build(self):   # after test_a_flow: profile 1 is Ben's and linked to the build
+    def test_b_settings_seeded_by_the_build_once(self):   # after test_a_flow: profile 1 is Ben's and linked to the build
         ben = self.login("ben")
         built = os.path.join(TMP, "build", "settings.json")
-        self.assertIn("visitWorkouts", ben.get("/api/profiles/1/settings").json())
+        before = ben.get("/api/profiles/1/settings").json()
+        self.assertTrue(before["visitWorkouts"])   # from the build's settings.json, the first time it was loaded
         with open(built, "w", encoding="utf-8") as f:
             f.write('{"sources": {"EXT": "Outside lab"}}')
         later = os.path.getmtime(built) + 5
         os.utime(built, (later, later))   # only settings.json changed, not data.json
-        self.assertEqual(ben.get("/api/profiles/1/settings").json(), {"sources": {"EXT": "Outside lab"}})
+        ben.get("/api/profiles/1/data")   # the rebuild is loaded, and settings changed in the app are kept (#35)
+        self.assertEqual(ben.get("/api/profiles/1/settings").json(), before)
         data_file = os.path.join(TMP, "build", "data.json")   # a data.json restored with an older date is noticed too
         from server import crypto
         d = json.loads(crypto.read_file(data_file))   # the app encrypts the build at start-up
@@ -328,8 +330,8 @@ class Api(unittest.TestCase):
             json.dump(d, f)
         os.utime(data_file, (later - 100000, later - 100000))
         self.assertEqual(ben.get("/api/profiles/1/data").json()["source"], "Restored copy")
-        os.remove(built)                  # removing it goes back to the defaults
-        self.assertEqual(ben.get("/api/profiles/1/settings").json(), {})
+        os.remove(built)                  # removing it changes nothing either
+        self.assertEqual(ben.get("/api/profiles/1/settings").json(), before)
 
     def test_c_bad_build_keeps_app_up(self):   # after test_b: profile 1 is Ben's, linked to the build
         from server import profiles as prof
@@ -553,7 +555,7 @@ class Api(unittest.TestCase):
         z = zipfile.ZipFile(io.BytesIO(r.content))
         names = set(z.namelist())
         self.assertTrue({"data.json", "README.txt", "activity.json", "watch/daily.json"} <= names, names)
-        self.assertEqual("settings.json" in names, bool(ben.get("/api/profiles/1/settings").json()))   # only when it has some
+        self.assertIn("settings.json", names)   # always, so loading it back in restores them exactly (#35)
         data = json.loads(z.read("data.json"))
         links = [d["url"] for d in data["details"].values() if isinstance(d, dict) and d.get("type") == "file" and d.get("url")]
         self.assertTrue(links and all(u.split("#")[0] in names for u in links), links)   # every link points into the zip
@@ -1509,7 +1511,9 @@ class Api(unittest.TestCase):
     def test_build_is_served_as_built(self):   # issue #17: the demo build, through the rows, as the page always read it
         from server import crypto, profiles as prof
         ben = self.login("ben")
-        prof.sync_build(dbm.connect())
+        db = dbm.connect()   # closed, not left to the garbage collector: an open one keeps sanguity.db locked on Windows
+        prof.sync_build(db)
+        db.close()
         got = ben.get("/api/profiles/1/data").json()
         built = json.loads(crypto.read_file(os.path.join(TMP, "build", "data.json")))
         for d in (got, built):

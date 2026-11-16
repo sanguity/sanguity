@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py tests/test_fakefhir.py tests/fakefhir/*.py server/*.py server/importers/*.py tests/test_shl.py tests/shl_server.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_lab_mapping.py tests/test_settings.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py tests/test_fakefhir.py tests/fakefhir/*.py server/*.py server/importers/*.py tests/test_shl.py tests/shl_server.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py
 
       - name: Shell scripts parse
         run: bash -n docker/dev-stack.sh
@@ -97,6 +97,9 @@ jobs:
 
       - name: Lab names matched on import (LOINC and similar-name suggestions, the choice sticks, admins edit, encrypted, hand entry)
         run: python tests/test_lab_mapping.py
+
+      - name: Settings (every key round-trips, defaults and precedence, roles by scope, reset, settings.json moved in once, export, encryption)
+        run: python tests/test_settings.py
 
       - name: Fake FHIR server for connected sources (PKCE sign-in, refresh and revocation, scopes, paging, _lastUpdated, 429/5xx, request record)
         run: python tests/test_fakefhir.py

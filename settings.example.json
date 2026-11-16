@@ -1,4 +1,5 @@
 {
+  "_about": "Settings are changed in the app now (Settings page) and kept in its database. This file only gives a profile newly linked to the setup build its first settings; an existing settings.json is moved into the app once. Name maps here add to the default names.",
   "overview": {
     "keyLabs": ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Lymphocytes Absolute", "Creatinine",
                 "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"]

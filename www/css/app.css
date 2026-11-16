@@ -445,6 +445,36 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
   .imp .man-row .f-value,.imp .man-row .f-unit,.imp .man-row .f-range,.imp .man-row .f-flag{grid-column:span 2}
   .imp .man-row .del{grid-column:span 1}
 }
+/* settings page (settings.js) */
+.sets .set{border-top:1px solid var(--grid);padding:12px 0 4px}
+.sets .set .row{border-bottom:0;padding:0;margin:8px 0 6px;cursor:default}
+.sets .set .row:hover{background:none}
+.sets .btn.primary:disabled{color:var(--ink);border-color:var(--ring)}
+.sets .set-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.sets .set-hd h2{margin:0}
+.sets .set h3 .tag{font-weight:550}
+.sets .set-labs{margin:4px 0;padding-left:22px;max-width:560px}
+.sets .set-labs li{padding:3px 0;border-bottom:1px solid var(--grid)}
+.sets .set-labs li:last-child{border-bottom:0}
+.sets .set-labs li:not(.muted){display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sets .set-name{flex:1 1 140px;min-width:0;overflow-wrap:anywhere}
+.sets .set-acts{display:flex;gap:4px}
+.sets .set-add{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;max-width:560px}
+.sets .set-add input{flex:1 1 160px}
+.sets .set-rows{display:grid;gap:6px;max-width:720px}
+.sets .set-row{display:grid;gap:6px;align-items:end;grid-template-columns:repeat(2,minmax(0,1fr)) 72px}
+.sets .c3 .set-row{grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) 80px 72px}
+.sets .set-row>:last-child{justify-self:start}
+.sets .set-head{font-size:12px;color:var(--muted);font-weight:550}
+.sets .set-row label{gap:2px}
+.sets .set-lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.sets .set-row input{width:100%}
+.sets .set-json{width:100%;max-width:560px;font:12px ui-monospace,Consolas,monospace;border:1px solid var(--ring);border-radius:8px;background:var(--raised);color:var(--ink);padding:6px}
+@media (max-width:600px){
+  .sets .set-head{display:none}
+  .sets .set-row,.sets .c3 .set-row{grid-template-columns:1fr;border-bottom:1px solid var(--grid);padding-bottom:8px}
+  .sets .set-lbl{position:static;width:auto;height:auto;clip:auto;font-size:12px;color:var(--muted)}
+}
 /* find your provider (providers.js, #93) */
 .dir .dir-src{border-left:3px solid var(--c-study);padding:4px 0 4px 12px;margin:6px 0 12px;font-size:13px}
 .dir .dir-src p{margin:0 0 6px}
