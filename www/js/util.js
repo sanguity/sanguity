@@ -19,6 +19,33 @@ const el = (tag, attrs = {}, ...kids) => {
 const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,
   headers: {...(opts.method && opts.method !== "GET" ? {"X-Sanguity": "1", "Content-Type": "application/json"} : {}), ...opts.headers}});
 
+/* The theme (#45): this browser's own choice (the ◐ toggle) wins, then the account's default (light, dark or
+   "system"), remembered here so theme.js can apply it before the next page draws, then the system's. */
+function applyTheme(accountDefault) {
+  try {
+    if (accountDefault !== undefined) {
+      if (accountDefault === "light" || accountDefault === "dark") localStorage.setItem("ht-theme-default", accountDefault);
+      else localStorage.removeItem("ht-theme-default");
+    }
+  } catch (e) {}
+  let t = null;
+  try { t = localStorage.getItem("ht-theme") || localStorage.getItem("ht-theme-default"); } catch (e) {}
+  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+}
+
+/* The Overview's key-lab tiles (#36), shared by the Overview and the Settings preview: the chosen labs this profile
+   has results for, in order. While the choice is still the default list and fewer than half of it (or of six) has
+   results here, the profile's most-measured labs fill as many tiles, so a new profile needs no setting. */
+const mostMeasured = series => series.filter(s => s && !s.watch && s.pts && s.pts.length)
+  .sort((a, b) => b.pts.length - a.pts.length || a.name.localeCompare(b.name)).map(s => s.name);
+function keyLabTiles(chosen, series, isDefault) {
+  const has = new Set(series.filter(s => s && !s.watch && s.pts && s.pts.length).map(s => s.name));
+  const out = chosen.filter(n => has.has(n));
+  if (isDefault && out.length < Math.min(6, Math.ceil(chosen.length / 2)))
+    for (const n of mostMeasured(series)) { if (out.length >= chosen.length) break; if (!out.includes(n)) out.push(n); }
+  return out;
+}
+
 /* A warning when this page came over plain HTTP from somewhere other than this machine, the home network or a
    tailnet (where WireGuard already encrypts): passwords and records would cross the internet readable (ASVS 9.1.1). */
 function plainHttpWarning() {

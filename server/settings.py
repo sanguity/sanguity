@@ -15,7 +15,8 @@ use. Values are JSON; a setting that can hold health information (lab names, rul
 (crypto.enc) in the "sealed" column, others are plain in "value".
 
 Adding a setting (#36-#46): one define() call below, with its section (add one to SECTIONS if it's new), and an
-editor for its kind on the Settings screen (www/js/settings.js; "labs", "names" and "rules" exist).
+editor for its kind on the Settings screen (www/js/settings.js; "labs", "tiles", "names", "rules", "tabs" and
+"theme" exist).
 
 settings.json, before schema version 18: each profile's copy (profiles/<id>/settings.json) is loaded into the
 table once at start-up (migrate_files) and kept beside it as settings-before-v18.json. A setup build's settings.json
@@ -177,8 +178,9 @@ section("trends", "Trends", "What the Trends tab shows before you pick anything.
 section("names", "Names", "Shorter or clearer names shown instead of the ones in the records.")
 section("health", "Health", "How the Health tab counts activity.")
 
-define("overview.keyLabs", "overview", "Key labs", KEY_LABS, lab_list(), kind="labs",
-       help="One tile each, in this order, for the labs this profile has results for.")
+define("overview.keyLabs", "overview", "Key labs", KEY_LABS, lab_list(), kind="tiles",
+       help="One tile each, in this order, for the labs this profile has results for. While this is the default list "
+            "and few of its labs have results here, the most-measured labs fill the tiles instead (#36).")
 define("trends.defaultLabs", "trends", "Labs selected at first",
        ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "ALT"], lab_list(), kind="labs",
        help="Charted on Trends until you choose others on this device.")
@@ -214,6 +216,52 @@ CHOICES = {"sync.attachTypes": ATTACHMENT_TYPES}
 define("visitWorkouts", "health", "Visits that count as workouts", [], workout_rules(), kind="rules",
        help="Past visits whose title matches a pattern count as a workout of that many minutes, once a day per rule. "
             "Patterns are regular expressions, matched ignoring case.")
+
+
+# ---------------------------------------------------------------- tabs (#40) and theme (#45)
+
+TABS = ("overview", "health", "timeline", "labs", "heatmap", "costs")   # the main tabs' ids ("labs" is Trends)
+TAB_NAMES = {"overview": "Overview", "health": "Health", "timeline": "Timeline", "labs": "Trends", "heatmap": "Lab heatmap",
+             "costs": "Costs"}
+
+
+def tab_layout(v):
+    """{"order": [tab ids], "hidden": [tab ids]}: every tab in order (one left out goes at the end, in the default
+    order, so a tab added later shows up), the hidden ones in that order. At least one tab stays shown."""
+    if not isinstance(v, dict) or set(v) - {"order", "hidden"}:
+        raise SettingError("This must give the tabs' order and which are hidden.")
+    lists = {}
+    for part in ("order", "hidden"):
+        x = v.get(part, [])
+        if not isinstance(x, list) or not all(isinstance(t, str) for t in x):
+            raise SettingError("The tabs must be a list of tab names.")
+        for t in x:
+            if t not in TABS:
+                raise SettingError(f"There's no tab called “{t[:40]}”.")
+        lists[part] = x
+    order = list(dict.fromkeys(lists["order"])) + [t for t in TABS if t not in lists["order"]]
+    hidden = [t for t in order if t in set(lists["hidden"])]
+    if len(hidden) == len(order):
+        raise SettingError("At least one tab must stay shown.")
+    return {"order": order, "hidden": hidden}
+
+
+THEMES = ("system", "light", "dark")
+
+
+def theme(v):
+    if v not in THEMES:
+        raise SettingError("The theme must be light, dark, or follow the system.")
+    return v
+
+
+section("tabs", "Tabs", "Which tabs this profile shows, and in what order.")
+section("appearance", "Appearance", "How Sanguity looks for you, on every device you sign in on.")
+
+define("tabs", "tabs", "Tabs", {"order": list(TABS), "hidden": []}, tab_layout, kind="tabs", private=False,
+       help="A hidden tab leaves the tab bar and the arrow keys; a saved view or link to it opens the first shown tab.")
+define("theme", "appearance", "Theme", "system", theme, scope="user", kind="theme", private=False,
+       help="Your default on every device. The ◐ button on the records page still picks light or dark for one browser.")
 
 
 # ---------------------------------------------------------------- storage

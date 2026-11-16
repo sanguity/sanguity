@@ -17,7 +17,8 @@ preview, sees the attachments the install's rules left out and fetches one anywa
 the connection pulls, and is asked to reconnect when access ends, with a warning on the profile's main page, uploads a
 Blue Button export and connects a health plan's patient-access API (the fake again) and finds both sets of claims on
 Costs, sees the source's and the Health Link's hosts under Settings → Outside connections, changes settings on the
-Settings page and resets them, opens the account
+Settings page and resets them (drags and keyboard-moves the key-lab tiles, hides and
+reorders tabs, sets a default theme a fresh browser picks up), opens the account
 page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap, links the
 same result from a file and the sync at the first pull's preview and sees it once on Trends and in the drawer (undone
 and linked again there)
@@ -146,7 +147,7 @@ def main():
         check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 5)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 7)
         strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
         strict.wait_for_selector(".dir-hit", timeout=10000)
         check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
@@ -877,7 +878,7 @@ def main():
             page.click("#settingsLink")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Trends", "Names", "Health", "Connected sources"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Trends", "Names", "Health", "Connected sources", "Tabs", "Appearance"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…with the server's attachment and sync defaults as a switch, numbers and choices (#101, #102)",
                   js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length]") == [5, 3],
                   js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
@@ -912,6 +913,116 @@ def main():
             js("switchTab('overview')")
             settle(300)
             check("…and Reset to defaults brings them back", js(tiles) == before, js(tiles)[:3])
+
+            # ---- #36 key-lab tiles: drag or keyboard-move them, with a live preview, and the Overview follows
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sec-overview .set-preview .tile", timeout=10000)
+            preview = "[...document.querySelectorAll('#sec-overview .set-preview .tile')].map(t => t.dataset.lab)"
+            p0 = js(preview)
+            check("key labs: the preview shows the Overview's tiles", p0 == [t for t, _ in before], p0[:4])
+            page.click("#sec-overview button[aria-label='Remove Magnesium']")   # the demo has just the 12 default labs
+            check("…a lab taken out leaves the preview", "Magnesium" not in js(preview))
+            check("…and is suggested among the profile's most-measured labs",
+                  js("[...document.querySelectorAll('#sec-overview .set-sugg .chip')].map(b => b.getAttribute('aria-label'))") == ["Add Magnesium"])
+            page.click("#sec-overview .set-sugg .chip")
+            check("…to put back", js(preview) == p0, js(preview)[-2:])
+            grips = page.locator("#sec-overview .set-grip")
+            g2, g0 = grips.nth(2).bounding_box(), grips.nth(0).bounding_box()
+            page.mouse.move(g2["x"] + g2["width"] / 2, g2["y"] + g2["height"] / 2)
+            page.mouse.down()
+            page.mouse.move(g0["x"] + g0["width"] / 2, g0["y"] + 2, steps=8)
+            page.mouse.up()
+            p1 = js(preview)
+            check("…dragging a lab by its handle moves it, and the preview follows at once", p1[:3] == [p0[2], p0[0], p0[1]], p1[:3])
+            grips.nth(0).focus()
+            page.keyboard.press("ArrowDown")
+            page.keyboard.press("ArrowDown")
+            page.keyboard.press("ArrowUp")
+            p2 = js(preview)
+            check("…and so do the arrow keys on its handle, which keeps the focus",
+                  p2[:3] == [p0[0], p0[2], p0[1]] and js("document.activeElement.dataset.act") == "grip", p2[:3])
+            page.click("#sec-overview .set button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-overview > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            js("switchTab('overview')")
+            settle(300)
+            check("…the Overview follows the new order", [t for t, _ in js(tiles)[:3]] == p2[:3], js(tiles)[:3])
+
+            # ---- #40 tabs: hide Costs and move Timeline up; gone from the bar and the arrow keys, a saved view or a
+            # link to it opens the first shown tab, and one tab at least stays shown
+            js("switchTab('costs')")   # the saved view now names Costs
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
+            page.uncheck("#sec-tabs input[data-tab=costs]")
+            page.click("#sec-tabs button[aria-label='Move Timeline up']")
+            page.click("#sec-tabs .set button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-tabs > .msg').textContent.startsWith('Saved')", timeout=10000)
+            shown_tabs = "[...document.querySelectorAll('.tabs [role=tab]')].filter(b => !b.hidden).map(b => b.id.slice(4))"
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
+            check("tabs: a hidden tab leaves the bar, the others in their new order",
+                  js(shown_tabs) == ["overview", "timeline", "health", "labs", "heatmap"], js(shown_tabs))
+            check("…a saved view naming it opens the first shown tab", js("state.tab") == "overview" and js("!document.getElementById('view-overview').hidden"), js("state.tab"))
+            page.focus("#tab-overview")
+            page.keyboard.press("ArrowLeft")
+            check("…the arrow keys skip it", js("state.tab") == "heatmap" and js("document.activeElement.id") == "tab-heatmap", js("state.tab"))
+            page.keyboard.press("ArrowRight")
+            js("switchTab('costs')")
+            check("…asking for it opens the first shown tab", js("state.tab") == "overview", js("state.tab"))
+            page.goto(base + "/#costs")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
+            check("…so does a link to it", js("state.tab") == "overview" and js("document.getElementById('view-costs').hidden"), js("state.tab"))
+            page.goto(base + "/#timeline")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
+            check("…while a link to a shown tab opens it", js("state.tab") == "timeline", js("state.tab"))
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
+            for t in ("overview", "health", "labs", "heatmap"):
+                page.uncheck(f"#sec-tabs input[data-tab={t}]")
+            check("…and the last shown tab can't be hidden", js("document.querySelector('#sec-tabs input[data-tab=timeline]').disabled"))
+            page.once("dialog", lambda d: d.accept())
+            page.click("#sec-tabs button:text-is('Reset to defaults')")
+            page.wait_for_function("document.querySelector('#sec-tabs > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.once("dialog", lambda d: d.accept())
+            page.click("#sec-overview button:text-is('Reset to defaults')")
+            page.wait_for_function("document.querySelector('#sec-overview > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
+            check("…Reset to defaults shows every tab again", js(shown_tabs) == ["overview", "health", "timeline", "labs", "heatmap", "costs"], js(shown_tabs))
+            js("switchTab('overview')")
+
+            # ---- #45 a default theme for the account: a fresh browser signed in as the same person uses it; the ◐
+            # toggle still overrides it there; Reset to defaults follows the system again
+            js("localStorage.removeItem('ht-theme')")
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sec-appearance input[value=dark]", timeout=10000)
+            page.check("#sec-appearance input[value=dark]")
+            page.click("#sec-appearance .set button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-appearance > .msg').textContent.startsWith('Saved')", timeout=10000)
+            check("theme: saving a default applies it here", js("document.documentElement.dataset.theme") == "dark")
+            fresh = browser.new_context(viewport={"width": 375, "height": 800}, bypass_csp=True)
+            fresh.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")}
+                               for c in page.context.cookies() if c["name"] == "sg_session"])
+            fp = fresh.new_page()
+            fp.on("pageerror", lambda e: problems.append(f"script error (fresh browser): {e}"))
+            fp.goto(base + "/")
+            fp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            check("…a fresh browser uses it once signed in", fp.evaluate("document.documentElement.dataset.theme") == "dark")
+            fp.goto(base + "/account.html")   # a page that loads no settings: theme.js has it from the last visit
+            check("…and so does its next page, before it draws", fp.evaluate("document.documentElement.dataset.theme") == "dark")
+            fp.goto(base + "/")
+            fp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            fp.click("#theme")
+            fp.reload()
+            fp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            check("…where the ◐ toggle still overrides it", fp.evaluate("document.documentElement.dataset.theme") == "light")
+            fresh.close()
+            page.once("dialog", lambda d: d.accept())
+            page.click("#sec-appearance button:text-is('Reset to defaults')")
+            page.wait_for_function("document.querySelector('#sec-appearance > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            check("…and Reset to defaults follows the system again",
+                  js("document.documentElement.dataset.theme === undefined && localStorage.getItem('ht-theme-default') === null"))
             # ---- connected sources (#32, #91), against the fake SMART on FHIR server standing in for an Epic sandbox:
             # an admin sets the source up and tests it, the profile connects by signing in, the first pull is previewed
             # and saved, Sync now brings a new result, and when the patient ends access the page asks to reconnect

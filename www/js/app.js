@@ -3,8 +3,23 @@
 "use strict";
 /* ---------------------------------------------------------------- tabs & boot */
 const TABS = ["overview", "health", "timeline", "labs", "heatmap", "costs"];
+/* the profile's tab layout (#40, CFG.tabs): its order, and the hidden tabs, which leave the tab bar and the arrow
+   keys; asking for a hidden tab (a saved view, a link, a button elsewhere) opens the first shown one */
+let TAB_ORDER = [...TABS], TAB_HIDDEN = new Set();
+const shownTabs = () => TAB_ORDER.filter(t => !TAB_HIDDEN.has(t));
+function applyTabs(cfg) {
+  const order = (Array.isArray(cfg && cfg.order) ? cfg.order : []).filter(t => TABS.includes(t));
+  TAB_ORDER = [...new Set([...order, ...TABS])];
+  TAB_HIDDEN = new Set((Array.isArray(cfg && cfg.hidden) ? cfg.hidden : []).filter(t => TABS.includes(t)));
+  if (!shownTabs().length) TAB_HIDDEN.clear();
+  const bar = $(".tabs");
+  bar.append(...TAB_ORDER.map(t => $("#tab-" + t)));
+  for (const t of TABS) $("#tab-" + t).hidden = TAB_HIDDEN.has(t);
+}
+// a link to a tab: index.html#trends (or #overview, #health, #timeline, #heatmap, #costs)
+const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); return h === "trends" ? "labs" : TABS.includes(h) ? h : null; };
 function switchTab(t) {
-  if (!TABS.includes(t)) t = "overview";
+  if (!shownTabs().includes(t)) t = shownTabs()[0];
   const changed = t !== state.tab;
   if (changed && drawer.classList.contains("open")) closeDrawer();   // details belong to the tab they were opened from
   hideTip(); state.tab = t;
@@ -16,6 +31,15 @@ function switchTab(t) {
   if (changed) window.scrollTo({top: 0, left: 0, behavior: "instant"});   // each tab starts at the top
 }
 for (const k of TABS) $("#tab-" + k).onclick = () => switchTab(k);
+$(".tabs").addEventListener("keydown", ev => {   // left and right (Home, End) move between the shown tabs
+  const shown = shownTabs(), i = shown.indexOf(ev.target.id.replace(/^tab-/, ""));
+  if (i < 0) return;
+  const next = {ArrowRight: shown[(i + 1) % shown.length], ArrowLeft: shown[(i + shown.length - 1) % shown.length], Home: shown[0], End: shown.at(-1)}[ev.key];
+  if (!next) return;
+  ev.preventDefault(); switchTab(next); $("#tab-" + next).focus();
+});
+let booted = false;
+addEventListener("hashchange", () => { const t = tabOfHash(); if (t && booted) switchTab(t); });
 $("#optMarks").onchange = e => { state.marks = e.target.checked; renderCharts(); save(); };
 $("#optSmooth").onchange = e => { state.smooth = e.target.checked; renderCharts(); save(); };
 function renderAll() {
@@ -97,6 +121,8 @@ async function syncWarning(pid) {
     const s = await api(`profiles/${PROFILE.id}/settings`);
     if (s.ok) applySettings(await s.json());
   } catch (e) { console.warn("settings ignored:", e.message); }
+  applyTabs(CFG.tabs);
+  applyTheme(CFG.theme);   // this user's default theme (#45), unless this browser has its own (the ◐ toggle)
   for (const e of DATA.events) {
     e.ts = Date.parse(e.t); e.te = e.end ? Date.parse(e.end) : e.ts;
     e._q = (e.title + " " + (e.sub || "") + " " + (KIND_LABEL[e.k] || "")).toLowerCase();
@@ -154,8 +180,10 @@ async function syncWarning(pid) {
   for (const s of SERIES) if (s.watch && s.pts.length) state.max = Math.max(state.max, s.pts[s.pts.length - 1].ts);
   $("#meta").textContent = `${DATA.source} · built ${fmtD(DATA.built)}` + (WATCH && WATCH.last_payload ? ` · watch synced ${fmtDT(WATCH.last_payload)}` : "");
   restore();
+  { const t = tabOfHash(); if (t) state.tab = t; }
   if (!state.sel.size) state.sel = new Set(CFG.trends.defaultLabs.filter(n => SERIES.some(s => s.name === n)));
   if (state.preset !== "custom") applyPreset(state.preset); else renderAll();
   switchTab(state.tab);
+  booted = true;
   drawerResume();   // after an edit's reload (drawer.js)
 })();

@@ -25,6 +25,8 @@ const DEFAULT_SETTINGS = {
   trends: {defaultLabs: ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "ALT"]},
   labNicknames: {"Automated Abs Neutrophil Cnt": "Neutrophils (absolute)", "Lymphocytes Absolute": "Lymphocytes (absolute)", "Platelet Count": "Platelets",
     "Potassium, Blood": "Potassium", "Sodium, Blood": "Sodium", "Total Bilirubin": "Bilirubin, total"},
+  tabs: {order: ["overview", "health", "timeline", "labs", "heatmap", "costs"], hidden: []},   // #40, applied by app.js
+  theme: "system",     // #45, this user's default: "light", "dark" or "system" (the ◐ toggle overrides it per browser)
   sources: {},         // short source tags on lab results -> display names, e.g. {"EXT": "Outside lab"}
   visitWorkouts: [],   // past visits whose title matches count as workouts on Health, e.g. {"match": "^physical therapy\\b", "name": "Physical therapy", "minutes": 45}
 };
@@ -39,7 +41,9 @@ function applySettings(u) {
     trends: {...DEFAULT_SETTINGS.trends, ...(obj(u.trends) ? u.trends : {})},
     labNicknames: obj(u.labNicknames) ? u.labNicknames : DEFAULT_SETTINGS.labNicknames,
     sources: obj(u.sources) ? u.sources : DEFAULT_SETTINGS.sources,
-    visitWorkouts: list(u.visitWorkouts, DEFAULT_SETTINGS.visitWorkouts)};
+    visitWorkouts: list(u.visitWorkouts, DEFAULT_SETTINGS.visitWorkouts),
+    tabs: obj(u.tabs) ? u.tabs : DEFAULT_SETTINGS.tabs,
+    theme: ["light", "dark", "system"].includes(u.theme) ? u.theme : DEFAULT_SETTINGS.theme};
   CFG.overview.keyLabs = list(CFG.overview.keyLabs, DEFAULT_SETTINGS.overview.keyLabs);
   CFG.trends.defaultLabs = list(CFG.trends.defaultLabs, DEFAULT_SETTINGS.trends.defaultLabs);
 }
@@ -75,8 +79,8 @@ function restore() {
     if (s.preset === "custom" && s.from && s.to) { state.from = s.from; state.to = s.to; }
   } catch (e) {}
 }
-function setTheme(t) { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; try { t ? localStorage.setItem("ht-theme", t) : localStorage.removeItem("ht-theme"); } catch (e) {} }
-try { const t = localStorage.getItem("ht-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+/* the ◐ toggle: this browser's own theme, over the account's default (applyTheme in util.js; theme.js applied it first) */
+function setTheme(t) { try { t ? localStorage.setItem("ht-theme", t) : localStorage.removeItem("ht-theme"); } catch (e) {} applyTheme(); }
 $("#theme").onclick = () => { const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; setTheme(dark ? "light" : "dark"); };
 
 /* ---------------------------------------------------------------- range */
