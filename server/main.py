@@ -574,7 +574,16 @@ def me(s=Depends(any_user), db=Depends(get_db)):
                      "needs_two_factor": needs_2fa, "admin_needs_two_factor": accounts.admin_needs_second_factor(db, s)},
             "two_factor_required": required, "reauth_minutes": config.REAUTH_MINUTES,
             "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
-            "password_min": _password_min(db, s)}
+            "password_min": _password_min(db, s), "session_ends": _session_ends(db, s)}
+
+
+def _session_ends(db, s):
+    """When this sign-in ends at the latest (epoch seconds), if it stays in use: the offline copy of records a device
+    may keep (#56, www/js/offline.js) is deleted at this time even if the device never reaches the server again."""
+    ends = min(s["expires"], s["s_created"] + _lifetime(db, s))
+    if config.SESSION_IDLE_MINUTES:
+        ends = min(ends, dbm.now() + config.SESSION_IDLE_MINUTES * 60)
+    return ends
 
 
 def _password_min(db, s):
@@ -1280,8 +1289,19 @@ app.include_router(__import__("server.routes_summary", fromlist=["router"]).rout
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here
     from fastapi.staticfiles import StaticFiles
 
-    for sub in ("css", "js"):
+    for sub in ("css", "js", "icons"):
         app.mount(f"/{sub}", StaticFiles(directory=os.path.join(WWW, sub)), name=sub)
+
+    # install as a phone app (#56): as nginx.conf sends them
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    def manifest():
+        return FileResponse(os.path.join(WWW, "manifest.webmanifest"), media_type="application/manifest+json",
+                            headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP})
+
+    @app.get("/sw.js", include_in_schema=False)
+    def service_worker():
+        return FileResponse(os.path.join(WWW, "sw.js"), media_type="text/javascript",
+                            headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP})
 
     @app.get("/{page}")
     @app.get("/", include_in_schema=False)

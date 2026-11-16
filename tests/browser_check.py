@@ -1663,6 +1663,147 @@ def main():
             problems.append(f"check stopped: {str(e).splitlines()[0]}")
             if "pk" in locals():
                 problems.append(f"passkey page at {pk.url}: " + str(pk.evaluate("document.body.innerText.slice(0, 300)")))
+        # ---- install as a phone app (#56), on a phone-sized page under the real CSP: the manifest and service worker
+        # meet the install criteria; offline, with offline records off, the app's shell opens and says records aren't
+        # available; turned on, the last profile opens read-only with the time it was loaded; turning it off, the
+        # sign-in's end time and signing out each delete the copy. Signed in with a session of its own.
+        try:
+            before = len(problems)
+            from server import config as sg_config, db as sg_db, security as sg_sec
+            db = sg_db.connect()
+            token, now = sg_sec.new_token(), sg_db.now()
+            uid = db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0]
+            db.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) VALUES(?,?,?,?,?,?,?,?)",
+                       (sg_sec.token_hash(token), uid, now, now, now + 3600, "127.0.0.1", "browser check", now))
+            db.close()
+            ctx = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+            ctx.add_cookies([{"name": sg_config.COOKIE, "value": token, "url": base, "httpOnly": True, "sameSite": "Strict"}])
+            ph = ctx.new_page()
+            ph.on("pageerror", lambda e: problems.append(f"script error (phone): {e}"))
+            ph.on("console", lambda m: m.type == "error" and problems.append(f"console error (phone): {m.text}"))
+            ph.on("response", lambda r: r.status >= 400 and problems.append(f"HTTP {r.status} (phone): {r.url}"))
+            LOADED = "typeof EV !== 'undefined' && EV.length > 0"
+            COPY = "caches.open('sanguity-offline').then(c => c.keys().then(ks => ks.length === 1 ? c.match(ks[0]).then(r => r.json()) : null))"
+            NO_COPY = "caches.has('sanguity-offline').then(h => !h)"
+
+            def until(expr, ms):   # page.wait_for_function evaluates a string, which the page's CSP refuses
+                for _ in range(ms // 100):
+                    if ph.evaluate(expr):
+                        return
+                    ph.wait_for_timeout(100)
+                raise TimeoutError(f"waited {ms} ms for {expr}")
+
+            def kept_copy(full=False):   # the copy, once the records page has written it
+                c = None
+                for _ in range(50):
+                    c = ph.evaluate(COPY)
+                    if c and (not full or (c.get("settings") and c.get("watch"))):
+                        break
+                    ph.wait_for_timeout(200)
+                return c
+
+            ph.goto(base + "/")
+            ph.evaluate("localStorage.setItem('ht-profile', '1')")
+            ph.reload()
+            until(LOADED, 20000)
+            until("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000)
+            check("PWA: the service worker controls the page", ph.evaluate("navigator.serviceWorker.controller.scriptURL").endswith("/sw.js"))
+            man = ph.evaluate("fetch(document.querySelector('link[rel=manifest]').href).then(async r => ({type: r.headers.get('content-type'), j: await r.json()}))")
+            check("PWA: the manifest is served as a manifest, with its icons",
+                  man["type"].startswith("application/manifest+json") and man["j"]["display"] == "standalone"
+                  and {"192x192", "512x512"} <= {i["sizes"] for i in man["j"]["icons"]} and any(i.get("purpose") == "maskable" for i in man["j"]["icons"]), man["type"])
+            errs = ctx.new_cdp_session(ph).send("Page.getInstallabilityErrors")["installabilityErrors"]
+            check("PWA: Chromium finds nothing stopping the install", not [e for e in errs if e["errorId"] != "in-incognito"], errs)
+            # the worker keeps the app's own files, and nothing from the API
+            kept = dict(ph.evaluate("caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys()).then(rs => [k, rs.map(r => r.url)]))))"))
+            shell = kept.get("sanguity-shell-v1", [])
+            check("PWA: the app's pages, scripts and icons are kept",
+                  any(u.endswith("/js/app.js") for u in shell) and any(u.endswith("/icons/icon-192.png") for u in shell), len(shell))
+            check("PWA: nothing from /api/ is kept, and no records until they're turned on",
+                  not any("/api/" in u for u in shell) and "sanguity-offline" not in kept, list(kept))
+
+            # offline, with offline records off: the app's shell, and why there are no records
+            ctx.set_offline(True)
+            ph.reload()
+            ph.wait_for_selector("#offlineBanner", timeout=10000)
+            text = ph.inner_text("#offlineBanner")
+            check("offline, records off: the app opens and says records aren't available offline",
+                  "Records aren't available offline" in text and ph.is_visible("header h1") and ph.evaluate("typeof EV === 'undefined' || !EV.length"), text)
+            ctx.set_offline(False)
+
+            # turned on under Account (off until then); the records loaded next are kept
+            ph.goto(base + "/account.html")
+            ph.wait_for_selector("#offlineOn")
+            check("Account: offline records are off by default, with what's kept explained",
+                  not ph.is_checked("#offlineOn") and "anyone who can use this device while it's unlocked" in ph.inner_text("#offlineRecords"))
+            ph.check("#offlineOn")
+            ph.goto(base + "/")
+            until(LOADED, 20000)
+            copy = kept_copy(full=True)
+            check("records on: one profile's records, settings and watch data are kept",
+                  bool(copy) and copy["profile"]["id"] == 1 and bool(json.loads(copy["data"])["events"]) and bool(copy.get("settings")) and bool(copy.get("watch")),
+                  copy and sorted(copy))
+            # offline: that profile, read-only, with when it was loaded
+            ctx.set_offline(True)
+            ph.reload()
+            until(LOADED, 20000)
+            text = ph.inner_text("#offlineBanner")
+            name = ph.evaluate("PROFILE.name")
+            check("offline, records on: the last profile opens read-only, with when it was loaded",
+                  "Offline · read-only" in text and f"{name}, as loaded on" in text, text)
+            ph.click("#tab-labs")
+            ph.wait_for_selector("#charts svg", timeout=10000)
+            check("offline: Trends draws from the kept copy", ph.evaluate("document.querySelectorAll('#charts svg').length") > 0)
+            check("offline: Import, Settings and Account say they need the server",
+                  ph.evaluate("[...document.querySelectorAll('header a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && /offline/.test(a.title))"))
+            ph.evaluate("document.querySelector('#settingsLink').click()")
+            ph.wait_for_timeout(300)
+            check("offline: a link to another page isn't followed", ph.evaluate("location.pathname") == "/")
+            check("offline: a change is refused as needing the server",
+                  ph.evaluate("api('profiles/1/edits', {method: 'POST', body: '{}'}).then(async r => [r.status, (await r.json()).detail])") == [503, "You're offline. This needs the server."])
+            ph.evaluate("openEvent(byId.get(+Object.keys(DATA.details).find(k => DATA.details[k].type === 'file' && byId.get(+k))))")   # a PDF
+            ph.wait_for_selector("#dbody .offline-note", timeout=5000)
+            check("offline: a document isn't loaded, and says why",
+                  ph.evaluate("!document.querySelector('#dbody iframe[src], #dbody img[src]')") and "aren't kept on this device" in ph.inner_text("#dbody"))
+            ph.evaluate("closeDrawer()")
+            ctx.set_offline(False)
+
+            # turned off: the copy goes
+            ph.goto(base + "/account.html")
+            ph.wait_for_selector("#offlineOn")
+            until("document.querySelector('#offlineRecords .msg').textContent.includes('records, loaded')", 5000)
+            ph.uncheck("#offlineOn")
+            until(NO_COPY, 5000)
+            check("records off: the kept copy is deleted", ph.evaluate(NO_COPY))
+            # on again: once the sign-in's end time has passed, the copy isn't shown, and is deleted, with no connection
+            ph.check("#offlineOn")
+            ph.goto(base + "/")
+            until(LOADED, 20000)
+            kept_copy()
+            ph.evaluate("""caches.open('sanguity-offline').then(async c => { const k = (await c.keys())[0], j = await (await c.match(k)).json();
+                           j.ends = Date.now() / 1000 - 1; await c.put(k, new Response(JSON.stringify(j))); })""")
+            ctx.set_offline(True)
+            ph.reload()
+            ph.wait_for_selector("#offlineBanner", timeout=10000)
+            check("offline, past the sign-in's end: no records, and the copy is deleted",
+                  "Records aren't available offline" in ph.inner_text("#offlineBanner") and ph.evaluate(NO_COPY))
+            ctx.set_offline(False)
+            # signing out deletes the copy and the choice; the app's own files stay
+            ph.goto(base + "/")
+            until(LOADED, 20000)
+            check("records on: kept again", bool(kept_copy()))
+            ph.click("#logout")
+            ph.wait_for_url("**/login.html", timeout=10000)
+            until(NO_COPY, 5000)
+            check("sign-out: the kept copy and the choice are deleted, the app's own files stay",
+                  ph.evaluate(NO_COPY) and ph.evaluate("localStorage.getItem('sg-offline-records')") is None and ph.evaluate("caches.has('sanguity-shell-v1')"))
+            # offline, the browser reports each request it couldn't make; signing out ends in 401s
+            problems[before:] = [x for x in problems[before:] if "ERR_INTERNET_DISCONNECTED" not in x and "401" not in x]
+            ctx.close()
+        except Exception as e:   # report what was caught so far instead of a bare traceback
+            problems.append(f"PWA check stopped: {str(e).splitlines()[0]}")
+            if "ph" in locals():
+                problems.append(f"phone page at {ph.url}: " + str(ph.evaluate("document.body.innerText.slice(0, 300)")))
         browser.close()
     srv.should_exit = True
     SHL.stop()
