@@ -53,10 +53,7 @@ function applySettings(u) {
 const srcName = tag => CFG.sources[tag] || tag;
 const DAY = 864e5;
 
-const fmtD = t => new Date(t).toLocaleDateString(undefined, {year:"numeric", month:"short", day:"numeric"});
-const fmtDT = t => new Date(t).toLocaleString(undefined, {year:"numeric", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"});
-const fmtMonth = t => new Date(t).toLocaleDateString(undefined, {year:"numeric", month:"long"});
-const isoDay = t => { const d = new Date(t); return new Date(d.getTime() - d.getTimezoneOffset()*6e4).toISOString().slice(0,10); };
+// fmtD, fmtDT, fmtMonth, isoDay, dayTs, zParse, zdate: dates.js, in this person's own time zone and date format (#42)
 const fmtNum = v => Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? (+v.toFixed(1)).toString() : (+v.toFixed(2)).toString();
 
 /* ---------------------------------------------------------------- the account and profile being viewed (api() is in util.js) */
@@ -106,8 +103,8 @@ function renderFilters() {
   $("#chips").replaceChildren(...CATS.filter(c => hasLane(c)).map(c => el("button", {class: "chip", "aria-pressed": state.cats.has(c.k), onclick: () => { state.cats.has(c.k) ? state.cats.delete(c.k) : state.cats.add(c.k); renderAll(); }},
     el("span", {class: "key", style: {background: c.color}}), `${c.label} `, el("span", {style: {color: "var(--muted)"}, text: counts[c.k] || 0}))));
 }
-$("#from").onchange = () => { const v = Date.parse($("#from").value + "T00:00"); if (!isNaN(v)) setRange(v, Math.max(state.to, v + DAY)); };
-$("#to").onchange = () => { const v = Date.parse($("#to").value + "T23:59"); if (!isNaN(v)) setRange(Math.min(state.from, v - DAY), v); };
+$("#from").onchange = () => { const v = zParse($("#from").value + "T00:00"); if (!isNaN(v)) setRange(v, Math.max(state.to, v + DAY)); };
+$("#to").onchange = () => { const v = zParse($("#to").value + "T23:59"); if (!isNaN(v)) setRange(Math.min(state.from, v - DAY), v); };
 let qT; $("#q").oninput = () => { clearTimeout(qT); qT = setTimeout(() => { state.q = $("#q").value.trim().toLowerCase(); renderAll(); }, 150); };
 
 const inRange = e => e.te >= state.from && e.ts <= state.to;

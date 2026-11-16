@@ -117,3 +117,36 @@ def reset_section(pid: int, body: Section, request: Request, s=Depends(user), db
                 _log(db, s, pid, scope, {"section": body.section, "label": titles[body.section], "settings": gone, "reset": True}, request)
             reset += gone
     return {"reset": reset, "kept": [d.key for d in mine if d not in allowed], "settings": settings.merged(db, pid, s["id"])}
+
+
+# ---------------------------------------------------------------- a person's own settings, without a profile (#42)
+# Every page reads these (the time zone and date format), including pages that aren't about one profile (the
+# account page) and accounts with no profile yet. The first page loaded after signing in fills those not set yet
+# from the browser.
+
+def _user_values(db, uid):
+    eff = settings.effective(db, None, uid)
+    return {k: v for k, (v, _) in eff.items() if settings.SETTINGS[k].scope == "user"}
+
+
+@router.get("/api/settings/user")
+def user_values(s=Depends(user), db=Depends(get_db)):
+    """{key: value} for every per-user setting (flat keys), as this person has them."""
+    return _user_values(db, s["id"])
+
+
+@router.put("/api/settings/user/{key}")
+def change_user_value(key: str, body: Value, request: Request, s=Depends(user), db=Depends(get_db)):
+    try:
+        d = settings.get_def(key)
+    except settings.SettingError as e:
+        raise HTTPException(404, str(e))
+    if d.scope != "user":
+        raise HTTPException(404, "That setting belongs to a profile.")
+    try:
+        with dbm.transaction(db):
+            settings.put(db, key, body.value, uid=s["id"], by=s["id"])
+            _log(db, s, None, "user", {"setting": key, "label": d.label}, request)
+    except settings.SettingError as e:
+        raise HTTPException(400, str(e))
+    return _user_values(db, s["id"])

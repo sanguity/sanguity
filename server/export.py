@@ -80,8 +80,8 @@ def _parts(path):
     return out
 
 
-def stream(p, exported_by):
-    now = datetime.datetime.now()
+def stream(p, exported_by, now=None):
+    now = now or datetime.datetime.now()   # the exporting person's wall-clock time (settings.local_now)
     stamp = now.timetuple()[:6]
     sink = _Sink()
     zf = zipfile.ZipFile(sink, "w", zipfile.ZIP_DEFLATED, compresslevel=6)

@@ -12,7 +12,7 @@ async function call(path, method = "GET", body) {
   if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || r.status + " " + r.statusText);
   return j;
 }
-const when = t => t ? new Date(t * 1000).toLocaleString(undefined, {year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}) : "—";
+const when = fmtWhen;   // dates.js
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const size = b => b == null ? "size unknown" : b < 1024 ? `${b} bytes` : b < 2 ** 20 ? `${Math.round(b / 1024)} KB` : `${(b / 2 ** 20).toFixed(1)} MB`;
 const ATT_TYPES = {pdf: "PDF", image: "Images", text: "Text", html: "Web pages (HTML)"};
@@ -343,6 +343,7 @@ $("#srcForm").onsubmit = async ev => {
 /* ---------------------------------------------------------------- start */
 (async function () {
   try { ME = await call("me"); } catch (e) { return; }
+  await datesReady();   // dates in this person's time zone and format (dates.js)
   $("#who").textContent = ME.user.username;
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   if (ME.profiles.length) {

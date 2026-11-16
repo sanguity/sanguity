@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, edits, export, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, uploads, watch_store
+from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, edits, export, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, uploads, watch_keys, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -68,6 +68,7 @@ async def lifespan(app):
             if (kept := watch_store.migrate(db)):
                 print(f"Kept the imported watch data of {kept} profile(s) as an import that can't be undone.", flush=True)
             pid = prof.bootstrap(db)
+            watch_keys.publish(db)   # the watch receiver's secrets, from the database (#46)
             if pid:
                 print(f"Loaded the existing records into profile {pid} (\"My records\").", flush=True)
             if (made := edits.migrate_corrections(db)):
@@ -899,6 +900,7 @@ def delete_profile(pid: int, body: ProfileDelete, request: Request, s=Depends(us
     if body.confirm_name.strip() != name:
         raise HTTPException(400, "Type the profile's name exactly to confirm.")
     gone = prof.delete_profile(db, pid)
+    watch_keys.publish(db)   # its watch secret stops working
     activity.log(db, "profile.delete", s, detail={"name": gone["name"], "members": gone["members"]}, ip=_client_ip(request))
     return {"ok": True, "unlinked_build": gone["linked_build"]}
 
@@ -1000,8 +1002,9 @@ def profile_export(pid: int, request: Request, s=Depends(user), db=Depends(get_d
     prof.sync_build(db, pid)
     p = export.plan(db, pid)
     activity.log(db, "export", s, pid, ip=_client_ip(request))
-    return StreamingResponse(export.stream(p, s["username"]), media_type="application/zip",
-                             headers={"Content-Disposition": f'attachment; filename="{export.filename(p["name"])}"'})
+    now = settings.local_now(db, s["id"])   # dated in the exporting person's own time zone (#42)
+    return StreamingResponse(export.stream(p, s["username"], now), media_type="application/zip",
+                             headers={"Content-Disposition": f'attachment; filename="{export.filename(p["name"], now)}"'})
 
 
 @app.get("/api/profiles/{pid}/watch")
@@ -1281,6 +1284,7 @@ app.include_router(__import__("server.routes_same", fromlist=["router"]).router)
 app.include_router(__import__("server.routes_manual", fromlist=["router"]).router)    # results typed in (#27)
 app.include_router(__import__("server.routes_labmaps", fromlist=["router"]).router)   # lab names matched on import (#23)
 app.include_router(__import__("server.routes_settings", fromlist=["router"]).router)  # settings (#35)
+app.include_router(__import__("server.routes_watch", fromlist=["router"]).router)     # a watch receiver secret per profile (#46)
 app.include_router(__import__("server.routes_shl", fromlist=["router"]).router)       # SMART Health Links and Cards (#94)
 app.include_router(__import__("server.routes_directory", fromlist=["router"]).router)  # find your provider (#93)
 app.include_router(__import__("server.routes_connect", fromlist=["router"]).router)   # connected sources: sign-in and sync (#32, #91)

@@ -24,7 +24,7 @@ function renderHeatmap() {
   // columns: draw days in range
   const dayKey = ts => isoDay(ts);
   const days = new Map();
-  for (const s of rows) for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) { const k = dayKey(p.ts); if (!days.has(k)) days.set(k, Date.parse(k + "T12:00:00")); }
+  for (const s of rows) for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) { const k = dayKey(p.ts); if (!days.has(k)) days.set(k, dayTs(k)); }
   const cols = [...days.entries()].sort((a, b) => a[1] - b[1]);
   const svg = $("#hm"), axis = $("#hmAxis");
   const avail = Math.max(320, svg.parentElement.clientWidth);
@@ -74,7 +74,7 @@ function renderHeatmap() {
     const cx = colX.get(k);
     g.push(el("svg:line", {x1: cx, x2: cx, y1: top - 2, y2: H, stroke: "var(--grid)"}));
     ax.push(el("svg:line", {x1: cx, x2: cx, y1: 0, y2: 5, stroke: "var(--axis)"}));
-    if (cx - lastLabelX >= 44) { ax.push(el("svg:text", {x: cx + 2, y: AH - 6, text: new Date(ts).toLocaleDateString(undefined, {month: "short", year: "2-digit"})})); lastLabelX = cx; }
+    if (cx - lastLabelX >= 44) { ax.push(el("svg:text", {x: cx + 2, y: AH - 6, text: zdate(ts).toLocaleDateString(undefined, {month: "short", year: "2-digit"})})); lastLabelX = cx; }
   }
   ax.push(el("svg:text", {x: LW - 8, y: AH - 6, "text-anchor": "end", text: "Draw date"}));
   svg.replaceChildren(...g); axis.replaceChildren(...ax);

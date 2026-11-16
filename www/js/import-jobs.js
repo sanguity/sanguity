@@ -39,7 +39,7 @@
     return typeof j.detail === "string" ? j.detail : `The server answered ${r.status}.`;
   }
   const plural = (n, [one, many]) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
-  const day = s => { const d = new Date(s + "T12:00:00"); return isNaN(d) ? s : d.toLocaleDateString(undefined, {year: "numeric", month: "short", day: "numeric"}); };
+  const day = s => { const t = dayTs(s); return isNaN(t) ? s : fmtD(t); };   // dates.js
 
   function box(container) {
     let host = container;

@@ -392,6 +392,60 @@ define("theme", "appearance", "Theme", "system", theme, scope="user", kind="them
        help="Your default on every device. The ◐ button on the records page still picks light or dark for one browser.")
 
 
+# ---------------------------------------------------------------- dates and times (#42): each person's own
+
+def time_zone(v):
+    """An IANA time zone name ("America/Chicago"), or "" for not chosen yet (the page then sets the browser's own
+    the first time it loads). Checked against the system's time zone database when it has one."""
+    if v == "":
+        return v
+    if not isinstance(v, str) or len(v) > 64 or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}", v):
+        raise SettingError("A time zone is a name like America/Chicago or Europe/Paris.")
+    known = _zones()
+    if known and v not in known:
+        raise SettingError(f"There's no time zone called {v}.")
+    return v
+
+
+def _zones():
+    try:
+        import zoneinfo
+        return zoneinfo.available_timezones()   # empty where there's no time zone database (Windows without tzdata)
+    except Exception:
+        return set()
+
+
+DATE_FORMATS = {"mdy": "Nov 15, 2026", "dmy": "15 Nov 2026", "ymd": "2026-11-15"}
+
+
+def date_format(v):
+    if v == "" or v in DATE_FORMATS:
+        return v
+    raise SettingError("The date format must be one of: " + ", ".join(DATE_FORMATS.values()) + ".")
+
+
+def local_now(db, uid):
+    """Now, as a naive wall-clock time in the person's own time zone (the server's, when theirs isn't set or the
+    system has no time zone database): for dates the server writes for someone, like an export's file name."""
+    from datetime import datetime
+    zone = effective(db, None, uid)["dates.timeZone"][0]
+    if zone:
+        try:
+            import zoneinfo
+            return datetime.now(zoneinfo.ZoneInfo(zone)).replace(tzinfo=None)
+        except Exception:
+            pass
+    return datetime.now()
+
+
+section("dates", "Dates and times", "How dates are shown to you, and where your days begin and end.")
+define("dates.timeZone", "dates", "Time zone", "", time_zone, scope="user", private=False, kind="timezone",
+       help="Days on the timeline, Health and Costs start at midnight here, and times are shown in it. "
+            "Set from this browser the first time you sign in.")
+define("dates.format", "dates", "Date format", "", date_format, scope="user", private=False, kind="dateformat",
+       help="How dates are written. Set from this browser's language the first time you sign in.")
+
+
 # ---------------------------------------------------------------- storage
 
 def _where(scope, pid, uid):

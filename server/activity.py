@@ -30,6 +30,8 @@ Profile events (profile_id set), readable by the profile's owners:
                 or "delete", kind "note", "symptom" or "side_effect"; never what it says)
   summary       {"sections", "since", "for", "pages", "questions"}: made a visit summary PDF (summary.py, #48; the
                 sections and dates only, never the questions or any result)
+  watch.secret  {"rotated"}: made the profile's watch receiver secret, or a new one in place of the old (#46; never
+                the secret)
 Account events (no profile), readable by admins:
   setup         the first account                                password   changed their own password
   account.create / account.disable / account.enable / account.admin / account.unadmin / account.reset   {"username"}
@@ -55,7 +57,7 @@ import json
 from . import config, crypto, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside",
-                   "settings", "connect", "disconnect", "calendar", "journal", "summary")
+                   "settings", "connect", "disconnect", "calendar", "journal", "summary", "watch.secret")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",

@@ -132,7 +132,8 @@ class MatchesReceiver(unittest.TestCase):
         # its days in New York's standard offset (the zone database may be missing, as on Windows without tzdata);
         # every sample here sits on the same day either side of the change to daylight saving time
         rx.zone = lambda name: timezone(timedelta(hours=-5))
-        store = rx.Store(os.path.join(tmp, "watch.db"))
+        rx.DATA = tmp
+        store = rx.Store()
         z = "-05:00"
         stages = [("light", 50), ("deep", 40), ("light", 60), ("rem", 40), ("awake", 10), ("light", 160), ("rem", 60)]
         store.ingest({"source": "health_connect", "timezone": "America/New_York", "sequence": 1, "timestamp": "x",

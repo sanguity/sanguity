@@ -269,6 +269,32 @@ const EDITORS = {labs: labsEditor, tiles: tilesEditor, names: namesEditor, rules
   number: numberEditor, toggle: toggleEditor, choices: choicesEditor,
   milestones: milestonesEditor};
 
+/* ---------------------------------------------------------------- dates and times (#42): each person's own time
+   zone and date format (dates.js uses them on every page) */
+function zoneEditor(value, changed, ro) {
+  let zones = [];
+  try { zones = Intl.supportedValuesOf("timeZone"); } catch (e) {}
+  const here = browserZone(), cur = value || here;
+  for (const z of [cur, here, "UTC"]) if (!zones.includes(z)) zones.unshift(z);
+  const sel = el("select", {class: "set-select", "aria-label": "Time zone", disabled: ro, onchange: () => { note(); changed(); }},
+    ...zones.map(z => el("option", {value: z, text: z.replace(/_/g, " ")})));
+  sel.value = cur;
+  const hint = el("span", {class: "hint"});
+  const use = el("button", {class: "btn small", type: "button", text: "Use this device's", hidden: ro,
+    onclick: () => { sel.value = here; note(); changed(); }});
+  const note = () => { const same = sel.value === here; hint.textContent = same ? "" : `This device is set to ${here.replace(/_/g, " ")}.`; use.hidden = ro || same; };
+  note();
+  return {node: el("div", {class: "set-add"}, sel, use, hint), get: () => sel.value};
+}
+function formatEditor(value, changed, ro) {
+  const sel = el("select", {class: "set-select", "aria-label": "Date format", disabled: ro, onchange: changed},
+    ...Object.entries(DATE_FORMATS).map(([k, example]) => el("option", {value: k, text: example})));
+  sel.value = value || browserFormat();
+  return {node: el("div", {class: "set-add"}, sel), get: () => sel.value};
+}
+EDITORS.timezone = zoneEditor;
+EDITORS.dateformat = formatEditor;
+
 /* ---------------------------------------------------------------- the sections */
 const FROM = {default: "default", install: "set for this server", profile: "set for this profile", user: "your own"};
 function settingNode(st, onSaved) {
@@ -346,6 +372,7 @@ async function loadLabNames() {
 /* ---------------------------------------------------------------- start */
 (async () => {
   try { ME = await call("me"); } catch (e) { return; }
+  await datesReady();   // dates in this person's time zone and format (dates.js)
   if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
   if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
   $("#who").textContent = ME.user.username;
@@ -356,8 +383,49 @@ async function loadLabNames() {
   let want; try { want = +(new URLSearchParams(location.search).get("profile") || localStorage.getItem("ht-profile")); } catch (e) {}
   if (ME.profiles.some(p => p.id === want)) sel.value = want;
   sel.closest("label").hidden = ME.profiles.length < 2;
-  const pick = () => { PID = +sel.value; try { localStorage.setItem("ht-profile", sel.value); } catch (e) {} loadLabNames().then(() => load()); };
+  const pick = () => { PID = +sel.value; try { localStorage.setItem("ht-profile", sel.value); } catch (e) {} loadLabNames().then(() => load()); loadWatch(); };
   sel.onchange = pick;
   $("#intro").hidden = false;
   pick();
 })();
+
+/* ---------------------------------------------------------------- the profile's watch and scale (#46): the
+   receiver's upload address and this profile's secret, for its owners and editors. The secret is shown once, when
+   it's made; after that only its last characters. */
+const copyBtn = (text, label) => el("button", {class: "btn small", type: "button", text: "Copy", "aria-label": label,
+  onclick: async ev => { try { await navigator.clipboard.writeText(text); ev.target.textContent = "Copied"; } catch (e) { ev.target.textContent = "Select and copy it"; } }});
+async function loadWatch() {
+  const box = $("#watch"), p = ME.profiles.find(x => x.id === PID);
+  box.hidden = true;
+  if (!p || (p.role !== "owner" && p.role !== "editor")) { box.replaceChildren(); return; }
+  try { drawWatch(await call(`profiles/${PID}/watch/receiver`)); }
+  catch (e) { box.replaceChildren(el("h2", {text: "Watch and scale"}), el("p", {class: "msg bad", text: e.message})); box.hidden = false; }
+}
+function drawWatch(st, secret) {
+  const box = $("#watch"), msg = el("span", {class: "msg", role: "status"});
+  const addrs = st.addresses.length ? st.addresses : ["(unknown: set PUBLIC_ORIGINS or WATCH_UPLOAD_URL on the server)"];
+  const secretNode = secret
+    ? el("div", {}, el("code", {class: "w-secret", id: "watchSecret", text: secret}), " ", copyBtn(secret, "Copy the secret"),
+        el("p", {class: "hint", text: "Shown only now: put it in the phone app. Afterwards it's kept hidden; make a new one if it's lost."}))
+    : st.has_secret ? el("code", {class: "w-secret", text: st.masked})
+    : st.legacy ? el("span", {text: "The server's original receiver secret (auth/watch_secret). Make one for this profile to replace it."})
+    : el("span", {class: "muted", text: "None yet"});
+  const has = st.has_secret || st.legacy;
+  const go = el("button", {class: "btn small" + (has ? "" : " primary"), type: "button", id: "watchRotate", text: has ? "Make a new secret…" : "Make a secret",
+    onclick: async () => {
+      if (has && !confirm("Make a new secret? The phone using the current one stops uploading until you give it the new one.")) return;
+      go.disabled = true;
+      try { const r = await call(`profiles/${PID}/watch/receiver/rotate`, "POST", {}); drawWatch(r, r.secret); }
+      catch (e) { sayIn(msg, e.message, true); go.disabled = false; }
+    }});
+  box.replaceChildren(
+    el("h2", {text: "Watch and scale"}),
+    el("p", {class: "hint", text: "A phone app that sends Health Connect data by webhook (watch, sleep and smart-scale readings) uploads them for this profile. In the app, set:"}),
+    el("dl", {class: "kv w-kv"},
+      el("dt", {text: "Upload address"}), el("dd", {}, ...addrs.flatMap(a => [el("div", {}, el("code", {class: "w-addr", text: a}), " ", st.addresses.length ? copyBtn(a, "Copy the upload address") : null)])),
+      el("dt", {text: "Secret"}), el("dd", {}, secretNode)),
+    el("p", {class: "hint", text: "Each profile has its own secret, so each person's phone uploads to their own profile. Readings are split into days in the phone's own time zone."}),
+    st.ready ? null : el("p", {class: "msg bad", text: "The receiver can't be given this profile's secret: the server has no folder for it (WATCH_DIR/keys, in its compose file). Uploads with a secret made here won't be taken until it does."}),
+    el("div", {class: "row"}, go, msg));
+  box.hidden = false;
+}

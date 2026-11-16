@@ -174,6 +174,7 @@ $("#go").onclick = async () => {
 /* ---------------------------------------------------------------- start */
 (async () => {
   try { ME = await call("me"); } catch (e) { return; }
+  await datesReady();   // dates in this person's time zone and format (dates.js)
   if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
   if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
   $("#who").textContent = ME.user.username;

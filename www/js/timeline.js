@@ -8,7 +8,7 @@ function ticks(a, b, w) {
   const span = b - a, out = [], target = Math.max(3, Math.floor(w / 110));
   const steps = [[DAY,"d"],[7*DAY,"w"],[30.44*DAY,"m"],[91.3*DAY,"q"],[182.6*DAY,"h"],[365.25*DAY,"y"],[730.5*DAY,"2y"]];
   let st = steps.find(s => span / s[0] <= target) || steps[steps.length - 1];
-  const d = new Date(a);
+  const d = zdate(a);
   if (st[1] === "d" || st[1] === "w") { d.setHours(0,0,0,0); const inc = st[1] === "d" ? 1 : 7; while (d.getTime() < b) { if (d.getTime() >= a) out.push([d.getTime(), d.toLocaleDateString(undefined,{month:"short",day:"numeric"})]); d.setDate(d.getDate() + inc); } }
   else { const mStep = {m:1,q:3,h:6,y:12,"2y":24}[st[1]]; d.setDate(1); d.setHours(0,0,0,0); d.setMonth(Math.floor(d.getMonth()/mStep)*mStep);
     while (d.getTime() < b) { if (d.getTime() >= a) out.push([d.getTime(), mStep >= 12 ? String(d.getFullYear()) : (d.getMonth() === 0 ? d.toLocaleDateString(undefined,{month:"short",year:"numeric"}) : d.toLocaleDateString(undefined,{month:"short"}))]); d.setMonth(d.getMonth() + mStep); } }

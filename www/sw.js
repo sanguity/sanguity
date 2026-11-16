@@ -18,7 +18,7 @@ const FILES = [
   "summary.html",
   "manifest.webmanifest", "css/app.css", "css/summary.css",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png",
-  "js/account.js", "js/app.js", "js/charts.js", "js/connect.js", "js/core.js", "js/costs.js", "js/drawer.js", "js/health.js",
+  "js/account.js", "js/app.js", "js/charts.js", "js/connect.js", "js/core.js", "js/costs.js", "js/dates.js", "js/drawer.js", "js/health.js",
   "js/heatmap.js", "js/import-history.js", "js/import-jobs.js", "js/import-manual.js", "js/import-records.js", "js/import-shl.js",
   "js/import.js", "js/journal.js", "js/login.js", "js/offline.js", "js/outside.js", "js/overview.js", "js/providers.js",
   "js/pwa.js", "js/same.js", "js/settings-calendar.js", "js/settings.js", "js/setup.js", "js/sources.js", "js/summary.js",
