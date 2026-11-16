@@ -14,6 +14,10 @@
   "sources": {
     "EXT": "Outside lab"
   },
+  "tabs": {
+    "order": ["overview", "health", "timeline", "labs", "heatmap", "costs"],
+    "hidden": []
+  },
   "visitWorkouts": [
     {"match": "^physical therapy\\b", "name": "Physical therapy", "minutes": 45}
   ]

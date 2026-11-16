@@ -47,7 +47,8 @@ function renderOverview() {
   // key lab tiles
   box.append(el("div", {class: "ov-h"}, el("h2", {text: "Key labs"}), el("p", {class: "hint", text: lastDraw ? `latest draw ${fmtD(lastDraw)} · sparklines show the last 6 months · click a tile for its full trend` : ""})));
   const tiles = el("div", {class: "tiles"});
-  for (const n of CFG.overview.keyLabs) {
+  const keyLabs = keyLabTiles(CFG.overview.keyLabs, SERIES, JSON.stringify(CFG.overview.keyLabs) === JSON.stringify(DEFAULT_SETTINGS.overview.keyLabs));
+  for (const n of keyLabs) {
     const s = seriesBy(n); if (!s || !s.pts.length) continue;
     const last = s.pts[s.pts.length - 1], prev = s.pts[s.pts.length - 2];
     const st = statusOf(last);
@@ -71,7 +72,7 @@ function renderOverview() {
     let i = s.pts.length - 1; while (i > 0 && s.pts[i - 1][4] === last[4]) i--;
     out.push({s, last, since: s.pts[i].ts, streak: s.pts.length - i});
   }
-  out.sort((a, b) => (CFG.overview.keyLabs.includes(b.s.name) - CFG.overview.keyLabs.includes(a.s.name)) || b.s.n - a.s.n);
+  out.sort((a, b) => (keyLabs.includes(b.s.name) - keyLabs.includes(a.s.name)) || b.s.n - a.s.n);
   const oc = el("div", {class: "card"}, el("h2", {text: `Outside reference range at latest draw (${out.length})`}),
     el("p", {class: "hint", text: "Values from the last two weeks of draws that were flagged high or low, and how long they have been that way. Not a diagnosis; your care team interprets these in context."}));
   if (!out.length) oc.append(el("div", {class: "empty", style: {padding: "16px"}, text: "Everything measured recently is within its reference range."}));
