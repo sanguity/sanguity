@@ -137,7 +137,9 @@ SCHEMA = [
         profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
         at INTEGER NOT NULL,
         origin TEXT NOT NULL,                      -- build: the setup build; dataset: a data.json folder or an
-                                                   -- export zip (server.manage import)
+                                                   -- export zip (server.manage import); upload: files uploaded
+                                                   -- in the browser, read by an importer (jobs.py). An upload
+                                                   -- adds to the profile's records instead of replacing them
         format TEXT NOT NULL,                      -- the reader that produced it ("sanguity-data": a data.json)
         meta TEXT);                                -- JSON: when it was built, its source, and the profile-wide
                                                    -- lists it brought (upcoming visits, problems, payments...)
@@ -192,6 +194,27 @@ SCHEMA = [
         path TEXT NOT NULL,                        -- relative path, encrypted
         bytes INTEGER NOT NULL,
         PRIMARY KEY(upload_id, name));             -- name: a keyed hash of the path, so a path can't come twice
+    """,
+    # version 12: imports run in the background (jobs.py): one row per import of an upload, which the page polls.
+    # message, warnings and summary say what was in the records, so they are encrypted (crypto.enc).
+    """
+    CREATE TABLE jobs(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        upload_id INTEGER NOT NULL REFERENCES uploads(id) ON DELETE CASCADE,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        state TEXT NOT NULL CHECK(state IN ('queued', 'running', 'done', 'failed')),
+        stage TEXT CHECK(stage IN ('detecting', 'parsing', 'saving')),   -- while running: how far it got
+        importer TEXT,                             -- the importer's NAME: asked for, or detected
+        message TEXT,                              -- why it failed, in plain language (the traceback is only logged)
+        warnings TEXT,                             -- JSON list of the importer's warnings
+        summary TEXT,                              -- JSON: counts by kind and the date range, once done
+        import_id INTEGER REFERENCES imports(id) ON DELETE SET NULL,   -- once done
+        created INTEGER NOT NULL,
+        started INTEGER,
+        finished INTEGER);
+    CREATE INDEX jobs_profile ON jobs(profile_id, id);
+    CREATE INDEX jobs_state ON jobs(state);
     """,
 ]
 

@@ -5,7 +5,8 @@ Profile events (profile_id set), readable by the profile's owners:
   create        created the profile                              rename     {"from", "to"}
   share         {"username", "role", "from"}: gave access or changed a role ("from" is the old role, if any)
   unshare       {"username"}: removed someone's access, or left (the actor is then that person)
-  import        {"documents"}: records loaded with server.manage    reload     records reloaded from the setup build
+  import        {"documents"}: records loaded with server.manage; {"importer", "counts", "job"}: an upload imported in
+                the browser (jobs.py)                             reload     records reloaded from the setup build
   export        downloaded everything in the profile as a zip
   upload        {"upload", "files", "bytes"}: files uploaded on the import page (uploads.py)
 Account events (no profile), readable by admins:

@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, export, passkeys, profiles as prof, records, security as sec, twofactor, uploads
+from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, export, jobs, passkeys, profiles as prof, records, security as sec, twofactor, uploads
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -67,10 +67,16 @@ async def lifespan(app):
             prof.sync_build(db)
             if (gone := uploads.cleanup(db)):
                 print(f"Removed {gone} upload(s) left unfinished for over a day.", flush=True)
+            if (stopped := jobs.recover(db)):
+                print(f"Marked {stopped} import(s) the last stop interrupted as failed; nothing of them was saved.", flush=True)
             _setup_code(db)
         finally:
             db.close()
-        yield
+        jobs.start()
+        try:
+            yield
+        finally:
+            jobs.stop()
 
 
 app = FastAPI(title="Sanguity", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -1252,6 +1258,7 @@ def healthz():
 
 
 app.include_router(__import__("server.routes_uploads", fromlist=["router"]).router)   # uploads (#19): uses the dependencies above
+app.include_router(__import__("server.routes_jobs", fromlist=["router"]).router)      # importing them (#20)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here
