@@ -10,6 +10,9 @@
                                          it updated on every rebuild (for after the build's profile was deleted)
   import PROFILE_ID DIR|EXPORT.zip       load DIR/data.json (and settings.json), or an export from the Account page,
                                          into a profile (replacing its records)
+  import-apple-health PROFILE_ID PATH    load an iPhone's Health export (the zip from Export All Health Data, or its
+                                         export.xml) as the profile's watch and scale summary; a later export
+                                         replaces the days and workouts it overlaps
   sync                                   re-import the setup build into the profiles linked to it
   backup [DEST] [--keep N]               write a backup archive (default folder: /backups in Docker), keeping the
                                          newest N there; safe while the app runs
@@ -24,9 +27,53 @@
   restore ARCHIVE [--yes]                replace the database, profiles and setup build with a backup's; the app must
                                          be stopped: docker compose run --rm --no-deps app python -m server.manage restore ...
 """
-import os, sys
+import os, shutil, sys, tempfile, zipfile
 
-from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, main, profiles as prof
+from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, main, profiles as prof, watch_store
+
+
+APPLE_HEALTH_MAX_BYTES = 16 * 2**30   # export.xml, unzipped: far above a decade of a watch's records
+
+
+def _apple_health_xml(path, tmp):
+    """The export.xml to read: PATH itself, or the one entry of that name in the zip, copied into tmp. Nothing
+    else in the zip is unpacked, and a zip with an unsafe entry name or an oversized export.xml is refused."""
+    if not zipfile.is_zipfile(path):
+        return path
+    with zipfile.ZipFile(path) as zf:
+        found = None
+        for i in zf.infolist():
+            name, parts = i.filename, i.filename.split("/")
+            if ("\\" in name or name.startswith("/") or ":" in parts[0] or ".." in parts
+                    or "" in parts[:-1] or (not i.is_dir() and parts[-1] == "")):
+                raise ValueError(f"unexpected entry in the zip: {name}")
+            if not i.is_dir() and parts[-1] == "export.xml" and len(parts) <= 2:
+                if found:
+                    raise ValueError("this zip holds more than one export.xml")
+                found = i
+        if not found:
+            raise ValueError("this zip has no export.xml: it isn't an Apple Health export")
+        if found.file_size > APPLE_HEALTH_MAX_BYTES:
+            raise ValueError(f"export.xml is more than {APPLE_HEALTH_MAX_BYTES // 2**30} GB unpacked")
+        out, n = os.path.join(tmp, "export.xml"), 0
+        with zf.open(found) as src, open(out, "wb") as dst:
+            while chunk := src.read(1 << 20):
+                n += len(chunk)
+                if n > APPLE_HEALTH_MAX_BYTES:   # the size in the zip's directory can be wrong
+                    raise ValueError(f"export.xml is more than {APPLE_HEALTH_MAX_BYTES // 2**30} GB unpacked")
+                dst.write(chunk)
+        return out
+
+
+def import_apple_health(db, pid, path):
+    """Parse an Apple Health export and save it as the profile's watch summary. Returns (stored, warnings)."""
+    from .importers import apple_health
+    tmp = tempfile.mkdtemp(prefix="sanguity-apple-health-")   # removed below: the plaintext copy lives only this long
+    try:
+        out = apple_health.parse({"apple_health_export/export.xml": _apple_health_xml(path, tmp)})
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return watch_store.save_import(db, pid, out["data"]["watch"]), out["warnings"]
 
 
 def _user(db, name):
@@ -130,6 +177,21 @@ def _command(db, argv):
             raise
         activity.log(db, "import", profile_id=pid, detail={"documents": n}, actor=activity.COMMAND_LINE)
         print(f"Imported {args[1]} into profile {pid} ({n} documents).")
+    elif cmd == "import-apple-health" and len(args) == 2:
+        pid = int(args[0])
+        if not db.execute("SELECT 1 FROM profiles WHERE id=?", (pid,)).fetchone():
+            sys.exit(f"No profile {pid}.")
+        if not os.path.isfile(args[1]):
+            sys.exit(f"No file {args[1]}.")
+        try:
+            stored, warnings = import_apple_health(db, pid, args[1])
+        except (ValueError, zipfile.BadZipFile) as e:
+            sys.exit(f"Couldn't import {args[1]}: {e}")
+        activity.log(db, "import", profile_id=pid, actor=activity.COMMAND_LINE,
+                     detail={"documents": 0, "source": "apple-health", "days": stored["days"], "workouts": stored["workouts"]})
+        for w in warnings:
+            print("Note:", w)
+        print(f"Imported Apple Health into profile {pid}: {stored['days']} days, {stored['workouts']} workouts.")
     elif cmd == "remove-user" and args:
         u = _user(db, args[0])
         hand = _user(db, args[args.index("--hand-to") + 1]) if "--hand-to" in args else None

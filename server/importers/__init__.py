@@ -23,7 +23,8 @@ THRESHOLD = 0.2      # a best score below this means no importer matched
 NOT_IMPORTERS = {"common"}   # modules in this package that hold shared code, not a format
 
 REQUIRED_KEYS = {"events": list, "details": dict, "labs": list, "costs": list}
-OPTIONAL_KEYS = {"upcoming": list, "problems": list, "milestones": list, "clinicWeights": list, "outOfPocket": dict}
+OPTIONAL_KEYS = {"upcoming": list, "problems": list, "milestones": list, "clinicWeights": list, "outOfPocket": dict,
+                 "watch": dict}   # a daily watch summary (watch_store.py), saved apart from the records
 
 
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")

@@ -82,7 +82,7 @@ records the app couldn't load, so a mistake in an importer doesn't reach anyone'
 ## The records (`data`)
 
 The same object build.py and `demo/generate.py` write as data.json. Required keys: `events`, `details`, `labs`,
-`costs` (empty is fine). Optional: `upcoming`, `problems`, `milestones`, `clinicWeights`, `outOfPocket`. Run
+`costs` (empty is fine). Optional: `upcoming`, `problems`, `milestones`, `clinicWeights`, `outOfPocket`, `watch`. Run
 `python3 -I demo/generate.py /tmp/demo` and look at `/tmp/demo/data.json` for a full, fictional example.
 
 ### `events`: the timeline
@@ -193,6 +193,7 @@ where `id` is the claim's event.
 | `milestones` | `[{"date", "label", "primary": true}]`: named dates for chart markers |
 | `clinicWeights` | `[[time, pounds, where]]`: weights measured at visits, charted with the scale's |
 | `outOfPocket` | `{"payments": [{"d", "payee", "group", "amount", "account", "memo", "est"}], "exported", "range", "excluded", "balance"}` |
+| `watch` | `{"metrics": [{"key", "name", "unit", "group", "pts": [[day, value]]}], "exercise": [{"key", "start", "end", "name", "kind", "minutes"}]}`: daily wearable data in the shape `watch/receiver.py` writes. It isn't kept with the records: an import saves it with `watch_store.save_import`, merged day by day with what the profile already has (see the Apple Health importer) |
 
 ## Shared helpers: `server/importers/common.py`
 

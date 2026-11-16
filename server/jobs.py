@@ -19,7 +19,7 @@ Jobs left queued or running when the app stopped never committed, so at start-up
 """
 import collections, contextlib, json, logging, os, posixpath, queue, re, threading
 
-from . import activity, crypto, db as dbm, importers as registry, profiles as prof, records, uploads
+from . import activity, crypto, db as dbm, importers as registry, profiles as prof, records, uploads, watch_store
 
 log = logging.getLogger("sanguity.jobs")
 
@@ -157,6 +157,7 @@ def _import(db, j):
         path = sealed.get(url.split("#", 1)[0]) if isinstance(url, str) else None
         return os.path.realpath(path) if path and os.path.isfile(path) else None
 
+    watch = data.pop("watch", None)   # daily wearable data: saved with watch_store, not as records
     summary = summarise(data)
     who = db.execute("SELECT id, username FROM users WHERE id=?", (j["created_by"],)).fetchone() if j["created_by"] else None
     with dbm.transaction(db):
@@ -164,6 +165,9 @@ def _import(db, j):
         summary["counts"]["documents"] = n
         iid = records.store(db, pid, data, "upload", fmt=mod.NAME)
         prof.link_documents(db, iid, keep)
+        if watch:   # last, so a failure before it leaves no file behind
+            saved = watch_store.save_import(db, pid, watch)
+            summary["counts"].update(watch_days=saved["days"], workouts=saved["workouts"])
         activity.log(db, "import", who, pid, {"importer": mod.NAME, "counts": summary["counts"], "job": jid},
                      ip=_ips.get(jid), actor=None if who else "removed account")
         db.execute("""UPDATE jobs SET state='done', stage=NULL, import_id=?, warnings=?, summary=?, finished=? WHERE id=?""",
