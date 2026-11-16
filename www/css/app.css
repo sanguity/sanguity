@@ -221,6 +221,8 @@ table.data tr.link:hover td{background:var(--hover)}
 .edits .edit-form label{display:flex;flex-direction:column;gap:4px;margin:6px 0 8px;color:var(--ink2)}
 .edits .edit-form input,.edits .edit-form select{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:6px 9px;max-width:100%;min-width:0;font:inherit}
 .edits .edit-msg:empty{display:none}
+.edits.same{margin-top:10px}
+.edits.same .possible>span{color:var(--ink)}
 /* where a record came from (sources.js) */
 .source{margin:12px 0 0;font-size:12.5px;color:var(--ink2);overflow-wrap:anywhere}
 .source b{color:var(--muted);font-weight:600}
@@ -368,6 +370,9 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .import-job .imp-labs select{max-width:100%;min-width:0;font:inherit;padding:4px 6px}
 .import-job .imp-labs .why{color:var(--muted);font-size:12px}
 .import-job .imp-labs .before{font-size:12px;font-weight:600}
+.import-job .imp-same ul{list-style:none;margin:6px 0 0;padding:0;font-size:13px}
+.import-job .imp-same li{border-top:1px solid var(--grid);padding:6px 0;display:grid;gap:4px;overflow-wrap:anywhere}
+.import-job .imp-same .why{color:var(--muted);font-size:12px}
 .imp .off{display:none !important}
 /* a SMART Health Link pasted or scanned (import-shl.js) */
 .imp .shl-text{display:grid;gap:4px;margin:6px 0}

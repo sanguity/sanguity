@@ -296,7 +296,10 @@ const WHAT = {
   outside: d => `had Sanguity contact ${d.host} (${d.purpose})`,
   discard: () => "cancelled an import at its preview",
   undo: d => `undid an import${d.label ? ` (${d.label})` : ""}, removing what it brought`,
-  edit: d => (d.undone ? "undid an edit of" : ({hide: "hid", rename: "renamed", date: "changed the date of", not_stay: "marked as not a hospital stay",
+  edit: d => d.action === "same" || d.action === "not_same" ? (d.undone ? `undid a decision on two results of “${d.title || "a test"}”`
+    : d.action === "same" ? `linked two results of “${d.title || "a test"}” from different sources as the same result`
+    : `marked two results of “${d.title || "a test"}” from different sources as not the same`) :
+    (d.undone ? "undid an edit of" : ({hide: "hid", rename: "renamed", date: "changed the date of", not_stay: "marked as not a hospital stay",
     merge: "merged another event into"}[d.action] || "edited")) + ` “${d.title || "an event"}”` + (d.to && !d.undone ? ` to “${d.to}”` : ""),
   connect: d => d.change === "options" ? `changed what ${d.source} pulls` + (d.kinds ? ` (${d.kinds.join(", ")})` : d.kinds === null ? " (everything allowed)" : "") + (d.since ? ` from ${d.since}` : "")
     : d.change === "warning" ? `noted that ${d.text.replace(/\.$/, "").replace(/^./, s => s.toLowerCase())}`

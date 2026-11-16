@@ -17,12 +17,14 @@ function sourceNodes(imp, note) {
   return [el("a", {href: importHref(imp), class: "src-link", "data-import": imp, title: "Open this import in the import history", text: s.label}),
     ` · imported ${fmtD(s.at * 1000)}`, s.synced ? ` · last synced ${fmtDT(s.synced * 1000)}` : null, note ? ` (${note})` : null];
 }
-/* the drawer's Source line for an event: its import, the import of anything merged into it, and whether it was edited */
+/* the drawer's Source line for an event: its import, the import of anything merged into it or linked to it as the
+   same result (#96), and whether it was edited */
 function eventSource(e) {
   if (!e || e.imp == null) return null;
   const d = DATA.details[e.id] || {};
   const merged = (Array.isArray(d.merged) ? d.merged : []).map(m => m && m.imp).filter(i => i != null && sourceOf(i));
-  const parts = [sourceNodes(e.imp), ...merged.map(i => ["; ", ...sourceNodes(i, "merged in")])];
+  const same = [...new Set((Array.isArray(d.same) ? d.same : []).map(x => x && x.imp))].filter(i => i != null && i !== e.imp && sourceOf(i));
+  const parts = [sourceNodes(e.imp), ...merged.map(i => ["; ", ...sourceNodes(i, "merged in")]), ...same.map(i => ["; ", ...sourceNodes(i, "same result")])];
   if (!parts[0].length) return null;
   const edited = (DATA.edits || []).some(x => x.found && x.ids.includes(e.id));
   return el("p", {class: "source"}, el("b", {text: "Source "}), ...parts.flat(),
@@ -30,6 +32,8 @@ function eventSource(e) {
 }
 /* the line under a lab series' table on Trends */
 function seriesSource(s) {
-  if (!s || s.watch || !sourceOf(s.imp)) return null;
-  return el("p", {class: "source"}, el("b", {text: "Source "}), ...sourceNodes(s.imp));
+  if (!s || s.watch) return null;
+  const imps = [...new Set([...(s.imps || [s.imp]), ...s.pts.flatMap(p => (p.same || []).map(x => x.imp))])].filter(i => sourceOf(i));
+  if (!imps.length) return null;
+  return el("p", {class: "source"}, el("b", {text: imps.length > 1 ? "Sources " : "Source "}), ...imps.flatMap((i, n) => [n ? "; " : null, ...sourceNodes(i)]));
 }

@@ -9,7 +9,11 @@ to data.json, and each part of it has its place:
   labs       [{name, unit, panel, loinc, n, txt, pts}]       series, with each point of pts a row in results
   the rest   built, source, upcoming, problems, outOfPocket, milestones, clinicWeights...   imports.meta
   edits      [{id, action, found, ids...}]                   the edits table: corrections made in the app, applied
-                                                             last (edits.py), never part of an import
+                                                             after the rows (edits.py), never part of an import
+  same       [{id, same, found, sides...}]                   the same_results table: results from two sources the
+  possible   [{ref, a, b}]                                   person said are the same (shown once) or not, applied
+                                                             last; and the possible matches still undecided
+                                                             (crossmatch.py, #96). Only when there are any
   imports    {import id: {label, origin, format, at, synced}}  the imports rows: where each record came from (#100).
                                                              Each event and lab series names its import as "imp"; a
                                                              series' results are all of its import. Sent once here,
@@ -28,11 +32,11 @@ every row. '' means the record has no key; NULL, not worked out yet (backfill_ke
 import hashlib, hmac, json, threading
 from contextlib import contextmanager
 
-from . import crypto, edits
+from . import crossmatch, crypto, edits
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
-SERVED = ("imports", "edits")   # parts assemble() adds: never stored from an import (an export's data.json has them)
+SERVED = ("imports", "edits", "same", "possible")   # parts assemble() adds: never stored from an import (an export's data.json has them)
 
 
 def _enc(obj):
@@ -89,7 +93,7 @@ def store(db, pid, data, origin, fmt=FORMAT, now=None):
         if not isinstance(s, dict):
             continue
         sid = db.execute("INSERT INTO series(profile_id, import_id, body, key_hash) VALUES(?, ?, ?, ?)",
-                         (pid, iid, _enc({k: v for k, v in s.items() if k not in ("pts", "imp")}), _hash(secret, s.get("key")))).lastrowid
+                         (pid, iid, _enc({k: v for k, v in s.items() if k not in ("pts", "imp", "same")}), _hash(secret, s.get("key")))).lastrowid
         db.executemany("INSERT INTO results(profile_id, import_id, series_id, body) VALUES(?, ?, ?, ?)",
                        [(pid, iid, sid, _enc(p)) for p in s.get("pts") or []])
     _bump(db, pid)
@@ -280,7 +284,8 @@ def _assemble(db, pid):
         pts.setdefault(r["series_id"], []).append(_dec(r["body"]))
     labs = [{**_dec(r["body"]), "imp": r["import_id"], "pts": pts.get(r["id"], [])}
             for r in db.execute("SELECT id, import_id, body FROM series WHERE profile_id=? ORDER BY id", (pid,))]
-    return edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
+    data = edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
+    return crossmatch.apply(db, pid, data)
 
 
 # the page asks for a profile's records on every load; putting them together decrypts every row, so the result

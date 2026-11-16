@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 21**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 22**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -13,7 +13,7 @@ Two things hold everywhere:
   counts are plain. Where a value must be found without decrypting every row, a keyed hash (HMAC) of it is stored
   beside it (`key_hash`, `target`).
 - **Everything belongs to a profile, and goes with it.** Deleting a profile removes its records, imports, uploads,
-  jobs, edits, settings, memberships and activity by `ON DELETE CASCADE`. Records also belong to the import that brought them
+  jobs, edits, same-result links, settings, memberships and activity by `ON DELETE CASCADE`. Records also belong to the import that brought them
   in, so undoing an import removes exactly its rows.
 
 ## Accounts and access
@@ -127,7 +127,9 @@ browser, or results typed in. A browser upload is stored as raw files (**uploads
 background **job** that stops at a preview, and saved as one import once confirmed. An import's **events** (visits,
 stays, lab draws, documents, claims…), lab **series** and their **results**, and its **documents** all point back to
 it. **Edits** (corrections) belong to the profile instead, keyed by a hash of each event's source key, so they
-survive re-imports and undo.
+survive re-imports and undo. So do **same_results**: the person's decision that a lab result from one source is the
+same as one from another (shown once, with both sources) or not (no longer flagged), found by both results' point
+keys (`server/crossmatch.py`, #96).
 
 ```mermaid
 erDiagram
@@ -143,6 +145,8 @@ erDiagram
     profiles ||--o{ import_undos : "remembers"
     profiles ||--o{ edits : "has"
     events }o..o{ edits : "matched by key hash"
+    profiles ||--o{ same_results : "has"
+    results }o..o{ same_results : "matched by point key"
 
     profiles {
         int id PK
@@ -219,6 +223,7 @@ erDiagram
         text summary "🔒 JSON: counts, duplicates, range"
         text keep "duplicates saved anyway"
         text labs "🔒 JSON: lab-name matches chosen at the preview"
+        text same "possible matches confirmed as the same result"
         int import_id FK
         int created
         int started
@@ -245,7 +250,25 @@ erDiagram
         int created_by FK
         int at
     }
+    same_results {
+        int id PK
+        int profile_id FK
+        text pair "HMAC of both point keys"
+        text a_key "🔒 one result's point key"
+        text b_key "🔒 the other's"
+        int same "1 same result, 0 not the same"
+        text value "🔒 JSON: both sides when decided"
+        int created_by FK
+        int at
+    }
 ```
+
+A **point key** is what identifies a lab result across re-imports, as the preview identifies one: the series' source
+key (or, without one, its name), the unit, the time and the value as reported. `pair` is
+`HMAC(pepper, "sanguity same result\0" + both keys, sorted)`, so a pair is found, and the page refers to it, without
+decrypting anything; it is unique per profile, and a second decision on a pair replaces the first. When the records
+are put together, a "same result" whose two results are both there shows once (the older import's), with the other's
+source listed; when either import is undone the decision stays, unapplied, until it comes back.
 
 ## Lab-name matches (install-wide)
 
@@ -473,6 +496,7 @@ erDiagram
 | `jobs` | `message`, `warnings`, `summary`, `labs` |
 | `import_undos` | `entry` |
 | `edits` | `target_key`, `other_key`, `value` |
+| `same_results` | `a_key`, `b_key`, `value` |
 | `labmaps` | `source`, `target` |
 | `settings` | `sealed` |
 | `smart_clients` | `secret` |
@@ -495,8 +519,8 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, settings, undo history, its activity and outside contacts | the original exports |
-| An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits (they belong to the profile) |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, settings, undo history, its activity and outside contacts | the original exports |
+| An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits and same-result links (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |
 | An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, pending sign-ins | activity, uploads, jobs and lab-name matches it made (their links become `NULL`) |

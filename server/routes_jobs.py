@@ -5,7 +5,8 @@ other change.
   POST /api/profiles/{pid}/uploads/{id}/import   start: {"id": job id}
   GET  /api/profiles/{pid}/jobs[/{id}]           how it goes; in state "preview", what it would add and the duplicates
   POST /api/profiles/{pid}/jobs/{id}/confirm     save it, {"keep": [refs of duplicates to save anyway],
-                                                 "labs": {series ref: series name, or null to keep its own}} optional
+                                                 "labs": {series ref: series name, or null to keep its own},
+                                                 "same": [refs of possible matches that are the same result]} optional
   POST /api/profiles/{pid}/jobs/{id}/discard     throw it away, with its upload unless another job uses it
 """
 from typing import Dict, List, Optional
@@ -63,6 +64,7 @@ def get_job(pid: int, jid: int, s=Depends(user), db=Depends(get_db)):
 class Confirm(BaseModel):
     keep: List[str] = []   # duplicates to save anyway, by the refs the preview lists them with
     labs: Dict[str, Optional[str]] = {}   # lab series the preview listed: the series to put each in (labmap.py)
+    same: List[str] = []   # possible matches from other sources (crossmatch.py) confirmed as the same result
 
 
 @router.post("/api/profiles/{pid}/jobs/{jid}/confirm", status_code=202)
@@ -71,7 +73,8 @@ def confirm_job(pid: int, jid: int, request: Request, body: Optional[Confirm] = 
     GET .../jobs/{id} until it's done."""
     need(db, s, pid, "editor")
     try:
-        jobs.confirm(db, pid, jid, s["id"], body.keep if body else None, _client_ip(request), body.labs if body else None)
+        jobs.confirm(db, pid, jid, s["id"], body.keep if body else None, _client_ip(request), body.labs if body else None,
+                     body.same if body else None)
     except jobs.Refused as e:
         raise HTTPException(e.status, str(e)) from None
     return {"id": jid}
