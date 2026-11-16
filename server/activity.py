@@ -24,6 +24,8 @@ Profile events (profile_id set), readable by the profile's owners:
   connect       {"source", "host", "reconnect"?}: connected a source by signing in to it (connections.py, #32)
   disconnect    {"source", "revoked", "removed"}: disconnected one, keeping or removing the records it brought;
                 {"source", "ended": true}: the vendor ended access, so it needs a reconnect
+  calendar      {"change": "create" | "rotate" | "change" | "revoke", "details"?, "labs"?, "username"?}: someone's calendar
+                feed of the profile (calendar.py, #51); username when an owner revoked someone else's. Fetches aren't logged
 Account events (no profile), readable by admins:
   setup         the first account                                password   changed their own password
   account.create / account.disable / account.enable / account.admin / account.unadmin / account.reset   {"username"}
@@ -49,7 +51,7 @@ import json
 from . import config, crypto, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside",
-                   "settings", "connect", "disconnect")
+                   "settings", "connect", "disconnect", "calendar")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
