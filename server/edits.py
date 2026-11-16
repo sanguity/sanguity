@@ -26,7 +26,8 @@ How each action changes the records:
   merge     two events become one. The first (the target) keeps everything it has: kind, title, time, its own detail.
             The second's detail fills in only the fields the first lacks, its cost row and its place in a lab day
             move to the first, an abnormal flag on either marks the result, and the drawer lists what was merged
-            in. Then the second is left out.
+            in, with the import it came from (details.merged[].imp), so both sources show. Then the second is
+            left out.
 
 Edits apply in the order they were made, merges last, so a merged event's own corrections are made first. One edit
 may match several events (two keyless events with the same kind, minute and title): it applies to each, except a
@@ -197,7 +198,7 @@ def _merge(first, second, details):
         for k, v in b.items():
             if k not in d or d[k] in (None, "", []):
                 d[k] = v
-    d["merged"] = (d.get("merged") or []) + [_was(second)]
+    d["merged"] = (d.get("merged") or []) + [{**_was(second), "imp": second.get("imp")}]   # imp: its source (#100)
     details[str(first["id"])] = d
 
 
