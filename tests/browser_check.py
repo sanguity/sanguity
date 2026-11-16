@@ -4,7 +4,8 @@
 Starts the API (with www/ served by it) on a temporary data folder holding the demo build, signs in through the
 login page, opens every tab and checks its main content rendered, opens the detail drawer for every kind of
 event, drags and scroll-zooms the charts, toggles the event sort, switches profiles, uploads a zip and files on
-the import page, opens the account page,
+the import page (a fictional C-CDA, imported in the background and then shown on the timeline), opens the
+account page,
 and fails on any script error, console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -247,7 +248,8 @@ def main():
             check("empty profile links to the import page", js("document.querySelector('main .empty a').getAttribute('href')") == "import.html?profile=2")
             check("the header links to the import page", js("!document.getElementById('importLink').hidden"))
 
-            # ---- import page: upload a small fictional zip into the empty profile, then single files with #20's hook
+            # ---- import page: upload a fictional C-CDA in a zip into the empty profile; it's imported in the background
+            # (#20) and its records reach the timeline. Then single files, with #20's hook stood in for.
             page.click("main .empty a")
             page.wait_for_selector("#importer", state="visible", timeout=10000)
             check("import page offers the profiles you can import into, the linked one chosen",
@@ -256,21 +258,29 @@ def main():
             import io, zipfile
             buf = io.BytesIO()
             with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-                z.writestr("export/labs.csv", "date,test,value,unit\n2026-01-05,Hemoglobin,13.9,g/dL\n")
-                z.writestr("export/summary.xml", '<ClinicalDocument xmlns="urn:hl7-org:v3"><title>Fictional</title></ClinicalDocument>')
+                z.write(os.path.join(ROOT, "tests", "fixtures", "importers", "ccda", "maple-grove-ccd", "maple-grove-ccd.xml"),
+                        "export/summary.xml")
+                z.writestr("export/README.txt", "A fictional portal export, for the browser check.\n")
             page.set_input_files("#pickZip", files=[{"name": "portal-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
             page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
             check("the chosen zip is listed", "portal-export.zip" in page.inner_text("#list"))
             page.click("#go")
             page.wait_for_function("document.getElementById('msg').textContent.startsWith('Uploaded')", timeout=20000)
             msg = page.inner_text("#msg")
-            check("a zip uploads through the page", msg == "Uploaded 1 file (2 once unpacked). Uploaded; importing comes next.", msg)
+            check("a zip uploads through the page", msg == "Uploaded 1 file (2 once unpacked).", msg)
             check("each file's progress reaches the end", js("[...document.querySelectorAll('#list progress')].every(p => p.value === 1)"))
             from server import db as dbm, uploads
             db = dbm.connect()
             up = db.execute("SELECT id, state FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
             check("the upload is stored, unpacked and ready", up and up["state"] == "ready" and
-                  sorted(uploads.manifest(db, 2, up["id"])) == ["export/labs.csv", "export/summary.xml"])
+                  sorted(uploads.manifest(db, 2, up["id"])) == ["export/README.txt", "export/summary.xml"])
+            page.wait_for_selector(".import-job", timeout=5000)   # the job's card, which shows its stage while it runs
+            page.wait_for_function("/^(Imported|Not imported)/.test(document.querySelector('.import-job').textContent)", timeout=30000)
+            card = page.inner_text(".import-job")
+            check("the upload is imported in the background, as C-CDA, and the page says what came in",
+                  card.startswith("Imported.") and "C-CDA" in card and "visit" in card and "lab result" in card, card)
+            job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
+            check("the job is done, read by the C-CDA importer", job is not None and tuple(job) == ("done", "ccda"), job and tuple(job))
             js("window.__hook = []; window.sanguityImport = {uploaded: a => window.__hook.push(a)}")
             page.click("#tab-files")
             page.set_input_files("#pickFiles", files=[{"name": n, "mimeType": "text/csv", "buffer": b"date,test,value\n2026-02-01,WBC,6.1\n"}
@@ -286,8 +296,11 @@ def main():
             settle(200)
             check("import page fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.goto(base + "/")
-            page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
+            page.click(".import-job a[href='index.html']")   # "See them on the timeline"
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && "
+                                   "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)   # the saved view restored
+            check("the imported records open on the timeline of the profile they went into", js("state.tab") == "timeline", js("state.tab"))
+            check("…where the C-CDA's visits are listed", "Outpatient visit" in page.inner_text("#list"), page.inner_text("#list")[:300])
             page.select_option("#profile", label="My records")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             check("switching back restores the profile's tab", js("state.tab") == "timeline", js("state.tab"))

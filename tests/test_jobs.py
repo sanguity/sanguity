@@ -3,12 +3,11 @@
 when nothing recognises it, nothing left behind by a failed import, roles, jobs a stop interrupted, the API staying
 responsive while a slow importer runs, and documents from an upload opening through the document route.
 
-Uploads are stood in for by a small module with the interface of server/uploads.py (#19): files sealed under
-profiles/<id>/uploads/<upload id>/<path>, opened decrypted into a temporary folder. Fictional data only.
+Uploads go through server/uploads.py (#19), as the import page's do. Fictional data only.
 
   python3 tests/test_jobs.py
 """
-import contextlib, json, os, shutil, sys, tempfile, threading, time, types, unittest
+import contextlib, io, json, os, shutil, sys, tempfile, threading, time, types, unittest
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,92 +19,14 @@ os.makedirs(os.path.join(TMP, "records"))
 os.makedirs(os.path.join(TMP, "keys"))
 sys.path.insert(0, ROOT)
 
-import server   # noqa: E402
 from server import crypto, profiles as prof   # noqa: E402
 
 FIXTURE = os.path.join(ROOT, "tests", "fixtures", "importers", "sanguity", "export")
 
 
-# ---------------------------------------------------------------- a stand-in for server/uploads.py (#19)
-
-def _fake_uploads():
-    """What jobs.py uses of uploads.py, behaving as #19's does: numbered uploads, each file sealed under a random
-    name in profiles/<id>/uploads/<upload id>/, the path it had in a manifest, and UploadError for an upload that
-    doesn't exist (404) or isn't ready (409)."""
-    import secrets
-    m = types.ModuleType("server.uploads")
-    m.made = {}   # upload id -> {"pid", "state", "files": {relpath: name on disk}}
-
-    class UploadError(Exception):
-        def __init__(self, message, status=400):
-            super().__init__(message)
-            self.status = status
-
-    def folder(pid, upload_id):
-        return os.path.join(prof.profile_dir(pid), "uploads", str(int(upload_id)))
-
-    def row(pid, upload_id):
-        u = m.made.get(upload_id)
-        if not u or u["pid"] != pid:
-            raise UploadError("No such upload.", 404)
-        return u
-
-    def create(db, pid, user_id=None):
-        upload_id = len(m.made) + 1
-        m.made[upload_id] = {"pid": pid, "state": "receiving", "files": {}}
-        os.makedirs(folder(pid, upload_id))
-        return upload_id
-
-    def add_file(db, pid, upload_id, relpath, data):
-        name = secrets.token_hex(8)
-        crypto.write_file(os.path.join(folder(pid, upload_id), name), data)
-        row(pid, upload_id)["files"][relpath] = name
-        return {"path": relpath, "bytes": len(data)}
-
-    def finish(db, pid, upload_id):
-        row(pid, upload_id)["state"] = "ready"
-
-    def manifest(db, pid, upload_id):
-        return sorted(row(pid, upload_id)["files"])
-
-    def stored_files(db, pid):
-        return [(i, rel, os.path.join(folder(pid, i), name)) for i, u in sorted(m.made.items())
-                if u["pid"] == pid and u["state"] == "ready" for rel, name in sorted(u["files"].items())]
-
-    @contextlib.contextmanager
-    def open_plain(db, pid, upload_id):
-        u = row(pid, upload_id)
-        if u["state"] != "ready":
-            raise UploadError("This upload isn't finished." if u["state"] == "receiving" else "This upload was discarded.", 409)
-        tmp = tempfile.mkdtemp(prefix="plain-", dir=TMP)
-        try:
-            out = {}
-            for rel, name in u["files"].items():
-                p = os.path.join(tmp, *rel.split("/"))
-                os.makedirs(os.path.dirname(p), exist_ok=True)
-                with open(p, "wb") as fh:
-                    fh.write(crypto.read_file(os.path.join(folder(pid, upload_id), name)))
-                out[rel] = p
-            yield out
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
-
-    def discard(db, pid, upload_id):
-        row(pid, upload_id).update(state="discarded", files={})
-        shutil.rmtree(folder(pid, upload_id), ignore_errors=True)
-
-    for f in (UploadError, create, add_file, finish, manifest, stored_files, open_plain, discard):
-        setattr(m, f.__name__, f)
-    return m
-
-
-if not os.path.isfile(os.path.join(ROOT, "server", "uploads.py")):
-    sys.modules["server.uploads"] = server.uploads = _fake_uploads()
-
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, activity, db as dbm, importers as reg, jobs, main, records   # noqa: E402
-from server import uploads   # noqa: E402
+from server import accounts, activity, db as dbm, importers as reg, jobs, main, records, uploads   # noqa: E402
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -194,7 +115,7 @@ class Jobs(unittest.TestCase):
             pid = pid or self.pid
             up = uploads.create(db, pid, None)
             for rel, data in files.items():
-                uploads.add_file(db, pid, up, rel, data if isinstance(data, bytes) else data.encode())
+                uploads.add_file(db, pid, up, rel, io.BytesIO(data if isinstance(data, bytes) else data.encode()))
             if finish:
                 uploads.finish(db, pid, up)
             return up
@@ -407,8 +328,9 @@ class Jobs(unittest.TestCase):
     def test_z_interrupted_jobs_fail_at_start_up(self):   # last: it restarts the app
         db = dbm.connect()
         try:
-            ids = [db.execute("INSERT INTO jobs(profile_id, upload_id, state, stage, created, started) VALUES(?, 'gone', ?, ?, ?, ?)",
-                              (self.pid, state, stage, dbm.now(), dbm.now())).lastrowid
+            up = self.upload({"withdoc.txt": "x"})
+            ids = [db.execute("INSERT INTO jobs(profile_id, upload_id, state, stage, created, started) VALUES(?, ?, ?, ?, ?, ?)",
+                              (self.pid, up, state, stage, dbm.now(), dbm.now())).lastrowid
                    for state, stage in (("running", "saving"), ("queued", None))]
         finally:
             db.close()

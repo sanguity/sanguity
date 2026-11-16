@@ -19,7 +19,7 @@ Jobs left queued or running when the app stopped never committed, so at start-up
 """
 import collections, contextlib, json, logging, os, posixpath, queue, re, threading
 
-from . import activity, crypto, db as dbm, importers as registry, profiles as prof, records
+from . import activity, crypto, db as dbm, importers as registry, profiles as prof, records, uploads
 
 log = logging.getLogger("sanguity.jobs")
 
@@ -33,23 +33,13 @@ class Failed(Exception):
     """A reason to show as it is."""
 
 
-def _uploads():
-    from . import uploads   # imported when used: uploads.py imports profiles, as this does
-    return uploads
-
-
-def _refused():
-    """The exception uploads.py raises for an upload that doesn't exist or isn't ready, with a message to show."""
-    return getattr(_uploads(), "UploadError", LookupError)
-
-
 def upload_exists(db, pid, upload_id):
     if not UPLOAD_ID.match(str(upload_id)):
         return False
     try:
-        _uploads().manifest(db, pid, int(upload_id))
+        uploads.manifest(db, pid, int(upload_id))
         return True
-    except _refused():
+    except uploads.UploadError:
         return False
 
 
@@ -148,17 +138,16 @@ def _stage(db, jid, stage, importer=None):
 
 def _import(db, j):
     jid, pid, upload_id = j["id"], j["profile_id"], j["upload_id"]
-    up = _uploads()
     with contextlib.ExitStack() as stack:
         try:
-            files = stack.enter_context(up.open_plain(db, pid, upload_id))
-        except _refused() as e:   # not finished, or discarded since
+            files = stack.enter_context(uploads.open_plain(db, pid, upload_id))
+        except uploads.UploadError as e:   # not finished, or discarded since
             raise Failed(str(e)) from None
         mod, data, warnings = _read(db, jid, j["importer"], files)
         names = set(files)
 
     _stage(db, jid, "saving")
-    sealed = {rel: path for uid, rel, path in up.stored_files(db, pid) if uid == upload_id and rel in names}
+    sealed = {rel: path for uid, rel, path in uploads.stored_files(db, pid) if uid == upload_id and rel in names}
     for d in data["details"].values():   # stored under a random name, so the type comes from the path in the upload
         if isinstance(d, dict) and d.get("type") == "file" and isinstance(d.get("url"), str) and not d.get("ext"):
             d["ext"] = posixpath.splitext(d["url"].split("#", 1)[0])[1].lstrip(".").lower()
