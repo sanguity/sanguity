@@ -51,8 +51,11 @@ class Fixture(unittest.TestCase):
         self.assertEqual(ah.NAME, "apple-health")
         self.assertTrue(ah.LABEL)
         self.assertEqual(set(self.out), {"data", "warnings"})
-        self.assertEqual(set(self.out["data"]), {"events", "watch"})
-        self.assertEqual(self.out["data"]["events"], [])
+        self.assertEqual(set(self.out["data"]), {"events", "details", "labs", "costs", "watch"})
+        self.assertEqual([self.out["data"][k] for k in ("events", "details", "labs", "costs")], [[], {}, [], []])
+        from server import importers as registry   # the shape the job runner checks before saving
+        files = {"apple_health_export/export.xml": EXPORT}
+        self.assertEqual(registry.check(self.out, files), [])
         self.assertEqual(self.out["warnings"], [])
         for m in self.w["metrics"]:
             self.assertEqual(set(m), {"key", "name", "unit", "group", "pts"})

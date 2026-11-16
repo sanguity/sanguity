@@ -207,7 +207,7 @@ def parse(files):
     if not watch["metrics"] and not watch["exercise"]:
         warnings.append("The export holds none of the data the Health tab shows (steps, heart rate, sleep, "
                         "weight and body composition, workouts).")
-    return {"data": {"events": [], "watch": watch}, "warnings": warnings}
+    return {"data": {"events": [], "details": {}, "labs": [], "costs": [], "watch": watch}, "warnings": warnings}
 
 
 def _stream(f, agg):

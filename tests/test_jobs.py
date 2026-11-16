@@ -147,6 +147,20 @@ class Jobs(unittest.TestCase):
 
     # ---------------------------------------------------------------- the tests
 
+    def test_apple_health_upload_goes_to_the_watch_summary(self):   # wearable data isn't stored as records
+        path = os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml")
+        with open(path, "rb") as f:
+            up = self.upload({"apple_health_export/export.xml": f.read()})
+        j = self.wait(self.start(up))
+        self.assertEqual((j["state"], j["importer"]), ("done", "apple-health"), j)
+        self.assertGreater(j["counts"]["watch_days"], 0)
+        self.assertGreater(j["counts"]["workouts"], 0)
+        w = self.robin.get(f"/api/profiles/{self.pid}/watch")
+        self.assertEqual(w.status_code, 200)
+        self.assertTrue({m["key"] for m in w.json()["metrics"]} >= {"steps"})
+        self.assertNotIn("watch", self.robin.get(f"/api/profiles/{self.pid}/data").json())   # not copied into the records
+        self.assertEqual(self.kim.post(f"/api/profiles/{self.pid}/uploads/{up}/import", headers=H).status_code, 403)
+
     def test_imports_through_the_registry(self):
         before = count(self.pid)
         jid = self.start(self.fixture_upload())
