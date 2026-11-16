@@ -1,0 +1,788 @@
+{
+ "data": {
+  "source": "CareSpace export · Lakeshore Oncology Associates",
+  "events": [
+   {
+    "id": 1,
+    "t": "2026-03-02T08:30:00-06:00",
+    "k": "labitem",
+    "title": "CBC with Differential",
+    "sub": "Lakeshore Oncology Associates",
+    "abn": 2,
+    "hidden": 1,
+    "key": "carespace:labitem:2026-03-02|cbc with differential"
+   },
+   {
+    "id": 2,
+    "t": "2026-03-02T08:30:00-06:00",
+    "k": "labitem",
+    "title": "Comprehensive Metabolic Panel",
+    "sub": "Lakeshore Oncology Associates",
+    "abn": 1,
+    "hidden": 1,
+    "key": "carespace:labitem:2026-03-02|comprehensive metabolic panel"
+   },
+   {
+    "id": 3,
+    "t": "2026-03-02T08:30:00-06:00",
+    "k": "labitem",
+    "title": "Lab panel",
+    "sub": "Lakeshore Oncology Associates",
+    "hidden": 1,
+    "key": "carespace:labitem:2026-03-02|lab panel"
+   },
+   {
+    "id": 4,
+    "t": "2026-03-02T08:30:00-06:00",
+    "k": "lab",
+    "title": "9 lab results · Lakeshore Oncology Associates",
+    "sub": "CBC with Differential, Comprehensive Metabolic Panel, Lab panel",
+    "abn": 3,
+    "src": "Lakeshore Oncology Associates",
+    "key": "carespace:labday:2026-03-02"
+   },
+   {
+    "id": 10,
+    "t": "2026-03-02T12:00:00",
+    "k": "visit",
+    "title": "Doctor visit",
+    "sub": "Dr. Avery Quill · Lakeshore Oncology Associates",
+    "key": "carespace:h:ec46af63a0f49391"
+   },
+   {
+    "id": 14,
+    "t": "2026-03-02T12:00:00",
+    "k": "med",
+    "title": "Ondansetron 8 mg tablet",
+    "sub": "Take 1 tablet by mouth every 8 hours as needed for nausea · Active",
+    "key": "carespace:h:f16bfa0aac2cee77"
+   },
+   {
+    "id": 16,
+    "t": "2026-03-02T12:00:00",
+    "k": "document",
+    "title": "Core biopsy report",
+    "sub": "Pathology · Lakeshore Oncology Associates",
+    "key": "carespace:document/2026-03-02_Pathology_Core biopsy report.pdf"
+   },
+   {
+    "id": 11,
+    "t": "2026-03-05T12:00:00",
+    "k": "visit",
+    "title": "Chart review",
+    "sub": "Jordan Pike, RN · Lakeshore Oncology Associates",
+    "key": "carespace:h:a1ce1276f895f715"
+   },
+   {
+    "id": 12,
+    "t": "2026-03-16T12:00:00",
+    "k": "visit",
+    "title": "Infusion, chemo 1st hr",
+    "sub": "Dr. Avery Quill · Lakeshore Oncology Associates",
+    "key": "carespace:h:f74209ebe0b85f66"
+   },
+   {
+    "id": 15,
+    "t": "2026-03-16T12:00:00",
+    "k": "med",
+    "title": "Dexamethasone 4 mg tablet",
+    "sub": "Take 2 tablets by mouth the day after infusion · Completed",
+    "key": "carespace:h:20b8b87c8974d39c"
+   },
+   {
+    "id": 5,
+    "t": "2026-04-01T07:45:00-05:00",
+    "k": "labitem",
+    "title": "CBC with Differential",
+    "sub": "Lakeshore Oncology Associates",
+    "hidden": 1,
+    "key": "carespace:labitem:2026-04-01|cbc with differential"
+   },
+   {
+    "id": 6,
+    "t": "2026-04-01T07:45:00-05:00",
+    "k": "labitem",
+    "title": "Manual Differential",
+    "sub": "Lakeshore Oncology Associates",
+    "abn": 1,
+    "hidden": 1,
+    "key": "carespace:labitem:2026-04-01|manual differential"
+   },
+   {
+    "id": 7,
+    "t": "2026-04-01T07:45:00-05:00",
+    "k": "lab",
+    "title": "4 lab results · Lakeshore Oncology Associates",
+    "sub": "CBC with Differential, Manual Differential",
+    "abn": 1,
+    "src": "Lakeshore Oncology Associates",
+    "key": "carespace:labday:2026-04-01"
+   },
+   {
+    "id": 13,
+    "t": "2026-04-10T12:00:00",
+    "k": "visit",
+    "title": "Hospital visit",
+    "sub": "Dr. Morgan Vale · Lakeshore Oncology Associates",
+    "key": "carespace:h:bb80da9fb66f5577"
+   },
+   {
+    "id": 17,
+    "t": "2026-04-10T12:00:00",
+    "k": "document",
+    "title": "Hospital summary",
+    "sub": "Discharge · Lakeshore Oncology Associates",
+    "key": "carespace:document/2026-04-10_Discharge_Hospital summary_2.pdf"
+   },
+   {
+    "id": 8,
+    "t": "2026-04-12T12:00:00",
+    "k": "labitem",
+    "title": "Hepatic Function Panel",
+    "sub": "Lakeshore Oncology Associates",
+    "abn": 1,
+    "hidden": 1,
+    "key": "carespace:labitem:2026-04-12|hepatic function panel"
+   },
+   {
+    "id": 9,
+    "t": "2026-04-12T12:00:00",
+    "k": "lab",
+    "title": "1 lab results · Lakeshore Oncology Associates",
+    "sub": "Hepatic Function Panel",
+    "abn": 1,
+    "src": "Lakeshore Oncology Associates",
+    "key": "carespace:labday:2026-04-12"
+   }
+  ],
+  "details": {
+   "1": {
+    "type": "result",
+    "order": "CBC with Differential",
+    "name": "CBC with Differential",
+    "lab": "Lakeshore Oncology Associates",
+    "rows": [
+     [
+      "HGB",
+      "11.2",
+      "g/dL",
+      "12.0-16.0",
+      "L"
+     ],
+     [
+      "WBC",
+      "6.1",
+      "x10E3/uL",
+      "4.0-11.0",
+      ""
+     ],
+     [
+      "Platelet count",
+      "210",
+      "x10E3/uL",
+      "150-400",
+      ""
+     ],
+     [
+      "HCT",
+      "34.0",
+      "%",
+      "36-46",
+      "L"
+     ]
+    ],
+    "report": [],
+    "comments": []
+   },
+   "2": {
+    "type": "result",
+    "order": "Comprehensive Metabolic Panel",
+    "name": "Comprehensive Metabolic Panel",
+    "lab": "Lakeshore Oncology Associates",
+    "rows": [
+     [
+      "CREAT",
+      "0.9",
+      "mg/dL",
+      "0.6-1.1",
+      ""
+     ],
+     [
+      "GLUCOSE",
+      "105",
+      "mg/dL",
+      "70-99",
+      "H"
+     ],
+     [
+      "POTASSIUM",
+      "4.1",
+      "mmol/L",
+      "3.5-5.1",
+      ""
+     ],
+     [
+      "CRP",
+      "<0.5",
+      "mg/dL",
+      "<1.0",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": []
+   },
+   "3": {
+    "type": "result",
+    "order": "Lab panel",
+    "name": "Lab panel",
+    "lab": "Lakeshore Oncology Associates",
+    "rows": [
+     [
+      "Urine color",
+      "Yellow",
+      "",
+      "",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": []
+   },
+   "4": {
+    "type": "labday",
+    "ids": [
+     1,
+     2,
+     3
+    ]
+   },
+   "5": {
+    "type": "result",
+    "order": "CBC with Differential",
+    "name": "CBC with Differential",
+    "lab": "Lakeshore Oncology Associates",
+    "rows": [
+     [
+      "HGB",
+      "12.4",
+      "g/dL",
+      "12.0-16.0",
+      ""
+     ],
+     [
+      "WBC",
+      "5.2",
+      "x10E3/uL",
+      "4.0-11.0",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": []
+   },
+   "6": {
+    "type": "result",
+    "order": "Manual Differential",
+    "name": "Manual Differential",
+    "lab": "Lakeshore Oncology Associates",
+    "rows": [
+     [
+      "HGB",
+      "12.4",
+      "g/dL",
+      "12.0-16.0",
+      ""
+     ],
+     [
+      "GLUCOSE",
+      "5.8",
+      "mmol/L",
+      "3.9-5.5",
+      "H"
+     ]
+    ],
+    "report": [],
+    "comments": []
+   },
+   "7": {
+    "type": "labday",
+    "ids": [
+     5,
+     6
+    ]
+   },
+   "8": {
+    "type": "result",
+    "order": "Hepatic Function Panel",
+    "name": "Hepatic Function Panel",
+    "lab": "Lakeshore Oncology Associates",
+    "rows": [
+     [
+      "ALT",
+      "88",
+      "U/L",
+      "7-35",
+      "H"
+     ]
+    ],
+    "report": [],
+    "comments": []
+   },
+   "9": {
+    "type": "labday",
+    "ids": [
+     8
+    ]
+   },
+   "10": {
+    "type": "visit",
+    "where": "Lakeshore Oncology - Main",
+    "who": "Dr. Avery Quill",
+    "dx": "C50.911 Malignant neoplasm of breast",
+    "procs": [
+     "Lab draw, venous",
+     "MD Visit Est 25min"
+    ],
+    "src": "Lakeshore Oncology Associates",
+    "note": ""
+   },
+   "11": {
+    "type": "visit",
+    "where": "",
+    "who": "Jordan Pike, RN",
+    "dx": "",
+    "procs": [
+     "Chart Check, patient results"
+    ],
+    "src": "Lakeshore Oncology Associates",
+    "note": "No visit took place: the clinic's system logs chart activity, such as reviewing results sent from other hospitals, as an encounter. Most of these fall within a few days after a lab draw."
+   },
+   "12": {
+    "type": "visit",
+    "where": "Lakeshore Oncology - Infusion",
+    "who": "Dr. Avery Quill",
+    "dx": "Z51.11 Encounter for chemotherapy",
+    "procs": [
+     "Infusion, chemo 1st hr"
+    ],
+    "src": "Lakeshore Oncology Associates",
+    "note": ""
+   },
+   "13": {
+    "type": "visit",
+    "where": "Harbor Point Hospital",
+    "who": "Dr. Morgan Vale",
+    "dx": "R50.9 Fever",
+    "procs": [],
+    "src": "Lakeshore Oncology Associates",
+    "note": ""
+   },
+   "14": {
+    "type": "med",
+    "instructions": "Take 1 tablet by mouth every 8 hours as needed for nausea",
+    "status": "Active",
+    "src": "Lakeshore Oncology Associates"
+   },
+   "15": {
+    "type": "med",
+    "instructions": "Take 2 tablets by mouth the day after infusion",
+    "status": "Completed",
+    "src": "Lakeshore Oncology Associates"
+   },
+   "16": {
+    "type": "file",
+    "url": "documents/2026-03-02_Pathology_Core biopsy report.pdf",
+    "ext": "pdf"
+   },
+   "17": {
+    "type": "file",
+    "url": "documents/2026-04-10_Discharge_Hospital summary_2.pdf",
+    "ext": "pdf"
+   }
+  },
+  "labs": [
+   {
+    "name": "Hemoglobin",
+    "unit": "g/dL",
+    "panel": "CBC with Differential",
+    "n": 2,
+    "loinc": "718-7",
+    "key": "loinc:718-7",
+    "pts": [
+     [
+      "2026-03-02T08:30:00-06:00",
+      11.2,
+      12,
+      16,
+      "L",
+      "11.2",
+      "Lakeshore Oncology Associates"
+     ],
+     [
+      "2026-04-01T07:45:00-05:00",
+      12.4,
+      12,
+      16,
+      "",
+      "12.4",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "WBC",
+    "unit": "x10E3/uL",
+    "panel": "CBC with Differential",
+    "n": 2,
+    "loinc": "6690-2",
+    "key": "loinc:6690-2",
+    "pts": [
+     [
+      "2026-03-02T08:30:00-06:00",
+      6.1,
+      4,
+      11,
+      "",
+      "6.1",
+      "Lakeshore Oncology Associates"
+     ],
+     [
+      "2026-04-01T07:45:00-05:00",
+      5.2,
+      4,
+      11,
+      "",
+      "5.2",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "ALT",
+    "unit": "U/L",
+    "panel": "Hepatic Function Panel",
+    "n": 1,
+    "loinc": "1742-6",
+    "key": "loinc:1742-6",
+    "pts": [
+     [
+      "2026-04-12T12:00:00",
+      88.0,
+      7,
+      35,
+      "H",
+      "88",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "BMI",
+    "unit": "kg/m²",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|bmi",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      24.8,
+      null,
+      null,
+      "",
+      "24.8 kg/m2",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Blood pressure, diastolic",
+    "unit": "mmHg",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|blood pressure, diastolic",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      76.0,
+      null,
+      null,
+      "",
+      "76 mmHg",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Blood pressure, systolic",
+    "unit": "mmHg",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|blood pressure, systolic",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      118.0,
+      null,
+      null,
+      "",
+      "118 mmHg",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "CRP",
+    "unit": "mg/dL",
+    "panel": "Comprehensive Metabolic Panel",
+    "n": 1,
+    "loinc": "1988-5",
+    "key": "loinc:1988-5",
+    "pts": [
+     [
+      "2026-03-02T08:31:00-06:00",
+      0.5,
+      null,
+      1.0,
+      "",
+      "<0.5",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Creatinine",
+    "unit": "mg/dL",
+    "panel": "Comprehensive Metabolic Panel",
+    "n": 1,
+    "loinc": "2160-0",
+    "key": "loinc:2160-0",
+    "pts": [
+     [
+      "2026-03-02T08:31:00-06:00",
+      0.9,
+      0.6,
+      1.1,
+      "",
+      "0.9",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Glucose, Blood",
+    "unit": "mg/dL",
+    "panel": "Comprehensive Metabolic Panel",
+    "n": 1,
+    "loinc": "2345-7",
+    "key": "loinc:2345-7|mg/dL",
+    "pts": [
+     [
+      "2026-03-02T08:31:00-06:00",
+      105.0,
+      70,
+      99,
+      "H",
+      "105",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Glucose, Blood (Lakeshore Oncology Associates)",
+    "unit": "mmol/L",
+    "panel": "Manual Differential",
+    "n": 1,
+    "key": "loinc:2345-7|mmol/L",
+    "pts": [
+     [
+      "2026-04-01T07:45:00-05:00",
+      5.8,
+      3.9,
+      5.5,
+      "H",
+      "5.8",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Heart rate (clinic)",
+    "unit": "bpm",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|heart rate (clinic)",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      72.0,
+      null,
+      null,
+      "",
+      "72 bpm",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Height",
+    "unit": "in",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|height",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      65.0,
+      null,
+      null,
+      "",
+      "165 cm",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Hematocrit",
+    "unit": "%",
+    "panel": "CBC with Differential",
+    "n": 1,
+    "loinc": "4544-3",
+    "key": "loinc:4544-3",
+    "pts": [
+     [
+      "2026-03-02T08:30:00-06:00",
+      34.0,
+      36,
+      46,
+      "L",
+      "34.0",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Platelet Count",
+    "unit": "x10E3/uL",
+    "panel": "CBC with Differential",
+    "n": 1,
+    "loinc": "777-3",
+    "key": "loinc:777-3",
+    "pts": [
+     [
+      "2026-03-02T08:30:00-06:00",
+      210.0,
+      150,
+      400,
+      "",
+      "210",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Potassium, Blood",
+    "unit": "mmol/L",
+    "panel": "Comprehensive Metabolic Panel",
+    "n": 1,
+    "loinc": "2823-3",
+    "key": "loinc:2823-3",
+    "pts": [
+     [
+      "2026-03-02T08:31:00-06:00",
+      4.1,
+      3.5,
+      5.1,
+      "",
+      "4.1",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Temperature",
+    "unit": "°F",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|temperature",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      98.6,
+      null,
+      null,
+      "",
+      "98.6 F",
+      "Lakeshore Oncology Associates"
+     ]
+    ],
+    "txt": []
+   }
+  ],
+  "upcoming": [
+   {
+    "t": "2036-12-05",
+    "title": "Nurse visit",
+    "who": "Jordan Pike, RN",
+    "where": "Lakeshore Oncology - Main",
+    "dx": "Z09 Follow-up",
+    "procs": [
+     "RN Visit follow-up"
+    ],
+    "key": "carespace:h:0cfd61315ac274da"
+   }
+  ],
+  "problems": [
+   {
+    "name": "Malignant neoplasm of breast",
+    "type": "Diagnosis",
+    "date": "2026-02-20",
+    "status": "Active",
+    "src": "Lakeshore Oncology Associates",
+    "key": "carespace:h:fcbbcfe1ec4083dc"
+   },
+   {
+    "name": "Iron deficiency anemia",
+    "type": "Diagnosis",
+    "date": "2026-03-02",
+    "status": "Active",
+    "src": "Lakeshore Oncology Associates",
+    "key": "carespace:h:3f306faa51786b2a"
+   }
+  ],
+  "costs": [],
+  "clinicWeights": [
+   [
+    "2026-03-02T08:45:00",
+    150.1,
+    "Lakeshore Oncology Associates"
+   ],
+   [
+    "2026-03-02T12:00:00",
+    150.0,
+    "Lakeshore Oncology Associates"
+   ],
+   [
+    "2026-04-01T12:00:00",
+    148.8,
+    "Lakeshore Oncology Associates"
+   ]
+  ]
+ },
+ "warnings": []
+}

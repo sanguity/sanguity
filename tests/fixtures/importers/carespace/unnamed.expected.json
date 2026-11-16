@@ -1,0 +1,490 @@
+{
+ "data": {
+  "source": "CareSpace export · CareSpace clinic",
+  "events": [
+   {
+    "id": 1,
+    "t": "2026-03-02T08:30:00-06:00",
+    "k": "labitem",
+    "title": "CBC with Differential",
+    "sub": "CareSpace clinic",
+    "abn": 2,
+    "hidden": 1,
+    "key": "carespace:labitem:2026-03-02|cbc with differential"
+   },
+   {
+    "id": 2,
+    "t": "2026-03-02T08:30:00-06:00",
+    "k": "lab",
+    "title": "4 lab results · CareSpace clinic",
+    "sub": "CBC with Differential",
+    "abn": 2,
+    "src": "CareSpace clinic",
+    "key": "carespace:labday:2026-03-02"
+   },
+   {
+    "id": 5,
+    "t": "2026-03-02T12:00:00",
+    "k": "visit",
+    "title": "Doctor visit",
+    "sub": "Dr. Avery Quill · CareSpace clinic",
+    "key": "carespace:h:ec46af63a0f49391"
+   },
+   {
+    "id": 9,
+    "t": "2026-03-02T12:00:00",
+    "k": "med",
+    "title": "Ondansetron 8 mg tablet",
+    "sub": "Take 1 tablet by mouth every 8 hours as needed for nausea · Active",
+    "key": "carespace:h:f16bfa0aac2cee77"
+   },
+   {
+    "id": 6,
+    "t": "2026-03-05T12:00:00",
+    "k": "visit",
+    "title": "Chart review",
+    "sub": "Jordan Pike, RN · CareSpace clinic",
+    "key": "carespace:h:a1ce1276f895f715"
+   },
+   {
+    "id": 7,
+    "t": "2026-03-16T12:00:00",
+    "k": "visit",
+    "title": "Infusion, chemo 1st hr",
+    "sub": "Dr. Avery Quill · CareSpace clinic",
+    "key": "carespace:h:f74209ebe0b85f66"
+   },
+   {
+    "id": 10,
+    "t": "2026-03-16T12:00:00",
+    "k": "med",
+    "title": "Dexamethasone 4 mg tablet",
+    "sub": "Take 2 tablets by mouth the day after infusion · Completed",
+    "key": "carespace:h:20b8b87c8974d39c"
+   },
+   {
+    "id": 3,
+    "t": "2026-04-01T07:45:00-05:00",
+    "k": "labitem",
+    "title": "CBC with Differential",
+    "sub": "CareSpace clinic",
+    "hidden": 1,
+    "key": "carespace:labitem:2026-04-01|cbc with differential"
+   },
+   {
+    "id": 4,
+    "t": "2026-04-01T07:45:00-05:00",
+    "k": "lab",
+    "title": "2 lab results · CareSpace clinic",
+    "sub": "CBC with Differential",
+    "src": "CareSpace clinic",
+    "key": "carespace:labday:2026-04-01"
+   },
+   {
+    "id": 8,
+    "t": "2026-04-10T12:00:00",
+    "k": "visit",
+    "title": "Hospital visit",
+    "sub": "Dr. Morgan Vale · CareSpace clinic",
+    "key": "carespace:h:bb80da9fb66f5577"
+   }
+  ],
+  "details": {
+   "1": {
+    "type": "result",
+    "order": "CBC with Differential",
+    "name": "CBC with Differential",
+    "lab": "CareSpace clinic",
+    "rows": [
+     [
+      "HGB",
+      "11.2",
+      "g/dL",
+      "12.0-16.0",
+      "L"
+     ],
+     [
+      "WBC",
+      "6.1",
+      "x10E3/uL",
+      "4.0-11.0",
+      ""
+     ],
+     [
+      "Platelet count",
+      "210",
+      "x10E3/uL",
+      "150-400",
+      ""
+     ],
+     [
+      "HCT",
+      "34.0",
+      "%",
+      "36-46",
+      "L"
+     ]
+    ],
+    "report": [],
+    "comments": []
+   },
+   "2": {
+    "type": "labday",
+    "ids": [
+     1
+    ]
+   },
+   "3": {
+    "type": "result",
+    "order": "CBC with Differential",
+    "name": "CBC with Differential",
+    "lab": "CareSpace clinic",
+    "rows": [
+     [
+      "HGB",
+      "12.4",
+      "g/dL",
+      "12.0-16.0",
+      ""
+     ],
+     [
+      "WBC",
+      "5.2",
+      "x10E3/uL",
+      "4.0-11.0",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": []
+   },
+   "4": {
+    "type": "labday",
+    "ids": [
+     3
+    ]
+   },
+   "5": {
+    "type": "visit",
+    "where": "Lakeshore Oncology - Main",
+    "who": "Dr. Avery Quill",
+    "dx": "C50.911 Malignant neoplasm of breast",
+    "procs": [
+     "Lab draw, venous",
+     "MD Visit Est 25min"
+    ],
+    "src": "CareSpace clinic",
+    "note": ""
+   },
+   "6": {
+    "type": "visit",
+    "where": "",
+    "who": "Jordan Pike, RN",
+    "dx": "",
+    "procs": [
+     "Chart Check, patient results"
+    ],
+    "src": "CareSpace clinic",
+    "note": "No visit took place: the clinic's system logs chart activity, such as reviewing results sent from other hospitals, as an encounter. Most of these fall within a few days after a lab draw."
+   },
+   "7": {
+    "type": "visit",
+    "where": "Lakeshore Oncology - Infusion",
+    "who": "Dr. Avery Quill",
+    "dx": "Z51.11 Encounter for chemotherapy",
+    "procs": [
+     "Infusion, chemo 1st hr"
+    ],
+    "src": "CareSpace clinic",
+    "note": ""
+   },
+   "8": {
+    "type": "visit",
+    "where": "Harbor Point Hospital",
+    "who": "Dr. Morgan Vale",
+    "dx": "R50.9 Fever",
+    "procs": [],
+    "src": "CareSpace clinic",
+    "note": ""
+   },
+   "9": {
+    "type": "med",
+    "instructions": "Take 1 tablet by mouth every 8 hours as needed for nausea",
+    "status": "Active",
+    "src": "CareSpace clinic"
+   },
+   "10": {
+    "type": "med",
+    "instructions": "Take 2 tablets by mouth the day after infusion",
+    "status": "Completed",
+    "src": "CareSpace clinic"
+   }
+  },
+  "labs": [
+   {
+    "name": "Hemoglobin",
+    "unit": "g/dL",
+    "panel": "CBC with Differential",
+    "n": 2,
+    "loinc": "718-7",
+    "key": "loinc:718-7",
+    "pts": [
+     [
+      "2026-03-02T08:30:00-06:00",
+      11.2,
+      12,
+      16,
+      "L",
+      "11.2",
+      "CareSpace clinic"
+     ],
+     [
+      "2026-04-01T07:45:00-05:00",
+      12.4,
+      12,
+      16,
+      "",
+      "12.4",
+      "CareSpace clinic"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "WBC",
+    "unit": "x10E3/uL",
+    "panel": "CBC with Differential",
+    "n": 2,
+    "loinc": "6690-2",
+    "key": "loinc:6690-2",
+    "pts": [
+     [
+      "2026-03-02T08:30:00-06:00",
+      6.1,
+      4,
+      11,
+      "",
+      "6.1",
+      "CareSpace clinic"
+     ],
+     [
+      "2026-04-01T07:45:00-05:00",
+      5.2,
+      4,
+      11,
+      "",
+      "5.2",
+      "CareSpace clinic"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "BMI",
+    "unit": "kg/m²",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|bmi",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      24.8,
+      null,
+      null,
+      "",
+      "24.8 kg/m2",
+      "CareSpace clinic"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Blood pressure, diastolic",
+    "unit": "mmHg",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|blood pressure, diastolic",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      76.0,
+      null,
+      null,
+      "",
+      "76 mmHg",
+      "CareSpace clinic"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Blood pressure, systolic",
+    "unit": "mmHg",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|blood pressure, systolic",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      118.0,
+      null,
+      null,
+      "",
+      "118 mmHg",
+      "CareSpace clinic"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Heart rate (clinic)",
+    "unit": "bpm",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|heart rate (clinic)",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      72.0,
+      null,
+      null,
+      "",
+      "72 bpm",
+      "CareSpace clinic"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Height",
+    "unit": "in",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|height",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      65.0,
+      null,
+      null,
+      "",
+      "165 cm",
+      "CareSpace clinic"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Hematocrit",
+    "unit": "%",
+    "panel": "CBC with Differential",
+    "n": 1,
+    "loinc": "4544-3",
+    "key": "loinc:4544-3",
+    "pts": [
+     [
+      "2026-03-02T08:30:00-06:00",
+      34.0,
+      36,
+      46,
+      "L",
+      "34.0",
+      "CareSpace clinic"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Platelet Count",
+    "unit": "x10E3/uL",
+    "panel": "CBC with Differential",
+    "n": 1,
+    "loinc": "777-3",
+    "key": "loinc:777-3",
+    "pts": [
+     [
+      "2026-03-02T08:30:00-06:00",
+      210.0,
+      150,
+      400,
+      "",
+      "210",
+      "CareSpace clinic"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Temperature",
+    "unit": "°F",
+    "panel": "Vitals",
+    "n": 1,
+    "key": "carespace:vital|temperature",
+    "pts": [
+     [
+      "2026-03-02T12:00:00",
+      98.6,
+      null,
+      null,
+      "",
+      "98.6 F",
+      "CareSpace clinic"
+     ]
+    ],
+    "txt": []
+   }
+  ],
+  "upcoming": [
+   {
+    "t": "2036-12-05",
+    "title": "Nurse visit",
+    "who": "Jordan Pike, RN",
+    "where": "Lakeshore Oncology - Main",
+    "dx": "Z09 Follow-up",
+    "procs": [
+     "RN Visit follow-up"
+    ],
+    "key": "carespace:h:0cfd61315ac274da"
+   }
+  ],
+  "problems": [
+   {
+    "name": "Malignant neoplasm of breast",
+    "type": "Diagnosis",
+    "date": "2026-02-20",
+    "status": "Active",
+    "src": "CareSpace clinic",
+    "key": "carespace:h:fcbbcfe1ec4083dc"
+   },
+   {
+    "name": "Iron deficiency anemia",
+    "type": "Diagnosis",
+    "date": "2026-03-02",
+    "status": "Active",
+    "src": "CareSpace clinic",
+    "key": "carespace:h:3f306faa51786b2a"
+   }
+  ],
+  "costs": [],
+  "clinicWeights": [
+   [
+    "2026-03-02T08:45:00",
+    150.1,
+    "CareSpace clinic"
+   ],
+   [
+    "2026-03-02T12:00:00",
+    150.0,
+    "CareSpace clinic"
+   ],
+   [
+    "2026-04-01T12:00:00",
+    148.8,
+    "CareSpace clinic"
+   ]
+  ]
+ },
+ "warnings": [
+  "The export doesn't name the clinic, so its records are labelled \"CareSpace clinic\". Rename the source to the clinic's name."
+ ]
+}
