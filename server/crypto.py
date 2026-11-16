@@ -1,7 +1,7 @@
 """Encryption at rest: AES-256-GCM with keys from a key file kept apart from the data.
 
-What it covers: every file Sanguity writes under DATA_DIR (each profile's settings, imported documents, uploaded
-files, the setup build), the database fields that hold health details or secrets (the records themselves, document file names,
+What it covers: every file Sanguity writes under DATA_DIR (imported documents, uploaded files, the setup build),
+the database fields that hold health details or secrets (the records themselves, settings that name labs, document file names,
 activity details, two-factor secrets, the pepper for password hashes), and everything the watch receiver writes under WATCH_DIR (its archive of uploads,
 its database, kept in memory and saved as a sealed snapshot, and the daily.json the app reads; see
 watch/receiver.py). So a copied data folder or a backup is unreadable without the key. Not covered: usernames and

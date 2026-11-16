@@ -22,7 +22,8 @@ FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "
           ("jobs", "id", "message"), ("jobs", "id", "warnings"), ("jobs", "id", "summary"),
           ("import_undos", "id", "entry"),
           ("edits", "id", "target_key"), ("edits", "id", "other_key"), ("edits", "id", "value"),
-          ("labmaps", "id", "source"), ("labmaps", "id", "target"), ("jobs", "id", "labs"))
+          ("labmaps", "id", "source"), ("labmaps", "id", "target"), ("jobs", "id", "labs"),
+          ("settings", "id", "sealed"))
 
 
 def anything_encrypted(db):

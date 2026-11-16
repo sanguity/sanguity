@@ -17,8 +17,8 @@ const CATS = [
 const CAT_OF = {}; CATS.forEach(c => c.kinds.forEach(k => CAT_OF[k] = c));
 const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim"};
 const usd = v => (v || 0).toLocaleString(undefined, {style: "currency", currency: "USD", maximumFractionDigits: 0});
-/* Per-install preferences. www/settings.json (optional, see settings.example.json) overrides these defaults:
-   arrays are replaced, the two name maps are merged key by key. */
+/* The profile's settings (server/settings.py), changed on the Settings page. The server sends every one, with its
+   defaults filled in; these are only what the page uses if that fails, and should match the server's defaults. */
 const DEFAULT_SETTINGS = {
   overview: {keyLabs: ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Lymphocytes Absolute", "Creatinine",
     "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"]},
@@ -29,12 +29,19 @@ const DEFAULT_SETTINGS = {
   visitWorkouts: [],   // past visits whose title matches count as workouts on Health, e.g. {"match": "^physical therapy\\b", "name": "Physical therapy", "minutes": 45}
 };
 let CFG = DEFAULT_SETTINGS;
+/* each value as the server sent it (a name map it sends is the whole map: a default nickname removed in Settings
+   stays removed); a missing or malformed one keeps the default */
 function applySettings(u) {
   if (!u || typeof u !== "object") return;
+  const obj = v => v && typeof v === "object" && !Array.isArray(v), list = (v, d) => Array.isArray(v) ? v : d;
   CFG = {...DEFAULT_SETTINGS, ...u,
-    overview: {...DEFAULT_SETTINGS.overview, ...u.overview}, trends: {...DEFAULT_SETTINGS.trends, ...u.trends},
-    labNicknames: {...DEFAULT_SETTINGS.labNicknames, ...u.labNicknames}, sources: {...DEFAULT_SETTINGS.sources, ...u.sources},
-    visitWorkouts: Array.isArray(u.visitWorkouts) ? u.visitWorkouts : DEFAULT_SETTINGS.visitWorkouts};
+    overview: {...DEFAULT_SETTINGS.overview, ...(obj(u.overview) ? u.overview : {})},
+    trends: {...DEFAULT_SETTINGS.trends, ...(obj(u.trends) ? u.trends : {})},
+    labNicknames: obj(u.labNicknames) ? u.labNicknames : DEFAULT_SETTINGS.labNicknames,
+    sources: obj(u.sources) ? u.sources : DEFAULT_SETTINGS.sources,
+    visitWorkouts: list(u.visitWorkouts, DEFAULT_SETTINGS.visitWorkouts)};
+  CFG.overview.keyLabs = list(CFG.overview.keyLabs, DEFAULT_SETTINGS.overview.keyLabs);
+  CFG.trends.defaultLabs = list(CFG.trends.defaultLabs, DEFAULT_SETTINGS.trends.defaultLabs);
 }
 const srcName = tag => CFG.sources[tag] || tag;
 const DAY = 864e5;

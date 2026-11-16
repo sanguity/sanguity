@@ -309,6 +309,31 @@ SCHEMA = [
         changed INTEGER);
     ALTER TABLE jobs ADD COLUMN labs TEXT;
     """,
+    # version 17: settings in the database instead of a settings.json per profile (settings.py, #35). A row is one
+    # setting's value for a profile (profile_id set), an account (user_id set) or the whole install (neither), as
+    # the setting's definition in the registry says. A value that can hold health information (lab names, rules)
+    # is encrypted in sealed; others are plain JSON in value. Each profile's settings.json is loaded at the next
+    # start (settings.migrate_files); settings_seeded marks a profile whose settings were seeded (from its own
+    # settings.json, or the setup build's on the first load), so a later build never refills one that was reset.
+    """
+    CREATE TABLE settings(
+        id INTEGER PRIMARY KEY,
+        key TEXT NOT NULL,                         -- the setting's key in the registry ("overview.keyLabs")
+        profile_id INTEGER REFERENCES profiles(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        value TEXT,                                -- JSON, for a setting that holds no health information
+        sealed TEXT,                               -- JSON, encrypted, for one that can
+        changed INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,   -- NULL: a migration, import or the setup build
+        CHECK(profile_id IS NULL OR user_id IS NULL),
+        CHECK((value IS NULL) != (sealed IS NULL)));
+    CREATE UNIQUE INDEX settings_key ON settings(key, IFNULL(profile_id, 0), IFNULL(user_id, 0));
+    CREATE INDEX settings_profile ON settings(profile_id);
+    CREATE INDEX settings_user ON settings(user_id);
+    ALTER TABLE profiles ADD COLUMN settings_seeded INTEGER NOT NULL DEFAULT 0;
+    UPDATE profiles SET settings_seeded=1 WHERE build_mtime IS NOT NULL;   -- the build is loaded: its settings are in
+                                                                           -- the profile's settings.json, migrated
+    """,
 ]
 
 

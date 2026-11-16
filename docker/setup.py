@@ -7,7 +7,7 @@
 Data: with a sources.json next to compose.yaml, the records are built from your exports (RECORDS_DIR) into
 DATA_DIR/build; the app loads that build into the first profile (and again after each rebuild). Without one, a
 fictional demo dataset is generated there so there is something to look at. A settings.json next to compose.yaml
-(see settings.example.json) sets that profile's dashboard preferences.
+(see settings.example.json) gives that profile its first settings, once; after that they're changed in the app.
 
 Accounts live in the app's database. The first one is created in the browser with the setup code the app prints
 (docker compose logs app); after that, admins add accounts under Account. To recover a lost password:
@@ -112,14 +112,15 @@ def build_data():
         print("No sources.json found: showing the fictional demo data. See sources.example.json to use your own records.")
     else:
         print("Built data exists and there is no sources.json; leaving it as it is.")
-    # dashboard preferences for the profile linked to this build (settings.json next to compose.yaml, or the old www/ one)
+    # first settings for a profile newly linked to this build (settings.json next to compose.yaml, or the old www/ one);
+    # the app never applies it over settings changed on its Settings page (server/settings.py)
     built = os.path.join(BUILD, "settings.json")
     if not is_demo(data):   # the demo writes its own
         src = next((p for p in (os.path.join(APP, "settings.json"), os.path.join(WWW, "settings.json")) if os.path.isfile(p)), None)
         if src:
             crypto.write_file(built, crypto.read_file(src))
         elif os.path.isfile(built):
-            os.remove(built)   # settings.json was removed: back to the defaults
+            os.remove(built)   # settings.json was removed (settings made in the app stay)
     # corrections.json next to compose.yaml: the app moves its event corrections into edits once (server/edits.py)
     built = os.path.join(BUILD, "corrections.json")
     if os.path.isfile(os.path.join(APP, "corrections.json")):
