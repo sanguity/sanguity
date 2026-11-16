@@ -16,6 +16,8 @@ Profile events (profile_id set), readable by the profile's owners:
   edit          {"action", "title", "to"?, "undone"?}: a correction made to an event, or undone (edits.py)
   settings      {"setting", "label"} a profile setting changed, {"setting", "label", "reset": true} put back to its
                 default, or {"section", "label", "settings", "reset": true} a section reset (settings.py; never values)
+  outside       {"host", "purpose"}: Sanguity contacted another server for this profile, after the person confirmed
+                (outside.py; so far a SMART Health Link and a Health Card issuer's keys, shl.py)
 Account events (no profile), readable by admins:
   setup         the first account                                password   changed their own password
   account.create / account.disable / account.enable / account.admin / account.unadmin / account.reset   {"username"}
@@ -36,7 +38,7 @@ import json
 
 from . import config, crypto, db as dbm
 
-PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "settings")
+PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside", "settings")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",

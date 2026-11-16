@@ -57,3 +57,9 @@ UPLOAD_MAX_TOTAL = _int("UPLOAD_MAX_TOTAL_MB", 16384) * MB
 UPLOAD_MAX_FILES = _int("UPLOAD_MAX_FILES", 20000)
 # a file unpacked from a zip may be at most this many times its compressed size (a zip bomb is thousands)
 UPLOAD_MAX_ZIP_RATIO = _int("UPLOAD_MAX_ZIP_RATIO", 200)
+
+# SMART Health Links (shl.py): the one fetch a pasted link makes, after the person confirms. Everything it brings
+# (the manifest and every file in it) counts toward SHL_MAX_BYTES; each request gives up after SHL_TIMEOUT seconds.
+SHL_MAX_BYTES = _int("SHL_MAX_MB", 64) * MB
+SHL_MAX_FILES = _int("SHL_MAX_FILES", 50)
+SHL_TIMEOUT = _int("SHL_TIMEOUT", 20)
