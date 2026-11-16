@@ -237,7 +237,8 @@ def _save(db, j):
     who = db.execute("SELECT id, username FROM users WHERE id=?", (who_id,)).fetchone() if who_id else None
     with dbm.transaction(db):
         iid = None
-        if preview.adds_anything(new):   # all duplicates: nothing to add, not even an empty import
+        # all duplicates: nothing to add, not even an empty import; but watch data needs an import to be undone by
+        if preview.adds_anything(new) or watch:
             keepdocs, n = prof.index_documents(db, pid, new["details"], stored)
             summary["counts"]["documents"] = n
             iid = records.store(db, pid, new, "upload", fmt=name)
