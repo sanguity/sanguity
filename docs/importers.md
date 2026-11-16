@@ -175,6 +175,15 @@ It's optional, but give one whenever you can.
 - **`problems` and `upcoming`** entries may carry a key too, by the same rules, unique within their own list.
 
 The app ignores fields it doesn't know and keeps an event's fields as they are, so a key costs nothing anywhere else.
+
+**How the app uses them.** `records.store` keeps the key inside the event's or series' encrypted body, and beside it
+a keyed hash of it (`key_hash`, an HMAC with a secret derived from the pepper), indexed, so the import preview finds
+records it has seen before without decrypting every row. Before anything is saved, an upload's records are previewed
+(`server/preview.py`): an event whose key the profile already has is a duplicate and is skipped unless the person
+ticks it to keep anyway; a series adds only the points (time and value as reported) the profile doesn't have. A
+record without a key falls back to the same importer, date, kind and content, which is slower and easier to fool, so
+give keys. A lab day stays while any of its results is new and goes when all of them are duplicates; `check()` runs
+again on what's left before it's saved.
 `check()` refuses a key that isn't a non-empty string, or that is used twice within one import: among the events,
 among the lab series, among `problems` and among `upcoming` (each list separately). It doesn't check the prefix: the
 `sanguity` importer passes keys through unchanged, so a re-imported export keeps the keys the original importer gave.

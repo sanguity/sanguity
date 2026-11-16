@@ -272,10 +272,13 @@ const WHAT = {
   share: d => d.repair ? `made ${d.username} an owner, as an admin (the profile had no active owner)` :
     d.from ? `changed ${d.username}’s role from ${d.from} to ${d.role}` : `shared it with ${d.username} as ${d.role}`,
   unshare: (d, e) => d.username === e.actor ? "left the profile" : `removed ${d.username}’s access`,
-  import: d => `imported records (${d.documents} documents)`,
+  import: d => d.counts ? `imported an upload${d.skipped && (d.skipped.events || d.skipped.results)
+    ? `, skipping ${d.skipped.events + d.skipped.results} duplicate${d.skipped.events + d.skipped.results === 1 ? "" : "s"}` : ""}`
+    : `imported records (${d.documents} documents)`,
   reload: () => "loaded the latest records",
   export: () => "exported everything",
   upload: d => `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
+  discard: () => "cancelled an import at its preview",
   setup: () => "set up Sanguity with the first account",
   password: () => "changed their password",
   "account.create": d => `created the account ${d.username}${d.admin ? " (admin)" : ""}`,
@@ -300,7 +303,7 @@ const WHAT = {
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
-  ["export", "Exports"], ["upload", "Uploads"]];
+  ["export", "Exports"], ["upload", "Uploads"], ["discard", "Cancelled imports"]];
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},

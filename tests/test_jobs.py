@@ -47,6 +47,15 @@ def _data(title="Fictional visit", file=None):
     return d
 
 
+def _note_title(files):
+    """Named after the note, so two uploads with different notes aren't duplicates of each other."""
+    path = files.get("notes/visit.txt")
+    if not path:
+        return "Visit with a note"
+    with open(path, encoding="utf-8") as f:
+        return "Visit: " + f.read()[:60]
+
+
 def _marker(name):
     return lambda files: 1.0 if f"{name}.txt" in files else 0.0
 
@@ -65,7 +74,7 @@ FAKES = [types.SimpleNamespace(NAME="slow", LABEL="Slow test format", detect=_ma
          types.SimpleNamespace(NAME="badshape", LABEL="Bad shape test format", detect=_marker("badshape"),
                                parse=lambda files: {"data": {"events": [{"id": 1, "t": "2025-01-01"}], "details": {}, "labs": [], "costs": []}}),
          types.SimpleNamespace(NAME="withdoc", LABEL="Document test format", detect=_marker("withdoc"),
-                               parse=lambda files: {"data": _data("Visit with a note", "notes/visit.txt"), "warnings": ["one warning"]})]
+                               parse=lambda files: {"data": _data(_note_title(files), "notes/visit.txt"), "warnings": ["one warning"]})]
 _real_importers = reg.importers
 
 
@@ -136,11 +145,16 @@ class Jobs(unittest.TestCase):
         self.assertEqual(r.status_code, 202, r.text)
         return r.json()["id"]
 
-    def wait(self, jid, timeout=20):
+    def wait(self, jid, timeout=20, confirm=True):
+        """The job once it's done or failed; a preview is confirmed (saved) on the way, unless confirm is False."""
         end = time.time() + timeout
         while time.time() < end:
             j = self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()
-            if j["state"] in ("done", "failed"):
+            if j["state"] == "preview" and confirm:
+                r = self.robin.post(f"/api/profiles/{self.pid}/jobs/{jid}/confirm", headers=H)
+                self.assertEqual(r.status_code, 202, r.text)
+                continue
+            if j["state"] in ("done", "failed") or (j["state"] == "preview" and not confirm):
                 return j
             time.sleep(0.05)
         self.fail(f"job {jid} didn't finish: {j}")

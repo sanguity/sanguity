@@ -4,7 +4,8 @@
 Starts the API (with www/ served by it) on a temporary data folder holding the demo build, signs in through the
 login page, opens every tab and checks its main content rendered, opens the detail drawer for every kind of
 event, drags and scroll-zooms the charts, toggles the event sort, switches profiles, uploads a zip and files on
-the import page (a fictional C-CDA and a FHIR export, imported in the background and then shown on the timeline), opens the
+the import page (a fictional C-CDA and a FHIR export, previewed, saved in the background and then shown on the timeline;
+the C-CDA again, previewed as all duplicates and cancelled), opens the
 account page,
 and fails on any script error, console error, failed request or NaN written into an SVG attribute.
 
@@ -275,12 +276,45 @@ def main():
             check("the upload is stored, unpacked and ready", up and up["state"] == "ready" and
                   sorted(uploads.manifest(db, 2, up["id"])) == ["export/README.txt", "export/summary.xml"])
             page.wait_for_selector(".import-job", timeout=5000)   # the job's card, which shows its stage while it runs
-            page.wait_for_function("/^(Imported|Not imported)/.test(document.querySelector('.import-job').textContent)", timeout=30000)
-            card = page.inner_text(".import-job")
+            last_card = "[...document.querySelectorAll('.import-job')].pop()"
+            page.wait_for_function(f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.innerText")
+            check("the import stops at its preview, with what it would add, the dates, and Save and Cancel (#22)",
+                  card.startswith("Ready to import.") and "C-CDA" in card and "visit" in card and "lab result" in card
+                  and js(f"[...{last_card}.querySelectorAll('.imp-actions button')].map(b => b.textContent)") == ["Save", "Cancel"], card)
+            check("…and nothing is saved yet", db.execute("SELECT COUNT(*) FROM imports WHERE profile_id=2").fetchone()[0] == 0)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the preview fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.innerText")
             check("the upload is imported in the background, as C-CDA, and the page says what came in",
                   card.startswith("Imported.") and "C-CDA" in card and "visit" in card and "lab result" in card, card)
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
             check("the job is done, read by the C-CDA importer", job is not None and tuple(job) == ("done", "ccda"), job and tuple(job))
+            # the same export again: everything is a duplicate; cancelling it leaves nothing behind
+            imports_before = db.execute("SELECT COUNT(*) FROM imports WHERE profile_id=2").fetchone()[0]
+            page.set_input_files("#pickZip", files=[{"name": "portal-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
+            page.click("#go")
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length >= 2 && "
+                                   f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.innerText")
+            check("the same export uploaded again shows as all duplicates", card.startswith("All duplicates.") and "duplicates skipped" in card, card)
+            js(f"{last_card}.querySelector('.imp-dups').open = true")
+            check("…and the duplicates can be seen, each with a box to keep it anyway",
+                  js(f"{last_card}.querySelectorAll('.imp-dups li input[type=checkbox]').length") > 0
+                  and "visit" in js(f"{last_card}.querySelector('.imp-dups ul').innerText"))
+            again = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()["id"]
+            js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            page.wait_for_function(f"{last_card}.textContent.startsWith('Cancelled.')", timeout=10000)
+            job = db.execute("SELECT id, state FROM jobs WHERE upload_id=?", (again,)).fetchone()
+            check("cancelling discards the import, its preview and its upload",
+                  job["state"] == "discarded" and db.execute("SELECT state FROM uploads WHERE id=?", (again,)).fetchone()[0] == "discarded"
+                  and db.execute("SELECT COUNT(*) FROM imports WHERE profile_id=2").fetchone()[0] == imports_before
+                  and not os.path.exists(os.path.join(TMP, "profiles", "2", "previews", str(job["id"]))), tuple(job))
             # ...and a fictional FHIR export (a Bundle with two PDF attachments) into the same profile: Phase 2 is done
             # when both a C-CDA file and a FHIR export import without a terminal
             fhir_dir = os.path.join(ROOT, "tests", "fixtures", "importers", "fhir", "bundle")
@@ -293,9 +327,11 @@ def main():
             page.set_input_files("#pickZip", files=[{"name": "fhir-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
             page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
             page.click("#go")
-            page.wait_for_function("document.querySelectorAll('.import-job').length >= 2 && "
-                                   "/^(Imported|Not imported)/.test([...document.querySelectorAll('.import-job')].pop().textContent)", timeout=30000)
-            card = js("[...document.querySelectorAll('.import-job')].pop().textContent")
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length >= 3 && "
+                                   f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.textContent")
             check("a FHIR export uploads and is imported in the background, as FHIR",
                   card.startswith("Imported.") and "FHIR" in card and "document" in card, card)
             up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()

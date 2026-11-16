@@ -216,6 +216,45 @@ SCHEMA = [
     CREATE INDEX jobs_profile ON jobs(profile_id, id);
     CREATE INDEX jobs_state ON jobs(state);
     """,
+    # version 13: preview an import before saving it (jobs.py, #22). A job stops after parsing, in state "preview",
+    # with the parsed records sealed in profiles/<id>/previews/<job id> until it is confirmed (back to the worker,
+    # stage "saving") or discarded. Events and series get key_hash: a keyed hash (HMAC, records._key_secret) of
+    # the importer's source key, so duplicates are found without decrypting every row; the key itself stays in the
+    # encrypted body. '' means no key, NULL not worked out yet (records.backfill_key_hashes, at start-up).
+    # SQLite can't change a CHECK, so jobs is made again with the new states.
+    """
+    ALTER TABLE events ADD COLUMN key_hash TEXT;
+    ALTER TABLE series ADD COLUMN key_hash TEXT;
+    CREATE INDEX events_key ON events(profile_id, key_hash);
+    CREATE INDEX series_key ON series(profile_id, key_hash);
+    CREATE TABLE jobs_13(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        upload_id INTEGER NOT NULL REFERENCES uploads(id) ON DELETE CASCADE,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        state TEXT NOT NULL CHECK(state IN ('queued', 'running', 'preview', 'done', 'failed', 'discarded')),
+        stage TEXT CHECK(stage IN ('detecting', 'parsing', 'saving')),   -- queued with "saving": confirmed, to save
+        importer TEXT,
+        message TEXT,
+        warnings TEXT,
+        summary TEXT,                              -- JSON: once previewed, what's new, the duplicates and the range;
+                                                   -- once done, what was saved
+        import_id INTEGER REFERENCES imports(id) ON DELETE SET NULL,
+        created INTEGER NOT NULL,
+        started INTEGER,
+        finished INTEGER,
+        confirmed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,   -- who said to save it (or discarded it)
+        keep TEXT);                                -- JSON: the duplicates chosen to save anyway
+    INSERT INTO jobs_13(id, profile_id, upload_id, created_by, state, stage, importer, message, warnings, summary,
+                        import_id, created, started, finished)
+        SELECT id, profile_id, upload_id, created_by, state, stage, importer, message, warnings, summary,
+               import_id, created, started, finished FROM jobs;
+    DROP TABLE jobs;
+    ALTER TABLE jobs_13 RENAME TO jobs;
+    CREATE INDEX jobs_profile ON jobs(profile_id, id);
+    CREATE INDEX jobs_state ON jobs(state);
+    CREATE INDEX jobs_upload ON jobs(upload_id);
+    """,
 ]
 
 

@@ -57,6 +57,7 @@ async def lifespan(app):
             atrest.check_key(db)   # stops here, saying why, if the key is missing or wrong
             atrest.load_pepper(db)
             sealed = atrest.seal_everything(db)
+            records.backfill_key_hashes(db)   # source keys' hashes for rows from before schema version 13
             if sealed["files"] or sealed["fields"]:
                 print(f"Encrypted {sealed['files']} files and {sealed['fields']} database fields that weren't yet.", flush=True)
             if (moved := prof.migrate_files(db)):

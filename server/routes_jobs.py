@@ -1,6 +1,13 @@
-"""Importing an upload into a profile, in the background (jobs.py): start it, then poll it. Owners and editors only;
-the CSRF check in main.guard covers the POST like every other change."""
-from typing import Optional
+"""Importing an upload into a profile, in the background (jobs.py): start it, poll it until it shows its preview,
+then confirm (save) or discard it. Owners and editors only; the CSRF check in main.guard covers the POSTs like every
+other change.
+
+  POST /api/profiles/{pid}/uploads/{id}/import   start: {"id": job id}
+  GET  /api/profiles/{pid}/jobs[/{id}]           how it goes; in state "preview", what it would add and the duplicates
+  POST /api/profiles/{pid}/jobs/{id}/confirm     save it, {"keep": [refs of duplicates to save anyway]} optional
+  POST /api/profiles/{pid}/jobs/{id}/discard     throw it away, with its upload unless another job uses it
+"""
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -28,7 +35,7 @@ def start_import(pid: int, upload_id: str, request: Request, body: Optional[Star
     if name and not registry.get(name):
         raise HTTPException(400, f"There's no importer called {name[:40]!r}.")
     for jid, state in jobs.for_upload(db, pid, upload_id):
-        if state in ("queued", "running"):
+        if state in ("queued", "running", "preview"):
             return {"id": jid}
         if state == "done":
             raise HTTPException(409, "This upload has been imported already.")
@@ -50,3 +57,30 @@ def get_job(pid: int, jid: int, s=Depends(user), db=Depends(get_db)):
     if not j:
         raise HTTPException(404, "No such import.")
     return j
+
+
+class Confirm(BaseModel):
+    keep: List[str] = []   # duplicates to save anyway, by the refs the preview lists them with
+
+
+@router.post("/api/profiles/{pid}/jobs/{jid}/confirm", status_code=202)
+def confirm_job(pid: int, jid: int, request: Request, body: Optional[Confirm] = None, s=Depends(user), db=Depends(get_db)):
+    """Save a previewed import, skipping the duplicates except those in keep. It saves in the background: poll
+    GET .../jobs/{id} until it's done."""
+    need(db, s, pid, "editor")
+    try:
+        jobs.confirm(db, pid, jid, s["id"], body.keep if body else None, _client_ip(request))
+    except jobs.Refused as e:
+        raise HTTPException(e.status, str(e)) from None
+    return {"id": jid}
+
+
+@router.post("/api/profiles/{pid}/jobs/{jid}/discard")
+def discard_job(pid: int, jid: int, request: Request, s=Depends(user), db=Depends(get_db)):
+    """Cancel a previewed import: nothing is saved, and the preview and the upload are removed."""
+    need(db, s, pid, "editor")
+    try:
+        jobs.discard(db, pid, jid, s, _client_ip(request))
+    except jobs.Refused as e:
+        raise HTTPException(e.status, str(e)) from None
+    return {"ok": True}
