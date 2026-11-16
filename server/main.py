@@ -1274,6 +1274,7 @@ app.include_router(__import__("server.routes_connect", fromlist=["router"]).rout
 app.include_router(__import__("server.routes_outside", fromlist=["router"]).router)   # outside connections (#59, #97)
 app.include_router(__import__("server.routes_calendar", fromlist=["router"]).router)  # calendar feeds (#51)
 app.include_router(__import__("server.routes_journal", fromlist=["router"]).router)   # the journal: notes, symptoms, side effects (#49)
+app.include_router(__import__("server.routes_summary", fromlist=["router"]).router)   # the visit summary PDF (#48)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here
@@ -1285,7 +1286,7 @@ if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves w
     @app.get("/{page}")
     @app.get("/", include_in_schema=False)
     def page(page: str = "index.html"):
-        if page not in ("index.html", "login.html", "setup.html", "account.html", "import.html", "settings.html", "providers.html"):
+        if page not in ("index.html", "login.html", "setup.html", "account.html", "import.html", "settings.html", "providers.html", "summary.html"):
             raise HTTPException(404)
         return FileResponse(os.path.join(WWW, page), media_type="text/html",
                             headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP})

@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_crossmatch.py tests/test_journal.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/test_calendar.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_crossmatch.py tests/test_journal.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/test_calendar.py tests/test_summary.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py
 
       - name: Shell scripts parse
         run: bash -n docker/dev-stack.sh
@@ -109,6 +109,9 @@ jobs:
 
       - name: Calendar feeds (valid iCalendar, stable UIDs, minimal details by default, rotation and revocation, bare 404s, throttling, expected labs)
         run: python tests/test_calendar.py
+
+      - name: Visit summary PDF (every section read back with pypdf, each result against its own report's range, questions draft, roles, nothing on disk, two pages at most)
+        run: python tests/test_summary.py
 
       - name: Fake FHIR server for connected sources (PKCE sign-in, refresh and revocation, scopes, paging, _lastUpdated, 429/5xx, request record)
         run: python tests/test_fakefhir.py

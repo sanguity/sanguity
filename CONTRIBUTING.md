@@ -41,6 +41,7 @@ python tests/test_watch_store.py       # imported watch data
 python tests/test_import_history.py    # import history and undo
 python tests/test_edits.py             # corrections made in the app
 python tests/test_lab_mapping.py       # matching unknown lab names
+python tests/test_summary.py           # the visit summary PDF
 python -m unittest discover -s tests -p "test_importer*.py" -v   # the registry and every importer's fixtures
 python tests/browser_check.py          # headless browser: every tab, the drawer, pan/zoom, account and import pages
 ```
