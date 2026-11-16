@@ -6,7 +6,7 @@ whose tables are the source of truth here: every value, unit, range and flag pri
 
   python3 tests/test_importer_pdf_labs.py
 """
-import hashlib, importlib.util, os, shutil, sys, tempfile, unittest
+import hashlib, os, shutil, sys, tempfile, types, unittest
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -17,9 +17,10 @@ from server.importers import pdf_labs, pdf_layouts   # noqa: E402
 
 BASE = os.path.join(ROOT, "tests", "fixtures", "importers", "pdf-labs")
 FIXTURES = os.path.join(ROOT, "tests", "fixtures")
-_spec = importlib.util.spec_from_file_location("pdf_fixture_generator", os.path.join(BASE, "generate.py"))
-gen = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(gen)
+gen = types.ModuleType("pdf_fixture_generator")   # run from source: no __pycache__ among the fixtures
+gen.__file__ = os.path.join(BASE, "generate.py")
+with open(gen.__file__, encoding="utf-8") as _f:
+    exec(compile(_f.read(), gen.__file__, "exec"), gen.__dict__)
 
 
 def rows_of(out):
