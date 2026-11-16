@@ -46,6 +46,11 @@ def main():
         check("app page is served", st == 200 and b"<title>Sanguity" in body, st)
         check("pages send a content security policy", "default-src 'self'" in (h.get("Content-Security-Policy") or ""))
         check("pages can't be framed", h.get("X-Frame-Options") == "DENY")
+        # install as a phone app (#56): the manifest and service worker, with their types and the pages' headers
+        for path, kind in (("/manifest.webmanifest", "application/manifest+json"), ("/sw.js", "javascript"), ("/icons/icon-192.png", "image/png")):
+            st, h, _ = req(path, signed_in=False)
+            check(f"{path} is served as {kind}, not stored", st == 200 and kind in (h.get("Content-Type") or "")
+                  and h.get("Cache-Control") == "no-store" and "default-src 'self'" in (h.get("Content-Security-Policy") or ""), (st, h.get("Content-Type")))
         for old in ("/data.json", "/settings.json", "/files/demo-report.pdf", "/records/", "/watch/daily.json"):
             check(f"{old} is not served", req(old, signed_in=False)[0] == 404)
 

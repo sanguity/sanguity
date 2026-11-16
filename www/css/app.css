@@ -619,3 +619,12 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .jform .edit-msg:empty,#dbody .edit-msg:empty{display:none}
 @media (max-width:640px){.jrow{grid-template-columns:72px 18px 1fr auto}}
 @media (forced-colors:active){.jmark,.jsev-bar span{forced-color-adjust:none}}
+
+/* ---- install as a phone app (#56): the offline view (js/offline.js) and the Account choice (js/pwa.js) */
+.offline-banner{max-width:1500px;margin:12px auto 0;box-sizing:border-box;border-color:var(--c-study);font-size:13.5px;width:calc(100% - 40px)}
+.offline-banner .why{color:var(--ink2)}
+.offline-banner.flash{animation:offline-flash .6s ease-out}
+@keyframes offline-flash{from{box-shadow:0 0 0 3px var(--c-study)}to{box-shadow:0 0 0 0 transparent}}
+body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+.offline-note{color:var(--ink2)}
+@media (max-width:700px){.offline-banner{width:calc(100% - 24px)}}

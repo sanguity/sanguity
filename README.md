@@ -378,6 +378,19 @@ Your password keeps working alongside passkeys. Where an admin requires two-fact
 **Turn off 2FA** (or `server.manage disable-2fa NAME`) removes the authenticator app and every passkey, for someone
 who lost the phone holding them.
 
+### Install as a phone app
+
+Sanguity installs to a phone's home screen with its own icon: **Add to Home Screen** in Safari's share menu on
+iPhone, or **Install app** in Chrome's menu on Android. Like passkeys, this needs **HTTPS** (or `http://localhost`):
+browsers don't install from, or run the offline part at, a plain-HTTP address.
+
+Installed, it opens without a connection, but by default shows no records then: the app's pages are kept on the
+phone, its records aren't. **Account > Offline records on this device** keeps a copy of the last profile you opened,
+read-only offline with the time it was loaded. That copy is outside Sanguity's encryption at rest, so anyone who can
+use the phone unlocked could read it. It never includes documents or other profiles, and it's deleted when you sign
+out, when your sign-in ends (even if the phone stays offline), and when you turn the option off. Leave it off on a
+shared phone.
+
 ## Backup and restore
 
 Health records are worth more than uptime: keep copies off this machine.
@@ -505,7 +518,8 @@ nginx.conf          Web server: the app's pages and security headers; passes /ap
 watch/receiver.py   Health Connect webhook receiver: archives payloads, folds them into SQLite, writes public/daily.json
 www/                index.html (markup), css/app.css, js/*.js (one plain script per tab, loaded in order),
                     login.html, setup.html (first account), account.html (password, devices, profiles, accounts),
-                    import.html (uploading a portal's export)
+                    import.html (uploading a portal's export); manifest.webmanifest, icons/ and sw.js (install as a
+                    phone app; tools/make_icons.py draws the icons)
 demo/               Fictional demo dataset generator
 tests/              API and upload tests, a headless browser check and a smoke test of the Docker install (all run in CI)
 *.example.json      Templates for sources.json, corrections.json (milestones) and settings.json (a new build-linked
