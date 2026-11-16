@@ -174,6 +174,32 @@ class Edits(unittest.TestCase):
         self.check_all_applied(self.data())
         self.check_all_applied(self.rebuild())   # #33's done-when, for events without a source key
 
+    def test_edits_follow_a_retitled_build_event(self):
+        """A rebuild that names an event differently (same kind, same minute) keeps its edits on it; where that minute
+        holds two events of the kind (the two lab results), nothing moves, since it can't tell which is which."""
+        d = self.data()
+        self.edit("hide", self.ev("Outpatient visit", d)["id"])
+        self.edit("hide", self.ev("Ferritin", d)["id"])
+        self.edit("merge", self.ev("Follow-up visit", d)["id"], other=self.ev("Follow-up note", d)["id"])
+        renamed = {"Outpatient visit": "Office visit", "Ferritin": "Ferritin, serum", "CBC": "CBC with differential",
+                   "Follow-up note": "Follow-up visit note"}
+        try:
+            write_build({**BUILT, "events": [{**e, "title": renamed.get(e["title"], e["title"])} for e in BUILT["events"]]})
+            db = dbm.connect()
+            self.assertEqual(prof.sync_build(db, self.pid), {})
+            db.close()
+            d = self.data()
+            titles = [e["title"] for e in d["events"]]
+            self.assertNotIn("Office visit", titles)                       # the hide followed the new title
+            self.assertNotIn("Follow-up visit note", titles)               # and so did the merge's second event
+            self.assertIn("Ferritin, serum", titles)                       # two lab results at 08:00: left alone
+            self.assertEqual(sorted(x["found"] for x in d["edits"]), [False, True, True])
+        finally:
+            write_build()
+            db = dbm.connect()
+            prof.sync_build(db, self.pid)
+            db.close()
+
     def test_bad_edits_are_refused(self):
         d = self.data()
         visit = self.ev("Outpatient visit", d)["id"]

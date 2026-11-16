@@ -9,8 +9,8 @@ The export is a folder (often zipped, sometimes inside a folder of its own) laid
 
 Lab results become one hidden `labitem` per panel and day under a `lab` day event, and chart series for the tests
 lab-aliases.json knows. The C-CDA's narrative tables give visits (future ones become `upcoming`), medications,
-problems and vitals; weights go to `clinicWeights`. The output matches build.py's for the same export, apart from
-event ids and the keys.
+problems and vitals; weights go to `clinicWeights`. build.py reads a CareSpace export through this module, with
+the clinic's name and tag from sources.json (parse's org= and tag=).
 
 The organisation is the C-CDA's custodian (or its author's organisation). An export that names neither is
 labelled DEFAULT_ORG, with a warning asking the person to rename the source. Encounters dated after the C-CDA was
@@ -158,7 +158,9 @@ def _cda_time(v):
 
 # ------------------------------------------------------------------ parse
 
-def parse(files):
+def parse(files, org=None, tag=None):
+    """`org` names the clinic instead of the C-CDA's custodian, and `tag` is the source tag on lab points and lab days
+    instead of the clinic's name: build.py takes both from sources.json."""
     root = _root(files)
     if root is None:
         raise ValueError(f"This isn't a CareSpace export: there's no {RESULTS} with {PANELS} beside it.")
@@ -167,12 +169,12 @@ def parse(files):
     ccd_rel = next((root + c for c in CCDS if root + c in files), None)
     ccd = _ccd(files, ccd_rel) if ccd_rel else None
     warnings = []
-    org = _org(ccd) if ccd is not None else None
+    org = org or (_org(ccd) if ccd is not None else None)
     if not org:
         org = DEFAULT_ORG
         warnings.append(f'The export doesn\'t name the clinic, so its records are labelled "{DEFAULT_ORG}". '
                         "Rename the source to the clinic's name.")
-    tag = org   # source tag on lab points and lab days, as the other importers use the organisation's name
+    tag = tag or org   # source tag on lab points and lab days, as the other importers use the organisation's name
 
     events, details, labs = [], {}, {}
     panel_votes = collections.defaultdict(collections.Counter)
