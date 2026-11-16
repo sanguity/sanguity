@@ -120,6 +120,12 @@ def build_data():
             crypto.write_file(built, crypto.read_file(src))
         elif os.path.isfile(built):
             os.remove(built)   # settings.json was removed: back to the defaults
+    # corrections.json next to compose.yaml: the app moves its event corrections into edits once (server/edits.py)
+    built = os.path.join(BUILD, "corrections.json")
+    if os.path.isfile(os.path.join(APP, "corrections.json")):
+        crypto.write_file(built, crypto.read_file(os.path.join(APP, "corrections.json")))
+    elif os.path.isfile(built):
+        os.remove(built)
     seal_build()
     own_tree(BUILD)
     for n in os.listdir(os.path.join(WATCH, "public")):

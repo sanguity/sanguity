@@ -143,7 +143,8 @@ Events and lab series may carry `"key"`: a string that names the record in the s
 source can then update records in place instead of adding them again, and the import preview can spot duplicates.
 It's optional, but give one whenever you can.
 
-- **Stable.** Parsing the same source data again gives the same key, whatever else is in the upload and in
+- **Stable.** Parsing the same source data again gives the same key (corrections made in the app find their event
+  by it, so a key that changes loses them), whatever else is in the upload and in
   whatever order it comes. Never use random values, counters or the input's order.
 - **Unique** within one importer's output: no two events share a key, and no two series do. Events and series are
   separate, so one key may appear in each.

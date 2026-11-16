@@ -140,4 +140,5 @@ $("#logout").onclick = async () => { try { await api("logout", {method: "POST"})
   if (!state.sel.size) state.sel = new Set(CFG.trends.defaultLabs.filter(n => SERIES.some(s => s.name === n)));
   if (state.preset !== "custom") applyPreset(state.preset); else renderAll();
   switchTab(state.tab);
+  drawerResume();   // after an edit's reload (drawer.js)
 })();

@@ -104,9 +104,108 @@ function openEvent(e) {
     body.append(el("dl", {class: "kv"}, ...[["Instructions", d.instructions], ["Status", d.status], ["Listed since", fmtD(e.ts)], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
       el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "From the clinic's medication list. The date is when it was recorded there, not necessarily when you started it."}));
   }
+  if (e.k !== "exercise") body.append(editPanel(e));
+  showDrawer();
+  renderTimeline(); document.querySelectorAll(".row").forEach(r => r.classList.remove("sel"));
+}
+function showDrawer() {
   if (!drawer.classList.contains("open")) drawerReturn = document.activeElement;
   drawer.classList.add("open"); drawer.setAttribute("aria-hidden", "false");
   $("#dclose").focus({preventScroll: true});
-  renderTimeline(); document.querySelectorAll(".row").forEach(r => r.classList.remove("sel"));
+}
+
+/* ---------------------------------------------------------------- corrections (edits, server/edits.py)
+   Owners and editors can hide, rename, re-date, un-stay or merge the open event; everyone sees what was edited.
+   Edits are applied on the server, so after a change the page loads the records again and reopens the panel. */
+const canEdit = () => !!PROFILE && (PROFILE.role === "owner" || PROFILE.role === "editor");
+const editsOf = e => (DATA.edits || []).filter(x => x.ids.includes(e.id));
+const quoted = t => `“${t || "an event"}”`;
+function describeEdit(x) {
+  const was = x.was || {}, v = x.value || {};
+  if (x.action === "hide") return `Hidden: ${quoted(was.title)}`;
+  if (x.action === "rename") return `Renamed ${quoted(was.title)} to ${quoted(v.title)}`;
+  if (x.action === "date") return `Date of ${quoted(was.title)} changed${was.t ? " from " + fmtDT(was.t) : ""} to ${fmtDT(v.t)}`;
+  if (x.action === "not_stay") return `${quoted(was.title)} marked as not a hospital stay`;
+  if (x.action === "merge") return `${quoted((x.other || v.other || {}).title)} merged into ${quoted(was.title)}`;
+  return "Edited";
+}
+function afterEdit(reopen) {
+  try { sessionStorage.setItem("sg-after-edit", JSON.stringify(reopen)); } catch (e) {}
+  location.reload();
+}
+async function sendEdit(path, opts, msg, reopen) {
+  msg.textContent = "Saving…";
+  try {
+    const r = await api(`profiles/${PROFILE.id}/edits${path}`, opts);
+    if (!r.ok) { const j = await r.json().catch(() => ({})); msg.textContent = typeof j.detail === "string" ? j.detail : `Couldn't save the edit (${r.status}).`; return; }
+    afterEdit(reopen);
+  } catch (err) { msg.textContent = "Couldn't reach the server: " + err.message; }
+}
+function undoButton(x, msg, reopen) {
+  return el("button", {class: "btn small", type: "button", text: "Undo", "data-edit": x.id, title: "Undo this edit",
+    onclick: () => sendEdit("/" + x.id, {method: "DELETE"}, msg, reopen)});
+}
+function editPanel(e) {
+  const box = el("div", {class: "edits"}), msg = el("p", {class: "hint edit-msg", role: "status"});
+  const mine = editsOf(e);
+  if (mine.length) box.append(el("div", {class: "edited"}, el("b", {text: "Edited"}),
+    ...mine.map(x => el("div", {class: "edit-line"}, el("span", {text: describeEdit(x) + (x.by ? ` · by ${x.by}` : "")}),
+      canEdit() ? undoButton(x, msg, {event: e.id}) : null))));
+  if (!canEdit()) return mine.length ? box : el("span");
+  const forms = el("div", {class: "edit-form"});
+  const post = (body, reopen = {event: e.id}) => sendEdit("", {method: "POST", body: JSON.stringify({event: e.id, ...body})}, msg, reopen);
+  const form = (label, input, onsave) => {
+    forms.replaceChildren(el("label", {}, el("span", {text: label}), input),
+      el("div", {}, el("button", {class: "btn primary", type: "button", text: "Save", onclick: onsave}),
+        el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => forms.replaceChildren()})));
+    input.focus();
+  };
+  const acts = el("div", {class: "edit-acts"},
+    el("button", {class: "btn", type: "button", text: "Hide", title: "Leave this event out of the records", onclick: () => post({action: "hide"}, {edits: true})}),
+    el("button", {class: "btn", type: "button", text: "Rename", onclick: () => {
+      const i = el("input", {type: "text", maxlength: 300, "aria-label": "New title"}); i.value = e.title;
+      form("New title", i, () => post({action: "rename", title: i.value}));
+    }}),
+    el("button", {class: "btn", type: "button", text: "Fix date", onclick: () => {
+      const i = el("input", {type: "datetime-local", "aria-label": "New date and time"}); i.value = String(e.t || "").slice(0, 16);
+      form("Starts", i, () => post({action: "date", t: i.value}));
+    }}),
+    e.k === "stay" ? el("button", {class: "btn", type: "button", text: "Not a hospital stay", onclick: () => post({action: "not_stay"})}) : null,
+    el("button", {class: "btn", type: "button", text: "Merge with…", onclick: () => {
+      const near = DATA.events.filter(x => x.id !== e.id && x.k !== "exercise" && Math.abs(x.ts - e.ts) <= 7 * DAY)
+        .sort((a, b) => Math.abs(a.ts - e.ts) - Math.abs(b.ts - e.ts)).slice(0, 50);
+      if (!near.length) { msg.textContent = "No other event within a week of this one to merge with."; return; }
+      const sel = el("select", {"aria-label": "Event to merge into this one"},
+        ...near.map(x => el("option", {value: x.id, text: `${fmtDT(x.ts)} · ${KIND_LABEL[x.k] || x.k} · ${x.title}`})));
+      form("Fold this event into the open one (it keeps its own title and date)", sel, () => post({action: "merge", other: +sel.value}));
+    }}),
+    (DATA.edits || []).length ? el("button", {class: "btn", type: "button", text: `All edits (${DATA.edits.length})`, onclick: openEdits}) : null);
+  box.append(el("div", {class: "sect", text: "Correct this event"}), acts, forms, msg);
+  return box;
+}
+/* every edit to these records, including those whose event is gone (its import undone, or changed at the source) */
+function openEdits() {
+  const list = DATA.edits || [], msg = el("p", {class: "hint edit-msg", role: "status"});
+  state.selEv = null;
+  $("#dkey").style.background = "var(--muted)"; $("#dtitle").textContent = "Edits to these records";
+  $("#dsub").textContent = list.length ? `${list.length} edit${list.length === 1 ? "" : "s"}, applied every time the records load` : "No edits";
+  const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
+  body.append(el("div", {class: "edits"}, ...list.map(x => {
+    const ev = x.found && x.action !== "hide" ? byId.get(x.ids[0]) : null;
+    return el("div", {class: "edit-line"},
+      el("span", {}, describeEdit(x), x.by ? ` · by ${x.by}` : "", x.found ? null : el("em", {class: "missing", text: " · not found in the current records"})),
+      ev ? el("button", {class: "btn small", type: "button", text: "Open", onclick: () => openEvent(ev)}) : null,
+      canEdit() ? undoButton(x, msg, {edits: true}) : null);
+  }), msg));
+  showDrawer();
+  renderTimeline();
+}
+/* after the reload an edit causes: reopen what was open */
+function drawerResume() {
+  let r = null;
+  try { r = JSON.parse(sessionStorage.getItem("sg-after-edit") || "null"); sessionStorage.removeItem("sg-after-edit"); } catch (e) {}
+  if (!r) return;
+  if (r.event && byId.has(r.event)) openEvent(byId.get(r.event));
+  else openEdits();
 }
 

@@ -183,17 +183,17 @@ tr = load(exp_file("test-results", "test_results_raw.json") or sys.exit(f"no tes
 ADM_FILE = os.path.join(EXP, "admissions.json")
 epic_results(tr, infer_stays=not os.path.exists(ADM_FILE))
 stay_days = set()
-# corrections.json next to build.py: things the records get wrong, fixed by hand
+# corrections.json next to build.py: only its milestones are read here now. Corrections to events (its older
+# "not_hospital_stays") are edits made in the app, applied to every import of this build (server/edits.py); the
+# app moved an existing corrections.json's into edits once, at start-up
 CORR_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "corrections.json")
 CORR = json.load(open(CORR_FILE, encoding="utf-8")) if os.path.exists(CORR_FILE) else {}
-NOT_STAYS = {(x["date"], x.get("org", "")) for x in CORR.get("not_hospital_stays", [])}
-VISIT_TITLES = {(x["date"], x.get("org", "")): x["title"] for x in CORR.get("not_hospital_stays", []) if x.get("title")}
 
 
 def add_stay(admit, discharge, where, org, how, exact=None):
     """One hospital stay with real admit/discharge dates (deduplicated on admit day + org)."""
     key = (admit[:10], org)
-    if key in stay_days or key in NOT_STAYS:
+    if key in stay_days:
         return
     stay_days.add(key)
     st = stay(admit, discharge, where, org, how, exact)
@@ -359,7 +359,6 @@ for v in sorted(visits, key=lambda v: v["t"]):
     seen.add(k)
     who = "" if re.search(r"not in system|^him provider|lab rm\d*|^ach |unknown", v["who"] or "", re.I) else v["who"]
     vtype = {"Ambulatory": "Outpatient visit", "Inpatient Encounter": "Hospital admission", "Emergency": "Emergency visit"}.get(v["type"], v["type"])
-    vtype = VISIT_TITLES.get((v["t"][:10], v.get("org", "")), vtype)
     if vtype == "Hospital admission":
         end = v.get("end") or v["t"]
         add_stay(v["t"], end, v["where"], v.get("org", ""), "C-CDA encounter", exact=(v["t"], end if end > v["t"] else v["t"][:10] + "T23:59:00"))

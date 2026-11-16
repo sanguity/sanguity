@@ -67,8 +67,10 @@ other people under **Account**, then share profiles with them there.
 
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy
 `sources.example.json` to `sources.json` and describe them, then `docker compose run --rm setup rebuild`; the first profile picks up the rebuild automatically.
-Optional: `corrections.json` (milestones and hand corrections; see `corrections.example.json`) and
-`settings.json` (that profile's dashboard preferences; see `settings.example.json`), both next to `compose.yaml`.
+Optional: `corrections.json` (your milestones; see `corrections.example.json`) and `settings.json` (that profile's
+dashboard preferences; see `settings.example.json`), both next to `compose.yaml`. Corrections to events are made in
+the app (see [Correcting records](#correcting-records)); an older `corrections.json`'s `not_hospital_stays` are moved
+into the app once, at the first start of a version that has them, and aren't read from the file after that.
 
 | Command | What it does |
 |---|---|
@@ -129,6 +131,23 @@ higher, raise `client_max_body_size` in `nginx.conf` too. Refused: paths that ar
 than `UPLOAD_MAX_ZIP_RATIO` (200) times its compressed size (a zip bomb). An upload left unfinished for a day is
 removed when the app next starts. While an import reads an upload, a decrypted copy sits in the app container's
 `/tmp`, which is in memory, and is removed straight after.
+
+### Correcting records
+
+Portals get things wrong: an outpatient scan coded as a hospital stay, a visit filed on the wrong day, the same
+appointment twice. Owners and editors fix them in the event's panel (click it on the timeline): **Hide**,
+**Rename**, **Fix date**, **Not a hospital stay** (for stays) or **Merge with…** another event within a week, which
+folds that event into the open one: the open one keeps its own title, date and details, gains the details it was
+missing, and takes over the other's cost row. An edited event says **Edited**, with what changed and who changed
+it, to everyone who can see the profile; owners and editors can undo it there, and **All edits** lists every edit,
+including those whose event is no longer in the records ("not found in the current records": its import was
+undone, or the source changed it). Each edit and undo is in the profile's activity log.
+
+Edits belong to the profile, not to an import: undoing an import, importing the same records again, or rebuilding
+the setup build keeps them, and they apply again to the same events. They find an event by its source key (see
+[docs/importers.md](docs/importers.md#source-keys)) or, for the setup build's events, which have none, by its kind,
+start time and title. Like the records, they are encrypted at rest. `corrections.json` now holds **milestones
+only**; editing those in the app comes with Phase 3 (#39).
 
 ## Privacy and security
 
@@ -316,7 +335,7 @@ www/                index.html (markup), css/app.css, js/*.js (one plain script 
                     import.html (uploading a portal's export)
 demo/               Fictional demo dataset generator
 tests/              API and upload tests, a headless browser check and a smoke test of the Docker install (all run in CI)
-*.example.json      Templates for sources.json, corrections.json and settings.json; .env.example for .env
+*.example.json      Templates for sources.json, corrections.json (milestones) and settings.json; .env.example for .env
 ```
 
 ## License
