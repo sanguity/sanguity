@@ -1,0 +1,246 @@
+{
+ "data": {
+  "events": [
+   {
+    "id": 1,
+    "t": "2026-04-11T12:00:00",
+    "k": "claim",
+    "title": "Office visit, established patient",
+    "sub": "Dr. Avery Lin · Blue Cross Blue Shield",
+    "key": "bcbs:BC2026041100071"
+   },
+   {
+    "id": 2,
+    "t": "2026-05-19T12:00:00",
+    "k": "claim",
+    "title": "Ct scan",
+    "sub": "Maple Grove Medical Center · Blue Cross Blue Shield",
+    "key": "bcbs:BC2026051900188"
+   },
+   {
+    "id": 3,
+    "t": "2026-06-24T12:00:00",
+    "k": "claim",
+    "title": "Therapeutic exercises",
+    "sub": "Harbor Physical Therapy · Blue Cross Blue Shield · denied",
+    "abn": 1,
+    "key": "bcbs:BC2026062400302"
+   },
+   {
+    "id": 4,
+    "t": "2026-07-14T12:00:00",
+    "k": "rx",
+    "title": "Metformin Hcl Er 500 Mg Tablet",
+    "sub": "Pharmacy fill · Blue Cross Blue Shield",
+    "key": "bcbs:BC2026071400415"
+   },
+   {
+    "id": 5,
+    "t": "2026-08-20T12:00:00",
+    "k": "claim",
+    "title": "Biopsy of skin, single lesion",
+    "sub": "Northfield Surgical Group · Blue Cross Blue Shield",
+    "key": "bcbs:BC2026082000529"
+   }
+  ],
+  "details": {
+   "1": {
+    "type": "claim",
+    "insurer": "Blue Cross Blue Shield",
+    "kind": "Medical",
+    "provider": "Dr. Avery Lin",
+    "claimId": "BC2026041100071",
+    "billed": 310.0,
+    "paid": 188.62,
+    "owe": 35.0,
+    "status": "Processed",
+    "lines": [
+     {
+      "date": "2026-04-11",
+      "desc": "Office visit, established patient",
+      "code": "99213",
+      "billed": 310.0,
+      "denied": []
+     }
+    ],
+    "visit": {
+     "date": "2026-04-11",
+     "provider": "Dr. Avery Lin"
+    }
+   },
+   "2": {
+    "type": "claim",
+    "insurer": "Blue Cross Blue Shield",
+    "kind": "Medical",
+    "provider": "Maple Grove Medical Center",
+    "claimId": "BC2026051900188",
+    "billed": 4875.2,
+    "paid": 2210.04,
+    "owe": 300.0,
+    "status": "Processed",
+    "lines": [
+     {
+      "date": "2026-05-19",
+      "desc": "Ct scan",
+      "code": "00350",
+      "billed": 3400.0,
+      "denied": []
+     },
+     {
+      "date": "2026-05-19",
+      "desc": "Pharmacy",
+      "code": "00250",
+      "billed": 1475.2,
+      "denied": []
+     }
+    ],
+    "visit": {
+     "date": "2026-05-19",
+     "provider": "Maple Grove Medical Center",
+     "facility": true
+    }
+   },
+   "3": {
+    "type": "claim",
+    "insurer": "Blue Cross Blue Shield",
+    "kind": "Medical",
+    "provider": "Harbor Physical Therapy",
+    "claimId": "BC2026062400302",
+    "billed": 640.0,
+    "paid": 0.0,
+    "owe": 0.0,
+    "status": "DENIED",
+    "lines": [
+     {
+      "date": "2026-06-24",
+      "desc": "Therapeutic exercises",
+      "code": "97110",
+      "billed": 420.0,
+      "denied": [
+       "Visit limit reached for the plan year"
+      ]
+     },
+     {
+      "date": "2026-06-24",
+      "desc": "Gait training",
+      "code": "97116",
+      "billed": 220.0,
+      "denied": [
+       "Visit limit reached for the plan year"
+      ]
+     }
+    ],
+    "visit": {
+     "date": "2026-06-24",
+     "provider": "Harbor Physical Therapy"
+    }
+   },
+   "4": {
+    "type": "claim",
+    "insurer": "Blue Cross Blue Shield",
+    "kind": "Pharmacy",
+    "drug": "METFORMIN HCL ER 500 MG TABLET",
+    "billed": 22.4,
+    "paid": 17.4,
+    "owe": 5.0,
+    "status": "Paid",
+    "visit": {
+     "date": "2026-07-14"
+    }
+   },
+   "5": {
+    "type": "claim",
+    "insurer": "Blue Cross Blue Shield",
+    "kind": "Medical",
+    "provider": "Northfield Surgical Group",
+    "claimId": "BC2026082000529",
+    "billed": 1260.0,
+    "paid": 1008.0,
+    "owe": 252.0,
+    "status": "Processed",
+    "lines": [
+     {
+      "date": "2026-08-20",
+      "desc": "Biopsy of skin, single lesion",
+      "code": "11102",
+      "billed": 1260.0,
+      "denied": []
+     }
+    ],
+    "visit": {
+     "date": "2026-08-20",
+     "provider": "Northfield Surgical Group"
+    }
+   }
+  },
+  "labs": [],
+  "costs": [
+   {
+    "id": 1,
+    "d": "2026-04-11",
+    "ins": "Blue Cross Blue Shield",
+    "billed": 310.0,
+    "paid": 188.62,
+    "owe": 35.0,
+    "status": "Processed",
+    "kind": "medical",
+    "cat": "Doctor visits",
+    "prov": "Dr. Avery Lin",
+    "title": "Office visit, established patient"
+   },
+   {
+    "id": 2,
+    "d": "2026-05-19",
+    "ins": "Blue Cross Blue Shield",
+    "billed": 4875.2,
+    "paid": 2210.04,
+    "owe": 300.0,
+    "status": "Processed",
+    "kind": "medical",
+    "cat": "Hospital outpatient (facility)",
+    "prov": "Maple Grove Medical Center",
+    "title": "Ct scan"
+   },
+   {
+    "id": 3,
+    "d": "2026-06-24",
+    "ins": "Blue Cross Blue Shield",
+    "billed": 640.0,
+    "paid": 0.0,
+    "owe": 0.0,
+    "status": "DENIED",
+    "kind": "medical",
+    "cat": "Physical therapy",
+    "prov": "Harbor Physical Therapy",
+    "title": "Therapeutic exercises"
+   },
+   {
+    "id": 4,
+    "d": "2026-07-14",
+    "ins": "Blue Cross Blue Shield",
+    "billed": 22.4,
+    "paid": 17.4,
+    "owe": 5.0,
+    "status": "Paid",
+    "kind": "pharmacy",
+    "cat": "Pharmacy",
+    "prov": "",
+    "title": "Metformin Hcl Er 500 Mg Tablet"
+   },
+   {
+    "id": 5,
+    "d": "2026-08-20",
+    "ins": "Blue Cross Blue Shield",
+    "billed": 1260.0,
+    "paid": 1008.0,
+    "owe": 252.0,
+    "status": "Processed",
+    "kind": "medical",
+    "cat": "Procedures",
+    "prov": "Northfield Surgical Group",
+    "title": "Biopsy of skin, single lesion"
+   }
+  ]
+ },
+ "warnings": []
+}

@@ -1,0 +1,31 @@
+{
+ "details": {
+  "C-2001": {"claimId": "BC2026041100071", "claimType": "Professional", "serviceFromDate": "2026-04-11T00:00:00",
+   "claimStatus": "Processed", "isClaimDenied": false,
+   "billedChargeAmount": 310.0, "bcbsnePaidAmount": 188.62, "memberPayableAmount": 35.0,
+   "renderingProvider": {"fullName": "DR. AVERY LIN"},
+   "serviceLines": [{"serviceTitle": "OFFICE VISIT, ESTABLISHED PATIENT", "procedureCode": "99213", "billedChargeAmount": 310.0}]},
+  "C-2002": {"claimId": "BC2026051900188", "claimType": "Institutional", "serviceFromDate": "2026-05-19T00:00:00",
+   "claimStatus": "Processed", "isClaimDenied": false,
+   "billedChargeAmount": "4875.20", "bcbsnePaidAmount": "2210.04", "memberPayableAmount": "300.00",
+   "renderingProvider": {"fullName": "MAPLE GROVE MEDICAL CENTER"},
+   "serviceLines": [{"serviceTitle": "CT SCAN", "procedureCode": "00350", "billedChargeAmount": "3400.00"},
+                    {"serviceDescription": "PHARMACY", "procedureCode": "00250", "billedChargeAmount": "1475.20"}]},
+  "C-2003": {"claimId": "BC2026062400302", "claimType": "Professional", "serviceFromDate": "2026-06-24T00:00:00",
+   "claimStatus": "Finalized", "isClaimDenied": true,
+   "billedChargeAmount": 640.0, "bcbsnePaidAmount": 0, "memberPayableAmount": 0,
+   "renderingProvider": {"fullName": "HARBOR PHYSICAL THERAPY"},
+   "serviceLines": [{"serviceTitle": "THERAPEUTIC EXERCISES", "procedureCode": "97110", "billedChargeAmount": 420.0,
+                     "deniedReasons": ["Visit limit reached for the plan year"]},
+                    {"serviceTitle": "GAIT TRAINING", "procedureCode": "97116", "billedChargeAmount": 220.0,
+                     "deniedReasons": ["Visit limit reached for the plan year"]}]},
+  "C-2004": {"claimId": "BC2026071400415", "claimType": "Pharmacy", "serviceFromDate": "2026-07-14T00:00:00",
+   "claimStatus": "Paid", "drugName": "METFORMIN HCL ER 500 MG TABLET",
+   "billedChargeAmount": 22.4, "bcbsnePaidAmount": 17.4, "memberPayableAmount": 5.0},
+  "C-2005": {"claimId": "BC2026082000529", "claimType": "Professional", "serviceFromDate": "2026-08-20T00:00:00",
+   "claimStatus": "Processed", "isClaimDenied": false,
+   "billedChargeAmount": 1260.0, "bcbsnePaidAmount": 1008.0, "memberPayableAmount": 252.0,
+   "renderingProvider": {"fullName": "NORTHFIELD SURGICAL GROUP"},
+   "serviceLines": [{"serviceDescription": "Biopsy of skin, single lesion", "procedureCode": "11102", "billedChargeAmount": 1260.0}]}
+ }
+}

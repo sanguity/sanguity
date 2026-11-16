@@ -1,0 +1,8 @@
+Claims export for member EXAMPLE-0042 (fictional)
+Date of Service,Provider,Description,Procedure Code,Billed,Plan Paid,You Owe,Claim Status,Claim Number,Claim Type
+01/14/2026,Dr. Morgan Ellis,Office visit established patient,99214,$310.00,$188.62,$35.00,Processed,PX-26-0001,Medical
+02/03/2026,Valley Reference Laboratory,Complete blood count,85025,$58.00,$31.20,$5.10,Processed,PX-26-0002,Medical
+02/03/2026,Valley Reference Laboratory,Comprehensive metabolic panel,80053,$142.00,$61.18,$12.35,Processed,PX-26-0002,Medical
+02/17/2026,Lakeside Imaging Center,CT chest with contrast,71260,"$1,840.00",$0.00,"$1,840.00",Denied,PX-26-0003,Medical
+02/20/2026,Corner Pharmacy,ONDANSETRON TAB 8MG,,$64.10,$54.10,$10.00,Paid,PX-26-0004,Pharmacy
+03/09/2026,Riverbend Infusion Clinic,Chemo IV infusion first hour,96413,$980.00,$784.00,$196.00,Processed,,Medical

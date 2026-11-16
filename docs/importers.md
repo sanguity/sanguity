@@ -118,7 +118,7 @@ An object keyed by event id (as a string in JSON). Each has a `type`:
 | `med` | `instructions`, `status`, `src` |
 | `conversation` | `subject`, `messages`: `[{"t", "from", "body", "att"}]` |
 | `letter` | `html` |
-| `claim` | `insurer`, `kind` (`Medical`/`Pharmacy`), `provider`, `claimId`, `billed`, `paid`, `owe`, `status`, `lines` |
+| `claim` | `insurer`, `kind` (`Medical`/`Pharmacy`), `provider`, `claimId`, `billed`, `paid`, `owe`, `status`, `lines`, `visit` |
 
 Point `url` at the file as it sits in the upload; the app stores the documents with the records and rewrites the
 links. A document the export mentions but didn't include gets `"url": null` and a warning.
@@ -194,6 +194,13 @@ among the lab series, among `problems` and among `upcoming` (each list separatel
 `{"id", "d" (date), "ins", "billed", "paid", "owe", "status", "kind" ("medical"/"pharmacy"), "cat", "prov", "title"}`,
 where `id` is the claim's event.
 
+
+The claims importers (`claims_uhc.py`, `claims_bcbs.py`, `claims_csv.py`) share `_claims.py`: build.py's amounts,
+care categories and drug names. A claim's detail also carries `visit`, a hint for linking it to a visit or stay
+from another import: `{"date", "end" (when it spans days), "provider", "facility": true (a facility bill)}`. Within
+one import, a facility bill inside one of that import's stays is filed under "Hospital stay (facility)", as build.py
+does; a claims-only upload has no stays, so linking across imports (and re-filing those bills) is left to a later
+step that reads the hint.
 ### The optional keys
 
 | Key | Shape |

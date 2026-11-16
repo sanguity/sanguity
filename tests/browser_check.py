@@ -6,8 +6,9 @@ login page, opens every tab and checks its main content rendered, opens the deta
 event, drags and scroll-zooms the charts, toggles the event sort, switches profiles, uploads a zip and files on
 the import page (a fictional C-CDA and a FHIR export, previewed, saved in the background and then shown on the timeline;
 the C-CDA again, previewed as all duplicates and cancelled; the FHIR one then undone from the import history, and
-gone from the timeline), types two lab results in on the import page and finds them on Trends, opens the account
-page, and fails on any script error, console error, failed request or NaN written into an SVG attribute.
+gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab), types two lab results in on the
+import page and finds them on Trends, opens the account page, and fails on any script error, console error, failed
+request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
   python3 tests/browser_check.py
@@ -382,6 +383,30 @@ def main():
             up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
             check("the job is done, read by the FHIR importer", job is not None and tuple(job) == ("done", "fhir"), job and tuple(job))
+            # ...and insurer claims (#30): a UHC and a BCBS claims.json in zips, and a generic EOB spreadsheet on its own
+            claims_fix = os.path.join(ROOT, "tests", "fixtures", "importers")
+            for n, (name, rel) in enumerate([("uhc", "uhc/member-export/claims.json"), ("bcbs", "bcbs/member-export/claims.json"),
+                                             ("claims-csv", "claims-csv/eob/claims.csv")]):
+                with open(os.path.join(claims_fix, *rel.split("/")), "rb") as f:
+                    raw = f.read()
+                if name == "claims-csv":
+                    page.click("#tab-files")
+                    page.set_input_files("#pickFiles", files=[{"name": "eob.csv", "mimeType": "text/csv", "buffer": raw}])
+                else:
+                    buf = io.BytesIO()
+                    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                        z.writestr(f"{name}-claims/claims.json", raw)
+                    page.set_input_files("#pickZip", files=[{"name": f"{name}-claims.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+                page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
+                page.click("#go")
+                page.wait_for_function(f"document.querySelectorAll('.import-job').length >= {3 + n} && "
+                                       "/^(Imported|Not imported)/.test([...document.querySelectorAll('.import-job')].pop().textContent)", timeout=30000)
+                card = js("[...document.querySelectorAll('.import-job')].pop().textContent")
+                up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
+                job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
+                check(f"claims upload is imported in the background by the {name} importer",
+                      card.startswith("Imported.") and job is not None and tuple(job) == ("done", name), (card, job and tuple(job)))
+            page.click("#tab-zip")
             js("window.__hook = []; window.sanguityImport = {uploaded: a => window.__hook.push(a)}")
             page.click("#tab-files")
             page.set_input_files("#pickFiles", files=[{"name": n, "mimeType": "text/csv", "buffer": b"date,test,value\n2026-02-01,WBC,6.1\n"}
@@ -409,6 +434,22 @@ def main():
                 if (!d || !d.url) return null; const r = await fetch(d.url);
                 return {status: r.status, type: r.headers.get('content-type'), pdf: (await r.text()).startsWith('%PDF')}; })()""")
             check("…whose attached PDF, stored with the upload, opens", doc == {"status": 200, "type": "application/pdf", "pdf": True}, doc)
+            # the imported claims are on the Costs tab: rows from each insurer, with their care categories and denials
+            page.click("#tab-costs")
+            settle()
+            js("costState.period = 'all'; renderCosts()")
+            settle(200)
+            rows = js("[...document.querySelectorAll('#costTable tbody tr')].map(tr => [...tr.cells].map(td => td.textContent))")
+            by = {(r[0], r[2]): r for r in rows}
+            check("Costs tab lists every imported claim (6 UHC, 5 BCBS, 5 from the spreadsheet)", len(rows) == 16, len(rows))
+            check("…a UHC claim with its category and your share",
+                  by.get(("2026-10-07", "Riverbend Infusion Clinic"), [None] * 8)[3] == "Chemo, infusions & drugs", by.get(("2026-10-07", "Riverbend Infusion Clinic")))
+            check("…a denied BCBS claim, marked denied",
+                  (by.get(("2026-06-24", "Harbor Physical Therapy")) or [""] * 8)[7] == "denied", by.get(("2026-06-24", "Harbor Physical Therapy")))
+            check("…a claim from the spreadsheet, its two service lines added up",
+                  (by.get(("2026-02-03", "Valley Reference Laboratory")) or [""] * 8)[3:5] == ["Lab & pathology", "$200"],
+                  by.get(("2026-02-03", "Valley Reference Laboratory")))
+            check("…and the insurers named", {"UnitedHealthcare", "Blue Cross Blue Shield", "Insurance"} <= set(js("DATA.costs.map(c => c.ins)")))
             page.select_option("#profile", label="My records")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             check("switching back restores the profile's tab", js("state.tab") == "timeline", js("state.tab"))

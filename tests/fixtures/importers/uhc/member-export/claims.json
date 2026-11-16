@@ -1,0 +1,52 @@
+{
+ "exported": "2026-11-01",
+ "list": [
+  {"claimKey": "K-1001", "claimId": "UH26030100117", "claimType": "MEDICAL", "serviceDate": "2026-03-01",
+   "providerName": "NORTHFIELD ONCOLOGY ASSOCIATES", "claimStatus": "PROCESSED",
+   "balance": {"totalBilledAmount": {"value": "385.00"}, "healthPlanPays": {"value": "212.40"}, "patientResponsibility": {"value": "40.00"}}},
+  {"claimKey": "K-1002", "claimId": "UH26030300452", "claimType": "MEDICAL", "serviceDate": "2026-03-03", "lastServiceDate": "2026-03-05",
+   "providerName": "NORTHFIELD GENERAL HOSPITAL", "claimStatus": "PROCESSED",
+   "balance": {"totalBilledAmount": {"value": 18420.55}, "healthPlanPays": {"value": 9310.2}, "patientResponsibility": {"value": 750}}},
+  {"claimKey": "K-1003", "claimId": "UH26081200981", "claimType": "MEDICAL", "serviceDate": "2026-08-12",
+   "providerName": "VALLEY REFERENCE LABORATORY", "claimStatus": "PROCESSED",
+   "balance": {"totalBilledAmount": {"value": "246.00"}, "healthPlanPays": {"value": "61.18"}, "patientResponsibility": {"value": "12.35"}}},
+  {"claimKey": "K-1004", "claimId": "UH26090200210", "claimType": "MEDICAL", "serviceDate": "2026-09-02",
+   "providerName": "LAKESIDE IMAGING CENTER", "claimStatus": "DENIED",
+   "balance": {"totalBilledAmount": {"value": "2150.00"}, "healthPlanPays": {"value": "0.00"}, "patientResponsibility": {"value": "2150.00"}}},
+  {"claimKey": "K-1005", "claimId": "UH26091500033", "claimType": "RX", "serviceDate": "2026-09-15",
+   "providerName": "CORNER PHARMACY #212", "claimStatus": "PAID", "medicationName": "ONDANSETRON TAB 8MG",
+   "prescriptionNumber": "7741203",
+   "balance": {"totalBilledAmount": {"value": "64.10"}, "healthPlanPays": {"value": "54.10"}, "patientResponsibility": {"value": "10.00"}}},
+  {"claimKey": "K-1006", "claimId": "UH26100700504", "claimType": "MEDICAL", "serviceDate": "2026-10-07",
+   "providerName": "RIVERBEND INFUSION CLINIC", "claimStatus": "PROCESSED",
+   "balance": {"totalBilledAmount": {"value": "5320.00"}, "healthPlanPays": {"value": "4102.66"}, "patientResponsibility": {"value": "0"}}}
+ ],
+ "details": {
+  "K-1001": {"UH26030100117": {"healthCareClaimDetails": {"claimNetworkStatus": "IN_NETWORK", "serviceLines": [
+   {"lastServiceDate": "2026-03-01", "procedures": [{"code": "99214", "description": "OFFICE O/P EST MOD 30 MIN"}],
+    "serviceAdjudication": {"chargedAmount": {"value": "385.00"}}}]}}},
+  "K-1002": {"UH26030300452": {"healthCareClaimDetails": {"claimNetworkStatus": "IN_NETWORK", "serviceLines": [
+   {"lastServiceDate": "2026-03-05", "procedures": [{"code": "00120", "description": "ROOM AND BOARD SEMI-PRIVATE"}],
+    "serviceAdjudication": {"chargedAmount": {"value": "12600.00"}}},
+   {"lastServiceDate": "2026-03-05", "procedures": [{"code": "00250", "description": "PHARMACY CHARGES"}],
+    "serviceAdjudication": {"chargedAmount": {"value": "3910.55"}}},
+   {"lastServiceDate": "2026-03-04", "procedures": [{"code": "00300", "description": "LABORATORY GENERAL"}],
+    "serviceAdjudication": {"chargedAmount": {"value": "1910.00"}}}]}}},
+  "K-1003": {"UH26081200981": {"healthCareClaimDetails": {"claimNetworkStatus": "IN_NETWORK", "serviceLines": [
+   {"lastServiceDate": "2026-08-12", "procedures": [{"code": "85025", "description": "BLOOD COUNT COMPLETE AUTO&AUTO DIFRNTL WBC"}],
+    "serviceAdjudication": {"chargedAmount": {"value": "58.00"}}},
+   {"lastServiceDate": "2026-08-12", "procedures": [{"code": "80053", "description": "COMPREHEN METABOLIC PANEL"}],
+    "serviceAdjudication": {"chargedAmount": {"value": "142.00"}}},
+   {"lastServiceDate": "2026-08-12", "procedures": [{"code": "MISC", "description": "MISCELLANEOUS"}],
+    "providedServiceInfo": {"description": "VENIPUNCTURE"}, "serviceAdjudication": {"chargedAmount": {"value": "46.00"}}}]}}},
+  "K-1004": {"UH26090200210": {"healthCareClaimDetails": {"claimNetworkStatus": "OUT_OF_NETWORK", "serviceLines": [
+   {"lastServiceDate": "2026-09-02", "procedures": [{"code": "78815", "description": "PET IMAGE W/CT SKULL-THIGH"}],
+    "serviceAdjudication": {"chargedAmount": {"value": "2150.00"}},
+    "deniedClaimInfo": [{"description": "Prior authorization was not on file"}]}]}}},
+  "K-1006": {"UH26100700504": {"healthCareClaimDetails": {"claimNetworkStatus": "IN_NETWORK", "serviceLines": [
+   {"lastServiceDate": "2026-10-07", "procedures": [{"code": "96413", "description": "CHEMO IV INFUSION 1 HR"}],
+    "serviceAdjudication": {"chargedAmount": {"value": "980.00"}}},
+   {"lastServiceDate": "2026-10-07", "procedures": [{"code": "J9312", "description": "INJECTION RITUXIMAB 10 MG"}],
+    "serviceAdjudication": {"chargedAmount": {"value": "4340.00"}}}]}}}
+ }
+}
