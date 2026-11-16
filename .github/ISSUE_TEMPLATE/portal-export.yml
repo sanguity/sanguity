@@ -1,0 +1,83 @@
+name: My portal's export doesn't import
+description: An export from a patient portal, insurer or app that Sanguity doesn't read, or reads wrongly.
+title: "Import: <portal or app> <export format>"
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks: a sample of the export is what lets someone write or fix an importer for it.
+
+        > [!WARNING]
+        > **Never attach real records here.** Issues and their attachments are public and stay online, even if you
+        > delete them later. Attach only a sample you have anonymised as below, or describe the files instead.
+
+        ### How to anonymise a sample
+
+        Work on a **copy** of the export, never the original. Keep a few records of each kind (a lab panel, a
+        visit, a document, a claim), not the whole history. Then, in every file, replace:
+
+        - **Names**: yours, family members', and anyone else's (use made-up ones, like "Alex Example");
+        - **Dates of birth**, and move the other dates too (shift them all by the same number of days, so the order
+          and the gaps stay right);
+        - **IDs**: medical record numbers, account, member, claim and order numbers, insurance and national IDs
+          (replace each with made-up digits of the same length and shape);
+        - **Addresses, phone numbers and email addresses.**
+
+        **Keep the structure:** the folder layout, file names (unless they contain your name), field names, tags,
+        units, date formats and the kind of values. Sanguity reads the shape of the file, not your data, so a
+        sample with fake contents but the real shape is exactly what's needed. Free-text notes and attached
+        documents (PDFs, scans, pictures) are hard to clean: delete them, or replace their text with "Example text".
+
+        Search the copy for your surname, your date of birth and your street before you attach it. If you're not
+        sure it's clean, don't attach it: describe the files instead (the field below), and a maintainer will ask
+        for what they need.
+  - type: input
+    id: portal
+    attributes:
+      label: Portal and vendor
+      description: Where the export came from, and the system behind it if you know it.
+      placeholder: "Lakeside Clinic's MyChart (Epic); my insurer's member site; a smart-scale app"
+    validations:
+      required: true
+  - type: input
+    id: format
+    attributes:
+      label: Export format
+      description: What you downloaded, and how (the menu or button you used).
+      placeholder: "A zip of XML files (C-CDA) from \"Download my record\"; a CSV of lab results; FHIR JSON"
+    validations:
+      required: true
+  - type: textarea
+    id: message
+    attributes:
+      label: What the import page said
+      description: The message under the upload, copied as it is (take out anything personal). If it imported but something is wrong or missing, say what.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Sanguity version or commit
+      placeholder: v1.2.0, or 2cd5ceb
+  - type: textarea
+    id: structure
+    attributes:
+      label: The files, described
+      description: |
+        If you can't share a sample: the folder and file names, and for a few files the field names or tags at
+        the top (no values). For example: `IHE_XDM/Person1/DOC0001.XML`, root `ClinicalDocument`, sections
+        `Results`, `Encounters`.
+  - type: textarea
+    id: sample
+    attributes:
+      label: Anonymised sample
+      description: Drag the anonymised zip or files here. Only after following the steps above.
+  - type: checkboxes
+    id: anonymised
+    attributes:
+      label: Before you submit
+      options:
+        - label: Nothing I've attached or pasted contains real names, dates of birth, IDs, addresses or phone numbers.
+          required: true

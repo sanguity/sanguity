@@ -1,0 +1,149 @@
+# A release, from a version tag the maintainer pushes:
+#
+#   (move CHANGELOG.md's [Unreleased] notes under "## [1.2.0] - YYYY-MM-DD", merge that to main, then)
+#   git tag -a v1.2.0 -m "Sanguity 1.2.0" && git push origin v1.2.0
+#
+# 1. version: the tag is vMAJOR.MINOR.PATCH (or -PRERELEASE, e.g. v1.2.0-rc.1) and CHANGELOG.md has its notes
+# 2. check:   every check of check.yml, on the tagged commit, including the upgrade from the previous release
+# 3. image:   ghcr.io/sanguity/sanguity, built for linux/amd64, linux/arm64 and linux/arm/v7 (docker/app.Dockerfile,
+#             stage "release"), tagged MAJOR.MINOR.PATCH and, unless it's a prerelease, MAJOR.MINOR and latest
+# 4. release: a GitHub release named after the tag, with that version's CHANGELOG.md section as its notes, and
+#             compose.release.yaml attached with this version as its default image tag
+#
+# Nothing else runs this workflow: no schedule, no branch pushes, no manual trigger.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/sanguity/sanguity
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: The tag is a version, and CHANGELOG.md has its notes
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] \
+            || { echo "::error::$TAG isn't a version tag: vMAJOR.MINOR.PATCH, or vMAJOR.MINOR.PATCH-PRERELEASE"; exit 1; }
+          version="${TAG#v}"
+          python3 -I .github/scripts/changelog.py check
+          python3 -I .github/scripts/changelog.py notes "$version" > /dev/null
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then echo "prerelease=true"; else echo "prerelease=false"; fi >> "$GITHUB_OUTPUT"
+
+  check:
+    needs: version
+    uses: ./.github/workflows/check.yml
+
+  image:
+    needs: [version, check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 300   # linux/arm/v7 is emulated and compiles cryptography with Rust
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm,arm64
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: tags
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          {
+            echo "tags<<EOF"
+            echo "$IMAGE:$VERSION"
+            if [ "$PRERELEASE" = false ]; then
+              echo "$IMAGE:${VERSION%.*}"
+              echo "$IMAGE:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and publish (linux/amd64, linux/arm64, linux/arm/v7)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/app.Dockerfile
+          target: release
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          build-args: VERSION=${{ needs.version.outputs.version }}
+          pull: true
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Each platform of the published image starts and knows its version
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          for p in linux/amd64 linux/arm64 linux/arm/v7; do
+            docker run --rm --platform "$p" "$IMAGE:$VERSION" python3 -c \
+              "import os, platform, cryptography, webauthn, argon2; v = os.environ['SANGUITY_VERSION']; print('$p', platform.machine(), v); assert v == '$VERSION'"
+          done
+
+  release:
+    needs: [version, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: GitHub release with the changelog's notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          python3 -I .github/scripts/changelog.py notes "$VERSION" > notes.md
+          {
+            echo
+            echo "---"
+            echo "**Image:** \`$IMAGE:$VERSION\` (linux/amd64, linux/arm64, linux/arm/v7)."
+            echo "Upgrading: [README](https://github.com/${{ github.repository }}/blob/$TAG/README.md#upgrading-to-a-release)."
+          } >> notes.md
+          # compose.release.yaml as a download of the release, defaulting to this version's image
+          mkdir -p assets
+          sed "s/\${SANGUITY_VERSION:-latest}/\${SANGUITY_VERSION:-$VERSION}/" compose.release.yaml > assets/compose.release.yaml
+          grep -qF "\${SANGUITY_VERSION:-$VERSION}" assets/compose.release.yaml
+          flags=(--verify-tag --title "Sanguity $VERSION" --notes-file notes.md)
+          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease --latest=false); else flags+=(--latest); fi
+          gh release create "$TAG" assets/compose.release.yaml "${flags[@]}"

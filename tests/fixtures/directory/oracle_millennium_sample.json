@@ -1,0 +1,63 @@
+{
+ "resourceType": "Bundle",
+ "id": "fictional-millennium-patient-r4",
+ "type": "collection",
+ "entry": [
+  {
+   "fullUrl": "https://fhir-myrecord.example/Endpoint/t1",
+   "resource": {
+    "resourceType": "Endpoint",
+    "id": "t1",
+    "status": "active",
+    "address": "https://fhir-myrecord.example/r4/t1/"
+   }
+  },
+  {
+   "fullUrl": "https://fhir-myrecord.example/Organization/O-t1",
+   "resource": {
+    "resourceType": "Organization",
+    "id": "O-t1",
+    "name": "PRAIRIE VALLEY HOSPITAL",
+    "address": [
+     {
+      "city": "BISMARCK",
+      "state": "ND"
+     }
+    ],
+    "endpoint": [
+     {
+      "reference": "Endpoint/t1"
+     }
+    ]
+   }
+  },
+  {
+   "fullUrl": "https://fhir-myrecord.example/Endpoint/t2",
+   "resource": {
+    "resourceType": "Endpoint",
+    "id": "t2",
+    "status": "active",
+    "address": "https://fhir-myrecord.example/r4/t2/"
+   }
+  },
+  {
+   "fullUrl": "https://fhir-myrecord.example/Organization/O-t2",
+   "resource": {
+    "resourceType": "Organization",
+    "id": "O-t2",
+    "name": "Juniper Foot & Ankle, PC",
+    "address": [
+     {
+      "city": "Tucson",
+      "state": "AZ"
+     }
+    ],
+    "endpoint": [
+     {
+      "reference": "Endpoint/t2"
+     }
+    ]
+   }
+  }
+ ]
+}

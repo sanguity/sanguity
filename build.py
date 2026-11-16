@@ -191,7 +191,7 @@ if _PAID and os.path.exists(os.path.join(_PAID, "payments.json")):
 # corrections.json next to build.py: only its milestones are read here now. Corrections to events (its older
 # "not_hospital_stays") are edits made in the app, applied to every import of this build (server/edits.py); the
 # app moved an existing corrections.json's into edits once, at start-up
-CORR_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "corrections.json")
+CORR_FILE = os.environ.get("SANGUITY_CORRECTIONS") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "corrections.json")
 CORR = json.load(open(CORR_FILE, encoding="utf-8")) if os.path.exists(CORR_FILE) else {}
 # named dates (diagnosis, surgery, treatment start...) for chart markers and "since" periods;
 # the older single "diagnosis_date" still works and becomes a "Diagnosis" milestone

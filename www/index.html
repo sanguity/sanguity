@@ -43,6 +43,7 @@
       <h2>Lab heatmap</h2>
       <p class="hint">Each column is a blood draw, each row a lab value, colored by where it sat against its reference range. Gray strip = hospital stay, ◆ = procedure. Hover a cell for the value; click to open that day. Drag sideways to move through time · scroll or pinch to zoom · double-click to show everything.</p>
       <div class="hm-legend" id="hmLegend"></div>
+      <p class="range-note">Out-of-range values are flagged against the reference ranges in your own lab reports. This isn't medical advice.</p>
       <div class="hm-wrap" id="hmWrap"><svg id="hm" class="pz" role="img" aria-label="Heatmap of lab values against reference ranges"></svg><svg id="hmAxis" class="pz" aria-hidden="true"></svg></div>
     </div>
   </section>
@@ -74,12 +75,14 @@
           <label><input type="checkbox" id="optMarks"> Procedures &amp; imaging</label>
           <label hidden><input type="checkbox" id="optSmooth"> 7-day average</label>
         </div>
+        <p class="range-note">Out-of-range values are flagged against the reference ranges in your own lab reports. This isn't medical advice.</p>
         <p class="hint chart-hint">Drag any chart sideways to move through time — every chart moves together · scroll or pinch to zoom · double-click to show everything · hover to compare the same date across charts.</p>
         <div class="charts" id="charts"></div>
       </div>
     </div>
   </section>
 </main>
+<footer class="notice" id="notice"><strong>Not medical advice.</strong> Sanguity shows what your records say. It doesn't diagnose, interpret results or recommend treatment; your care team interprets them in context.</footer>
 <aside id="drawer" aria-hidden="true">
   <div class="dh"><span class="key" id="dkey"></span><div><h3 id="dtitle"></h3><div class="sub" id="dsub"></div></div><div class="acts"><button class="iconbtn" id="dwide" type="button" aria-pressed="false" title="Wider panel">⇔</button><button class="iconbtn close" id="dclose" type="button" aria-label="Close" title="Close (Esc)">✕</button></div></div>
   <div class="db" id="dbody"></div>

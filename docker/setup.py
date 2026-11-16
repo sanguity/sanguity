@@ -18,7 +18,11 @@ import json, os, secrets, shutil, subprocess, sys
 sys.stdout.reconfigure(line_buffering=True)   # keep our messages in order with the build/demo scripts' output
 
 APP = os.environ.get("SANGUITY_APP", "/app")   # container paths; overridable for running outside Docker
-WWW, AUTH = os.path.join(APP, "www"), os.path.join(APP, "auth")
+WWW = os.path.join(APP, "www")
+# The released image (compose.release.yaml, deploy/) has no checkout: secrets and your sources.json,
+# settings.json and corrections.json live in folders of their own
+AUTH = os.environ.get("SANGUITY_AUTH") or os.path.join(APP, "auth")
+CONFIG = os.environ.get("SANGUITY_CONFIG") or APP
 DATA = os.environ.get("SANGUITY_DATA", "/data")
 os.environ.setdefault("SANGUITY_KEY_FILE", os.path.join(AUTH, "data_key"))
 os.environ.setdefault("SANGUITY_DATA", DATA)
@@ -95,10 +99,12 @@ def run(cmd, env=None):
 
 
 def build_data():
-    data, sources = os.path.join(BUILD, "data.json"), os.path.join(APP, "sources.json")
+    data, sources = os.path.join(BUILD, "data.json"), os.path.join(CONFIG, "sources.json")
     legacy = os.path.join(WWW, "data.json")   # where data lived before accounts; nginx no longer serves it
     if os.path.isfile(sources):
-        run([sys.executable, "-I", os.path.join(APP, "build.py"), "--config", sources, "--out", data + ".tmp"], {"RECORDS_ROOT": RECORDS})
+        corrections = os.path.join(CONFIG, "corrections.json")   # its milestones
+        run([sys.executable, "-I", os.path.join(APP, "build.py"), "--config", sources, "--out", data + ".tmp"],
+            {"RECORDS_ROOT": RECORDS, **({"SANGUITY_CORRECTIONS": corrections} if os.path.isfile(corrections) else {})})
         own(data + ".tmp")
         os.replace(data + ".tmp", data)
     elif not os.path.exists(data) and os.path.isfile(legacy) and not is_demo(legacy):
@@ -116,15 +122,15 @@ def build_data():
     # the app never applies it over settings changed on its Settings page (server/settings.py)
     built = os.path.join(BUILD, "settings.json")
     if not is_demo(data):   # the demo writes its own
-        src = next((p for p in (os.path.join(APP, "settings.json"), os.path.join(WWW, "settings.json")) if os.path.isfile(p)), None)
+        src = next((p for p in (os.path.join(CONFIG, "settings.json"), os.path.join(WWW, "settings.json")) if os.path.isfile(p)), None)
         if src:
             crypto.write_file(built, crypto.read_file(src))
         elif os.path.isfile(built):
             os.remove(built)   # settings.json was removed (settings made in the app stay)
     # corrections.json next to compose.yaml: the app moves its event corrections into edits once (server/edits.py)
     built = os.path.join(BUILD, "corrections.json")
-    if os.path.isfile(os.path.join(APP, "corrections.json")):
-        crypto.write_file(built, crypto.read_file(os.path.join(APP, "corrections.json")))
+    if os.path.isfile(os.path.join(CONFIG, "corrections.json")):
+        crypto.write_file(built, crypto.read_file(os.path.join(CONFIG, "corrections.json")))
     elif os.path.isfile(built):
         os.remove(built)
     seal_build()
