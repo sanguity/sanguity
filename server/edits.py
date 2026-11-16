@@ -330,7 +330,7 @@ def corrections_file():
 
 def migrate_corrections(db):
     """Once: turn the event corrections in an existing corrections.json into edits on the first profile, so build.py
-    no longer applies them. Milestones stay in corrections.json (editing them in the app is #39). Each
+    no longer applies them (its milestones server/milestones.py moves into settings). Each
     not_hospital_stays entry {date, org, title} becomes a not_stay edit of the stay that day at that organisation;
     with a title (build.py also renamed that day's "Hospital admission" visit to it), that visit is renamed and the
     stay merged into it, so one visit remains, as before. Returns how many edits it made (None: nothing to do)."""

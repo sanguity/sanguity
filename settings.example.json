@@ -1,5 +1,5 @@
 {
-  "_about": "Settings are changed in the app now (Settings page) and kept in its database. This file only gives a profile newly linked to the setup build its first settings; an existing settings.json is moved into the app once. Name maps here add to the default names.",
+  "_about": "Settings are changed in the app now (Settings page) and kept in its database. This file only gives a profile newly linked to the setup build its first settings; an existing settings.json is moved into the app once. Name maps here add to the default names. A visitWorkouts rule's match is plain text found anywhere in a visit title, or with \"regex\": true a regular expression. Milestones (one may be primary) used to be in corrections.json.",
   "overview": {
     "keyLabs": ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Lymphocytes Absolute", "Creatinine",
                 "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"]
@@ -19,6 +19,12 @@
     "hidden": []
   },
   "visitWorkouts": [
-    {"match": "^physical therapy\\b", "name": "Physical therapy", "minutes": 45}
+    {"match": "physical therapy", "regex": false, "name": "Physical therapy", "minutes": 45},
+    {"match": "^(occupational|speech) therapy\\b", "regex": true, "name": "Therapy session", "minutes": 30}
+  ],
+  "milestones": [
+    {"date": "2026-01-15", "label": "Diagnosis", "primary": true},
+    {"date": "2026-04-01", "label": "Surgery"},
+    {"date": "2026-05-10", "label": "Treatment start"}
   ]
 }

@@ -258,7 +258,7 @@ To add a layout:
 |---|---|
 | `upcoming` | `[{"t": "2026-12-01", "title", "who", "where", "dx", "procs"}]`: future appointments |
 | `problems` | `[{"name", "type", "date", "status", "src"}]`: the problem list |
-| `milestones` | `[{"date", "label", "primary": true}]`: named dates for chart markers |
+| `milestones` | `[{"date", "label", "primary": true}]`: named dates for chart markers. Since #39 they are a profile setting, changed on the Settings page; an import's are kept but not shown (an older export loaded back in whole brings them into its settings) |
 | `clinicWeights` | `[[time, pounds, where]]`: weights measured at visits, charted with the scale's |
 | `outOfPocket` | `{"payments": [{"d", "payee", "group", "amount", "account", "memo", "est"}], "exported", "range", "excluded", "balance"}` |
 | `watch` | `{"metrics": [{"key", "name", "unit", "group", "pts": [[day, value]]}], "exercise": [{"key", "start", "end", "name", "kind", "minutes"}]}`: daily wearable data in the shape `watch/receiver.py` writes. It isn't kept with the records: an import saves it with `watch_store.save_import`, as that import's own (so undo can take it away), merged day by day with what the profile already has (see the Apple Health importer) |

@@ -33,8 +33,8 @@ All screenshots use the built-in **fictional demo data**. No real person's recor
 ![Trends: blood counts dipping through treatment cycles, with milestone markers](docs/screenshots/trends.png)
 
 Charts on Trends, Health and the heatmap move together: drag to pan, scroll or pinch to zoom, double-click to
-see everything. **Milestones** (diagnosis, surgery, treatment start…) appear on every chart and as "since"
-periods.
+see everything. **Milestones** (diagnosis, surgery, treatment start…), added on the **Settings** page, appear on
+every chart and as "since" periods.
 
 **Several people, one install.** Each person who signs in has their own account, and each person whose health
 is tracked has a **profile**. One account can look after several profiles (a parent and a child), and a profile
@@ -99,13 +99,14 @@ other people under **Account**, then share profiles with them there.
 
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy
 `sources.example.json` to `sources.json` and describe them, then `docker compose run --rm setup rebuild`; the first profile picks up the rebuild automatically.
-Optional: `corrections.json` (your milestones; see `corrections.example.json`): on a checkout install it goes next to
-`compose.yaml`, on a release install in `./config`. Dashboard preferences (key labs, lab nicknames, workout
-rules...) are changed on the **Settings** page, per profile; a `settings.json` in the same place (see
+Dashboard preferences (key labs, lab nicknames, visits counted as workouts, milestones...) are changed on the
+**Settings** page, per profile; a `settings.json` (on a checkout install next to `compose.yaml`, on a release
+install in `./config`; see
 `settings.example.json`) only gives a new profile linked to the build its first settings, and a rebuild never
 changes settings made in the app (the log says when the file differs from them). Corrections to events are made in
-the app (see [Correcting records](#correcting-records)); an older `corrections.json`'s `not_hospital_stays` are moved
-into the app once, at the first start of a version that has them, and aren't read from the file after that.
+the app (see [Correcting records](#correcting-records)). `corrections.json` is no longer needed: an older one's
+`not_hospital_stays` and milestones are moved into the app once, at the first start of a version that has them,
+and aren't read from the file after that (see `corrections.example.json`).
 
 | Command | What it does |
 |---|---|
@@ -272,8 +273,8 @@ undone, or the source changed it). Each edit and undo is in the profile's activi
 Edits belong to the profile, not to an import: undoing an import, importing the same records again, or rebuilding
 the setup build keeps them, and they apply again to the same events. They find an event by its source key (see
 [docs/importers.md](docs/importers.md#source-keys)) or, for the setup build's events, which have none, by its kind,
-start time and title. Like the records, they are encrypted at rest. `corrections.json` now holds **milestones
-only**; editing those in the app comes with Phase 3 (#39).
+start time and title. Like the records, they are encrypted at rest. Milestones are on the **Settings** page
+(#39), so `corrections.json` isn't needed any more.
 
 ### Finding your provider
 
@@ -332,8 +333,11 @@ from the internet; a phone on your home network or tailnet works without that.
   data, uploaded files and activity) under **Account**, and load it into another install with `server.manage create-profile` and
   `import`.
 - **Settings:** each profile's dashboard preferences (key lab tiles, the labs Trends starts with, lab and source
-  nicknames, visits counted as workouts) are changed on the **Settings** page by its owners and editors, with
-  "Reset to defaults" per section. They live in the database (backed up and exported with the profile); a
+  nicknames, visits counted as workouts, milestones) are changed on the **Settings** page by its owners and
+  editors, with "Reset to defaults" per section. A workout rule says "visits titled X count as workouts of N
+  minutes": X is plain text found anywhere in the title, or, as an advanced option, a regular expression, which is
+  checked before it's saved and refused if it could make matching slow. Milestones are named dates, one of them
+  primary (the one the Overview counts from); they are encrypted like the records. They live in the database (backed up and exported with the profile); a
   `settings.json` from before is moved in once at the upgrade and kept as `settings-before-v18.json`.
 - **Visit summary:** one or two printable pages to bring to an appointment (**Visit summary** in the header):
   results out of range since the last visit, each against the range on its own report, trends of the key labs and
@@ -525,8 +529,9 @@ www/                index.html (markup), css/app.css, js/*.js (one plain script 
                     phone app; tools/make_icons.py draws the icons)
 demo/               Fictional demo dataset generator
 tests/              API and upload tests, a headless browser check and a smoke test of the Docker install (all run in CI)
-*.example.json      Templates for sources.json, corrections.json (milestones) and settings.json (a new build-linked
-                    profile's first settings; settings are changed in the app); .env.example for .env
+*.example.json      Templates for sources.json and settings.json (a new build-linked profile's first settings;
+                    settings are changed in the app); .env.example for .env. corrections.example.json only says
+                    what became of corrections.json
 ```
 
 ## License

@@ -109,18 +109,18 @@ async function syncWarning(pid) {
     }
     if (!r.ok) throw new Error(r.status + " " + r.statusText);
     DATA = await r.json();
-    // milestones (older data.json files carry a single dxDate instead)
-    MILESTONES = (DATA.milestones || (DATA.dxDate ? [{date: DATA.dxDate, label: "Diagnosis"}] : [])).filter(m => m && /^\d{4}-\d{2}-\d{2}/.test(m.date || ""))
+    // this profile's settings (changed on the Settings page); if they can't be loaded the defaults are used
+    try {
+      const s = await api(`profiles/${PROFILE.id}/settings`);
+      if (s.ok) applySettings(await s.json());
+    } catch (e) { console.warn("settings ignored:", e.message); }
+    // milestones are a setting since #39 (the server moved those of data.json and corrections.json in once)
+    MILESTONES = CFG.milestones.filter(m => m && /^\d{4}-\d{2}-\d{2}/.test(m.date || ""))
       .map(m => ({...m, date: m.date.slice(0, 10), label: m.label || "Milestone"})).sort((a, b) => a.date.localeCompare(b.date));
     // the saved "dx" period, or a milestone that no longer exists, falls back to the primary milestone or All
     if (isMsKey(costState.period) && !msOf(costState.period) || costState.period === "dx") costState.period = msKey(primaryMs());
     if (isMsKey(hState.period) && !msOf(hState.period) || hState.period === "dx") hState.period = primaryMs() ? msKey(primaryMs()) : "all";
   } catch (e) { emptyCard("Couldn't load the records: " + e.message); return; }
-  // this profile's settings (changed on the Settings page); if they can't be loaded the defaults are used
-  try {
-    const s = await api(`profiles/${PROFILE.id}/settings`);
-    if (s.ok) applySettings(await s.json());
-  } catch (e) { console.warn("settings ignored:", e.message); }
   applyTabs(CFG.tabs);
   applyTheme(CFG.theme);   // this user's default theme (#45), unless this browser has its own (the ◐ toggle)
   for (const e of DATA.events) {

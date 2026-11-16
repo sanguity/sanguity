@@ -29,7 +29,8 @@ const DEFAULT_SETTINGS = {
   tabs: {order: ["overview", "health", "timeline", "labs", "heatmap", "costs"], hidden: []},   // #40, applied by app.js
   theme: "system",     // #45, this user's default: "light", "dark" or "system" (the ◐ toggle overrides it per browser)
   sources: {},         // short source tags on lab results -> display names, e.g. {"EXT": "Outside lab"}
-  visitWorkouts: [],   // past visits whose title matches count as workouts on Health, e.g. {"match": "^physical therapy\\b", "name": "Physical therapy", "minutes": 45}
+  visitWorkouts: [],   // past visits whose title matches count as workouts on Health, e.g. {"match": "physical therapy", "regex": false, "name": "Physical therapy", "minutes": 45}
+  milestones: [],      // named dates, e.g. {"date": "2026-03-01", "label": "Diagnosis", "primary": true} (#39)
 };
 let CFG = DEFAULT_SETTINGS;
 /* each value as the server sent it (a name map it sends is the whole map: a default nickname removed in Settings
@@ -43,6 +44,7 @@ function applySettings(u) {
     labNicknames: obj(u.labNicknames) ? u.labNicknames : DEFAULT_SETTINGS.labNicknames,
     sources: obj(u.sources) ? u.sources : DEFAULT_SETTINGS.sources,
     visitWorkouts: list(u.visitWorkouts, DEFAULT_SETTINGS.visitWorkouts),
+    milestones: list(u.milestones, DEFAULT_SETTINGS.milestones),
     tabs: obj(u.tabs) ? u.tabs : DEFAULT_SETTINGS.tabs,
     theme: ["light", "dark", "system"].includes(u.theme) ? u.theme : DEFAULT_SETTINGS.theme};
   CFG.overview.keyLabs = list(CFG.overview.keyLabs, DEFAULT_SETTINGS.overview.keyLabs);
@@ -124,7 +126,7 @@ function showEvTip(e, ev) {
     e.abn ? el("div", {class: "s", style: {color: "var(--crit)"}, text: `▲ ${e.abn} value${e.abn > 1 ? "s" : ""} out of range`}) : null], ev);
 }
 
-/* milestones: named dates (diagnosis, surgery, treatment start...) from data.json, oldest first.
+/* milestones: named dates (diagnosis, surgery, treatment start...) from the settings (CFG.milestones), oldest first.
    Period keys "m0", "m1"... mean "since that milestone"; the older saved key "dx" means the primary one. */
 let MILESTONES = [];
 const primaryMs = () => MILESTONES.find(m => m.primary) || MILESTONES[0] || null;
