@@ -309,7 +309,13 @@ SCHEMA = [
         changed INTEGER);
     ALTER TABLE jobs ADD COLUMN labs TEXT;
     """,
-    # version 17: settings in the database instead of a settings.json per profile (settings.py, #35). A row is one
+    # version 17: where each record came from (#100). imports.synced: when a live connection (#91) last brought this
+    # import up to date; NULL for an import that is read once (an upload, typed in, the setup build). The page shows
+    # it beside each record's source; whatever sets it must bump profiles.records_rev, as any change to records does.
+    """
+    ALTER TABLE imports ADD COLUMN synced INTEGER;
+    """,
+    # version 18: settings in the database instead of a settings.json per profile (settings.py, #35). A row is one
     # setting's value for a profile (profile_id set), an account (user_id set) or the whole install (neither), as
     # the setting's definition in the registry says. A value that can hold health information (lab names, rules)
     # is encrypted in sealed; others are plain JSON in value. Each profile's settings.json is loaded at the next

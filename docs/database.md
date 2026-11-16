@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 17**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 18**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -154,6 +154,7 @@ erDiagram
         int at
         text origin "build | dataset | upload | manual"
         text format "the importer that read it"
+        int synced "last sync of a live connection (#91), else NULL"
         text meta "🔒 JSON: source, built, problems, upcoming visits, payments..."
     }
     events {

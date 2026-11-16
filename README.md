@@ -201,7 +201,7 @@ only**; editing those in the app comes with Phase 3 (#39).
 - **Settings:** each profile's dashboard preferences (key lab tiles, the labs Trends starts with, lab and source
   nicknames, visits counted as workouts) are changed on the **Settings** page by its owners and editors, with
   "Reset to defaults" per section. They live in the database (backed up and exported with the profile); a
-  `settings.json` from before is moved in once at the upgrade and kept as `settings-before-v17.json`.
+  `settings.json` from before is moved in once at the upgrade and kept as `settings-before-v18.json`.
 - **Delete profile:** an owner can delete a profile and everything in it under **Account**, after typing its name;
   the original exports and older backups are left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or

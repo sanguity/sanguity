@@ -17,8 +17,8 @@ use. Values are JSON; a setting that can hold health information (lab names, rul
 Adding a setting (#36-#46): one define() call below, with its section (add one to SECTIONS if it's new), and an
 editor for its kind on the Settings screen (www/js/settings.js; "labs", "names" and "rules" exist).
 
-settings.json, before schema version 17: each profile's copy (profiles/<id>/settings.json) is loaded into the
-table once at start-up (migrate_files) and kept beside it as settings-before-v17.json. A setup build's settings.json
+settings.json, before schema version 18: each profile's copy (profiles/<id>/settings.json) is loaded into the
+table once at start-up (migrate_files) and kept beside it as settings-before-v18.json. A setup build's settings.json
 only seeds a linked profile's settings the first time the build is loaded into it, filling what isn't set; after
 that a rebuild never changes settings, and says so in the log when the build's settings.json differs from them.
 """
@@ -315,12 +315,12 @@ def fill_profile(db, pid, values):
     return new
 
 
-MIGRATED = "settings-before-v17.json"
+MIGRATED = "settings-before-v18.json"
 
 
 def migrate_files(db, profile_dir):
-    """At start-up: load each profile's settings.json, from before schema version 17, into the table (only what isn't
-    set, so a start that stopped half way does no harm), then keep the file beside it as settings-before-v17.json.
+    """At start-up: load each profile's settings.json, from before schema version 18, into the table (only what isn't
+    set, so a start that stopped half way does no harm), then keep the file beside it as settings-before-v18.json.
     profile_dir(pid) is the profile's folder. Returns the number of profiles whose file was loaded."""
     n = 0
     for r in db.execute("SELECT id FROM profiles ORDER BY id").fetchall():

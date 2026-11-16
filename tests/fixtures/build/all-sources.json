@@ -1,0 +1,9 @@
+{
+ "primary": {"dir": "mychart-*"},
+ "epic": [{"dir": "otherclinic-*", "org": "Other Clinic", "tag": "OC"}],
+ "carespace": {"dir": "../importers/carespace/full", "org": "Example Cancer Clinic", "tag": "ECC"},
+ "claims": [
+  {"format": "uhc", "dir": "../importers/uhc/member-export", "insurer": "UnitedHealthcare"},
+  {"format": "bcbs", "dir": "../importers/bcbs/member-export", "insurer": "Blue Cross Blue Shield"}
+ ]
+}

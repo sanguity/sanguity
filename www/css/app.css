@@ -218,6 +218,12 @@ table.data tr.link:hover td{background:var(--hover)}
 .edits .edit-form label{display:flex;flex-direction:column;gap:4px;margin:6px 0 8px;color:var(--ink2)}
 .edits .edit-form input,.edits .edit-form select{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:6px 9px;max-width:100%;min-width:0;font:inherit}
 .edits .edit-msg:empty{display:none}
+/* where a record came from (sources.js) */
+.source{margin:12px 0 0;font-size:12.5px;color:var(--ink2);overflow-wrap:anywhere}
+.source b{color:var(--muted);font-weight:600}
+.source a{color:var(--accent)}
+.source .tag{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;color:var(--ink2);background:var(--hover);border-radius:999px;padding:1px 8px;vertical-align:1px}
+.chart>.source{margin:8px 0 6px}
 .kv{display:grid;grid-template-columns:110px 1fr;gap:3px 12px;font-size:13px;margin-bottom:12px}
 .kv dt{color:var(--muted)}
 .kv dd{margin:0}
@@ -412,6 +418,8 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .imp .hist .hd b{font-weight:600}
 .imp .hist .files{overflow-wrap:anywhere}
 .imp .hist p{margin:4px 0 0}
+.imp .hist>li.hl{background:var(--raised);box-shadow:inset 3px 0 0 var(--accent);padding-left:10px;padding-right:10px;border-radius:6px}
+.imp .hist>li:focus{outline:2px solid var(--accent);outline-offset:2px}
 .imp .hist li.undone .hd b,.imp .hist li.undone .what{color:var(--muted)}
 .imp .hist .confirm{margin-top:8px;padding:8px 10px;border:1px solid var(--crit);border-radius:10px;max-width:560px}
 .imp .hist .confirm p{margin:0 0 6px}

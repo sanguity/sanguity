@@ -78,12 +78,12 @@ def client():
 
 
 def old_install():
-    """An install at schema version 16: a profile with its own settings.json, and one linked to the setup build
+    """An install at schema version 17 (the step before settings): a profile with its own settings.json, and one linked to the setup build
     holding the copy of the build's settings.json that the app used to keep."""
     write(os.path.join(BUILD, "data.json"), DATA)
     write(os.path.join(BUILD, "settings.json"), BUILD_SETTINGS)
     full = dbm.SCHEMA
-    dbm.SCHEMA = full[:16]
+    dbm.SCHEMA = full[:17]
     try:
         dbm.init()
     finally:

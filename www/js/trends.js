@@ -74,6 +74,7 @@ function chartCard(s) {
     card.append(el("div", {class: "tablewrap"}, el("table", {class: "data"}, el("thead", {}, el("tr", {}, ["Date", "Value", s.watch ? "Detail" : "Ref range", ""].map(h => el("th", {text: h})))),
       el("tbody", {}, [...pts].reverse().map(p => { const [a, b] = readText(s, p); return el("tr", {}, el("td", {text: s.watch ? fmtD(p.ts) : fmtDT(p.ts)}), el("td", {class: p[4] ? "abn" : "", text: a}),
         el("td", {text: (s.watch ? b : p[2] != null || p[3] != null ? `${p[2] ?? ""} – ${p[3] ?? ""}` : "") + (p[6] ? ` · ${p[6] === "Clinic" ? "clinic visit" + (p.org ? " (" + p.org + ")" : "") : srcName(p[6])}` : "")}), el("td", {class: p[4] ? "abn" : "", text: p[4] === "H" ? "▲ High" : p[4] === "L" ? "▼ Low" : ""})); })))));
+    const src = seriesSource(s); if (src) card.append(src);
     return card;
   }
   const svg = el("svg:svg", {role: "img", class: "pz", "aria-label": `${s.name} over time`});
@@ -189,6 +190,7 @@ function drawChart(svg, s, pts, read) {
       nodes.push(el("div", {class: "v", text: a}), el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-lab)"}}), s.name), b ? el("div", {class: "s", text: b}) : null,
         el("div", {class: "s", text: (s.watch ? fmtD(mine.ts) : fmtDT(mine.ts)) + (mine[2] != null || mine[3] != null ? ` · ref ${mine[2] ?? ""}–${mine[3] ?? ""}` : "")}),
         mine[6] ? el("div", {class: "s", text: "Source: " + srcName(mine[6])}) : null,
+        sourceOf(s.imp) ? el("div", {class: "s", text: "From " + sourceText(s.imp)}) : null,
         mine[4] ? el("div", {class: "s", style: {color: "var(--crit)"}, text: mine[4] === "H" ? "▲ Above range" : "▼ Below range"}) : null);
     }
     for (const e of near.slice(0, 3)) nodes.push(el("div", {class: "s", style: {marginTop: "4px"}}, el("span", {class: "k", style: {background: CAT_OF[e.k].color}}), `${e.title} · ${fmtD(e.ts)}`));
