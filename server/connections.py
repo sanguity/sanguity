@@ -50,14 +50,30 @@ SYNC_ACTOR = {"id": None, "username": activity.SCHEDULED_SYNC}
 # the resource types a pull reads (sync.py), and the scopes asked for by default: SMART v2 where discovery says the
 # server has it, else v1 (Epic's documentation still uses .read)
 TYPES = ("Patient", "Observation", "Condition", "MedicationRequest", "Encounter", "DocumentReference",
-         "DiagnosticReport", "ExplanationOfBenefit")
+         "DiagnosticReport", "ExplanationOfBenefit", "Coverage")
 BINARY_FOR = ("DocumentReference", "DiagnosticReport")
+# an insurer's patient-access API (CARIN Blue Button, #92): claims, the coverage they're under, and the patient
+INSURER_TYPES = ("Patient", "ExplanationOfBenefit", "Coverage")
+CLINICAL_TYPES = tuple(t for t in TYPES if t != "Coverage") + ("Binary",)
 
 
-def default_scopes(conf=None):
+def default_scopes(conf=None, vendor=None):
     caps = set((conf or {}).get("capabilities") or [])
     suffix = "rs" if "permission-v2" in caps else "read"
-    return " ".join(["launch/patient", "offline_access"] + [f"patient/{t}.{suffix}" for t in TYPES + ("Binary",)])
+    types = INSURER_TYPES if vendor == "insurer" else CLINICAL_TYPES
+    return " ".join(["launch/patient", "offline_access"] + [f"patient/{t}.{suffix}" for t in types])
+
+
+SCOPE_RE = re.compile(r"(?:patient|user)/([A-Za-z]+|\*)\.([a-z*]+)(?:\?\S*)?")
+
+
+def granted(scopes, rtype):
+    """Whether granted scopes let a pull search rtype: SMART v1 (.read, .*) or v2 (with s). True when the vendor
+    named no resource scopes at all (it didn't say), so the search is tried and its answer reported."""
+    found = [m.groups() for m in (SCOPE_RE.fullmatch(x) for x in str(scopes or "").split()) if m]
+    if not found:
+        return True
+    return any(t in (rtype, "*") and (op in ("read", "*") or op != "write" and "s" in op) for t, op in found)
 
 
 # what the setup screen says per vendor. Facts from docs/connected-sources-oauth.md (read November 2026); the
@@ -93,6 +109,53 @@ GUIDES = {
             "Application\".",
         ],
         "notes": ["Effectively out of reach for home installs under option 1 (docs/connected-sources-oauth.md)."],
+    },
+    "insurer": {
+        "label": "Insurer (patient-access API)",
+        "register": None,
+        "sandbox": "https://sandbox.bluebutton.cms.gov/v2/fhir/",
+        "sandbox_name": "Medicare Blue Button sandbox",
+        "scopes": "launch/patient offline_access patient/Patient.read patient/ExplanationOfBenefit.read patient/Coverage.read",
+        "steps": [
+            "Since 2021 US health plans must offer a Patient Access API (CMS-9115-F): claims as CARIN Blue Button "
+            "ExplanationOfBenefit resources, with Coverage and Patient. Sanguity pulls those three and shows the "
+            "claims on the Costs tab.",
+            "Find your plan's developer portal (each runs its own, with its own terms and review) and register a "
+            "patient-facing app with the return address below as its redirect URI, exactly as shown.",
+            "Ask for the CARIN Blue Button scopes below (patient/ExplanationOfBenefit.read, patient/Coverage.read, "
+            "patient/Patient.read, or the .rs forms on SMART v2), plus launch/patient and offline_access.",
+            "If the plan issues a client secret, pick \"Confidential client\" and paste it: this install keeps it "
+            "encrypted on its own server, which is why option 1 can work with confidential-only payers.",
+            "Medicare Blue Button 2.0: create an account at sandbox.bluebutton.cms.gov, register an app (client "
+            "type confidential, authorization code with PKCE, the return address as its callback URL), copy the "
+            "client ID and secret, and use the sandbox FHIR base above with Blue Button's synthetic beneficiaries.",
+        ],
+        "portals": [
+            {"name": "Medicare Blue Button 2.0 (CMS)", "url": "https://bluebutton.cms.gov/developers/",
+             "note": "Sandbox: self-service, confidential clients only, PKCE S256 required. Production needs a "
+                     "privacy policy, terms, an application and a demo to CMS, impractical for one person."},
+            {"name": "Humana", "url": "https://developers.humana.com/apis/registerapp",
+             "note": "A FHIR sandbox with synthetic members; registering an app goes through Humana's Data "
+                     "Exchange portal. Whether an individual's app is approved for production is unverified."},
+            {"name": "Cigna", "url": "https://developer.cigna.com",
+             "note": "Developer registration, then a sandbox client on request (unverified: from a 2021 Cigna "
+                     "sandbox guide). Production terms for individuals unverified."},
+            {"name": "Aetna", "url": "https://developerportal.aetna.com",
+             "note": "Self-registration asks for a company email (unverified: third-party guide); production "
+                     "review for individuals unverified."},
+            {"name": "Elevance Health (Anthem)", "url": "https://anthem.com/developers",
+             "note": "Sandbox, then a separate production request form. Whether individuals qualify is unverified."},
+            {"name": "UnitedHealthcare", "url": "https://www.uhc.com/legal/interoperability-apis",
+             "note": "Its developer registration route wasn't confirmed (the page refused automated reading): "
+                     "unverified."},
+            {"name": "VA Lighthouse (Patient Health API)", "url": "https://developer.va.gov",
+             "note": "Sandbox access by application; client type for patient apps unverified. Not tested with Sanguity."},
+        ],
+        "notes": ["Payer portals and their rules change; everything here except Blue Button's own documentation "
+                  "is marked unverified until someone confirms it. Plans on Epic's payer platform may accept an "
+                  "Epic payer app instead (the \"CMS Payer Apps\" category: see docs/connected-sources-oauth.md).",
+                  "A sync asks only for the kinds of records the granted scopes cover, so an insurer connection "
+                  "reads Patient, ExplanationOfBenefit and Coverage, nothing clinical."],
     },
     "other": {
         "label": "Another SMART on FHIR server",
@@ -207,6 +270,7 @@ def setup(db):
     scopes, and each vendor setting with its local count of connections."""
     uri, n = return_address(), counts(db)
     return {"return_address": uri, "warnings": address_warnings(uri), "guides": GUIDES, "default_scopes": default_scopes(),
+            "insurer_scopes": default_scopes(vendor="insurer"),
             "sources": [describe_client(r, n.get(r["id"])) for r in db.execute("SELECT * FROM smart_clients ORDER BY name, id")]}
 
 
@@ -222,7 +286,7 @@ def _clean(data, old=None):
         raise Problem("Give the source a name of up to 80 characters.", 400)
     vendor = data.get("vendor") or (old and old["vendor"]) or "other"
     if vendor not in GUIDES:
-        raise Problem("Pick the vendor: epic, oracle or other.", 400)
+        raise Problem("Pick the vendor: epic, oracle, insurer or other.", 400)
     try:
         issuer = smart.base_url(data.get("issuer") or (old and old["issuer"]) or "", "FHIR base address")
     except smart.SmartError as e:
@@ -233,7 +297,7 @@ def _clean(data, old=None):
     auth = data.get("auth") or (old and old["auth"]) or "public"
     if auth not in AUTHS:
         raise Problem("How the app signs in must be public, confidential or dynamic.", 400)
-    scopes = " ".join((data.get("scopes") if data.get("scopes") is not None else (old and old["scopes"]) or default_scopes()).split())
+    scopes = " ".join((data.get("scopes") if data.get("scopes") is not None else (old and old["scopes"]) or default_scopes(vendor=vendor)).split())
     if not scopes or len(scopes) > 2000 or not re.fullmatch(r"[\x21\x23-\x5b\x5d-\x7e ]+", scopes):
         raise Problem("The scopes must be space-separated, like launch/patient offline_access patient/*.read.", 400)
     return name, vendor, issuer, cid, auth, scopes
@@ -314,7 +378,7 @@ def test_client(db, who, cid, ip=None):
                      ": Sanguity will contact those hosts too for this source.")
     return {"ok": True, "endpoints": {k: keep.get(k) for k in ("authorization_endpoint", "token_endpoint",
                                                               "revocation_endpoint", "registration_endpoint")},
-            "capabilities": sorted(caps), "hosts": sorted(hosts), "suggested_scopes": default_scopes(conf),
+            "capabilities": sorted(caps), "hosts": sorted(hosts), "suggested_scopes": default_scopes(conf, r["vendor"]),
             "return_address": return_address(), "warnings": address_warnings(return_address()), "notes": notes}
 
 

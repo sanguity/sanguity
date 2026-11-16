@@ -18,6 +18,9 @@ What becomes what:
     MedicationRequest/Statement    `med` events (DSTU2 MedicationOrder too)
     Encounter                      `visit`; inpatient classes become a `stay` with `end`; planned ones go to `upcoming`
     DocumentReference              `document` events pointing at the attached file inside the upload
+    ExplanationOfBenefit           a `claim` event (pharmacy: `rx`) with its claim detail and a `costs` row, as the
+                                   claims importers make them (CARIN Blue Button; see _fhir_claims.py)
+    Coverage                       read for the insurer's and plan's names on those claims
 
 Lab series take their canonical names from lab-aliases.json (by LOINC code, then name or alias), so the same test
 from different sources lines up; names it doesn't know stay as reported, for the mapping step (#23).
@@ -37,9 +40,9 @@ SOURCE = "FHIR"   # source tag on lab points when the performing organisation is
 
 # resource types that are only looked up through references, never imported on their own
 SUPPORTING = {"Patient", "Practitioner", "PractitionerRole", "Organization", "Location", "Medication", "Specimen",
-              "Provenance", "RelatedPerson"}
+              "Provenance", "RelatedPerson", "Coverage"}
 IMPORTED = {"Observation", "DiagnosticReport", "Condition", "MedicationRequest", "MedicationStatement", "MedicationOrder",
-            "Encounter", "DocumentReference"}
+            "Encounter", "DocumentReference", "ExplanationOfBenefit"}
 KNOWN = SUPPORTING | IMPORTED | {
     "Bundle", "AllergyIntolerance", "Immunization", "Procedure", "CarePlan", "CareTeam", "Goal", "Device", "Claim",
     "ExplanationOfBenefit", "Coverage", "ImagingStudy", "MedicationAdministration", "MedicationDispense", "ServiceRequest",
@@ -744,6 +747,11 @@ def parse(files):
         elif rt not in IMPORTED and rt not in SUPPORTING:
             skipped[rt] += 1
 
+    # --- claims, after the encounters so a facility bill can be filed under its hospital stay
+    from . import _fhir_claims
+    costs = _fhir_claims.add_claims([r for r, _ in resources if r["resourceType"] == "ExplanationOfBenefit"],
+                                    idx, rkey, b, warnings)
+
     # --- warnings
     if skipped:
         parts = ", ".join(f"{k} ({n})" for k, n in sorted(skipped.items(), key=lambda kv: (-kv[1], kv[0])))
@@ -781,7 +789,7 @@ def parse(files):
     upcoming.sort(key=lambda u: u["t"])
     data = {"source": "FHIR import",
             "events": b.events, "details": b.details, "labs": series, "upcoming": upcoming, "problems": problems,
-            "costs": [], "outOfPocket": {"payments": []}, "milestones": [], "clinicWeights": sorted(weights)}
+            "costs": costs, "outOfPocket": {"payments": []}, "milestones": [], "clinicWeights": sorted(weights)}
     if not (b.events or series or problems or upcoming or weights):
         kinds = Counter(r["resourceType"] for r, _ in resources)
         raise ValueError("This FHIR export has no records Sanguity can show yet (it holds "

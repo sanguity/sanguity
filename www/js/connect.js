@@ -114,7 +114,12 @@ function guide(vendor) {
   if (g.register) kids.push(el("p", {}, "Register at ", el("a", {href: g.register, target: "_blank", rel: "noopener noreferrer", text: g.register})));
   kids.push(el("ol", {}, ...g.steps.map(s => el("li", {text: s}))));
   if (g.sandbox) kids.push(el("p", {}, "Sandbox FHIR base: ", el("code", {text: g.sandbox}), " ",
-    el("button", {class: "btn small", type: "button", text: "Use it", onclick: () => { $("#fIssuer").value = g.sandbox; if (!$("#fName").value) $("#fName").value = "Epic sandbox"; }})));
+    el("button", {class: "btn small", type: "button", text: "Use it", onclick: () => {
+      $("#fIssuer").value = g.sandbox; if (!$("#fName").value) $("#fName").value = g.sandbox_name || "Epic sandbox";
+      if (vendor === "insurer") { $("#fAuth").value = "confidential"; $("#fSecretWrap").hidden = false; } }})));
+  if (g.scopes) kids.push(el("p", {}, "Scopes: ", el("code", {text: g.scopes})));
+  if (g.portals) kids.push(el("p", {text: "Where individuals may be able to register (read November 2026; check each portal's terms):"}),
+    el("ul", {class: "conn-portals"}, ...g.portals.map(p => el("li", {}, el("a", {href: p.url, target: "_blank", rel: "noopener noreferrer", text: p.name}), ": " + p.note))));
   for (const n of g.notes) kids.push(el("p", {class: "muted", text: n}));
   $("#guide").replaceChildren(...kids);
 }
@@ -177,7 +182,12 @@ async function loadSetup() {
 }
 
 $("#copyReturn").onclick = () => { try { navigator.clipboard.writeText(SETUP.return_address); } catch (e) {} };
-$("#fVendor").onchange = () => guide($("#fVendor").value);
+$("#fVendor").onchange = () => {
+  const v = $("#fVendor").value, sc = $("#fScopes");
+  // an untouched default follows the vendor: an insurer's API is claims, coverage and the patient (#92)
+  if ([SETUP.default_scopes, SETUP.insurer_scopes].includes(sc.value.trim())) sc.value = v === "insurer" ? SETUP.insurer_scopes : SETUP.default_scopes;
+  guide(v);
+};
 $("#fAuth").onchange = () => { $("#fSecretWrap").hidden = $("#fAuth").value !== "confidential"; };
 $("#fCancel").onclick = () => fill(null);
 $("#srcForm").onsubmit = async ev => {

@@ -13,8 +13,9 @@ doesn't know, accepts the series suggested at the preview and finds it on Trends
 the next upload, pastes a fictional SMART Health Link served by a local HTTPS server (what it says is shown and
 nothing is fetched until Fetch; then its preview, and saved), sets up a connected source against the fake SMART on
 FHIR server (tests/fakefhir), connects a profile by signing in, saves its first pull's preview, syncs a new result
-and is asked to reconnect when access ends, sees the source's and the Health Link's hosts under Settings →
-Outside connections, changes settings on the Settings page and resets them, opens the account
+and is asked to reconnect when access ends, uploads a Blue Button export and connects a health plan's patient-access
+API (the fake again) and finds both sets of claims on Costs, sees the source's and the Health Link's hosts under
+Settings → Outside connections, changes settings on the Settings page and resets them, opens the account
 page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap
 and follows its link to the import history, checks the "not medical advice" notice on every tab and beside
 out-of-range highlighting, and fails
@@ -983,6 +984,95 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             allowed.discard(origin(fake.fhir_base))
             fake.stop()
+
+            # ---- insurers (#92): a Blue Button bulk export (NDJSON) uploaded on the import page, then a health plan's
+            # patient-access API (the fake, standing in for Blue Button's sandbox: a confidential client) set up as an
+            # insurer source and connected; both bring their claims onto the Costs tab
+            from tests.fakefhir import PAYER_FIXTURES
+            bb_dir = os.path.join(ROOT, "tests", "fixtures", "importers", "fhir", "blue-button")
+            page.goto(base + f"/import.html?profile={conn_pid}")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            page.click("#tab-files")
+            bb_files = []
+            for n in sorted(os.listdir(bb_dir)):
+                with open(os.path.join(bb_dir, n), "rb") as f:
+                    bb_files.append({"name": n, "mimeType": "application/x-ndjson", "buffer": f.read()})
+            page.set_input_files("#pickFiles", files=bb_files)
+            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
+            cards = js("document.querySelectorAll('.import-job').length")
+            page.click("#go")
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
+                                   f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            js(f"{last_card}.querySelector('.imp-actions .primary')?.click()")
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.textContent")
+            db = dbm.connect()
+            up = db.execute("SELECT id FROM uploads WHERE profile_id=? ORDER BY id DESC", (conn_pid,)).fetchone()
+            job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
+            db.close()
+            check("a Blue Button export (NDJSON) uploads and is imported, as FHIR, with its claims",
+                  card.startswith("Imported.") and job is not None and tuple(job) == ("done", "fhir") and "claim" in card, (card, job and tuple(job)))
+
+            payer = FakeFHIR(fixtures=PAYER_FIXTURES).start()
+            allowed.add(origin(payer.fhir_base))   # its sign-in page too
+            payer.signin_patient = "mem-1"
+            payer.register_client("sanguity-payer-check", [base + "/connect/return"], secret="fictional-payer-secret")
+            page.goto(base + "/connect.html")
+            page.wait_for_function("!document.getElementById('admin').hidden && document.getElementById('returnAddr').textContent.length > 5", timeout=10000)
+            page.select_option("#fVendor", "insurer")
+            guide_text = page.inner_text("#guide")
+            check("an insurer source has its own guide: CARIN Blue Button scopes, Blue Button's sandbox, payers' portals marked unverified",
+                  "Blue Button" in guide_text and "patient/ExplanationOfBenefit.read" in guide_text and "unverified" in guide_text
+                  and "sandbox.bluebutton.cms.gov" in guide_text, guide_text[:400])
+            check("…and its scopes ask for claims, coverage and the patient only",
+                  js("document.getElementById('fScopes').value") == js("SETUP.insurer_scopes")
+                  and "Observation" not in js("document.getElementById('fScopes').value"), js("document.getElementById('fScopes').value"))
+            page.fill("#fName", "Fake health plan")
+            page.fill("#fIssuer", payer.fhir_base)
+            page.fill("#fClient", "sanguity-payer-check")
+            page.select_option("#fAuth", "confidential")
+            page.fill("#fSecret", "fictional-payer-secret")
+            page.click("#fSave")
+            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Fake health plan')", timeout=10000)
+            page.locator("#sourceList .prof", has_text="Fake health plan").get_by_role("button", name="Test this connection").click()
+            page.wait_for_function("[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake health plan') && "
+                                   "(p.textContent.includes('Discovery works') || p.textContent.includes('tested ')))", timeout=10000)
+            page.reload()
+            page.select_option("#profile", label="Second person")
+            page.wait_for_selector("#sourceButtons a:has-text('Fake health plan')", timeout=10000)
+            page.click("#sourceButtons a:has-text('Fake health plan')")
+            page.wait_for_url("**/connect.html**", timeout=20000)
+            page.wait_for_selector("#import-status button.primary", timeout=30000)
+            check("connecting the health plan previews its claims like an upload",
+                  "Ready to import" in page.inner_text("#import-status") and "claim" in page.inner_text("#import-status"),
+                  page.inner_text("#import-status")[:300])
+            page.click("#import-status button.primary")
+            page.wait_for_function("document.getElementById('import-status').textContent.includes('Imported.')", timeout=30000)
+            check("…pulling only Patient, ExplanationOfBenefit and Coverage",
+                  {r.path for r in payer.requests if r.path.startswith("/fhir/") and r.path != "/fhir/metadata" and ".well-known" not in r.path}
+                  == {"/fhir/Patient/mem-1", "/fhir/ExplanationOfBenefit", "/fhir/Coverage"},
+                  sorted({r.path for r in payer.requests}))
+            prev_profile = js("localStorage.getItem('ht-profile')")   # put back after: later checks rely on it
+            js(f"localStorage.setItem('ht-profile', '{conn_pid}')")
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && PROFILE && PROFILE.name === 'Second person' && "
+                                   "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)
+            js("switchTab('costs')")
+            page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
+            js("costState.period = 'all'; renderCosts()")
+            settle(200)
+            rows = js("[...document.querySelectorAll('#costTable tbody tr')].map(tr => [...tr.cells].map(td => td.textContent))")
+            ins = set(js("DATA.costs.map(c => c.ins)"))
+            check("the Costs tab shows the claims from the Blue Button export and from the health plan's API",
+                  {"Medicare (fictional sandbox)", "Lakeview Health Plan (fictional)"} <= ins, sorted(ins))
+            mri = [r for r in rows if r[1] == "MRI lumbar spine without contrast"]
+            check("…a denied claim from each, marked denied", len(mri) == 2 and all(r[7] == "denied" for r in mri), mri)
+            fills = [r for r in rows if r[1] == "Atorvastatin Calcium 20mg tablet"]
+            check("…and the pharmacy fills, under Pharmacy", len(fills) == 2 and all(r[3] == "Pharmacy" for r in fills), fills)
+            check("only the health plan's own host was contacted for it", payer.hosts() == {f"127.0.0.1:{payer.port}"}, payer.hosts())
+            allowed.discard(origin(payer.fhir_base))
+            payer.stop()
+            js(f"localStorage.setItem('ht-profile', {json.dumps(prev_profile or '')})" if prev_profile else "localStorage.removeItem('ht-profile')")
 
             # ---- account page: password, devices, profiles with sharing, accounts (admin)
             page.goto(base + "/account.html")

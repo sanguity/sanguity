@@ -51,9 +51,9 @@
     <div id="sourceList"></div>
     <h3 class="sub" id="formTitle">Add a source</h3>
     <form id="srcForm" class="form">
-      <label>Vendor <select id="fVendor"><option value="epic">Epic (MyChart)</option><option value="oracle">Oracle Health (Cerner)</option><option value="other">Another SMART on FHIR server</option></select></label>
+      <label>Vendor <select id="fVendor"><option value="epic">Epic (MyChart)</option><option value="oracle">Oracle Health (Cerner)</option><option value="insurer">Insurer (patient-access API, Blue Button)</option><option value="other">Another SMART on FHIR server</option></select></label>
       <div class="conn-guide" id="guide"></div>
-      <label>Name people see <input id="fName" maxlength="80" required placeholder="Epic sandbox"></label>
+      <label>Name people see <input id="fName" maxlength="80" required placeholder="Epic sandbox, My health plan"></label>
       <label>FHIR base address (the issuer) <input id="fIssuer" required inputmode="url" placeholder="https://fhir.example.org/api/FHIR/R4"></label>
       <label>Client ID <input id="fClient" required autocomplete="off"></label>
       <label>How the app signs in <select id="fAuth">

@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, connections as conns, crypto, db as dbm, main, net, profiles as prof, smart, sync   # noqa: E402
 from tests import netguard   # noqa: E402
-from tests.fakefhir import FakeFHIR   # noqa: E402
+from tests.fakefhir import PAYER_FIXTURES, FakeFHIR   # noqa: E402
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -96,11 +96,11 @@ class Connections(unittest.TestCase):
 
     # ---------------------------------------------------------------- helpers
 
-    def source(self, auth="public", secret=None, scopes=None, register=True):
+    def source(self, auth="public", secret=None, scopes=None, register=True, vendor="epic"):
         cid = f"app-{auth}-{self.fake.port}"
         if register:
             self.fake.register_client(cid, [RETURN], secret=secret)
-        body = {"name": f"Fake {auth} {self.fake.port}", "vendor": "epic", "issuer": self.fake.fhir_base, "client_id": cid,
+        body = {"name": f"Fake {auth} {self.fake.port}", "vendor": vendor, "issuer": self.fake.fhir_base, "client_id": cid,
                 "auth": auth, **({"secret": secret} if secret else {}), **({"scopes": scopes} if scopes else {})}
         r = self.robin.post("/api/connect/sources", json=body, headers=H)
         self.assertEqual(r.status_code, 201, r.text)
@@ -559,6 +559,99 @@ class Connections(unittest.TestCase):
         self.assertGreater(self.row(cid)["next_sync"], dbm.now() + 3600)
         self.assertEqual(self.counts()["imports"], 2)
 
+    # ---------------------------------------------------------------- insurers' patient-access APIs (#92)
+
+    def test_insurer_claims_on_costs_incrementally(self):
+        """A payer's CARIN Blue Button API (the fake, standing in for Blue Button's sandbox: a confidential client)
+        brings claims onto the Costs tab; a later sync adds only new claims and marks an adjusted claim's original."""
+        self.fake.stop()
+        self.fake = FakeFHIR(fixtures=PAYER_FIXTURES).start()
+        self.addCleanup(self.fake.stop)
+        sid = self.source(auth="confidential", secret="fictional-payer-secret", vendor="insurer")
+        mine = next(x for x in self.robin.get("/api/connect/sources").json()["sources"] if x["id"] == sid)
+        self.assertEqual(mine["scopes"], conns.default_scopes(vendor="insurer"))
+        url = self.start(sid)
+        asked = q(url)["scope"].split()
+        self.assertLessEqual({"patient/ExplanationOfBenefit.read", "patient/Coverage.read", "patient/Patient.read"}, set(asked))
+        self.assertFalse([x for x in asked if "Observation" in x or "*" in x])
+        r = self.back(self.fake.authorize(url, patient="mem-1"))
+        self.assertEqual(r.status_code, 200, r.text)
+        cid = r.json()["connection"]
+        self.fake.clear_requests()
+        self.first_pull(cid)
+
+        # only what the scopes cover was asked for; Coverage by beneficiary
+        fhir_paths = {x.path for x in self.fake.requests if x.path.startswith("/fhir/") and x.path != "/fhir/metadata"
+                      and ".well-known" not in x.path}
+        self.assertEqual(fhir_paths, {"/fhir/Patient/mem-1", "/fhir/ExplanationOfBenefit", "/fhir/Coverage"})
+        self.assertTrue(all(x.status == 200 for x in self.fake.requests if x.path.startswith("/fhir/")))
+        cov = next(x for x in self.fake.requests if x.path == "/fhir/Coverage")
+        self.assertEqual(cov.query.get("beneficiary"), "mem-1")
+        report = json.loads(crypto.dec(self.row(cid)["report"]))
+        self.assertEqual(set(report["types"]), {"Patient", "ExplanationOfBenefit", "Coverage"})
+        self.assertEqual(report["types"]["ExplanationOfBenefit"], {"n": 5, "status": "ok"})
+
+        def costs():
+            return {c["title"] + "|" + c["d"]: c for c in self.data()["costs"]}
+        first = costs()
+        self.assertEqual(len(first), 5)
+        self.assertEqual({c["ins"] for c in first.values()}, {"Lakeview Health Plan (fictional)"})
+        self.assertEqual(sorted(c["status"] for c in first.values()), ["Denied", "Paid", "Paid", "Paid", "Paid"])
+        self.assertEqual(first["Office visit, established patient|2026-01-06"]["owe"], 28.0)
+        self.assertEqual({c["kind"] for c in first.values()}, {"medical", "pharmacy"})
+
+        # nothing new: nothing added
+        self.assertIsNone(self.pull(cid)["import"])
+
+        # the plan adjusts a claim and a new fill comes in: the next sync adds those two, and the original is replaced
+        adjusted = json.loads(json.dumps(self.fake.get("ExplanationOfBenefit", "carrier-mem-1001")))
+        adjusted.pop("meta", None)
+        adjusted.update({"id": "carrier-mem-1001a",
+                         "identifier": [{"system": "https://lakeview.example/fictional/claim-id", "value": "LHP-1001-A1"}],
+                         "total": [{"category": {"coding": [{"code": "submitted"}]}, "amount": {"value": 255.0}},
+                                   {"category": {"coding": [{"code": "benefit"}]}, "amount": {"value": 146.5}},
+                                   {"category": {"coding": [{"code": "memberliability"}]}, "amount": {"value": 8.0}}],
+                         "related": [{"claim": {"identifier": {"value": "LHP-1001"}}, "relationship": {"coding": [{"code": "prior"}]}}]})
+        self.fake.add(adjusted, patient="mem-1")
+        refill = json.loads(json.dumps(self.fake.get("ExplanationOfBenefit", "pde-mem-3001")))
+        refill.pop("meta", None)
+        refill.update({"id": "pde-mem-3002", "identifier": [{"value": "LHP-3002"}],
+                       "billablePeriod": {"start": "2026-02-08", "end": "2026-02-08"}})
+        refill["item"][0]["servicedDate"] = "2026-02-08"
+        self.fake.add(refill, patient="mem-1")
+        before_ids = {c["id"] for c in self.data()["costs"]}
+        self.fake.clear_requests()
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        eob_q = next(x for x in self.fake.requests if x.path == "/fhir/ExplanationOfBenefit")
+        self.assertTrue(eob_q.query.get("_lastUpdated", "").startswith("gt"))   # incremental
+        self.assertEqual(res["counts"]["kinds"], {"claim": 1, "rx": 1})          # only the new ones
+        self.assertEqual(res["changed"], 1)                                      # the original, in place
+        after = costs()
+        self.assertEqual(len(self.data()["costs"]), 7)
+        self.assertEqual(len([c for c in self.data()["costs"] if c["id"] not in before_ids]), 2)
+        replaced = [c for c in self.data()["costs"] if c["status"] == "Replaced"]
+        self.assertEqual(len(replaced), 1)
+        self.assertEqual((replaced[0]["paid"], replaced[0]["owe"]), (0.0, 0.0))
+        self.assertIn(replaced[0]["id"], before_ids)                              # same row, updated
+        self.assertEqual(round(sum(c["paid"] for c in self.data()["costs"]), 2),
+                         round(sum(c["paid"] for c in first.values()) - 126.5 + 146.5 + 27.4, 2))
+        self.assertIn("Atorvastatin Calcium 20mg tablet|2026-02-08", after)
+
+        # undoing the sync puts the original's Costs row back
+        r = self.robin.post(f"/api/profiles/{self.pid}/imports/{res['import']}/undo", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(costs(), first)
+
+    def test_granted_scopes(self):
+        self.assertTrue(conns.granted("launch/patient patient/ExplanationOfBenefit.read", "ExplanationOfBenefit"))
+        self.assertFalse(conns.granted("launch/patient patient/ExplanationOfBenefit.read", "Observation"))
+        self.assertTrue(conns.granted("patient/*.rs", "Coverage"))
+        self.assertFalse(conns.granted("patient/Coverage.r", "Coverage"))        # read by id only, no search
+        self.assertTrue(conns.granted("patient/Coverage.rs?category=x", "Coverage"))
+        self.assertTrue(conns.granted("launch/patient offline_access", "Observation"))   # no resource scopes named
+        self.assertTrue(conns.granted(None, "Observation"))
+
     # ---------------------------------------------------------------- the setup screen
 
     def test_setup_screen_and_local_counts(self):
@@ -571,6 +664,11 @@ class Connections(unittest.TestCase):
         self.assertEqual(mine["connections"]["active"], 1)
         self.assertNotIn("secret", json.dumps(mine).replace("has_secret", ""))
         self.assertIn("epic", s["guides"])
+        ins = s["guides"]["insurer"]
+        self.assertIn("patient/ExplanationOfBenefit.read", ins["scopes"])
+        self.assertTrue(any("bluebutton.cms.gov" in p["url"] for p in ins["portals"]))
+        self.assertTrue(all("unverified" in p["note"] for p in ins["portals"] if "bluebutton" not in p["url"]))
+        self.assertEqual(s["insurer_scopes"], conns.default_scopes(vendor="insurer"))
         self.assertTrue(conns.address_warnings("https://192.168.1.20/connect/return"))
         self.assertEqual(conns.address_warnings("https://health.example.com/connect/return"), [])
         # a source a profile is connected to can't be removed
