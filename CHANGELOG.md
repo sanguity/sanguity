@@ -43,7 +43,8 @@ Everything on `main` so far; it becomes the first tagged release.
 - A preview before an import is saved, showing what is new and what is already there, matched on stable source
   keys (#118).
 - Import history with undo (#117).
-- Typing lab results in by hand on the Import page (#116).
+- Typing records in by hand on the Import page: lab results (#116), then every kind of record the app imports
+  (#124).
 - Corrections in the app, kept through later re-imports (#119).
 - Unknown lab names are matched during import, with LOINC and similar-name suggestions; the choice is remembered
   (#122).
