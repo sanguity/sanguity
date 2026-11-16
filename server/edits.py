@@ -13,7 +13,9 @@ event a new id):
   - "build:d:" + the same hash with the day instead of the minute: only the corrections.json migration makes these,
     because a corrections.json entry names a day, not a time.
 
-Edits made in the app always use the first two. An edit whose event is gone (the import was undone, or the event
+Edits made in the app always use the first two. When a rebuild gives a build event a new title (a new build.py
+reads its source differently), follow_rebuild() moves its edits to it, matched by kind and start time.
+An edit whose event is gone (the import was undone, or the event
 changed in the source) stays stored, unapplied, and is listed as not found until its event comes back or someone
 removes the edit.
 
@@ -225,6 +227,41 @@ def _insert(db, pid, uid, action, key, value, other=None, at=None):
 def _bump(db, pid):
     from . import records
     records._bump(db, pid)
+
+
+def follow_rebuild(db, pid, before, after):
+    """After a rebuild of the setup build: an edit whose event came back with a new title follows it. `before` and
+    `after` are the build's events (bodies, as imported) before and after. An edit's content key that no event in
+    `after` answers to moves to the event of the same kind at the same minute (for a "build:d:" key, the same day),
+    but only when that time holds exactly one such event before and one after, so it can't land on the wrong one.
+    Keyed events are left alone: their key doesn't change with their title. Call inside the import's transaction.
+    Returns how many edits moved."""
+    moves = {}
+    for make, width in ((content_key, 16), (day_key, 10)):
+        slots = ({}, {})
+        for side, events in zip(slots, (before, after)):
+            for e in events:
+                if isinstance(e, dict) and not (isinstance(e.get("key"), str) and e["key"].strip()):
+                    side.setdefault((e.get("k"), str(e.get("t") or "")[:width]), []).append(e)
+        now = {make(e.get("k"), e.get("t"), e.get("title")) for es in slots[1].values() for e in es}
+        for slot, old in slots[0].items():
+            new = slots[1].get(slot) or []
+            if len(old) == 1 and len(new) == 1:
+                was, to = make(old[0].get("k"), old[0].get("t"), old[0].get("title")), make(new[0].get("k"), new[0].get("t"), new[0].get("title"))
+                if was != to and was not in now:
+                    moves[was] = to
+    if not moves:
+        return 0
+    moved = 0
+    for r in db.execute("SELECT id, target_key, other_key FROM edits WHERE profile_id=?", (pid,)).fetchall():
+        tk, ok = crypto.dec(r["target_key"]), crypto.dec(r["other_key"]) if r["other_key"] else None
+        if tk in moves or ok in moves:
+            tk, ok = moves.get(tk, tk), moves.get(ok, ok) if ok else None
+            db.execute("UPDATE edits SET target=?, target_key=?, other=?, other_key=? WHERE id=?",
+                       (target_hash(tk), crypto.enc(tk), None if ok is None else target_hash(ok),
+                        None if ok is None else crypto.enc(ok), r["id"]))
+            moved += 1
+    return moved
 
 
 def add(db, pid, uid, action, event_id, title=None, t=None, other_id=None):
