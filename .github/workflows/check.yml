@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:   # release.yml runs every check on the tagged commit before publishing
 
 permissions:
   contents: read
@@ -20,13 +21,16 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py server/*.py server/importers/*.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py server/*.py server/importers/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py
 
       - name: Shell scripts parse
         run: bash -n docker/dev-stack.sh
 
       - name: JSON templates parse
         run: for f in *.example.json lab-aliases.json; do python -m json.tool "$f" > /dev/null || exit 1; done
+
+      - name: CHANGELOG.md is in the format the release workflow reads
+        run: python -I .github/scripts/changelog.py check
 
       - uses: astral-sh/setup-uv@v10.3.3
         with:
@@ -47,8 +51,10 @@ jobs:
               || { echo "$lock doesn't match ${lock%.txt}.in: regenerate it as requirements.in says"; exit 1; }
           done
 
-      - name: compose.yaml is valid
-        run: docker compose config --quiet
+      - name: compose.yaml and compose.release.yaml are valid
+        run: |
+          docker compose config --quiet
+          docker compose -f compose.release.yaml config --quiet
 
       - name: Demo data is deterministic
         run: |
@@ -86,11 +92,27 @@ jobs:
       - name: Corrections in the app (each edit applied, kept through re-imports, roles, encryption, corrections.json moved once)
         run: python tests/test_edits.py
 
+      - name: Where every record came from (each record names its import, matches the history, gone on undo, merges, payload size)
+        run: python tests/test_sources.py
+
       - name: Lab names matched on import (LOINC and similar-name suggestions, the choice sticks, admins edit, encrypted, hand entry)
         run: python tests/test_lab_mapping.py
 
+      - name: Settings (every key round-trips, defaults and precedence, roles by scope, reset, settings.json moved in once, export, encryption)
+        run: python tests/test_settings.py
+
       - name: Fake FHIR server for connected sources (PKCE sign-in, refresh and revocation, scopes, paging, _lastUpdated, 429/5xx, request record)
         run: python tests/test_fakefhir.py
+
+      - name: SMART Health Links and Cards (nothing fetched before confirming, passcodes, signatures, HTTPS and public hosts only, caps)
+        run: python tests/test_shl.py
+
+      - name: Find your provider (the directory built from fictional vendor lists, search by name, place and misspelling, no network)
+        run: python tests/test_directory.py
+
+      - name: Bundled provider directory parses
+        run: python -m json.tool server/directory/providers.json > /dev/null
+
       - name: Connected sources (sign-in and sync against the fake SMART on FHIR server)
         run: python tests/test_connections.py
 
@@ -191,3 +213,203 @@ jobs:
       - name: Stop and remove
         if: always()
         run: docker compose down -v
+
+  # The install templates in deploy/: each parses, uses the released image, and has the same services, folders and
+  # ports as compose.release.yaml. The TrueNAS app is rendered with TrueNAS's own app library, as their CI does.
+  templates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: PyYAML and Jinja2 for the system Python (Ubuntu's packages)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml python3-jinja2
+
+      - name: TrueNAS's app library (github.com/truenas/apps, pinned; bump it with the app's lib_version)
+        run: |
+          git init -q /tmp/truenas-apps && cd /tmp/truenas-apps
+          git remote add origin https://github.com/truenas/apps.git
+          git sparse-checkout set library
+          git fetch -q --depth 1 --filter=blob:none origin 4dda88572397f9e84adfa9372c91dd63601919c3
+          git checkout -q FETCH_HEAD
+
+      - name: Templates match compose.release.yaml, and the TrueNAS app renders
+        run: /usr/bin/python3 -I deploy/check.py --truenas-lib /tmp/truenas-apps/library
+
+      - name: docker compose accepts the CasaOS app (the AppStore's validator runs this too)
+        run: AppID=sanguity PUID=1000 PGID=1000 TZ=UTC docker compose -f deploy/casaos/Sanguity/docker-compose.yml config --quiet
+
+  # The published image, built the way release.yml builds it (for this runner's platform only), with no checkout
+  # mounted: the four services of compose.release.yaml, then the same image as one container (docker/allinone.py,
+  # what the Unraid template runs)
+  release-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: sanguity-release
+      SANGUITY_IMAGE: sanguity-release
+      SANGUITY_VERSION: ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Folders outside the checkout, as on a released install; run as this runner's user
+        run: |
+          d="$RUNNER_TEMP/release"
+          mkdir -p "$d"/auth "$d"/config "$d"/data "$d"/backups "$d"/watch-data "$d"/records
+          { echo "PUID=$(id -u)"; echo "PGID=$(id -g)"; echo "AUTH_DIR=$d/auth"; echo "CONFIG_DIR=$d/config"
+            echo "DATA_DIR=$d/data"; echo "BACKUP_DIR=$d/backups"; echo "WATCH_DIR=$d/watch-data"; echo "RECORDS_DIR=$d/records"
+          } >> "$GITHUB_ENV"
+
+      - name: Build the release image (docker/app.Dockerfile, stage "release")
+        run: docker build --pull --target release --build-arg VERSION=ci -t sanguity-release:ci -f docker/app.Dockerfile .
+
+      - name: The image holds the code and the pages, nothing from an install, and nginx's configuration is valid
+        run: |
+          docker run --rm sanguity-release:ci python3 -c "
+          import os
+          need = ['/app/docker/setup.py', '/app/docker/allinone.py', '/app/receiver.py', '/app/build.py', '/app/lab-aliases.json',
+                  '/app/demo/generate.py', '/usr/share/nginx/html/index.html', '/etc/sanguity/nginx.d/default.conf']
+          never = ['/app/auth', '/app/data', '/app/sources.json', '/usr/share/nginx/html/data.json']
+          assert all(os.path.isfile(f) for f in need), [f for f in need if not os.path.isfile(f)]
+          assert not any(os.path.exists(f) for f in never), [f for f in never if os.path.exists(f)]
+          assert os.environ['SANGUITY_VERSION'] == 'ci'"
+          docker run --rm --user 1000:1000 --read-only --tmpfs /tmp --add-host app:127.0.0.1 sanguity-release:ci nginx -t -e stderr
+
+      - name: Start compose.release.yaml
+        run: docker compose -f compose.release.yaml up -d
+
+      - name: Wait for the app and its setup code
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && [ -s "$DATA_DIR/setup-code.txt" ]; then
+              code=$(cat "$DATA_DIR/setup-code.txt"); echo "::add-mask::$code"; echo "SETUP_CODE=$code" >> "$GITHUB_ENV"; exit 0
+            fi
+            sleep 2
+          done
+          echo "The app didn't come up with a setup code within 3 minutes"; exit 1
+
+      - name: First run (setup, sign-in, records, documents, uploads through nginx, the receiver)
+        run: python3 tests/docker_smoke.py --code "$SETUP_CODE" --receiver http://127.0.0.1:8731
+
+      - name: Records on disk are encrypted, and the key is in its own folder
+        run: |
+          test -s "$AUTH_DIR/data_key" && test -s "$AUTH_DIR/watch_secret"
+          test -z "$(find "$DATA_DIR" -name data_key)"
+          find "$DATA_DIR/build" "$DATA_DIR/profiles" -type f ! -name '*.tmp' -print0 | while IFS= read -r -d '' f; do
+            [ "$(head -c 4 "$f")" = SGE1 ] || { echo "$f is not encrypted"; exit 1; }
+          done
+
+      - name: After a restart (the database and records carry over)
+        run: |
+          docker compose -f compose.release.yaml up -d --force-recreate
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && break; sleep 2; done
+          python3 tests/docker_smoke.py --receiver http://127.0.0.1:8731
+          docker compose -f compose.release.yaml down
+
+      - name: All in one container (read-only, as the Unraid template runs it), on fresh folders
+        run: |
+          d="$RUNNER_TEMP/aio"
+          docker run -d --name sanguity-aio --read-only --tmpfs /tmp -p 8740:8080 -p 8741:8081 \
+            -e PUID="$PUID" -e PGID="$PGID" -e TZ=Europe/London \
+            -v "$d/data:/data" -v "$d/key:/run/secrets/sanguity" -v "$d/backups:/backups" -v "$d/watch:/watch" \
+            -v "$d/records:/srv/records:ro" -v "$d/config:/config:ro" sanguity-release:ci
+          for i in $(seq 1 90); do
+            curl -fsS -o /dev/null http://127.0.0.1:8740/api/healthz && [ -s "$d/data/setup-code.txt" ] && break
+            sleep 2
+          done
+          code=$(cat "$d/data/setup-code.txt"); echo "::add-mask::$code"
+          python3 tests/docker_smoke.py --base http://127.0.0.1:8740 --code "$code" --receiver http://127.0.0.1:8741
+          docker exec -u "$PUID:$PGID" sanguity-aio python3 -m server.manage list
+          test -s "$d/key/data_key"
+          [ "$(stat -c %u "$d/data/sanguity.db")" = "$PUID" ] || { echo "the database isn't owned by PUID"; exit 1; }
+
+      - name: The all-in-one container stops cleanly
+        run: |
+          docker stop -t 30 sanguity-aio
+          [ "$(docker inspect -f '{{.State.ExitCode}}' sanguity-aio)" = 0 ] || { echo "it exited with an error"; exit 1; }
+
+      - name: Show the containers and their logs
+        if: failure()
+        run: |
+          docker compose -f compose.release.yaml ps -a
+          docker compose -f compose.release.yaml logs --no-color
+          docker logs sanguity-aio || true
+
+      - name: Stop and remove
+        if: always()
+        run: |
+          docker compose -f compose.release.yaml down -v
+          docker rm -f sanguity-aio || true
+
+  # Upgrading from the previous release: its code (the last v* tag before this commit; until there is one, the
+  # commit before records moved into the database in #103) set up on the demo data and used, then this commit
+  # started on the same folders and key. The database is migrated as the app starts: its schema must reach this
+  # code's version, the records must still be served, and the account made on the old version must still sign in.
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: sanguity-upgrade
+      BEFORE_RELEASES: 268e364eb313fd768d044f9d2a20dbee6e51e471   # the parent of #103: records in data.json, schema 9
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # the tags, to find the previous release
+
+      - name: The previous release's code beside this one, and one set of folders for both
+        run: |
+          prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || echo "$BEFORE_RELEASES")
+          echo "Upgrading from $prev: $(git log -1 --format='%h %s' "$prev")"
+          git worktree add --detach "$RUNNER_TEMP/previous" "$prev"
+          d="$RUNNER_TEMP/install"
+          mkdir -p "$d"/data "$d"/backups "$d"/watch-data "$d"/records
+          { echo "PUID=$(id -u)"; echo "PGID=$(id -g)"; echo "DATA_DIR=$d/data"; echo "BACKUP_DIR=$d/backups"
+            echo "WATCH_DIR=$d/watch-data"; echo "RECORDS_DIR=$d/records"; } >> "$GITHUB_ENV"
+
+      - name: The previous release, set up and used (its own smoke test), then stopped
+        working-directory: ${{ runner.temp }}/previous
+        run: |
+          docker compose up -d --build
+          for i in $(seq 1 90); do
+            curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && [ -s "$DATA_DIR/setup-code.txt" ] && break
+            sleep 2
+          done
+          code=$(cat "$DATA_DIR/setup-code.txt"); echo "::add-mask::$code"
+          python3 tests/docker_smoke.py --code "$code"
+          docker compose exec -T app python3 -c "import sqlite3; print(sqlite3.connect('/data/sanguity.db').execute('PRAGMA user_version').fetchone()[0])" \
+            | tr -d '\r' > "$RUNNER_TEMP/schema-before"
+          echo "Schema version of the previous release: $(cat "$RUNNER_TEMP/schema-before")"
+          docker compose down
+          cp -a auth "$GITHUB_WORKSPACE/auth"   # its key and receiver secret, where this checkout's compose.yaml looks
+
+      - name: This commit, started on the same folders (the database is migrated as the app starts)
+        run: |
+          docker compose up -d --build
+          for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && break; sleep 2; done
+
+      - name: Upgraded (schema version, records moved into the database, records served, the old account signs in)
+        run: |
+          before=$(cat "$RUNNER_TEMP/schema-before")
+          after=$(docker compose exec -T app python3 -c "import sqlite3; print(sqlite3.connect('/data/sanguity.db').execute('PRAGMA user_version').fetchone()[0])" | tr -d '\r')
+          want=$(docker compose exec -T app python3 -c "from server import db; print(len(db.SCHEMA))" | tr -d '\r')
+          echo "Schema version $before -> $after (this code's: $want)"
+          [ "$after" = "$want" ] && [ "$after" -ge "$before" ] || { echo "the database wasn't upgraded"; exit 1; }
+          if [ "$before" -lt 10 ]; then
+            ls "$DATA_DIR"/profiles/*/data-before-v10.json   # each profile's data.json was loaded into the database
+          fi
+          if curl -fsS http://127.0.0.1:8730/api/setup | grep -q '"needed":true'; then
+            echo "the upgraded install asks to be set up again"; exit 1
+          fi
+          python3 tests/docker_smoke.py --receiver http://127.0.0.1:8731
+
+      - name: Show the containers and their logs
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color
+
+      - name: Stop and remove
+        if: always()
+        run: |
+          docker compose down -v
+          (cd "$RUNNER_TEMP/previous" 2>/dev/null && docker compose down -v) || true

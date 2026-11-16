@@ -3,7 +3,7 @@
 The zip:
   README.txt          what this is and how to load it again
   data.json           the records, with each document link pointing at the copy in documents/
-  settings.json       the profile's dashboard preferences (if it has any)
+  settings.json       the settings set for the profile, shaped like settings.example.json (none: all at their defaults)
   documents/<id>/...  every document, and for HTML records the pictures and stylesheets they show
   watch/daily.json    the watch and scale summary shown with the profile (if any)
   uploads/<id>/...    the files uploaded on the import page, as they were (zips unpacked), one folder per upload
@@ -12,7 +12,7 @@ It's written as it's sent, a piece at a time, so a large profile never sits in m
 """
 import datetime, json, os, re, shutil, urllib.parse, zipfile
 
-from . import crypto, profiles as prof, records, uploads, watch_store
+from . import crypto, profiles as prof, records, settings, uploads, watch_store
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
 REF = re.compile(r"""(?:src|href)\s*=\s*["']([^"'#?]+)""", re.I)
@@ -29,7 +29,7 @@ def plan(db, pid):
         e["detail"].pop("key", None)
     return {"pid": pid, "name": p["name"], "docs": docs, "activity": log,
             "data": records.assemble(db, pid), "uploads": uploads.stored_files(db, pid),
-            "settings": prof.settings_path(pid) if os.path.isfile(prof.settings_path(pid)) else None,
+            "settings": settings.to_file(db, pid),
             "watch": watch_store.load(db, pid)}   # the merged summary (receiver + imports), or None
 
 
@@ -122,8 +122,8 @@ def stream(p, exported_by):
             included[m.group(1)] = (name, doc)
             d["url"] = name + ("#" + frag if frag else "")   # a plain path, as build.py writes them
         yield add_bytes("data.json", json.dumps(data, separators=(",", ":")).encode())
-    if p["settings"]:
-        yield from add_file("settings.json", p["settings"])
+    # always there, even with nothing set, so loading the export back in (import_dataset) restores the settings exactly
+    yield add_bytes("settings.json", json.dumps(p["settings"], indent=1, ensure_ascii=False).encode())
     for doc_id, (name, (path, ext)) in included.items():
         yield from add_file(name, path, ext not in STORED)
         if ext in prof.HTML_DOCS:
@@ -143,7 +143,7 @@ This file holds someone's health records. Keep it somewhere private, ideally enc
 no longer need.
 
   data.json          the records ({len(included)} documents linked)
-  settings.json      dashboard preferences{'' if p['settings'] else ' (none)'}
+  settings.json      the profile's settings{'' if len(p['settings']) > 1 else ' (none set: all at their defaults)'}
   documents/         the documents, one folder each
   watch/daily.json   watch and scale summary{'' if p['watch'] else ' (none)'}
   uploads/           the files uploaded to import, as they were sent (zips unpacked): {len({u for u, _, _ in p['uploads']})} upload(s)

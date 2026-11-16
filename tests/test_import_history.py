@@ -149,7 +149,8 @@ class History(unittest.TestCase):
 
         self.undo(pid, c["import_id"])   # the Apple Health one: the watch summary goes, records stay
         after_c = self.state(pid)
-        self.assertEqual(after_c["data"], three["data"])
+        self.assertEqual(three["data"][1]["imports"].pop(str(c["import_id"]))["label"], "Apple Health (export.xml)")
+        self.assertEqual(after_c["data"], three["data"])   # only its entry in the list of sources (#100) is gone
         self.assertEqual(after_c["watch"][0], 204)
         self.undo(pid, b["import_id"])
         self.assertEqual(self.state(pid), one)   # exactly as before the FHIR import: the JSON compares equal

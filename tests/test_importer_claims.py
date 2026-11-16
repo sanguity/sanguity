@@ -3,7 +3,8 @@
 and the generic EOB spreadsheet (claims_csv.py), on the fictional uploads in tests/fixtures/importers/{uhc,bcbs,
 claims-csv}/ and files written on the fly.
 
-The UHC and BCBS importers are build.py's claims readers moved into plug-ins, so `SameAsBuild` runs build.py on
+The UHC and BCBS importers are build.py's claims readers moved into plug-ins (build.py now reads claims through
+them), so `SameAsBuild` runs build.py on
 the same claims.json files (through a sources.json in a temporary folder) and compares the claim events, their
 details and the Costs rows. Allowed differences: event ids, source keys, document links (none here), the `visit`
 hint each claim detail gains, and the one place build.py looks beyond the claims: a facility bill inside a hospital

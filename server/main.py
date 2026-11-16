@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, edits, export, jobs, passkeys, profiles as prof, records, security as sec, sync, twofactor, uploads, watch_store
+from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, edits, export, jobs, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, uploads, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -62,6 +62,9 @@ async def lifespan(app):
                 print(f"Encrypted {sealed['files']} files and {sealed['fields']} database fields that weren't yet.", flush=True)
             if (moved := prof.migrate_files(db)):
                 print(f"Moved the records of {moved} profile(s) into the database.", flush=True)
+            if (moved := settings.migrate_files(db, prof.profile_dir)):
+                print(f"Moved the settings.json of {moved} profile(s) into the database; settings are changed on the "
+                      f"Settings page now, and each file is kept as {settings.MIGRATED}.", flush=True)
             if (kept := watch_store.migrate(db)):
                 print(f"Kept the imported watch data of {kept} profile(s) as an import that can't be undone.", flush=True)
             pid = prof.bootstrap(db)
@@ -962,12 +965,6 @@ def profile_activity(pid: int, actor: Optional[int] = None, action: Optional[str
 
 # ---------------------------------------------------------------- a profile's records
 
-def _json_file(path):
-    """Read the whole file in one go: a re-import replaces it with os.replace, and an open file keeps the version
-    it opened, whereas FileResponse stats and opens separately and could mix two versions' length and bytes."""
-    return Response(crypto.read_file(path), media_type="application/json")   # decrypted, if Sanguity wrote it
-
-
 @app.get("/api/profiles/{pid}/data")
 def profile_data(pid: int, request: Request, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "viewer")
@@ -990,14 +987,6 @@ def profile_export(pid: int, request: Request, s=Depends(user), db=Depends(get_d
     activity.log(db, "export", s, pid, ip=_client_ip(request))
     return StreamingResponse(export.stream(p, s["username"]), media_type="application/zip",
                              headers={"Content-Disposition": f'attachment; filename="{export.filename(p["name"])}"'})
-
-
-@app.get("/api/profiles/{pid}/settings")
-def profile_settings(pid: int, s=Depends(user), db=Depends(get_db)):
-    need(db, s, pid, "viewer")
-    prof.sync_build(db, pid)
-    path = prof.settings_path(pid)
-    return _json_file(path) if os.path.isfile(path) else JSONResponse({})
 
 
 @app.get("/api/profiles/{pid}/watch")
@@ -1274,6 +1263,9 @@ app.include_router(__import__("server.routes_imports", fromlist=["router"]).rout
 app.include_router(__import__("server.routes_edits", fromlist=["router"]).router)     # corrections in the app (#33)
 app.include_router(__import__("server.routes_manual", fromlist=["router"]).router)    # results typed in (#27)
 app.include_router(__import__("server.routes_labmaps", fromlist=["router"]).router)   # lab names matched on import (#23)
+app.include_router(__import__("server.routes_settings", fromlist=["router"]).router)  # settings (#35)
+app.include_router(__import__("server.routes_shl", fromlist=["router"]).router)       # SMART Health Links and Cards (#94)
+app.include_router(__import__("server.routes_directory", fromlist=["router"]).router)  # find your provider (#93)
 app.include_router(__import__("server.routes_connect", fromlist=["router"]).router)   # connected sources: sign-in and sync (#32, #91)
 
 
@@ -1286,7 +1278,7 @@ if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves w
     @app.get("/{page}")
     @app.get("/", include_in_schema=False)
     def page(page: str = "index.html"):
-        if page not in ("index.html", "login.html", "setup.html", "account.html", "import.html"):
+        if page not in ("index.html", "login.html", "setup.html", "account.html", "import.html", "settings.html", "providers.html"):
             raise HTTPException(404)
         return FileResponse(os.path.join(WWW, page), media_type="text/html",
                             headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP})

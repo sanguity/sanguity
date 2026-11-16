@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Importer tests: the registry (best match, nothing matched, ties), every importer against its fixtures, the
-shared helpers, and that build.py still writes exactly what it did.
+shared helpers, and that build.py still writes exactly what it did, with the standard library alone.
 
 Fixtures (fictional, never anyone's real records) live in tests/fixtures/importers/<NAME>/<case>/, one folder per
 upload. The registry must pick <NAME> for each, and parse() must keep to the contract. An optional
@@ -205,21 +205,52 @@ class Common(unittest.TestCase):
 
 
 class BuildUnchanged(unittest.TestCase):
-    """build.py on a small fictional Epic export writes exactly tests/fixtures/build/expected.json (bar the time)."""
+    """build.py on small fictional exports writes exactly the expected file (bar the time): tests/fixtures/build/
+    sources.json (two Epic exports) gives expected.json, and all-sources.json (those, plus the CareSpace, UHC and BCBS
+    importer fixtures) gives expected-all.json, so joining sources, shared lab series and claims inside another
+    source's hospital stays are covered too."""
 
-    def test_output(self):
+    def build(self, config, wrapper=None):
         if os.path.exists(os.path.join(ROOT, "corrections.json")):
             self.skipTest("a corrections.json next to build.py changes its output")
         with tempfile.TemporaryDirectory() as d:
             out = os.path.join(d, "data.json")
             env = {k: v for k, v in os.environ.items() if k != "RECORDS_ROOT"}
-            subprocess.run([sys.executable, "-I", os.path.join(ROOT, "build.py"), "--config",
-                            os.path.join(FIXTURES, "build", "sources.json"), "--out", out],
-                           check=True, stdout=subprocess.DEVNULL, env=env)
+            args = ["--config", os.path.join(FIXTURES, "build", config), "--out", out]
+            cmd = [sys.executable, "-I"] + (["-c", wrapper, os.path.join(ROOT, "build.py")] if wrapper else [os.path.join(ROOT, "build.py")])
+            subprocess.run(cmd + args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
             with open(out, "rb") as f:
-                got = re.sub(rb'^\{"built":"[^"]*",', b"{", f.read())
+                return re.sub(rb'^\{"built":"[^"]*",', b"{", f.read())
+
+    def test_output(self):
         with open(os.path.join(FIXTURES, "build", "expected.json"), "rb") as f:
-            self.assertEqual(got, f.read())
+            self.assertEqual(self.build("sources.json"), f.read())
+
+    def test_all_sources(self):
+        with open(os.path.join(FIXTURES, "build", "expected-all.json"), "rb") as f:
+            self.assertEqual(self.build("all-sources.json"), f.read())
+
+    def test_standard_library_only(self):
+        """build.py loads nothing but the standard library and the importers it names (never the registry's scan, so
+        an importer with a dependency, such as the PDF one, stays out of the setup container's way)."""
+        allowed = {"server", "server.importers", "server.importers.common", "server.importers.epic_mychart",
+                   "server.importers.ccda", "server.importers.carespace", "server.importers._claims",
+                   "server.importers.claims_uhc", "server.importers.claims_bcbs"}
+        wrapper = f"""
+import runpy, sys
+allowed = {allowed!r}
+class Guard:
+    def find_spec(self, name, path=None, target=None):
+        top = name.split(".")[0]
+        if top == "server" and name not in allowed or top != "server" and top not in sys.stdlib_module_names:
+            raise ImportError("build.py imported " + name)
+        return None
+sys.meta_path.insert(0, Guard())
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name="__main__")
+"""
+        with open(os.path.join(FIXTURES, "build", "expected-all.json"), "rb") as f:
+            self.assertEqual(self.build("all-sources.json", wrapper), f.read())
 
 
 if __name__ == "__main__":

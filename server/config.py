@@ -66,3 +66,8 @@ SYNC_MAX_ATTACHMENT = _int("SYNC_MAX_ATTACHMENT_MB", 50) * MB   # a bigger attac
 CONNECT_TIMEOUT = _int("CONNECT_TIMEOUT", 30)        # seconds to wait for a vendor's answer
 # plain-HTTP issuers (only for a test server on this machine, like tests/fakefhir): never for a real vendor
 CONNECT_ALLOW_HTTP = os.environ.get("CONNECT_ALLOW_HTTP", "") == "1"
+# SMART Health Links (shl.py): the one fetch a pasted link makes, after the person confirms. Everything it brings
+# (the manifest and every file in it) counts toward SHL_MAX_BYTES; each request gives up after SHL_TIMEOUT seconds.
+SHL_MAX_BYTES = _int("SHL_MAX_MB", 64) * MB
+SHL_MAX_FILES = _int("SHL_MAX_FILES", 50)
+SHL_TIMEOUT = _int("SHL_TIMEOUT", 20)

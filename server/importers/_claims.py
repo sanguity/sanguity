@@ -1,8 +1,8 @@
 """Pieces shared by the insurer claims importers (claims_uhc, claims_bcbs, claims_csv).
 
 The amounts, the care categories and the drug names are build.py's claims code, moved here unchanged so that an
-import gives the same Costs rows as a build of the same export. build.py keeps its own copy until it switches to
-the importers (a follow-up of issue #30); `tests/test_importer_claims.py` compares the two.
+import gives the same Costs rows as a build of the same export. build.py reads its claims exports through
+claims_uhc and claims_bcbs; `tests/test_importer_claims.py` compares an import with a build.
 
 The leading underscore keeps the registry from taking this module for an importer.
 
@@ -12,7 +12,8 @@ the stays in its own records, which a claims-only upload doesn't have, so such a
 outpatient (facility)". For a later step that sees the whole profile, every claim's detail carries a `visit` hint:
 `{"date": "YYYY-MM-DD", "end": "YYYY-MM-DD" (when the claim spans days), "provider": "...", "facility": true (for a
 facility bill)}`. Matching a visit or stay on that date (and provider, where the visit names one) is how the claim
-links to it, and a facility bill inside a stay is then re-filed under "Hospital stay (facility)".
+links to it, and a facility bill inside a stay is then re-filed under "Hospital stay (facility)". build.py does
+that re-filing against the stays from every source it reads.
 """
 import collections
 import hashlib

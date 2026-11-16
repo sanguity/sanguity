@@ -10,9 +10,13 @@ gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab
 export), types two lab results in on the import page and finds them on Trends, types a visit, a medication, a
 claim and a letter with a PDF into their own forms, finds them on the timeline and Costs and opens the PDF, uploads a lab with a spelling Sanguity
 doesn't know, accepts the series suggested at the preview and finds it on Trends, then sees it matched as before on
-the next upload, sets up a connected source against the fake SMART on FHIR server (tests/fakefhir), connects a
-profile by signing in, saves its first pull's preview, syncs a new result and is asked to reconnect when access ends,
-opens the account page (where the match is listed for admins), and fails
+the next upload, pastes a fictional SMART Health Link served by a local HTTPS server (what it says is shown and
+nothing is fetched until Fetch; then its preview, and saved), sets up a connected source against the fake SMART on
+FHIR server (tests/fakefhir), connects a profile by signing in, saves its first pull's preview, syncs a new result
+and is asked to reconnect when access ends, changes settings on the Settings page and resets them, opens the account
+page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap
+and follows its link to the import history, checks the "not medical advice" notice on every tab and beside
+out-of-range highlighting, and fails
 on any script error, console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -25,6 +29,7 @@ from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-browser-")
 USER, PW = "demo", "a long demo passphrase"
+SHL = None   # the local HTTPS host of a fictional SMART Health Link (tests/shl_server.py), started with the app
 NAN_HOOK = """window.__nan = []; const sa = Element.prototype.setAttribute;
 Element.prototype.setAttribute = function (k, v) { if (String(v) === "NaN") window.__nan.push(this.tagName + "." + k); return sa.call(this, k, v); };"""
 
@@ -78,6 +83,11 @@ def start_app():
     from server import config
     config.PUBLIC_ORIGINS.add(f"http://127.0.0.1:{port}")   # the return address connected sources sign in back to
     config.CONNECT_ALLOW_HTTP = True                         # the fake SMART on FHIR server is plain HTTP on this machine
+    global SHL
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    import shl_server
+    SHL = shl_server.Server().start()   # a local HTTPS host for a SMART Health Link (#94); server.shl may reach it
+    SHL.trust()
     srv = uvicorn.Server(uvicorn.Config(main.app, host="127.0.0.1", port=port, log_level="warning"))
     threading.Thread(target=srv.run, daemon=True).start()
     while not srv.started:
@@ -121,6 +131,12 @@ def main():
         strict.goto(base + "/import.html")
         strict.wait_for_selector("#importer", state="visible", timeout=10000)
         check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
+        strict.goto(base + "/settings.html")
+        strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 4)
+        strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
+        strict.wait_for_selector(".dir-hit", timeout=10000)
+        check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
         strict.goto(base + "/account.html")
         strict.wait_for_selector("#logout", state="visible")
         strict.wait_for_timeout(500)
@@ -176,6 +192,44 @@ def main():
                 n = js(probe)
                 visible = js(f"!document.getElementById('view-{tab}').hidden")
                 check(f"{tab} tab renders", visible and all(int(x) > 0 for x in str(n).split(",")), n)
+                if tab == "heatmap":   # a cell's tooltip says where the result came from (#100)
+                    page.hover("#hm rect.cell[data-s]")
+                    settle(100)
+                    tipped = js("document.getElementById('tip').innerText")
+                    check("hovering a heatmap cell shows its source", "From Setup build, imported" in tipped, tipped[:200])
+                    page.mouse.move(0, 0)
+                page.locator("#notice").scroll_into_view_if_needed()
+                check(f"{tab} tab: the 'not medical advice' notice shows in the footer",
+                      page.is_visible("#notice") and "Not medical advice." in page.inner_text("#notice")
+                      and "your care team interprets them" in page.inner_text("#notice"))
+
+            # ---- next to out-of-range highlighting (#57): a caption on each tab that colours it, in light and dark, at 375 px
+            flagged = {   # the tab's out-of-range highlighting, and its caption
+                "overview": "#view-overview .tile .st.hi, #view-overview .tile .st.lo",
+                "labs": "#charts .pt.abn",
+                "heatmap": "#hm rect.cell[style*='--div-hi'], #hm rect.cell[style*='--div-lo']",
+            }
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 375 else 800})
+                    for tab, marks in flagged.items():
+                        page.click(f"#tab-{tab}")
+                        settle(300)
+                        note = page.locator(f"#view-{tab} .range-note")
+                        shown = note.count() == 1 and note.is_visible()
+                        text = note.inner_text() if shown else ""
+                        check(f"{tab} ({theme}, {width} px): caption beside the out-of-range highlighting",
+                              shown and js(f"document.querySelectorAll({marks!r}).length") > 0
+                              and "reference ranges in your own lab reports" in text and "isn't medical advice" in text, text)
+                        legible = js("""(() => { const n = document.querySelector('#view-%s .range-note'), f = document.getElementById('notice');
+                            const bg = getComputedStyle(document.body).backgroundColor;
+                            return getComputedStyle(n).color !== bg && getComputedStyle(f).color !== bg; })()""" % tab)
+                        check(f"{tab} ({theme}, {width} px): caption and footer readable, page fits",
+                              legible and js("document.documentElement.scrollWidth") <= width, js("document.documentElement.scrollWidth"))
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- detail drawer for every kind of event
             for k in js("[...new Set(EV.filter(e => !e.hidden).map(e => e.k))].sort()"):
@@ -243,6 +297,32 @@ def main():
             check("…and undoing it restores the title", js(f"({there})", pick))
             page.keyboard.press("Escape")
 
+            # ---- where each record came from (#100): a Source line in the drawer, linking to the import in the history
+            visit = js("EV.find(e => e.k === 'visit' && !e.hidden).id")
+            js("id => openEvent(byId.get(id))", visit)
+            settle(200)
+            src = page.locator("#dbody p.source")
+            text = src.inner_text() if src.count() == 1 else ""
+            check("the drawer shows an event's source and when it was imported", "Setup build" in text and "imported" in text, text)
+            js("openEvent(EV.find(e => e.k === 'lab' && (DATA.details[e.id] || {}).ids && DATA.details[e.id].ids.length > 1))")
+            settle(200)
+            n = js("DATA.details[state.selEv].ids.filter(i => DATA.details[i] && byId.get(i)).length")
+            check("each result of a lab day shows its source", n > 1 and page.locator("#dbody details.res p.source").count() == n,
+                  (n, page.locator("#dbody details.res p.source").count()))
+            js("id => openEvent(byId.get(id))", visit)
+            settle(200)
+            page.focus("#dbody p.source a")   # by keyboard: the link takes focus and Enter follows it
+            page.keyboard.press("Enter")
+            page.wait_for_url("**/import.html?profile=1#import-*", timeout=10000)
+            page.wait_for_selector("#historyList li.hl", timeout=10000)
+            check("the source link opens that import in the history, highlighted and focused",
+                  js("document.querySelectorAll('#historyList li.hl').length === 1 && document.activeElement.id === location.hash.slice(1)"
+                     " && document.activeElement.classList.contains('hl') && document.activeElement.textContent.includes('setup build')"),
+                  js("[location.hash, document.activeElement.id, document.activeElement.textContent.slice(0, 80)]"))
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            settle()
+
             # ---- Trends: drag pans every chart together, ctrl+wheel zooms, milestones drawn on All
             page.click("#tab-labs")
             js("applyPreset('1y')")
@@ -267,6 +347,17 @@ def main():
             js("applyPreset('all')")
             settle()
             check("milestones drawn on Trends", js("document.querySelectorAll('#charts .msmark').length") > 0)
+            # hovering a point shows where it came from (#100)
+            box = page.locator("#charts .chart svg").first.bounding_box()
+            tipped = ""
+            for f in (0.5, 0.6, 0.4, 0.7, 0.3, 0.8, 0.2, 0.9):
+                page.mouse.move(box["x"] + box["width"] * f, box["y"] + box["height"] * 0.5)
+                settle(100)
+                tipped = js("getComputedStyle(document.getElementById('tip')).display === 'block' ? document.getElementById('tip').innerText : ''")
+                if "From " in tipped:
+                    break
+            check("hovering a Trends point shows its source and import date", "From Setup build, imported" in tipped, tipped[:200])
+            page.mouse.move(0, 0)
 
             # ---- Health: drag changes its own period
             page.click("#tab-health")
@@ -728,11 +819,82 @@ def main():
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
             check("…and saved into Hemoglobin again", js(f"{last_card}.textContent").startswith("Imported."))
+
+            # ---- a SMART Health Link pasted (#94): its host, label and passcode flag are shown and nothing is fetched;
+            # Fetch and preview fetches it once and shows the import's preview, which saves like an upload
+            import shl_server
+            SHL.seen.clear()
+            link = SHL.share(shl_server.bundle("2026-11-10", 13.9), passcode="fictional-2468", label="Fictional clinic",
+                             viewer="https://viewer.example.org/")
+            page.goto(base + "/import.html?profile=2")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            page.click("#tab-link")
+            check("the Paste a link tab hides the file drop", js("!document.getElementById('panel-link').hidden && getComputedStyle(document.getElementById('drop')).display === 'none'"))
+            page.fill("#shlText", link)
+            page.wait_for_selector("#shlAbout", state="visible", timeout=5000)
+            facts = page.inner_text("#shlFacts")
+            check("the pasted link's host, label and passcode flag are shown", f"localhost:{SHL.port}" in facts and "Fictional clinic" in facts
+                  and "needed" in facts and js("!document.getElementById('shlPassRow').hidden"), facts)
+            check("…and nothing was fetched from it", SHL.seen == [], SHL.seen)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the Paste a link tab fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.fill("#shlPass", "fictional-2468")
+            page.click("#shlGo")
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length && /^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.textContent")
+            check("Fetch and preview fetches it once and shows the preview", card.startswith("Ready to import") and "FHIR" in card
+                  and len(SHL.seen) == 1, (card[:200], len(SHL.seen)))
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            check("…and saves it", js(f"{last_card}.textContent").startswith("Imported."), js(f"{last_card}.textContent")[:200])
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
             page.select_option("#profile", label="My records")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
 
+            # ---- Settings (#35): change settings on the screen, and the dashboard follows; reset a section
+            tiles = "[...document.querySelectorAll('#view-overview .tiles .tile .lbl span[title]')].map(s => [s.title, s.textContent])"
+            js("switchTab('overview')")
+            settle(300)
+            before = js(tiles)
+            check("the header links to Settings for this profile", js("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1")
+            page.click("#settingsLink")
+            page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
+            check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
+                  ["Overview", "Trends", "Names", "Health"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+            first = before[0][0]
+            page.click(f"#sec-overview button[aria-label='Move {first} down']")
+            page.click("#sec-overview .set button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-overview > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("[data-key=labNicknames] button:text-is('Add a row')")
+            page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=from]", first)
+            page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Renamed in Settings")
+            page.click("[data-key=labNicknames] button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-names > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the Settings page fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            js("switchTab('overview')")
+            settle(300)
+            after = js(tiles)
+            check("…the Overview tiles follow the new order and name",
+                  [t for t, _ in after[:2]] == [before[1][0], first] and after[1][1] == "Renamed in Settings", after[:3])
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
+            for sec in ("overview", "names"):
+                page.once("dialog", lambda d: d.accept())
+                page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
+                page.wait_for_function(f"document.querySelector('#sec-{sec} > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            js("switchTab('overview')")
+            settle(300)
+            check("…and Reset to defaults brings them back", js(tiles) == before, js(tiles)[:3])
             # ---- connected sources (#32, #91), against the fake SMART on FHIR server standing in for an Epic sandbox:
             # an admin sets the source up and tests it, the profile connects by signing in, the first pull is previewed
             # and saved, Sync now brings a new result, and when the patient ends access the page asks to reconnect
@@ -991,6 +1153,7 @@ def main():
                 problems.append(f"passkey page at {pk.url}: " + str(pk.evaluate("document.body.innerText.slice(0, 300)")))
         browser.close()
     srv.should_exit = True
+    SHL.stop()
     time.sleep(0.3)
     shutil.rmtree(TMP, ignore_errors=True)
 
