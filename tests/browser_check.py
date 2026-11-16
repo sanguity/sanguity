@@ -12,10 +12,12 @@ claim and a letter with a PDF into their own forms, finds them on the timeline a
 doesn't know, accepts the series suggested at the preview and finds it on Trends, then sees it matched as before on
 the next upload, pastes a fictional SMART Health Link served by a local HTTPS server (what it says is shown and
 nothing is fetched until Fetch; then its preview, and saved), sets up a connected source against the fake SMART on
-FHIR server (tests/fakefhir), connects a profile by signing in, saves its first pull's preview, syncs a new result
-and is asked to reconnect when access ends, uploads a Blue Button export and connects a health plan's patient-access
-API (the fake again) and finds both sets of claims on Costs, sees the source's and the Health Link's hosts under
-Settings → Outside connections, changes settings on the Settings page and resets them, opens the account
+FHIR server (tests/fakefhir), connects a profile by signing in with a choice of what to pull, saves its first pull's
+preview, sees the attachments the install's rules left out and fetches one anyway, syncs a new result, changes what
+the connection pulls, and is asked to reconnect when access ends, with a warning on the profile's main page, uploads a
+Blue Button export and connects a health plan's patient-access API (the fake again) and finds both sets of claims on
+Costs, sees the source's and the Health Link's hosts under Settings → Outside connections, changes settings on the
+Settings page and resets them, opens the account
 page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap
 and follows its link to the import history, checks the "not medical advice" notice on every tab and beside
 out-of-range highlighting, and fails
@@ -142,7 +144,7 @@ def main():
         check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 4)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 5)
         strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
         strict.wait_for_selector(".dir-hit", timeout=10000)
         check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
@@ -873,7 +875,10 @@ def main():
             page.click("#settingsLink")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Trends", "Names", "Health"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Trends", "Names", "Health", "Connected sources"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+            check("…with the server's attachment and sync defaults as a switch, numbers and choices (#101, #102)",
+                  js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length]") == [5, 3],
+                  js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
             first = before[0][0]
             page.click(f"#sec-overview button[aria-label='Move {first} down']")
             page.click("#sec-overview .set button:text-is('Save')")
@@ -931,9 +936,17 @@ def main():
             page.wait_for_function("document.getElementById('sourceList').textContent.includes('Discovery works') || document.getElementById('sourceList').textContent.includes('tested ')", timeout=10000)
             page.reload()
             page.select_option("#profile", label="Second person")
-            page.wait_for_selector("#sourceButtons a", timeout=10000)
+            page.wait_for_selector("#sourceButtons button", timeout=10000)
             conn_pid = js("+document.getElementById('profile').value")
-            page.click("#sourceButtons a")   # to the fake's sign-in, which approves and sends the browser back
+            # the install's attachment rules (#101, settings registry): only text attachments are fetched by themselves
+            check("the attachment defaults are install settings", js(f"api('profiles/{conn_pid}/settings/sync.attachTypes', "
+                  "{method: 'PUT', body: JSON.stringify({value: ['text']})}).then(r => r.status)") == 200)
+            page.click("#sourceButtons button")   # choose what to pull (#99), then on to the fake's sign-in
+            page.wait_for_selector(".conn-choose", timeout=10000)
+            check("connecting shows what each kind of record brings", "reference ranges" in page.inner_text(".conn-choose")
+                  and page.locator(".conn-choose input[type=checkbox]").count() == 7, page.inner_text(".conn-choose")[:300])
+            page.uncheck(".conn-choose input[value=visits]")
+            page.locator(".conn-choose").get_by_role("button", name="Sign in at").click()   # approves and comes back
             page.wait_for_url("**/connect.html**", timeout=20000)
             page.wait_for_selector("#import-status button.primary", timeout=30000)   # the first pull's preview
             check("signing in connects the source, and its first pull is previewed like an upload",
@@ -942,6 +955,18 @@ def main():
             page.wait_for_function("document.getElementById('import-status').textContent.includes('Imported.')", timeout=30000)
             page.wait_for_function("document.getElementById('connList').textContent.includes('New records come in on a schedule')", timeout=20000)
             check("…saved, and the connection then syncs on a schedule", True)
+            page.reload()
+            page.wait_for_function("document.getElementById('connList').textContent.includes('Attachments left out')", timeout=20000)
+            chosen = page.inner_text(".conn-chosen")
+            check("the connection says what it pulls, without the kind left unticked", "lab results" in chosen
+                  and "visits" not in chosen and "only when you ask" not in chosen, chosen)
+            page.click(".conn-skipped summary")
+            skipped = page.inner_text(".conn-skipped")
+            check("attachments the rules left out are listed, with why", "Attachments left out (2)" in skipped
+                  and "PDF" in skipped and "doesn't fetch" in skipped, skipped)
+            page.locator(".conn-skipped li").first.get_by_role("button", name="Fetch anyway").click()
+            page.wait_for_function("document.getElementById('connList').textContent.includes('Fetched')", timeout=20000)
+            check("…and Fetch anyway brings one in", "Attachments left out (1)" in page.inner_text("#connList"), page.inner_text("#connList")[:400])
             imports = lambda: js(f"fetch('api/profiles/{conn_pid}/connections').then(r => r.json()).then(j => j.connections[0].imports)")
             fake.add({"resourceType": "Observation", "status": "final", "effectiveDateTime": "2026-11-12T08:00:00Z",
                       "category": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/observation-category", "code": "laboratory"}]}],
@@ -956,7 +981,20 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             page.reload()
             page.wait_for_function("document.getElementById('connList').textContent.includes('Fake Epic sandbox')", timeout=10000)
-            check("connected sources fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.get_by_role("button", name="What it pulls…").click()
+            page.wait_for_selector(".conn-options", timeout=10000)
+            check("connected sources fit 375 px, with a connection's choices open",
+                  js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.check(".conn-options input[value=visits]")   # granted at sign-in? no: unticked, so it asks to sign in again
+            check("a kind the access doesn't cover says it needs signing in again",
+                  "Needs signing in again" in page.inner_text(".conn-options"), page.inner_text(".conn-options")[:300])
+            page.uncheck(".conn-options input[value=visits]")
+            page.uncheck(".conn-options input[value=medications]")
+            check("…and a kind turned off offers to remove what it brought",
+                  page.get_by_role("button", name="Remove medications it brought").count() == 1)
+            page.locator(".conn-options").get_by_role("button", name="Save").click()
+            page.wait_for_function("document.getElementById('connList').textContent.includes('Saved. The next sync')", timeout=10000)
+            check("…saved for the next sync", "medications" not in page.inner_text(".conn-chosen"), page.inner_text(".conn-chosen"))
             page.set_viewport_size({"width": 1400, "height": 900})
             fake.revoke_all("pat-1")    # the patient ends access in their portal
             fake.expire_access_tokens()
@@ -967,6 +1005,18 @@ def main():
             page.wait_for_selector("#reconnect:not([hidden])", timeout=20000)
             check("when access ends, the page asks to sign in again", "access ended" in page.inner_text("#reconnect")
                   and page.get_by_role("button", name="Sign in again").count() == 1, page.inner_text("#connList")[:300])
+            prev_profile = js("localStorage.getItem('ht-profile')")
+            js(f"localStorage.setItem('ht-profile', '{conn_pid}')")   # the profile's main page warns too (#102)
+            page.goto(base + "/")
+            page.wait_for_selector("#syncWarn:not([hidden])", timeout=20000)
+            warn = page.inner_text("#syncWarn")
+            check("the profile's main page warns that the source stopped syncing, with a link to it",
+                  "access ended" in warn and js("document.querySelector('#syncWarn a').getAttribute('href')").startswith("connect.html?profile="), warn)
+            page.set_viewport_size({"width": 375, "height": 800})
+            check("…and the warning fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js(f"api('profiles/{conn_pid}/settings/sync.attachTypes', {{method: 'DELETE'}})")
+            js(f"localStorage.setItem('ht-profile', {json.dumps(prev_profile)} || '')")
             check("only the source's own host was contacted", fake.hosts() == {f"127.0.0.1:{fake.port}"}, fake.hosts())
 
             # ---- outside connections (#97, #59): Settings lists every host the install may contact, by purpose
@@ -1039,8 +1089,10 @@ def main():
                                    "(p.textContent.includes('Discovery works') || p.textContent.includes('tested ')))", timeout=10000)
             page.reload()
             page.select_option("#profile", label="Second person")
-            page.wait_for_selector("#sourceButtons a:has-text('Fake health plan')", timeout=10000)
-            page.click("#sourceButtons a:has-text('Fake health plan')")
+            page.wait_for_selector("#sourceButtons button:has-text('Fake health plan')", timeout=10000)
+            page.click("#sourceButtons button:has-text('Fake health plan')")   # what to pull (#99), then sign in
+            page.wait_for_selector(".conn-choose", timeout=10000)
+            page.locator(".conn-choose").get_by_role("button", name="Sign in at").click()
             page.wait_for_url("**/connect.html**", timeout=20000)
             page.wait_for_selector("#import-status button.primary", timeout=30000)
             check("connecting the health plan previews its claims like an upload",

@@ -24,7 +24,7 @@ that a rebuild never changes settings, and says so in the log when the build's s
 """
 import json, os, re
 
-from . import crypto, db as dbm
+from . import config, crypto, db as dbm
 
 SCOPES = ("install", "profile", "user")   # broadest first: the order values are layered in
 
@@ -44,7 +44,7 @@ class Setting:
 
     def public(self):
         return {"key": self.key, "section": self.section, "label": self.label, "help": self.help, "kind": self.kind,
-                "scope": self.scope, "default": self.default}
+                "scope": self.scope, "default": self.default, **({"choices": CHOICES[self.key]} if self.key in CHOICES else {})}
 
 
 SECTIONS = []      # [(id, title, help)], in screen order
@@ -139,6 +139,34 @@ def workout_rules(most=50):
     return check
 
 
+def whole(lo, hi, what):
+    def check(v):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v != int(v) or not lo <= v <= hi:
+            raise SettingError(f"{what} must be a whole number from {lo} to {hi}.")
+        return int(v)
+    return check
+
+
+def yes_no(what):
+    def check(v):
+        if not isinstance(v, bool):
+            raise SettingError(f"{what} must be on or off.")
+        return v
+    return check
+
+
+def some_of(choices, what):
+    """A list of some of choices ({id: label}), in their order (possibly none)."""
+    def check(v):
+        if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+            raise SettingError(f"{what} must be a list.")
+        bad = [x for x in v if x not in choices]
+        if bad:
+            raise SettingError(f"{what}: there's no choice called {bad[0]}.")
+        return [c for c in choices if c in v]
+    return check
+
+
 # ---------------------------------------------------------------- the registry: every key of settings.example.json
 
 KEY_LABS = ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Lymphocytes Absolute", "Creatinine",
@@ -161,6 +189,28 @@ define("labNicknames", "names", "Lab names", {
        name_map(), kind="names", merge=True, help="A lab's name in the records, and the name to show for it.")
 define("sources", "names", "Result sources", {}, name_map(), kind="names", merge=True,
        help="The short source tag on lab results (like EXT), and the name to show for it.")
+ATTACHMENT_TYPES = {"pdf": "PDF", "image": "Images", "text": "Text", "html": "Web pages (HTML)"}
+CEILING_MB = max(1, config.SYNC_MAX_ATTACHMENT // config.MB)   # SYNC_MAX_ATTACHMENT_MB: no setting goes above it
+
+section("sync", "Connected sources", "Defaults for every connection on this server (each connection can change its "
+        "own on the Connected sources page). Attachments are the files records point at: visit notes, scans, reports.")
+define("sync.attachAuto", "sync", "Fetch attachments automatically", True, yes_no("Fetching attachments automatically"),
+       scope="install", private=False, kind="toggle",
+       help="Off: each sync lists the attachments it left out, and you fetch the ones you want.")
+define("sync.attachMaxMB", "sync", "Largest attachment fetched (MB)", min(20, CEILING_MB),
+       whole(1, CEILING_MB, "The largest attachment"), scope="install", private=False, kind="number",
+       help=f"Bigger ones are left out and listed. At most {CEILING_MB} MB (SYNC_MAX_ATTACHMENT_MB in .env).")
+define("sync.attachTypes", "sync", "Kinds of attachment fetched", list(ATTACHMENT_TYPES),
+       some_of(ATTACHMENT_TYPES, "Kinds of attachment"), scope="install", private=False, kind="choices",
+       help="Other kinds (and these, when unticked) are left out and listed, to fetch if you want them.")
+define("sync.attachBudgetMB", "sync", "Attachments per connection, in all (MB)", 2048,
+       whole(1, 1024 * 1024, "The total for attachments"), scope="install", private=False, kind="number",
+       help="Once a connection's attachments add up to this, the rest are left out and listed.")
+define("sync.staleDays", "sync", "Warn when a connection hasn't synced for (days)", 3,
+       whole(1, 365, "The number of days"), scope="install", private=False, kind="number",
+       help="The profile's main page and the admins' notices say so, with a link to the connection.")
+CHOICES = {"sync.attachTypes": ATTACHMENT_TYPES}
+
 define("visitWorkouts", "health", "Visits that count as workouts", [], workout_rules(), kind="rules",
        help="Past visits whose title matches a pattern count as a workout of that many minutes, once a day per rule. "
             "Patterns are regular expressions, matched ignoring case.")
@@ -240,6 +290,12 @@ def nest(flat):
             d = d.setdefault(p, {})
         d[last] = v
     return out
+
+
+def install_values(db, prefix=""):
+    """{key: value} of the install-wide settings (the install's value, else the default)."""
+    have = stored(db, "install")
+    return {k: have.get(k, s.default) for k, s in SETTINGS.items() if s.scope == "install" and k.startswith(prefix)}
 
 
 def merged(db, pid, uid):

@@ -26,7 +26,8 @@ FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "
           ("smart_clients", "id", "secret"), ("connections", "id", "patient"), ("connections", "id", "secret"),
           ("connections", "id", "last_error"), ("connections", "id", "report"), ("connect_pending", "state_hash", "verifier"),
           ("sync_changes", "id", "previous"),
-          ("settings", "id", "sealed"), ("outside_contacts", "id", "host"))
+          ("settings", "id", "sealed"), ("outside_contacts", "id", "host"),
+          ("sync_skipped", "id", "detail"), ("sync_removed", "id", "row"), ("imports", "id", "note"))
 
 
 def anything_encrypted(db):

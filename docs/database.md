@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 20**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 21**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -330,12 +330,35 @@ Beside the rows, each connection keeps every FHIR resource it has read, the newe
 `profiles/<id>/connections/<connection id>` (a lab day is rebuilt from all of them); it is deleted on disconnect.
 Each pull's raw answer is kept as an upload, like an import's files.
 
+Schema version 21 adds what a connection pulls and how it warns (#99, #101, #102):
+
+- **connections.kinds** and **since**: the person's choice of records (`connections.KINDS`: labs, vitals, visits,
+  problems, medications, documents, claims) and the date to pull from; NULL is everything the access allows, from
+  the beginning. **connect_pending** keeps the same two from the start of a sign-in to its return. The cursor's
+  keys name each search with its parameters (`Observation?category=laboratory&date=ge2021-01-01`), so a kind turned
+  on later is pulled from the beginning; a connection from before version 21 keeps its plain type names.
+- **connections.attach**: the connection's own attachment rules (`{auto, max_mb, types, budget_mb}`), over the
+  install's settings `sync.*` in **settings**; **attach_bytes**, what it has fetched, for its total.
+- **connections.warned**: when the "stopped syncing" warning went into the profile's activity log, so it goes in
+  once; cleared when a pull works or the connection is signed in again.
+- **sync_skipped**: attachments a pull left out (by its rules), one row per attachment address (a SHA-256 of it);
+  the address, its record's source key, title, kind, size and why are encrypted. `import_id` is set once it is
+  fetched anyway, by that import, and goes back to NULL (listed again) when that import is undone.
+- **sync_removed**: the rows "remove the records of a kind" took out (events, a series with its results, or the
+  entries of an import's profile-wide list), encrypted, under the import that removed them. Undoing that import from
+  the history puts them back in their own imports, with their ids where those are free.
+- **imports.note**: what a sync import that isn't a pull did (removed a kind, or fetched an attachment), encrypted,
+  for the history's label and counts.
+
 ```mermaid
 erDiagram
     profiles ||--o{ connections : "connected to"
     smart_clients |o--o{ connections : "set up for"
     connections ||--o{ imports : "brought"
     imports ||--o{ sync_changes : "changed in place"
+    connections ||--o{ sync_skipped : "left out"
+    imports |o--o{ sync_skipped : "fetched by"
+    imports ||--o{ sync_removed : "removed"
     events |o--o{ sync_changes : "was"
     sessions ||--o{ connect_pending : "started"
     jobs |o--o| connections : "first pull"
@@ -372,6 +395,26 @@ erDiagram
         text error_kind "unavailable, access, other"
         text last_error "🔒"
         text report "🔒 JSON per type"
+        text kinds "JSON, NULL: all allowed"
+        text since "YYYY-MM-DD"
+        text attach "JSON rules, NULL: the install's"
+        int attach_bytes
+        int warned
+    }
+    sync_skipped {
+        int id PK
+        int connection_id FK
+        text ref_hash "SHA-256 of the address"
+        text detail "🔒 JSON"
+        int found
+        int import_id FK "fetched anyway"
+    }
+    sync_removed {
+        int id PK
+        int import_id FK "the removal"
+        int home_import FK
+        text what "event, series, meta"
+        text row "🔒 JSON"
     }
     connect_pending {
         text state_hash PK "SHA-256"
@@ -423,7 +466,7 @@ erDiagram
 |---|---|
 | `events` | `body`, `detail`, `cost` |
 | `series`, `results` | `body` |
-| `imports` | `meta` |
+| `imports` | `meta`, `note` |
 | `documents` | `path` |
 | `uploads` | `manifest` |
 | `upload_files` | `path` |
@@ -436,6 +479,8 @@ erDiagram
 | `connections` | `patient`, `secret`, `last_error`, `report` |
 | `connect_pending` | `verifier` |
 | `sync_changes` | `previous` |
+| `sync_skipped` | `detail` |
+| `sync_removed` | `row` |
 | `activity` | `detail` |
 | `outside_contacts` | `host` |
 | `users` | `totp_secret`, `totp_pending` |

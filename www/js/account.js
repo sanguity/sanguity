@@ -174,7 +174,8 @@ function showRecoveryCodes(codes, justTurnedOn) {
 
 /* ---------------------------------------------------------------- failed sign-in bursts (admins) */
 async function loadNotice() {
-  const n = (await call("security/notice")).notice, box = $("#secNotice");
+  const all = await call("security/notice"), n = all.notice, box = $("#secNotice");
+  syncNotice(all.sync || []);
   box.hidden = !n;
   if (!n) return;
   const list = (rows, key) => rows.map(r => `${r[key]} (${r.failures})`).join(", ");
@@ -186,6 +187,19 @@ async function loadNotice() {
     "or two-factor sign-in, and look at the app's log (docker compose logs app) for details. ",
     el("button", {class: "btn small", type: "button", text: "Dismiss", onclick: async () => {
       try { await call("security/notice/dismiss", "POST"); box.hidden = true; } catch (e) { alert(e.message); } }}));
+}
+
+/* connected sources that stopped syncing, across the install (#102): counts per source, no profiles named */
+function syncNotice(rows) {
+  const box = $("#syncNotice");
+  box.hidden = !rows.length;
+  if (!rows.length) return;
+  const part = r => [r.access && `${r.access} with access ended`, r.failing && `${r.failing} failing`,
+    r.stale && `${r.stale} not synced lately`].filter(Boolean).join(", ");
+  box.replaceChildren(el("b", {text: "Connected sources need attention: "}),
+    rows.map(r => `${r.source} (${part(r)})`).join("; ") + ". ",
+    "Each profile's owners and editors see it on the profile's page and can sign in again or sync from ",
+    el("a", {href: "connect.html", text: "Connected sources"}), ".");
 }
 
 /* ---------------------------------------------------------------- passkeys */
@@ -284,6 +298,12 @@ const WHAT = {
   undo: d => `undid an import${d.label ? ` (${d.label})` : ""}, removing what it brought`,
   edit: d => (d.undone ? "undid an edit of" : ({hide: "hid", rename: "renamed", date: "changed the date of", not_stay: "marked as not a hospital stay",
     merge: "merged another event into"}[d.action] || "edited")) + ` “${d.title || "an event"}”` + (d.to && !d.undone ? ` to “${d.to}”` : ""),
+  connect: d => d.change === "options" ? `changed what ${d.source} pulls` + (d.kinds ? ` (${d.kinds.join(", ")})` : d.kinds === null ? " (everything allowed)" : "") + (d.since ? ` from ${d.since}` : "")
+    : d.change === "warning" ? `noted that ${d.text.replace(/\.$/, "").replace(/^./, s => s.toLowerCase())}`
+    : d.change === "remove" ? `removed the ${(d.label || d.kind).toLowerCase()} ${d.source} brought (undoable from the import history)`
+    : d.change === "fetch" ? `fetched the attachment “${d.title}” from ${d.source}`
+    : `${d.reconnect ? "signed in again to" : "connected"} ${d.source}` + (d.kinds ? ` (${d.kinds.join(", ")})` : ""),
+  disconnect: d => d.ended ? `lost access to ${d.source} (the vendor ended it)` : `disconnected ${d.source}` + (d.removed ? `, removing ${d.removed} import${d.removed === 1 ? "" : "s"}` : ""),
   settings: d => d.section ? `reset the ${d.label || d.section} settings to their defaults`
     : d.reset ? `reset “${d.label || d.setting}” to its default` : `changed the setting “${d.label || d.setting}”`,
   "settings.user": d => d.section ? `reset their own ${d.label || d.section} settings` : `changed their own setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
@@ -302,6 +322,7 @@ const WHAT = {
   "2fa.recovery": d => `signed in with a recovery code (${d.left} left)`,
   "2fa.reset": d => `turned off two-factor sign-in for ${d.username}`,
   "security.notice_dismissed": () => "dismissed the failed sign-ins notice",
+  "connect.source": d => `${{add: "set up", edit: "changed", remove: "removed"}[d.change] || "changed"} the connected source “${d.name}”`,
   "passkey.add": d => `added the passkey “${d.name}”`,
   "passkey.remove": d => `removed the passkey “${d.name}”`,
   "settings.require_2fa": d => d.on ? "required two-factor sign-in for everyone" : "stopped requiring two-factor sign-in",
@@ -315,7 +336,7 @@ const WHAT = {
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
   ["export", "Exports"], ["upload", "Uploads"], ["discard", "Cancelled imports"], ["undo", "Undone imports"], ["edit", "Edits"],
-  ["outside", "Outside connections"], ["settings", "Settings"]];
+  ["outside", "Outside connections"], ["settings", "Settings"], ["connect", "Connected sources"]];
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},

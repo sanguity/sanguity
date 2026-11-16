@@ -43,6 +43,7 @@
     else if (c.events) out.push(n(c.events, ["event", "events"]));
     if (c.results) out.push(n(c.results, ["lab result", "lab results"]) + " in " + n(c.series || 0, ["test", "tests"]));
     if (c.documents) out.push(n(c.documents, ["attached file", "attached files"]));
+    if (c.entries) out.push(n(c.entries, ["problem, appointment or weight", "problems, appointments or weights"]));
     if (c.watch_days) out.push(n(c.watch_days, ["day", "days"]) + " of watch data");
     if (c.workouts) out.push(n(c.workouts, ["workout", "workouts"]));
     return out.length ? out.join(", ") : "No records";
@@ -72,7 +73,8 @@
     const yes = el("button", {class: "btn small danger", type: "button", text: "Undo import"});
     const no = el("button", {class: "btn small", type: "button", text: "Keep it"});
     const box = el("div", {class: "confirm", role: "group", "aria-label": "Confirm undo"},
-      el("p", {text: `Remove everything this ${e.label} import brought: ${counts(e).toLowerCase()}` +
+      el("p", {text: e.removal ? `Put back what this took out: ${counts(e).toLowerCase()}.` :
+        `Remove everything this ${e.label} import brought: ${counts(e).toLowerCase()}` +
         (e.upload != null ? ", and the files uploaded for it" : "") + ". This can't be reversed; you can import the files again." +
         (e.origin === "dataset" ? " What it replaced when it was loaded won't come back." : "")}),
       el("div", {class: "row"}, yes, no));
@@ -82,7 +84,7 @@
       say("Undoing…");
       try {
         await call(`profiles/${PID}/imports/${e.id}/undo`, "POST");
-        say(`Undone: the ${e.label} import's records are gone from the profile.`);
+        say(e.removal ? "Undone: the records it took out are back." : `Undone: the ${e.label} import's records are gone from the profile.`);
         await load();
       } catch (err) {
         say("Couldn't undo it: " + err.message, true);
