@@ -310,7 +310,7 @@ class Keys(unittest.TestCase):
         for name in sorted(os.listdir(FIX)):
             for case in sorted(os.listdir(os.path.join(FIX, name))):
                 root = os.path.join(FIX, name, case)
-                if not os.path.isdir(root):
+                if not os.path.isdir(root) or case.startswith(("_", ".")):   # __pycache__ beside a fixture script
                     continue
                 with self.subTest(f"{name}/{case}"):
                     files = reg.files_in(root)

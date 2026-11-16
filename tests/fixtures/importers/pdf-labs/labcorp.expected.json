@@ -1,0 +1,762 @@
+{
+ "data": {
+  "events": [
+   {
+    "id": 1,
+    "t": "2026-05-02T07:45:00-05:00",
+    "k": "document",
+    "title": "Labcorp lab report",
+    "sub": "P SALAZAR",
+    "key": "pdf-labs:file:2c63a886386c60ca",
+    "src": "Labcorp"
+   },
+   {
+    "id": 2,
+    "t": "2026-05-02T07:45:00-05:00",
+    "k": "labitem",
+    "title": "CBC With Differential/Platelet",
+    "sub": "Labcorp · P SALAZAR",
+    "key": "pdf-labs:labcorp:126-418-2290-0|cbc with differential/platelet",
+    "abn": 1,
+    "hidden": 1,
+    "src": "Labcorp"
+   },
+   {
+    "id": 3,
+    "t": "2026-05-02T07:45:00-05:00",
+    "k": "labitem",
+    "title": "Comp. Metabolic Panel (14)",
+    "sub": "Labcorp · P SALAZAR",
+    "key": "pdf-labs:labcorp:126-418-2290-0|comp. metabolic panel (14)",
+    "abn": 1,
+    "hidden": 1,
+    "src": "Labcorp"
+   },
+   {
+    "id": 4,
+    "t": "2026-05-02T07:45:00-05:00",
+    "k": "labitem",
+    "title": "Hemoglobin A1c",
+    "sub": "Labcorp · P SALAZAR",
+    "key": "pdf-labs:labcorp:126-418-2290-0|hemoglobin a1c",
+    "abn": 1,
+    "hidden": 1,
+    "src": "Labcorp"
+   },
+   {
+    "id": 5,
+    "t": "2026-05-02T07:45:00-05:00",
+    "k": "labitem",
+    "title": "Hepatitis C Virus Ab",
+    "sub": "Labcorp · P SALAZAR",
+    "key": "pdf-labs:labcorp:126-418-2290-0|hepatitis c virus ab",
+    "hidden": 1,
+    "src": "Labcorp"
+   },
+   {
+    "id": 6,
+    "t": "2026-05-02T07:45:00-05:00",
+    "k": "labitem",
+    "title": "Lipid Panel",
+    "sub": "Labcorp · P SALAZAR",
+    "key": "pdf-labs:labcorp:126-418-2290-0|lipid panel",
+    "abn": 2,
+    "hidden": 1,
+    "src": "Labcorp"
+   },
+   {
+    "id": 7,
+    "t": "2026-05-02T07:45:00-05:00",
+    "k": "labitem",
+    "title": "Vitamin D, 25-Hydroxy",
+    "sub": "Labcorp · P SALAZAR",
+    "key": "pdf-labs:labcorp:126-418-2290-0|vitamin d, 25-hydroxy",
+    "abn": 1,
+    "hidden": 1,
+    "src": "Labcorp"
+   },
+   {
+    "id": 8,
+    "t": "2026-05-02T07:45:00-05:00",
+    "k": "lab",
+    "title": "21 lab results",
+    "sub": "CBC With Differential/Platelet, Comp. Metabolic Panel (14), Hemoglobin A1c, Hepatitis C Virus Ab, Lipid Panel, Vitamin D, 25-Hydroxy",
+    "key": "pdf-labs:labday:2026-05-02",
+    "abn": 6,
+    "src": "Labcorp"
+   }
+  ],
+  "details": {
+   "1": {
+    "type": "file",
+    "url": "labcorp-report.pdf",
+    "ext": "pdf"
+   },
+   "2": {
+    "type": "result",
+    "order": "CBC With Differential/Platelet",
+    "name": "CBC With Differential/Platelet",
+    "collected": "2026-05-02 07:45",
+    "provider": "P SALAZAR",
+    "lab": "Labcorp",
+    "specimen": "126-418-2290-0",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "WBC",
+      "7.2",
+      "x10E3/uL",
+      "3.4-10.8",
+      ""
+     ],
+     [
+      "RBC",
+      "4.09",
+      "x10E6/uL",
+      "4.14-5.80",
+      "Low"
+     ],
+     [
+      "Hemoglobin",
+      "13.9",
+      "g/dL",
+      "13.0-17.7",
+      ""
+     ],
+     [
+      "Hematocrit",
+      "41.5",
+      "%",
+      "37.5-51.0",
+      ""
+     ],
+     [
+      "MCV",
+      "90",
+      "fL",
+      "79-97",
+      ""
+     ],
+     [
+      "Platelets",
+      "212",
+      "x10E3/uL",
+      "150-450",
+      ""
+     ],
+     [
+      "Neutrophils",
+      "58",
+      "%",
+      "Not Estab.",
+      ""
+     ],
+     [
+      "Neutrophils (Absolute)",
+      "4.2",
+      "x10E3/uL",
+      "1.4-7.0",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Labcorp"
+   },
+   "3": {
+    "type": "result",
+    "order": "Comp. Metabolic Panel (14)",
+    "name": "Comp. Metabolic Panel (14)",
+    "collected": "2026-05-02 07:45",
+    "provider": "P SALAZAR",
+    "lab": "Labcorp",
+    "specimen": "126-418-2290-0",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "Glucose",
+      "104",
+      "mg/dL",
+      "70-99",
+      "High"
+     ],
+     [
+      "BUN",
+      "16",
+      "mg/dL",
+      "6-24",
+      ""
+     ],
+     [
+      "Creatinine",
+      "1.01",
+      "mg/dL",
+      "0.76-1.27",
+      ""
+     ],
+     [
+      "eGFR",
+      "92",
+      "mL/min/1.73",
+      ">59",
+      ""
+     ],
+     [
+      "Sodium",
+      "139",
+      "mmol/L",
+      "134-144",
+      ""
+     ],
+     [
+      "Potassium",
+      "4.6",
+      "mmol/L",
+      "3.5-5.2",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Labcorp"
+   },
+   "4": {
+    "type": "result",
+    "order": "Hemoglobin A1c",
+    "name": "Hemoglobin A1c",
+    "collected": "2026-05-02 07:45",
+    "provider": "P SALAZAR",
+    "lab": "Labcorp",
+    "specimen": "126-418-2290-0",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "Hemoglobin A1c",
+      "5.9",
+      "%",
+      "4.8-5.6",
+      "High"
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Labcorp"
+   },
+   "5": {
+    "type": "result",
+    "order": "Hepatitis C Virus Ab",
+    "name": "Hepatitis C Virus Ab",
+    "collected": "2026-05-02 07:45",
+    "provider": "P SALAZAR",
+    "lab": "Labcorp",
+    "specimen": "126-418-2290-0",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "Hep C Virus Ab",
+      "Non Reactive",
+      "",
+      "Non Reactive",
+      ""
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Labcorp"
+   },
+   "6": {
+    "type": "result",
+    "order": "Lipid Panel",
+    "name": "Lipid Panel",
+    "collected": "2026-05-02 07:45",
+    "provider": "P SALAZAR",
+    "lab": "Labcorp",
+    "specimen": "126-418-2290-0",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "Cholesterol, Total",
+      "188",
+      "mg/dL",
+      "100-199",
+      ""
+     ],
+     [
+      "Triglycerides",
+      "162",
+      "mg/dL",
+      "0-149",
+      "High"
+     ],
+     [
+      "HDL Cholesterol",
+      "44",
+      "mg/dL",
+      ">39",
+      ""
+     ],
+     [
+      "LDL Chol Calc (NIH)",
+      "114",
+      "mg/dL",
+      "0-99",
+      "High"
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Labcorp"
+   },
+   "7": {
+    "type": "result",
+    "order": "Vitamin D, 25-Hydroxy",
+    "name": "Vitamin D, 25-Hydroxy",
+    "collected": "2026-05-02 07:45",
+    "provider": "P SALAZAR",
+    "lab": "Labcorp",
+    "specimen": "126-418-2290-0",
+    "status": "Final",
+    "dx": [],
+    "rows": [
+     [
+      "Vitamin D, 25-Hydroxy",
+      "18.2",
+      "ng/mL",
+      "30.0-100.0",
+      "Low"
+     ]
+    ],
+    "report": [],
+    "comments": [],
+    "src": "Labcorp"
+   },
+   "8": {
+    "type": "labday",
+    "ids": [
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   }
+  },
+  "labs": [
+   {
+    "name": "Automated Abs Neutrophil Cnt",
+    "key": "loinc:751-8",
+    "unit": "x10E3/uL",
+    "panel": "CBC With Differential/Platelet",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      4.2,
+      1.4,
+      7.0,
+      "",
+      "4.2",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "751-8"
+   },
+   {
+    "name": "BUN",
+    "key": "loinc:3094-0",
+    "unit": "mg/dL",
+    "panel": "Comp. Metabolic Panel (14)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      16,
+      6,
+      24,
+      "",
+      "16",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "3094-0"
+   },
+   {
+    "name": "Cholesterol, Total",
+    "key": "pdf-labs:cholesterol, total|mg/dL",
+    "unit": "mg/dL",
+    "panel": "Lipid Panel",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      188,
+      100,
+      199,
+      "",
+      "188",
+      "Labcorp"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Creatinine",
+    "key": "loinc:2160-0",
+    "unit": "mg/dL",
+    "panel": "Comp. Metabolic Panel (14)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      1.01,
+      0.76,
+      1.27,
+      "",
+      "1.01",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2160-0"
+   },
+   {
+    "name": "Glucose, Blood",
+    "key": "loinc:2345-7",
+    "unit": "mg/dL",
+    "panel": "Comp. Metabolic Panel (14)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      104,
+      70,
+      99,
+      "H",
+      "104",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2345-7"
+   },
+   {
+    "name": "HDL Cholesterol",
+    "key": "pdf-labs:hdl cholesterol|mg/dL",
+    "unit": "mg/dL",
+    "panel": "Lipid Panel",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      44,
+      39,
+      null,
+      "",
+      "44",
+      "Labcorp"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Hematocrit",
+    "key": "loinc:4544-3",
+    "unit": "%",
+    "panel": "CBC With Differential/Platelet",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      41.5,
+      37.5,
+      51.0,
+      "",
+      "41.5",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "4544-3"
+   },
+   {
+    "name": "Hemoglobin",
+    "key": "loinc:718-7",
+    "unit": "g/dL",
+    "panel": "CBC With Differential/Platelet",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      13.9,
+      13.0,
+      17.7,
+      "",
+      "13.9",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "718-7"
+   },
+   {
+    "name": "Hemoglobin A1c",
+    "key": "pdf-labs:hemoglobin a1c|%",
+    "unit": "%",
+    "panel": "Hemoglobin A1c",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      5.9,
+      4.8,
+      5.6,
+      "H",
+      "5.9",
+      "Labcorp"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "LDL Chol Calc (NIH)",
+    "key": "pdf-labs:ldl chol calc (nih)|mg/dL",
+    "unit": "mg/dL",
+    "panel": "Lipid Panel",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      114,
+      0,
+      99,
+      "H",
+      "114",
+      "Labcorp"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "MCV",
+    "key": "loinc:787-2",
+    "unit": "fL",
+    "panel": "CBC With Differential/Platelet",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      90,
+      79,
+      97,
+      "",
+      "90",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "787-2"
+   },
+   {
+    "name": "Neutrophils",
+    "key": "pdf-labs:neutrophils|%",
+    "unit": "%",
+    "panel": "CBC With Differential/Platelet",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      58,
+      null,
+      null,
+      "",
+      "58",
+      "Labcorp"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Platelet Count",
+    "key": "loinc:777-3",
+    "unit": "x10E3/uL",
+    "panel": "CBC With Differential/Platelet",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      212,
+      150,
+      450,
+      "",
+      "212",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "777-3"
+   },
+   {
+    "name": "Potassium, Blood",
+    "key": "loinc:2823-3",
+    "unit": "mmol/L",
+    "panel": "Comp. Metabolic Panel (14)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      4.6,
+      3.5,
+      5.2,
+      "",
+      "4.6",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2823-3"
+   },
+   {
+    "name": "RBC",
+    "key": "loinc:789-8",
+    "unit": "x10E6/uL",
+    "panel": "CBC With Differential/Platelet",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      4.09,
+      4.14,
+      5.8,
+      "L",
+      "4.09",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "789-8"
+   },
+   {
+    "name": "Sodium, Blood",
+    "key": "loinc:2951-2",
+    "unit": "mmol/L",
+    "panel": "Comp. Metabolic Panel (14)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      139,
+      134,
+      144,
+      "",
+      "139",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2951-2"
+   },
+   {
+    "name": "Triglycerides",
+    "key": "loinc:2571-8",
+    "unit": "mg/dL",
+    "panel": "Lipid Panel",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      162,
+      0,
+      149,
+      "H",
+      "162",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2571-8"
+   },
+   {
+    "name": "Vitamin D, 25-Hydroxy",
+    "key": "pdf-labs:vitamin d, 25-hydroxy|ng/mL",
+    "unit": "ng/mL",
+    "panel": "Vitamin D, 25-Hydroxy",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      18.2,
+      30.0,
+      100.0,
+      "L",
+      "18.2",
+      "Labcorp"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "WBC",
+    "key": "loinc:6690-2",
+    "unit": "x10E3/uL",
+    "panel": "CBC With Differential/Platelet",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      7.2,
+      3.4,
+      10.8,
+      "",
+      "7.2",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "6690-2"
+   },
+   {
+    "name": "eGFR",
+    "key": "pdf-labs:egfr|mL/min/1.73",
+    "unit": "mL/min/1.73",
+    "panel": "Comp. Metabolic Panel (14)",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      92,
+      59,
+      null,
+      "",
+      "92",
+      "Labcorp"
+     ]
+    ],
+    "txt": []
+   },
+   {
+    "name": "Hep C Virus Ab",
+    "key": "pdf-labs:hep c virus ab|",
+    "unit": "",
+    "panel": "Hepatitis C Virus Ab",
+    "n": 0,
+    "pts": [],
+    "txt": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      "Non Reactive"
+     ]
+    ]
+   }
+  ],
+  "costs": []
+ },
+ "warnings": []
+}

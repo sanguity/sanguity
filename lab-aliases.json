@@ -38,7 +38,8 @@
     "ANC",
     "neut absolute",
     "neutrophils abs",
-    "Neutrophils Absolute (External)"
+    "Neutrophils Absolute (External)",
+    "Neutrophils (Absolute)"
    ]
   },
   "Bands Relative": {
@@ -62,7 +63,9 @@
   },
   "BUN": {
    "loinc": "3094-0",
-   "aliases": []
+   "aliases": [
+    "UREA NITROGEN (BUN)"
+   ]
   },
   "Calcium": {
    "loinc": "17861-6",
@@ -97,7 +100,9 @@
   },
   "CO2": {
    "loinc": "2028-9",
-   "aliases": []
+   "aliases": [
+    "CARBON DIOXIDE"
+   ]
   },
   "Creatinine": {
    "loinc": "2160-0",
@@ -264,7 +269,8 @@
   "Platelet Count": {
    "loinc": "777-3",
    "aliases": [
-    "PLAT"
+    "PLAT",
+    "Platelets"
    ]
   },
   "Potassium, Blood": {
@@ -284,7 +290,9 @@
   },
   "RBC": {
    "loinc": "789-8",
-   "aliases": []
+   "aliases": [
+    "RED BLOOD CELL COUNT"
+   ]
   },
   "Segs Relative": {
    "aliases": [
@@ -310,7 +318,8 @@
    "loinc": "2885-2",
    "aliases": [
     "Protein, Total (External)",
-    "TOTAL PROTEIN"
+    "TOTAL PROTEIN",
+    "PROTEIN, TOTAL"
    ]
   },
   "Triglycerides": {
@@ -321,7 +330,9 @@
   },
   "WBC": {
    "loinc": "6690-2",
-   "aliases": []
+   "aliases": [
+    "WHITE BLOOD CELL COUNT"
+   ]
   }
  }
 }
