@@ -19,7 +19,8 @@ def _files():
 FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "id", "totp_secret"), ("users", "id", "totp_pending"),
           ("imports", "id", "meta"), ("events", "id", "body"), ("events", "id", "detail"), ("events", "id", "cost"),
           ("series", "id", "body"), ("results", "id", "body"), ("uploads", "id", "manifest"), ("upload_files", "rowid", "path"),
-          ("jobs", "id", "message"), ("jobs", "id", "warnings"), ("jobs", "id", "summary"))
+          ("jobs", "id", "message"), ("jobs", "id", "warnings"), ("jobs", "id", "summary"),
+          ("import_undos", "id", "entry"))
 
 
 def anything_encrypted(db):

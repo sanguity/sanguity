@@ -6,18 +6,27 @@ pts: [[day, value]]}], "exercise": [{start, end, name, kind, minutes, key?}], ..
 overlaps an earlier one replaces those days and workouts instead of adding to them.
 
 Where it is kept, in the profile's own folder (so encryption at rest, deletion and backups cover it):
-  <profile_dir>/watch/daily.json         an import into a profile with no watch file of its own; profiles.watch_file
-                                         is pointed at it
-  <profile_dir>/watch/apple-health.json  an import into a profile that already reads another file (a receiver's),
-                                         kept beside it and merged in when read, the receiver winning
-Both are sealed with the app's key (crypto.write_file).
+  <profile_dir>/watch/imports/<import id>.json   each Apple Health import's own summary, as it came in (issue #24),
+                                                 so undoing that import removes exactly what it brought
+  <profile_dir>/watch/imports/legacy.json        what was imported before imports were kept apart (moved there at
+                                                 start-up by migrate), and anything saved without an import id
+                                                 (server.manage import-apple-health); it can't be undone
+  <profile_dir>/watch/daily.json         the imports merged, for a profile with no watch file of its own;
+                                         profiles.watch_file is pointed at it (and back to none when nothing is left)
+  <profile_dir>/watch/apple-health.json  the imports merged, for a profile that already reads another file (a
+                                         receiver's), kept beside it and merged in when read, the receiver winning
+The merged file is rebuilt (rebuild) from the imports' own files, legacy first and then by import id, a later import
+winning per day and workout as it did when it came in; only files whose import still exists count. All are sealed
+with the app's key (crypto.write_file).
 """
-import json, os
+import json, os, secrets
 from datetime import datetime, timezone
 
 from . import crypto, profiles as prof
 
 SIDE = "apple-health.json"
+LEGACY = "legacy.json"   # imported before imports were kept apart, or with no import id: not undoable
+UNDOING = ".undoing-"     # a summary set aside by an undo that has not committed yet (forget_import)
 
 
 def own_path(pid):
@@ -26,6 +35,15 @@ def own_path(pid):
 
 def side_path(pid):
     return os.path.join(prof.profile_dir(pid), "watch", SIDE)
+
+
+def imports_dir(pid):
+    return os.path.join(prof.profile_dir(pid), "watch", "imports")
+
+
+def layer_path(pid, import_id=None):
+    """Where one import's own summary is kept (import_id None: the legacy layer)."""
+    return os.path.join(imports_dir(pid), LEGACY if import_id is None else f"{int(import_id)}.json")
 
 
 def _same(a, b):
@@ -77,21 +95,136 @@ def merge(low, high):
     return out
 
 
-def save_import(db, pid, summary):
-    """Store an imported summary for the profile, replacing an earlier import's overlapping days and workouts.
-    Returns {"path", "days", "workouts"} (days with at least one point, in this summary)."""
+def _write(path, obj):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    crypto.write_file(path, json.dumps(obj, separators=(",", ":")).encode())
+
+
+def _remove(path):
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
+def _target(db, pid):
+    """(where the merged imports go, the profile's watch_file now)."""
     r = db.execute("SELECT watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
     if r is None:
         raise ValueError(f"No profile {pid}.")
     current, own = r["watch_file"], own_path(pid)
-    target = own if not current or _same(current, own) else side_path(pid)
-    merged = merge(_read(target), summary)
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    crypto.write_file(target, json.dumps(merged, separators=(",", ":")).encode())
+    return (own if not current or _same(current, own) else side_path(pid)), current
+
+
+def layers(db, pid):
+    """The ids of the imports that have a summary of their own, oldest first (only those whose import still exists)."""
+    d, ids = imports_dir(pid), []
+    for n in os.listdir(d) if os.path.isdir(d) else ():
+        if n.endswith(".json") and n[:-5].isdigit():
+            ids.append(int(n[:-5]))
+    if not ids:
+        return []
+    live = {r[0] for r in db.execute("SELECT id FROM imports WHERE profile_id=? AND id IN (SELECT value FROM json_each(?))",
+                                     (pid, json.dumps(ids)))}
+    return sorted(i for i in ids if i in live)
+
+
+def rebuild(db, pid):
+    """Write the merged imports file again from the imports' own summaries; when nothing is left, remove it (and point
+    watch_file back at none, if it was pointed at it). Returns the merged summary, or None."""
+    target, current = _target(db, pid)
+    merged = _read(layer_path(pid))
+    for iid in layers(db, pid):
+        merged = merge(merged, _read(layer_path(pid, iid)))
+    own = own_path(pid)
+    if merged is None:
+        _remove(target)
+        if target == own and current and _same(current, own):
+            db.execute("UPDATE profiles SET watch_file=NULL WHERE id=?", (pid,))
+        return None
+    _write(target, merged)
     if target == own:
         db.execute("UPDATE profiles SET watch_file=? WHERE id=? AND watch_file IS NULL", (own, pid))
+    return merged
+
+
+def save_import(db, pid, summary, import_id=None):
+    """Store an imported summary for the profile, replacing an earlier import's overlapping days and workouts. With
+    import_id (the records import it came with, jobs.py) it is kept as that import's own, so undoing the import takes
+    it away again; without, it joins the legacy layer, which can't be undone. Returns {"path", "days", "workouts"}
+    (days with at least one point, in this summary)."""
+    target, _ = _target(db, pid)
+    _migrate_profile(db, pid)
+    if import_id is None:
+        _write(layer_path(pid), merge(_read(layer_path(pid)), summary))
+    else:
+        _write(layer_path(pid, import_id), summary)
+    rebuild(db, pid)
     days = {d for m in summary.get("metrics") or [] for d, _ in m.get("pts") or []}
     return {"path": target, "days": len(days), "workouts": len(summary.get("exercise") or [])}
+
+
+def has_import(pid, import_id):
+    """Whether that import brought watch data of its own."""
+    return os.path.isfile(layer_path(pid, import_id))
+
+
+def forget_import(db, pid, import_id):
+    """Take an import's watch data away, inside the undo's transaction and after its import row is deleted: its own
+    summary is set aside and the merged file rebuilt without it. Returns None when it brought none, else a function
+    to call once the transaction ends: finish(True) after the commit removes what was set aside; finish(False) after
+    a rollback puts it back and rebuilds again."""
+    path = layer_path(pid, import_id)
+    if not os.path.isfile(path):
+        return None
+    aside = os.path.join(imports_dir(pid), f"{UNDOING}{int(import_id)}-{secrets.token_hex(4)}")
+    os.replace(path, aside)
+    try:
+        rebuild(db, pid)
+    except BaseException:
+        os.replace(aside, path)
+        raise
+
+    def finish(committed):
+        if committed:
+            _remove(aside)
+        else:
+            os.replace(aside, path)
+            rebuild(db, pid)
+    return finish
+
+
+def _migrate_profile(db, pid):
+    """Before imports were kept apart the merged file was their only copy: it becomes the legacy layer, once."""
+    if os.path.isdir(imports_dir(pid)):
+        return False
+    target, _ = _target(db, pid)
+    have = _read(target)
+    if have is None:
+        return False
+    _write(layer_path(pid), have)
+    return True
+
+
+def migrate(db):
+    """At start-up: move each profile's imported watch file from before #24 into its legacy layer, and drop the
+    summaries of imports that no longer exist (one whose saving failed after its file was written, an undo stopped
+    before it tidied up), rebuilding those profiles' merged files. Returns how many profiles were migrated."""
+    n = 0
+    for r in db.execute("SELECT id FROM profiles ORDER BY id").fetchall():
+        pid = r["id"]
+        n += _migrate_profile(db, pid)
+        d = imports_dir(pid)
+        if not os.path.isdir(d):
+            continue
+        live, stale = set(layers(db, pid)), False
+        for name in os.listdir(d):
+            if name.startswith(UNDOING) or (name.endswith(".json") and name[:-5].isdigit() and int(name[:-5]) not in live):
+                _remove(os.path.join(d, name))
+                stale = True
+        if stale:
+            rebuild(db, pid)
+    return n
 
 
 def load(db, pid):

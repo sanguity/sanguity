@@ -237,13 +237,14 @@ def _save(db, j):
     who = db.execute("SELECT id, username FROM users WHERE id=?", (who_id,)).fetchone() if who_id else None
     with dbm.transaction(db):
         iid = None
-        if preview.adds_anything(new):   # all duplicates: nothing to add, not even an empty import
+        # all duplicates: nothing to add, not even an empty import; but watch data needs an import to be undone by
+        if preview.adds_anything(new) or watch:
             keepdocs, n = prof.index_documents(db, pid, new["details"], stored)
             summary["counts"]["documents"] = n
             iid = records.store(db, pid, new, "upload", fmt=name)
             prof.link_documents(db, iid, keepdocs)
         if watch:   # last, so a failure before it leaves no file behind
-            saved = watch_store.save_import(db, pid, watch)
+            saved = watch_store.save_import(db, pid, watch, import_id=iid)
             summary["counts"].update(watch_days=saved["days"], workouts=saved["workouts"])
         activity.log(db, "import", who, pid, {"importer": name, "counts": summary["counts"], "job": jid,
                                               "skipped": summary["skipped"], "kept": len(keep)},

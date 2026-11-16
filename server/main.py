@@ -62,6 +62,8 @@ async def lifespan(app):
                 print(f"Encrypted {sealed['files']} files and {sealed['fields']} database fields that weren't yet.", flush=True)
             if (moved := prof.migrate_files(db)):
                 print(f"Moved the records of {moved} profile(s) into the database.", flush=True)
+            if (kept := watch_store.migrate(db)):
+                print(f"Kept the imported watch data of {kept} profile(s) as an import that can't be undone.", flush=True)
             pid = prof.bootstrap(db)
             if pid:
                 print(f"Loaded the existing records into profile {pid} (\"My records\").", flush=True)
@@ -1260,6 +1262,7 @@ def healthz():
 
 app.include_router(__import__("server.routes_uploads", fromlist=["router"]).router)   # uploads (#19): uses the dependencies above
 app.include_router(__import__("server.routes_jobs", fromlist=["router"]).router)      # importing them (#20)
+app.include_router(__import__("server.routes_imports", fromlist=["router"]).router)   # import history and undo (#24)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here

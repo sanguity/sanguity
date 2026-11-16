@@ -20,7 +20,7 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_preview.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_preview.py tests/test_import_history.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py
 
       - name: Shell scripts parse
         run: bash -n docker/dev-stack.sh
@@ -76,6 +76,9 @@ jobs:
 
       - name: Imported watch data (stored per profile, merged with the receiver's, replaced by identity, export)
         run: python tests/test_watch_store.py
+
+      - name: Import history and undo (restores records, watch data and costs exactly; roles; raw files; by origin)
+        run: python tests/test_import_history.py
 
       # tests/test_importers.py (registry, every importer's fixtures, build.py output unchanged) and each importer's own
       # tests/test_importer_<name>.py: a new importer's tests run here without editing this file
