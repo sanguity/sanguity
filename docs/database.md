@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 15**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 16**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -216,6 +216,7 @@ erDiagram
         text warnings "🔒 JSON"
         text summary "🔒 JSON: counts, duplicates, range"
         text keep "duplicates saved anyway"
+        text labs "🔒 JSON: lab-name matches chosen at the preview"
         int import_id FK
         int created
         int started
@@ -244,6 +245,33 @@ erDiagram
     }
 ```
 
+## Lab-name matches (install-wide)
+
+When an import's preview finds a lab name that `lab-aliases.json` doesn't know, the person importing matches it to
+an existing series or keeps it as its own (`server/labmap.py`). The choice is remembered in **labmaps** and applied to
+later imports on every profile of the install, so it belongs to no profile. Rows are looked up by a keyed hash of the
+importer, the name as reported, its unit and LOINC code; the name and the series it goes to are encrypted. Only admins
+can change or remove one.
+
+```mermaid
+erDiagram
+    users |o--o{ labmaps : "created or changed"
+
+    labmaps {
+        int id PK
+        text lookup "HMAC of importer, name, unit, LOINC (unique)"
+        text importer "manual: hand entry"
+        text source "🔒 JSON: name, unit, LOINC as reported"
+        text target "🔒 series name; NULL: keep as its own"
+        int created_by FK
+        text created_name "the username then"
+        int created
+        int changed_by FK
+        text changed_name
+        int changed
+    }
+```
+
 ## What is encrypted
 
 | Table | Encrypted columns |
@@ -254,9 +282,10 @@ erDiagram
 | `documents` | `path` |
 | `uploads` | `manifest` |
 | `upload_files` | `path` |
-| `jobs` | `message`, `warnings`, `summary` |
+| `jobs` | `message`, `warnings`, `summary`, `labs` |
 | `import_undos` | `entry` |
 | `edits` | `target_key`, `other_key`, `value` |
+| `labmaps` | `source`, `target` |
 | `activity` | `detail` |
 | `users` | `totp_secret`, `totp_pending` |
 | `meta` | the pepper |
@@ -273,4 +302,4 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 | A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, undo history, its activity | the original exports |
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
-| An account | sessions, devices, passkeys, recovery codes, memberships | activity, uploads and jobs it made (their links become `NULL`) |
+| An account | sessions, devices, passkeys, recovery codes, memberships | activity, uploads, jobs and lab-name matches it made (their links become `NULL`) |
