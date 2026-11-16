@@ -37,6 +37,9 @@ function spark(s, pts, {w = 200, h = 34, band = true} = {}) {
   return svg;
 }
 function goSeries(name, days = 182) { state.sel.add(name); const end = state.max + DAY; setRange(end - days * DAY, end); switchTab("labs"); }
+// beside every out-of-range colouring (Trends and the heatmap have the same line in index.html)
+const RANGE_NOTE = "Out-of-range values are flagged against the reference ranges in your own lab reports. This isn't medical advice.";
+
 function renderOverview() {
   const box = $("#view-overview"); box.replaceChildren();
   const labDays = EV.filter(e => e.k === "lab").map(e => e.ts);
@@ -56,7 +59,7 @@ function renderOverview() {
       el("span", {class: "delta", text: (d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")} since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : "")}),
       spark(s, recent)));
   }
-  box.append(tiles);
+  box.append(tiles, el("p", {class: "range-note", text: RANGE_NOTE}));
   const cols = el("div", {class: "ov-cols"}), left = el("div", {}), right = el("div", {});
   cols.append(left, right); box.append(cols);
   // out of range at latest draw, with how long

@@ -278,11 +278,16 @@ const WHAT = {
     : `imported records (${d.documents} documents)`,
   reload: () => "loaded the latest records",
   export: () => "exported everything",
-  upload: d => `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
+  upload: d => d.source === "smart-health-link" ? `imported a SMART Health Link from ${d.host}` : `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
+  outside: d => `had Sanguity contact ${d.host} (${d.purpose})`,
   discard: () => "cancelled an import at its preview",
   undo: d => `undid an import${d.label ? ` (${d.label})` : ""}, removing what it brought`,
   edit: d => (d.undone ? "undid an edit of" : ({hide: "hid", rename: "renamed", date: "changed the date of", not_stay: "marked as not a hospital stay",
     merge: "merged another event into"}[d.action] || "edited")) + ` “${d.title || "an event"}”` + (d.to && !d.undone ? ` to “${d.to}”` : ""),
+  settings: d => d.section ? `reset the ${d.label || d.section} settings to their defaults`
+    : d.reset ? `reset “${d.label || d.setting}” to its default` : `changed the setting “${d.label || d.setting}”`,
+  "settings.user": d => d.section ? `reset their own ${d.label || d.section} settings` : `changed their own setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
+  "settings.install": d => d.section ? `reset the server's ${d.label || d.section} settings` : `changed the server setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
   setup: () => "set up Sanguity with the first account",
   password: () => "changed their password",
   "account.create": d => `created the account ${d.username}${d.admin ? " (admin)" : ""}`,
@@ -309,7 +314,8 @@ const WHAT = {
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
-  ["export", "Exports"], ["upload", "Uploads"], ["discard", "Cancelled imports"], ["undo", "Undone imports"], ["edit", "Edits"]];
+  ["export", "Exports"], ["upload", "Uploads"], ["discard", "Cancelled imports"], ["undo", "Undone imports"], ["edit", "Edits"],
+  ["outside", "Outside connections"], ["settings", "Settings"]];
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},

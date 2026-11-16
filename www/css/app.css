@@ -69,6 +69,9 @@ header .meta{color:var(--muted);font-size:12px}
 .chip[aria-pressed="false"] .key{background:var(--muted)!important}
 .search{border:1px solid var(--ring);background:var(--raised);border-radius:8px;padding:5px 10px;min-width:200px}
 main{padding:16px 20px 60px;max-width:1500px;margin:0 auto}
+footer.notice{max-width:1500px;margin:0 auto;padding:12px 20px 24px;border-top:1px solid var(--grid);color:var(--ink2);font-size:12px;box-sizing:border-box}
+.range-note{color:var(--ink2);font-size:12px;margin:6px 0 8px}
+.tiles + .range-note{margin:-8px 0 18px}
 .card{background:var(--surface);border:1px solid var(--ring);border-radius:12px;padding:14px 16px;margin-bottom:16px}
 .card h2{font-size:14px;margin:0 0 2px;font-weight:650}
 .card .hint{color:var(--muted);font-size:12px;margin:0 0 8px}
@@ -218,6 +221,12 @@ table.data tr.link:hover td{background:var(--hover)}
 .edits .edit-form label{display:flex;flex-direction:column;gap:4px;margin:6px 0 8px;color:var(--ink2)}
 .edits .edit-form input,.edits .edit-form select{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:6px 9px;max-width:100%;min-width:0;font:inherit}
 .edits .edit-msg:empty{display:none}
+/* where a record came from (sources.js) */
+.source{margin:12px 0 0;font-size:12.5px;color:var(--ink2);overflow-wrap:anywhere}
+.source b{color:var(--muted);font-weight:600}
+.source a{color:var(--accent)}
+.source .tag{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;color:var(--ink2);background:var(--hover);border-radius:999px;padding:1px 8px;vertical-align:1px}
+.chart>.source{margin:8px 0 6px}
 .kv{display:grid;grid-template-columns:110px 1fr;gap:3px 12px;font-size:13px;margin-bottom:12px}
 .kv dt{color:var(--muted)}
 .kv dd{margin:0}
@@ -360,6 +369,17 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .import-job .imp-labs .why{color:var(--muted);font-size:12px}
 .import-job .imp-labs .before{font-size:12px;font-weight:600}
 .imp .off{display:none !important}
+/* a SMART Health Link pasted or scanned (import-shl.js) */
+.imp .shl-text{display:grid;gap:4px;margin:6px 0}
+.imp .shl-text textarea{width:100%;box-sizing:border-box;font:13px/1.4 ui-monospace,monospace;padding:6px 8px;overflow-wrap:anywhere}
+.imp .shl-video{display:block;width:100%;max-width:420px;border-radius:10px;margin:8px 0;background:#000}
+.imp .shl-about{border-top:1px solid var(--grid);margin-top:10px;padding-top:6px}
+.imp .shl-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:6px 0;font-size:14px}
+.imp .shl-facts dt{color:var(--muted)}
+.imp .shl-facts dd{margin:0;overflow-wrap:anywhere}
+.imp .shl-pass{display:grid;gap:4px;max-width:260px;margin:8px 0}
+.imp .shl-card{font-size:13px;margin:8px 0}
+.imp .shl-card .bad{color:var(--crit)}
 .imp .btn.primary:disabled{color:var(--ink);border-color:var(--ring)}   /* not white on white */
 /* results typed in (import-manual.js): one grid row per result, captions on the first row only, all on a phone */
 .imp .man-rows{display:grid;gap:2px;margin:10px 0 4px}
@@ -375,6 +395,30 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .imp .man-check.bad{color:var(--crit)}
 .imp .man-check .abn{color:var(--crit);font-weight:600}
 .imp .man-row input[aria-invalid="true"]{border-color:var(--crit)}
+.imp .man-check .dup{color:var(--ink2);font-weight:600}
+/* other records typed in (import-records.js): one form per record, its fields flowing into as many columns as fit */
+.imp .man-pick{margin:12px 0 4px;flex-wrap:wrap;align-items:end}
+.imp .man-pick label{min-width:0;max-width:100%}
+.imp .man-items{display:grid;gap:10px;margin:8px 0}
+.imp .man-items:empty{display:none}
+.imp .man-item{position:relative;border:1px solid var(--grid);border-radius:10px;padding:8px 12px 10px;margin:0;min-width:0}
+.imp .man-item legend{font-size:13px;font-weight:650;padding:0 4px}
+.imp .rec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(9.5em,100%),1fr));gap:6px 8px;padding-right:1.6em}
+.imp .rec-f{display:flex;flex-direction:column;font-size:11px;gap:2px;min-width:0}
+.imp .rec-f input,.imp .rec-f select,.imp .rec-f textarea{width:100%;min-width:0;padding:5px 6px;font:inherit;font-size:13px;box-sizing:border-box}
+.imp .rec-f textarea{resize:vertical;min-height:2.4em}
+.imp .rec-long,.imp .rec-wide{grid-column:1 / -1}
+.imp .rec-f [aria-invalid="true"]{border-color:var(--crit)}
+.imp .man-err{color:var(--crit);font-size:11px}
+.imp .man-err:empty{display:none}
+.imp .man-file{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.imp .man-file:empty{display:none}
+.imp .man-item .del{position:absolute;top:6px;right:6px;border:0;background:none;cursor:pointer;color:var(--muted);font-size:15px;padding:4px 6px;border-radius:6px}
+.imp .man-item .del:hover{color:var(--crit);background:var(--hover)}
+.imp .man-item .man-check{margin-top:6px;overflow-wrap:anywhere}
+.imp .man-h{font-size:14px;margin:16px 0 2px}
+.imp .man-save{flex-wrap:wrap;gap:8px 12px;margin-top:10px}
+.imp .man-keep{display:flex;align-items:center;gap:6px;font-size:13px}
 @media (max-width:640px){
   .imp .imp-list li{grid-template-columns:minmax(0,1fr) auto}
   .imp .imp-list progress{grid-column:1 / -1}
@@ -388,6 +432,8 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .imp .hist .hd b{font-weight:600}
 .imp .hist .files{overflow-wrap:anywhere}
 .imp .hist p{margin:4px 0 0}
+.imp .hist>li.hl{background:var(--raised);box-shadow:inset 3px 0 0 var(--accent);padding-left:10px;padding-right:10px;border-radius:6px}
+.imp .hist>li:focus{outline:2px solid var(--accent);outline-offset:2px}
 .imp .hist li.undone .hd b,.imp .hist li.undone .what{color:var(--muted)}
 .imp .hist .confirm{margin-top:8px;padding:8px 10px;border:1px solid var(--crit);border-radius:10px;max-width:560px}
 .imp .hist .confirm p{margin:0 0 6px}
@@ -399,3 +445,79 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
   .imp .man-row .f-value,.imp .man-row .f-unit,.imp .man-row .f-range,.imp .man-row .f-flag{grid-column:span 2}
   .imp .man-row .del{grid-column:span 1}
 }
+/* settings page (settings.js) */
+.sets .set{border-top:1px solid var(--grid);padding:12px 0 4px}
+.sets .set .row{border-bottom:0;padding:0;margin:8px 0 6px;cursor:default}
+.sets .set .row:hover{background:none}
+.sets .btn.primary:disabled{color:var(--ink);border-color:var(--ring)}
+.sets .set-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.sets .set-hd h2{margin:0}
+.sets .set h3 .tag{font-weight:550}
+.sets .set-labs{margin:4px 0;padding-left:22px;max-width:560px}
+.sets .set-labs li{padding:3px 0;border-bottom:1px solid var(--grid)}
+.sets .set-labs li:last-child{border-bottom:0}
+.sets .set-labs li:not(.muted){display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sets .set-name{flex:1 1 140px;min-width:0;overflow-wrap:anywhere}
+.sets .set-acts{display:flex;gap:4px}
+.sets .set-add{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;max-width:560px}
+.sets .set-add input{flex:1 1 160px}
+.sets .set-rows{display:grid;gap:6px;max-width:720px}
+.sets .set-row{display:grid;gap:6px;align-items:end;grid-template-columns:repeat(2,minmax(0,1fr)) 72px}
+.sets .c3 .set-row{grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) 80px 72px}
+.sets .set-row>:last-child{justify-self:start}
+.sets .set-head{font-size:12px;color:var(--muted);font-weight:550}
+.sets .set-row label{gap:2px}
+.sets .set-lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.sets .set-row input{width:100%}
+.sets .set-json{width:100%;max-width:560px;font:12px ui-monospace,Consolas,monospace;border:1px solid var(--ring);border-radius:8px;background:var(--raised);color:var(--ink);padding:6px}
+@media (max-width:600px){
+  .sets .set-head{display:none}
+  .sets .set-row,.sets .c3 .set-row{grid-template-columns:1fr;border-bottom:1px solid var(--grid);padding-bottom:8px}
+  .sets .set-lbl{position:static;width:auto;height:auto;clip:auto;font-size:12px;color:var(--muted)}
+}
+/* find your provider (providers.js, #93) */
+.dir .dir-src{border-left:3px solid var(--c-study);padding:4px 0 4px 12px;margin:6px 0 12px;font-size:13px}
+.dir .dir-src p{margin:0 0 6px}
+.dir .dir-src pre{margin:0 0 6px;white-space:pre-wrap}
+.dir .dir-src code,.dir .dir-steps code{background:var(--hover);padding:1px 5px;border-radius:5px}
+.dir .dir-src ul{margin:0;padding-left:18px;color:var(--ink2)}
+.dir .form{max-width:none}
+.dir .form input{width:100%;font-size:15px}
+.dir #status{margin-top:8px;color:var(--ink2)}
+.dir .dir-results{list-style:none;margin:8px 0 0;padding:0}
+.dir .dir-hit{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--grid);padding:9px 6px;color:var(--ink);font:inherit;cursor:pointer;border-radius:6px}
+.dir .dir-results li:first-child .dir-hit{border-top:0}
+.dir .dir-hit:hover,.dir .dir-hit.sel{background:var(--hover)}
+.dir .dir-hit-t{display:grid;gap:1px;min-width:0;overflow-wrap:anywhere}
+.dir .dir-hit-t b{font-weight:600}
+.dir .dir-mono{flex:none;display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--hover);color:var(--ink2);font-weight:650;font-size:14px}
+.dir .dir-mono.big,.dir .dir-logo{width:44px;height:44px;font-size:20px;border-radius:10px;object-fit:contain}
+.dir .dir-hd{display:flex;gap:12px;align-items:flex-start;margin-bottom:6px}
+.dir .dir-hd h2{font-size:16px;overflow-wrap:anywhere}
+.dir .dir-hd .tag:first-child{margin-left:0}
+.dir .dir-hd p{margin:4px 0 0}
+.dir #detail h3.sub{margin:16px 0 6px}
+.dir .dir-copy{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.dir .dir-copy-v{flex:1 1 220px;font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.dir .dir-back{margin-bottom:8px}
+.dir .dir-back p{margin:4px 0 0}
+.dir .bad{color:var(--crit)}
+.dir .dir-real{border-left:3px solid var(--good);padding:4px 0 4px 12px;margin:0 0 8px;font-size:13px}
+.dir .dir-real.caution{border-color:var(--c-study)}
+.dir .dir-steps{margin:6px 0 0;padding-left:20px;font-size:13px}
+.dir .dir-steps li{margin-bottom:4px}
+.dir .dir-places,.dir .dir-aka p{overflow-wrap:anywhere}
+.dir .dir-aka{margin-top:14px;font-size:13px}
+.dir .dir-aka summary{cursor:pointer;color:var(--ink2)}
+.dir .dir-from{margin-top:12px}
+.dir a{overflow-wrap:anywhere}
+/* connected sources (connect.html) */
+.conn code{background:var(--hover);padding:1px 5px;border-radius:5px;user-select:all;overflow-wrap:anywhere}
+.conn .conn-item.conn-bad{border-left:3px solid var(--crit);padding-left:10px}
+.conn .conn-alert{border-left:3px solid var(--crit);padding:6px 0 6px 12px;margin:10px 0;font-weight:550}
+.conn .conn-warn li{color:var(--ink2);font-size:13px;margin:4px 0}
+.conn .conn-guide{font-size:13px;border:1px solid var(--grid);border-radius:8px;padding:8px 12px}
+.conn .conn-guide ol{padding-left:18px;margin:6px 0}
+.conn .conn-disc{border-top:1px solid var(--grid);margin-top:8px;padding-top:8px}
+.conn a.btn{text-decoration:none;color:inherit}
+.conn p,.conn dd{overflow-wrap:anywhere}

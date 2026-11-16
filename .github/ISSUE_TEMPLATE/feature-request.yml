@@ -1,0 +1,26 @@
+name: Feature request
+description: Something Sanguity could do, or do better.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are public: **don't include real health records or anything that identifies you or anyone else.**
+        Support for another portal's export has its own form, **My portal's export doesn't import**.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you're trying to do
+      description: The problem or the need, in your own words. What do you do today instead?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you picture it working. Sketches and screenshots of the fictional demo data are welcome.
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Other tools that do this well, who else it would help, constraints (a phone screen, a Raspberry Pi).

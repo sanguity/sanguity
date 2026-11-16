@@ -7,7 +7,7 @@
 Data: with a sources.json next to compose.yaml, the records are built from your exports (RECORDS_DIR) into
 DATA_DIR/build; the app loads that build into the first profile (and again after each rebuild). Without one, a
 fictional demo dataset is generated there so there is something to look at. A settings.json next to compose.yaml
-(see settings.example.json) sets that profile's dashboard preferences.
+(see settings.example.json) gives that profile its first settings, once; after that they're changed in the app.
 
 Accounts live in the app's database. The first one is created in the browser with the setup code the app prints
 (docker compose logs app); after that, admins add accounts under Account. To recover a lost password:
@@ -18,7 +18,11 @@ import json, os, secrets, shutil, subprocess, sys
 sys.stdout.reconfigure(line_buffering=True)   # keep our messages in order with the build/demo scripts' output
 
 APP = os.environ.get("SANGUITY_APP", "/app")   # container paths; overridable for running outside Docker
-WWW, AUTH = os.path.join(APP, "www"), os.path.join(APP, "auth")
+WWW = os.path.join(APP, "www")
+# The released image (compose.release.yaml, deploy/) has no checkout: secrets and your sources.json,
+# settings.json and corrections.json live in folders of their own
+AUTH = os.environ.get("SANGUITY_AUTH") or os.path.join(APP, "auth")
+CONFIG = os.environ.get("SANGUITY_CONFIG") or APP
 DATA = os.environ.get("SANGUITY_DATA", "/data")
 os.environ.setdefault("SANGUITY_KEY_FILE", os.path.join(AUTH, "data_key"))
 os.environ.setdefault("SANGUITY_DATA", DATA)
@@ -95,10 +99,12 @@ def run(cmd, env=None):
 
 
 def build_data():
-    data, sources = os.path.join(BUILD, "data.json"), os.path.join(APP, "sources.json")
+    data, sources = os.path.join(BUILD, "data.json"), os.path.join(CONFIG, "sources.json")
     legacy = os.path.join(WWW, "data.json")   # where data lived before accounts; nginx no longer serves it
     if os.path.isfile(sources):
-        run([sys.executable, "-I", os.path.join(APP, "build.py"), "--config", sources, "--out", data + ".tmp"], {"RECORDS_ROOT": RECORDS})
+        corrections = os.path.join(CONFIG, "corrections.json")   # its milestones
+        run([sys.executable, "-I", os.path.join(APP, "build.py"), "--config", sources, "--out", data + ".tmp"],
+            {"RECORDS_ROOT": RECORDS, **({"SANGUITY_CORRECTIONS": corrections} if os.path.isfile(corrections) else {})})
         own(data + ".tmp")
         os.replace(data + ".tmp", data)
     elif not os.path.exists(data) and os.path.isfile(legacy) and not is_demo(legacy):
@@ -112,18 +118,19 @@ def build_data():
         print("No sources.json found: showing the fictional demo data. See sources.example.json to use your own records.")
     else:
         print("Built data exists and there is no sources.json; leaving it as it is.")
-    # dashboard preferences for the profile linked to this build (settings.json next to compose.yaml, or the old www/ one)
+    # first settings for a profile newly linked to this build (settings.json next to compose.yaml, or the old www/ one);
+    # the app never applies it over settings changed on its Settings page (server/settings.py)
     built = os.path.join(BUILD, "settings.json")
     if not is_demo(data):   # the demo writes its own
-        src = next((p for p in (os.path.join(APP, "settings.json"), os.path.join(WWW, "settings.json")) if os.path.isfile(p)), None)
+        src = next((p for p in (os.path.join(CONFIG, "settings.json"), os.path.join(WWW, "settings.json")) if os.path.isfile(p)), None)
         if src:
             crypto.write_file(built, crypto.read_file(src))
         elif os.path.isfile(built):
-            os.remove(built)   # settings.json was removed: back to the defaults
+            os.remove(built)   # settings.json was removed (settings made in the app stay)
     # corrections.json next to compose.yaml: the app moves its event corrections into edits once (server/edits.py)
     built = os.path.join(BUILD, "corrections.json")
-    if os.path.isfile(os.path.join(APP, "corrections.json")):
-        crypto.write_file(built, crypto.read_file(os.path.join(APP, "corrections.json")))
+    if os.path.isfile(os.path.join(CONFIG, "corrections.json")):
+        crypto.write_file(built, crypto.read_file(os.path.join(CONFIG, "corrections.json")))
     elif os.path.isfile(built):
         os.remove(built)
     seal_build()

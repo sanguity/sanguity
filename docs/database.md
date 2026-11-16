@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 16**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 19**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -13,7 +13,7 @@ Two things hold everywhere:
   counts are plain. Where a value must be found without decrypting every row, a keyed hash (HMAC) of it is stored
   beside it (`key_hash`, `target`).
 - **Everything belongs to a profile, and goes with it.** Deleting a profile removes its records, imports, uploads,
-  jobs, edits, memberships and activity by `ON DELETE CASCADE`. Records also belong to the import that brought them
+  jobs, edits, settings, memberships and activity by `ON DELETE CASCADE`. Records also belong to the import that brought them
   in, so undoing an import removes exactly its rows.
 
 ## Accounts and access
@@ -56,6 +56,7 @@ erDiagram
         any build_mtime "which build was loaded"
         text watch_file "the watch summary it shows"
         int records_rev "bumped on every change to its records"
+        int settings_seeded "its first settings are in (see Settings)"
     }
     memberships {
         int user_id PK, FK
@@ -153,6 +154,7 @@ erDiagram
         int at
         text origin "build | dataset | upload | manual"
         text format "the importer that read it"
+        int synced "last sync of a live connection (#91), else NULL"
         text meta "🔒 JSON: source, built, problems, upcoming visits, payments..."
     }
     events {
@@ -272,6 +274,124 @@ erDiagram
     }
 ```
 
+## Settings (per profile, per user or per install)
+
+What used to be a `settings.json` per profile (key labs, lab nicknames, workout rules...) is one row per setting in
+**settings** (`server/settings.py`, #35). The registry there says, for each setting, whether its value belongs to a
+profile (`profile_id` set), to an account (`user_id` set, the same on every profile) or to the whole install
+(neither), and who changes it: a profile's owners and editors, the person themself, or admins. The page reads the
+merged value: the default, then the install's row, then the profile's, then the user's. A value that can hold health
+information (lab names, rules) is encrypted in `sealed`; any other is plain JSON in `value`. `profiles.settings_seeded`
+marks a profile whose settings were seeded (from its own `settings.json` at the upgrade, or the setup build's the first
+time the build is loaded into it), so a later rebuild never fills one in again.
+
+```mermaid
+erDiagram
+    profiles |o--o{ settings : "has"
+    users |o--o{ settings : "has its own, and changed"
+
+    settings {
+        int id PK
+        text key "the registry's key, e.g. overview.keyLabs"
+        int profile_id FK "set: a profile's"
+        int user_id FK "set: an account's; neither: the install's"
+        text value "JSON, for a setting with no health information"
+        text sealed "🔒 JSON, for one that can hold some"
+        int changed
+        int changed_by FK "NULL: a migration, import or the setup build"
+    }
+```
+
+One row per key and owner (a unique index on `key`, `IFNULL(profile_id, 0)`, `IFNULL(user_id, 0)`).
+
+## Connected sources
+
+A profile can be connected to a provider's or insurer's FHIR API by signing in to it (#32), and is then kept up to
+date on a schedule (#91; `server/connections.py`, `server/smart.py`, `server/sync.py`). How sign-in works is decided
+in [connected-sources-oauth.md](connected-sources-oauth.md): each install registers its own app with each vendor.
+
+- **smart_clients** is what an admin set up per source (install-wide): the FHIR base (issuer), the client ID, the
+  client secret where the vendor issued one, how the app authenticates and the scopes to ask for, and the discovery
+  its last test read. The server contacts no host for that source other than the issuer's and those its discovery
+  names for the token, revocation and registration endpoints.
+- **connections**: one per profile and source. The access token, the refresh token or (with Epic's dynamic
+  registration) the private key and dynamic client ID are one encrypted JSON value, deleted on disconnect, as is the
+  patient id. `cursor` is the `_lastUpdated` to ask after, per resource type; `state` is `active`, `needs reconnect`
+  (the vendor ended access) or `disconnected` (kept, without credentials, so the count and the history can name it).
+- **connect_pending**: a sign-in between leaving for the vendor and coming back, at most 10 minutes. Only a hash of
+  `state` is stored; the PKCE verifier is encrypted; it is bound to the session that started it and used up on
+  return, whatever the outcome.
+- **imports.connection_id**: the connection an import came from (the first pull, then each sync, origin `sync`).
+- **sync_changes**: what a sync changed in place (an event, or an entry of an import's profile-wide lists), with what
+  it was before, so undoing that sync puts it back. A later sync that changed the same record again inherits the
+  "before".
+
+Beside the rows, each connection keeps every FHIR resource it has read, the newest version of each, sealed in
+`profiles/<id>/connections/<connection id>` (a lab day is rebuilt from all of them); it is deleted on disconnect.
+Each pull's raw answer is kept as an upload, like an import's files.
+
+```mermaid
+erDiagram
+    profiles ||--o{ connections : "connected to"
+    smart_clients |o--o{ connections : "set up for"
+    connections ||--o{ imports : "brought"
+    imports ||--o{ sync_changes : "changed in place"
+    events |o--o{ sync_changes : "was"
+    sessions ||--o{ connect_pending : "started"
+    jobs |o--o| connections : "first pull"
+
+    smart_clients {
+        int id PK
+        text name
+        text vendor "epic, oracle, other"
+        text issuer "FHIR base (unique)"
+        text client_id
+        text secret "🔒 NULL: public client"
+        text auth "public, confidential, dynamic"
+        text scopes
+        text discovery "JSON, public"
+        int tested
+    }
+    connections {
+        int id PK
+        int profile_id FK
+        int client_id FK
+        text source "name when connected"
+        text issuer
+        text patient "🔒"
+        text credential "refresh, jwt, access"
+        text secret "🔒 JSON: tokens or key"
+        text scopes "granted"
+        int expires
+        text state "active, needs reconnect, disconnected"
+        text cursor "JSON per type"
+        int first_job FK
+        int last_sync
+        int next_sync
+        int failures
+        text error_kind "unavailable, access, other"
+        text last_error "🔒"
+        text report "🔒 JSON per type"
+    }
+    connect_pending {
+        text state_hash PK "SHA-256"
+        int session_id FK
+        int profile_id FK
+        int client_id FK
+        int connection_id FK "a reconnect"
+        text verifier "🔒"
+        text token_url
+        int expires
+    }
+    sync_changes {
+        int id PK
+        int import_id FK
+        int event_id FK
+        int meta_import FK
+        text previous "🔒 JSON"
+    }
+```
+
 ## What is encrypted
 
 | Table | Encrypted columns |
@@ -286,20 +406,26 @@ erDiagram
 | `import_undos` | `entry` |
 | `edits` | `target_key`, `other_key`, `value` |
 | `labmaps` | `source`, `target` |
+| `settings` | `sealed` |
+| `smart_clients` | `secret` |
+| `connections` | `patient`, `secret`, `last_error`, `report` |
+| `connect_pending` | `verifier` |
+| `sync_changes` | `previous` |
 | `activity` | `detail` |
 | `users` | `totp_secret`, `totp_pending` |
 | `meta` | the pepper |
 
 The list the start-up check and key rotation use is `FIELDS` in [`server/atrest.py`](../server/atrest.py); keep the
 two in step. Files the rows point at (documents imported from an export, upload files, previews, imported watch
-summaries, settings) are encrypted on disk too. Not encrypted: usernames and profile names (needed for sign-in and
+summaries) are encrypted on disk too. Not encrypted: usernames and profile names (needed for sign-in and
 sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 ## What a deletion removes
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, undo history, its activity | the original exports |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, settings, undo history, its activity | the original exports |
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
-| An account | sessions, devices, passkeys, recovery codes, memberships | activity, uploads, jobs and lab-name matches it made (their links become `NULL`) |
+| A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen | the row, as disconnected |
+| An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, pending sign-ins | activity, uploads, jobs and lab-name matches it made (their links become `NULL`) |

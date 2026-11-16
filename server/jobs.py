@@ -32,7 +32,7 @@ from . import activity, config, crypto, db as dbm, importers as registry, labmap
 
 log = logging.getLogger("sanguity.jobs")
 
-ISSUES = "https://github.com/sanguity/sanguity/issues"
+ISSUES = "https://github.com/sanguity/sanguity/issues/new?template=portal-export.yml"   # the "My portal's export doesn't import" form
 INTERRUPTED = "The import was interrupted; nothing was saved. Start it again."
 UPLOAD_ID = re.compile(r"^[0-9]{1,18}$")   # uploads are numbered (uploads.create)
 RECENT = 20   # jobs listed per profile
@@ -261,6 +261,8 @@ def _save(db, j):
                      ip=_ips.get(jid), actor=None if who else "removed account")
         db.execute("UPDATE jobs SET state='done', stage=NULL, import_id=?, summary=?, finished=? WHERE id=?",
                    (iid, crypto.enc(json.dumps(summary)), dbm.now(), jid))
+        from . import sync   # the first pull of a connected source (#91): its import and cursor go to the connection
+        sync.first_saved(db, jid, iid)
     _remove(path)
 
 

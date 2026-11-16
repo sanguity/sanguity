@@ -10,6 +10,10 @@ to data.json, and each part of it has its place:
   the rest   built, source, upcoming, problems, outOfPocket, milestones, clinicWeights...   imports.meta
   edits      [{id, action, found, ids...}]                   the edits table: corrections made in the app, applied
                                                              last (edits.py), never part of an import
+  imports    {import id: {label, origin, format, at, synced}}  the imports rows: where each record came from (#100).
+                                                             Each event and lab series names its import as "imp"; a
+                                                             series' results are all of its import. Sent once here,
+                                                             so no row repeats its importer's label
 
 store() takes such an object apart into the rows of one import; assemble() puts a profile's imports back
 together. An event's id is its row's, so the ids an import arrives with are mapped on the way in, the ones a lab
@@ -28,6 +32,7 @@ from . import crypto, edits
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
+SERVED = ("imports", "edits")   # parts assemble() adds: never stored from an import (an export's data.json has them)
 
 
 def _enc(obj):
@@ -49,7 +54,7 @@ def store(db, pid, data, origin, fmt=FORMAT, now=None):
     assert db.in_transaction, "records.store must run inside a transaction"
     details = {str(k): v for k, v in (data.get("details") or {}).items()}
     events = [e for e in data.get("events") or [] if isinstance(e, dict)]
-    meta = {k: v for k, v in data.items() if k not in ROWS}
+    meta = {k: v for k, v in data.items() if k not in ROWS and k not in SERVED}
 
     # the new ids, decided up front (the transaction holds the write lock), so a lab day can list them
     base = db.execute("SELECT IFNULL(MAX(id), 0) FROM events").fetchone()[0]
@@ -76,7 +81,7 @@ def store(db, pid, data, origin, fmt=FORMAT, now=None):
         if isinstance(d, dict) and isinstance(d.get("ids"), list):
             d = {**d, "ids": [ids[str(i)] for i in d["ids"] if str(i) in ids]}
         seq, c = costs.get(key, (None, None)) if first else (None, None)
-        rows.append((n, pid, iid, _enc({k: v for k, v in e.items() if k != "id"}),
+        rows.append((n, pid, iid, _enc({k: v for k, v in e.items() if k not in ("id", "imp")}),
                      None if d is None else _enc(d), None if c is None else _enc({**c, "id": n}), seq, _hash(secret, e.get("key"))))
     db.executemany("INSERT INTO events(id, profile_id, import_id, body, detail, cost, cost_seq, key_hash) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", rows)
 
@@ -84,7 +89,7 @@ def store(db, pid, data, origin, fmt=FORMAT, now=None):
         if not isinstance(s, dict):
             continue
         sid = db.execute("INSERT INTO series(profile_id, import_id, body, key_hash) VALUES(?, ?, ?, ?)",
-                         (pid, iid, _enc({k: v for k, v in s.items() if k != "pts"}), _hash(secret, s.get("key")))).lastrowid
+                         (pid, iid, _enc({k: v for k, v in s.items() if k not in ("pts", "imp")}), _hash(secret, s.get("key")))).lastrowid
         db.executemany("INSERT INTO results(profile_id, import_id, series_id, body) VALUES(?, ?, ?, ?)",
                        [(pid, iid, sid, _enc(p)) for p in s.get("pts") or []])
     _bump(db, pid)
@@ -235,18 +240,32 @@ def assemble(db, pid):
         return _assemble(db, pid)
 
 
+def source_label(origin, fmt):
+    """What the page calls an import's source: the importer's label, or how the records got there."""
+    from . import history
+    return history.label(fmt, origin)
+
+
+def _source(r):
+    return {"label": source_label(r["origin"], r["format"]), "origin": r["origin"], "format": r["format"],
+            "at": r["at"], "synced": r["synced"]}
+
+
 def _assemble(db, pid):
-    imps = db.execute("SELECT id, meta FROM imports WHERE profile_id=? ORDER BY id", (pid,)).fetchall()
+    imps = db.execute("SELECT id, at, origin, format, synced, meta FROM imports WHERE profile_id=? ORDER BY id", (pid,)).fetchall()
     if not imps:
         return None
     out, costs = {}, []   # costs: (import, place in its list, row)
     for r in imps:
         meta = _dec(r["meta"]) or {}
         costs += [(r["id"], seq, c) for seq, c in meta.pop("costs", [])]
+        for k in SERVED:
+            meta.pop(k, None)
         _merge(out, meta)
+    out["imports"] = {str(r["id"]): _source(r) for r in imps}
     events, details = [], {}
     for r in db.execute("SELECT id, import_id, body, detail, cost, cost_seq FROM events WHERE profile_id=? ORDER BY id", (pid,)):
-        events.append({"id": r["id"], **_dec(r["body"])})
+        events.append({"id": r["id"], **_dec(r["body"]), "imp": r["import_id"]})
         if r["detail"] is not None:
             details[str(r["id"])] = _dec(r["detail"])
         if r["cost"] is not None:
@@ -259,8 +278,8 @@ def _assemble(db, pid):
     pts = {}
     for r in db.execute("SELECT series_id, body FROM results WHERE profile_id=? ORDER BY id", (pid,)):
         pts.setdefault(r["series_id"], []).append(_dec(r["body"]))
-    labs = [{**_dec(r["body"]), "pts": pts.get(r["id"], [])}
-            for r in db.execute("SELECT id, body FROM series WHERE profile_id=? ORDER BY id", (pid,))]
+    labs = [{**_dec(r["body"]), "imp": r["import_id"], "pts": pts.get(r["id"], [])}
+            for r in db.execute("SELECT id, import_id, body FROM series WHERE profile_id=? ORDER BY id", (pid,))]
     return edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
 
 

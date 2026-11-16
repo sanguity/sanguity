@@ -16,7 +16,7 @@ instead of duplicating: "csv:h:" + 16 hex characters of a SHA-256 over date-time
 value as reported and unit for a labitem; "csv:labday:<YYYY-MM-DD>" for a day; "loinc:<code>" or
 "csv:<test lower case>|<unit>" for a series. File names, row numbers and column order are left out.
 
-read_row (one row's result), date_order, dedupe and build are public: hand entry (routes_manual.py) reads typed rows
+read_row (one row's result), date_order, timestamp, number, dedupe and build are public: hand entry (routes_manual.py) reads typed rows
 with them, so a typed result gets the same keys, names, ranges and flags as the same row in a spreadsheet.
 """
 import collections
@@ -576,6 +576,17 @@ def read_row(get, decimal_comma=False, order=None, bounds=True):
 def date_order(values):
     """How numeric dates like 03/04/2025 read among these values: (order for read_row, separators only guessed)."""
     return _date_order(values)
+
+
+def timestamp(date_s, time_s="", order=None):
+    """A date (and optional time) as read_row reads them: an ISO timestamp, noon for a date alone; None when unreadable.
+    Hand entry reads the dates of every kind of typed record with this, so they take the same formats."""
+    return _timestamp(date_s, time_s, order or {})
+
+
+def number(s):
+    """A number as a spreadsheet cell reads ("1,234.5", "4.5"); None when it isn't one."""
+    return _number(s, False)
 
 
 def guessed_date(s, guessed):

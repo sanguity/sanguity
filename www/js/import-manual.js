@@ -1,9 +1,11 @@
-/* Sanguity · import page, "Type them in" tab (#27): lab results typed in by hand, one row each, saved as one import.
+/* Sanguity · import page, "Type them in" tab (#27): lab results typed in by hand, one row each, and the other kinds of
+   record typed into forms of their own (import-records.js), saved together as one import.
    Rows can be added, removed and pasted from a spreadsheet (several cells at once fill the rows from the one pasted
    into, by the copied header if it has one, else column by column). Each change is checked by the server, which reads
    the rows exactly as the CSV importer reads a spreadsheet's (POST profiles/{id}/manual, save false), and the row
    says what it became: the test it's charted as, the value, the range and the flag. Save stores them (save true).
-   Test names are suggested from lab-aliases.json's canonical names (GET lab-names).
+   Test names are suggested from lab-aliases.json's canonical names (GET lab-names). Rows and records the profile
+   has already are pointed out, and left out of the save unless "Save again what's already there" is ticked.
    Plain script after util.js and import.js; its own names stay inside this function. */
 "use strict";
 (function () {
@@ -18,8 +20,9 @@
     range: /^(range|reference range|ref range|reference interval|normal range|reference)$/,
     low: /^(low|ref low|range low|lower limit|min|minimum|normal low)$/, high: /^(high|ref high|range high|upper limit|max|maximum|normal high)$/,
     flag: /^(flag|flags|abnormal flag|abnormal|interpretation|h l|hl)$/, lab: /^(lab|laboratory|performing lab|facility)$/};
-  const box = $("#manRows"), msg = $("#manMsg"), saveBtn = $("#manSave");
-  let timer = null, seq = 0, ok = 0, bad = 0, saving = false;
+  const box = $("#manRows"), msg = $("#manMsg"), saveBtn = $("#manSave"), recs = window.sanguityRecords;
+  const keepBox = $("#manKeep"), BODY_MAX = 60000;   // nginx refuses API bodies over 64 KB
+  let timer = null, seq = 0, ok = 0, bad = 0, okRecs = 0, badRecs = 0, saving = false;
 
   const pid = () => +$("#profile").value;
   const tell = (text, isBad = false, link = null) => {
@@ -57,20 +60,27 @@
 
   /* ---------------------------------------------------------------- checking as you go */
   function soon() { clearTimeout(timer); timer = setTimeout(check, 350); }
+  const body = (save, rs) => JSON.stringify({rows: rs.map(valueOf).map(v => blank(v) ? {} : v), items: recs.values(), save,
+    ...(save ? {keep_duplicates: keepBox.checked} : {})});
   async function check() {
-    const mine = ++seq, rs = rows(), vals = rs.map(valueOf), send = vals.map(v => blank(v) ? {} : v);
+    const mine = ++seq, rs = rows(), sent = body(false, rs);
     if (!pid()) return;
+    if (sent.length > BODY_MAX) { saveBtn.disabled = true; tell("That's more than can be checked at once: save some of it first.", true); return; }
     let j;
     try {
-      const r = await api(`profiles/${pid()}/manual`, {method: "POST", body: JSON.stringify({rows: send, save: false})});
+      const r = await api(`profiles/${pid()}/manual`, {method: "POST", body: sent});
       if (r.status === 401) { location.replace("login.html"); return; }
       j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : "The server answered " + r.status + ".");
     } catch (e) { if (mine === seq) tell("Couldn't check the rows: " + e.message, true); return; }
     if (mine !== seq) return;   // a newer check is on its way
-    show(rs, j.rows || []);
+    show(rs, j.rows || [], j.items || []);
   }
-  function show(rs, got) {
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  function show(rs, got, items) {
+    const r = recs.show(items);
+    okRecs = r.ok; badRecs = r.bad;
+    let dup = r.dup;
     const byRow = new Map(got.map(x => [x.row, x]));
     ok = bad = 0;
     rs.forEach((r, i) => {
@@ -86,14 +96,21 @@
         return;
       }
       ok++;
+      if (x.duplicate) dup++;
       const range = x.low != null && x.high != null ? `${x.low} – ${x.high}` : x.high != null ? `under ${x.high}` : x.low != null ? `over ${x.low}` : "";
       const value = x.value != null ? `${x.value}${x.unit ? " " + x.unit : ""}` : `“${x.text}”`;
       out.replaceChildren("✓ ", el("b", {text: x.name}), ` · ${x.date} · ${value}` + (range ? ` · range ${range}` : ""),
         ...(x.flag ? [" · ", el("span", {class: "abn", text: x.flag === "H" ? "▲ High" : "▼ Low"})] : []),
+        ...(x.duplicate ? [" · ", el("span", {class: "dup", text: "already in this profile: it won't be saved again"})] : []),
         ...(x.notes.length ? [` (${x.notes.join("; ")})`] : []));
     });
-    saveBtn.disabled = saving || !ok || bad > 0;
-    if (!saving) tell(bad ? `${bad === 1 ? "1 row needs" : bad + " rows need"} fixing before saving.` : ok ? `${ok === 1 ? "1 result" : ok + " results"} ready to save.` : "", bad > 0);
+    $("#manKeepWrap").hidden = !dup;
+    if (!dup) keepBox.checked = false;
+    const fixing = bad + badRecs, ready = ok + okRecs;
+    saveBtn.disabled = saving || !ready || fixing > 0 || recs.busy();
+    const what = [ok ? plural(ok, "result", "results") : "", okRecs ? plural(okRecs, "record", "records") : ""].filter(Boolean).join(" and ");
+    if (!saving) tell(fixing ? (badRecs ? `${plural(fixing, "entry needs", "entries need")} fixing before saving.` : `${bad === 1 ? "1 row needs" : bad + " rows need"} fixing before saving.`)
+      : recs.busy() ? "Uploading the file…" : ready ? `${what} ready to save.` + (dup ? ` ${plural(dup, "is", "are")} already in this profile.` : "") : "", fixing > 0);
   }
 
   /* ---------------------------------------------------------------- pasting from a spreadsheet */
@@ -152,25 +169,39 @@
       localStorage.setItem(k, JSON.stringify({...s, tab: "labs", sel: [...new Set([...(s.sel || []), ...names])], v: 2}));
     } catch (e) {}
   }
+  function openTab(p, tab) {
+    try {
+      localStorage.setItem("ht-profile", String(p));
+      const k = "ht-state:" + p, s = JSON.parse(localStorage.getItem(k) || "{}") || {};
+      localStorage.setItem(k, JSON.stringify({...s, tab, v: 2}));
+    } catch (e) {}
+  }
   saveBtn.onclick = async () => {
-    const p = pid(), rs = rows(), send = rs.map(valueOf).map(v => blank(v) ? {} : v);
+    const p = pid(), rs = rows(), sent = body(true, rs);
     saving = true; saveBtn.disabled = true; $("#profile").disabled = true;
     tell("Saving…");
     try {
-      const r = await api(`profiles/${p}/manual`, {method: "POST", body: JSON.stringify({rows: send, save: true})});
+      const r = await api(`profiles/${p}/manual`, {method: "POST", body: sent});
       if (r.status === 401) { location.replace("login.html"); return; }
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
         saving = false;
-        if (j.rows) show(rs, j.rows);
+        if (j.rows) show(rs, j.rows, j.items);
         tell(typeof j.detail === "string" ? j.detail : "The server answered " + r.status + ". Nothing was saved.", true);
         return;
       }
-      const n = j.counts ? j.counts.results : ok, names = j.series || [];
+      // counts.results counts vitals too (they're charted as series): what was typed is in counts.typed
+      const typed = (j.counts || {}).typed || {}, n = typed.labs || 0, names = j.series || [];
+      const others = Object.entries(typed).filter(([k]) => k !== "labs").reduce((a, [, c]) => a + c, 0);
       box.replaceChildren(); addRow({date: rs.length ? valueOf(rs[rs.length - 1]).date : today()});
-      saving = false; ok = bad = 0;
-      tell(`Saved ${n === 1 ? "1 result" : n + " results"}.`, false,
-        el("a", {href: "index.html", text: "See them on Trends", onclick: () => openTrends(p, names)}));
+      recs.saved(); keepBox.checked = false; $("#manKeepWrap").hidden = true;
+      saving = false; ok = bad = okRecs = badRecs = 0;
+      const links = [names.length ? el("a", {href: "index.html", text: "See them on Trends", onclick: () => openTrends(p, names)}) : null,
+        others ? el("a", {href: "index.html", text: "See them on the timeline", onclick: () => openTab(p, "timeline")}) : null].filter(Boolean);
+      msg.replaceChildren(`Saved ${[n ? plural(n, "result", "results") : "", others ? plural(others, "record", "records") : ""].filter(Boolean).join(" and ") || "nothing new"}.`
+        + (j.skipped ? ` ${plural(j.skipped, "was", "were")} in this profile already and left out.` : ""),
+        ...links.flatMap(a => [" ", a]));
+      msg.classList.remove("bad");
     } catch (e) {
       saving = false;
       tell("Couldn't save: " + e.message + " Nothing was saved.", true);
@@ -181,7 +212,9 @@
 
   /* ---------------------------------------------------------------- start */
   addRow();
-  $("#profile").addEventListener("change", soon);
+  recs.onchange(soon);
+  keepBox.addEventListener("change", () => { if (!saving) soon(); });
+  $("#profile").addEventListener("change", () => { recs.reset(); soon(); });
   (async () => {   // the suggestions for the test field
     try {
       const r = await api("lab-names");

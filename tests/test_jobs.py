@@ -285,7 +285,7 @@ class Jobs(unittest.TestCase):
         self.assertEqual(j["state"], "failed")
         self.assertIn("didn't recognise these files", j["message"])
         self.assertIn("C-CDA" if reg.get("ccda") else reg.get("sanguity").LABEL, j["message"])
-        self.assertIn("https://github.com/sanguity/sanguity/issues", j["message"])
+        self.assertIn("https://github.com/sanguity/sanguity/issues/new?template=portal-export.yml", j["message"])
         self.assertIn("anonymised sample", j["message"])
         self.assertIsNone(j["importer"])
         self.assertEqual(count(self.pid), before)

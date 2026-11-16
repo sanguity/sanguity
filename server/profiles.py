@@ -1,5 +1,5 @@
-"""Loading records into a profile, and what a profile keeps on disk: profiles/<id>/settings.json, plus the
-documents its records link to.
+"""Loading records into a profile, and what a profile keeps on disk: the documents its records link to (its
+settings are in the database since schema version 18, settings.py).
 
 A profile's records are rows in the database (records.py), each belonging to the import that brought it in. A
 data.json (what build.py, the demo and "Export everything" write) is loaded as one import: the setup build into
@@ -14,7 +14,7 @@ the tables at start-up and keeps it beside them as data-before-v10.json.
 import contextlib, json, os, secrets, shutil, threading
 from urllib.parse import quote
 
-from . import activity, config, crypto, db as dbm, records
+from . import activity, config, crypto, db as dbm, edits, records, settings
 
 _lock = threading.Lock()
 _failed = {}   # profile id -> (build mtime, why): a build that couldn't be loaded, so it isn't retried on every request
@@ -27,10 +27,6 @@ def profile_dir(pid):
 def data_path(pid):
     """Where a profile's records were kept before schema version 10 (see migrate_files)."""
     return os.path.join(profile_dir(pid), "data.json")
-
-
-def settings_path(pid):
-    return os.path.join(profile_dir(pid), "settings.json")
 
 
 def _inside(path, root):
@@ -96,8 +92,9 @@ def _check(data):
 
 def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin="dataset"):
     """Load src_dir/data.json (and settings.json, when there is one) into profile pid as one import. It replaces
-    the profile's records, or with origin "build" only what the setup build brought before. With mirror_settings,
-    a missing settings.json also removes the profile's (the setup build is the only source of a linked profile's).
+    the profile's records, or with origin "build" only what the setup build brought before. A settings.json
+    replaces the profile's settings (an export loaded back in); with mirror_settings (the setup build) it only
+    seeds them the first time, see settings.from_build.
 
     Document ids stay the same across re-imports for the same file, so links people saved keep working.
     Returns the number of documents indexed.
@@ -109,6 +106,9 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin
     os.makedirs(profile_dir(pid), exist_ok=True)
     with dbm.transaction(db):
         old = records.imports(db, pid, "build" if origin == "build" else None)
+        before = [records._dec(r["body"]) for r in db.execute(
+            "SELECT body FROM events WHERE profile_id=? AND import_id IN (SELECT value FROM json_each(?))",
+            (pid, json.dumps(old)))] if origin == "build" else []
         q = """SELECT id, path, ext FROM documents
                WHERE profile_id=? AND (import_id IS NULL OR import_id IN (SELECT value FROM json_each(?)))"""
         known = {crypto.dec(r["path"]): (r["id"], r["ext"]) for r in db.execute(q, (pid, json.dumps(old)))}
@@ -116,12 +116,15 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin
         iid = records.store(db, pid, data, origin)
         link_documents(db, iid, keep)
         records.drop(db, pid, old)   # and, by cascade, the documents the new import no longer links to
+        if before:   # a rebuild: edits on build events whose title changed follow them
+            edits.follow_rebuild(db, pid, before, data["events"])
         db.execute("DELETE FROM documents WHERE profile_id=? AND import_id IS NULL", (pid,))
         src_settings = os.path.join(src_dir, "settings.json")
-        if os.path.isfile(src_settings):
-            crypto.write_file(settings_path(pid), crypto.read_file(src_settings))
-        elif mirror_settings and os.path.isfile(settings_path(pid)):
-            os.remove(settings_path(pid))
+        if mirror_settings:
+            settings.from_build(db, pid, src_settings)
+        elif os.path.isfile(src_settings):
+            settings.replace_profile(db, pid, settings.from_file(settings.read_file(src_settings), where=src_settings))
+            db.execute("UPDATE profiles SET settings_seeded=1 WHERE id=?", (pid,))
         db.execute("UPDATE profiles SET build_mtime=? WHERE id=?", (version, pid))
     return n
 
@@ -162,8 +165,8 @@ def link_documents(db, import_id, doc_ids):
 
 def build_version():
     """Which setup build is there: the modification time and size of its data.json and of its settings.json, so
-    adding, editing, replacing (even with an older file) or removing either changes it. None when there is no
-    build. Stored in profiles.build_mtime."""
+    adding, editing, replacing (even with an older file) or removing either changes it (a changed settings.json is
+    then reported, see settings.from_build). None when there is no build. Stored in profiles.build_mtime."""
     def sig(name):
         try:
             st = os.stat(os.path.join(config.BUILD_DIR, name))
@@ -207,7 +210,7 @@ def build_error(pid):
 
 
 def delete_profile(db, pid):
-    """Remove a profile: its records, its folder (settings, anything imported), document index, memberships and
+    """Remove a profile: its records, settings, its folder (anything imported), document index, memberships and
     activity. The folder is moved aside first and removed only once the database change is committed, so a
     failure leaves the profile whole. Original exports and the watch receiver's data are never touched.
     Returns what was deleted: {"name", "members", "linked_build"}."""

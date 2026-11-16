@@ -7,9 +7,16 @@ event, drags and scroll-zooms the charts, toggles the event sort, switches profi
 the import page (a fictional C-CDA and a FHIR export, previewed, saved in the background and then shown on the timeline;
 the C-CDA again, previewed as all duplicates and cancelled; the FHIR one then undone from the import history, and
 gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab; a CareSpace and an Epic MyChart
-export), types two lab results in on the import page and finds them on Trends, uploads a lab with a spelling Sanguity
+export), types two lab results in on the import page and finds them on Trends, types a visit, a medication, a
+claim and a letter with a PDF into their own forms, finds them on the timeline and Costs and opens the PDF, uploads a lab with a spelling Sanguity
 doesn't know, accepts the series suggested at the preview and finds it on Trends, then sees it matched as before on
-the next upload, opens the account page (where the match is listed for admins), and fails
+the next upload, pastes a fictional SMART Health Link served by a local HTTPS server (what it says is shown and
+nothing is fetched until Fetch; then its preview, and saved), sets up a connected source against the fake SMART on
+FHIR server (tests/fakefhir), connects a profile by signing in, saves its first pull's preview, syncs a new result
+and is asked to reconnect when access ends, changes settings on the Settings page and resets them, opens the account
+page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap
+and follows its link to the import history, checks the "not medical advice" notice on every tab and beside
+out-of-range highlighting, and fails
 on any script error, console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -22,6 +29,7 @@ from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-browser-")
 USER, PW = "demo", "a long demo passphrase"
+SHL = None   # the local HTTPS host of a fictional SMART Health Link (tests/shl_server.py), started with the app
 NAN_HOOK = """window.__nan = []; const sa = Element.prototype.setAttribute;
 Element.prototype.setAttribute = function (k, v) { if (String(v) === "NaN") window.__nan.push(this.tagName + "." + k); return sa.call(this, k, v); };"""
 
@@ -72,6 +80,14 @@ def start_app():
     db.close()
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
+    from server import config
+    config.PUBLIC_ORIGINS.add(f"http://127.0.0.1:{port}")   # the return address connected sources sign in back to
+    config.CONNECT_ALLOW_HTTP = True                         # the fake SMART on FHIR server is plain HTTP on this machine
+    global SHL
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    import shl_server
+    SHL = shl_server.Server().start()   # a local HTTPS host for a SMART Health Link (#94); server.shl may reach it
+    SHL.trust()
     srv = uvicorn.Server(uvicorn.Config(main.app, host="127.0.0.1", port=port, log_level="warning"))
     threading.Thread(target=srv.run, daemon=True).start()
     while not srv.started:
@@ -115,6 +131,12 @@ def main():
         strict.goto(base + "/import.html")
         strict.wait_for_selector("#importer", state="visible", timeout=10000)
         check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
+        strict.goto(base + "/settings.html")
+        strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 4)
+        strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
+        strict.wait_for_selector(".dir-hit", timeout=10000)
+        check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
         strict.goto(base + "/account.html")
         strict.wait_for_selector("#logout", state="visible")
         strict.wait_for_timeout(500)
@@ -170,6 +192,44 @@ def main():
                 n = js(probe)
                 visible = js(f"!document.getElementById('view-{tab}').hidden")
                 check(f"{tab} tab renders", visible and all(int(x) > 0 for x in str(n).split(",")), n)
+                if tab == "heatmap":   # a cell's tooltip says where the result came from (#100)
+                    page.hover("#hm rect.cell[data-s]")
+                    settle(100)
+                    tipped = js("document.getElementById('tip').innerText")
+                    check("hovering a heatmap cell shows its source", "From Setup build, imported" in tipped, tipped[:200])
+                    page.mouse.move(0, 0)
+                page.locator("#notice").scroll_into_view_if_needed()
+                check(f"{tab} tab: the 'not medical advice' notice shows in the footer",
+                      page.is_visible("#notice") and "Not medical advice." in page.inner_text("#notice")
+                      and "your care team interprets them" in page.inner_text("#notice"))
+
+            # ---- next to out-of-range highlighting (#57): a caption on each tab that colours it, in light and dark, at 375 px
+            flagged = {   # the tab's out-of-range highlighting, and its caption
+                "overview": "#view-overview .tile .st.hi, #view-overview .tile .st.lo",
+                "labs": "#charts .pt.abn",
+                "heatmap": "#hm rect.cell[style*='--div-hi'], #hm rect.cell[style*='--div-lo']",
+            }
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 375 else 800})
+                    for tab, marks in flagged.items():
+                        page.click(f"#tab-{tab}")
+                        settle(300)
+                        note = page.locator(f"#view-{tab} .range-note")
+                        shown = note.count() == 1 and note.is_visible()
+                        text = note.inner_text() if shown else ""
+                        check(f"{tab} ({theme}, {width} px): caption beside the out-of-range highlighting",
+                              shown and js(f"document.querySelectorAll({marks!r}).length") > 0
+                              and "reference ranges in your own lab reports" in text and "isn't medical advice" in text, text)
+                        legible = js("""(() => { const n = document.querySelector('#view-%s .range-note'), f = document.getElementById('notice');
+                            const bg = getComputedStyle(document.body).backgroundColor;
+                            return getComputedStyle(n).color !== bg && getComputedStyle(f).color !== bg; })()""" % tab)
+                        check(f"{tab} ({theme}, {width} px): caption and footer readable, page fits",
+                              legible and js("document.documentElement.scrollWidth") <= width, js("document.documentElement.scrollWidth"))
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- detail drawer for every kind of event
             for k in js("[...new Set(EV.filter(e => !e.hidden).map(e => e.k))].sort()"):
@@ -237,6 +297,32 @@ def main():
             check("…and undoing it restores the title", js(f"({there})", pick))
             page.keyboard.press("Escape")
 
+            # ---- where each record came from (#100): a Source line in the drawer, linking to the import in the history
+            visit = js("EV.find(e => e.k === 'visit' && !e.hidden).id")
+            js("id => openEvent(byId.get(id))", visit)
+            settle(200)
+            src = page.locator("#dbody p.source")
+            text = src.inner_text() if src.count() == 1 else ""
+            check("the drawer shows an event's source and when it was imported", "Setup build" in text and "imported" in text, text)
+            js("openEvent(EV.find(e => e.k === 'lab' && (DATA.details[e.id] || {}).ids && DATA.details[e.id].ids.length > 1))")
+            settle(200)
+            n = js("DATA.details[state.selEv].ids.filter(i => DATA.details[i] && byId.get(i)).length")
+            check("each result of a lab day shows its source", n > 1 and page.locator("#dbody details.res p.source").count() == n,
+                  (n, page.locator("#dbody details.res p.source").count()))
+            js("id => openEvent(byId.get(id))", visit)
+            settle(200)
+            page.focus("#dbody p.source a")   # by keyboard: the link takes focus and Enter follows it
+            page.keyboard.press("Enter")
+            page.wait_for_url("**/import.html?profile=1#import-*", timeout=10000)
+            page.wait_for_selector("#historyList li.hl", timeout=10000)
+            check("the source link opens that import in the history, highlighted and focused",
+                  js("document.querySelectorAll('#historyList li.hl').length === 1 && document.activeElement.id === location.hash.slice(1)"
+                     " && document.activeElement.classList.contains('hl') && document.activeElement.textContent.includes('setup build')"),
+                  js("[location.hash, document.activeElement.id, document.activeElement.textContent.slice(0, 80)]"))
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            settle()
+
             # ---- Trends: drag pans every chart together, ctrl+wheel zooms, milestones drawn on All
             page.click("#tab-labs")
             js("applyPreset('1y')")
@@ -261,6 +347,17 @@ def main():
             js("applyPreset('all')")
             settle()
             check("milestones drawn on Trends", js("document.querySelectorAll('#charts .msmark').length") > 0)
+            # hovering a point shows where it came from (#100)
+            box = page.locator("#charts .chart svg").first.bounding_box()
+            tipped = ""
+            for f in (0.5, 0.6, 0.4, 0.7, 0.3, 0.8, 0.2, 0.9):
+                page.mouse.move(box["x"] + box["width"] * f, box["y"] + box["height"] * 0.5)
+                settle(100)
+                tipped = js("getComputedStyle(document.getElementById('tip')).display === 'block' ? document.getElementById('tip').innerText : ''")
+                if "From " in tipped:
+                    break
+            check("hovering a Trends point shows its source and import date", "From Setup build, imported" in tipped, tipped[:200])
+            page.mouse.move(0, 0)
 
             # ---- Health: drag changes its own period
             page.click("#tab-health")
@@ -600,6 +697,85 @@ def main():
             charts = page.inner_text("#charts")
             check("…with a chart for each", "Hemoglobin" in charts and "Ferritin" in charts, charts[:300])
 
+            # ---- the other kinds typed in: a visit, a medication, a claim and a letter with a PDF, saved as one import;
+            # the visit on the timeline, the claim on Costs, the letter opening in the drawer
+            page.goto(base + "/import.html?profile=2")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            page.click("#tab-manual")
+            card = lambda i, f: f".man-item:nth-child({i}) [data-f={f}]"
+
+            def add_record(kind):
+                page.select_option("#manKind", kind)
+                page.click("#manAddKind")
+            add_record("visit")
+            check("a record's form opens with its date filled in and the next field focused",
+                  js("document.querySelectorAll('.man-item').length === 1 && /^\\d{4}-\\d\\d-\\d\\d$/.test(document.querySelector('.man-item [data-f=date]').value)")
+                  and js("document.activeElement.dataset.f") == "time", js("document.activeElement.dataset.f"))
+            page.fill(card(1, "date"), "2026-11-03")
+            page.fill(card(1, "date"), "2026-13-03")
+            page.fill(card(1, "title"), "Typed follow-up visit")
+            page.wait_for_function("document.querySelector('.man-item [data-f=date]').getAttribute('aria-invalid') === 'true'", timeout=5000)
+            check("a field that can't be read is marked, with why", "couldn't be read" in js("document.querySelector('.man-item .man-err').textContent")
+                  and page.is_disabled("#manSave"), js("document.querySelector('.man-item .man-err').textContent"))
+            page.fill(card(1, "date"), "2026-11-03")
+            page.fill(card(1, "who"), "Dr. Ada Quill (fictional)")
+            page.fill(card(1, "where"), "Lakeside Clinic (fictional)")
+            add_record("med")
+            page.fill(card(2, "name"), "Typed ferrous sulfate 325 mg")
+            page.fill(card(2, "instructions"), "1 tablet daily")
+            add_record("claim")
+            page.fill(card(3, "provider"), "Lakeside Clinic (fictional)")
+            page.fill(card(3, "title"), "Typed office visit claim")
+            page.fill(card(3, "billed"), "$250.00")
+            page.fill(card(3, "paid"), "200")
+            page.fill(card(3, "owe"), "50")
+            add_record("document")
+            page.fill(card(4, "title"), "Typed referral letter")
+            page.select_option(card(4, "doctype"), "letter")
+            pdf_path = os.path.join(TMP, "typed-letter.pdf")
+            with open(pdf_path, "wb") as f:   # a one-page PDF with fictional text
+                body = b"BT /F1 12 Tf 72 720 Td (Fictional referral letter) Tj ET"
+                objs = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+                        b"<< /Length %d >>\nstream\n" % len(body) + body + b"\nendstream", b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+                out, offs = b"%PDF-1.4\n", []
+                for i, o in enumerate(objs):
+                    offs.append(len(out))
+                    out += b"%d 0 obj\n" % (i + 1) + o + b"\nendobj\n"
+                xref = len(out)
+                out += b"xref\n0 6\n0000000000 65535 f \n" + b"".join(b"%010d 00000 n \n" % o for o in offs)
+                out += b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % xref
+                f.write(out)
+            page.set_input_files(card(4, "file"), pdf_path)
+            page.wait_for_function("document.querySelector('.man-item:nth-child(4) .man-file').textContent.includes('uploaded')", timeout=10000)
+            page.wait_for_function("document.getElementById('manMsg').textContent === '4 records ready to save.' && !document.getElementById('manSave').disabled", timeout=5000)
+            checks = js("[...document.querySelectorAll('.man-item .man-check')].map(c => c.textContent)")
+            check("each record says what it became", "Typed follow-up visit" in checks[0] and "Doctor visits" in checks[2]
+                  and "typed-letter.pdf" in checks[3], checks)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the record forms fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            check("the typed records save as one import", page.inner_text("#manMsg").startswith("Saved 4 records."), page.inner_text("#manMsg"))
+            page.click("#manMsg a")   # "See them on the timeline"
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && "
+                                   "!document.getElementById('view-timeline').hidden", timeout=20000)
+            typed = js("['Typed follow-up visit', 'Typed ferrous sulfate 325 mg', 'Typed referral letter'].map(t => (EV.find(e => e.title === t) || {}).k)")
+            check("the visit, the medication and the letter are on the timeline", typed == ["visit", "med", "letter"], typed)
+            js("openEvent(EV.find(e => e.title === 'Typed referral letter'))")
+            page.wait_for_selector("#drawer.open #dbody iframe.doc", timeout=5000)
+            src = js("document.querySelector('#dbody iframe.doc').getAttribute('src')")
+            got = js(f"fetch({json.dumps(src.split('#')[0])}).then(async r => [r.status, r.headers.get('content-type'), (await r.text()).slice(0, 8)])")
+            check("…and the letter's PDF opens in the drawer", "/documents/" in src and got == [200, "application/pdf", "%PDF-1.4"], [src, got])
+            js("closeDrawer(); switchTab('costs')")
+            page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
+            js("costState.period = 'all'; renderCosts()")
+            settle(300)
+            costs = page.inner_text("#view-costs")
+            check("the typed claim is on Costs, under its care category", "Typed office visit claim" in costs and "Doctor visits" in costs, costs[:300])
+
             # ---- lab names matched on import (#23): a spelling lab-aliases.json doesn't know is suggested the profile's
             # Hemoglobin series at the preview; accepted, its point is charted with Hemoglobin; uploaded again, it's
             # matched as before without being asked
@@ -643,10 +819,145 @@ def main():
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
             check("…and saved into Hemoglobin again", js(f"{last_card}.textContent").startswith("Imported."))
+
+            # ---- a SMART Health Link pasted (#94): its host, label and passcode flag are shown and nothing is fetched;
+            # Fetch and preview fetches it once and shows the import's preview, which saves like an upload
+            import shl_server
+            SHL.seen.clear()
+            link = SHL.share(shl_server.bundle("2026-11-10", 13.9), passcode="fictional-2468", label="Fictional clinic",
+                             viewer="https://viewer.example.org/")
+            page.goto(base + "/import.html?profile=2")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            page.click("#tab-link")
+            check("the Paste a link tab hides the file drop", js("!document.getElementById('panel-link').hidden && getComputedStyle(document.getElementById('drop')).display === 'none'"))
+            page.fill("#shlText", link)
+            page.wait_for_selector("#shlAbout", state="visible", timeout=5000)
+            facts = page.inner_text("#shlFacts")
+            check("the pasted link's host, label and passcode flag are shown", f"localhost:{SHL.port}" in facts and "Fictional clinic" in facts
+                  and "needed" in facts and js("!document.getElementById('shlPassRow').hidden"), facts)
+            check("…and nothing was fetched from it", SHL.seen == [], SHL.seen)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the Paste a link tab fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.fill("#shlPass", "fictional-2468")
+            page.click("#shlGo")
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length && /^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.textContent")
+            check("Fetch and preview fetches it once and shows the preview", card.startswith("Ready to import") and "FHIR" in card
+                  and len(SHL.seen) == 1, (card[:200], len(SHL.seen)))
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            check("…and saves it", js(f"{last_card}.textContent").startswith("Imported."), js(f"{last_card}.textContent")[:200])
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
             page.select_option("#profile", label="My records")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+
+            # ---- Settings (#35): change settings on the screen, and the dashboard follows; reset a section
+            tiles = "[...document.querySelectorAll('#view-overview .tiles .tile .lbl span[title]')].map(s => [s.title, s.textContent])"
+            js("switchTab('overview')")
+            settle(300)
+            before = js(tiles)
+            check("the header links to Settings for this profile", js("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1")
+            page.click("#settingsLink")
+            page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
+            check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
+                  ["Overview", "Trends", "Names", "Health"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+            first = before[0][0]
+            page.click(f"#sec-overview button[aria-label='Move {first} down']")
+            page.click("#sec-overview .set button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-overview > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("[data-key=labNicknames] button:text-is('Add a row')")
+            page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=from]", first)
+            page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Renamed in Settings")
+            page.click("[data-key=labNicknames] button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-names > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the Settings page fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            js("switchTab('overview')")
+            settle(300)
+            after = js(tiles)
+            check("…the Overview tiles follow the new order and name",
+                  [t for t, _ in after[:2]] == [before[1][0], first] and after[1][1] == "Renamed in Settings", after[:3])
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
+            for sec in ("overview", "names"):
+                page.once("dialog", lambda d: d.accept())
+                page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
+                page.wait_for_function(f"document.querySelector('#sec-{sec} > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            js("switchTab('overview')")
+            settle(300)
+            check("…and Reset to defaults brings them back", js(tiles) == before, js(tiles)[:3])
+            # ---- connected sources (#32, #91), against the fake SMART on FHIR server standing in for an Epic sandbox:
+            # an admin sets the source up and tests it, the profile connects by signing in, the first pull is previewed
+            # and saved, Sync now brings a new result, and when the patient ends access the page asks to reconnect
+            from tests.fakefhir import FakeFHIR
+            fake = FakeFHIR(patients=["robin-example"]).start()
+            fake.signin_patient = "pat-1"   # who "signs in" at the fake's authorize page
+            fake.register_client("sanguity-browser-check", [base + "/connect/return"])
+            page.goto(base + "/connect.html")
+            page.wait_for_selector("#sourceList", state="attached")
+            page.wait_for_function("document.getElementById('returnAddr').textContent.length > 5 && !document.getElementById('admin').hidden", timeout=10000)
+            check("connected sources: the setup screen gives the exact return address to register",
+                  js("document.getElementById('returnAddr').textContent") == base + "/connect/return", js("document.getElementById('returnAddr').textContent"))
+            check("…and warns that a plain-HTTP, LAN-only address is unlikely to be accepted",
+                  "plain HTTP" in page.inner_text("#addrWarn") and "own network" in page.inner_text("#addrWarn"), page.inner_text("#addrWarn"))
+            check("…with a guide per vendor: where to register, and the scopes", "fhir.epic.com" in page.inner_text("#guide")
+                  and "patient/Observation" in js("document.getElementById('fScopes').value"))
+            page.fill("#fName", "Fake Epic sandbox")
+            page.fill("#fIssuer", fake.fhir_base)
+            page.fill("#fClient", "sanguity-browser-check")
+            page.click("#fSave")
+            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Fake Epic sandbox')", timeout=10000)
+            page.locator("#sourceList .prof", has_text="Fake Epic sandbox").get_by_role("button", name="Test this connection").click()
+            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Discovery works') || document.getElementById('sourceList').textContent.includes('tested ')", timeout=10000)
+            page.reload()
+            page.select_option("#profile", label="Second person")
+            page.wait_for_selector("#sourceButtons a", timeout=10000)
+            conn_pid = js("+document.getElementById('profile').value")
+            page.click("#sourceButtons a")   # to the fake's sign-in, which approves and sends the browser back
+            page.wait_for_url("**/connect.html**", timeout=20000)
+            page.wait_for_selector("#import-status button.primary", timeout=30000)   # the first pull's preview
+            check("signing in connects the source, and its first pull is previewed like an upload",
+                  "Ready to import" in page.inner_text("#import-status"), page.inner_text("#import-status")[:300])
+            page.click("#import-status button.primary")
+            page.wait_for_function("document.getElementById('import-status').textContent.includes('Imported.')", timeout=30000)
+            page.wait_for_function("document.getElementById('connList').textContent.includes('New records come in on a schedule')", timeout=20000)
+            check("…saved, and the connection then syncs on a schedule", True)
+            imports = lambda: js(f"fetch('api/profiles/{conn_pid}/connections').then(r => r.json()).then(j => j.connections[0].imports)")
+            fake.add({"resourceType": "Observation", "status": "final", "effectiveDateTime": "2026-11-12T08:00:00Z",
+                      "category": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/observation-category", "code": "laboratory"}]}],
+                      "code": {"coding": [{"system": "http://loinc.org", "code": "2345-7"}], "text": "Glucose"},
+                      "valueQuantity": {"value": 101, "unit": "mg/dL"}}, patient="pat-1")
+            page.get_by_role("button", name="Sync now").click()
+            for _ in range(100):
+                if imports() == 2:
+                    break
+                page.wait_for_timeout(200)
+            check("Sync now brings the new result in, as an import of its own", imports() == 2, imports())
+            page.set_viewport_size({"width": 375, "height": 800})
+            page.reload()
+            page.wait_for_function("document.getElementById('connList').textContent.includes('Fake Epic sandbox')", timeout=10000)
+            check("connected sources fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            fake.revoke_all("pat-1")    # the patient ends access in their portal
+            fake.expire_access_tokens()
+            page.reload()
+            page.get_by_role("button", name="Sync now").click()
+            page.wait_for_timeout(1500)
+            page.reload()
+            page.wait_for_selector("#reconnect:not([hidden])", timeout=20000)
+            check("when access ends, the page asks to sign in again", "access ended" in page.inner_text("#reconnect")
+                  and page.get_by_role("button", name="Sign in again").count() == 1, page.inner_text("#connList")[:300])
+            check("only the source's own host was contacted", fake.hosts() == {f"127.0.0.1:{fake.port}"}, fake.hosts())
+            fake.stop()
 
             # ---- account page: password, devices, profiles with sharing, accounts (admin)
             page.goto(base + "/account.html")
@@ -842,6 +1153,7 @@ def main():
                 problems.append(f"passkey page at {pk.url}: " + str(pk.evaluate("document.body.innerText.slice(0, 300)")))
         browser.close()
     srv.should_exit = True
+    SHL.stop()
     time.sleep(0.3)
     shutil.rmtree(TMP, ignore_errors=True)
 

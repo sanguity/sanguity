@@ -8,13 +8,17 @@ version 14, keeps what the history showed for them).
 Undo removes everything the import added, and only that, in one transaction:
   - its events, series, results and documents' rows (records.drop: they cascade from the import's row)
   - the upload's raw files, unless another import still uses them (another job's import of the same upload, or a
-    document of another import stored in it): the upload is marked discarded in the transaction and its folder
+    document of another import stored in it); for records typed in by hand (origin "manual"), the uploads holding
+    the files attached to its documents: the upload is marked discarded in the transaction and its folder
     removed once it commits (uploads.cleanup removes it at the next start if that's interrupted)
   - its watch data (watch_store.forget_import): its own summary set aside and the merged file rebuilt without it
 It never touches anything stored apart from the import's rows: settings, other imports, corrections (#33).
 
 By origin:
   upload    undone as above: the profile is as it was before the import.
+  manual    the same: records typed in on the import page (routes_manual.py), their files and watch data.
+  sync      a connected source's scheduled pull (sync.py): what it added goes, and the records it updated in place
+            get back what they were (sync_changes); the connection keeps pulling what's new from then on.
   dataset   undone, but it replaced the profile's records when it was loaded, and those can't be brought back.
   build     refused: the profile is kept in step with the setup build, so the next rebuild would bring it back.
 """
@@ -30,7 +34,7 @@ NOTES = {
              "come back at the next rebuild. To leave records out, take their export out of the build (sources.json) "
              "and rebuild.",
 }
-BY = {"build": activity.SETUP_BUILD, "dataset": activity.COMMAND_LINE}
+BY = {"build": activity.SETUP_BUILD, "dataset": activity.COMMAND_LINE, "sync": activity.SCHEDULED_SYNC}
 
 
 class Refused(Exception):
@@ -40,7 +44,13 @@ class Refused(Exception):
         self.status = status
 
 
-def label(fmt):
+# imports named for how they got there rather than the format they're in; the page's Source lines use the same (#100)
+BY_ORIGIN = {"build": "Setup build", "manual": "Typed in"}
+
+
+def label(fmt, origin=None):
+    if origin in BY_ORIGIN:
+        return BY_ORIGIN[origin]
     if fmt == records.FORMAT:
         return "Sanguity data file"
     mod = registry.get(fmt)
@@ -66,22 +76,29 @@ def _entry(db, pid, imp):
     job = db.execute("""SELECT j.id, j.upload_id, j.summary, j.created_by, u.username FROM jobs j
                         LEFT JOIN users u ON u.id = j.created_by WHERE j.import_id=? ORDER BY j.id LIMIT 1""", (iid,)).fetchone()
     summary = json.loads(crypto.dec(job["summary"])) if job and job["summary"] else {}
-    if job:
+    if job and (job["username"] or origin != "sync"):
         by = job["username"] or "a removed account"
     else:
         by = BY.get(origin, activity.COMMAND_LINE)
     names = _names(db, pid, job["upload_id"]) if job else []
-    return {"id": iid, "at": imp["at"], "origin": origin, "format": imp["format"], "label": label(imp["format"]),
+    return {"id": iid, "at": imp["at"], "origin": origin, "format": imp["format"], "label": label(imp["format"], origin),
             "by": by, "job": job["id"] if job else None, "upload": job["upload_id"] if job else None,
             "files": names[:FILES_SHOWN], "file_count": len(names),
             "counts": summary.get("counts") or _counts(db, iid), "range": summary.get("range"),
             "watch": watch_store.has_import(pid, iid),
+            "connection": _source(db, imp["connection_id"]), "changed": summary.get("changed"),
             "state": "active", "can_undo": origin != "build", "note": NOTES.get(origin)}
+
+
+def _source(db, cid):
+    """The connected source (#91) an import came from, by name, or None."""
+    r = db.execute("SELECT source FROM connections WHERE id=?", (cid,)).fetchone() if cid else None
+    return r["source"] if r else None
 
 
 def entries(db, pid):
     """The profile's imports, newest first: those it has, then (in the same order of time) those undone."""
-    live = [_entry(db, pid, r) for r in db.execute("SELECT id, at, origin, format FROM imports WHERE profile_id=?", (pid,))]
+    live = [_entry(db, pid, r) for r in db.execute("SELECT id, at, origin, format, connection_id FROM imports WHERE profile_id=?", (pid,))]
     gone = []
     for r in db.execute("SELECT at, by_name, entry FROM import_undos WHERE profile_id=?", (pid,)):
         e = json.loads(crypto.dec(r["entry"]))
@@ -101,10 +118,24 @@ def _still_used(db, pid, iid, upload_id):
     return False
 
 
+def _document_uploads(db, pid, iid):
+    """The uploads that hold the files of an import's documents without a job of that import reading them: a
+    document typed in by hand (routes_manual.py) is a file sent on its own through the upload routes."""
+    paths = [os.path.realpath(crypto.dec(r["path"])) for r in db.execute("SELECT path FROM documents WHERE import_id=?", (iid,))]
+    if not paths:
+        return []
+    out = []
+    for r in db.execute("SELECT id FROM uploads WHERE profile_id=? AND state='ready'", (pid,)):
+        root = os.path.realpath(uploads.folder(pid, r["id"]))
+        if any(p.startswith(root + os.sep) for p in paths):
+            out.append(r["id"])
+    return out
+
+
 def undo(db, pid, iid, who, ip=None):
     """Undo import iid of profile pid (who: the signed-in account's row). Returns the history entry, now undone.
     Raises Refused when there's no such import or it can't be undone."""
-    imp = db.execute("SELECT id, at, origin, format FROM imports WHERE id=? AND profile_id=?", (iid, pid)).fetchone()
+    imp = db.execute("SELECT id, at, origin, format, connection_id FROM imports WHERE id=? AND profile_id=?", (iid, pid)).fetchone()
     if not imp:
         raise Refused("No such import. It may have been undone already.", 404)
     if imp["origin"] == "build":
@@ -114,6 +145,10 @@ def undo(db, pid, iid, who, ip=None):
     try:
         with dbm.transaction(db):
             ups = [r[0] for r in db.execute("SELECT DISTINCT upload_id FROM jobs WHERE import_id=?", (iid,))]
+            ups += [u for u in _document_uploads(db, pid, iid) if u not in ups]   # hand entry's attached files
+            if imp["origin"] == "sync":   # a connected source's sync: what it changed in place goes back first
+                from . import sync
+                sync.unapply(db, iid)
             records.drop(db, pid, [iid])   # events, series, results, documents: by cascade
             for u in ups:
                 if not _still_used(db, pid, iid, u):

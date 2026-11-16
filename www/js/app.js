@@ -58,6 +58,7 @@ $("#logout").onclick = async () => { try { await api("logout", {method: "POST"})
     PROFILE = ME.profiles.find(p => p.id === want) || ME.profiles[0];
     hLoad();
     renderProfileMenu();
+    $("#settingsLink").href = `settings.html?profile=${PROFILE.id}`;
     const r = await api(`profiles/${PROFILE.id}/data`);
     if (r.status === 401) { location.replace("login.html"); return; }
     if (r.status >= 500) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || r.status + " " + r.statusText); }
@@ -76,7 +77,7 @@ $("#logout").onclick = async () => { try { await api("logout", {method: "POST"})
     if (isMsKey(costState.period) && !msOf(costState.period) || costState.period === "dx") costState.period = msKey(primaryMs());
     if (isMsKey(hState.period) && !msOf(hState.period) || hState.period === "dx") hState.period = primaryMs() ? msKey(primaryMs()) : "all";
   } catch (e) { emptyCard("Couldn't load the records: " + e.message); return; }
-  // this profile's preferences; missing or broken settings keep the defaults
+  // this profile's settings (changed on the Settings page); if they can't be loaded the defaults are used
   try {
     const s = await api(`profiles/${PROFILE.id}/settings`);
     if (s.ok) applySettings(await s.json());

@@ -50,7 +50,7 @@ function openEvent(e) {
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
       const abn = (r.rows || []).filter(x => x[4]).length;
-      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {style: {color: "var(--muted)", fontSize: "12px", fontWeight: 400}, text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", text: abn}) : null), el("div", {}, ...resultBody(r)));
+      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {style: {color: "var(--muted)", fontSize: "12px", fontWeight: 400}, text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", text: abn}) : null), el("div", {}, ...resultBody(r), eventSource(ev2)));
       body.append(det);
     }
   } else if (d.type === "conversation") {
@@ -76,8 +76,10 @@ function openEvent(e) {
           d.where ? el("dt", {text: "Where"}) : null, d.where ? el("dd", {text: d.where}) : null,
           d.transfer_from ? el("dt", {text: "Transferred from"}) : null, d.transfer_from ? el("dd", {text: d.transfer_from}) : null,
           d.transfer_to ? el("dt", {text: "Transferred to"}) : null, d.transfer_to ? el("dd", {text: d.transfer_to}) : null,
+          d.admission ? el("dt", {text: "Admission"}) : null, d.admission ? el("dd", {text: d.admission}) : null,
           el("dt", {text: "Source"}), el("dd", {text: d.how || ""}))
       : el("dl", {class: "kv"}, el("dt", {text: "Admitted"}), el("dd", {text: d.admit}), el("dt", {text: "Last result"}), el("dd", {text: fmtDT(d.lastResult)}), el("dt", {text: "Inpatient results"}), el("dd", {text: d.results})),
+      d.note ? el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}) : null,
       d.discharge ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "Estimated: no admission record was available, so the end date is the last inpatient lab result."}),
       el("button", {class: "btn", text: "Zoom timeline to this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); closeDrawer(); }}),
       el("button", {class: "btn", text: "Lab trends during this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); switchTab("labs"); closeDrawer(); }}));
@@ -101,9 +103,12 @@ function openEvent(e) {
         el("td", {text: l.code || ""}), el("td", {text: l.billed ? usd(l.billed) : ""})))))));
     if (/denied/.test(st)) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "\"Provider denied\" usually means the provider must correct or resubmit the claim and you aren't billed for it; \"denied\" can mean you are. The EOB on your insurer's site has the exact reason."}));
   } else if (d.type === "med") {
-    body.append(el("dl", {class: "kv"}, ...[["Instructions", d.instructions], ["Status", d.status], ["Listed since", fmtD(e.ts)], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
-      el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "From the clinic's medication list. The date is when it was recorded there, not necessarily when you started it."}));
+    const typed = d.src === "Typed in";   // hand entry (import page): the dates are the ones typed
+    body.append(el("dl", {class: "kv"}, ...[["Instructions", d.instructions], ["Status", d.status], [typed ? "Started" : "Listed since", fmtD(e.ts)],
+      ["Stopped", d.end ? fmtD(d.end) : ""], ["Prescribed by", d.prescriber], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
+      typed ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "From the clinic's medication list. The date is when it was recorded there, not necessarily when you started it."}));
   }
+  const src = eventSource(e); if (src) body.append(src);   // where it came from (sources.js)
   if (e.k !== "exercise") body.append(editPanel(e));
   showDrawer();
   renderTimeline(); document.querySelectorAll(".row").forEach(r => r.classList.remove("sel"));
