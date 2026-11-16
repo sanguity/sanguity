@@ -1731,6 +1731,39 @@ def main():
                   "Records aren't available offline" in text and ph.is_visible("header h1") and ph.evaluate("typeof EV === 'undefined' || !EV.length"), text)
             ctx.set_offline(False)
 
+            # installing (#56): without the browser's install prompt, the Account page says where to look; with it (a
+            # stand-in event: headless Chromium never offers one), a button opens it, and the header shows Install app
+            FAKE_PROMPT = ("(() => { const e = new Event('beforeinstallprompt'); e.prompt = () => { window.sgPrompted = (window.sgPrompted || 0) + 1; }; "
+                           "e.userChoice = Promise.resolve({outcome: 'accepted'}); dispatchEvent(e); })()")
+            ph.goto(base + "/account.html")
+            ph.wait_for_selector("#installApp h2")
+            check("Account: how to install on this device, without a prompt from the browser",
+                  "Install app" in ph.inner_text("#installApp") and ph.locator("#installApp button").count() == 0, ph.inner_text("#installApp"))
+            ph.evaluate(FAKE_PROMPT)
+            ph.locator("#installApp button", has_text="Install on this device").click()
+            until("document.querySelector('#installApp .msg') && document.querySelector('#installApp .msg').textContent.startsWith('Installed')", 5000)
+            check("…with the browser's prompt, Install on this device opens it", ph.evaluate("window.sgPrompted") == 1)
+            ph.goto(base + "/")
+            until(LOADED, 20000)
+            check("the header has no Install app button until the browser offers to install", ph.locator("#installBtn").is_hidden())
+            ph.evaluate(FAKE_PROMPT)
+            check("…then it does, and it opens the browser's prompt", ph.locator("#installBtn").is_visible())
+            ph.click("#installBtn")
+            until("window.sgPrompted === 1", 5000)
+            check("…and it goes once used (a prompt opens once)", ph.locator("#installBtn").is_hidden())
+            check("the header still fits 390 px with it", ph.evaluate("document.documentElement.scrollWidth") <= 390, ph.evaluate("document.documentElement.scrollWidth"))
+            iphone = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True,
+                                         user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1")
+            iphone.add_cookies([{"name": sg_config.COOKIE, "value": token, "url": base, "httpOnly": True, "sameSite": "Strict"}])
+            ip = iphone.new_page()
+            ip.on("pageerror", lambda e: problems.append(f"script error (iPhone): {e}"))
+            ip.goto(base + "/account.html")
+            ip.wait_for_selector("#installApp .install-steps", timeout=10000)
+            steps = ip.inner_text("#installApp")
+            check("on an iPhone: Safari's Share, then Add to Home Screen", "Share button" in steps and "Add to Home Screen" in steps, steps)
+            check("…and the page fits 390 px", ip.evaluate("document.documentElement.scrollWidth") <= 390)
+            iphone.close()
+
             # turned on under Account (off until then); the records loaded next are kept
             ph.goto(base + "/account.html")
             ph.wait_for_selector("#offlineOn")

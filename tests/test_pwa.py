@@ -50,7 +50,8 @@ class Pwa(unittest.TestCase):
         tmp = tempfile.mkdtemp(prefix="sanguity-pwa-")
         try:
             env = {**os.environ, "SANGUITY_SERVE_STATIC": "1", "SANGUITY_DATA": tmp, "SANGUITY_RECORDS": os.path.join(tmp, "records"),
-                   "SANGUITY_KEY_FILE": os.path.join(tmp, "keys", "data_key"), "SANGUITY_WATCH_FILE": os.path.join(tmp, "watch", "daily.json")}
+                   "SANGUITY_KEY_FILE": os.path.join(tmp, "keys", "data_key"), "SANGUITY_WATCH_FILE": os.path.join(tmp, "watch", "daily.json"),
+                   "PUBLIC_ORIGINS": "http://sanguity.lan:8740, https://sanguity.example.test:8443"}
             os.makedirs(os.path.join(tmp, "records"))
             r = subprocess.run([sys.executable, "-c", SERVED, ROOT], env=env, capture_output=True, text=True, timeout=120)
             if r.returncode:
@@ -116,7 +117,11 @@ class Pwa(unittest.TestCase):
             html = f.read()
         self.assertLess(html.index('src="js/offline.js"'), html.index('src="js/app.js"'), "before app.js asks the API anything")
         with open(os.path.join(WWW, "account.html"), encoding="utf-8") as f:
-            self.assertIn('id="offlineRecords"', f.read())
+            html = f.read()
+        self.assertIn('id="offlineRecords"', html)
+        self.assertLess(html.index('id="installApp"'), html.index('id="offlineRecords"'), "how to install, then what it keeps offline")
+        with open(os.path.join(WWW, "index.html"), encoding="utf-8") as f:
+            self.assertIn('id="installBtn" type="button"', f.read())
 
     def test_worker_keeps_every_app_file_and_nothing_from_the_api(self):
         with open(os.path.join(WWW, "sw.js"), encoding="utf-8") as f:
@@ -140,6 +145,7 @@ class Pwa(unittest.TestCase):
         self.assertEqual(me["status"], 200)
         self.assertEqual(me["cache"], "no-store")
         import time
+        self.assertEqual(me["body"]["https_address"], "https://sanguity.example.test:8443", "for installing from a plain-HTTP page")
         ends = me["body"]["session_ends"]
         self.assertTrue(time.time() < ends <= time.time() + 12 * 3600 + 60, "12 hours without a second factor")
 

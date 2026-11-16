@@ -87,3 +87,80 @@ if (/\/(login|setup)\.html$/.test(location.pathname)) SgOffline.forget();
     el("div", {class: "row"}, msg));
   status();
 })();
+
+/* ---------------------------------------------------------------- installing on this device
+   Chrome, Edge and Samsung Internet (Android and desktop) offer an install prompt the page may open from a button
+   (beforeinstallprompt); iPhone and iPad have no prompt, so the page says where Safari's Add to Home Screen is. The
+   header's Install app button shows only while the browser offers that prompt; the Account page always says how,
+   or why not here (a plain-HTTP address), or that this is the installed app already. */
+const SgInstall = (() => {
+  let prompt = null;
+  const listeners = new Set();
+  const changed = () => listeners.forEach(f => f());
+  addEventListener("beforeinstallprompt", e => { e.preventDefault(); prompt = e; changed(); });
+  addEventListener("appinstalled", () => { prompt = null; changed(); });
+  const installed = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  // iPadOS reports itself as a Mac: one with touch is an iPad
+  const ios = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  async function install() {
+    if (!prompt) return "unavailable";
+    const p = prompt; prompt = null;
+    p.prompt();
+    const r = await p.userChoice.catch(() => ({outcome: "dismissed"}));
+    changed();
+    return r.outcome;   // "accepted" or "dismissed"
+  }
+  return {installed, ios, install, can: () => !!prompt, onChange: f => listeners.add(f)};
+})();
+
+(function headerButton() {
+  const b = document.getElementById("installBtn");
+  if (!b) return;
+  const show = () => { b.hidden = !SgInstall.can() || SgInstall.installed(); };
+  b.onclick = () => SgInstall.install();
+  SgInstall.onChange(show);
+  show();
+})();
+
+(function installCard() {
+  const box = document.getElementById("installApp");
+  if (!box) return;
+  const msg = el("span", {class: "msg", role: "status"});
+  const body = el("div");
+  function draw(https) {
+    let parts;
+    if (SgInstall.installed()) {
+      parts = [el("p", {class: "hint", text: "You're using the installed app on this device. To remove it, delete it from the home screen like any other app."})];
+    } else if (!window.isSecureContext) {
+      parts = [el("p", {class: "hint", text: "Browsers only install from an HTTPS address, and this page uses plain HTTP."}),
+        https ? el("p", {}, "Open ", el("a", {href: https + location.pathname, text: https}),
+          " on this device, sign in, and come back here.")
+          : el("p", {class: "hint", text: "Ask whoever runs this Sanguity for its HTTPS address."})];
+    } else if (SgInstall.can()) {
+      const btn = el("button", {class: "btn", type: "button", text: "Install on this device"});
+      btn.onclick = async () => {
+        const r = await SgInstall.install();
+        msg.textContent = r === "accepted" ? "Installed. Open Sanguity from your home screen or app list." : r === "dismissed" ? "Not installed." : "";
+        draw(https);   // the prompt is used up: drawn again without the button, keeping this answer
+      };
+      parts = [el("p", {class: "hint", text: "Adds Sanguity to this device's home screen or app list, with its own icon and window."}),
+        el("div", {class: "row"}, btn, msg)];
+    } else if (SgInstall.ios()) {
+      parts = [el("p", {class: "hint", text: "On iPhone and iPad, Safari installs it:"}),
+        el("ol", {class: "install-steps"},
+          el("li", {text: "Tap the Share button (the square with an arrow pointing up), at the bottom or top of the screen."}),
+          el("li", {text: "Scroll down and tap Add to Home Screen, then Add."}),
+          el("li", {text: "Open Sanguity from its new icon. You'll be asked to sign in there once."}))];
+    } else {
+      parts = [el("p", {class: "hint", text: "Look in your browser's menu for Install app, Install Sanguity or Add to Home screen. " +
+        "Chrome and Edge show an install button here when they're ready; Firefox on a computer can't install web apps."})];
+    }
+    // the last answer stays when the card is drawn again (a used prompt is gone, so the button is too)
+    body.replaceChildren(...parts, ...(SgInstall.can() || !msg.textContent ? [] : [el("div", {class: "row"}, msg)]));
+  }
+  box.replaceChildren(el("h2", {text: "Install on this device"}), body);
+  let https = null;
+  draw(https);
+  SgInstall.onChange(() => draw(https));
+  if (!window.isSecureContext) fetch("api/me", {credentials: "same-origin"}).then(r => r.ok ? r.json() : {}).then(j => { https = j.https_address || null; draw(https); }).catch(() => {});
+})();

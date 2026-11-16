@@ -81,6 +81,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - Install as a phone app: a web app manifest and home-screen icons, and a service worker that keeps the app's
   pages so it opens offline. Offline records are opt-in per device (Account), read-only, and deleted on sign-out,
   when the sign-in ends, or when turned off (#56). Needs HTTPS (or localhost).
+- Installing it is offered in the app: an **Install app** button in the header when the browser can install it,
+  and an "Install on this device" card under Account with the button, Safari's Add to Home Screen steps on
+  iPhone and iPad, or a link to the install's HTTPS address when the page was opened over plain HTTP (#56).
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for
