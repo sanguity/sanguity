@@ -37,6 +37,7 @@
       <button role="tab" id="tab-zip" aria-controls="panel-zip" aria-selected="true">A zip</button>
       <button role="tab" id="tab-folder" aria-controls="panel-folder" aria-selected="false" tabindex="-1">A folder</button>
       <button role="tab" id="tab-files" aria-controls="panel-files" aria-selected="false" tabindex="-1">Single files</button>
+      <button role="tab" id="tab-manual" aria-controls="panel-manual" aria-selected="false" tabindex="-1">Type them in</button>
     </div>
     <div role="tabpanel" id="panel-zip" aria-labelledby="tab-zip">
       <p class="hint">Most portals give you a zip (MyChart, Apple Health's export.zip, Blue Button). Upload it as it is: it's
@@ -52,13 +53,26 @@
       <label class="btn pick">Choose files… <input type="file" id="pickFiles" multiple></label>
     </div>
 
+    <div role="tabpanel" id="panel-manual" aria-labelledby="tab-manual" hidden>
+      <p class="hint">Lab results from a paper report, one per row: the date, the test, its value and unit, and the reference
+        range printed beside it (like <i>13.5 - 17.5</i>, <i>&lt;200</i> or <i>&gt;60</i>). You can paste rows copied from a
+        spreadsheet. Each row is checked as you go.</p>
+      <div class="man-rows" id="manRows" aria-label="Results to save"></div>
+      <datalist id="labNames"></datalist>
+      <div class="row">
+        <button class="btn" id="manAdd" type="button">Add a row</button>
+        <button class="btn primary" id="manSave" type="button" disabled>Save results</button>
+        <span class="msg" id="manMsg" role="status"></span>
+      </div>
+    </div>
+
     <div class="drop" id="drop" tabindex="-1">Or drop a zip, a folder or files here</div>
 
     <div id="chosen" hidden>
       <div class="row imp-sum"><b id="sum"></b><button class="btn small" id="clear" type="button">Clear</button></div>
       <ul class="imp-list" id="list" aria-label="Files to upload"></ul>
     </div>
-    <div class="row">
+    <div class="row" id="goRow">
       <button class="btn primary" id="go" type="button" disabled>Upload</button>
       <span class="msg" id="msg" role="status"></span>
     </div>
@@ -68,5 +82,6 @@
 <script src="js/import-jobs.js"></script>
 <script src="js/import.js"></script>
 <script src="js/import-history.js"></script>
+<script src="js/import-manual.js"></script>
 </body>
 </html>

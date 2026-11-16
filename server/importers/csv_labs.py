@@ -15,6 +15,9 @@ Every event and series carries a stable source `key`, so a re-import of the same
 instead of duplicating: "csv:h:" + 16 hex characters of a SHA-256 over date-time, test (trimmed, lower case),
 value as reported and unit for a labitem; "csv:labday:<YYYY-MM-DD>" for a day; "loinc:<code>" or
 "csv:<test lower case>|<unit>" for a series. File names, row numbers and column order are left out.
+
+read_row (one row's result), date_order, dedupe and build are public: hand entry (routes_manual.py) reads typed rows
+with them, so a typed result gets the same keys, names, ranges and flags as the same row in a spreadsheet.
 """
 import collections
 import csv
@@ -508,56 +511,77 @@ def parse(files, mapping=None):
         if any(v is None for v in order.values()):
             warn.add(f"{rel}: the file mixes day-first and month-first dates, so dates where both parts are 12 or "
                      f"under were skipped.")
+        bounds = "low" in cols or "high" in cols
         for line, cells in rows:
             if not any(c.strip() for c in cells):
                 continue
             where = f"{rel} line {line}"
-            test, raw_date, reported = get(cells, "test"), get(cells, "date"), get(cells, "value")
-            if not test:
-                warn.row("with no test name", where)
+            r, why = read_row(lambda f: get(cells, f), decimal_comma, order, bounds)
+            if why:
+                warn.row(why[0], where + why[1])
                 continue
-            if not raw_date:
-                warn.row("with no date", where)
-                continue
-            t = _timestamp(raw_date, get(cells, "time"), order)
-            if not t:
-                warn.row("with a date that couldn't be read", f"{where} ({raw_date!r})")
-                continue
-            if not reported:
-                warn.row("with no value", where)
-                continue
-            unit = get(cells, "unit")
-            x, cmp, rest = _value(reported, decimal_comma)
-            flag_text = get(cells, "flag")
-            if x is not None and rest:
-                fm = _TRAILING_FLAG.match(rest)
-                if fm:                       # "18.1 H", "18.1 g/dL H"
-                    flag_text, rest = flag_text or fm.group(2), fm.group(1)
-                if rest and _UNIT_RE.fullmatch(rest):
-                    unit = unit or rest      # "5.2 mg/dL" in one cell
-                elif rest:
-                    x = None                 # "1 of 3", "2+ casts": text
-            range_text = get(cells, "range")   # kept as reported in the result row, even when unreadable
-            lo, hi = _range(range_text, decimal_comma)
-            if "low" in cols or "high" in cols:
-                lo2 = _number(get(cells, "low"), decimal_comma)
-                hi2 = _number(get(cells, "high"), decimal_comma)
-                lo, hi = (lo2 if lo2 is not None else lo), (hi2 if hi2 is not None else hi)
-                if not range_text:
-                    range_text = (f"{_fmt(lo)} - {_fmt(hi)}" if lo is not None and hi is not None else
-                                  f">={_fmt(lo)}" if lo is not None else f"<={_fmt(hi)}" if hi is not None else "")
-            flag = _flag(flag_text, x, cmp, lo, hi)
-            results.append({"t": t, "test": test, "x": x, "reported": reported, "unit": unit, "range": range_text,
-                            "lo": lo, "hi": hi, "flag": flag, "panel": get(cells, "panel"), "lab": get(cells, "lab"),
-                            "loinc": get(cells, "loinc"),
-                            "file": rel})
-    results, dupes = _dedupe(results)
+            results.append({**r, "file": rel})
+    results, dupes = dedupe(results)
     if dupes:
         warn.add(f"Left out {dupes} result{'s' if dupes != 1 else ''} that appeared twice (same test, date and value).")
     if not results:
         msgs = warn.list()
         raise ValueError("No lab results could be read from the spreadsheet." + (" " + " ".join(msgs) if msgs else ""))
-    return {"data": _build(results), "warnings": warn.list()}
+    return {"data": build(results), "warnings": warn.list()}
+
+
+def read_row(get, decimal_comma=False, order=None, bounds=True):
+    """One result from one row: (result, None), or (None, (why, note)) when it can't be read.
+
+    get(field) is the row's trimmed text for a field of FIELDS ("" when it has none). decimal_comma: read "4,5" as 4.5.
+    order: numeric date order from date_order() over the rows read together. bounds: low and high are read
+    (a spreadsheet only when it has those columns). why is a phrase after "Skipped N rows", like "with no date";
+    note is "" or the unreadable text, as " ('31/31/2025')". Hand entry (routes_manual.py) reads rows with this too,
+    so a typed result and the same result in a spreadsheet are one and the same."""
+    test, raw_date, reported = get("test"), get("date"), get("value")
+    if not test:
+        return None, ("with no test name", "")
+    if not raw_date:
+        return None, ("with no date", "")
+    t = _timestamp(raw_date, get("time"), order or {})
+    if not t:
+        return None, ("with a date that couldn't be read", f" ({raw_date!r})")
+    if not reported:
+        return None, ("with no value", "")
+    unit = get("unit")
+    x, cmp, rest = _value(reported, decimal_comma)
+    flag_text = get("flag")
+    if x is not None and rest:
+        fm = _TRAILING_FLAG.match(rest)
+        if fm:                       # "18.1 H", "18.1 g/dL H"
+            flag_text, rest = flag_text or fm.group(2), fm.group(1)
+        if rest and _UNIT_RE.fullmatch(rest):
+            unit = unit or rest      # "5.2 mg/dL" in one cell
+        elif rest:
+            x = None                 # "1 of 3", "2+ casts": text
+    range_text = get("range")   # kept as reported in the result row, even when unreadable
+    lo, hi = _range(range_text, decimal_comma)
+    if bounds:
+        lo2 = _number(get("low"), decimal_comma)
+        hi2 = _number(get("high"), decimal_comma)
+        lo, hi = (lo2 if lo2 is not None else lo), (hi2 if hi2 is not None else hi)
+        if not range_text:
+            range_text = (f"{_fmt(lo)} - {_fmt(hi)}" if lo is not None and hi is not None else
+                          f">={_fmt(lo)}" if lo is not None else f"<={_fmt(hi)}" if hi is not None else "")
+    flag = _flag(flag_text, x, cmp, lo, hi)
+    return {"t": t, "test": test, "x": x, "reported": reported, "unit": unit, "range": range_text,
+            "lo": lo, "hi": hi, "flag": flag, "panel": get("panel"), "lab": get("lab"), "loinc": get("loinc")}, None
+
+
+def date_order(values):
+    """How numeric dates like 03/04/2025 read among these values: (order for read_row, separators only guessed)."""
+    return _date_order(values)
+
+
+def guessed_date(s, guessed):
+    """True for a date like 03/04/2025 whose day and month could swap, among values that left its separator guessed."""
+    p = _date_parts(s)
+    return bool(p and p[0] == "dm?" and p[1][3] in guessed and p[1][0] != p[1][1] and max(p[1][:2]) <= 12)
 
 
 def _identity(r):
@@ -570,7 +594,8 @@ def _key(r):
     return "csv:h:" + hashlib.sha256("\x1f".join(_identity(r)).encode("utf-8")).hexdigest()[:16]
 
 
-def _dedupe(results):
+def dedupe(results):
+    """The results with repeats (same identity) left out, and how many were."""
     seen, keep = set(), []
     for r in results:
         k = _identity(r)
@@ -610,7 +635,9 @@ def _unit_key(u):
     return (u or "").strip().lower().replace(" ", "").replace("µ", "u").replace("μ", "u")
 
 
-def _build(results):
+def build(results, source=SOURCE, sub="Imported spreadsheet"):
+    """The data.json shape for read_row's results (deduplicated). source tags points and lab days; sub is a result's
+    subtitle when it has no panel or lab."""
     events, details = [], {}
 
     def add(t, kind, title, sub, detail, **extra):
@@ -630,12 +657,12 @@ def _build(results):
             order = r["panel"] or r["test"]
             det = {"type": "result", "order": order, "name": r["test"], "collected": _display(r["t"]),
                    "lab": r["lab"] or None, "dx": [], "rows": [[r["test"], r["reported"], r["unit"], r["range"], r["flag"]]],
-                   "report": [], "comments": [], "src": SOURCE}
-            sub = " · ".join(x for x in [r["panel"] if r["panel"] != r["test"] else "", r["lab"]] if x) or "Imported spreadsheet"
-            ids.append(add(r["t"], "labitem", r["test"], sub, det, key=_key(r), abn=int(bool(r["flag"])), hidden=1))
+                   "report": [], "comments": [], "src": source}
+            line = " · ".join(x for x in [r["panel"] if r["panel"] != r["test"] else "", r["lab"]] if x) or sub
+            ids.append(add(r["t"], "labitem", r["test"], line, det, key=_key(r), abn=int(bool(r["flag"])), hidden=1))
         orders = sorted({r["panel"] or r["test"] for r in rs})
         add(rs[0]["t"], "lab", f"{len(rs)} lab result{'s' if len(rs) != 1 else ''}", ", ".join(orders)[:160],
-            {"type": "labday", "ids": ids}, key=f"csv:labday:{day}", abn=sum(1 for r in rs if r["flag"]), src=SOURCE)
+            {"type": "labday", "ids": ids}, key=f"csv:labday:{day}", abn=sum(1 for r in rs if r["flag"]), src=source)
 
     names = _series_names(results)
     series, panels = {}, collections.defaultdict(collections.Counter)
@@ -644,7 +671,7 @@ def _build(results):
             continue
         name = names[(r["test"], _unit_key(r["unit"]))]
         s = series.setdefault(name, {"unit": r["unit"], "pts": [], "txt": []})
-        s["pts"].append([r["t"], r["x"], r["lo"], r["hi"], r["flag"], r["reported"], SOURCE])
+        s["pts"].append([r["t"], r["x"], r["lo"], r["hi"], r["flag"], r["reported"], source])
         panels[name][r["panel"]] += 1
     for r in results:   # text results go with the test's main series, or one of their own
         if r["x"] is not None:

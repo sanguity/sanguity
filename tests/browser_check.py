@@ -6,8 +6,8 @@ login page, opens every tab and checks its main content rendered, opens the deta
 event, drags and scroll-zooms the charts, toggles the event sort, switches profiles, uploads a zip and files on
 the import page (a fictional C-CDA and a FHIR export, previewed, saved in the background and then shown on the timeline;
 the C-CDA again, previewed as all duplicates and cancelled; the FHIR one then undone from the import history, and
-gone from the timeline), opens the account page, and fails on any script error, console error, failed request or
-NaN written into an SVG attribute.
+gone from the timeline), types two lab results in on the import page and finds them on Trends, opens the account
+page, and fails on any script error, console error, failed request or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
   python3 tests/browser_check.py
@@ -439,6 +439,70 @@ def main():
             listed = page.inner_text("#list")
             check("…and the FHIR export's records leave the timeline, the C-CDA's staying",
                   "Riverside General Hospital" not in listed and "Discharge summary" not in listed and "Outpatient visit" in listed, listed[:400])
+
+            # ---- import page, "Type them in" (#27): two results typed in, checked as they're typed, saved, on Trends
+            page.goto(base + "/import.html?profile=2")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            page.click("#tab-manual")
+            check("the Type them in tab shows its rows, not the upload controls",
+                  js("!document.getElementById('panel-manual').hidden && document.querySelectorAll('.man-row').length === 1 && "
+                     "getComputedStyle(document.getElementById('drop')).display === 'none' && "
+                     "getComputedStyle(document.getElementById('goRow')).display === 'none'"))
+            page.wait_for_function("document.querySelectorAll('#labNames option').length > 10", timeout=5000)
+            check("test names are suggested from lab-aliases.json", js("[...document.querySelectorAll('#labNames option')].some(o => o.value === 'Hemoglobin')")
+                  and js("document.querySelector('.man-row [data-f=test]').getAttribute('list')") == "labNames")
+            row = lambda i, f: f".man-row:nth-child({i}) [data-f={f}]"
+            page.fill(row(1, "date"), "2026-11-02")
+            page.fill(row(1, "time"), "08:10")
+            page.fill(row(1, "test"), "HGB")
+            page.fill(row(1, "value"), "12.4")
+            page.fill(row(1, "unit"), "g/dL")
+            page.fill(row(1, "range"), "13.5 - 17.5")
+            page.wait_for_function("document.querySelector('.man-row .man-check').textContent.includes('Hemoglobin')", timeout=5000)
+            first = js("document.querySelector('.man-row .man-check').textContent")
+            check("a typed row is checked as you go: its canonical name, range and flag", "Hemoglobin" in first and "13.5 – 17.5" in first
+                  and "Low" in first, first)
+            page.click("#manAdd")
+            check("a new row takes the last one's date and time", js(f"document.querySelector('{row(2, 'date')}').value") == "2026-11-02"
+                  and js(f"document.querySelector('{row(2, 'time')}').value") == "08:10")
+            page.fill(row(2, "test"), "Ferritin")
+            page.fill(row(2, "value"), "abc")
+            page.wait_for_function("document.querySelectorAll('.man-check')[1].textContent.includes('text result')", timeout=5000)
+            check("a value that isn't a number is pointed out", True)
+            page.fill(row(2, "value"), "88")
+            page.fill(row(2, "unit"), "ng/mL")
+            page.fill(row(2, "range"), "30-400")
+            page.wait_for_function("document.getElementById('manMsg').textContent === '2 results ready to save.'", timeout=5000)
+            # a block of cells pasted from a spreadsheet fills rows of its own; removing them leaves the two typed
+            js("""(() => { const dt = new DataTransfer(); dt.setData('text/plain', 'Date\\tTest\\tResult\\tUnits\\n2026-11-02\\tWBC\\t6.1\\tK/uL\\n'
+                   + '2026-11-02\\tPlatelets\\t250\\tK/uL\\n'); document.getElementById('manAdd').click();
+                   document.querySelector('.man-row:nth-child(3) [data-f=date]').dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})); })()""")
+            check("rows pasted from a spreadsheet fill in by their header", js("[...document.querySelectorAll('.man-row [data-f=test]')].map(i => i.value)")
+                  == ["HGB", "Ferritin", "WBC", "Platelets"], js("[...document.querySelectorAll('.man-row [data-f=test]')].map(i => i.value)"))
+            page.wait_for_function("document.getElementById('manMsg').textContent === '4 results ready to save.'", timeout=5000)
+            page.click(".man-row:nth-child(4) .del")
+            page.click(".man-row:nth-child(3) .del")
+            page.wait_for_function("document.getElementById('manMsg').textContent === '2 results ready to save.' && !document.getElementById('manSave').disabled", timeout=5000)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("the Type them in tab fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            check("the typed results save", page.inner_text("#manMsg").startswith("Saved 2 results."), page.inner_text("#manMsg"))
+            db = dbm.connect()
+            imp = db.execute("SELECT origin, format FROM imports WHERE profile_id=2 ORDER BY id DESC").fetchone()
+            db.close()
+            check("…as one import of their own", imp is not None and tuple(imp) == ("manual", "manual"), imp and tuple(imp))
+            page.click("#manMsg a")   # "See them on Trends"
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && "
+                                   "!document.getElementById('view-labs').hidden && document.querySelectorAll('#charts .chart').length > 0", timeout=20000)
+            typed = js("""SERIES.filter(s => ['Hemoglobin', 'Ferritin'].includes(s.name))
+                          .map(s => [s.name, s.pts.filter(p => p[6] === 'Typed in').map(p => [p[1], p[4]])]).filter(x => x[1].length)""")
+            check("the typed results are on Trends, charted under their canonical names",
+                  sorted(map(tuple, [(n, tuple(map(tuple, p))) for n, p in typed])) == [("Ferritin", ((88, ""),)), ("Hemoglobin", ((12.4, "L"),))], typed)
+            charts = page.inner_text("#charts")
+            check("…with a chart for each", "Hemoglobin" in charts and "Ferritin" in charts, charts[:300])
             page.select_option("#profile", label="My records")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
 

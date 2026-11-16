@@ -3,7 +3,7 @@
    the server unpacks zips. Once the upload is finished, window.sanguityImport.uploaded({profileId, uploadId})
    starts the import if that's there (#20); otherwise the page says importing comes next. */
 "use strict";   // $, el and api come from util.js
-const KINDS = ["zip", "folder", "files"];
+const KINDS = ["zip", "folder", "files", "manual"];   // manual: results typed in (import-manual.js)
 const SKIP = /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$/i;   // what file managers leave in folders: not records
 const PARALLEL = 3;   // files sent at once
 let ME, LIMITS = null, chosen = [], busy = false;
@@ -30,6 +30,7 @@ function showKind(name, focus = false) {
     b.setAttribute("aria-selected", on); b.tabIndex = on ? 0 : -1;
     $("#panel-" + k).hidden = !on;
   }
+  for (const id of ["#drop", "#chosen", "#goRow"]) $(id).classList.toggle("off", name === "manual");   // nothing to upload there
   if (focus) $("#tab-" + name).focus();
 }
 $("#kindTabs").addEventListener("click", ev => { const b = ev.target.closest("[role=tab]"); if (b) showKind(b.id.slice(4)); });
