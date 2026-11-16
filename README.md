@@ -168,6 +168,14 @@ the setup build keeps them, and they apply again to the same events. They find a
 start time and title. Like the records, they are encrypted at rest. `corrections.json` now holds **milestones
 only**; editing those in the app comes with Phase 3 (#39).
 
+### Finding your provider
+
+**Find your hospital or insurer** (linked from the import page) searches a directory of FHIR endpoints by name,
+location, city or state, and shows the FHIR base URL and what connecting needs: the app you register with that vendor
+yourself, and the return address and scopes to paste. Signing in comes with #32. Epic's and Oracle Health's lists
+can't be shipped with Sanguity, so an admin adds them once: `python3 tools/build_directory.py` (about 1 MB; see
+[docs/provider-directory.md](docs/provider-directory.md)). The app never looks anything up itself.
+
 ## Privacy and security
 
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry. The one

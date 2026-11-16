@@ -1,0 +1,115 @@
+{
+ "format": 1,
+ "built": "2026-11-15",
+ "sources": [
+  {
+   "id": "epic-brands",
+   "label": "Epic: User-access Brands bundle (R4)",
+   "url": "https://open.epic.com/Endpoints/Brands",
+   "terms": "https://open.epic.com/Home/TermsOfUse",
+   "redistributable": false,
+   "included": false,
+   "why": "open.epic's terms allow keeping a copy for yourself and sharing only by linking to it, so each install fetches its own copy. Run tools/build_directory.py to add it."
+  },
+  {
+   "id": "oracle-millennium",
+   "label": "Oracle Health Millennium patient R4 endpoints",
+   "url": "https://raw.githubusercontent.com/oracle-samples/ignite-endpoints/main/oracle_health_fhir_endpoints/millennium_patient_r4_endpoints.json",
+   "terms": "https://github.com/oracle-samples/ignite-endpoints",
+   "redistributable": false,
+   "included": false,
+   "why": "The list is copyright Oracle with no licence granted, so each install fetches its own copy. Run tools/build_directory.py to add it."
+  },
+  {
+   "id": "curated",
+   "label": "Vendor sandboxes and Medicare Blue Button 2.0, from the vendors' documentation",
+   "url": null,
+   "terms": "https://bluebutton.cms.gov/api-documentation/",
+   "redistributable": true,
+   "included": true,
+   "retrieved": "2026-11-15"
+  }
+ ],
+ "entries": [
+  {
+   "id": "cms:bluebutton",
+   "name": "Medicare (Blue Button 2.0)",
+   "vendor": "cms-bluebutton",
+   "kind": "payer",
+   "fhir_base": "https://api.bluebutton.cms.gov/v2/fhir/",
+   "fhir_version": "4.0.1",
+   "org": "Centers for Medicare & Medicaid Services",
+   "aliases": [
+    "CMS",
+    "Medicare",
+    "Blue Button"
+   ],
+   "places": [
+    [
+     "Baltimore",
+     "MD"
+    ]
+   ],
+   "source": "curated",
+   "retrieved": "2026-11-15"
+  },
+  {
+   "id": "epic:sandbox",
+   "name": "Epic on FHIR sandbox (test patients)",
+   "vendor": "epic",
+   "kind": "sandbox",
+   "fhir_base": "https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4/",
+   "fhir_version": "4.0.1",
+   "org": "Epic",
+   "aliases": [
+    "Epic sandbox",
+    "fhir.epic.com",
+    "test"
+   ],
+   "places": [
+    [
+     "Verona",
+     "WI"
+    ]
+   ],
+   "sandbox": true,
+   "source": "curated",
+   "retrieved": "2026-11-15"
+  },
+  {
+   "id": "cms:bluebutton-sandbox",
+   "name": "Medicare Blue Button 2.0 sandbox",
+   "vendor": "cms-bluebutton",
+   "kind": "sandbox",
+   "fhir_base": "https://sandbox.bluebutton.cms.gov/v2/fhir/",
+   "fhir_version": "4.0.1",
+   "org": "Centers for Medicare & Medicaid Services",
+   "aliases": [
+    "CMS",
+    "Medicare",
+    "Blue Button",
+    "test"
+   ],
+   "sandbox": true,
+   "source": "curated",
+   "retrieved": "2026-11-15"
+  },
+  {
+   "id": "oracle:sandbox",
+   "name": "Oracle Health (Cerner) patient sandbox",
+   "vendor": "oracle",
+   "kind": "sandbox",
+   "fhir_base": "https://fhir-myrecord.cerner.com/r4/ec2458f2-1e24-41c8-b71b-0e701af7583d/",
+   "fhir_version": "4.0.1",
+   "org": "Oracle Health",
+   "aliases": [
+    "Cerner sandbox",
+    "Millennium sandbox",
+    "test"
+   ],
+   "sandbox": true,
+   "source": "curated",
+   "retrieved": "2026-11-15"
+  }
+ ]
+}
