@@ -32,5 +32,5 @@ Two years ending on `--end` (default: today):
 one: a lab draw every two weeks or so with 47 tests in all (about 5,000 results), monthly visits, three prescriptions
 filled every month for ten years, other care until there are 2,000 claims, 120 portal messages, 1,000 scanned
 documents (a small fictional PDF each, in `files/big/`), premiums from the first month, and watch and scale data for
-all ten years. `tests/test_performance.py` checks the [performance budgets](../docs/performance.md) on it. The
+all ten years, with blood glucose (#181: a meter's readings for three years and 336 days of a CGM's daily summaries). `tests/test_performance.py` checks the [performance budgets](../docs/performance.md) on it. The
 output without `--big` is unchanged.

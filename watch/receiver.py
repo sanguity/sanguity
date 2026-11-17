@@ -13,6 +13,8 @@ and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
   overlapping uploads count once; days are each reading's own local date. The day's figures are made with the Apple
   Health importer's own mapping and aggregation (server/importers/apple_health.py), so an iPhone gives the same
   Health tab as an uploaded export.xml, HRV as SDNN. On a day both apps sent one metric, Health Connect's value wins.
+- Blood glucose from both apps (#181, server/glucose.py): every reading kept, meter readings passed on as they are,
+  a continuous glucose monitor's summarised per day (average, low, high, hours with readings, time in ranges).
 - Writes per-day summaries for Sanguity: $DATA/public/daily.json, or public/profiles/<slot>/daily.json.
 
 One secret per profile (#46). The app makes each profile's secret on its Settings page and writes them all, sealed,
@@ -44,6 +46,7 @@ for _d in (HERE, os.path.dirname(HERE)):   # /app in the container, the reposito
 os.environ.setdefault("SANGUITY_KEY_FILE", "/run/secrets/sanguity/data_key")
 from server import crypto   # noqa: E402  (the app's own encryption and key file)
 from server.importers import apple_health as ah   # noqa: E402  (Apple Health's mapping, for Health Auto Export)
+from server import glucose   # noqa: E402  (blood glucose, meters and CGMs, #181)
 
 DATA = os.environ.get("DATA", "/data")
 SECRET_FILE = os.environ.get("SECRET_FILE", "/run/secret/watch_secret")
@@ -247,6 +250,7 @@ class Store:
         CREATE TABLE IF NOT EXISTS hae_sleep(src TEXT, start TEXT, end_ TEXT, stage TEXT, night TEXT,
             PRIMARY KEY(src, start, stage));
         """)
+        self._glucose_init()   # blood glucose (#181), below
 
     def meta(self, k, v=None):
         if v is None:
@@ -263,11 +267,11 @@ class Store:
     def catch_up(self):
         """Fold in the uploads archived since the last snapshot (all of raw/ for a new database). Returns how many
         were new. Those already in it are recognised by their digest and skipped."""
+        n = self._glucose_backfill()   # an existing database's glucose, once (#181)
         saved = self.meta("saved")
         if self.loaded and not saved:
-            return 0   # a database from before snapshots: it was written as uploads came in, so it is current
+            return n   # a database from before snapshots: it was written as uploads came in, so it is current
         since = (datetime.strptime(saved, STAMP) - timedelta(minutes=10)).strftime(STAMP) if saved else ""
-        n = 0
         for stamp, p in raw_files(self.slot):
             if stamp < since:
                 continue
@@ -321,6 +325,7 @@ class Store:
                       (r.get("uuid") or f"ex@{r['start_time']}", int(s.timestamp()), int(e.timestamp()), day(s),
                        r.get("type"), r.get("name"), r.get("title"), r.get("duration_seconds"), r.get("source")))
             n += 1
+        n += self._glucose_hc(c, p, tz)   # blood glucose (#181)
         for t in p.get("daily_totals") or []:
             old = c.execute("SELECT seq FROM totals WHERE day=?", (t["date"],)).fetchone()
             if old is None or seq >= (old[0] or 0):
@@ -371,6 +376,9 @@ class Store:
             name, rows = str(m.get("name") or "").lower(), [r for r in m.get("data") or [] if isinstance(r, dict)]
             if name == "sleep_analysis":
                 n += sum(self._hae_sleep(c, r) for r in rows)
+                continue
+            if name == "blood_glucose":   # (#181)
+                n += self._glucose_hae(c, m)
                 continue
             hk = HAE_QUANTITY.get(name)
             if not hk:
@@ -468,6 +476,49 @@ class Store:
             agg.sleep.append((src, datetime.fromisoformat(s), datetime.fromisoformat(e), stage))
         return {m["key"]: dict(m["pts"]) for m in agg.summary()["metrics"]}
 
+    # ------------------------------------------------------------ blood glucose: meters and CGMs (#181, server/glucose.py)
+    def _glucose_init(self):
+        self.db.executescript(glucose.TABLE)
+        if not self.loaded:
+            self.meta("glucose", 1)   # a new database: every upload's glucose is folded in as it comes
+
+    def _glucose_hc(self, c, p, tz):
+        n, skipped = glucose.from_health_connect(c, p, tz)
+        if skipped:
+            log(f"left out {skipped} blood glucose entries that aren't single readings (hourly buckets, no value or time)")
+        return n
+
+    def _glucose_hae(self, c, m):
+        n, skipped = glucose.from_hae(c, m, hae_when)
+        if skipped:
+            log(f"left out {skipped} of Health Auto Export's blood glucose rows: grouped into hours, or not in mg/dL or mmol/L")
+        return n
+
+    def _glucose_backfill(self):
+        """A database from before the receiver read glucose: fold in the glucose of every upload in raw/ once (the
+        uploads it already has are otherwise skipped as duplicates). Returns how many uploads had some."""
+        if not self.loaded or self.meta("glucose") is not None:
+            return 0
+        c, n, tz = self.db.cursor(), 0, zone(self.meta("tz") or DEFAULT_TZ)
+        for _, path in raw_files(self.slot):
+            try:
+                p = json.loads(read_raw(path))
+                if is_hae(p):
+                    got = sum(self._glucose_hae(c, m) for m in p["data"].get("metrics") or []
+                              if isinstance(m, dict) and str(m.get("name") or "").lower() == "blood_glucose")
+                elif isinstance(p, dict) and not p.get("test") and p.get("source") in ("health_connect", None):
+                    got = self._glucose_hc(c, p, zone(p["timezone"]) if p.get("timezone") else tz)
+                else:
+                    got = 0
+                n += bool(got)
+            except Exception as e:
+                log("skip", path, e)
+        self.meta("glucose", 1)
+        self.db.commit()
+        if n:
+            log(f"read the blood glucose of {n} earlier uploads")
+        return n
+
     # ------------------------------------------------------------ daily summary
     def summary(self):
         q = self.db.execute
@@ -555,6 +606,7 @@ class Store:
         }
         metrics = [{"key": k, "name": META[k][0], "unit": META[k][1], "group": META[k][2],
                     "pts": sorted(out[k].items())} for k in META if k in out]
+        metrics += glucose.summary(self.db)   # blood glucose (#181): meter readings, and CGM days summarised
         return {"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tz": self.meta("tz") or DEFAULT_TZ,
                 "last_payload": self.meta("last_payload"), "metrics": metrics, "exercise": exercises}
 

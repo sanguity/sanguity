@@ -629,6 +629,33 @@ erDiagram
     }
 ```
 
+## The watch receiver's own database
+
+The phone receiver (`watch/receiver.py`) keeps a database of its own per profile, `WATCH_DIR/watch.db` (or
+`WATCH_DIR/profiles/<id>/watch.db`), apart from `sanguity.db`: held in memory and saved whole, sealed with the data key,
+after uploads; `raw/` beside it keeps every upload, sealed too, and `--reprocess` builds the database again from it.
+It has no numbered steps: each table is made if missing (`CREATE TABLE IF NOT EXISTS`) when the receiver starts, and
+what a new table needs from earlier uploads is read from `raw/` once (marked in its `meta` table). The app reads only
+the daily summary it writes (`daily.json`).
+
+**Blood glucose (#181)** is `glucose(app, src, id, t, wall, v, kind)`: one row a reading, in mg/dL, from Health
+Connect (`hc`, `id` its uuid) or Health Auto Export (`hae`, `id` its time), with its local time and, when the reading
+says so, `cgm` or `meter` ([`server/glucose.py`](../server/glucose.py) has the rules). A continuous glucose monitor
+sends 288 readings a day (one every five minutes); the receiver keeps them all, rather than only each day's summary,
+because:
+
+- the same reading arrives again and again (Health Auto Export's "Today" every hour, overlapping syncs), and only the
+  readings themselves can be counted once; a day's summary can't be merged with part of the same day sent again;
+- Health Connect deletes a reading by its uuid;
+- the summary can be made again when how a day is summarised changes, without `--reprocess`.
+
+What that costs, measured for a year of one sensor (`tests/test_glucose.py`): about **10 MB** in `watch.db` with
+Health Connect's ids (7 MB from Health Auto Export), and about **3 MB** of gzipped uploads in `raw/`; the summary takes
+0.1 s to make. The page gets the days only, about 70 KB a year in `daily.json`. Neither file is in the app's backups
+(#200): `WATCH_DIR` is backed up as the README's **Backup and restore** says, and the per-day summaries it hands the
+app aren't stored in `sanguity.db`. If years of readings ever outgrow memory, readings older than a few months could
+be folded into per-day rows (nothing older is sent again); that isn't needed yet.
+
 ## What is encrypted
 
 | Table | Encrypted columns |

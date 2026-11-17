@@ -44,6 +44,7 @@ python tests/test_jobs.py              # background imports: format detection, f
 python tests/test_preview.py           # import preview: duplicates, overlaps, cancel
 python tests/test_manual.py            # lab results typed in
 python tests/test_watch_store.py       # imported watch data
+python tests/test_glucose.py           # blood glucose from the phone apps: meters, CGMs, time in ranges
 python tests/test_import_history.py    # import history and undo
 python tests/test_edits.py             # corrections made in the app
 python tests/test_milestones.py        # milestones and workout rules on the Settings page

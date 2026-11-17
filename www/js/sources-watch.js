@@ -71,7 +71,8 @@
         li(b("Data type"), ": Health Metrics, ", b("Export format"), ": JSON. Choose step count, walking + running distance, active energy, heart rate, resting heart rate, heart rate variability, blood oxygen saturation, respiratory rate, weight, body fat percentage, lean body mass and sleep analysis."),
         li(b("Time grouping"), ": hours (and keep it: changing it later sends the same steps again in other intervals)."),
         li(b("Sync"), ": hourly or daily, with the date range ", b("Since last sync"), " or ", b("Today"), ". Repeated or overlapping uploads count once."),
-        li("Add a second automation the same way with the data type ", b("Workouts"), ".")),
+        li("Add a second automation the same way with the data type ", b("Workouts"), "."),
+        li("For a glucose meter or a continuous glucose monitor, a third with only ", b("blood glucose"), " and no time grouping, so each reading comes on its own.")),   // blood glucose (#181)
       el("p", {class: "hint", text: "Android: in Life Dashboard Companion, set the upload address and the secret above; it signs each upload with the secret."}));
   }
 
