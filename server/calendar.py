@@ -12,10 +12,14 @@ What a feed holds:
   expected labs  a guess, for a panel drawn at a steady rhythm (DRAWS_MIN draws or more, the recent gaps within
                  RHYTHM_SPREAD of each other): the next draw one usual gap after the last, as a tentative all-day
                  event, "expected, not scheduled". Never a time of day: the records don't know one.
+  medication reminders (#162, med_reminders.py)  each time of day of each reminder turned on, as a recurring event
+                 (RRULE) in the reminder's own time zone (TZID, with a VTIMEZONE), ending on its until day or the day
+                 the records say the medication stopped; listed while the feed's "meds" is on (the default)
 
 A calendar may sync to a phone vendor's cloud, so how much it says is the person's choice, per feed:
-  minimal (the default)   "Appointment" / "Labs expected", the time, and a link back to the app
-  full                    the record's title, where, with whom, which panels, and the source it came from
+  minimal (the default)   "Appointment" / "Labs expected" / "Medication", the time, and a link back to the app
+  full                    the record's title, where, with whom, which panels, and the source it came from; a
+                          medication's name and its instructions as the records list them
 Neither ever carries results, diagnoses or procedures.
 
 Each event's UID is a keyed hash of the profile and the record (its source key, or its date and title), so a
@@ -51,7 +55,7 @@ throttle = FeedThrottle()
 # ---------------------------------------------------------------- feeds and their tokens
 
 def _row(r):
-    return None if r is None else {"id": r["id"], "details": r["details"], "labs": bool(r["labs"]), "tz": r["tz"],
+    return None if r is None else {"id": r["id"], "details": r["details"], "labs": bool(r["labs"]), "meds": bool(r["meds"]), "tz": r["tz"],
                                    "created": r["created"], "rotated": r["rotated"], "last_fetched": r["last_fetched"]}
 
 
@@ -71,11 +75,12 @@ def _tz(tz):
     return tz if re.fullmatch(r"[A-Za-z0-9_+\-/]{1,64}", tz) else None
 
 
-def create(db, pid, uid, details="minimal", labs=True, tz=None):
+def create(db, pid, uid, details="minimal", labs=True, tz=None, meds=True):
     """A new feed; returns its token, the only time it exists outside the calendar app. One per person and profile."""
     token = sec.new_token()
-    db.execute("""INSERT INTO calendar_feeds(profile_id, user_id, token_hash, details, labs, tz, created)
-                  VALUES(?, ?, ?, ?, ?, ?, ?)""", (pid, uid, sec.token_hash(token), details, int(bool(labs)), _tz(tz), dbm.now()))
+    db.execute("""INSERT INTO calendar_feeds(profile_id, user_id, token_hash, details, labs, tz, created, meds)
+                  VALUES(?, ?, ?, ?, ?, ?, ?, ?)""", (pid, uid, sec.token_hash(token), details, int(bool(labs)), _tz(tz), dbm.now(),
+                                                   int(bool(meds))))
     return token
 
 
@@ -87,8 +92,10 @@ def rotate(db, pid, uid):
     return token if n else None
 
 
-def change(db, pid, uid, details=None, labs=None, tz=None):
+def change(db, pid, uid, details=None, labs=None, tz=None, meds=None):
     sets, args = [], []
+    if meds is not None:   # medication reminders (#162)
+        sets, args = sets + ["meds=?"], args + [int(bool(meds))]
     if details is not None:
         sets, args = sets + ["details=?"], args + [details]
     if labs is not None:
@@ -287,11 +294,14 @@ def build(db, feed, base_url, now=None):
              "REFRESH-INTERVAL;VALUE=DURATION:PT6H", "X-PUBLISHED-TTL:PT6H"]
     if feed["tz"] and zone is None:
         lines.append("X-WR-TIMEZONE:" + escape(feed["tz"]))
+    header = len(lines)   # where the VTIMEZONEs of medication reminders go (#162)
     stamp = _stamp(now.astimezone(timezone.utc))
 
-    def event(ident, summary, desc, start, end, all_day, location=None, tentative=False):
+    def event(ident, summary, desc, start, end, all_day, location=None, tentative=False, when=None):
         ev = ["BEGIN:VEVENT", "UID:" + _uid(secret, pid, ident), "DTSTAMP:" + stamp]
-        if all_day:
+        if when:   # a reminder's own DTSTART, DTEND and RRULE (#162)
+            ev += when
+        elif all_day:
             ev += ["DTSTART;VALUE=DATE:" + start.strftime("%Y%m%d"), "DTEND;VALUE=DATE:" + end.strftime("%Y%m%d")]
         elif zone is not None:
             ev += ["DTSTART:" + _stamp(start.replace(tzinfo=zone).astimezone(timezone.utc)),
@@ -299,10 +309,12 @@ def build(db, feed, base_url, now=None):
         else:   # floating local time
             ev += ["DTSTART:" + start.strftime("%Y%m%dT%H%M%S"), "DTEND:" + end.strftime("%Y%m%dT%H%M%S")]
         ev += ["SUMMARY:" + escape(summary), "DESCRIPTION:" + escape(desc), "URL:" + link,
-               "CLASS:PRIVATE", "TRANSP:" + ("TRANSPARENT" if tentative or all_day else "OPAQUE"),
+               "CLASS:PRIVATE", "TRANSP:" + ("TRANSPARENT" if tentative or all_day or when else "OPAQUE"),
                "STATUS:" + ("TENTATIVE" if tentative else "CONFIRMED")]
         if location:
             ev.append("LOCATION:" + escape(location))
+        if when:   # a reminder: the calendar app reminds at the time itself (#162; many let a subscriber keep or drop alarms)
+            ev += ["BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:" + escape(summary), "TRIGGER:PT0M", "END:VALARM"]
         lines.extend(ev + ["END:VEVENT"])
 
     for a in appointments(db, pid, today):
@@ -333,6 +345,18 @@ def build(db, feed, base_url, now=None):
                 summary = "Labs expected"
                 desc = f"Expected, not scheduled: a guess from the usual rhythm of past draws. Details are in Sanguity: {link}"
             event("labs|" + "|".join(e["panels"]), summary, desc, e["day"], e["day"] + timedelta(days=1), True, tentative=True)
+
+    if feed["meds"] if "meds" in feed.keys() else True:   # medication reminders (#162): recurring, in each reminder's own zone
+        from . import med_reminders
+        evs, zones = med_reminders.feed_events(db, pid, full, today)
+        lines[header:header] = [x for name, (y0, y1) in sorted(zones.items()) for x in med_reminders.vtimezone(name, y0, y1) or []]
+        for e in evs:
+            if full:
+                desc = "\n".join(["A reminder set in Sanguity."] + ([f"As the records list it: {e['dose']}"] if e["dose"] else []) +
+                                 [f"Open Sanguity: {link}"])
+            else:
+                desc = f"A reminder set in Sanguity. Details are in Sanguity: {link}"
+            event(e["ident"], e["summary"], desc, None, None, False, when=e["lines"])
 
     lines.append("END:VCALENDAR")
     return "".join(fold(l) for l in lines)

@@ -640,6 +640,27 @@ SCHEMA = [
         created_by INTEGER REFERENCES users(id) ON DELETE SET NULL);
     CREATE INDEX journal_photos_profile ON journal_photos(profile_id, entry_id);
     """,
+
+    # version 33 (#162): medication reminders through the calendar feed (med_reminders.py). A
+    # reminder belongs to the profile, never to an import, and finds its medication by the medication's grouping key
+    # (medications.med_key), so undoing or re-importing the records keeps it. What it says (the medication, times of
+    # day, days, from, until, time zone) is in body, encrypted; whether it's on, who set it and when are plain.
+    # calendar_feeds.meds: whether a person's feed lists the profile's reminders.
+    """
+    CREATE TABLE med_reminders(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,                        -- JSON, encrypted: {med, name, times, days, from, until, tz}
+        active INTEGER NOT NULL DEFAULT 1,         -- 0: turned off (kept, listed nowhere)
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,                -- the username then
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    CREATE INDEX med_reminders_profile ON med_reminders(profile_id);
+    ALTER TABLE calendar_feeds ADD COLUMN meds INTEGER NOT NULL DEFAULT 1;   -- 1: also the medication reminders
+    """,
 ]
 
 

@@ -37,6 +37,9 @@ Profile events (profile_id set), readable by the profile's owners:
                 what was kept), or deleted what was kept (cycle_tracking.py, #183; never a record)
   source       {"import", "label", "named"}: an import given its own name, or its name taken away (named false;
                 records.rename_import, #38; never the name)
+  medication    {"change": "reminder.add" | "reminder.change" | "reminder.on" | "reminder.off" | "reminder.delete", "times"?}:
+                a medication reminder set, changed, turned on or off, or removed (med_reminders.py, #162; never which
+                medication)
   link          {"change": "create" | "revoke" | "view", "link", "label"?, ...}: a share link made or revoked by an owner
                 (with its sections, number of labs, dates and hours), or opened by whoever holds it: actor SHARE_LINK,
                 with the viewer's address (share_links.py, #47; never the token)
@@ -68,7 +71,8 @@ import json
 from . import config, crypto, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside",
-                   "settings", "connect", "disconnect", "calendar", "journal", "summary", "watch.secret", "source", "link", "cycle")
+                   "settings", "connect", "disconnect", "calendar", "journal", "summary", "watch.secret", "source", "link", "cycle",
+                   "medication")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",

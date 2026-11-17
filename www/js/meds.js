@@ -6,6 +6,9 @@
    dose changes), a cap where the records say it stopped, an arrow where they give no end, and a tick for each fill.
    On Trends the same rows can be shown under every chart (the "Medications" tick box, off until ticked).
    It shows what the records say, never whether a dose or a gap is right. Every date goes through dates.js.
+   Reminders (#162, server/med_reminders.py): DATA.reminders = [{id, med (the medication's key), name, times, days,
+   from, until, tz, on, by, at}], set in a medication's drawer by owners and editors for a current medication, listed
+   by the calendar feed (Sharing → Calendar feed) as repeating events; the drawer says when one has ended.
    Plain script, loaded in order by index.html after journal.js; all files share one global scope. */
 "use strict";
 let MEDS = [], medSel = null;   // the medications; the one open in the drawer (its index)
@@ -139,6 +142,7 @@ function openMedication(m) {
       el("tbody", {}, m.fills.map(f => el("tr", {class: "link", title: "Open this fill", onclick: () => openEvent(byId.get(f.id))},
         el("td", {text: fmtD(f.ts)}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: f.title})), el("td", {text: f.pharmacy || ""}), el("td", {text: f.supply ? `${f.supply} days` : ""})))))));
   }
+  body.append(...medReminderSection(m));   // reminders through the calendar feed (#162)
   const notes = JOURNAL.filter(e => e.j.med && medKeyOf(e.j.med) === m.key);
   if (notes.length) body.append(el("div", {class: "sect", text: "Journal entries linked to it"}),
     ...notes.sort((a, b) => a.ts - b.ts).map(e => el("button", {class: "btn", type: "button", text: `${fmtD(e.ts)} · ${e.title}`, onclick: () => openEvent(e)})));
@@ -161,4 +165,132 @@ function medHistoryAction(e) {
   if (!e || (e.k !== "med" && e.k !== "rx")) return null;
   const m = MEDS.find(m => m.spans.some(s => s.ids.includes(e.id)) || m.fills.some(f => f.id === e.id));
   return m ? el("div", {class: "btns"}, el("button", {class: "btn", type: "button", text: "Medication history", onclick: () => openMedication(m)})) : null;
+}
+
+
+/* ---------------------------------------------------------------- reminders through the calendar feed (#162)
+   Set here, for a current medication (the records give no end for its latest listing); the person's calendar app does
+   the reminding, from the calendar feed. A reminder ends on its until day, or sooner on the day the records say the
+   medication stopped, and the list here says which. Owners and editors set, change, turn off and remove them; every
+   change reloads the records (as the journal's do) and opens this medication again. */
+const MR_DAYS = [["mo", "Mon", "Monday"], ["tu", "Tue", "Tuesday"], ["we", "Wed", "Wednesday"], ["th", "Thu", "Thursday"],
+  ["fr", "Fri", "Friday"], ["sa", "Sat", "Saturday"], ["su", "Sun", "Sunday"]];
+const mrOf = m => (Array.isArray(DATA.reminders) ? DATA.reminders : []).filter(r => r && r.med === m.key);
+const mrCurrent = m => !!m.spans.length && !!m.spans[m.spans.length - 1].open;
+/* "8:00 AM" in this person's language, for a wall-clock "HH:MM" (no zone: it is the reminder's own) */
+const mrTime = t => { const [h, n] = t.split(":").map(Number); return _fmt(Date.UTC(2000, 0, 1, h, n), {hour: "numeric", minute: "2-digit", timeZone: "UTC"}); };
+const mrAnd = xs => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs.at(-1);
+function mrDays(days) {
+  const k = MR_DAYS.map(d => d[0]).filter(d => days.includes(d)).join(",");
+  return k === "mo,tu,we,th,fr,sa,su" ? "every day" : k === "mo,tu,we,th,fr" ? "on weekdays" : k === "sa,su" ? "at weekends"
+    : "on " + mrAnd(MR_DAYS.filter(d => days.includes(d[0])).map(d => d[1]));
+}
+/* its end and why: {day, why: "stopped" | "until"} or null (server/med_reminders.ends) */
+function mrEnds(r, m) {
+  if (m.stop && (!r.until || m.stop < r.until)) return {day: m.stop, why: "stopped"};
+  return r.until ? {day: r.until, why: "until"} : null;
+}
+/* "8:00 AM and 8:00 PM every day, from 18 Nov 2026, no end date" */
+const mrSays = r => `${mrAnd(r.times.map(mrTime))} ${mrDays(r.days)}, from ${fmtD(dayTs(r.from))}` + (r.until ? ` until ${fmtD(dayTs(r.until))}` : ", no end date");
+function mrState(r, m) {
+  const end = mrEnds(r, m);
+  if (end && end.why === "stopped") return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}: the records say this medication stopped then`};
+  if (end && end.day < zToday()) return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}`};
+  if (!r.on) return {cls: "off", text: "Off: not in the calendar feed"};
+  return {cls: "on", text: "On: in the calendar feed"};
+}
+function medReminderSection(m) {
+  const rs = mrOf(m), write = canEdit(), cur = mrCurrent(m);
+  if (!rs.length && !(write && cur)) return [];
+  const out = [el("div", {class: "sect", text: "Reminders in your calendar"})];
+  const msg = el("p", {class: "hint edit-msg", role: "status"});
+  if (rs.length) out.push(el("ul", {class: "mr-list"}, ...rs.map(r => {
+    const st = mrState(r, m), zone = r.tz && r.tz !== (DATES.zone || browserZone()) ? ` (${r.tz} time)` : "";
+    return el("li", {class: "mr-item " + st.cls},
+      el("span", {class: "mr-says", text: mrSays(r) + zone}),
+      el("span", {class: "mr-state", text: st.text}),
+      write ? el("span", {class: "mr-acts"},
+        st.cls !== "ended" || mrEnds(r, m)?.why === "until" ? el("button", {class: "btn small", type: "button", text: "Edit",
+          "aria-label": "Edit the reminder " + mrSays(r), onclick: () => medReminderForm(m, r)}) : null,
+        st.cls !== "ended" ? el("button", {class: "btn small", type: "button", text: r.on ? "Turn off" : "Turn on",
+          "aria-label": (r.on ? "Turn off" : "Turn on") + " the reminder " + mrSays(r),
+          onclick: () => mrSend(`/${r.id}`, {method: "PATCH", body: JSON.stringify({on: !r.on})}, msg, m)}) : null,
+        el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": "Remove the reminder " + mrSays(r), onclick: async () => {
+          if (!await ask({title: "Remove this reminder?", message: mrSays(r) + ". It leaves your calendar at its next refresh.", action: "Remove", danger: true})) return;
+          mrSend(`/${r.id}`, {method: "DELETE"}, msg, m);
+        }})) : null);
+  })));
+  if (write && cur) out.push(el("div", {class: "btns"}, el("button", {class: "btn", type: "button", text: rs.length ? "Add another reminder" : "Add a reminder",
+    onclick: () => medReminderForm(m, null)})));
+  else if (write && !cur && m.stop) out.push(el("p", {class: "hint", text: "The records say this medication stopped, so no new reminders can be set for it."}));
+  out.push(el("p", {class: "hint"}, "They reach your calendar app through ",
+    el("a", {href: `sharing.html?profile=${PROFILE.id}#calendar`, text: "Sharing → Calendar feed"}), ": Sanguity sends nothing itself."), msg);
+  return out;
+}
+/* the add / edit form, in the drawer. r: the reminder (null: a new one) */
+function medReminderForm(m, r) {
+  $("#dtitle").textContent = r ? "Edit reminder" : "New reminder"; $("#dsub").textContent = m.name;
+  const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0;
+  const uid = Math.random().toString(36).slice(2, 8), id = n => `mr-${n}-${uid}`;
+  const msg = el("p", {class: "hint edit-msg", role: "status"});
+  const times = el("div", {class: "mr-times"});
+  const addTime = v => {
+    const n = times.children.length + 1;
+    const input = el("input", {type: "time", id: id("t" + n), required: true, "aria-label": `Time ${n}`}); input.value = v || "";
+    const row = el("div", {class: "mr-time"}, input, el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove time ${n}`,
+      onclick: () => { if (times.children.length > 1) { row.remove(); more.hidden = false; } }}));
+    times.append(row); more.hidden = times.children.length >= 6;
+    return input;
+  };
+  const more = el("button", {class: "btn small mr-add", type: "button", text: "Add another time", onclick: () => addTime("").focus()});
+  const days = new Set(r ? r.days : MR_DAYS.map(d => d[0]));
+  const dayBox = el("div", {class: "chips mr-days", role: "group", "aria-label": "Days of the week"}, ...MR_DAYS.map(([k, short, long]) => {
+    const b = el("button", {type: "button", class: "toggle", "aria-pressed": days.has(k), "aria-label": long, text: short, onclick: () => {
+      days.has(k) ? days.delete(k) : days.add(k); b.setAttribute("aria-pressed", days.has(k)); }});
+    b.style.setProperty("--tone", "var(--accent)");
+    return b;
+  }));
+  const from = el("input", {type: "date", id: id("from"), required: true}); from.value = r ? r.from : zToday();
+  const until = el("input", {type: "date", id: id("until")}); until.value = r && r.until ? r.until : "";
+  const zone = r && r.tz ? r.tz : DATES.zone || browserZone();
+  const row = (lbl, input) => el("div", {class: "jfield"}, el("label", {for: input.id, text: lbl}), input);
+  const form = el("form", {class: "jform", novalidate: true},
+    el("div", {class: "jfield"}, el("span", {class: "jlabel", text: "Times of day"}), times, more),
+    el("div", {class: "jfield"}, el("span", {class: "jlabel", text: "Days"}), dayBox),
+    el("div", {class: "jwhen"}, row("From", from), row("Until (optional)", until)),
+    el("p", {class: "hint", text: `Times are in ${zone}` + (r && r.tz ? ", the time zone it was set in." : ", your time zone (Settings → Dates and times).") +
+      " Your calendar app shows each one as a repeating event, from the calendar feed."}),
+    el("div", {class: "btns"}, el("button", {class: "btn primary", type: "submit", text: r ? "Save" : "Add reminder"}),
+      el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => openMedication(m)})), msg);
+  for (const t of r ? r.times : ["08:00"]) addTime(t);
+  form.onsubmit = ev => {
+    ev.preventDefault();
+    const ts = [...times.querySelectorAll("input")].map(i => i.value).filter(Boolean);
+    if (!ts.length) { sayIn(msg, "Give at least one time of day.", true); times.querySelector("input").focus(); return; }
+    if (!days.size) { sayIn(msg, "Pick at least one day.", true); dayBox.querySelector("button").focus(); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from.value)) { sayIn(msg, "Pick the date it starts from.", true); from.focus(); return; }
+    const out = {med: m.key, times: ts.map(t => t.slice(0, 5)), days: MR_DAYS.map(d => d[0]).filter(d => days.has(d)), start: from.value,
+      until: until.value || null, tz: zone, on: r ? r.on : true};
+    mrSend(r ? `/${r.id}` : "", {method: r ? "PUT" : "POST", body: JSON.stringify(out)}, msg, m);
+  };
+  body.append(form);
+  showDrawer();
+  times.querySelector("input").focus({preventScroll: true});
+}
+async function mrSend(path, opts, msg, m) {
+  sayIn(msg, "Saving…");
+  try {
+    const r = await api(`profiles/${PROFILE.id}/medications/reminders${path}`, opts);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the reminder (${r.status}).`, true); return; }
+    try { sessionStorage.setItem("sg-after-med", JSON.stringify({med: m.key})); } catch (e) {}
+    location.reload();
+  } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
+}
+/* after that reload: the medication's drawer again (app.js calls this once the page is up) */
+function medsResume() {
+  let r = null;
+  try { r = JSON.parse(sessionStorage.getItem("sg-after-med") || "null"); sessionStorage.removeItem("sg-after-med"); } catch (e) {}
+  const m = r && MEDS.find(x => x.key === r.med);
+  if (m) openMedication(m);
 }

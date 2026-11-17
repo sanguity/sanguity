@@ -59,20 +59,22 @@
   <!-- calendar feed (#51): its own block, script and styles (calendar-feed.js) -->
   <section class="card cal" id="calendar" hidden>
     <h2>Calendar feed</h2>
-    <p class="hint">This profile's upcoming appointments, and its expected lab draws, in your own calendar app.</p>
+    <p class="hint">This profile's upcoming appointments, its expected lab draws and its medication reminders, in your own calendar app.</p>
     <details class="more"><summary>More about this</summary>
       <p>Sanguity sends nothing: your calendar app fetches a private address every few hours. The feed is yours alone and
         shows only what you can already see here. An expected lab draw is a guess from the steady rhythm of a panel's past
-        draws, never an order or a booking.</p>
+        draws, never an order or a booking. Medication reminders are the ones set on a medication's details (Timeline →
+        Medications); each repeats at its times in the time zone it was set in.</p>
     </details>
     <div id="calNew" hidden>
       <fieldset class="cal-opts">
         <legend>What each event says</legend>
-        <label class="check"><input type="radio" name="calDetails" value="minimal" checked> Minimal: “Appointment” or “Labs expected”, the time and a link back here</label>
-        <label class="check"><input type="radio" name="calDetails" value="full"> Full: the visit's title, where and with whom, which lab panels, and the source it came from</label>
+        <label class="check"><input type="radio" name="calDetails" value="minimal" checked> Minimal: “Appointment”, “Labs expected” or “Medication”, the time and a link back here</label>
+        <label class="check"><input type="radio" name="calDetails" value="full"> Full: the visit's title, where and with whom, which lab panels, the source it came from, and a medication's name and instructions</label>
         <p class="muted">Calendars often sync to your phone maker's or email provider's cloud. Minimal keeps health details out of it.
           Neither ever includes results or diagnoses.</p>
         <label class="check"><input type="checkbox" id="calLabs" checked> Also show expected lab draws (tentative, all-day, “expected, not scheduled”)</label>
+        <label class="check"><input type="checkbox" id="calMeds" checked> Also show medication reminders (repeating, at the times set on each medication)</label>
       </fieldset>
       <div class="row"><button class="btn primary" id="calCreate" type="button">Create my calendar feed</button></div>
     </div>
@@ -81,6 +83,7 @@
       <div class="form inline">
         <label>What each event says <select id="calDetailsNow"><option value="minimal">Minimal</option><option value="full">Full</option></select></label>
         <label class="check"><input type="checkbox" id="calLabsNow"> Expected lab draws</label>
+        <label class="check"><input type="checkbox" id="calMedsNow"> Medication reminders</label>
       </div>
       <div class="row">
         <button class="btn" id="calRotate" type="button">Get a new address</button>

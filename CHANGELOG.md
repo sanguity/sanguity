@@ -545,6 +545,14 @@ Everything on `main` so far; it becomes the first tagged release.
   into the watch data, conversations, a statement's prescriber, a visit's note, values with their precision kept),
   checked over the demo and every FHIR fixture, and every bundle against HL7's FHIR R4 JSON schema
   ([docs/fhir-export.md](docs/fhir-export.md)).
+- **Medication reminders through the calendar feed** (#162): owners and editors set reminders on a current
+  medication's details (Timeline → Medications): times of day, which days, from and until. The calendar feed lists each
+  time as a repeating event in the time zone it was set in (the person's own, Settings → Dates and times), so 8:00
+  stays 8:00 when the clocks change; events say only "Medication" unless the feed is set to full details (then the
+  medication's name and its instructions as the records list them). A medication that stops in the records ends its
+  reminders that day, and its details say so; each reminder can be turned off or removed, and a feed can leave them
+  out ("Medication reminders" on Sharing → Calendar feed). Medications typed in work the same; reminders are kept when
+  imports are undone, and encrypted.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

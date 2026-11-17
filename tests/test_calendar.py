@@ -3,7 +3,11 @@
 nesting, required properties, CRLF, folding at 75 octets, escaping), its UIDs are the same on every fetch, minimal
 details are the default and keep titles, places and sources out; full details show them and the source. Appointments
 from the records' upcoming list (imported and typed in), and expected labs only for a steady rhythm (all-day,
-tentative, "expected, not scheduled"). Only the token's hash is stored; rotation and revocation stop the old address;
+tentative, "expected, not scheduled"). Medication reminders (#162): each time a recurring event (RRULE) in its own
+time zone, with a VTIMEZONE checked against the tz database through clock changes in both hemispheres, a zone whose
+rules changed and one with none; DTSTART on a day of the rule, UNTIL in UTC (floating with floating times), ended by
+its until day or by the records saying the medication stopped; "Medication" unless full details; off, or a feed
+without them, lists none; who may set them, refusals, encrypted, kept when imports are undone. Only the token's hash is stored; rotation and revocation stop the old address;
 a wrong token, a wrong profile or a person whose access ended all get the same bare 404; no cookie is set; fetches are
 throttled; creation, rotation and revocation are logged but fetches aren't. Fictional data only.
 
@@ -73,26 +77,131 @@ def unfold(text):
 
 
 def parse(text):
-    """iCalendar text -> {"props": {...}, "events": [{name: (params, value)}]}, checking it's well formed."""
-    stack, cal, events, cur = [], {}, [], None
+    """iCalendar text -> {"props": {...}, "events": [{name: (params, value)}], "zones": {TZID: [observance]}},
+    checking it's well formed. An event's VALARM is its "VALARM" ({name: value}); each VTIMEZONE observance is
+    {"kind": "STANDARD" | "DAYLIGHT", name: value...} (#162)."""
+    stack, cal, events, cur, zones, zone, obs, alarm = [], {}, [], None, {}, None, None, None
     for line in unfold(text):
         name_part, _, value = line.partition(":")
         name, *params = name_part.split(";")
         if name == "BEGIN":
+            assert value != "VEVENT" or stack == ["VCALENDAR"], "a VEVENT inside the calendar only"
+            assert value != "VALARM" or stack[-1:] == ["VEVENT"], "a VALARM inside a VEVENT only"
             stack.append(value)
             if value == "VEVENT":
                 cur = {}
+            elif value == "VTIMEZONE":
+                zone = []
+            elif value in ("STANDARD", "DAYLIGHT"):
+                assert stack[-2] == "VTIMEZONE"
+                obs = {"kind": value}
+            elif value == "VALARM":
+                alarm = {}
             continue
         if name == "END":
             assert stack and stack.pop() == value, f"END:{value} doesn't close what's open"
             if value == "VEVENT":
                 events.append(cur)
                 cur = None
+            elif value == "VALARM":
+                cur["VALARM"], alarm = alarm, None
+            elif value in ("STANDARD", "DAYLIGHT"):
+                zone.append(obs)
+            elif value == "VTIMEZONE":
+                zones[zone_id] = zone
             continue
         assert stack, f"{line!r} outside the calendar"
-        (cur if cur is not None else cal)[name] = (params, value)
+        if alarm is not None:
+            alarm[name] = value
+        elif stack[-1] in ("STANDARD", "DAYLIGHT"):
+            obs[name] = value
+        elif stack[-1] == "VTIMEZONE":
+            assert name == "TZID"
+            zone_id = value
+        else:
+            (cur if cur is not None else cal)[name] = (params, value)
     assert not stack, "unclosed components"
-    return {"props": cal, "events": events}
+    return {"props": cal, "events": events, "zones": zones}
+
+
+# ---- a reader of what the feed's reminders say, written apart from the server's code (#162): RFC 5545's yearly
+# observances (BYMONTH, BYDAY nth or -1, UNTIL) and an event's DAILY or WEEKLY rule, enough to check every instance
+DOW = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+
+
+def _local(v):
+    return datetime.strptime(v, "%Y%m%dT%H%M%S")
+
+
+def _off(v):
+    sign = -1 if v[0] == "-" else 1
+    return sign * timedelta(hours=int(v[1:3]), minutes=int(v[3:5]), seconds=int(v[5:7] or 0))
+
+
+def onsets(o, last_year):
+    """Each onset of an observance as (local wall time in its TZOFFSETFROM, UTC)."""
+    start, before = _local(o["DTSTART"]), _off(o["TZOFFSETFROM"])
+    if "RRULE" not in o:
+        return [(start, start - before)]
+    rule = dict(x.split("=") for x in o["RRULE"].split(";"))
+    assert rule["FREQ"] == "YEARLY", rule
+    until = datetime.strptime(rule["UNTIL"], "%Y%m%dT%H%M%SZ") if "UNTIL" in rule else None
+    month, nth, wd = int(rule["BYMONTH"]), int(rule["BYDAY"][:-2]), DOW.index(rule["BYDAY"][-2:])
+    out = []
+    for y in range(start.year, last_year + 1):
+        days = [date(y, month, d) for d in range(1, 32) if _valid(y, month, d) and date(y, month, d).weekday() == wd]
+        d = days[nth - 1] if nth > 0 else days[nth]
+        local = datetime.combine(d, start.time())
+        if local < start:
+            continue
+        if until and local - before > until:
+            break
+        out.append((local, local - before))
+    return out
+
+
+def _valid(y, m, d):
+    try:
+        date(y, m, d)
+        return True
+    except ValueError:
+        return False
+
+
+def offset_at(zone, local, last_year):
+    """The UTC offset the VTIMEZONE gives a local wall time: the latest onset at or before it (away from the hour a
+    clock change makes ambiguous, which these tests keep clear of)."""
+    best = None
+    for o in zone:
+        for wall, _ in onsets(o, last_year):
+            if wall <= local and (best is None or wall > best[0]):
+                best = (wall, _off(o["TZOFFSETTO"]))
+    assert best, f"no observance before {local}"
+    return best[1]
+
+
+def instances(ev, zones, most=800):
+    """An event's instances as (local wall time, UTC or None for floating), following its RRULE."""
+    params, v = ev["DTSTART"]
+    tzid = next((p[5:] for p in params if p.startswith("TZID=")), None)
+    start = _local(v)
+    rule = dict(x.split("=") for x in ev["RRULE"][1].split(";"))
+    days = rule.get("BYDAY", ",".join(DOW)).split(",") if rule["FREQ"] == "WEEKLY" else DOW
+    assert rule["FREQ"] in ("DAILY", "WEEKLY")
+    until = rule.get("UNTIL")
+    if tzid:
+        assert until is None or until.endswith("Z"), "with a TZID, UNTIL is in UTC (RFC 5545 3.3.10)"
+    else:
+        assert until is None or not until.endswith("Z"), "with floating times, a floating UNTIL"
+    out, d = [], start
+    while len(out) < most:
+        if DOW[d.weekday()] in days:
+            utc = d - offset_at(zones[tzid], d, d.year + 1) if tzid else None
+            if until and ((utc and utc > datetime.strptime(until, "%Y%m%dT%H%M%SZ")) or (not tzid and d > _local(until))):
+                break
+            out.append((d, utc))
+        d += timedelta(days=1)
+    return out
 
 
 def unescape(v):
@@ -121,8 +230,7 @@ class Calendar(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.ctx.__exit__(None, None, None)
-        shutil.rmtree(TMP, True)
+        pass   # tearDownModule: the medication reminders' tests (#162) use these accounts and sessions too
 
     def setUp(self):
         calendar.throttle._fails.clear()
@@ -442,6 +550,243 @@ class Calendar(unittest.TestCase):
         self.assertEqual([(e["day"] - TODAY).days for e in late], [30])
         late = calendar.expected_labs([series("Late", [-400, -310, -220, -130])], TODAY)
         self.assertEqual([(e["day"] - TODAY).days for e in late], [-40], "40 days past due, within half the gap")
+
+
+
+# ---------------------------------------------------------------- medication reminders (#162)
+MEDS = {"built": "2026-11-01T00:00:00+00:00", "source": "fictional meds",
+        "events": [{"id": 1, "t": D(-200), "k": "med", "title": "Fictionamide 10 mg tablet", "sub": ""},
+                   {"id": 2, "t": D(-300), "k": "med", "title": "Placebocillin 250 mg capsule", "sub": ""}],
+        "details": {"1": {"type": "med", "instructions": "One tablet by mouth, with breakfast"},
+                    "2": {"type": "med", "instructions": "Twice a day", "status": "Completed", "end": D(-250)}},
+        "labs": [], "costs": []}
+
+
+class Reminders(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        db = dbm.connect()
+        cls.pid = prof.create_profile(db, "Mira Example (fictional)", owner_id=Calendar.uid["robin"])
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (Calendar.uid["kim"], cls.pid))
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (Calendar.uid["lee"], cls.pid))
+        with dbm.transaction(db):
+            cls.iid = records.store(db, cls.pid, MEDS, "dataset")
+        db.close()
+        cls.c = Calendar.c
+
+    def setUp(self):
+        calendar.throttle._fails.clear()
+        db = dbm.connect()
+        db.execute("DELETE FROM med_reminders")
+        db.close()
+
+    def path(self, rest=""):
+        return f"/api/profiles/{self.pid}/medications/reminders{rest}"
+
+    def set(self, who="lee", status=201, **body):
+        r = self.c[who].post(self.path(), json={"med": "fictionamide", "times": ["08:00"], "days": DOW_L, "start": D(0),
+                                                "tz": "America/Chicago", **body}, headers=H)
+        self.assertEqual(r.status_code, status, r.text)
+        return r.json()
+
+    def feed(self, **body):
+        r = self.c["robin"].post(f"/api/profiles/{self.pid}/calendar", json={"tz": "America/Chicago", **body}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        try:
+            text = client().get("/" + r.json()["path"]).text
+        finally:
+            self.c["robin"].delete(f"/api/profiles/{self.pid}/calendar", headers=H)
+        return text, parse(text)
+
+    def reminders(self, cal):
+        return [e for e in cal["events"] if "RRULE" in e]
+
+    def test_daily_through_clock_changes(self):
+        self.set(times=["20:00", "08:00"], until=D(400))
+        text, cal = self.feed()
+        evs = self.reminders(cal)
+        self.assertEqual(len(evs), 2, "one recurring event for each time of day")
+        self.assertEqual(sorted(e["DTSTART"][1][-6:] for e in evs), ["080000", "200000"])
+        zone = cal["zones"]["America/Chicago"]
+        self.assertEqual({o["kind"] for o in zone}, {"STANDARD", "DAYLIGHT"})
+        from zoneinfo import ZoneInfo
+        chicago = ZoneInfo("America/Chicago")
+        for ev in evs:
+            self.assertEqual(ev["DTSTART"][0], ["TZID=America/Chicago"])
+            self.assertEqual(ev["DTEND"][0], ["TZID=America/Chicago"])
+            self.assertEqual(ev["RRULE"][1].split(";")[0], "FREQ=DAILY")
+            got = instances(ev, cal["zones"])
+            self.assertEqual(len(got), 401, "every day from today to the until day, that day included")
+            self.assertEqual(got[0][0].date(), TODAY)
+            self.assertEqual(got[-1][0].date(), TODAY + timedelta(days=400))
+            hour = int(ev["DTSTART"][1][9:11])
+            self.assertTrue(all(w.hour == hour and w.minute == 0 for w, _ in got), "the same wall-clock time every day")
+            for wall, utc in got:   # each instant as the tz database has it
+                self.assertEqual(utc, wall.replace(tzinfo=chicago).astimezone(timezone.utc).replace(tzinfo=None), wall)
+            self.assertEqual(len({utc.hour for _, utc in got}), 2, "the UTC hour moves when the clocks change, the local one doesn't")
+            self.assertIn("VALARM", ev)
+            self.assertEqual((ev["VALARM"]["ACTION"], ev["VALARM"]["TRIGGER"]), ("DISPLAY", "PT0M"))
+            self.assertEqual((ev["TRANSP"][1], ev["CLASS"][1]), ("TRANSPARENT", "PRIVATE"))
+        self.assertLess(text.index("BEGIN:VTIMEZONE"), text.index("BEGIN:VEVENT"))
+
+    def test_minimal_and_full_wording(self):
+        self.set()
+        text, cal = self.feed()
+        ev = self.reminders(cal)[0]
+        self.assertEqual(unescape(ev["SUMMARY"][1]), "Medication")
+        self.assertEqual(unescape(ev["VALARM"]["DESCRIPTION"]), "Medication")
+        for word in ("Fictionamide", "fictionamide", "tablet", "breakfast", "Mira"):
+            self.assertNotIn(word, text)
+        text, cal = self.feed(details="full")
+        ev = self.reminders(cal)[0]
+        self.assertEqual(unescape(ev["SUMMARY"][1]), "Fictionamide 10 mg tablet")
+        desc = unescape(ev["DESCRIPTION"][1])
+        self.assertIn("As the records list it: One tablet by mouth, with breakfast", desc)
+        for word in ("due", "should", "take ", "must"):
+            self.assertNotIn(word, desc.lower(), "never says a dose is due or should be taken")
+        text, cal = self.feed(meds=False)
+        self.assertEqual(self.reminders(cal), [], "a feed without reminders")
+        self.assertNotIn("VTIMEZONE", text)
+
+    def test_weekly_days_and_first_day(self):
+        self.set(days=["mo", "we", "fr"], times=["07:30"], until=D(60))
+        _, cal = self.feed()
+        ev = self.reminders(cal)[0]
+        self.assertEqual(ev["RRULE"][1].split(";")[:2], ["FREQ=WEEKLY", "BYDAY=MO,WE,FR"])
+        first = _local(ev["DTSTART"][1])
+        self.assertIn(first.weekday(), (0, 2, 4), "DTSTART is one of the rule's own days (RFC 5545 3.8.5.3)")
+        self.assertLess((first.date() - TODAY).days, 3)
+        got = instances(ev, cal["zones"])
+        self.assertTrue(all(w.weekday() in (0, 2, 4) for w, _ in got))
+        self.assertLessEqual(got[-1][0].date(), TODAY + timedelta(days=60))
+        self.assertGreater(got[-1][0].date(), TODAY + timedelta(days=60 - 3))
+
+    def test_a_medication_stopped_in_the_records_ends_it(self):
+        self.set(until=D(300))
+        db = dbm.connect()
+        with dbm.transaction(db):
+            later = records.store(db, self.pid, {"events": [{"id": 9, "t": D(10), "k": "med", "title": "Fictionamide 10 mg tablet", "sub": ""}],
+                                                 "details": {"9": {"type": "med", "instructions": "One tablet by mouth, with breakfast",
+                                                                   "status": "Stopped", "end": D(20)}}, "labs": [], "costs": []}, "upload")
+        db.close()
+        try:
+            _, cal = self.feed()
+            got = instances(self.reminders(cal)[0], cal["zones"])
+            self.assertEqual(got[-1][0].date(), TODAY + timedelta(days=20), "until the day the records say it stopped")
+            data = self.c["kim"].get(f"/api/profiles/{self.pid}/data").json()
+            med = next(m for m in data["medications"] if m["key"] == "fictionamide")
+            self.assertEqual(med["stop"], D(20))
+            self.assertEqual(len(data["reminders"]), 1, "the page has the reminder, to say it ended")
+            # a medication that stopped: no new reminders for it
+            r = self.c["lee"].post(self.path(), json={"med": "fictionamide", "times": ["09:00"], "days": DOW_L, "start": D(0)}, headers=H)
+            self.assertEqual(r.status_code, 400)
+            self.assertIn("current", r.json()["detail"])
+        finally:
+            db = dbm.connect()
+            with dbm.transaction(db):
+                records.drop(db, self.pid, [later])
+            db.close()
+
+    def test_off_ended_and_undone(self):
+        j = self.set()
+        rid = j["id"]
+        r = self.c["lee"].patch(self.path(f"/{rid}"), json={"on": False}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.reminders(self.feed()[1]), [], "turned off: not listed")
+        self.c["lee"].patch(self.path(f"/{rid}"), json={"on": True}, headers=H)
+        self.assertEqual(len(self.reminders(self.feed()[1])), 1)
+        # an until day already past: over (two days back, so it's past in Chicago too, whose today the feed uses,
+        # while this machine's day is already the next one there)
+        r = self.c["lee"].put(self.path(f"/{rid}"), json={"med": "fictionamide", "times": ["08:00"], "days": DOW_L,
+                                                         "start": D(-30), "until": D(-2), "tz": "America/Chicago"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.reminders(self.feed()[1]), [])
+        # the medication's import undone: the reminder is kept, and out of the feed until the medication is back
+        self.set()
+        db = dbm.connect()
+        with dbm.transaction(db):
+            records.drop(db, self.pid, [self.iid])
+        db.close()
+        try:
+            self.assertEqual(len(self.c["kim"].get(self.path()).json()["reminders"]), 2)
+            self.assertEqual(self.reminders(self.feed()[1]), [])
+        finally:
+            db = dbm.connect()
+            with dbm.transaction(db):
+                type(self).iid = records.store(db, self.pid, MEDS, "dataset")
+            db.close()
+        self.assertEqual(len(self.reminders(self.feed()[1])), 1, "back with the medication")
+
+    def test_who_and_refusals(self):
+        self.set(who="kim", status=403)
+        self.set(who="robin")
+        bad = [({"med": "placebocillin"}, "current"), ({"med": "no such"}, "current"), ({"times": []}, "time"),
+               ({"times": ["8am"]}, "HH:MM"), ({"times": ["24:00"]}, "HH:MM"), ({"days": []}, "day"), ({"days": ["xx"]}, "day"),
+               ({"start": "2026-02-30"}, "exist"), ({"until": D(-5)}, "before"), ({"tz": "Nowhere/Fictional"}, "time zone"),
+               ({"times": [f"0{i}:00" for i in range(7)]}, "At most")]
+        for body, word in bad:
+            r = self.set(status=400, **body)
+            self.assertIn(word, r["detail"], (body, r))
+        self.assertEqual(self.c["lee"].delete(self.path("/99999"), headers=H).status_code, 404)
+
+    def test_stored_encrypted_and_logged_without_the_medication(self):
+        j = self.set()
+        db = dbm.connect()
+        row = db.execute("SELECT * FROM med_reminders WHERE id=?", (j["id"],)).fetchone()
+        db.close()
+        self.assertNotIn("fictionamide", " ".join(str(v) for v in tuple(row)).lower())
+        self.assertNotIn("08:00", row["body"])
+        log = self.c["robin"].get(f"/api/profiles/{self.pid}/activity?action=medication").json()
+        entries = log.get("entries", log) if isinstance(log, dict) else log
+        self.assertTrue(entries)
+        self.assertNotIn("fictionamide", str(entries).lower())
+        self.assertEqual(self.c["lee"].delete(self.path(f"/{j['id']}"), headers=H).status_code, 200)
+        self.assertEqual(self.c["kim"].get(self.path()).json()["reminders"], [])
+
+    def test_default_zone_is_the_persons(self):
+        r = self.c["lee"].put("/api/settings/user/dates.timeZone", json={"value": "Europe/Paris"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        try:
+            j = self.set(tz=None)
+            self.assertEqual(j["reminder"]["tz"], "Europe/Paris", "the person's own zone (#42)")
+        finally:
+            self.c["lee"].put("/api/settings/user/dates.timeZone", json={"value": ""}, headers=H)
+
+    def test_floating_when_the_zone_is_unknown(self):
+        from server import med_reminders as mr
+        r = {"from": "2026-03-02", "days": list(mr.DAYS), "tz": "Nowhere/Fictional"}
+        lines = mr.recurrence(r, "08:15", date(2026, 3, 31), None)
+        self.assertEqual(lines[0], "DTSTART:20260302T081500")
+        self.assertEqual(lines[2], "RRULE:FREQ=DAILY;UNTIL=20260331T235959", "floating DTSTART, floating UNTIL")
+        self.assertIsNone(mr.recurrence(r, "08:15", date(2026, 3, 1), None), "an end before the first day: none")
+        self.assertIsNone(mr.vtimezone("Nowhere/Fictional", 2026, 2027))
+
+    def test_vtimezones_against_the_tz_database(self):
+        from server import med_reminders as mr
+        from zoneinfo import ZoneInfo
+        for name in ("America/Chicago", "Europe/London", "Australia/Sydney", "Asia/Kolkata", "America/Sao_Paulo",
+                     "Pacific/Chatham", "UTC"):
+            lines = mr.vtimezone(name, 2015, 2030)
+            text = "BEGIN:VCALENDAR\r\n" + "".join(calendar.fold(l) for l in lines) + "END:VCALENDAR\r\n"
+            zone = parse(text)["zones"][name]
+            tz = ZoneInfo(name)
+            d = datetime(2015, 1, 3, 8, 0)
+            while d.year <= 2030:   # every fourth day at 08:00 and 20:00, local
+                for wall in (d, d.replace(hour=20)):
+                    want = wall.replace(tzinfo=tz).utcoffset()
+                    self.assertEqual(offset_at(zone, wall, 2031), want, (name, wall))
+                d += timedelta(days=4)
+        sp = mr.vtimezone("America/Sao_Paulo", 2015, 2030)
+        self.assertTrue(any(l.startswith("RRULE:") and "UNTIL=" in l for l in sp), "Brazil's clock changes ended in 2019")
+        self.assertEqual(sum(l.startswith("BEGIN:STANDARD") for l in mr.vtimezone("Asia/Kolkata", 2026, 2027)), 1)
+
+
+DOW_L = ["mo", "tu", "we", "th", "fr", "sa", "su"]
+
+
+def tearDownModule():
+    Calendar.ctx.__exit__(None, None, None)
+    shutil.rmtree(TMP, True)
 
 
 if __name__ == "__main__":

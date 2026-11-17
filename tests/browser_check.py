@@ -3054,6 +3054,86 @@ def main():
                 page.click("#tab-timeline")
                 settle()
 
+            # ---- medication reminders through the calendar feed (#162): set on a current medication's drawer (two times,
+            # weekdays, an until day), listed there as on; turned off and on again; a stopped medication's reminder says it
+            # ended when the records say it stopped, and none can be added; 1400 and 375 px, light and dark, axe clean.
+            # The calendar feed's check (#51) below finds it in the feed as a repeating event.
+            cur = js("(() => { const m = MEDS.find(m => m.spans.length && m.spans.at(-1).open); return m && {key: m.key, name: m.name}; })()")
+            check("the demo has a current medication to set a reminder for", bool(cur), cur)
+            if cur:
+                js("k => openMedication(MEDS.find(m => m.key === k))", cur["key"])
+                settle(200)
+                check("…its drawer offers to add a reminder, and says the calendar feed brings it",
+                      page.locator("#dbody button:text-is('Add a reminder')").count() == 1 and "Sharing → Calendar feed" in page.inner_text("#dbody"))
+                page.click("#dbody button:text-is('Add a reminder')")
+                settle(200)
+                form162 = js("""({title: document.getElementById('dtitle').textContent, times: document.querySelectorAll('#dbody .mr-time input').length,
+                    first: document.querySelector('#dbody .mr-time input').value, days: [...document.querySelectorAll('#dbody .mr-days .toggle')].map(b => b.getAttribute('aria-pressed')).join(),
+                    from: document.querySelector('#dbody input[type=date]').value, today: zToday(), zone: document.querySelector('#dbody .jform > p.hint').textContent})""")
+                check("…the form starts at 08:00, every day, from today, in the person's time zone",
+                      form162["title"] == "New reminder" and form162["times"] == 1 and form162["first"] == "08:00" and form162["days"] == ",".join(["true"] * 7)
+                      and form162["from"] == form162["today"] and "your time zone" in form162["zone"], form162)
+                bad162, axe162 = [], []
+                theme162 = js("document.documentElement.dataset.theme || null")
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    for theme in ("light", "dark"):
+                        js("t => { document.documentElement.dataset.theme = t; }", theme)
+                        settle(200)
+                        if width < 400:
+                            bad162 += phone_fits(page, f"reminder form ({theme})")
+                        axe162 += axe_check(page, f"reminder form, {width} px, {theme}")[0]
+                page.set_viewport_size({"width": 1400, "height": 900})
+                page.click("#dbody button:text-is('Add another time')")
+                page.locator("#dbody .mr-time input >> nth=1").fill("20:00")
+                page.click("#dbody .mr-days button[aria-label=Saturday]")
+                page.click("#dbody .mr-days button[aria-label=Sunday]")
+                until162 = js("isoDay(Date.now() + 90 * DAY)")
+                page.locator("#dbody input[type=date] >> nth=1").fill(until162)
+                page.click("#dbody button:text-is('Add reminder')")
+                page.wait_for_load_state("load")
+                page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item')", timeout=20000)
+                settle(300)
+                item = js("document.querySelector('#dbody .mr-item').innerText")
+                check("saved: the page opens the medication again with the reminder, on, in the person's own words",
+                      js("document.getElementById('dtitle').textContent") == cur["name"] and "8:00" in item and "on weekdays" in item
+                      and "On: in the calendar feed" in item and js("d => fmtD(dayTs(d))", until162) in item, item)
+                check("…it's in the records the page loaded, with the zone it was set in",
+                      js("(DATA.reminders || []).length === 1 && DATA.reminders[0].times.join() === '08:00,20:00' && DATA.reminders[0].days.join() === 'mo,tu,we,th,fr' && !!DATA.reminders[0].tz"))
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    for theme in ("light", "dark"):
+                        js("t => { document.documentElement.dataset.theme = t; }", theme)
+                        settle(200)
+                        if width < 400:
+                            bad162 += phone_fits(page, f"medication drawer with a reminder ({theme})")
+                        axe162 += axe_check(page, f"medication drawer with a reminder, {width} px, {theme}")[0]
+                page.set_viewport_size({"width": 1400, "height": 900})
+                js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme162)
+                check("…the form and the reminder fit 375 px, in light and dark", not bad162, bad162[:6])
+                check("…and pass axe-core's WCAG A and AA rules at 1400 and 375 px, in light and dark", not axe162, axe162[:6])
+                page.click("#dbody .mr-item button:text-is('Turn off')")
+                page.wait_for_load_state("load")
+                page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item.off')", timeout=20000)
+                check("turned off: kept, and said to be out of the calendar feed", "Off: not in the calendar feed" in page.inner_text("#dbody .mr-item"))
+                page.click("#dbody .mr-item button:text-is('Turn on')")
+                page.wait_for_load_state("load")
+                page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item.on')", timeout=20000)
+                check("…and on again", "On: in the calendar feed" in page.inner_text("#dbody .mr-item"))
+                page.keyboard.press("Escape")
+                # a reminder whose medication the records say stopped (the demo's Examplocin, 2025-09-30), as the server lists one
+                ended = js("""(() => { const m = MEDS.find(m => m.key === 'examplocin');
+                    DATA.reminders.push({id: 99999, med: 'examplocin', name: m.name, times: ['09:00'], days: ['mo','tu','we','th','fr','sa','su'], from: '2025-06-01', until: null, tz: 'UTC', on: true});
+                    openMedication(m); const t = document.getElementById('dbody').innerText; DATA.reminders.pop();
+                    return {ended: t.includes('Ended ' + fmtD(dayTs('2025-09-30')) + ': the records say this medication stopped then'),
+                            add: [...document.querySelectorAll('#dbody button')].some(b => /^Add (another )?reminder$/.test(b.textContent)),
+                            none: t.includes('no new reminders can be set'),
+                            off: [...document.querySelectorAll('#dbody .mr-item button')].map(b => b.textContent)}; })()""")
+                check("a medication stopped in the records: its reminder says it ended then, and no new one can be set",
+                      ended["ended"] and not ended["add"] and ended["none"] and "Turn off" not in ended["off"], ended)
+                page.keyboard.press("Escape")
+                settle(200)
+
             # ---- where each record came from (#100): a Source line in the drawer, linking to the import in the history
             visit = js("EV.find(e => e.k === 'visit' && !e.hidden).id")
             js("id => openEvent(byId.get(id))", visit)
@@ -5000,6 +5080,10 @@ def main():
             check("…the address gives an iCalendar feed with the upcoming visit, titles only",
                   ics.startswith("BEGIN:VCALENDAR\r\n") and "SUMMARY:Appointment\r\n" in ics and "Follow-up" not in ics and cache.startswith("private"), ics[:200])
             check("…the owner sees it among the profile's feeds", USER in page.inner_text("#calList"))
+            # medication reminders (#162): the one set on the records page, as a repeating event in its own time zone
+            check("…with the medication reminder set earlier, repeating on weekdays in its own zone, minimal ('Medication')",
+                  "SUMMARY:Medication\r\n" in ics and "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;UNTIL=" in ics and "BEGIN:VTIMEZONE" in ics
+                  and "DTSTART;TZID=" in ics and "BEGIN:VALARM" in ics and page.is_checked("#calMedsNow") and page.is_checked("#calLabsNow"), ics[-900:])
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("the calendar feed's setup panel fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
