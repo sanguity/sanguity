@@ -1986,7 +1986,9 @@ def main():
             check("Overview: the creatinine tile in µmol/L, with the reported value", "µmol/L" in tile and re.search(r"Reported [\d.]+ mg/dL", tile), tile)
             wtile = js("[...document.querySelectorAll('#view-overview .tile')].find(t => t.textContent.startsWith('Weight'))?.textContent || ''")
             check("…the weight tile in kg, with the reported lb", "kg" in wtile and re.search(r"Reported [\d.]+ lb", wtile), wtile)
-            js("state.sel = new Set(['Creatinine', 'Total Bilirubin']); state.tables.clear(); switchTab('labs'); renderLabs()")
+            # over all of the records: the period earlier checks can leave saved (the last 30 days) starts hours after the
+            # demo's last creatinine, so the charts had no results and the table no rows in some runs
+            js("state.sel = new Set(['Creatinine', 'Total Bilirubin']); state.tables.clear(); setPeriod('all'); switchTab('labs'); renderLabs()")
             page.wait_for_selector("#charts .chart .unit", timeout=10000)
             heads = js("[...document.querySelectorAll('#charts .chart .unit')].map(u => u.textContent)")
             check("Trends: the chart says it's converted; bilirubin's doesn't", len(heads) == 2   # charts come in the series' order
