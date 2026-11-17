@@ -5,7 +5,8 @@
    (js/offline.js) keeps one copy of the last profile it loaded: its records, settings and watch data, never
    documents (PDFs, pictures) and never another profile's. That copy is outside the server's encryption at rest, so it's
    deleted on sign-out, when the sign-in page is reached (a sign-in that ended), when the sign-in's own end time passes
-   (even with no connection), and when the option is turned off.
+   (even with no connection), and when the option is turned off. The lab names picked on Labs go on sign-out and on
+   reaching the sign-in page too (#220).
 
    Why it isn't encrypted on the device: to open offline, the page needs the key without the server, so the key would
    have to be kept on the phone right beside the copy, and anyone who can open the app on the unlocked phone could
@@ -45,9 +46,22 @@ const SgOffline = (() => {
 if (SgOffline.works()) navigator.serviceWorker.register(new URL("sw.js", SgOffline.base), {scope: SgOffline.base.pathname})
   .catch(e => console.warn("offline use unavailable:", e.message));
 
+/* (#220) the lab series picked on Labs, by name (sel in each profile's view, ht-state:<id>, core.js), go at sign-out
+   too; the rest of the view (period, tab, kinds) is kept */
+function forgetPicks() {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k === "ht-state" || k.startsWith("ht-state:")) keys.push(k); }
+    for (const k of keys) {
+      let s = null;
+      try { s = JSON.parse(localStorage.getItem(k)); } catch (e) {}
+      if (s && typeof s === "object" && "sel" in s) { delete s.sel; localStorage.setItem(k, JSON.stringify(s)); }
+    }
+  } catch (e) {}
+}
 // signing out (any page's Log out button) or reaching the sign-in or setup page: whatever the device kept is deleted
-document.addEventListener("click", e => { if (e.target.closest && e.target.closest("#logout")) SgOffline.forget(); }, true);
-if (/\/(login|setup)\.html$/.test(location.pathname)) SgOffline.forget();
+document.addEventListener("click", e => { if (e.target.closest && e.target.closest("#logout")) { SgOffline.forget(); forgetPicks(); } }, true);
+if (/\/(login|setup)\.html$/.test(location.pathname)) { SgOffline.forget(); forgetPicks(); }
 
 /* the browser's bar in the app's colours, light or dark, following the page's own theme switch too */
 (function themeColour() {

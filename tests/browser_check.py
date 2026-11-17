@@ -7206,9 +7206,23 @@ def main():
             # log out ends the session: the API now refuses
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            # ---- picked lab names cleared at sign-out (#220): sel goes from every profile's saved view, the rest stays
+            js("""() => { state.sel = new Set(SERIES.filter(s => !s.watch).slice(0, 2).map(s => s.name)); save();
+                         localStorage.setItem('ht-state:99', JSON.stringify({preset: '1y', tab: 'labs', cats: ['lab'], sel: ['Ferritin'], v: 2})); }""")
+            views_before = js("[JSON.parse(localStorage.getItem(stateKey())), JSON.parse(localStorage.getItem('ht-state:99')), stateKey()]")
             before = len(problems)
             menu_click(page, "#logout")
             page.wait_for_url("**/login.html", timeout=10000)
+            views = js("Object.keys(localStorage).filter(k => k.startsWith('ht-state')).map(k => [k, JSON.parse(localStorage.getItem(k))])")
+            kept = lambda v: {k: v.get(k) for k in ("preset", "tab", "labsView", "cats")}   # noqa: E731  (from, to: the period's dates, drawn again)
+            check("sign-out clears the picked lab names from every saved view, keeping its period, tab and kinds (#220)",
+                  len(views_before[0]["sel"]) == 2 and views and all("sel" not in v for _, v in views)
+                  and kept(dict(views).get("ht-state:99") or {}) == kept(views_before[1]) and kept(dict(views).get(views_before[2]) or {}) == kept(views_before[0]),
+                  [views_before, views])
+            page.evaluate("localStorage.setItem('ht-state:99', JSON.stringify({preset: '5y', sel: ['Ferritin'], v: 2}))")
+            page.reload()
+            check("…and reaching the sign-in page clears them too", page.evaluate("JSON.parse(localStorage.getItem('ht-state:99'))") == {"preset": "5y", "v": 2})
+            page.evaluate("localStorage.removeItem('ht-state:99')")
             check("log out ends the session", js("fetch('api/me').then(r => r.status)") == 401)
             # signing in again takes the password, then a code
             page.fill("#u", USER)
