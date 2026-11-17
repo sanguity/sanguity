@@ -1058,6 +1058,8 @@ def profile_watch(pid: int, s=Depends(user), db=Depends(get_db)):
     units.annotate_watch(summary)   # weights that can be shown in kg or lb (#41)
     have = settings.stored(db, "profile", pid)   # heart rate zones on workouts, from About this person (#197)
     hrzones.annotate(summary, have.get("person.birthDate") or "", have.get("person.maxHr") or 0)
+    from . import targets   # #234: time in the person's own CGM range, by day; the counts by mg/dL stay here
+    targets.annotate(summary, have.get("person.targets") or {})
     return Response(json.dumps(summary, separators=(",", ":")).encode(), media_type="application/json")
 
 

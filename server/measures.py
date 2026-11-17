@@ -18,6 +18,9 @@ the person ticks what they want a clinician or relative to see.
   bmi            BMI from each weight and the height in effect on its day (#195, person.bmi), the number only; for a
                  child, where each weight, height and BMI falls on the WHO's or the CDC's growth charts (#196,
                  server/growth.py)
+  targets        targets of the person's own for home readings (#234, server/targets.py), as their care team gave
+                 them: each with who set it and when, and how many of the period's readings at home were above or
+                 below it (for CGM, the time in the person's own range beside the standard one, each labelled)
 Cycle tracking (#183) isn't here: the visit summary has its own section for it (cycle_tracking.py), offered only to
 owners and editors while it's on and ticked each time, and share links never offer it.
 
@@ -34,7 +37,7 @@ oxygen has a Readings column only when some were typed in.
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import ecg, glucose, growth, person, watch_store
+from . import ecg, glucose, growth, person, targets as tg, watch_store
 
 SECTIONS = [   # (id, label, what a share link shows: said on the owner's form and the link's page)
     ("home_bp", "Blood pressure at home", "each reading taken at home with a phone app: the date and time, both pressures, "
@@ -52,6 +55,8 @@ SECTIONS = [   # (id, label, what a share link shows: said on the owner's form a
                                                        "heart rate; not the traces themselves"),
     ("bmi", "BMI and growth", "each weight with the height in effect on its day and the BMI from them; for a child, where each "
                               "measurement falls on the WHO's or the CDC's growth charts"),
+    ("targets", "Your targets for home readings", "each target typed in as the care team gave it, who set it and when, and how many "
+                                                  "readings at home were above or below it"),   # #234
 ]
 IDS = [s for s, _, _ in SECTIONS]
 LABELS = {s: l for s, l, _ in SECTIONS}
@@ -175,13 +180,19 @@ def _home(c, readings, keep, values, app, rows=None, within=.05):
     return sorted(out, key=lambda x: x[0], reverse=True)
 
 
-def home_bp(c, keep, most):
+def _bp(c, keep):
+    """[(local time, systolic, diastolic, pulse, device)] taken at home in the period, newest first."""
     rs = []
     for t, r in _home(c, "bp_readings", keep, (1, 2), 5):
         r = list(r) + [None] * (6 - len(r))
         s, d = _num(r[1]), _num(r[2])
         if s is not None and d is not None:
             rs.append((t, s, d, _num(r[3]), _src(r[4], r[5])))
+    return rs
+
+
+def home_bp(c, keep, most):
+    rs = _bp(c, keep)
     lead = []
     if rs:
         n = len(rs)
@@ -266,6 +277,16 @@ def _pct(v):
     return (_n(v, 1) if 0 < v < 9.95 else _n(round(v))) + "%"
 
 
+def _meter(c, keep, mmol):
+    """[(local time, row)] of a meter's readings in the period, the phone's ([local time, mg/dL]) and those typed in at
+    home (#224, #232: [time, mg/dL, source, app, meal]), newest first, one typed that the phone sent too once (as the
+    page: the same within .5 mg/dL, or .05 mmol/L)."""
+    phone = [[str(w), v, None, "phone"] for w, v in (c.metrics.get("glucose_meter") or {}).get("pts") or []
+             if _day(w) and _num(v) is not None]
+    typed = [r for r in _rows(c, "glucose_readings", 4) if _num(r[1]) is not None]   # a phone's among them would be a meter's
+    return _home(c, None, keep, (1,), 3, rows=phone + typed, within=.05 * glucose.MGDL_PER_MMOL if mmol else .5)
+
+
 def glucose_block(c, keep, most):
     mmol = c.units.get("lab") == "si"
     unit = "mmol/L" if mmol else "mg/dL"
@@ -274,11 +295,8 @@ def glucose_block(c, keep, most):
     col = {k: dict(c.pts("glucose_" + k)) for k in ("avg", "min", "max", "n", "hours", "lt54", "lt70", "in", "gt180")}
     # a meter's readings, the phone's ([local time, mg/dL]) and those typed in at home (#224, #232: [time, mg/dL, source,
     # app, meal]), one typed that the phone sent too once (as the page: the same within .5 mg/dL, or .05 mmol/L)
-    phone = [[str(w), v, None, "phone"] for w, v in (c.metrics.get("glucose_meter") or {}).get("pts") or []
-             if _day(w) and _num(v) is not None]
-    typed = [r for r in _rows(c, "glucose_readings", 4) if _num(r[1]) is not None]   # a phone's among them would be a meter's
     meter, ones = {}, []
-    for t, r in _home(c, None, keep, (1,), 3, rows=phone + typed, within=.05 * glucose.MGDL_PER_MMOL if mmol else .5):
+    for t, r in _meter(c, keep, mmol):
         if r[3] == TYPED:
             ones.append((t, r[1], G_MEAL.get(r[4], "")))
         else:
@@ -405,8 +423,89 @@ def bmi(c, keep, most):
                   rows, lead, note, "No weights with a height in this period.", most)
 
 
+# ---------------------------------------------------------------- #234 targets of your own (server/targets.py)
+
+def _outside(sides, what="readings"):
+    """"4 of 62 readings above it", "None of 62 outside it", "No readings": the period's, each "high", "low" or ""."""
+    if not sides:
+        return f"No {what}"
+    hi, lo, n = sides.count("high"), sides.count("low"), len(sides)
+    if not hi and not lo:
+        return f"None of {n} outside it"
+    w = what if n != 1 else what[:-1]   # "1 of 1 reading above it"
+    if hi and lo:
+        return f"{hi} of {n} {w} above, {lo} below"
+    return f"{hi or lo} of {n} {w} {'above' if hi else 'below'} it"
+
+
+T_NAMES = {"bp": "Blood pressure", "glucose": "Glucose (meter)", "cgm": "CGM time in range", "temp": "Temperature",
+           "spo2": "Blood oxygen", "weight": "Weight"}
+
+
+def targets_block(c, keep, most):
+    """Each target the person typed in (#234), in the units of the person making it, with the period's readings at home
+    against it (compared as they're shown); for CGM, the time in the person's own range beside the standard one, each
+    labelled, in a line of its own. Only when the section is ticked; Sanguity never suggests one."""
+    T, rows, lead = tg.of(c.cfg), [], []
+    mmol, f_, kg = c.units.get("lab") == "si", c.units.get("temperature") == "F", c.units.get("weight") == "kg"
+    g = ("mmol/L", "mmol/L", 1) if mmol else ("mg/dL", "mg/dL", 0)
+    shown = {"glucose": g, "cgm": g, "temp": ("°F", "F", 1) if f_ else ("°C", "C", 1), "weight": ("kg", "kg", 1) if kg else ("lb", "lb", 1),
+             "spo2": ("%", None, 0)}   # measure -> (unit written, unit converted to, places)
+    for k in tg.MEASURES:
+        t = T.get(k)
+        if not t:
+            continue
+        if k == "bp":
+            sides = [tg.side(s, t.get("sysLow"), t.get("sysHigh")) or tg.side(d, t.get("diaLow"), t.get("diaHigh")) for _, s, d, _, _ in _bp(c, keep)]
+            rows.append([T_NAMES[k], tg.bp_text(t), t.get("by") or "", t.get("on") or "", _outside(sides)])
+            continue
+        unit, to, pl = shown[k]
+        conv = (lambda v, to=to, k=k: tg.from_canonical(k, v, to)) if to else (lambda v: v)
+        lo, hi = conv(t.get("low")), conv(t.get("high"))
+        text = tg.range_text(lo, hi, lambda v, pl=pl: _n(v, pl), unit)
+        sides = lambda vals: [tg.side(v, lo, hi, pl) for v in vals if v is not None]
+        if k == "glucose":
+            when = _outside(sides([conv(_num(r[1])) for _, r in _meter(c, keep, mmol)]))
+        elif k == "cgm":
+            low, high = tg.cgm_bounds(t)
+            got = [x for x in (tg.own_counts(v, low, high) for d, v in (c.metrics.get("glucose_dist") or {}).get("pts") or []
+                               if _day(d) and keep(d)) if x]
+            cgm = [d for d, _ in c.pts("glucose_avg") if keep(d)]
+            when = "No CGM days" if not cgm else "Not known for these days" if not got else ""
+            if got:
+                n = sum(x[3] for x in got)
+                pct = lambda i: _pct(100 * sum(x[i] for x in got) / n)
+                s_in, s_n = dict(c.pts("glucose_in")), dict(c.pts("glucose_n"))
+                sn = sum(int(s_n.get(d) or 0) for d in cgm)
+                std = sum((s_in.get(d) or 0) * int(s_n.get(d) or 0) for d in cgm) / sn if sn else None
+                s1, s2 = ("3.9", "10.0") if mmol else ("70", "180")
+                when = f"{pct(1)} in it, {_s(len(got), 'CGM day')}"
+                lead.append(f"CGM time in your own range ({text}, your target): {pct(1)} of readings over {_s(len(got), 'CGM day')}, "
+                            f"{pct(0)} below it and {pct(2)} above it" +
+                            (f"; in the standard published range ({s1}–{s2} {unit}): {_pct(std)}" if std is not None else "") + "." +
+                            (f" {len(cgm) - len(got)} of the CGM days came before Sanguity kept what this needs." if len(cgm) > len(got) else ""))
+        elif k == "temp":
+            when = _outside(sides([conv(_num(r[1])) for _, r in _home(c, "temp_readings", keep, (1,), 3)]))
+        elif k == "spo2":
+            when = _outside(sides([v for d, v in c.pts("spo2_avg") if keep(d)] +
+                                  [_num(r[1]) for _, r in _home(c, "spo2_readings", keep, (1,), 3)]))
+        else:   # weight: the smart scale's days, in the unit shown
+            m = c.metrics.get("weight") or {}
+            to_kg = person.LB_KG if str(m.get("unit") or "lb") == "lb" else 1
+            when = _outside(sides([conv(v * to_kg) for d, v in c.pts("weight") if v > 0 and keep(d)]), "weights")
+        rows.append([T_NAMES[k], text, t.get("by") or "", t.get("on") or "", when])
+    lead.insert(0, "Each target as the person's care team gave it, typed in by them or their family: Sanguity doesn't suggest targets. "
+                   "The readings taken at home in this period are compared with each, as they're shown here." if rows else "")
+    return _block([("Measure", "text", 92), ("Your target", "text", 100), ("Set by", "text", 104), ("Set on", "day", 54),
+                   ("In this period", "text", None)], rows, lead,
+                  "A blood pressure reading is above its target when its systolic or diastolic is; blood oxygen is each day's average "
+                  "from the watch and each reading typed in; weight, the smart scale's. Readings taken at visits aren't compared. "
+                  "Standard published ranges stay labelled as their publisher's. Not medical advice.",
+                  "No targets entered.", most)
+
+
 BUILD = {"home_bp": home_bp, "glucose": glucose_block, "temperature": temperature, "oxygen": oxygen, "respiratory": respiratory,
-         "vo2max": vo2max, "immunizations": immunizations, "ecg": ecg_block, "bmi": bmi}
+         "vo2max": vo2max, "immunizations": immunizations, "ecg": ecg_block, "bmi": bmi, "targets": targets_block}
 
 
 def offered(c):
@@ -422,6 +521,7 @@ def offered(c):
         "immunizations": any(isinstance(e, dict) and e.get("k") == "immunization" and not e.get("hidden") for e in c.data.get("events") or []),
         "ecg": bool(c.watch.get("ecg")),
         "bmi": bool(c.person["heights"]) and (bool(_weights(c)) or bool(c.person["birthDate"] and c.person["sex"])),
+        "targets": bool(tg.of(c.cfg)),   # #234: only when some target is entered
     }
     return [s for s in IDS if has[s]]
 

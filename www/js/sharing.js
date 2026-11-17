@@ -38,7 +38,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     {id: "summary", title: "Visit summary", has: ["summaryIntro", "build", "preview"]},
     {id: "export", title: "Export everything", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it."},
     {id: "activity", title: "Activity", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners."},
-    {id: "about", title: "About this person", part: "Profiles", has: ["about"]},   // #194
+    {id: "about", title: "About this person", part: "Profiles", has: ["about", "targets"]},   // #194; targets of your own (#234)
     {id: "profile", title: "Profile", part: "Profiles", has: ["profileCard", "newProfile"]},
   ];
   const ALIAS = {profiles: "people"};   // the old Account tab's name (account.html#profiles)
@@ -109,7 +109,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     $("#noProfiles").hidden = has;
     $("#intro").hidden = !has;
     $("#newProfile").hidden = false;
-    for (const id of ["people", "profileCard", "export", "links", "activity", "about"]) $("#" + id).hidden = !has;
+    for (const id of ["people", "profileCard", "export", "links", "activity", "about", "targets"]) $("#" + id).hidden = !has;
     if (!has) {
       P = null;
       SgNav.profiles([]);
@@ -268,32 +268,33 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
      removed on its own; and the heights a clinic recorded in the records, beside it, each offered for the history.
      Owners and editors change them; viewers see them as text. Heights show in this person's Units choice, else as
      each was typed, with the other unit beside. */
-  let HEIGHT_PREF = null;   // this person's Units choice for heights (their own setting), read once
+  let HEIGHT_PREF = null, UNITS_PREF = {};   // this person's Units choices (their own setting), read once: heights; targets' (#234)
   async function drawAbout(p) {
-    sayIn($("#aboutMsg"), "");
+    sayIn($("#aboutMsg"), ""); sayIn($("#targetsMsg"), "");
     let a;
     try {
-      if (HEIGHT_PREF == null) HEIGHT_PREF = ((await call("settings/user")).units || {}).height || "reported";
+      if (HEIGHT_PREF == null) { UNITS_PREF = (await call("settings/user")).units || {}; HEIGHT_PREF = UNITS_PREF.height || "reported"; }
       a = await call(`profiles/${p.id}/person`);
-    } catch (e) { $("#aboutBody").replaceChildren(); sayIn($("#aboutMsg"), e.message, true); return; }
+    } catch (e) { $("#aboutBody").replaceChildren(); $("#targetsBody").replaceChildren(); sayIn($("#aboutMsg"), e.message, true); return; }
     if (P === p) showAbout(p, a);
   }
   const aboutDay = d => fmtD(zParse(d));
   function showAbout(p, a) {
-    const msg = $("#aboutMsg"), fail = e => sayIn(msg, e.message, true), edit = a.can_change, today = isoDay(Date.now());
+    const fail = (e, msg = $("#aboutMsg")) => sayIn(msg, e.message, true), edit = a.can_change, today = isoDay(Date.now());
     const age = a.birthDate ? ageOn(a.birthDate, today) : null;
     const hText = h => { const u = heightUnit(HEIGHT_PREF, h.unit);
       return el("span", {}, heightText(h.cm, u), el("span", {class: "muted", text: ` (${heightText(h.cm, u === "cm" ? "ftin" : "cm")})`})); };
-    /* a change: the server answers with everything again; drawn afresh, focus back on the control that had it */
-    async function send(path, method, payload, said) {
+    /* a change: the server answers with everything again; drawn afresh, focus back on the control that had it (or
+       focus, an id); said in msg (the targets' card has its own, #234) */
+    async function send(path, method, payload, said, focus, msg = $("#aboutMsg")) {
       const had = document.activeElement && document.activeElement.id;
       try {
         const got = await call(path, method, payload);
         if (P !== p) return;
         showAbout(p, got);
-        sayIn($("#aboutMsg"), typeof said === "function" ? said(got) : said);
-        (had && document.getElementById(had) || $("#aboutHeightHd")).focus();
-      } catch (e) { fail(e); }
+        for (const m of [$("#aboutMsg"), $("#targetsMsg")]) sayIn(m, m === msg ? (typeof said === "function" ? said(got) : said) : "");
+        (focus && document.getElementById(focus) || had && document.getElementById(had) || $("#aboutHeightHd")).focus();
+      } catch (e) { fail(e, msg); }
     }
     const parts = [];
     // the birth date and sex
@@ -384,6 +385,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
         all ? el("div", {class: "about-row"}, all) : null);
     }
     $("#aboutBody").replaceChildren(...parts.filter(Boolean));
+    $("#targetsBody").replaceChildren(targetsCard(p, a, UNITS_PREF, (path, method, payload, said, focus) => send(path, method, payload, said, focus, $("#targetsMsg"))));   // #234
     $("#about").dataset.profile = p.id;   // whose details are drawn (the browser check waits for it)
   }
 

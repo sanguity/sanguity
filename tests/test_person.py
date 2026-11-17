@@ -5,6 +5,8 @@ built on them uses (age in years and months on a day, the height in effect on a 
 clinic recorded, found in the records; the API (viewers read, owners and editors change, each change logged without
 its value, everything encrypted at rest); the move of #44's ranges.birthDate and ranges.sex (schema step 30, and a
 settings.json from before); the export; and share links, which leave it out unless "About this person" is ticked.
+And targets of your own for home readings (#234, server/targets.py): their checks, kept in one unit each, set, changed
+and cleared one measure at a time by owners and editors, encrypted, and time in a CGM range of the person's own.
 Fictional data only.
 
   python3 tests/test_person.py
@@ -23,7 +25,7 @@ sys.path.insert(0, ROOT)
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, crypto, db as dbm, main, person, profiles as prof, ranges, records, settings, share_links  # noqa: E402
+from server import accounts, crypto, db as dbm, main, person, profiles as prof, ranges, records, settings, share_links, targets  # noqa: E402
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -113,6 +115,50 @@ class Rules(unittest.TestCase):
                                                    {"name": "Height percentile", "unit": "%", "pts": [["2020-01-01", 50, None, None, ""]]},
                                                    {"name": "Stature", "loinc": "8302-2", "unit": "m", "pts": [["2021-01-01", 1.5]]}]}),
                          [{"date": "2021-01-01", "cm": 150.0, "unit": "cm", "source": ""}, {"date": "2020-01-01", "cm": 150.0, "unit": "cm", "source": ""}])
+
+
+class TargetRules(unittest.TestCase):   # #234
+    def test_checks_and_units(self):
+        self.assertEqual(targets.check({}), {})
+        t = targets.check({"bp": {"sysHigh": 130, "diaHigh": 80, "by": "  Dr.  Rowan Vale ", "on": "2026-03-03"}})
+        self.assertEqual(t, {"bp": {"sysLow": None, "sysHigh": 130, "diaLow": None, "diaHigh": 80, "by": "Dr. Rowan Vale", "on": "2026-03-03"}})
+        self.assertEqual(targets.bp_text(t["bp"]), "up to 130/80 mmHg")
+        self.assertEqual(targets.bp_text({"sysLow": 100, "sysHigh": 130, "diaHigh": 80}), "systolic 100–130, diastolic up to 80 mmHg")
+        g = targets.typed("glucose", {"low": 4.4, "high": 7.2, "unit": "mmol/L"})
+        self.assertEqual((g["low"], g["high"], g["unit"]), (79.27, 129.71, "mmol/L"), "kept in mg/dL, with how it was typed")
+        self.assertEqual(round(targets.from_canonical("glucose", g["high"], "mmol/L"), 1), 7.2)
+        w = targets.typed("weight", {"high": 180, "unit": "lb"})
+        self.assertEqual(w["high"], 81.65, "kept in kg")
+        self.assertEqual(targets.typed("temp", {"high": 100.4, "unit": "F"})["high"], 38, "kept in °C")
+        for m, t_, says in [("bp", {}, "a low end, a high end"), ("bp", {"sysLow": 140, "sysHigh": 130}, "below the high end"),
+                            ("bp", {"sysHigh": 400}, "60 to 250"), ("glucose", {"low": 4, "unit": "mmol/L"}, "20 to 600 mg/dL"),
+                            ("spo2", {"low": 101}, "70 to 100%"), ("glucose", {"high": 140, "unit": "mg"}, "mg/dL or mmol/L"),
+                            ("spo2", {"low": True}, "a number"), ("weight", {"high": 80, "by": "x" * 81}, "too long"),
+                            ("temp", {"high": 38, "on": day(1)}, "to today"), ("pulse", {"high": 90}, "no measure")]:
+            with self.assertRaises(targets.TargetError, msg=(m, t_)) as e:
+                targets.check({m: t_})
+            self.assertIn(says, str(e.exception), (m, t_))
+        with self.assertRaises(settings.SettingError):
+            settings.put(None, "person.targets", {"spo2": {}})
+
+    def test_compared_as_shown(self):
+        self.assertEqual([targets.side(v, 80, 130) for v in (79.4, 79.6, 130.4, 131, None)], ["low", "", "", "high", ""])
+        self.assertEqual(targets.side(7.84, None, 7.8, 1), "", "7.8 shown is never above a target of 7.8")
+        self.assertEqual(targets.range_text(92, None, lambda v: f"{v:g}", "%"), "at least 92%")
+        self.assertEqual(targets.range_text(None, 140, lambda v: f"{v:g}", "mg/dL"), "up to 140 mg/dL")
+
+    def test_cgm_own_range(self):
+        dist = [60, 2, *[0] * 9, 4, *[0] * 60, 3, 1]   # 2 at 60, 4 at 70, 3 at 131, 1 at 132
+        self.assertEqual(targets.own_counts(dist, 70, 131), (2, 7, 1, 10))
+        self.assertEqual(targets.own_shares(dist, 70, 131), (20.0, 70.0, 10.0))
+        self.assertEqual(targets.cgm_bounds({"low": 70.26, "high": 180.16}), (70, 180), "3.9 to 10.0 mmol/L: 70 to 180, as the standard")
+        w = {"metrics": [{"key": "glucose_avg", "pts": [["2026-11-01", 120]]}, {"key": "glucose_dist", "pts": [["2026-11-01", dist]]}]}
+        self.assertEqual([m["key"] for m in targets.annotate(json.loads(json.dumps(w)), {})["metrics"]], ["glucose_avg"],
+                         "the counts never leave the server; with no CGM target, nothing added")
+        got = {m["key"]: m["pts"] for m in targets.annotate(w, {"cgm": {"low": 70, "high": 131}})["metrics"]}
+        self.assertEqual((got["glucose_own_lt"], got["glucose_own_in"], got["glucose_own_gt"]),
+                         ([["2026-11-01", 20.0]], [["2026-11-01", 70.0]], [["2026-11-01", 10.0]]))
+        self.assertNotIn("glucose_dist", got)
 
 
 class Api(unittest.TestCase):
@@ -247,6 +293,38 @@ class Api(unittest.TestCase):
         self.assertEqual(got["about"], {"birthDate": "1990-03-01", "sex": "Female",
                                         "heights": [{"date": day(-60), "cm": 168.91, "text": "168.9 cm (5 ft 6.5 in)"}]})
         self.assertEqual(view(sections=["about"], **{"to": day(-90)})["about"]["heights"], [], "heights only in the link's dates")
+
+    def test_7_targets(self):   # #234
+        put = lambda who, t: self.c[who].put(self.url(), json={"targets": t}, headers=H)
+        self.assertEqual(self.c["kim"].get(self.url()).json()["targets"], {}, "none at first")
+        self.assertEqual(put("kim", {"bp": {"sysHigh": 130}}).status_code, 403, "a viewer can't set one")
+        r = put("lee", {"bp": {"sysHigh": 130, "diaHigh": 80, "by": "Dr. Rowan Vale", "on": day(-20)},
+                        "glucose": {"low": 4.4, "high": 7.2, "unit": "mmol/L"}})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(sorted(r.json()["targets"]), ["bp", "glucose"])
+        self.assertEqual(r.json()["targets"]["glucose"]["high"], 129.71)
+        self.assertEqual(r.json()["measures"]["cgm"], "CGM time in range")
+        r = put("robin", {"bp": {"sysHigh": 135, "diaHigh": 85}})
+        self.assertEqual((r.json()["targets"]["bp"]["sysHigh"], r.json()["targets"]["bp"]["by"], r.json()["targets"]["glucose"]["low"]),
+                         (135, "", 79.27), "changed one measure; the other kept")
+        r = put("robin", {"glucose": None})
+        self.assertEqual(list(r.json()["targets"]), ["bp"], "cleared one measure")
+        r = put("robin", {"spo2": {"low": 120}})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("70 to 100%", r.json()["detail"])
+        self.assertEqual(self.c["kim"].get(f"/api/profiles/{self.pid}/settings").json()["person"]["targets"]["bp"]["sysHigh"], 135,
+                         "viewers see it, with every setting the records page loads")
+        db = dbm.connect()
+        try:
+            row = db.execute("SELECT value, sealed FROM settings WHERE key='person.targets' AND profile_id=?", (self.pid,)).fetchone()
+            log = [json.loads(crypto.dec(x["detail"])) for x in db.execute(
+                "SELECT detail FROM activity WHERE profile_id=? AND action='settings'", (self.pid,))]
+        finally:
+            db.close()
+        self.assertTrue(row["value"] is None and row["sealed"].startswith(crypto.FIELD), "encrypted at rest")
+        self.assertIn({"setting": "person.targets", "label": "Targets of your own"}, log, "logged, without its value")
+        self.assertNotIn("135", json.dumps(log))
+        self.assertEqual(put("robin", {"bp": None}).json()["targets"], {}, "cleared: nothing left")
 
     def test_5_export_carries_it(self):
         db = dbm.connect()

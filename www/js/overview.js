@@ -58,24 +58,26 @@ function homeTiles() {
   const V = hVitals(), out = [];
   const latest = rows => rows.reduce((m, r) => !m || r.t > m.t ? r : m, null);
   const where = r => r.home ? `at home · ${r.src}` : `at a visit · ${r.src}`;
+  // a reading at home above or below a target of the person's own, in words (#234): " · systolic ▲ above your target"
+  const mine = (r, names) => r && r.home && r.tf ? r.tf.map((f, i) => f ? `${names[i]} ${tgtWord(f)}`.trim() : "").filter(Boolean).map(t => " · " + t).join("") : "";
   const tile = (label, val, unit, sub, id) => el("button", {class: "tile home-tile", "data-home": id.slice(3), onclick: () => openVital(id)},
     el("span", {class: "lbl"}, el("span", {text: label})), el("span", {class: "val"}, val, el("small", {text: unit})),
     el("span", {class: "delta", text: sub}));
   for (const k of want) {
     if (k === "bp") {
       const r = latest([...V.bp.home, ...V.bp.clinic]);
-      out.push(tile("Blood pressure", r ? bpText(r) : "–", "mmHg", r ? `${fmtDT(r.t)} · ${where(r)}` : "no readings yet", "#h-bp"));
+      out.push(tile("Blood pressure", r ? bpText(r) : "–", "mmHg", r ? `${fmtDT(r.t)} · ${where(r)}${mine(r, ["systolic", "diastolic"])}` : "no readings yet", "#h-bp"));
     } else if (k === "temp") {
       const r = latest([...V.temp.home, ...V.temp.clinic]);
-      out.push(tile("Body temperature", r ? r.v[0].toFixed(1) : "–", V.temp.unit, r ? `${fmtDT(r.t)} · ${where(r)}` : "no readings yet", "#h-temp"));
+      out.push(tile("Body temperature", r ? r.v[0].toFixed(1) : "–", V.temp.unit, r ? `${fmtDT(r.t)} · ${where(r)}${mine(r, [""])}` : "no readings yet", "#h-temp"));
     } else if (k === "glucose") {
       if (G === undefined) G = gData();
       const m = G && G.meter.length ? G.meter.at(-1) : null, d = G && G.days.length ? G.days.at(-1) : null;
       if (d && (!m || d.t >= m[0] - DAY / 2)) out.push(tile("Blood glucose", G.fmt(d.avg), `${G.unit} avg`,
-        `${fmtD(d.t)} · the day's CGM average (${G.fmt(d.lo)}–${G.fmt(d.hi)}) · phone app`, "#h-glucose"));
+        `${fmtD(d.t)} · the day's CGM average (${G.fmt(d.lo)}–${G.fmt(d.hi)}) · phone app${d.oin != null ? ` · ${gPct(d.oin)} in your own range` : ""}`, "#h-glucose"));
       else out.push(tile("Blood glucose", m ? G.fmt(m[1]) : "–", G ? G.unit : "", !m ? "no readings yet"
-        : m[2] ? `${fmtDT(m[0])} · a meter reading at home · ${[m[2], m[3]].filter(Boolean).join(", ")}`   // typed in, its meal note (#232)
-        : `${fmtDT(m[0])} · a meter reading · from a phone app`, "#h-glucose"));
+        : (m[2] ? `${fmtDT(m[0])} · a meter reading at home · ${[m[2], m[3]].filter(Boolean).join(", ")}`   // typed in, its meal note (#232)
+        : `${fmtDT(m[0])} · a meter reading · from a phone app`) + (m[4] ? ` · ${tgtWord(m[4])}` : ""), "#h-glucose"));   // against your target (#234)
     }
   }
   return out;

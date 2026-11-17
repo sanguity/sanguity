@@ -94,7 +94,10 @@ PHONE = {"updated": utc(0, 6), "tz": "UTC", "last_payload": None, "exercise": []
      "pts": [[d(-4) + "T07:12", 104.0], [d(-4) + "T19:40", 131.0]]},
     *({"key": "glucose_" + k, "name": k, "unit": "", "group": "Glucose", "pts": [[d(-6), a], [d(-5), b]]} for k, a, b in (
         ("avg", 120.0, 131.0), ("min", 70.0, 62.0), ("max", 190.0, 212.0), ("n", 96, 288), ("hours", 8.0, 24.0),
-        ("lt54", 2.0, 0.03), ("lt70", 8.0, 4.0), ("in", 70.0, 78.0), ("gt180", 22.0, 18.0)))],
+        ("lt54", 2.0, 0.03), ("lt70", 8.0, 4.0), ("in", 70.0, 78.0), ("gt180", 22.0, 18.0))),
+    # #234: the day's CGM readings by whole mg/dL (glucose.py): 12 at 62, 200 at 120, 76 at 190
+    {"key": "glucose_dist", "name": "CGM readings by whole mg/dL", "unit": "readings", "group": "Glucose",
+     "pts": [[d(-5), [62, 12, *[0] * 57, 200, *[0] * 69, 76]]]}],
     "bp_readings": [[utc(-40, 8), 150, 95, 70, "Fictional cuff", "Health Connect"], [utc(-9, 8), 132, 84, 68, "Fictional cuff", "Health Connect"],
                     [utc(-2, 20), 126, 80, None, None, "Apple Health"]],
     "temp_readings": [[utc(-8, 7), 37.4, "Fictional thermometer", "Health Connect"], [utc(-7, 7), 36.8, None, "Apple Health"]],
@@ -419,8 +422,9 @@ class Summary(unittest.TestCase):
         self.assertFalse(set(measures.IDS) & {s["id"] for s in o["sections"]}, "a profile without them isn't offered them")
         o = self.c["kim"].get(f"/api/profiles/{self.measures_profile()}/summary").json()   # viewers too: they read them already
         secs = {s["id"]: s for s in o["sections"]}
-        self.assertEqual([s for s in measures.IDS if s in secs], measures.IDS, "each one this profile has")
-        self.assertTrue(all(secs[s].get("off") for s in measures.IDS), "unticked unless the person ticks them")
+        has = [s for s in measures.IDS if s != "targets"]   # targets (#234): only once one is entered
+        self.assertEqual([s for s in measures.IDS if s in secs], has, "each one this profile has")
+        self.assertTrue(all(secs[s].get("off") for s in has), "unticked unless the person ticks them")
         self.assertFalse(any(secs[s].get("off") for s in ALL), "the summary's own sections stay ticked")
         self.assertNotIn("cycle", secs, "cycle tracking is off here: not offered (#183 has its own section)")
         self.assertEqual(len(o["sections"]), len(secs), "no section twice")
@@ -451,6 +455,50 @@ class Summary(unittest.TestCase):
         self.assertEqual(m["ecg"]["rows"], [[d(-6), "ECG: Sinus Rhythm", "72 bpm average · Fictional Watch"]], "since the visit only")
         self.assertEqual([r[1:3] for r in m["bmi"]["rows"]], [["BMI", "24.3 kg/m²"], ["BMI", "24.4 kg/m²"]])
         self.assertNotIn("samples", json.dumps(s))
+
+    def test_targets_of_your_own(self):   # #234
+        pid, c = self.measures_profile(), self.c["robin"]
+        put = lambda t: c.put(f"/api/profiles/{pid}/person", json={"targets": t}, headers=H)
+        try:
+            self.assertEqual(self.mpreview(sections=["targets"])["measures"]["targets"]["rows"], [], "none entered: none listed")
+            r = put({"bp": {"sysHigh": 130, "diaHigh": 82, "by": "Dr. Rowan Vale (fictional)", "on": d(-60)},
+                     "glucose": {"low": 80, "high": 120, "unit": "mg/dL"}, "cgm": {"low": 3.9, "high": 7.8, "unit": "mmol/L"},
+                     "temp": {"high": 37.2, "unit": "C"}, "spo2": {"low": 95}, "weight": {"high": 164.5, "unit": "lb"}})
+            self.assertEqual(r.status_code, 200, r.text)
+            o = self.c["kim"].get(f"/api/profiles/{pid}/summary").json()
+            self.assertTrue(next(x for x in o["sections"] if x["id"] == "targets").get("off"), "offered once entered, unticked")
+            m = self.mpreview(sections=[x for x in measures.IDS if x != "targets"])["measures"]
+            self.assertNotIn("targets", m, "only when ticked")
+            self.assertNotIn("your target", json.dumps(m).lower())
+            b = self.mpreview(sections=["targets"])["measures"]["targets"]
+            rows = {r_[0]: r_[1:] for r_ in b["rows"]}
+            self.assertEqual(rows["Blood pressure"], ["up to 130/82 mmHg", "Dr. Rowan Vale (fictional)", d(-60), "1 of 2 readings above it"])
+            self.assertEqual(rows["Glucose (meter)"][0::3], ["80–120 mg/dL", "1 of 2 readings above it"])
+            self.assertEqual(rows["CGM time in range"][0::3], ["70–141 mg/dL", "69% in it, 1 CGM day"], "3.9–7.8 mmol/L, in this person's mg/dL")
+            self.assertEqual(b["lead"][1], "CGM time in your own range (70–141 mg/dL, your target): 69% of readings over 1 CGM day, 4.2% below "
+                                           "it and 26% above it; in the standard published range (70–180 mg/dL): 76%. 1 of the CGM days "
+                                           "came before Sanguity kept what this needs.")
+            self.assertEqual(rows["Temperature"][0::3], ["up to 37.2 °C", "1 of 2 readings above it"])
+            self.assertEqual(rows["Blood oxygen"][0::3], ["at least 95%", "None of 2 outside it"])
+            self.assertEqual(rows["Weight"][0::3], ["up to 164.5 lb", "1 of 2 weights above it"])
+            self.assertIn("Sanguity doesn't suggest targets", b["lead"][0])
+            self.assertIn("as the person's care team gave it", b["lead"][0])
+            self.assertIn("Not medical advice", b["note"])
+            c.put("/api/settings/user/units", json={"value": {"lab": "si", "weight": "kg"}}, headers=H)
+            b = self.mpreview(sections=["targets"])["measures"]["targets"]
+            rows = {r_[0]: r_[1:] for r_ in b["rows"]}
+            self.assertEqual((rows["CGM time in range"][0], rows["Weight"][0]), ("3.9–7.8 mmol/L", "up to 74.6 kg"), "in this person's units")
+            self.assertIn("(3.9–10.0 mmol/L): 76%", b["lead"][1])
+            r = c.post(f"/api/profiles/{pid}/summary/pdf", json=self.opts(appointment=None, sections=["targets"]), headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            text = text_of(r.content)[1]
+            self.assertIn("Your targets for home readings since", text)
+            self.assertIn("Dr. Rowan Vale", text)
+            self.assertIn("CGM time in your own range (3.9–7.8 mmol/L, your target)", text)
+        finally:
+            c.put("/api/settings/user/units", json={"value": {}}, headers=H)
+            put({k: None for k in ("bp", "glucose", "cgm", "temp", "spo2", "weight")})
+        self.assertNotIn("targets", {x["id"] for x in self.c["kim"].get(f"/api/profiles/{pid}/summary").json()["sections"]}, "cleared: gone")
 
     def test_measures_in_the_persons_units(self):
         c = self.c["robin"]
