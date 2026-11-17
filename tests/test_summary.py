@@ -226,6 +226,27 @@ class Summary(unittest.TestCase):
         self.assertEqual(next(r for r in s["out_of_range"] if r["name"] == "Sodium, Blood")["label"], "Sodium",
                          "the profile's lab nicknames are used")
 
+    def test_now_says_high_or_low(self):
+        # a trend's out-of-range Now value says High or Low in words, not by red alone, so a black-and-white print
+        # shows it (#213); the fonts have no ▲ ▼, so words; and the Now column holds it with an earlier year's date
+        reader, text = text_of(self.pdf().content)
+        hb = next(t for t in self.preview()["trends"] if t["name"] == "Hemoglobin")
+        self.assertIn(f"11.8 Low  {summary._short(d(-5))}", text)
+        self.assertIn("High or Low (in red)", text)
+        s = self.preview(labs=["Ferritin"])
+        fe = next(t for t in s["trends"] if t["name"] == "Ferritin")
+        self.assertIn(f"250  {summary._short(d(-10))}", text_of(self.pdf(labs=["Ferritin"]).content)[1],
+                      "an in-range Now has no word")
+        self.assertIsNone(fe["now"]["flag"])
+        now_w = dict(summary.TREND_COLS)["NOW"]
+        for flag in ("High", "Low"):
+            worst = {**hb["now"], "value": "123.4", "flag": flag, "date": "2024-09-30"}
+            cell = summary.now_cell(worst)[0]
+            self.assertLessEqual(pdfdoc.width(cell, 9, True), now_w - 6, cell)
+            big = {**s, "trends": [{**hb, "now": worst}]}
+            self.assertIn(cell, text_of(summary.render(big)[0])[1], "not cut short")
+        self.assertEqual(sum(w for _, w in summary.TREND_COLS if w), 432, "the columns still fit the page")
+
     def test_questions_draft(self):
         url = f"/api/profiles/{self.pid}/summary/questions"
         r = self.c["kim"].put(url, json={"text": "What do the numbers mean for me?"}, headers=H)   # a viewer may keep one

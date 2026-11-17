@@ -479,6 +479,21 @@ def _spark(page, row, x, y, w, h=10):
         page.dot(px, py, 1.5 if bad else 1.0, CRIT if bad else INK)
 
 
+# the trends table's columns: Now is wide enough for a value with its flag in words and a date from an earlier year,
+# "123.4 High  Sep 30, 2024", so a black-and-white print still shows which results were out of range (#213). The
+# PDF's standard fonts have no ▲ ▼ (Windows-1252 lacks them), so the flag is said in words.
+TREND_COLS = [("TEST", 114), ("THEN", 88), ("NOW", 112), ("CHANGE", 38), ("SINCE", 28), ("", 52), ("NOW'S RANGE", None)]
+
+
+def now_cell(now):
+    """The trends table's Now cell: the value, its flag in words when out of range (bold and red: a tuple), the date."""
+    if not now:
+        return "no new result"
+    if now["flag"]:
+        return (f"{now['value']} {now['flag']}  {_short(now['date'])}",)
+    return f"{now['value']}  {_short(now['date'])}"
+
+
 def _when(d):
     return fmt_date(d) if d else ""
 
@@ -535,16 +550,14 @@ def _render(s):
                 if not rows:
                     lay.note("None of the key labs has results. Pick labs on the summary page, or set the key labs in Settings.")
                     continue
-                lay.table(sid, [("TEST", 128), ("THEN", 80), ("NOW", 82), ("CHANGE", 44), ("SINCE", 32), ("", 66), ("NOW'S RANGE", None)],
+                lay.table(sid, TREND_COLS,
                           rows, lambda r: [f"{r['label']}" + (f" ({r['unit']})" if r["unit"] else ""),
                                            f"{r['then']['value']}  {_short(r['then']['date'])}" if r["then"] else "none before",
-                                           ((f"{r['now']['value']}  {_short(r['now']['date'])}",) if r["now"]["flag"]
-                                            else f"{r['now']['value']}  {_short(r['now']['date'])}") if r["now"] else "no new result",
-                                           r["change"] or "", str(r["since"]), None,
+                                           now_cell(r["now"]), r["change"] or "", str(r["since"]), None,
                                            (r["now"] or {}).get("range") or ""],
                           _spark)
-                lay.note("Then: the last result on or before that day. Since: how many results since. Red: outside the "
-                         "range on that result's own report.", 7.5)
+                lay.note("Then: the last result on or before that day. Since: how many results since. High or Low (in "
+                         "red): outside the range on that result's own report.", 7.5)
                 if any(((r["now"] or {}).get("range") or "").endswith("(settings)") for r in rows):
                     lay.note(SETTINGS_NOTE, 7.5)
             elif sid == "medications":

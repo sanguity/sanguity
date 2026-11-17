@@ -257,6 +257,8 @@ Everything on `main` so far; it becomes the first tagged release.
   Timeline's counts and the Costs lists' totals then say they're for what's shown. Reset filters replaces the
   Timeline's **Show all** button and the Costs lists' **Clear filters** and **Show everything**; each kind's ⋯ menu
   still has Show all.
+- The visit summary's PDF says **High** or **Low** beside a trend's Now value when it's out of range, not by red
+  alone, so a black-and-white print shows it; the trends table's columns are rebalanced so it fits (#213).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
