@@ -12,7 +12,7 @@ that user. The root filesystem is read-only (`--read-only --tmpfs /tmp`).
 | Watch receiver port | 8081 | 8731 |
 | Data | `/data` | `/mnt/user/appdata/sanguity/data` |
 | Encryption key | `/run/secrets/sanguity` | `/mnt/user/appdata/sanguity-key` |
-| Backups | `/backups` | `/mnt/user/appdata/sanguity/backups` |
+| Backups (Sanguity writes them on the schedule set under **Admin → Backups**; copy them off the server too) | `/backups` | `/mnt/user/appdata/sanguity/backups` |
 | Watch data | `/watch` | `/mnt/user/appdata/sanguity/watch` |
 | Record exports (advanced, read-only) | `/srv/records` | `/mnt/user/appdata/sanguity/records` |
 | Config files (advanced, read-only) | `/config` | `/mnt/user/appdata/sanguity/config` |

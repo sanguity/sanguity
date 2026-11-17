@@ -503,6 +503,9 @@ Everything on `main` so far; it becomes the first tagged release.
   day's readings by whole mg/dL (glucose_dist), which the server turns into the day's shares in that range and never
   sends to the page. The Overview's home tiles say it in words. The visit summary and share links offer "Your targets
   for home readings" when one is entered, unticked. Sanguity never suggests a target; with none entered nothing changes.
+- **Install templates on backups** (#218): the TrueNAS, Unraid and CasaOS templates now say Sanguity writes its
+  backups to the backups folder itself, on the schedule set under Admin → Backups (or with
+  `python -m server.manage backup`), and to copy them off the machine too.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
