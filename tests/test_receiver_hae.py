@@ -4,7 +4,7 @@ folds them into the same daily summary. All data here is fictional, written for 
 
   python tests/test_receiver_hae.py
 """
-import hashlib, hmac, importlib.util, json, os, shutil, sys, tempfile, threading, unittest, urllib.error, urllib.request
+import hashlib, hmac, importlib.util, json, os, shutil, socket, sys, tempfile, threading, unittest, urllib.error, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -293,6 +293,54 @@ class Upload(unittest.TestCase):
         self.assertEqual(self.post(b, **{"X-Signature": sig}), 200)
         self.assertEqual([slot for slot, _, _ in self.queued()], ["7"])
         self.assertEqual(self.post(b, **{"X-Signature": "sha256=" + "0" * 64}), 401)
+
+    # ---- refused before the body is read, and bad signatures slowed (#222)
+    def setUp(self):
+        rx.throttle = rx.BadSignatures()   # each test from a clean slate
+
+    def head_only(self, **headers):
+        """Send only a request's head, its Content-Length saying 32 MB follow, and read the answer's head: a receiver
+        that read the body first would never answer (the socket times out and the test fails)."""
+        with socket.create_connection(("127.0.0.1", self.srv.server_address[1]), timeout=3) as c:
+            c.sendall(("POST /ingest HTTP/1.1\r\nHost: receiver\r\nContent-Type: application/json\r\n"
+                       f"Content-Length: {rx.MAX_BODY}\r\n" + "".join(f"{k}: {v}\r\n" for k, v in headers.items()) + "\r\n").encode())
+            f = c.makefile("rb")
+            status = int(f.readline().split()[1])
+            head = {}
+            while (line := f.readline().decode().strip()):
+                k, _, v = line.partition(":")
+                head[k.strip().lower()] = v.strip()
+            return status, head
+
+    def test_unsigned_refused_before_reading_its_body(self):
+        self.assertEqual(self.head_only()[0], 401, "neither X-Signature nor a bearer secret")
+        self.assertEqual(self.head_only(Authorization="Bearer ")[0], 401)
+        self.assertEqual(self.head_only(Authorization="fictional-second-profile-secret")[0], 401)   # without "Bearer"
+        self.assertEqual(self.head_only(Authorization="Bearer a-guess")[0], 401, "a wrong secret is known before the body")
+        self.assertEqual(self.head_only()[1].get("connection"), "close", "what's left of the body is never read")
+        self.assertEqual(self.queued(), [])
+
+    def test_bad_signatures_slow_the_address(self):
+        b = body({"source": "health_connect", "timezone": "UTC", "daily_totals": [{"date": "2024-03-09", "steps": 10}]})
+        good = {"X-Signature": "sha256=" + hmac.new(b"fictional-second-profile-secret", b, hashlib.sha256).hexdigest()}
+        bad = {"X-Signature": "sha256=" + "0" * 64}
+        for _ in range(30):   # unsigned ones cost nothing now, so they don't count
+            self.assertEqual(self.post(b), 401)
+        for _ in range(rx.BAD_FREE):
+            self.assertEqual(self.post(b, **bad), 401)
+        status, head = self.head_only(**bad)
+        self.assertEqual(status, 429, "the address waits: its next signed body isn't read")
+        self.assertGreaterEqual(int(head["retry-after"]), 25)
+        self.assertEqual(self.post(b, **good), 429, "a signed upload from it waits too, its body unread")
+        self.assertEqual(self.post(b, Authorization="Bearer fictional-first-profile-secret"), 200,
+                         "a right secret is known before the body, so it isn't held up")
+        self.assertEqual(self.post(b, Authorization="Bearer a-guess"), 401)   # counted: a wrong secret is a bad one too
+        rx.throttle.fail("ip:127.0.0.1")
+        self.assertGreater(rx.throttle.wait("ip:127.0.0.1"), int(head["retry-after"]), "each bad one more waits longer")
+        with rx.throttle._lock:   # 15 minutes on: the address may send again
+            rx.throttle._fails = {k: [t - 16 * 60 for t in v] for k, v in rx.throttle._fails.items()}
+        self.assertEqual(self.post(b, **good), 200)
+        self.assertEqual([slot for slot, _, _ in self.queued()], ["", "7"])
 
 
 if __name__ == "__main__":

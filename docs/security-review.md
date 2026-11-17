@@ -153,7 +153,7 @@ Found in #203, each low, and accepted for the reason given:
 | A7 (4.2.2) | `GET /api/profiles/{id}/connect/start?source=...` changes state (a pending sign-in, and a request to the vendor's discovery address) without the `X-Sanguity` check, since a page navigates to it. | The session cookie is `SameSite=Strict`, so a navigation from another site carries no session and is refused. What it does is start a sign-in bound to that session, at a source an admin set up; nothing is changed until the person signs in at the vendor and comes back. |
 | A8 (5.3.3) | An HTML record (a portal message, a Health Link's attachment) opened with **Open in new tab** could send that tab elsewhere with a `<meta http-equiv="refresh">`. | **Fixed (#221):** HTML records are served with `sandbox allow-same-origin` added to their CSP (`main.HTML_SANDBOX`), the same sandbox as the app's panel frame, so a refresh is refused in a tab of its own too; PDFs and pictures are served without it, so they still open. `tests/test_api.py` `test_html_record_loads_its_own_pictures_and_styles`, and browser_check opens a record with a refresh in its own tab. |
 | A9 (5.2.6, 12.6.1) | An editor who confirms a SMART Health Link makes the server fetch from the host the link names, which can be any public HTTPS host. | That is what a Health Link is. Only after confirming; HTTPS only, public addresses only (loopback, private, link-local and reserved addresses refused, the address checked and then connected to), redirects only on the same host, size and file caps (`config.SHL_*`); each contact is recorded with its host in the profile's activity and the outside-connections view. |
-| A10 (12.1.1, 11.1.4) | The watch receiver reads an upload's body (up to 32 MB) before checking its signature, with no limit on tries. | It listens on your home network or tailnet (`RECEIVER_PORT`), each profile's secret is 256 random bits, and nothing is kept or archived before the signature or secret matches. Refusing an unsigned request before reading its body is a [follow-up](#follow-ups). |
+| A10 (12.1.1, 11.1.4) | The watch receiver read an upload's body (up to 32 MB) before checking its signature, with no limit on tries. | **Fixed (#222):** an upload with neither `X-Signature` nor `Authorization: Bearer` is answered 401 at once, and a bearer secret is checked, before any of the body is read; after `BAD_FREE` (10) bad signatures or secrets in 15 minutes an address gets 429 with `Retry-After` for its signed uploads, unread, the wait doubling from 30 seconds up to 15 minutes (`watch/receiver.py` `BadSignatures`, the app's `security.Throttle`). A right bearer secret is known before the body, so it's never held up; a signed upload from a waiting address waits too, since only reading its body could tell it apart. `tests/test_receiver_hae.py` `test_unsigned_refused_before_reading_its_body`, `test_bad_signatures_slow_the_address`. |
 
 ## Follow-ups
 
@@ -167,8 +167,8 @@ Not opened as issues; written up here for the owner to file or drop:
    relied on a selection surviving that (A6).
 3. **No refresh in served HTML.** Done in #221: HTML records are served with `sandbox allow-same-origin` added to
    their CSP (HTML only: it would stop PDFs rendering), so a record opened in its own tab can't move it (A8).
-4. **The receiver refuses unsigned uploads before reading them.** Answer 401 at once when there's neither an
-   `X-Signature` nor an `Authorization: Bearer` header, and slow down an address after repeated bad signatures (A10).
+4. **The receiver refuses unsigned uploads before reading them.** Done in #222: 401 at once when there's neither an
+   `X-Signature` nor an `Authorization: Bearer` header, and an address waits after repeated bad signatures (A10).
 
 ## Deployment defaults
 
@@ -418,7 +418,7 @@ made, failed, checked and the schedule changed.
 | # | Requirement | Result | Why / where |
 |---|---|---|---|
 | 11.1.2 | Business limits | Met | At most 20 working share links per profile, 90 days each; one calendar feed per person and profile; one backup or check at a time; uploads, Health Links and pulls have size and count caps (`config.UPLOAD_*`, `SHL_*`, `SYNC_*`). |
-| 11.1.4 | Anti-automation | Met; **Fixed (#203)**; see A10 | As 2.2.1 for sign-in, share links and feeds; a pull backs off after failures and when the vendor says to wait. |
+| 11.1.4 | Anti-automation | Met; **Fixed (#203)**; A10 fixed (#222) | As 2.2.1 for sign-in, share links and feeds; a pull backs off after failures and when the vendor says to wait; the watch receiver makes an address wait after 10 bad signatures (#222). |
 
 ## V12 Files and resources
 
