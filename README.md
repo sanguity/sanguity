@@ -7,9 +7,10 @@
 
 **Your medical records, insurance claims and wearable data on one private timeline, on your own server.**
 
-Sanguity takes the exports you can download from patient portals and insurers, plus watch and smart-scale
-data from your phone, and turns them into one place to see lab trends, visits, hospital stays, documents and
-what your care actually cost. It runs on hardware you control; nothing is sent anywhere else.
+Sanguity brings together what your patient portals, insurers, phone and watch know about you: lab trends, visits,
+hospital stays, medications, documents and what your care actually cost. Upload the exports you can download, or
+connect a portal or health plan once and let new records arrive by themselves. It runs on hardware you control,
+encrypts what it keeps, and talks to no one you haven't connected.
 
 ![Overview: key lab tiles with sparklines, watch and scale summaries, problems and upcoming visits](docs/screenshots/overview.png)
 
@@ -18,7 +19,8 @@ what your care actually cost. It runs on hardware you control; nothing is sent a
 > (or, for a result whose report gives none, a range you set yourself, labelled "range from settings"); your care
 > team interprets them in context.
 
-All screenshots use the built-in **fictional demo data**. No real person's records appear in this repository.
+All screenshots use the built-in **fictional demo data** (`python3 tools/screenshots.py` takes them again). No real
+person's records appear in this repository.
 
 ## What you get
 
@@ -37,15 +39,49 @@ Charts on Trends, Health and the heatmap move together: drag to pan, scroll or p
 see everything. **Milestones** (diagnosis, surgery, treatment start…), added on the **Settings** page, appear on
 every chart and as "since" periods.
 
-**Several people, one install.** Each person who signs in has their own account, and each person whose health
-is tracked has a **profile**. One account can look after several profiles (a parent and a child), and a profile
-can be shared with several accounts (a caregiver), each as **owner** (view, change and share), **editor** (view
-and change) or **viewer** (view only). Everyone sees only the profiles shared with them; switch between them
-from the header.
-
 | Health | Timeline | Costs |
 |---|---|---|
 | ![Health tab](docs/screenshots/health.png) | ![Timeline tab](docs/screenshots/timeline.png) | ![Costs tab](docs/screenshots/costs.png) |
+
+**Getting records in**
+
+- **Upload** a portal's or app's export on the **Import** page (a zip, a folder or single files): Epic MyChart,
+  C-CDA, FHIR (Apple Health, Blue Button, portals), lab spreadsheets and Quest or Labcorp PDFs, insurers' claims, and
+  more ([sources below](#supported-sources-today)). Each import is previewed before it's saved, can be undone from
+  the import history, and records the same result from two sources once.
+- **Connect** a patient portal (SMART on FHIR, Epic first) or a health plan's patient-access API once; new records
+  then come in on a schedule ([Connected sources](#connected-sources)).
+- **Type records in** by hand, paste a SMART Health Link, and **correct** anything an import got wrong; corrections
+  survive re-imports.
+- **Phones:** watch and smart-scale data from Android (Health Connect, via Life Dashboard Companion) or iPhone
+  (Apple Health, via Health Auto Export), which covers Garmin, Fitbit, Withings and most others
+  ([Connecting a phone](#connecting-a-phone-watch-and-scale-data)).
+
+**Making it yours**
+
+- **Settings** per profile: the Overview's key-lab tiles, the tabs shown and their order, saved Trends views, lab
+  and source nicknames (rename anything with the ✎ where it's shown), milestones, visits counted as workouts, your
+  own reference ranges for results without one, and, per person, units (exact conversions only), time zone, date
+  format and a light or dark theme.
+- A **journal** of symptoms, side effects and notes, on the timeline and the charts.
+
+**Sharing and taking it with you**
+
+- **Several people, one install.** Each person who signs in has their own account, and each person whose health is
+  tracked has a **profile**. One account can look after several profiles (a parent and a child), and a profile can
+  be shared with several accounts (a caregiver), each as **owner**, **editor** or **viewer**.
+- **Share links**: a read-only, expiring link to chosen parts of a profile for a clinician or relative, revocable
+  any time, every view logged ([Share links](#share-links)).
+- A printable **visit summary** (PDF) to bring to an appointment: what's out of range since the last visit, trends,
+  current medications, upcoming appointments and your own questions.
+- **Calendar reminders**: upcoming appointments and expected lab draws in your own calendar app.
+- **Install as a phone app** from the browser, with offline reading if you turn it on.
+
+| Visit summary | Import | On a phone |
+|---|---|---|
+| ![Visit summary preview: results since the last visit, trends and current medications](docs/screenshots/summary.png) | ![Import page: upload a zip, a folder or files, type records in or paste a link, with the import history](docs/screenshots/import.png) | ![The Overview on a phone](docs/screenshots/phone.png) |
+
+![Settings: the key-lab tiles, ordered by drag, keyboard or buttons](docs/screenshots/settings.png)
 
 ## Install (Docker)
 
@@ -182,15 +218,19 @@ different; the file stays beside them as `data-before-v10.json`, and can be dele
 |---|---|
 | Epic MyChart exports (one primary, any number of others) | Lab and test results, imaging and procedure reports, messages, letters, documents, C-CDA visit records |
 | CareSpace / OncoEMR patient portal | Lab results, visits, medications, problems, vitals, documents |
-| Insurance claims exports (`uhc`, `bcbs` formats) | Claims, billed / paid / your share, denials |
+| C-CDA health summaries (XML), from most portals' "download my record" | Labs, visits, problems, medications, allergies, vitals, documents |
+| FHIR R4 (bundles and Blue Button / patient-access NDJSON), from portals, Apple Health's clinical records or insurers | Labs and vitals, visits and stays, conditions, medications, reports and imaging, documents; claims as CARIN Blue Button ExplanationOfBenefit |
+| Connected sources: a portal's SMART on FHIR API (Epic first) or a health plan's patient-access API | The same FHIR records, pulled on a schedule after you sign in once |
+| SMART Health Links and Cards (pasted on the import page) | The FHIR records the link holds, read as above |
+| Lab results spreadsheets (CSV) and Quest or Labcorp lab report PDFs | Lab results with units, ranges and flags |
+| Insurance claims exports (`uhc`, `bcbs` formats, or an EOB spreadsheet (CSV)) | Claims, billed / paid / your share, denials |
 | Payments export (`payments.json`) | Out-of-pocket payments and premiums |
 | Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition |
 | Apple Health on iPhone, via the Health Auto Export app (or an uploaded `export.xml`) | The same, with HRV as Apple's SDNN |
 | Typed in by hand on the import page (**Type them in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
 
-Standard formats (FHIR, C-CDA labs, Apple Health, CSV) and an import tool in the app are planned; if your
-portal's export doesn't import, please open an issue with an anonymised sample, or write an importer for it:
-[docs/importers.md](docs/importers.md) explains how (one Python file and a fictional test fixture).
+If your portal's export doesn't import, please open an issue with an anonymised sample, or write an importer for
+it: [docs/importers.md](docs/importers.md) explains how (one Python file and a fictional test fixture).
 
 ### Connecting a phone (watch and scale data)
 
@@ -223,8 +263,9 @@ passes the readings on.
 a zip as you downloaded it, a folder you've unpacked (its folders are kept), or single files. Viewers can't upload.
 Each file streams to the server on its own, with progress, and is kept in the profile's folder encrypted, as the
 import's original files: they're included in **Export everything** and in backups, and go when the profile is
-deleted. A zip is unpacked on the server, never in the browser; zips inside it stay zips. Reading the uploaded
-records into the profile comes next.
+deleted. A zip is unpacked on the server, never in the browser; zips inside it stay zips. The upload is then read in
+the background: its format is detected, a preview shows what's new and what's already in the profile, and nothing
+is saved until you confirm.
 
 Limits, in `.env`: `UPLOAD_MAX_FILE_MB` (each file, sent or unpacked; 4096), `UPLOAD_MAX_TOTAL_MB` (one upload
 altogether, after unpacking; 16384) and `UPLOAD_MAX_FILES` (20000). nginx lets a file through up to 4 GB; to go
