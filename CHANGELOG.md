@@ -317,6 +317,14 @@ Everything on `main` so far; it becomes the first tagged release.
   shut every holder out); and a failed import, pull or request is logged with where it happened but not the
   exception's message, which can quote a file's name or a record. `tests/test_security_refresh.py` lists every
   route with the role it needs and every database column as encrypted or plain on purpose.
+- **Accessibility reviewed to WCAG 2.2 AA** (#202): every page against each criterion, recorded in
+  [docs/accessibility.md](docs/accessibility.md) with what's still open (a real screen-reader pass). Grey and blue
+  text and the blue and red buttons' white text pass 4.5:1 in both themes, and a text field's edge 3:1; the rows
+  that opened something by mouse only (the Overview's lists, the Timeline's events, claims, paid amounts, a
+  medication's listings) and the Costs column sorts are buttons; focus shows on menu items and date fields and is
+  scrolled clear of the sticky bars; the ✎ is a 24 px target; the Overview and Costs fit 320 px. The browser check
+  runs axe-core's WCAG A and AA rules on about a hundred pages and states in light and dark, failing on a serious
+  finding, and walks every page by keyboard, at 320 px, with wide text spacing and in forced colours.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

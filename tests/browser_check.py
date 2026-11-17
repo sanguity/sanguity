@@ -38,7 +38,10 @@ revokes it (#47), checks the "not medical advice" notice on every tab and beside
 out-of-range highlighting, sees a medication's start, dose change, stop and pharmacy fills as spans on the
 timeline, in its history in the drawer and, when ticked, under the Trends charts (#50, at 375 px too), opens every tab
 and every page's groups at 375 px in light and dark with nothing scrolling sideways and no control cut off or
-overlapping (#61), and fails
+overlapping (#61), runs axe-core's WCAG 2.0, 2.1 and 2.2 A and AA rules on about a hundred pages and states in light
+and dark (a serious or critical finding fails), Tabs and Shift+Tabs through the pages at 375 px (focus always shown,
+never under a sticky bar), fits every page at 320 px and with WCAG's text spacing, and checks forced colours and the
+sign-in's autofill and paste (#202, docs/accessibility.md), and fails
 on any script error, console error, failed request, request to another host or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -290,6 +293,77 @@ def answer_ask(page, yes=True, fill=None, timeout=10000):
     box.query_selector(".sg-ask-acts button" + (":last-child" if yes else ":first-child")).click()
     box.wait_for_element_state("hidden", timeout=timeout)
     return said
+
+
+# ---- axe-core (#202): Deque's accessibility engine, from the axe-playwright-python package (requirements-dev.txt), which
+# bundles a pinned axe.min.js. Only that script is used: put into the page under test by page.evaluate, which the
+# Content-Security-Policy doesn't apply to, so the strict pages are checked as they are; the app never loads it.
+AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]   # WCAG 2.0, 2.1 and 2.2, levels A and AA
+try:
+    import axe_playwright_python
+    with open(os.path.join(os.path.dirname(axe_playwright_python.__file__), "axe.min.js"), encoding="utf-8") as _f:
+        AXE_JS = _f.read()
+except (ImportError, OSError):
+    AXE_JS = None
+AXE_RUN = """tags => axe.run(document, {runOnly: {type: 'tag', values: tags}, resultTypes: ['violations']}).then(r => r.violations.map(v => ({
+  id: v.id, impact: v.impact, n: v.nodes.length, at: v.nodes.slice(0, 3).map(n => n.target.join(' ')),
+  why: (v.nodes[0].failureSummary || '').split('\\n').slice(1, 2).join('').trim().slice(0, 160)})))"""
+
+
+def axe_check(page, label):
+    """axe-core's WCAG A and AA rules on the page as it is drawn now (open what is to be checked first: a tab, a menu, a
+    dialog). Returns (serious, other): the serious and critical findings, which fail a check, and the moderate and minor
+    ones, which are listed; each "label: rule (impact) ×n at selector, … — what's wrong"."""
+    if AXE_JS is None:
+        return [f"{label}: axe-core isn't installed (pip install --require-hashes -r requirements-dev.txt)"], []
+    if not page.evaluate("typeof axe === 'object' && typeof axe.run === 'function'"):
+        page.evaluate(AXE_JS)
+    serious, other = [], []
+    for v in page.evaluate(AXE_RUN, AXE_TAGS):
+        (serious if v["impact"] in ("serious", "critical") else other).append(
+            f"{label}: {v['id']} ({v['impact']}) ×{v['n']} at {', '.join(v['at'])} — {v['why']}")
+    return serious, other
+
+
+# a stop of Tab (#202): what has focus, whether it looks any different from when it hasn't (2.4.7), and whether all of
+# it is under a fixed or sticky bar (2.4.11). Focus is taken away and given back to compare, which keeps :focus-visible.
+FOCUS_STOP_JS = r"""(() => {
+  const a = document.activeElement; if (!a || a === document.body || a === document.documentElement) return null;
+  const t = (a.getAttribute('aria-label') || a.textContent || a.value || '').replace(/\s+/g, ' ').trim().slice(0, 30);
+  const name = a.tagName.toLowerCase() + (a.id ? '#' + a.id : '') + (t ? ` "${t}"` : '');
+  const again = window.__fw.has(a); window.__fw.add(a);
+  const look = () => { const c = getComputedStyle(a); return [c.outlineStyle !== 'none' && parseFloat(c.outlineWidth) > 0 ? c.outlineStyle + c.outlineWidth + c.outlineColor : '',
+    c.boxShadow, c.backgroundColor, c.borderColor, c.color, c.textDecorationLine, c.fill, c.stroke, c.strokeWidth, c.transform].join('|'); };
+  const on = look(), r = a.getBoundingClientRect();
+  a.blur(); const still = a.matches(':focus-within'), off = look(); a.focus({preventScroll: true});   // still: a date field's calendar button keeps focus
+  const bar = e => { for (let p = e; p && p !== document.body; p = p.parentElement) { const cs = getComputedStyle(p); if (cs.position === 'fixed' || cs.position === 'sticky') return true; } return false; };
+  const covered = r.width > 4 && r.height > 4 && [[r.left + 2, r.top + 2], [r.right - 2, r.top + 2], [r.left + 2, r.bottom - 2], [r.right - 2, r.bottom - 2], [(r.left + r.right) / 2, (r.top + r.bottom) / 2]]
+    .every(([x, y]) => { const e = document.elementFromPoint(x, y); return e && e !== a && !a.contains(e) && !e.contains(a) && !bar(a) && bar(e); });
+  return {name, again, shown: still ? on.split('|')[0] !== '' : on !== off, covered};
+})()"""
+
+
+def focus_walk(page, label, back=False, stops=60):
+    """Tab (or Shift+Tab from the page's end) through up to `stops` controls; the problems found, each "label: control …".
+    A stop that shows no change when focused, or lies wholly under a sticky or fixed bar, is a problem."""
+    if back:
+        page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight); (f => { if (f) { f.tabIndex = -1; f.focus(); } })(document.querySelector('.pagefoot, footer'))")
+    else:
+        page.evaluate("document.activeElement && document.activeElement.blur(); window.scrollTo(0, 0)")
+    page.evaluate("window.__fw = new WeakSet()")
+    out = []
+    for _ in range(stops):
+        page.keyboard.press("Shift+Tab" if back else "Tab")
+        s = page.evaluate(FOCUS_STOP_JS)
+        if not s:
+            continue
+        if s["again"]:   # round to the start
+            break
+        if not s["shown"]:
+            out.append(f"{label}: {s['name']} shows no sign of focus")
+        if s["covered"]:
+            out.append(f"{label}: {s['name']} has focus under a sticky bar")
+    return out
 
 
 def main():
@@ -577,11 +651,15 @@ def main():
         hp.wait_for_timeout(200)
         check("share links: the shared page fits 375 px", hp.evaluate("document.documentElement.scrollWidth") <= 375, hp.evaluate("document.documentElement.scrollWidth"))
         shared_bad = phone_fits(hp, "light")   # #61: and no control cut off or overlapping, in light and dark
+        shared_axe = axe_check(hp, "share.html, light")   # #202: and axe-core's WCAG A and AA rules, under the real CSP
         hp.emulate_media(color_scheme="dark")
         hp.wait_for_timeout(100)
         shared_bad += phone_fits(hp, "dark") + ([] if hp.evaluate("matchMedia('(prefers-color-scheme: dark)').matches") else ["dark: not dark"])
+        shared_axe = [a + b for a, b in zip(shared_axe, axe_check(hp, "share.html, dark"))]
         hp.emulate_media(color_scheme=None)
         check("share links: …with no control cut off or overlapping, in light and dark (#61)", not shared_bad, shared_bad[:8] or "")
+        check("share links: …and no serious or critical axe-core finding, in light and dark (WCAG 2.2 AA, #202)", not shared_axe[0],
+              (shared_axe[0] + shared_axe[1])[:8] or "")
         strict.set_viewport_size({"width": 375, "height": 800})
         strict.wait_for_timeout(200)
         check("share links: the owner's panel fits 375 px", strict.evaluate("document.documentElement.scrollWidth") <= 375, strict.evaluate("document.documentElement.scrollWidth"))
@@ -4325,6 +4403,151 @@ def main():
             js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was)})" if theme_was else "localStorage.removeItem('ht-theme')")
             page.set_viewport_size({"width": 1400, "height": 900})
 
+            # ---- WCAG 2.2 AA (#202, docs/accessibility.md): axe-core's WCAG 2.0, 2.1 and 2.2 A and AA rules (axe_check) on
+            # every page and its main states, in light and dark: each records tab (Labs as charts and as a heatmap, each also
+            # as its table), an event's drawer for several kinds, the app's own dialog (ask(), with a box to type in), the
+            # More… period menu, a kind's ⋯ menu and the top bar's two menus; every group of Sources, Sharing, Settings,
+            # Account and Admin; the guide and the provider finder; the sign-in page with no session. A serious or critical
+            # finding fails; moderate and minor ones are listed under a passing check. (The shared page, setup and a fresh
+            # install's empty tabs are checked where they're opened: share links and first run.) Then the keyboard: Tab and
+            # Shift+Tab through each records tab and page at 375 px, every stop showing focus and none under a sticky bar;
+            # every page at 320 px (400% zoom) and with WCAG's text spacing fitting; and in forced colours, the filled
+            # buttons keep an edge.
+            t_axe, axe_bad, axe_other, axe_seen = time.time(), [], [], []
+            def axe_at(pg, label):
+                bad_, other_ = axe_check(pg, label)
+                axe_bad.extend(bad_); axe_other.extend(other_); axe_seen.append(label)
+            theme_was = js("localStorage.getItem('ht-theme')")
+            for theme in ("light", "dark"):
+                js(f"localStorage.setItem('ht-theme', '{theme}')")
+                page.goto(base + "/")
+                page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+                for t in ("overview", "health", "timeline", "heatmap", "labs", "costs"):
+                    open_tab(t)
+                    settle(300)
+                    axe_at(page, f"{theme} {t}")
+                    if t == "heatmap" or (t == "labs" and js("document.querySelectorAll('#charts .chart .view-seg').length")):   # as its table (#60)
+                        seg = "#hmHd .view-seg button" if t == "heatmap" else "#charts .chart .view-seg button"
+                        page.click(f"{seg} >> nth=1")
+                        settle(200)
+                        axe_at(page, f"{theme} {t} as a table")
+                        page.click(f"{seg} >> nth=0")
+                        settle(200)
+                for k in ("lab", "claim", "med", "letter", "visit"):   # an event's drawer
+                    if js("k => !!EV.find(e => e.k === k && !e.hidden)", k):
+                        js("k => openEvent(EV.find(e => e.k === k && !e.hidden))", k)
+                        settle(250)
+                        axe_at(page, f"{theme} the drawer, {k}")
+                        page.keyboard.press("Escape")
+                        settle(150)
+                open_tab("timeline")
+                settle(200)
+                page.click("#periodMoreBtn")
+                axe_at(page, f"{theme} the More… period menu")
+                page.keyboard.press("Escape")
+                page.click("#chips .kind-more >> nth=0")
+                axe_at(page, f"{theme} a kind's ⋯ menu")
+                page.keyboard.press("Escape")
+                for m in ("#addMenuBtn", "#userMenuBtn"):
+                    page.click(m)
+                    axe_at(page, f"{theme} {m} open")
+                    page.keyboard.press("Escape")
+                js("""() => { const i = el('input', {type: 'text'});
+                    ask({title: 'Rename this view? (browser check)', message: ['A check of the dialog (#202).', el('label', {}, 'New name', i)], action: 'Rename', field: i}); }""")
+                page.wait_for_selector("dialog.sg-ask[open]", timeout=5000)
+                axe_at(page, f"{theme} the app's own dialog")
+                answer_ask(page, yes=False)
+                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+                    page.goto(base + "/" + path)
+                    page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
+                    settle(300)
+                    for g in js("[...document.querySelectorAll('.set-nav a[data-group]')].map(a => a.dataset.group)"):
+                        page.click(f".set-nav a[data-group={g}]")
+                        settle(150)
+                        axe_at(page, f"{theme} {path.split('.')[0]}#{g}")
+                for path, ready in (("guide.html?profile=1", "#step-name:not([hidden])"), ("providers.html?q=medicare", ".dir-hit")):
+                    page.goto(base + "/" + path)
+                    page.wait_for_selector(ready, timeout=10000)
+                    settle(200)
+                    axe_at(page, f"{theme} {path.split('?')[0]}")
+                ctx = browser.new_context(viewport={"width": 1400, "height": 900}, color_scheme=theme)   # no session, the real CSP
+                lp = ctx.new_page()
+                lp.goto(base + "/login.html")
+                lp.wait_for_selector("#u", timeout=10000)
+                axe_at(lp, f"{theme} sign-in")
+                ctx.close()
+            js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was)})" if theme_was else "localStorage.removeItem('ht-theme')")
+            check(f"WCAG 2.2 AA, axe-core: no serious or critical finding on {len(axe_seen)} pages and states, in light and dark (#202)",
+                  len(axe_seen) >= 90 and not axe_bad, axe_bad[:10] or f"{len(axe_seen)} checked in {time.time() - t_axe:.0f} s")
+            check("…its moderate and minor findings, listed (none fail)", True, "; ".join(axe_other[:12]) or "none")
+            # the keyboard at 375 px, where the top bar is tallest: Tab from the start and Shift+Tab from the end
+            t_keys, kbad = time.time(), []
+            page.set_viewport_size({"width": 375, "height": 800})
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+            for t in ("overview", "timeline", "heatmap", "labs", "costs"):
+                open_tab(t)
+                settle(250)
+                kbad += focus_walk(page, t) + focus_walk(page, t, back=True)
+            for path, g in (("sources.html?profile=1", "manual"), ("settings.html?profile=1", "labs"), ("sharing.html?profile=1", "summary"), ("admin.html", "apps")):
+                page.goto(base + "/" + path)
+                page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
+                page.click(f".set-nav a[data-group={g}]")
+                settle(200)
+                kbad += focus_walk(page, f"{path.split('.')[0]}#{g}") + focus_walk(page, f"{path.split('.')[0]}#{g}", back=True)
+            check("keyboard at 375 px: Tab and Shift+Tab through each records tab and a group of each page, every stop showing focus "
+                  "and none hidden under the top bar or a sticky header (2.4.7, 2.4.11, #202)", not kbad, kbad[:8] or f"{time.time() - t_keys:.0f} s")
+            # reflow at 320 px (1280 px at 400%), light; and WCAG's text spacing (1.4.12) at 375 px
+            spacing = "* { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important } p { margin-bottom: 2em !important }"
+            for width, spaced in ((320, False), (375, True)):
+                page.set_viewport_size({"width": width, "height": 640 if width == 320 else 800})
+                rbad = []
+                page.goto(base + "/")
+                page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+                if spaced:
+                    page.add_style_tag(content=spacing)
+                for t in ("overview", "health", "timeline", "heatmap", "labs", "costs"):
+                    open_tab(t)
+                    settle(250)
+                    rbad += phone_fits(page, t)
+                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+                    page.goto(base + "/" + path)
+                    page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
+                    if spaced:
+                        page.add_style_tag(content=spacing)
+                    settle(250)
+                    for g in js("[...document.querySelectorAll('.set-nav a[data-group]')].map(a => a.dataset.group)"):
+                        page.click(f".set-nav a[data-group={g}]")
+                        settle(100)
+                        rbad += phone_fits(page, f"{path.split('.')[0]}#{g}")
+                check(f"at {width} px{' with WCAG text spacing' if spaced else ' (400% zoom)'}: every records tab and every page's groups fit, "
+                      "nothing scrolling sideways, no control cut off or overlapping (1.4.10, 1.4.12, #202)", not rbad, rbad[:8] or "")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            # forced colours (Windows' high contrast): a filled button (Save, Sign in, a dialog's action) keeps an edge
+            ctx = browser.new_context(viewport={"width": 1400, "height": 900}, forced_colors="active")
+            lp = ctx.new_page()
+            lp.goto(base + "/login.html")
+            lp.wait_for_selector("#b", timeout=10000)
+            edges = {"sign-in": lp.evaluate("(c => c.borderStyle !== 'none' || c.outlineStyle !== 'none' || c.backgroundColor !== getComputedStyle(document.querySelector('form')).backgroundColor)(getComputedStyle(document.getElementById('b')))")}
+            ctx.close()
+            page.emulate_media(forced_colors="active")
+            page.goto(base + "/account.html")
+            page.wait_for_selector(".btn.primary", timeout=10000)
+            edges["account"] = js("[...document.querySelectorAll('.btn.primary, .btn.danger')].filter(b => b.checkVisibility()).every(b => { const c = getComputedStyle(b); return c.borderStyle !== 'none' && parseFloat(c.borderWidth) >= 1; })")
+            page.emulate_media(forced_colors="none")
+            check("in forced colours, the filled buttons keep an edge (#202)", all(edges.values()), edges)
+            # accessible sign-in (3.3.8): a password manager can fill the fields, and pasting isn't stopped
+            ctx = browser.new_context(viewport={"width": 1400, "height": 900})
+            lp = ctx.new_page()
+            lp.goto(base + "/login.html")
+            lp.wait_for_selector("#u", timeout=10000)
+            paste = """ids => ids.map(id => { const i = document.getElementById(id), ev = new ClipboardEvent('paste', {bubbles: true, cancelable: true});
+                i.dispatchEvent(ev); return [id, i.getAttribute('autocomplete'), ev.defaultPrevented]; })"""
+            got = lp.evaluate(paste, ["u", "p", "c"])
+            ctx.close()
+            check("sign-in: fields a password manager fills (username, current-password, one-time-code) and pasting allowed (3.3.8, #202)",
+                  got == [["u", "username", False], ["p", "current-password", False], ["c", "one-time-code", False]], got)
+
             # ---- account page: password and devices; profiles and their sharing on the Sharing page (#168); the Admin
             # page: accounts (#167)
             page.goto(base + "/account.html")
@@ -4464,7 +4687,7 @@ def main():
                 dark_bg = sum(d["bg"]) < 200 and sum(d["ink"]) > 600
                 check(f"at 375 px, {theme}: Leave asks in the app's own dialog, titled, Cancel and a red Leave profile, focus on Cancel (#210)",
                       d["modal"] and d["role"] == "alertdialog" and d["title"] == d["named"] == "Leave Second person?"
-                      and d["buttons"] == ["Cancel", "Leave profile"] and d["onCancel"] and d["action"] == [208, 59, 59]
+                      and d["buttons"] == ["Cancel", "Leave profile"] and d["onCancel"] and d["action"] == ([208, 59, 59] if theme == "light" else [196, 52, 52])   # a deeper red in dark, for white text (#202)
                       and d["inside"] and (dark_bg if theme == "dark" else sum(d["bg"]) > 700 and sum(d["ink"]) < 100) and not fits, fits or d)
                 page.keyboard.press("Escape")
                 page.wait_for_selector("dialog.sg-ask", state="detached", timeout=10000)
@@ -4865,6 +5088,13 @@ def main():
             guide_is = lambda: fp.evaluate("fetch('api/settings/user').then(r => r.json()).then(j => j.guide)")
             fp.goto(fbase + "/")
             fp.wait_for_url("**/setup.html", timeout=10000)
+            fp.wait_for_selector("#c", timeout=10000)
+            setup_axe = axe_check(fp, "setup.html, light")   # #202: axe-core's WCAG A and AA rules, under the real CSP
+            fp.emulate_media(color_scheme="dark")
+            setup_axe = [a + b for a, b in zip(setup_axe, axe_check(fp, "setup.html, dark"))]
+            fp.emulate_media(color_scheme="no-preference")
+            check("first run: setup has no serious or critical axe-core finding, in light and dark (WCAG 2.2 AA, #202)", not setup_axe[0],
+                  (setup_axe[0] + setup_axe[1])[:8] or "")
             with open(code_file, encoding="utf-8") as f:
                 fp.fill("#c", f.read().strip())
             fp.fill("#u", "robin")
@@ -4983,6 +5213,7 @@ def main():
             f_until("document.querySelectorAll('#list .row').length === 1 && state.q === '' && state.preset === 'all'", 5000)
             check("…the Timeline's Show everything clears the search and the period", fp.evaluate("document.activeElement.id") == "listTitle")
             fp.set_viewport_size({"width": 375, "height": 800})
+            empty_axe = [[], []]
             for theme in ("light", "dark"):
                 fp.emulate_media(color_scheme=theme)
                 fp.goto(fbase + f"/?profile={pid2}#overview")
@@ -4991,9 +5222,11 @@ def main():
                     fp.click("#tab-" + t)
                     fp.wait_for_timeout(150)
                     bad += phone_fits(fp, f"{theme} {t}")
+                    empty_axe = [a + b for a, b in zip(empty_axe, axe_check(fp, f"empty {t}, {theme}"))]   # #202
             fp.emulate_media(color_scheme=None)
             fp.set_viewport_size({"width": 1400, "height": 900})
             check("…and each fits 375 px, in light and dark", not bad, bad[:8] or "")
+            check("…with no serious or critical axe-core finding (WCAG 2.2 AA, #202)", not empty_axe[0], (empty_axe[0] + empty_axe[1])[:8] or "")
             fctx.close()
         except Exception as e:   # report what was caught so far instead of a bare traceback
             problems.append(f"first-run check stopped: {stopped(e)}")

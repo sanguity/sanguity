@@ -678,8 +678,8 @@ www/                index.html (markup), css/app.css, js/*.js (one plain script 
 demo/               Fictional demo dataset generator (--big: ten years of records, for the performance budgets)
 tools/              anonymise.py (an anonymised copy of an export, to share as a sample: docs/anonymising-exports.md),
                     screenshots.py, make_icons.py, build_directory.py
-tests/              API and upload tests, a headless browser check, the performance budgets (docs/performance.md)
-                    and a smoke test of the Docker install (all run in CI)
+tests/              API and upload tests, a headless browser check (with WCAG 2.2 AA checks: docs/accessibility.md),
+                    the performance budgets (docs/performance.md) and a smoke test of the Docker install (all run in CI)
 *.example.json      Templates for sources.json and settings.json (a new build-linked profile's first settings;
                     settings are changed in the app); .env.example for .env. corrections.example.json only says
                     what became of corrections.json

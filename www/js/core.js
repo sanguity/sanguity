@@ -267,6 +267,7 @@ const visible = e => !e.hidden && state.cats.has(CAT_OF[e.k]?.k) && inRange(e) &
 const tip = $("#tip");
 function showTip(nodes, ev) { tip.replaceChildren(...nodes.filter(Boolean)); tip.style.display = "block"; const pad = 14, r = tip.getBoundingClientRect(); let x = ev.clientX + pad, y = ev.clientY + pad; if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - pad; if (y + r.height > innerHeight - 8) y = ev.clientY - r.height - pad; tip.style.left = x + "px"; tip.style.top = y + "px"; }
 function hideTip() { tip.style.display = "none"; }
+addEventListener("keydown", e => { if (e.key === "Escape") hideTip(); });   // a hover's readout goes with Escape, the pointer left where it is (1.4.13, #202)
 function showEvTip(e, ev) {
   if (!e) return; const c = CAT_OF[e.k];
   showTip([el("div", {class: "v", text: e.title}),

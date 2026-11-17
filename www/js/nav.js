@@ -196,5 +196,7 @@ const SgNav = (() => {
     const b = header.querySelector(".brand-link");
     if (b) { b.removeAttribute("href"); b.removeAttribute("title"); }
   }
+  /* the bar's height as --bar-h, so what gets focus is scrolled clear of it (scroll-padding in app.css, #202) */
+  new ResizeObserver(() => document.documentElement.style.setProperty("--bar-h", header.offsetHeight + "px")).observe(header);
   return {sync, lock, profiles, menu: wire};
 })();

@@ -17,6 +17,10 @@ const el = (tag, attrs = {}, ...kids) => {
   for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(c));
   return e;
 };
+/* a row that opens something when clicked, a button to the keyboard and screen readers too (#202): el("div", {class:
+   "ov-row", ...pressable(() => openEvent(e))}, …). Its words are its name. A table's row gets a .cell-btn in a cell. */
+const pressable = fn => ({role: "button", tabindex: 0, onclick: fn,
+  onkeydown: ev => { if ((ev.key === "Enter" || ev.key === " ") && ev.target === ev.currentTarget) { ev.preventDefault(); fn(ev); } }});
 /* "More about this" (#176): the rest of a card's explanation, a click away but still on the page and read by screen
    readers. Strings become paragraphs; nulls are left out. Pages write the same <details class="more"> by hand. */
 const moreAbout = (...kids) => el("details", {class: "more"}, el("summary", {text: "More about this"}),

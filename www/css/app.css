@@ -1,14 +1,15 @@
 :root{
   color-scheme:light;
   --page:#f9f9f7; --surface:#fcfcfb; --raised:#ffffff;
-  --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --ink:#0b0b0b; --ink2:#52514e; --muted:#6a6964;
   --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10); --hover:rgba(11,11,11,.04);
   --c-lab:#2a78d6; --c-imaging:#eb6834; --c-procedure:#1baf7a; --c-study:#eda100;
   --c-letter:#e87ba4; --c-visit:#008300; --c-message:#6250d6; --c-journal:#0d7f86;
   --stay:rgba(11,11,11,.07); --stay-line:#898781;
   --range:rgba(42,120,214,.10);
   --crit:#d03b3b; --good:#0ca30c;
-  --accent:#2a78d6; --good-text:#006300;
+  --accent:#2470cc; --good-text:#006300;
+  --accent-fill:#2470cc; --on-accent:#fff; --crit-fill:#d03b3b; --field-line:#8f8e89;   /* #202: text 4.5:1, a field's edge 3:1 */
   --brand:#8a2438; --brand-ink:#fbf4f1;
   --div-lo:#2a78d6; --div-mid:#f0efec; --div-hi:#e34948;
   --seq1:#184f95; --seq2:#3987e5; --seq3:#86b6ef;
@@ -17,11 +18,12 @@
   :root:where(:not([data-theme="light"])){
     color-scheme:dark;
     --page:#0d0d0d; --surface:#1a1a19; --raised:#222220;
-    --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+    --ink:#f0efec; --ink2:#c3c2b7; --muted:#9c9a94;
     --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
     --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
     --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9; --c-journal:#3bb8bf;
-    --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#3987e5;
+    --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#4a93ec;
+    --accent-fill:#2a6cc4; --on-accent:#fff; --crit:#e66767; --crit-fill:#c43434; --field-line:#74736e;
     --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
     --seq1:#9ec5f4; --seq2:#5598e7; --seq3:#1c5cab;
     --brand:#b4485e; --brand-ink:#1c1a19;
@@ -30,11 +32,12 @@
 :root[data-theme="dark"]{
   color-scheme:dark;
   --page:#0d0d0d; --surface:#1a1a19; --raised:#222220;
-  --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --ink:#f0efec; --ink2:#c3c2b7; --muted:#9c9a94;
   --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
   --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
   --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9; --c-journal:#3bb8bf;
-  --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#3987e5;
+  --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#4a93ec;
+  --accent-fill:#2a6cc4; --on-accent:#fff; --crit:#e66767; --crit-fill:#c43434; --field-line:#74736e;
   --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
   --seq1:#9ec5f4; --seq2:#5598e7; --seq3:#1c5cab;
   --brand:#b4485e; --brand-ink:#1c1a19;
@@ -218,7 +221,7 @@ svg text{fill:var(--muted);font-size:11px}
 .hm-legend{display:flex;gap:2px;align-items:center;font-size:12px;color:var(--ink2);flex-wrap:wrap}
 .hm-legend i{display:inline-block;width:22px;height:12px;border-radius:2px}
 .hm-legend span{margin:0 8px 0 4px}
-@media (max-width:900px){.ov-cols{grid-template-columns:1fr}}
+@media (max-width:900px){.ov-cols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:600px){
   .tiles{grid-template-columns:repeat(2,minmax(0,1fr))!important}
   .tile{padding:8px 10px}
@@ -264,7 +267,7 @@ table.data tr.link:hover td{background:var(--hover)}
 .edits .edit-line .btn{margin:0}
 .edits .missing{color:var(--crit);font-style:normal}
 .edits .btn.small{padding:3px 9px;font-size:12px}
-.edits .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.edits .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
 .edits .edit-form label{display:flex;flex-direction:column;gap:4px;margin:6px 0 8px;color:var(--ink2)}
 .edits .edit-form input,.edits .edit-form select{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:6px 9px;max-width:100%;min-width:0;font:inherit}
 .edits .edit-msg:empty{display:none}
@@ -322,7 +325,7 @@ details.res > div{padding:0 12px 10px}
   .dates{width:100%}
   .dates input{flex:1;min-width:0}
   .toolbar{gap:8px 12px}
-  .ov-cols{grid-template-columns:1fr!important}
+  .ov-cols{grid-template-columns:minmax(0,1fr)!important}   /* the screen's width, its content wrapping: fits 320 px (#202) */
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .stat{padding:8px 10px}
   .stat .n{font-size:19px}
@@ -351,7 +354,7 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .acct input:not([type=checkbox]),.acct select{border:1px solid var(--ring);background:var(--raised);border-radius:8px;padding:6px 9px;min-width:0}
 .acct .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
 .acct .btn{margin:0;padding:6px 12px;font-weight:550}
-.acct .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.acct .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
 .acct .btn.small{padding:3px 9px;font-size:12px}
 .acct .btn:disabled{opacity:.45;cursor:default;background:var(--raised)}
 .acct .msg{font-size:13px;color:var(--good-text);border:0;padding:0;margin:0}
@@ -370,7 +373,7 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .acct .prof:first-child{border-top:0}
 .acct .prof-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .acct .activity-wrap{margin-top:10px}
-.acct .btn.danger{background:var(--crit);border-color:transparent;color:#fff}
+.acct .btn.danger{background:var(--crit-fill);border-color:transparent;color:var(--on-accent)}
 .acct .btn.danger:disabled{background:var(--raised);color:var(--muted);border-color:var(--ring)}
 .acct .danger-zone{margin-top:8px;padding:10px 12px;border:1px solid var(--crit);border-radius:10px;max-width:560px}
 .acct .danger-zone p{margin:0 0 8px;font-size:13px}
@@ -726,7 +729,7 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .jsev-in{display:flex;align-items:center;gap:10px}
 .jsev-in input{flex:1;min-width:0;accent-color:var(--c-journal)}
 .jsev-out{font-variant-numeric:tabular-nums;color:var(--ink);min-width:9.5em}
-.jform .btn.primary,#dbody .btns .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.jform .btn.primary,#dbody .btns .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
 .jadd{margin-top:14px}
 .jform .edit-msg:empty,#dbody .edit-msg:empty{display:none}
 @media (max-width:640px){.jrow{grid-template-columns:72px 18px 1fr auto}}
@@ -735,7 +738,7 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .jhome:focus{outline:none}
 .jhome:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .jhome .list-hd .btn{margin:0}
-.jhome .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.jhome .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
 .jhome .jlist{margin-bottom:8px}
 .jhome .jmore{margin-bottom:0}
 
@@ -755,7 +758,7 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 .tv select{flex:1 1 140px}
 .tv-form{margin-top:6px}
 .tv-form input{flex:1 1 140px}
-.tv .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.tv .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
 .tv .btn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);font-weight:600}
 .tv .hint{margin:4px 0 0;font-size:12px}
 .tv .tv-msg:empty{display:none}
@@ -790,7 +793,7 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 .rename-box input{border:1px solid var(--ring);background:var(--surface);color:var(--ink);border-radius:8px;padding:6px 9px;font:inherit;min-width:0}
 .rename-acts{display:flex;flex-wrap:wrap;gap:6px}
 .rename-acts .btn{margin:0}
-.rename-acts .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.rename-acts .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
 .rename-box .hint{margin:0}
 .rename-msg:empty{display:none}
 #hm text.row.renamable{cursor:pointer}
@@ -1061,8 +1064,8 @@ dialog.sg-ask::backdrop{background:rgba(0,0,0,.45)}
 .sg-ask-msg input{display:block;width:100%;margin-top:4px;border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:7px 10px}
 .sg-ask-acts{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:16px}
 .sg-ask .btn{margin:0;padding:7px 14px;font-size:14px;font-weight:550}
-.sg-ask .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
-.sg-ask .btn.danger{background:var(--crit);border-color:transparent;color:#fff}
+.sg-ask .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
+.sg-ask .btn.danger{background:var(--crit-fill);border-color:transparent;color:var(--on-accent)}
 .sg-ask .btn:focus-visible,.sg-ask-msg input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (forced-colors: active){
   .sg-ask .btn.primary,.sg-ask .btn.danger{border:2px solid ButtonText}
@@ -1140,7 +1143,7 @@ main.acct.guide{max-width:640px}
 .guide-n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--axis);font-size:12px;font-weight:650;flex:none}
 .guide-steps .cur{color:var(--ink);font-weight:650}
 .guide-steps .done .guide-n{border-color:var(--good-text);color:var(--good-text)}
-.guide-steps .cur .guide-n{background:var(--accent);border-color:var(--accent);color:#fff}
+.guide-steps .cur .guide-n{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent)}
 .guide-step h2{font-size:17px;margin:0 0 4px}
 .guide-step h2:focus{outline:none}
 .guide-step .form{max-width:none;margin-top:12px}
@@ -1166,8 +1169,30 @@ main.acct.guide{max-width:640px}
 .empty-state p{margin:0 auto 12px;max-width:60ch}
 .empty-state:not(.card){padding:4px 0;color:var(--ink2);list-style:none}
 .empty-state:not(.card) p{margin:0 0 8px}
-.empty-state .btn.empty-next{margin:0;padding:7px 14px;font-size:13px;font-weight:550;background:var(--accent);border:1px solid transparent;color:#fff}
+.empty-state .btn.empty-next{margin:0;padding:7px 14px;font-size:13px;font-weight:550;background:var(--accent-fill);border:1px solid transparent;color:var(--on-accent)}
 .empty-state:not(.card) .btn.empty-next{padding:4px 11px;font-size:12px}
 .empty-state .btn.empty-next:hover{filter:brightness(1.08)}
 .empty-state .btn.empty-next:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (forced-colors:active){ .empty-state .btn.empty-next,.guide-back,.guide-way{border-color:ButtonText} }
+
+/* ---- WCAG 2.2 AA (#202, docs/accessibility.md): a field's edge 3:1 against the page (1.4.11, an invalid field keeps
+   its red); a menu item and a date field with focus ringed (2.4.7); what has focus scrolled clear of the sticky top bar
+   (--bar-h, its height, set by nav.js), a scrolling table's header row and a Settings group's sticky Save bar (2.4.11);
+   a button in a table's cell that reads as the cell's text (.cell-btn) and the ✎, 24 px targets (2.5.8) */
+:root :is(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=hidden],[type=color]),select,textarea):not([aria-invalid="true"]){border-color:var(--field-line)}
+.menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+input:is([type=date],[type=time]):focus-within:not(:focus){outline:2px solid var(--accent);outline-offset:1px}   /* Shift+Tab reaches its calendar button, which shows no focus of its own */
+html{scroll-padding-top:calc(var(--bar-h,0px) + 8px)}
+html:has(.sets section[data-dirty]){scroll-padding-bottom:72px}
+.tablewrap{scroll-padding-top:34px}
+.cell-btn{border:0;background:none;padding:3px 0;margin:-3px 0;font:inherit;color:inherit;text-align:inherit;cursor:pointer;border-radius:4px}   /* 24 px tall, the row as before (2.5.8) */
+.cell-btn:hover{text-decoration:underline}
+.cell-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+th>.cell-btn{font-weight:inherit;white-space:nowrap}
+.rename-btn{min-width:24px;min-height:24px;margin-top:-5px;margin-bottom:-5px}   /* the ✎: a 24 px target, the line as before (2.5.8) */
+.tablewrap[tabindex="0"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}   /* a table that scrolls, scrolled by keyboard */
+@media (max-height:500px){ header{position:static} html{scroll-padding-top:8px} }   /* zoomed in a long way, or a phone on its side: the page gets the room (1.4.10) */
+@media (forced-colors:active){
+  .btn.primary,.btn.danger,.empty-state .btn.empty-next{border:1px solid ButtonText}
+  .menu-item:focus-visible,.cell-btn:focus-visible{outline-color:Highlight}
+}

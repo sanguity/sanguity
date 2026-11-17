@@ -127,8 +127,8 @@ function openMedication(m) {
   if (m.spans.length) {
     body.append(el("div", {class: "sect", text: "What the records list"}), el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data medspans"},
       el("thead", {}, el("tr", {}, ["When", "Listed as", "Status", "Prescribed by", "Source"].map(h => el("th", {text: h})))),
-      el("tbody", {}, m.spans.map(s => el("tr", {class: "link", tabindex: 0, title: "Open this listing", onclick: () => openEvent(byId.get(s.ids[0])), onkeydown: k => { if (k.key === "Enter") { k.preventDefault(); openEvent(byId.get(s.ids[0])); } }},
-        el("td", {text: medSpanWhen(s)}), el("td", {text: medSpanSays(s)}), el("td", {text: s.status || ""}), el("td", {text: s.prescriber || ""}),
+      el("tbody", {}, m.spans.map(s => el("tr", {class: "link", title: "Open this listing", onclick: () => openEvent(byId.get(s.ids[0]))},
+        el("td", {text: medSpanWhen(s)}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: medSpanSays(s)})), el("td", {text: s.status || ""}), el("td", {text: s.prescriber || ""}),
         el("td", {text: (s.sources.length ? s.sources : [...new Set(s.ids.map(id => importName(byId.get(id)?.imp)).filter(Boolean))]).join(", ")})))))));
   }
   if (m.changes.length) body.append(el("div", {class: "sect", text: "Changes"}), el("ul", {class: "medchanges"},
@@ -136,8 +136,8 @@ function openMedication(m) {
   if (m.fills.length) {
     body.append(el("div", {class: "sect", text: "Pharmacy fills"}), el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data medfills"},
       el("thead", {}, el("tr", {}, ["Date", "Drug", "Pharmacy", "Supply"].map(h => el("th", {text: h})))),
-      el("tbody", {}, m.fills.map(f => el("tr", {class: "link", tabindex: 0, title: "Open this fill", onclick: () => openEvent(byId.get(f.id)), onkeydown: k => { if (k.key === "Enter") { k.preventDefault(); openEvent(byId.get(f.id)); } }},
-        el("td", {text: fmtD(f.ts)}), el("td", {text: f.title}), el("td", {text: f.pharmacy || ""}), el("td", {text: f.supply ? `${f.supply} days` : ""})))))));
+      el("tbody", {}, m.fills.map(f => el("tr", {class: "link", title: "Open this fill", onclick: () => openEvent(byId.get(f.id))},
+        el("td", {text: fmtD(f.ts)}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: f.title})), el("td", {text: f.pharmacy || ""}), el("td", {text: f.supply ? `${f.supply} days` : ""})))))));
   }
   const notes = JOURNAL.filter(e => e.j.med && medKeyOf(e.j.med) === m.key);
   if (notes.length) body.append(el("div", {class: "sect", text: "Journal entries linked to it"}),

@@ -402,7 +402,7 @@ def page_times(viewport, throttle=1):
         more = page.locator("#paidTable > button.btn")
         paged = [page.evaluate(rows), more.inner_text()]
         more.click()
-        paged += [page.evaluate(rows), page.evaluate("() => document.activeElement === document.querySelector('#paidTable tbody tr:nth-child(201)')")]
+        paged += [page.evaluate(rows), page.evaluate("() => document.querySelector('#paidTable tbody tr:nth-child(201)').contains(document.activeElement)")]   # its button (#202)
         browser.close()
     return ready_ms, draw_ms, elements, errors, paged
 

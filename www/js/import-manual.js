@@ -85,14 +85,18 @@
     ok = bad = 0;
     rs.forEach((r, i) => {
       const x = byRow.get(i + 1), out = r.querySelector(".man-check");
-      r.querySelectorAll("input").forEach(inp => inp.removeAttribute("aria-invalid"));
+      r.querySelectorAll("input").forEach(inp => { inp.removeAttribute("aria-invalid"); inp.removeAttribute("aria-describedby"); });
       out.classList.toggle("bad", !!(x && !x.ok));
       if (!x) { out.replaceChildren(); return; }
       if (!x.ok) {
         bad++;
         out.replaceChildren("Can't save this row: it " + x.problems.join("; ") + ".");
         for (const [word, f] of [["test name", "test"], ["date", "date"], ["value", "value"]])
-          if (x.problems.some(p => p.includes(word))) r.querySelector(`[data-f=${f}]`).setAttribute("aria-invalid", "true");
+          if (x.problems.some(p => p.includes(word))) {   // the field marked, and what's wrong said with it (#202)
+            out.id ||= "man-check-" + (show.n = (show.n || 0) + 1);
+            const inp = r.querySelector(`[data-f=${f}]`);
+            inp.setAttribute("aria-invalid", "true"); inp.setAttribute("aria-describedby", out.id);
+          }
         return;
       }
       ok++;
