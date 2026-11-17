@@ -446,6 +446,42 @@ define("dates.format", "dates", "Date format", "", date_format, scope="user", pr
        help="How dates are written. Set from this browser's language the first time you sign in.")
 
 
+# ---------------------------------------------------------------- saved Trends views (#37)
+
+def trend_views(most=30):
+    """[{"name", "labs": [lab names], "default": bool}]: named sets of labs for Trends, names unique (ignoring case),
+    at most one the default (the labs Trends starts with, instead of trends.defaultLabs)."""
+    labs = lab_list()
+    def check(v):
+        if not isinstance(v, list):
+            raise SettingError("This must be a list of views.")
+        out, seen = [], set()
+        for x in v:
+            if not isinstance(x, dict) or set(x) - {"name", "labs", "default"}:
+                raise SettingError("Each view needs a name and its labs.")
+            name = _text(x.get("name"), "A view's name", 60)
+            if name.casefold() in seen:
+                raise SettingError(f"There's more than one view called “{name}”.")
+            seen.add(name.casefold())
+            chosen = labs(x.get("labs"))
+            if not chosen:
+                raise SettingError(f"The view “{name}” needs at least one lab.")
+            if not isinstance(x.get("default", False), bool):
+                raise SettingError(f"Whether “{name}” is the default must be yes or no.")
+            out.append({"name": name, "labs": chosen, "default": x.get("default", False)})
+        if sum(x["default"] for x in out) > 1:
+            raise SettingError("Only one view can be the default.")
+        if len(out) > most:
+            raise SettingError(f"At most {most} views.")
+        return out
+    return check
+
+
+define("trends.views", "trends", "Saved views", [], trend_views(), kind="views",
+       help="Named sets of labs to pick from on Trends (save one there from what's charted). The default view is "
+            "what Trends charts at first, instead of the labs above (#37).")
+
+
 # ---------------------------------------------------------------- storage
 
 def _where(scope, pid, uid):

@@ -23,7 +23,8 @@ const usd = v => (v || 0).toLocaleString(undefined, {style: "currency", currency
 const DEFAULT_SETTINGS = {
   overview: {keyLabs: ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Lymphocytes Absolute", "Creatinine",
     "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"]},
-  trends: {defaultLabs: ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "ALT"]},
+  trends: {defaultLabs: ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "ALT"],
+    views: []},        // #37, saved views: [{name, labs, default}] (trends.js)
   labNicknames: {"Automated Abs Neutrophil Cnt": "Neutrophils (absolute)", "Lymphocytes Absolute": "Lymphocytes (absolute)", "Platelet Count": "Platelets",
     "Potassium, Blood": "Potassium", "Sodium, Blood": "Sodium", "Total Bilirubin": "Bilirubin, total"},
   tabs: {order: ["overview", "health", "timeline", "labs", "heatmap", "costs"], hidden: []},   // #40, applied by app.js
@@ -49,6 +50,7 @@ function applySettings(u) {
     theme: ["light", "dark", "system"].includes(u.theme) ? u.theme : DEFAULT_SETTINGS.theme};
   CFG.overview.keyLabs = list(CFG.overview.keyLabs, DEFAULT_SETTINGS.overview.keyLabs);
   CFG.trends.defaultLabs = list(CFG.trends.defaultLabs, DEFAULT_SETTINGS.trends.defaultLabs);
+  CFG.trends.views = list(CFG.trends.views, DEFAULT_SETTINGS.trends.views);
 }
 const srcName = tag => CFG.sources[tag] || tag;
 const DAY = 864e5;

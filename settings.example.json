@@ -5,7 +5,11 @@
                 "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"]
   },
   "trends": {
-    "defaultLabs": ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "ALT"]
+    "defaultLabs": ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "ALT"],
+    "views": [
+      {"name": "CBC", "labs": ["Hemoglobin", "Platelet Count", "WBC"], "default": false},
+      {"name": "Liver", "labs": ["ALT", "AST", "Total Bilirubin"], "default": false}
+    ]
   },
   "labNicknames": {
     "Automated Abs Neutrophil Cnt": "Neutrophils (absolute)",

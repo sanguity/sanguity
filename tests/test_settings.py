@@ -402,6 +402,54 @@ class Settings(unittest.TestCase):
         # not part of a profile's settings.json (it's a person's, not the profile's)
         self.assertNotIn("theme", settings.from_file({"theme": "dark"}))
 
+    def test_trend_views(self):
+        """#37: named sets of labs for Trends, per profile, one at most the default"""
+        d = settings.SETTINGS["trends.views"]
+        self.assertEqual((d.scope, d.section, d.kind, d.default, d.private), ("profile", "trends", "views", [], True))
+        pid = self.fresh_profile()
+        self.assertEqual(self.merged(pid)["trends"]["views"], [])
+        m = self.put("trends.views", [{"name": "  CBC ", "labs": ["Hemoglobin", "WBC", "Hemoglobin"]},
+                                      {"name": "Liver", "labs": ["ALT", "AST"], "default": True}], pid=pid)
+        self.assertEqual(m["trends"]["views"], [{"name": "CBC", "labs": ["Hemoglobin", "WBC"], "default": False},
+                                                {"name": "Liver", "labs": ["ALT", "AST"], "default": True}])
+        self.assertEqual(m["trends"]["defaultLabs"], settings.SETTINGS["trends.defaultLabs"].default)   # untouched
+        for bad in ({"name": "CBC", "labs": ["WBC"]},                                   # not a list
+                    [{"name": "CBC", "labs": ["WBC"]}, {"name": "cbc", "labs": ["ALT"]}],   # the same name twice
+                    [{"name": "", "labs": ["WBC"]}], [{"labs": ["WBC"]}], [{"name": "CBC", "labs": []}],
+                    [{"name": "CBC", "labs": "WBC"}], [{"name": "x" * 61, "labs": ["WBC"]}],
+                    [{"name": "A", "labs": ["WBC"], "default": True}, {"name": "B", "labs": ["ALT"], "default": True}],
+                    [{"name": "A", "labs": ["WBC"], "default": "yes"}], [{"name": "A", "labs": ["WBC"], "colour": "red"}],
+                    [{"name": f"V{i}", "labs": ["WBC"]} for i in range(31)]):
+            self.put("trends.views", bad, pid=pid, status=400)
+        self.assertEqual(len(self.merged(pid)["trends"]["views"]), 2)   # nothing refused was kept
+        # per profile: another profile has none; viewers read them but can't save one, editors can
+        self.assertEqual(self.merged(2)["trends"]["views"], [])
+        self.put("trends.views", [], pid=1, who="kim", status=403)
+        self.assertEqual(self.merged(1, "kim")["trends"]["views"], [])
+        self.put("trends.views", [{"name": "Kidney", "labs": ["Creatinine"]}], pid=pid, who="lee")
+        self.assertEqual(self.merged(pid, "robin")["trends"]["views"][0]["name"], "Kidney")
+        # sealed at rest (lab names), logged without them, and back to none with the Trends section's reset
+        db = dbm.connect()
+        r = db.execute("SELECT value, sealed FROM settings WHERE key='trends.views' AND profile_id=?", (pid,)).fetchone()
+        db.close()
+        self.assertIsNone(r["value"])
+        self.assertTrue(r["sealed"].startswith(crypto.FIELD))
+        log = self.c["robin"].get(f"/api/profiles/{pid}/activity?action=settings").json()
+        self.assertEqual(log[0]["detail"], {"setting": "trends.views", "label": "Saved views"})
+        self.assertNotIn("Creatinine", json.dumps(log))
+        r = self.c["robin"].post(f"/api/profiles/{pid}/settings/reset", json={"section": "trends"}, headers=H)
+        self.assertIn("trends.views", r.json()["reset"])
+        self.assertEqual(self.merged(pid)["trends"]["views"], [])
+        # in an exported settings.json, and read back from one
+        self.put("trends.views", [{"name": "CBC", "labs": ["WBC"], "default": True}], pid=pid)
+        db = dbm.connect()
+        try:
+            self.assertEqual(settings.to_file(db, pid)["trends"]["views"], [{"name": "CBC", "labs": ["WBC"], "default": True}])
+        finally:
+            db.close()
+        self.assertEqual(settings.from_file({"trends": {"views": [{"name": "Kidney", "labs": ["Creatinine"]}]}})["trends.views"],
+                         [{"name": "Kidney", "labs": ["Creatinine"], "default": False}])
+
     # ---------------------------------------------------------------- storage, export, import
 
     def test_encrypted_at_rest(self):

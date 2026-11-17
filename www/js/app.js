@@ -184,7 +184,7 @@ async function syncWarning(pid) {
   $("#meta").textContent = `${DATA.source} · built ${fmtD(DATA.built)}` + (WATCH && WATCH.last_payload ? ` · watch synced ${fmtDT(WATCH.last_payload)}` : "");
   restore();
   { const t = tabOfHash(); if (t) state.tab = t; }
-  if (!state.sel.size) state.sel = new Set(CFG.trends.defaultLabs.filter(n => SERIES.some(s => s.name === n)));
+  if (!state.sel.size) state.sel = startLabs();   // the default saved view, else trends.defaultLabs (trends.js)
   if (state.preset !== "custom") applyPreset(state.preset); else renderAll();
   switchTab(state.tab);
   booted = true;

@@ -295,6 +295,34 @@ function formatEditor(value, changed, ro) {
 EDITORS.timezone = zoneEditor;
 EDITORS.dateformat = formatEditor;
 
+/* #37 saved Trends views: each a name, its labs and whether it's the default (one at most); renamed, changed,
+   removed or added here, saved from Trends too (trends-views.js) */
+function viewsEditor(value, changed, ro) {
+  const box = el("div", {class: "set-views"}), list = el("div", {class: "set-vlist"});
+  let n = 0;
+  const make = v => {
+    const id = "tv" + (++n), name = el("input", {id: id + "n", value: v.name, maxlength: 60, disabled: ro, oninput: changed, "data-k": "name"});
+    const def = el("input", {type: "radio", name: "tvDefault", checked: v.default ? "" : null, disabled: ro, onchange: changed, "data-k": "default"});
+    const labs = labsEditor(v.labs, changed, ro);
+    const item = el("div", {class: "set-view"},
+      el("div", {class: "row"}, el("label", {for: id + "n", text: "Name"}), name,
+        el("label", {class: "check"}, def, "Default"),
+        ro ? null : small("Remove", `Remove the view ${v.name || "without a name"}`, () => { item.remove(); changed(); })),
+      labs.node);
+    item._labs = labs;
+    return item;
+  };
+  list.append(...value.map(make));
+  const none = el("p", {class: "hint", text: "No saved views yet. Pick labs on Trends and press Save view…"});
+  box.append(list, value.length ? null : none);
+  if (!ro) box.append(el("div", {class: "set-add"},
+    small("Add a view", "Add a view", () => { none.remove(); const it = make({name: "", labs: [], default: false}); list.append(it); it.querySelector("input").focus(); changed(); }),
+    small("No default", "No default view", () => { list.querySelectorAll("[data-k=default]").forEach(r => { r.checked = false; }); changed(); })));
+  return {node: box, get: () => [...list.children].map(it => ({name: it.querySelector("[data-k=name]").value.trim(),
+    labs: it._labs.get(), default: it.querySelector("[data-k=default]").checked}))};
+}
+EDITORS.views = viewsEditor;
+
 /* ---------------------------------------------------------------- the sections */
 const FROM = {default: "default", install: "set for this server", profile: "set for this profile", user: "your own"};
 function settingNode(st, onSaved) {
