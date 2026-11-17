@@ -5183,6 +5183,7 @@ def main():
             check("…the tiles fit 375 px, and axe-core finds nothing serious, light and dark", not ov_bad and not ov_axe, (ov_bad + ov_axe)[:6])
             js("window.scrollTo(0, 0)")
             page.click("#view-overview .home-tile[data-home=bp]")
+            js("setTimeout(() => renderHealth(), 120)")   # Body and activity drawn again as its data finish loading (as on CI's slower machines)
             try:
                 page.wait_for_function("state.tab === 'health' && document.activeElement && document.activeElement.id === 'h-bp'", timeout=5000)
             except Exception:

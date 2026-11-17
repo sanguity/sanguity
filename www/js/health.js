@@ -485,7 +485,18 @@ function vitalLink(s) {
 }
 function openVital(id) {
   closeDrawer(); pickTab("health");
-  requestAnimationFrame(() => { const c = $(id); if (c) { c.scrollIntoView({behavior: smoothly(), block: "start"}); c.focus({preventScroll: true}); } });
+  // the card gets focus once drawn; if Body and activity draws again while its data finish loading, the card is
+  // replaced and focus would fall to the page, so it's given again until it stays (about a second at most)
+  let frames = 0, scrolled = false;
+  const give = () => {
+    const c = $(id);
+    if (c && document.activeElement !== c && (document.activeElement === document.body || !document.activeElement || !document.activeElement.isConnected || frames === 0)) {
+      if (!scrolled) { c.scrollIntoView({behavior: smoothly(), block: "start"}); scrolled = true; }
+      c.focus({preventScroll: true});
+    }
+    if (++frames < 60 && (!c || document.activeElement === c || document.activeElement === document.body)) requestAnimationFrame(give);
+  };
+  requestAnimationFrame(give);
 }
 
 /* ---------------------------------------------------------------- blood glucose (#181) */
