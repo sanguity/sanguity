@@ -108,7 +108,8 @@ function openEvent(e) {
   } else if (d.type === "exercise") {
     body.append(el("dl", {class: "kv"}, ...[["Activity", d.kind], ["Started", fmtDT(e.ts)], ["Ended", fmtDT(e.te)], ["Duration", d.minutes + " min"], ["Source", "Watch via Health Connect"]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
       el("button", {class: "btn", text: "Body and activity around this day", onclick: () => openHealth(e.ts - 14*DAY, e.ts + 14*DAY)}));
-  } else if (d.type === "visit") {
+  } else if (d.type === "ecg") body.append(...ecgBody(e, d));   // a watch's ECG or irregular rhythm notification (ecg.js, #182)
+  else if (d.type === "visit") {
     body.append(el("dl", {class: "kv"}, ...[["Provider", d.who], ["Location", d.where], ["Diagnosis", d.dx], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
     if (d.note) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}));
     if (d.procs && d.procs.length) body.append(el("div", {class: "sect", text: "Recorded that day"}), el("ul", {style: {margin: 0, paddingLeft: "18px"}}, ...d.procs.map(p => el("li", {text: p}))));
@@ -143,7 +144,7 @@ function openEvent(e) {
   { const mh = medHistoryAction(e); if (mh) body.append(mh); }   // a medication's whole history (meds.js, #50)
   const src = eventSource(e); if (src) body.append(src);   // where it came from (sources.js)
   body.append(journalAddAction(e));   // "Add a journal note" for this day (journal.js)
-  if (e.k !== "exercise") body.append(editPanel(e));
+  if (!WATCH_KINDS.has(e.k)) body.append(editPanel(e));   // the watch's own aren't records, so can't be edited
   showDrawer();
   renderTimeline(); document.querySelectorAll(".row").forEach(r => r.classList.remove("sel"));
 }
@@ -156,7 +157,8 @@ function showDrawer() {
 /* ---------------------------------------------------------------- corrections (edits, server/edits.py)
    Owners and editors can hide, rename, re-date, un-stay or merge the open event; everyone sees what was edited.
    Edits are applied on the server, so after a change the page loads the records again and reopens the panel. */
-const canEdit = () => !!PROFILE && (PROFILE.role === "owner" || PROFILE.role === "editor");
+const WATCH_KINDS = new Set(["exercise", "ecg", "rhythm"]);   // events made from the watch summary, not records (#182)
+const canEdit = () =>!!PROFILE && (PROFILE.role === "owner" || PROFILE.role === "editor");
 const editsOf = e => (DATA.edits || []).filter(x => x.ids.includes(e.id));
 const quoted = t => `“${t || "an event"}”`;
 function describeEdit(x) {
@@ -211,7 +213,7 @@ function editPanel(e) {
     }}),
     e.k === "stay" ? el("button", {class: "btn", type: "button", text: "Not a hospital stay", onclick: () => post({action: "not_stay"})}) : null,
     el("button", {class: "btn", type: "button", text: "Merge with…", onclick: () => {
-      const near = DATA.events.filter(x => x.id !== e.id && x.k !== "exercise" && Math.abs(x.ts - e.ts) <= 7 * DAY)
+      const near = DATA.events.filter(x => x.id !== e.id && !WATCH_KINDS.has(x.k) &&Math.abs(x.ts - e.ts) <= 7 * DAY)
         .sort((a, b) => Math.abs(a.ts - e.ts) - Math.abs(b.ts - e.ts)).slice(0, 50);
       if (!near.length) { sayIn(msg, "No other event within a week of this one to merge with."); return; }
       const sel = el("select", {"aria-label": "Event to merge into this one"},

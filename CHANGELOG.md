@@ -388,6 +388,16 @@ Everything on `main` so far; it becomes the first tagged release.
   delete the receiver's copy and rewrite every archived upload without them; the card says what deleting can't reach
   (backups made before, files already downloaded, uploaded Apple Health exports, the phone). The words describe what
   was recorded; nothing predicts a period or a fertile window.
+- **ECG recordings and irregular rhythm notifications from a watch** (#182): a Timeline lane and kind of their own
+  ("ECG & rhythm"), from Health Auto Export's ECG and Heart Rate Notifications automations (the receiver keeps each by
+  its start, so one sent again counts once) and from an uploaded Apple Health export (its `electrocardiograms/`
+  files and export.xml's notifications); the same recording both ways is one event. The drawer shows what the device
+  said: its classification word for word, the average heart rate, symptoms, the device, lead and software version,
+  and nothing of Sanguity's own. A recording's trace is drawn small with a time and mV scale, loaded only when its
+  drawer opens (the samples are kept apart, sealed, and never in the records page's data); it takes focus with a
+  text summary, the arrow keys step through it saying the voltage, a table sums it up and **Download as CSV** gives
+  every sample. Never in a share link or the visit summary. Health Connect has no ECG type. The name and birth date
+  at the top of Apple's ECG files are never kept, and `tools/anonymise.py` replaces them in a sample.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

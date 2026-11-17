@@ -1059,6 +1059,17 @@ def profile_watch(pid: int, s=Depends(user), db=Depends(get_db)):
     return Response(json.dumps(summary, separators=(",", ":")).encode(), media_type="application/json")
 
 
+@app.get("/api/profiles/{pid}/watch/ecg/{name}")
+def profile_ecg_wave(pid: int, name: str, s=Depends(user), db=Depends(get_db)):
+    """An ECG recording's samples (#182), apart from the watch summary so the records page stays small: read when its
+    drawer opens. name: the 16 hex of its key (server/ecg.py)."""
+    need(db, s, pid, "viewer")
+    w = watch_store.wave(db, pid, name)
+    if w is None:
+        raise HTTPException(404, "That recording's samples aren't here.")
+    return Response(json.dumps(w, separators=(",", ":"), ensure_ascii=False).encode(), media_type="application/json")
+
+
 DOC_CSP = ("default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; "
            "media-src 'self'; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
 DOC_TYPES = {"pdf": "application/pdf", "html": "text/html; charset=utf-8", "htm": "text/html; charset=utf-8",

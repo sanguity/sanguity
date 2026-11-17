@@ -72,7 +72,8 @@
         li(b("Time grouping"), ": hours (and keep it: changing it later sends the same steps again in other intervals)."),
         li(b("Sync"), ": hourly or daily, with the date range ", b("Since last sync"), " or ", b("Today"), ". Repeated or overlapping uploads count once."),
         li("Add a second automation the same way with the data type ", b("Workouts"), "."),
-        li("For a glucose meter or a continuous glucose monitor, a third with only ", b("blood glucose"), " and no time grouping, so each reading comes on its own.")),   // blood glucose (#181)
+        li("For a glucose meter or a continuous glucose monitor, a third with only ", b("blood glucose"), " and no time grouping, so each reading comes on its own."),   // blood glucose (#181)
+        li("For a watch's ECG recordings and irregular rhythm notifications, one with the data type ", b("ECG"), " and one with ", b("Heart Rate Notifications"), ", synced daily since the last sync (a recording is about 1 MB as the app sends it).")),   // #182
       el("p", {class: "hint", text: "Android: in Life Dashboard Companion, set the upload address and the secret above; it signs each upload with the secret."}));
   }
 

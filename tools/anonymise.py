@@ -1843,9 +1843,30 @@ def dayfirst_of(values):
     return True if first > second else (False if second > first else None)
 
 
+def apple_ecg_rows(an, rows):
+    """An Apple Health export's ECG file (#182, electrocardiograms/*.csv): ten "key,value" lines in Apple's order (Name,
+    Date of Birth, Recorded Date, Classification, Symptoms, Software Version, Device, Sample Rate, Lead, Unit; named
+    in the export's language), a blank line, then one sample a line. The rows cleaned, or None when it isn't one."""
+    if len(rows) < 12 or not all(len(r) == 2 for r in rows[:10]) or any(c.strip() for c in rows[10]):
+        return None
+    if not all(len(r) == 1 and re.fullmatch(r"\s*-?\d+(?:[.,]\d+)?\s*", r[0]) for r in rows[11:200] if r):
+        return None
+    out = [list(r) for r in rows]
+    out[0][1] = an.person(rows[0][1])
+    out[1][1] = an.birth(rows[1][1])
+    out[2][1] = an.date_value(rows[2][1]) or an.text(rows[2][1], flag=False)
+    return out   # the symptoms are Apple's own list's words; classification, device and the rest are the watch's
+
+
 def csv_file(an, dst, text, enc, bom, newline, delim):
     csv.field_size_limit(MAX_WHOLE)
     rows = list(csv.reader(io.StringIO(text, newline=""), delimiter=delim))
+    if (ecg := apple_ecg_rows(an, rows)) is not None:   # (#182)
+        if not an.collecting:
+            buf = io.StringIO(newline="")
+            csv.writer(buf, delimiter=delim, lineterminator=newline, quoting=csv.QUOTE_MINIMAL).writerows(ecg)
+            write_text(dst, buf.getvalue(), enc, bom)
+        return
     lengths = collections.Counter(len(r) for r in rows if len(r) >= 2)
     width = lengths.most_common(1)[0][0] if lengths else 0
     hi = next((i for i, r in enumerate(rows) if len(r) == width), None)

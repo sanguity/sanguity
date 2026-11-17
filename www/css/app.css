@@ -4,7 +4,7 @@
   --ink:#0b0b0b; --ink2:#52514e; --muted:#6a6964;
   --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10); --hover:rgba(11,11,11,.04);
   --c-lab:#2a78d6; --c-imaging:#eb6834; --c-procedure:#1baf7a; --c-study:#eda100;
-  --c-letter:#e87ba4; --c-visit:#008300; --c-message:#6250d6; --c-journal:#0d7f86; --c-immunization:#a3479c;
+  --c-letter:#e87ba4; --c-visit:#008300; --c-message:#6250d6; --c-journal:#0d7f86; --c-immunization:#a3479c; --c-ecg:#94602a;
   --stay:rgba(11,11,11,.07); --stay-line:#898781;
   --range:rgba(42,120,214,.10);
   --crit:#d03b3b; --good:#0ca30c;
@@ -21,7 +21,7 @@
     --ink:#f0efec; --ink2:#c3c2b7; --muted:#9c9a94;
     --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
     --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
-    --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4;
+    --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4; --c-ecg:#c8955a;
     --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#4a93ec;
     --accent-fill:#2a6cc4; --on-accent:#fff; --crit:#e66767; --crit-fill:#c43434; --field-line:#74736e;
     --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
@@ -35,7 +35,7 @@
   --ink:#f0efec; --ink2:#c3c2b7; --muted:#9c9a94;
   --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
   --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
-  --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4;
+  --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4; --c-ecg:#c8955a;
   --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#4a93ec;
   --accent-fill:#2a6cc4; --on-accent:#fff; --crit:#e66767; --crit-fill:#c43434; --field-line:#74736e;
   --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
@@ -1249,3 +1249,18 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .cy-reach{margin-top:10px}
 #exportCycleWrap{margin:4px 0 8px}
 @media (forced-colors:active){ .cymark{forced-color-adjust:none} }
+
+/* ---- ECG recordings in the drawer (#182, ecg.js): the trace drawn small, 10 seconds a row, its readout and summary */
+.ecg-trace{margin:4px 0 6px}
+.ecg-svg{display:block;width:100%;height:auto;border-radius:6px;background:var(--surface);touch-action:pan-y}
+.ecg-svg:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ecg-grid{stroke:var(--grid);stroke-width:1}
+.ecg-zero{stroke:var(--axis)}
+.ecg-tick{font-size:11px;fill:var(--ink2);font-variant-numeric:tabular-nums}
+.ecg-line{fill:none;stroke:var(--ink);stroke-width:1;stroke-linejoin:round}
+.ecg-cursor{stroke:var(--accent);stroke-width:1.5}
+.ecg-readout{margin:2px 0 0;font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums;min-height:1.4em}
+.ecg-sum{width:auto;margin:6px 0 10px;font-size:13px}
+.ecg-sum th{text-align:left;font-weight:500;color:var(--muted);padding-right:16px}
+.ecg-note{color:var(--ink2)}
+@media (forced-colors:active){ .ecg-line{stroke:CanvasText} .ecg-cursor{stroke:Highlight} }

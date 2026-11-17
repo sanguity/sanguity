@@ -64,6 +64,8 @@
     if (c.upcoming) items.push(node("li", {text: plural(c.upcoming, ["upcoming appointment", "upcoming appointments"])}));
     if (c.watch_days) items.push(node("li", {text: plural(c.watch_days, ["day of activity data", "days of activity data"])}));
     if (c.workouts && !(c.kinds || {}).exercise) items.push(node("li", {text: plural(c.workouts, KIND.exercise)}));
+    if (c.ecgs) items.push(node("li", {text: plural(c.ecgs, ["ECG recording", "ECG recordings"])}));   // #182
+    if (c.rhythm) items.push(node("li", {text: plural(c.rhythm, ["irregular rhythm notification", "irregular rhythm notifications"])}));
     return items;
   }
   const rangeText = r => r ? (r.from === r.to ? ` from ${day(r.from)}` : ` from ${day(r.from)} to ${day(r.to)}`) : "";

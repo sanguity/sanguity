@@ -48,6 +48,9 @@ ACTIVE = {"active", "current", "taking", "ongoing", "in progress"}
 
 # Other features add a section here (register_section): (id, label, rows(db, pid, data, since, today) -> [{"when",
 # "title", "text"}]). The journal (#49) is meant to add "symptoms", recent symptoms; rows are shown as a list.
+# A watch's ECGs and irregular rhythm notifications (#182) are watch data, not records, so never in the summary as it
+# is: #225 can offer them as a section of their own here, left unticked, with rows from
+# ecg.shared_rows(watch_store.load(db, pid), since, today).
 EXTRA = []
 
 

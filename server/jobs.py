@@ -205,7 +205,7 @@ def _import(db, j):
 def _watch_counts(watch):
     days = {str(p[0]) for m in watch.get("metrics") or [] if isinstance(m, dict)
             for p in m.get("pts") or [] if isinstance(p, list) and p}
-    return {"watch_days": len(days), "workouts": len(watch.get("exercise") or [])}
+    return {"watch_days": len(days), "workouts": len(watch.get("exercise") or []), **watch_store.ecg.counts(watch)}   # ECGs (#182)
 
 
 def _save(db, j):
@@ -257,7 +257,8 @@ def _save(db, j):
             prof.link_documents(db, iid, keepdocs)
         if watch:   # last, so a failure before it leaves no file behind
             saved = watch_store.save_import(db, pid, watch, import_id=iid)
-            summary["counts"].update(watch_days=saved["days"], workouts=saved["workouts"])
+            summary["counts"].update(watch_days=saved["days"], workouts=saved["workouts"],
+                                     **{k: saved[k] for k in ("ecgs", "rhythm") if saved.get(k)})   # ECGs (#182)
         for x in same if iid else ():
             crossmatch.decide(db, pid, who["id"] if who else None, x["other_key"], x["key"], True,
                               [x["other"], {k: x[k] for k in ("name", "t", "value", "unit")}])

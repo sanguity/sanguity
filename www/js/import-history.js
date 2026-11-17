@@ -50,6 +50,8 @@
     if (c.entries) out.push(n(c.entries, ["problem, appointment or weight", "problems, appointments or weights"]));
     if (c.watch_days) out.push(n(c.watch_days, ["day", "days"]) + " of watch data");
     if (c.workouts) out.push(n(c.workouts, ["workout", "workouts"]));
+    if (c.ecgs) out.push(n(c.ecgs, ["ECG recording", "ECG recordings"]));   // #182
+    if (c.rhythm) out.push(n(c.rhythm, ["irregular rhythm notification", "irregular rhythm notifications"]));
     return out.length ? out.join(", ") : "No records";
   }
 

@@ -246,8 +246,8 @@ different; the file stays beside them as `data-before-v10.json`, and can be dele
 | Insurance claims exports (`uhc`, `bcbs` formats, or an EOB spreadsheet (CSV)) | Claims, billed / paid / your share, denials |
 | Payments export (`payments.json`) | Out-of-pocket payments and premiums |
 | Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition, blood pressure (each reading, with its pulse when the cuff gives one), body temperature, blood oxygen, blood glucose (meter and CGM) |
-| Apple Health on iPhone, via the Health Auto Export app (or an uploaded `export.xml`) | The same, with HRV as Apple's SDNN |
-| Apple Health's whole export zip (Export All Health Data) | The above, and the Health app's Health Records from hospitals and clinics (FHIR files in `clinical-records/`): visits, labs, medications, problems, allergies, immunizations, procedures |
+| Apple Health on iPhone, via the Health Auto Export app (or an uploaded `export.xml`) | The same, with HRV as Apple's SDNN; and a watch's ECG recordings and irregular rhythm notifications (#182) |
+| Apple Health's whole export zip (Export All Health Data) | The above (ECGs from its `electrocardiograms/` folder), and the Health app's Health Records from hospitals and clinics (FHIR files in `clinical-records/`): visits, labs, medications, problems, allergies, immunizations, procedures |
 | Typed in by hand (**Sources → Type records in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, immunizations, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
 
 If your portal's export doesn't import, please open an issue with an anonymised sample (`tools/anonymise.py` makes
@@ -272,7 +272,9 @@ Two phone apps upload to that address:
   `Bearer <the secret>`, data type Health Metrics in JSON (steps, distance, active energy, heart rate, resting heart
   rate, HRV, blood oxygen, respiratory rate, weight, body fat, lean mass, sleep, blood pressure, body temperature), time grouping by hours, and a
   schedule (hourly or daily, since the last sync); then a second one for Workouts, and for a glucose meter or a CGM a
-  third with Blood Glucose alone and no time grouping, so each reading comes on its own. The steps are on the
+  third with Blood Glucose alone and no time grouping, so each reading comes on its own; and for a watch's ECGs, one
+  with the data type ECG and one with Heart Rate Notifications (synced daily: a recording is about 1 MB as the app
+  sends it). The steps are on the
   **Phone and watch** section too. Repeated and overlapping uploads count once, and the days are made the same way as
   for an uploaded Apple Health export, so both phones give the same Body and activity tab.
 
@@ -298,6 +300,16 @@ ticked, under the Labs charts; they're never in a share link, and in an export o
 each time. **Delete all cycle data** (or turning it off) deletes the receiver's copy and every archived upload's; the
 card says what it can't reach (backups made before, files already downloaded, the phone). Nothing predicts periods or
 fertile days.
+ECG recordings and irregular rhythm notifications (#182) from an Apple Watch come through Health Auto Export, or in
+an uploaded Apple Health export (its `electrocardiograms/` folder and `export.xml`); Health Connect has no ECG type,
+so Android watches' ECGs don't reach it. Each is an event on the Timeline ("ECG & rhythm"), and the same recording
+sent both ways is one. Its drawer shows what the watch said, word for word: the classification ("Sinus Rhythm",
+"Atrial Fibrillation", "Inconclusive"...), the average heart rate (only Health Auto Export sends it), symptoms, the
+device, lead and software version; Sanguity doesn't read or judge the trace. The trace is drawn small with a time and
+mV scale, its 15,360 samples (30 seconds at 512 Hz) loaded only when the drawer opens and downloadable as CSV. The
+samples are kept apart from the summary, one sealed file per recording: about 50 KB each, beside the receiver's
+`daily.json` in `WATCH_DIR` (`ecg/`) or in the profile's folder for an import. ECGs are never in a share link or the
+visit summary. The name and birth date at the top of each of Apple's ECG files are read past and never kept.
 
 ### Uploading records in the app
 

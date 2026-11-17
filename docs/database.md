@@ -672,6 +672,16 @@ only the setting (a sealed `settings` row, `_cycle`). Turning tracking off, or "
 receiver (a new `"cycle_purge"` token) to empty the table, vacuum the database and rewrite every upload in `raw/`
 without them; `cycle.json` says which deletion was done. [`server/cycle.py`](../server/cycle.py) has the record types
 and the rules.
+**ECGs and irregular rhythm notifications (#182)** are `ecg(key, start, meta, wave)`: one row each, from Health Auto
+Export, by its key (`ecg:` or `rhythm:` and a hash of its start in UTC, [`server/ecg.py`](../server/ecg.py)), so one
+sent again replaces itself; `meta` is the event as the summary lists it (classification as the device wrote it,
+average heart rate, device...) and `wave` a recording's samples, gzipped JSON in µV (a 30-second recording at 512 Hz
+is 15,360 samples, about 50 KB). The summary lists the events without their samples; each recording's are written
+beside it as a file of its own, `ecg/<16 hex>.json.gz`, sealed, which the app reads only when that recording's
+drawer opens (`GET /api/profiles/{pid}/watch/ecg/{name}`). An ECG from an uploaded Apple Health export is kept the
+same way in the profile's folder (`watch/ecg/`, `server/watch_store.py`), one file per recording whichever import
+brought it, and removed once no import lists it. Health Auto Export sends a recording as about 1 MB of JSON, kept in
+`raw/` like every upload.
 
 ## What is encrypted
 

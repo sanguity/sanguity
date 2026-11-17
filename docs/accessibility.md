@@ -37,7 +37,7 @@ What can't be done here is a pass with a real screen reader: see [Still open](#s
 
 | Criterion | How it was checked | What the review changed |
 | --- | --- | --- |
-| 1.1.1 Non-text content | axe; read the code | Nothing: icons are `aria-hidden` or labelled (✕ "Remove …", ✎ "Rename …"), charts have a label and a table (#60). A document shown in a frame is named by its title now. |
+| 1.1.1 Non-text content | axe; read the code | Nothing: icons are `aria-hidden` or labelled (✕ "Remove …", ✎ "Rename …"), charts have a label and a table (#60). A document shown in a frame is named by its title now. An ECG recording's trace (#182) has no table of its 15,360 samples, which would say nothing a table can show: it takes focus with a summary of what it is (length, sample rate, lead, the device's classification), ← and → step through it saying the voltage, a table beside it sums it up, and Download as CSV gives every sample. |
 | 1.3.1 Info and relationships | axe; read the code | Claims, paid amounts, prescriptions, a medication's listings and fills, and a result's components each open from a button in the row (below). A Costs column's sort is said with `aria-sort`. A field marked wrong when typing lab results in points to the message saying why (`aria-describedby`). |
 | 1.3.2 Meaningful sequence, 1.3.3 Sensory characteristics | read the pages | Nothing found. |
 | 1.3.4 Orientation | 375 and 320 px, a phone on its side | Nothing found: both orientations work. |
@@ -81,7 +81,7 @@ What can't be done here is a pass with a real screen reader: see [Still open](#s
 
 - **A real screen-reader pass.** The review was done in Chromium with axe-core and by reading the code and the
   accessibility tree; it couldn't run VoiceOver, NVDA, JAWS or TalkBack. Worth doing on: the charts (role
-  `application` with arrow keys, #60), the Timeline's picture and its list, the drawer, the period menu and the
+  `application` with arrow keys, #60, and an ECG's trace, #182), the Timeline's picture and its list, the drawer, the period menu and the
   kinds' ⋯ menus, the Settings reorderable lists, and the import preview.
 - **Other browsers.** Firefox and Safari weren't checked here (CI runs Chromium). Their focus rings and date
   fields differ.
