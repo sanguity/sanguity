@@ -71,6 +71,13 @@ Everything on `main` so far; it becomes the first tagged release.
 - Milestones are added, changed and removed on the Settings page, one marked primary (#39). Visits counted as
   workouts are a rules list there: plain text by default, a regular expression as an option, checked for patterns
   that could make matching slow (#43).
+- Each person's own time zone and date format, set from the browser on first sign-in and changed in Settings: the
+  timeline, Health, Costs, the drawer and the import pages split days at that person's midnight (#42).
+- A watch receiver secret per profile, made and replaced on the Settings page with the upload address to give the
+  phone app, so each person's phone uploads to their own profile (#46).
+- Saved Trends views (#37): named sets of labs ("CBC", "Liver") kept per profile. Owners and editors save what's
+  charted as a view from Trends, switch between views there, and make one the default, which Trends starts with
+  instead of the labs set in Settings; views are renamed, changed and removed on the Settings page too.
 
 **Sharing and new features (Phase 4)**
 - Reminders as a calendar feed (#51): a private iCalendar address per person and profile, made on the Settings page,
@@ -90,12 +97,6 @@ Everything on `main` so far; it becomes the first tagged release.
 - Installing it is offered in the app: an **Install app** button in the header when the browser can install it,
   and an "Install on this device" card under Account with the button, Safari's Add to Home Screen steps on
   iPhone and iPad, or a link to the install's HTTPS address when the page was opened over plain HTTP (#56).
-
-**Settings and dashboard configuration (Phase 3)**
-- Each person's own time zone and date format, set from the browser on first sign-in and changed in Settings: the
-  timeline, Health, Costs, the drawer and the import pages split days at that person's midnight (#42).
-- A watch receiver secret per profile, made and replaced on the Settings page with the upload address to give the
-  phone app, so each person's phone uploads to their own profile (#46).
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for

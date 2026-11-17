@@ -645,3 +645,19 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
 .offline-note{color:var(--ink2)}
 @media (max-width:700px){.offline-banner{width:calc(100% - 24px)}}
+/* saved Trends views (#37, trends-views.js) */
+.tv{padding:0 14px 8px}
+.tv-bar,.tv-form{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tv .btn{margin:0}
+.tv select,.tv input{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:5px 8px;min-width:0;max-width:100%;font-size:13px}
+.tv select{flex:1 1 140px}
+.tv-form{margin-top:6px}
+.tv-form input{flex:1 1 140px}
+.tv .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.tv .btn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);font-weight:600}
+.tv .hint{margin:4px 0 0;font-size:12px}
+.tv .tv-msg:empty{display:none}
+.tv .btn:disabled{opacity:.45;cursor:default;background:var(--raised)}
+.sets .set-view{border:1px solid var(--grid);border-radius:8px;padding:8px 10px;margin:6px 0;max-width:560px}
+.sets .set-view .row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.sets .set-view .row input:not([type=radio]){flex:1 1 140px;min-width:0}

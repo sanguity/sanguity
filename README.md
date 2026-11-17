@@ -26,7 +26,7 @@ All screenshots use the built-in **fictional demo data**. No real person's recor
 | Overview | Key labs with sparklines, watch and scale summaries, active problems, upcoming visits, costs since a milestone |
 | Health | Watch and smart-scale data: weight and body composition, sleep stages, steps and workouts, heart rate and HRV |
 | Timeline | Every visit, stay, lab draw, report, message, document and claim on one zoomable timeline, with a searchable list |
-| Trends | Lab results over time against reference ranges, with procedures, imaging and your milestones marked |
+| Trends | Lab results over time against reference ranges, with procedures, imaging and your milestones marked, and saved views of the labs you chart together |
 | Lab heatmap | Every draw against its reference range, one row per lab |
 | Costs | Insurance claims by month, type of care and provider, and what you actually paid out of pocket |
 
@@ -341,7 +341,7 @@ from the internet; a phone on your home network or tailnet works without that.
 - **Export everything:** owners and editors can download a profile as one zip (records, documents, settings, watch
   data, uploaded files and activity) under **Account**, and load it into another install with `server.manage create-profile` and
   `import`.
-- **Settings:** each profile's dashboard preferences (key lab tiles, the labs Trends starts with, lab and source
+- **Settings:** each profile's dashboard preferences (key lab tiles, the labs Trends starts with, saved Trends views, lab and source
   nicknames, visits counted as workouts, milestones) are changed on the **Settings** page by its owners and
   editors, with "Reset to defaults" per section. A workout rule says "visits titled X count as workouts of N
   minutes": X is plain text found anywhere in the title, or, as an advanced option, a regular expression, which is

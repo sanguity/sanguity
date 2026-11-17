@@ -191,8 +191,8 @@ def main():
         page.evaluate("localStorage.setItem('ht-health', JSON.stringify({period: '1y', stays: false}))")
         page.fill("#p", PW)
         page.click("#b")
-        try:
-            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+        try:   # booted: switchTab has run (EV is set before the watch data loads)
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
         except Exception:
             print("App did not start. Page says:", page.inner_text("main")[:300].replace("\n", " "))
             for x in problems:
@@ -468,6 +468,79 @@ def main():
                     break
             check("hovering a Trends point shows its source and import date", "From Setup build, imported" in tipped, tipped[:200])
             page.mouse.move(0, 0)
+
+            # ---- saved Trends views (#37): save what's charted as a view, switch between views, make one the default
+            # (Trends starts with it when this browser has chosen nothing), on Settings too, at 375 px; deleted again
+            kept = js("localStorage.getItem(stateKey())")
+            labs3 = js("SERIES.filter(s => !s.watch && s.n >= 2).slice(0, 3).map(s => s.name)")
+            picked = lambda: sorted(js("[...state.sel]"))
+            js(f"state.sel = new Set({json.dumps(labs3[:2])}); renderLabs()")
+            page.click("#viewSaveOpen")
+            page.fill("#viewName", "CBC (browser check)")
+            page.press("#viewName", "Enter")
+            page.wait_for_function("document.getElementById('viewPick') && document.getElementById('viewPick').value === 'CBC (browser check)'", timeout=10000)
+            check("a view is saved from what's charted, and shown as the current one",
+                  js("CFG.trends.views.map(v => [v.name, v.labs])") == [["CBC (browser check)", labs3[:2]]]
+                  and "Saved “CBC (browser check)”" in page.inner_text("#tvBox"), page.inner_text("#tvBox"))
+            page.click(f"#series input#s_{re.sub(r'[^A-Za-z0-9_]', '_', labs3[2])}")
+            settle(200)
+            check("…ticking another lab leaves the view (the picker says so)", js("document.getElementById('viewPick').value") == "")
+            js(f"state.sel = new Set({json.dumps(labs3[2:])}); renderLabs()")
+            page.click("#viewSaveOpen")
+            page.fill("#viewName", "Kidney (browser check)")
+            page.click("#viewSave")
+            page.wait_for_function("CFG.trends.views.length === 2", timeout=10000)
+            page.select_option("#viewPick", "CBC (browser check)")
+            settle(300)
+            charted = js("[...document.querySelectorAll('#charts .chart .name')].map(n => n.textContent)")
+            check("picking a view charts its labs", picked() == sorted(labs3[:2]) and sorted(charted) == sorted(labs3[:2]), charted)
+            page.click("#tvBox button:text-is('Make default')")
+            page.wait_for_function("CFG.trends.views.some(v => v.default && v.name === 'CBC (browser check)')", timeout=10000)
+            check("…and making it the default marks it", js("document.querySelector('#tvBox [aria-pressed=true]').textContent") == "Default ✓"
+                  and "(default)" in js("document.getElementById('viewPick').selectedOptions[0].textContent"))
+            page.select_option("#viewPick", "Kidney (browser check)")
+            settle(200)
+            check("switching views charts the other's labs", picked() == labs3[2:3])
+            js("localStorage.removeItem(stateKey())")   # nothing chosen in this browser: Trends starts with the default view
+            page.reload()
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            js("switchTab('labs')")
+            settle(300)
+            check("with nothing chosen in this browser, Trends starts with the default view",
+                  picked() == sorted(labs3[:2]) and js("document.getElementById('viewPick').value") == "CBC (browser check)", picked())
+            saved = js("api('profiles/' + PROFILE.id + '/settings').then(r => r.json()).then(j => j.trends.views.map(v => [v.name, v.default]))")
+            check("…the views are kept by the server, for the profile", saved == [["CBC (browser check)", True], ["Kidney (browser check)", False]], saved)
+            page.set_viewport_size({"width": 375, "height": 800})
+            page.click("#viewSaveOpen")
+            settle(200)
+            check("the saved-views bar, with its form open, fits 375 px",
+                  js("document.documentElement.scrollWidth <= 375 && document.getElementById('series').scrollWidth <= document.getElementById('series').clientWidth"),
+                  js("[document.documentElement.scrollWidth, document.getElementById('series').scrollWidth]"))
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("[data-key='trends.views'] .set-view", timeout=10000)
+            check("Settings lists the saved views, the default one ticked",
+                  js("[...document.querySelectorAll(\"[data-key='trends.views'] .set-view\")].map(v => [v.querySelector('[data-k=name]').value, v.querySelector('[data-k=default]').checked])")
+                  == [["CBC (browser check)", True], ["Kidney (browser check)", False]])
+            check("…and fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.click("[data-key='trends.views'] button[aria-label='Remove the view Kidney (browser check)']")
+            page.click("[data-key='trends.views'] button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-trends > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            js("switchTab('labs')")
+            settle(300)
+            check("a view removed on Settings is gone from Trends", js("[...document.querySelectorAll('#viewPick option')].map(o => o.value)") == ["CBC (browser check)"])
+            page.once("dialog", lambda d: d.accept())
+            page.click("#tvBox button:text-is('Delete')")
+            page.wait_for_function("CFG.trends.views.length === 0", timeout=10000)
+            check("deleting the last view from Trends leaves none", js("document.getElementById('viewPick').disabled") is True)
+            if kept is not None:
+                js(f"localStorage.setItem(stateKey(), {json.dumps(kept)})")
+            page.reload()
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            js("switchTab('labs')")
+            settle(300)
 
             # ---- Health: drag changes its own period
             page.click("#tab-health")

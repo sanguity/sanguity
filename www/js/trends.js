@@ -13,13 +13,14 @@ function renderSeriesList() {
   const order = [...groups.keys()].sort((a, b) => rank(a) - rank(b) || (rank(a) === 1 ? 0 : groups.get(b).length - groups.get(a).length));
   wrap.append(el("div", {style: {padding: "12px 14px 6px", display: "flex", gap: "8px", alignItems: "center"}}, el("b", {text: `${state.sel.size} selected`}), el("span", {class: "spacer"}),
     el("button", {class: "btn", style: {margin: 0}, text: "Clear", onclick: () => { state.sel.clear(); renderLabs(); }}),
-    el("button", {class: "btn", style: {margin: 0}, text: "Defaults", onclick: () => { state.sel = new Set(CFG.trends.defaultLabs.filter(n => SERIES.some(s => s.name === n))); renderLabs(); }})));
+    el("button", {class: "btn", style: {margin: 0}, text: "Defaults", onclick: () => { state.sel = startLabs(); renderLabs(); }})),
+    el("div", {id: "tvBox"}, viewsBar()));   // saved views (#37, trends-views.js)
   for (const g of order) {
     wrap.append(el("div", {class: "grp", text: g}));
     for (const s of g.startsWith("Watch") ? groups.get(g) : groups.get(g).sort((a, b) => b.n - a.n)) {
       const L = latest(s); const id = "s_" + s.name.replace(/\W/g, "_");
       wrap.append(el("label", {class: "srow", for: id},
-        el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); wrap.querySelector("b").textContent = `${state.sel.size} selected`; }}),
+        el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); wrap.querySelector("b").textContent = `${state.sel.size} selected`; tvRefresh(); }}),
         el("span", {class: "nm", title: `${s.name} · ${s.n} results`, text: s.name}),
         el("span", {class: "lv" + (L && L[4] ? " abn" : ""), title: L ? `Latest ${fmtD(L[0])}` : "", text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : "text"})));
     }
