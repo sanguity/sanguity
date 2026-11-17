@@ -24,9 +24,10 @@ Sections, each optional (SECTIONS):
 The "since" point is the last visit before today, or another past visit's date the person picks; with no past
 visit, 90 days back. The appointment it is for is the next upcoming one by default.
 
-The questions are kept as a draft per profile (shared by everyone the profile is shared with, like the summary
-itself), encrypted, in the settings table under QUESTIONS_KEY. That key isn't in the settings registry, so it never
-shows on the Settings screen or in a settings export; it goes with the profile when the profile is deleted.
+The questions are kept as a draft per person and profile (#219: each account its own, so one person's never
+replaces another's), encrypted, in summary_drafts. It isn't a setting, so it never shows on the Settings screen or in
+a settings export; it goes with the account, the profile, or the account's access to the profile. (Until #219 it was
+one draft per profile, the settings key QUESTIONS_KEY; schema step 31 moved each to the people who saw it.)
 
 Sanguity shows what the records say. The summary doesn't interpret anything, and carries the "not medical advice"
 notice on every page.
@@ -86,9 +87,10 @@ _DATES = contextvars.ContextVar("summary_dates", default=("", None))
 
 # ---------------------------------------------------------------- the questions draft
 
-def questions(db, pid):
-    r = db.execute("SELECT sealed FROM settings WHERE key=? AND profile_id=? AND user_id IS NULL", (QUESTIONS_KEY, pid)).fetchone()
-    if not r or r["sealed"] is None:
+def questions(db, pid, uid):
+    """This person's own draft for the profile (#219)."""
+    r = db.execute("SELECT sealed FROM summary_drafts WHERE profile_id=? AND user_id=?", (pid, uid)).fetchone()
+    if not r:
         return ""
     try:
         return json.loads(crypto.dec(r["sealed"])) or ""
@@ -107,16 +109,15 @@ def clean_questions(text):
     return text
 
 
-def save_questions(db, pid, text, by=None):
-    """Keep the draft (call inside a transaction). Empty text removes it."""
+def save_questions(db, pid, uid, text):
+    """Keep this person's draft for the profile (call inside a transaction). Empty text removes it."""
     text = clean_questions(text)
     if not text.strip():
-        db.execute("DELETE FROM settings WHERE key=? AND profile_id=? AND user_id IS NULL", (QUESTIONS_KEY, pid))
+        db.execute("DELETE FROM summary_drafts WHERE profile_id=? AND user_id=?", (pid, uid))
         return ""
-    db.execute("""INSERT INTO settings(key, profile_id, user_id, value, sealed, changed, changed_by) VALUES(?, ?, NULL, NULL, ?, ?, ?)
-                  ON CONFLICT(key, IFNULL(profile_id, 0), IFNULL(user_id, 0))
-                  DO UPDATE SET sealed=excluded.sealed, changed=excluded.changed, changed_by=excluded.changed_by""",
-               (QUESTIONS_KEY, pid, crypto.enc(json.dumps(text, ensure_ascii=False)), dbm.now(), by))
+    db.execute("""INSERT INTO summary_drafts(profile_id, user_id, sealed, changed) VALUES(?, ?, ?, ?)
+                  ON CONFLICT(profile_id, user_id) DO UPDATE SET sealed=excluded.sealed, changed=excluded.changed""",
+               (pid, uid, crypto.enc(json.dumps(text, ensure_ascii=False)), dbm.now()))
     return text
 
 
@@ -296,7 +297,7 @@ def options(db, pid, uid):
             if s not in measures.IDS or s in have]
     return {"today": now, "upcoming": _upcoming(data, now), "visits": _visits(data, now)[:40],
             "labs": sorted(({"name": n, "label": nick.get(n, n)} for n in series), key=lambda x: x["label"].lower()),
-            "keyLabs": key_labs, "questions": questions(db, pid), "sections": secs,
+            "keyLabs": key_labs, "questions": questions(db, pid, uid), "sections": secs,
             "notice": NOTICE, "has_records": bool(data.get("events") or data.get("labs"))}
 
 

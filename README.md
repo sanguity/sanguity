@@ -537,9 +537,9 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
 - **Visit summary:** one or two printable pages to bring to an appointment (**Sharing → Visit summary**, from your menu, top right):
   results out of range since the last visit, each against the range on its own report (or a range from settings
   when the report gives none), trends of the key labs and
-  any others picked, current medications, upcoming appointments and your own questions (kept as a draft for the
-  profile). Anyone the profile is shared with can make one, viewers included; it's made on request, never stored,
-  and each one is in the activity log. The phone's and watch's measures are sections of their own, offered when the
+  any others picked, current medications, upcoming appointments and your questions (kept as your own draft for the
+  profile; no one else sees it, #219). Anyone the profile is shared with can make one, viewers included; it's made on
+  request, never stored, and each one is in the activity log. The phone's and watch's measures are sections of their own, offered when the
   profile has some and unticked until you tick them (#225): blood pressure and temperature taken at home (the count,
   average, highest and the readings), glucose by day (a CGM's time in the standard published ranges, labelled as
   such; each reading typed in at home with its meal note, #232), blood oxygen (the watch's days and each reading

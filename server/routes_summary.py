@@ -1,14 +1,14 @@
 """The visit summary (#48; summary.py builds it, pdfdoc.py writes the PDF).
 
   GET  /api/profiles/{pid}/summary               what the page offers: upcoming appointments, past visits, labs,
-                                                 the key labs, the sections and the questions draft
-  PUT  /api/profiles/{pid}/summary/questions     {"text"}: keep the questions draft (empty removes it)
+                                                 the key labs, the sections and your questions draft
+  PUT  /api/profiles/{pid}/summary/questions     {"text"}: keep your own questions draft (empty removes it)
   POST /api/profiles/{pid}/summary/preview       {appointment, since, sections, labs, questions}: the summary as
                                                  JSON, with how many pages it takes and what didn't fit
   POST /api/profiles/{pid}/summary/pdf           the same, as a PDF download; keeps the questions as the draft too
 
 Everyone a profile is shared with may make one, viewers included: it's the records they can already read, put on
-paper, and the questions are a draft for the visit, not part of the records. Each PDF made is logged on the
+paper, and the questions are a draft for the visit, not part of the records: each person's own (#219). Each PDF made is logged on the
 profile's activity log ("summary": the sections, dates and counts, never the questions or any result). The PDF is
 made in memory and streamed: nothing is written to disk, and it isn't cached (no-store, as every API answer).
 """
@@ -67,7 +67,7 @@ def keep_questions(pid: int, body: Draft, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "viewer")
     try:
         with dbm.transaction(db):
-            text = summary.save_questions(db, pid, body.text, s["id"])
+            text = summary.save_questions(db, pid, s["id"], body.text)
     except summary.SummaryError as e:
         raise HTTPException(400, str(e)) from None
     return {"questions": text}
@@ -87,7 +87,7 @@ def make_pdf(pid: int, body: Options, request: Request, s=Depends(user), db=Depe
     out = _build(db, s, pid, body)
     pdf, fit = summary.render(out)
     with dbm.transaction(db):
-        summary.save_questions(db, pid, body.questions, s["id"])
+        summary.save_questions(db, pid, s["id"], body.questions)
         activity.log(db, "summary", s, pid, {"sections": out["sections"], "since": out["since"]["date"],
                                              "for": (out["for"] or {}).get("date"), "pages": fit["pages"],
                                              "questions": len(out.get("questions") or [])}, _client_ip(request))

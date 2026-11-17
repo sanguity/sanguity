@@ -1,5 +1,5 @@
 /* Sanguity · the visit summary (#48), on the Sharing page (#168): pick the visit and the "since" point, tick
-   sections, add labs to trend, type questions (kept as the profile's draft as you type), preview, download the PDF.
+   sections, add labs to trend, type questions (kept as your own draft for the profile as you type, #219), preview, download the PDF.
    The server builds both the preview and the PDF from the same records (server/summary.py); nothing here is put
    into innerHTML. Follows the page's profile picker (#profile, filled by sharing.js); call() is sharing.js's. */
 "use strict";   // $, el and api come from util.js

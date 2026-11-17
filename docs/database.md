@@ -386,9 +386,33 @@ with the rest of the summary; `GET …/watch` turns it into the day's shares (`g
 (the sealed values are unchanged); a `settings.json` from before (an export, the setup build's) is read with the old
 names as the new ones.
 
-One key outside the registry lives here too: `summary.questions`, a profile's draft of questions for the visit
-summary (`server/summary.py`, #48), always in `sealed`. Not being in the registry, it never shows on the Settings
-screen or in a settings export, and it goes with the profile.
+Until schema version 31 one key outside the registry lived here too: `summary.questions`, a profile's draft of
+questions for the visit summary (#48), shared by everyone the profile was shared with. Each person now keeps their own,
+in [`summary_drafts`](#visit-summary-drafts).
+
+## Visit summary drafts
+
+The questions a person types for the visit summary (`server/summary.py`, #48) are kept as their own draft, one per
+account and profile (#219), so one person's questions never replace another's. `sealed` is the text, encrypted. A
+draft goes with the account, the profile, or the account's access to the profile (the trigger
+`summary_drafts_unshared` removes it when the membership goes). It isn't a setting: never on the Settings screen or in
+an export. **Schema version 31** created the table and moved each profile's shared draft once: to the account that kept
+it last, and, unless that account was a viewer, to every owner and editor of the profile too (they saw it before); a
+viewer never gets someone else's.
+
+```mermaid
+erDiagram
+    profiles ||--o{ summary_drafts : "has"
+    users ||--o{ summary_drafts : "keeps"
+
+    summary_drafts {
+        int id PK
+        int profile_id FK
+        int user_id FK
+        text sealed "🔒 JSON: the questions as typed"
+        int changed
+    }
+```
 
 ## Connected sources
 
@@ -735,6 +759,7 @@ heart rate is the profile setting `person.maxHr` (above), sealed like the other 
 | `cost_marks` | `target_key`, `value` |
 | `labmaps` | `source`, `target` |
 | `settings` | `sealed` |
+| `summary_drafts` | `sealed` |
 | `smart_clients` | `secret` |
 | `connections` | `patient`, `secret`, `last_error`, `report` |
 | `connect_pending` | `verifier` |
@@ -756,9 +781,9 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries, cost marks, settings, calendar feeds, share links, undo history, its activity and outside contacts | the original exports |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries, cost marks, settings, visit summary drafts, calendar feeds, share links, undo history, its activity and outside contacts | the original exports |
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links, journal entries and cost marks (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |
 | A profile's cycle records (#183: Delete all cycle data, or turning cycle tracking off) | the watch receiver's rows, and the records in every upload it archived (rewritten without them); `cycle.json` keeps only which deletion was done; what imported Apple Health exports brought (`watch/cycle/`, #223), and a waiting preview's | backups made before, exports and visit summaries already downloaded, an uploaded Apple Health export (kept as uploaded), the phone's own |
-| An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, its calendar feeds, pending sign-ins | activity, uploads, jobs, journal entries, lab-name matches and share links it made (their links become `NULL`; such a share link stops working) |
+| An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, its visit summary drafts, its calendar feeds, pending sign-ins | activity, uploads, jobs, journal entries, lab-name matches and share links it made (their links become `NULL`; such a share link stops working) |
