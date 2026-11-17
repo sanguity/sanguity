@@ -254,12 +254,37 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
   };
 
   /* ---------------------------------------------------------------- Export: the cycle records, ticked each time (#183):
-     offered to owners and editors only while the profile has cycle tracking on; unticked again once the export starts */
+     offered to owners and editors only while the profile has cycle tracking on; unticked again once the export starts.
+     The format (#205): Sanguity's own zip, or FHIR R4 with the kinds of records ticked (all, by default) */
   async function exportCycle(p) {
     const wrap = $("#exportCycleWrap"), box = $("#exportCycle"), link = $("#exportLink"), base = `api/profiles/${p.id}/export`;
-    wrap.hidden = true; box.checked = false; link.href = base;
-    box.onchange = () => { link.href = base + (box.checked ? "?cycle=1" : ""); };
-    link.onclick = () => setTimeout(() => { box.checked = false; link.href = base; }, 0);
+    /* the format (#205): Sanguity's own zip, or a FHIR bundle of the parts ticked (all of them: no include=) */
+    const parts = [...document.querySelectorAll("input[name=exportPart]")], fhir = () => $("input[name=exportFormat][value=fhir]").checked;
+    const href = () => {
+      const q = [];
+      if (fhir()) {
+        q.push("format=fhir");
+        if (parts.some(x => !x.checked)) q.push("include=" + parts.filter(x => x.checked).map(x => x.value).join(","));
+      }
+      if (box.checked) q.push("cycle=1");
+      return base + (q.length ? "?" + q.join("&") : "");
+    };
+    const draw = () => {
+      $("#exportParts").hidden = !fhir();
+      link.textContent = fhir() ? "Export as FHIR" : "Export everything";
+      link.href = href();
+    };
+    wrap.hidden = true; box.checked = false;
+    for (const x of [box, ...parts, ...document.querySelectorAll("input[name=exportFormat]")]) x.onchange = () => { sayIn($("#exportMsg"), ""); draw(); };
+    draw();
+    link.onclick = ev => {
+      if (fhir() && !parts.some(x => x.checked) && !box.checked) {   // nothing to put in the bundle
+        ev.preventDefault();
+        sayIn($("#exportMsg"), "Tick at least one kind of record to include.", true);
+        return;
+      }
+      setTimeout(() => { box.checked = false; link.href = href(); }, 0);
+    };
     if (p.role !== "owner" && p.role !== "editor") return;
     try { const c = await call(`profiles/${p.id}/cycle`); if (P === p) wrap.hidden = !c.on; } catch (e) {}
   }

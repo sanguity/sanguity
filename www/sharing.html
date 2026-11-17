@@ -170,11 +170,41 @@
     <details class="more"><summary>More about this</summary>
       <p>It holds this profile's records, documents, settings and activity: to keep a copy of your own, or to move the
         profile to another server.</p>
+      <p>FHIR R4 is the standard format health apps and patient portals read. A FHIR export holds the records you tick
+        as one bundle, with the documents' files beside it in the zip. Sanguity's own import reads it back too.</p>
     </details>
+    <!-- the format, and with FHIR what goes in it (#205, sharing.js); the part names are fhir_export.PARTS' keys -->
+    <fieldset class="exp-opts" id="exportFormat">
+      <legend>Format</legend>
+      <label class="check"><input type="radio" name="exportFormat" value="sanguity" checked> Sanguity's own: everything,
+        to keep or to load into another Sanguity</label>
+      <label class="check"><input type="radio" name="exportFormat" value="fhir"> FHIR R4: a standard bundle other health
+        apps can read</label>
+    </fieldset>
+    <fieldset class="exp-opts" id="exportParts" hidden>
+      <legend>What to include</legend>
+      <div class="exp-parts">
+        <label class="check"><input type="checkbox" name="exportPart" value="labs" checked> Lab results, and vitals taken at visits</label>
+        <label class="check"><input type="checkbox" name="exportPart" value="visits" checked> Visits, hospital stays and upcoming appointments</label>
+        <label class="check"><input type="checkbox" name="exportPart" value="problems" checked> Conditions and allergies</label>
+        <label class="check"><input type="checkbox" name="exportPart" value="meds" checked> Medications and pharmacy fills</label>
+        <label class="check"><input type="checkbox" name="exportPart" value="immunizations" checked> Immunizations</label>
+        <label class="check"><input type="checkbox" name="exportPart" value="procedures" checked> Procedures, imaging and other studies</label>
+        <label class="check"><input type="checkbox" name="exportPart" value="documents" checked> Documents and letters, with their files</label>
+        <label class="check"><input type="checkbox" name="exportPart" value="messages" checked> Messages</label>
+        <label class="check"><input type="checkbox" name="exportPart" value="claims" checked> Claims</label>
+        <label class="check"><input type="checkbox" name="exportPart" value="home" checked> Home readings and the phone's daily measures</label>
+        <label class="check"><input type="checkbox" name="exportPart" value="ecg" checked> ECGs, with their waveforms</label>
+        <label class="check"><input type="checkbox" name="exportPart" value="person" checked> About this person: birth date, sex used for reference ranges, heights</label>
+      </div>
+      <p class="muted" id="exportNotMapped">Not in a FHIR bundle, which has no place for them: the journal, settings,
+        workouts, out-of-pocket payments and the activity log. What you untick stays out too.</p>
+    </fieldset>
     <!-- menstrual cycle records (#183): offered only while cycle tracking is on, unticked each time (sharing.js) -->
     <p class="check-line" id="exportCycleWrap" hidden><label class="check"><input type="checkbox" id="exportCycle">
       Include the cycle records too, in this export only</label></p>
     <div class="row"><a class="btn" id="exportLink" download href="#">Export everything</a></div>
+    <span class="msg" id="exportMsg" role="status"></span>
   </section>
 
   <!-- the profile's activity: owners (activity.js) -->

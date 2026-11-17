@@ -495,7 +495,9 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   (`server.manage`) needs neither, so it stays the way back in, for example after an admin loses their phone.
 - **Export everything:** owners and editors can download a profile as one zip (records, documents, settings, watch
   data, uploaded files and activity) under **Sharing → Export everything**, and load it into another install with `server.manage create-profile` and
-  `import`.
+  `import`. Or, there, as **FHIR R4** (#205): a standard bundle other health apps can read, of the kinds of records
+  ticked, with the documents' files beside it; Sanguity's own import reads it back into the same records
+  ([docs/fhir-export.md](docs/fhir-export.md) says what each record becomes, and what a bundle has no place for).
 - **Settings:** each profile's dashboard preferences (key lab tiles, the labs Labs starts with, saved Labs views, lab and source
   nicknames, visits counted as workouts, milestones) are changed on the **Settings** page by its owners and
   editors, with "Reset to defaults" per section. A lab, a result's source tag or an import can also be renamed right
@@ -771,7 +773,8 @@ www/                index.html (markup), css/app.css, js/*.js (one plain script 
                     phone app; tools/make_icons.py draws the icons)
 demo/               Fictional demo dataset generator (--big: ten years of records, for the performance budgets)
 tools/              anonymise.py (an anonymised copy of an export, to share as a sample: docs/anonymising-exports.md),
-                    screenshots.py, make_icons.py, build_directory.py
+                    screenshots.py, make_icons.py, build_directory.py, fhir_schema_subset.py (the FHIR R4 schema
+                    the FHIR export is checked against: docs/fhir-export.md)
 tests/              API and upload tests, a headless browser check (with WCAG 2.2 AA checks: docs/accessibility.md),
                     the performance budgets (docs/performance.md) and a smoke test of the Docker install (all run in CI)
 *.example.json      Templates for sources.json and settings.json (a new build-linked profile's first settings;

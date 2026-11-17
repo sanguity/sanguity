@@ -699,6 +699,13 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .cal .cal-url input{flex:1 1 220px;font:12px ui-monospace,Consolas,monospace}
 .cal .cal-steps{padding-left:18px;font-size:13px;max-width:720px}
 .cal .cal-steps li{margin:4px 0;overflow-wrap:anywhere}
+/* ---- Export everything: the format, and what a FHIR export includes (#205) */
+#export .exp-opts{border:0;padding:0;margin:10px 0;display:grid;gap:6px;max-width:760px;min-width:0}
+#export .exp-opts legend{font-size:13px;font-weight:550;color:var(--ink2);padding:0;margin-bottom:4px}
+#export .exp-opts label.check{align-items:flex-start;font-weight:400;padding-bottom:0;color:var(--ink)}
+#export .exp-opts label.check input{margin-top:3px;flex:none}
+#export .exp-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:6px 18px}
+#export .exp-opts p{margin:4px 0 0}
 .cal #calStatus{font-size:13px;margin:6px 0}
 .cal .tbl td{overflow-wrap:anywhere}
 /* ---- the journal (journal.js, #49): marks sized by severity, shaped by kind */

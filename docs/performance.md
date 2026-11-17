@@ -56,6 +56,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `watch_bytes`, `watch_s` | `GET /api/profiles/{id}/watch`: ten years of watch and scale days, with the glucose and the home readings | 1.28 MB, 0.03 s | 1.5 MB, 0.5 s |
 | `build_load_s` | The big build loaded into a profile (the first start, `setup rebuild`) | 0.19 s | 5 s |
 | `export_s` | **Export everything** of the big profile: a 1.4 MB zip with its 1,000 documents | 0.55 s | 6 s |
+| `fhir_export_s` | The same **as FHIR R4** (#205): a 3.7 MB zip, every record a resource, ten years of daily measures an Observation a day each | 1.6 s | 16 s |
 | `import_s` | That zip imported into an empty profile through the background job: uploaded, previewed, saved | 0.86 s | 10 s |
 | `apple_health_s` | The ten-year Apple Health `export.xml` imported the same way | 0.67 s | 10 s |
 | `sync_s` | A connected source's first pull of the big FHIR patient (186 requests), its preview saved | 1.7 s | 15 s |

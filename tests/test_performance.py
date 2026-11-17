@@ -47,6 +47,7 @@ BUDGETS = {
     "watch_s": 0.5,
     "build_load_s": 5,                  # the big build loaded into a profile (the first start, `setup rebuild`)
     "export_s": 6,                      # "Export everything" of the big profile, a zip with its 1,000 documents
+    "fhir_export_s": 16,                # the same as FHIR R4 (#205): every record a resource, ten years of daily measures
     "import_s": 10,                     # that zip imported into an empty profile: uploaded, previewed and saved
     "apple_health_s": 10,               # a ten-year Apple Health export.xml (17 MB) imported the same way
     "sync_s": 15,                       # a connected source's first pull of a big patient, its preview saved
@@ -306,6 +307,11 @@ class ServerBudgets(unittest.TestCase):
         self.assertBudget("export_s", time.perf_counter() - t)
         self.assertEqual(r.status_code, 200)
         measure("export_zip_bytes", len(r.content))
+        t = time.perf_counter()
+        f = CLIENT.get("/api/profiles/1/export?format=fhir")   # #205
+        self.assertBudget("fhir_export_s", time.perf_counter() - t)
+        self.assertEqual(f.status_code, 200)
+        measure("fhir_export_zip_bytes", len(f.content))
         t = time.perf_counter()
         up = upload(2, {"export.zip": r.content})
         jid = CLIENT.post(f"/api/profiles/2/uploads/{up}/import", headers=H).json()["id"]

@@ -7,7 +7,8 @@ Profile events (profile_id set), readable by the profile's owners:
   unshare       {"username"}: removed someone's access, or left (the actor is then that person)
   import        {"documents"}: records loaded with server.manage; {"importer", "counts", "job"}: an upload imported in
                 the browser (jobs.py), with {"labs": {"matched", "remembered"}} when lab names were matched (labmap.py)                             reload     records reloaded from the setup build
-  export        downloaded everything in the profile as a zip; {"cycle": true} with the cycle records ticked in (#183)
+  export        downloaded everything in the profile as a zip; {"cycle": true} with the cycle records ticked in (#183);
+                {"format": "fhir", "parts": [...]} as FHIR R4, with the kinds of records ticked (#205)
   upload        {"upload", "files", "bytes"}: files uploaded on the import page (uploads.py)
   discard       {"importer", "job", "upload"}: an import cancelled at its preview (jobs.py); an import confirmed
                 there is logged as import, with {"skipped", "kept"} duplicates

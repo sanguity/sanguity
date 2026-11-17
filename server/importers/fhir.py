@@ -31,14 +31,22 @@ What becomes what:
     ExplanationOfBenefit           a `claim` event (pharmacy: `rx`) with its claim detail and a `costs` row, as the
                                    claims importers make them (CARIN Blue Button; see _fhir_claims.py)
     Coverage                       read for the insurer's and plan's names on those claims
+    Communication                  a `message` event per conversation (#205): the messages that answer one another
+                                   (inResponseTo), each with who sent it and when
+    Observation, at home           (#205) one the Patient measured (the Patient its performer) of blood pressure, body
+                                   temperature, blood oxygen or glucose: a home reading in `watch` (bp_readings ...),
+                                   the device that took it as its source; the phone's daily measures, ECGs and
+                                   irregular rhythm notifications in Sanguity's own FHIR export (its own codes,
+                                   docs/fhir-export.md): `watch` metrics and `ecg`, a waveform's SampledData its
+                                   samples. Its cycle records are left out, as loading a Sanguity export leaves them
 
 Lab series take their canonical names from lab-aliases.json (by LOINC code, then name or alias), so the same test
 from different sources lines up; names it doesn't know stay as reported, for the mapping step (#23).
 Inline (base64) attachments are skipped with a warning for now: the upload has no place to write them yet.
 """
-import hashlib, json, posixpath, re
+import hashlib, json, posixpath, re, urllib.parse
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 from . import common
 from .common import canonical_lab, unit_key
@@ -67,16 +75,18 @@ SOURCE = "FHIR"   # source tag on lab points when the performing organisation is
 
 # resource types that are only looked up through references, never imported on their own
 SUPPORTING = {"Patient", "Practitioner", "PractitionerRole", "Organization", "Location", "Medication", "Specimen",
-              "Provenance", "RelatedPerson", "Coverage"}
+              "Provenance", "RelatedPerson", "Coverage", "Device"}   # Device: what took a home reading (#205)
 IMPORTED = {"Observation", "DiagnosticReport", "Condition", "MedicationRequest", "MedicationStatement", "MedicationOrder",
             "Encounter", "DocumentReference", "ExplanationOfBenefit", "AllergyIntolerance", "Immunization", "Procedure",
-            "MedicationDispense", "Appointment", "ImagingStudy"}
+            "MedicationDispense", "Appointment", "ImagingStudy", "Communication"}
 KNOWN = SUPPORTING | IMPORTED | {
     "Bundle", "AllergyIntolerance", "Immunization", "Procedure", "CarePlan", "CareTeam", "Goal", "Device", "Claim",
     "ExplanationOfBenefit", "Coverage", "ImagingStudy", "MedicationAdministration", "MedicationDispense", "ServiceRequest",
     "QuestionnaireResponse", "FamilyMemberHistory", "Composition", "List", "Appointment", "Communication", "Binary"}
 
 INPATIENT = {"IMP", "ACUTE", "NONAC", "inpatient", "inpatient encounter"}
+DOC_KINDS = {"document", "letter", "imaging", "study", "procedure", "visit", "message"}   # a document's kind (#205)
+MSG_KINDS = {"message", "appt_msg", "auto_msg"}   # a conversation's
 EMERGENCY = {"EMER", "emergency"}
 CLASS_TITLE = {"AMB": "Outpatient visit", "ambulatory": "Outpatient visit", "outpatient": "Outpatient visit",
                "EMER": "Emergency visit", "emergency": "Emergency visit", "VR": "Virtual visit", "HH": "Home visit",
@@ -87,6 +97,15 @@ EXT = {"application/pdf": "pdf", "text/plain": "txt", "text/html": "html", "imag
        "image/tiff": "tif", "application/xml": "xml", "text/xml": "xml", "application/rtf": "rtf", "text/rtf": "rtf",
        "application/dicom": "dcm"}
 RESOURCE_RE = re.compile(rb'"resourceType"\s*:\s*"([A-Za-z]+)"')
+# Sanguity's own FHIR export (#205, server/fhir_export.py): its code systems for what no standard code says
+SANGUITY_DOC = "https://github.com/sanguity/sanguity/blob/main/docs/fhir-export.md"
+MEASURE, MEASURE_GROUP, KIND = SANGUITY_DOC + "#measures", SANGUITY_DOC + "#measure-groups", SANGUITY_DOC + "#record-kinds"
+MDC = "urn:oid:2.16.840.1.113883.6.24"
+# a home reading's LOINC code (an Observation the Patient measured) -> its list in `watch` (watch_store.READINGS)
+HOME_READINGS = {"85354-9": "bp_readings", "55284-4": "bp_readings", "8310-5": "temp_readings", "2708-6": "spo2_readings",
+                 "59408-5": "spo2_readings", "2339-0": "glucose_readings", "41653-7": "glucose_readings", "15074-8": "glucose_readings",
+                 "14743-9": "glucose_readings"}
+TYPED_IN = "Typed in"   # a home reading with no device: the person's own, as hand entry marks it (manual_items.py)
 HEAD = 64 * 1024
 
 
@@ -177,7 +196,7 @@ def _load(files, warnings):
                     if not line.strip():
                         continue
                     try:
-                        r = json.loads(line)
+                        r = json.loads(line, parse_float=Decimal)
                     except ValueError:
                         skipped += 1
                         continue
@@ -188,7 +207,7 @@ def _load(files, warnings):
             continue
         try:
             with open(path, encoding="utf-8-sig") as f:
-                r = json.load(f)
+                r = json.load(f, parse_float=Decimal)
         except ValueError as e:
             bad.append((rel, e))
             continue
@@ -276,7 +295,20 @@ def num(x):
         return None
 
 
+class Decimal(float):
+    """A JSON number with a fraction, as a float that remembers how it was written (#205): FHIR's decimals keep their
+    precision ("2.0" is not "2"), and a result's value as reported should too."""
+    __slots__ = ("text",)
+
+    def __new__(cls, text):
+        v = super().__new__(cls, text)
+        v.text = text
+        return v
+
+
 def fmt(v):
+    if isinstance(v, Decimal) and re.fullmatch(r"-?\d+(\.\d+)?", v.text):
+        return v.text
     return f"{v:g}" if isinstance(v, float) else str(v)
 
 
@@ -495,6 +527,163 @@ def hkey(*fields):
     return NAME + ":h:" + hashlib.sha256("\x1f".join(str(f).strip().lower() for f in fields).encode()).hexdigest()[:16]
 
 
+class Home:
+    """#205: Observations measured at home, read into a watch summary (watch_store.py's shape) instead of the records:
+
+    - a home reading: an Observation the Patient measured (performer: the Patient) of blood pressure (a panel with
+      systolic, diastolic and maybe heart rate components), body temperature, blood oxygen or glucose, into
+      bp_readings, temp_readings, spo2_readings or glucose_readings, [time, value(s)..., source, app]: the source is
+      the device that took it (Observation.device), the app the one it came through (Sanguity's export names it as the
+      device's property "app"), and one with no device was typed in;
+    - Sanguity's export's own codes (MEASURE): the phone's daily measures into `metrics` (a CGM's day summaries among
+      them, a meter's readings by their local time), an ECG ("ecg", or MDC's ECG code from the Patient) into `ecg`
+      with its waveform's samples in `ecg_waves`, an irregular rhythm notification into `ecg`; cycle records left out
+      (counted), as loading a Sanguity export leaves them out."""
+
+    def __init__(self, idx):
+        self.idx, self.metrics, self.lists, self.ecg, self.waves, self.cycle = idx, {}, defaultdict(list), [], {}, 0
+
+    @staticmethod
+    def code(cc, system=MEASURE):
+        for c in (cc or {}).get("coding") or [] if isinstance(cc, dict) else []:
+            if isinstance(c, dict) and c.get("system") == system and c.get("code"):
+                return c["code"]
+        return None
+
+    def by_patient(self, r):
+        for p in r.get("performer") or []:
+            hit = self.idx.get(p, r)
+            if (hit or {}).get("resourceType") == "Patient" or (isinstance(p, dict) and (p.get("reference") or "").startswith("Patient/")):
+                return True
+        return False
+
+    def device(self, r):
+        """(source, app) of a reading: (None, "Typed in") with no device."""
+        ref = r.get("device")
+        if not isinstance(ref, dict):
+            return None, TYPED_IN
+        dev = self.idx.get(ref, r) or {}
+        names = [n for n in dev.get("deviceName") or [] if isinstance(n, dict) and n.get("name")]
+        source = next((n["name"] for n in names if n.get("type") == "user-friendly-name"), None)
+        app = next((v.get("text") for prop in dev.get("property") or [] if isinstance(prop, dict) and self.code(prop.get("type")) == "app"
+                    for v in prop.get("valueCode") or [] if isinstance(v, dict) and v.get("text")), None)
+        if not names and not app:
+            source = ref.get("display") or None
+        return source, app or (names[0]["name"] if names and not source else "FHIR")
+
+    @staticmethod
+    def value(q, to=None):
+        """A Quantity's value, in mg/dL for glucose or °C for temperature when it's in another unit."""
+        v = num((q or {}).get("value")) if isinstance(q, dict) else None
+        if v is None:
+            return None
+        u = str(q.get("code") or q.get("unit") or "").lower()
+        if to == "C" and u in ("[degf]", "°f", "degf", "f"):
+            return round((v - 32) * 5 / 9, 2)
+        if to == "mg/dL" and u in ("mmol/l", "mmol/l{glucose}"):
+            return round(v * 18.0156, 1)
+        return v
+
+    def add(self, r):
+        """Take r if it's measured at home or one of the export's own; False to leave it to the records."""
+        k = self.code(r.get("code"))
+        raw = r.get("effectiveDateTime") or (r.get("effectivePeriod") or {}).get("start") or ""
+        if k and k.startswith("cycle_"):
+            self.cycle += 1
+            return True
+        if k in ("ecg", "irregular_rhythm") or (MDC in {c.get("system") for c in (r.get("code") or {}).get("coding") or []
+                                                         if isinstance(c, dict)} and self.by_patient(r)):
+            return self.add_ecg(r, "irregular_rhythm" if k == "irregular_rhythm" else "ecg")
+        if k and k not in ("app", "meal"):
+            q = r.get("valueQuantity")
+            v = num((q or {}).get("value")) if isinstance(q, dict) else None
+            if v is None or not raw:
+                return True
+            cat = next((c for cc in r.get("category") or [] for c in [self.code(cc, MEASURE_GROUP)] if c), "")
+            m = self.metrics.setdefault(k, {"key": k, "name": next((c.get("display") for c in r["code"].get("coding") or []
+                                                                     if c.get("system") == MEASURE and c.get("display")), None) or text_of(r.get("code")) or k,
+                                            "unit": q.get("unit") or q.get("code") or "", "group": cat, "pts": {}})
+            m["pts"][raw[:16] if k == "glucose_meter" else raw[:10]] = v
+            return True
+        if not self.by_patient(r):
+            return False
+        loinc = set(codes(r.get("code"), LOINC))
+        lst = next((HOME_READINGS[c] for c in sorted(loinc) if c in HOME_READINGS), None)
+        t = iso(raw)
+        if not lst or not t:
+            return False
+        source, app = self.device(r)
+        comps = {c: x for x in r.get("component") or [] if isinstance(x, dict) for c in codes(x.get("code"), LOINC)}
+        if lst == "bp_readings":
+            sys_, dia = (self.value((comps.get(c) or {}).get("valueQuantity")) for c in ("8480-6", "8462-4"))
+            if sys_ is None or dia is None:
+                return False
+            self.lists[lst].append([t, sys_, dia, self.value((comps.get("8867-4") or {}).get("valueQuantity")), source, app])
+            return True
+        v = self.value(r.get("valueQuantity"), {"temp_readings": "C", "glucose_readings": "mg/dL"}.get(lst))
+        if v is None:
+            return False
+        row = [t, v, source, app]
+        if lst == "glucose_readings":
+            meal = next((self.code(x.get("valueCodeableConcept")) for x in r.get("component") or []
+                         if isinstance(x, dict) and self.code(x.get("code")) == "meal"), None)
+            row.append(meal)
+        self.lists[lst].append(row)
+        return True
+
+    def add_ecg(self, r, kind):
+        from .. import ecg   # standard library only, like this importer (the Apple Health importer uses it too)
+        per = r.get("effectivePeriod") or {}
+        start = ecg.when(per.get("start") or r.get("effectiveDateTime"))
+        if not start:
+            return True
+        end = ecg.when(per.get("end")) if per.get("end") else None
+        utc = lambda d: d.astimezone(timezone.utc).isoformat()
+        dev = self.idx.get(r.get("device"), r) if isinstance(r.get("device"), dict) else None
+        source, app = self.device(r)
+        e = {"key": ecg.key("rhythm" if kind == "irregular_rhythm" else "ecg", start), "type": kind, "start": utc(start)}
+        if end:
+            e["end"] = utc(end)
+        if kind == "ecg":
+            hr = next((num((x.get("valueQuantity") or {}).get("value")) for x in r.get("component") or []
+                       if isinstance(x, dict) and "8867-4" in codes(x.get("code"), LOINC)), None)
+            wave = next((x for x in r.get("component") or [] if isinstance(x, dict) and isinstance(x.get("valueSampledData"), dict)), None)
+            e.update({"classification": text_of(r.get("valueCodeableConcept")) or r.get("valueString") or None, "avg_hr": hr,
+                      "symptoms": next((n["text"][len("Symptoms: "):] for n in r.get("note") or [] if isinstance(n, dict)
+                                        and str(n.get("text") or "").startswith("Symptoms: ")), None),
+                      "software": next((v.get("value") for v in (dev or {}).get("version") or [] if isinstance(v, dict) and v.get("value")), None)})
+            if wave:
+                sd = wave["valueSampledData"]
+                samples = [num(x) for x in str(sd.get("data") or "").split()[:ecg.MAX_SAMPLES]]
+                period = num(sd.get("period"))
+                if samples and None not in samples and period:
+                    rate = round(1000 / period, 3)
+                    rate = int(rate) if rate == int(rate) else rate
+                    lead = text_of(wave.get("code")) or None
+                    e.update({"lead": lead, "rate": rate, "samples": len(samples), "unit": "µV", "wave": True})
+                    self.waves[e["key"]] = {"key": e["key"], "rate": rate, "unit": "µV", "lead": lead, "samples": samples}
+        e.update({"device": source, "via": app if app not in (TYPED_IN, "FHIR") else None})
+        self.ecg.append({k: v for k, v in e.items() if v is not None})
+        return True
+
+    def summary(self):
+        """The watch summary of what was taken, or None."""
+        metrics = [{**m, "pts": sorted([d, v] for d, v in m["pts"].items())} for m in self.metrics.values() if m["pts"]]
+        out = {"metrics": metrics, "exercise": []}
+        for k, rows in self.lists.items():
+            out[k] = sorted(rows, key=lambda x: (x[0], str(x[-2]), str(x[-1])))
+        if self.ecg:
+            out["ecg"] = sorted(self.ecg, key=lambda e: e["start"])
+        if self.waves:
+            out["ecg_waves"] = self.waves
+        if not (metrics or self.lists or self.ecg):
+            return None
+        days = [str(p[0])[:10] for m in metrics for p in m["pts"]] + [str(x[0])[:10] for rows in self.lists.values() for x in rows] \
+            + [e["start"][:10] for e in self.ecg]
+        out["updated"] = max(days) + "T00:00:00+00:00"   # deterministic: the latest day it holds
+        return out
+
+
 def parse(files):
     warnings = []
     resources = _load(files, warnings)
@@ -514,6 +703,7 @@ def parse(files):
     used_obs = set()
     reported_studies = set()                # ImagingStudies a report here describes (the report is the event)
     skipped, inline, remote, missing = Counter(), 0, 0, 0
+    comms = []                              # Communications, put together into conversations (#205)
     keys_seen = set()
 
     def fresh(key):
@@ -613,7 +803,7 @@ def parse(files):
         m["abn"] += abn
         m["orders"].add(order)
 
-    def document(key, t, title, att, owner, rel, org):
+    def document(key, t, title, att, owner, rel, org, kind="document"):
         nonlocal inline, remote, missing
         if not isinstance(att, dict):
             return
@@ -635,8 +825,8 @@ def parse(files):
                 missing += 1
         # a document the export names but didn't include still shows, with "url": null (docs/importers.md)
         ct = (att.get("contentType") or "").split(";")[0].strip().lower()
-        ext = posixpath.splitext(target or url.split("?")[0])[1].lstrip(".").lower() or EXT.get(ct, "")
-        b.add(t, "document", title or att.get("title") or posixpath.basename(target or url),
+        ext = posixpath.splitext((target or url.split("?")[0]).split("#")[0])[1].lstrip(".").lower() or EXT.get(ct, "")
+        b.add(t, kind, title or att.get("title") or posixpath.basename(target or url),
               " · ".join(x for x in [ext.upper(), org] if x), {"type": "file", "url": target, "ext": ext}, key=key)
 
     # --- DiagnosticReports first, so their Observations are grouped under them
@@ -676,13 +866,14 @@ def parse(files):
 
     # --- Observations not in a report
     loose = defaultdict(list)   # (day, org) -> observations
+    home = Home(idx)            # #205: what the person measured at home, and the phone's measures, for `watch`
     for r, rel in resources:
         if r["resourceType"] != "Observation" or id(r) in used_obs:
             continue
         if (r.get("status") or "") in ("entered-in-error", "cancelled"):
             continue
         t = _obs_time(r)
-        if not t:
+        if not t or home.add(r):
             continue
         cats = _category(r)
         loinc = set(codes(r.get("code"), LOINC))
@@ -887,7 +1078,9 @@ def parse(files):
             org = org_of(r)
             det = {"type": "med", "instructions": instr, "status": status, "src": org or who_of(r)}
             # #50: who prescribed it, when it ended and its RxNorm code, when the resource says
-            who = who_of(r) if rt != "MedicationStatement" else ""
+            who = who_of(r) if rt != "MedicationStatement" else next(   # #205: a statement's prescriber is its request's
+                (who_of(x) for ref in r.get("basedOn") or [] for x in [idx.get(ref, r)]
+                 if isinstance(x, dict) and x.get("resourceType") == "MedicationRequest" and who_of(x)), "")
             if who:
                 det["prescriber"] = who
             end = iso((r.get("effectivePeriod") or {}).get("end"))
@@ -934,8 +1127,14 @@ def parse(files):
                       " · ".join(x for x in [place, f"{nights} night{'s' if nights != 1 else ''}" if nights else "same day"] if x),
                       {"type": "stay", "admit": t, "discharge": end or "", "where": place, "how": "FHIR encounter"}, end=stop, key=rkey(r))
                 continue
+            # #205: the narrative a record adds to its Encounter ("additional", not one generated from its elements): the
+            # visit's note, and the procedures done there as a paragraph "Procedures: a; b" (Sanguity's export writes them so)
+            paras = [common.strip_html(x).strip() for x in re.findall(r"<p>(.*?)</p>", (r.get("text") or {}).get("div") or "", re.S)] \
+                if (r.get("text") or {}).get("status") == "additional" else []
+            procs = [x for p in paras if p.startswith("Procedures: ") for x in p[len("Procedures: "):].split("; ") if x]
+            note = "\n\n".join(p for p in paras if p and not p.startswith("Procedures: "))
             b.add(t, "visit", title, " · ".join(x for x in [who, where, org] if x),
-                  {"type": "visit", "who": who, "where": where or org, "dx": dx, "procs": [], "src": org or SOURCE, "note": ""},
+                  {"type": "visit", "who": who, "where": where or org, "dx": dx, "procs": procs, "src": org or SOURCE, "note": note},
                   end=end if end and t and end > t else None, key=rkey(r))
         elif rt == "DocumentReference":
             if r.get("status") == "entered-in-error":
@@ -947,10 +1146,45 @@ def parse(files):
                           if iso((c.get("attachment") or {}).get("creation"))), None)
             title = r.get("description") or text_of(r.get("type")) or ""
             org = org_of(r)
+            # #205: Sanguity's own export says what kind of record a file was shown as (a letter, an imaging report...)
+            kind = next((c["code"] for cat in r.get("category") or [] if isinstance(cat, dict) for c in cat.get("coding") or []
+                         if isinstance(c, dict) and c.get("system") == KIND and c.get("code") in DOC_KINDS), "document")
             for i, c in enumerate(r.get("content") or [], 1):   # first plain, the others #content/<position>
-                document(rkey(r) + (f"#content/{i}" if i > 1 else ""), t, title, c.get("attachment"), r, rel, org)
+                document(rkey(r) + (f"#content/{i}" if i > 1 else ""), t, title, c.get("attachment"), r, rel, org, kind)
+        elif rt == "Communication":   # #205: put together into conversations below
+            if r.get("status") not in ("entered-in-error", "not-done"):
+                comms.append(r)
         elif rt not in IMPORTED and rt not in SUPPORTING:
             skipped[rt] += 1
+
+    # --- conversations (#205): the messages that answer one another (inResponseTo), from the first
+    def first_of(r):
+        seen = {id(r)}
+        while True:
+            up = next((x for ref in r.get("inResponseTo") or [] for x in [idx.get(ref, r)]
+                       if isinstance(x, dict) and x.get("resourceType") == "Communication"), None)
+            if not up or id(up) in seen:
+                return r
+            seen.add(id(up))
+            r = up
+    threads = defaultdict(list)
+    for r in comms:
+        threads[id(first_of(r))].append(r)
+    for msgs in threads.values():
+        root = first_of(msgs[0])
+        rows = []
+        for m in msgs:
+            sender = idx.get(m.get("sender"), m) if isinstance(m.get("sender"), dict) else None
+            who = "You" if (sender or {}).get("resourceType") == "Patient" else idx.name(m.get("sender"), m)
+            body = "\n\n".join(x.get("contentString") for x in m.get("payload") or [] if isinstance(x, dict) and x.get("contentString"))
+            rows.append({"from": who, "t": iso(m.get("sent") or m.get("received")), "body": body, "att": []})
+        rows = sorted((x for x in rows if x["t"]), key=lambda x: x["t"])
+        if not rows:
+            continue
+        kind = next((c["code"] for cat in root.get("category") or [] if isinstance(cat, dict) for c in cat.get("coding") or []
+                     if isinstance(c, dict) and c.get("system") == KIND and c.get("code") in MSG_KINDS), "message")
+        b.add(rows[0]["t"], kind, text_of(root.get("topic")) or "Message", f"{len(rows)} message{'s' if len(rows) != 1 else ''}",
+              {"type": "conversation", "messages": rows}, key=rkey(root))
 
     # --- claims, after the encounters so a facility bill can be filed under its hospital stay
     from . import _fhir_claims
@@ -971,6 +1205,9 @@ def parse(files):
     if missing:
         warnings.append(f"{missing} document{'s' if missing != 1 else ''} named a file that isn't in the upload, "
                         "so only the entry was imported.")
+    if home.cycle:
+        warnings.append(f"Left out {home.cycle} cycle record{'s' if home.cycle != 1 else ''}: cycle tracking is turned on for "
+                        "each profile, and its records come only from the phone apps.")
 
     # --- assemble data.json
     series = []
@@ -995,7 +1232,10 @@ def parse(files):
     data = {"source": "FHIR import",
             "events": b.events, "details": b.details, "labs": series, "upcoming": upcoming, "problems": problems,
             "costs": costs, "outOfPocket": {"payments": []}, "milestones": [], "clinicWeights": sorted(weights)}
-    if not (b.events or series or problems or upcoming or weights):
+    watch = home.summary()
+    if watch:
+        data["watch"] = watch
+    if not (b.events or series or problems or upcoming or weights or watch):
         kinds = Counter(r["resourceType"] for r, _ in resources)
         raise ValueError("This FHIR export has no records Sanguity can show yet (it holds "
                          + ", ".join(f"{k} ({n})" for k, n in kinds.most_common()) + ").")
@@ -1005,10 +1245,13 @@ def parse(files):
 def _find(files, url, rel):
     """The upload path an attachment URL points at: relative to the resource's file, to the upload root, or by name."""
     url = url[len("file://"):] if url.lower().startswith("file://") else url
-    url = url.replace("\\", "/").lstrip("/")
-    for cand in (posixpath.normpath(posixpath.join(posixpath.dirname(rel), url)), posixpath.normpath(url)):
-        if cand in files:
-            return cand
-    base = posixpath.basename(url)
+    url, _, frag = url.partition("#")   # a page in it ("#page=2") stays on the link
+    frag = f"#{frag}" if frag else ""
+    for u in dict.fromkeys([url, urllib.parse.unquote(url)]):   # a relative URL may be percent-encoded (#205)
+        u = u.replace("\\", "/").lstrip("/")
+        for cand in (posixpath.normpath(posixpath.join(posixpath.dirname(rel), u)), posixpath.normpath(u)):
+            if cand in files:
+                return cand + frag
+    base = posixpath.basename(urllib.parse.unquote(url))
     hits = [k for k in files if posixpath.basename(k) == base]
-    return hits[0] if len(hits) == 1 else None
+    return hits[0] + frag if len(hits) == 1 else None
