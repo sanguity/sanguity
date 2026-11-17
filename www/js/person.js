@@ -3,7 +3,8 @@
    page has them in CFG.person, with every setting; Sharing → About this person (sharing.js) shows and changes them.
 
    For what is built on them (BMI #195, growth percentiles #196, heart-rate zones #197), the same as server/person.py:
-     personOf(cfg)               {birthDate, sex, heights} from the merged settings, filled in ("" and [] when not set)
+     personOf(cfg)               {birthDate, sex, heights, dueDate} from the merged settings, filled in ("" and [] when
+                                 not set); dueDate: for a baby born early, the day they were due (#196, corrected age)
      ageOn(birth, day)           whole years on that day (both "YYYY-MM-DD..."), or null (no birth date, or before it)
      ageMonthsOn(birth, day)     whole months on that day, or null: a child's age, for growth charts
      personAgeOn(day, cfg)       ageOn with this profile's birth date; personAgeMonthsOn(day, cfg) the same in months
@@ -22,7 +23,7 @@ const IN_CM = 2.54;
 const _pcfg = cfg => cfg !== undefined ? cfg : (typeof CFG !== "undefined" ? CFG : null);
 function personOf(cfg) {
   const p = (_pcfg(cfg) || {}).person || {};
-  return {birthDate: p.birthDate || "", sex: p.sex || "", heights: Array.isArray(p.heights) ? p.heights : []};
+  return {birthDate: p.birthDate || "", sex: p.sex || "", heights: Array.isArray(p.heights) ? p.heights : [], dueDate: p.dueDate || ""};
 }
 const _ymd = s => /^(\d{4})-(\d{2})-(\d{2})/.exec(s || "");
 function ageOn(birth, day) {

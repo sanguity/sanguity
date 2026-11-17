@@ -1285,3 +1285,14 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .bmi{margin-top:12px}
 .bmi .toolbar{margin:0 0 4px}
 .band-edge{stroke-dasharray:3 3}
+
+/* ---- children's growth on Body and activity (#196, health.js): the chart set picked as a pair, each measure's chart
+   over the publisher's percentile curves (the 50th stronger, each named at its end), two to a row when there's room */
+.growth-set{margin:2px 0 10px}
+.growth-one{margin:2px 0 8px;font-size:13px;color:var(--ink2)}
+.growth-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:6px 18px}
+.growth-cell h3.sub{margin:8px 0 2px}
+.growth-curve{fill:none;stroke:var(--ink2);stroke-width:1;opacity:.55}
+.growth-curve.mid{stroke-width:1.8;opacity:.8}
+svg text.growth-pct{font-size:10px}
+.growth-src{margin-top:10px}

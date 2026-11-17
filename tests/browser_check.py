@@ -522,6 +522,39 @@ def add_workout_hr(watch_dir):
         json.dump(watch, f)
 
 
+CHILD_BIRTH, CHILD_DUE = "2022-03-14", "2022-04-25"   # a fictional girl, born six weeks early (#196)
+# her well-child visits: (day, weight kg, length or height cm, head circumference cm); the first before her due date
+CHILD_VISITS = [("2022-03-16", 2.1, 44.0, 31.0), ("2022-05-02", 3.4, 50.0, 34.6), ("2022-06-13", 4.6, 54.5, 37.0),
+                ("2022-08-15", 6.0, 60.0, 39.6), ("2022-10-17", 7.0, 64.0, 41.5), ("2023-01-16", 8.1, 68.5, 43.0),
+                ("2023-04-17", 8.9, 72.5, 44.2), ("2023-07-17", 9.6, 76.0, 45.0), ("2023-10-16", 10.2, 79.0, 45.7),
+                ("2024-03-18", 11.6, 85.5, None), ("2024-09-16", 12.8, 90.5, None), ("2025-03-17", 13.9, 95.0, None),
+                ("2026-03-16", 15.9, 102.5, None), ("2026-09-14", 16.8, 106.0, None)]
+
+
+def child_profile(db, owner):
+    """A fictional child's profile (#196): her clinic's weights (clinicWeights, in lb as importers keep them), her length
+    to 18 months and head circumference in the records as a clinic's vitals (in inches and cm, as C-CDA and FHIR bring
+    them), and from 2 years her heights in About this person's history, with her birth date, sex and due date."""
+    from server import db as dbm, profiles as prof_r, records as rec_r, settings as settings_r
+    pid = prof_r.create_profile(db, "Robin (fictional child)", owner_id=owner)
+    t = lambda d: d + "T09:30:00"
+    infant = [v for v in CHILD_VISITS if v[3] is not None]
+    with dbm.transaction(db):
+        rec_r.store(db, pid, {"built": "2026-11-15", "source": "fictional",
+                              "events": [{"id": i + 1, "t": t(v[0]), "k": "visit", "title": "Well-child visit", "sub": "Maple Street Pediatrics"}
+                                         for i, v in enumerate(CHILD_VISITS)],
+                              "details": {}, "costs": [], "upcoming": [],
+                              "clinicWeights": [[t(d), round(kg / 0.45359237, 1), "Maple Street Pediatrics"] for d, kg, _, _ in CHILD_VISITS],
+                              "labs": [{"name": "Height", "loinc": "8302-2", "unit": "in", "panel": "Vitals", "n": len(infant), "txt": [],
+                                        "pts": [[t(d), round(cm / 2.54, 2), None, None, "", str(round(cm / 2.54, 2)), "Maple Street Pediatrics"] for d, _, cm, _ in infant]},
+                                       {"name": "Head Occipital-frontal circumference", "loinc": "9843-4", "unit": "cm", "panel": "Vitals", "n": len(infant), "txt": [],
+                                        "pts": [[t(d), hc, None, None, "", str(hc), "Maple Street Pediatrics"] for d, _, _, hc in infant]}]}, "upload", fmt="ccda")
+    for key, value in (("person.birthDate", CHILD_BIRTH), ("person.sex", "female"), ("person.dueDate", CHILD_DUE),
+                       ("person.heights", [{"date": d, "cm": cm, "unit": "cm"} for d, _, cm, hc in CHILD_VISITS if hc is None])):
+        settings_r.put(db, key, value, "profile", pid)
+    return pid
+
+
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
@@ -5412,6 +5445,146 @@ def main():
             db = dbm.connect()
             prof_r.delete_profile(db, apid)
             prof_r.delete_profile(db, vpid)
+            db.close()
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
+            # ---- children's growth (#196): a fictional girl born in 2022, six weeks early (child_profile: her clinic's
+            # weights, her length and head circumference in the records, heights from 2 in About this person, her due
+            # date). The page's percentiles match the WHO's and the CDC's published ones and tools/growth_tables.py's;
+            # Body and activity (no phone) has a Growth charts card: the CDC's charts from 2 and the WHO's to 2 picked
+            # as a pair, each measurement over the publisher's curves, its percentile in the readout, the table and the
+            # latest list; the age corrected before 2; nothing without a birth date and sex, and none for an adult;
+            # kg or lb as chosen; 1400 and 375 px, light and dark, chart and table, axe clean
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+            import growth_tables as gt
+            db = dbm.connect()
+            cpid = child_profile(db, owner)
+            db.close()
+            page.goto("about:blank")
+            page.goto(base + f"/?profile={cpid}#health")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.name === 'Robin (fictional child)'", timeout=20000)
+            js("switchTab('health')")
+            page.wait_for_selector("#h-growth svg circle", timeout=15000)
+            settle(300)
+            with open(os.path.join(ROOT, "www", "js", "growth-lms.json"), encoding="utf-8") as f:
+                tables = json.load(f)
+            M_ = 30.4375
+            # published values: the WHO's expanded percentile tables (by day) and the CDC's percentile columns (by half month)
+            refs = [("weight", "male", 0, 2.507, 3), ("weight", "male", 0, 4.35, 97), ("weight", "male", 365, 9.646, 50), ("weight", "female", 61, 4.481, 15),
+                    ("weight", "female", 700, 14.337, 97), ("height", "male", 180, 63.463, 3), ("height", "male", 730, 87.802, 50),
+                    ("height", "female", 14, 53.484, 85), ("head", "female", 91, 41.855, 97), ("head", "male", 200, 42.442, 15),
+                    ("head", "female", 730, 44.555, 3), ("weight", "female", 120.5 * M_, 26.33131782, 10), ("weight", "female", 120.5 * M_, 43.85001322, 90),
+                    ("height", "male", 60.5 * M_, 101.4523027, 5), ("height", "male", 60.5 * M_, 116.7549954, 95), ("height", "female", 200.5 * M_, 162.8272889, 50),
+                    ("weight", "male", 30.5 * M_, 11.12786972, 3), ("bmi", "male", 180.5 * M_, 23.4512, 85), ("bmi", "male", 180.5 * M_, 26.8369, 95),
+                    ("bmi", "male", 180.5 * M_, 31.9956, 98), ("bmi", "female", 96.5 * M_, 25.4977, 99), ("bmi", "female", 96.5 * M_, 13.5405, 5)]
+            page_p = js("refs => growthTables().then(T => refs.map(([k, s, d, x]) => growthPct(T, k, s, d, x)))", [r[:4] for r in refs])
+            off = [(r, round(p_, 3)) for r, p_ in zip(refs, page_p) if p_ is None or abs(p_ - r[4]) > 0.1]
+            check("growth (#196): the page's percentiles match the published ones, the WHO's to 2 years and the CDC's from 2 to 20 (BMI above the 95th by the 2022 extended charts)",
+                  not off, off)
+            mine = js("growthData().meas.map(m => [m.key, m.day, m.x, m.age.days, m.age.chrono, m.age.corrected, m.set, m.p])")
+            srv_p = [gt.percentile(tables, k, "female", d, x) for k, _, x, d, *_ in mine]
+            diff = [(m_, s_) for m_, s_ in zip(mine, srv_p) if s_ is None or abs(m_[7] - s_) > 1e-4]
+            early = 42   # days between her birth and due dates
+            visits = [v for v in CHILD_VISITS if v[0] != "2022-03-16"]
+            check("…every measurement of hers: weights, length and head circumference to 2, heights and BMI from 2, each with the percentile tools/growth_tables.py gives",
+                  not diff and sorted({m_[0] for m_ in mine}) == ["bmi", "head", "height", "weight"]
+                  and sum(m_[0] == "weight" for m_ in mine) == len(visits) and sum(m_[0] == "head" for m_ in mine) == 8 and sum(m_[0] == "bmi" for m_ in mine) == 5, diff[:3])
+            check("…before 2 years the age is corrected for her due date (six weeks); from 2, it isn't; the visit before her due date has none",
+                  all(m_[5] == (m_[4] <= 730) and m_[3] == m_[4] - (early if m_[5] else 0) for m_ in mine) and not any(m_[1] == "2022-03-16" for m_ in mine)
+                  and {m_[6] for m_ in mine if m_[4] <= 730} == {"who"} and {m_[6] for m_ in mine if m_[4] > 730} == {"cdc"}, mine[:2])
+            gtext = page.inner_text("#h-growth")
+            seg_ = js("[...document.querySelectorAll('#h-growth .growth-set button')].map(b => [b.textContent, b.getAttribute('aria-pressed')])")
+            heads = js("[...document.querySelectorAll('#h-growth .growth-cell h3')].map(h => h.textContent)")
+            curves = js("[...document.querySelectorAll('#h-growth .growth-cell svg')].map(s => [s.querySelectorAll('path.growth-curve').length, s.querySelectorAll('circle').length, "
+                        "[...s.querySelectorAll('text.growth-pct')].map(t => t.textContent)])")
+            check("…a Growth charts card on Body and activity, with no phone: the CDC's from 2 to 20 shown first (her latest), the WHO's to 2 beside it as a pair",
+                  seg_ == [["Birth to 2 years (WHO)", "false"], ["2 to 20 years (CDC)", "true"]] and heads == ["Weight for age (kg)", "Height for age (cm)", "BMI for age (kg/m²)"]
+                  and "as the CDC recommends" in gtext and "not what that means" in gtext and js("!!document.querySelector('#view-health .empty-state, #view-health .empty')"), (seg_, heads))
+            check("…each chart: the CDC's 5th to 95th percentile curves (and the 85th for BMI), named at their ends, and her measurements",
+                  [c_[0] for c_ in curves] == [7, 7, 8] and [c_[1] for c_ in curves] == [5, 5, 5] and curves[2][2] == ["95th", "90th", "85th", "75th", "50th", "25th", "10th", "5th"], curves)
+            last_w = next(m_ for m_ in reversed(mine) if m_[0] == "weight")
+            lst = js("[...document.querySelectorAll('#h-growth .vital-list li')].map(l => l.textContent)")
+            pt = js(f"pctText({last_w[7]})")
+            check("…the latest of each listed with its percentile, date, age and where it came from",
+                  len(lst) == 3 and lst[0].startswith(f"Weight {last_w[2]:.1f} kg · {pt} percentile") and "aged 4 years 6 months" in lst[0] and "Maple Street Pediatrics" in lst[0]
+                  and "About this person" in lst[1] and lst[2].startswith("BMI "), lst)
+            page.focus("#h-growth .growth-cell svg")
+            page.keyboard.press("End")
+            settle(150)
+            tipg = js("tip.innerText")
+            page.keyboard.press("Escape")
+            check("…a chart steps from the keyboard: the measurement, its percentile, when, the age and the chart it's read on",
+                  f"{last_w[2]:.1f} kg · {pt} percentile" in tipg and "aged 4 years 6 months" in tipg and "CDC chart" in tipg
+                  and js("document.querySelector('#h-growth .growth-cell svg').getAttribute('aria-label')").startswith("Weight for age, the CDC's chart, 2 to 20 years: 5 measurements"), tipg)
+            page.click("#h-growth .growth-set button:has-text('Birth to 2 years')")
+            settle(400)
+            heads = js("[...document.querySelectorAll('#h-growth .growth-cell h3')].map(h => h.textContent)")
+            curves = js("[...document.querySelectorAll('#h-growth .growth-cell svg')].map(s => [s.querySelectorAll('path.growth-curve').length, s.querySelectorAll('circle').length])")
+            lst = js("[...document.querySelectorAll('#h-growth .vital-list li')].map(l => l.textContent)")
+            check("…the WHO's to 2: weight, length (lying down) and head circumference from the records, the WHO's 3rd to 97th curves, ages corrected",
+                  heads == ["Weight for age (kg)", "Length for age (cm)", "Head circumference for age (cm)"] and curves == [[5, 8], [5, 8], [5, 8]]
+                  and all("(corrected: 17 months)" in l_ for l_ in lst) and "Before 2 years, ages are corrected for being born early" in page.inner_text("#h-growth")
+                  and js("document.activeElement.textContent") == "Birth to 2 years (WHO)", (heads, curves, lst[:1]))
+            page.click("#h-growth .view-seg button:text-is('Table')")
+            settle(300)
+            tbg = js("(() => { const t = document.querySelector('#h-growth table.data'); return [[...t.querySelectorAll('thead th')].map(h => h.textContent), "
+                     "[...t.querySelectorAll('tbody tr')].map(r => [...r.children].map(c => c.textContent))]; })()")
+            want_rows = len(mine)
+            first_who = next(r_ for r_ in reversed(tbg[1]) if r_[5] == "WHO" and r_[2] == "Weight")
+            check("…Table lists every measurement, newest first: date, age (corrected beside), what, value, percentile, chart and source",
+                  tbg[0] == ["Date", "Age", "Measurement", "Value", "Percentile", "Chart", "From"] and len(tbg[1]) == want_rows
+                  and first_who[1] == "1 month (corrected: 7 days)" and first_who[3] == "3.4 kg" and first_who[4] == js(f"pctText({next(m_ for m_ in mine if m_[0] == 'weight')[7]})"), (tbg[0], first_who))
+            page.click("#h-growth .view-seg button:text-is('Chart')")
+            # kg or lb, as chosen under Settings → Units
+            js("CFG.units = {...CFG.units, weight: 'lb'}; renderHealth()")
+            settle(300)
+            h3s = js("[...document.querySelectorAll('#h-growth .growth-cell h3')].map(h => h.textContent)")
+            lw = js("document.querySelector('#h-growth .vital-list li b').textContent")
+            check("…in lb when lb is chosen, the curves with them", h3s[0] == "Weight for age (lb)" and lw == f"Weight {10.2 / 0.45359237:.1f} lb", (h3s, lw))
+            js("CFG.units = {...CFG.units, weight: 'reported'}; renderHealth()")
+            bw = js("(r => [bmiWords(r), pctText(growthPct(GT, 'bmi', 'female', growthAge(isoDay(r.t)).days, r.v)), r.child])(H.bmi.at(-1))")
+            check("…and her BMI where #195 shows it says its percentile for age, the same", bw[2] and bw[0].endswith(f"({bw[1]} percentile for age)"), bw)
+            # nothing without a birth date or a sex, and not for an adult (the demo, above, shows no card)
+            gone = js("""(() => { const p = CFG.person, out = [];
+                for (const q of [{...p, sex: ''}, {...p, birthDate: '', dueDate: ''}]) { CFG.person = q; renderHealth(); out.push(!!document.getElementById('h-growth')); }
+                CFG.person = p; renderHealth(); out.push(!!document.getElementById('h-growth')); return out; })()""")
+            check("…nothing shows without a birth date, or without the sex used for reference ranges", gone == [False, False, True], gone)
+            check("…and no judging words: where measurements fall, sourced and labelled", not re.search(r"(?i)\b(normal|healthy|underweight|overweight|obes|too (low|high)|concern|should)\b", page.inner_text("#h-growth")))
+            g_bad, g_axe = [], []
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    for set_, table in (("cdc", False), ("who", False), ("who", True)):
+                        js("([s, on]) => { grState.set = s; state.tables.clear(); if (on) state.tables.add('#h-growth'); renderHealth(); }", [set_, table])
+                        settle(300)
+                        page.locator("#h-growth").scroll_into_view_if_needed()
+                        if width == 375:
+                            g_bad += phone_fits(page, f"growth {set_} {'table' if table else 'charts'} ({theme})")
+                        g_axe += axe_check(page, f"growth {set_} {'table' if table else 'charts'}, {width} px, {theme}")[0]
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("state.tables.clear()")
+            check("…at 1400 and 375 px, light and dark, both charts' sets and the table: nothing cut off or overlapping, and axe-core finds nothing serious",
+                  not g_bad and not g_axe, (g_bad + g_axe)[:6])
+            # the due date is About this person's, changed by owners and editors
+            page.goto(base + f"/sharing.html?profile={cpid}#about")
+            page.wait_for_selector(f"#about[data-profile='{cpid}'] #aboutDue", timeout=10000)
+            check("…the due date is in About this person, beside the birth date, saying what it's for",
+                  js("document.getElementById('aboutDue').value") == CHILD_DUE and "growth charts use the age counted from it" in page.inner_text("#about"))
+            page.fill("#aboutDue", "2022-09-20")
+            n_problems = len(problems)
+            page.click("#aboutSave")
+            page.wait_for_function("document.getElementById('aboutMsg').textContent.includes('more than 20 weeks after the birth date')", timeout=10000)
+            settle(200)
+            del problems[n_problems:]   # the refusal's 400 was asked for
+            page.fill("#aboutDue", "")
+            page.click("#aboutSave")
+            page.wait_for_function("document.getElementById('aboutMsg').textContent === 'Saved.'", timeout=10000)
+            check("…a due date that can't be (more than 20 weeks after the birth) is refused in words; cleared, it's saved",
+                  js(f"fetch('api/profiles/{cpid}/person').then(r => r.json())")["dueDate"] == "")
+            db = dbm.connect()
+            prof_r.delete_profile(db, cpid)
             db.close()
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- connected sources (#32, #91), against the fake SMART on FHIR server standing in for an Epic sandbox:

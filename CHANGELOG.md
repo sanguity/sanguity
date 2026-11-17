@@ -424,6 +424,18 @@ Everything on `main` so far; it becomes the first tagged release.
   the latest in a tile, and a column in the card's table. The number only; the WHO's categories for adults (under
   18.5, 18.5–24.9, 25–29.9, 30 and over) only when turned on, named as the WHO's and remembered per profile, and never
   for a weight taken under 20, whose BMI also needs a height from the 3 months before it.
+- **Children's growth charts** (#196): for a profile with a birth date and a sex used for reference ranges, Body and
+  activity (with or without a phone) has a Growth charts card: weight, length or height, BMI from 2 and head
+  circumference under 2, each measurement taken before 20 over the published percentile curves for age and sex, with
+  its percentile in the readout, the table and a list of the latest. The WHO Child Growth Standards from birth to 2
+  years and the CDC growth charts from 2 to 20 (BMI for age from the CDC's 2022 extended charts), as the CDC
+  recommends, picked as a pair; the tables are bundled (`www/js/growth-lms.json`, fetched only for such a profile) with
+  their sources, versions, licences and checksums in [docs/growth-charts.md](docs/growth-charts.md): the CDC's are
+  public domain, and the WHO's come from the WHO's own `anthro` package, which the WHO licenses under GPL-3 (its
+  who.int tables are CC BY-NC-SA, which isn't bundled). About this person has an optional due date, for a baby born
+  early: before 2 years the charts use the corrected age. A child's BMI (#195) says its percentile for age. Weights
+  under 50 lb from C-CDA, Epic MyChart and CareSpace records are no longer left out, and C-CDA brings head
+  circumference. Where measurements fall, sourced and labelled; never what that means.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

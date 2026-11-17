@@ -535,7 +535,10 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   every health setting; no new column. Read by anyone the profile is shared with (`GET …/person`, viewer); changed by
   owners and editors (`PUT …/person`, `POST …/person/heights`, `DELETE …/person/heights/{day}`), each change logged as
   which setting changed, never its value. In exports and backups with the other settings. A share link shows them
-  only when its owner ticks "About this person", which is unticked by default; nothing else reaches them.
+  only when its owner ticks "About this person", which is unticked by default; nothing else reaches them. The due
+  date for a baby born early (#196, `person.dueDate`) is one more such setting, changed with the birth date by the same
+  `PUT`, and not in share links. The growth charts' tables (`www/js/growth-lms.json`, #196) are published reference
+  data with no one's health in them, fetched from the app's own files like a script.
 
 ### The visit summary PDF (#48, #213)
 - Anyone who can view the profile; made in memory, never written to disk, `no-store`; every PDF logged without its

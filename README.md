@@ -27,7 +27,7 @@ person's records appear in this repository.
 | Tab | What it shows |
 |---|---|
 | Overview | Key labs with sparklines, watch and scale summaries, active problems, allergies, immunizations, upcoming visits, costs since a milestone |
-| Body and activity | Watch, sleep and smart-scale data: weight and body composition, sleep stages, steps and workouts (with heart rate zones from the age or a measured maximum), heart rate and HRV; blood pressure, body temperature, blood oxygen and respiratory rate taken at home beside the readings taken at visits; cardio fitness (VO2 max) as the watch estimates it; blood glucose from a meter or a continuous glucose monitor (CGM), with time in the standard ranges |
+| Body and activity | Watch, sleep and smart-scale data: weight and body composition, sleep stages, steps and workouts (with heart rate zones from the age or a measured maximum), heart rate and HRV; blood pressure, body temperature, blood oxygen and respiratory rate taken at home beside the readings taken at visits; cardio fitness (VO2 max) as the watch estimates it; blood glucose from a meter or a continuous glucose monitor (CGM), with time in the standard ranges; BMI over time; a child's growth charts (WHO and CDC percentiles) |
 | Timeline | Every visit, stay, lab draw, report, immunization, message, document and claim on one zoomable timeline, with a searchable list; each medication as spans from its start through dose changes to its stop, with pharmacy fills marked |
 | Labs | Lab results against reference ranges, as charts over time (each with a table of its values), with procedures, imaging and your milestones marked, and saved views of the labs you chart together; or as a heatmap of every draw, one row per lab; a name filter beside the list of labs narrows either |
 | Costs | Insurance claims by month or year, type of care and provider, and what you actually paid out of pocket: typed in, exported or from claims, matched to claims, counted once, with HSA and FSA totals |
@@ -504,7 +504,11 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   profile is shared with sees them, and a share link shows them only if its owner ticks them. They're for the age on
   each result's day and ranges of your own by age and sex, never to judge a result. With a height, Body and activity
   shows each weight's BMI, worked out with the height in effect on its day: the number only, with the WHO's
-  categories for adults if you turn them on (never under 20).
+  categories for adults if you turn them on (never under 20). For a child (a birth date and a sex set), a Growth charts
+  card shows each weight, length or height, BMI and head circumference over the published percentile curves for age
+  and sex (the WHO's to 2 years, the CDC's from 2 to 20), with each measurement's percentile; a due date, for a baby
+  born early, gives the corrected age before 2. Where the tables come from and their licences:
+  [docs/growth-charts.md](docs/growth-charts.md).
 - **Reference ranges from settings:** some results come without a range (typed in, a spreadsheet, some portals).
   Under **Settings → Reference ranges** you can give a lab, in a stated unit, a low and high of your own, for anyone
   or for female or male, and for an age band (by the birth date in About this person; the age on each result's day is used). They're used
@@ -737,3 +741,7 @@ tests/              API and upload tests, a headless browser check (with WCAG 2.
 
 Sanguity is free software under the [GNU Affero General Public License v3.0](LICENSE). If you run a modified
 version for other people, for example as a hosted service, you must offer them its source code.
+
+The growth charts' tables bundled in `www/js/growth-lms.json` are not Sanguity's own: the CDC's are public domain,
+and the WHO's come from the WHO's `anthro` package under the GNU General Public License v3, © World Health
+Organization ([docs/growth-charts.md](docs/growth-charts.md)).

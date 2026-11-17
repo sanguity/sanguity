@@ -53,6 +53,11 @@ class Rules(unittest.TestCase):
         for bad in ("1980-02-30", "30/04/1980", "1899-12-31", day(1), 1980):
             with self.assertRaises(person.PersonError, msg=bad):
                 person.check_birth(bad)
+        self.assertEqual((person.check_due(""), person.check_due("2024-05-01")), ("", "2024-05-01"))   # #196
+        for bad in ("2024-02-30", "1899-12-31", day(200), 20240501):
+            with self.assertRaises(person.PersonError, msg=bad):
+                person.check_due(bad)
+        person.check_together("2024-03-14", [], "2024-04-25")   # six weeks early
         self.assertEqual(person.check_sex("male"), "male")
         for bad in ("f", "other", "Female"):
             with self.assertRaises(person.PersonError):
@@ -94,7 +99,7 @@ class Rules(unittest.TestCase):
         self.assertEqual((person.text(170.18), person.text(170.18, "ftin"), person.text(182.88, "ftin")), ("170.2 cm", "5 ft 7 in", "6 ft 0 in"))
         cfg = {"person": {"birthDate": "1990-03-01", "sex": "female", "heights": hs}, "ranges": {"overrides": [{"lab": "Ferritin"}]}}
         self.assertEqual(person.sex_for_ranges(cfg), "female")
-        self.assertEqual(person.of({}), {"birthDate": "", "sex": "", "heights": []})
+        self.assertEqual(person.of({}), {"birthDate": "", "sex": "", "heights": [], "dueDate": ""})
         self.assertEqual(ranges.config(cfg), {"birthDate": "1990-03-01", "sex": "female", "overrides": [{"lab": "Ferritin"}]},
                          "#44 reads its birth date and sex from About this person")
 
@@ -187,6 +192,19 @@ class Api(unittest.TestCase):
         self.assertNotIn("person", {s["id"] for s in self.c["robin"].get(f"/api/profiles/{self.pid}/settings/sections").json()["sections"]},
                          "not on the Settings screen: About this person is on Sharing")
         self.assertNotIn("birthDate", merged["ranges"], "#44's own settings no longer hold them")
+        # a due date, for a baby born early (#196): only with a birth date, after it, and at most 20 weeks after it
+        for due, says in [("1990-02-28", "after the birth date"), ("1990-03-01", "after the birth date"), ("1990-08-01", "20 weeks"),
+                          ("1990-3-20", "a day")]:
+            r = self.c["lee"].put(self.url(), json={"dueDate": due}, headers=H)
+            self.assertEqual(r.status_code, 400, due)
+            self.assertIn(says, r.json()["detail"])
+        r = self.c["lee"].put(self.url(), json={"dueDate": "1990-04-12"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["dueDate"]), (200, "1990-04-12"), r.text)
+        self.assertEqual(self.c["kim"].put(self.url(), json={"dueDate": ""}, headers=H).status_code, 403, "a viewer can't change it")
+        r = self.c["robin"].put(self.url(), json={"birthDate": ""}, headers=H)
+        self.assertEqual(r.status_code, 400, "no birth date while there's a due date")
+        self.assertIn("goes with a birth date", r.json()["detail"])
+        self.assertEqual(self.c["kim"].get(f"/api/profiles/{self.pid}/settings").json()["person"]["dueDate"], "1990-04-12", "viewers see it")
 
     def test_3_encrypted_and_logged_without_values(self):
         db = dbm.connect()
@@ -196,7 +214,7 @@ class Api(unittest.TestCase):
                 "SELECT detail FROM activity WHERE profile_id=? AND action='settings'", (self.pid,))]
         finally:
             db.close()
-        self.assertEqual(sorted(r["key"] for r in rows), ["person.birthDate", "person.heights", "person.sex"])
+        self.assertEqual(sorted(r["key"] for r in rows), ["person.birthDate", "person.dueDate", "person.heights", "person.sex"])
         self.assertTrue(all(r["value"] is None and r["sealed"].startswith(crypto.FIELD) for r in rows), "encrypted at rest")
         self.assertIn("1990-03-01", crypto.dec(next(r["sealed"] for r in rows if r["key"] == "person.birthDate")))
         raw = b""
@@ -206,8 +224,10 @@ class Api(unittest.TestCase):
                     raw += f.read()
         self.assertNotIn(b"1990-03-01", raw)
         self.assertNotIn(b"168.91", raw)
+        self.assertNotIn(b"1990-04-12", raw, "the due date too (#196)")
         self.assertEqual({(e["setting"], e["label"]) for e in log},
-                         {("person.birthDate", "Birth date"), ("person.sex", "Sex used for reference ranges"), ("person.heights", "Height")})
+                         {("person.birthDate", "Birth date"), ("person.sex", "Sex used for reference ranges"), ("person.heights", "Height"),
+                          ("person.dueDate", "Due date, if born early")})
         self.assertNotIn("1990", json.dumps(log), "which setting changed, never its value")
         self.assertIn({"setting": "person.heights", "label": "Height", "change": "remove"}, log)
 
