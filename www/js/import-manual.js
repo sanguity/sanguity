@@ -162,18 +162,13 @@
   });
   $("#manAdd").onclick = () => { const r = addRow(); if (r) r.querySelector("[data-f=test]").focus(); soon(); };
 
-  function openTrends(p, names) {   // index.html opens the profile and tab it last saved (core.js: ht-profile, ht-state:<id>)
+  /* the links below name the profile and the tab in the address (index.html?profile=2#labs, #208); Labs also charts
+     the labs just typed in, added to the ones its saved view shows (core.js: ht-state:<id>) */
+  const recordsLink = (p, tab) => `index.html?profile=${p}#${tab}`;
+  function openTrends(p, names) {
     try {
-      localStorage.setItem("ht-profile", String(p));
       const k = "ht-state:" + p, s = JSON.parse(localStorage.getItem(k) || "{}") || {};
-      localStorage.setItem(k, JSON.stringify({...s, tab: "labs", labsView: "chart", sel: [...new Set([...(s.sel || []), ...names])], v: 2}));
-    } catch (e) {}
-  }
-  function openTab(p, tab) {
-    try {
-      localStorage.setItem("ht-profile", String(p));
-      const k = "ht-state:" + p, s = JSON.parse(localStorage.getItem(k) || "{}") || {};
-      localStorage.setItem(k, JSON.stringify({...s, tab, v: 2}));
+      localStorage.setItem(k, JSON.stringify({...s, sel: [...new Set([...(s.sel || []), ...names])], v: 2}));
     } catch (e) {}
   }
   saveBtn.onclick = async () => {
@@ -196,8 +191,8 @@
       box.replaceChildren(); addRow({date: rs.length ? valueOf(rs[rs.length - 1]).date : today()});
       recs.saved(); keepBox.checked = false; $("#manKeepWrap").hidden = true;
       saving = false; ok = bad = okRecs = badRecs = 0;
-      const links = [names.length ? el("a", {href: "index.html", text: "See them on Labs", onclick: () => openTrends(p, names)}) : null,
-        others ? el("a", {href: "index.html", text: "See them on the timeline", onclick: () => openTab(p, "timeline")}) : null].filter(Boolean);
+      const links = [names.length ? el("a", {href: recordsLink(p, "labs"), text: "See them on Labs", onclick: () => openTrends(p, names)}) : null,
+        others ? el("a", {href: recordsLink(p, "timeline"), text: "See them on the timeline"}) : null].filter(Boolean);
       sayIn(msg, [`Saved ${[n ? plural(n, "result", "results") : "", others ? plural(others, "record", "records") : ""].filter(Boolean).join(" and ") || "nothing new"}.`
         + (j.skipped ? ` ${plural(j.skipped, "was", "were")} in this profile already and left out.` : ""),
         ...links.flatMap(a => [" ", a])]);
