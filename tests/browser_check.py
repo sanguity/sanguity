@@ -1538,7 +1538,7 @@ def main():
                      ("all", "#presets button:text-is('All')", ["All"], "Everything on file", []),
                      (pm[0], f"#presets button:text-is('{pm[1]}')", [pm[1]], pm[2] + " – today", []),
                      (om[0], f"#periodMoreList [data-period={om[0]}]", ["More: " + om[1]], om[2] + " – today", [om[0]]),
-                     (yr, f"#periodMoreList [data-period='{yr}']", ["More: " + yr], js(f"fmtD(dayTs('{yr}-01-01')) + ' – ' + fmtD(dayTs('{yr}-12-31'))"), [yr])]
+                     (yr, f"#periodMoreList [data-period='{yr}']", ["More: " + yr], yr, [yr])]
             for key, sel, chosen, words, ticked in kinds:
                 if sel.startswith("#periodMoreList"):
                     page.click("#periodMoreBtn")

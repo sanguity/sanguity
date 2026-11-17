@@ -13,8 +13,8 @@ function hmLevel(v, lo, hi) {
 }
 const hmFill = lv => lv === 0 ? "var(--div-mid)" : `color-mix(in oklab, var(--div-mid), var(${lv < 0 ? "--div-lo" : "--div-hi"}) ${Math.abs(lv) * 25}%)`;
 function renderHeatmap() {
-  const asTable = state.tables.has("#hm");   // Heatmap | Table (#60)
-  const hd = $("#hmHd"); hd.querySelector(".view-seg")?.remove(); hd.append(viewSeg("#hm", "the heatmap", renderHeatmap, "Heatmap"));
+  const asTable = state.tables.has("#hm");   // Grid | Table (#60)
+  const hd = $("#hmHd"); hd.querySelector(".view-seg")?.remove(); hd.append(viewSeg("#hm", "the heatmap", renderHeatmap, "Grid"));
   $("#hmLegend").hidden = $("#hmWrap").hidden = asTable; $("#hmTable").hidden = !asTable;
   const all = SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null)), rows = all.filter(labMatch);   // the Labs filter (#192, trends.js)
   labCount("#hmQn", rows.length, all.length);
