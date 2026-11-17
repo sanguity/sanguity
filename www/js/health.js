@@ -193,7 +193,8 @@ function renderHealth() {
   const rIn = mean(inR(H.rest, a, b).map(p => p[1])), rPrev = mean(prev(H.rest).map(p => p[1]));
   tile("Resting heart rate", rIn != null ? Math.round(rIn) : "–", "bpm avg", rPrev != null ? `${chg(rIn, rPrev, v => Math.round(v))} vs previous period` : "", "#h-heart");
   const sIn = inR(H.sleep, a, b), sAvg = mean(sIn.map(p => p[1])), sPrev = mean(prev(H.sleep).map(p => p[1]));
-  tile("Sleep", sAvg != null ? sAvg.toFixed(1) : "–", "h / night", sIn.some(p => p[2] + p[3] + p[4] > 0) ? (st => `${Math.round(mean(st.map(p => p[2])))} min deep · ${Math.round(mean(st.map(p => p[3])))} min REM`)(sIn.filter(p => p[2] + p[3] + p[4] > 0)) : sIn.length ? `${sIn.length} nights · no stage data` : "", "#h-sleep");
+  // the stage averages are hours (H.sleep's p[2], p[3]); shown in minutes, as the chart's tooltip and table give them (#216)
+  tile("Sleep", sAvg != null ? sAvg.toFixed(1) : "–", "h / night", sIn.some(p => p[2] + p[3] + p[4] > 0) ? (st => `${Math.round(mean(st.map(p => p[2])) * 60)} min deep · ${Math.round(mean(st.map(p => p[3])) * 60)} min REM`)(sIn.filter(p => p[2] + p[3] + p[4] > 0)) : sIn.length ? `${sIn.length} nights · no stage data` : "", "#h-sleep");
   const stIn = mean(inR(H.steps, a, b).map(p => p[1])), stPrev = mean(prev(H.steps).map(p => p[1]));
   tile("Steps", stIn != null ? Math.round(stIn).toLocaleString() : "–", "/ day", stPrev != null ? `${chg(stIn, stPrev, v => Math.round(v).toLocaleString())} vs previous period` : "", "#h-activity");
   const exIn = H.ex.filter(x => x.t >= a && x.t <= b);

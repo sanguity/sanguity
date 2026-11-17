@@ -398,6 +398,9 @@ Everything on `main` so far; it becomes the first tagged release.
   text summary, the arrow keys step through it saying the voltage, a table sums it up and **Download as CSV** gives
   every sample. Never in a share link or the visit summary. Health Connect has no ECG type. The name and birth date
   at the top of Apple's ECG files are never kept, and `tools/anonymise.py` replaces them in a sample.
+- **The Sleep tile's stages in minutes** (#216): on Body and activity, the line under the average sleep said
+  "1 min deep · 2 min REM", the nights' average hours rounded and called minutes; it now gives the minutes, as the
+  sleep chart's tooltip and table do ("72 min deep · 105 min REM").
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

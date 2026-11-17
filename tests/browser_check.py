@@ -1198,6 +1198,20 @@ def main():
             js("state.tables.clear(); [state.sel, state.preset, state.from, state.to] = window._was60; state.labsView = 'chart'; save()")
             page.set_viewport_size({"width": 1400, "height": 900})
 
+            # ---- the Sleep tile's stages (#216): the nights' deep and REM averages are hours on the page (H.sleep), shown in
+            # minutes as the chart's tooltip and table give them; it said "1 min deep · 2 min REM". Read against the
+            # watch summary's own minutes (sleep_deep_min, sleep_rem_min) for the nights in the period
+            js("window._was216 = [state.preset, state.from, state.to]; state.tables.clear(); applyPreset('90d'); switchTab('health')")
+            settle(400)
+            st = js("""(() => { const [a, b] = hRange(), ns = H.sleep.filter(p => p[0] >= a && p[0] <= b && p[2] + p[3] + p[4] > 0);
+                const day = k => Object.fromEntries(WATCH.metrics.find(m => m.key === k).pts), deep = day('sleep_deep_min'), rem = day('sleep_rem_min');
+                const avg = m => Math.round(ns.reduce((s, p) => s + (m[isoDay(p[0])] || 0), 0) / ns.length);
+                const tile = [...document.querySelectorAll('#view-health .tile')].find(t => t.querySelector('.lbl').textContent === 'Sleep');
+                return [tile.querySelector('.delta').textContent, `${avg(deep)} min deep · ${avg(rem)} min REM`, ns.length, avg(deep)]; })()""")
+            check("Sleep tile (#216): the period's average deep and REM sleep a night, in minutes as the watch gave them, not hours called minutes",
+                  st[2] > 30 and st[0] == st[1] and 30 <= st[3] <= 150, st)
+            js("[state.preset, state.from, state.to] = window._was216; save()")
+
             # ---- blood glucose (#181): a meter's readings and a CGM's days on Body and activity (add_glucose_watch): the
             # tile, time in ranges labelled as the standard ranges, a day with a sensor gap, the chart from the keyboard,
             # its table, mmol/L with the SI choice, lab glucose alongside only when asked, a period without any; no
