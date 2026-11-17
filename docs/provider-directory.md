@@ -1,10 +1,13 @@
 # Find your provider: the endpoint directory (#93)
 
-People know their hospital's or insurer's name, not its FHIR base URL. The **Find your provider** page
-(`providers.html`, linked from the import page) searches a directory of endpoints and shows, for the one chosen, its
-vendor, the FHIR base URL to copy, and what connecting needs under the decision in
-[connected-sources-oauth.md](connected-sources-oauth.md) (option 1: each install registers its own app with each
-vendor). The **Connect** button stays disabled until sign-in arrives with #32.
+People know their hospital's or insurer's name, not its FHIR base URL. **Find your hospital, clinic or insurer**, in
+the connect step of **Sources → Portals and health plans** (#166; `providers.js`, and `providers.html` opens it),
+searches a directory of endpoints and shows, for the one chosen, its vendor, how realistic connecting it is under the
+decision in [connected-sources-oauth.md](connected-sources-oauth.md) (option 1: each install registers its own app
+with each vendor), and whether it can be connected here: a source set up on this server with the same FHIR base is
+connected from there; otherwise an admin is taken to **Admin → Connected-source apps** with the FHIR base filled in,
+where each vendor's setup steps are (`connections.GUIDES`, their one copy), and everyone else is told what to ask
+their admin for.
 
 ## Where the list comes from
 
@@ -42,7 +45,7 @@ weekly) to pick up new hospitals. This is the only part that downloads anything,
   four to six letters and two in longer ones.
 - **API** (any signed-in account; public data): `GET /api/directory?q=…` and `GET /api/directory/entry?id=…`.
   Each entry has `id`, `name`, `vendor`, `kind`, `fhir_base`, `fhir_version`, `org`, `places`, `aliases`, `logo`,
-  `portal`, `source` and `retrieved`. The answer also has `vendors` (developer site, steps, scopes, whether a client
+  `portal`, `source` and `retrieved`. The answer also has `vendors` (developer site, scopes, whether a client
   secret is needed, and whether the vendor is realistic for a home install) and `return_addresses` (each of
   `PUBLIC_ORIGINS`, and the address the page was opened at, plus `/connect/return`, with whether vendors are likely
   to accept it). See `server/routes_directory.py`.

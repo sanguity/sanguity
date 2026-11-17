@@ -13,7 +13,7 @@ function renderCosts() {
   const claims = !!(DATA.costs || []).length;
   if (!claims && !((DATA.outOfPocket || {}).payments || []).length) {
     box.append(el("div", {class: "card empty"}, "No insurance claims or out-of-pocket payments yet. ",
-      ...(canEdit() ? [el("a", {href: `import.html?profile=${PROFILE.id}#payment`, text: "Type in what you paid"}),
+      ...(canEdit() ? [el("a", {href: `sources.html?profile=${PROFILE.id}#payment`, text: "Type in what you paid"}),
         " (Import → Type them in → Out-of-pocket payment, with its receipt and whether an HSA or FSA paid it), or import an insurer's claims."] : [])));
     return;
   }
@@ -194,7 +194,7 @@ function renderPaid(box, claimRows, periodLabel) {
   card.append(el("h2", {text: `Out of pocket · ${periodLabel}`}));
   if (!all.length) {
     card.append(el("p", {class: "hint"}, "No out-of-pocket payments yet, and no claim lists a share for you to pay. ",
-      canEdit() ? el("a", {href: `import.html?profile=${PROFILE.id}#payment`, text: "Type in a payment"}) : null));
+      canEdit() ? el("a", {href: `sources.html?profile=${PROFILE.id}#payment`, text: "Type in a payment"}) : null));
     box.append(card); return;
   }
   const rows = paidRows(), counted = rows.filter(r => r.counted);

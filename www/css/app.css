@@ -841,3 +841,23 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .adm .adm-dir li{margin:3px 0;overflow-wrap:anywhere}
 .adm .adm-gate{font-size:13px;margin:8px 0 0}
 .adm #notAdmin p{max-width:62ch}
+/* the Sources page (#166, sources.html): Settings' sidebar (main.sets) with the import, connect and provider cards */
+main.src[data-role=viewer] .src-edit{display:none}
+.src #srcList h3.sub{margin:18px 0 0;padding-bottom:4px;border-bottom:1px solid var(--grid);font-size:12px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+.src #srcList>.muted{margin:8px 0 0;font-size:13px}
+.src .src-rows{list-style:none;margin:0;padding:0}
+.src .src-row:first-child{border-top:0}
+.src .src-row{display:flex;gap:8px 14px;align-items:center;justify-content:space-between;border-top:1px solid var(--grid);padding:9px 0}
+.src .src-row.bad{box-shadow:inset 3px 0 0 var(--crit);padding-left:12px}
+.src .src-row-t{min-width:0;overflow-wrap:anywhere}
+.src .src-row-t p{margin:2px 0 0;font-size:13px}
+.src .src-row .btn{flex:none}
+.src .src-last{color:var(--ink2)}
+.src .src-add,.src .src-more{margin:10px 0 0;font-size:13px}
+.src .src-alert{margin:8px 0}
+.src .dir-find{margin-top:16px}
+.src .dir-detail{border-top:1px solid var(--grid);margin-top:12px;padding-top:12px}
+.src .dir-hd h3{font-size:16px;margin:0;overflow-wrap:anywhere}
+.src #detail h4.sub{margin:14px 0 6px;font-size:14px}
+.src #detail .dir-copy{margin-bottom:10px}
+@media (max-width:600px){ .src .src-row{flex-wrap:wrap} }

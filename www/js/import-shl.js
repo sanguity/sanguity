@@ -113,5 +113,5 @@
     };
     look();
   });
-  for (const id of ["#tab-zip", "#tab-folder", "#tab-files", "#tab-manual"]) { const b = $(id); if (b) b.addEventListener("click", stopScan); }
+  document.addEventListener("sources:group", stopScan);   // another section of the Sources page (#166)
 })();

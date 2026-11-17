@@ -2,8 +2,8 @@
 
 The phone app signs every upload with a secret (HMAC-SHA256 of the body, watch/receiver.py); the receiver finds the
 profile whose secret made the signature and folds the upload into that profile's own summary. A profile's owners and
-editors make its secret on the Settings page, and make a new one ("rotate") when a phone is lost or replaced; the
-secret is shown once, when it's made.
+editors make its secret on the Sources page (Phone and watch), and make a new one ("rotate") when a phone is lost or
+replaced; the secret is shown once, when it's made.
 
 Where things are kept:
   the settings table, key "_watch.receiver" (profile scope, sealed with crypto.enc like any private setting, so it
@@ -88,7 +88,7 @@ def publish(db):
     if not os.path.isdir(folder):
         if profiles:
             print(f"The watch receiver's secrets can't be written: there's no folder {folder} (in compose, WATCH_DIR/keys "
-                  "mounted at /srv/watch-keys). Phones set up on the Settings page won't be able to upload until it is.",
+                  "mounted at /srv/watch-keys). Phones set up on the Sources page won't be able to upload until it is.",
                   flush=True)
         return False
     crypto.write_file(config.WATCH_KEYS, json.dumps(doc, separators=(",", ":")).encode())
@@ -120,13 +120,23 @@ def mask(secret):
 
 
 def status(db, pid, request_host=""):
-    """What the Settings page shows: whether this profile has a secret (and its last characters), whether it's the
+    """What the Sources page's Phone and watch shows: whether this profile has a secret (and its last characters), whether it's the
     install's old single secret, the upload addresses, and whether the receiver can be told about secrets."""
     row = _row(db, pid)
     legacy = row is None and first_profile(db) == pid and legacy_in_use(db)
     return {"has_secret": row is not None, "masked": mask(row["secret"]) if row else None,
             "created": row.get("created") if row else None, "legacy": legacy, "addresses": addresses(request_host),
-            "ready": ready()}
+            "ready": ready(), "last": last_upload(row, legacy)}
+
+
+def last_upload(row, legacy):
+    """When the phone last sent this profile something (the receiver rewrites the slot's summary on each upload),
+    for the Sources page's overview (#166); None before its first upload."""
+    path = summary_path(row.get("slot", "")) if row else config.WATCH_FILE if legacy else None
+    try:
+        return int(os.path.getmtime(path)) if path else None
+    except OSError:
+        return None
 
 
 def rotate(db, pid, by):

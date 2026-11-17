@@ -75,6 +75,18 @@ async function loadSetup() {
   $("#addrWarn").replaceChildren(...SETUP.warnings.map(w => el("li", {text: w})));
   $("#sourceList").replaceChildren(...SETUP.sources.map(sourceRow));
   if (editing === null) fill(null);
+  prefill();
+}
+/* Sources' Find your provider (#166) sends an admin here to set a provider up: admin.html?vendor=…&issuer=…&name=…#apps
+   fills the form in with it, once */
+let prefilled = false;
+function prefill() {
+  const p = new URLSearchParams(location.search);
+  if (prefilled || !p.get("issuer")) return;
+  prefilled = true;
+  if (SETUP.guides[p.get("vendor")]) { $("#fVendor").value = p.get("vendor"); $("#fVendor").onchange(); }
+  $("#fIssuer").value = p.get("issuer");
+  $("#fName").value = p.get("name") || "";
 }
 
 $("#copyReturn").onclick = () => { try { navigator.clipboard.writeText(SETUP.return_address); } catch (e) {} };
@@ -188,7 +200,7 @@ async function loadDirectory() {
         : el("span", {class: "bad", text: "not loaded"}),
       s.included ? ". " : `. ${why(s)} `,
       el("a", {href: s.terms, target: "_blank", rel: "noopener noreferrer", text: "Terms"})))),
-    el("p", {}, el("a", {href: "providers.html", text: "Open Find your provider"})));
+    el("p", {}, el("a", {href: "sources.html#portals", text: "Open Find your provider"})));
   $("#dirAdd").replaceChildren(
     el("h3", {class: "sub", text: missing.length ? `Adding ${missing.map(s => s.label.split(":")[0].replace(/ Millennium.*/, "")).join(" and ")}'s lists` : "Keeping the lists up to date"}),
     el("p", {}, "From the Sanguity folder on the server (Python 3.9 or later, nothing to install), run:"),

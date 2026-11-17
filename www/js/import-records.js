@@ -194,7 +194,7 @@
     changed();
   });
 
-  // the Costs tab's "Type in what you paid" (#55) opens import.html#payment: this tab, with a payment's form
+  // the Costs tab's "Type in what you paid" (#55) opens sources.html#payment: Type records in, with a payment's form
   if (location.hash === "#payment") { showKind("manual"); add("payment"); }
 
   window.sanguityRecords = {

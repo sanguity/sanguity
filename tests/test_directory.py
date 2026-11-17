@@ -175,8 +175,9 @@ class Search(unittest.TestCase):
             self.assertTrue(e["id"] and e["name"], e)
             self.assertTrue(e["fhir_base"].startswith("https://") and e["fhir_base"].endswith("/"), e["id"])
             v = directory.VENDORS[e["vendor"]]
-            for k in ("name", "developer_site", "docs", "steps", "scopes", "client", "note", "realistic"):
+            for k in ("name", "developer_site", "docs", "scopes", "client", "note", "realistic"):
                 self.assertTrue(v[k], (e["vendor"], k))
+            self.assertNotIn("steps", v)   # one copy of each vendor's setup steps: connections.GUIDES, on Admin (#166)
             self.assertIsInstance(v["needs_secret"], bool)
         self.assertEqual(directory.VENDORS["oracle"]["realistic"], "unlikely")
 
@@ -272,13 +273,17 @@ class Api(unittest.TestCase):
     def test_page_is_served_and_listed(self):
         with open(os.path.join(ROOT, "nginx.conf"), encoding="utf-8") as f:   # among the pages nginx serves
             pages = re.search(r"location ~ \^/\(([a-z|]+)\)\\\.html\$", f.read())
-        self.assertIn("providers", pages.group(1).split("|"))
-        with open(os.path.join(ROOT, "www", "import.html"), encoding="utf-8") as f:
-            self.assertIn('href="providers.html"', f.read())
-        with open(os.path.join(ROOT, "www", "providers.html"), encoding="utf-8") as f:
+        self.assertIn("providers", pages.group(1).split("|"))   # its old address, which opens the Sources page (#166)
+        self.assertIn("sources", pages.group(1).split("|"))
+        with open(os.path.join(ROOT, "www", "sources.html"), encoding="utf-8") as f:   # in the connect step there
             page = f.read()
-        self.assertNotIn("<script>", page, "no inline script")
-        self.assertNotRegex(page, r"\son[a-z]+=", "no inline handlers")
+        self.assertIn('id="finder"', page)
+        self.assertIn('src="js/providers.js"', page)
+        for name in ("sources.html", "providers.html"):
+            with open(os.path.join(ROOT, "www", name), encoding="utf-8") as f:
+                page = f.read()
+            self.assertNotIn("<script>", page, "no inline script")
+            self.assertNotRegex(page, r"\son[a-z]+=", "no inline handlers")
 
 
 def tearDownModule():

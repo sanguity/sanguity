@@ -14,39 +14,16 @@
 <link rel="stylesheet" href="css/app.css">
 <script src="js/theme.js"></script>
 </head>
+<!-- its old address: Portals and health plans are on the Sources page now (#166), and moved.js opens the matching section -->
 <body class="acct-page">
-<header class="topbar" data-title="Connected sources">
-  <h1><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</h1>
-</header>
-<main class="acct conn">
-  <div class="card warn" id="insecure" role="alert" hidden></div>
-  <div class="card warn" id="problem" role="alert" hidden></div>
-
-  <section class="card" id="mine" hidden>
-    <h2>Connected sources</h2>
-    <p class="hint">Instead of downloading exports, connect a patient portal by signing in to it. Sanguity then pulls what's
-      new on a schedule, straight from the vendor to this server. Every pull is an import you can undo from the import
-      history, and nothing is contacted until you connect a source.</p>
-    <div class="form inline">
-      <label>Profile <select id="profile"></select></label>
-    </div>
-    <div id="reconnect" class="conn-alert" role="alert" hidden></div>
-    <div id="connList" aria-live="polite"></div>
-    <h3 class="sub">Connect a source</h3>
-    <p class="hint" id="noSources" hidden>No source is set up on this server yet. Each server registers its own app with each
-      vendor, so your admin sets each one up first: ask them for the portal or health plan you use.</p>
-    <p class="hint" id="adminNote" hidden>As an admin, you set sources up (each vendor's app for this server) under
-      <a href="admin.html#apps">Admin → Connected-source apps</a>.</p>
-    <p class="hint" id="viewerNote" hidden>You can view this profile's connections; its owners and editors can connect sources.</p>
-    <div class="row" id="sourceButtons"></div>
-    <section id="import-status"></section>
+<main class="acct">
+  <section class="card">
+    <h2>This page has moved</h2>
+    <p>Portals and health plans are on the <a href="sources.html#portals">Sources</a> page now.</p>
   </section>
 </main>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
-<script src="js/nav.js"></script>
-<script src="js/dates.js"></script>
-<script src="js/import-jobs.js"></script>
-<script src="js/connect.js"></script>
+<script src="js/moved.js"></script>
 </body>
 </html>

@@ -1,9 +1,10 @@
-/* Sanguity · import page: choose a profile (one you own or edit), then upload a zip, a folder or files to it.
-   Each file is its own request (PUT, the body is the file), so a large export streams to the server with progress;
-   the server unpacks zips. Once the upload is finished, window.sanguityImport.uploaded({profileId, uploadId})
-   starts the import if that's there (#20); otherwise the page says importing comes next. */
+/* Sanguity · Sources → Upload files (#19, #166): upload a zip, a folder or files to the profile chosen on the page
+   (sources-page.js; one you own or edit). Each file is its own request (PUT, the body is the file), so a large export
+   streams to the server with progress; the server unpacks zips. Once the upload is finished,
+   window.sanguityImport.uploaded({profileId, uploadId}) starts the import if that's there (#20); otherwise the page
+   says importing comes next. */
 "use strict";   // $, el and api come from util.js
-const KINDS = ["zip", "folder", "files", "manual", "link"];   // manual: results typed in (import-manual.js); link: import-shl.js
+const KINDS = ["zip", "folder", "files"];
 const SKIP = /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$/i;   // what file managers leave in folders: not records
 const PARALLEL = 3;   // files sent at once
 let ME, LIMITS = null, chosen = [], busy = false;
@@ -21,22 +22,20 @@ const size = n => n >= 2 ** 30 ? (n / 2 ** 30).toFixed(1) + " GB" : n >= 2 ** 20
   : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " bytes";
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-$("#logout").onclick = async () => { try { await call("logout", "POST"); } catch (e) {} location.replace("login.html"); };
-
 /* ---------------------------------------------------------------- what to upload: tabs */
+/* showKind("manual") or ("link"): what were this page's tabs are sections of the Sources page now (#166) */
 function showKind(name, focus = false) {
+  if (!KINDS.includes(name)) { SgSources.show(name); return; }
   for (const k of KINDS) {
     const on = k === name, b = $("#tab-" + k);
     b.setAttribute("aria-selected", on); b.tabIndex = on ? 0 : -1;
     $("#panel-" + k).hidden = !on;
   }
-  for (const id of ["#drop", "#chosen", "#goRow"]) $(id).classList.toggle("off", name === "manual" || name === "link");   // nothing to upload there
   if (focus) $("#tab-" + name).focus();
 }
 $("#kindTabs").addEventListener("click", ev => { const b = ev.target.closest("[role=tab]"); if (b) showKind(b.id.slice(4)); });
-// import.html#manual (the top bar's "Type records in"), #link, ...: that tab first
+// import.html#folder, #files (moved.js keeps the address): that tab first
 { const h = location.hash.slice(1); if (KINDS.includes(h)) showKind(h); }
-addEventListener("hashchange", () => { const h = location.hash.slice(1); if (KINDS.includes(h)) showKind(h); });
 $("#kindTabs").addEventListener("keydown", ev => {   // arrow keys move between tabs, as for any tab list
   const i = KINDS.indexOf(document.activeElement.id.slice(4));
   if (i < 0) return;
@@ -105,7 +104,7 @@ function render() {
   }), ...(chosen.length > shown.length ? [el("li", {class: "muted", text: `…and ${chosen.length - shown.length} more`})] : []));
   const why = problem();
   if (why) say(why, true);
-  $("#go").disabled = busy || !chosen.length || !!why || !$("#profile").value;
+  $("#go").disabled = busy || !chosen.length || !!why || !SgSources.canEdit();
 }
 
 /* ---------------------------------------------------------------- uploading */
@@ -175,21 +174,13 @@ $("#go").onclick = async () => {
 };
 
 /* ---------------------------------------------------------------- start */
+/* the page signs in and fills the Profile choice (sources-page.js); a profile you can only view gets a note in place
+   of this section, typing in and pasting a link (#viewOnly) */
 (async () => {
-  try { ME = await call("me"); } catch (e) { return; }
-  await datesReady();   // dates in this person's time zone and format (dates.js)
-  if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
-  if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
-  $("#who").textContent = ME.user.username;
-  { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
-  const mine = ME.profiles.filter(p => p.role === "owner" || p.role === "editor");
-  if (!mine.length) { $("#noProfiles").hidden = false; return; }
-  const sel = $("#profile");
-  sel.replaceChildren(...mine.map(p => el("option", {value: p.id, text: p.name})));
-  let want; try { want = +(new URLSearchParams(location.search).get("profile") || localStorage.getItem("ht-profile")); } catch (e) {}
-  if (mine.some(p => p.id === want)) sel.value = want;
-  sel.onchange = render;
-  $("#importer").hidden = false;
+  ME = await SgSources.ready;
+  if (!ME) return;
+  $("#profile").addEventListener("change", render);
+  for (const id of ["#importer", "#typeIn", "#healthLink"]) $(id).hidden = false;   // this page's tabs once (#166)
   try { LIMITS = await call("uploads/limits"); } catch (e) {}
   render();
 })();

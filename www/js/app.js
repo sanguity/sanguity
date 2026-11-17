@@ -83,7 +83,7 @@ async function syncWarning(pid) {
   const w = d.warnings, box = $("#syncWarn");
   if (!w.length) { box.hidden = true; return; }
   const more = w.length > 1 ? ` (and ${w.length - 1} more)` : "";
-  const link = el("a", {href: `connect.html?profile=${pid}&connection=${w[0].connection}`, text: d.can_fix ? "Connected sources →" : "Details →"});
+  const link = el("a", {href: `sources.html?profile=${pid}#conn-${w[0].connection}`, text: d.can_fix ? "Portals and health plans →" : "Details →"});
   box.classList.toggle("quiet", !d.can_fix);
   box.replaceChildren(d.can_fix ? el("span", {text: "⚠ " + w[0].text + more}) :
     el("span", {text: `Records from ${w[0].source} may be out of date: ${w[0].text.replace(/^[^:]*: /, "")}${more}`}), link);
@@ -112,7 +112,7 @@ async function syncWarning(pid) {
     if (r.status === 401) { location.replace("login.html"); return; }
     if (r.status >= 500) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || r.status + " " + r.statusText); }
     if (r.status === 204) {
-      if (canImport(PROFILE)) emptyCard(`${PROFILE.name} has no records yet. `, el("a", {href: `import.html?profile=${PROFILE.id}`, text: "Import records"}),
+      if (canImport(PROFILE)) emptyCard(`${PROFILE.name} has no records yet. `, el("a", {href: `sources.html?profile=${PROFILE.id}#upload`, text: "Import records"}),
         " from a patient portal or app: upload the zip, folder or files it gave you.");
       else emptyCard(`${PROFILE.name} has no records yet. Its owner, or an editor, can import them.`);
       return;

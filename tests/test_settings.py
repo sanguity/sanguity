@@ -765,11 +765,13 @@ class Settings(unittest.TestCase):
             self.assertEqual(post(port, "the-install-secret-from-before", "2026-10-01", 70), 200)
             until(lambda: "2026-10-01" in days(first))
             # the second profile makes its own secret; its phone's uploads are its own
+            self.assertIsNone(self.c["lee"].get(f"/api/profiles/{other}/watch/receiver").json()["last"])   # nothing sent yet
             made = self.rotate(other, "lee")
             self.assertEqual((made["has_secret"], made["legacy"], made["masked"][-4:]), (True, False, made["secret"][-4:]))
             self.assertNotIn(made["secret"], self.c["lee"].get(f"/api/profiles/{other}/watch/receiver").text)   # shown once
             self.assertEqual(post(port, made["secret"], "2026-10-02", 60), 200)
             until(lambda: "2026-10-02" in days(other))
+            self.assertIsInstance(self.c["lee"].get(f"/api/profiles/{other}/watch/receiver").json()["last"], int)   # Sources' overview (#166)
             self.assertNotIn("2026-10-02", days(first))
             self.assertNotIn("2026-10-01", days(other))
             self.assertEqual(post(port, "a guess", "2026-10-03", 99), 401)

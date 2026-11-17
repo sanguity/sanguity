@@ -67,12 +67,13 @@ const SgNav = (() => {
   const action = (id, text, attrs = {}) => el("button", {class: "menu-item", role: "menuitem", type: "button", id, text, ...attrs});
   const sep = () => el("div", {class: "menu-sep", role: "separator"});
 
-  /* Add: records in, by any of the ways the import page offers; a journal entry, whose form journal.js opens on the
-     records page (from another page, the link takes you there and it opens, #173) */
+  /* Add: records in, each way opening its section of the Sources page (#166); a journal entry, whose form journal.js
+     opens on the records page (from another page, the link takes you there and it opens, #173) */
   const add = menu("addMenu", "Add", "+", [
-    link("import.html", "Import records", {id: "importLink", "data-needs": "import"}),
-    link("connect.html", "Connect a source", {"data-needs": "import"}),
-    link("import.html#manual", "Type records in", {"data-needs": "import"}),
+    link("sources.html#upload", "Upload files", {id: "importLink", "data-needs": "import"}),
+    link("sources.html#portals", "Connect a portal or plan", {"data-needs": "import"}),
+    link("sources.html#manual", "Type records in", {"data-needs": "import"}),
+    link("sources.html#link", "Paste a Health Link", {"data-needs": "import"}),
     sep(), onRecords ? action("journalBtn", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "Journal entry", {id: "journalBtn"}),
   ]);
   /* the person's own menu */
@@ -81,6 +82,7 @@ const SgNav = (() => {
     link("summary.html", "Visit summary", {id: "summaryLink"}),
     link("account.html#profiles", "Share links"),
     sep(),
+    link("sources.html", "Sources", {id: "sourcesLink"}),
     link("settings.html", "Settings", {id: "settingsLink"}),
     link("account.html", "Account"),
     link("admin.html", "Admin", {id: "adminLink", hidden: ""}),

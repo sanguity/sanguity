@@ -192,18 +192,32 @@ def main():
                 break
             strict.wait_for_timeout(200)
         check("under the CSP: login.js signs in and the app starts", strict.evaluate("typeof EV !== 'undefined' && EV.length > 0"))
+        # the Sources page (#166): its old addresses open their sections, each part drawn by its own script
         strict.goto(base + "/import.html")
+        strict.wait_for_url("**/sources.html#upload", timeout=10000)
         strict.wait_for_selector("#importer", state="visible", timeout=10000)
-        check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
+        check("under the CSP: the Sources page's scripts run, import.html opening Upload files",
+              strict.evaluate("document.querySelectorAll('#profile option').length") == 2 and strict.evaluate(
+                  "[...document.querySelectorAll('#srcNav a')].map(a => a.textContent)") == ["Overview", "Upload files", "Type records in",
+                  "Paste a Health Link", "Portals and health plans", "Phone and watch", "Import history"])
+        for sel in ("#srcList h3", "#historyList li", "#watch .w-addr", "#connList p"):
+            strict.wait_for_selector(sel, state="attached", timeout=10000)
+        check("…every section drawn, only the group's shown", strict.evaluate(
+              "['importer', 'typeIn', 'healthLink', 'mine', 'watch', 'history', 'srcOverview'].filter(id => getComputedStyle(document.getElementById(id)).display !== 'none')") == ["importer"])
+        null_cards = "[...document.querySelectorAll('main .card')].filter(c => /\\bnull\\b/.test(c.textContent)).map(c => c.id || c.className)"
+        check("no Sources card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
         check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 10)
-        strict.evaluate("location.hash = 'watch'")   # its group in the sidebar (settings-nav.js)
-        strict.wait_for_selector("#watch h2", timeout=10000)
-        check("under the CSP: the watch card shows the upload address", strict.evaluate("document.querySelector('#watch .w-addr').textContent").endswith(":8731/ingest"))
         strict.wait_for_selector("#calendar:not([hidden])", state="attached", timeout=10000)   # in its own group, so not visible
-        null_cards = "[...document.querySelectorAll('main .card')].filter(c => /\\bnull\\b/.test(c.textContent)).map(c => c.id || c.className)"
         check("no Settings card shows a stray “null” (#175)", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
+        check("…and Settings has no Watch and scale any more (#166)", not strict.evaluate("!!document.getElementById('watch')")
+              and "Watch and scale" not in strict.evaluate("document.getElementById('setNav').textContent"))
+        strict.goto(base + "/settings.html?profile=1#watch")   # its old address: Sources → Phone and watch
+        strict.wait_for_url("**/sources.html?profile=1#phone", timeout=10000)
+        strict.wait_for_selector("#watch h2", timeout=10000)
+        check("under the CSP: the watch card shows the upload address, on Sources", strict.evaluate("document.querySelector('#watch .w-addr').textContent").endswith(":8731/ingest")
+              and strict.evaluate("document.querySelector('#srcNav a[aria-current=page]').dataset.group") == "phone")
         # the Admin page (#167): its sidebar of groups, each part drawn by its own script
         strict.goto(base + "/admin.html")
         for sel in ("#userList table", "#sec-sync .set", "#sourceList", "#dirSources ul", "#labmapList", "#outsideBody h3", "#acctLog tbody tr"):
@@ -224,6 +238,21 @@ def main():
         note = strict.evaluate("document.getElementById('srcNote').textContent")
         check("…saying which lists aren't loaded, with no command: an admin gets a link to Admin (#167)", "build_directory" not in note and "python" not in note
               and strict.evaluate("document.querySelector('#srcNote a').getAttribute('href')") == "admin.html#directory", note)
+        check("…in the connect step of Sources → Portals and health plans (#166)", strict.evaluate("location.pathname + location.search + location.hash")
+              == "/sources.html?q=medicare#portals" and strict.evaluate("getComputedStyle(document.getElementById('mine')).display") != "none")
+        strict.click(".dir-hit")
+        strict.wait_for_selector("#detail h3", timeout=10000)
+        detail = strict.inner_text("#detail")
+        set_up = strict.evaluate("document.querySelector('#detail a[href^=\"admin.html?\"]').getAttribute('href')")
+        check("…a provider not set up here sends an admin to set it up, with no copy of the vendor's steps",
+              "Not set up on this server yet" in detail and "Return address" not in detail and "Scopes" not in detail
+              and set_up.startswith("admin.html?vendor=insurer&issuer=https") and set_up.endswith("#apps"), (detail[:300], set_up))
+        strict.goto(base + "/" + set_up)
+        strict.wait_for_selector("#guide ol li", timeout=10000)
+        check("…where Admin has the steps (one copy), the form filled in with the provider",
+              strict.evaluate("[document.getElementById('fVendor').value, document.getElementById('fIssuer').value.startsWith('https://'), "
+                              "document.getElementById('fName').value]") == ["insurer", True, "Medicare (Blue Button 2.0)"]
+              and "Blue Button" in strict.inner_text("#guide"), strict.evaluate("document.getElementById('fName').value"))
         # ---- share links (#47), under the CSP: an owner makes one on the Account page, saying what a holder sees; a
         # browser with no session opens it (at 1400 and 375 px) and sees only the chosen sections and lab, with no
         # cookie set; the view is in the profile's activity; once revoked, the link says it doesn't work
@@ -775,7 +804,7 @@ def main():
             settle(200)
             page.focus("#dbody p.source a")   # by keyboard: the link takes focus and Enter follows it
             page.keyboard.press("Enter")
-            page.wait_for_url("**/import.html?profile=1#import-*", timeout=10000)
+            page.wait_for_url("**/sources.html?profile=1#import-*", timeout=10000)
             page.wait_for_selector("#historyList li.hl", timeout=10000)
             check("the source link opens that import in the history, highlighted and focused",
                   js("document.querySelectorAll('#historyList li.hl').length === 1 && document.activeElement.id === location.hash.slice(1)"
@@ -1010,7 +1039,7 @@ def main():
             check("the period is kept per profile (not carried to another)", js("state.preset") == "2y", js("state.preset"))
             check("empty profile explains itself", "no records yet" in page.inner_text("main"))
             check("empty profile hides the tabs and filters", js("document.querySelector('.tabs').hidden && document.querySelector('.filters').hidden && getComputedStyle(document.querySelector('.tabs')).display === 'none'"))
-            check("empty profile links to the import page", js("document.querySelector('main .empty a').getAttribute('href')") == "import.html?profile=2")
+            check("empty profile links to the import page", js("document.querySelector('main .empty a').getAttribute('href')") == "sources.html?profile=2#upload")
             check("the header links to the import page", js("!document.getElementById('importLink').hidden"))
 
             # ---- import page: upload a fictional C-CDA in a zip into the empty profile; it's imported in the background
@@ -1219,13 +1248,14 @@ def main():
                   by.get(("2026-02-03", "Valley Reference Laboratory")))
             check("…and the insurers named", {"UnitedHealthcare", "Blue Cross Blue Shield", "Insurance"} <= set(js("DATA.costs.map(c => c.ins)")))
             page.select_option("#profile", label="My records")
-            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && "
+                                   "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)   # its saved view restored
             check("switching back restores the profile's tab", js("state.tab") == "timeline", js("state.tab"))
             check("switching back restores the profile's period", js("state.preset") == "30d", js("state.preset"))
 
             # ---- import history (#24): the C-CDA and FHIR imports are listed; undoing the FHIR one takes its records
             # off the timeline and leaves the C-CDA's. The setup build's import can't be undone, and says why.
-            page.goto(base + "/import.html?profile=1")
+            page.goto(base + "/sources.html?profile=1#history")
             page.wait_for_selector("#history li[data-import]", timeout=10000)
             check("the setup build's import is listed, with why it can't be undone and no Undo",
                   js("(() => { const li = document.querySelector('#history li[data-import]'); return !!li.querySelector('.note') && "
@@ -1253,13 +1283,12 @@ def main():
                   "Riverside General Hospital" not in listed and "Discharge summary" not in listed and "Outpatient visit" in listed, listed[:400])
 
             # ---- import page, "Type them in" (#27): two results typed in, checked as they're typed, saved, on Trends
-            page.goto(base + "/import.html?profile=2")
-            page.wait_for_selector("#importer", state="visible", timeout=10000)
-            page.click("#tab-manual")
-            check("the Type them in tab shows its rows, not the upload controls",
+            page.goto(base + "/import.html?profile=2#manual")   # its old address: Sources → Type records in (#166)
+            page.wait_for_url("**/sources.html?profile=2#manual", timeout=10000)
+            page.wait_for_selector("#typeIn", state="visible", timeout=10000)
+            check("Type records in shows its rows, not the upload controls",
                   js("!document.getElementById('panel-manual').hidden && document.querySelectorAll('.man-row').length === 1 && "
-                     "getComputedStyle(document.getElementById('drop')).display === 'none' && "
-                     "getComputedStyle(document.getElementById('goRow')).display === 'none'"))
+                     "getComputedStyle(document.getElementById('importer')).display === 'none'"))
             page.wait_for_function("document.querySelectorAll('#labNames option').length > 10", timeout=5000)
             check("test names are suggested from lab-aliases.json", js("[...document.querySelectorAll('#labNames option')].some(o => o.value === 'Hemoglobin')")
                   and js("document.querySelector('.man-row [data-f=test]').getAttribute('list')") == "labNames")
@@ -1318,9 +1347,10 @@ def main():
 
             # ---- the other kinds typed in: a visit, a medication, a claim and a letter with a PDF, saved as one import;
             # the visit on the timeline, the claim on Costs, the letter opening in the drawer
-            page.goto(base + "/import.html?profile=2")
-            page.wait_for_selector("#importer", state="visible", timeout=10000)
-            page.click("#tab-manual")
+            page.goto(base + "/sources.html?profile=2")
+            page.wait_for_selector("#srcOverview", state="visible", timeout=10000)
+            page.click("#srcNav a[data-group=manual]")
+            page.wait_for_selector("#typeIn", state="visible", timeout=10000)
             card = lambda i, f: f".man-item:nth-child({i}) [data-f={f}]"
 
             def add_record(kind):
@@ -1503,10 +1533,9 @@ def main():
             SHL.seen.clear()
             link = SHL.share(shl_server.bundle("2026-11-10", 13.9), passcode="fictional-2468", label="Fictional clinic",
                              viewer="https://viewer.example.org/")
-            page.goto(base + "/import.html?profile=2")
-            page.wait_for_selector("#importer", state="visible", timeout=10000)
-            page.click("#tab-link")
-            check("the Paste a link tab hides the file drop", js("!document.getElementById('panel-link').hidden && getComputedStyle(document.getElementById('drop')).display === 'none'"))
+            page.goto(base + "/sources.html?profile=2#link")
+            page.wait_for_selector("#healthLink", state="visible", timeout=10000)
+            check("Paste a Health Link hides the file drop", js("!document.getElementById('panel-link').hidden && getComputedStyle(document.getElementById('importer')).display === 'none'"))
             page.fill("#shlText", link)
             page.wait_for_selector("#shlAbout", state="visible", timeout=5000)
             facts = page.inner_text("#shlFacts")
@@ -1630,9 +1659,11 @@ def main():
             check("…Escape closes it and puts the focus back on its button", page.is_hidden("#userMenuList") and js("document.activeElement.id") == "userMenuBtn")
             page.focus("#addMenuBtn")
             page.keyboard.press("ArrowDown")
-            check("…the Add menu opens from the keyboard, on its first item", js("document.activeElement.textContent") == "Import records", js("document.activeElement.textContent"))
+            check("…the Add menu opens from the keyboard, on its first item", js("document.activeElement.textContent") == "Upload files", js("document.activeElement.textContent"))
             page.keyboard.press("ArrowDown")
-            check("…and the arrow keys move through it", js("document.activeElement.textContent") == "Connect a source", js("document.activeElement.textContent"))
+            check("…and the arrow keys move through it", js("document.activeElement.textContent") == "Connect a portal or plan", js("document.activeElement.textContent"))
+            check("…each way in opening its section of Sources (#166)", js("[...document.querySelectorAll('#addMenuList a[data-needs=import]')].map(a => a.getAttribute('href'))")
+                  == ["sources.html#upload", "sources.html#portals", "sources.html#manual", "sources.html#link"])
             page.keyboard.press("Escape")
             # ---- the Admin page (#167): the server's sync defaults, from their old address on Settings
             page.goto(base + "/settings.html#sources")
@@ -2104,6 +2135,22 @@ def main():
             zb.wait_for_selector("#importer", state="attached", timeout=10000)
             check("…the import pages read them too", zb.evaluate("DATES.zone") == "Pacific/Auckland" and zb.evaluate("zToday()") == zb.evaluate(
                 "new Intl.DateTimeFormat('en-CA', {timeZone: 'Pacific/Auckland'}).format(new Date())"), zb.evaluate("DATES.zone"))
+            # Sources for someone who can only view the profile (#166): what reaches it and its history, nothing to add
+            zb.wait_for_selector("#viewOnly", state="visible", timeout=10000)
+            shown_src = "['importer', 'viewOnly', 'watch'].filter(id => getComputedStyle(document.getElementById(id)).display !== 'none')"
+            check("Sources, view only: a note in place of Upload files", zb.evaluate(shown_src) == ["viewOnly"]
+                  and "you can view this profile" in zb.inner_text("#introHint"), (zb.evaluate(shown_src), zb.inner_text("#introHint")))
+            zb.click("#srcNav a[data-group=phone]")
+            check("…and of Phone and watch, which only owners and editors set up", zb.evaluate(shown_src) == ["viewOnly"], zb.evaluate(shown_src))
+            zb.click("#srcNav a[data-group=overview]")
+            zb.wait_for_selector("#srcList h3", timeout=10000)
+            ov = zb.inner_text("#srcOverview")
+            check("…the Overview lists what reached the profile, with no phone and nothing to add",
+                  "Setup build" in ov and "Phone app" not in ov and "Connect a portal" not in ov, ov[:300])
+            zb.click("#srcNav a[data-group=history]")
+            zb.wait_for_selector("#historyList li[data-import]", timeout=10000)
+            check("…and the import history, with no Undo", zb.evaluate("location.hash") == "#history"
+                  and zb.evaluate("!document.querySelector('#historyList button.undo')"))
             # someone who isn't an admin (#167): no Admin in their menu, the Admin page (and its old addresses) says it isn't
             # for them, and the everyday pages name no server setting, file or command, only what they can do
             sdb.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=1", (uid2,))   # sees the watch card
@@ -2134,11 +2181,12 @@ def main():
             sdb.execute("DELETE FROM users WHERE id=?", (uid2,))
             sdb.close()
 
-            # ---- a watch receiver secret per profile (#46): made on the Settings page, shown once, then masked
-            page.goto(base + "/settings.html?profile=1#watch")
+            # ---- a watch receiver secret per profile (#46): made on Sources → Phone and watch (#166), shown once, then masked
+            page.goto(base + "/sources.html?profile=1#phone")
             page.wait_for_selector("#watch #watchRotate", timeout=10000)
             check("watch card: the server's original secret is still this profile's", "original receiver secret" in page.inner_text("#watch"),
                   page.inner_text("#watch")[:300])
+            check("…saying when the phone last sent something", page.inner_text("#watchLast") != "", page.inner_text("#watchLast"))
             page.once("dialog", lambda d: d.accept())
             page.click("#watchRotate")
             page.wait_for_selector("#watchSecret", timeout=10000)
@@ -2319,7 +2367,9 @@ def main():
             page.wait_for_function("document.getElementById('sourceList').textContent.includes('Fake Epic sandbox')", timeout=10000)
             page.locator("#sourceList .prof", has_text="Fake Epic sandbox").get_by_role("button", name="Test this connection").click()
             page.wait_for_function("document.getElementById('sourceList').textContent.includes('Discovery works') || document.getElementById('sourceList').textContent.includes('tested ')", timeout=10000)
-            page.goto(base + "/connect.html")
+            page.goto(base + "/connect.html")   # its old address: Sources → Portals and health plans (#166)
+            page.wait_for_url("**/sources.html#portals", timeout=10000)
+            page.wait_for_selector("#adminNote:not([hidden])", timeout=10000)
             check("connected sources: no setup on the everyday page, and an admin is pointed to Admin (#167)",
                   js("!document.getElementById('srcForm') && document.querySelector('#adminNote a').getAttribute('href')") == "admin.html#apps")
             page.select_option("#profile", label="Second person")
@@ -2358,7 +2408,7 @@ def main():
                   and page.locator(".conn-choose input[type=checkbox]").count() == 7, page.inner_text(".conn-choose")[:300])
             page.uncheck(".conn-choose input[value=visits]")
             page.locator(".conn-choose").get_by_role("button", name="Sign in at").click()   # approves and comes back
-            page.wait_for_url("**/connect.html**", timeout=20000)
+            page.wait_for_url("**/sources.html?*#portals", timeout=20000)
             page.wait_for_selector("#import-status button.primary", timeout=30000)   # the first pull's preview
             check("signing in connects the source, and its first pull is previewed like an upload",
                   "Ready to import" in page.inner_text("#import-status"), page.inner_text("#import-status")[:300])
@@ -2425,7 +2475,7 @@ def main():
             page.wait_for_selector("#dbody .same-line:not(.possible)", timeout=20000)
             check("…and linking it again from the drawer shows it once", len(js(hgb_day)) == 1, js(hgb_day))
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.goto(base + "/connect.html")
+            page.goto(base + "/sources.html#portals")
             page.select_option("#profile", label="Second person")
             page.wait_for_function("document.getElementById('connList').textContent.includes('New records come in on a schedule')", timeout=20000)
             imports = lambda: js(f"fetch('api/profiles/{conn_pid}/connections').then(r => r.json()).then(j => j.connections[0].imports)")
@@ -2466,13 +2516,28 @@ def main():
             page.wait_for_selector("#reconnect:not([hidden])", timeout=20000)
             check("when access ends, the page asks to sign in again", "access ended" in page.inner_text("#reconnect")
                   and page.get_by_role("button", name="Sign in again").count() == 1, page.inner_text("#connList")[:300])
+            page.click("#srcNav a[data-group=overview]")   # Sources' overview (#166): every way in, the one that stopped first
+            page.wait_for_selector("#srcWarn .src-alert", timeout=10000)
+            ov = page.inner_text("#srcOverview")
+            check("the Sources overview warns that the source stopped, and lists it with when it last brought records",
+                  "access ended" in page.inner_text("#srcWarn") and "Fake Epic sandbox" in ov and "Last brought records" in ov
+                  and page.locator("#srcList .src-row.bad", has_text="Fake Epic sandbox").count() == 1, ov[:500])
+            page.click("#srcWarn a")
+            page.wait_for_function("location.hash.startsWith('#conn-') && getComputedStyle(document.getElementById('mine')).display !== 'none'", timeout=5000)
+            check("…its link opens the connection under Portals and health plans",
+                  js("document.querySelector('#srcNav a[aria-current=page]').dataset.group") == "portals")
+            page.set_viewport_size({"width": 375, "height": 800})
+            page.click("#srcNav a[data-group=overview]")
+            settle(200)
+            check("…and the overview fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
             prev_profile = js("localStorage.getItem('ht-profile')")
             js(f"localStorage.setItem('ht-profile', '{conn_pid}')")   # the profile's main page warns too (#102)
             page.goto(base + "/")
             page.wait_for_selector("#syncWarn:not([hidden])", timeout=20000)
             warn = page.inner_text("#syncWarn")
             check("the profile's main page warns that the source stopped syncing, with a link to it",
-                  "access ended" in warn and js("document.querySelector('#syncWarn a').getAttribute('href')").startswith("connect.html?profile="), warn)
+                  "access ended" in warn and js("document.querySelector('#syncWarn a').getAttribute('href')").startswith(f"sources.html?profile={conn_pid}#conn-"), warn)
             page.set_viewport_size({"width": 375, "height": 800})
             check("…and the warning fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
@@ -2550,13 +2615,13 @@ def main():
             page.locator("#sourceList .prof", has_text="Fake health plan").get_by_role("button", name="Test this connection").click()
             page.wait_for_function("[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake health plan') && "
                                    "(p.textContent.includes('Discovery works') || p.textContent.includes('tested ')))", timeout=10000)
-            page.goto(base + "/connect.html")
+            page.goto(base + "/sources.html#portals")
             page.select_option("#profile", label="Second person")
             page.wait_for_selector("#sourceButtons button:has-text('Fake health plan')", timeout=10000)
             page.click("#sourceButtons button:has-text('Fake health plan')")   # what to pull (#99), then sign in
             page.wait_for_selector(".conn-choose", timeout=10000)
             page.locator(".conn-choose").get_by_role("button", name="Sign in at").click()
-            page.wait_for_url("**/connect.html**", timeout=20000)
+            page.wait_for_url("**/sources.html?*#portals", timeout=20000)
             page.wait_for_selector("#import-status button.primary", timeout=30000)
             check("connecting the health plan previews its claims like an upload",
                   "Ready to import" in page.inner_text("#import-status") and "claim" in page.inner_text("#import-status"),
