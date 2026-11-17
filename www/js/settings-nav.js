@@ -104,6 +104,7 @@
     main.dataset.group = q ? "" : current?.id || "";
     // the title and whose settings these are; searching, each section shown says its group
     if (title) title.textContent = q ? "Find a setting" : current?.title || "Settings";
+    viewTitle(!q && current ? "Settings: " + current.title : "Settings");   // the browser tab's title (#209)
     if (who) who.replaceChildren(...(q ? [`Matching “${search.value.trim()}”, from every group.`] : current ? say(whoOf(current)) : []));
     if (q) for (const p of parts()) {
       const g = groupOf(p.id), w = g && SAY[whoOf(g)];
@@ -116,6 +117,7 @@
     if (search.value) search.value = "";
     apply();
     if (push && location.hash.slice(1) !== g.id) history.replaceState(null, "", "#" + g.id);
+    if (push) announce("Settings: " + g.title);   // a sidebar link says nothing of the group it shows (#209)
     const target = scrollTo || null;
     if (target) target.scrollIntoView({block: "start"});
     else if (push) window.scrollTo({top: 0});

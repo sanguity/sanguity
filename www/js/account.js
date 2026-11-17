@@ -14,7 +14,7 @@ async function call(path, method = "GET", body) {
   }
   return j;
 }
-const say = (id, text, bad = false) => { const m = $(id); m.textContent = text; m.classList.toggle("bad", bad); };
+const say = (id, text, bad = false) => sayIn($(id), text, bad);   // shown and said (util.js, #209)
 const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and date format
 const device = ua => {
   if (!ua) return "Unknown device";
@@ -196,6 +196,7 @@ const AcctNav = (() => {
     main.dataset.group = g.id;
     $("#groupTitle").textContent = g.title;
     $("#introHint").textContent = g.hint;
+    viewTitle("Account: " + g.title, push && "Account: " + g.title);   // the browser tab's title; said when picked (#209)
     if (push && location.hash.slice(1) !== g.id) history.replaceState(null, "", "#" + g.id);
     if (scrollTo && !scrollTo.hidden) scrollTo.scrollIntoView({block: "start"});
     else if (push) window.scrollTo({top: 0});

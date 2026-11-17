@@ -301,6 +301,63 @@ def main():
         check("…opened by keyboard, its text shown, fitting 375 px; closed again by keyboard", opened == [True, True] and fits
               and not strict.evaluate("document.querySelector('#importer details.more').open"), (opened, fits))
         strict.set_viewport_size({"width": 1400, "height": 900})
+        # ---- keyboard and screen-reader basics (#209), under the CSP: on every page with the top bar, Tab's first stop
+        # is "Skip to content", shown while it has focus (readable on this page's dark theme, at 1400 and 375 px), and
+        # Enter moves focus to the page's main part without changing the address; the browser tab's title names the
+        # view shown; a group picked in a sidebar is said through the page's one shared status line (util.js)
+        def contrast(c1, c2):   # WCAG contrast of two computed "rgb(…)" colours
+            def lum(c):
+                f = lambda v: v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+                r, g, b = [f(int(x) / 255) for x in re.findall(r"\d+", c)[:3]]
+                return 0.2126 * r + 0.7152 * g + 0.0722 * b
+            hi, lo = sorted((lum(c1), lum(c2)), reverse=True)
+            return round((hi + 0.05) / (lo + 0.05), 1)
+
+        def said(pg, box="sgStatus", tries=30):   # what the shared status line (or alert) says, once it says it
+            for _ in range(tries):
+                pg.wait_for_timeout(50)
+                t = pg.evaluate(f"document.getElementById('{box}').textContent")
+                if t:
+                    return t
+            return ""
+        focused = """(() => { const a = document.activeElement, r = a.getBoundingClientRect(), cs = getComputedStyle(a);
+            return {text: a.textContent, top: r.top, right: r.right, color: cs.color, bg: cs.backgroundColor}; })()"""
+        skips, titles = {}, {}
+        for path, ready, title, width in (("", "#view-overview .card", None, 1400), ("sources.html?profile=1", "#srcList h3", "Sources: Overview", 375),
+                                          ("settings.html?profile=1", "#sec-overview .set-labs li", "Settings: Dashboard", 1400),
+                                          ("sharing.html?profile=1", "#memberList tbody tr", "Sharing: People", 375),
+                                          ("account.html", "#acctNav a", "Account: Sign-in and security", 1400), ("admin.html", "#userList table", "Admin: Accounts", 375)):
+            strict.set_viewport_size({"width": width, "height": 800})
+            strict.goto(base + "/" + path)
+            strict.wait_for_selector(ready, state="attached", timeout=10000)
+            strict.wait_for_timeout(200)
+            title = title or strict.evaluate("document.querySelector('[role=tab][aria-selected=true]').textContent") + " · My records"
+            hash_was = strict.evaluate("location.hash")
+            strict.keyboard.press("Tab")
+            f = strict.evaluate(focused)
+            strict.keyboard.press("Enter")
+            skips[path or "records"] = [f["text"], f["top"] >= 0 and f["right"] <= width, contrast(f["color"], f["bg"]),
+                                        strict.evaluate("document.activeElement === document.querySelector('main')"), strict.evaluate("location.hash") == hash_was]
+            titles[path or "records"] = [strict.title(), title + " · Sanguity"]
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        check("on every page with the top bar, Tab's first stop is “Skip to content”, shown while focused, readable on the dark theme, at 1400 and 375 px (#209)",
+              len(skips) == 6 and all(v[0] == "Skip to content" and v[1] and v[2] >= 4.5 for v in skips.values()), skips)
+        check("…Enter moves focus to the page's main part, the address unchanged", all(v[3] and v[4] for v in skips.values()), skips)
+        check("…and the browser tab's title names what's shown: “Labs · My records · Sanguity”, “Settings: Dashboard · Sanguity”",
+              all(a == b for a, b in titles.values()), titles)
+        check("…every page has the one shared status line: role=status, and role=alert for errors", strict.evaluate(
+              "[...document.querySelectorAll('.sg-live')].map(x => [x.id, x.getAttribute('role')])") == [["sgStatus", "status"], ["sgAlert", "alert"]])
+        group_said = {}
+        for path, ready, link, want in (("sharing.html?profile=1", "#memberList tbody tr", "#shrNav a[data-group=links]", "Sharing: Share links"),
+                                        ("settings.html?profile=1", "#sec-overview .set-labs li", "#setNav a[data-group=display]", "Settings: Display")):
+            strict.goto(base + "/" + path)
+            strict.wait_for_selector(ready, state="attached", timeout=10000)
+            strict.wait_for_timeout(200)
+            strict.evaluate("document.getElementById('sgStatus').textContent = ''")
+            strict.click(link)
+            group_said[path] = [strict.title(), said(strict), want]
+        check("…a group picked in a sidebar becomes the title, and is said through the status line (a link says nothing of what it shows)",
+              all(t == w + " · Sanguity" and s == w for t, s, w in group_said.values()), group_said)
         strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
         strict.wait_for_selector(".dir-hit", timeout=10000)
         check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
@@ -998,6 +1055,90 @@ def main():
             js("switchTab('labs')")
             settle(300)
 
+            # ---- keyboard and screen-reader basics (#209) on the records page (light theme): "Skip to content" readable;
+            # the browser tab's title follows the tab, said only when the tab is opened from elsewhere (the tab bar
+            # already says which tab is selected); a save and an error said through the shared status line and alert,
+            # the message shown beside them too; the details drawer, covering the page at 375 px, keeps Tab inside
+            # it, the page behind inert and out of Chromium's accessibility tree, focus given back on Escape; less
+            # motion when the system asks for it
+            page.reload()
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
+            page.keyboard.press("Tab")
+            f = js(focused)
+            check("records, light theme: “Skip to content” first, shown and readable (#209)", f["text"] == "Skip to content" and f["top"] >= 0
+                  and contrast(f["color"], f["bg"]) >= 4.5, [f, contrast(f["color"], f["bg"])])
+            js("switchTab('overview')")
+            settle(200)
+            js("document.getElementById('sgStatus').textContent = ''")
+            page.click("#tab-labs")
+            settle(300)
+            in_bar = [page.title(), js("document.getElementById('sgStatus').textContent")]
+            page.click("#tab-overview")
+            settle(300)
+            page.locator("#view-overview button", has_text="Open Costs").first.click()
+            elsewhere_said = [page.title(), said(page)]
+            check("the tab's title is the tab and the profile; picked in the tab bar, nothing more is said",
+                  in_bar == ["Labs · My records · Sanguity", ""], in_bar)
+            check("…opened from a button elsewhere, the tab is said through the status line", elsewhere_said == ["Costs · My records · Sanguity", "Costs"], elsewhere_said)
+            js("switchTab('labs')")
+            settle(300)
+            js(f"state.sel = new Set({json.dumps(labs3[:1])}); renderLabs()")
+            page.click("#viewSaveOpen")
+            page.fill("#viewName", "")
+            page.click("#viewSave")
+            err = [said(page, "sgAlert"), js("document.querySelector('#tvBox .tv-msg').textContent"),
+                   js("document.querySelector('#tvBox .tv-msg').classList.contains('bad')"), js("document.querySelector('#tvBox .tv-msg').getAttribute('role')")]
+            js("document.getElementById('sgStatus').textContent = ''")
+            page.fill("#viewName", "Said (browser check)")
+            page.click("#viewSave")
+            page.wait_for_function("CFG.trends.views.length === 1", timeout=10000)
+            saved_said = [said(page), page.inner_text("#tvBox .tv-msg")]
+            check("an error is said at once through the alert (role=alert), and shown beside the form, not said twice",
+                  err == ["Give the view a name.", "Give the view a name.", True, None], err)
+            check("…a save through the status line (role=status), shown beside it too", saved_said[0].startswith("Saved “Said (browser check)”")
+                  and saved_said[0] == saved_said[1], saved_said)
+            js("api('profiles/' + PROFILE.id + '/settings/trends.views', {method: 'PUT', body: JSON.stringify({value: []})})")   # (no view left behind)
+            page.set_viewport_size({"width": 375, "height": 800})
+            js("switchTab('timeline')")
+            settle(300)
+            page.focus("#list .row")
+            page.keyboard.press("Enter")
+            page.wait_for_selector("#drawer.open", timeout=5000)
+            settle(300)
+            behind = js("[...document.body.children].filter(x => x.inert).map(x => x.id || x.tagName.toLowerCase())")
+            stops = []
+            for _ in range(30):
+                page.keyboard.press("Tab")
+                stops.append(js("document.getElementById('drawer').contains(document.activeElement) ? 'drawer' : document.activeElement === document.body ? 'body' : document.activeElement.id || document.activeElement.className"))
+            def ax_roles():   # the landmarks in Chromium's own accessibility tree, what a screen reader is given
+                cdp = page.context.new_cdp_session(page)
+                tree = cdp.send("Accessibility.getFullAXTree")["nodes"]
+                cdp.detach()
+                return sorted({n["role"]["value"] for n in tree if not n.get("ignored") and n.get("role", {}).get("value") in ("main", "banner", "complementary")})
+            exposed = ax_roles()
+            check("at 375 px the drawer covers the page: Tab stays inside it, the page behind inert (#209)",
+                  "content" in behind and "drawer" not in behind and set(stops) <= {"drawer", "body"} and stops.count("drawer") > 20, [behind, stops])
+            check("…and out of Chromium's accessibility tree: only the drawer is there", "main" not in exposed and "banner" not in exposed and "complementary" in exposed, exposed)
+            page.keyboard.press("Escape")
+            settle(300)
+            check("…Escape closes it, the page usable again and focus back on the event it came from",
+                  js("![...document.body.children].some(x => x.inert && x.id !== 'drawer') && document.getElementById('drawer').inert && document.activeElement.matches('#list .row')"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.focus("#list .row")
+            page.keyboard.press("Enter")
+            page.wait_for_selector("#drawer.open", timeout=5000)
+            check("…at 1400 px it covers only part of the page, which stays usable", not js("document.querySelector('main').inert")
+                  and ax_roles() == ["banner", "complementary", "main"], ax_roles())
+            page.keyboard.press("Escape")
+            motion = "[getComputedStyle(document.getElementById('drawer')).transitionDuration, smoothly()]"
+            page.emulate_media(reduced_motion="reduce")
+            less = js(motion)
+            page.emulate_media(reduced_motion="no-preference")
+            check("less motion when asked for: no transitions, no smooth scrolling (and both back when not)", less == ["0s", "auto"]
+                  and js(motion) == ["0.18s", "smooth"], [less, js(motion)])
+            page.reload()   # the saved views as the server has them again (none)
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
+
             # ---- Body and activity: drag changes the records bar's period (#171)
             page.click("#tab-health")
             settle()
@@ -1634,7 +1775,7 @@ def main():
             js("closeDrawer()")
             page.select_option("#oopHsaSel", "FSA")
             page.click("#oopEdit >> text=Save")
-            page.wait_for_function("document.querySelector('#oopEdit [role=status]') && document.querySelector('#oopEdit [role=status]').textContent === 'Saved.'", timeout=10000)
+            page.wait_for_function("document.querySelector('#oopEdit .oop-msg') && document.querySelector('#oopEdit .oop-msg').textContent === 'Saved.'", timeout=10000)
             check("tagged FSA on the Costs tab, it moves to the FSA total", "$50" in page.inner_text("#oopFsa") and "$0" in page.inner_text("#oopHsa"),
                   [page.inner_text("#oopFsa"), page.inner_text("#oopHsa")])
             page.set_viewport_size({"width": 375, "height": 800})

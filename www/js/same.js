@@ -28,12 +28,12 @@ function pointSources(s, p) {
 const sameValue = x => `${x.value} ${x.unit || ""}`.trim();
 const sameWhen = t => /^\d{4}-\d{2}-\d{2}$/.test(t) || /T(00:00|12:00):00$/.test(t) ? fmtD(t) : fmtDT(t);
 async function sendSame(path, opts, msg, reopen) {
-  msg.textContent = "Saving…";
+  sayIn(msg, "Saving…");
   try {
     const r = await api(`profiles/${PROFILE.id}/same${path}`, opts);
-    if (!r.ok) { const j = await r.json().catch(() => ({})); msg.textContent = typeof j.detail === "string" ? j.detail : `Couldn't save it (${r.status}).`; return; }
+    if (!r.ok) { const j = await r.json().catch(() => ({})); sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save it (${r.status}).`, true); return; }
     afterEdit(reopen);
-  } catch (err) { msg.textContent = "Couldn't reach the server: " + err.message; }
+  } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
 }
 /* the lab day an event's result is listed in, to reopen after a reload (the result itself may be gone by then) */
 function dayOf(eid) {

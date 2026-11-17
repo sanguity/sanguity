@@ -66,7 +66,7 @@
       [conns, imps, watch] = await Promise.all([get(`profiles/${pid}/connections`), get(`profiles/${pid}/imports`),
         SgSources.canEdit() ? get(`profiles/${pid}/watch/receiver`).catch(() => null) : null]);
     } catch (e) {
-      if (mine === seq) { $("#srcList").replaceChildren(el("p", {class: "msg bad", text: "Couldn't read this profile's sources: " + e.message})); box.hidden = false; }
+      if (mine === seq) { $("#srcList").replaceChildren(el("p", {class: "msg bad", role: "alert", text: "Couldn't read this profile's sources: " + e.message})); box.hidden = false; }
       return;
     }
     if (mine !== seq) return;   // another profile was chosen meanwhile

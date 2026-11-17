@@ -6,7 +6,7 @@
 (() => {
   let pid = null, me = null;
   const card = $("#calendar"), msg = $("#calMsg");
-  const say = (text, bad = false) => { msg.textContent = text; msg.classList.toggle("bad", bad); };
+  const say = (text, bad = false) => sayIn(msg, text, bad);   // shown and said (util.js, #209)
   const zone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch (e) { return null; } };
   const when = t => t ? fmtDT(t * 1000) : "not yet";   // this person's time zone and format (dates.js)
   const SAYS = {minimal: "Minimal", full: "Full"};

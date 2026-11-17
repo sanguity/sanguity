@@ -53,6 +53,7 @@ const SgSources = (() => {
     const g = GROUPS.find(x => x.id === (ALIAS[id] || id)) || GROUPS[0], changed = g !== current;
     current = g;
     apply();
+    viewTitle("Sources: " + g.title, push && changed && "Sources: " + g.title);   // the browser tab's title; said when picked (#209)
     if (push && location.hash.slice(1) !== g.id) history.replaceState(null, "", "#" + g.id);
     if (scrollTo) scrollTo.scrollIntoView({block: "start"});
     else if (push) window.scrollTo({top: 0});

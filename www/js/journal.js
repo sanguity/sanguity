@@ -260,7 +260,7 @@ function journalForm(j, preset, back) {
       el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => back()})), msg);
   form.onsubmit = ev => {
     ev.preventDefault();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.value)) { msg.textContent = "Pick a date."; date.focus(); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.value)) { sayIn(msg, "Pick a date.", true); date.focus(); return; }
     const out = {kind, t: date.value + (time.value ? "T" + time.value.slice(0, 5) : ""), note: note.value};
     if (kind !== "note") Object.assign(out, {title: title.value, severity: +sev.value, med: med.value || null});
     else if (j && j.title) out.title = j.title;
@@ -273,15 +273,15 @@ function journalForm(j, preset, back) {
 
 /* every change reloads the records (as edits do, drawer.js) and reopens what was being looked at */
 async function jSend(path, opts, msg, reopen) {
-  msg.textContent = "Saving…";
+  sayIn(msg, "Saving…");
   try {
     const r = await api(`profiles/${PROFILE.id}/journal${path}`, opts);
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) { msg.textContent = typeof j.detail === "string" ? j.detail : `Couldn't save the entry (${r.status}).`; return; }
+    if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the entry (${r.status}).`, true); return; }
     if (reopen.created) reopen = {entry: j.id};
     try { sessionStorage.setItem("sg-after-journal", JSON.stringify(reopen)); } catch (e) {}
     location.reload();
-  } catch (err) { msg.textContent = "Couldn't reach the server: " + err.message; }
+  } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
 }
 /* after that reload, or arriving from Add → Journal entry on another page (nav.js links to ./#new-journal-entry) */
 function journalResume() {

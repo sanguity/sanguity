@@ -5,7 +5,6 @@
 "use strict";   // $, el and api come from util.js
 let PID = null, OPTS = null, PICKED = [];
 
-const sayIn = (m, text, bad = false) => { m.textContent = text; m.classList.toggle("bad", bad); };
 const fmtDay = d => d ? fmtD(dayTs(d)) : "";   // a day, in this person's date format (dates.js, #42)
 
 /* ---------------------------------------------------------------- the choices */
@@ -135,7 +134,7 @@ function renderPreview(s) {
 }
 $("#previewBtn").onclick = async () => {
   const b = $("#previewBtn"); b.disabled = true; sayIn($("#buildMsg"), "Making the preview…");
-  try { renderPreview(await call(`profiles/${PID}/summary/preview`, "POST", chosen())); sayIn($("#buildMsg"), ""); $("#preview").scrollIntoView({behavior: "smooth", block: "start"}); }
+  try { renderPreview(await call(`profiles/${PID}/summary/preview`, "POST", chosen())); sayIn($("#buildMsg"), ""); $("#preview").scrollIntoView({behavior: smoothly(), block: "start"}); }
   catch (e) { sayIn($("#buildMsg"), e.message, true); }
   finally { b.disabled = false; }
 };

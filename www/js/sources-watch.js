@@ -11,7 +11,6 @@
     if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || r.status + " " + r.statusText);
     return j;
   }
-  const sayIn = (m, text, bad = false) => { m.textContent = text; m.classList.toggle("bad", bad); };
   let ME = null, PID = null;
 
   const copyBtn = (text, label) => el("button", {class: "btn small", type: "button", text: "Copy", "aria-label": label,
@@ -21,7 +20,7 @@
     box.hidden = true;
     if (!p || (p.role !== "owner" && p.role !== "editor")) { box.replaceChildren(); return; }
     try { drawWatch(await call(`profiles/${PID}/watch/receiver`)); }
-    catch (e) { box.replaceChildren(el("h2", {text: "Phone and watch"}), el("p", {class: "msg bad", text: e.message})); box.hidden = false; }
+    catch (e) { box.replaceChildren(el("h2", {text: "Phone and watch"}), el("p", {class: "msg bad", role: "alert", text: e.message})); box.hidden = false; }
   }
   /* what isn't set up on the server, in words (#167): admins are pointed to the setup guide, everyone else to them */
   const GUIDE = "the setup guide's “Connecting a phone” section says how";

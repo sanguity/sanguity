@@ -15,15 +15,15 @@ function tvCurrent() {
   const sel = [...state.sel].filter(n => SERIES.some(s => !s.watch && s.name === n));
   return CFG.trends.views.find(v => { const l = tvLabs(v); return l.length === sel.length && l.every(n => state.sel.has(n)); }) || null;
 }
-let tvMsg = "", tvFormOpen = false;
+let tvMsg = "", tvBad = false, tvFormOpen = false;
 async function tvStore(views, said) {
   try {
     const r = await api(`profiles/${PROFILE.id}/settings/trends.views`, {method: "PUT", body: JSON.stringify({value: views})});
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) { tvMsg = typeof j.detail === "string" ? j.detail : `Couldn't save the views (${r.status}).`; renderSeriesList(); return false; }
+    if (!r.ok) { tvMsg = typeof j.detail === "string" ? j.detail : `Couldn't save the views (${r.status}).`; tvBad = true; renderSeriesList(); return false; }
     applySettings(j);
     tvMsg = said;
-  } catch (e) { tvMsg = "Couldn't reach the server: " + e.message; }
+  } catch (e) { tvMsg = "Couldn't reach the server: " + e.message; tvBad = true; }
   tvFormOpen = false;
   renderSeriesList();
   return true;
@@ -41,7 +41,7 @@ const tvPlain = v => ({name: v.name, labs: v.labs, default: !!v.default});
 function viewsBar() {
   const views = CFG.trends.views, can = tvCanSave(), cur = tvCurrent();
   if (!views.length && !can) return null;
-  const msg = el("p", {class: "hint tv-msg", role: "status", text: tvMsg}); tvMsg = "";
+  const msg = el("p", {class: "hint tv-msg"}); sayIn(msg, tvMsg, tvBad); tvMsg = ""; tvBad = false;   // shown and said (#209)
   const pick = el("select", {id: "viewPick", "aria-label": "Saved view", disabled: views.length ? null : "",
     onchange: () => { const v = views.find(x => x.name === pick.value); if (!v) return;
       const have = tvLabs(v); state.sel = new Set(have);
@@ -68,9 +68,9 @@ function viewsBar() {
     const name = el("input", {id: "viewName", maxlength: 60, placeholder: "Name, like CBC", "aria-label": "Name of the view", value: cur ? cur.name : ""});
     const save = () => {
       const n = name.value.trim().replace(/\s+/g, " ");
-      if (!n) { msg.textContent = "Give the view a name."; name.focus(); return; }
+      if (!n) { sayIn(msg, "Give the view a name.", true); name.focus(); return; }
       const labs = [...state.sel].filter(x => SERIES.some(s => !s.watch && s.name === x));
-      if (!labs.length) { msg.textContent = "Pick some labs first."; return; }
+      if (!labs.length) { sayIn(msg, "Pick some labs first.", true); return; }
       const old = views.find(v => v.name.toLowerCase() === n.toLowerCase());
       const next = old ? views.map(v => v === old ? {...tvPlain(v), name: n, labs} : tvPlain(v)) : [...views.map(tvPlain), {name: n, labs, default: false}];
       tvStore(next, old ? `Updated “${n}” (${labs.length} lab${labs.length === 1 ? "" : "s"}).` : `Saved “${n}” (${labs.length} lab${labs.length === 1 ? "" : "s"}).`);

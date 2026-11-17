@@ -205,6 +205,13 @@ Everything on `main` so far; it becomes the first tagged release.
   with the kind's colour and has a check mark, hidden is only outlined with its key grey, rather than faded. The
   journal's kind filter is now a chip per kind instead of a list. Both read clearly in dark and high-contrast modes,
   with a visible focus ring.
+- Keyboard and screen-reader basics on every page (#209): **Skip to content** is the first thing Tab reaches on
+  every page with the top bar; the browser tab's title names what's shown ("Labs · Ben · Sanguity", "Settings:
+  Display · Sanguity"), and a tab or group opened from a link or a sidebar is said aloud. Saves and errors on
+  the records page, Sources, Sharing, Settings, Account and Admin are said through one shared status line,
+  errors at once. When the details panel covers the page on a phone, the page behind it can't be reached until
+  it's closed. With less motion asked for in the system's settings, transitions and smooth scrolling are off.
+  Opening an event from the timeline's list with Enter no longer closes it again straight away.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

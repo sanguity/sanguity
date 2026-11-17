@@ -14,7 +14,6 @@ async function call(path, method = "GET", body) {
   if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || (Array.isArray(j.detail) ? "Please check the fields." : r.status + " " + r.statusText));
   return j;
 }
-const sayIn = (m, text, bad = false) => { m.textContent = text; m.classList.toggle("bad", bad); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 $("#logout").onclick = async () => { try { await call("logout", "POST"); } catch (e) {} location.replace("login.html"); };
 
@@ -483,7 +482,7 @@ const quoted = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.lengt
 function sectionCard(sec, opts = {}) {
   const base = opts.base || (PID == null ? "settings/user" : `profiles/${PID}/settings`);
   const reload = opts.reload || load;
-  const msg = el("span", {class: "msg", role: "status", text: opts.note || ""});
+  const msg = el("span", {class: "msg"}); sayIn(msg, opts.note || "");   // said too (util.js, #209)
   const anyEditable = sec.settings.some(st => st.can_change);
   const changedHere = sec.settings.some(st => st.can_change && st.from !== "default" && st.from !== "install");
   const mixed = new Set(sec.settings.map(st => st.scope)).size > 1;
