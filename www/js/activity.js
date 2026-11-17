@@ -15,8 +15,9 @@ const WHAT = {
     (d.labs && d.labs.matched ? `, matching ${d.labs.matched} lab name${d.labs.matched === 1 ? "" : "s"} to existing series` : "")
     : `imported records (${d.documents} documents)`,
   reload: () => "loaded the latest records",
-  export: () => "exported everything",
-  summary: d => `made a visit summary${d.for ? ` for the appointment on ${d.for}` : ""}`,
+  export: d => d.cycle ? "exported everything, with the cycle records" : "exported everything",   // #183
+  summary: d => `made a visit summary${d.for ? ` for the appointment on ${d.for}` : ""}${(d.sections || []).includes("cycle") ? ", with the cycle records" : ""}`,
+  cycle: d => ({on: "turned cycle tracking on", off: "turned cycle tracking off, deleting what was kept", delete: "deleted the cycle records kept"}[d.change] || "changed cycle tracking"),   // #183
   upload: d => d.source === "smart-health-link" ? `imported a SMART Health Link from ${d.host}` : `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
   outside: d => `had Sanguity contact ${d.host} (${d.purpose})`,
   discard: () => "cancelled an import at its preview",

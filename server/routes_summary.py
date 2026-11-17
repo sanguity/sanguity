@@ -17,10 +17,12 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from . import activity, db as dbm, profiles as prof, summary
+from . import activity, cycle_tracking, db as dbm, profiles as prof, summary
 from .main import _client_ip, get_db, need, user
 
 router = APIRouter()
+# menstrual cycle records (#183): offered only to owners and editors while tracking is on, and never ticked by default
+summary.register_section(*cycle_tracking.SUMMARY_SECTION, cycle_tracking.summary_rows)
 
 
 class Draft(BaseModel):
@@ -41,6 +43,8 @@ def _name(db, pid):
 
 
 def _build(db, s, pid, body):
+    if "cycle" in body.sections and (need(db, s, pid, "viewer") == "viewer" or not cycle_tracking.is_on(db, pid)):
+        raise HTTPException(403, "The cycle records aren't available to you here.")   # (#183)
     prof.sync_build(db, pid)
     try:
         return summary.build(db, pid, s["id"], _name(db, pid), body.model_dump())
@@ -52,7 +56,10 @@ def _build(db, s, pid, body):
 def summary_options(pid: int, s=Depends(user), db=Depends(get_db)):
     role = need(db, s, pid, "viewer")
     prof.sync_build(db, pid)
-    return {"profile": {"id": pid, "name": _name(db, pid)}, "role": role, **summary.options(db, pid, s["id"])}
+    opts = summary.options(db, pid, s["id"])
+    cycle = role != "viewer" and cycle_tracking.is_on(db, pid)   # (#183) ticked each time: "ask"
+    opts["sections"] = [{**x, "ask": True} if x["id"] == "cycle" else x for x in opts["sections"] if x["id"] != "cycle" or cycle]
+    return {"profile": {"id": pid, "name": _name(db, pid)}, "role": role, **opts}
 
 
 @router.put("/api/profiles/{pid}/summary/questions")

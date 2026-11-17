@@ -7,7 +7,7 @@ Profile events (profile_id set), readable by the profile's owners:
   unshare       {"username"}: removed someone's access, or left (the actor is then that person)
   import        {"documents"}: records loaded with server.manage; {"importer", "counts", "job"}: an upload imported in
                 the browser (jobs.py), with {"labs": {"matched", "remembered"}} when lab names were matched (labmap.py)                             reload     records reloaded from the setup build
-  export        downloaded everything in the profile as a zip
+  export        downloaded everything in the profile as a zip; {"cycle": true} with the cycle records ticked in (#183)
   upload        {"upload", "files", "bytes"}: files uploaded on the import page (uploads.py)
   discard       {"importer", "job", "upload"}: an import cancelled at its preview (jobs.py); an import confirmed
                 there is logged as import, with {"skipped", "kept"} duplicates
@@ -32,7 +32,9 @@ Profile events (profile_id set), readable by the profile's owners:
                 sections and dates only, never the questions or any result)
   watch.secret  {"rotated"}: made the profile's watch receiver secret, or a new one in place of the old (#46; never
                 the secret)
-  source        {"import", "label", "named"}: an import given its own name, or its name taken away (named false;
+  cycle         {"change": "on" | "off" | "delete"}: an owner turned menstrual cycle tracking on or off (off deletes
+                what was kept), or deleted what was kept (cycle_tracking.py, #183; never a record)
+  source       {"import", "label", "named"}: an import given its own name, or its name taken away (named false;
                 records.rename_import, #38; never the name)
   link          {"change": "create" | "revoke" | "view", "link", "label"?, ...}: a share link made or revoked by an owner
                 (with its sections, number of labs, dates and hours), or opened by whoever holds it: actor SHARE_LINK,
@@ -65,7 +67,7 @@ import json
 from . import config, crypto, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside",
-                   "settings", "connect", "disconnect", "calendar", "journal", "summary", "watch.secret", "source", "link")
+                   "settings", "connect", "disconnect", "calendar", "journal", "summary", "watch.secret", "source", "link", "cycle")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",

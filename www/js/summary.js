@@ -59,7 +59,8 @@ async function load() {
   $("#whenHint").textContent = OPTS.upcoming.length ? "Upcoming appointments come from the records; the next one is chosen."
     : "There are no upcoming appointments in the records.";
   $("#sections").replaceChildren(...OPTS.sections.map(s => el("label", {class: "check"},
-    el("input", {type: "checkbox", value: s.id, checked: true}), s.label)));
+    el("input", {type: "checkbox", value: s.id, checked: !s.ask || null}), s.label,
+    s.ask ? el("span", {class: "muted", text: " (only if you tick it, each time)"}) : null)));   // cycle records (#183)
   $("#keyHint").textContent = OPTS.keyLabs.length
     ? `The key labs from Settings: ${OPTS.keyLabs.map(labelOf).join(", ")}. Add any others here.`
     : "No key labs with results (they're set in Settings). Add labs here to trend them.";

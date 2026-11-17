@@ -290,6 +290,15 @@ receiver keeps every reading, encrypted, so a reading sent twice counts once: a 
 `watch.db` and 3 MB to `raw/` in `WATCH_DIR` (copied as under [Backup and restore](#backup-and-restore), not in the
 app's own backups), and only the days reach the page. An uploaded Apple Health `export.xml` doesn't bring glucose in yet.
 
+Menstrual cycle tracking (#183) is off for every profile until one of its owners turns it on under **Sources → Phone
+and watch → Cycle tracking**: periods, flow, ovulation tests, cervical mucus and spotting from either phone app. Off,
+the receiver takes them out of each upload before keeping anything, so they're never stored, not even in `raw/`;
+sexual activity is never kept, on or off. On, owners and editors (not viewers) see them as a Timeline lane and, when
+ticked, under the Labs charts; they're never in a share link, and in an export or the visit summary only when ticked
+each time. **Delete all cycle data** (or turning it off) deletes the receiver's copy and every archived upload's; the
+card says what it can't reach (backups made before, files already downloaded, the phone). Nothing predicts periods or
+fertile days.
+
 ### Uploading records in the app
 
 **Add → Upload files** (in the top bar, or through **Getting started** on an empty profile; **Sources → Upload files**) uploads a portal's or app's export to a profile you own or edit:

@@ -1037,12 +1037,13 @@ def profile_data(pid: int, request: Request, s=Depends(user), db=Depends(get_db)
 
 
 @app.get("/api/profiles/{pid}/export")
-def profile_export(pid: int, request: Request, s=Depends(user), db=Depends(get_db)):
-    """Everything in the profile as one zip, streamed (owners and editors)."""
+def profile_export(pid: int, request: Request, cycle: bool = False, s=Depends(user), db=Depends(get_db)):
+    """Everything in the profile as one zip, streamed (owners and editors). ?cycle=1: with the cycle records, when
+    tracking is on (#183): ticked in each time, never by default."""
     need(db, s, pid, "editor")
     prof.sync_build(db, pid)
-    p = export.plan(db, pid)
-    activity.log(db, "export", s, pid, ip=_client_ip(request))
+    p = export.plan(db, pid, cycle=cycle)
+    activity.log(db, "export", s, pid, {"cycle": True} if p["cycle"] else None, ip=_client_ip(request))
     now = settings.local_now(db, s["id"])   # dated in the exporting person's own time zone (#42)
     return StreamingResponse(export.stream(p, s["username"], now), media_type="application/zip",
                              headers={"Content-Disposition": f'attachment; filename="{export.filename(p["name"], now)}"'})
@@ -1338,6 +1339,7 @@ app.include_router(__import__("server.routes_share_links", fromlist=["router"]).
 app.include_router(__import__("server.routes_costs", fromlist=["router"]).router)     # out-of-pocket costs: HSA/FSA, matched to claims (#55)
 app.include_router(__import__("server.routes_backups", fromlist=["router"]).router)   # backups on the Admin page (#200)
 app.include_router(__import__("server.routes_person", fromlist=["router"]).router)    # about this person: birth date, sex, height (#194)
+app.include_router(__import__("server.routes_cycle", fromlist=["router"]).router)     # menstrual cycle tracking, opt-in (#183)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here

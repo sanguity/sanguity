@@ -128,6 +128,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     drawNav();
     if (current) show(current); else { const r = fromHash(); show(r.g, {scrollTo: r.el}); }
     $("#exportLink").href = `api/profiles/${p.id}/export`;
+    exportCycle(p);   // #183
     drawProfileCard(p);
     drawAbout(p);   // #194
     if (p.role === "owner") $("#linksBody").replaceChildren(shareLinksPanel(p, {open: true}));   // share-links.js
@@ -252,6 +253,16 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     } catch (e) { sayIn($("#profMsg"), e.message, true); }
   };
 
+  /* ---------------------------------------------------------------- Export: the cycle records, ticked each time (#183):
+     offered to owners and editors only while the profile has cycle tracking on; unticked again once the export starts */
+  async function exportCycle(p) {
+    const wrap = $("#exportCycleWrap"), box = $("#exportCycle"), link = $("#exportLink"), base = `api/profiles/${p.id}/export`;
+    wrap.hidden = true; box.checked = false; link.href = base;
+    box.onchange = () => { link.href = base + (box.checked ? "?cycle=1" : ""); };
+    link.onclick = () => setTimeout(() => { box.checked = false; link.href = base; }, 0);
+    if (p.role !== "owner" && p.role !== "editor") return;
+    try { const c = await call(`profiles/${p.id}/cycle`); if (P === p) wrap.hidden = !c.on; } catch (e) {}
+  }
   /* ---------------------------------------------------------------- About this person (#194; person.js, server/person.py):
      the birth date and the sex used for reference ranges, saved together; the height history, each entry added or
      removed on its own; and the heights a clinic recorded in the records, beside it, each offered for the history.

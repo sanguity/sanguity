@@ -20,7 +20,7 @@ const SgSources = (() => {
     {id: "manual", title: "Type records in", has: ["typeIn", "viewOnly"]},
     {id: "link", title: "Paste a Health Link", has: ["healthLink", "viewOnly"]},
     {id: "portals", title: "Portals and health plans", has: ["mine"]},
-    {id: "phone", title: "Phone and watch", has: ["watch", "viewOnly"]},
+    {id: "phone", title: "Phone and watch", has: ["watch", "cycle", "viewOnly"]},   // cycle tracking (#183)
     {id: "history", title: "Import history", has: ["history"]},
   ];
   /* the old pages' addresses (import.html#manual, #link, #zip, #payment; settings.html#watch: moved.js) */
