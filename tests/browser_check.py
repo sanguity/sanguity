@@ -5140,6 +5140,7 @@ def main():
             sched = "fetch('api/backups').then(r => r.json()).then(s => [s.schedule, s.keep])"
             check("…the schedule: daily, keeping the newest 3, saved", js(sched) == ["daily", 3] and "daily, keeping the newest 3" in page.inner_text("#bkStatus"), js(sched))
             page.click("#bkSchedSeg label:has-text('Off')")
+            refused_from = len(problems)   # a sign-in more than REAUTH_MINUTES old is refused (403) and the page asks
             page.click("#bkSchedule button[type=submit]")
             asked = answer_ask(page)
             for _ in range(50):   # the fresh check, if the sign-in was more than a few minutes ago
@@ -5150,6 +5151,7 @@ def main():
                 page.fill("#bkReauth input[type=password]", PW)
                 page.click("#bkReauth button[type=submit]")
             page.wait_for_function("document.getElementById('bkNowMsg').textContent.startsWith('Scheduled backups are off')", timeout=10000)
+            problems[refused_from:] = [x for x in problems[refused_from:] if "403" not in x]   # that refusal is what asks for the fresh check
             check("…turning it off is asked first, in the app's dialog", asked[0] == "Turn off scheduled backups?" and js(sched)[0] == "off", asked)
             # stale: the backup made 10 days ago, as far as the app can tell (its name says when it was made)
             stale_name = time.strftime("sanguity-backup-%Y%m%d-%H%M%S.tar.gz", time.localtime(time.time() - 10 * 86400))
