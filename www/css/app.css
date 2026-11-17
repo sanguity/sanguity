@@ -1306,3 +1306,7 @@ svg text.growth-pct{font-size:10px}
   .acct .tbl.measures td{border-top:1px solid var(--grid);padding:6px 8px 6px 0}
 }
 .acct .tbl.measures th,.acct .tbl.measures td{white-space:nowrap}
+
+
+/* ---- readings typed in at home and height (#224, import-records.js): what each form is for, under its name */
+.imp .man-item .rec-hint{margin:0 1.6em 6px 0;font-size:12px}

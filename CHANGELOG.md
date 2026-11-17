@@ -468,6 +468,14 @@ Everything on `main` so far; it becomes the first tagged release.
   profile has some and unticked by default; cycle tracking stays the summary's own (#183) and is never offered for a
   link. Settings → Overview → Home readings puts blood pressure, glucose and temperature tiles after the key labs.
   Export everything now carries each ECG's samples (`watch/ecg/<key>.json`), and loading the export keeps them.
+- **Home readings typed in** (#224): Sources → Type records in has a form each for blood pressure (systolic,
+  diastolic, pulse), blood glucose (mg/dL or mmol/L, and a meal note only if chosen), temperature (°F or °C) and blood
+  oxygen taken at home, and for a height. Values a home device can't read, a unit chosen wrong ("looks like mg/dL"), a
+  diastolic above the systolic and a date after today are refused, saying why. The readings join the phone's on Body
+  and activity's blood pressure, glucose, temperature and blood oxygen cards, said to be "Typed in" in the lists,
+  tooltips and tables; one the phone sent already is left out, and one a visit recorded is shown once. Typed again
+  for the same date and time, a reading replaces the one before; undoing the save takes them away. A height goes into
+  About this person's history, where it's changed or removed (an undo leaves it, as it leaves every setting).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

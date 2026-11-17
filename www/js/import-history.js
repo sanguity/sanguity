@@ -50,6 +50,8 @@
     if (c.entries) out.push(n(c.entries, ["problem, appointment or weight", "problems, appointments or weights"]));
     if (c.watch_days) out.push(n(c.watch_days, ["day", "days"]) + " of watch data");
     if (c.workouts) out.push(n(c.workouts, ["workout", "workouts"]));
+    if (c.readings) out.push(n(c.readings, ["reading taken at home", "readings taken at home"]));   // typed in (#224)
+    if (c.heights_set) out.push(n(c.heights_set, ["height", "heights"]) + " put in About this person (kept there if this is undone)");
     if (c.ecgs) out.push(n(c.ecgs, ["ECG recording", "ECG recordings"]));   // #182
     if (c.rhythm) out.push(n(c.rhythm, ["irregular rhythm notification", "irregular rhythm notifications"]));
     if (c.bp_readings) out.push(n(c.bp_readings, ["blood pressure reading", "blood pressure readings"]));   // #223 (never cycle records)

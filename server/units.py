@@ -180,4 +180,6 @@ def annotate_watch(summary):
             c = conversions(canon, m.get("unit"), change=m.get("key") in CHANGES)
             if c:
                 m["conv"] = c
+    if (summary or {}).get("glucose_readings"):   # typed in at home, mg/dL (#224): shown in this person's lab unit too
+        summary["glucose_conv"] = conversions("Glucose, Blood", "mg/dL")
     return summary

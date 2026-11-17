@@ -20,7 +20,7 @@ os.makedirs(os.path.join(TMP, "records"))
 os.makedirs(os.path.join(TMP, "keys"))
 sys.path.insert(0, ROOT)
 
-import io, logging   # noqa: E402
+import io, json, logging   # noqa: E402
 
 from fastapi.testclient import TestClient   # noqa: E402
 
@@ -456,6 +456,145 @@ class Manual(unittest.TestCase):
         self.assertEqual(self.items([imm], pid=pid).status_code, 200)
         r = self.items([dict(imm, vaccine=" tdap  VACCINE ")], save=False, pid=pid)
         self.assertEqual([x["duplicate"] for x in r.json()["items"]], [True])   # the same, typed again
+
+    # ---------------------------------------------------------------- readings typed in at home, and height (#224)
+
+    def home_profile(self, name, phone=None):
+        """A profile of its own; with phone, a phone receiver's summary as its watch file (fictional readings)."""
+        db = dbm.connect()
+        try:
+            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0]
+            path = None
+            if phone is not None:
+                path = os.path.join(TMP, "phone", f"{name}.json")
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                crypto.write_file(path, json.dumps(phone).encode())
+            return prof.create_profile(db, f"Robin {name} (fictional)", owner_id=owner, watch_file=path)
+        finally:
+            db.close()
+
+    def person(self, pid):
+        return self.robin.get(f"/api/profiles/{pid}/person").json()
+
+    def test_home_readings_join_the_phones_told_apart(self):
+        # the phone's summary (watch/receiver.py's shape): a reading at 07:30 New York time, which is 11:30 UTC in May
+        phone = {"tz": "America/New_York", "metrics": [], "exercise": [],
+                 "bp_readings": [["2026-05-03T11:30:00+00:00", 131, 84, 70, "Cuff (fictional)", "Health Connect"]],
+                 "temp_readings": [["2026-05-03T12:00:00+00:00", 36.8, None, "Apple Health"]]}
+        pid = self.home_profile("home readings", phone)
+        items = [{"kind": "home_bp", "date": "2026-05-04", "time": "07:30", "sys": "128", "dia": "82", "pulse": "64"},
+                 {"kind": "home_glucose", "date": "2026-05-04", "time": "07:45", "glucose": "5.8", "glucose_unit": "mmol/L", "meal": "before"},
+                 {"kind": "home_temp", "date": "2026-05-04", "time": "08:00", "temp": "99.1", "temp_unit": "F"},
+                 {"kind": "home_spo2", "date": "2026-05-04", "time": "08:05", "spo2": "97 %"},
+                 {"kind": "height", "date": "2026-05-04", "height": "172", "height_unit": "cm"}]
+        j = self.items(items, save=False, pid=pid).json()
+        self.assertEqual([x["ok"] for x in j["items"]], [True] * 5, j["items"])
+        self.assertEqual([x["label"] for x in j["items"]], ["Blood pressure at home", "Blood glucose at home", "Temperature at home",
+                                                           "Blood oxygen at home", "Height"])
+        self.assertEqual([x["summary"] for x in j["items"]], [
+            "2026-05-04 07:30 · 128/82 mmHg · pulse 64", "2026-05-04 07:45 · glucose 5.8 mmol/L · before a meal",
+            "2026-05-04 08:00 · 99.1 °F", "2026-05-04 08:05 · SpO2 97%", "2026-05-04 · height 172 cm · into About this person's height history"])
+        r = self.items(items, pid=pid)
+        self.assertEqual(r.status_code, 200, r.text)
+        c = r.json()["counts"]
+        self.assertEqual((c["typed"], c["readings"], c["heights_set"]),
+                         ({"height": 1, "home_bp": 1, "home_glucose": 1, "home_spo2": 1, "home_temp": 1}, 4, 1))
+        w = self.watch(pid)
+        # in the lists the phone's readings are in, beside them, "Typed in" where the phone's name their app
+        self.assertEqual(w["bp_readings"], [["2026-05-03T11:30:00+00:00", 131, 84, 70, "Cuff (fictional)", "Health Connect"],
+                                            ["2026-05-04T07:30:00", 128, 82, 64, None, "Typed in"]])
+        self.assertEqual(w["temp_readings"], [["2026-05-03T12:00:00+00:00", 36.8, None, "Apple Health"],
+                                              ["2026-05-04T08:00:00", 37.28, None, "Typed in"]])   # kept in °C
+        self.assertEqual(w["glucose_readings"], [["2026-05-04T07:45:00", 104.49, None, "Typed in", "before"]])   # kept in mg/dL
+        self.assertEqual(w["glucose_conv"]["si"][0], "mmol/L")   # shown in mmol/L when chosen (#41)
+        self.assertEqual(w["spo2_readings"], [["2026-05-04T08:05:00", 97, None, "Typed in"]])
+        self.assertEqual(w["tz"], "America/New_York")   # the receiver's file as it was, the typed readings beside it
+        # the height went into About this person's history, not the import
+        self.assertEqual(self.person(pid)["heights"], [{"date": "2026-05-04", "cm": 172, "unit": "cm"}])
+        # the phone's own reading typed in (07:30 in New York, a minute off), and the same typed again: already there
+        again = [{"kind": "home_bp", "date": "2026-05-03", "time": "07:31", "sys": "131", "dia": "84"}, items[0], items[4]]
+        j = self.items(again, save=False, pid=pid).json()
+        self.assertEqual([x["duplicate"] for x in j["items"]], [True, True, True])
+        self.assertEqual(self.items(again, pid=pid).status_code, 400)
+        # undone, the typed readings go; the phone's stay; the height stays in the history (a setting, not the import)
+        iid = r.json()["import_id"]
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/imports/{iid}/undo", headers=H).status_code, 200)
+        w = self.watch(pid)
+        self.assertEqual((w["bp_readings"], w["temp_readings"], w.get("glucose_readings"), w.get("spo2_readings")),
+                         (phone["bp_readings"], phone["temp_readings"], None, None))
+        self.assertEqual(len(self.person(pid)["heights"]), 1)
+
+    def test_a_reading_typed_again_for_its_time_corrects_it(self):
+        pid = self.home_profile("corrected")
+        first = {"kind": "home_bp", "date": "2026-06-01", "time": "21:10", "sys": "141", "dia": "92"}
+        r1 = self.items([first], pid=pid)
+        self.assertEqual(r1.status_code, 200, r1.text)
+        fixed = dict(first, sys="131", dia="82")
+        j = self.items([fixed], save=False, pid=pid).json()
+        self.assertEqual((j["items"][0]["duplicate"], j["items"][0]["notes"]),
+                         (False, ["replaces the reading typed in before for that time (undoing this save brings it back)"]))
+        r2 = self.items([fixed], pid=pid)
+        self.assertEqual(r2.status_code, 200, r2.text)
+        self.assertEqual(self.watch(pid)["bp_readings"], [["2026-06-01T21:10:00", 131, 82, None, None, "Typed in"]])   # once
+        hist = self.robin.get(f"/api/profiles/{pid}/imports").json()["imports"]
+        self.assertEqual([h["counts"].get("readings") for h in hist], [1, 1])   # the history says what each save brought
+        self.robin.post(f"/api/profiles/{pid}/imports/{r2.json()['import_id']}/undo", headers=H)
+        self.assertEqual(self.watch(pid)["bp_readings"], [["2026-06-01T21:10:00", 141, 92, None, None, "Typed in"]])
+        self.robin.post(f"/api/profiles/{pid}/imports/{r1.json()['import_id']}/undo", headers=H)
+        self.assertIsNone(self.watch(pid))
+
+    def test_home_readings_checked_with_clear_reasons(self):
+        pid = self.home_profile("checked")
+        r = self.items([
+            {"kind": "home_bp", "date": "2026-06-01", "sys": "300", "dia": "80"},
+            {"kind": "home_bp", "date": "2026-06-01", "sys": "80", "dia": "120", "pulse": "900"},
+            {"kind": "home_bp", "date": "2026-06-01", "dia": "80"},
+            {"kind": "home_glucose", "date": "2026-06-01", "glucose": "104", "glucose_unit": "mmol/L"},
+            {"kind": "home_glucose", "date": "2026-06-01", "glucose": "5.8", "glucose_unit": "mg/dL"},
+            {"kind": "home_glucose", "date": "2026-06-01", "glucose": "5000", "meal": "dinner"},
+            {"kind": "home_temp", "date": "2026-06-01", "temp": "37.2", "temp_unit": "F"},
+            {"kind": "home_temp", "date": "2026-06-01", "temp": "60", "temp_unit": "C"},
+            {"kind": "home_spo2", "date": "2026-06-01", "spo2": "120"},
+            {"kind": "home_spo2", "date": "2090-01-01", "spo2": "98"},
+            {"kind": "height", "date": "2026-06-01", "height": "400", "height_unit": "cm"},
+            {"kind": "height", "date": "2026-06-01", "height": "tall"},
+        ], pid=pid)
+        self.assertEqual(r.status_code, 400, r.text)
+        f = [x["fields"] for x in r.json()["items"]]
+        self.assertEqual(f[0], {"sys": "has a systolic pressure that doesn't look right (300; expected 50 to 260)"})
+        self.assertEqual(f[1], {"dia": "is as high as the systolic or higher (120, 80): the systolic is the higher number, as in 120/80",
+                                "pulse": "has a pulse that doesn't look right (900; expected 20 to 250)"})
+        self.assertEqual(f[2], {"sys": "needs the systolic pressure (the higher number)"})
+        self.assertEqual(f[3], {"glucose": "has a glucose reading that looks like mg/dL, not mmol/L (104): choose mg/dL, or check the number"})
+        self.assertEqual(f[4], {"glucose": "has a glucose reading that looks like mmol/L, not mg/dL (5.8): choose mmol/L, or check the number"})
+        self.assertEqual(set(f[5]), {"glucose", "meal"})
+        self.assertIn("expected 20 to 600", f[5]["glucose"])
+        self.assertEqual(f[6], {"temp": "has a temperature that looks like °C, not °F (37.2): choose °C, or check the number"})
+        self.assertEqual(f[7], {"temp": "has a temperature that doesn't look right (60 °C; expected 30 to 45)"})
+        self.assertEqual(f[8], {"spo2": "has an oxygen saturation (SpO2) that doesn't look right (120%; expected 50 to 100)"})
+        self.assertEqual(f[9], {"date": "has a date after today (2090-01-01)"})
+        self.assertIn("from 20 to 272 cm", f[10]["height"])
+        self.assertEqual(f[11], {"height": "has a height that isn't a number (tall)"})
+        self.assertIsNone(self.watch(pid))
+        self.assertEqual(self.person(pid)["heights"], [])
+
+    def test_a_height_typed_in_goes_into_the_history(self):
+        pid = self.home_profile("height")
+        self.assertEqual(self.robin.put(f"/api/profiles/{pid}/person", json={"birthDate": "1990-02-01"}, headers=H).status_code, 200)
+        before = count(pid)["imports"]
+        r = self.items([{"kind": "height", "date": "2026-03-01", "height": "5 ft 8 in", "height_unit": "in"}], pid=pid)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((r.json()["import_id"], r.json()["counts"]["heights_set"]), (None, 1))   # a height alone isn't an import
+        self.assertEqual(count(pid)["imports"], before)
+        self.assertEqual(self.person(pid)["heights"], [{"date": "2026-03-01", "cm": 172.72, "unit": "ftin"}])
+        j = self.items([{"kind": "height", "date": "2026-03-01", "height": "68", "height_unit": "in"},
+                        {"kind": "height", "date": "2026-03-02", "height": "173", "height_unit": "cm"}], save=False, pid=pid).json()
+        self.assertEqual([x["duplicate"] for x in j["items"]], [True, False])
+        r = self.items([{"kind": "height", "date": "2026-03-01", "height": "173", "height_unit": "cm"}], save=False, pid=pid)
+        self.assertEqual(r.json()["items"][0]["notes"], ["replaces the height of that day in About this person (5 ft 8 in)"])
+        r = self.items([{"kind": "height", "date": "1989-12-01", "height": "50"}], pid=pid)
+        self.assertEqual((r.status_code, r.json()["items"][0]["fields"]),
+                         (400, {"date": "has a date before the birth date in About this person (1990-02-01)"}))
 
     def test_viewer_cant_save_records(self):
         before = count(self.pid)

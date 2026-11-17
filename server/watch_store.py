@@ -32,6 +32,9 @@ from . import crypto, ecg, profiles as prof
 SIDE = "apple-health.json"
 LEGACY = "legacy.json"   # imported before imports were kept apart, or with no import id: not undoable
 UNDOING = ".undoing-"     # a summary set aside by an undo that has not committed yet (forget_import)
+# lists of readings one by one, [time, value(s)..., source, app] (the phone's, watch/receiver.py #180 #184; typed in
+# at home, app "Typed in", manual_items.py #224): list -> where its app is in a row
+READINGS = {"bp_readings": 5, "temp_readings": 3, "glucose_readings": 3, "spo2_readings": 3}
 
 
 def own_path(pid):
@@ -77,7 +80,9 @@ def _by_start(x):
 
 def merge(low, high):
     """`high` laid over `low`: its points win per (metric key, day), its workouts per key and then per start time.
-    Either may be None. Top-level fields (updated, tz, last_payload...) come from `high` where it has them."""
+    Either may be None. Top-level fields (updated, tz, last_payload...) come from `high` where it has them, but for the
+    lists of readings (READINGS), which keep both, `high`'s winning per minute, source and app (#224: a reading typed
+    in again for its minute replaces the one before)."""
     if not low or not high:
         return dict(high or low) if (high or low) else None
     out = {**low, **high}
@@ -106,6 +111,13 @@ def merge(low, high):
     if low.get("heights") or high.get("heights"):   # [day, cm, source, unit]: one a day, high's
         by = {h[0]: h for src in (low, high) for h in src.get("heights") or [] if isinstance(h, list) and h}
         out["heights"] = [by[d] for d in sorted(by)]
+
+    for lst, at in READINGS.items():   # readings one by one (#224): both kept, high's winning per minute, source and app
+        if low.get(lst) and high.get(lst):
+            ident = lambda r: (str(r[0])[:16], r[at - 1], r[at]) if isinstance(r, list) and len(r) > at else None
+            mine = {ident(r) for r in high[lst]}
+            out[lst] = sorted([r for r in low[lst] if ident(r) not in mine] + list(high[lst]),
+                              key=lambda r: _by_start({"start": r[0] if isinstance(r, list) else ""}))
     return out
 
 
@@ -244,8 +256,9 @@ def save_import(db, pid, summary, import_id=None):
     rebuild(db, pid)
     # by date: a glucose meter's reading is keyed by its time (#223)
     days = {str(d)[:10] for m in summary.get("metrics") or [] for d, _ in m.get("pts") or []}
+    readings = sum(len(summary.get(k) or []) for k in READINGS)   # #224
     return {"path": target, "days": len(days), "workouts": len(summary.get("exercise") or []), **ecg.counts(summary),
-            **measure_counts(summary)}   # (#223)
+            **measure_counts(summary), **({"readings": readings} if readings else {})}   # (#223, #224)
 
 
 def measure_counts(summary):
@@ -261,6 +274,15 @@ def measure_counts(summary):
 def has_import(pid, import_id):
     """Whether that import brought watch data of its own."""
     return os.path.isfile(layer_path(pid, import_id))
+
+
+def import_counts(pid, import_id):
+    """{"watch_days", "workouts", "readings"} of what an import brought (its own summary), for the import history of
+    an import with no job to say so (records typed in, #224); {} when it brought none."""
+    s = _read(layer_path(pid, import_id)) or {}
+    days = {d for m in s.get("metrics") or [] for d, _ in m.get("pts") or []}
+    out = {"watch_days": len(days), "workouts": len(s.get("exercise") or []), "readings": sum(len(s.get(k) or []) for k in READINGS)}
+    return {k: v for k, v in out.items() if v}
 
 
 def forget_import(db, pid, import_id):

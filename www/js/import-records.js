@@ -48,12 +48,45 @@
       ["hr", "Heart rate", "number", "bpm"], ["temp", "Temperature", "number"], ["temp_unit", "Unit", "select", UNITS.temp_unit],
       ["height", "Height", "number"], ["height_unit", "Unit", "select", UNITS.height_unit], ["spo2", "SpO2", "number", "%"],
       ["resp", "Breathing rate", "number", "/min"], ["weight", "Weight", "number"], ["weight_unit", "Unit", "select", UNITS.weight_unit]]],
-    home: ["Home measurement", [["date", "Date", "date"], ["weight", "Weight", "number"], ["weight_unit", "Unit", "select", UNITS.weight_unit],
+    // ---- readings taken at home (#224): beside the phone's on Body and activity, as "Typed in"; a height into About this person
+    home_bp: ["Blood pressure at home", [["date", "Date", "date"], ["time", "Time", "time"], ["sys", "Systolic", "number", "mmHg"],
+      ["dia", "Diastolic", "number", "mmHg"], ["pulse", "Pulse", "number", "bpm, optional"]]],
+    home_glucose: ["Blood glucose at home", [["date", "Date", "date"], ["time", "Time", "time"], ["glucose", "Glucose", "number"],
+      ["glucose_unit", "Unit", "select", [["mg/dL", "mg/dL"], ["mmol/L", "mmol/L"]]],
+      ["meal", "Meal (optional)", "select", [["", "Not noted"], ["before", "Before a meal"], ["after", "After a meal"], ["other", "Other"]]]]],
+    home_temp: ["Temperature at home", [["date", "Date", "date"], ["time", "Time", "time"], ["temp", "Temperature", "number"],
+      ["temp_unit", "Unit", "select", UNITS.temp_unit]]],
+    home_spo2: ["Blood oxygen at home", [["date", "Date", "date"], ["time", "Time", "time"], ["spo2", "SpO2", "number", "%"]]],
+    home: ["Weight or steps at home", [["date", "Date", "date"], ["weight", "Weight", "number"], ["weight_unit", "Unit", "select", UNITS.weight_unit],
       ["steps", "Steps", "number"]]],
+    height: ["Height", [["date", "Date measured", "date"], ["height", "Height", "text"],
+      ["height_unit", "Unit", "select", [["cm", "cm"], ["in", "ft and in"]]]]],
     workout: ["Workout", [["date", "Date", "date"], ["time", "Start", "time"], ["minutes", "Minutes", "number"], ["activity", "Activity", "text", "Walk, swim…"]]],
     document: ["Letter or document", [["date", "Date", "date"], ["time", "Time", "time"], ["title", "Title"],
       ["doctype", "Kind", "select", [["document", "Document"], ["letter", "Letter"]]], ["where", "From", "text", OPT], ["file", "File", "file"]]],
   };
+  // #224: what a home reading's form is for, under its name; and its units as this person chose them (Settings → Units)
+  const HOME = "Shown on Body and activity beside the phone's readings, as typed in. To correct one, type it again for the same date and time.";
+  const HINTS = {home_bp: HOME, home_glucose: HOME, home_temp: HOME, home_spo2: HOME,
+    height: "Goes into the height history under Sharing → About this person, where it can be changed or removed. In feet and inches, write it like 5 ft 8 in."};
+  const PREF = {glucose_unit: u => u.lab === "si" ? "mmol/L" : u.lab === "conventional" ? "mg/dL" : null,
+    temp_unit: u => u.temperature === "C" || u.temperature === "F" ? u.temperature : null,
+    height_unit: u => u.height === "ftin" ? "in" : u.height === "cm" ? "cm" : null, weight_unit: u => u.weight === "kg" || u.weight === "lb" ? u.weight : null};
+  let units = {}, unitsFor = null;
+  let loading = null;
+  function loadUnits() {   // the profile's units setting, once per profile; until then (or without it) the forms' own defaults
+    const p = +$("#profile").value;
+    if (!p) return Promise.resolve();
+    if (unitsFor === p) return loading;
+    unitsFor = p; units = {};
+    return loading = api(`profiles/${p}/settings`).then(r => r.ok ? r.json() : {}).then(j => { if (unitsFor === p) units = j.units || {}; }).catch(() => {});
+  }
+  function inUnits(card) {
+    if (HINTS[card.dataset.kind]) for (const s of card.querySelectorAll("select[data-f$=_unit]")) {
+      const want = (PREF[s.dataset.f] || (() => null))(units);
+      if (want) s.value = want;
+    }
+  }
   const MAX_LEN = {long: 4000};
   const ACCEPT = ".pdf,.png,.jpg,.jpeg,.gif,application/pdf,image/png,image/jpeg,image/gif";
   const box = $("#manItems"), picker = $("#manKind");
@@ -85,7 +118,7 @@
     const [label, fields] = KINDS[kind];
     const last = cards().pop(), from = last ? last.querySelector("[data-f=date],[data-f=admit],[data-f=start]") : null;
     const card = el("fieldset", {class: "man-item", "data-kind": kind, "data-seq": ++seq});
-    card.append(el("legend", {text: label}),
+    card.append(el("legend", {text: label}), HINTS[kind] ? el("p", {class: "hint rec-hint", text: HINTS[kind]}) : null,
       el("div", {class: "rec-grid"}, fields.map(x => field(card, x))),
       el("button", {type: "button", class: "del", "aria-label": `Remove this ${label.toLowerCase()}`, title: "Remove", text: "✕"}),
       el("div", {class: "man-check", "aria-live": "polite"}));
@@ -93,7 +126,12 @@
     // the first date starts on the last record's, else today: records typed from one letter share it
     const first = card.querySelector("[data-f=date],[data-f=admit],[data-f=start]");
     if (first) first.value = from && from.value ? from.value : today();
+    inUnits(card);
     card.dataset.initial = JSON.stringify(read(card));
+    if (HINTS[kind]) loadUnits().then(() => {   // the units known only now: an untouched form takes them
+      if (!card.isConnected || JSON.stringify(read(card)) !== card.dataset.initial) return;
+      inUnits(card); card.dataset.initial = JSON.stringify(read(card));
+    });
     number();
     if (focus) (card.querySelector("input:not([data-f=date]):not([data-f=admit]):not([data-f=start]), textarea") || first).focus();
     changed();
@@ -199,6 +237,7 @@
 
   // the Costs tab's "Type in what you paid" (#55) opens sources.html#payment: Type records in, with a payment's form
   if (location.hash === "#payment") { showKind("manual"); add("payment"); }
+  $("#profile").addEventListener("change", () => { if (cards().some(c => HINTS[c.dataset.kind])) loadUnits(); });
 
   window.sanguityRecords = {
     values, show,
