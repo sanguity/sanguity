@@ -158,6 +158,11 @@ Everything on `main` so far; it becomes the first tagged release.
   the install's activity. They left Account, Settings, Connected sources and Find your provider, and their old
   addresses open them there; those pages now say what you can do, or to ask your admin, instead of naming server
   settings and commands. The Watch and scale card no longer shows a stray "null" (#175).
+- Settings: each group says under its title whose settings these are (this profile's, for everyone it's shared
+  with, or just yours) instead of one intro card that was wrong for Display and the calendar feed. One **Save**
+  per section, with **Discard changes**, replaces a Save per setting; a change not saved yet is marked, and so is
+  its group in the sidebar. On a phone the page title in the top bar is no longer cut off, and each key lab is
+  one row, its moves and Remove in a small menu (#174).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

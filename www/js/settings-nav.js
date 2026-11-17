@@ -5,7 +5,11 @@
    The sidebar lists the groups that have something to show this person (the watch card only for owners and
    editors); the address follows the group (settings.html#display), and an address naming a section
    (settings.html#watch, #sec-units) opens that section's group and scrolls to it.
-   "Find a setting" shows, across every group, only the settings whose name or help mentions what's typed. */
+   "Find a setting" shows, across every group, only the settings whose name or help mentions what's typed.
+
+   Above the sections, the group's title and whose settings these are (WHO): this profile's, for everyone it's
+   shared with (or shown as they are, to someone who can only view it); just yours; or the server's. A group with a
+   change not saved yet (a section with data-dirty, settings.js) is marked in the sidebar. */
 "use strict";
 (() => {
   const main = document.querySelector("main.sets");
@@ -25,8 +29,32 @@
      has: ["watch"]},
   ];
   const OTHER = {id: "more", title: "More", part: "", hint: "", has: []};   // a section no group names yet
+  /* whose settings each group holds: the registry's sections say it by their settings' scope (data-scope); a group
+     missing here goes by that */
+  const WHO = {dashboard: "profile", labs: "profile", activity: "profile", display: "you", calendar: "feed", watch: "watch",
+    sources: "server", outside: "server"};
+  const SAY = {
+    profile: ["This profile", ", for everyone it's shared with."],
+    view: ["This profile", ": you can view it, so these are shown as they are; its owners and editors change them."],
+    you: ["Just for you", ", on every profile you see."],
+    feed: ["Just for you", ": your own calendar feed of this profile."],
+    watch: ["This profile", ": the phone that uploads its watch and scale readings, set up by its owners and editors."],
+    server: ["This server", ", for everyone on it."],
+  };
+  const SCOPE_WHO = {profile: "profile", user: "you", install: "server"};
   const groupOf = id => GROUPS.find(g => g.has.includes(id)) || (id.startsWith("sec-") ? OTHER : null);
   const parts = () => [...main.querySelectorAll("#sections > section, #calendar, #watch")];
+  const partsOf = g => parts().filter(p => groupOf(p.id) === g);
+  function whoOf(g) {
+    let w = WHO[g.id];
+    if (!w) {
+      const scopes = new Set(partsOf(g).flatMap(p => [...p.querySelectorAll(".set[data-scope]")].map(s => s.dataset.scope)));
+      w = scopes.size === 1 ? SCOPE_WHO[[...scopes][0]] : scopes.size ? "profile" : null;
+    }
+    return w === "profile" && main.dataset.role === "viewer" ? "view" : w;
+  }
+  const say = w => SAY[w] ? [el("strong", {text: SAY[w][0]}), SAY[w][1]] : [];
+  const title = document.getElementById("groupTitle"), who = document.getElementById("introHint");
 
   const search = el("input", {type: "search", id: "setFind", placeholder: "Find a setting", "aria-label": "Find a setting", autocomplete: "off"});
   const list = el("ul", {class: "set-nav-list"});
@@ -46,8 +74,10 @@
     const rows = [];
     for (const g of gs) {
       if (g.part && g.part !== lastPart) { rows.push(el("li", {class: "set-nav-part", "aria-hidden": "true", text: g.part})); lastPart = g.part; }
-      rows.push(el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id, "aria-current": g === current ? "page" : null, text: g.title,
-        onclick: ev => { ev.preventDefault(); show(g, {push: true, by: true}); }})));
+      const dirty = partsOf(g).some(p => p.hasAttribute("data-dirty"));
+      rows.push(el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id, "aria-current": g === current ? "page" : null,
+        onclick: ev => { ev.preventDefault(); show(g, {push: true, by: true}); }}, g.title,
+        dirty ? el("span", {class: "set-nav-dirty", title: "Changes not saved"}, el("span", {class: "set-sr", text: ", changes not saved"})) : null)));
     }
     list.replaceChildren(...rows);
     if (pending) {   // an address naming a section that has only just arrived
@@ -59,6 +89,7 @@
   }
   function apply() {
     const q = search.value.trim().toLowerCase();
+    for (const line of main.querySelectorAll(".set-in")) line.remove();   // (put back below while searching)
     for (const p of parts()) {
       const g = groupOf(p.id);
       if (!g) continue;
@@ -76,6 +107,13 @@
     }
     for (const a of list.querySelectorAll("a")) a.setAttribute("aria-current", !q && a.dataset.group === current?.id ? "page" : "false");
     main.dataset.group = q ? "" : current?.id || "";
+    // the title and whose settings these are; searching, each section shown says its group
+    if (title) title.textContent = q ? "Find a setting" : current?.title || "Settings";
+    if (who) who.replaceChildren(...(q ? [`Matching “${search.value.trim()}”, from every group.`] : current ? say(whoOf(current)) : []));
+    if (q) for (const p of parts()) {
+      const g = groupOf(p.id), w = g && SAY[whoOf(g)];
+      if (g && !p.classList.contains("grp-off")) p.prepend(el("p", {class: "set-in", text: g.title + (w ? " · " + w[0] : "")}));
+    }
   }
   function show(g, {push = false, scrollTo = null, by = false} = {}) {
     current = g;
@@ -103,6 +141,6 @@
   // the sections arrive later (the server's list, the watch card for owners and editors): group them as they do
   const redraw = () => { drawNav(); apply(); };
   new MutationObserver(redraw).observe(document.getElementById("sections"), {childList: true});
-  new MutationObserver(redraw).observe(main, {attributes: true, subtree: true, attributeFilter: ["hidden"]});
+  new MutationObserver(redraw).observe(main, {attributes: true, subtree: true, attributeFilter: ["hidden", "data-dirty", "data-role"]});
   redraw();
 })();

@@ -104,7 +104,8 @@ header.topbar .tabs button{white-space:nowrap}
   header.topbar .spacer{display:block;flex:1}
   header.topbar .tabs{order:5;width:100%}
   .page-title{font-size:14px;padding-left:8px;flex:1 1 0}
-  .page-title + .spacer{display:none}
+  header.topbar .page-title + .spacer{display:none}   /* the title has the row's room, not half of it */
+  .page-title{white-space:normal;line-height:1.2;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}   /* two lines before it's cut */
   .menu-btn{max-width:10em}
 }
 .filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--grid);background:var(--surface)}
@@ -509,6 +510,36 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .sets .set .row{border-bottom:0;padding:0;margin:8px 0 6px;cursor:default}
 .sets .set .row:hover{background:none}
 .sets .btn.primary:disabled{color:var(--ink);border-color:var(--ring)}
+/* #174: the group shown and whose settings these are; one Save per section, kept in view while it has changes;
+   a key lab's row on a phone: its handle, name and a menu (orderList's opts.more) */
+.sets .set-top{margin:2px 0 14px}
+.sets .set-top-hd{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap}
+.sets .set-top h1{font-size:20px;font-weight:650;margin:0;letter-spacing:-.01em}
+.sets .set-top label.set-profile{display:flex;align-items:center;gap:8px}
+.sets .set-top label.set-profile[hidden]{display:none}
+.sets .set-who{margin:4px 0 0;color:var(--ink2);font-size:13px}
+.sets .set-who strong{color:var(--ink);font-weight:650}
+.sets .set-top .msg{display:block;margin-top:6px}
+.sets .set-in{margin:0 0 8px;font-size:12px;color:var(--muted);font-weight:550}
+.sets .set h3 .set-unsaved{display:none;color:var(--accent);background:none;box-shadow:inset 0 0 0 1px currentColor}
+.sets .set-changed h3 .set-unsaved{display:inline-block}
+.sets .set-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;border-top:1px solid var(--grid);margin:12px -16px -14px;padding:10px 16px;border-radius:0 0 11px 11px;background:var(--surface)}
+.sets section:not([data-dirty])>.set-foot:has(>.msg:empty){display:none}   /* until there's something to save or say */
+.sets section[data-dirty]>.set-foot{position:sticky;bottom:0;z-index:5;box-shadow:0 -8px 14px -10px rgba(0,0,0,.35)}
+@media (max-width:700px){ .sets .set-foot{margin:12px -12px -12px;padding:10px 12px;border-radius:0 0 9px 9px} }   /* the card's own padding there */
+.set-nav-dirty::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-left:7px;vertical-align:1px}
+.sets .set-more{display:none}
+.sets .set-more-btn{min-width:36px;min-height:32px;font-size:16px;line-height:1;padding:2px 8px}
+.sets .set-more .menu-list{min-width:170px}
+@media (max-width:600px){
+  .sets .set-top h1{font-size:18px}
+  .sets .set-order.has-more{padding-left:0}
+  .sets .set-order.has-more li:not(.muted){flex-wrap:nowrap;gap:6px}
+  .sets .set-order.has-more .set-name{flex:1 1 auto}
+  .sets .set-order.has-more .set-count{white-space:nowrap}
+  .sets .set-order.has-more .set-acts{display:none}
+  .sets .set-order.has-more .set-more{display:block}
+}
 .sets .set-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .sets .set-hd h2{margin:0}
 .sets .set h3 .tag{font-weight:550}
