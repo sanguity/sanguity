@@ -115,6 +115,7 @@ function openEvent(e) {
       ["Stopped", d.end ? fmtD(d.end) : ""], ["Prescribed by", d.prescriber], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
       typed ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "From the clinic's medication list. The date is when it was recorded there, not necessarily when you started it."}));
   }
+  { const mh = medHistoryAction(e); if (mh) body.append(mh); }   // a medication's whole history (meds.js, #50)
   const src = eventSource(e); if (src) body.append(src);   // where it came from (sources.js)
   body.append(journalAddAction(e));   // "Add a journal note" for this day (journal.js)
   if (e.k !== "exercise") body.append(editPanel(e));

@@ -14,13 +14,18 @@ function ticks(a, b, w) {
     while (d.getTime() < b) { if (d.getTime() >= a) out.push([d.getTime(), mStep >= 12 ? String(d.getFullYear()) : (d.getMonth() === 0 ? d.toLocaleDateString(undefined,{month:"short",year:"numeric"}) : d.toLocaleDateString(undefined,{month:"short"}))]); d.setMonth(d.getMonth() + mStep); } }
   return out;
 }
+/* lanes that draw themselves: {k: {height(w) -> px (0: draw the lane's events as dots), draw(g, S, top, h, cat, w)}}.
+   meds.js adds the Medications lane (#50): one row of spans per medication */
+const TL_LANES = {};
 function renderTimeline() {
   const w = Math.max(320, tlSvg.parentElement.clientWidth - 32);
   const lanes = CATS.filter(c => c.k !== "stay" && state.cats.has(c.k) && hasLane(c));
-  const laneH = 34, top = msInRange(state.from, state.to) ? 22 : 8, axisH = 26, h = top + Math.max(1, lanes.length) * laneH + axisH;
+  const laneH = 34, top = msInRange(state.from, state.to) ? 22 : 8, axisH = 26;
+  const own = lanes.map(c => TL_LANES[c.k]?.height(w) || 0), laneHs = own.map(n => n || laneH), laneTop = laneHs.map((_, i) => laneHs.slice(0, i).reduce((a, b) => a + b, 0));
+  const h = top + (laneHs.reduce((a, b) => a + b, 0) || laneH) + axisH;
   tlSvg.setAttribute("viewBox", `0 0 ${w} ${h}`); tlSvg.setAttribute("height", h);
   const S = tlScale(w), g = [];
-  const plotB = top + lanes.length * laneH;
+  const plotB = top + laneHs.reduce((a, b) => a + b, 0);
   for (const [t, label] of ticks(state.from, state.to, S.R - S.L)) {
     const x = S.x(t);
     g.push(el("svg:line", {class: "gridline", x1: x, x2: x, y1: top, y2: plotB}));
@@ -34,7 +39,8 @@ function renderTimeline() {
     g.push(el("svg:rect", {class: "ev", x: x1, y: top, width: Math.max(3, x2 - x1), height: plotB - top, fill: "var(--stay)", "data-id": s.id, rx: 2}));
   }
   lanes.forEach((c, i) => {
-    const y = top + i * laneH + laneH / 2;
+    if (own[i]) { TL_LANES[c.k].draw(g, S, top + laneTop[i], laneHs[i], c, w); return; }
+    const y = top + laneTop[i] + laneH / 2;
     g.push(el("svg:text", {class: "lane-label", x: 0, y: y + 4, text: w < 600 ? c.label.replace(" & studies", "").replace(" & docs", "") : c.label}));
     g.push(el("svg:line", {class: "gridline", x1: S.L, x2: S.R, y1: y + laneH/2, y2: y + laneH/2, "stroke-opacity": .5}));
     if (c.k === "watch" && STEPS.length) {
@@ -75,7 +81,8 @@ const ptrs = new Map(); let pinch = null;
 tlSvg.addEventListener("pointerdown", ev => {
   ptrs.set(ev.pointerId, ev.clientX);
   if (ptrs.size === 2) { const [a, b] = [...ptrs.values()], r = tlSvg.getBoundingClientRect(), S = tlScale(r.width); pinch = {d: Math.abs(a - b) || 1, t: S.t((a + b) / 2 - r.left), from: state.from, to: state.to}; drag = null; return; }
-  drag = {x: ev.clientX, from: state.from, to: state.to, moved: false}; tlSvg.setPointerCapture(ev.pointerId);
+  // on: the mark pressed, since with the pointer captured pointerup's target is the svg itself
+  drag = {x: ev.clientX, from: state.from, to: state.to, moved: false, on: ev.target}; tlSvg.setPointerCapture(ev.pointerId);
 });
 tlSvg.addEventListener("pointercancel", ev => { ptrs.delete(ev.pointerId); pinch = null; drag = null; tlSvg.classList.remove("dragging"); });
 tlSvg.addEventListener("pointermove", ev => {
@@ -91,6 +98,7 @@ tlSvg.addEventListener("pointermove", ev => {
   }
   const ds = ev.target?.dataset || {};
   if (ds.steps) { showTip([el("div", {class: "v", text: `${(+ds.steps).toLocaleString()} steps`}), el("div", {class: "s", text: fmtD(+ds.day) + " · from watch"})], ev); return; }
+  if (ds.med != null) { medTip(MEDS[+ds.med], ds, ev); return; }   // a medication's span or fill (meds.js)
   const id = +ds.id; if (id) showEvTip(byId.get(id), ev); else hideTip();
 });
 tlSvg.addEventListener("pointerup", ev => {
@@ -98,7 +106,9 @@ tlSvg.addEventListener("pointerup", ev => {
   if (pinch) { if (ptrs.size < 2) { pinch = null; drag = null; renderAll(); } return; }
   tlSvg.classList.remove("dragging");
   if (drag && drag.moved) { drag = null; renderAll(); return; }
-  drag = null; const id = +ev.target?.dataset?.id; if (id) openEvent(byId.get(id));
+  const ds = (drag && drag.on || ev.target)?.dataset || {}; drag = null;
+  const id = +ds.id; if (id) openEvent(byId.get(id));
+  else if (ds.med != null) openMedication(MEDS[+ds.med]);   // a medication's span (meds.js)
 });
 tlSvg.addEventListener("pointerleave", hideTip);
 tlSvg.addEventListener("dblclick", () => applyPreset("all"));

@@ -36,6 +36,7 @@ NAME = "fhir"
 LABEL = "FHIR records (Apple Health, Blue Button, patient portals)"
 
 LOINC = "http://loinc.org"
+RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm"
 SOURCE = "FHIR"   # source tag on lab points when the performing organisation is unknown
 
 # resource types that are only looked up through references, never imported on their own
@@ -691,8 +692,19 @@ def parse(files):
             instr = "; ".join(d.get("text") for d in dose if isinstance(d, dict) and d.get("text"))
             status = cap(r.get("status") or "")
             org = org_of(r)
-            b.add(t, "med", name, " · ".join(x for x in [instr, status] if x),
-                  {"type": "med", "instructions": instr, "status": status, "src": org or who_of(r)}, key=rkey(r))
+            det = {"type": "med", "instructions": instr, "status": status, "src": org or who_of(r)}
+            # #50: who prescribed it, when it ended and its RxNorm code, when the resource says
+            who = who_of(r) if rt != "MedicationStatement" else ""
+            if who:
+                det["prescriber"] = who
+            end = iso((r.get("effectivePeriod") or {}).get("end"))
+            if end and t and end > t:
+                det["end"] = end
+            med = idx.get(r.get("medicationReference"), r) if r.get("medicationReference") else None
+            rx = codes(r.get("medicationCodeableConcept"), RXNORM) or codes((med or {}).get("code"), RXNORM)
+            if rx:
+                det["rxnorm"] = rx[0]
+            b.add(t, "med", name, " · ".join(x for x in [instr, status] if x), det, key=rkey(r))
         elif rt == "Encounter":
             if r.get("status") in ("entered-in-error", "cancelled"):
                 continue

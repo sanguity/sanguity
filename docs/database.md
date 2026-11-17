@@ -132,7 +132,9 @@ same as one from another (shown once, with both sources) or not (no longer flagg
 keys (`server/crossmatch.py`, #96).
 survive re-imports and undo. So do **journal** entries (#49, `server/journal.py`): notes, symptoms and side effects
 the people using the profile write themselves. They aren't records from anywhere, so no import owns them; the
-records the page loads list them as `journal`, and an export carries them in its `data.json`. An import's
+records the page loads list them as `journal`, and an export carries them in its `data.json`. The medication
+timeline (#50, `server/medications.py`) is worked out from the `med` and `rx` events each time the records are put
+together and listed as `medications`; it has no table and is never stored from an import. An import's
 **name** (schema version 25, #38) is what the person renamed it to, encrypted; the records call it by that wherever
 they say where a record came from, and NULL means the importer's label.
 

@@ -26,7 +26,7 @@ All screenshots use the built-in **fictional demo data**. No real person's recor
 |---|---|
 | Overview | Key labs with sparklines, watch and scale summaries, active problems, upcoming visits, costs since a milestone |
 | Health | Watch and smart-scale data: weight and body composition, sleep stages, steps and workouts, heart rate and HRV |
-| Timeline | Every visit, stay, lab draw, report, message, document and claim on one zoomable timeline, with a searchable list |
+| Timeline | Every visit, stay, lab draw, report, message, document and claim on one zoomable timeline, with a searchable list; each medication as spans from its start through dose changes to its stop, with pharmacy fills marked |
 | Trends | Lab results over time against reference ranges, with procedures, imaging and your milestones marked, and saved views of the labs you chart together |
 | Lab heatmap | Every draw against its reference range, one row per lab |
 | Costs | Insurance claims by month, type of care and provider, and what you actually paid out of pocket |
