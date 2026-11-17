@@ -95,6 +95,7 @@ async function loadProfiles() {
         try { await call(`profiles/${p.id}/members`, "PUT", {username: name, role: role.value}); loadProfiles(); } catch (e) { fail(e); } }},
         el("span", {class: "muted", text: "Share with"}), who, "as", role, el("button", {class: "btn small", type: "submit", text: "Share"})));
       body.push(activityPanel(`profiles/${p.id}/activity`, members));
+      body.push(shareLinksPanel(p));   // share links (#47), js/share-links.js
       body.push(deletePanel(p, fail));
     } else {
       body.push(el("div", {class: "row"}, el("button", {class: "btn small", type: "button", text: "Leave this profile",
@@ -318,6 +319,8 @@ const WHAT = {
   calendar: d => ({create: `made a calendar feed (${d.details === "full" ? "full" : "minimal"} details)`, rotate: "gave their calendar feed a new address",
     change: `changed their calendar feed to ${d.details === "full" ? "full" : "minimal"} details${d.labs ? ", with expected labs" : ", without expected labs"}`,
     revoke: d.username ? `turned off ${d.username}’s calendar feed` : "turned off their calendar feed"}[d.change] || "changed a calendar feed"),
+  link: d => d.change === "view" ? `opened the share link${d.label ? ` “${d.label}”` : ""}`   // #47, js/share-links.js
+    : `${d.change === "revoke" ? "revoked" : "made"} the share link${d.label ? ` “${d.label}”` : ""}`,
   setup: () => "set up Sanguity with the first account",
   password: () => "changed their password",
   "account.create": d => `created the account ${d.username}${d.admin ? " (admin)" : ""}`,
@@ -347,7 +350,7 @@ const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document"
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
   ["export", "Exports"], ["upload", "Uploads"], ["discard", "Cancelled imports"], ["undo", "Undone imports"], ["edit", "Edits"],
   ["outside", "Outside connections"], ["settings", "Settings"], ["connect", "Connected sources"], ["calendar", "Calendar feeds"],
-  ["journal", "Journal"], ["summary", "Visit summaries"], ["source", "Renamed imports"]];
+  ["journal", "Journal"], ["summary", "Visit summaries"], ["source", "Renamed imports"], ["link", "Share links"]];
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},

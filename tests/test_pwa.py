@@ -12,7 +12,7 @@ import json, os, re, struct, subprocess, sys, tempfile, shutil, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WWW = os.path.join(ROOT, "www")
-PAGES = ["index", "login", "setup", "account", "import", "settings", "providers", "connect", "summary"]
+PAGES = ["index", "login", "setup", "account", "import", "settings", "providers", "connect", "summary", "share"]
 
 # run in a process of its own: the development server's static routes exist only when SANGUITY_SERVE_STATIC is set
 # before server.main is imported, which other test files in the same run may already have done without it

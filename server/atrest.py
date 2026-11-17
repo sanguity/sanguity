@@ -29,7 +29,8 @@ FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "
           ("same_results", "id", "a_key"), ("same_results", "id", "b_key"), ("same_results", "id", "value"),
           ("settings", "id", "sealed"), ("outside_contacts", "id", "host"),
           ("sync_skipped", "id", "detail"), ("sync_removed", "id", "row"), ("imports", "id", "note"),
-          ("journal", "id", "body"), ("imports", "id", "name"))
+          ("journal", "id", "body"), ("imports", "id", "name"),
+          ("share_links", "id", "label"), ("share_links", "id", "scope"))
 
 
 def anything_encrypted(db):

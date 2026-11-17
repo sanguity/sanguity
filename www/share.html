@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared records · Sanguity</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cstyle%3E@media (prefers-color-scheme:dark){.d{fill:%23b4485e}}%3C/style%3E%3Cpath class='d' d='M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z' fill='%238a2438'/%3E%3Cpath d='M18 43.5h5.5l4.5-9 5.5 15 4-9h8' fill='none' stroke='%23fbf4f1' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sanguity">
+<link rel="stylesheet" href="css/app.css">
+<script src="js/theme.js"></script>
+</head>
+<body class="acct-page share-page">
+<header>
+  <h1><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</h1>
+  <span class="spacer"></span>
+  <span class="meta">Shared read-only</span>
+  <button class="iconbtn" id="theme" type="button" title="Toggle light/dark">◐</button>
+</header>
+<main class="acct share">
+  <!-- a share link (#47): what an owner chose to show, read-only, for someone without an account. js/share.js reads
+       the token from this address's fragment (never sent to the server) and posts it to the API. -->
+  <section class="card" id="shareHead"><h2>Shared records</h2><p class="hint" id="shareStatus" role="status">Loading…</p></section>
+  <div id="shareBody"></div>
+  <p class="notice share-notice"><strong>Not medical advice.</strong> This shows what the records say. Out-of-range results are
+    flagged against the reference range printed on each result's own report. It doesn't diagnose, interpret results or
+    recommend treatment.</p>
+</main>
+<script src="js/util.js"></script>
+<script src="js/pwa.js"></script>
+<script src="js/dates.js"></script>
+<script src="js/share.js"></script>
+</body>
+</html>

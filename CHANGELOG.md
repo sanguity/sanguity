@@ -111,6 +111,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - Installing it is offered in the app: an **Install app** button in the header when the browser can install it,
   and an "Install on this device" card under Account with the button, Safari's Add to Home Screen steps on
   iPhone and iPad, or a link to the install's HTTPS address when the page was opened over plain HTTP (#56).
+- Share links for clinicians and relatives (#47): an owner makes a read-only link to part of a profile (chosen
+  sections, labs and dates) under Account → Profiles, for someone without an account. It expires after an hour to
+  90 days, can be revoked any time, stops if its maker stops being an owner, and every view is logged.
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for

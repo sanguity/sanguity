@@ -34,6 +34,9 @@ Profile events (profile_id set), readable by the profile's owners:
                 the secret)
   source        {"import", "label", "named"}: an import given its own name, or its name taken away (named false;
                 records.rename_import, #38; never the name)
+  link          {"change": "create" | "revoke" | "view", "link", "label"?, ...}: a share link made or revoked by an owner
+                (with its sections, number of labs, dates and hours), or opened by whoever holds it: actor SHARE_LINK,
+                with the viewer's address (share_links.py, #47; never the token)
 Account events (no profile), readable by admins:
   setup         the first account                                password   changed their own password
   account.create / account.disable / account.enable / account.admin / account.unadmin / account.reset   {"username"}
@@ -59,14 +62,15 @@ import json
 from . import config, crypto, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside",
-                   "settings", "connect", "disconnect", "calendar", "journal", "summary", "watch.secret", "source")
+                   "settings", "connect", "disconnect", "calendar", "journal", "summary", "watch.secret", "source", "link")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
                    "labmap.remove", "settings.user", "settings.install", "connect.source", "outside")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
 SCHEDULED_SYNC = "scheduled sync"   # a connected source's pull on its schedule (sync.py)
-SYSTEM = (COMMAND_LINE, SETUP_BUILD, SCHEDULED_SYNC)
+SHARE_LINK = "share link"           # whoever holds a share link, opening it (share_links.py)
+SYSTEM = (COMMAND_LINE, SETUP_BUILD, SCHEDULED_SYNC, SHARE_LINK)
 
 
 def log(db, action, who=None, profile_id=None, detail=None, ip=None, session_id=None, actor=None, item=None):
