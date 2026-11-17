@@ -520,6 +520,18 @@ Everything on `main` so far; it becomes the first tagged release.
   in 15 minutes, an address waits (from 30 seconds, doubling, at most 15 minutes) before its next signed upload is
   read. Health Auto Export with the right secret is never held up; a signing app (Life Dashboard) waits only if
   its own address sent the bad ones.
+- **Journal: symptom groups, photos, where on the body, mood** (#161): your own named sets of symptoms ("Migraine
+  day": headache, nausea, light sensitivity), made on the journal's card and logged in one go, each symptom its own
+  entry with its own severity. A symptom or side effect can say where on the body: tap regions of a front and back
+  outline (one keyboard stop each, arrow keys and Space) or tick them in a list. The journal's card shows where
+  symptoms have been in the timeline's dates as a body map with each place's count written in it, or as a table; a
+  place opens its entries. Photos can be attached to a note, symptom or side effect (JPEG, PNG or WebP, up to six,
+  20 MB each by `JOURNAL_PHOTO_MAX_MB`): before they're kept their GPS location, camera details, times and other
+  metadata are taken out (the orientation and colour profile stay), and the form says what was taken out. They're
+  sealed like documents, shown only to people who can view the profile, deleted with their entry, in Export
+  everything (`journal/photos/`) and backups, and in a share link only when "Photos in the journal" is ticked. A
+  day's mood and energy (0–10 each) is a fourth kind of entry, in its own Mood & energy lane on the timeline and its
+  own row under the Labs charts. Schema step 32 adds the `journal_photos` table.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

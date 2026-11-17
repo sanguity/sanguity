@@ -6,6 +6,8 @@
                                            the answer, the only time the token exists outside the link (owners)
   DELETE /api/profiles/{pid}/links/{id}    revoke it, at once (owners: any link of the profile, whoever made it)
   POST   /api/share/view                   {"token"}: what the link shows. No session: the token is the credential
+                                           {"token", "photo": id}: one of the journal's photos the link shows (#161,
+                                           only with "Photos in the journal" ticked), the picture itself
 
 Making and revoking are logged in the profile's activity as "link", and so is every view, under the actor "share
 link", with the viewer's address and never the token.
@@ -83,22 +85,26 @@ def _bare(status=404, retry=None):
                     media_type="text/plain; charset=utf-8", headers=headers)
 
 
-async def _token(request: Request):
-    """The token from a small JSON body, or "" for anything else (read here, so a bad body is a bare 404 too)."""
+async def _ask(request: Request):
+    """(the token, a photo's id or None) from a small JSON body, or ("", None) for anything else (read here, so a bad
+    body is a bare 404 too)."""
     raw = b""
     async for chunk in request.stream():
         raw += chunk
         if len(raw) > 1024:
-            return ""
+            return "", None
     try:
-        t = json.loads(raw).get("token")
+        body = json.loads(raw)
+        t, photo = body.get("token"), body.get("photo")
     except (ValueError, AttributeError):
-        return ""
-    return t if isinstance(t, str) else ""
+        return "", None
+    photo = photo if isinstance(photo, int) and not isinstance(photo, bool) else None
+    return (t if isinstance(t, str) else ""), photo
 
 
 @router.post("/api/share/view")
-def view(request: Request, token: str = Depends(_token), db=Depends(get_db)):
+def view(request: Request, ask=Depends(_ask), db=Depends(get_db)):
+    token, photo = ask
     ip = _client_ip(request)
     bad = "bad:" + ip
     # a working token opens its link even while this address is waiting for wrong ones (#203): behind a reverse
@@ -112,11 +118,17 @@ def view(request: Request, token: str = Depends(_token), db=Depends(get_db)):
         if token:
             _audit("share.refused", request, warn=False)
         return _bare()
-    key = "link:" + link["token_hash"]
+    key = ("photo:" if photo is not None else "link:") + link["token_hash"]   # #161: a photo has its own allowance
     wait = links.throttle.wait(key)
     if wait:
         return _bare(429, wait)
     links.throttle.fail(key)   # every view counts toward the link's own allowance
+    if photo is not None:   # one of the page's photos: part of the view just logged, so not logged again
+        got = links.photo(db, link, photo)
+        if got is None:
+            return _bare()
+        return Response(got[0], media_type=got[1], headers={"Cache-Control": "no-store",
+                                                            "Content-Disposition": f'inline; filename="photo-{photo}"'})
     prof.sync_build(db, link["profile_id"])
     out = links.build(db, link)
     with dbm.transaction(db):

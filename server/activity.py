@@ -27,7 +27,7 @@ Profile events (profile_id set), readable by the profile's owners:
   calendar      {"change": "create" | "rotate" | "change" | "revoke", "details"?, "labs"?, "username"?}: someone's calendar
                 feed of the profile (calendar.py, #51); username when an owner revoked someone else's. Fetches aren't logged
   journal       {"action", "kind"}: a journal entry added, changed or deleted (journal.py; action is "add", "change"
-                or "delete", kind "note", "symptom" or "side_effect"; never what it says)
+                or "delete", kind "note", "symptom", "side_effect" or "mood" (#161); never what it says)
   summary       {"sections", "since", "for", "pages", "questions"}: made a visit summary PDF (summary.py, #48; the
                 sections and dates only, never the questions or any result)
   watch.secret  {"rotated"}: made the profile's watch receiver secret, or a new one in place of the old (#46; never

@@ -741,6 +741,75 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .jhome .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
 .jhome .jlist{margin-bottom:8px}
 .jhome .jmore{margin-bottom:0}
+/* ---- journal: symptom groups, photos, where on the body, mood (#161; journal.js, journal-body.js) */
+.jbfigs{display:flex;gap:14px;justify-content:center}
+.jbfig{margin:0;display:flex;flex-direction:column;align-items:center;gap:2px;flex:1 1 0;max-width:150px;min-width:0}
+.jbfig figcaption{font-size:12px;color:var(--muted)}
+.jbody{display:block;width:100%;max-width:150px;height:auto;overflow:visible}
+.jbody .jreg{fill:var(--raised);stroke:var(--axis);stroke-width:.8;stroke-linejoin:round}
+.jbody .jreg:focus{outline:none}
+.jbody .jreg:focus-visible{stroke:var(--ink);stroke-width:2.4}
+.jbpick .jreg{cursor:pointer}
+.jbpick .jreg:hover{fill:var(--hover)}
+.jbody .jreg.on{fill:var(--c-journal);fill-opacity:.8;stroke:var(--ink);stroke-width:1.2}
+.jbody .jreg.on:focus-visible{stroke-width:2.4}
+.jbside{font-size:9px;fill:var(--muted);font-weight:600}
+.jbpick{display:flex;flex-direction:column;gap:4px;padding:6px 0 2px}
+.jbsaid-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.jbsaid{margin:2px 0;font-size:13px;color:var(--ink2);flex:1 1 200px;min-width:0}
+.jbsaid-row .btn{margin:0}
+.jblist summary,.jwhere summary{cursor:pointer;color:var(--ink2);font-size:13px;padding:4px 0;overflow-wrap:anywhere}
+.jblist fieldset{border:1px solid var(--grid);border-radius:8px;margin:6px 0;padding:4px 10px 8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:0 10px;min-width:0}
+.jblist legend{font-size:13px;font-weight:600;color:var(--ink2);padding:0 4px}
+.jblist label{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);padding:4px 0}
+.jwhere{border:1px solid var(--grid);border-radius:8px;padding:2px 10px}
+.jwhere-sum{color:var(--ink)}
+.jbmini{justify-content:flex-start;gap:6px;margin:2px 0 10px}
+.jbmini .jbfig{flex:0 0 64px}
+.jbmini .jbside{display:none}
+.jbmap{margin:8px 0}
+.jbmap .jbfig{max-width:170px}
+.jbmap .jbody{max-width:170px}
+.jbmap .jreg.has{cursor:pointer;fill:var(--c-journal)}
+.jbmap .jreg.s1{fill-opacity:.2}.jbmap .jreg.s2{fill-opacity:.4}.jbmap .jreg.s3{fill-opacity:.62}.jbmap .jreg.s4{fill-opacity:.85}
+.jbmap .jreg.has:hover,.jbmap .jreg.has:focus-visible{stroke:var(--ink);stroke-width:2.2}
+.jbn{font-size:7.5px;font-weight:700;fill:var(--ink);stroke:var(--surface);stroke-width:2.4px;paint-order:stroke;pointer-events:none}
+.jwhere-map{border-top:1px solid var(--grid);margin-top:12px;padding-top:10px}
+.jwhere-map h3{margin:0;font-size:15px}
+.jwhere-map .list-hd{flex-wrap:wrap;gap:8px}
+.jpics{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0 10px}
+.jpic{margin:0;display:flex;flex-direction:column;gap:4px;max-width:180px;min-width:0}
+.jpic img{display:block;width:100%;max-width:180px;max-height:180px;object-fit:cover;border-radius:8px;border:1px solid var(--ring);background:var(--raised)}
+.jpic a{display:block;border-radius:8px}
+.jpic figcaption{font-size:12px;color:var(--ink2);overflow-wrap:anywhere}
+.jpics-edit{margin:4px 0 0}
+.jpics-edit .jpic{max-width:none;flex:1 1 100%;flex-direction:row;align-items:flex-start;gap:10px}
+.jpics-edit .jpic img{width:84px;height:84px;flex:none}
+.jpics-edit figcaption{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;font-size:13px}
+.jpics-edit figcaption .btn{align-self:flex-start;margin:0}
+.jphoto-in{font:inherit;font-size:13px;color:var(--ink2);max-width:100%}
+.jphoto-msg:empty{display:none}
+.jscale>label{display:flex;align-items:center;gap:6px}
+.jsev-out.off{opacity:.55}
+.jgroup-btns{margin:2px 0 8px}
+.jgroup-line{margin:0}
+.jgroups{list-style:none;margin:8px 0;padding:0}
+.jgroups li{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--grid);padding:8px 0}
+.jgroups .t{display:flex;flex-direction:column;min-width:0;flex:1 1 180px;overflow-wrap:anywhere}
+.jgroups .s{font-size:12px;color:var(--ink2)}
+.jgroups .btns{margin:0}
+.jgf-row{border:1px solid var(--grid);border-radius:8px;padding:8px 10px;margin:0;display:flex;flex-direction:column;gap:6px;min-width:0}
+.jgf-had{display:flex;gap:6px;align-items:center;color:var(--ink)}
+.jgf-rest{display:flex;flex-direction:column;gap:6px}
+.jgf-rest[hidden]{display:none}
+.jmood{cursor:pointer}
+.jmood:focus{outline:none}
+.jmood:focus-visible>rect:first-child,.jmood.sel>rect:first-child{stroke:var(--ink);stroke-width:1.5}
+.share .share-pics{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
+.share .share-pic{margin:0;max-width:240px;min-width:0}
+.share .share-pic img{display:block;max-width:100%;border-radius:8px;border:1px solid var(--ring)}
+.share .share-pic figcaption{font-size:12.5px;color:var(--ink2)}
+@media (forced-colors:active){.jbody .jreg,.jmood rect{forced-color-adjust:none}.jbody .jreg{stroke:CanvasText}.jbody .jreg.on,.jbmap .jreg.has{fill:Highlight}}
 
 /* ---- install as a phone app (#56): the offline view (js/offline.js) and the Account choice (js/pwa.js) */
 .offline-banner{max-width:1500px;margin:12px auto 0;box-sizing:border-box;border-color:var(--c-study);font-size:13.5px;width:calc(100% - 40px)}

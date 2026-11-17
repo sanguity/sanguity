@@ -65,7 +65,10 @@ on the **Settings** page, appear on every chart and as "since" periods.
   and source nicknames (rename anything with the ✎ where it's shown), milestones, visits counted as workouts, your
   own reference ranges for results without one, and, per person, units (exact conversions only), time zone, date
   format and a light or dark theme.
-- A **journal** of symptoms, side effects and notes, on the timeline and the charts, listed on the Timeline tab.
+- A **journal** of symptoms, side effects and notes, on the timeline and the charts, listed on the Timeline tab:
+  your own symptom groups logged in one go, where on the body (a front and back outline, or a list), photos with
+  their location data taken out, a day's mood and energy in a lane of their own, and a body map of where symptoms
+  have been.
 
 **Finding your way.** One bar across the top: your records' tabs, **Add** (upload files, connect a portal or plan, type
 records in, paste a Health Link, a journal entry) and your menu (sources, sharing, settings, account, light or dark,
@@ -336,7 +339,8 @@ Limits, in `.env`: `UPLOAD_MAX_FILE_MB` (each file, sent or unpacked; 4096), `UP
 altogether, after unpacking; 16384) and `UPLOAD_MAX_FILES` (20000). nginx lets a file through up to 4 GB; to go
 higher, raise `client_max_body_size` in `nginx.conf` too. Refused: paths that are absolute or go up a folder
 (`..`), and zips holding links, such paths, more files or bytes than the limits, or a file that unpacks to more
-than `UPLOAD_MAX_ZIP_RATIO` (200) times its compressed size (a zip bomb). An upload left unfinished for a day is
+than `UPLOAD_MAX_ZIP_RATIO` (200) times its compressed size (a zip bomb). A photo attached to a journal entry
+may be at most `JOURNAL_PHOTO_MAX_MB` (20; nginx lets one through up to 25 MB). An upload left unfinished for a day is
 removed when the app next starts. While an import reads an upload, a decrypted copy sits in the app container's
 `/tmp`, which is in memory, and is removed straight after.
 
@@ -449,7 +453,7 @@ from the internet; a phone on your home network or tailnet works without that.
 
 **Sharing → Share links** (owners) makes a read-only link to part of a profile for someone without an
 account, such as a clinician or a relative. You choose the sections (visits and stays, lab results, medications,
-procedures and imaging, upcoming appointments, the journal, costs), which labs, and a date range, and the form says
+procedures and imaging, upcoming appointments, the journal and, ticked on its own, its photos, costs), which labs, and a date range, and the form says
 plainly what anyone holding the link will see: the profile's name and those records, nothing else (no documents,
 report text, settings or other profiles, and nothing can be changed). A link stops working when it expires (an hour
 to 90 days), when any owner revokes it, or when the owner who made it stops being one. Every time it's opened is

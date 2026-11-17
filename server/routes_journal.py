@@ -1,32 +1,53 @@
-"""The journal (journal.py, #49): list, add, change and delete a profile's notes, symptoms and side effects. Viewers
-read (the records the page loads list the entries too, as "journal"); owners and editors write. The CSRF check in
-main.guard covers the POST, PUT and DELETE like every other change, and each change goes in the profile's activity
-log (the kind of entry, never what it says)."""
+"""The journal (journal.py, #49): list, add, change and delete a profile's notes, symptoms, side effects and (#161)
+moods. Viewers read (the records the page loads list the entries too, as "journal"); owners and editors write. The
+CSRF check in main.guard covers the POST, PUT and DELETE like every other change, and each change goes in the
+profile's activity log (the kind of entry, never what it says).
+
+#161 adds:
+  POST   /api/profiles/{pid}/journal/group          a symptom group logged in one go: {group, t, note, items: [{title,
+                                                    severity, where}]}, one symptom entry each -> {"ids"}
+  PUT    /api/profiles/{pid}/journal/photos         a photo for an entry about to be saved: the request body is the
+                                                    picture (journal_photos.py checks and cleans it) -> {"id", "type",
+                                                    "bytes", "removed"}; nginx lets this one be large, as uploads
+  GET    /api/profiles/{pid}/journal/photos/{id}    a photo an entry lists, to anyone who can view the profile
+The symptom groups themselves are the setting journal.groups (PUT .../settings/journal.groups)."""
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, StrictInt
 
-from . import activity, db as dbm, journal
-from .main import _client_ip, get_db, need, user
+from . import activity, db as dbm, journal, journal_photos as photos
+from .main import DOC_CSP, _client_ip, get_db, need, user
 
 router = APIRouter()
 
 
 class Entry(BaseModel):
-    kind: Literal["note", "symptom", "side_effect"]
-    t: str                                   # YYYY-MM-DD or YYYY-MM-DDTHH:MM
+    kind: Literal["note", "symptom", "side_effect", "mood"]
+    t: str                                   # YYYY-MM-DD or YYYY-MM-DDTHH:MM (a mood: the day only)
     title: Optional[str] = None              # symptom, side effect: what it was
     severity: Optional[int] = None           # symptom, side effect: 0-10
     note: Optional[str] = None
     med: Optional[str] = None                # symptom, side effect: one of the profile's medications, by name
+    where: Optional[list] = None             # symptom, side effect: body regions (journal.REGIONS ids)
+    group: Optional[str] = None              # symptom, side effect: the symptom group it was logged with
+    photos: Optional[list] = None            # note, symptom, side effect: [{"id", "alt"}], sent first
+    mood: Optional[StrictInt] = None         # mood: 0-10 (#161)
+    energy: Optional[StrictInt] = None       # mood: 0-10
 
 
-def _checked(db, pid, body, keep_med=None):
+class Group(BaseModel):
+    group: str
+    t: str
+    note: Optional[str] = None
+    items: list
+
+
+def _checked(db, pid, body, keep_med=None, jid=None):
     try:
-        return journal.check(db, pid, body.kind, body.t, body.title, body.severity, body.note, body.med, keep_med)
-    except journal.JournalError as x:
-        raise HTTPException(400, str(x))
+        return journal.check(db, pid, body.model_dump(), keep_med, jid)
+    except (journal.JournalError, photos.PhotoError) as x:
+        raise HTTPException(getattr(x, "status", 400), str(x))
 
 
 @router.get("/api/profiles/{pid}/journal")
@@ -46,13 +67,64 @@ def add_entry(pid: int, body: Entry, request: Request, s=Depends(user), db=Depen
     return {"id": jid}
 
 
+@router.post("/api/profiles/{pid}/journal/group", status_code=201)
+def add_group(pid: int, body: Group, request: Request, s=Depends(user), db=Depends(get_db)):
+    """A symptom group (#161), each symptom an entry of its own with its own severity, saved together or not at all."""
+    need(db, s, pid, "editor")
+    try:
+        entries = journal.check_group(db, pid, body.model_dump())
+    except journal.JournalError as x:
+        raise HTTPException(400, str(x))
+    ids = []
+    with dbm.transaction(db):
+        for entry in entries:
+            ids.append(journal.add(db, pid, s, entry))
+            activity.log(db, "journal", s, pid, journal.log_detail("add", entry), _client_ip(request))
+    return {"ids": ids}
+
+
+def _store_photo(db, pid, uid, data):
+    with dbm.transaction(db):
+        return photos.add(db, pid, uid, data)
+
+
+@router.put("/api/profiles/{pid}/journal/photos", status_code=201)
+async def add_photo(pid: int, request: Request, s=Depends(user), db=Depends(get_db)):
+    """A photo for an entry (#161): checked, its metadata taken out, sealed. Refused before reading past the limit."""
+    from starlette.concurrency import run_in_threadpool
+    await run_in_threadpool(need, db, s, pid, "editor")
+    try:
+        if int(request.headers.get("content-length") or 0) > photos.MAX_BYTES:
+            raise photos.too_big()
+        data = bytearray()
+        async for chunk in request.stream():
+            data += chunk
+            if len(data) > photos.MAX_BYTES:
+                raise photos.too_big()
+        return await run_in_threadpool(_store_photo, db, pid, s["id"], bytes(data))
+    except ValueError as x:   # PhotoError, or a content-length that isn't a number
+        raise HTTPException(getattr(x, "status", 400), str(x) if isinstance(x, photos.PhotoError) else "Send the photo as the request body.")
+
+
+@router.get("/api/profiles/{pid}/journal/photos/{photo_id}")
+def photo(pid: int, photo_id: int, s=Depends(user), db=Depends(get_db)):
+    """A photo an entry lists, shown inline under the documents' strict policy (nothing in it can run or load)."""
+    need(db, s, pid, "viewer")
+    got = photos.get(db, pid, photo_id)
+    if got is None:
+        raise HTTPException(404, "That photo isn't here.")
+    data, media = got
+    return Response(data, media_type=media, headers={"Content-Disposition": f'inline; filename="photo-{photo_id}"',
+                                                     "Content-Security-Policy": DOC_CSP, "X-Frame-Options": "SAMEORIGIN"})
+
+
 @router.put("/api/profiles/{pid}/journal/{jid}")
 def change_entry(pid: int, jid: int, body: Entry, request: Request, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     was = journal.get(db, pid, jid)
     if was is None:
         raise HTTPException(404, "No such journal entry.")
-    entry = _checked(db, pid, body, was.get("med"))
+    entry = _checked(db, pid, body, was.get("med"), jid)
     with dbm.transaction(db):
         if journal.change(db, pid, jid, s, entry) is None:
             raise HTTPException(404, "No such journal entry.")

@@ -2643,13 +2643,13 @@ def main():
             jtoggles = r"""[...document.querySelectorAll('#journalHome .jfilters .toggle')].map(t => [t.textContent.trim().replace(/ \d+$/, ''),
               t.querySelector(':scope > input[type=checkbox]') ? String(t.querySelector('input').checked) : t.getAttribute('aria-pressed')])"""
             check("the journal's kinds and “Only the dates shown” are on/off toggle chips that say true or false (#193)",
-                  js(jtoggles) == [["Notes", "true"], ["Symptoms", "true"], ["Side effects", "true"], ["Only the dates shown", "false"]], js(jtoggles))
+                  js(jtoggles) == [["Notes", "true"], ["Symptoms", "true"], ["Side effects", "true"], ["Moods", "true"], ["Only the dates shown", "false"]], js(jtoggles))
             jsum = "(p => p && !p.hidden ? p.textContent : null)(document.querySelector('#journalHome .fsum'))"   # what the filters leave out (#190)
             check("the journal's filters as they start: no filter line (#190)", js(jsum) is None, js(jsum))
             page.click("#journalHome .jfilters .toggle[data-kind=symptom]")   # the kinds are on/off chips (#193)
             check("…filtered by kind", page.locator("#journalHome .jrow").count() == 0 and "No entries match" in page.inner_text("#journalHome .jlist")
                   and js("document.querySelector('#journalHome .toggle[data-kind=symptom]').getAttribute('aria-pressed')") == "false")
-            check("…a line under them says so, with Reset filters (#190)", js(jsum) == "Showing 2 of 3 kinds · Reset filters", js(jsum))
+            check("…a line under them says so, with Reset filters (#190)", js(jsum) == "Showing 3 of 4 kinds · Reset filters", js(jsum))
             page.click("#journalHome .jfilters .toggle[data-kind=symptom]")
             page.fill("#journalHome .jfilters input[type=search]", "after lunch")
             check("…and by what they say", page.locator("#journalHome .jrow").count() == 1)
@@ -2700,6 +2700,237 @@ def main():
             check("Add → Journal entry on another page opens the records page with the form, the address naming its tab again (#208)",
                   js("drawer.classList.contains('open') && location.hash === tabHash() && location.hash !== '#new-journal-entry'"), js("location.href"))
             page.keyboard.press("Escape")
+            page.click("#tab-timeline")
+            settle()
+
+            # ---- the journal's symptom groups, where on the body, moods and photos (#161): a group made and logged in
+            # one go (each symptom its own severity, a place picked on the outline by keyboard and from the list), a
+            # day's mood in its own lane and Trends row, a photo whose GPS location is taken out on the way in, the body
+            # map of where symptoms have been with its table; at 1400 and 375 px, light and dark, axe-clean; then removed
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("switchTab('timeline')")
+            settle()
+            page.click("#journalHome .jgroup-btns button:text-is('Symptom groups')")
+            settle(200)
+            page.click("#dbody .btns button:text-is('New group')")
+            page.fill("#dbody .jform input[type=text]", "Migraine day (browser check)")
+            page.fill("#dbody .jform textarea", "Headache\nNausea\nLight sensitivity")
+            page.click("#dbody .jform button[type=submit]")
+            page.wait_for_function("(CFG.journal?.groups || []).length === 1 && document.getElementById('dtitle').textContent === 'Symptom groups'", timeout=10000)
+            check("a symptom group is made from the journal's card, kept as the profile's setting (#161)",
+                  js("JSON.stringify(CFG.journal.groups)") == '[{"name":"Migraine day (browser check)","symptoms":["Headache","Nausea","Light sensitivity"]}]'
+                  and "Headache, Nausea, Light sensitivity" in page.inner_text("#dbody .jgroups"), js("JSON.stringify(CFG.journal.groups)"))
+            page.click("#dbody .jgroups button:text-is('Log it')")
+            settle(200)
+            check("…logged in one go: one row a symptom, each with its own severity",
+                  js("document.getElementById('dtitle').textContent") == "Log a symptom group" and page.locator("#dbody .jgf-row").count() == 3
+                  and page.locator("#dbody .jgf-row input[type=range]").count() == 3)
+            page.focus("#dbody .jgf-row >> nth=0 >> input[type=range]")
+            page.keyboard.press("Home")
+            for _ in range(6):
+                page.keyboard.press("ArrowRight")
+            page.uncheck("#dbody .jgf-row >> nth=1 >> input[type=checkbox]")
+            page.click("#dbody .jgf-row >> nth=0 >> summary")
+            page.focus("#dbody .jgf-row >> nth=0 >> svg[data-view=f] .jreg[tabindex='0']")
+            page.keyboard.press("ArrowRight")   # head -> neck: the arrow keys move inside the outline
+            page.keyboard.press("ArrowLeft")
+            page.keyboard.press("Space")
+            pick = js("""(() => { const r = document.querySelector('#dbody .jgf-row'); return {focus: document.activeElement.dataset.region,
+                checked: [...r.querySelectorAll('.jreg[aria-checked=true]')].map(p => p.dataset.region), said: r.querySelector('.jbsaid').textContent,
+                box: [...r.querySelectorAll('.jblist input:checked')].length, stops: [...r.querySelectorAll('svg .jreg')].filter(p => p.tabIndex === 0).length}; })()""")
+            check("…a place picked on the outline by keyboard: one stop per outline, the arrow keys move, Space ticks; the list follows",
+                  pick["focus"] == "head" and pick["checked"] == ["head"] and pick["said"] == "Chosen: Head" and pick["box"] == 1 and pick["stops"] == 2, pick)
+            page.click("#dbody .jgf-row >> nth=0 >> .jblist summary")
+            page.check("#dbody .jgf-row >> nth=0 >> .jblist label:text-is('Back of the neck') input")
+            check("…and from the list, the outline following", js("[...document.querySelector('#dbody .jgf-row').querySelectorAll('.jreg.on')].map(p => p.dataset.region)") == ["head", "back-neck"])
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            gbad = []
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                settle(100)
+                gbad += phone_fits(page, f"group form with the outline and list open, {theme}") + axe_check(page, f"group form, 375 px, {theme}")[0]
+            check("…the group's form fits 375 px and passes axe, light and dark", not gbad, gbad)
+            js("delete document.documentElement.dataset.theme")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#dbody .jform button[type=submit]")
+            page.wait_for_function("typeof JOURNAL !== 'undefined' && JOURNAL.length === 2 && booted", timeout=20000)
+            settle()
+            got = js("JOURNAL.map(e => [e.j.title, e.j.severity, e.j.group, e.j.where || []]).sort()")
+            check("…saved as two symptoms (the one unticked left out), each its own severity and place, naming the group",
+                  got == [["Headache", 6, "Migraine day (browser check)", ["head", "back-neck"]], ["Light sensitivity", 5, "Migraine day (browser check)", []]], got)
+
+            # a day's mood, its kind picked by keyboard; its own lane, and its own row on Trends
+            js("journalNew()")
+            settle(200)
+            page.focus("#dbody .jkinds button[aria-checked=true]")
+            page.keyboard.press("ArrowRight")
+            page.keyboard.press("ArrowRight")
+            check("a mood is the form's fourth kind: no time, no photos, a mood and an energy each on 0-10",
+                  js("document.activeElement.dataset.kind") == "mood" and page.locator("#dbody .jscale input[type=range]").count() == 2
+                  and not page.is_visible("#dbody input[type=time]") and not page.is_visible("#dbody .jphoto-in") and not page.is_visible("#dbody .jform input[type=text]"))
+            page.focus("#dbody .jscale >> nth=0 >> input[type=range]")
+            page.keyboard.press("End")
+            page.keyboard.press("ArrowLeft")
+            page.uncheck("#dbody .jscale >> nth=1 >> input[type=checkbox]")
+            check("…its words said: 9/10 · very high, energy left out", page.inner_text("#dbody .jscale >> nth=0 >> output") == "9/10 · very high"
+                  and js("document.querySelectorAll('#dbody .jscale input[type=range]')[1].disabled"))
+            page.click("#dbody .jform button[type=submit]")
+            page.wait_for_function("typeof JOURNAL !== 'undefined' && JOURNAL.length === 3 && booted && document.getElementById('dtitle').textContent === 'Mood 9/10'", timeout=20000)
+            mood_day = js("isoDay(JOURNAL.find(e => e.k === 'mood').ts)")
+            js("closeDrawer(); switchTab('timeline'); setRange(Date.now() - 20 * DAY, Date.now() + 5 * DAY)")
+            settle()
+            lane = js("""({lane: [...document.querySelectorAll('#tl .lane-label')].some(t => t.textContent === 'Mood & energy'), n: document.querySelectorAll('#tl .jmood').length,
+                bars: document.querySelectorAll('#tl .jmood rect').length})""")
+            check("…in its own Mood & energy lane on the timeline, a bar for the mood", lane["lane"] and lane["n"] == 1 and lane["bars"] == 2, lane)
+            js("switchTab('labs')")
+            settle()
+            if not js("document.querySelectorAll('#charts .chart svg').length"):
+                js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
+                settle()
+            moods = js("[...document.querySelectorAll('#charts .jmood')].map(m => m.getAttribute('aria-label'))")
+            check("…and its own row under every Trends chart, labelled", len(moods) == js("document.querySelectorAll('#charts .chart svg').length") > 0
+                  and all(m.startswith("Mood 9/10, ") for m in moods), moods[:2])
+            page.focus("#charts .jmood")
+            page.keyboard.press("Enter")
+            settle(200)
+            check("…opened from the keyboard there", js("document.getElementById('dtitle').textContent") == "Mood 9/10" and "Mood and energy" in page.inner_text("#dbody"))
+            page.keyboard.press("Escape")
+
+            # a photo: its GPS location and camera taken out on the way in, shown to whoever can view the profile
+            jpeg = __import__("base64").b64decode(js("""(() => { const c = document.createElement('canvas'); c.width = 160; c.height = 120; const x = c.getContext('2d');
+                x.fillStyle = '#e9c2ad'; x.fillRect(0, 0, 160, 120); x.fillStyle = '#c8574f'; x.beginPath(); x.arc(80, 60, 22, 0, 7); x.fill();
+                return c.toDataURL('image/jpeg', .8).split(',')[1]; })()"""))
+            make, place = b"BrowserCheckFictionalPhone", b"GPS fictional place"
+            tiff = (b"MM\x00*" + (8).to_bytes(4, "big") + (2).to_bytes(2, "big") + bytes.fromhex("010f0002") + (len(make) + 1).to_bytes(4, "big")
+                    + (38).to_bytes(4, "big") + bytes.fromhex("8825000400000001") + (38 + len(make) + 1).to_bytes(4, "big") + b"\0\0\0\0" + make + b"\0"
+                    + (1).to_bytes(2, "big") + bytes.fromhex("0001000200000002") + b"N\0\0\0" + b"\0\0\0\0" + place)
+            app1 = b"Exif\0\0" + tiff
+            jpeg = jpeg[:2] + b"\xff\xe1" + (len(app1) + 2).to_bytes(2, "big") + app1 + jpeg[2:]
+            js("journalNew()")
+            settle(200)
+            page.fill("#dbody .jform input[type=text]", "Rash (browser check)")
+            page.set_input_files("#dbody .jphoto-in", files=[{"name": "rash.jpg", "mimeType": "image/jpeg", "buffer": jpeg}])
+            page.wait_for_selector("#dbody .jpics-edit .jpic img", timeout=10000)
+            settle(200)
+            msg = page.inner_text("#dbody .jphoto-msg")
+            check("a photo attached to an entry says what was taken out of it: where it was taken, the camera",
+                  "where it was taken (GPS location)" in msg and "the camera or phone it was taken with" in msg
+                  and js("document.querySelector('#dbody .jpics-edit img').src.startsWith('data:image/jpeg')"), msg)
+            page.fill("#dbody .jpics-edit input[type=text]", "Red patch, fictional")
+            page.click("#dbody .jwhere summary")
+            page.click("#dbody .jwhere svg[data-view=f] .jreg[data-region=l-forearm]")
+            check("…a place tapped on the outline", js("[...document.querySelectorAll('#dbody .jwhere .jreg.on')].map(p => p.dataset.region)") == ["l-forearm"]
+                  and page.is_checked("#dbody .jblist label:text-is('Left forearm') input"))
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            fbad = []
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                settle(100)
+                fbad += phone_fits(page, f"entry form with a photo and the outline, {theme}") + axe_check(page, f"entry form with a photo, 375 px, {theme}")[0]
+            js("delete document.documentElement.dataset.theme")
+            check("…the form with its photo and the outline fits 375 px and passes axe, light and dark", not fbad, fbad)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#dbody .jform button[type=submit]")
+            page.wait_for_function("typeof JOURNAL !== 'undefined' && JOURNAL.length === 4 && booted && document.getElementById('dtitle').textContent === 'Rash (browser check)'", timeout=20000)
+            page.wait_for_function("(i => i && i.complete && i.naturalWidth > 0)(document.querySelector('#dbody .jpic img'))", timeout=10000)
+            pic = js("""(async () => { const i = document.querySelector('#dbody .jpic img'), b = new Uint8Array(await (await fetch(i.src)).arrayBuffer());
+                const s = Array.from(b, c => String.fromCharCode(c)).join(''); return {alt: i.alt, w: i.naturalWidth, gps: s.includes('GPS'), make: s.includes('BrowserCheck'),
+                caption: document.querySelector('#dbody .jpic figcaption')?.textContent, where: document.querySelector('#dbody .jbmini .jreg.on')?.dataset.region}; })()""")
+            check("…saved: shown in the entry's panel with what it shows, served without the location or camera",
+                  pic["alt"] == "Red patch, fictional" and pic["w"] == 160 and not pic["gps"] and not pic["make"] and pic["caption"] == "Red patch, fictional"
+                  and pic["where"] == "l-forearm", pic)
+            dbad = []
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    settle(100)
+                    dbad += axe_check(page, f"entry with a photo, {width} px, {theme}")[0] + (phone_fits(page, f"entry with a photo, {theme}") if width < 400 else [])
+            js("delete document.documentElement.dataset.theme")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…its panel passes axe at 1400 and 375 px, light and dark, and fits a phone", not dbad, dbad)
+            page.keyboard.press("Escape")
+
+            # where symptoms have been: the body map with counts, its places buttons; its table (#60)
+            js("closeDrawer(); switchTab('timeline'); setRange(Date.now() - 20 * DAY, Date.now() + 5 * DAY)")
+            settle()
+            bmap = js("""(() => { const m = document.querySelector('#journalHome .jwhere-map'); if (!m) return null;
+                return {n: [...m.querySelectorAll('.jreg.has')].map(p => [p.dataset.region, p.getAttribute('aria-label')]),
+                nums: [...m.querySelectorAll('.jbn')].map(t => t.textContent), hint: m.querySelector('.hint').textContent}; })()""")
+            check("the journal's card shows where symptoms have been in the dates shown, each place's count written in it, not by shading alone",
+                  bmap and sorted(r for r, _ in bmap["n"]) == ["back-neck", "head", "l-forearm"] and bmap["nums"] == ["1", "1", "1"]
+                  and "Head: 1 entry, the worst 6/10. Show them in the list" in [a for _, a in bmap["n"]] and "2 symptoms and side effects say where on the body" in bmap["hint"], bmap)
+            page.focus("#journalHome .jwhere-map .jreg[data-region=l-forearm]")
+            page.keyboard.press("Enter")
+            settle(200)
+            check("…a place opens its entries in the list, said on the filter line",
+                  page.locator("#journalHome .jrow").count() == 1 and "Rash (browser check)" in page.inner_text("#journalHome .jlist")
+                  and "about the left forearm" in (js("document.querySelector('#journalHome .fsum').textContent") or ""), js("document.querySelector('#journalHome .fsum').textContent"))
+            page.click("#journalHome .fsum-reset")
+            page.click("#journalHome .jwhere-map .view-seg button:text-is('Table')")
+            settle(200)
+            rows = js("[...document.querySelectorAll('#journalHome .jwhere-map table tbody tr')].map(r => [...r.cells].map(c => c.textContent))")
+            check("…and as a table: where, how many, the worst, the latest (#60)", sorted(r[0] for r in rows) == ["Back of the neck", "Head", "Left forearm"]
+                  and ["Head", "1", "6/10"] == next(r for r in rows if r[0] == "Head")[:3], rows)
+            mbad = []
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for table in (False, True):
+                    js("t => { if (t !== state.tables.has('#journal-where')) document.querySelector('#journalHome .jwhere-map .view-seg button[aria-pressed=false]').click(); }", table)
+                    for theme in ("light", "dark"):
+                        js("t => { document.documentElement.dataset.theme = t; }", theme)
+                        settle(150)
+                        js("document.querySelector('#journalHome .jwhere-map').scrollIntoView()")
+                        mbad += axe_check(page, f"journal card with the body {'table' if table else 'map'}, {width} px, {theme}")[0]
+                        if width < 400:
+                            mbad += phone_fits(page, f"journal card with the body {'table' if table else 'map'}, {theme}")
+                            if not table and theme == "dark" and shots:
+                                page.screenshot(path=os.path.join(shots, "161-body-map-375-dark.png"))
+            js("delete document.documentElement.dataset.theme")
+            check("…the card with the body map and its table passes axe at 1400 and 375 px, light and dark, and fits a phone", not mbad, mbad)
+            page.set_viewport_size({"width": 375, "height": 800})
+            js("if (state.tables.has('#journal-where')) document.querySelector('#journalHome .jwhere-map .view-seg button[aria-pressed=false]').click()")
+            page.focus("#journalHome .jwhere-map .jreg[data-region=head]")
+            page.keyboard.press("Tab")
+            check("…its places with entries are stops of the keyboard's own", js("document.activeElement.classList.contains('jreg')"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            # a share link shows the photo only when "Photos in the journal" is ticked, under the real CSP, with no session
+            made = js("""(async () => { const r = await api(`profiles/${PROFILE.id}/links`); const offered = (await r.json()).sections.map(s => s.id);
+                const mk = async secs => (await (await api(`profiles/${PROFILE.id}/links`, {method: 'POST', body: JSON.stringify({sections: secs, hours: 1, label: 'Journal (browser check)'})})).json());
+                return {offered, without: await mk(['journal']), with: await mk(['journal', 'journal_photos'])}; })()""")
+            holder = browser.new_context(viewport={"width": 375, "height": 800})
+            hp = holder.new_page()
+            hp.on("console", lambda m: m.type == "error" and problems.append(f"share page console error: {m.text}"))
+            hp.goto(base + "/" + made["without"]["path"])
+            hp.wait_for_selector("#share-journal .share-entry", timeout=10000)
+            plain = hp.evaluate("""({pics: document.querySelectorAll('.share-pic').length, where: [...document.querySelectorAll('#share-journal .share-entry p.muted')].map(p => p.textContent)})""")
+            hp.goto(base + "/" + made["with"]["path"])
+            hp.reload()
+            for _ in range(100):   # under the CSP: evaluate, not wait_for_function (a string the CSP won't run)
+                if hp.evaluate("(i => !!i && i.complete && i.naturalWidth > 0)(document.querySelector('.share-pic img'))"):
+                    break
+                hp.wait_for_timeout(100)
+            shared = hp.evaluate("""({alt: document.querySelector('.share-pic img').alt, src: document.querySelector('.share-pic img').src.slice(0, 15),
+                cards: [...document.querySelectorAll('#shareBody > section')].map(s => s.id)})""")
+            sbad = []
+            for theme in ("light", "dark"):
+                hp.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+                hp.wait_for_timeout(100)
+                sbad += phone_fits(hp, f"share link with a journal photo, {theme}") + axe_check(hp, f"share link with a journal photo, {theme}")[0]
+            holder.close()
+            check("a share link offers “Photos in the journal” once there are some; without it ticked no photo, with it the photo, under the real CSP, at 375 px, light and dark, axe-clean",
+                  made["offered"][made["offered"].index("journal") + 1] == "journal_photos" and plain["pics"] == 0
+                  and any("Where: Head, Back of the neck" in w for w in plain["where"]) and shared["alt"] == "Red patch, fictional"
+                  and shared["src"] == "data:image/jpeg" and "share-journal_photos" not in shared["cards"] and not sbad, [made["offered"], plain, shared, sbad])
+            js("ids => Promise.all(ids.map(i => api(`profiles/${PROFILE.id}/links/${i}`, {method: 'DELETE'})))", [made["without"]["link"]["id"], made["with"]["link"]["id"]])
+            # removed again: the entries (and the photo with its entry) and the group
+            js("""Promise.all(JOURNAL.map(e => api(`profiles/${PROFILE.id}/journal/${e.j.id}`, {method: 'DELETE'})))
+                .then(() => api(`profiles/${PROFILE.id}/settings/journal.groups`, {method: 'PUT', body: JSON.stringify({value: []})}))""")
+            page.reload()
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
+            check("…all removed again", js("JOURNAL.length === 0 && (CFG.journal?.groups || []).length === 0 && !document.querySelector('#tl .jmood')"))
             page.click("#tab-timeline")
             settle()
 

@@ -59,6 +59,7 @@ services:
       UPLOAD_MAX_TOTAL_MB: ${UPLOAD_MAX_TOTAL_MB:-16384}
       UPLOAD_MAX_FILES: ${UPLOAD_MAX_FILES:-20000}
       UPLOAD_MAX_ZIP_RATIO: ${UPLOAD_MAX_ZIP_RATIO:-200}
+      JOURNAL_PHOTO_MAX_MB: ${JOURNAL_PHOTO_MAX_MB:-20}   # a photo attached to a journal entry (#161)
       FORWARDED_ALLOW_IPS: "*"   # the app has no published port; only nginx reaches it, and nginx sets the header
     # no ports: only nginx (web) reaches it, over the compose network
     read_only: true

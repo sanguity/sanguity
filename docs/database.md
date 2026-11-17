@@ -132,7 +132,13 @@ same as one from another (shown once, with both sources) or not (no longer flagg
 keys (`server/crossmatch.py`, #96).
 survive re-imports and undo. So do **journal** entries (#49, `server/journal.py`): notes, symptoms and side effects
 the people using the profile write themselves. They aren't records from anywhere, so no import owns them; the
-records the page loads list them as `journal`, and an export carries them in its `data.json`. The medication
+records the page loads list them as `journal`, and an export carries them in its `data.json`. Since #161 an entry
+can also be a day's mood and energy, say where on the body (region ids of the outline the page draws), name the symptom
+group it was logged with (the groups themselves are the sealed profile setting `journal.groups`), and list photos:
+**journal_photos** (schema version 32, `server/journal_photos.py`) has one row a photo, pointing at its entry (NULL
+while the entry isn't saved yet), with only its random file name in `profiles/<id>/journal/`, its type and size; the
+picture is sealed there with its metadata (GPS location, camera, time taken) taken out, and what it shows is in the
+entry's encrypted body. Deleting the entry deletes its photos; an export carries them in `journal/photos/`. The medication
 timeline (#50, `server/medications.py`) is worked out from the `med` and `rx` events each time the records are put
 together and listed as `medications`; it has no table and is never stored from an import. An import's
 **name** (schema version 25, #38) is what the person renamed it to, encrypted; the records call it by that wherever
@@ -159,6 +165,7 @@ erDiagram
     profiles ||--o{ same_results : "has"
     results }o..o{ same_results : "matched by point key"
     profiles ||--o{ journal : "has"
+    journal ||--o{ journal_photos : "shows"
     profiles ||--o{ cost_marks : "has"
 
     profiles {
@@ -277,13 +284,23 @@ erDiagram
     journal {
         int id PK
         int profile_id FK
-        text body "🔒 JSON: kind (note | symptom | side_effect), date, what, severity 0-10, note, medication"
+        text body "🔒 JSON: kind (note | symptom | side_effect | mood), date, what, severity 0-10, note, medication, where, group, photos (id, what it shows), mood, energy"
         int created_by FK
         text created_name "the username then"
         int created
         int changed_by FK
         text changed_name
         int changed
+    }
+    journal_photos {
+        int id PK
+        int profile_id FK
+        int entry_id FK "NULL until its entry is saved"
+        text file "random name of the sealed picture in profiles/<id>/journal/"
+        text type "jpeg | png | webp"
+        int bytes
+        int created
+        int created_by FK
     }
     cost_marks {
         int id PK
@@ -774,14 +791,14 @@ heart rate is the profile setting `person.maxHr` (above), sealed like the other 
 The list the start-up check and key rotation use is `FIELDS` in [`server/atrest.py`](../server/atrest.py); keep the
 two in step. Every other text column is listed in `PLAIN` in `tests/test_security_refresh.py` with why it holds no
 health information, so a new column fails that test until it is in one list or the other (#203). Files the rows point at (documents imported from an export, upload files, previews, imported watch
-summaries) are encrypted on disk too. Not encrypted: usernames and profile names (needed for sign-in and
+summaries, the journal's photos) are encrypted on disk too. Not encrypted: usernames and profile names (needed for sign-in and
 sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 ## What a deletion removes
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries, cost marks, settings, visit summary drafts, calendar feeds, share links, undo history, its activity and outside contacts | the original exports |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries and their photos, cost marks, settings, visit summary drafts, calendar feeds, share links, undo history, its activity and outside contacts | the original exports |
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links, journal entries and cost marks (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |

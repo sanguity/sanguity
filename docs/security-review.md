@@ -63,6 +63,7 @@ check changes without updating the list, and it exercises this table against a l
 | A profile's records: Overview, Timeline, Labs, Body and activity, Costs, Medications, documents | Read | Read | Read | No (404) | Only the sections, labs and dates the link was made with; no documents, report text or settings | Upcoming appointments and expected lab draws, minimal by default |
 | A watch's ECG recordings and irregular rhythm notifications (#182): the events with the records, a recording's samples by `GET /api/profiles/{pid}/watch/ecg/{name}` when its drawer opens | Read | Read | Read | No (404) | Only if its owner ticks "ECGs and irregular rhythm notifications" (#225, unticked by default): the date and what the device said, never the samples | No |
 | The journal | Read | Add, change, delete | Add, change, delete | No | If the link includes it (without who wrote what) | No |
+| The journal's photos (#161): `GET /api/profiles/{pid}/journal/photos/{id}`, sent first by `PUT …/journal/photos` | Read | Send, attach, remove | Send, attach, remove | No (404) | Only if its owner ticks "Photos in the journal" too (unticked by default; offered only when there are some), each fetched with the token like the view | No |
 | The phone's and watch's measures in a visit summary or a share link (#225): home blood pressure, glucose, temperature, blood oxygen, respiratory rate, VO2 max, immunizations, BMI and growth | Read (summary) | Read (summary) | Read (summary; ticks them for a link) | No | Only the measures its owner ticked (each unticked by default), in the link's dates; cycle tracking never | No |
 | About this person: birth date, sex used for reference ranges, height history (#194) | Read | Change; add and remove heights | Change; add and remove heights | No | Only if its owner ticks About this person (unticked by default) | No |
 | Import history | Read | Undo, rename | Undo, rename | No | No | No |
@@ -533,6 +534,16 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 ### The journal, medications and costs (#49, #50, #55)
 - Read by anyone the profile is shared with; written by owners and editors; every change logged without its text;
   bodies and cost marks encrypted; in exports and backups.
+- Photos (#161, `server/journal_photos.py`): accepted only as JPEG, PNG or WebP, by the file's own bytes and a walk of
+  its structure (a file that isn't a whole picture of its type is refused; SVG, GIF, HEIC and anything else too), at
+  most `JOURNAL_PHOTO_MAX_MB` (20; nginx caps the one route at 25 MB), six to an entry, thirty waiting per profile
+  (abandoned ones swept after a day). Metadata is taken out before anything is stored, without decoding the picture:
+  in JPEG every EXIF block (GPS, camera make, model and serial, times, thumbnail, maker notes), XMP, IPTC/Photoshop,
+  comments, other application blocks and anything after the picture's end; kept: JFIF, the ICC colour profile,
+  Adobe's colour flag, and the orientation, written back as an EXIF block holding nothing else. In PNG, text chunks,
+  `eXIf` and `tIME`; in WebP, the EXIF and XMP chunks. Sealed in `profiles/<id>/journal/` under random names; served
+  inline under the documents' strict CSP with `nosniff`, only while an entry lists the photo. The symptom groups are
+  the sealed profile setting `journal.groups`.
 
 ### About this person (#194)
 - Birth date, sex used for reference ranges and height history are three profile settings (`person.*`), sealed like
