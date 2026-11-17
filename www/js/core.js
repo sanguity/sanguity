@@ -144,12 +144,12 @@ function periodYears() {
    menu (the other milestones, the calendar years, Custom dates…), the period in words beside them, and the date boxes
    only for custom dates (typed in, or a chart dragged or zoomed), with "Clear dates" back to the period before. One
    control shows as chosen: a preset button, or More… naming what it picked. */
-/* the period in words, beside the controls, saying what the chosen button doesn't: "Last 2 years", "Apr 14, 2025 –
-   today" (since a milestone), "Jan 1, 2025 – Dec 31, 2025" (a year) */
+/* the period in words, beside the controls: "Last 2 years", "Apr 14, 2025 – today" (since a milestone), "2025" (a year) */
 function periodWords() {
   const p = state.preset, m = msOf(p);
   if (m) return `${fmtD(dayTs(m.date))} – today`;
-  if (p === "custom" || isYearKey(p)) return `${fmtD(state.from)} – ${isoDay(state.to) >= zToday() ? "today" : fmtD(state.to)}`;
+  if (isYearKey(p)) return p;
+  if (p === "custom") return `${fmtD(state.from)} – ${isoDay(state.to) >= zToday() ? "today" : fmtD(state.to)}`;
   return p === "all" ? "Everything on file" : (PRESET_TEXT[p] || "").replace(/^the l/, "L");
 }
 const moreBtn = $("#periodMoreBtn"), moreList = $("#periodMoreList");

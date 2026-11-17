@@ -234,7 +234,7 @@ Everything on `main` so far; it becomes the first tagged release.
 - The period has one way to pick it (#191): the preset buttons (All, 5y … 30d and the primary milestone) and one
   **More…** menu with the other milestones, the calendar years and **Custom dates…**, worked by mouse or keyboard
   and never cut off. Only one shows as chosen, a button or More… naming what it picked, and the period is said in
-  words beside them ("Last 2 years", "Apr 14, 2025 – today"). The date boxes show only for custom dates (or after
+  words beside them ("Last 2 years", "Apr 14, 2025 – today", "2025"). The date boxes show only for custom dates (or after
   dragging a chart to a range of its own), with **Clear dates** to go back; custom dates are kept on a reload.
 - **Confirmations in the app's own dialog** (#210), not the browser's pop-up: removing a passkey or an account,
   turning off two-factor sign-in or a calendar feed, revoking a share link, a new watch secret, resetting settings
@@ -245,7 +245,7 @@ Everything on `main` so far; it becomes the first tagged release.
   Continue button, and a Dismiss on Admin that fails says so beside it.
 - **Every chart has a table, and out of range isn't shown by colour alone** (#60): **Chart | Table** beside each
   Labs chart, the lab heatmap, each card on Body and activity and both Costs charts shows its values as a table
-  instead (the heatmap's as a table with a row per lab and a column per draw day); the Timeline's chart says its
+  instead (the heatmap's **Grid | Table**, a table with a row per lab and a column per draw day); the Timeline's chart says its
   events are listed under it. A Labs or Body and activity chart takes keyboard focus: ← and → step through its
   points with the same readout and tooltip as hovering, said to screen readers, Home and End go to the first and
   last, Escape lets go. An out-of-range result is marked ▲ (above its range) or ▼ (below) on the Labs charts, the
