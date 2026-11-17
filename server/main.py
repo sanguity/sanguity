@@ -1076,6 +1076,9 @@ def profile_ecg_wave(pid: int, name: str, s=Depends(user), db=Depends(get_db)):
 
 DOC_CSP = ("default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; "
            "media-src 'self'; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
+# (#221) an HTML record is sandboxed as the drawer's frame is, in a tab of its own too (Open in new tab), so a
+# <meta http-equiv="refresh"> in it can't send that tab elsewhere; not a PDF or a picture, which a sandbox would stop
+HTML_SANDBOX = "; sandbox allow-same-origin"
 DOC_TYPES = {"pdf": "application/pdf", "html": "text/html; charset=utf-8", "htm": "text/html; charset=utf-8",
              "txt": "text/plain; charset=utf-8", "xml": "text/plain; charset=utf-8", "jpg": "image/jpeg",
              "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif", "tif": "image/tiff", "tiff": "image/tiff"}
@@ -1095,7 +1098,7 @@ def _serve(path, ext, types):
     # shown in the app's own frame; no scripts, plugins or base URL inside records, and nothing fetched from
     # anywhere else (a remote image in a portal message would tell its sender when the record was read)
     resp.headers["X-Frame-Options"] = "SAMEORIGIN"
-    resp.headers["Content-Security-Policy"] = DOC_CSP
+    resp.headers["Content-Security-Policy"] = DOC_CSP + (HTML_SANDBOX if ext in prof.HTML_DOCS else "")
     return resp
 
 

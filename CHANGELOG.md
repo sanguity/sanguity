@@ -512,6 +512,9 @@ Everything on `main` so far; it becomes the first tagged release.
   unless that was a viewer, to the profile's owners and editors (schema step 31, `summary_drafts`).
 - **Picked lab names cleared at sign-out** (#220): signing out, or reaching the sign-in page, takes the lab names
   picked on Labs out of what the browser keeps of each profile's view; the period, tab and kinds stay as they were.
+- **HTML records can't move their tab** (#221): an HTML record (a portal message, a Health Link's attachment) opened
+  with Open in new tab is sandboxed as it is in the records panel, so a refresh in it can't send the tab elsewhere.
+  PDFs and pictures open as before.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
