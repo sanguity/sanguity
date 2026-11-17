@@ -828,7 +828,9 @@ table.data.oop tr[aria-expanded=true] td{background:var(--hover)}
 /* the records bar's one period (#171): presets, "Since <milestone>", a milestone or year picked, dates; the Labs tab's
    Chart / Heatmap switch above its one range caption (#172) */
 .period-pick{border:1px solid var(--ring);background:var(--raised);border-radius:8px;padding:4px 6px;color:var(--ink2);max-width:16em;min-width:0}
-.period-pick.on{background:var(--hover);color:var(--ink);font-weight:650}
+/* opaque: an open select's list can't show a see-through background, and drew white under light text in dark mode */
+.period-pick.on{background:var(--raised);box-shadow:inset 0 0 0 100px var(--hover);color:var(--ink);font-weight:650}
+select option,select optgroup{background:var(--raised);color:var(--ink)}
 .dates.on input{border-color:var(--axis);color:var(--ink)}
 .filters.period-only .search,.filters.period-only .chips{display:none!important}
 .labs-head{gap:8px 16px}

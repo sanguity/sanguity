@@ -937,6 +937,10 @@ def main():
             check("period: a calendar year picked from the list", js("[state.preset, isoDay(state.from), isoDay(state.to)]") == [year, f"{year}-01-01", f"{year}-12-31"]
                   and js("document.getElementById('periodPick').classList.contains('on') && !document.querySelector('#presets [aria-pressed=true]')"),
                   js("[state.preset, isoDay(state.from), isoDay(state.to)]"))
+            opaque = r"c => { const m = c.match(/rgba?\(([^)]+)\)/); return !!m && (m[1].split(',').length < 4 || +m[1].split(',')[3] === 1); }"
+            check("…the picked period's list is readable: the select and its options have solid backgrounds (an open list can't show a see-through one)",
+                  js(f"(({opaque}))(getComputedStyle(document.getElementById('periodPick')).backgroundColor) && [...document.querySelectorAll('#periodPick option')].every(o => (({opaque}))(getComputedStyle(o).backgroundColor))"),
+                  js("[getComputedStyle(document.getElementById('periodPick')).backgroundColor, getComputedStyle(document.querySelector('#periodPick option')).backgroundColor]"))
             check("…Costs lists that year's claims", js("costRows().length") == js("y => DATA.costs.filter(r => r.d.startsWith(y)).length", year) > 0,
                   js("costRows().length"))
             js("applyPreset('all')")
@@ -962,6 +966,16 @@ def main():
             settle(300)
             check("…are the Timeline's too", js("[document.getElementById('from').value, isoDay(state.from)]") == [start, start]
                   and js("document.querySelector('.dates').classList.contains('on')"), js("document.getElementById('from').value"))
+            # the kinds' chips say which are shown: aria-pressed "true" or "false" (never left out), and an off one fades
+            chips = r"[...document.querySelectorAll('#chips .chip')].map(b => [b.textContent.trim().split(/ \d/)[0], b.getAttribute('aria-pressed'), +getComputedStyle(b).opacity])"
+            check("Timeline: every kind's chip says whether it's shown, and a hidden kind fades (Insurance claims start hidden)",
+                  all(p in ("true", "false") for _, p, _ in js(chips)) and all((p == "false") == (o < 1) for _, p, o in js(chips))
+                  and any(n.startswith("Insurance claims") and p == "false" for n, p, _ in js(chips)), js(chips))
+            page.click("#chips .chip:nth-child(2)")
+            settle(200)
+            check("…and clicking one hides it, showing so", js(chips)[1][1] == "false" and js(chips)[1][2] < 1, js(chips)[1])
+            page.click("#chips .chip:nth-child(2)")
+            settle(200)
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
             check("…and kept on a reload", js("[state.preset, document.getElementById('from').value]") == ["custom", start],
