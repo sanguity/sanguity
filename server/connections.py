@@ -53,7 +53,9 @@ FAILURES_WARN = 3              # pulls failed in a row before the profile's page
 # the resource types a pull reads (sync.py), and the scopes asked for by default: SMART v2 where discovery says the
 # server has it, else v1 (Epic's documentation still uses .read)
 TYPES = ("Patient", "Observation", "Condition", "MedicationRequest", "Encounter", "DocumentReference",
-         "DiagnosticReport", "ExplanationOfBenefit", "Coverage")
+         "DiagnosticReport", "ExplanationOfBenefit", "Coverage",
+         # #228: what #179 taught the FHIR importer, asked for and pulled like the rest
+         "AllergyIntolerance", "Immunization", "MedicationDispense", "Appointment", "ImagingStudy")
 BINARY_FOR = ("DocumentReference", "DiagnosticReport")
 # an insurer's patient-access API (CARIN Blue Button, #92): claims, the coverage they're under, and the patient
 INSURER_TYPES = ("Patient", "ExplanationOfBenefit", "Coverage")
@@ -66,11 +68,19 @@ KINDS = {
     "labs": ("Lab results", "Blood tests and other lab results with their reference ranges, and the reports that "
              "group them.", ("Observation", "DiagnosticReport")),
     "vitals": ("Vital signs", "Blood pressure, pulse, temperature and weight measured at visits.", ("Observation",)),
-    "visits": ("Visits and hospital stays", "Past visits and admissions, and upcoming appointments.", ("Encounter",)),
+    "visits": ("Visits and hospital stays", "Past visits and admissions, and visits planned in them.", ("Encounter",)),
+    # #228: appointments, allergies, pharmacy fills and immunizations, each a kind of its own, so a connection made
+    # before asks to sign in again only when one is turned on (their scopes are new)
+    "appointments": ("Appointments", "Upcoming appointments booked with the practice.", ("Appointment",)),
     "problems": ("Problems", "The problem list: diagnoses and health concerns.", ("Condition",)),
+    "allergies": ("Allergies", "Allergies and intolerances, with the reactions and severity recorded.",
+                  ("AllergyIntolerance",)),
     "medications": ("Medications", "Prescriptions, with their instructions and status.", ("MedicationRequest",)),
-    "documents": ("Documents", "Visit notes, letters and reports, with their attached files (PDFs, images, text).",
-                  ("DocumentReference", "DiagnosticReport", "Binary")),
+    "fills": ("Pharmacy fills", "Prescriptions picked up at the pharmacy: when, how much and for how many days.",
+              ("MedicationDispense",)),
+    "immunizations": ("Immunizations", "Vaccines given, with the dose, lot and who gave them.", ("Immunization",)),
+    "documents": ("Documents", "Visit notes, letters and reports, and imaging studies, with their attached files "
+                  "(PDFs, images, text).", ("DocumentReference", "DiagnosticReport", "Binary", "ImagingStudy")),
     "claims": ("Claims", "What was billed and paid, and the plan it was under, where the source offers it (usually "
                "insurers).", ("ExplanationOfBenefit", "Coverage")),
 }
@@ -173,6 +183,12 @@ def default_scopes(conf=None, vendor=None):
     caps = set((conf or {}).get("capabilities") or [])
     suffix = "rs" if "permission-v2" in caps else "read"
     types = INSURER_TYPES if vendor == "insurer" else CLINICAL_TYPES
+    # #228: a discovery that lists the patient scopes it supports one type at a time (no patient/*) is taken at its
+    # word: types it doesn't list aren't suggested (each sync would only be refused them)
+    listed = [m.group(2) for m in (_SCOPE.match(x) for x in (conf or {}).get("scopes_supported") or []
+                                   if isinstance(x, str)) if m and m.group(1) == "patient"]
+    if listed and "*" not in listed:
+        types = [t for t in types if t in listed or t == "Patient"]
     return " ".join(["launch/patient", "offline_access"] + [f"patient/{t}.{suffix}" for t in types])
 
 
@@ -194,6 +210,10 @@ def granted(scopes, rtype):
 # docs/connected-sources-oauth.md (read November 2026); the unverified ones are marked so. Vendors' sites change their
 # menus and wording, so the steps say what to look for, not which button to press. "reviewer" names who reviews an
 # app, in plain words, for the "waiting for the vendor's review" note people see on Portals and health plans.
+ADDED_TYPES_NOTE = ("An app registered before Sanguity pulled immunizations, allergies, pharmacy fills, appointments and "
+                    "imaging studies needs their types (Immunization, AllergyIntolerance, MedicationDispense, Appointment, "
+                    "ImagingStudy) added at the vendor and to the scopes here. Connections made before then ask to sign "
+                    "in again only when someone turns one of those kinds on.")   # #228
 GUIDES = {
     "epic": {
         "label": "Epic (MyChart)",
@@ -227,7 +247,7 @@ GUIDES = {
              "paste": ["sandbox"]},
         ],
         "notes": ["Whether Epic accepts an app registered by one person for production, or a tailnet name such as "
-                  "*.ts.net as its redirect URI, is unverified."],
+                  "*.ts.net as its redirect URI, is unverified.", ADDED_TYPES_NOTE],
     },
     "oracle": {
         "label": "Oracle Health (Cerner)",
@@ -252,7 +272,8 @@ GUIDES = {
                      "see \"Unknown Application\"."},
             {"title": "Copy the client ID", "text": "And the client secret, if it gave you one."},
         ],
-        "notes": ["Effectively out of reach for home installs under option 1 (docs/connected-sources-oauth.md)."],
+        "notes": ["Effectively out of reach for home installs under option 1 (docs/connected-sources-oauth.md).",
+                  ADDED_TYPES_NOTE],
     },
     "insurer": {
         "label": "Insurer (patient-access API)",
@@ -332,7 +353,7 @@ GUIDES = {
             {"title": "Copy the client ID",
              "text": "And the client secret if it issued one (then pick \"Confidential client\" below)."},
         ],
-        "notes": [],
+        "notes": [ADDED_TYPES_NOTE],
     },
 }
 
@@ -427,7 +448,9 @@ def describe_client(r, n=None):
             "endpoints": {k: conf.get(k) for k in ("authorization_endpoint", "token_endpoint", "revocation_endpoint",
                                                    "registration_endpoint")} if conf else None,
             "capabilities": (conf or {}).get("capabilities") or [],
-            "connections": n or {s: 0 for s in STATES}}
+            "connections": n or {s: 0 for s in STATES},
+            # #228: the kinds its scopes don't cover, which people can't choose (an insurer's are claims alone)
+            "leaves_out": [] if r["vendor"] == "insurer" else [KINDS[k][0] for k in KINDS if not kind_allowed(k, r["scopes"])]}
 
 
 def setup(db):

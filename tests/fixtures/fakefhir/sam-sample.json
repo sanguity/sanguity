@@ -48,6 +48,11 @@
      "item": [{"sequence": 1, "productOrService": {"text": "Metformin 500 mg, 60 tablets"}, "servicedDate": "2025-09-02",
                "adjudication": [{"category": {"coding": [{"code": "submitted"}]}, "amount": {"value": 14.20, "currency": "USD"}},
                                 {"category": {"coding": [{"code": "copay"}]}, "amount": {"value": 5.00, "currency": "USD"}}]}],
-     "total": [{"category": {"coding": [{"code": "submitted"}]}, "amount": {"value": 14.20, "currency": "USD"}}]}
+     "total": [{"category": {"coding": [{"code": "submitted"}]}, "amount": {"value": 14.20, "currency": "USD"}}]},
+    {"resourceType": "Immunization", "id": "imm-s1", "status": "completed", "vaccineCode": {"coding": [{"system": "http://hl7.org/fhir/sid/cvx", "code": "115"}], "text": "Tdap"}, "occurrenceDateTime": "2025-09-02", "lotNumber": "FICT-0228", "performer": [{"actor": {"display": "Hillcrest Clinic (fictional)"}}]},
+    {"resourceType": "AllergyIntolerance", "id": "allergy-s1", "clinicalStatus": {"coding": [{"code": "active"}]}, "category": ["food"], "code": {"text": "Peanut"}, "recordedDate": "2019-05-01", "reaction": [{"manifestation": [{"text": "Swelling of the lips"}], "severity": "mild"}]},
+    {"resourceType": "MedicationDispense", "id": "disp-s1", "status": "completed", "medicationCodeableConcept": {"text": "Metformin 500 mg tablet"}, "performer": [{"actor": {"display": "Hillcrest Pharmacy (fictional)"}}], "quantity": {"value": 60, "unit": "tablet"}, "daysSupply": {"value": 30, "unit": "day"}, "whenHandedOver": "2025-09-02T15:00:00-05:00"},
+    {"resourceType": "Appointment", "id": "appt-s1", "status": "booked", "serviceType": [{"text": "Diabetes follow-up"}], "start": "2099-03-03T10:00:00-05:00", "end": "2099-03-03T10:30:00-05:00", "participant": [{"actor": {"display": "Hillcrest Clinic (fictional)"}, "status": "accepted"}]},
+    {"resourceType": "ImagingStudy", "id": "img-s1", "status": "available", "started": "2025-07-15T11:00:00-05:00", "description": "Retinal photographs (fictional)", "series": [{"uid": "2.25.228002", "modality": {"system": "http://dicom.nema.org/resources/ontology/DCM", "code": "OP"}}], "numberOfSeries": 1, "numberOfInstances": 4}
   ]
 }

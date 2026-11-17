@@ -128,8 +128,11 @@ with `cryptography`, which is already a dependency.
 
 - **Patients.** Patients are fictional only, one fixture file per patient in
   [`tests/fixtures/fakefhir/`](../fixtures/fakefhir):
-  - `pat-1`, Robin Example: the FHIR importer's fictional bundle, plus Coverage and two ExplanationOfBenefit claims.
-  - `pat-2`, Sam Sample: diabetes follow-up, six Observations, a note held in a Binary, and a pharmacy claim.
+  - `pat-1`, Robin Example: the FHIR importer's fictional bundle, plus Coverage and two ExplanationOfBenefit claims,
+    and (#228) an allergy, a pharmacy fill, a booked appointment and an imaging study (its immunization is the
+    bundle's).
+  - `pat-2`, Sam Sample: diabetes follow-up, six Observations, a note held in a Binary, a pharmacy claim, and (#228)
+    an immunization, an allergy, a pharmacy fill, a booked appointment and an imaging study.
   - `mem-1`, Casey Member, in [`payer/`](../fixtures/fakefhir/payer): a health plan's member for #92, loaded only with
     `FakeFHIR(fixtures=PAYER_FIXTURES)` (`from tests.fakefhir import PAYER_FIXTURES`), so the fake plays an
     insurer's patient-access API. Patient, Coverage and five CARIN Blue Button ExplanationOfBenefit claims: an
@@ -137,7 +140,9 @@ with `cryptography`, which is already a dependency.
     pharmacy fill. The default fixtures don't include it.
 
   Each type that #32 and #91 pull exists for both patients: Patient, Observation, Condition, MedicationRequest,
-  Encounter, DocumentReference, DiagnosticReport and ExplanationOfBenefit. Every loaded resource has
+  Encounter, DocumentReference, DiagnosticReport and ExplanationOfBenefit, and since #228 Immunization,
+  AllergyIntolerance, MedicationDispense, Appointment and ImagingStudy. An Appointment names its patient among its
+  `participant`s (added where it names none, and by `fake.add(..., patient=)`). Every loaded resource has
   `meta.lastUpdated` `2025-10-01T00:00:00.000Z`.
 - **Attachments.** DocumentReference attachments and DiagnosticReport `presentedForm` entries are served as Binary,
   with `url: Binary/<id>`. `GET Binary/<id>` returns the raw bytes with their content type. With

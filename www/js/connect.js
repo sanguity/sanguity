@@ -107,7 +107,7 @@
     const msg = el("span", {class: "msg", role: "status"});
     const removeRow = el("div", {class: "conn-remove"});
     const drawRemove = chosen => {
-      const off = c.kinds.filter(k => !chosen.includes(k.id));
+      const off = c.kinds.filter(k => !chosen.includes(k.id) && (k.allowed || c.chosen.includes(k.id)));   // #228: not one it never could pull
       removeRow.replaceChildren(...(off.length && c.imports ? [el("p", {class: "hint", text: "Kinds turned off aren't pulled any more; what they brought stays. To take it out (you can put it back from the import history):"}),
         el("div", {class: "row"}, ...off.map(k => el("button", {class: "btn small", type: "button", text: `Remove ${k.label.toLowerCase()} it brought`,
           onclick: async ev => {

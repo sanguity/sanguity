@@ -5605,6 +5605,12 @@ def main():
                   "plain HTTP" in page.inner_text("#addrWarn") and "own network" in page.inner_text("#addrWarn"), page.inner_text("#addrWarn"))
             check("…with a guide per vendor: where to register, and the scopes", "fhir.epic.com" in page.inner_text("#guide")
                   and "patient/Observation" in js("document.getElementById('fScopes').value"))
+            # ---- the new kinds' scopes in the walk-through (#228)
+            walk_scopes = js("[...document.querySelectorAll('#guide [data-paste=types]')].map(c => c.textContent).join(' ')")
+            check("…the walk-through's types and scopes include immunizations, allergies, fills, appointments and imaging studies (#228)",
+                  all(t in walk_scopes and f"patient/{t}." in js("document.getElementById('fScopes').value")
+                      for t in ("Immunization", "AllergyIntolerance", "MedicationDispense", "Appointment", "ImagingStudy"))
+                  and "added at the vendor" in page.inner_text("#guide"), walk_scopes)
             page.fill("#fName", "Fake Epic sandbox")
             page.fill("#fIssuer", fake.fhir_base)
             page.fill("#fClient", "sanguity-browser-check")
@@ -5650,7 +5656,11 @@ def main():
             page.click("#sourceButtons button")   # choose what to pull (#99), then on to the fake's sign-in
             page.wait_for_selector(".conn-choose", timeout=10000)
             check("connecting shows what each kind of record brings", "reference ranges" in page.inner_text(".conn-choose")
-                  and page.locator(".conn-choose input[type=checkbox]").count() == 7, page.inner_text(".conn-choose")[:300])
+                  and page.locator(".conn-choose input[type=checkbox]").count() == 11, page.inner_text(".conn-choose")[:300])
+            new_kinds = js("[...document.querySelectorAll('.conn-choose .conn-kind')].filter(l => ['appointments', 'allergies', 'fills', "
+                           "'immunizations'].includes(l.querySelector('input').value)).map(l => [l.querySelector('b').textContent, l.querySelector('input').checked])")
+            check("…immunizations, allergies, pharmacy fills and appointments among them, ticked like the rest (#228)",
+                  new_kinds == [["Appointments", True], ["Allergies", True], ["Pharmacy fills", True], ["Immunizations", True]], new_kinds)
             page.uncheck(".conn-choose input[value=visits]")
             page.locator(".conn-choose").get_by_role("button", name="Sign in at").click()   # approves and comes back
             page.wait_for_url("**/sources.html?*#portals", timeout=20000)
@@ -5751,6 +5761,45 @@ def main():
             page.locator(".conn-options").get_by_role("button", name="Save").click()
             page.wait_for_function("document.getElementById('connList').textContent.includes('Saved. The next sync')", timeout=10000)
             check("…saved for the next sync", "medications" not in page.inner_text(".conn-chosen"), page.inner_text(".conn-chosen"))
+            # ---- a connection made before #228: its access doesn't cover the new kinds, so they ask for a sign-in (#228)
+            conn_id = js(f"fetch('api/profiles/{conn_pid}/connections').then(r => r.json()).then(j => j.connections[0].id)")
+            db = dbm.connect()
+            was_228 = dict(db.execute("SELECT scopes, kinds FROM connections WHERE id=?", (conn_id,)).fetchone())
+            db.execute("UPDATE connections SET scopes=?, kinds=? WHERE id=?", (" ".join(
+                x for x in was_228["scopes"].split() if x.split("/")[-1].split(".")[0] not in
+                ("Immunization", "AllergyIntolerance", "MedicationDispense", "Appointment", "ImagingStudy")),
+                json.dumps(["labs", "vitals", "problems", "documents", "claims"]), conn_id))
+            db.close()
+            theme_before = js("document.documentElement.dataset.theme || null")
+            bad, serious, said = [], [], None
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    page.reload()
+                    page.wait_for_function("document.getElementById('connList').textContent.includes('Fake Epic sandbox')", timeout=10000)
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    page.get_by_role("button", name="What it pulls…").click()
+                    page.wait_for_selector(".conn-options", timeout=10000)
+                    said = said or js("[...document.querySelectorAll('.conn-options .conn-kind')].filter(l => ['appointments', 'allergies', 'fills', "
+                                      "'immunizations'].includes(l.querySelector('input').value)).map(l => [l.querySelector('input').checked, "
+                                      "!l.querySelector('input').disabled, l.textContent.includes('Needs signing in again.')])")
+                    page.locator(".conn-options").scroll_into_view_if_needed()
+                    if width < 400:
+                        bad += phone_fits(page, f"a connection's kinds ({theme})")
+                    serious += axe_check(page, f"a connection's kinds at {width} px ({theme})")[0]
+                    if os.environ.get("SANGUITY_SHOTS"):   # screenshots when asked, as #182's
+                        page.locator(".conn-options .conn-kinds").screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"228-kinds-{width}-{theme}.png"))
+            check("a connection made before: the new kinds are unticked, and say they need signing in again (#228)",
+                  said == [[False, True, True]] * 4, said)
+            check("…with no Remove button for kinds it never pulled",
+                  page.locator(".conn-options .conn-remove button", has_text="immunizations").count() == 0
+                  and page.locator(".conn-options .conn-remove button", has_text="Remove medications").count() == 1, page.inner_text(".conn-options .conn-remove"))
+            check("…the kinds fit 375 px, in light and dark", not bad, bad[:6])
+            check("…and pass axe-core's WCAG A and AA rules at 1400 and 375 px, in light and dark", not serious, serious[:6])
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            db = dbm.connect()
+            db.execute("UPDATE connections SET scopes=?, kinds=? WHERE id=?", (was_228["scopes"], was_228["kinds"], conn_id))
+            db.close()
             page.set_viewport_size({"width": 1400, "height": 900})
             fake.revoke_all("pat-1")    # the patient ends access in their portal
             fake.expire_access_tokens()

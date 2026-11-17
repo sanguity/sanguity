@@ -20,7 +20,9 @@ sent as date=ge<it> where the type has that search, and checked on each resource
 undated resources are kept). Each search has its own cursor, named by its parameters, so a kind turned on later
 (or an earlier start date) is pulled from the beginning, and what the profile has already is matched by source key
 as always. Turning a kind off stops it being pulled; remove_kind() takes out what it brought, as an import in the
-history that undoing puts back.
+history that undoing puts back. Kinds that share a place (#228) are told apart by the resource a record's source key
+names: a pharmacy fill (`rx`) is a claim's or a MedicationDispense's, an upcoming visit a planned Encounter's (visits)
+or an Appointment's, and the problem list's allergies (type "Allergy") are the allergies kind's.
 
 Attachments (#101) follow the connection's rules (connections.attach_rules, over the install's sync.* settings):
 fetched automatically or only when asked, the kinds allowed (PDF, images, text, HTML), a size limit per attachment
@@ -68,7 +70,8 @@ PAGE = 100                   # _count asked for per page
 BACKOFF_FIRST = 300          # a failed pull is tried again after this, doubling up to SYNC_HOURS
 REF_TYPES = {"DiagnosticReport": "result"}   # a report groups its results: changed results touch the report too
 PATIENT_PARAM = {"Coverage": "beneficiary"}   # the search parameter naming the patient, where it isn't `patient`
-DATE_PARAM = {"Observation": "date", "Encounter": "date", "DiagnosticReport": "date", "DocumentReference": "date"}
+DATE_PARAM = {"Observation": "date", "Encounter": "date", "DiagnosticReport": "date", "DocumentReference": "date",
+              "Immunization": "date", "Appointment": "date", "ImagingStudy": "started"}   # the last three: #228
 
 _thread, _stop, _wake = None, threading.Event(), threading.Event()
 
@@ -247,7 +250,7 @@ def _is_lab_report(r):
 def _date_of(r):
     """The date a resource is about, for a start date: YYYY-MM-DD..., or None (kept: nothing to go by)."""
     for k in ("effectiveDateTime", "effectiveInstant", "issued", "authoredOn", "onsetDateTime", "recordedDate",
-              "date", "created"):
+              "date", "created", "occurrenceDateTime", "whenHandedOver", "whenPrepared", "start", "started"):   # #228
         if isinstance(r.get(k), str):
             return r[k]
     for k in ("effectivePeriod", "period", "onsetPeriod", "billablePeriod"):
@@ -290,11 +293,14 @@ def plan(c):
         add("Observation", {"category": "laboratory"}, lambda r: "vital-signs" not in _codes(r.get("category")))
     elif obs == ["vitals"]:
         add("Observation", {"category": "vital-signs"}, lambda r: "vital-signs" in _codes(r.get("category")))
-    for kind, t in (("problems", "Condition"), ("medications", "MedicationRequest"), ("visits", "Encounter")):
+    for kind, t in (("problems", "Condition"), ("medications", "MedicationRequest"), ("visits", "Encounter"),
+                    ("allergies", "AllergyIntolerance"), ("immunizations", "Immunization"),   # #228
+                    ("fills", "MedicationDispense"), ("appointments", "Appointment")):
         if kind in k:
             add(t)
     if "documents" in k:
         add("DocumentReference")
+        add("ImagingStudy")   # #228: an imaging event, unless a DiagnosticReport describes the study
     if "labs" in k or "documents" in k:
         add("DiagnosticReport", None, None if "documents" in k else _is_lab_report)
     if "claims" in k:
@@ -915,14 +921,33 @@ def _put_back(db, iid):
 # ---------------------------------------------------------------- taking out what a kind brought (#99)
 
 KIND_EVENTS = {"labs": {"lab", "labitem"}, "visits": {"visit", "stay"}, "medications": {"med"},
-               "documents": {"document", "study", "imaging"}, "claims": {"claim"}}
-KIND_META = {"visits": ("upcoming",), "problems": ("problems",), "vitals": ("clinicWeights",)}
+               "documents": {"document", "study", "imaging"}, "claims": {"claim"}, "immunizations": {"immunization"}}
+KIND_META = {"visits": ("upcoming",), "problems": ("problems",), "vitals": ("clinicWeights",),
+             "appointments": ("upcoming",), "allergies": ("problems",)}   # the last two: #228
+
+
+def _from(entry, rtype):
+    """Whether a record's source key names a resource of this FHIR type ("fhir:<type>/<id>", or with its server)."""
+    key = str(entry.get("key") or "") if isinstance(entry, dict) else ""
+    return key.startswith(f"fhir:{rtype}/") or (key.startswith("fhir:") and f"|{rtype}/" in key)
 
 
 def _of_kind(kind, body):
     if body.get("k") in KIND_EVENTS.get(kind, ()):
         return True
-    return kind == "claims" and str(body.get("key") or "").startswith("fhir:ExplanationOfBenefit/")
+    if body.get("k") == "rx":   # #228: a pharmacy fill is a claim's (ExplanationOfBenefit) or a MedicationDispense's
+        return kind == ("claims" if _from(body, "ExplanationOfBenefit") else "fills")
+    return kind == "claims" and _from(body, "ExplanationOfBenefit")
+
+
+def _in_list(kind, path, entry):
+    """Whether an entry of one of the profile-wide lists belongs to this kind (#228): upcoming visits are planned
+    Encounters (visits) or Appointments; the problem list holds problems and allergies (type "Allergy")."""
+    if path == "upcoming":
+        return (kind == "appointments") == _from(entry, "Appointment")
+    if path == "problems":
+        return (kind == "allergies") == (isinstance(entry, dict) and entry.get("type") == "Allergy")
+    return True
 
 
 def remove_kind(db, who, pid, cid, kind, ip=None):
@@ -950,9 +975,10 @@ def remove_kind(db, who, pid, cid, kind, ip=None):
             for path in KIND_META.get(kind, ()):
                 meta = records._dec(db.execute("SELECT meta FROM imports WHERE id=?", (h,)).fetchone()["meta"]) or {}
                 items = _meta_list(meta, path)
-                if isinstance(items, list) and items:
-                    lists.append((h, path, list(items)))
-                    items.clear()
+                taken = [x for x in items if _in_list(kind, path, x)] if isinstance(items, list) else []
+                if taken:
+                    lists.append((h, path, taken))
+                    items[:] = [x for x in items if not _in_list(kind, path, x)]
                     db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(meta), h))
         results = sum(db.execute("SELECT COUNT(*) FROM results WHERE series_id=?", (r["id"],)).fetchone()[0] for r in series)
         counts = {"kinds": kinds, "series": len(series), "results": results,
