@@ -20,7 +20,13 @@ other care, portal messages and scanned documents. It is fictional and the same 
 | Documents (a small PDF each) | 1 | 1,001 |
 | Payments | 96 | 1,333 |
 | Watch and scale days | 20 months | 10 years |
+| Blood glucose (#181) | none | 3 years of meter readings, 336 CGM days |
 | Workouts | 115 | 1,026 |
+
+Blood glucose (#181) reaches the page as days, never as a CGM's five-minute readings, so the fixture has the days and
+the meter's readings, in the receiver's shape: 77 KB of the watch data and about 800 elements on Body and activity (a
+dot a meter reading, two paths a sensor's run of days). The readings themselves stay in the receiver's own database;
+what a year of them costs there is in [docs/database.md](database.md#the-watch-receivers-own-database).
 
 The test loads it as the setup build into a temporary data folder of its own and serves it with the real backend,
 as `tests/browser_check.py` does with the demo. It also makes two more large inputs: a ten-year Apple Health
@@ -44,7 +50,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `records_gzip_bytes` | The same as nginx sends it (gzip at its default level) | 439 KB | 600 KB |
 | `records_cold_s` | That request right after the records changed, put together from the database | 0.28 s | 2.5 s |
 | `records_s` | That request again with nothing changed (the server keeps the answer) | 0.003 s | 0.25 s |
-| `watch_bytes`, `watch_s` | `GET /api/profiles/{id}/watch`: ten years of watch and scale days | 912 KB, 0.03 s | 1.2 MB, 0.5 s |
+| `watch_bytes`, `watch_s` | `GET /api/profiles/{id}/watch`: ten years of watch and scale days, with the glucose | 989 KB, 0.02 s | 1.2 MB, 0.5 s |
 | `build_load_s` | The big build loaded into a profile (the first start, `setup rebuild`) | 0.19 s | 5 s |
 | `export_s` | **Export everything** of the big profile: a 1.4 MB zip with its 1,000 documents | 0.55 s | 6 s |
 | `import_s` | That zip imported into an empty profile through the background job: uploaded, previewed, saved | 0.86 s | 10 s |
@@ -52,7 +58,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `sync_s` | A connected source's first pull of the big FHIR patient (186 requests), its preview saved | 1.7 s | 15 s |
 | `page_ready_ms` | The records page, loaded on each tab, from the request to its `sanguity:ready` mark (`www/js/app.js`) | 132 ms (Body and activity) | 1,500 ms |
 | `tab_draw_ms` | A tab's first draw with the period **All**, the page loaded on another tab, to the next frame | 110 ms (Body and activity) | 1,000 ms |
-| `tab_elements` | Elements in a tab with the period **All** | 14,532 (Body and activity) | 18,000 |
+| `tab_elements` | Elements in a tab with the period **All** | 15,355 (Body and activity) | 18,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
 
@@ -105,4 +111,3 @@ else.
 - **Body and activity and the Timeline draw a mark per day or per record.** With ten years shown that is about
   14,500 and 11,000 elements: within the budget, and quick, but they would be summarised by week once many fall on
   each pixel, as the sleep and steps charts already are.
-- **Months of CGM readings** (#181) aren't in the fixture yet; they should be, once Sanguity reads them.

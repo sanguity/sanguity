@@ -209,7 +209,7 @@ async function syncWarning(pid) {
       s.pts.sort((a, b) => a.ts - b.ts); s.n = s.pts.length;
     }
     const folded = new Set(["weight", "hr_avg", "hr_min", "hr_max", "sleep_h", "sleep_deep_min", "sleep_rem_min", "sleep_light_min", "sleep_awake_min", "steps"]);
-    for (const m of WATCH.metrics || []) if (!folded.has(m.key)) add(m);
+    for (const m of WATCH.metrics || []) if (!folded.has(m.key) && !m.key.startsWith("glucose_")) add(m);   // glucose: Body and activity's own (#181)
     let wid = DATA.events.reduce((m, e) => Math.max(m, +e.id || 0), 1e7);   // after every record's id
     for (const x of WATCH.exercise || []) {
       const ev = {id: ++wid, t: x.start, end: x.end, k: "exercise", title: x.name.replace(/_/g, " "), sub: `${x.minutes} min`};

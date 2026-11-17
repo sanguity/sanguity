@@ -449,6 +449,28 @@ META = {"steps": ("Steps", "steps", "Activity"), "hr_rest": ("Resting heart rate
 watch = {"updated": at(END, 7), "tz": "America/New_York", "last_payload": at(END, 6, 55),
          "metrics": [{"key": k, "name": META[k][0], "unit": META[k][1], "group": META[k][2], "pts": sorted(met[k].items())} for k in META],
          "exercise": exercise}
+if BIG:   # blood glucose (#181), in the shape server/glucose.py writes: a meter most mornings, and a CGM worn for four weeks
+    GR = random.Random(END.toordinal() + 181)   # a generator of its own, so the rest of --big is unchanged
+    glu = {k: {} for k in ("meter", "avg", "min", "max", "n", "hours", "lt54", "lt70", "in", "gt180")}
+    for n in range(3 * 365):   # the three years before the story: a finger-stick on two mornings in three
+        d = START - timedelta(days=3 * 365 - n)
+        if GR.random() < 0.67:
+            glu["meter"][f"{d.isoformat()}T07:{GR.randint(0, 50):02d}"] = GR.randint(84, 126)
+    for run in range(12):   # four times a year, a CGM for 28 days, now and then with a gap in its readings
+        for n in range(28):
+            k = (START - timedelta(days=3 * 365 - run * 91 - n)).isoformat()
+            gap = GR.random() < 0.1
+            avg, lt70, gt180 = GR.gauss(118, 7), max(0, GR.gauss(1.5, 1.2)), max(0, GR.gauss(6, 4))
+            glu["avg"][k], glu["min"][k], glu["max"][k] = round(avg, 1), round(avg - GR.uniform(32, 60)), round(avg + GR.uniform(55, 95))
+            glu["n"][k], glu["hours"][k] = (216, 18) if gap else (288, 24)
+            glu["lt54"][k], glu["lt70"][k], glu["gt180"][k] = round(lt70 * GR.uniform(0, 0.2), 1), round(lt70, 1), round(gt180, 1)
+            glu["in"][k] = round(100 - glu["lt70"][k] - glu["gt180"][k], 1)
+    GMETA = {"meter": ("Blood glucose, meter readings", "mg/dL"), "avg": ("Blood glucose, daily average (CGM)", "mg/dL"),
+             "min": ("Blood glucose, daily low (CGM)", "mg/dL"), "max": ("Blood glucose, daily high (CGM)", "mg/dL"),
+             "n": ("CGM readings", "readings"), "hours": ("CGM hours with readings", "hours"),
+             "lt54": ("CGM readings below 54 mg/dL", "%"), "lt70": ("CGM readings below 70 mg/dL (below 54 included)", "%"),
+             "in": ("CGM readings 70–180 mg/dL", "%"), "gt180": ("CGM readings above 180 mg/dL", "%")}
+    watch["metrics"] += [{"key": "glucose_" + k, "name": GMETA[k][0], "unit": GMETA[k][1], "group": "Glucose", "pts": sorted(glu[k].items())} for k in GMETA]
 
 
 # ------------------------------------------------------------------ demo PDF (two plain pages)

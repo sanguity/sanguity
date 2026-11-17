@@ -325,6 +325,16 @@ Everything on `main` so far; it becomes the first tagged release.
   scrolled clear of the sticky bars; the ✎ is a 24 px target; the Overview and Costs fit 320 px. The browser check
   runs axe-core's WCAG A and AA rules on about a hundred pages and states in light and dark, failing on a serious
   finding, and walks every page by keyboard, at 320 px, with wide text spacing and in forced colours.
+- **Blood glucose, from a meter or a continuous glucose monitor** (#181): the phone receiver reads glucose from both
+  apps (Health Connect's blood glucose through Life Dashboard Companion, Apple Health's through Health Auto Export,
+  in mg/dL or mmol/L by the exact conversion of #41) and keeps every reading, so repeated uploads count once. Body and
+  activity gets a Blood glucose card and tile: a meter's readings as points, and each day a CGM was worn as its low to
+  high range and average, with the hours that had readings (a sensor gap shows) and time below 54, below 70,
+  70–180 and above 180 mg/dL, labelled as the standard published ranges, not advice. No five-minute reading reaches
+  the page, only the days. Chart | Table and keyboard stepping like the other charts; lab glucose stays a Labs series
+  and is drawn alongside only when asked. A reading is a CGM's by its specimen when it says so, otherwise by how often
+  its source reads (`server/glucose.py`). The performance budgets' big fixture has three years of meter readings and
+  CGM days.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
@@ -352,6 +362,11 @@ From an install with one watch receiver secret (before #46):
   secret until that profile makes its own on the Settings page. With your own compose file or install template, give
   the app write access to `WATCH_DIR/keys` (`compose.yaml` and `compose.release.yaml` mount it), or secrets made in
   Settings can't reach the receiver; the TrueNAS template doesn't mount it yet.
+
+From an install whose phone already sent blood glucose (before #181):
+- Nothing to do: on its first start after updating, the receiver reads the glucose in the uploads it has archived in
+  `raw/`, once, and writes the summary again. For a CGM in Health Auto Export, add an automation with blood glucose
+  alone and no time grouping (Sources → Phone and watch); readings grouped into hours are left out.
 
 Moving an install from a git checkout to the published image: see [Upgrading to a release](README.md#upgrading-to-a-release).
 

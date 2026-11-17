@@ -182,6 +182,7 @@ function renderHealth() {
   tile("Weight", latestW ? latestW[1].toFixed(1) : "–", "lb", wIn.length > 1 ? `${chg(wIn[wIn.length - 1][1], wIn[0][1], v => v.toFixed(1), " lb")} over this period` : latestW ? `last ${fmtD(latestW[0])}` : "", "#h-body");
   const fIn = inR(H.fat, a, b);
   if (H.fat.length) tile("Body fat", fIn.length ? fIn[fIn.length - 1][1].toFixed(1) : "–", "%", fIn.length > 1 ? `${chg(fIn[fIn.length - 1][1], fIn[0][1], v => v.toFixed(1), " pts")} over this period` : "no readings in this period", "#h-body");
+  gTile(tile, a, b);   // blood glucose (#181, below)
   const rIn = mean(inR(H.rest, a, b).map(p => p[1])), rPrev = mean(prev(H.rest).map(p => p[1]));
   tile("Resting heart rate", rIn != null ? Math.round(rIn) : "–", "bpm avg", rPrev != null ? `${chg(rIn, rPrev, v => Math.round(v))} vs previous period` : "", "#h-heart");
   const sIn = inR(H.sleep, a, b), sAvg = mean(sIn.map(p => p[1])), sPrev = mean(prev(H.sleep).map(p => p[1]));
@@ -229,6 +230,8 @@ function renderHealth() {
     hChart(c2, a, b, {h: 150, fmtY: v => v.toFixed(0), label: "Lean mass", noun: "reading", layers: [{type: "line", data: H.lean, color: C.lean, gap: 45}, {type: "dots", data: H.lean, color: C.lean}],
       tip: t => { const p = nearest(H.lean, t, 10); return p && {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)} lb`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
   }
+
+  hGlucose(box, a, b, {head, legend, byDay});   // blood glucose (#181, below)
 
   // sleep
   const sl = el("div", {class: "card", id: "h-sleep"}, head("Sleep", "#h-sleep"),
@@ -313,5 +316,119 @@ function renderHealth() {
     hChart(hv, a, b, {h: 140, label: "Heart rate variability", noun: "day", nav: H.hrv, layers: [{type: "line", data: rolling(H.hrv, 7), color: C.rest, gap: 10}, {type: "dots", data: H.hrv, color: C.rest, opacity: .4}],
       tip: t => { const p = nearest(H.hrv, t, .6); return p && {t: p[0], rows: [el("div", {class: "v", text: `${Math.round(p[1])} ms`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
   }
+}
+
+/* ---------------------------------------------------------------- blood glucose (#181) */
+/* A meter's readings (finger-stick) as points, and each day a continuous glucose monitor (CGM) was worn as that day's
+   lowest to highest reading with its average, from the receiver's summary (server/glucose.py; no five-minute reading
+   reaches the page). Time in ranges is the share of a day's CGM readings below 54, below 70 (those below 54
+   included), 70–180 and above 180 mg/dL: the standard published ranges, labelled so, never advice or anyone's own
+   targets. Values are in this person's lab units (#41: mg/dL, or mmol/L with the SI choice) by the metrics' conv.
+   Lab glucose stays a Labs series; it is drawn here too only when asked (gOpt.labs, remembered per profile). */
+const G_STD = {mg: ["54", "70", "180"], mmol: ["3.0", "3.9", "10.0"]};   // the standard ranges, as each unit writes them
+const G_C = {cgm: "var(--c-journal)", meter: "var(--c-message)", lab: "var(--c-lab)", lt54: "var(--seq1)", lt70: "var(--seq3)", in: "var(--c-journal)", gt180: "var(--c-study)"};
+const gOpt = {labs: false};
+const gKey = () => "ht-glucose" + (PROFILE ? ":" + PROFILE.id : "");
+let G;   // undefined until made, null when there is no glucose
+function gData() {
+  const M = Object.fromEntries(((WATCH || {}).metrics || []).filter(m => m.key.startsWith("glucose_")).map(m => [m.key, m]));
+  const base = M.glucose_avg || M.glucose_meter;
+  if (!base) return null;
+  try { gOpt.labs = JSON.parse(localStorage.getItem(gKey()) || "{}").labs === true; } catch (e) {}
+  const uc = ucChoose(base.conv), mmol = !!uc && /mmol/i.test(uc.to), cv = v => v == null ? null : uc ? v * uc.a + uc.b : v;
+  const col = k => M[k] ? Object.fromEntries(M[k].pts) : {};
+  const [lo, hi, n, hours, lt54, lt70, inr, gt180] = ["min", "max", "n", "hours", "lt54", "lt70", "in", "gt180"].map(k => col("glucose_" + k));
+  const days = (M.glucose_avg ? M.glucose_avg.pts : []).map(([d, v]) => ({t: dayTs(d), d, avg: cv(v), lo: cv(lo[d]), hi: cv(hi[d]), n: n[d] || 0,
+    hours: hours[d], lt54: lt54[d], lt70: lt70[d], in: inr[d], gt180: gt180[d]}));
+  const meter = (M.glucose_meter ? M.glucose_meter.pts : []).map(([w, v]) => [zParse(w), cv(v)]).filter(p => isFinite(p[0]));
+  // lab glucose in this chart's unit, by the server's exact factor (mg/dL to mmol/L) when the units differ
+  const F = (base.conv || {}).si?.[1], want = mmol ? "mmol/l" : "mg/dl";
+  const inUnit = (v, u) => { const k = String(u || "").toLowerCase().replace(/\s/g, "");
+    return k === want ? v : !F ? null : k === "mg/dl" ? v * F : k === "mmol/l" ? v / F : null; };
+  const lab = [];
+  for (const s of SERIES) {
+    if (s.watch || !/glucose/i.test(s.name) || /a1c|urine|\bur\b|csf|fluid|tolerance|gtt|challenge/i.test(s.name)) continue;
+    for (const p of s.pts) { const v = typeof p[1] === "number" ? inUnit(p[1], s.unit) : null; if (v != null && isFinite(p.ts)) lab.push([p.ts, v, p[4], s.name]); }
+  }
+  lab.sort((p, q) => p[0] - q[0]);
+  const all = [...days.map(d => d.t), ...meter.map(p => p[0])];
+  return {unit: uc ? uc.to : "mg/dL", std: mmol ? G_STD.mmol : G_STD.mg, inStd: mmol ? [3.9, 10] : [70, 180], days, meter, lab,
+    first: Math.min(...all), last: Math.max(...all), fmt: v => v == null ? "" : mmol ? v.toFixed(1) : String(Math.round(v))};
+}
+/* the CGM days and meter readings in [a, b], with the period's time in ranges (each day's weighed by its readings) */
+function gPeriod(a, b) {
+  const ds = G.days.filter(d => d.t >= a && d.t <= b), n = ds.reduce((s, d) => s + d.n, 0);
+  const share = k => n ? ds.reduce((s, d) => s + (d[k] || 0) * d.n, 0) / n : null;
+  return {ds, n, avg: share("avg"), lt54: share("lt54"), lt70: share("lt70"), in: share("in"), gt180: share("gt180"),
+    hours: ds.reduce((s, d) => s + (d.hours || 0), 0), meter: G.meter.filter(p => p[0] >= a && p[0] <= b)};
+}
+const gPct = v => v == null ? "–" : v > 0 && v < 0.05 ? "under 0.1%" : (v > 0 && v < 9.95 ? v.toFixed(1) : String(Math.round(v))) + "%";
+const gHours = h => h == null ? "" : `${Number.isInteger(h) ? h : h.toFixed(1)} h`;
+/* the tile, among Body and activity's */
+function gTile(tile, a, b) {
+  if (G === undefined) G = gData();
+  if (!G) return;
+  const P = gPeriod(a, b), [, l, h] = G.std;
+  if (P.n) tile("Glucose", G.fmt(P.avg), `${G.unit} avg`, `${gPct(P.in)} of CGM readings in ${l}–${h}`, "#h-glucose");
+  else if (P.meter.length) tile("Glucose", G.fmt(mean(P.meter.map(p => p[1]))), `${G.unit} avg`, `${P.meter.length} meter reading${P.meter.length === 1 ? "" : "s"}`, "#h-glucose");
+  else tile("Glucose", "–", G.unit, `last ${fmtD(G.last)}`, "#h-glucose");
+}
+/* the card: time in ranges for the period's CGM days, then the chart or its table (#60). head, legend and byDay are
+   renderHealth's */
+function hGlucose(box, a, b, {head, legend, byDay}) {
+  if (G === undefined) G = gData();
+  if (!G) return;
+  const u = G.unit, [s0, s1, s2] = G.std, fmt = G.fmt, P = gPeriod(a, b), labs = gOpt.labs && G.lab.length > 0, table = state.tables.has("#h-glucose");
+  const card = el("div", {class: "card", id: "h-glucose"}, head("Blood glucose", "#h-glucose"),
+    el("p", {class: "hint", text: "From a phone: each day a continuous glucose monitor (CGM) was worn, its lowest to highest reading and its average; meter (finger-stick) readings as points."}));
+  box.append(card);
+  if (G.lab.length) card.append(el("div", {class: "toolbar"}, el("label", {},
+    el("input", {type: "checkbox", checked: gOpt.labs || null, onchange: e => { gOpt.labs = e.target.checked; try { localStorage.setItem(gKey(), JSON.stringify({labs: gOpt.labs})); } catch (x) {} renderHealth(); }}),
+    "Show lab glucose results alongside")));
+  if (P.n) {   // time in ranges, the period's CGM days together
+    const parts = [["lt54", P.lt54], ["lt70", Math.max(0, P.lt70 - P.lt54)], ["in", P.in], ["gt180", P.gt180]];
+    const cover = P.ds.length ? Math.min(100, P.hours / (P.ds.length * 24) * 100) : 0;
+    card.append(el("div", {class: "glu-tir"},
+      el("h3", {class: "sub", text: `Time in ranges · ${P.ds.length} CGM day${P.ds.length === 1 ? "" : "s"} in this period, ${gPct(cover)} of the time with readings`}),
+      el("div", {class: "glu-bar", "aria-hidden": "true"}, ...parts.filter(p => p[1] > 0).map(([k, v]) => el("span", {style: {width: v + "%", background: G_C[k]}}))),
+      el("ul", {}, ...[["lt54", `Below ${s0} ${u}`, P.lt54], ["lt70", `Below ${s1} (with below ${s0})`, P.lt70], ["in", `${s1}–${s2}`, P.in], ["gt180", `Above ${s2}`, P.gt180]]
+        .map(([k, t, v]) => el("li", {}, el("i", {style: {background: G_C[k]}}), `${t}: `, el("b", {text: gPct(v)})))),
+      el("p", {class: "hint", text: `The standard published ranges for CGM readings (${s1}–${s2} ${u}, with below ${s1} and below ${s0} counted separately): not advice, and not anyone's own targets.`})));
+  }
+  // the days in the period, each with its meter readings and (when shown) lab results
+  const meterBy = new Map(), labBy = new Map(), dayBy = new Map(G.days.map(d => [d.d, d]));
+  for (const p of G.meter) { const k = isoDay(p[0]); meterBy.set(k, [...(meterBy.get(k) || []), p]); }
+  if (labs) for (const p of G.lab) { const k = isoDay(p[0]); labBy.set(k, [...(labBy.get(k) || []), p]); }
+  const dayPts = [...new Set([...G.days.map(d => d.d), ...meterBy.keys(), ...labBy.keys()])].sort().map(d => [dayTs(d)]);
+  if (!dayPts.some(p => p[0] >= a && p[0] <= b)) { card.append(el("p", {class: "hint", text: `No glucose readings in this period (the last on ${fmtD(G.last)}).`})); return; }
+  if (table) {
+    card.append(chartTable(["Date", `Average (${u})`, `Low–high (${u})`, `${s1}–${s2} (%)`, `Below ${s1} (%)`, `Below ${s0} (%)`, `Above ${s2} (%)`, "Hours with readings", `Meter readings (${u})`, ...(labs ? [`Lab results (${u})`] : [])],
+      byDay(dayPts).map(({t}) => { const k = isoDay(t), d = dayBy.get(k), ls = labBy.get(k) || [];
+        return [fmtD(t), d ? fmt(d.avg) : "", d ? `${fmt(d.lo)}–${fmt(d.hi)}` : "", d ? gPct(d.in) : "", d ? gPct(d.lt70) : "", d ? gPct(d.lt54) : "", d ? gPct(d.gt180) : "",
+          d ? `${gHours(d.hours)} (${d.n} readings)` : "", (meterBy.get(k) || []).map(m => `${fmtTime(m[0])} ${fmt(m[1])}`).join("; "),
+          ...(labs ? [ls.length ? [ls.map(l => `${fmt(l[1])} (${nice(l[3])})`).join("; "), ls.find(l => l[2])?.[2] || ""] : ""] : [])]; })));
+    return;
+  }
+  card.append(legend([[G_C.cgm, "CGM daily average"], ["color-mix(in srgb, " + G_C.cgm + " 30%, transparent)", "CGM daily low–high"], [G_C.meter, "Meter reading", 1],
+    ...(labs ? [[G_C.lab, "Lab result", 1]] : []), ["color-mix(in srgb, var(--muted) 30%, transparent)", `${s1}–${s2} ${u}, the standard range`]]));
+  const std = [];   // the standard range as a band, over the days with glucose
+  for (let t = dayTs(isoDay(G.first)) - DAY; t <= G.last + DAY; t += DAY) std.push([t, ...G.inStd]);
+  const runs = [];   // the CGM's days in runs, so a band never bridges the weeks between two sensors
+  for (const d of G.days) { const r = runs[runs.length - 1]; if (r && d.t - r[r.length - 1].t <= 1.5 * DAY) r.push(d); else runs.push([d]); }
+  const long = b - a > 200 * DAY;
+  hChart(card, a, b, {h: 220, fmtY: v => fmt(v), label: "Blood glucose", noun: "day", nav: dayPts, layers: [
+    {type: "band", data: std, color: "var(--muted)"},
+    ...runs.flatMap(r => r.length > 1 ? [{type: "band", data: r.map(d => [d.t, d.lo, d.hi]), color: G_C.cgm}, {type: "line", data: r.map(d => [d.t, d.avg]), color: G_C.cgm, width: 1.8, gap: 2}]
+      : [{type: "dots", data: [[r[0].t, r[0].avg]], color: G_C.cgm}]),
+    {type: "dots", data: G.meter, color: G_C.meter},
+    ...(labs ? [{type: "dots", data: G.lab, color: G_C.lab, hollow: true, r: 4}] : [])],
+    tip: t => { const p = nearest(dayPts, t, long ? 6 : .6); if (!p) return null;
+      const k = isoDay(p[0]), d = dayBy.get(k), ms = meterBy.get(k) || [], ls = labBy.get(k) || [];
+      return {t: p[0], rows: [el("div", {class: "v", text: fmtD(p[0])}),
+        d ? tipRow(G_C.cgm, `CGM average ${fmt(d.avg)} ${u}, ${fmt(d.lo)}–${fmt(d.hi)}`) : null,
+        d ? el("div", {class: "s", text: `${s1}–${s2}: ${gPct(d.in)} · below ${s1}: ${gPct(d.lt70)} (below ${s0}: ${gPct(d.lt54)}) · above ${s2}: ${gPct(d.gt180)}`}) : null,
+        d ? el("div", {class: "s", text: `${gHours(d.hours)} of readings (${d.n})`}) : null,
+        ...ms.slice(0, 6).map(m => tipRow(G_C.meter, `Meter, ${fmtTime(m[0])}: ${fmt(m[1])} ${u}`)), ms.length > 6 ? el("div", {class: "s", text: `and ${ms.length - 6} more meter readings`}) : null,
+        ...ls.map(l => tipRow(G_C.lab, `${nice(l[3])}, lab: ${fmt(l[1])} ${u}${l[2] ? " · " + flagWord(l[2]) : ""}`))]}; }});
 }
 

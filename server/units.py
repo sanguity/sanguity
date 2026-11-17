@@ -157,11 +157,16 @@ def annotate(data):
 CHANGES = {"skin_temp"}   # watch metrics that are differences, not values (watch/receiver.py)
 
 
+GLUCOSE = {"glucose_meter", "glucose_avg", "glucose_min", "glucose_max"}   # in mg/dL, shown in mmol/L by choice (#181)
+
+
 def annotate_watch(summary):
-    """Add "conv" to each watch metric that can be shown in another unit (weights in lb; never a change)."""
+    """Add "conv" to each watch metric that can be shown in another unit (weights in lb; never a change; blood
+    glucose by the lab choice, as lab glucose is)."""
     for m in (summary or {}).get("metrics") or []:
         if isinstance(m, dict):
-            c = conversions(None, m.get("unit"), change=m.get("key") in CHANGES)
+            canon = "Glucose, Blood" if m.get("key") in GLUCOSE else None
+            c = conversions(canon, m.get("unit"), change=m.get("key") in CHANGES)
             if c:
                 m["conv"] = c
     return summary

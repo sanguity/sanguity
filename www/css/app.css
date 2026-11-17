@@ -1196,3 +1196,14 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
   .btn.primary,.btn.danger,.empty-state .btn.empty-next{border:1px solid ButtonText}
   .menu-item:focus-visible,.cell-btn:focus-visible{outline-color:Highlight}
 }
+/* ---- blood glucose on Body and activity (#181, health.js): the period's time in ranges as one bar (its figures in
+   words beside it) and the four ranges with their keys */
+.glu-tir{margin:2px 0 12px}
+.glu-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--grid);margin:6px 0 8px;max-width:640px}
+.glu-bar span{display:block;height:100%;min-width:2px}
+.glu-tir ul{list-style:none;margin:0 0 4px;padding:0;display:flex;flex-wrap:wrap;gap:4px 18px;font-size:13px;color:var(--ink2)}
+.glu-tir li{display:inline-flex;align-items:center;gap:6px}
+.glu-tir li i{display:inline-block;width:10px;height:10px;border-radius:2px}
+.glu-tir li b{color:var(--ink);font-weight:650;font-variant-numeric:tabular-nums}
+.glu-tir .hint{margin:4px 0 0}
+@media (forced-colors:active){ .glu-bar span,.glu-tir li i{forced-color-adjust:none} }

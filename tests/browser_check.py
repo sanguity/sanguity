@@ -136,6 +136,44 @@ def add_range_records(build):
         json.dump(data, f)
 
 
+GLUCOSE_GAP_DAY = "2026-11-09"   # the CGM's day with a six-hour gap in its readings (#181)
+
+
+def add_glucose_watch(watch):
+    """Blood glucose for Body and activity (#181), made from fictional readings by the receiver's own summary
+    (server/glucose.py): a meter's finger-sticks twice a day from October 1, then a CGM every five minutes for the
+    last two weeks, with a sensor gap on GLUCOSE_GAP_DAY. The demo itself has none."""
+    import math, random, sqlite3
+    from datetime import datetime, timedelta, timezone
+    sys.path.insert(0, ROOT)
+    from server import glucose
+    rnd, off = random.Random(181), timezone(timedelta(hours=-5))
+    con = sqlite3.connect(":memory:")
+    con.executescript(glucose.TABLE)
+    put = lambda src, at, v, kind: con.execute("INSERT INTO glucose VALUES('hc', ?, ?, ?, ?, ?, ?)", (src, str(int(at.timestamp())),
+                                               int(at.timestamp()), at.strftime("%Y-%m-%dT%H:%M"), v, kind))
+    for d in range(30):   # October: a meter before breakfast and after dinner
+        day = datetime(2026, 10, 1, tzinfo=off) + timedelta(days=d)
+        put("com.example.fictionalmeter", day.replace(hour=7, minute=rnd.randint(0, 40)), rnd.randint(88, 118), "meter")
+        put("com.example.fictionalmeter", day.replace(hour=20, minute=rnd.randint(0, 40)), rnd.randint(110, 175), "meter")
+    start = datetime(2026, 11, 1, tzinfo=off)
+    for i in range(14 * 288):   # November 1 to 14: a sensor every five minutes, meals bringing peaks
+        at = start + timedelta(minutes=5 * i)
+        if at.strftime("%Y-%m-%d") == GLUCOSE_GAP_DAY and 1 <= at.hour < 7:
+            continue
+        h = at.hour + at.minute / 60
+        v = 104 + sum(k * math.exp(-((h - m) / 1.1) ** 2) for m, k in ((8.2, 62), (13, 48), (19.4, 78)))
+        v += -40 * math.exp(-((h - 3.5) / 1.2) ** 2) * (1 if at.day in (4, 11) else 0) + rnd.gauss(0, 6)
+        put("com.example.fictionalcgm", at, round(v), "cgm")
+    put("com.example.fictionalmeter", datetime(2026, 11, 6, 12, 30, tzinfo=off), 152, "meter")   # a finger-stick while it ran
+    path = os.path.join(watch, "daily.json")
+    with open(path, encoding="utf-8") as f:
+        daily = json.load(f)
+    daily["metrics"] += glucose.summary(con)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(daily, f)
+
+
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
@@ -147,6 +185,7 @@ def start_app():
     add_html_record(os.path.join(TMP, "build"))
     add_med_records(os.path.join(TMP, "build"))
     add_range_records(os.path.join(TMP, "build"))
+    add_glucose_watch(os.path.join(TMP, "watch"))
     sys.path.insert(0, ROOT)
     import uvicorn
     from server import atrest, db as dbm, main, profiles, security
@@ -855,7 +894,7 @@ def main():
             js("state.tables.clear(); switchTab('health')")
             settle(500)
             check("Body and activity (#60): every card with charts has Chart | Table",
-                  js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-sleep", "#h-activity", "#h-heart"])
+                  js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart"])
             page.focus("#h-body svg")
             page.keyboard.press("Home")
             settle(150)
@@ -863,10 +902,10 @@ def main():
             check("…its charts step from the keyboard too, with the hover's crosshair and tooltip", re.match(r"Weight: \d+ readings from", hk[0] or "")
                   and hk[1] == "block" and " lb" in hk[2] and hk[3] == "visible", hk)
             page.keyboard.press("Escape")
-            for k in ("#h-body", "#h-sleep", "#h-activity", "#h-heart"):
+            for k in ("#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart"):
                 page.click(f"{k} .view-seg button:text-is('Table')")
                 settle(200)
-            ht = js("['#h-body', '#h-sleep', '#h-activity', '#h-heart'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
+            ht = js("['#h-body', '#h-glucose', '#h-sleep', '#h-activity', '#h-heart'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
             check("…Table shows each card's values as a table, a row per day or week", all(n > 0 for n in ht), ht)
             # Costs: both charts
             js("state.tables.clear(); switchTab('costs')")
@@ -900,7 +939,7 @@ def main():
             bad = []
             for theme in ("light", "dark"):
                 js("t => { document.documentElement.dataset.theme = t; }", theme)
-                for tab, keys in (("labs", ["Hemoglobin"]), ("heatmap", ["#hm"]), ("health", ["#h-body", "#h-sleep", "#h-activity", "#h-heart"]), ("costs", ["#costBars", "#paidCum"])):
+                for tab, keys in (("labs", ["Hemoglobin"]), ("heatmap", ["#hm"]), ("health", ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart"]), ("costs", ["#costBars", "#paidCum"])):
                     for table in (False, True):
                         js("([keys, on]) => { state.tables.clear(); if (on) keys.forEach(k => state.tables.add(k)); }", [keys, table])
                         js("t => t === 'heatmap' ? switchTab('labs', 'heatmap') : t === 'labs' ? switchTab('labs', 'chart') : switchTab(t)", tab)
@@ -915,6 +954,94 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             js("state.tables.clear(); [state.sel, state.preset, state.from, state.to] = window._was60; state.labsView = 'chart'; save()")
             page.set_viewport_size({"width": 1400, "height": 900})
+
+            # ---- blood glucose (#181): a meter's readings and a CGM's days on Body and activity (add_glucose_watch): the
+            # tile, time in ranges labelled as the standard ranges, a day with a sensor gap, the chart from the keyboard,
+            # its table, mmol/L with the SI choice, lab glucose alongside only when asked, a period without any; no
+            # five-minute reading in the page's data; at 1400 and 375 px, light and dark, axe clean
+            js("window._was181 = [state.preset, state.from, state.to]; state.tables.clear(); applyPreset('30d'); switchTab('health')")
+            settle(500)
+            gl = js("""(() => { const c = document.getElementById('h-glucose'); if (!c) return null;
+                const tile = [...document.querySelectorAll('#view-health .tile')].find(t => t.querySelector('.lbl').textContent === 'Glucose');
+                const [a, b] = hRange();
+                return {tile: tile ? tile.innerText.replace(/\\s+/g, ' ') : null, tir: (c.querySelector('.glu-tir')?.innerText || '').replace(/\\s+/g, ' '),
+                  dots: c.querySelectorAll('svg circle').length, want: G.meter.filter(p => p[0] >= a && p[0] <= b).length,
+                  pts: WATCH.metrics.filter(m => m.key.startsWith('glucose_')).reduce((n, m) => n + m.pts.length, 0),
+                  after: [...document.querySelectorAll('#view-health > .card')].map(x => x.id).indexOf('h-glucose')}; })()""")
+            check("glucose (#181): a Blood glucose card after weight, and a Glucose tile with the period's CGM average and its share in 70–180",
+                  gl and gl["after"] == 1 and gl["tile"] and re.match(r"Glucose \d+ ?mg/dL avg \d+% of CGM readings in 70–180$", gl["tile"]), gl)
+            pcts = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)%", gl["tir"] if gl else "")]
+            check("…time in ranges for the period's CGM days, below 54 and below 70 apart, adding up, labelled the standard published ranges and not advice",
+                  gl and gl["tir"].startswith("Time in ranges · 14 CGM days in this period") and all(w in gl["tir"] for w in (
+                      "Below 54 mg/dL:", "Below 70 (with below 54):", "70–180:", "Above 180:", "standard published ranges", "not advice"))
+                  and len(pcts) >= 4 and abs(pcts[-3] + pcts[-2] + pcts[-1] - 100) < 1.5, gl and gl["tir"])
+            check("…meter readings as points, every one in the period", gl and gl["dots"] == gl["want"] > 20, gl)
+            check("…and none of the CGM's 4,000 five-minute readings in the page's data, only its days", gl and gl["pts"] < 200, gl and gl["pts"])
+            page.focus("#h-glucose svg")
+            page.keyboard.press("End")
+            settle(150)
+            gk = [js("[document.querySelector('#h-glucose svg').getAttribute('aria-label'), tip.innerText]")]
+            for _ in range(5):
+                page.keyboard.press("ArrowLeft")
+            settle(150)
+            gk.append(js("tip.innerText"))
+            page.keyboard.press("Escape")
+            check("…its chart steps a day at a time from the keyboard: each day's CGM figures, and the day with a sensor gap says so",
+                  re.match(r"Blood glucose: \d+ days from", gk[0][0] or "") and "Nov 14, 2026" in gk[0][1] and "CGM average" in gk[0][1]
+                  and "Nov 9, 2026" in gk[1] and "18 h of readings (216)" in gk[1], gk)
+            page.click("#h-glucose .view-seg button:text-is('Table')")
+            settle(200)
+            gt = js("""(() => { const rows = [...document.querySelectorAll('#h-glucose table.data tbody tr')].map(r => [...r.cells].map(c => c.textContent));
+                return [[...document.querySelectorAll('#h-glucose table.data th')].map(h => h.textContent), rows.length, rows.find(r => r[0] === 'Nov 9, 2026'),
+                        rows.find(r => r[0] === 'Nov 6, 2026')]; })()""")
+            check("…its table: a row a day, the CGM's figures, hours with readings and the meter's readings with their times",
+                  gt[0][:4] == ["Date", "Average (mg/dL)", "Low–high (mg/dL)", "70–180 (%)"] and gt[1] >= 25 and gt[2] and gt[2][7] == "18 h (216 readings)"
+                  and gt[3] and re.search(r"12:30\s?PM 152", gt[3][8]), gt)
+            js("state.tables.clear(); renderHealth()")
+            js("window._u181 = CFG.units; CFG.units = {...(CFG.units || {}), lab: 'si'}; G = undefined; renderHealth()")
+            settle(300)
+            si = js("[[...document.querySelectorAll('#view-health .tile')].find(t => t.querySelector('.lbl').textContent === 'Glucose').innerText.replace(/\\s+/g, ' '), document.querySelector('#h-glucose .glu-tir').innerText.replace(/\\s+/g, ' ')]")
+            check("…in mmol/L with the SI choice (#41), the standard ranges written in mmol/L too", re.match(r"Glucose \d+\.\d ?mmol/L avg .* in 3\.9–10\.0$", si[0])
+                  and "Below 3.0 mmol/L:" in si[1] and "Below 3.9 (with below 3.0):" in si[1], si)
+            js("CFG.units = window._u181; G = undefined; renderHealth()")
+            settle(200)
+            check("…no lab glucose to show alongside in the demo: no option for it", js("!document.querySelector('#h-glucose input[type=checkbox]')"))
+            js("""SERIES.push({name: 'Glucose, Fasting', unit: 'mg/dL', watch: false, n: 2, txt: [], key: 'browser-check-181', pts: [['2026-11-03T08:10:00', 104, 70, 99, 'H', '104'],
+                   ['2026-10-20T08:05:00', 92, 70, 99, '', '92']].map(p => Object.assign(p, {ts: zParse(p[0])}))}); G = undefined; renderHealth()""")
+            settle(300)
+            lab_dots = "document.querySelectorAll('#h-glucose svg circle[fill=\"var(--surface)\"]').length"
+            off = [js("!!document.querySelector('#h-glucose input[type=checkbox]') && !document.querySelector('#h-glucose input[type=checkbox]').checked"), js(lab_dots)]
+            page.locator("#h-glucose label", has_text="Show lab glucose results alongside").click()
+            settle(300)
+            on = [js(lab_dots), "Lab result" in js("document.querySelector('#h-glucose .legend').innerText"), js("localStorage.getItem('ht-glucose:' + PROFILE.id)")]
+            page.click("#h-glucose .view-seg button:text-is('Table')")
+            settle(200)
+            lab_row = js("[...document.querySelectorAll('#h-glucose table.data tbody tr')].map(r => [...r.cells].map(c => c.textContent)).find(r => r[0] === 'Nov 3, 2026')")
+            check("…lab glucose stays a lab series, drawn alongside only when asked (remembered), its result said high in the table",
+                  off == [True, 0] and on[0] == 2 and on[1] and on[2] == '{"labs":true}' and lab_row and lab_row[-1] == "104 (Glucose, Fasting) ▲ High", [off, on, lab_row])
+            bad, serious = [], []
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    for table in (False, True):
+                        js("on => { if (on) state.tables.add('#h-glucose'); else state.tables.delete('#h-glucose'); renderHealth(); }", table)
+                        settle(400)
+                        page.locator("#h-glucose").scroll_into_view_if_needed()
+                        if width < 400:
+                            bad += phone_fits(page, f"glucose {'table' if table else 'chart'} ({theme})")
+                        serious += axe_check(page, f"Body and activity with glucose, {'table' if table else 'chart'} at {width} px ({theme})")[0]
+            check("…its card, time in ranges, lab option, chart and table fit 375 px, in light and dark", not bad, bad[:6])
+            check("…and pass axe-core's WCAG A and AA rules at 1400 and 375 px, in light and dark", not serious, serious[:6])
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            js("""state.tables.clear(); gOpt.labs = false; localStorage.removeItem('ht-glucose:' + PROFILE.id); SERIES.splice(SERIES.findIndex(s => s.key === 'browser-check-181'), 1);
+                  G = undefined; state.from = dayTs('2025-03-01'); state.to = dayTs('2025-04-01'); state.preset = 'custom'; renderHealth()""")
+            settle(300)
+            none = js("[document.getElementById('h-glucose').innerText, [...document.querySelectorAll('#view-health .tile')].find(t => t.querySelector('.lbl').textContent === 'Glucose').innerText.replace(/\\s+/g, ' ')]")
+            check("…a period without glucose says so, with the last reading's date", "No glucose readings in this period (the last on Nov 14, 2026)." in none[0]
+                  and re.match(r"Glucose – ?mg/dL last Nov 14, 2026", none[1]) and "Time in ranges" not in none[0], none)
+            js("[state.preset, state.from, state.to] = window._was181; renderHealth()")
 
             # ---- each result against its own range (#58): the demo's creatinine (0.7–1.3 mg/dL) with two results from
             # an outside lab (0.6–1.2, add_range_records): the chart's band steps with each result's range and its
@@ -3761,6 +3888,7 @@ def main():
                                              "heart rate variability", "sleep analysis", "Since last sync", "Workouts"))
                   and "Life Dashboard Companion" in page.inner_text("#watch") and len(js("[...document.querySelectorAll('#watchHae li')]")) >= 6,
                   hae_txt[:400])
+            check("…and one for blood glucose, each reading on its own (#181)", "only blood glucose and no time grouping" in hae_txt, hae_txt[-300:])
             check("…with the header value to copy while the secret is shown",
                   js("!!document.querySelector('#watchHae button[aria-label=\"Copy the header value\"]')"))
             check("…and the steps fit 375 px", js("(() => { const b = document.getElementById('watchHae').getBoundingClientRect(); "
