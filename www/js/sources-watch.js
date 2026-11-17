@@ -44,12 +44,13 @@
       }});
     box.replaceChildren(...[   // without the parts left out: replaceChildren would write a null out as text (#175)
       el("h2", {text: "Phone and watch"}),
-      el("p", {class: "hint", text: "A phone app sends watch, sleep and smart-scale readings to this profile: Life Dashboard Companion on Android (from Health Connect), or Health Auto Export on iPhone (from Apple Health). Garmin, Fitbit, Withings and other apps come through them, by writing to Health Connect or Apple Health. In the app, set:"}),
+      el("p", {class: "hint", text: "A phone app sends watch, sleep and smart-scale readings to this profile: Life Dashboard Companion on Android, or Health Auto Export on iPhone. In the app, set:"}),
+      moreAbout("Life Dashboard Companion reads Health Connect, and Health Auto Export reads Apple Health. Garmin, Fitbit, Withings and other apps come through them, by writing to Health Connect or Apple Health.",
+        "Each profile has its own secret, so each person's phone uploads to their own profile. Readings are split into days in the phone's own time zone."),
       el("dl", {class: "kv w-kv"},
         el("dt", {text: "Last upload"}), el("dd", {id: "watchLast", text: st.last ? fmtWhen(st.last) : "Nothing received yet"}),
         el("dt", {text: "Upload address"}), el("dd", {}, ...addrs.flatMap(a => [el("div", {}, el("code", {class: "w-addr", text: a}), " ", st.addresses.length ? copyBtn(a, "Copy the upload address") : null)])),
         el("dt", {text: "Secret"}), el("dd", {}, secretNode)),
-      el("p", {class: "hint", text: "Each profile has its own secret, so each person's phone uploads to their own profile. Readings are split into days in the phone's own time zone."}),
       hae(addrs[0], secret),
       st.ready ? null : el("p", {class: "msg bad", text: "The watch receiver isn't ready for this profile's own secret yet: " +
         (admin ? `it needs a folder for the receiver's secrets on the server (${GUIDE}).` : "ask your admin to finish setting it up.") +

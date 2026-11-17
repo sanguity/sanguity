@@ -179,7 +179,8 @@ function journalHomeCard() {
   const card = el("section", {class: "card jhome", id: "journalHome", tabindex: -1, "aria-labelledby": "journalHomeTitle"},
     el("div", {class: "list-hd"}, el("h2", {id: "journalHomeTitle", text: n ? `Journal (${n})` : "Journal"}), el("span", {class: "spacer"}),
       jCanWrite() ? el("button", {class: "btn primary", type: "button", text: "New entry", onclick: () => journalNew()}) : null),
-    el("p", {class: "hint", text: (n ? "Notes, symptoms and side effects written by the people who use this profile. " : "Nothing written yet. ") + JOURNAL_HINT}));
+    el("p", {class: "hint", text: n ? "Notes, symptoms and side effects written by the people who use this profile." : "Nothing written yet."}),
+    moreAbout(JOURNAL_HINT));
   if (n) { const v = jList(true); card.append(...v.nodes.filter(Boolean)); jHomeDraw = v.draw; }
   events.before(card);
 }
@@ -198,7 +199,7 @@ function openJournalList() {
   state.selEv = null;
   const body = jDrawer("Journal", JOURNAL.length ? `${JOURNAL.length} entr${JOURNAL.length === 1 ? "y" : "ies"} written by the people who use this profile` : "Nothing written yet");
   body.append(...[jCanWrite() ? el("div", {class: "btns"}, el("button", {class: "btn primary", type: "button", text: "Add an entry", onclick: () => journalForm(null, {}, openJournalList)})) : null,
-    ...jList(false).nodes, el("p", {class: "hint", text: JOURNAL_HINT})].filter(Boolean));   // append(null) would write "null"
+    ...jList(false).nodes, moreAbout(JOURNAL_HINT)].filter(Boolean));   // append(null) would write "null"
   showDrawer();
   renderTimeline();
 }

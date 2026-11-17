@@ -17,6 +17,10 @@ const el = (tag, attrs = {}, ...kids) => {
   for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(c));
   return e;
 };
+/* "More about this" (#176): the rest of a card's explanation, a click away but still on the page and read by screen
+   readers. Strings become paragraphs; nulls are left out. Pages write the same <details class="more"> by hand. */
+const moreAbout = (...kids) => el("details", {class: "more"}, el("summary", {text: "More about this"}),
+  ...kids.flat().filter(k => k != null && k !== "").map(k => typeof k === "string" ? el("p", {text: k}) : k));
 /* every backend call: same-origin cookie, never cached, and the X-Sanguity header the API requires on changes */
 const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,
   headers: {...(opts.method && opts.method !== "GET" ? {"X-Sanguity": "1", "Content-Type": "application/json"} : {}), ...opts.headers}});

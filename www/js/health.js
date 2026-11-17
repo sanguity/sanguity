@@ -144,7 +144,8 @@ function renderHealth() {
   box.append(el("div", {class: "toolbar"},
     el("label", {}, el("input", {type: "checkbox", checked: hState.stays || null, onchange: e => { hState.stays = e.target.checked; hSave(); renderHealth(); }}), "Shade hospital stays"),
     el("span", {class: "hint", style: {margin: 0}, text: `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`})),
-    el("p", {class: "hint chart-hint", text: "Drag any chart sideways to move through time — every chart moves together · scroll or pinch to zoom · double-click to show everything."}));
+    el("p", {class: "hint chart-hint", text: "Drag any chart sideways to move through time: every chart moves together."}),
+    moreAbout("Scroll or pinch to zoom, and double-click to show everything."));
   // tiles
   const prev = pts => inR(pts, a - len, a);
   const wAll = [...H.scale, ...H.clinic].sort((p, q) => p[0] - q[0]), wIn = inR(wAll, a, b);

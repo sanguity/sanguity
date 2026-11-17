@@ -240,6 +240,54 @@ def main():
               ["People", "Share links", "Calendar feed", "Visit summary", "Export everything", "Activity", "Profile"]
               and strict.evaluate("document.querySelector('#shrNav a[data-group=profile]').closest('li').previousElementSibling.classList.contains('set-nav-part')"), groups)
         check("no Sharing card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
+        # ---- shorter help text (#176): a card leads with a short line, and the rest of its explanation is behind one
+        # "More about this" toggle, the same on every page: closed at first, still in the page when closed, opened and
+        # closed by keyboard, readable in dark mode (this page's theme) and at 375 px. What someone needs to decide
+        # safely stays in the lead, outside the toggle.
+        more_js = """[...document.querySelectorAll('details.more')].map(d => { const s = d.querySelector(':scope > summary'), cs = getComputedStyle(s);
+            return {at: (d.parentElement.closest('[id]') || {}).id, open: d.open, says: s.textContent, inside: d.textContent.length > s.textContent.length + 20,
+                    look: [cs.fontSize, cs.color, cs.cursor].join(' ')}; })"""
+        looks, seen_more = set(), {}
+        for path, ready in (("sources.html?profile=1#upload", "#watch .w-addr"), ("sharing.html?profile=1#links", "#links details.more"),
+                            ("admin.html#labs", "#dirAdd details.more"), ("", "#view-overview .card")):
+            strict.goto(base + "/" + path)
+            strict.wait_for_selector(ready, state="attached", timeout=10000)
+            found = strict.evaluate(more_js)
+            seen_more[path] = sorted({f["at"] for f in found})
+            looks |= {f["look"] for f in found}
+            check(f"{path or 'records'}: help beyond a card's lead is behind “More about this”, closed, still in the page (#176)",
+                  found and all(not f["open"] and f["says"] == "More about this" and f["inside"] for f in found), found)
+        check("…on the cards of every page that has them", all(set(seen_more[k]) >= want for k, want in (
+              ("sources.html?profile=1#upload", {"importer", "panel-manual", "panel-link", "mine", "finder", "watch"}),
+              ("sharing.html?profile=1#links", {"linksBody", "calendar", "summaryIntro", "export"}),
+              ("admin.html#labs", {"users", "admin", "directory", "dirAdd", "labmaps", "installLog"}),
+              ("", {"view-timeline", "labsChart", "labsHeatmap"}))), seen_more)
+        dark = [int(x) for x in re.findall(r"\d+", next(iter(looks)).split(" ", 1)[1])[:3]] if looks else [0, 0, 0]
+        check("…styled once: the same toggle everywhere, light on the dark theme", len(looks) == 1 and sum(dark) > 450, looks)
+        strict.goto(base + "/sharing.html?profile=1#links")
+        strict.wait_for_selector("#links details.more", timeout=10000)
+        links_lead = strict.evaluate("document.querySelector('#links .share-links > p.hint').textContent")
+        strict.click("#shrNav a[data-group=export]")
+        export_lead = strict.evaluate("document.querySelector('#export > p.hint').textContent")
+        check("…while what a person needs to decide stays in the leads: a share link's reach, an export's privacy", "Whoever has the link can open it" in links_lead
+              and "as private as the records" in export_lead, (links_lead, export_lead))
+        strict.goto(base + "/sources.html?profile=1#history")
+        strict.wait_for_selector("#historyList li", timeout=10000)
+        check("…and that undoing an import removes what it brought, with Fetch the only time a Health Link's server is contacted",
+              "Undoing an import removes the records" in strict.inner_text("#history")
+              and "only when you choose Fetch" in strict.evaluate("document.querySelector('#healthLink p.hint').textContent"))
+        strict.click("#srcNav a[data-group=upload]")
+        summ = "#importer details.more > summary"
+        strict.focus(summ)
+        strict.keyboard.press("Enter")
+        opened = strict.evaluate("[document.querySelector('#importer details.more').open, document.querySelector('#importer details.more p').checkVisibility()]")
+        strict.set_viewport_size({"width": 375, "height": 800})
+        strict.wait_for_timeout(200)
+        fits = strict.evaluate("document.documentElement.scrollWidth <= 375 && document.querySelector('#importer details.more').getBoundingClientRect().right <= 375")
+        strict.keyboard.press("Enter")
+        check("…opened by keyboard, its text shown, fitting 375 px; closed again by keyboard", opened == [True, True] and fits
+              and not strict.evaluate("document.querySelector('#importer details.more').open"), (opened, fits))
+        strict.set_viewport_size({"width": 1400, "height": 900})
         strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
         strict.wait_for_selector(".dir-hit", timeout=10000)
         check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))

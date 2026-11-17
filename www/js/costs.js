@@ -203,7 +203,8 @@ function renderPaid(box, claimRows, periodLabel) {
   const has = s => all.some(r => r.src === s);
   const ways = [has("typed") && "payments typed in", has("export") && `a finance export${meta.exported ? " (exported " + fmtD(dayTs(meta.exported)) + ")" : ""}`,
     has("claim") && "claims' shares with no payment matched"].filter(Boolean);
-  card.append(el("p", {class: "hint", text: `From ${ways.join(", ")}. Each amount is counted once: a payment that arrived two ways once, and a claim's share only until a payment is matched to it.${meta.excluded ? " Not counted: " + meta.excluded + "." : ""}`}));
+  card.append(el("p", {class: "hint", text: `From ${ways.join(", ")}. Each amount is counted once.${meta.excluded ? " Not counted: " + meta.excluded + "." : ""}`}),
+    moreAbout("A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from."));
   const tile = (label, value, sub, id) => el("div", {class: "stat", id: id || null},
     el("div", {class: "n", text: value}), el("div", {class: "l", text: label}), sub ? el("div", {class: "l", style: {marginTop: "2px"}, text: sub}) : null);
   const typed = sum(pays.filter(r => r.src === "typed")), exp = sum(pays.filter(r => r.src === "export"));
