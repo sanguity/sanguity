@@ -656,6 +656,27 @@ class Settings(unittest.TestCase):
             for key in ("dates.timeZone", "dates.format"):
                 self.c[who].delete(f"/api/profiles/1/settings/{key}", headers=H)
 
+    def test_own_settings_without_a_profile(self):
+        """#169: someone with no profile still has Display on the Settings page: their own settings' sections,
+        and Reset to defaults for one of them."""
+        r = self.c["zed"].get("/api/settings/user/sections")
+        self.assertEqual(r.status_code, 200, r.text)
+        secs = {sec["id"]: sec for sec in r.json()["sections"]}
+        self.assertEqual(set(secs) - {"testing"}, {"appearance", "dates", "units"})   # (this file's own section)
+        every = [st for sec in secs.values() for st in sec["settings"]]
+        self.assertTrue(all(st["scope"] == "user" and st["can_change"] for st in every))
+        self.assertIn("choices", {st["key"]: st for st in every}["units"])   # what the units editor draws from
+        self.assertEqual(client().get("/api/settings/user/sections").status_code, 401)
+        self.assertEqual(self.c["zed"].put("/api/settings/user/dates.format", json={"value": "dmy"}, headers=H).status_code, 200)
+        dates = {st["key"]: st for sec in self.c["zed"].get("/api/settings/user/sections").json()["sections"] for st in sec["settings"]}
+        self.assertEqual((dates["dates.format"]["value"], dates["dates.format"]["from"]), ("dmy", "user"))
+        self.assertEqual(self.c["zed"].post("/api/settings/user/reset", json={"section": "dates"}).status_code, 403)   # CSRF
+        r = self.c["zed"].post("/api/settings/user/reset", json={"section": "dates"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("dates.format", r.json()["reset"])
+        self.assertEqual(r.json()["settings"]["dates.format"], "")
+        self.assertEqual(self.c["zed"].post("/api/settings/user/reset", json={"section": "ranges"}, headers=H).status_code, 404)   # a profile's
+
     # ---------------------------------------------------------------- a watch receiver secret per profile (#46)
 
     def keys_file(self):

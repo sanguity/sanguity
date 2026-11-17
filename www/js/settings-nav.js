@@ -1,22 +1,20 @@
 /* Sanguity · the Settings page's sidebar: its sections in groups, one group shown at a time (after settings.js, which
-   draws the sections). The calendar feed moved to the Sharing page (#168): settings.html#calendar opens it there.
+   draws the sections). Settings is how things look (#169): this profile's (Dashboard, Labs and ranges, Milestones and
+   activity) and the person's own (Display). What else was here has its own page now (settings.js, MOVED).
 
-   Each section (#sec-<id> from the server's list, and the page's own #calendar card) belongs to a group.
+   Each section (#sec-<id> from the server's list) belongs to a group.
    The sidebar lists the groups that have something to show this person; the address follows the group
    (settings.html#display), and an address naming a section (settings.html#sec-units) opens that section's group
    and scrolls to it.
    "Find a setting" shows, across every group, only the settings whose name or help mentions what's typed.
 
    Above the sections, the group's title and whose settings these are (WHO): this profile's, for everyone it's
-   shared with (or shown as they are, to someone who can only view it); just yours; or the server's. A group with a
+   shared with (or shown as they are, to someone who can only view it), or just yours. A group with a
    change not saved yet (a section with data-dirty, settings.js) is marked in the sidebar. */
 "use strict";
 (() => {
   const main = document.querySelector("main.sets");
   if (!main) return;
-  const moved = () => location.hash === "#calendar" && (location.replace("sharing.html" + location.search + "#calendar"), true);
-  if (moved()) return;
-  addEventListener("hashchange", moved);
   const GROUPS = [
     {id: "dashboard", title: "Dashboard", part: "This profile", hint: "How this profile's tabs look, for everyone it's shared with",
      has: ["sec-overview", "sec-tabs", "sec-trends", "sec-names"]},
@@ -30,18 +28,17 @@
   const OTHER = {id: "more", title: "More", part: "", hint: "", has: []};   // a section no group names yet
   /* whose settings each group holds: the registry's sections say it by their settings' scope (data-scope); a group
      missing here goes by that */
-  const WHO = {dashboard: "profile", labs: "profile", activity: "profile", display: "you", calendar: "feed",
-    sources: "server", outside: "server"};
+  const WHO = {dashboard: "profile", labs: "profile", activity: "profile", display: "you"};
   const SAY = {
     profile: ["This profile", ", for everyone it's shared with."],
     view: ["This profile", ": you can view it, so these are shown as they are; its owners and editors change them."],
     you: ["Just for you", ", on every profile you see."],
-    feed: ["Just for you", ": your own calendar feed of this profile."],
+    own: ["Just for you", "."],   // someone with no profile yet (settings.js sets no role then)
     server: ["This server", ", for everyone on it."],
   };
   const SCOPE_WHO = {profile: "profile", user: "you", install: "server"};
   const groupOf = id => GROUPS.find(g => g.has.includes(id)) || (id.startsWith("sec-") ? OTHER : null);
-  const parts = () => [...main.querySelectorAll("#sections > section, #calendar")];
+  const parts = () => [...main.querySelectorAll("#sections > section")];
   const partsOf = g => parts().filter(p => groupOf(p.id) === g);
   function whoOf(g) {
     let w = WHO[g.id];
@@ -49,7 +46,7 @@
       const scopes = new Set(partsOf(g).flatMap(p => [...p.querySelectorAll(".set[data-scope]")].map(s => s.dataset.scope)));
       w = scopes.size === 1 ? SCOPE_WHO[[...scopes][0]] : scopes.size ? "profile" : null;
     }
-    return w === "profile" && main.dataset.role === "viewer" ? "view" : w;
+    return w === "profile" && main.dataset.role === "viewer" ? "view" : w === "you" && main.dataset.role === "" ? "own" : w;
   }
   const say = w => SAY[w] ? [el("strong", {text: SAY[w][0]}), SAY[w][1]] : [];
   const title = document.getElementById("groupTitle"), who = document.getElementById("introHint");

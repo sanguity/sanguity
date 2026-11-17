@@ -1,7 +1,9 @@
-/* Sanguity · Settings page (#35): a profile's settings, in the sections the server's registry (server/settings.py)
-   gives, each setting with a simple editor for its kind, and per section one Save, Discard changes and "Reset to
-   defaults" (#174). Viewers see the profile's settings without editors; their own (per-user) settings they can
-   change. A new kind of setting adds an editor to EDITORS. */
+/* Sanguity · Settings page (#35): how things look. A profile's settings and the person's own (Display), in the
+   sections the server's registry (server/settings.py) gives, each setting with a simple editor for its kind, and per
+   section one Save, Discard changes and "Reset to defaults" (#174). Viewers see the profile's settings without
+   editors; their own (per-user) settings they can change, and someone with no profile yet still has those (#169).
+   A new kind of setting adds an editor to EDITORS. What used to be here and isn't about how things look has its own
+   page now (MOVED, at the end). */
 "use strict";   // $, el and api come from util.js
 let ME, PID = null, LAB_NAMES = [], LABS = [], NICK = {}, HAS_CLAIMS = false;
 
@@ -477,7 +479,7 @@ const quoted = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.lengt
    after a save or a reset (note: {section, text} to say in this one; force: this section's id, to draw it again
    even with changes not saved); opts.note is said in it once drawn. */
 function sectionCard(sec, opts = {}) {
-  const base = opts.base || `profiles/${PID}/settings`;
+  const base = opts.base || (PID == null ? "settings/user" : `profiles/${PID}/settings`);
   const reload = opts.reload || load;
   const msg = el("span", {class: "msg", role: "status", text: opts.note || ""});
   const anyEditable = sec.settings.some(st => st.can_change);
@@ -540,8 +542,8 @@ function sectionCard(sec, opts = {}) {
 }
 const unsavedSections = () => [...document.querySelectorAll("#sections > section[data-dirty]")];
 addEventListener("beforeunload", ev => { if (unsavedSections().length) { ev.preventDefault(); ev.returnValue = ""; } });
-/* another profile: changes not saved here would be lost. Asked before anything follows the picker (the calendar
-   feed does too), so saying no leaves the whole page on this profile. */
+/* another profile: changes not saved here would be lost. Asked before anything else follows the picker, so saying
+   no leaves the whole page on this profile. */
 document.addEventListener("change", ev => {
   if (ev.target.id !== "profile" || PID == null) return;
   const left = unsavedSections().map(c => c.querySelector("h2").textContent);
@@ -551,12 +553,13 @@ document.addEventListener("change", ev => {
   }
 }, true);
 
-/* the profile's sections, drawn again: one with changes not saved stays as it is, unless it's the one forced or
-   all are drawn afresh (another profile); note: {section, text} to say in that section */
+/* the profile's sections (or, with no profile, the person's own), drawn again: one with changes not saved stays as
+   it is, unless it's the one forced or all are drawn afresh (another profile); note: {section, text} to say in that
+   section */
 async function load(note, force, all = false) {
   const box = $("#sections");
   let d;
-  try { d = await call(`profiles/${PID}/settings/sections`); }
+  try { d = await call(PID == null ? "settings/user/sections" : `profiles/${PID}/settings/sections`); }
   catch (e) { sayIn($("#loadMsg"), e.message, true); if (all) box.replaceChildren(); return; }   // (changes not saved stay)
   sayIn($("#loadMsg"), "");
   d.sections = d.sections.filter(sec => sec.settings.some(st => st.scope !== "install"));   // the server's own: on the Admin page (#167)
@@ -564,7 +567,7 @@ async function load(note, force, all = false) {
   NICK = every.find(st => st.key === "labNicknames")?.value || {};
   for (const k of ["birthDate", "sex", "overrides"]) { const st = every.find(x => x.key === "ranges." + k); if (st) RANGE_CFG[k] = st.value; }   // #44
   { const th = every.find(st => st.key === "theme"); if (th) applyTheme(th.value); }   // #45: the saved default, here too
-  document.querySelector("main.sets").dataset.role = d.role;   // whose settings each group's are (settings-nav.js)
+  document.querySelector("main.sets").dataset.role = d.role || "";   // whose settings each group's are (settings-nav.js)
   const cards = d.sections.map(sec => {
     const old = document.getElementById("sec-" + sec.id);
     if (!all && old && old.parentNode === box && old.hasAttribute("data-dirty") && sec.id !== force) return old;
@@ -591,19 +594,35 @@ async function loadLabNames() {
   $("#labNames").replaceChildren(...LAB_NAMES.map(n => el("option", {value: n})));
 }
 
+/* ---------------------------------------------------------------- what moved
+   Settings is how things look (#169); what was here besides went to its own page, and its old addresses open it
+   there, keeping the profile (?profile=2): the server's (#167) to Admin, the phone's upload secret (#166) to
+   Sources, the calendar feed (#168) to Sharing. */
+const MOVED = {"#outside": "admin.html#outside", "#sources": "admin.html#apps", "#sec-sync": "admin.html#sec-sync",
+  "#watch": "sources.html?#phone", "#calendar": "sharing.html?#calendar"};
+function moved() {
+  const to = MOVED[location.hash];
+  if (to) location.replace(to.replace("?", location.search));
+  return !!to;
+}
+addEventListener("hashchange", moved);
+
 /* ---------------------------------------------------------------- start */
 (async () => {
-  // what moved to the Admin page (#167): its old addresses open it there
-  const moved = {"#outside": "admin.html#outside", "#sources": "admin.html#apps", "#sec-sync": "admin.html#sec-sync"}[location.hash];
-  if (moved) { location.replace(moved); return; }
-  if (location.hash === "#watch") { location.replace("sources.html" + location.search + "#phone"); return; }   // Sources (#166)
+  if (moved()) return;
   try { ME = await call("me"); } catch (e) { return; }
   await datesReady();   // dates in this person's time zone and format (dates.js)
   if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
   if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
   $("#who").textContent = ME.user.username;
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
-  if (!ME.profiles.length) { $("#noProfiles").hidden = false; return; }
+  if (!ME.profiles.length) {   // no profile yet: their own settings, and how to get one
+    $("#noProfiles").hidden = false;
+    $("#profile").closest("label").hidden = true;
+    $("#intro").hidden = false;
+    load(null, null, true);
+    return;
+  }
   const sel = $("#profile");
   sel.replaceChildren(...ME.profiles.map(p => el("option", {value: p.id, text: p.name + (p.role === "viewer" ? " (view only)" : "")})));
   let want; try { want = +(new URLSearchParams(location.search).get("profile") || localStorage.getItem("ht-profile")); } catch (e) {}

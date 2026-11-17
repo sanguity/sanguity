@@ -21,12 +21,6 @@
 <main class="acct sets">
   <div class="card warn" id="insecure" role="alert" hidden></div>
 
-  <section class="card" id="noProfiles" hidden>
-    <h2>Settings</h2>
-    <p>Settings belong to a health profile, and none is shared with you yet. <a href="sharing.html#profile">Create a profile</a>,
-      or ask a profile's owner to share it with you.</p>
-  </section>
-
   <!-- the group shown (settings-nav.js): its title, and whose settings these are -->
   <div class="set-top" id="intro" hidden>
     <div class="set-top-hd">
@@ -36,6 +30,11 @@
     <p class="set-who" id="introHint"></p>
     <span class="msg" id="loadMsg" role="status"></span>
   </div>
+
+  <!-- no profile yet: only the person's own settings are drawn (settings.js) -->
+  <p class="card hint" id="noProfiles" hidden>No health profile is shared with you yet, so only your own settings are here.
+    A profile's dashboard, labs and milestones appear once you have one: <a href="sharing.html#profile">create a profile</a>,
+    or ask a profile's owner to share it with you.</p>
 
   <div id="sections"></div>
 

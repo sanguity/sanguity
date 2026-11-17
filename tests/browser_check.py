@@ -2114,6 +2114,25 @@ def main():
                   zb.evaluate("document.getElementById('introHint').textContent").startswith("This profile: you can view it")
                   and zb.evaluate("!document.querySelector('#sec-overview .set-foot, #sec-names .set-foot') && !!document.querySelector('#sec-units .set-foot')"),
                   zb.evaluate("document.getElementById('introHint').textContent"))
+            # #169: with no profile at all, Settings still has their own Display settings, says how to get a profile,
+            # and saves; an old address opened by a link within the page goes on to its new home too
+            sdb.execute("DELETE FROM memberships WHERE user_id=? AND profile_id=1", (uid2,))
+            zb.goto(base + "/settings.html")
+            zb.wait_for_selector("#sec-dates .set-foot", state="attached", timeout=10000)
+            check("no profile: Settings shows Display (their own), says how to get a profile, and no profile choice",
+                  zb.evaluate("[...document.querySelectorAll('#setNav a')].map(a => a.dataset.group).join()") == "display"
+                  and zb.evaluate("[...document.querySelectorAll('#sections > section')].map(s => s.id).join()") == "sec-appearance,sec-dates,sec-units"
+                  and zb.is_visible("#noProfiles") and zb.locator("#noProfiles a[href='sharing.html#profile']").count() == 1
+                  and zb.is_hidden("#profile") and zb.evaluate("document.getElementById('groupTitle').textContent") == "Display",
+                  zb.evaluate("[...document.querySelectorAll('#sections > section')].map(s => s.id).join()"))
+            zb.select_option("[data-key='dates.format'] select", "dmy")
+            zb.click("#sec-dates .set-foot button:text-is('Save')")
+            zb.wait_for_function("document.querySelector('#sec-dates .set-foot > .msg').textContent == 'Saved “Date format”.'", timeout=10000)
+            check("…and saves them", mine(zb)["dates.format"] == "dmy", mine(zb))
+            zb.evaluate("location.hash = '#watch'")
+            zb.wait_for_url("**/sources.html#phone", timeout=10000)
+            check("…an old Settings address followed within the page opens its new home (#watch → Sources)", True)
+            sdb.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'viewer')", (uid2,))
             zb.evaluate("""Promise.all([['dates.timeZone', 'Pacific/Auckland'], ['dates.format', 'ymd']].map(([k, v]) =>
                 api('settings/user/' + k, {method: 'PUT', body: JSON.stringify({value: v})})))""")
             for pg in (za, zb):
@@ -2711,14 +2730,35 @@ def main():
                   any("Hemoglobin Whole Bld" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "Change" in t and "Remove" in t for t in lm)
                   and "only admins can change or remove" in page.inner_text("#labmaps") and js(display, "labmaps") != "none", lm)
             # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on Account
-            vis = lambda sel: js(f"!document.querySelector('{sel}').hidden")
             page.goto(base + "/account.html#profiles")
             page.wait_for_url("**/sharing.html#people", timeout=10000)
             page.wait_for_selector("#memberList tbody tr", timeout=10000)
             check("the old Profiles tab's address opens Sharing → People", js("document.querySelector('#shrNav [aria-current=page]').textContent") == "People")
             page.goto(base + "/account.html#twofa")
             page.wait_for_function("document.getElementById('tfHint').textContent.length > 0", timeout=10000)
-            check("an old section link still opens Account", vis("#panel-security") and js("location.hash") == "#twofa")
+            check("an old section link still opens Account, in its group", js(display, "twofa") != "none" and js("location.hash") == "#twofa"
+                  and js("document.querySelector('#acctNav [aria-current=page]').textContent") == "Sign-in and security", js("location.hash"))
+            # #169: Account is you and this device, a group each in its sidebar; how things look is on Settings
+            check("Account: two groups, sign-in and security first, and nothing else on the page",
+                  js("[...document.querySelectorAll('#acctNav a')].map(a => a.textContent).join('|')") == "Sign-in and security|This device"
+                  and js(display, "installApp") == "none" and js(display, "offlineRecords") == "none"
+                  and js("document.getElementById('groupTitle').textContent") == "Sign-in and security"
+                  and js("[...document.querySelectorAll('main > section')].every(s => ['password', 'twofa', 'passkeys', 'sessions', 'installApp', 'offlineRecords'].includes(s.id))"))
+            page.click("#acctNav a[data-group=device]")
+            check("…This device: installing it and offline records, and the address says so",
+                  js(display, "installApp") != "none" and js(display, "offlineRecords") != "none" and js(display, "password") == "none"
+                  and js(display, "sessions") == "none" and js("location.hash") == "#device"
+                  and js("document.getElementById('groupTitle').textContent") == "This device")
+            for addr, shows in (("#offline", "offlineRecords"), ("#install", "installApp"), ("#security", "password"), ("#sessions", "sessions")):
+                page.goto(base + "/account.html" + addr)
+                page.wait_for_function(f"getComputedStyle(document.getElementById('{shows}')).display !== 'none'", timeout=10000)
+            check("…each of its addresses opens its group (#offline, #install, #security, #sessions)", True)
+            page.set_viewport_size({"width": 375, "height": 800})
+            for g in ("security", "device"):
+                page.click(f"#acctNav a[data-group={g}]")
+                settle(150)
+                check(f"…Account's {g} group fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/admin.html#accounts")
             page.wait_for_function("document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
             page.fill("#userName", "alex")
@@ -2736,8 +2776,8 @@ def main():
             check("the admin's note links to Account's security tab", js("document.querySelector('#adminTf a').getAttribute('href')") == "account.html#security")
             page.click("#adminTf a")
             page.wait_for_url("**/account.html#security", timeout=10000)
-            page.wait_for_function("!document.getElementById('panel-security').hidden && document.getElementById('tfHint').textContent.length > 0", timeout=10000)
-            check("which opens it", vis("#panel-security"))
+            page.wait_for_function("document.getElementById('tfHint').textContent.length > 0", timeout=10000)
+            check("which opens it", js(display, "twofa") != "none")
             page.locator("#twofa").get_by_role("button", name="Turn on").click()
             page.wait_for_selector("#twofa .tf-key")
             key = js("document.querySelector('#twofa .tf-key').textContent").replace(" ", "")
@@ -3007,7 +3047,7 @@ def main():
             # stand-in event: headless Chromium never offers one), a button opens it, and the header shows Install app
             FAKE_PROMPT = ("(() => { const e = new Event('beforeinstallprompt'); e.prompt = () => { window.sgPrompted = (window.sgPrompted || 0) + 1; }; "
                            "e.userChoice = Promise.resolve({outcome: 'accepted'}); dispatchEvent(e); })()")
-            ph.goto(base + "/account.html")
+            ph.goto(base + "/account.html#device")
             ph.wait_for_selector("#installApp h2")
             check("Account: how to install on this device, without a prompt from the browser",
                   "Install app" in ph.inner_text("#installApp") and ph.locator("#installApp button").count() == 0, ph.inner_text("#installApp"))
@@ -3029,7 +3069,7 @@ def main():
             iphone.add_cookies([{"name": sg_config.COOKIE, "value": token, "url": base, "httpOnly": True, "sameSite": "Strict"}])
             ip = iphone.new_page()
             ip.on("pageerror", lambda e: problems.append(f"script error (iPhone): {e}"))
-            ip.goto(base + "/account.html")
+            ip.goto(base + "/account.html#install")
             ip.wait_for_selector("#installApp .install-steps", timeout=10000)
             steps = ip.inner_text("#installApp")
             check("on an iPhone: Safari's Share, then Add to Home Screen", "Share button" in steps and "Add to Home Screen" in steps, steps)
@@ -3037,7 +3077,7 @@ def main():
             iphone.close()
 
             # turned on under Account (off until then); the records loaded next are kept
-            ph.goto(base + "/account.html")
+            ph.goto(base + "/account.html#offline")
             ph.wait_for_selector("#offlineOn")
             check("Account: offline records are off by default, with what's kept explained",
                   not ph.is_checked("#offlineOn") and "anyone who can use this device while it's unlocked" in ph.inner_text("#offlineRecords"))
@@ -3074,7 +3114,7 @@ def main():
             ctx.set_offline(False)
 
             # turned off: the copy goes
-            ph.goto(base + "/account.html")
+            ph.goto(base + "/account.html#offline")
             ph.wait_for_selector("#offlineOn")
             until("document.querySelector('#offlineRecords .msg').textContent.includes('records, loaded')", 5000)
             ph.uncheck("#offlineOn")

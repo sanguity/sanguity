@@ -181,6 +181,12 @@ Everything on `main` so far; it becomes the first tagged release.
   visit summary page, and their old addresses open them here. Someone who can only view a profile sees who has
   access, the visit summary and their own calendar feed, and no owner's controls; any member can now see who
   has access to a profile (`GET /api/profiles/{id}/members`), and only owners change it.
+- Settings is how things look and Account is you (#169). **Settings** keeps this profile's Dashboard, Labs and
+  ranges, and Milestones and activity, and your own Display (theme, dates and time zone, units); someone with no
+  profile yet now has their Display settings there too (`GET /api/settings/user/sections`,
+  `POST /api/settings/user/reset`). **Account** is a sidebar of two groups: Sign-in and security (password,
+  two-factor sign-in, passkeys, where you're signed in) and This device (installing Sanguity, offline records).
+  Every old address of what moved still opens its new home, also when followed from within the page.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -18,12 +18,17 @@
 <header class="topbar" data-title="Account">
   <h1><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</h1>
 </header>
-<main class="acct">
+<main class="acct sets">
+  <!-- the group shown (account.js): its title, and what it's about -->
+  <div class="set-top" id="intro">
+    <div class="set-top-hd"><h1 id="groupTitle">Sign-in and security</h1></div>
+    <p class="set-who" id="introHint"></p>
+  </div>
+
   <div class="card warn" id="insecure" role="alert" hidden></div>
   <div class="card warn" id="mustChange" hidden>Choose your own password to continue. The one you signed in with was for one use only.</div>
 
-  <!-- profiles, and sharing them, are on the Sharing page (#168); account.html#profiles opens it -->
-  <div id="panel-security">
+  <!-- Sign-in and security -->
   <section class="card" id="password">
     <h2>Password</h2>
     <p class="hint" id="pwHint"></p>
@@ -59,10 +64,9 @@
     <div class="row"><button class="btn" id="sessOthers" type="button">Sign out all other devices</button><span class="msg" id="sessMsg" role="status"></span></div>
   </section>
 
-  <!-- install on this device, and offline records on it (#56): filled in by js/pwa.js -->
+  <!-- This device: installing Sanguity on it, and offline records on it (#56), filled in by js/pwa.js -->
   <section class="card" id="installApp"></section>
   <section class="card" id="offlineRecords"></section>
-  </div>
 </main>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
