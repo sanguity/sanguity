@@ -21,7 +21,7 @@
 </header>
 <!-- Sharing (#168): who can see a profile, and every way its records go out, for the profile picked here, with a
      sidebar of groups (sharing.js). Each part keeps its own script: share-links.js, calendar-feed.js, summary.js and
-     activity.js. Renaming, deleting and adding profiles are set apart, under Profile. -->
+     activity.js. Renaming, deleting and adding profiles are set apart, under Profile, and so is About this person (#194). -->
 <main class="acct sets sum shr">
   <div class="card warn" id="insecure" role="alert" hidden></div>
 
@@ -181,6 +181,21 @@
     <div id="actBody"></div>
   </section>
 
+  <!-- About this person (#194): birth date, sex used for reference ranges, height history (sharing.js, person.js) -->
+  <section class="card about" id="about" hidden>
+    <h2>Birth date, sex and height</h2>
+    <p class="hint">Some views depend on who the person is: the age on each result's day, ranges of your own by sex and
+      age (Settings → Labs and ranges), and what is built on height. Each is optional.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>A profile's owners and editors change these, and everyone it's shared with sees them. They're encrypted like
+        the records and go with the profile's export. A share link shows them only if its owner ticks About this
+        person.</p>
+      <p>They're never used to judge a result or to replace the range printed on a report. This isn't medical advice.</p>
+    </details>
+    <div id="aboutBody"></div>
+    <span class="msg" id="aboutMsg" role="status"></span>
+  </section>
+
   <!-- Profile, apart from sharing: rename or delete this one (owners), or make a new one (sharing.js) -->
   <section class="card" id="profileCard" hidden>
     <h2>This profile</h2>
@@ -204,6 +219,7 @@
 <script src="js/activity.js"></script>
 <script src="js/summary.js"></script>
 <script src="js/calendar-feed.js"></script>
+<script src="js/person.js"></script>
 <script src="js/sharing.js"></script>
 </body>
 </html>

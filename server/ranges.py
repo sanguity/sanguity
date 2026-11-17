@@ -13,19 +13,19 @@ they agree):
 - A row applies to a result of the same lab (its name in the records, ignoring case and extra spaces) and the same
   unit (ignoring spaces only: "mg/dL" and "mg / dL" are the same; "mg/dL" and "mmol/L" are not, and no value is
   converted). A result in another unit gets no range from settings.
-- Sex: a row for "female" or "male" applies only when the profile's sex for reference ranges is set to that; a row
-  for "any" applies either way. A row for a sex wins over a row for any.
+- Sex: a row for "female" or "male" applies only when the profile's sex used for reference ranges is set to that; a
+  row for "any" applies either way. A row for a sex wins over a row for any.
 - Age: a row with an age band ("from" and "to" in whole years, both included, either may be left open) applies
   only when the profile has a birth date, by the person's age on the day of the result. Rows for the same lab,
   unit and sex may not have overlapping age bands, so at most one row fits.
 - The result is "H" above the high, "L" below the low, else in range.
 
-Stored as three profile settings (server/settings.py, section "ranges"), encrypted: ranges.birthDate,
-ranges.sex and ranges.overrides. No schema step.
+The ranges are a profile setting (server/settings.py, section "ranges"), encrypted: ranges.overrides. The birth date
+and sex are About this person's (#194, server/person.py: person.birthDate and person.sex; before #194 they were
+ranges.birthDate and ranges.sex, renamed in place by schema step 30). config() puts the three together for find().
 """
-import datetime
+from .person import age_on   # noqa: F401  (whole years on a day; here since #44)
 
-SEXES = {"": "Not set", "female": "Female", "male": "Male"}
 ROW_SEXES = ("any", "female", "male")
 MOST = 200
 AGE_MAX = 130
@@ -34,33 +34,6 @@ SOURCE = "settings"   # what a point's range source is called when it came from 
 
 class RangeError(ValueError):
     """A value the setting doesn't accept, said in plain language."""
-
-
-def _day(v):
-    try:
-        return datetime.date.fromisoformat(str(v)[:10]) if isinstance(v, str) and len(v) >= 10 else None
-    except ValueError:
-        return None
-
-
-def check_birth(v):
-    """"" (not set) or YYYY-MM-DD, a real day from 1900 to today."""
-    if v in ("", None):
-        return ""
-    d = _day(v) if isinstance(v, str) and len(v) == 10 else None
-    if d is None:
-        raise RangeError("The birth date must be a day, like 1980-04-30.")
-    if not datetime.date(1900, 1, 1) <= d <= datetime.date.today():
-        raise RangeError("The birth date must be from 1900 to today.")
-    return d.isoformat()
-
-
-def check_sex(v):
-    if v is None:
-        return ""
-    if v not in SEXES:
-        raise RangeError("Sex for reference ranges must be female, male, or not set.")
-    return v
 
 
 def norm_name(n):
@@ -137,17 +110,17 @@ def _overlap(a, b):
     return a0 <= b1 and b0 <= a1
 
 
-def age_on(birth, day):
-    """Whole years from the birth date to the day (both YYYY-MM-DD...), or None."""
-    b, d = _day(birth), _day(day)
-    if b is None or d is None or d < b:
-        return None
-    return d.year - b.year - ((d.month, d.day) < (b.month, b.day))
+def config(cfg):
+    """What find() takes, from the merged settings (settings.merged): the ranges set, and the birth date and sex in
+    About this person (#194)."""
+    p = (cfg or {}).get("person") or {}
+    return {"birthDate": p.get("birthDate") or "", "sex": p.get("sex") or "",
+            "overrides": ((cfg or {}).get("ranges") or {}).get("overrides") or []}
 
 
 def find(cfg, lab, unit, day):
     """The override row that applies to a result of lab in unit on day, or None. cfg: {"birthDate", "sex",
-    "overrides"} (the merged settings' "ranges")."""
+    "overrides"} (config() of the merged settings)."""
     rows = (cfg or {}).get("overrides") or []
     if not rows:
         return None

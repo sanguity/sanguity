@@ -79,7 +79,7 @@ way records reach the profile and when each last brought something, upload, type
 and health plans, the phone and watch, and the import history.
 **Sharing** gathers everything about who sees a profile and how its records go out: its people and their roles,
 share links, your calendar feed, the visit summary, Export everything and its activity, with renaming, deleting and
-adding profiles set apart under Profile.
+adding profiles set apart under Profile, beside About this person (birth date, sex for reference ranges, height).
 The **profile** a page is about is in the top bar, by name and your role, on the records, Sources, Sharing and
 Settings; switching it there switches it on every page.
 
@@ -463,14 +463,20 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   checked before it's saved and refused if it could make matching slow. Milestones are named dates, one of them
   primary (the one the Overview counts from); they are encrypted like the records. They live in the database (backed up and exported with the profile); a
   `settings.json` from before is moved in once at the upgrade and kept as `settings-before-v18.json`.
-- **Units:** each person picks, for themself, mg/dL or mmol/L for lab tests, lb or kg, and °F or °C (**Settings →
-  Units**). A value is converted only when the conversion is exact for that test (`server/units.py` lists them:
+- **Units:** each person picks, for themself, mg/dL or mmol/L for lab tests, lb or kg, °F or °C, and cm or feet and
+  inches for heights (**Settings → Units**). A value is converted only when the conversion is exact for that test (`server/units.py` lists them:
   glucose, creatinine, BUN, calcium and magnesium by their molar mass; hemoglobin, MCHC, albumin and total protein by a
   power of ten); every other test stays in the unit its lab reported. Reference ranges convert with the values, and
   the value as reported is shown beside every converted one.
+- **About this person:** under **Sharing → About this person**, a profile's birth date, the sex labs base reference
+  ranges on (female, male or not set; not gender identity, which Sanguity doesn't ask for) and a dated height history,
+  typed in cm or in feet and inches and shown in your units. Heights a clinic recorded in the records are shown beside
+  it, and added to it only when you say. Each is optional and encrypted; owners and editors change them, everyone the
+  profile is shared with sees them, and a share link shows them only if its owner ticks them. They're for the age on
+  each result's day and ranges of your own by age and sex, never to judge a result.
 - **Reference ranges from settings:** some results come without a range (typed in, a spreadsheet, some portals).
   Under **Settings → Reference ranges** you can give a lab, in a stated unit, a low and high of your own, for anyone
-  or for female or male, and for an age band (set a birth date; the age on each result's day is used). They're used
+  or for female or male, and for an age band (by the birth date in About this person; the age on each result's day is used). They're used
   only for a result with no range and no flag on its report, never instead of one, and only in the same unit
   (nothing is converted). Wherever one colours a result (Labs' charts and heatmap, the Overview, the visit summary,
   where it's printed with "(settings)"), it says "range from settings". It's your choice, not medical advice.

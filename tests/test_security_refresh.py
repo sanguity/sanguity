@@ -89,6 +89,7 @@ ROUTES = {
     ("DELETE", "/api/profiles/{pid}/calendar"): (USER, "viewer"),
     ("DELETE", "/api/profiles/{pid}/calendar/{feed_id}"): (USER, "viewer"),   # anyone's: owners only (in the route)
     ("GET", "/api/profiles/{pid}/journal"): (USER, "viewer"),
+    ("GET", "/api/profiles/{pid}/person"): (USER, "viewer"),           # about this person (#194)
     ("GET", "/api/profiles/{pid}/summary"): (USER, "viewer"), ("PUT", "/api/profiles/{pid}/summary/questions"): (USER, "viewer"),
     ("POST", "/api/profiles/{pid}/summary/preview"): (USER, "viewer"), ("POST", "/api/profiles/{pid}/summary/pdf"): (USER, "viewer"),
     ("DELETE", "/api/profiles/{pid}/members/{uid}"): (USER, "owner"),  # anyone may remove themself (leave)
@@ -108,6 +109,8 @@ ROUTES = {
     ("POST", "/api/profiles/{pid}/manual"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/costs/mark"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/journal"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/journal/{jid}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/journal/{jid}"): (USER, "editor"),
+    ("PUT", "/api/profiles/{pid}/person"): (USER, "editor"), ("POST", "/api/profiles/{pid}/person/heights"): (USER, "editor"),
+    ("DELETE", "/api/profiles/{pid}/person/heights/{day}"): (USER, "editor"),
     ("GET", "/api/profiles/{pid}/watch/receiver"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/watch/receiver/rotate"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/shl/inspect"): (USER, "editor"), ("POST", "/api/profiles/{pid}/shl/import"): (USER, "editor"),
@@ -254,7 +257,7 @@ class Reach(unittest.TestCase):
         U = {"olive": ok, "eddie": ok, "vera": ok, "stan": ok, "ada": ok, None: (401,)}
         table = [
             (V, [p + "/data", p + "/watch", p + "/members", p + "/imports", p + "/settings", p + "/settings/sections",
-                p + "/connections", p + "/connections/warnings", p + "/calendar", p + "/journal", p + "/summary"]),
+                p + "/connections", p + "/connections/warnings", p + "/calendar", p + "/journal", p + "/summary", p + "/person"]),
             (E, [p + "/export", p + "/jobs", p + "/edits", p + "/watch/receiver"]),
             (O, [p + "/activity", p + "/links"]),
             (A, ["/api/users", "/api/activity", "/api/ownerless", "/api/security/notice", "/api/settings", "/api/settings/install",

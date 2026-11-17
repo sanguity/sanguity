@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 29**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 30**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -360,15 +360,22 @@ erDiagram
 
 One row per key and owner (a unique index on `key`, `IFNULL(profile_id, 0)`, `IFNULL(user_id, 0)`).
 
-The `units` setting (#41) is a user's row, plain JSON (`{"lab", "weight", "temperature"}`). The conversions it picks
+The `units` setting (#41) is a user's row, plain JSON (`{"lab", "weight", "temperature", "height"}`). The conversions it picks
 from aren't stored: each lab series the page loads carries its exact ones (`conv`, from `server/units.py`) when the
 records are put together, and the page converts as it draws, keeping what was reported.
 
-Reference ranges from settings (#44, `server/ranges.py`) are three ordinary profile settings, sealed:
-`ranges.birthDate` ("" or YYYY-MM-DD), `ranges.sex` ("", "female" or "male") and `ranges.overrides` (a list of
-`{lab, unit, sex: "any"|"female"|"male", ageFrom, ageTo, low, high}`, ages in whole years and inclusive, either end
-open). No schema step: they are rows like any other setting, applied when the page or the visit summary reads the
-records, never written into them.
+Reference ranges from settings (#44, `server/ranges.py`) are an ordinary profile setting, sealed: `ranges.overrides`
+(a list of `{lab, unit, sex: "any"|"female"|"male", ageFrom, ageTo, low, high}`, ages in whole years and inclusive,
+either end open), applied when the page or the visit summary reads the records, never written into them. The birth
+date and sex they are matched against are About this person's.
+
+About this person (#194, `server/person.py`) is three profile settings, sealed, not on the Settings screen (Sharing →
+About this person changes them): `person.birthDate` ("" or YYYY-MM-DD), `person.sex` ("", "female" or "male": the sex
+labs base reference ranges on) and `person.heights` (a list of `{date, cm, unit}`, oldest first, one per day: the
+height in centimetres to two decimals, and `unit` "cm" or "ftin", how it was typed). **Schema version 30** moved #44's
+`ranges.birthDate` and `ranges.sex` to `person.birthDate` and `person.sex` for every profile, once, by renaming the rows
+(the sealed values are unchanged); a `settings.json` from before (an export, the setup build's) is read with the old
+names as the new ones.
 
 One key outside the registry lives here too: `summary.questions`, a profile's draft of questions for the visit
 summary (`server/summary.py`, #48), always in `sealed`. Not being in the registry, it never shows on the Settings

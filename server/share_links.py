@@ -14,7 +14,9 @@ A link works only while:
 
 What a holder sees is built here from the records at each view (records.served, with corrections applied), cut to
 the link's scope; nothing else of the profile is reachable through it: no documents, no report text, no settings,
-no other profile, nothing to change. Records without a date are left out, since the range can't be judged.
+no other profile, nothing to change. Records without a date are left out, since the range can't be judged. About
+this person (#194: birth date, sex used for reference ranges, heights) is shown only when its section is ticked, and
+the owner's page leaves it unticked.
 
   sections   chosen from SECTIONS; each says plainly what it shows (the owner's page repeats it)
   labs       for "results": the lab series to show, by name; empty = every lab
@@ -28,7 +30,7 @@ label and scope are encrypted at rest (atrest.FIELDS): lab names and a clinician
 import json, re
 from datetime import date
 
-from . import activity, crypto, db as dbm, records, security as sec, settings, summary
+from . import activity, crypto, db as dbm, person, records, security as sec, settings, summary
 
 SECTIONS = [
     ("visits", "Visits and hospital stays", "the date, the title and the clinic or clinician the record names"),
@@ -38,6 +40,8 @@ SECTIONS = [
     ("appointments", "Upcoming appointments", "the date and time, the title, with whom and where"),
     ("journal", "Journal", "the notes, symptoms and side effects written here, with what they say (not who wrote them)"),
     ("costs", "Costs and claims", "each claim's date, provider, what was billed, what insurance paid and your share"),
+    ("about", "About this person", "the birth date, the sex labs base reference ranges on, and the heights written down "
+              "(those in the dates chosen)"),   # #194: never unless ticked (the owner's page leaves it unticked)
 ]
 SECTION_IDS = [s for s, _, _ in SECTIONS]
 VISIT_KINDS, PROCEDURE_KINDS = ("visit", "stay"), ("procedure", "imaging", "study")
@@ -254,4 +258,10 @@ def build(db, link, today=None):
                                 "billed": num(c.get("billed")), "paid": num(c.get("paid")), "owe": num(c.get("owe"))}
                                for c in data.get("costs") or [] if isinstance(c, dict) and _in(summary._day(c.get("d")), scope)),
                               key=lambda c: c["t"], reverse=True)
+    if "about" in want:   # About this person (#194), only when the owner ticked it
+        p = person.of(settings.nest(settings.stored(db, "profile", pid)))
+        out["about"] = {"birthDate": p["birthDate"], "sex": person.SEXES[p["sex"]] if p["sex"] else "",
+                        "heights": [{"date": h["date"], "cm": h["cm"],
+                                     "text": f"{person.text(h['cm'])} ({person.text(h['cm'], 'ftin')})"}
+                                    for h in reversed(p["heights"]) if _in(h["date"], scope)]}
     return out

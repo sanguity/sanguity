@@ -588,6 +588,16 @@ SCHEMA = [
     """
     ALTER TABLE smart_clients ADD COLUMN waiting INTEGER;
     """,
+    # version 30: About this person (#194; person.py). The birth date and sex #44 kept as the settings ranges.birthDate
+    # and ranges.sex move to person.birthDate and person.sex, for every profile, once: renamed in place, so the sealed
+    # values (encrypted, not bound to the key's name) stay as they are and #44 reads them from there. Nothing to create:
+    # About this person is three profile settings (person.heights is new). A row whose new name is somehow taken is
+    # left to the newer one and removed.
+    """
+    UPDATE OR IGNORE settings SET key='person.birthDate' WHERE key='ranges.birthDate';
+    UPDATE OR IGNORE settings SET key='person.sex' WHERE key='ranges.sex';
+    DELETE FROM settings WHERE key IN ('ranges.birthDate', 'ranges.sex');
+    """,
 ]
 
 

@@ -2,8 +2,8 @@
 """Reference ranges from settings (#44, server/ranges.py): the checks on a range (a low or a high, low not above
 high, whole-year ages, no two rows for the same lab, unit and sex covering the same ages), which row fits a result
 (lab name ignoring case and spaces, the same unit only, sex, the age on the result's day, a row for the sex before
-one for anyone), the three settings through the API (owners and editors set them, viewers can't, values encrypted),
-and the visit summary: a result whose report gives no range is judged against the range from settings and printed
+one for anyone), the ranges setting and About this person's birth date and sex (#194) through the API (owners and
+editors set them, viewers can't, values encrypted), and the visit summary: a result whose report gives no range is judged against the range from settings and printed
 with "(settings)"; a result with its own range or flag keeps it; a result in another unit gets none. Fictional data
 only.
 
@@ -63,14 +63,7 @@ class Rules(unittest.TestCase):
         # separate bands, or the same band for different sexes, or another unit, are fine
         self.assertEqual(len(ranges.check_overrides([row(ageTo=17), row(ageFrom=18), row(sex="female"), row(sex="male"),
                                                      row(unit="ug/L")])), 5)
-        self.assertEqual(ranges.check_birth(""), "")
-        self.assertEqual(ranges.check_birth("1980-04-30"), "1980-04-30")
-        for bad in ("1980-02-30", "30/04/1980", "1899-12-31", (TODAY + datetime.timedelta(days=1)).isoformat(), 1980):
-            with self.assertRaises(ranges.RangeError):
-                ranges.check_birth(bad)
-        self.assertEqual(ranges.check_sex("female"), "female")
-        with self.assertRaises(ranges.RangeError):
-            ranges.check_sex("f")
+        # the birth date and sex are About this person's since #194 (their checks: tests/test_person.py)
 
     def test_age_on(self):
         self.assertEqual(ranges.age_on("1980-04-30", "2026-04-29"), 45)
@@ -149,21 +142,27 @@ class Api(unittest.TestCase):
     def test_1_settings(self):
         secs = self.c["robin"].get(f"/api/profiles/{self.pid}/settings/sections").json()["sections"]
         sec = next(s for s in secs if s["id"] == "ranges")
-        self.assertEqual([s["key"] for s in sec["settings"]], ["ranges.birthDate", "ranges.sex", "ranges.overrides"])
+        # the birth date and sex are About this person's since #194 (Sharing; tests/test_person.py), not this section's
+        self.assertEqual([s["key"] for s in sec["settings"]], ["ranges.overrides"])
         self.assertIn("range from settings", sec["help"])
+        self.assertIn("About this person", sec["settings"][0]["help"])
         self.assertEqual(self.put("ranges.overrides", [row(low=300)]).status_code, 400)
         self.assertIn("low is above the high", self.put("ranges.overrides", [row(low=300)]).json()["detail"])
-        self.assertEqual(self.put("ranges.birthDate", "1980-02-30").status_code, 400)
-        self.assertEqual(self.put("ranges.sex", "female", who="kim").status_code, 403, "a viewer can't change them")
-        for k, v, who in [("ranges.birthDate", "1980-06-15", "robin"), ("ranges.sex", "female", "lee"),
-                          ("ranges.overrides", [row(), row(lab="Vitamin D, 25-OH", low=30, high=100)], "lee")]:
-            r = self.put(k, v, who)
+        self.assertEqual(self.put("ranges.birthDate", "1980-06-15").status_code, 404, "the old name is gone")
+        person = f"/api/profiles/{self.pid}/person"
+        self.assertEqual(self.c["robin"].put(person, json={"birthDate": "1980-02-30"}, headers=H).status_code, 400)
+        self.assertEqual(self.c["kim"].put(person, json={"sex": "female"}, headers=H).status_code, 403, "a viewer can't change them")
+        for body, who in [({"birthDate": "1980-06-15"}, "robin"), ({"sex": "female"}, "lee")]:
+            r = self.c[who].put(person, json=body, headers=H)
             self.assertEqual(r.status_code, 200, r.text)
+        r = self.put("ranges.overrides", [row(), row(lab="Vitamin D, 25-OH", low=30, high=100)], "lee")
+        self.assertEqual(r.status_code, 200, r.text)
         merged = self.c["kim"].get(f"/api/profiles/{self.pid}/settings").json()
-        self.assertEqual((merged["ranges"]["birthDate"], merged["ranges"]["sex"], len(merged["ranges"]["overrides"])), ("1980-06-15", "female", 2))
+        self.assertEqual(ranges.config(merged)["birthDate"], "1980-06-15")
+        self.assertEqual((merged["person"]["birthDate"], merged["person"]["sex"], len(merged["ranges"]["overrides"])), ("1980-06-15", "female", 2))
         db = dbm.connect()
         try:
-            rows = db.execute("SELECT key, value, sealed FROM settings WHERE key LIKE 'ranges.%'").fetchall()
+            rows = db.execute("SELECT key, value, sealed FROM settings WHERE key LIKE 'ranges.%' OR key LIKE 'person.%'").fetchall()
         finally:
             db.close()
         self.assertEqual(len(rows), 3)

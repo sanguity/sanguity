@@ -515,13 +515,15 @@ UNIT_CHOICES = {   # part -> {choice: label}; the conversions themselves are uni
     "lab": {"reported": "As reported", "conventional": "mg/dL, g/dL (conventional)", "si": "mmol/L, g/L (SI)"},
     "weight": {"reported": "As reported", "lb": "lb", "kg": "kg"},
     "temperature": {"reported": "As reported", "F": "°F", "C": "°C"},
+    "height": {"reported": "As reported", "cm": "cm", "ftin": "ft and in"},   # #194: heights, and lengths in cm or in
 }
 
 
 def unit_prefs(v):
-    """{"lab": ..., "weight": ..., "temperature": ...}, each one of UNIT_CHOICES; a part left out is "reported"."""
+    """{"lab": ..., "weight": ..., "temperature": ..., "height": ...}, each one of UNIT_CHOICES; a part left out is
+    "reported"."""
     if not isinstance(v, dict) or set(v) - set(UNIT_CHOICES):
-        raise SettingError("This must say which units to show lab values, weights and temperatures in.")
+        raise SettingError("This must say which units to show lab values, weights, temperatures and heights in.")
     out = {}
     for part, choices in UNIT_CHOICES.items():
         x = v.get(part, "reported")
@@ -535,7 +537,8 @@ section("units", "Units", "The units you see values in, on every profile. Only e
         "without one stays in the unit its lab reported, and the reported value is always shown beside a converted one.")
 define("units", "units", "Units", {p: "reported" for p in UNIT_CHOICES}, unit_prefs, scope="user", kind="units",
        private=False, help="Lab tests: glucose, creatinine, urea nitrogen (BUN), calcium and magnesium convert between "
-       "mg/dL and mmol/L (creatinine in µmol/L); hemoglobin, MCHC, albumin and total protein between g/dL and g/L.")
+       "mg/dL and mmol/L (creatinine in µmol/L); hemoglobin, MCHC, albumin and total protein between g/dL and g/L. "
+       "Heights and other lengths between cm and inches (feet and inches in About this person).")
 CHOICES["units"] = UNIT_CHOICES
 
 
@@ -555,13 +558,37 @@ def _range_check(f):
 
 section("ranges", "Reference ranges", "Your own ranges, used only for results whose report gives none. Each is "
         "labelled “range from settings” wherever it colours a result; a range printed on a report is always the one used.")
-define("ranges.birthDate", "ranges", "Birth date", "", _range_check(_ranges.check_birth), kind="birthdate",
-       help="Only to pick a range by age band: the age on the day of each result. Leave empty to use only ranges for every age.")
-define("ranges.sex", "ranges", "Sex for reference ranges", "", _range_check(_ranges.check_sex), kind="rangesex",
-       help="Only to pick a range set for female or male. Not set: only ranges for anyone are used.")
 define("ranges.overrides", "ranges", "Ranges for results without one", [], _range_check(_ranges.check_overrides),
        kind="ranges", help="By the lab's name in the records and its unit: a result in another unit gets none, and nothing "
-                           "is converted. Leave the age empty for every age; a row for female or male wins over one for anyone.")
+                           "is converted. Leave the age empty for every age; a row for female or male wins over one for anyone. "
+                           "The age and sex are those in About this person (on the Sharing page).")
+
+
+# ---------------------------------------------------------------- #194 about this person (server/person.py)
+# Not on the Settings screen: Sharing → About this person (routes_person.py) changes them. Before #194 the birth date
+# and sex were ranges.birthDate and ranges.sex; schema step 30 renamed them, and LEGACY reads a file that has the old names.
+
+from . import person as _person
+
+
+def _person_check(f):
+    def check(v):
+        try:
+            return f(v)
+        except _person.PersonError as e:
+            raise SettingError(str(e)) from None
+    return check
+
+
+section("person", "About this person", "Details some views depend on: the age on each result's day, ranges of your "
+        "own by sex and age, and what is built on height. Each is optional.")
+define("person.birthDate", "person", "Birth date", "", _person_check(_person.check_birth), kind="birthdate", screen=False,
+       help="For the age on the day of each result (ranges of your own by age band) and what depends on age.")
+define("person.sex", "person", "Sex used for reference ranges", "", _person_check(_person.check_sex), kind="rangesex",
+       screen=False, help="What labs base their reference ranges on: female, male, or not set. Not gender identity.")
+define("person.heights", "person", "Height", [], _person_check(_person.check_heights), kind="heights", screen=False,
+       help="Dated heights, in centimetres, each with the unit it was typed in.")
+LEGACY = {"ranges.birthDate": "person.birthDate", "ranges.sex": "person.sex"}   # old name in a settings.json -> now
 
 
 # ---------------------------------------------------------------- storage
@@ -680,10 +707,13 @@ def from_file(obj, scope="profile", where=""):
         print(f"{where or 'settings.json'} isn't a JSON object; its settings are left out.", flush=True)
         return out
     whole = obj.get("_format") == FORMAT
+    old_names = {now: was for was, now in LEGACY.items()}   # #194: a file from before says ranges.birthDate, ranges.sex
     for k, s in SETTINGS.items():
         if s.scope != scope:
             continue
         v, there = _dig(obj, k)
+        if not there and k in old_names:
+            v, there = _dig(obj, old_names[k])
         if not there:
             continue
         if s.merge and not whole and isinstance(v, dict):

@@ -353,6 +353,16 @@ Everything on `main` so far; it becomes the first tagged release.
   from FHIR on a build of `main` between #165 and this change have their immunizations as procedures; undo that import
   under **Sources → Import history** and import the files again to have them as immunizations (no release had them
   as procedures, so there is no migration). Connected sources don't pull these types yet.
+- **About this person** (#194): a profile's birth date, the sex labs base reference ranges on (female, male or not
+  set, kept apart from gender identity, which Sanguity doesn't ask for) and a dated height history are together under
+  Sharing → About this person. Heights are typed in cm or in feet and inches, kept in cm, and shown in your units
+  (Settings → Units has a choice for heights now, which also converts a clinic's height chart between cm and inches);
+  heights a clinic recorded in the records are shown beside the history and added to it only on request. Each detail
+  is optional and encrypted; owners and editors change them, viewers see them, and a share link shows them only when
+  its owner ticks "About this person". The birth date and sex your own reference ranges use (#44) moved here from
+  Settings → Labs and ranges once, for every profile (schema version 30), and an export from before still loads them.
+  The records page has helpers for what's built on them next (age on a day in years and months, the sex for ranges,
+  the height in effect on a day; `www/js/person.js`, `server/person.py`).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

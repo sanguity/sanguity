@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Unit preferences (#41, server/units.py): only exact conversions (a change of prefix, a molar mass for the tests
-in units.TESTS, lb and kg by definition, °F and °C), never one for a test without a fixed factor; crossmatch's
+in units.TESTS, lb and kg by definition, °F and °C, cm and inches for heights, #194), never one for a test without a fixed factor; crossmatch's
 comparison is the same table and still never uses a molar mass; the records the page loads carry each series'
 conversions, the watch's weights too (a temperature change never); the "units" setting is per user and refuses
 what it doesn't know. Fictional data only.
@@ -87,6 +87,12 @@ class Factors(unittest.TestCase):
         c = units.conversions(None, "Cel")["F"]
         self.assertAlmostEqual(37 * c[1] + c[2], 98.6, places=9)
         self.assertEqual(units.conversions(None, "°C", change=True), {})   # a change has no offset to apply
+        # #194: heights, cm and inches by definition; "ft and in" draws a series in inches
+        self.assertEqual(units.conversions(None, "in"), {"cm": ["cm", 2.54, 0]})
+        self.assertEqual(units.conversions(None, "[in_i]"), {"cm": ["cm", 2.54, 0]})
+        self.assertAlmostEqual(units.conversions(None, "cm")["ftin"][1] * 2.54, 1, places=12)
+        self.assertEqual(units.conversions(None, "cm")["ftin"][0], "in")
+        self.assertEqual(units.conversions(None, "m"), {}, "metres (a watch's distance) aren't a height")
 
 
 class Served(unittest.TestCase):
@@ -139,18 +145,18 @@ class Served(unittest.TestCase):
 
     def test_the_setting_is_each_persons_own(self):
         self.assertEqual(self.robin.get(f"/api/profiles/{self.pid}/settings").json()["units"],
-                         {"lab": "reported", "weight": "reported", "temperature": "reported"})
-        for bad in ("si", {"lab": "mmol"}, {"lab": "si", "volume": "l"}, {"weight": "stone"}, {"temperature": "K"}):
+                         {"lab": "reported", "weight": "reported", "temperature": "reported", "height": "reported"})
+        for bad in ("si", {"lab": "mmol"}, {"lab": "si", "volume": "l"}, {"weight": "stone"}, {"temperature": "K"}, {"height": "m"}):
             r = self.kim.put(f"/api/profiles/{self.pid}/settings/units", json={"value": bad}, headers=H)
             self.assertEqual(r.status_code, 400, bad)
         r = self.kim.put(f"/api/profiles/{self.pid}/settings/units", json={"value": {"lab": "si", "weight": "kg"}}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)   # a viewer sets their own units
-        self.assertEqual(r.json()["units"], {"lab": "si", "weight": "kg", "temperature": "reported"})
+        self.assertEqual(r.json()["units"], {"lab": "si", "weight": "kg", "temperature": "reported", "height": "reported"})
         self.assertEqual(self.robin.get(f"/api/profiles/{self.pid}/settings").json()["units"]["lab"], "reported")
         secs = {st["key"]: st for sec in self.kim.get(f"/api/profiles/{self.pid}/settings/sections").json()["sections"]
                 for st in sec["settings"]}
         self.assertEqual((secs["units"]["scope"], secs["units"]["kind"], secs["units"]["from"]), ("user", "units", "user"))
-        self.assertEqual(list(secs["units"]["choices"]), ["lab", "weight", "temperature"])
+        self.assertEqual(list(secs["units"]["choices"]), ["lab", "weight", "temperature", "height"])
 
 
 if __name__ == "__main__":

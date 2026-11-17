@@ -919,6 +919,27 @@ main.src[data-role=viewer] .src-edit{display:none}
 .shr .shr-members td:first-child{overflow-wrap:anywhere}
 .shr .shr-share input{flex:1 1 140px;min-width:0}
 @media (max-width:760px){.shr .set-nav-list li.shr-apart{margin-left:4px;padding-left:10px;border-left:1px solid var(--ring)}}
+/* ---- About this person (#194): Sharing → About this person (sharing.js), and its section on a share link's page */
+.about h3.sub{margin:22px 0 4px}
+.about .about-details>.about-row{margin-top:12px}
+.about .about-field{margin:10px 0 0}
+.about .about-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
+.about .about-field .muted{margin:4px 0 0}
+.about .about-sex,.about .about-typed{border:0;padding:0;margin:12px 0 0;min-width:0}
+.about .about-typed{margin:0}
+.about legend{font-size:13px;color:var(--ink2);font-weight:550;padding:0;margin-bottom:4px}
+.about .about-sex .muted{margin:6px 0 0}
+.about .about-add{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;margin:10px 0 4px}
+.about .about-ftin{display:flex;gap:10px}
+.about .about-num input{width:10em;max-width:100%}
+.about .about-ftin input{width:5.5em}
+.about .about-recorded td:nth-child(3){color:var(--ink2);overflow-wrap:anywhere}
+#rangesUses a{color:var(--accent)}   /* Settings → Labs and ranges: where the birth date and sex are */
+.about-dl,.share-about{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:6px 0 10px;font-size:13px}
+.about-dl dt,.share-about dt{color:var(--muted);font-weight:550}
+.about-dl dd,.share-about dd{margin:0;overflow-wrap:anywhere}
+@media (max-width:640px){.about-dl,.share-about{grid-template-columns:1fr;gap:0}.about-dl dd,.share-about dd{margin-bottom:6px}
+  .about .about-recorded tr{grid-template-columns:1fr 1fr}}
 /* Account (#169): its cards' rows of buttons are not the timeline's rows (no divider, no hover) */
 #acctNav~section .row{border-bottom:0;padding:0;cursor:default}#acctNav~section .row:hover{background:none}
 /* the profile picker in the top bar (#170, nav.js): a select, or a plain label when there's only one profile */

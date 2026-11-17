@@ -540,9 +540,9 @@ def main():
         strict.click("#shrNav a[data-group=activity]")   # drawn when its group is opened
         strict.wait_for_selector("#actBody .activity tbody tr", timeout=10000)
         groups = strict.evaluate("[...document.querySelectorAll('#shrNav a')].map(a => a.textContent)")
-        check("under the CSP: the Sharing page's scripts run, with a sidebar of its groups, Profile set apart", groups ==
-              ["People", "Share links", "Calendar feed", "Visit summary", "Export everything", "Activity", "Profile"]
-              and strict.evaluate("document.querySelector('#shrNav a[data-group=profile]').closest('li').previousElementSibling.classList.contains('set-nav-part')"), groups)
+        check("under the CSP: the Sharing page's scripts run, with a sidebar of its groups, Profile and About this person set apart (#194)", groups ==
+              ["People", "Share links", "Calendar feed", "Visit summary", "Export everything", "Activity", "About this person", "Profile"]
+              and strict.evaluate("document.querySelector('#shrNav a[data-group=about]').closest('li').previousElementSibling.classList.contains('set-nav-part')"), groups)
         check("no Sharing card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         # ---- shorter help text (#176): a card leads with a short line, and the rest of its explanation is behind one
         # "More about this" toggle, the same on every page: closed at first, still in the page when closed, opened and
@@ -3898,7 +3898,8 @@ def main():
             # owner's controls; an address for an owner's group shows People instead, saying why
             zb.wait_for_selector("#memberList tbody tr", state="attached", timeout=10000)
             groups = zb.evaluate("[...document.querySelectorAll('#shrNav a')].map(a => a.textContent)")
-            check("a viewer's Sharing page: People, Calendar feed, Visit summary and Profile only", groups == ["People", "Calendar feed", "Visit summary", "Profile"], groups)
+            check("a viewer's Sharing page: People, Calendar feed, Visit summary, About this person (#194) and Profile only",
+                  groups == ["People", "Calendar feed", "Visit summary", "About this person", "Profile"], groups)
             zb.click("#shrNav a[data-group=people]")
             people = zb.inner_text("#people")
             check("…who has access and as what, with Leave for themselves and no role menus, Remove or Share",
@@ -4058,15 +4059,23 @@ def main():
                                                 {"name": "Ferritin", "unit": "ug/L", "panel": "Iron", "n": 2, "txt": [], "pts": ug}]},
                             "upload", fmt="csv")
             db.close()
+            # the birth date and sex are About this person's since #194 (Sharing), and Settings says so beside the ranges
+            page.goto(base + f"/sharing.html?profile={rpid}#about")
+            page.wait_for_selector(f"#about[data-profile='{rpid}'] #aboutBirth", timeout=10000)
+            page.fill("#aboutBirth", "1990-03-01")
+            page.check("#about input[name=aboutSex][value=female]")
+            page.click("#aboutSave")
+            page.wait_for_function("document.getElementById('aboutMsg').textContent === 'Saved.'", timeout=10000)
             page.goto(base + f"/settings.html?profile={rpid}#sec-ranges")
             page.wait_for_selector("#sec-ranges [data-key='ranges.overrides'] .set-sugg .chip", timeout=10000)
             chips = js("[...document.querySelectorAll('#sec-ranges .set-sugg .chip')].map(b => b.textContent)")
             check("ranges: Settings suggests the labs whose results have no range, by unit",
                   len(chips) == 2 and chips[0] == f"+ Ferritin (ng/mL) · {len(fe) - 2}", chips)
-            page.fill("#sec-ranges [data-key='ranges.birthDate'] input[type=date]", "1990-03-01")
-            page.check("#sec-ranges [data-key='ranges.sex'] input[value=female]")
-            page.click("#sec-ranges .set-foot button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-ranges .set-foot > .msg').textContent.startsWith('Saved “Birth date” and “Sex')", timeout=10000)
+            uses = js("document.getElementById('rangesUses').textContent")
+            check("…and says the ages and sexes are matched against About this person's, with a link there (#194)",
+                  "born" in uses and "1990" in uses and "female" in uses
+                  and js("document.querySelector('#rangesUses a').getAttribute('href')") == f"sharing.html?profile={rpid}#about"
+                  and not js("!!document.querySelector(\"#sec-ranges [data-key='ranges.birthDate'], #sec-ranges [data-key='ranges.sex']\")"), uses)
             ov = "#sec-ranges [data-key='ranges.overrides']"
             page.wait_for_selector(f"{ov} .set-sugg .chip", timeout=10000)
             page.locator(f"{ov} .set-sugg .chip").first.click()
@@ -4104,7 +4113,7 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.name === 'Ranges (fictional)'", timeout=20000)
             got = js("SERIES.filter(s => !s.watch).flatMap(s => s.pts.map(p => [s.name, s.unit, p[0], p[2], p[3], p[4] || '', p.rs || '']))")
-            cfg = js("CFG.ranges")
+            cfg = js("rangeConfig(CFG)")   # the ranges, with About this person's birth date and sex (#194)
             want = []
             for unit, pts in (("ng/mL", fe), ("ug/L", ug)):
                 for q in pts:
@@ -4159,6 +4168,138 @@ def main():
                   and "range from settings" in js("document.getElementById('sumSettingsNote')?.textContent || ''"))
             db = dbm.connect()
             prof_r.delete_profile(db, rpid)
+            db.close()
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
+            # ---- About this person (#194): on Sharing, a group of its own under Profiles: the birth date and the sex
+            # used for reference ranges (worded as such, apart from gender identity), saved together; a dated height
+            # history typed in cm or in feet and inches, shown in the person's Units choice with the other beside; a
+            # clinic's heights from the records beside it, added only on request; a viewer sees them and can't change
+            # them; the records page has the helpers wave B builds on (age on a day, in years and months, the sex for
+            # ranges, the height in effect on a day), agreeing with server/person.py; a share link leaves it unticked;
+            # at 1400 and 375 px, light and dark, axe clean
+            from server import person as person_r, settings as settings_r
+            db = dbm.connect()
+            apid = prof_r.create_profile(db, "About (fictional)", owner_id=owner)
+            with dbm.transaction(db):
+                rec_r.store(db, apid, {"built": "2026-11-15", "source": "fictional",
+                                       "events": [{"id": 1, "t": "2025-04-02T09:00:00", "k": "visit", "title": "Well-child visit"}],
+                                       "details": {}, "costs": [], "upcoming": [],
+                                       "labs": [{"name": "Height", "unit": "in", "panel": "Vitals", "n": 2, "txt": [],
+                                                 "pts": [["2025-04-02T09:00:00", 52.0, None, None, "", "52"],
+                                                         ["2026-04-06T09:00:00", 54.5, None, None, "", "54.5"]]}]}, "upload", fmt="ccda")
+            vpid = prof_r.create_profile(db, "Viewed (fictional)")   # this account only views it
+            db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (owner, vpid))
+            settings_r.put(db, "person.birthDate", "1958-11-02", "profile", vpid)
+            settings_r.put(db, "person.heights", [{"date": "2020-01-10", "cm": 165, "unit": "cm"}], "profile", vpid)
+            db.close()
+            about = lambda pid_: page.wait_for_selector(f"#about[data-profile='{pid_}']", timeout=10000)
+            page.goto("about:blank")   # the new profile may have the id the one above had: a fresh page, not a change of #
+            page.goto(base + f"/sharing.html?profile={apid}#about")
+            about(apid)
+            groups = js("[...document.querySelectorAll('#shrNav li')].map(li => li.textContent)")
+            atext = page.inner_text("#about")
+            unset = [js("document.getElementById('aboutBirth').value"), js("document.querySelector('#about input[name=aboutSex]:checked')?.value"),
+                     "No height written down yet." in atext]
+            check("About this person: its own group on Sharing, under Profiles, every detail optional and unset at first",
+                  groups[-3:] == ["Profiles", "About this person", "Profile"] and unset == ["", "", True], (groups[-3:], unset))
+            check("…the sex worded as what labs base reference ranges on, apart from gender identity",
+                  "Sex used for reference ranges" in atext and "What labs base their reference ranges on" in atext and "isn't gender identity" in atext, atext[:300])
+            page.fill("#aboutBirth", "2016-05-20")
+            page.check("#about input[name=aboutSex][value=male]")
+            page.click("#aboutSave")
+            page.wait_for_function("document.getElementById('aboutMsg').textContent === 'Saved.'", timeout=10000)
+            got = js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")
+            check("…the birth date and sex saved together, the age today beside it", (got["birthDate"], got["sex"]) == ("2016-05-20", "male")
+                  and f"aged {person_r.age_on('2016-05-20', js('isoDay(Date.now())'))} today" in page.inner_text("#about"), got)
+            hist = "#about .about-heights:not(.about-recorded) tbody tr"
+            rows_of = lambda sel: js(f"[...document.querySelectorAll({json.dumps(sel)})].filter(r => !r.hidden).map(r => r.textContent)")
+            for d_, unit, vals in (("2024-09-01", "cm", {"#heightCm": "128.5"}), ("2025-09-01", "ftin", {"#heightFt": "4", "#heightIn": "5"})):
+                page.fill("#heightDate", d_)
+                page.check(f"#about input[name=heightUnit][value={unit}]")
+                for sel, v in vals.items():
+                    page.fill(sel, v)
+                page.click("#heightAdd")
+                page.wait_for_function(f"document.getElementById('aboutMsg').textContent.startsWith('Added the height') && document.querySelectorAll({json.dumps(hist)}).length === {1 if unit == 'cm' else 2}", timeout=10000)
+            hs = rows_of(hist)
+            check("…a dated height history, newest first, each as it was typed with the other unit beside",
+                  "4 ft 5 in" in hs[0] and "(134.6 cm)" in hs[0] and "128.5 cm" in hs[1] and "(4 ft 2.6 in)" in hs[1], hs)
+            stored = js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")["heights"]
+            check("…kept in one unit (cm), with how each was typed", stored == [{"date": "2024-09-01", "cm": 128.5, "unit": "cm"},
+                                                                             {"date": "2025-09-01", "cm": 134.62, "unit": "ftin"}], stored)
+            n_problems = len(problems)
+            r_ = js(f"fetch('api/profiles/{apid}/person/heights', {{method: 'POST', headers: {{'X-Sanguity': '1', 'Content-Type': 'application/json'}}, "
+                    "body: JSON.stringify({date: '2015-01-01', cm: 100})}).then(async r => [r.status, (await r.json()).detail])")
+            check("…a height before the birth date is refused, in words", r_[0] == 400 and "before the birth date" in r_[1], r_)
+            settle(200)
+            del problems[n_problems:]   # the refusal's 400 was asked for
+            rec_rows = rows_of("#about .about-recorded tbody tr")
+            check("…a clinic's heights from the records beside the history, not in it, each offered",
+                  len(rec_rows) == 2 and js("fmtD(zParse('2026-04-06'))") in rec_rows[0] and "4 ft 6.5 in" in rec_rows[0] and len(hs) == 2
+                  and js("document.querySelectorAll('#about .about-recorded button').length") == 2, rec_rows)
+            page.click("#about .about-recorded tbody tr:first-child button")
+            page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 3", timeout=10000)
+            check("…added on request, then marked as in the history", "In the history" in rows_of("#about .about-recorded tbody tr")[0]
+                  and "4 ft 6.5 in" in rows_of(hist)[0])
+            units_was = js("fetch('api/settings/user').then(r => r.json())")["units"]
+            put_units = lambda u: js("u => fetch('api/settings/user/units', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+                                     "body: JSON.stringify({value: u})}).then(r => r.status)", u)
+            check("…the person's Units choice for heights (Settings → Display)", put_units({**units_was, "height": "cm"}) == 200)
+            page.reload()
+            about(apid)
+            hs = rows_of(hist)
+            check("…shows every height in it, the other unit beside", "138.4 cm" in hs[0] and "(4 ft 6.5 in)" in hs[0] and "134.6 cm" in hs[1], hs)
+            page.click(f"{hist}:nth-child(2) button")
+            said = answer_ask(page)
+            page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 2", timeout=10000)
+            check("…a height removed after asking", said[0] == "Remove this height?" and "134.6 cm" in said[1]
+                  and js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")["heights"][-1]["date"] == "2026-04-06", said)
+            # wave B's helpers (person.js) on the records page, as server/person.py works them out
+            page.goto(base + f"/?profile={apid}")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.name === 'About (fictional)'", timeout=20000)
+            cfg_ = {"person": js("CFG.person")}
+            days_ = ["2016-05-19", "2016-06-19", "2016-06-20", "2024-08-31", "2024-09-01", "2026-05-20", "2026-11-15"]
+            web = js("ds => ds.map(d => [personAgeOn(d), personAgeMonthsOn(d), rangeSexOf(), heightOn(d)?.cm ?? null])", days_)
+            srv_ = [[person_r.age_on("2016-05-20", d_), person_r.age_months_on("2016-05-20", d_), person_r.sex_for_ranges(cfg_),
+                     (person_r.height_on(cfg_["person"]["heights"], d_) or {}).get("cm")] for d_ in days_]
+            check("…the records page has them (CFG.person), with the age in years and months, the sex for ranges and the height on a day, "
+                  "as the server works them out", web == srv_ and web[2][:2] == [0, 1] and web[4][3] == 128.5 and web[0] == [None, None, "male", None], web)
+            # a viewer
+            page.goto(base + f"/sharing.html?profile={vpid}#about")
+            about(vpid)
+            vt = page.inner_text("#about")
+            check("…a viewer sees them as text, with nothing to change", js("fmtD(zParse('1958-11-02'))") in vt and "Not set" in vt and "165 cm" in vt
+                  and "owners and editors can change these" in vt and not js("!!document.querySelector('#about input, #about select, #aboutBody button')"), vt[:300])
+            # a share link leaves it unticked
+            page.goto(base + f"/sharing.html?profile={apid}#links")
+            page.wait_for_selector("#links .share-links button:has-text('New share link')", timeout=10000)
+            page.click("#links button:has-text('New share link')")
+            box_ = page.locator("#links .share-form input[value=about]")
+            check("…a share link offers it, unticked", box_.count() == 1 and not box_.is_checked()
+                  and "About this person" in page.inner_text("#links .share-sections") and "About this person" not in page.inner_text("#links .share-sees"))
+            page.click("#links .share-form button:text-is('Cancel')")
+            # 1400 and 375 px, light and dark: fits, and axe-core finds nothing serious
+            theme_was = js("localStorage.getItem('ht-theme')")
+            a_bad, a_axe, a_other = [], [], []
+            for theme in ("light", "dark"):
+                js(f"localStorage.setItem('ht-theme', '{theme}')")
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 375 else 800})
+                    for pid_ in (apid, vpid):
+                        page.goto("about:blank")   # a page load each time (the theme is read as it loads)
+                        page.goto(base + f"/sharing.html?profile={pid_}#about")
+                        about(pid_)
+                        settle(150)
+                        a_bad += phone_fits(page, f"About this person {pid_} at {width} px, {theme}")
+                        b_, o_ = axe_check(page, f"About this person {pid_} at {width} px, {theme}")
+                        a_axe += b_; a_other += o_
+            js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was)})" if theme_was else "localStorage.removeItem('ht-theme')")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…at 1400 and 375 px, light and dark, for an owner and a viewer: no control cut off or overlapping (#61)", not a_bad, a_bad[:6] or "")
+            check("…and axe-core finds nothing serious (#202)", not a_axe, a_axe[:6] or "; ".join(a_other[:4]))
+            put_units(units_was)
+            db = dbm.connect()
+            prof_r.delete_profile(db, apid)
+            prof_r.delete_profile(db, vpid)
             db.close()
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- connected sources (#32, #91), against the fake SMART on FHIR server standing in for an Epic sandbox:

@@ -1,15 +1,15 @@
 /* Sanguity · unit preferences (#41): values shown in this person's units, exact conversions only.
    The server says which series can be shown in which unit, and by what factor (server/units.py): a lab series or
    watch metric carries conv = {choice: [unit, a, b]}, the value in that unit being value × a + b. The choice comes
-   from the "units" setting (CFG.units: lab "conventional" | "si", weight "lb" | "kg", temperature "F" | "C", or
-   "reported"). A series with no conversion for the choice stays as reported.
+   from the "units" setting (CFG.units: lab "conventional" | "si", weight "lb" | "kg", temperature "F" | "C", height
+   "cm" | "ftin" (#194: a height series in inches on a chart; feet and inches where one height is said), or "reported"). A series with no conversion for the choice stays as reported.
    applyUnits converts a series once, when the page loads it: its unit, every point's value, comparator text and
    reference range. What was reported stays on the series (s.uc.from) and on each point (p.orig), and ucOrig() says it
    beside every converted value (Trends, the Overview tiles, the heatmap, the drawer).
    ucValue / ucRange are the one conversion for anything else in a series' units (a reference range from elsewhere).
    Plain script, loaded in order by index.html before app.js; all files share one global scope. */
 "use strict";
-const UNIT_PART = {conventional: "lab", si: "lab", lb: "weight", kg: "weight", F: "temperature", C: "temperature"};
+const UNIT_PART = {conventional: "lab", si: "lab", lb: "weight", kg: "weight", F: "temperature", C: "temperature", cm: "height", ftin: "height"};   // height: #194
 /* the conversion this person chose for a conv map, as {to, a, b}, or null */
 function ucChoose(conv) {
   if (!conv || typeof conv !== "object") return null;
