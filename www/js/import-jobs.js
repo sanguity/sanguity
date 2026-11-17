@@ -28,6 +28,8 @@
     for (const c of kids.flat()) if (c != null) e.append(c);
     return e;
   }
+  // "More about this" (#176): the same toggle as util.js moreAbout(), built here so this file needs nothing else
+  const more = text => node("details", {class: "more"}, node("summary", {text: "More about this"}), node("p", {text}));
   function call(path, opts) {
     opts = opts || {};
     const write = opts.method && opts.method !== "GET";
@@ -106,10 +108,10 @@
     });
     const part = node("details", {class: "imp-labs", open: ""},
       node("summary", {text: `${plural(listed.length, ["lab name", "lab names"])} to match`}),
-      node("p", {class: "hint", text: "Sanguity doesn't know these test names. Put each in the series it belongs to, so it's charted with the same test " +
-        "from other labs, or keep it separate. Only the series changes: each result keeps the name the lab gave it. Your choice is used " +
-        "for later imports from this source, on every profile of this server. A match made before can be changed here for this import; " +
-        "to change it for good, ask an admin (Admin, Lab name matches)."}),
+      node("p", {class: "hint", text: "Sanguity doesn't know these test names. Put each in the series it belongs to, or keep it separate; " +
+        "your choice is used for later imports from this source, on every profile of this server."}),
+      more("In a series, a result is charted with the same test from other labs. Only the series changes: each result keeps the " +
+        "name the lab gave it. A match made before can be changed here for this import; to change it for good, ask an admin (Admin, Lab name matches)."),
       node("ul", {}, rows.map(r => r.li)));
     // sent, and remembered for later imports: a suggestion left chosen, or any choice changed by hand. A name matched
     // before is sent only when changed (for this import only); "keep it separate" left as it was isn't sent
@@ -128,9 +130,10 @@
     const boxes = [];
     const part = node("details", {class: "imp-same", open: ""},
       node("summary", {text: `${plural(listed.length, ["result", "results"])} possibly in the profile already, from another source`}),
-      node("p", {class: "hint", text: "Each of these has the same test, time and value (units converted) as a result another source brought. " +
-        "Tick the ones that are the same result to show them once, with both sources listed. Nothing is merged unless you tick it; " +
-        "you can undo a link later from the result's panel."}),
+      node("p", {class: "hint", text: "Each of these has the same test, time and value as a result another source brought. " +
+        "Tick the ones that are the same result to show them once; nothing is merged unless you tick it."}),
+      more("Values are compared with their units converted. A result shown once lists both sources, and you can undo the link " +
+        "later from the result's panel."),
       node("ul", {}, listed.map(x => {
         const b = node("input", {type: "checkbox", value: x.ref, "aria-label": `Same result: ${x.name} ${valueText(x)}`});
         boxes.push(b);

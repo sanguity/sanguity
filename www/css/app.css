@@ -877,3 +877,12 @@ main.src[data-role=viewer] .src-edit{display:none}
   header.topbar .page-title + .profile-pick + .spacer{display:none}
   .profile-pick .iconbtn.profile{max-width:100%}
 }
+/* "More about this" (#176): the rest of a card's explanation behind one toggle, the same on every page (util.js
+   moreAbout(), or the same <details class="more"> written in the page). Closed, it's one short line under the lead. */
+details.more{margin:-4px 0 8px;color:var(--muted);font-size:12px}
+details.more>summary{cursor:pointer;width:fit-content;color:var(--ink2);border-radius:4px;padding:1px 2px;margin-left:-2px}
+details.more>summary:hover{color:var(--ink)}
+details.more>summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+details.more>:not(summary){margin:4px 0 0;max-width:72ch}
+details.more[open]{margin-bottom:10px}
+details.more code{overflow-wrap:anywhere}

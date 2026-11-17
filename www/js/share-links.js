@@ -113,8 +113,10 @@ function shareLinksPanel(p, {open = false} = {}) {
     made.replaceChildren(); msg.textContent = "";
     add.after(form());
   }});
-  box.append(el("p", {class: "hint", text: "A share link lets someone without an account, such as a clinician or a relative, read the part of " +
-    "this profile you choose, until it expires or you revoke it. Whoever has the link can open it, so treat it like the records themselves."}),
+  box.append(el("p", {class: "hint", text: "Let someone without an account read the part of this profile you choose. " +
+    "Whoever has the link can open it, so treat it like the records themselves."}),
+    moreAbout("A share link suits a clinician or a relative. It works until it expires or you revoke it, and each time it's opened " +
+      "is logged in this profile's activity, with the address it came from. Sanguity keeps a fingerprint of each link, not the link itself."),
     list, add, made, msg);
   const toggle = el("button", {class: "btn small", type: "button", text: "Share links", "aria-expanded": "false",
     onclick: async () => { box.hidden = !box.hidden; toggle.setAttribute("aria-expanded", !box.hidden); if (!box.hidden) { try { await load(); } catch (e) { fail(e); } } }});

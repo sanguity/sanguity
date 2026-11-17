@@ -192,6 +192,11 @@ Everything on `main` so far; it becomes the first tagged release.
   have only one. Sources, Sharing and Settings dropped their own Profile choice; Account and Admin have none.
   Switching it redraws the page for that profile in the same section and switches it on every page; an address
   with `?profile=2` still opens that profile, and now opens it on the records page too.
+- Shorter help text on the records tabs, Sources, Sharing and Admin (#176): each card leads with one short line
+  saying what it does, and the rest of its explanation is behind a **More about this** toggle, the same on every
+  page and still read by screen readers. What you need to decide safely stays in the lead: that undoing an import
+  removes what it brought, that anyone holding a share link can open it, that an export holds everything, and the
+  "not medical advice" notices.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

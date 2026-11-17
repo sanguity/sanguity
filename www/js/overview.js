@@ -93,7 +93,8 @@ function renderOverview() {
   const wk = ["hr_rest", "sleep", "steps", "hr", "weight"];
   const ws = wk.map(k => SERIES.find(s => s.key === k)).filter(Boolean);
   if (ws.length) {
-    const wc = el("div", {class: "card"}, el("h2", {text: "Watch & scale"}), el("p", {class: "hint", text: "Watch: last 7 days against the 4 weeks before, with 30-day sparklines. Weight: latest reading against your weight at diagnosis, with a 1-year sparkline."}));
+    const wc = el("div", {class: "card"}, el("h2", {text: "Watch & scale"}), el("p", {class: "hint", text: "The watch's last 7 days against the 4 weeks before, and the latest weight against your weight at diagnosis."}),
+      moreAbout("Sparklines show the last 30 days for the watch, and the last year for weight."));
     const grid = el("div", {class: "tiles", style: {gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", marginBottom: 0}});
     const now = Math.max(...ws.filter(s => s.key !== "weight").flatMap(s => s.pts.map(p => p.ts)));
     const avg = (s, a, b) => { const v = s.pts.filter(p => p.ts > a && p.ts <= b).map(p => p[1]); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; };

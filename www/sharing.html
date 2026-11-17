@@ -59,9 +59,12 @@
   <!-- calendar feed (#51): its own block, script and styles (calendar-feed.js) -->
   <section class="card cal" id="calendar" hidden>
     <h2>Calendar feed</h2>
-    <p class="hint">Add this profile's upcoming appointments, and lab draws expected from their usual rhythm, to your own
-      calendar app. Sanguity sends nothing: your calendar app fetches a private address every few hours. The feed is yours
-      alone and shows only what you can already see here.</p>
+    <p class="hint">This profile's upcoming appointments, and its expected lab draws, in your own calendar app.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>Sanguity sends nothing: your calendar app fetches a private address every few hours. The feed is yours alone and
+        shows only what you can already see here. An expected lab draw is a guess from the steady rhythm of a panel's past
+        draws, never an order or a booking.</p>
+    </details>
     <div id="calNew" hidden>
       <fieldset class="cal-opts">
         <legend>What each event says</legend>
@@ -108,9 +111,12 @@
   <!-- the visit summary (#48): its own block, script and styles (summary.js, css/summary.css) -->
   <section class="card" id="summaryIntro" hidden>
     <h2>Make a visit summary</h2>
-    <p class="hint">One or two pages to print or bring to an appointment: results out of range since the last visit,
-      trends of your key labs, current medications, upcoming appointments and your own questions. It's made from the
-      records you see in Sanguity, each time you ask, and isn't kept. Anyone the profile is shared with can make one.</p>
+    <p class="hint">One or two pages to print or bring to an appointment, made from the records you see here.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>It can hold results out of range since the last visit, trends of your key labs, current medications, upcoming
+        appointments and your own questions. It's made each time you ask, and isn't kept. Anyone the profile is shared
+        with can make one.</p>
+    </details>
     <span class="msg" id="loadMsg" role="status"></span>
   </section>
 
@@ -160,8 +166,11 @@
   <!-- Export everything: owners and editors (sharing.js) -->
   <section class="card" id="export" hidden>
     <h2>Export everything</h2>
-    <p class="hint">One zip of this profile's records, documents, settings and activity: to keep a copy of your own, or to
-      move the profile to another server. It holds everything, so keep it as private as the records themselves.</p>
+    <p class="hint">One zip of everything in this profile. Keep it as private as the records themselves.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>It holds this profile's records, documents, settings and activity: to keep a copy of your own, or to move the
+        profile to another server.</p>
+    </details>
     <div class="row"><a class="btn" id="exportLink" download href="#">Export everything</a></div>
   </section>
 

@@ -40,8 +40,7 @@
   <!-- Overview (sources-overview.js) -->
   <section class="card" id="srcOverview" hidden>
     <h2>Overview</h2>
-    <p class="hint">Every way records reach this profile, and when each last brought something. Each one opens its own
-      section.</p>
+    <p class="hint">Every way records reach this profile, and when each last brought something.</p>
     <div id="srcWarn"></div>
     <div id="srcList"></div>
   </section>
@@ -55,8 +54,11 @@
   <!-- Upload files (import.js) -->
   <section class="card src-edit" id="importer" hidden>
     <h2>Upload files</h2>
-    <p class="hint">The export you downloaded from a patient portal or app: a zip, a folder, or single files. Files go to
-      your Sanguity server only, and are kept there encrypted as the import's original files.</p>
+    <p class="hint">The export you downloaded from a patient portal or app: a zip, a folder, or single files.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>Files go to your Sanguity server only, and are kept there encrypted as the import's original files. Each upload
+        is shown to you as a preview first, and saved as one import you can undo from the import history.</p>
+    </details>
     <div class="tabs acct-tabs imp-tabs" role="tablist" aria-label="What to upload" id="kindTabs">
       <button role="tab" id="tab-zip" aria-controls="panel-zip" aria-selected="true">A zip</button>
       <button role="tab" id="tab-folder" aria-controls="panel-folder" aria-selected="false" tabindex="-1">A folder</button>
@@ -94,9 +96,11 @@
   <section class="card src-edit" id="typeIn" hidden>
     <h2>Type records in</h2>
     <div id="panel-manual">
-      <p class="hint">For records on paper, or from a portal with no export: type in lab results, visits, hospital stays,
-        medications, claims, letters and more. Everything is checked as you go, and Save stores it all as one import, which
-        you can undo from the import history.</p>
+      <p class="hint">For records on paper, or from a portal with no export: lab results, visits, medications, claims and more.</p>
+      <details class="more"><summary>More about this</summary>
+        <p>You can also type in hospital stays, letters, payments and the other kinds in the list. Everything is checked as
+          you go, and Save stores it all as one import, which you can undo from the import history.</p>
+      </details>
       <div class="form inline man-pick">
         <label>Add a record <select id="manKind"><option value="labs">Lab results</option></select></label>
         <button class="btn" id="manAddKind" type="button">Add</button>
@@ -123,9 +127,13 @@
   <section class="card src-edit" id="healthLink" hidden>
     <h2>Paste a Health Link</h2>
     <div id="panel-link">
-      <p class="hint">A SMART Health Link or Health Card that a provider, insurer or app gave you: paste the link (it starts
-        with <i>shlink:/</i>, or has <i>#shlink:/</i> in it), or scan its QR code. Sanguity shows what the link says first,
-        and contacts the link's server only when you choose Fetch.</p>
+      <p class="hint">Paste a SMART Health Link or Health Card from a provider, insurer or app, or scan its QR code.
+        Sanguity contacts the link's server only when you choose Fetch.</p>
+      <details class="more"><summary>More about this</summary>
+        <p>The link starts with <i>shlink:/</i>, or has <i>#shlink:/</i> in it. Sanguity first shows what the link itself
+          says: the server it's on, its label, and whether it needs a passcode. What's fetched is previewed like an upload, and
+          saved as one import you can undo.</p>
+      </details>
       <label class="shl-text">Link <textarea id="shlText" rows="3" spellcheck="false" autocomplete="off"
         placeholder="shlink:/… or https://…#shlink:/…"></textarea></label>
       <div class="row">
@@ -149,14 +157,16 @@
   <!-- Portals and health plans (connect.js), with finding your provider in the connect step (providers.js) -->
   <section class="card" id="mine" hidden>
     <h2>Portals and health plans</h2>
-    <p class="hint">Instead of downloading exports, connect a patient portal or health plan by signing in to it. Sanguity
-      then pulls what's new on a schedule, straight from the vendor to this server. Every pull is an import you can undo
-      from the import history, and nothing is contacted until you connect.</p>
+    <p class="hint">Sign in to a patient portal or health plan once, and Sanguity pulls what's new on a schedule.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>Records come straight from the vendor to this server, in place of downloading exports. Every pull is an import
+        you can undo from the import history, and nothing is contacted until you connect.</p>
+    </details>
     <div id="reconnect" class="conn-alert" role="alert" hidden></div>
     <div id="connList" aria-live="polite"></div>
     <h3 class="sub">Connect a portal or health plan</h3>
-    <p class="hint" id="noSources" hidden>No portal or health plan is set up on this server yet. Each server registers its
-      own app with each vendor, so your admin sets each one up first: ask them for the portal or health plan you use.</p>
+    <p class="hint" id="noSources" hidden>No portal or health plan is set up on this server yet. Your admin sets each one
+      up first: ask them for the one you use.</p>
     <p class="hint" id="adminNote" hidden>As an admin, you set portals and health plans up (each vendor's app for this
       server) under <a href="admin.html#apps">Admin → Connected-source apps</a>.</p>
     <p class="hint" id="viewerNote" hidden>You can view this profile's connections; its owners and editors connect them.</p>
@@ -164,8 +174,10 @@
 
     <div class="dir-find" id="finder" hidden>
       <h3 class="sub">Find your hospital, clinic or insurer</h3>
-      <p class="hint">Search by name, or by city or state, to see whether it can be connected and how. The list is kept on
-        your Sanguity server: searching it contacts no one.</p>
+      <p class="hint">Search by name, city or state to see whether it can be connected, and how.</p>
+      <details class="more"><summary>More about this</summary>
+        <p>The list is kept on your Sanguity server: searching it contacts no one.</p>
+      </details>
       <div class="dir-src" id="srcNote" hidden></div>
       <div class="form">
         <label>Name, city or state <input type="search" id="q" autocomplete="off" spellcheck="false" maxlength="200"

@@ -37,8 +37,12 @@
   <!-- Accounts, and requiring two-factor sign-in (admin.js) -->
   <section class="card" id="users" hidden>
     <h2>Accounts</h2>
-    <p class="hint">Create an account for each person who signs in. They get a one-time password and choose their own at first sign-in.
-      Being an admin lets someone manage accounts; it doesn't show them anyone's records.</p>
+    <p class="hint">An account for each person who signs in. Being an admin lets someone manage accounts; it doesn't show
+      them anyone's records.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>A new account gets a one-time password, and its person chooses their own at first sign-in. Records are shared
+        profile by profile, by each profile's owners, on its Sharing page.</p>
+    </details>
     <p class="warn" id="adminTf" hidden>To manage accounts, turn on two-factor sign-in (the authenticator app) or add a
       passkey for your own account, under <a href="account.html#security">Account → Sign-in &amp; security</a>. Admins need one as soon as the server has more than one account.</p>
     <div id="reauth" class="reauth" hidden></div>
@@ -58,9 +62,11 @@
   <!-- Connected-source apps: each vendor's app for this server, and the defaults of every connection (admin-sources.js) -->
   <section class="card" id="admin" hidden>
     <h2>Set up a source</h2>
-    <p class="hint">Under the option this project chose (docs/connected-sources-oauth.md), this install registers its own app
-      with each vendor, and the vendor sends sign-ins straight back here. Nothing is shared with the Sanguity project:
-      the count of connections below stays on this server.</p>
+    <p class="hint">Register this server's own app with each vendor, so people can connect their portals and health plans.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>The vendor sends sign-ins straight back here. Nothing is shared with the Sanguity project: the count of
+        connections below stays on this server. Why each install has its own app: docs/connected-sources-oauth.md.</p>
+    </details>
     <dl class="kv">
       <dt>Return address</dt><dd><code id="returnAddr"></code> <button class="btn small" id="copyReturn" type="button">Copy</button></dd>
     </dl>
@@ -88,9 +94,11 @@
   <!-- Provider directory: what Find your provider has, and adding Epic's and Oracle Health's lists (admin-sources.js) -->
   <section class="card dir" id="directory" hidden>
     <h2>Provider directory</h2>
-    <p class="hint">Find your provider searches a list kept on this server: searching it contacts no one. Sanguity ships
-      with the vendors' test sandboxes and Medicare; Epic's and Oracle Health's published lists can't be shipped under
-      their terms, so each server adds its own copy.</p>
+    <p class="hint">The list Find your provider searches, kept on this server: searching it contacts no one.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>Sanguity ships with the vendors' test sandboxes and Medicare. Epic's and Oracle Health's published lists can't be
+        shipped under their terms, so each server adds its own copy.</p>
+    </details>
     <div id="dirSources"></div>
     <div id="dirAdd"></div>
     <span class="msg" id="dirMsg" role="status"></span>
@@ -98,10 +106,13 @@
 
   <section class="card" id="labmaps" hidden>
     <h2>Lab name matches</h2>
-    <p class="hint">When an import has a lab test spelled in a way Sanguity doesn't know, the person importing it picks the
-      series it belongs to (or keeps it separate), and that choice is used for later imports from the same source.
-      These matches apply to every profile on this server, so only admins can change or remove them. They name tests,
-      never anyone's results or profiles. A change applies to later imports; results already saved keep their series.</p>
+    <p class="hint">The series each unfamiliar lab name was matched to at an import's preview. These matches apply to every
+      profile on this server, so only admins can change or remove them; a change applies to later imports only.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>When an import has a lab test spelled in a way Sanguity doesn't know, the person importing it picks the series it
+        belongs to (or keeps it separate), and that choice is used for later imports from the same source. The matches
+        name tests, never anyone's results or profiles. Results already saved keep their series.</p>
+    </details>
     <div id="labmapList"></div>
     <datalist id="labmapNames"></datalist>
     <span class="msg" id="labmapMsg" role="status"></span>
@@ -119,9 +130,11 @@
   <!-- Install activity: the account events (activity.js) -->
   <section class="card" id="installLog" hidden>
     <h2>Install activity</h2>
-    <p class="hint">What admins and people did to accounts and to the server: accounts created, disabled, reset or
-      removed, two-factor sign-in, connected-source apps, lab name matches and the server's settings. It never shows
-      anyone's records; each profile's own activity is on its Sharing page, under Activity.</p>
+    <p class="hint">What admins and people did to accounts and to the server. It never shows anyone's records.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>Accounts created, disabled, reset or removed, two-factor sign-in, connected-source apps, lab name matches and the
+        server's settings. Each profile's own activity is on its Sharing page, under Activity.</p>
+    </details>
     <div id="acctLog"></div>
   </section>
 </main>
