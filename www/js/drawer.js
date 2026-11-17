@@ -24,9 +24,13 @@ function resultTable(rows) {
   if (!rows || !rows.length) return null;
   return el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data"},
     el("thead", {}, el("tr", {}, ["Component", "Value", "Ref range", ""].map(h => el("th", {text: h})))),
-    el("tbody", {}, rows.map(([n, v, u, rr, f]) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", title: "Show trend", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
+    el("tbody", {}, rows.map(([n, v, u, rr, f], i) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", title: "Show trend", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
       el("td", {title: renamedTitle("lab", n)}, nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
-        SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : "", text: f ? (f === "H" ? "▲ High" : "▼ Low") : ""}))))));
+        SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}, ...rowOrig(rows[i])), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : "", text: f ? (f === "H" ? "▲ High" : "▼ Low") : ""}))))));
+}
+/* #41: a converted row's value and range as reported (units.js), on its own line under the value */
+function rowOrig(row) {
+  return row.orig ? [el("small", {class: "orig", text: `Reported ${`${row.orig[0] ?? ""} ${row.orig[1] || ""}`.trim()}${row.orig[2] ? ", ref " + row.orig[2] : ""}`})] : [];
 }
 function resultBody(d, eid) {
   const out = [];

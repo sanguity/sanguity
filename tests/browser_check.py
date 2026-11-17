@@ -19,7 +19,8 @@ Blue Button export and connects a health plan's patient-access API (the fake aga
 Costs, sees the source's and the Health Link's hosts under Settings → Outside connections, changes settings on the
 Settings page and resets them (a milestone added there marked on Trends and a "since" period on Health; a
 workout rule, a catastrophic pattern refused first, counted on Health; drags and keyboard-moves the key-lab tiles, hides and
-reorders tabs, sets a default theme a fresh browser picks up), builds a visit summary (sections, a lab, questions
+reorders tabs, sets a default theme a fresh browser picks up, picks SI units and kg and sees them on Trends, the
+Overview tiles and the drawer with the reported values beside them), builds a visit summary (sections, a lab, questions
 kept as a draft), previews it and downloads the PDF, reading it back, has two accounts in different time zones each see days split at their own midnight and
 dates in their own format (#42), makes the profile's watch receiver secret on the Settings page, shown once and then
 masked (#46), opens the account
@@ -154,7 +155,7 @@ def main():
         check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 9)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 10)
         strict.wait_for_selector("#watch h2", timeout=10000)
         check("under the CSP: the watch card shows the upload address", strict.evaluate("document.querySelector('#watch .w-addr').textContent").endswith(":8731/ingest"))
         strict.goto(base + "/summary.html")   # the visit summary page (#48)
@@ -1135,7 +1136,7 @@ def main():
             page.click("#settingsLink")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Trends", "Names", "Health", "Connected sources", "Milestones", "Tabs", "Appearance", "Dates and times"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Trends", "Names", "Health", "Connected sources", "Milestones", "Tabs", "Appearance", "Dates and times", "Units"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…with the server's attachment and sync defaults as a switch, numbers and choices (#101, #102)",
                   js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length]") == [5, 3],
                   js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
@@ -1302,6 +1303,59 @@ def main():
             page.wait_for_function("document.querySelector('#sec-appearance > .msg').textContent.includes('back to their defaults')", timeout=10000)
             check("…and Reset to defaults follows the system again",
                   js("document.documentElement.dataset.theme === undefined && localStorage.getItem('ht-theme-default') === null"))
+            # ---- #41 unit preferences: SI units and kg, picked on the Settings page, convert the demo's creatinine
+            # (mg/dL to umol/L), magnesium and hemoglobin and the weights on Trends, the Overview tiles and the drawer, the
+            # reported value beside each; bilirubin has no exact conversion and stays as reported; at 375 px too
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sec-units input[name=units-lab][value=si]", timeout=10000)
+            page.check("#sec-units input[name=units-lab][value=si]")
+            page.check("#sec-units input[name=units-weight][value=kg]")
+            page.click("#sec-units .set button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-units > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            unit_of = "n => { const s = SERIES.find(s => s.name === n); const p = s && s.pts.at(-1); return s && {unit: s.unit, from: s.uc ? s.uc.from : null, v: p[1], orig: p.orig ? p.orig.v : null, lo: p[2]}; }"
+            cr, mg, hb, bili = (js(unit_of, n) for n in ("Creatinine", "Magnesium", "Hemoglobin", "Total Bilirubin"))
+            check("units: SI shows creatinine in µmol/L, converted exactly from what was reported",
+                  cr["unit"] == "µmol/L" and cr["from"] == "mg/dL" and abs(cr["v"] - float(cr["orig"]) * 10000 / 113.12) < 1e-6
+                  and abs(cr["lo"] - 61.9) < 1e-9, cr)
+            check("…magnesium in mmol/L and hemoglobin in g/L", (mg["unit"], hb["unit"]) == ("mmol/L", "g/L")
+                  and abs(hb["v"] - float(hb["orig"]) * 10) < 1e-9, (mg, hb))
+            check("…bilirubin, with no exact conversion, stays as reported", bili["unit"] == "mg/dL" and bili["from"] is None, bili)
+            check("…and the weights are in kg", js("SERIES.find(s => s.key === 'weight').unit") == "kg")
+            js("switchTab('overview')")
+            tile = js("[...document.querySelectorAll('#view-overview .tile')].find(t => t.textContent.includes('Creatinine'))?.textContent || ''")
+            check("Overview: the creatinine tile in µmol/L, with the reported value", "µmol/L" in tile and re.search(r"Reported [\d.]+ mg/dL", tile), tile)
+            wtile = js("[...document.querySelectorAll('#view-overview .tile')].find(t => t.textContent.startsWith('Weight'))?.textContent || ''")
+            check("…the weight tile in kg, with the reported lb", "kg" in wtile and re.search(r"Reported [\d.]+ lb", wtile), wtile)
+            js("state.sel = new Set(['Creatinine', 'Total Bilirubin']); state.tables.clear(); switchTab('labs'); renderLabs()")
+            page.wait_for_selector("#charts .chart .unit", timeout=10000)
+            heads = js("[...document.querySelectorAll('#charts .chart .unit')].map(u => u.textContent)")
+            check("Trends: the chart says it's converted; bilirubin's doesn't", len(heads) == 2   # charts come in the series' order
+                  and sorted(h.split(" · ")[0] for h in heads) == ["mg/dL", "µmol/L (converted from mg/dL)"], heads)
+            js("state.tables.add('Creatinine'); renderCharts()")
+            cell = js("document.querySelector('#charts table.data tbody td:nth-child(2)').textContent")
+            check("…its table shows the reported value beside each", re.search(r"µmol/L \(reported [\d.]+ mg/dL, ref 0\.7–1\.3\)", cell), cell)
+            js("state.tables.clear()")
+            ev = js("EV.find(e => e.k === 'lab' && (DATA.details[e.id]?.ids || []).some(i => (DATA.details[i]?.rows || []).some(r => r[0] === 'Creatinine')))?.id")
+            js("id => openEvent(byId.get(id))", ev)
+            page.wait_for_selector("#drawer.open #dbody td small.orig", timeout=10000)
+            row = js("[...document.querySelectorAll('#dbody tr')].map(r => [...r.cells].map(c => c.textContent)).find(c => c[0].replace('✎', '').trim() === 'Creatinine')")
+            check("drawer: the result in µmol/L, its range converted, the reported value and range under it",
+                  row and re.match(r"[\d.]+ µmol/LReported [\d.]+ mg/dL, ref 0\.7", row[1]) and re.match(r"61\.9–115", row[2]), row)
+            page.set_viewport_size({"width": 375, "height": 800})
+            check("…and the drawer fits 375 px", js("document.documentElement.scrollWidth <= 375 && document.getElementById('dbody').scrollWidth <= document.getElementById('dbody').clientWidth"),
+                  js("document.getElementById('dbody').scrollWidth"))
+            js("closeDrawer(); switchTab('overview')")
+            check("…the Overview with converted tiles fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sec-units input[name=units-lab][value=si]", timeout=10000)
+            check("the Settings page with the units fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.once("dialog", lambda d: d.accept())
+            page.click("#sec-units button:text-is('Reset to defaults')")
+            page.wait_for_function("document.querySelector('#sec-units > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            check("…Reset to defaults shows units as reported again", js("document.querySelector('#sec-units input[name=units-lab]:checked').value") == "reported")
             # ---- visit summary (#48): pick the visit and sections, add a lab, type questions (kept as a draft),
             # preview, then download the PDF and read it back
             page.goto(base + "/")   # from the main page, after the settings checks above

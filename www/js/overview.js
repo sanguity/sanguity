@@ -57,6 +57,7 @@ function renderOverview() {
     tiles.append(el("button", {class: "tile", onclick: () => goSeries(n)},
       el("span", {class: "lbl"}, el("span", {text: nice(n), title: n}), st ? el("span", {class: "st " + st.cls, text: st.text}) : null),
       el("span", {class: "val"}, last[5] || fmtNum(last[1]), el("small", {text: s.unit})),
+      ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
       el("span", {class: "delta", text: (d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")} since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : "")}),
       spark(s, recent)));
   }
@@ -79,7 +80,7 @@ function renderOverview() {
   for (const o of out.slice(0, 14)) {
     const st = statusOf(o.last);
     oc.append(el("div", {class: "ov-row", onclick: () => goSeries(o.s.name)},
-      el("span", {class: "n", text: nice(o.s.name)}), el("span", {class: "v"}, `${o.last[5] || fmtNum(o.last[1])} ${o.s.unit} `, el("span", {class: "st " + st.cls, text: st.text})),
+      el("span", {class: "n", text: nice(o.s.name)}), el("span", {class: "v"}, `${o.last[5] || fmtNum(o.last[1])} ${o.s.unit} `, el("span", {class: "st " + st.cls, text: st.text}), ucOrig(o.s, o.last) ? el("span", {class: "orig", text: " reported " + ucOrig(o.s, o.last)}) : null),
       el("span", {class: "r", text: `ref ${o.last[2] ?? ""}–${o.last[3] ?? ""}`}),
       el("span", {class: "s", text: o.streak > 1 ? `${st.cls === "hi" ? "High" : "Low"} on the last ${o.streak} draws, since ${fmtD(o.since)}` : `First out-of-range result, ${fmtD(o.last.ts)}`})));
   }
@@ -100,8 +101,9 @@ function renderOverview() {
         const d = at && last !== at ? last[1] - at[1] : null;
         grid.append(el("button", {class: "tile", onclick: () => { hState.period = msKey(pm); hState.custom = null; switchTab("health"); }},
           el("span", {class: "lbl", text: "Weight"}),
-          el("span", {class: "val"}, last ? last[1].toFixed(1) : "–", el("small", {text: "lb"})),
-          el("span", {class: "delta", text: d != null ? `${d >= 0 ? "▲ +" : "▼ −"}${Math.abs(d).toFixed(1)} lb since ${lcLabel(pm.label)} · ${fmtD(last.ts)}` : last ? fmtD(last.ts) : ""}),
+          el("span", {class: "val"}, last ? last[1].toFixed(1) : "–", el("small", {text: s.unit})),
+          ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
+          el("span", {class: "delta", text: d != null ? `${d >= 0 ? "▲ +" : "▼ −"}${Math.abs(d).toFixed(1)} ${s.unit} since ${lcLabel(pm.label)} · ${fmtD(last.ts)}` : last ? fmtD(last.ts) : ""}),
           spark(s, s.pts.filter(p => p.ts > last.ts - 365 * DAY), {band: false})));
         continue;
       }

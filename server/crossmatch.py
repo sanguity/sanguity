@@ -13,8 +13,8 @@ The rule, match(): two results are possibly the same when all of these hold.
          importers write a date with no time, common.iso) matches any time that day.
   value  the same value once units are made comparable: common.unit_for spellings, plus exact powers-of-ten changes
          of prefix (121 g/L is 12.1 g/dL; 5.0 mmol/L is 5000 umol/L; 10*9/L is 10*3/uL). Never a conversion that
-         needs a molar mass or a factor that isn't exact. Values compare as decimals, so 12.10 is 12.1; a comparator
-         ("<0.5") must be the same on both sides.
+         needs a molar mass or a factor that isn't exact (units.exact_factor, the table the page's unit preferences
+         share). Values compare as decimals, so 12.10 is 12.1; a comparator ("<0.5") must be the same on both sides.
   source the two come from different imports (one import's own repeats are the preview's business, preview.py)
 
 A match is never acted on by itself. It is flagged: in the import preview (for_preview, "possibly the same result
@@ -51,7 +51,7 @@ import collections, json, re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from . import crypto, db as dbm, security as sec
+from . import crypto, db as dbm, security as sec, units
 from .importers import common
 
 LISTED = 500   # possible matches listed for the page, at most
@@ -112,40 +112,9 @@ def same_time(a, b):
     return da.replace(second=0, microsecond=0) == db_.replace(second=0, microsecond=0)
 
 
-# exact prefixes: mass, amount of substance and volume; a unit "<amount>/<volume>" scales by their ratio
-_MASS = {"g": 0, "mg": -3, "ug": -6, "mcg": -6, "ng": -9, "pg": -12}
-_MOL = {"mol": 0, "mmol": -3, "umol": -6, "nmol": -9, "pmol": -12, "meq": -3, "eq": 0}   # meq kept apart from mmol
-_VOL = {"l": 0, "dl": -1, "ml": -3, "ul": -6, "fl": -15}
-_COUNTS = {"10*9/l": "k/ul", "x10e9/l": "k/ul", "10^9/l": "k/ul", "giga/l": "k/ul",
-           "10*12/l": "m/ul", "x10e12/l": "m/ul", "10^12/l": "m/ul", "tera/l": "m/ul"}
-
-
-def _unit(canon, u):
-    u = common.unit_for(canon, u)
-    return _COUNTS.get(u, u)
-
-
-def _scale(u):
-    """(dimension, power of ten) for a "<prefix>/<volume>" unit, or None."""
-    top, _, bottom = u.partition("/")
-    if bottom not in _VOL:
-        return None
-    for kind, table in (("mass", _MASS), ("mol", _MOL)):
-        if top in table:
-            dim = kind + (":eq" if top.endswith("eq") else "")
-            return dim, table[top] - _VOL[bottom]
-    return None
-
-
-def factor(canon, ua, ub):
-    """The exact Decimal that turns a value in unit ua into one in ub, or None when there isn't one."""
-    a, b = _unit(canon, ua), _unit(canon, ub)
-    if a == b:
-        return Decimal(1)
-    sa, sb = _scale(a), _scale(b)
-    if sa and sb and sa[0] == sb[0]:
-        return Decimal(10) ** (sa[1] - sb[1])
-    return None
+# the exact prefix changes are units.py's table, shared with the page's unit preferences (#41); a molar mass is
+# never used here
+factor = units.exact_factor
 
 
 def _shown(p):

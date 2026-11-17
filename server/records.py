@@ -37,7 +37,7 @@ every row. '' means the record has no key; NULL, not worked out yet (backfill_ke
 import hashlib, hmac, json, threading
 from contextlib import contextmanager
 
-from . import crossmatch, crypto, edits, journal
+from . import crossmatch, crypto, edits, journal, units
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
@@ -314,7 +314,7 @@ def _assemble(db, pid):
     out = crossmatch.apply(db, pid, edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs}))
     if (entries := journal.listing(db, pid)):   # only when there are some, like edits
         out["journal"] = entries
-    return out
+    return units.annotate(out)   # which series can be shown in other units, exactly (#41)
 
 
 # the page asks for a profile's records on every load; putting them together decrypts every row, so the result

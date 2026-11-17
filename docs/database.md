@@ -344,6 +344,10 @@ erDiagram
 
 One row per key and owner (a unique index on `key`, `IFNULL(profile_id, 0)`, `IFNULL(user_id, 0)`).
 
+The `units` setting (#41) is a user's row, plain JSON (`{"lab", "weight", "temperature"}`). The conversions it picks
+from aren't stored: each lab series the page loads carries its exact ones (`conv`, from `server/units.py`) when the
+records are put together, and the page converts as it draws, keeping what was reported.
+
 One key outside the registry lives here too: `summary.questions`, a profile's draft of questions for the visit
 summary (`server/summary.py`, #48), always in `sealed`. Not being in the registry, it never shows on the Settings
 screen or in a settings export, and it goes with the profile.

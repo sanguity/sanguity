@@ -89,6 +89,7 @@ function renderHeatmap() {
     const s = seriesBy(d.s), p = s.pts.filter(p => isoDay(p.ts) === d.k).pop(); if (!p) return;
     const st = statusOf(p);
     showTip([el("div", {class: "v", text: `${p[5] || fmtNum(p[1])} ${s.unit}`}), el("div", {class: "s", text: nice(s.name) + (nice(s.name) !== s.name ? ` (${s.name})` : "")}), el("div", {class: "s", text: `${fmtDT(p.ts)} · ref ${p[2] ?? ""}–${p[3] ?? ""}`}),
+      ucOrig(s, p) ? el("div", {class: "s", text: "Reported as " + ucOrig(s, p)}) : null,   // #41
       st ? el("div", {class: "s", style: {color: st.cls === "ok" ? "var(--good-text)" : "var(--crit)"}, text: st.text}) : null,
       pointSources(s, p) ? el("div", {class: "s", text: "From " + pointSources(s, p)}) : null], ev);   // with any linked as the same (#96)
   };
