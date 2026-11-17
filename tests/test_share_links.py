@@ -63,6 +63,15 @@ PHONE = {"tz": "UTC", "exercise": [], "metrics": [
     "temp_readings": [[U(-8, 7), 37.4, None, "Health Connect"]],
     "ecg": [{"key": "ecg:0123456789abcdef", "type": "ecg", "start": U(-6, 10), "classification": "Sinus Rhythm", "avg_hr": 72}]}
 
+# #232: glucose and blood oxygen typed in at home (#224: local wall times, glucose in mg/dL with a meal note), beside the
+# phone's daily blood oxygen; one glucose the phone's meter sent too
+TYPED = {"tz": "America/New_York", "exercise": [], "metrics": [
+    {"key": "spo2_avg", "unit": "%", "pts": [[D(-8), 96.5]]}, {"key": "spo2_min", "unit": "%", "pts": [[D(-8), 93.0]]},
+    {"key": "glucose_meter", "unit": "mg/dL", "pts": [[D(-6) + "T07:12", 99.0]]}],
+    "glucose_readings": [[D(-6) + "T07:12:00", 99.0, None, "Typed in", None], [D(-5) + "T07:45:00", 104.49, None, "Typed in", "before"],
+                         [D(-30) + "T08:00:00", 140.0, None, "Typed in", "after"]],
+    "spo2_readings": [[D(-4) + "T08:05:00", 97, None, "Typed in"], [D(-40) + "T08:05:00", 91, None, "Typed in"]]}
+
 
 def read(*path):
     with open(os.path.join(ROOT, *path), encoding="utf-8") as f:
@@ -410,6 +419,37 @@ class ShareLinks(unittest.TestCase):
             self.assertNotIn(f'"{k}"', json.dumps(j))
         token, _ = self.make(pid=pid, sections=["immunizations"])
         self.assertEqual(self.view(token).json()["immunizations"]["rows"], [[D(-200), "Hepatitis B vaccine FICTIONAL", "1 mL", ""]])
+
+    def test_typed_glucose_and_oxygen_in_a_link(self):
+        """#232: glucose and blood oxygen typed in at home are in a link's sections, in its dates and in the units of the
+        owner who made it: glucose each with its time and meal note (one the phone sent too, once), oxygen one by one."""
+        path = os.path.join(TMP, "typed", "daily.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        crypto.write_file(path, json.dumps(TYPED).encode())
+        db = dbm.connect()
+        pid = prof.create_profile(db, "Alex Example (fictional)", owner_id=self.uid["robin"], watch_file=path)
+        db.close()
+        offered = [s["id"] for s in self.c["robin"].get(f"/api/profiles/{pid}/links").json()["sections"]]
+        self.assertEqual([s for s in offered if s in measures.IDS], ["glucose", "oxygen"])
+        token, _ = self.make(pid=pid, sections=["glucose", "oxygen"], **{"from": D(-20), "to": D(-3)})
+        j = self.view(token).json()
+        g, o = j["glucose"], j["oxygen"]
+        self.assertEqual(g["rows"], [[D(-5), "Typed in, 07:45, before a meal", "104", "104"], [D(-6), "Meter: 1", "99", "99"]],
+                         "in the range only; the reading the phone sent too, once")
+        self.assertEqual(g["lead"], ["2 meter readings (1 typed in) · average 102 mg/dL · lowest 99, highest 104"])
+        self.assertIn("typed in", g["note"])
+        self.assertEqual(o["rows"], [[D(-4), "Typed in, 08:05", "97", ""], [D(-8), "Watch, the day's average", "96.5", "93"]])
+        self.assertEqual(o["lead"], ["1 day · average 96.5% · lowest 93%", "1 reading typed in · average 97%"])
+        self.assertIn("typed in at home", o["note"])
+        self.assertNotIn("glucose_readings", json.dumps(j))
+        c = self.c["robin"]
+        try:   # the owner's units (#41) at the time of viewing
+            c.put("/api/settings/user/units", json={"value": {"lab": "si"}}, headers=H)
+            g = self.view(token).json()["glucose"]
+            self.assertEqual(g["cols"][2][0], "Low–high (mmol/L)")
+            self.assertEqual(g["rows"][0][1:], ["Typed in, 07:45, before a meal", "5.8", "5.8"])
+        finally:
+            c.put("/api/settings/user/units", json={"value": {}}, headers=H)
 
     def test_page_and_nginx_routes(self):
         html = read("www", "share.html")

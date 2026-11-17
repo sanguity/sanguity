@@ -476,6 +476,14 @@ Everything on `main` so far; it becomes the first tagged release.
   tooltips and tables; one the phone sent already is left out, and one a visit recorded is shown once. Typed again
   for the same date and time, a reading replaces the one before; undoing the save takes them away. A height goes into
   About this person's history, where it's changed or removed (an undo leaves it, as it leaves every setting).
+- **Typed-in glucose and blood oxygen in shares** (#232): the visit summary's and share links' glucose and blood
+  oxygen sections list the readings typed in at home beside the phone's: each glucose reading with its time and meal
+  note (in mg/dL or mmol/L as chosen), each blood oxygen reading beside the watch's daily average and low; one the phone
+  sent too is listed once, and the notes say the readings were sent by a phone app or typed in; the two sections are
+  now called "Blood glucose at home" and "Blood oxygen at home", as blood pressure's and temperature's are. Without CGM days the
+  glucose table leaves out the time-in-ranges columns. The Overview's glucose tile says when its reading was typed in,
+  with the meal note, and Body and activity draws typed-in glucose for a profile without a phone's. Typed-in readings'
+  times are listed as typed (the clock's time), no longer moved by the phone's time zone.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -101,6 +101,16 @@ PHONE = {"updated": utc(0, 6), "tz": "UTC", "last_payload": None, "exercise": []
     "ecg": [{"key": "ecg:0123456789abcdef", "type": "ecg", "start": utc(-6, 10), "classification": "Sinus Rhythm", "avg_hr": 72,
              "device": "Fictional Watch"},
             {"key": "rhythm:fedcba9876543210", "type": "irregular_rhythm", "start": utc(-50, 3), "device": "Fictional Watch"}]}
+# #232: readings typed in at home (#224, local wall times, as manual_items keeps them) beside a phone's, in New York
+TYPED = {"updated": utc(0, 6), "tz": "America/New_York", "last_payload": None, "exercise": [], "metrics": [
+    {"key": "spo2_avg", "name": "SpO2, daily average", "unit": "%", "group": "Oxygen & breathing", "pts": [[d(-6), 95.5]]},
+    {"key": "spo2_min", "name": "SpO2, daily low", "unit": "%", "group": "Oxygen & breathing", "pts": [[d(-6), 92.0]]},
+    {"key": "glucose_meter", "name": "Blood glucose, meter readings", "unit": "mg/dL", "group": "Glucose", "pts": [[d(-4) + "T07:12", 104.0]]}],
+    "glucose_readings": [[d(-4) + "T07:12:00", 104.0, None, "Typed in", None],          # the phone's own reading, typed too: once
+                         [d(-3) + "T07:45:00", 104.49, None, "Typed in", "before"],     # 5.8 mmol/L, kept in mg/dL
+                         [d(-2) + "T19:10:00", 151.0, None, "Typed in", "after"]],
+    "spo2_readings": [[d(-2) + "T08:05:00", 97, None, "Typed in"], [d(-1) + "T22:30:00", 94, None, "Typed in"]],
+    "bp_readings": [[d(-2) + "T07:30:00", 128, 82, 64, None, "Typed in"]]}
 MEASURED = {"built": day(0), "source": "fictional", "labs": [], "costs": [], "upcoming": [],
             "events": [{"id": 1, "t": day(-30), "k": "visit", "title": "Follow-up visit", "sub": ""},
                        {"id": 2, "t": day(-400), "k": "immunization", "title": "Tetanus vaccine (fictional)"},
@@ -462,12 +472,58 @@ class Summary(unittest.TestCase):
         reader, text = text_of(r.content)
         self.assertLessEqual(len(reader.pages), 2)
         for want in (f"Blood pressure at home since {summary.fmt_date(d(-30))} (2)", "2 readings · average 129/82 mmHg", "132/84",
-                     "Fictional cuff (Health Connect)", "Body temperature at home", "37.4", "Blood glucose from the phone",
-                     "CGM: 288 in 24 h", "under 0.1%", "standard published ranges", "Blood oxygen from the watch",
+                     "Fictional cuff (Health Connect)", "Body temperature at home", "37.4", "Blood glucose at home since",
+                     "CGM: 288 in 24 h", "under 0.1%", "standard published ranges", "Blood oxygen at home since",
                      "Respiratory rate", "VO2 max", "Immunizations (2)", "Influenza vaccine (fictional)", "ECG: Sinus Rhythm",
                      "BMI and growth", "24.3 kg/m²", "isn't medical advice"):
             self.assertIn(want, text)
         self.assertNotIn("150/95", text, "before the visit")
+
+    @classmethod
+    def typed_profile(cls):
+        """A profile with readings typed in at home (#232) beside a phone's: made once."""
+        if getattr(cls, "tpid", None):
+            return cls.tpid
+        db = dbm.connect()
+        path = os.path.join(TMP, "typed", "daily.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        crypto.write_file(path, json.dumps(TYPED).encode())
+        cls.tpid = prof.create_profile(db, "Alex (fictional)", owner_id=cls.uid["robin"], watch_file=path)
+        with dbm.transaction(db):
+            records.store(db, cls.tpid, MEASURED, "dataset")
+        db.close()
+        return cls.tpid
+
+    def test_typed_glucose_and_oxygen(self):
+        """#232: glucose and blood oxygen typed in at home are in the summary's sections, in the preview and the PDF:
+        glucose as meter readings each with its time and meal note, one the phone sent too once; oxygen one by one
+        beside the watch's days; the times as they were typed (wall times, not moved by the summary's zone)."""
+        pid = self.typed_profile()
+        o = self.c["robin"].get(f"/api/profiles/{pid}/summary").json()
+        self.assertTrue({"glucose", "oxygen", "home_bp"} <= {s["id"] for s in o["sections"]})
+        r = self.c["robin"].post(f"/api/profiles/{pid}/summary/preview", json=self.opts(appointment=None, sections=measures.IDS), headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        m = r.json()["measures"]
+        g = m["glucose"]
+        self.assertEqual([c[0] for c in g["cols"]], ["Date", "Readings", "Low–high (mg/dL)", "Average (mg/dL)"], "no CGM: no ranges' columns")
+        self.assertEqual(g["rows"], [[d(-2), "Typed in, 19:10, after a meal", "151", "151"],
+                                     [d(-3), "Typed in, 07:45, before a meal", "104", "104"],
+                                     [d(-4), "Meter: 1", "104", "104"]], "the reading the phone sent too, once: the phone's")
+        self.assertEqual(g["lead"], ["3 meter readings (2 typed in) · average 120 mg/dL · lowest 104, highest 151"])
+        self.assertIn("sent by a phone app or typed in", g["note"].lower())
+        o2 = m["oxygen"]
+        self.assertEqual([c[0] for c in o2["cols"]], ["Date", "Readings", "SpO2 (%)", "Lowest (%)"])
+        self.assertEqual(o2["rows"], [[d(-1), "Typed in, 22:30", "94", ""], [d(-2), "Typed in, 08:05", "97", ""],
+                                      [d(-6), "Watch, the day's average", "95.5", "92"]])
+        self.assertEqual(o2["lead"], ["1 day · average 95.5% · lowest 92%", "2 readings typed in · average 95.5% · lowest 94%"])
+        self.assertIn("typed in at home", o2["note"])
+        self.assertEqual(m["home_bp"]["rows"], [[d(-2) + "T07:30", "128/82", "64", "Typed in"]], "07:30 as typed, in New York")
+        r = self.c["robin"].post(f"/api/profiles/{pid}/summary/pdf", json=self.opts(appointment=None, sections=["glucose", "oxygen"]), headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        text = text_of(r.content)[1]
+        for want in ("Typed in, 19:10, after a meal", "Typed in, 07:45, before a meal", "Meter: 1", "3 meter readings (2 typed in)",
+                     "Typed in, 22:30", "Watch, the day's average", "2 readings typed in · average 95.5%", "or typed in"):
+            self.assertIn(want, text)
 
     def test_measures_listed_at_most_so_many(self):
         many = {**PHONE, "bp_readings": [[f"{d(-1 - i // 4)}T{8 + i % 4:02d}:00:00+00:00", 120 + i % 9, 80, None, None, "Apple Health"]
@@ -538,6 +594,45 @@ class TypedOnce(unittest.TestCase):
         temps = [["2026-11-02T21:00:00Z", 37.1, "Fictional Thermometer", "Health Connect"],
                  ["2026-11-02T21:00:30Z", 37.4, None, "Typed in"]]   # a different value: both stay
         self.assertEqual(len(measures._once_typed(temps, (1,), 3)), 2)
+
+    def test_typed_glucose_and_oxygen_in_the_persons_units(self):
+        """#232: typed glucose in mmol/L when chosen (#41), beside a CGM's days in the ranges' columns; a profile with
+        only readings typed in is offered both sections; a typed glucose the phone sent too (5.8 mmol/L either way) once."""
+        w = {"tz": "UTC", "metrics": [
+            {"key": "glucose_meter", "unit": "mg/dL", "pts": [["2026-11-02T07:12", 104.0]]},
+            *({"key": "glucose_" + k, "unit": "", "pts": [["2026-11-03", v]]} for k, v in (("avg", 131.0), ("min", 62.0), ("max", 212.0),
+                                                                                       ("n", 288), ("hours", 24.0), ("in", 78.0)))],
+             "glucose_readings": [["2026-11-02T07:13:00", 104.6, None, "Typed in", "before"],   # 5.8 mmol/L, as the phone's 104
+                                  ["2026-11-03T21:00:00", 151.0, None, "Typed in", "other"]]}
+        g = measures.blocks(measures.Ctx(w, {}, {"units": {"lab": "si"}}), ["glucose"], lambda x: True)["glucose"]
+        self.assertEqual(len(g["cols"]), 8, "with CGM days, the ranges' columns")
+        self.assertEqual([r[:4] for r in g["rows"]], [["2026-11-03", "CGM: 288 in 24 h", "3.4–11.8", "7.3"],
+                                                      ["2026-11-03", "Typed in, 21:00, other", "8.4", "8.4"],
+                                                      ["2026-11-02", "Meter: 1", "5.8", "5.8"]])
+        self.assertEqual(g["lead"][1], "2 meter readings (1 typed in) · average 7.1 mmol/L · lowest 5.8, highest 8.4")
+        self.assertIn("standard published ranges", g["note"])
+        g = measures.blocks(measures.Ctx(w, {}, {}), ["glucose"], lambda x: True)["glucose"]
+        self.assertEqual(len(g["rows"]), 4, "in mg/dL, 104.6 isn't the phone's 104 (more than .5 apart): both")
+        only = {"glucose_readings": w["glucose_readings"], "spo2_readings": [["2026-11-03T08:00:00", 96, None, "Typed in"]]}
+        c = measures.Ctx(only, {}, {})
+        self.assertEqual(measures.offered(c), ["glucose", "oxygen"])
+        b = measures.blocks(c, ["glucose", "oxygen"], lambda x: x >= "2026-11-03")
+        self.assertEqual(b["glucose"]["rows"], [["2026-11-03", "Typed in, 21:00, other", "151", "151"]])
+        self.assertEqual(b["glucose"]["lead"], ["1 meter reading typed in · average 151 mg/dL · lowest 151, highest 151"])
+        self.assertEqual(b["oxygen"]["rows"], [["2026-11-03", "Typed in, 08:00", "96", ""]])
+        self.assertEqual(b["oxygen"]["lead"], ["1 reading typed in · average 96%"])
+        self.assertEqual(measures.blocks(c, ["oxygen"], lambda x: x < "2026-11-03")["oxygen"]["empty"], "No blood oxygen in this period.")
+
+    def test_a_typed_reading_is_its_wall_time(self):
+        """A reading typed in has no offset: it's the time on the person's clock (manual_items), so the summary lists it
+        at that time and finds the phone's copy (an instant) in the summary's zone (#232)."""
+        w = {"tz": "America/New_York",
+             "bp_readings": [["2026-11-02T12:10:00+00:00", 128, 82, 64, "Fictional Cuff", "Health Connect"],   # 07:10 in New York
+                             ["2026-11-02T07:10:00", 128, 82, 64, None, "Typed in"],    # the same, typed: once
+                             ["2026-11-02T21:40:00", 131, 84, None, None, "Typed in"]]}
+        rows = measures.blocks(measures.Ctx(w, {}, {}), ["home_bp"], lambda x: True)["home_bp"]["rows"]
+        self.assertEqual([r[0] for r in rows], ["2026-11-02T21:40", "2026-11-02T07:10"])
+        self.assertEqual(rows[1][3], "Fictional Cuff (Health Connect)")
 
 
 if __name__ == "__main__":

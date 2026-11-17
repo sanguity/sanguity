@@ -5076,7 +5076,7 @@ def main():
                   len(heads) == 5 and heads[0].startswith("Blood pressure at home since") and re.search(r"\d+ readings? · average \d+/\d+ mmHg · highest systolic \d+", pv)
                   and js("document.querySelectorAll('#preview table').length") == 5, heads)
             check("…glucose by day, CGM time in ranges labelled as the standard published ranges (not anyone's targets)",
-                  "Blood glucose from the phone" in pv and "time in the standard ranges" in pv and "standard published ranges" in pv
+                  "Blood glucose at home since" in pv and "time in the standard ranges" in pv and "standard published ranges" in pv
                   and "not anyone's own targets" in pv and not re.search(r"(?i)\b(normal|good|bad|target range)\b", pv), heads)
             check("…immunizations as a list, and ECGs as the watch said them (no traces)", any(h.startswith("Immunizations (") for h in heads)
                   and "traces themselves aren't included" in pv and re.search(r"ECG: \w", pv) and "samples" not in pv, heads)
@@ -5100,7 +5100,7 @@ def main():
             from pypdf import PdfReader
             text = "\n".join(p_.extract_text() for p_ in PdfReader(pdf_path).pages)
             check("…and the PDF has them, in words (black-and-white safe): the readings, time in ranges, the immunizations, the ECGs",
-                  all(w in text for w in ("Blood pressure at home since", "SYSTOLIC/DIASTOLIC", "Blood glucose from the phone", "standard published ranges",
+                  all(w in text for w in ("Blood pressure at home since", "SYSTOLIC/DIASTOLIC", "Blood glucose at home since", "standard published ranges",
                                           "Body temperature at home", "isn't medical advice")), text[:400])
             # share links: the form offers them unticked; a link made with two shows those two on its page
             page.goto(base + "/sharing.html?profile=1#links")
@@ -5190,6 +5190,121 @@ def main():
             check("…a tile opens its card on Body and activity", js("state.tab") == "health" and js("document.activeElement.id") == "h-bp",
                   [js("state.tab"), js("document.activeElement.id"), js("!!document.getElementById('h-bp')"), js("document.activeElement.tagName")])
             js("fetch('api/profiles/1/settings/overview.homeTiles', {method: 'DELETE', headers: {'X-Sanguity': '1'}})")
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
+            # ---- glucose and blood oxygen typed in, in the visit summary, a share link and the Overview's glucose tile
+            # (#232): on profile 2, which has no phone, two glucose readings (each with a meal note) and a blood oxygen
+            # typed in through Sources' route; the summary offers both sections, and ticked, its preview and PDF list each
+            # one (glucose with its time and meal note, oxygen one by one), a share link's page too; the glucose tile says
+            # it was typed in, and Body and activity draws them with no phone's glucose; 1400 and 375 px, light and dark,
+            # axe-core; then the save is undone
+            was_profile = js("localStorage.getItem('ht-profile')")
+            saved232 = js("""fetch('api/profiles/2/manual', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+              body: JSON.stringify({save: true, items: [
+                {kind: 'home_glucose', date: '2026-11-08', time: '07:45', glucose: '104', glucose_unit: 'mg/dL', meal: 'before'},
+                {kind: 'home_glucose', date: '2026-11-09', time: '19:10', glucose: '151', glucose_unit: 'mg/dL', meal: 'after'},
+                {kind: 'home_spo2', date: '2026-11-09', time: '08:05', spo2: '97'}]})}).then(r => r.json())""")
+            iid232 = saved232.get("import_id")
+            check("typed in, in shares (#232): glucose and blood oxygen typed in for a profile without a phone",
+                  bool(iid232) and (saved232.get("counts") or {}).get("readings") == 3, saved232)
+            page.goto(base + "/sharing.html?profile=2#summary")
+            page.wait_for_function("document.getElementById('profile').value === '2' && OPTS && OPTS.profile.id === 2 && "
+                                   "!document.getElementById('build').hidden", timeout=10000)
+            got = dict(js("[...document.querySelectorAll('#sections input')].map(i => [i.value, i.checked])"))
+            check("…the visit summary offers their glucose and blood oxygen sections, unticked", got.get("glucose") is False and got.get("oxygen") is False, got)
+            js("document.getElementById('since').selectedIndex = document.getElementById('since').options.length - 1")
+            for k in got:
+                (page.check if k in ("glucose", "oxygen") else page.uncheck)(f"#sections input[value={k}]")
+            page.click("#previewBtn")
+            page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+            pv = js("document.getElementById('preview').textContent")
+            rows232 = js("[...document.querySelectorAll('#preview table tbody tr')].map(r => [...r.cells].map(c => c.textContent))")
+            check("…ticked, the preview lists each glucose reading typed in with its time and meal note, and the blood oxygen one",
+                  any("Typed in, 07:45, before a meal" in r for r in rows232) and any("Typed in, 19:10, after a meal" in r for r in rows232)
+                  and any("Typed in, 08:05" in r and "97" in r for r in rows232) and "2 meter readings typed in · average 128 mg/dL" in pv
+                  and "1 reading typed in · average 97%" in pv and pv.count("typed in at home") >= 2
+                  and js("[...document.querySelectorAll('#preview table')].map(t => t.querySelectorAll('th').length)") == [4, 4], [rows232, pv[:300]])
+            s232_bad, s232_axe = [], []
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    settle(200)
+                    page.locator("#preview table").first.scroll_into_view_if_needed()
+                    if width == 375:
+                        s232_bad += phone_fits(page, f"summary preview with typed readings ({theme})")
+                        s232_bad += [] if js("document.documentElement.scrollWidth") <= 375 else ["summary page too wide"]
+                    if shots:
+                        page.screenshot(path=os.path.join(shots, f"232-summary-{width}-{theme}.png"))
+                    s232_axe += axe_check(page, f"summary preview with typed readings, {width} px, {theme}")[0]
+            js("delete document.documentElement.dataset.theme")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…which fits 375 px, and axe-core finds nothing serious, light and dark", not s232_bad and not s232_axe, (s232_bad + s232_axe)[:6])
+            with page.expect_download(timeout=20000) as dl:
+                page.click("#download")
+            pdf_path = os.path.join(TMP, "summary-typed.pdf")
+            dl.value.save_as(pdf_path)
+            from pypdf import PdfReader
+            text = "\n".join(p_.extract_text() for p_ in PdfReader(pdf_path).pages)
+            check("…and the PDF has them in words", all(w in text for w in ("Typed in, 07:45, before a meal", "Typed in, 19:10, after a meal",
+                  "2 meter readings typed in", "Typed in, 08:05", "1 reading typed in")), text[:400])
+            # a share link with the two: its page lists them as the summary does
+            made = js("""fetch('api/profiles/2/links', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+              body: JSON.stringify({sections: ['glucose', 'oxygen']})}).then(r => r.json())""")
+            holder = browser.new_context(viewport={"width": 1400, "height": 900}, device_scale_factor=1)
+            hp = holder.new_page()
+            hp.goto(base + "/" + made["path"])
+            hp.wait_for_selector("#share-glucose tbody tr", timeout=10000)
+            sh = hp.evaluate("""['#share-glucose', '#share-oxygen'].map(k => [...document.querySelectorAll(k + ' tbody tr')].map(r => r.textContent))""")
+            check("…a share link's page lists them too: glucose each with its meal note, blood oxygen one by one",
+                  [len(x) for x in sh] == [2, 1] and "after a meal" in sh[0][0] and "before a meal" in sh[0][1] and "Typed in, 08:05" in sh[1][0]
+                  and "typed in at home" in hp.inner_text("#share-oxygen"), sh)
+            l232_bad, l232_axe = [], []
+            for width in (1400, 375):
+                hp.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    hp.emulate_media(color_scheme=theme)
+                    hp.wait_for_timeout(200)
+                    if width == 375:
+                        l232_bad += phone_fits(hp, f"share page with typed readings ({theme})")
+                        l232_bad += [] if hp.evaluate("document.documentElement.scrollWidth") <= 375 else ["share page too wide"]
+                    if shots:
+                        hp.screenshot(path=os.path.join(shots, f"232-share-{width}-{theme}.png"), full_page=True)
+                    l232_axe += axe_check(hp, f"share page with typed readings, {width} px, {theme}")[0]
+            holder.close()
+            check("…which fits 375 px, and axe-core finds nothing serious, light and dark", not l232_bad and not l232_axe, (l232_bad + l232_axe)[:6])
+            js("id => fetch('api/profiles/2/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made["link"]["id"])
+            # the Overview's glucose tile, and Body and activity with typed glucose only (no phone's)
+            js("""fetch('api/profiles/2/settings/overview.homeTiles', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+              body: JSON.stringify({value: ['glucose']})})""")
+            page.goto(base + "/?profile=2")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 2", timeout=20000)
+            js("switchTab('overview')")
+            settle(400)
+            tile232 = js("(t => t && [t.querySelector('.val').textContent, t.querySelector('.delta').textContent])(document.querySelector('#view-overview .home-tile[data-home=glucose]'))")
+            check("…the Overview's glucose tile shows the latest typed in, with its meal note",
+                  tile232 and tile232[0].startswith("151") and "a meter reading at home · Typed in, after a meal" in tile232[1], tile232)
+            t232_bad, t232_axe = [], []
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    settle(200)
+                    page.locator("#view-overview .home-tile").first.scroll_into_view_if_needed()
+                    if width == 375:
+                        t232_bad += phone_fits(page, f"Overview with a typed glucose tile ({theme})")
+                    if shots:
+                        page.screenshot(path=os.path.join(shots, f"232-tile-{width}-{theme}.png"))
+                    t232_axe += axe_check(page, f"Overview with a typed glucose tile, {width} px, {theme}")[0]
+            js("delete document.documentElement.dataset.theme")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…which fits 375 px, and axe-core finds nothing serious, light and dark", not t232_bad and not t232_axe, (t232_bad + t232_axe)[:6])
+            js("switchTab('health')")
+            settle(400)
+            check("…and Body and activity draws glucose typed in with no phone's", js("!!document.getElementById('h-glucose') && G && G.meter.length === 2")
+                  and js("!!document.getElementById('h-oxygen')"), js("[!!document.getElementById('h-glucose'), G && G.meter]"))
+            js("fetch('api/profiles/2/settings/overview.homeTiles', {method: 'DELETE', headers: {'X-Sanguity': '1'}})")
+            undone = js("id => fetch('api/profiles/2/imports/' + id + '/undo', {method: 'POST', headers: {'X-Sanguity': '1'}}).then(r => r.status)", iid232)
+            check("…undone, they're gone", undone == 200 and js("fetch('api/profiles/2/watch').then(r => r.status === 200 ? r.json() : {}).then(w => (w.glucose_readings || []).length + (w.spo2_readings || []).length)") == 0, undone)
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- the profile picker in the top bar (#170): on every page about a profile, each profile by name and
             # your role; the page follows it and keeps its section; the address's ?profile= and this browser follow it

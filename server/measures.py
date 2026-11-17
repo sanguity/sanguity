@@ -5,9 +5,11 @@ the person ticks what they want a clinician or relative to see.
   home_bp        blood pressure taken at home (#180): the readings' count, average and highest, and the readings
   glucose        blood glucose from the phone (#181): each day's lowest to highest and average, a meter's or a
                  continuous monitor's (CGM); for CGM days the share of readings in the standard published ranges,
-                 labelled as the standard, never as anyone's targets
+                 labelled as the standard, never as anyone's targets; and each meter reading typed in at home (#224,
+                 #232), with its meal note
   temperature    body temperature taken at home (#184): count, average, highest, and the readings
-  oxygen         the watch's daily blood oxygen (#184): average and lowest
+  oxygen         the watch's daily blood oxygen (#184): average and lowest; and each reading typed in at home (#224,
+                 #232)
   respiratory    the watch's daily respiratory rate (#226)
   vo2max         the watch's cardio fitness estimates (#226)
   immunizations  the vaccines the records say were given (#179), as a list
@@ -23,9 +25,11 @@ Each section is a block, the same for the summary's page and PDF and for a share
   {"lead": [lines], "cols": [[heading, kind, PDF width]], "rows": [[cell]], "total": rows before any were cut,
    "note": a line under the table, "empty": what to say with no rows, "history": a list of everything, not a period}
 A cell of kind "day" is YYYY-MM-DD, "time" a local wall time YYYY-MM-DDTHH:MM (in the watch summary's own zone, as
-the phone took it), "text" as it is; each page writes dates in its own way. Only the fields named here leave the
-server. Values are in the units of the person making it (Settings → Units, #41): glucose in mg/dL or mmol/L,
-temperatures in °C or °F, weights in lb or kg, heights in cm or feet and inches.
+the phone took it; a reading typed in is a wall time already), "text" as it is; each page writes dates in its own
+way. Only the fields named here leave the server. Values are in the units of the person making it (Settings → Units,
+#41): glucose in mg/dL or mmol/L, temperatures in °C or °F, weights in lb or kg, heights in cm or feet and inches.
+A table's columns can follow what it has (#232): glucose without CGM days has no time-in-ranges columns, and blood
+oxygen has a Readings column only when some were typed in.
 """
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -35,11 +39,12 @@ from . import ecg, glucose, growth, person, watch_store
 SECTIONS = [   # (id, label, what a share link shows: said on the owner's form and the link's page)
     ("home_bp", "Blood pressure at home", "each reading taken at home with a phone app: the date and time, both pressures, "
                                           "the pulse and the device"),
-    ("glucose", "Blood glucose from the phone", "each day's lowest and highest reading and the average, a meter's or a continuous "
-                                                "monitor's (CGM), and for CGM days the time in the standard published ranges"),
+    ("glucose", "Blood glucose at home", "each day's lowest and highest reading and the average, a meter's or a continuous "
+                                                "monitor's (CGM), and for CGM days the time in the standard published ranges; "
+                                                "each reading typed in at home, with its meal note"),
     ("temperature", "Body temperature at home", "each reading taken at home with a phone app: the date and time, the temperature "
                                                 "and the device"),
-    ("oxygen", "Blood oxygen from the watch", "each day's average and lowest reading"),
+    ("oxygen", "Blood oxygen at home", "the watch's average and lowest reading each day, and each reading typed in at home"),
     ("respiratory", "Respiratory rate from the watch", "each day's rate, in breaths a minute"),
     ("vo2max", "Cardio fitness (VO2 max)", "each estimate the watch made"),
     ("immunizations", "Immunizations", "each vaccine the records say was given: the date, the vaccine, the dose and where"),
@@ -90,12 +95,14 @@ class Ctx:
         self.person = person.of(self.cfg)
 
     def local(self, t):
-        """A reading's time (UTC, ISO) as the local wall time it was taken, YYYY-MM-DDTHH:MM, or None."""
+        """A reading's time as the local wall time it was taken, YYYY-MM-DDTHH:MM, or None: a phone's (an instant, ISO
+        with its offset) in the summary's zone; one typed in (#224) or a meter's (no offset) is a wall time already,
+        as the page reads it (dates.js zParse) (#232)."""
         try:
             x = datetime.fromisoformat(str(t).replace("Z", "+00:00"))
         except ValueError:
             return None
-        return (x if x.tzinfo else x.replace(tzinfo=timezone.utc)).astimezone(self.tz).strftime("%Y-%m-%dT%H:%M")
+        return (x.astimezone(self.tz) if x.tzinfo else x).strftime("%Y-%m-%dT%H:%M")
 
     def pts(self, key):
         """A daily metric's [[day, value]], oldest first (numbers only)."""
@@ -124,36 +131,44 @@ def _src(name, app):
 # ---------------------------------------------------------------- each section
 
 TYPED = "Typed in"   # the app of a reading typed in on Sources (#224), as health.js's TYPED
+G_MEAL = {"before": "before a meal", "after": "after a meal", "other": "other"}   # a typed glucose's note (health.js G_MEAL)
 
 
-def _minute(t):
-    """Minutes since the epoch of an ISO time, or None."""
+def _minute(t, tz=timezone.utc):
+    """Minutes since the epoch of an ISO time, or None; one without an offset (typed in, or a meter's) is a wall time in tz."""
     try:
-        return int(datetime.fromisoformat(str(t).replace("Z", "+00:00")).timestamp() // 60)
+        x = datetime.fromisoformat(str(t).replace("Z", "+00:00"))
     except ValueError:
         return None
+    return int((x if x.tzinfo else x.replace(tzinfo=tz)).timestamp() // 60)
 
 
-def _once_typed(rows, values, app):
-    """rows less each one typed in (#224) that a phone sent too: the same values (within .05) within a minute, as the
-    page shows it once (health.js onceTyped). values: the indexes of a row's values; app: the index of its app."""
+def _once_typed(rows, values, app, tz=timezone.utc, within=.05):
+    """rows less each one typed in (#224) that a phone sent too: the same values (within `within`) within a minute, as
+    the page shows it once (health.js onceTyped). values: the indexes of a row's values; app: the index of its app;
+    tz: the summary's zone, for times without an offset."""
     sent = {}
     for r in rows:
-        if r[app] != TYPED and _minute(r[0]) is not None:
-            sent.setdefault(_minute(r[0]), []).append(r)
+        if r[app] != TYPED and _minute(r[0], tz) is not None:
+            sent.setdefault(_minute(r[0], tz), []).append(r)
     def also_sent(r):
-        m = _minute(r[0])
-        return m is not None and any(all(_num(p[i]) is not None and _num(r[i]) is not None and abs(_num(p[i]) - _num(r[i])) < .05
+        m = _minute(r[0], tz)
+        return m is not None and any(all(_num(p[i]) is not None and _num(r[i]) is not None and abs(_num(p[i]) - _num(r[i])) < within
                                          for i in values) for d in (0, -1, 1) for p in sent.get(m + d, []))
     return [r for r in rows if r[app] != TYPED or not also_sent(r)]
 
 
-def _home(c, readings, keep, values, app):
-    """[(local time, reading)] of a vitals list (bp_readings, temp_readings) in the period, newest first, a reading
-    typed in and sent by a phone counted once."""
-    rows = [list(r) + [None] * (app + 1 - len(r)) for r in c.watch.get(readings) or [] if isinstance(r, list) and len(r) >= 2]
+def _rows(c, readings, app):
+    """A readings list's rows (bp_readings, temp_readings, spo2_readings, glucose_readings), padded to the app's index."""
+    return [list(r) + [None] * (app + 1 - len(r)) for r in c.watch.get(readings) or [] if isinstance(r, list) and len(r) >= 2]
+
+
+def _home(c, readings, keep, values, app, rows=None, within=.05):
+    """[(local time, reading)] of a vitals list (bp_readings, temp_readings, spo2_readings) in the period, newest first,
+    a reading typed in and sent by a phone counted once. rows: those to use instead of the list's own."""
+    rows = _rows(c, readings, app) if rows is None else rows
     out = []
-    for r in _once_typed(rows, values, app):
+    for r in _once_typed(rows, values, app, c.tz, within):
         t = c.local(r[0])
         if t and keep(t[:10]):
             out.append((t, r))
@@ -205,9 +220,21 @@ def oxygen(c, keep, most):
         lows = [x[2] for x in days if x[2] is not None]
         lead.append(f"{_s(len(days), 'day')} · average {_n(sum(x[1] for x in days) / len(days), 1)}%" +
                     (f" · lowest {_n(min(lows), 1)}%" if lows else ""))
-    return _block([("Date", "day", 90), ("Average (%)", "text", 90), ("Lowest (%)", "text", None)],
-                  [[d, _n(v, 1), _n(lo, 1)] for d, v, lo in days], lead, "The watch's readings through each day (SpO2), as it measured them.",
-                  "No blood oxygen from the watch in this period.", most)
+    # readings one at a time (#232): typed in at home (#224), [time, %, source, app], one a phone sent too once
+    ones = [(t, _num(r[1]), r) for t, r in _home(c, "spo2_readings", keep, (1,), 3) if _num(r[1]) is not None]
+    if not ones:   # the watch's days only: as before
+        return _block([("Date", "day", 90), ("Average (%)", "text", 90), ("Lowest (%)", "text", None)],
+                      [[d, _n(v, 1), _n(lo, 1)] for d, v, lo in days], lead, "The watch's readings through each day (SpO2), as it "
+                      "measured them, sent by a phone app.", "No blood oxygen in this period.", most)
+    vs, typed = [v for _, v, _ in ones], all(r[3] == TYPED for _, _, r in ones)
+    lead.append(f"{_s(len(ones), 'reading')} {'typed in' if typed else 'one at a time'} · average {_n(sum(vs) / len(vs), 1)}%" +
+                (f" · lowest {_n(min(vs), 1)}%" if len(vs) > 1 else ""))
+    rows = [[d, "Watch, the day's average", _n(v, 1), _n(lo, 1), d + "T~"] for d, v, lo in days]
+    rows += [[t[:10], f"{_src(r[2], r[3])}, {t[11:16]}", _n(v, 1), "", t] for t, v, r in ones]
+    rows.sort(key=lambda x: x[4], reverse=True)   # newest first; a day's average above that day's readings
+    return _block([("Date", "day", 90), ("Readings", "text", 150), ("SpO2 (%)", "text", 80), ("Lowest (%)", "text", None)],
+                  [x[:4] for x in rows], lead, "Sent by a phone app (the watch's readings through each day, as it measured them) "
+                  "or typed in at home, one reading at a time.", "No blood oxygen in this period.", most)
 
 
 def _daily(c, key, keep, most, what, note):
@@ -245,13 +272,20 @@ def glucose_block(c, keep, most):
     cv = lambda v: "" if _num(v) is None else _n(v / glucose.MGDL_PER_MMOL, 1) if mmol else _n(v)
     s0, s1, s2 = ("3.0", "3.9", "10.0") if mmol else ("54", "70", "180")
     col = {k: dict(c.pts("glucose_" + k)) for k in ("avg", "min", "max", "n", "hours", "lt54", "lt70", "in", "gt180")}
-    meter = {}
-    for w, v in (c.metrics.get("glucose_meter") or {}).get("pts") or []:
-        if _day(w) and _num(v) is not None and keep(str(w)[:10]):
-            meter.setdefault(str(w)[:10], []).append(v)
+    # a meter's readings, the phone's ([local time, mg/dL]) and those typed in at home (#224, #232: [time, mg/dL, source,
+    # app, meal]), one typed that the phone sent too once (as the page: the same within .5 mg/dL, or .05 mmol/L)
+    phone = [[str(w), v, None, "phone"] for w, v in (c.metrics.get("glucose_meter") or {}).get("pts") or []
+             if _day(w) and _num(v) is not None]
+    typed = [r for r in _rows(c, "glucose_readings", 4) if _num(r[1]) is not None]   # a phone's among them would be a meter's
+    meter, ones = {}, []
+    for t, r in _home(c, None, keep, (1,), 3, rows=phone + typed, within=.05 * glucose.MGDL_PER_MMOL if mmol else .5):
+        if r[3] == TYPED:
+            ones.append((t, r[1], G_MEAL.get(r[4], "")))
+        else:
+            meter.setdefault(t[:10], []).append(r[1])
     cgm = sorted(d for d in col["avg"] if keep(d))
     rows = []
-    for d in sorted(set(cgm) | set(meter), reverse=True):
+    for d in sorted(set(cgm) | set(meter) | {t[:10] for t, _, _ in ones}, reverse=True):
         if d in col["avg"] and keep(d):
             n, h = int(col["n"].get(d) or 0), _num(col["hours"].get(d))
             rows.append([d, f"CGM: {n}" + (f" in {_n(h, 1)} h" if h is not None else ""),
@@ -261,6 +295,8 @@ def glucose_block(c, keep, most):
             vs = meter[d]
             rows.append([d, f"Meter: {len(vs)}", f"{cv(min(vs))}–{cv(max(vs))}" if len(vs) > 1 else cv(vs[0]),
                          cv(sum(vs) / len(vs)), "", "", "", ""])
+        for t, v, meal in (x for x in ones if x[0][:10] == d):   # each typed in, newest first, with its meal note
+            rows.append([d, f"Typed in, {t[11:16]}" + (f", {meal}" if meal else ""), cv(v), cv(v), "", "", "", ""])
     lead = []
     if cgm:   # the period's CGM days together, each day weighed by its readings
         n = sum(int(col["n"].get(d) or 0) for d in cgm)
@@ -268,13 +304,18 @@ def glucose_block(c, keep, most):
         lead.append(f"{_s(len(cgm), 'CGM day')} · average {cv(share('avg')) if n else ''} {unit} · time in the standard ranges: "
                     f"{_pct(share('in'))} {s1}–{s2}, {_pct(share('lt70'))} below {s1} ({_pct(share('lt54'))} below {s0}), "
                     f"{_pct(share('gt180'))} above {s2}")
-    if meter:
-        vs = [v for x in meter.values() for v in x]
-        lead.append(f"{_s(len(vs), 'meter reading')} · average {cv(sum(vs) / len(vs))} {unit} · lowest {cv(min(vs))}, highest {cv(max(vs))}")
+    if meter or ones:
+        vs, k = [v for x in meter.values() for v in x] + [v for _, v, _ in ones], len(ones)
+        lead.append(f"{_s(len(vs), 'meter reading')}" + (" typed in" if k == len(vs) else f" ({k} typed in)" if k else "") +
+                    f" · average {cv(sum(vs) / len(vs))} {unit} · lowest {cv(min(vs))}, highest {cv(max(vs))}")
+    note = "Sent by a phone app or typed in at home, as the meter or monitor measured them."
+    if not cgm:   # a meter's readings only (#232): no CGM columns, room for each typed reading's time and meal note
+        return _block([("Date", "day", 60), ("Readings", "text", 180), (f"Low–high ({unit})", "text", 100), (f"Average ({unit})", "text", None)],
+                      [r[:4] for r in rows], lead, note.replace("meter or monitor", "meter (finger-stick)"),
+                      "No glucose in this period.", most)
     return _block([("Date", "day", 60), ("Readings", "text", 86), (f"Low–high ({unit})", "text", 86), ("Average", "text", 46),
                    (f"{s1}–{s2}", "text", 56), (f"Below {s1}", "text", 56), (f"Below {s0}", "text", 56), (f"Above {s2}", "text", None)],
-                  rows, lead, STD_NOTE.format(f"{s1}–{s2}", unit, s1, s0) if cgm else
-                  "A meter's (finger-stick) readings, as the phone app sent them.", "No glucose from the phone in this period.", most)
+                  rows, lead, STD_NOTE.format(f"{s1}–{s2}", unit, s1, s0) + " " + note, "No glucose in this period.", most)
 
 
 def immunizations(c, keep, most):
@@ -372,9 +413,10 @@ def offered(c):
     """The sections this profile has something for, in order."""
     has = {
         "home_bp": bool(c.watch.get("bp_readings")),
-        "glucose": any(k.startswith("glucose_") and c.metrics[k].get("pts") for k in c.metrics if isinstance(k, str)),
+        "glucose": any(k.startswith("glucose_") and c.metrics[k].get("pts") for k in c.metrics if isinstance(k, str))
+                   or bool(c.watch.get("glucose_readings")),   # or typed in at home (#232)
         "temperature": bool(c.watch.get("temp_readings")),
-        "oxygen": bool(c.pts("spo2_avg")),
+        "oxygen": bool(c.pts("spo2_avg")) or bool(c.watch.get("spo2_readings")),   # (#232)
         "respiratory": bool(c.pts("resp")),
         "vo2max": bool(c.pts("vo2max")),
         "immunizations": any(isinstance(e, dict) and e.get("k") == "immunization" and not e.get("hidden") for e in c.data.get("events") or []),
