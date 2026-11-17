@@ -28,6 +28,9 @@ and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
   $KEYS_FILE): for any other they are taken out of the upload before it is archived, so they are never kept at all.
   Sexual activity is taken out of every upload. A profile's cycle records are in public/.../cycle.json, never in
   daily.json; turning tracking off, or asking for them to be deleted, deletes them here and in every archived upload.
+- Backups (#227, server/backup.py): the app reads this folder read-only and takes each watch.db and raw/ into its
+  backups. Restoring one leaves them in keys/restore/ (the one folder here the app writes); on start, before anything
+  else, apply_restore() moves what is here to $DATA/before-restore-<time>/ and the backup's in.
 
 One secret per profile (#46). The app makes each profile's secret on its Settings page and writes them all, sealed,
 to $KEYS_FILE (server/watch_keys.py); an upload goes to the profile whose secret signed it. Each profile has a slot:
@@ -45,7 +48,7 @@ encryption, and files sealed with an older key, are re-sealed with the current k
 Run:  python3 receiver.py            (serve on :8080)
       python3 receiver.py --reprocess (rebuild watch.db and daily.json from raw/; with the receiver stopped)
 """
-import gzip, hashlib, hmac, json, os, queue, sqlite3, sys, threading, time, traceback
+import gzip, hashlib, hmac, json, os, queue, shutil, sqlite3, sys, threading, time, traceback
 from datetime import datetime, timedelta, timezone, date as Date
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -1100,6 +1103,40 @@ def reprocess():
         log(f"reprocessed {len(raw_files(slot))} payloads of {slot or 'the first profile'} ({n} with new records)")
 
 
+# ---- a backup's data, restored (#227): server.manage restore leaves it in keys/restore/, and it's moved in on start
+RESTORED = ("watch.db", "raw", "profiles")   # what a backup holds of this folder; public/ is written again from it
+
+
+def restore_dir():
+    return os.path.join(os.path.dirname(KEYS_FILE), "restore")
+
+
+def apply_restore():
+    """Move a restored backup's data in, if server.manage restore left one: what is here now goes to
+    $DATA/before-restore-<time>/ (never deleted), with public/'s files (the folder stays: the app has it mounted by
+    itself), which are written again from the restored databases. Returns that folder, or None."""
+    src = restore_dir()
+    if not os.path.isfile(os.path.join(src, "restore.json")):
+        return None
+    aside = os.path.join(DATA, "before-restore-" + datetime.now().strftime("%Y%m%d-%H%M%S"))
+    while os.path.exists(aside):
+        aside += "-1"
+    os.makedirs(aside)
+    for n in RESTORED + ("watch.db-wal", "watch.db-shm"):
+        if os.path.lexists(os.path.join(DATA, n)):
+            shutil.move(os.path.join(DATA, n), os.path.join(aside, n))
+    pub = os.path.join(DATA, "public")
+    for n in os.listdir(pub) if os.path.isdir(pub) else ():
+        os.makedirs(os.path.join(aside, "public"), exist_ok=True)
+        shutil.move(os.path.join(pub, n), os.path.join(aside, "public", n))
+    for n in RESTORED:
+        if os.path.lexists(os.path.join(src, n)):
+            shutil.move(os.path.join(src, n), os.path.join(DATA, n))
+    shutil.rmtree(src)
+    log(f"restored the phone and watch data from a backup; what was here is in {aside}")
+    return aside
+
+
 def load_key():
     try:
         crypto.keyring.load()
@@ -1110,6 +1147,7 @@ def load_key():
 if __name__ == "__main__":
     os.makedirs(DATA, exist_ok=True)
     load_key()
+    apply_restore()   # a backup's data, restored with server.manage restore (#227)
     if "--reprocess" in sys.argv:
         reprocess(); sys.exit(0)
     if secret() is None and not os.path.isfile(KEYS_FILE):   # fail fast when there's no secret at all

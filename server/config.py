@@ -77,5 +77,8 @@ SHL_TIMEOUT = _int("SHL_TIMEOUT", 20)
 # when set (a receiver behind a reverse proxy), else each PUBLIC_ORIGINS host (or the address the page was opened
 # at) on RECEIVER_PORT.
 WATCH_KEYS = os.environ.get("SANGUITY_WATCH_KEYS", "/srv/watch-keys/receiver-secrets.json")
+# the receiver's whole folder, read-only (#227: compose WATCH_DIR at /srv/watch-store, the released image's /watch): its
+# databases and archived uploads go in backups. Unset, or not there: backups have no phone and watch data.
+WATCH_STORE = os.environ.get("SANGUITY_WATCH_STORE", "")
 RECEIVER_PORT = _int("RECEIVER_PORT", 8731)
 WATCH_UPLOAD_URL = os.environ.get("WATCH_UPLOAD_URL", "").strip()

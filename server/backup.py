@@ -1,16 +1,25 @@
-"""Backups of everything the app keeps in DATA_DIR, and restoring them.
+"""Backups of everything the app keeps in DATA_DIR, and of the watch receiver's folder, and restoring them.
 
 A backup is one archive, sanguity-backup-YYYYMMDD-HHMMSS.tar.gz:
   sanguity.db      a consistent copy made with SQLite's online backup API, so the app can keep running: accounts,
                    records, settings
   profiles/...     each profile's documents and uploads
   build/...        the setup build (what linked profiles are loaded from)
+  watch/...        the watch receiver's data (#227), from its folder (config.WATCH_STORE, mounted read-only): each
+                   profile's database, watch.db or profiles/<slot>/watch.db, and every upload it archived, raw/...
   manifest.json    format, time, database schema version, the SHA-256 of every file above, and the number of rows
-                   in each of the database's tables (from #200; older backups have no counts)
+                   in each of the database's tables (from #200; older backups have no counts); and for the receiver's
+                   data, each database's rows, when the receiver last saved it, and the uploads archived since (#227)
 
 Each file is read once and hashed from those same bytes, so the manifest always matches what was archived. Not in
-it (back these up yourself, see the README): the record exports themselves, the watch receiver's folder, auth/
-and your .env and *.json configuration.
+it (back these up yourself, see the README): the record exports themselves, auth/ and your .env and *.json
+configuration.
+
+The receiver's watch.db is already a consistent snapshot: the receiver keeps its database in memory and writes it
+whole, sealed with the data key, replacing the file at once (os.replace), so the file is copied as it is, still
+sealed, with nothing to lock. Uploads that came after its last save are in raw/, and the receiver folds them in when
+it starts. Its public/ summaries are made again from the database, and keys/ again from the app's, so neither is
+copied. The app never writes the receiver's folder, apart from keys/ (watch_keys.py), which restore() also uses.
 
 check() is the Admin page's "Check a backup" (#200): it restores a backup into a temporary folder beside it, never
 into DATA_DIR, compares what came out with the manifest, and deletes the copy. backup_jobs.py runs it, and create(),
@@ -18,6 +27,8 @@ in the background.
 
 Restoring needs the app stopped (it holds a lock on DATA_DIR/app.lock while running). The data it replaces is
 moved to DATA_DIR/before-restore-<time>/, never deleted, and an older backup's database is upgraded on the next start.
+The receiver's data goes to the receiver's keys/restore/ folder, the one of its folders the app may write; the
+receiver moves it in when it next starts, and what it had to before-restore-<time>/ in its own folder.
 """
 import contextlib, datetime, glob, hashlib, io, json, os, re, shutil, sqlite3, tarfile, tempfile
 
@@ -28,6 +39,13 @@ NAME = re.compile(r"^sanguity-backup-\d{8}-\d{6}\.tar\.gz$")
 CONTENTS = ("profiles", "build")   # folders under DATA_DIR, besides the database
 LOCK_FILE = os.path.join(config.DATA_DIR, "app.lock")
 SNAPSHOT, CHECKING = ".sanguity-snapshot-", ".sanguity-check-"   # working folders in the backups folder, gone when done
+WATCH = "watch"          # the receiver's data in the archive (#227)
+WATCH_STAGE = "restore"   # in the receiver's keys folder: a restore's watch data, moved in when the receiver starts
+STAMP = "%Y%m%d%H%M%S%f"   # the receiver's raw/ names and its "saved" mark (watch/receiver.py)
+# the receiver's tables a check names in words, and the rows each counts. Every table is compared; cycle records (#183)
+# aren't named: the Admin page is for admins, and only a profile's owners and editors may know they're kept
+WATCH_FRIENDLY = {"readings": ("samples", "buckets", "hae_points", "hae_vitals", "glucose"), "sleep": ("sleep", "hae_sleep"),
+                  "workouts": ("exercise",), "ecgs": ("ecg",)}
 
 
 class BackupError(Exception):
@@ -96,6 +114,179 @@ def made_at(path):
     return int(datetime.datetime.strptime(m.group(1), "%Y%m%d-%H%M%S").timestamp())
 
 
+# ---------------------------------------------------------------- the watch receiver's folder (#227)
+
+def _watch_slots(store=None):
+    """{slot: its folder} of every profile the receiver keeps data for: "" (its top folder) and profiles/<slot>/."""
+    store = store if store is not None else config.WATCH_STORE
+    if not store or not os.path.isdir(store):
+        return {}
+    out = {"": store}
+    top = os.path.join(store, "profiles")
+    for n in sorted(os.listdir(top) if os.path.isdir(top) else (), key=lambda n: int(n) if n.isdigit() else -1):
+        if n.isdigit() and os.path.isdir(os.path.join(top, n)):
+            out[n] = os.path.join(top, n)
+    raw = lambda d: os.path.join(d, "raw")
+    return {s: d for s, d in out.items()
+            if os.path.isfile(os.path.join(d, "watch.db")) or (os.path.isdir(raw(d)) and os.listdir(raw(d)))}
+
+
+def _watch_files(store=None):
+    """[(name in the archive, path)] of what a backup takes from the receiver's folder: each slot's watch.db, then its
+    archived uploads (raw/YYYY/MM/DD/*.json.gz), oldest first. Nothing else (public/, keys/, before-restore-*/)."""
+    store = store if store is not None else config.WATCH_STORE
+    out = []
+    for slot, d in _watch_slots(store).items():
+        if os.path.isfile(os.path.join(d, "watch.db")):
+            out.append((os.path.join(d, "watch.db"),))
+        for root, _, names in sorted(os.walk(os.path.join(d, "raw"))):   # by folder: oldest day first
+            out +=[(os.path.join(root, n),) for n in sorted(names) if n.endswith(".json.gz")]
+    return [(WATCH + "/" + os.path.relpath(p, store).replace(os.sep, "/"), p) for (p,) in out]
+
+
+def _watch_slot_of(name):
+    """The slot a watch/ name in the archive belongs to: "" for watch/watch.db and watch/raw/..., else the profile's."""
+    parts = name.split("/")
+    return parts[2] if len(parts) > 3 and parts[1] == "profiles" else ""
+
+
+def _raw_stamp(name):
+    """An archived upload's time, as the receiver's STAMP, from its name (.../raw/YYYY/MM/DD/HHMMSSffffff-....json.gz)."""
+    parts = name.replace(os.sep, "/").split("/")
+    return "".join(parts[-4:-1]) + parts[-1][:12]
+
+
+def _open_watch_db(data):
+    """A receiver's sealed watch.db, opened in memory (the receiver keeps it the same way)."""
+    con = sqlite3.connect(":memory:")
+    try:
+        con.deserialize(crypto.unseal(data))
+    except BaseException:
+        con.close()
+        raise
+    return con
+
+
+def _iso(stamp):
+    try:
+        return datetime.datetime.strptime(stamp, STAMP).replace(tzinfo=datetime.timezone.utc).isoformat(timespec="seconds")
+    except (TypeError, ValueError):
+        return None
+
+
+def _uploads_after(raw, since):
+    """How many uploads in a raw/ folder came after since (a STAMP), looking only at the days from then on."""
+    n = 0
+
+    def names(d):
+        return sorted((x for x in os.listdir(d) if x.isdigit()), reverse=True) if os.path.isdir(d) else []
+    for y in names(raw):
+        if y < since[:4]:
+            break
+        for m in names(os.path.join(raw, y)):
+            if y + m < since[:6]:
+                break
+            for d in names(os.path.join(raw, y, m)):
+                if y + m + d < since[:8]:
+                    break
+                n += sum(1 for f in os.listdir(os.path.join(raw, y, m, d))
+                         if f.endswith(".json.gz") and y + m + d + f[:12] > since)
+    return n
+
+
+def _watch_files_in(d):
+    """A slot folder's archived uploads (names only)."""
+    return [n for _, _, ns in os.walk(os.path.join(d, "raw")) for n in ns if n.endswith(".json.gz")]
+
+
+_saved_cache = {}   # watch.db path -> ((mtime, size), when it was saved): opened again only when it changes
+
+
+def _saved(db, st):
+    """When the receiver last saved a watch.db (its "saved" mark, a STAMP), or None if it can't be read."""
+    sig = (st.st_mtime_ns, st.st_size)
+    hit = _saved_cache.get(db)
+    if hit and hit[0] == sig:
+        return hit[1]
+    try:
+        with open(db, "rb") as f:
+            con = _open_watch_db(f.read())
+        try:
+            saved = _watch_counts(con)[1]
+        finally:
+            con.close()
+    except (OSError, sqlite3.Error, crypto.KeyError_, ValueError):
+        saved = None
+    _saved_cache[db] = (sig, saved)
+    return saved
+
+
+def _store_visible(store):
+    """Whether the app sees the receiver's folder itself: mounted as a whole (compose and the templates since #227,
+    the all-in-one container), or with more in it than public/ and keys/, all that compose files from before mount."""
+    if not store or not os.path.isdir(store):
+        return False
+    return os.path.ismount(store) or any(n not in ("public", "keys") for n in os.listdir(store))
+
+
+def watch_status():
+    """What the next backup takes from the receiver's folder, for the Admin page: {"folder", "visible" (the app sees
+    the folder itself), "found" (data in it), "profiles", "saved" (epoch: the latest save of any profile's database),
+    "after" (uploads newer than their profile's last save, folded in when the receiver starts after a restore),
+    "size" (the databases' bytes)}. Each database is opened once after it changes, for its "saved" mark; only the
+    days of raw/ since then are listed."""
+    slots = _watch_slots()
+    out = {"folder": config.WATCH_STORE or None, "visible": bool(slots) or _store_visible(config.WATCH_STORE),
+           "found": bool(slots), "profiles": len(slots), "saved": None, "after": 0, "size": 0}
+    for d in slots.values():
+        db = os.path.join(d, "watch.db")
+        try:
+            st = os.stat(db)
+        except OSError:
+            st = None
+        since = _saved(db, st) if st else None
+        if st:
+            out["size"] += st.st_size
+        if not since:   # never saved (or unreadable): every upload is still to be folded in
+            out["after"] += len(_watch_files_in(d))
+            continue
+        at = int(datetime.datetime.strptime(since, STAMP).replace(tzinfo=datetime.timezone.utc).timestamp())
+        out["saved"] = max(out["saved"] or 0, at)
+        out["after"] += _uploads_after(os.path.join(d, "raw"), since)
+    return out
+
+
+def _watch_counts(con):
+    """{table: rows} of a receiver's database, and when it was last saved (a STAMP, or None)."""
+    counts = _tables(con)
+    saved = con.execute("SELECT v FROM meta WHERE k='saved'").fetchone() if "meta" in counts else None
+    return counts, saved[0] if saved else None
+
+
+def _live_watch():
+    """Each profile's rows in the receiver's live database, read-only, for the Now column of a check: {slot: {table: rows}}."""
+    out = {}
+    for slot, d in _watch_slots().items():
+        try:
+            with open(os.path.join(d, "watch.db"), "rb") as f:
+                con = _open_watch_db(f.read())
+            try:
+                out[slot] = _tables(con)
+            finally:
+                con.close()
+        except (OSError, sqlite3.Error, crypto.KeyError_, ValueError):
+            continue
+    return out
+
+
+def watch_words(per_slot, uploads=None):
+    """{"readings": rows, "sleep": ..., "uploads": archived uploads} summed over the profiles, from {slot: {table: rows}}."""
+    out = {k: sum((c or {}).get(t, 0) for c in per_slot.values() for t in ts) for k, ts in WATCH_FRIENDLY.items()}
+    if uploads is not None:
+        out["uploads"] = uploads
+    return out
+
+
 def create(dest=None, keep=None, name=None, progress=None):
     """Write a backup into dest (default BACKUP_DIR) and return its path; with keep, delete all but the newest
     keep backups there. name: the file's name (new_name()); progress(done, total): bytes archived so far."""
@@ -112,7 +303,8 @@ def create(dest=None, keep=None, name=None, progress=None):
     hashes, counts, done = {}, {}, [0]
     files = [(root, n) for top in CONTENTS for root, dirs, names in sorted(os.walk(os.path.join(config.DATA_DIR, top)))
              for n in sorted(names) if not n.endswith(".tmp")]
-    total = _size(config.DB_PATH) + sum(_size(os.path.join(r, n)) for r, n in files)
+    watch = _watch_files()   # the receiver's data (#227); none without a receiver
+    total = _size(config.DB_PATH) + sum(_size(os.path.join(r, n)) for r, n in files) + sum(_size(p) for _, p in watch)
 
     def tick(n):   # n more bytes archived
         done[0] += n
@@ -162,8 +354,35 @@ def create(dest=None, keep=None, name=None, progress=None):
                     continue   # removed since the list was made (an upload cleaned up)
                 with f:
                     add_file(os.path.relpath(path, config.DATA_DIR).replace(os.sep, "/"), f)
+            slots = {}   # the receiver's data (#227): each database as it is on disk, sealed, then its uploads
+            for arc, path in watch:
+                slot = slots.setdefault(_watch_slot_of(arc), {"saved": None, "counts": None, "uploads": 0, "after": 0})
+                try:
+                    f = open(path, "rb")
+                except FileNotFoundError:
+                    continue   # an upload rewritten or removed since the list was made
+                with f:
+                    if arc.endswith("/watch.db"):
+                        data = f.read()   # replaced whole by the receiver, so this is one consistent snapshot
+                        add(arc, data)
+                        try:
+                            con = _open_watch_db(data)
+                            try:
+                                slot["counts"], slot["saved"] = _watch_counts(con)
+                            finally:
+                                con.close()
+                        except (sqlite3.Error, crypto.KeyError_, ValueError):
+                            pass   # archived all the same; a check says it can't be read
+                    else:
+                        add_file(arc, f)
+                        slot["uploads"] += 1
+                        if not slot["saved"] or _raw_stamp(arc) > slot["saved"]:
+                            slot["after"] += 1   # came after the receiver's last save: folded in when it starts
+            for slot in slots.values():
+                slot["saved"] = _iso(slot["saved"])
             add("manifest.json", json.dumps({"format": FORMAT, "created": now.isoformat(timespec="seconds"),
-                                             "schema": schema, "files": hashes, "counts": counts}, indent=1).encode())
+                                             "schema": schema, "files": hashes, "counts": counts,
+                                             **({"watch": slots} if slots else {})}, indent=1).encode())
         os.replace(part, final)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):
@@ -214,7 +433,7 @@ def clean_leftovers(dest=None):
 def _safe_name(name):
     parts = name.split("/")
     return (name and not name.startswith("/") and ".." not in parts and "" not in parts
-            and (name in ("sanguity.db", "manifest.json") or parts[0] in CONTENTS))
+            and (name in ("sanguity.db", "manifest.json") or parts[0] in CONTENTS + (WATCH,)))
 
 
 class _reading:
@@ -300,8 +519,42 @@ def _check_key(archive):
                                   "(or add its line to the key file), then restore again.") from None
 
 
+def _extract(tar, m, target):
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with tar.extractfile(m) as src, os.fdopen(fd, "wb") as out:
+        shutil.copyfileobj(src, out)
+
+
+def _stage_watch(archive, manifest, stamp):
+    """The receiver's data from a backup (#227), where the receiver takes it from when it starts: its keys folder's
+    restore/ (written as restore.part/ first, renamed by restore() once the rest is restored), or, when that folder
+    can't be written here, DATA_DIR/watch-restored-<time>/ for the operator to move in by hand. An earlier restore's
+    that the receiver hasn't taken yet goes (this one replaces it). Returns (folder, staged) or (None, False)."""
+    keys = os.path.dirname(config.WATCH_KEYS)
+    stage = os.path.join(keys, WATCH_STAGE)
+    for old in (stage, stage + ".part"):
+        if os.path.isdir(old) and not os.path.islink(old):
+            shutil.rmtree(old)
+    if not any(n.startswith(WATCH + "/") for n in manifest.get("files") or {}):
+        return None, False
+    staged = os.path.isdir(keys) and os.access(keys, os.W_OK)
+    where = stage + ".part" if staged else os.path.join(config.DATA_DIR, f"watch-restored-{stamp}")
+    os.makedirs(where)
+    with tarfile.open(archive, "r:gz") as tar:
+        for m in tar:
+            if m.name.startswith(WATCH + "/"):   # names verify() checked: inside where
+                _extract(tar, m, os.path.join(where, *m.name.split("/")[1:]))
+    with open(os.path.join(where, "restore.json"), "w", encoding="utf-8") as f:   # names and times only
+        json.dump({"backup": os.path.basename(archive), "created": manifest.get("created"),
+                   "profiles": sorted(manifest.get("watch") or {})}, f)
+    return where, staged
+
+
 def restore(archive):
-    """Replace DATA_DIR's database, profiles and build with the archive's. Returns (manifest, where the old data went)."""
+    """Replace DATA_DIR's database, profiles and build with the archive's, and hand the receiver its data (#227).
+    Returns (manifest, where the old data went); manifest["watch_restored"] is {"folder", "staged"} when the backup
+    has the receiver's data (staged: in the receiver's keys/restore/, which it moves in when it next starts)."""
     if _app_is_running():
         raise BackupError("The app is running. Stop it first (docker compose stop app, or stop the app in TrueNAS), "
                           "then restore with: docker compose run --rm --no-deps app python -m server.manage restore ...")
@@ -310,6 +563,7 @@ def restore(archive):
         raise BackupError("This backup was made by a newer version of Sanguity. Update first, then restore.")
     _check_key(archive)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    watch, staged = _stage_watch(archive, manifest, stamp)   # first: it replaces nothing, so a failure leaves all as it was
     aside = os.path.join(config.DATA_DIR, f"before-restore-{stamp}")
     os.makedirs(aside)
     for n in ("sanguity.db", "sanguity.db-wal", "sanguity.db-shm", *CONTENTS):
@@ -317,13 +571,15 @@ def restore(archive):
             shutil.move(os.path.join(config.DATA_DIR, n), os.path.join(aside, n))
     with tarfile.open(archive, "r:gz") as tar:
         for m in tar.getmembers():
-            if m.name == "manifest.json":
+            if m.name == "manifest.json" or m.name.startswith(WATCH + "/"):
                 continue
-            target = os.path.join(config.DATA_DIR, *m.name.split("/"))
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            with tar.extractfile(m) as src, open(target, "wb") as out:
-                shutil.copyfileobj(src, out)
+            _extract(tar, m, os.path.join(config.DATA_DIR, *m.name.split("/")))
     dbm.init()   # an older backup's schema is brought up to date
+    if staged:   # complete: the receiver takes it when it next starts
+        os.replace(watch, watch[:-len(".part")])
+        watch = watch[:-len(".part")]
+    if watch:
+        manifest["watch_restored"] = {"folder": watch, "staged": staged}
     return manifest, aside
 
 
@@ -348,6 +604,59 @@ def _live_counts():
         con.close()
 
 
+def _check_watch(work, manifest, out, bad):
+    """A check's step for the receiver's data (#227), restored under work/watch/: each profile's database opens with
+    this install's key, is intact, and has the rows the manifest says; every upload is there (verify() saw each one's
+    checksum). Sets out["watch"]: {"profiles", "saved" (the latest save), "after" (uploads since, folded in when the
+    receiver starts), "counts": {word: {"backup", "expected"}}, "now": {word: rows in the live data}}, or None."""
+    expected = manifest.get("watch") or {}
+    found = _watch_slots(os.path.join(work, WATCH))
+    if not expected and not found:
+        out["watch"] = None
+        return
+    got, uploads = {}, 0
+    for slot in sorted(set(expected) | set(found), key=lambda s: int(s) if s.isdigit() else -1):
+        who = "the first profile's" if slot == "" else f"profile {slot}'s"
+        want = (expected.get(slot) or {}).get("counts")
+        d = found.get(slot)
+        uploads += len(_watch_files_in(d)) if d else 0
+        db = os.path.join(d, "watch.db") if d else None
+        if not db or not os.path.isfile(db):
+            if want is not None:
+                bad(f"The backup has no phone and watch database for {who} data, though it had one when it was made.")
+            continue
+        try:
+            with open(db, "rb") as f:
+                con = _open_watch_db(f.read())
+            try:
+                ok = con.execute("PRAGMA integrity_check").fetchone()[0]
+                if ok != "ok":
+                    bad(f"The phone and watch database for {who} data is damaged ({ok}).")
+                    continue
+                got[slot] = _watch_counts(con)[0]
+            finally:
+                con.close()
+        except crypto.KeyError_ as e:
+            bad(f"This install's encryption key doesn't open the phone and watch database for {who} data ({e})")
+            continue
+        except (sqlite3.Error, ValueError) as e:
+            bad(f"The phone and watch database for {who} data can't be read ({e}).")
+            continue
+        for t in sorted(set(got[slot]) | set(want or {})) if want is not None else ():
+            if got[slot].get(t) != want.get(t):
+                table = t if t != "cycle" else "one of its tables"   # (#183: not named to admins)
+                bad(f"The phone and watch database for {who} data has {got[slot].get(t, 0)} rows in {table}; it had "
+                    f"{want.get(t, 0)} when the backup was made.")
+    exp_words = watch_words({s: v.get("counts") for s, v in expected.items()},
+                            sum(v.get("uploads") or 0 for v in expected.values())) if expected else {}
+    words = watch_words(got, uploads)
+    saved = [v["saved"] for v in expected.values() if v.get("saved")]
+    out["watch"] = {"profiles": len(set(expected) | set(found)), "saved": max(saved) if saved else None,
+                    "after": sum(v.get("after") or 0 for v in expected.values()),
+                    "counts": {k: {"backup": n, "expected": exp_words.get(k)} for k, n in words.items()},
+                    "now": watch_words(_live_watch(), sum(len(_watch_files_in(d)) for d in _watch_slots().values()))}
+
+
 def check(archive, progress=None):
     """Restore a backup into a temporary folder beside it, check what came out, then delete the copy. It never
     touches DATA_DIR: the copy is made in the backups folder and its database is opened there; the live database
@@ -355,7 +664,7 @@ def check(archive, progress=None):
     "schema", "files", "counts": {table: {"backup": rows, "expected": rows the manifest says}}, "now": {table: rows
     now}}. progress(stage, done, total), stage "checksums", "restoring" or "database"."""
     say = progress or (lambda *a: None)
-    out = {"ok": False, "problems": [], "created": None, "schema": None, "files": 0, "counts": {}, "now": {}}
+    out = {"ok": False, "problems": [], "created": None, "schema": None, "files": 0, "counts": {}, "now": {}, "watch": None}
 
     def bad(why):
         out["problems"].append(why)
@@ -436,6 +745,7 @@ def check(archive, progress=None):
                 if got.get(t) != expected.get(t):
                     bad(f"The backup's database has {got.get(t, 0)} rows in {FRIENDLY.get(t, t)}; it had "
                         f"{expected.get(t, 0)} when the backup was made.")
+        _check_watch(work, manifest, out, bad)   # 5. the receiver's data (#227)
         out["now"] = _live_counts()
         out["ok"] = not out["problems"]
         say("database", 1, 1)

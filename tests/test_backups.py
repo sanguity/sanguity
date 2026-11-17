@@ -2,20 +2,23 @@
 """Backups on the Admin page (#200; server/backup_jobs.py, server/routes_backups.py, server/backup.py): Back up now
 in the background, the schedule's backups (daily, weekly, off), pruning only Sanguity's own backup files, the late
 warning (and a failed backup), Check a backup on a good backup and on damaged ones, that a check never touches the
-live data, permission refusals, the activity log, and what a stop in the middle leaves behind. Fictional data only.
+live data, permission refusals, the activity log, and what a stop in the middle leaves behind; and the watch receiver's
+data in backups (#227): taken as it is, counted by a check, and put back by a restore. Fictional data only.
 
   python3 tests/test_backups.py
 """
-import contextlib, hashlib, io, json, os, shutil, sqlite3, sys, tarfile, tempfile, threading, time, unittest
+import contextlib, hashlib, importlib.util, io, json, os, shutil, sqlite3, sys, tarfile, tempfile, threading, time, unittest
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-backups-test-")
 DATA, FOLDER = os.path.join(TMP, "data"), os.path.join(TMP, "backups")   # the backups folder apart from the data
+STORE = os.path.join(TMP, "watch")   # the watch receiver's folder (#227), as compose's WATCH_DIR: empty until test_9
 os.environ.update(SANGUITY_DATA=DATA, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_BUILD=os.path.join(DATA, "build"),
-                  SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"), SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"),
+                  SANGUITY_WATCH_FILE=os.path.join(STORE, "public", "daily.json"), SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"),
+                  SANGUITY_WATCH_STORE=STORE, SANGUITY_WATCH_KEYS=os.path.join(STORE, "keys", "receiver-secrets.json"),
                   PASSWORD_MIN_LENGTH="15", SANGUITY_KEY_FILE=os.path.join(TMP, "keys", "data_key"), SANGUITY_BACKUPS=FOLDER)
-for d in ("records", "keys"):
+for d in ("records", "keys", "watch/public", "watch/keys"):
     os.makedirs(os.path.join(TMP, d))
 sys.path.insert(0, ROOT)
 
@@ -507,6 +510,167 @@ class Backups(unittest.TestCase):
             os.remove(os.path.join(FOLDER, "notes.txt"))
         finally:
             backup_jobs.start()
+
+    # ---------------------------------------------------------------- the watch receiver's data (#227)
+
+    def test_9_phone_and_watch_data(self):
+        """The receiver's databases and archived uploads go in a backup as they are (sealed); its summaries and keys
+        don't. A check opens and counts them; a restore hands them to the receiver, which moves them in when it starts,
+        keeping what it had aside, and brings the readings back. Without a receiver, nothing changes."""
+        # no receiver data yet: the backup has none, and says so
+        st = self.status()["watch"]   # only public/ and keys/, as a compose file from before #227 mounts them
+        self.assertEqual((st["folder"], st["visible"], st["found"]), (STORE, False, False))
+        os.makedirs(os.path.join(STORE, "raw"))   # the receiver's own folder, empty: seen, nothing in it yet
+        self.assertEqual((self.status()["watch"]["visible"], self.status()["watch"]["found"]), (True, False))
+        os.rmdir(os.path.join(STORE, "raw"))
+        plain = self.backup_now()["file"]
+        self.assertNotIn("watch", backup.verify(os.path.join(FOLDER, plain)))
+        self.assertIsNone(self.check(plain)["result"]["watch"])
+        # the receiver: the first profile's readings, a second profile's, cycle records kept while tracking is on, and
+        # an upload archived after its last save (the receiver stopped before folding it in)
+        rx.DATA, rx.KEYS_FILE = STORE, os.path.join(STORE, "keys", "receiver-secrets.json")
+        first, other = rx.Store(""), rx.Store("5")
+        for store, rows, seq in ((first, BP, 1), (other, BP[:2], 1)):
+            body = json.dumps(ldc(rows, seq)).encode()
+            rx.archive(body, store.slot)
+            self.assertTrue(store.ingest(json.loads(body), hashlib.sha256(body).hexdigest()).endswith("records"))
+        first.db.execute("INSERT INTO cycle(app, kind, id, src, day) VALUES('hc', 'flow', 'c-1', 'Fictional Phone', '2024-03-09')")
+        for store in (first, other):
+            store.save()
+            store.write_summary()
+        late = json.dumps(ldc([("2024-03-12 07:10:00", 118, 76, 64)], 2)).encode()
+        time.sleep(0.01)
+        rx.archive(late, "")
+        st = self.status()["watch"]
+        self.assertEqual((st["found"], st["profiles"], st["after"]), (True, 2, 1), st)
+        self.assertGreater(st["size"], 0)
+
+        run = self.backup_now()
+        path = os.path.join(FOLDER, run["file"])
+        manifest = backup.verify(path)
+        names = set(manifest["files"])
+        self.assertTrue({"watch/watch.db", "watch/profiles/5/watch.db"} <= names, names)
+        self.assertEqual(sum(n.startswith("watch/raw/") for n in names), 2)
+        self.assertEqual(sum(n.startswith("watch/profiles/5/raw/") for n in names), 1)
+        self.assertFalse([n for n in names if n.startswith(("watch/public/", "watch/keys/"))], "summaries and keys stay out")
+        with tarfile.open(path) as tar:   # as it is on disk: sealed with the data key, never opened up
+            data = tar.extractfile("watch/watch.db").read()
+        self.assertEqual(data, read(os.path.join(STORE, "watch.db")))
+        self.assertTrue(data.startswith(crypto.MAGIC))
+        self.assertNotIn(b"Fictional Cuff", data)
+        w = manifest["watch"]
+        self.assertEqual(set(w), {"", "5"})
+        self.assertEqual(w[""]["counts"], backup._tables(first.db))   # every table's rows, as the receiver had them
+        self.assertEqual((w[""]["uploads"], w[""]["after"], w["5"]["uploads"], w["5"]["after"]), (2, 1, 1, 0), w)
+        self.assertEqual(w[""]["counts"]["cycle"], 1, "a backup made while tracking is on has the cycle records")
+        self.assertTrue(w[""]["saved"].endswith("+00:00"))
+
+        # Check a backup counts them, beside the live data
+        res = self.check(run["file"])
+        self.assertTrue(res["ok"], res)
+        cw = res["result"]["watch"]
+        self.assertEqual((cw["profiles"], cw["after"]), (2, 1))
+        live = backup.watch_words({s.slot: backup._tables(s.db) for s in (first, other)})["readings"]
+        self.assertEqual(live, len(BP) + 2)
+        self.assertEqual(cw["counts"]["readings"], {"backup": live, "expected": live})
+        self.assertEqual(cw["counts"]["uploads"], {"backup": 3, "expected": 3})
+        self.assertNotIn("cycle", cw["counts"], "compared, but not named to admins (#183: owners and editors only)")
+        self.assertEqual(cw["now"]["readings"], live)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            manage.run(["check", path])
+        self.assertIn(f"the phone and watch data of 2 profiles ({live} readings, 3 archived uploads)", out.getvalue())
+
+        # damage a checksum can't see: a database with a reading fewer, one that isn't a database, one another key sealed
+        def fewer(name, data):
+            if name != "watch/watch.db":
+                return data
+            con = backup._open_watch_db(data)
+            con.execute("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples LIMIT 1)")
+            con.commit()
+            return crypto.seal(con.serialize())
+        cases = {"fewer": (fewer, "rows in samples"),
+                 "garbage": (lambda n, d: crypto.seal(b"not a database" * 50) if n == "watch/profiles/5/watch.db" else d,
+                             "profile 5's data can't be read")}
+        for label, (change, said) in cases.items():
+            bad = rewrite(path, os.path.join(TMP, f"watch-{label}.tar.gz"), change)
+            got = backup.check(bad)
+            self.assertFalse(got["ok"], label)
+            self.assertTrue(any(said in p for p in got["problems"]), (label, got["problems"]))
+
+        # restore (on a machine with the app stopped): the records as usual, and the receiver's data staged for it
+        changed = json.dumps(ldc([("2024-03-13 07:00:00", 140, 90, 80)], 3)).encode()   # after the backup: put aside
+        first.ingest(json.loads(changed), hashlib.sha256(changed).hexdigest())
+        first.save()
+        after_backup = read(os.path.join(STORE, "watch.db"))
+        public_dir = os.stat(os.path.join(STORE, "public")).st_ino
+        new_data = os.path.join(TMP, "restored-data")
+        with mock.patch.object(backup, "_app_is_running", return_value=False), \
+                mock.patch.multiple(config, DATA_DIR=new_data, DB_PATH=os.path.join(new_data, "sanguity.db")):
+            os.makedirs(new_data)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                manage.run(["restore", path, "--yes"])
+            stage = os.path.join(STORE, "keys", "restore")
+            self.assertIn(f"waiting for the watch receiver in {stage}", out.getvalue())
+            self.assertIn("Restart the receiver", out.getvalue())
+            self.assertTrue(os.path.isfile(os.path.join(new_data, "sanguity.db")))
+            self.assertFalse(os.path.exists(os.path.join(new_data, "watch")), "the receiver's data isn't put in DATA_DIR")
+            self.assertEqual(sorted(os.listdir(stage)), ["profiles", "raw", "restore.json", "watch.db"])
+            self.assertEqual(read(os.path.join(stage, "watch.db")), data)
+            self.assertEqual(read(os.path.join(STORE, "watch.db")), after_backup, "nothing moved until it starts")
+            # where the keys folder can't be written, the data goes beside the records, to be moved in by hand
+            time.sleep(1.05)   # each restore's before-restore-<time>/ is its own
+            with mock.patch.object(config, "WATCH_KEYS", os.path.join(TMP, "no-keys-here", "receiver-secrets.json")):
+                m, aside = backup.restore(path)
+            self.assertFalse(m["watch_restored"]["staged"])
+            self.assertTrue(os.path.isfile(os.path.join(m["watch_restored"]["folder"], "watch.db")))
+            self.assertTrue(m["watch_restored"]["folder"].startswith(os.path.join(new_data, "watch-restored-")))
+            time.sleep(1.05)
+            m, aside = backup.restore(path)   # staged again, as the operator would
+            self.assertTrue(m["watch_restored"]["staged"])
+
+        # the receiver starts: what it had goes aside, the backup's comes in, the summary is written again from it, and
+        # the upload that came after the backup's snapshot is folded in
+        aside = rx.apply_restore()
+        self.assertTrue(os.path.isdir(aside) and os.path.dirname(aside) == STORE)
+        self.assertEqual(read(os.path.join(aside, "watch.db")), after_backup)
+        self.assertTrue(os.path.isfile(os.path.join(aside, "public", "daily.json")))
+        self.assertEqual(os.stat(os.path.join(STORE, "public")).st_ino, public_dir, "public/ stays: the app has it mounted")
+        self.assertFalse(os.path.exists(os.path.join(STORE, "public", "daily.json")))
+        self.assertFalse(os.path.exists(stage))
+        self.assertIsNone(rx.apply_restore(), "once")
+        back = rx.Store("")
+        self.assertEqual(back.catch_up(), 1)
+        back.save()
+        back.write_summary()
+        days = dict(next(m["pts"] for m in json.loads(crypto.read_file(os.path.join(STORE, "public", "daily.json")))["metrics"]
+                         if m["key"] == "bp_n"))
+        self.assertEqual(days, {"2024-03-09": 3, "2024-03-10": 1, "2024-03-11": 1, "2024-03-12": 1}, days)
+        self.assertEqual(backup._tables(rx.Store("5").db), backup._tables(other.db), "the second profile's too")
+
+
+# the watch receiver (#227), loaded as tests/test_receiver_*.py do, and a fictional cuff's readings
+_spec = importlib.util.spec_from_file_location("watch_receiver", os.path.join(ROOT, "watch", "receiver.py"))
+rx = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(rx)
+from server import config   # noqa: E402
+BP = [("2024-03-09 07:05:00", 128, 82, 71), ("2024-03-09 21:40:00", 121, 78, None), ("2024-03-09 22:30:00", 135, 88, 76),
+      ("2024-03-10 07:00:00", 124, 80, 68), ("2024-03-11 06:55:00", 119, 77, 66)]
+
+
+def read(path):
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def ldc(rows, seq):
+    """Life Dashboard Companion's upload of blood pressure readings (local times in America/Chicago, -0600)."""
+    import datetime as dt
+    utc = lambda t: (dt.datetime.fromisoformat(t) + dt.timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {"source": "health_connect", "timezone": "America/Chicago", "sequence": seq, "timestamp": "2024-03-13T13:00:00Z",
+            "blood_pressure": [{"uuid": f"bp-{t}", "time": utc(t), "systolic": s, "diastolic": d, "source": "Fictional Cuff",
+                                **({"pulse": p} if p is not None else {})} for t, s, d, p in rows]}
 
 
 if __name__ == "__main__":

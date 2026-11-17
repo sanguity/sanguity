@@ -198,7 +198,7 @@ def status(db, now=None):
             "inside_data": os.path.realpath(config.BACKUP_DIR).startswith(data + os.sep),
             "next": due_at(db, fs[0] if fs else None, now), "running": _busy(db),
             "runs": [_row(r) for r in db.execute("SELECT * FROM backup_runs ORDER BY id DESC LIMIT 10")],
-            "key_file": config.KEY_FILE}
+            "key_file": config.KEY_FILE, "watch": backup.watch_status()}   # what the next backup takes of the receiver's (#227)
 
 
 # ---------------------------------------------------------------- asking for a backup or a check

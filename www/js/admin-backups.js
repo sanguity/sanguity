@@ -1,11 +1,14 @@
 /* Sanguity · the Admin page's Backups (#200, server/backup_jobs.py): when the newest backup was made, how big it is
    and where it went, with a warning when it's late (on every group of the page, and beside Backups in the sidebar);
    Back up now and Check a backup, which run in the background while this polls how they go; and the schedule.
+   What the backups take of the watch receiver's data, and a check's counts of it (#227).
    Turning the schedule off, or keeping fewer backups than would stay, is asked first (ask(), util.js) and needs the
    fresh check (admin.js fresh()). Uses admin.js's call(), say(), when() and plural(). */
 "use strict";
 const BK_TABLES = [["users", "account"], ["profiles", "profile"], ["events", "record"], ["results", "lab result"],
   ["documents", "document"], ["imports", "import"]];   // the tables a check's result names, in words
+const BK_WATCH = [["readings", "Reading"], ["sleep", "Sleep record"], ["workouts", "Workout"], ["ecgs", "ECG"],
+  ["uploads", "Archived upload"]];   // the watch receiver's data in a check's result (#227)
 const BK_STAGE = {archiving: "Writing the backup", checksums: "Checking every file against its checksum",
   restoring: "Restoring into a temporary folder", database: "Checking the restored database"};
 const bkSize = n => n == null ? "unknown" : n >= 2 ** 30 ? (n / 2 ** 30).toFixed(1) + " GB" : n >= 2 ** 20 ? (n / 2 ** 20).toFixed(1) + " MB"
@@ -37,7 +40,8 @@ function drawBackups(st) {
         st.inside_data ? " (inside the data folder, on the same disk as the data: copy the backups somewhere else too)" : " (BACKUP_DIR in .env)"),
       st.free != null ? el("dt", {text: "Free space"}) : null, st.free != null ? el("dd", {text: bkSize(st.free)}) : null,
       el("dt", {text: "Schedule"}), el("dd", {text: st.schedule === "off" ? "off" : `${st.schedule}, keeping the newest ${st.keep}` +
-        (st.next ? `; next ${st.next <= now ? "now" : when(st.next)}` : "")})));
+        (st.next ? `; next ${st.next <= now ? "now" : when(st.next)}` : "")}),
+      el("dt", {text: "Phone and watch"}), el("dd", {id: "bkWatch", text: bkWatchSays(st.watch)})));
   // the warning on every group, and beside Backups in the sidebar
   const notice = $("#backupNotice");
   notice.hidden = !st.late;
@@ -53,6 +57,17 @@ function drawBackups(st) {
   drawRunning(st.running);
   if (st.running) poll();
   else if (was) finished(st.runs.find(r => r.id === was.id));
+}
+
+/* what the next backup takes of the watch receiver's data (#227, backup.watch_status) */
+function bkWatchSays(w) {
+  if (!w || !w.visible) return "Not in the backups: the app can't see the watch receiver's folder here. If a phone " +
+    "uploads to this server, Backup and restore in the README says what to add to the install.";
+  if (!w.found) return "None yet: the watch receiver hasn't kept anything from a phone.";
+  const saved = w.saved ? `as the receiver last saved it, ${when(w.saved)}` : "though the receiver hasn't saved it yet";
+  return `In the backups: the receiver's data for ${plural(w.profiles, "profile")}, ${saved}, and every upload it archived.` +
+    (w.after ? ` ${plural(w.after, "upload")} came after that save: in the backup as ${w.after === 1 ? "it" : "they"} ` +
+      `arrived, and folded in when the receiver starts after a restore.` : "");
 }
 
 /* ---------------------------------------------------------------- Back up now, and following a run */
@@ -157,7 +172,7 @@ function drawResult(run) {
     box.replaceChildren(el("p", {class: "bk-state bad", text: `✗ The check didn't finish: ${run.message}`}));
     return;
   }
-  const counts = res.counts || {}, now = res.now || {};
+  const counts = res.counts || {}, now = res.now || {}, w = res.watch;
   const rows = BK_TABLES.filter(([t]) => t in counts);
   const words = rows.map(([t, w]) => `${counts[t].backup.toLocaleString()} ${w}${counts[t].backup === 1 ? "" : "s"}`).join(", ");
   box.replaceChildren(
@@ -173,5 +188,21 @@ function drawResult(run) {
         el("th", {scope: "row", text: w[0].toUpperCase() + w.slice(1) + "s"}),
         el("td", {text: counts[t].backup.toLocaleString()}),
         el("td", {text: counts[t].expected == null ? "not recorded" : counts[t].expected.toLocaleString()}),
-        el("td", {text: t in now ? now[t].toLocaleString() : "—"})))))) : null);
+        el("td", {text: t in now ? now[t].toLocaleString() : "—"})))))) : null,
+    run.ok ? el("p", {class: "bk-watch", text: bkWatchChecked(w)}) : null,
+    w && w.counts ? el("div", {class: "tbl-wrap"}, el("table", {class: "tbl bk-counts bk-watch-counts"},
+      el("caption", {text: "Phone and watch data in the backup, and in the receiver's folder now"}),
+      el("thead", {}, el("tr", {}, ...["", "Backup", "Expected", "Now"].map(h => el("th", {text: h})))),
+      el("tbody", {}, ...BK_WATCH.filter(([k]) => k in w.counts).map(([k, label]) => el("tr", {},
+        el("th", {scope: "row", text: label + "s"}),
+        el("td", {text: w.counts[k].backup.toLocaleString()}),
+        el("td", {text: w.counts[k].expected == null ? "not recorded" : w.counts[k].expected.toLocaleString()}),
+        el("td", {text: w.now && k in w.now ? w.now[k].toLocaleString() : "—"})))))) : null);
+}
+/* the watch receiver's data in a good backup (#227): when the receiver had last saved it, and what came after */
+function bkWatchChecked(w) {
+  if (!w) return "It has no phone and watch data: there was none when it was made, or an older version made it.";
+  const saved = w.saved ? `, as the receiver last saved it ${when(Date.parse(w.saved) / 1000)}` : "";
+  return `Its phone and watch data, for ${plural(w.profiles, "profile")}, opens and is intact too${saved}` +
+    (w.after ? `, with ${plural(w.after, "upload")} that came after that save (folded in when the receiver starts after a restore).` : ".");
 }

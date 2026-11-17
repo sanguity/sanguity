@@ -614,7 +614,9 @@ that ran and found the backup damaged is `done` with `ok` 0 and what it found in
 before the database is copied, so a database restored from that backup knows its own row; at start-up, rows left
 running are marked done if their file was finished, failed otherwise. The newest 100 rows are kept. Nothing here is
 health information (file names, sizes, row counts), so nothing is encrypted. The schedule and how many backups to
-keep are in `meta` (`backup.schedule`, `backup.keep`).
+keep are in `meta` (`backup.schedule`, `backup.keep`). A backup also holds the watch receiver's data (#227, see
+[the watch receiver's own database](#the-watch-receivers-own-database)); a check's `result` then has its counts too,
+cycle records compared but not named (only a profile's owners and editors may know they're kept).
 
 ```mermaid
 erDiagram
@@ -645,8 +647,17 @@ The phone receiver (`watch/receiver.py`) keeps a database of its own per profile
 `WATCH_DIR/profiles/<id>/watch.db`), apart from `sanguity.db`: held in memory and saved whole, sealed with the data key,
 after uploads; `raw/` beside it keeps every upload, sealed too, and `--reprocess` builds the database again from it.
 It has no numbered steps: each table is made if missing (`CREATE TABLE IF NOT EXISTS`) when the receiver starts, and
-what a new table needs from earlier uploads is read from `raw/` once (marked in its `meta` table). The app reads only
-the daily summary it writes (`daily.json`).
+what a new table needs from earlier uploads is read from `raw/` once (marked in its `meta` table). The app reads the
+daily summary it writes (`daily.json`), and, for backups (#227), the receiver's folder read-only (`config.WATCH_STORE`).
+
+**In backups (#227).** Each `watch.db` is copied byte for byte, still sealed: the receiver replaces the file whole
+(`os.replace`) when it saves, so the file is always one consistent snapshot and there's nothing to lock. Then every
+upload in `raw/`, so those that came after the last save (its `meta` row `saved`) are there too. The manifest has, per
+profile, every table's rows, when it was saved and how many uploads came after; **Check a backup** opens each copy
+with the key, runs `integrity_check` and compares the rows. `public/` and `keys/` aren't copied: they're written again
+from the database and from the app's. A restore leaves the copy in `keys/restore/` (with `restore.json`); the
+receiver, at start, moves `watch.db`, `raw/`, `profiles/` and the files of `public/` (not the folder, which the app
+has mounted) to `before-restore-<time>/` and the backup's in, then folds in the uploads after its last save.
 
 **Blood glucose (#181)** is `glucose(app, src, id, t, wall, v, kind)`: one row a reading, in mg/dL, from Health
 Connect (`hc`, `id` its uuid) or Health Auto Export (`hae`, `id` its time), with its local time and, when the reading
@@ -661,8 +672,8 @@ because:
 
 What that costs, measured for a year of one sensor (`tests/test_glucose.py`): about **10 MB** in `watch.db` with
 Health Connect's ids (7 MB from Health Auto Export), and about **3 MB** of gzipped uploads in `raw/`; the summary takes
-0.1 s to make. The page gets the days only, about 70 KB a year in `daily.json`. Neither file is in the app's backups
-(#200): `WATCH_DIR` is backed up as the README's **Backup and restore** says, and the per-day summaries it hands the
+0.1 s to make. The page gets the days only, about 70 KB a year in `daily.json`. Both `watch.db` and `raw/` are in the
+app's backups since #227 (above), so a CGM adds about 13 MB a year to each backup; the per-day summaries it hands the
 app aren't stored in `sanguity.db`. If years of readings ever outgrow memory, readings older than a few months could
 be folded into per-day rows (nothing older is sent again); that isn't needed yet.
 

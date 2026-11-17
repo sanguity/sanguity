@@ -66,7 +66,7 @@ services:
       - ${DATA_DIR:-./data}:/data
       - ${BACKUP_DIR:-./backups}:/backups   # backups go here (Admin → Backups, or server.manage backup)
       - ${RECORDS_DIR:-./records}:/srv/records:ro
-      - ${WATCH_DIR:-./watch-data}/public:/watch/public:ro
+      - ${WATCH_DIR:-./watch-data}:/watch:ro   # read-only: the summaries in public/, and its data for backups (#227)
       - ${WATCH_DIR:-./watch-data}/keys:/watch/keys   # the app writes the receiver's per-profile secrets here (#46)
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3)"]

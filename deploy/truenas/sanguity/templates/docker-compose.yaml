@@ -40,7 +40,8 @@
 {% do app.add_storage("/data", values.storage.data) %}
 {% do app.add_storage("/backups", values.storage.backups) %}
 {% do app.add_storage("/srv/records", records_ro) %}
-{# the whole watch dataset: the app reads public/ and writes keys/, the receiver's per-profile secrets (#46) #}
+{# the whole watch dataset: the app reads public/ and, for backups, the receiver's data (#227), and writes keys/,
+   the receiver's per-profile secrets (#46) #}
 {% do app.add_storage("/watch", values.storage.watch) %}
 {% for store in values.storage.additional_storage %}
   {% do app.add_storage(store.mount_path, store) %}
