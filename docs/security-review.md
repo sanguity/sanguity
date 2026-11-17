@@ -354,3 +354,23 @@ The issue asked for these items in particular.
 | 14.5.2 | Origin not the only access control | Met | Origin is checked in addition to the custom header and the session. |
 | 14.5.3 | CORS allow-list | Met | No CORS headers at all. |
 | 14.5.4 | Proxy headers only from trusted proxies | Met | See [Deployment defaults](#deployment-defaults). `X-Forwarded-For` is set by nginx itself, and uvicorn trusts it from the compose network only. |
+
+## Later features: share links (#47)
+
+The first way into records without an account, so it follows the patterns above (`server/share_links.py`,
+`server/routes_share_links.py`, tests in `tests/test_share_links.py`):
+
+- **Token (3.2.2, 6.3.1, 3.1.1, 8.1.3):** 256 random bits (`security.new_token`), shown once; only its SHA-256 is
+  stored. It sits after the `#` of `share.html#…`, which browsers never send, and the page posts it in the request
+  body, so it's in no URL, server log or `Referer`. The security log never holds it.
+- **Least privilege (4.1.3, 4.2.1):** only owners make, list and revoke links. A link shows only the sections, labs and
+  dates chosen, built on the server from named fields; no documents, report text, settings or other profile, and no
+  route that changes anything. It works only until it expires (at most 90 days) or is revoked, and only while its
+  maker is still an owner with an active account, checked at every view.
+- **Fails securely (4.1.5, 7.4.1):** a wrong, malformed, expired or revoked token, and a body that isn't JSON, all get
+  the same bare 404.
+- **Anti-automation (2.2.1, 8.1.4):** `security.Throttle` per address for wrong tokens and per link for every view.
+- **Sessions (3.4):** the view reads no cookie and sets none; nginx strips cookies before it.
+- **Logging (7.1.1, 8.3.5):** every view is in the profile's activity, readable by its owners, with the viewer's address
+  and never the token; refused tokens are a `share.refused` security event.
+- **Pages (14.4.3):** `share.html` is served under the same CSP as the other pages, with no inline script.

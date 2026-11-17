@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 25**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 26**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -543,6 +543,38 @@ erDiagram
 
 One row per profile and user (unique).
 
+## Share links
+
+A **share link** (`server/share_links.py`, #47) lets someone without an account read part of a profile: the
+sections, labs and date range an owner chose, read-only, until it expires (at most 90 days) or an owner revokes it.
+As for sessions and calendar feeds, only the SHA-256 of the link's token is kept, in `token_hash`. A link works only
+while the owner who made it is still an owner with an account that isn't disabled; if that account is removed,
+`created_by` becomes `NULL` and the link stops. Every view is counted here and logged in the profile's activity
+(`link`, actor "share link", with the viewer's address). Revoked and expired links stay listed for 30 days, then
+are deleted.
+
+```mermaid
+erDiagram
+    profiles ||--o{ share_links : "is shown through"
+    users ||--o{ share_links : "made"
+
+    share_links {
+        int id PK
+        int profile_id FK
+        int created_by FK "NULL: the account is gone, so the link is too"
+        text created_name "the username then"
+        text token_hash "SHA-256 of the link's token, unique"
+        text label "🔒 what the owners call it"
+        text scope "🔒 JSON: sections, labs, from, to"
+        int created
+        int expires
+        int revoked "NULL while it works"
+        text revoked_name
+        int views
+        int last_viewed
+    }
+```
+
 ## What is encrypted
 
 | Table | Encrypted columns |
@@ -558,6 +590,7 @@ One row per profile and user (unique).
 | `edits` | `target_key`, `other_key`, `value` |
 | `same_results` | `a_key`, `b_key`, `value` |
 | `journal` | `body` |
+| `share_links` | `label`, `scope` |
 | `labmaps` | `source`, `target` |
 | `settings` | `sealed` |
 | `smart_clients` | `secret` |
@@ -580,8 +613,8 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries, settings, calendar feeds, undo history, its activity and outside contacts | the original exports |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries, settings, calendar feeds, share links, undo history, its activity and outside contacts | the original exports |
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links and journal entries (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |
-| An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, its calendar feeds, pending sign-ins | activity, uploads, jobs, journal entries and lab-name matches it made (their links become `NULL`) |
+| An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, its calendar feeds, pending sign-ins | activity, uploads, jobs, journal entries, lab-name matches and share links it made (their links become `NULL`; such a share link stops working) |

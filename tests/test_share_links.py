@@ -1,0 +1,369 @@
+#!/usr/bin/env python3
+"""Share links (server/share_links.py, server/routes_share_links.py, issue #47): a link shows only the sections, labs
+and date range its owner chose, and nothing else (no documents, no report text, no other section or profile); it is
+read-only; only its token's hash is stored, with its name and scope encrypted; it stops working when it expires, when
+it's revoked, or when its maker stops being an owner; anything refused is the same bare 404; viewers get no cookie
+and theirs are ignored; views are throttled; every view is logged in the profile's activity without the token; only
+owners make, list and revoke links. Fictional data only.
+
+  python3 tests/test_share_links.py
+"""
+import json, os, re, sys, tempfile, unittest
+from datetime import date, timedelta
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TMP = tempfile.mkdtemp(prefix="sanguity-share-test-")
+os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_BUILD=os.path.join(TMP, "no-build"),
+                  SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"), SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"),
+                  PASSWORD_MIN_LENGTH="15", SANGUITY_KEY_FILE=os.path.join(TMP, "keys", "data_key"))
+os.makedirs(os.path.join(TMP, "records"))
+os.makedirs(os.path.join(TMP, "keys"))
+sys.path.insert(0, ROOT)
+
+import logging, shutil   # noqa: E402
+
+from fastapi.testclient import TestClient   # noqa: E402
+
+from server import accounts, crypto, db as dbm, main, profiles as prof, records, share_links   # noqa: E402
+
+logging.getLogger("sanguity.security").setLevel(logging.ERROR)
+H = {"X-Sanguity": "1"}
+PW = {"robin": "harbour lantern pebble crow", "kim": "seventeen quiet orange kites", "lee": "maple tunnel brisk saddle",
+      "ash": "willow kettle amber stone", "zed": "a stranger to every profile"}
+TODAY = date.today()
+D = lambda n: (TODAY + timedelta(days=n)).isoformat()
+
+# a fictional person: visits inside and outside the range, two labs, a medication, a procedure, claims, appointments
+DATA = {"built": "2026-11-01T00:00:00+00:00", "source": "fictional",
+        "events": [{"id": 1, "t": D(-30) + "T09:00:00", "k": "visit", "title": "Annual physical", "sub": "Dr. Fictional Example"},
+                   {"id": 2, "t": D(-400), "k": "visit", "title": "Long-ago visit OLDVISIT", "sub": ""},
+                   {"id": 3, "t": D(-60), "k": "procedure", "title": "Fictional colonoscopy", "sub": ""},
+                   {"id": 4, "t": D(-90), "k": "med", "title": "Examplecillin 250 mg", "sub": ""},
+                   {"id": 5, "t": D(-20), "k": "imaging", "title": "Chest X-ray", "sub": ""},
+                   {"id": 6, "t": D(-10), "k": "visit", "title": "Hidden visit HIDDENVISIT", "sub": "", "hidden": True}],
+        "details": {"3": {"text": "REPORTTEXT the full report of the procedure"}, "4": {"instructions": "Take one daily", "status": "active"},
+                    "1": {"note": "DETAILNOTE private visit note"}},
+        "costs": [{"id": 1, "d": D(-30), "billed": 200.0, "paid": 150.0, "owe": 50.0, "title": "Office visit CLAIMTITLE", "prov": "Riverside Clinic"}],
+        "labs": [{"name": "Hemoglobin", "unit": "g/dL", "panel": "CBC", "n": 2, "txt": [],
+                  "pts": [[D(-30) + "T08:00:00", 11.1, 12, 16, "L"], [D(-400) + "T08:00:00", 13.5, 12, 16, ""]]},
+                 {"name": "SodiumSECRET", "unit": "mmol/L", "panel": "BMP", "n": 1, "txt": [], "pts": [[D(-30) + "T08:00:00", 140, 135, 145, ""]]}],
+        "upcoming": [{"t": D(12) + "T10:30:00", "title": "Follow-up visit", "who": "Dr. Fictional Example", "where": "Riverside Clinic"},
+                     {"t": D(-3), "title": "Already happened PASTAPPT", "who": "", "where": ""}]}
+
+
+def read(*path):
+    with open(os.path.join(ROOT, *path), encoding="utf-8") as f:
+        return f.read()
+
+
+def client():
+    return TestClient(main.app, base_url="http://testserver")
+
+
+class ShareLinks(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.ctx = client().__enter__()
+        db = dbm.connect()
+        cls.uid = {n: accounts.create(db, n, password=pw)[0] for n, pw in PW.items()}
+        cls.pid = prof.create_profile(db, "Robin Example (fictional)", owner_id=cls.uid["robin"])
+        cls.other = prof.create_profile(db, "Another (fictional)", owner_id=cls.uid["robin"])
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (cls.uid["kim"], cls.pid))
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (cls.uid["lee"], cls.pid))
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'owner')", (cls.uid["ash"], cls.pid))
+        with dbm.transaction(db):
+            records.store(db, cls.pid, DATA, "dataset")
+            records.store(db, cls.other, {**DATA, "events": [{"id": 1, "t": D(-5), "k": "visit", "title": "OTHERPROFILE visit", "sub": ""}],
+                                          "labs": [], "costs": [], "upcoming": []}, "dataset")
+        db.close()
+        cls.c = {}
+        for n in PW:
+            c = client()
+            r = c.post("/api/login", json={"username": n, "password": PW[n]}, headers=H)
+            assert r.status_code == 200, r.text
+            cls.c[n] = c
+        r = cls.c["robin"].post(f"/api/profiles/{cls.pid}/journal", json={"kind": "symptom", "t": D(-15), "title": "Headache",
+                                                                          "severity": 4, "note": "JOURNALNOTE after lunch"}, headers=H)
+        assert r.status_code == 201, r.text
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.ctx.__exit__(None, None, None)
+        shutil.rmtree(TMP, True)
+
+    def setUp(self):
+        share_links.throttle._fails.clear()
+
+    def make(self, who="robin", pid=None, status=200, **body):
+        body = {"sections": ["visits"], **body}
+        r = self.c[who].post(f"/api/profiles/{pid or self.pid}/links", json=body, headers=H)
+        self.assertEqual(r.status_code, status, r.text)
+        if status != 200:
+            return r
+        j = r.json()
+        self.assertTrue(j["path"].startswith("share.html#"))
+        return j["path"].split("#", 1)[1], j["link"]
+
+    def view(self, token, status=200, c=None):
+        r = (c or client()).post("/api/share/view", json={"token": token}, headers=H)
+        self.assertEqual(r.status_code, status, r.text)
+        return r
+
+    def assert_bare(self, r):
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.text, "Not found.\n")
+        self.assertTrue(r.headers["content-type"].startswith("text/plain"))
+        self.assertNotIn("set-cookie", r.headers)
+
+    # ---------------------------------------------------------------- what a link shows
+
+    def test_only_the_chosen_sections_labs_and_range(self):
+        token, link = self.make(label="Dr. Rivera", sections=["visits", "results", "procedures"], labs=["Hemoglobin"],
+                                **{"from": D(-100), "to": D(0)})
+        self.assertEqual(link["state"], "active")
+        r = self.view(token)
+        j = r.json()
+        self.assertEqual(j["profile"], "Robin Example (fictional)")
+        self.assertEqual([s["id"] for s in j["sections"]], ["visits", "results", "procedures"])
+        for k in ("medications", "costs", "journal", "appointments", "events", "details", "labs", "imports", "documents"):
+            self.assertNotIn(k, j)
+        self.assertEqual([v["title"] for v in j["visits"]], ["Annual physical"])
+        self.assertEqual(j["visits"][0]["sub"], "Dr. Fictional Example")
+        self.assertEqual(sorted(p["title"] for p in j["procedures"]), ["Chest X-ray", "Fictional colonoscopy"])
+        self.assertEqual([s["name"] for s in j["results"]], ["Hemoglobin"])
+        pts = j["results"][0]["results"]
+        self.assertEqual(len(pts), 1, "only the result inside the range")
+        self.assertEqual((pts[0]["value"], pts[0]["range"], pts[0]["flag"]), ("11.1", "12–16", "Low"))
+        for word in ("OLDVISIT", "HIDDENVISIT", "SodiumSECRET", "REPORTTEXT", "DETAILNOTE", "CLAIMTITLE", "Examplecillin",
+                     "JOURNALNOTE", "Follow-up", "OTHERPROFILE", "Dr. Rivera", token):
+            self.assertNotIn(word, r.text)
+
+    def test_every_section(self):
+        token, _ = self.make(sections=list(share_links.SECTION_IDS), **{"from": D(-100)})
+        j = self.view(token).json()
+        self.assertEqual(j["medications"], [{"name": "Examplecillin 250 mg", "instructions": "Take one daily", "since": D(-90),
+                                             "until": None, "status": "active"}])
+        self.assertEqual([a["title"] for a in j["appointments"]], ["Follow-up visit"], "only appointments from today on")
+        self.assertEqual(j["journal"][0]["note"], "JOURNALNOTE after lunch")
+        self.assertNotIn("by", j["journal"][0], "not who wrote it")
+        self.assertEqual(j["costs"][0]["owe"], 50.0)
+        self.assertEqual(sorted(s["name"] for s in j["results"]), ["Hemoglobin", "SodiumSECRET"], "no labs picked: every lab")
+        self.assertNotIn("REPORTTEXT", json.dumps(j))
+        self.assertNotIn("DETAILNOTE", json.dumps(j))
+
+    def test_no_end_date_and_no_start(self):
+        token, _ = self.make(sections=["visits"])
+        self.assertEqual(sorted(v["title"] for v in self.view(token).json()["visits"]), ["Annual physical", "Long-ago visit OLDVISIT"])
+
+    # ---------------------------------------------------------------- the token and what's stored
+
+    def test_only_the_hash_is_stored_and_the_rest_is_encrypted(self):
+        token, link = self.make(label="Dr. Rivera", sections=["results"], labs=["Hemoglobin"])
+        db = dbm.connect()
+        try:
+            row = dict(db.execute("SELECT * FROM share_links WHERE id=?", (link["id"],)).fetchone())
+            dump = json.dumps(row)
+            self.assertNotIn(token, dump)
+            self.assertNotIn("Rivera", dump)
+            self.assertNotIn("Hemoglobin", dump)
+            self.assertTrue(row["label"].startswith(crypto.FIELD) and row["scope"].startswith(crypto.FIELD))
+            self.assertEqual(len(row["token_hash"]), 64)
+            self.assertGreaterEqual(len(token), 43, "256 bits")
+        finally:
+            db.close()
+        listed = self.c["robin"].get(f"/api/profiles/{self.pid}/links").json()
+        self.assertNotIn(token, json.dumps(listed))
+        self.assertIn("Hemoglobin", listed["labs"])
+        self.assertEqual([s["id"] for s in listed["sections"]], share_links.SECTION_IDS)
+
+    def test_no_cookie_is_set_and_none_is_read(self):
+        token, _ = self.make()
+        r = self.view(token)
+        self.assertNotIn("set-cookie", r.headers)
+        self.assertEqual(r.headers["cache-control"], "no-store")
+        self.assertEqual(r.headers["referrer-policy"], "no-referrer")
+        # a signed-in browser opening it is still just a holder of the link: the view is logged as the link, not them
+        self.view(token, c=self.c["kim"])
+        log = self.c["robin"].get(f"/api/profiles/{self.pid}/activity?action=link").json()
+        self.assertEqual(log[0]["actor"], "share link")
+        self.assertIsNone(log[0]["actor_id"])
+        self.assertFalse(log[0]["actor_removed"])
+
+    # ---------------------------------------------------------------- refusals: always the same bare 404
+
+    def test_wrong_malformed_and_missing_tokens(self):
+        token, _ = self.make()
+        for bad in [token[:-1] + ("A" if token[-1] != "A" else "B"), "x" * 43, "short", "x" * 200, "../../etc", ""]:
+            self.assert_bare(self.view(bad, 404))
+        share_links.throttle._fails.clear()
+        for body in [b"not json", b"[1, 2]", b'{"token": 5}', b"{}", b'{"token": "' + b"a" * 2000 + b'"}']:
+            r = client().post("/api/share/view", content=body, headers={**H, "Content-Type": "application/json"})
+            self.assert_bare(r)
+        self.assertEqual(client().get("/api/share/view").status_code, 405)
+        self.assertEqual(client().post("/api/share/view", json={"token": token}).status_code, 403, "the cross-site check applies")
+
+    def test_revoked_expired_and_maker_no_longer_owner(self):
+        token, link = self.make(who="ash")
+        self.view(token)
+        r = self.c["robin"].delete(f"/api/profiles/{self.pid}/links/{link['id']}", headers=H)   # any owner can revoke
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["link"]["state"], "revoked")
+        self.assertEqual(r.json()["link"]["revoked_by"], "robin")
+        self.assert_bare(self.view(token, 404))
+        self.assertEqual(self.c["robin"].delete(f"/api/profiles/{self.pid}/links/{link['id']}", headers=H).status_code, 404)
+
+        token, link = self.make()
+        db = dbm.connect()
+        try:
+            db.execute("UPDATE share_links SET expires=? WHERE id=?", (dbm.now() - 1, link["id"]))
+            self.assert_bare(self.view(token, 404))
+            states = {l["id"]: l["state"] for l in self.c["robin"].get(f"/api/profiles/{self.pid}/links").json()["links"]}
+            self.assertEqual(states[link["id"]], "expired")
+
+            token, link = self.make(who="ash")
+            db.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=?", (self.uid["ash"], self.pid))
+            self.assert_bare(self.view(token, 404))
+            db.execute("UPDATE memberships SET role='owner' WHERE user_id=? AND profile_id=?", (self.uid["ash"], self.pid))
+            self.view(token)
+            db.execute("UPDATE users SET disabled=1 WHERE id=?", (self.uid["ash"],))
+            self.assert_bare(self.view(token, 404))
+            db.execute("UPDATE users SET disabled=0 WHERE id=?", (self.uid["ash"],))
+            self.view(token)
+        finally:
+            db.close()
+
+    def test_throttled(self):
+        for _ in range(share_links.ShareThrottle.FREE["bad"]):
+            self.view("y" * 43, 404)
+        token, _ = self.make()
+        r = self.view(token, 429)
+        self.assertIn("retry-after", r.headers)
+        share_links.throttle._fails.clear()
+        for _ in range(share_links.ShareThrottle.FREE["link"]):
+            self.view(token)
+        self.view(token, 429)
+
+    # ---------------------------------------------------------------- logging
+
+    def test_every_view_is_logged_without_the_token(self):
+        token, link = self.make(label="For Mum")
+        for _ in range(3):
+            self.view(token)
+        log = self.c["robin"].get(f"/api/profiles/{self.pid}/activity?action=link").json()
+        views = [e for e in log if e["detail"].get("change") == "view" and e["detail"].get("link") == link["id"]]
+        self.assertEqual(len(views), 3)
+        self.assertEqual(views[0]["detail"]["label"], "For Mum")
+        self.assertTrue(views[0]["ip"])
+        made = [e for e in log if e["detail"].get("change") == "create" and e["detail"].get("link") == link["id"]]
+        self.assertEqual(made[0]["actor"], "robin")
+        self.assertNotIn(token, json.dumps(log))
+        listed = {l["id"]: l for l in self.c["robin"].get(f"/api/profiles/{self.pid}/links").json()["links"]}
+        self.assertEqual(listed[link["id"]]["views"], 3)
+        self.assertIsNotNone(listed[link["id"]]["last_viewed"])
+
+    def test_the_security_log_never_holds_a_token(self):
+        seen = []
+        h = logging.Handler()
+        h.emit = lambda rec: seen.append(rec.getMessage())
+        lg = logging.getLogger("sanguity.security")
+        lg.addHandler(h)
+        old = lg.level
+        lg.setLevel(logging.INFO)
+        try:
+            token, _ = self.make()
+            self.view(token)
+            self.view("z" * 43, 404)
+        finally:
+            lg.removeHandler(h)
+            lg.setLevel(old)
+        self.assertTrue(any("share.refused" in m for m in seen))
+        self.assertFalse(any(token in m or "z" * 43 in m for m in seen))
+
+    # ---------------------------------------------------------------- who manages links, and what they may ask for
+
+    def test_only_owners_manage_links(self):
+        token, link = self.make()
+        for who, status in (("kim", 403), ("lee", 403), ("zed", 404)):
+            self.assertEqual(self.c[who].get(f"/api/profiles/{self.pid}/links").status_code, status, who)
+            self.make(who=who, status=status)
+            self.assertEqual(self.c[who].delete(f"/api/profiles/{self.pid}/links/{link['id']}", headers=H).status_code, status, who)
+        self.assertEqual(client().get(f"/api/profiles/{self.pid}/links").status_code, 401)
+        # a link of one profile can't be revoked through another
+        self.assertEqual(self.c["robin"].delete(f"/api/profiles/{self.other}/links/{link['id']}", headers=H).status_code, 404)
+        self.view(token)
+
+    def test_checks_what_it_is_asked_for(self):
+        for body in ({"sections": []}, {"sections": ["everything"]}, {"sections": ["visits"], "labs": ["Hemoglobin"]},
+                     {"from": D(0), "to": D(-5)}, {"from": "2026-02-30"}, {"from": "yesterday"}, {"hours": 0},
+                     {"hours": share_links.MAX_HOURS + 1}, {"label": "x" * 81}):
+            self.make(status=400, **body)
+        self.make(status=422, hours="a week")
+        token, link = self.make(hours=1)
+        self.assertLessEqual(link["expires"] - link["created"], 3600)
+
+    def test_at_most_so_many_working_links(self):
+        db = dbm.connect()
+        try:
+            db.execute("UPDATE share_links SET revoked=? WHERE profile_id=?", (dbm.now(), self.other))
+        finally:
+            db.close()
+        for _ in range(share_links.MAX_ACTIVE):
+            self.make(pid=self.other)
+        r = self.make(pid=self.other, status=400)
+        self.assertIn("Revoke one first", r.json()["detail"])
+        db = dbm.connect()
+        try:
+            db.execute("UPDATE share_links SET revoked=? WHERE profile_id=?", (dbm.now(), self.other))
+        finally:
+            db.close()
+        self.make(pid=self.other)
+
+    def test_ended_links_are_pruned_after_a_while(self):
+        token, link = self.make()
+        db = dbm.connect()
+        try:
+            db.execute("UPDATE share_links SET revoked=? WHERE id=?", (dbm.now() - (share_links.KEEP_ENDED_DAYS + 1) * 86400, link["id"]))
+            self.make()   # (its row id may be the pruned one's again)
+            from server import security as sec
+            self.assertIsNone(db.execute("SELECT 1 FROM share_links WHERE token_hash=?", (sec.token_hash(token),)).fetchone())
+        finally:
+            db.close()
+
+    def test_deleting_the_profile_deletes_its_links(self):
+        db = dbm.connect()
+        try:
+            pid = prof.create_profile(db, "Short-lived (fictional)", owner_id=self.uid["robin"])
+        finally:
+            db.close()
+        token, _ = self.make(pid=pid)
+        r = self.c["robin"].request("DELETE", f"/api/profiles/{pid}", json={"confirm_name": "Short-lived (fictional)"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assert_bare(self.view(token, 404))
+        db = dbm.connect()
+        try:
+            self.assertIsNone(db.execute("SELECT 1 FROM share_links WHERE profile_id=?", (pid,)).fetchone())
+        finally:
+            db.close()
+
+    # ---------------------------------------------------------------- the page and the web server
+
+    def test_page_and_nginx_routes(self):
+        html = read("www", "share.html")
+        self.assertIn('<script src="js/share.js"></script>', html)
+        self.assertIn('<script src="js/dates.js"></script>', html)
+        self.assertNotRegex(html, r"<script>(?!</script>)", "no inline script (CSP)")
+        js = read("www", "js", "share.js")
+        self.assertIn('credentials: "omit"', js)
+        self.assertNotIn("innerHTML", js)
+        self.assertIn("location.hash", js)
+        conf = read("nginx.conf")
+        self.assertIn("location = /share.html { }", conf)
+        block = re.search(r"location = /api/share/view \{(.*?)\n    \}", conf, re.S).group(1)
+        self.assertIn('proxy_set_header Cookie "";', block)
+        self.assertIn("limit_except POST", block)
+        self.assertIn("client_max_body_size 1k;", block)
+        self.assertNotIn("add_header Content-Security-Policy", block)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

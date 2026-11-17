@@ -526,6 +526,26 @@ SCHEMA = [
     """
     ALTER TABLE imports ADD COLUMN name TEXT;     -- encrypted
     """,
+    # version 26: share links (#47; share_links.py). A read-only view of part of a profile for someone without an
+    # account: only the SHA-256 of the link's token is kept. It works until it expires or is revoked, and only while
+    # the owner who made it is still an owner. Every view is logged (activity "link"); views and last_viewed count them.
+    """
+    CREATE TABLE share_links(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,   -- NULL: the account is gone, so the link is too
+        created_name TEXT NOT NULL,                -- the username then
+        token_hash TEXT NOT NULL UNIQUE,           -- SHA-256 of the token in the link; the token is never stored
+        label TEXT,                                -- encrypted: what the owner calls it ("Dr. Rivera")
+        scope TEXT NOT NULL,                       -- JSON, encrypted: {sections, labs, from, to}
+        created INTEGER NOT NULL,
+        expires INTEGER NOT NULL,
+        revoked INTEGER,                           -- when it was revoked; NULL while it isn't
+        revoked_name TEXT,                         -- by whom (username then)
+        views INTEGER NOT NULL DEFAULT 0,
+        last_viewed INTEGER);
+    CREATE INDEX share_links_profile ON share_links(profile_id);
+    """,
 ]
 
 

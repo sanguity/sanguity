@@ -29,7 +29,9 @@ masked (#46), opens the account
 page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap, links the
 same result from a file and the sync at the first pull's preview and sees it once on Trends and in the drawer (undone
 and linked again there)
-and follows its link to the import history, checks the "not medical advice" notice on every tab and beside
+and follows its link to the import history, makes a share link on the account page and opens it with no session
+under the real CSP (only the chosen sections and lab, no cookie, at 375 px too), finds the view in the activity and
+revokes it (#47), checks the "not medical advice" notice on every tab and beside
 out-of-range highlighting, and fails
 on any script error, console error, failed request, request to another host or NaN written into an SVG attribute.
 
@@ -166,6 +168,81 @@ def main():
         strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
         strict.wait_for_selector(".dir-hit", timeout=10000)
         check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
+        # ---- share links (#47), under the CSP: an owner makes one on the Account page, saying what a holder sees; a
+        # browser with no session opens it (at 1400 and 375 px) and sees only the chosen sections and lab, with no
+        # cookie set; the view is in the profile's activity; once revoked, the link says it doesn't work
+        def sl_until(pg, expr, tries=100):   # wait_for_function evaluates a string, which the CSP forbids; evaluate isn't
+            for _ in range(tries):
+                if pg.evaluate(expr):
+                    return True
+                pg.wait_for_timeout(100)
+            raise TimeoutError(expr)
+        strict.goto(base + "/account.html#profiles")
+        strict.wait_for_selector("#profList .prof .share-links-wrap", timeout=10000)
+        mine = strict.locator("#profList .prof", has_text="My records")
+        mine.locator(".share-links-wrap > button").click()
+        mine.locator("button", has_text="New share link").click()
+        form = mine.locator(".share-form")
+        form.locator("input[aria-label='Name for this link']").fill("Dr. Fictional")
+        form.locator("input[value=medications]").uncheck()
+        form.locator("input[aria-label=From]").fill("")
+        form.locator(".share-labs input[type=radio]").nth(1).check()
+        lab = form.locator(".share-labpick input").first.get_attribute("value")
+        form.locator(".share-labpick input").first.check()
+        sees = form.locator(".share-sees").inner_text()
+        check("share links: the form says plainly what a holder of the link can see",
+              all(w in sees for w in ("Anyone who has this link", "My records", "Visits and hospital stays", f"only {lab}", "of any date",
+                                      "no documents", "nothing can be changed", "logged")) and "Medications" not in sees, sees[:400])
+        form.locator("button[type=submit]").click()
+        strict.wait_for_selector(".share-made .share-url", timeout=10000)
+        share_url = strict.input_value(".share-made .share-url")
+        check("share links: the link is shown once, with its token after the #", re.fullmatch(re.escape(base) + r"/share\.html#[\w-]{43}", share_url), share_url)
+        check("share links: the list names it, not yet opened", "Dr. Fictional" in mine.locator(".share-links table").inner_text()
+              and "never" in mine.locator(".share-links table").inner_text())
+        holder = browser.new_context(viewport={"width": 1400, "height": 900})   # the real CSP, no cookies, no session
+        hp = holder.new_page()
+        hp.on("request", elsewhere)
+        hp.on("pageerror", lambda e: csp_problems.append(f"share page script error: {e}"))
+        hp.on("console", lambda m: m.type == "error" and "Content Security Policy" in m.text and csp_problems.append(m.text))
+        api_paths = []
+        hp.on("request", lambda r: "/api/" in r.url and api_paths.append(r.url.split("/api/", 1)[1]))
+        r = hp.goto(share_url)
+        check("share links: the page is sent with the pages' CSP", "script-src 'self'" in (r.headers.get("content-security-policy") or ""))
+        hp.wait_for_selector("#share-visits", timeout=10000)
+        shown = hp.evaluate("[...document.querySelectorAll('#shareBody > section')].map(s => s.id)")
+        check("share links: only the chosen sections", shown == ["share-visits", "share-results"], shown)
+        labs_shown = hp.evaluate("[...document.querySelectorAll('#share-results h3')].map(h => h.textContent)")
+        check("share links: only the chosen lab", len(labs_shown) == 1 and labs_shown[0].startswith(lab), labs_shown)
+        check("share links: the page says whose records, until when, and not medical advice",
+              "My records" in hp.inner_text("#shareHead") and "stops working on" in hp.inner_text("#shareHead") and "Not medical advice" in hp.inner_text("main"))
+        check("share links: the token never appears in an API address, and only the view is asked for", api_paths == ["share/view"], api_paths)
+        check("share links: no cookie is set for the holder", holder.cookies() == [], holder.cookies())
+        hp.set_viewport_size({"width": 375, "height": 800})
+        hp.wait_for_timeout(200)
+        check("share links: the shared page fits 375 px", hp.evaluate("document.documentElement.scrollWidth") <= 375, hp.evaluate("document.documentElement.scrollWidth"))
+        strict.set_viewport_size({"width": 375, "height": 800})
+        strict.wait_for_timeout(200)
+        check("share links: the owner's panel fits 375 px", strict.evaluate("document.documentElement.scrollWidth") <= 375, strict.evaluate("document.documentElement.scrollWidth"))
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        strict.reload()
+        strict.wait_for_selector("#profList .prof .share-links-wrap", timeout=10000)
+        mine = strict.locator("#profList .prof", has_text="My records")
+        mine.get_by_role("button", name="Activity", exact=True).click()
+        sl_until(strict, "[...document.querySelectorAll('#profList .activity tbody tr')].some(r => r.textContent.includes('opened the share link “Dr. Fictional”'))")
+        row = strict.evaluate("[...document.querySelectorAll('#profList .activity tbody tr')].find(r => r.textContent.includes('opened the share link')).textContent")
+        check("share links: the view is in the profile's activity, as the share link", "share link" in row and share_url.split("#")[1] not in row, row)
+        mine.locator(".share-links-wrap > button").click()
+        strict.wait_for_selector("#profList .share-links button:has-text('Revoke')", timeout=10000)
+        strict.once("dialog", lambda d: d.accept())
+        mine.locator(".share-links button", has_text="Revoke").first.click()
+        sl_until(strict, "document.querySelector('#profList .share-links table').textContent.includes('revoked')")
+        hp.reload()
+        sl_until(hp, "document.querySelector('#shareHead h2').textContent === \"This link doesn't work\"")
+        check("share links: a revoked link shows nothing", hp.evaluate("document.getElementById('shareBody').children.length") == 0)
+        hp.goto(base + "/share.html#not-a-real-token-at-all-0000000000000000000")
+        sl_until(hp, "document.querySelector('#shareHead h2').textContent === \"This link doesn't work\"")
+        check("share links: a made-up link says it doesn't work", True)
+        holder.close()
         strict.goto(base + "/account.html")
         strict.wait_for_selector("#logout", state="visible")
         strict.wait_for_timeout(500)

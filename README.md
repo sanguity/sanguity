@@ -307,6 +307,18 @@ shown once; get a new one or turn the feed off there any time, and a feed stops 
 Google Calendar and Outlook on the web fetch from their own servers, so they need Sanguity reachable over HTTPS
 from the internet; a phone on your home network or tailnet works without that.
 
+### Share links
+
+**Account → Profiles → Share links** (owners) makes a read-only link to part of a profile for someone without an
+account, such as a clinician or a relative. You choose the sections (visits and stays, lab results, medications,
+procedures and imaging, upcoming appointments, the journal, costs), which labs, and a date range, and the form says
+plainly what anyone holding the link will see: the profile's name and those records, nothing else (no documents,
+report text, settings or other profiles, and nothing can be changed). A link stops working when it expires (an hour
+to 90 days), when any owner revokes it, or when the owner who made it stops being one. Every time it's opened is
+logged in the profile's activity, with the address it came from. The link is shown once; Sanguity keeps only a hash
+of its token, which sits after the `#` so it never reaches a server log. The person you send it to needs to reach
+your Sanguity, so outside your home network or tailnet that means HTTPS from the internet.
+
 ## Privacy and security
 
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.
