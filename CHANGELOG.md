@@ -118,6 +118,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - Share links for clinicians and relatives (#47): an owner makes a read-only link to part of a profile (chosen
   sections, labs and dates) under Account → Profiles, for someone without an account. It expires after an hour to
   90 days, can be revoked any time, stops if its maker stops being an owner, and every view is logged.
+- iPhone sync through Health Auto Export (#148): the watch receiver takes its REST API uploads on the same address
+  as Life Dashboard Companion's, with the profile's secret as a bearer header, and folds them into the same daily
+  summary with the Apple Health importer's mapping (HRV kept as SDNN); repeated and overlapping uploads count once.
+  Setup steps for both phone apps are on the Settings page's watch card. Garmin, Fitbit and Withings come in
+  through Health Connect or Apple Health instead of integrations of their own (#52, #53, #54).
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for

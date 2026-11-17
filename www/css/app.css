@@ -512,6 +512,9 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .sets .w-kv dd>div{margin-bottom:4px}
 .sets code.w-addr,.sets code.w-secret{background:var(--hover);padding:1px 5px;border-radius:5px;user-select:all;overflow-wrap:anywhere}
 @media (max-width:600px){ .sets .w-kv{grid-template-columns:1fr} }
+.sets .w-hae{margin:12px 0}
+.sets .w-steps{margin:4px 0 8px;padding-left:22px;overflow-wrap:anywhere}
+.sets .w-steps li{margin:4px 0}
 /* find your provider (providers.js, #93) */
 .dir .dir-src{border-left:3px solid var(--c-study);padding:4px 0 4px 12px;margin:6px 0 12px;font-size:13px}
 .dir .dir-src p{margin:0 0 6px}

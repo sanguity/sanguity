@@ -86,6 +86,9 @@ jobs:
       - name: Imported watch data (stored per profile, merged with the receiver's, replaced by identity, export)
         run: python tests/test_watch_store.py
 
+      - name: iPhone sync through Health Auto Export (same summary as an export, bearer secret, duplicates dropped)
+        run: python tests/test_receiver_hae.py
+
       - name: Import history and undo (restores records, watch data and costs exactly; roles; raw files; by origin)
         run: python tests/test_import_history.py
 

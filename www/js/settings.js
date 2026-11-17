@@ -528,12 +528,29 @@ function drawWatch(st, secret) {
     }});
   box.replaceChildren(
     el("h2", {text: "Watch and scale"}),
-    el("p", {class: "hint", text: "A phone app that sends Health Connect data by webhook (watch, sleep and smart-scale readings) uploads them for this profile. In the app, set:"}),
+    el("p", {class: "hint", text: "A phone app sends watch, sleep and smart-scale readings to this profile: Life Dashboard Companion on Android (from Health Connect), or Health Auto Export on iPhone (from Apple Health). Garmin, Fitbit, Withings and other apps come through them, by writing to Health Connect or Apple Health. In the app, set:"}),
     el("dl", {class: "kv w-kv"},
       el("dt", {text: "Upload address"}), el("dd", {}, ...addrs.flatMap(a => [el("div", {}, el("code", {class: "w-addr", text: a}), " ", st.addresses.length ? copyBtn(a, "Copy the upload address") : null)])),
       el("dt", {text: "Secret"}), el("dd", {}, secretNode)),
     el("p", {class: "hint", text: "Each profile has its own secret, so each person's phone uploads to their own profile. Readings are split into days in the phone's own time zone."}),
+    hae(addrs[0], secret),
     st.ready ? null : el("p", {class: "msg bad", text: "The receiver can't be given this profile's secret: the server has no folder for it (WATCH_DIR/keys, in its compose file). Uploads with a secret made here won't be taken until it does."}),
     el("div", {class: "row"}, go, msg));
   box.hidden = false;
+}
+/* Health Auto Export's setup (#148): a REST API automation per data type, with the secret in a header. */
+function hae(addr, secret) {
+  const header = "Bearer " + (secret || "<the secret>"), li = (...c) => el("li", {}, ...c), b = t => el("b", {text: t});
+  return el("div", {class: "w-hae", id: "watchHae"},
+    el("h3", {class: "sub", text: "iPhone: Health Auto Export"}),
+    el("ol", {class: "w-steps"},
+      li("In Health Auto Export (its Premium subscription or trial), open ", b("Automations"), " and add a ", b("REST API"), " automation."),
+      li(b("URL"), ": the upload address above (", el("code", {class: "w-addr", text: addr}), ")."),
+      li(b("Headers"), ": add one with the key ", el("code", {class: "w-addr", text: "Authorization"}), " and the value ",
+        el("code", {class: "w-secret", text: header}), secret ? [" ", copyBtn(header, "Copy the header value")] : "", ": ", b("Bearer"), ", a space, then the secret."),
+      li(b("Data type"), ": Health Metrics, ", b("Export format"), ": JSON. Choose step count, walking + running distance, active energy, heart rate, resting heart rate, heart rate variability, blood oxygen saturation, respiratory rate, weight, body fat percentage, lean body mass and sleep analysis."),
+      li(b("Time grouping"), ": hours (and keep it: changing it later sends the same steps again in other intervals)."),
+      li(b("Sync"), ": hourly or daily, with the date range ", b("Since last sync"), " or ", b("Today"), ". Repeated or overlapping uploads count once."),
+      li("Add a second automation the same way with the data type ", b("Workouts"), ".")),
+    el("p", {class: "hint", text: "Android: in Life Dashboard Companion, set the upload address and the secret above; it signs each upload with the secret."}));
 }

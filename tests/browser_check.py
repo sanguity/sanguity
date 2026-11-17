@@ -1742,11 +1742,26 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("…and the card fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            # iPhone (#148): Health Auto Export's setup steps beside Life Dashboard's: address, header, data, how often
+            hae_txt = page.inner_text("#watchHae")
+            check("watch card: Health Auto Export's steps (address, header, data, how often, workouts)",
+                  all(w in hae_txt for w in ("Health Auto Export", "REST API", ":8731/ingest", "Authorization", "Bearer " + made,
+                                             "heart rate variability", "sleep analysis", "Since last sync", "Workouts"))
+                  and "Life Dashboard Companion" in page.inner_text("#watch") and len(js("[...document.querySelectorAll('#watchHae li')]")) >= 6,
+                  hae_txt[:400])
+            check("…with the header value to copy while the secret is shown",
+                  js("!!document.querySelector('#watchHae button[aria-label=\"Copy the header value\"]')"))
+            check("…and the steps fit 375 px", js("(() => { const b = document.getElementById('watchHae').getBoundingClientRect(); "
+                                                  "return b.width > 0 && b.right <= 375 && [...document.querySelectorAll('#watchHae code, #watchHae li')]"
+                                                  ".every(e => e.getBoundingClientRect().right <= 375.5); })()"),
+                  js("document.getElementById('watchHae').getBoundingClientRect().right"))
             page.set_viewport_size({"width": 1400, "height": 900})
             page.reload()
             page.wait_for_selector("#watch .w-secret", timeout=10000)
             masked = js("document.querySelector('#watch .w-secret').textContent")
             check("…then only its last characters", masked.endswith(made[-4:]) and made not in page.content(), masked)
+            check("…and the iPhone steps name the secret without showing it",
+                  "Bearer <the secret>" in page.inner_text("#watchHae") and not js("!!document.querySelector('#watchHae button')"))
             # ---- reference ranges from settings (#44): a profile whose results come without a range; its own ranges,
             # set on the Settings page, colour those results on Trends, the heatmap, the Overview and the visit
             # summary, labelled "range from settings", while a report's own range and flag stay; the page's rules
