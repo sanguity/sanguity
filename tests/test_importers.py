@@ -9,7 +9,7 @@ needs no change here: add its module and a fixture folder.
 
   python -m unittest discover -s tests -p "test_importer*.py" -v
 """
-import json, os, re, subprocess, sys, tempfile, types, unittest
+import json, os, re, shutil, subprocess, sys, tempfile, types, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURES = os.path.join(ROOT, "tests", "fixtures")
@@ -258,6 +258,44 @@ runpy.run_path(sys.argv[0], run_name="__main__")
 """
         with open(os.path.join(FIXTURES, "build", "expected-all.json"), "rb") as f:
             self.assertEqual(self.build("all-sources.json", wrapper), f.read())
+
+
+class BuildVitals(unittest.TestCase):
+    """Clinic vitals from Epic visit records through build.py: a reading repeated in two exports counts once, but two
+    readings of the same value on one day are two (lab results keep the same value on the same day once)."""
+
+    @staticmethod
+    def record(*readings):
+        """A fictional C-CDA visit record whose Vital Signs section holds (time, systolic) readings."""
+        entries = "".join(
+            f'<entry><organizer classCode="CLUSTER" moodCode="EVN"><effectiveTime value="{t}"/><component>'
+            f'<observation classCode="OBS" moodCode="EVN"><code code="8480-6" codeSystem="2.16.840.1.113883.6.1"/>'
+            f'<value xsi:type="PQ" value="{v}" unit="mm[Hg]"/></observation></component></organizer></entry>'
+            for t, v in readings)
+        return ('<?xml version="1.0"?>\n<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+                '<templateId root="2.16.840.1.113883.10.20.22.1.1"/><component><structuredBody><component><section>'
+                f'<code code="8716-3"/>{entries}</section></component></structuredBody></component></ClinicalDocument>')
+
+    def test_vitals_keep_each_reading(self):
+        with tempfile.TemporaryDirectory() as d:
+            for name in ("mychart-20261101", "otherclinic-20261020"):
+                shutil.copytree(os.path.join(FIXTURES, "build", name), os.path.join(d, name))
+            shutil.copy(os.path.join(FIXTURES, "build", "sources.json"), d)
+            vr = os.path.join(d, "mychart-20261101", "visit-records")
+            with open(os.path.join(vr, "vitals.xml"), "w", encoding="utf-8") as f:
+                f.write(self.record(("202604010915", 128), ("202604011840", 128)))
+            os.makedirs(os.path.join(d, "otherclinic-20261020", "visit-records"))
+            with open(os.path.join(d, "otherclinic-20261020", "visit-records", "vitals.xml"), "w", encoding="utf-8") as f:
+                f.write(self.record(("202604010915", 128)))          # the same reading, in the other export too
+            out = os.path.join(d, "data.json")
+            env = {k: v for k, v in os.environ.items() if k != "RECORDS_ROOT"}
+            subprocess.run([sys.executable, "-I", os.path.join(ROOT, "build.py"), "--config", os.path.join(d, "sources.json"),
+                            "--out", out], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+            with open(out, encoding="utf-8") as f:
+                data = json.load(f)
+        bp = next(s for s in data["labs"] if s["name"] == "Blood pressure, systolic")
+        self.assertEqual(bp["panel"], "Vitals")
+        self.assertEqual([p[:2] for p in bp["pts"]], [["2026-04-01T09:15:00", 128], ["2026-04-01T18:40:00", 128]])
 
 
 if __name__ == "__main__":

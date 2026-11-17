@@ -251,6 +251,47 @@ class Parse(Tmp):
         # admissions.json has the stay, so none is guessed from inpatient results, and the C-CDA admission adds none
         self.assertEqual([(s["t"], data["details"][s["id"]]["how"]) for s in stays], [("2026-03-08T00:00:00", "Visit list")])
 
+    @staticmethod
+    def _vitals_record(*sets):
+        """A fictional visit record whose Vital Signs section holds one organizer per (time, {LOINC: (value, unit)})."""
+        orgs = "".join(
+            f'<entry><organizer classCode="CLUSTER" moodCode="EVN"><effectiveTime value="{t}"/>'
+            + "".join(f'<component><observation classCode="OBS" moodCode="EVN"><code code="{c}" codeSystem="2.16.840.1.113883.6.1"/>'
+                      f'<value xsi:type="PQ" value="{v}" unit="{u}"/></observation></component>' for c, (v, u) in obs.items())
+            + "</organizer></entry>" for t, obs in sets)
+        return ('<?xml version="1.0" encoding="UTF-8"?>\n<ClinicalDocument xmlns="urn:hl7-org:v3" '
+                'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><templateId root="2.16.840.1.113883.10.20.22.1.1"/>'
+                '<custodian><assignedCustodian><representedCustodianOrganization><name>Willowbrook Health System</name>'
+                '</representedCustodianOrganization></assignedCustodian></custodian><component><structuredBody><component>'
+                '<section><templateId root="2.16.840.1.113883.10.20.22.2.4.1"/><code code="8716-3"/><title>Vital Signs</title>'
+                f'{orgs}</section></component></structuredBody></component></ClinicalDocument>')
+
+    def test_vital_signs_from_the_visit_records(self):
+        d = copy_tree(FIXTURE, os.path.join(self.tmp(), "export"))
+        morning = ("20260214074500-0600", {"8480-6": (128, "mm[Hg]"), "8462-4": (82, "mm[Hg]"), "8867-4": (74, "/min"),
+                                           "8310-5": (37.0, "Cel"), "59408-5": (98, "%"), "9279-1": (16, "/min")})
+        afternoon = ("20260214151000-0600", {"8480-6": (128, "mm[Hg]"), "8462-4": (80, "mm[Hg]")})
+        for name, sets in (("DOCV1.XML", [morning]), ("DOCV2.XML", [morning, afternoon])):   # each repeats the morning's
+            with open(os.path.join(d, "visit-records", name), "w", encoding="utf-8") as f:
+                f.write(self._vitals_record(*sets))
+        out = epic.parse(reg.files_in(d))
+        self.assertEqual(reg.check(out, reg.files_in(d)), [])
+        labs = {s["name"]: s for s in out["data"]["labs"]}
+        org = "Willowbrook Health System"
+        sys_bp = labs["Blood pressure, systolic"]
+        # the morning's reading once though both records carry it; the afternoon's, the same value, is a reading of its own
+        self.assertEqual([p[:2] for p in sys_bp["pts"]], [["2026-02-14T07:45:00-06:00", 128], ["2026-02-14T15:10:00-06:00", 128]])
+        self.assertEqual([p[1] for p in labs["Blood pressure, diastolic"]["pts"]], [82, 80])
+        self.assertEqual((sys_bp["unit"], sys_bp["panel"], sys_bp["key"]), ("mmHg", "Vitals", "loinc:8480-6"))
+        self.assertEqual({p[6] for s in labs.values() if s["panel"] == "Vitals" for p in s["pts"]}, {org})
+        self.assertEqual(sys_bp["pts"][0][5], "128 mm[Hg]")                       # as reported
+        self.assertEqual([p[1] for p in labs["Temperature"]["pts"]], [98.6])      # 37.0 °C
+        for name in ("Heart rate (clinic)", "SpO2 (clinic)", "Respiratory rate (clinic)"):
+            self.assertEqual(len(labs[name]["pts"]), 1, name)
+        self.assertEqual(len(out["data"]["clinicWeights"]), 2)                  # weights as before, not as a series
+        again = epic.parse(reg.files_in(d))
+        self.assertEqual([s["key"] for s in out["data"]["labs"]], [s["key"] for s in again["data"]["labs"]])
+
     def test_long_conversations_are_read_whole(self):
         data = epic.parse(reg.files_in(FIXTURE))["data"]
         conv = next(e for e in data["events"] if e["title"] == "Question about my white count")

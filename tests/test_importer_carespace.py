@@ -113,6 +113,21 @@ class Parse(unittest.TestCase):
         self.assertEqual(self.data["clinicWeights"], [["2026-03-02T08:45:00", 150.1, ORG], ["2026-03-02T12:00:00", 150.0, ORG],
                                                       ["2026-04-01T12:00:00", 148.8, ORG]])
 
+    def test_vitals_named_by_their_loinc_long_names(self):
+        with tempfile.TemporaryDirectory() as d:
+            dst = copy("full", d)
+            p = os.path.join(dst, "carespace_ccd_full.xml")
+            with open(p, encoding="utf-8") as f:
+                xml = f.read()
+            xml = xml.replace("<td>Systolic blood pressure</td>", "<td>Intravascular systolic Arterial system Pres Pt Qn</td>") \
+                     .replace("<td>Diastolic blood pressure</td>", "<td>Intravascular diastolic Arterial system Pres Pt Qn</td>")
+            self.assertIn("Intravascular diastolic", xml)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(xml)
+            data = carespace.parse(reg.files_in(dst))["data"]
+        self.assertEqual([p[1] for p in series(data, "Blood pressure, systolic")["pts"]], [118.0])
+        self.assertEqual([p[1] for p in series(data, "Blood pressure, diastolic")["pts"]], [76.0])
+
     def test_documents(self):
         docs = by_kind(self.data, "document")
         self.assertEqual([(e["title"], e["sub"]) for e in docs],

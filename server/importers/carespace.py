@@ -40,7 +40,10 @@ DECL = re.compile(rb"<!\s*(DOCTYPE|ENTITY)", re.I)
 FLAGS = {"H": "H", "HH": "H", "L": "L", "LL": "L"}
 VITALS = [("Body weight", "Weight", "lb"), ("Body height", "Height", "in"), ("Body temperature", "Temperature", "°F"),
           ("Heart rate", "Heart rate (clinic)", "bpm"), ("Systolic", "Blood pressure, systolic", "mmHg"),
-          ("Diastolic", "Blood pressure, diastolic", "mmHg"), ("Oxygen saturation", "SpO2 (clinic)", "%"),
+          ("Diastolic", "Blood pressure, diastolic", "mmHg"),
+          # LOINC's long names, as some exports write them ("Intravascular systolic Arterial system Pres Pt Qn")
+          ("Intravascular systolic", "Blood pressure, systolic", "mmHg"),
+          ("Intravascular diastolic", "Blood pressure, diastolic", "mmHg"), ("Oxygen saturation", "SpO2 (clinic)", "%"),
           ("Respiratory rate", "Respiratory rate (clinic)", "/min"), ("Body mass index", "BMI", "kg/m²")]
 WEIGHT_UNITS = {"kg": 2.20462, "lb": 1.0, "[lb_av]": 1.0, "lbs": 1.0, "g": 0.00220462, "[oz_av]": 0.0625}
 VISIT_RENAME = {"Chart Check, patient results": "Chart review", "CALL OUT TO PATIENT": "Phone call",
