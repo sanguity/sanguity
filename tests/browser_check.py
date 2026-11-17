@@ -468,7 +468,8 @@ def main():
         for path, ready, title, width in (("", "#view-overview .card", None, 1400), ("sources.html?profile=1", "#srcList h3", "Sources: Overview", 375),
                                           ("settings.html?profile=1", "#sec-overview .set-labs li", "Settings: Dashboard", 1400),
                                           ("sharing.html?profile=1", "#memberList tbody tr", "Sharing: People", 375),
-                                          ("account.html", "#acctNav a", "Account: Sign-in and security", 1400), ("admin.html", "#userList table", "Admin: Accounts", 375)):
+                                          ("account.html", "#acctNav a", "Account: Sign-in and security", 1400), ("admin.html", "#userList table", "Admin: Accounts", 375),
+                                          ("guide.html?profile=1", "#step-name:not([hidden])", "Getting started: Whose records", 375)):   # #199
             strict.set_viewport_size({"width": width, "height": 800})
             strict.goto(base + "/" + path)
             strict.wait_for_selector(ready, state="attached", timeout=10000)
@@ -483,7 +484,7 @@ def main():
             titles[path or "records"] = [strict.title(), title + " · Sanguity"]
         strict.set_viewport_size({"width": 1400, "height": 900})
         check("on every page with the top bar, Tab's first stop is “Skip to content”, shown while focused, readable on the dark theme, at 1400 and 375 px (#209)",
-              len(skips) == 6 and all(v[0] == "Skip to content" and v[1] and v[2] >= 4.5 for v in skips.values()), skips)
+              len(skips) == 7 and all(v[0] == "Skip to content" and v[1] and v[2] >= 4.5 for v in skips.values()), skips)
         check("…Enter moves focus to the page's main part, the address unchanged", all(v[3] and v[4] for v in skips.values()), skips)
         check("…and the browser tab's title names what's shown: “Labs · My records · Sanguity”, “Settings: Dashboard · Sanguity”",
               all(a == b for a, b in titles.values()), titles)
@@ -2200,13 +2201,22 @@ def main():
             check("the period is kept per profile (not carried to another)", js("state.preset") == "2y", js("state.preset"))
             check("empty profile explains itself", "no records yet" in page.inner_text("main"))
             check("empty profile hides the tabs and filters", js("document.querySelector('.tabs').hidden && document.querySelector('.filters').hidden && getComputedStyle(document.querySelector('.tabs')).display === 'none'"))
-            check("empty profile links to the import page", js("document.querySelector('main .empty a').getAttribute('href')") == "sources.html?profile=2#upload")
+            check("empty profile's one next step is the getting-started guide, with no redirect there for an account with records elsewhere (#199)",
+                  js("[...document.querySelectorAll('main .empty-next')].map(a => a.getAttribute('href'))") == ["guide.html?profile=2"]
+                  and js("location.pathname") == "/", js("[...document.querySelectorAll('main .empty-next')].map(a => a.getAttribute('href'))"))
             check("the header links to the import page", js("!document.getElementById('importLink').hidden"))
 
             # ---- import page: upload a fictional C-CDA in a zip into the empty profile; it's imported in the background
-            # (#20) and its records reach the timeline. Then single files, with #20's hook stood in for.
+            # (#20) and its records reach the timeline. Then single files, with #20's hook stood in for. Reached through
+            # the guide (#199): Get started, past its first step, then Upload an export
             page.click("main .empty a")
+            page.wait_for_selector("#step-name:not([hidden])", timeout=10000)
+            page.click("#step-name [data-skip]")
+            page.click("#step-records a[data-to=upload]")
             page.wait_for_selector("#importer", state="visible", timeout=10000)
+            check("…whose Upload an export opens Sources → Upload files for that profile, with a way back to the guide (#199)",
+                  js("location.search + location.hash") == "?profile=2&guide=records#upload" and page.is_visible("#guideBar")
+                  and js("document.getElementById('guideBack').getAttribute('href')") == "guide.html?profile=2#records", js("location.href"))
             check("import page offers the profiles you can import into, the linked one chosen",
                   js("[...document.querySelectorAll('#profile option')].map(o => o.textContent)") == ["My records (owner)", "Second person (owner)"]
                   and js("document.getElementById('profile').value") == "2")
@@ -3616,6 +3626,34 @@ def main():
             check("…and say to ask their admin where something isn't set up",
                   "ask them" in said["connect.html"] and "Ask your admin" in said["providers.html"] and "original receiver secret" in said["settings.html?profile=1#watch"],
                   {k: t[:200] for k, t in said.items()})
+            # ---- the getting-started guide by role (#199): someone given another person's empty profile gets none of
+            # its owner's steps. As a viewer, the records page says its owners and editors bring records in and links
+            # to who has access, and the guide has no steps; as an editor, Get started opens the guide at the first
+            # records, with no naming the profile. Neither is sent to the guide by itself.
+            from server import profiles as sprof
+            pid3 = sprof.create_profile(sdb, "Shared empty profile", owner_id=sdb.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0])
+            sdb.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (uid2, pid3))
+            zb.goto(base + f"/?profile={pid3}")
+            zb.wait_for_selector("main .empty-state", timeout=10000)
+            nexts = "[...document.querySelectorAll('main .empty-next')].map(a => [a.textContent, a.getAttribute('href')])"
+            check("guide by role: a viewer of an empty profile is told who brings records in, with one link to who has access",
+                  zb.evaluate("location.pathname") == "/" and "its owners and editors bring them in" in zb.inner_text("main")
+                  and zb.evaluate(nexts) == [["See who has access", f"sharing.html?profile={pid3}#people"]], zb.evaluate(nexts))
+            zb.goto(base + f"/guide.html?profile={pid3}")
+            zb.wait_for_selector("#step-view:not([hidden])", timeout=10000)
+            check("…and the guide gives them no steps, only the Overview", zb.evaluate(
+                  "[...document.querySelectorAll('.guide-step')].filter(s => !s.hidden).map(s => s.id).join() + '|' + document.getElementById('guideSteps').hidden + '|' + document.getElementById('guideSkip').hidden")
+                  == "step-view|true|true" and "owners and editors" in zb.inner_text("#step-view"), zb.inner_text("main")[:300])
+            sdb.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=?", (uid2, pid3))
+            zb.goto(base + f"/?profile={pid3}")
+            zb.wait_for_selector("main .empty-state", timeout=10000)
+            check("…an editor gets Get started", zb.evaluate(nexts) == [["Get started", f"guide.html?profile={pid3}"]], zb.evaluate(nexts))
+            zb.click("main .empty-next")
+            zb.wait_for_selector("#step-records:not([hidden])", timeout=10000)
+            check("…which opens the guide at the first records, with no step naming the profile (its owners' to do)",
+                  zb.evaluate("[...document.querySelectorAll('#guideSteps li')].map(li => li.textContent.replace(/^\\d/, ''))") == ["First records", "Phone (optional)", "Overview"]
+                  and zb.evaluate("location.hash") == "#records", zb.evaluate("[...document.querySelectorAll('#guideSteps li')].map(li => li.textContent)"))
+            sprof.delete_profile(sdb, pid3)
             za.evaluate("""v => Promise.all(Object.entries(v).map(([k, x]) =>
                 api('settings/user/' + k, {method: 'PUT', body: JSON.stringify({value: x})})))""", before)
             for c in zctx.values():
@@ -4785,6 +4823,186 @@ def main():
             problems.append(f"PWA check stopped: {stopped(e)}")
             if "ph" in locals():
                 problems.append(f"phone page at {ph.url}: " + str(ph.evaluate("document.body.innerText.slice(0, 300)")))
+        # ---- first run (#199): a fresh install, a second app on a data folder of its own, under the real CSP: setup,
+        # then the getting-started guide opens by itself on the new, empty profile; it's named, a fictional C-CDA is
+        # uploaded through Sources and the guide's way back, the phone is skipped, and the Overview shows the records.
+        # Then the empty states: a second, empty profile's one next step, and every records tab's (a profile with only
+        # a visit), Sources' Overview and Import history; at 375 px in light and dark, the guide's steps too
+        fresh = None
+        try:
+            before = len(problems)
+            fdir = os.path.join(TMP, "fresh")
+            for d in ("keys", "watch-keys"):
+                os.makedirs(os.path.join(fdir, d), exist_ok=True)
+            with socket.socket() as s:
+                s.bind(("127.0.0.1", 0)); fport = s.getsockname()[1]
+            fresh = subprocess.Popen([sys.executable, "-m", "server"], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env={
+                **os.environ, "SANGUITY_DATA": fdir, "SANGUITY_RECORDS": os.path.join(fdir, "records"), "SANGUITY_KEY_FILE": os.path.join(fdir, "keys", "data_key"),
+                "SANGUITY_WATCH_FILE": os.path.join(fdir, "watch", "daily.json"), "SANGUITY_WATCH_KEYS": os.path.join(fdir, "watch-keys", "receiver-secrets.json"),
+                "SANGUITY_SERVE_STATIC": "1", "HOST": "127.0.0.1", "PORT": str(fport)})
+            fbase = f"http://127.0.0.1:{fport}"
+            code_file = os.path.join(fdir, "setup-code.txt")
+            for _ in range(300):   # up, with its setup code written
+                try:
+                    if os.path.exists(code_file) and urllib.request.urlopen(fbase + "/api/setup", timeout=1).status == 200:
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.1)
+            allowed.add(fbase)
+            fctx = browser.new_context(viewport={"width": 1400, "height": 900})   # the real CSP: evaluate only, no wait_for_function
+            fp = fctx.new_page()
+            fp.on("request", elsewhere)
+            fp.on("pageerror", lambda e: problems.append(f"script error (first run): {e}"))
+            fp.on("console", lambda m: m.type == "error" and "401" not in m.text and problems.append(f"console error (first run): {m.text}"))
+
+            def f_until(expr, ms=20000):
+                for _ in range(ms // 100):
+                    if fp.evaluate(expr):
+                        return True
+                    fp.wait_for_timeout(100)
+                raise TimeoutError(f"waited {ms} ms for {expr}")
+            guide_is = lambda: fp.evaluate("fetch('api/settings/user').then(r => r.json()).then(j => j.guide)")
+            fp.goto(fbase + "/")
+            fp.wait_for_url("**/setup.html", timeout=10000)
+            with open(code_file, encoding="utf-8") as f:
+                fp.fill("#c", f.read().strip())
+            fp.fill("#u", "robin")
+            fp.fill("#p", "a fictional first-run passphrase")
+            fp.fill("#p2", "a fictional first-run passphrase")
+            fp.click("#b")
+            fp.wait_for_url("**/guide.html?profile=1#name", timeout=15000)
+            fp.wait_for_selector("#step-name:not([hidden])", timeout=10000)
+            steps_js = "[...document.querySelectorAll('#guideSteps li')].map(li => li.textContent.replace(/^[\\d✓]/, '').replace(' (done)', ''))"
+            check("first run: setup signs in and the guide opens by itself on the new, empty profile, at whose records it holds",
+                  fp.evaluate(steps_js) == ["Whose records", "First records", "Phone (optional)", "Overview"] and fp.input_value("#profName") == "robin"
+                  and fp.is_visible("#step-name [data-skip]") and fp.is_visible("#skipGuide") and guide_is() == "", fp.evaluate(steps_js))
+            fp.fill("#profName", "Robin Example")
+            fp.click("#nameGo")
+            fp.wait_for_selector("#step-records:not([hidden])", timeout=10000)
+            check("…naming the profile there (who it's for), then the first records, each way skippable",
+                  fp.evaluate("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => p.name))") == ["Robin Example"]
+                  and "Robin Example" in fp.inner_text("#profileOne") and fp.evaluate("location.hash") == "#records"
+                  and fp.is_visible("#step-records [data-skip]") and fp.is_hidden("#step-records [data-next]"))
+            ways = fp.evaluate("[...document.querySelectorAll('#step-records .guide-way')].map(a => a.getAttribute('href'))")
+            check("…its ways in are Sources' own sections: upload, a portal or plan (#165's section), typing in",
+                  ways == [f"sources.html?profile=1&guide=records#{g}" for g in ("upload", "portals", "manual")], ways)
+            fp.click("#step-records a[data-to=upload]")
+            fp.wait_for_selector("#importer", state="visible", timeout=10000)
+            check("…Upload an export opens Sources → Upload files, saying it's part of the guide, with Back to the guide",
+                  fp.is_visible("#guideBar") and fp.get_attribute("#guideBack", "href") == "guide.html?profile=1#records")
+            fp.click("#tab-files")
+            fp.set_input_files("#pickFiles", os.path.join(ROOT, "tests", "fixtures", "importers", "ccda", "maple-grove-ccd", "maple-grove-ccd.xml"))
+            f_until("!document.getElementById('go').disabled", 5000)
+            fp.click("#go")
+            last = "[...document.querySelectorAll('.import-job')].pop()"
+            f_until(f"!!{last} && /^(Ready to import|All duplicates|Not imported)/.test({last}.textContent)", 30000)
+            fp.evaluate(f"{last}.querySelector('.imp-actions .primary').click()")
+            f_until(f"/^(Imported|Not imported)/.test({last}.textContent)", 30000)
+            check("…where a fictional C-CDA is uploaded, previewed and saved", fp.evaluate(f"{last}.textContent").startswith("Imported."), fp.evaluate(f"{last}.textContent")[:200])
+            fp.click("#guideBack")
+            fp.wait_for_selector("#recordsHave:not([hidden])", timeout=10000)
+            check("…and back in the guide, the step says the records are in, with Continue in place of Skip",
+                  "Robin Example has records now, from 1 import" in fp.inner_text("#recordsHave") and fp.is_visible("#step-records [data-next]")
+                  and fp.is_hidden("#step-records [data-skip]") and fp.evaluate("document.querySelector('#guideSteps li.done')?.textContent") == "✓First records (done)",
+                  fp.inner_text("#step-records")[:300])
+            fp.click("#step-records [data-next]")
+            fp.wait_for_selector("#step-phone:not([hidden])", timeout=10000)
+            check("…then a phone, optional, set up on Sources → Phone and watch",
+                  "(optional)" in fp.inner_text("#phoneTitle") and fp.get_attribute("#step-phone .guide-way", "href") == "sources.html?profile=1&guide=phone#phone")
+            fp.click("#step-phone [data-skip]")
+            fp.wait_for_selector("#step-done:not([hidden])", timeout=10000)
+            f_until("document.getElementById('doneSays').textContent.length > 0", 5000)
+            check("…skipped, to the end: the Overview, with nothing left to skip, the guide not yet marked done",
+                  "records are in" in fp.inner_text("#doneSays") and fp.is_hidden("#guideSkip") and guide_is() == "", fp.inner_text("#step-done"))
+            # every step, and Sources with the way back, at 375 px in light and dark
+            fp.set_viewport_size({"width": 375, "height": 800})
+            bad = []
+            for theme in ("light", "dark"):
+                fp.emulate_media(color_scheme=theme)
+                for step in ("name", "records", "phone", "done"):
+                    fp.goto(fbase + f"/guide.html?profile=1#{step}")
+                    fp.wait_for_selector(f"#step-{step}:not([hidden])", timeout=10000)
+                    fp.wait_for_timeout(150)
+                    bad += phone_fits(fp, f"{theme} guide #{step}")
+                fp.goto(fbase + "/sources.html?profile=1&guide=records#upload")
+                fp.wait_for_selector("#guideBar", timeout=10000)
+                fp.wait_for_timeout(150)
+                bad += phone_fits(fp, f"{theme} Sources with the way back")
+            dark_ok = fp.evaluate("matchMedia('(prefers-color-scheme: dark)').matches")
+            fp.emulate_media(color_scheme=None)
+            fp.set_viewport_size({"width": 1400, "height": 900})
+            check("…each step of the guide, and the way back on Sources, fit 375 px in light and dark", not bad and dark_ok, bad[:8] or "")
+            fp.goto(fbase + "/guide.html?profile=1#done")
+            fp.wait_for_selector("#step-done:not([hidden])", timeout=10000)
+            fp.click("#finish")
+            fp.wait_for_url("**/?profile=1#overview", timeout=10000)
+            f_until("typeof booted !== 'undefined' && booted && EV.length > 0")
+            check("…Open the Overview lands on the profile's records, the guide marked done",
+                  fp.evaluate("document.querySelectorAll('#view-overview .tile').length") > 0 and guide_is() == "done", guide_is())
+            fp.goto(fbase + "/")
+            f_until("typeof booted !== 'undefined' && booted")
+            check("…and signing in again opens the records, not the guide; the menu still has Getting started",
+                  fp.evaluate("location.pathname") == "/" and fp.get_attribute("#guideLink", "href") == "guide.html")
+            # the empty states: a second, empty profile
+            new_profile = lambda name: fp.evaluate("""n => fetch('api/profiles', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+                body: JSON.stringify({name: n})}).then(r => r.json()).then(j => j.id)""", name)
+            pid2 = new_profile("Sam Example")
+            fp.goto(fbase + f"/?profile={pid2}")
+            fp.wait_for_selector("main .empty-state", timeout=10000)
+            nexts = "sel => [...document.querySelectorAll(sel + ' .empty-next')].map(a => [a.textContent, a.getAttribute('href')])"
+            check("empty states: an empty profile says what would appear and has one next step, Get started (the guide)",
+                  fp.evaluate(nexts, "main") == [["Get started", f"guide.html?profile={pid2}"]] and "no records yet" in fp.inner_text("main")
+                  and fp.evaluate("location.pathname") == "/", fp.evaluate(nexts, "main"))
+            fp.goto(fbase + f"/sources.html?profile={pid2}")
+            fp.wait_for_selector("#srcList .empty-state", timeout=10000)
+            src_next = fp.evaluate(nexts, "#srcList")
+            fp.click("#srcNav a[data-group=history]")
+            fp.wait_for_selector("#historyList .empty-state", timeout=10000)
+            check("…Sources' Overview and Import history: what would be listed, and one next step, Upload files",
+                  src_next == [["Upload files", "#upload"]] and fp.evaluate(nexts, "#historyList") == [["Upload files", "#upload"]], (src_next, fp.evaluate(nexts, "#historyList")))
+            # a profile with only a visit: every records tab says what would be there, with one next step
+            r = fp.evaluate(f"""fetch('api/profiles/{pid2}/manual', {{method: 'POST', headers: {{'X-Sanguity': '1', 'Content-Type': 'application/json'}},
+                body: JSON.stringify({{save: true, items: [{{kind: 'visit', date: '2026-10-01', title: 'Fictional check-up', who: 'Dr. Example', where: 'Example Clinic'}}]}})}}).then(r => r.status)""")
+            want = {"overview": [["Add lab results", f"sources.html?profile={pid2}#manual"]], "health": [["Connect a phone", f"sources.html?profile={pid2}#phone"]],
+                    "timeline": [["Show everything", None]], "labs": [["Add lab results", f"sources.html?profile={pid2}#manual"]],
+                    "costs": [["Type in a claim or payment", f"sources.html?profile={pid2}#payment"]]}
+            got, bad = {}, []
+            fp.goto(fbase + f"/?profile={pid2}#overview")
+            f_until("typeof booted !== 'undefined' && booted && EV.length > 0")
+            for t in want:
+                fp.click("#tab-" + t)
+                if t == "timeline":
+                    fp.fill("#q", "no such event")
+                    f_until("!!document.querySelector('#list .empty-state')", 5000)
+                got[t] = fp.evaluate(nexts, "#view-" + t)
+            check("…every records tab with nothing to show (a profile with only a visit) says what would be there, with one next step",
+                  r == 200 and got == want and fp.is_visible("#notice") and "Not medical advice" in fp.inner_text("#notice"), (r, got))
+            fp.click("#tab-timeline")
+            fp.click("#list .empty-next")
+            f_until("document.querySelectorAll('#list .row').length === 1 && state.q === '' && state.preset === 'all'", 5000)
+            check("…the Timeline's Show everything clears the search and the period", fp.evaluate("document.activeElement.id") == "listTitle")
+            fp.set_viewport_size({"width": 375, "height": 800})
+            for theme in ("light", "dark"):
+                fp.emulate_media(color_scheme=theme)
+                fp.goto(fbase + f"/?profile={pid2}#overview")
+                f_until("typeof booted !== 'undefined' && booted")
+                for t in want:
+                    fp.click("#tab-" + t)
+                    fp.wait_for_timeout(150)
+                    bad += phone_fits(fp, f"{theme} {t}")
+            fp.emulate_media(color_scheme=None)
+            fp.set_viewport_size({"width": 1400, "height": 900})
+            check("…and each fits 375 px, in light and dark", not bad, bad[:8] or "")
+            fctx.close()
+        except Exception as e:   # report what was caught so far instead of a bare traceback
+            problems.append(f"first-run check stopped: {stopped(e)}")
+            if "fp" in locals():
+                problems.append(f"first-run page at {fp.url}: " + str(fp.evaluate("document.body.innerText.slice(0, 300)")))
+        finally:
+            if fresh:
+                fresh.terminate()
+                fresh.wait(10)
         browser.close()
     srv.should_exit = True
     SHL.stop()

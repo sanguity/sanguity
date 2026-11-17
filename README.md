@@ -149,7 +149,9 @@ hour or more on the Pi itself (a Pi with 1 GB of memory may need swap). Later bu
 `requirements.txt` changes. The released image is already built for all three.
 
 Open `http://<this machine>:8730` and enter the setup code to create the first account. It becomes the admin
-and owns the records already on the server; until you add your own, that is the fictional demo. Add accounts for
+and owns the records already on the server; until you add your own, that is the fictional demo. With no records
+on the server yet, the **Getting started** guide opens next: it names the profile, brings in its first records and,
+if you like, connects a phone; every step can be skipped, and the guide stays in your menu. Add accounts for
 other people under **Admin** (in your menu, for admins), then share profiles with them under **Sharing → People**.
 
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy
@@ -278,7 +280,7 @@ passes the readings on.
 
 ### Uploading records in the app
 
-**Add → Upload files** (in the top bar, or on an empty profile; **Sources → Upload files**) uploads a portal's or app's export to a profile you own or edit:
+**Add → Upload files** (in the top bar, or through **Getting started** on an empty profile; **Sources → Upload files**) uploads a portal's or app's export to a profile you own or edit:
 a zip as you downloaded it, a folder you've unpacked (its folders are kept), or single files. Viewers can't upload.
 Each file streams to the server on its own, with progress, and is kept in the profile's folder encrypted, as the
 import's original files: they're included in **Export everything** and in backups, and go when the profile is
@@ -661,7 +663,8 @@ lab-aliases.json    Canonical lab names, LOINC codes and other spellings that ma
 nginx.conf          Web server: the app's pages and security headers; passes /api/ to the app
 watch/receiver.py   phone uploads (Life Dashboard / Health Connect, Health Auto Export / Apple Health): archives, folds into SQLite, writes public/daily.json
 www/                index.html (markup), css/app.css, js/*.js (one plain script per tab, loaded in order),
-                    login.html, setup.html (first account), account.html (password, devices), sharing.html (a profile's people and how it's shared),
+                    login.html, setup.html (first account), guide.html (getting started: a new profile's first records),
+                    account.html (password, devices), sharing.html (a profile's people and how it's shared),
                     sources.html (records coming in: uploads, typing in, portals, the phone, the import history;
                     import.html, connect.html and providers.html open its sections); manifest.webmanifest, icons/ and sw.js (install as a
                     phone app; tools/make_icons.py draws the icons)

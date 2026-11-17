@@ -481,6 +481,22 @@ class Settings(unittest.TestCase):
         self.assertEqual(settings.from_file({"tabs": {"order": old, "hidden": ["heatmap", "costs"]}})["tabs"],
                          {"order": ["overview", "labs", "health", "timeline", "costs"], "hidden": ["costs"]})
 
+    def test_guide(self):
+        """#199: whether the getting-started guide is done or skipped is each person's own, and kept off the Settings
+        screen (the guide's own page sets it)."""
+        d = settings.SETTINGS["guide"]
+        self.assertEqual((d.scope, d.default, d.private, d.screen), ("user", "", False, False))
+        for bad in ("finished", None, True, ["done"]):
+            self.assertEqual(self.c["zed"].put("/api/settings/user/guide", json={"value": bad}, headers=H).status_code, 400, bad)
+        self.assertEqual(self.c["zed"].get("/api/settings/user").json()["guide"], "")
+        r = self.c["zed"].put("/api/settings/user/guide", json={"value": "skipped"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["guide"]), (200, "skipped"))
+        self.assertEqual(self.c["robin"].get("/api/settings/user").json()["guide"], "")   # someone else's is their own
+        shown = {st["key"] for sec in self.c["zed"].get("/api/settings/user/sections").json()["sections"] for st in sec["settings"]}
+        shown |= {st["key"] for sec in self.c["robin"].get("/api/profiles/1/settings/sections").json()["sections"] for st in sec["settings"]}
+        self.assertNotIn("guide", shown)
+        self.c["zed"].put("/api/settings/user/guide", json={"value": ""}, headers=H)
+
     def test_theme(self):
         d = settings.SETTINGS["theme"]
         self.assertEqual((d.scope, d.section, d.kind, d.default, d.private), ("user", "appearance", "theme", "system", False))

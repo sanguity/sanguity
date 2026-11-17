@@ -47,7 +47,7 @@ def sections(pid: int, s=Depends(user), db=Depends(get_db)):
     for sid, title, help in settings.SECTIONS:
         items = []
         for k, d in settings.SETTINGS.items():
-            if d.section != sid:
+            if d.section != sid or not d.screen:   # not d.screen: a page's own (the guide's, #199)
                 continue
             v, src = eff[k]
             items.append({**d.public(), "value": v, "from": src, "can_change": settings.may_change(d.scope, role, s["is_admin"])})
@@ -160,7 +160,7 @@ def user_sections(s=Depends(user), db=Depends(get_db)):
     out = []
     for sid, title, help in settings.SECTIONS:
         items = [{**d.public(), "value": eff[k][0], "from": eff[k][1], "can_change": True}
-                 for k, d in settings.SETTINGS.items() if d.section == sid and d.scope == "user"]
+                 for k, d in settings.SETTINGS.items() if d.section == sid and d.scope == "user" and d.screen]
         if items:
             out.append({"id": sid, "title": title, "help": help, "settings": items})
     return {"role": None, "sections": out}

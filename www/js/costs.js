@@ -12,9 +12,9 @@ function renderCosts() {
   const box = $("#view-costs"); box.replaceChildren();
   const claims = !!(DATA.costs || []).length;
   if (!claims && !((DATA.outOfPocket || {}).payments || []).length) {
-    box.append(el("div", {class: "card empty"}, "No insurance claims or out-of-pocket payments yet. ",
-      ...(canEdit() ? [el("a", {href: `sources.html?profile=${PROFILE.id}#payment`, text: "Type in what you paid"}),
-        " (Import → Type them in → Out-of-pocket payment, with its receipt and whether an HSA or FSA paid it), or import an insurer's claims."] : [])));
+    // #199: what would be here, and one way to start (claims also come from a health plan's export or connection)
+    box.append(emptyState("Insurance claims and what you paid out of pocket appear here, from a health plan or typed in.",
+      canEdit() ? {href: `sources.html?profile=${PROFILE.id}#payment`, text: "Type in a claim or payment"} : null));
     return;
   }
   // a new period starts at the top of the lists, with no payment open

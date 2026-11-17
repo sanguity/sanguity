@@ -21,7 +21,10 @@ function shareLinksPanel(p, {open = false} = {}) {
 
   function drawList() {
     const rows = info.links;
-    if (!rows.length) { list.replaceChildren(el("p", {class: "muted", text: "No share links yet."})); return; }
+    if (!rows.length) {   // New share link, below, is the next step (#199)
+      list.replaceChildren(el("p", {class: "muted", text: "No share links yet: each one you make is listed here, with when it was last opened."}));
+      return;
+    }
     const names = Object.fromEntries(info.sections.map(s => [s.id, s.label]));
     list.replaceChildren(el("div", {class: "share-scroll"}, el("table", {class: "tbl"},
       el("thead", {}, el("tr", {}, ...["Link", "Shows", "Ends", "Opened", ""].map(h => el("th", {text: h})))),

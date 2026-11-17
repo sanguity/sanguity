@@ -193,7 +193,8 @@ function journalHomeCard() {
   const card = el("section", {class: "card jhome", id: "journalHome", tabindex: -1, "aria-labelledby": "journalHomeTitle"},
     el("div", {class: "list-hd"}, el("h2", {id: "journalHomeTitle", text: n ? `Journal (${n})` : "Journal"}), el("span", {class: "spacer"}),
       jCanWrite() ? el("button", {class: "btn primary", type: "button", text: "New entry", onclick: () => journalNew()}) : null),
-    el("p", {class: "hint", text: n ? "Notes, symptoms and side effects written by the people who use this profile." : "Nothing written yet."}),
+    el("p", {class: "hint", text: n ? "Notes, symptoms and side effects written by the people who use this profile."
+      : "Nothing written yet: the notes, symptoms and side effects you write appear here and on the timeline."}),   // New entry, above (#199)
     moreAbout(JOURNAL_HINT));
   if (n) { const v = jList(true); card.append(...v.nodes.filter(Boolean)); jHomeDraw = v.draw; }
   events.before(card);

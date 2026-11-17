@@ -168,7 +168,18 @@ function niceTicks(lo, hi, n) { const span = hi - lo, step0 = span / n, mag = Ma
 /* the Labs tab (#172): the chosen labs as charts (each with its table), or every lab with ranges as a heatmap */
 function renderLabs() {
   const hm = state.labsView === "heatmap";
-  $("#labsChart").hidden = hm; $("#labsHeatmap").hidden = !hm;
+  // no lab results at all (#199): what would be here, and where they come from, in place of the charts and heatmap
+  const none = !SERIES.some(s => !s.watch && s.pts.length);
+  $("#labsNone")?.remove();
+  $(".labs-head").hidden = none;
+  $("#labsChart").hidden = hm || none; $("#labsHeatmap").hidden = !hm || none;
+  if (none) {
+    const e = emptyState("Lab results appear here, each charted over time against its reference range.",
+      canEdit() ? {href: `sources.html?profile=${PROFILE.id}#manual`, text: "Add lab results"} : null);
+    e.id = "labsNone";
+    $("#view-labs").append(e);
+    return save();
+  }
   for (const b of $("#labsView").children) b.setAttribute("aria-pressed", b.dataset.view === state.labsView);
   if (hm) renderHeatmap(); else { renderSeriesList(); renderCharts(); }
   save();

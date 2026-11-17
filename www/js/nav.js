@@ -3,9 +3,10 @@
    One row: the brand (back to the records), the page's title, the profile picker on the pages about a profile
    (#170), the records page's tabs, then two menus. Add: import records, connect a source, type records in, a
    journal entry. The person's own menu: sharing (who sees the profile, share links, calendar feed, visit summary,
-   export: #168), settings, account, Admin (admins only: nav.js asks the API itself, #167), the light/dark toggle,
-   log out. The items keep the ids the pages already use (#importLink, #journalBtn, #settingsLink, #theme, #logout,
-   #who), so each page's script sets them up as before; nav.js only builds the bar and opens and closes the menus.
+   export: #168), settings, account, Admin (admins only: nav.js asks the API itself, #167), Getting started (the
+   first-run guide, #199), the light/dark toggle, log out. The items keep the ids the pages already use (#importLink,
+   #journalBtn, #settingsLink, #theme, #logout, #who), so each page's script sets them up as before; nav.js only
+   builds the bar and opens and closes the menus.
 
    <header class="topbar" data-title="Settings" data-profile> gets the bar, with the profile picker for data-profile;
    anything already inside it (the records page's profile picker, tabs and Install app button) stays where it is,
@@ -142,6 +143,7 @@ const SgNav = (() => {
     link("settings.html", "Settings", {id: "settingsLink"}),
     link("account.html", "Account"),
     link("admin.html", "Admin", {id: "adminLink", hidden: ""}),
+    link("guide.html", "Getting started", {id: "guideLink"}),   // the first-run guide, any time (#199)
     action("theme", "Dark mode"),
     sep(),
     action("logout", "Log out"),

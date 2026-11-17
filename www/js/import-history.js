@@ -106,7 +106,8 @@
     section.hidden = false;
     const list = r.imports || [];
     $("#historyList").replaceChildren(...(list.length ? list.map(e => item(e, r.can_undo))
-      : [el("li", {class: "muted", text: "Nothing has been imported into this profile yet."})]));
+      : [emptyState("Nothing has been imported into this profile yet: each upload, record typed in and portal pull is listed here, with a way to undo it.",
+          r.can_undo ? {href: "#upload", text: "Upload files"} : null, {tag: "li", cls: ""})]));   // #199
     highlight(true);
   }
 

@@ -77,10 +77,13 @@
       el("a", {href: "#conn-" + c.id, text: edit ? "Fix it" : "Details"}))));
     const conn = connRows(conns.connections, imports), ups = uploadRows(imports), phone = phoneRows(watch);
     const total = imports.filter(e => e.state === "active").length;
+    if (!conn.length && !ups.length && !(watch && (watch.has_secret || watch.legacy))) {   // nothing yet: one empty state (#199)
+      $("#srcList").replaceChildren(emptyState("Nothing has come into this profile yet: each upload, record typed in, portal and phone that brings records is listed here.",
+        edit ? {href: "#upload", text: "Upload files"} : null, {cls: ""}));
+      box.hidden = false;
+      return;
+    }
     $("#srcList").replaceChildren(...[   // without the parts left out: replaceChildren would write a null out as text
-      !conn.length && !ups.length && !phone.length ? el("p", {},
-        "Nothing has come into this profile yet. ", ...(edit ? [el("a", {href: "#upload", text: "Upload an export"}), ", ",
-          el("a", {href: "#manual", text: "type records in"}), " or ", el("a", {href: "#portals", text: "connect a portal or health plan"}), "."] : [])) : null,
       ...part("Portals and health plans", conn, edit ? "None connected yet." : "None connected."),
       ...(edit ? [el("p", {class: "src-add"}, el("a", {href: "#portals", text: conn.length ? "Connect another…" : "Connect a portal or health plan…"}))] : []),
       ...(phone.length ? part("Phone and watch", phone, "") : []),
