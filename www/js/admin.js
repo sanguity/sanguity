@@ -73,6 +73,7 @@ async function loadNotice() {
   box.hidden = !n;
   if (!n) return;
   const list = (rows, key) => rows.map(r => `${r[key]} (${r.failures})`).join(", ");
+  const msg = el("span", {class: "msg"});   // a Dismiss that didn't work says so here (#210: not in a pop-up)
   box.replaceChildren(
     el("b", {text: `${n.total} failed sign-in${n.total === 1 ? "" : "s"} since ${when(n.since)}`}), " (last at ", when(n.last), "). ",
     n.addresses.length ? `From: ${list(n.addresses, "ip")}. ` : "",
@@ -80,7 +81,8 @@ async function loadNotice() {
     "Throttling slows guessing down; if you don't recognise this, check that the accounts tried have strong passwords " +
     "or two-factor sign-in, and look at the app's log (docker compose logs app) for details. ",
     el("button", {class: "btn small", type: "button", text: "Dismiss", onclick: async () => {
-      try { await call("security/notice/dismiss", "POST"); box.hidden = true; } catch (e) { alert(e.message); } }}));
+      try { await call("security/notice/dismiss", "POST"); box.hidden = true; } catch (e) { sayIn(msg, e.message, true); } }}),
+    msg);
 }
 
 /* connected sources that stopped syncing, across the install (#102): counts per source, no profiles named */
@@ -168,7 +170,8 @@ async function loadUsers() {
             let r;
             try { r = await fresh(() => call("users/" + u.id, "PATCH", body)); }
             catch (e) {   // disabling the only owner of a profile: ask first
-              if (!(e.detail && e.detail.sole_owner_of) || !confirm(e.message)) throw e.detail && e.detail.sole_owner_of ? new Error("Not disabled.") : e;
+              if (!(e.detail && e.detail.sole_owner_of)) throw e;
+              if (!await ask({title: `Disable ${u.username}?`, message: e.message, action: "Disable anyway", danger: true})) throw new Error("Not disabled.");
               r = await call("users/" + u.id, "PATCH", {...body, force: true});
             }
             done && done(r); loadUsers();
@@ -185,7 +188,9 @@ async function loadUsers() {
           act("Reset password", {reset_password: true}, r => setTimeout(() => showTemp(u.username, r.temporary_password, r.temporary_days))),
           self ? null : el("button", {class: "btn small", type: "button", text: "Remove", onclick: () => removeAccount(u)}),
           u.two_factor ? el("button", {class: "btn small", type: "button", text: "Turn off 2FA", disabled: self || null, onclick: async () => {
-            if (!confirm(`Turn off two-factor sign-in for ${u.username}? Do this only if they lost both their phone and their recovery codes. They'll be signed out everywhere.`)) return;
+            if (!await ask({title: `Turn off two-factor sign-in for ${u.username}?`,
+                            message: ["Do this only if they lost both their phone and their recovery codes.", "They'll be signed out everywhere."],
+                            action: "Turn off", danger: true})) return;
             try { await fresh(() => call("users/" + u.id, "PATCH", {disable_2fa: true})); loadUsers(); } catch (e) { say("#userMsg", e.message, true); } }}) : null));
     }))));
 }
@@ -206,7 +211,8 @@ async function loadOwnerless() {
       const go = el("button", {class: "btn small", type: "button", text: "Make owner", onclick: async () => {
         const who = (pick.value || other.value).trim();
         if (!who) return;
-        if (who.toLowerCase() === ME.user.username.toLowerCase() && !confirm(`This gives you access to ${p.name}'s records. Continue?`)) return;
+        if (who.toLowerCase() === ME.user.username.toLowerCase() &&
+            !await ask({title: `Own ${p.name} yourself?`, message: `This gives you access to ${p.name}'s records.`, action: "Make me owner"})) return;
         try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); say("#userMsg", `${who} now owns ${p.name}.`); loadOwnerless(); }
         catch (e) { say("#userMsg", e.message, true); }
       }});
@@ -218,8 +224,10 @@ async function loadOwnerless() {
 
 /* removing an account for good: if they alone own profiles, ask who takes those over first */
 async function removeAccount(u) {
-  if (!confirm(`Remove the account ${u.username} for good? They're signed out and lose access to every profile. ` +
-               "Their past activity stays in the logs, marked as removed. Their profiles' records stay.")) return;
+  if (!await ask({title: `Remove the account ${u.username} for good?`,
+                  message: ["They're signed out and lose access to every profile.",
+                            "Their past activity stays in the logs, marked as removed. Their profiles' records stay."],
+                  action: "Remove account", danger: true})) return;
   let body = {};
   for (;;) {
     try {
@@ -229,10 +237,13 @@ async function removeAccount(u) {
       return;
     } catch (e) {
       if (!(e.detail && e.detail.sole_owner_of)) { say("#userMsg", e.message, true); return; }
-      const who = prompt(e.message + "\n\nType the username of the new owner, or leave it empty to remove anyway " +
-                         "(an admin can give it an owner later, under Accounts).", "");
-      if (who === null) { say("#userMsg", "Not removed."); return; }
-      body = who.trim() ? {hand_to: who.trim()} : {force: true};
+      // who takes their profiles over: asked in the app's dialog, with a box for the name (#210: was the browser's prompt)
+      const field = el("input", {autocapitalize: "none", spellcheck: "false", autocomplete: "off"});
+      if (!await ask({title: `Who takes over from ${u.username}?`,
+                      message: [e.message, el("label", {}, "New owner's username", field),
+                                "Leave it empty to remove the account anyway: an admin can give the profile an owner later, under Accounts."],
+                      action: "Remove account", danger: true, field})) { say("#userMsg", "Not removed."); return; }
+      body = field.value.trim() ? {hand_to: field.value.trim()} : {force: true};
     }
   }
 }
@@ -280,7 +291,9 @@ async function loadLabmaps() {
         el("td", {class: "acts"},
           el("button", {class: "btn small", type: "button", text: "Change", onclick: edit}),
           el("button", {class: "btn small", type: "button", text: "Remove", onclick: async () => {
-            if (!confirm(`Forget the match for “${m.name}”? The next import that has it will ask again. Results already saved keep their series.`)) return;
+            if (!await ask({title: `Forget the match for “${m.name}”?`,
+                            message: "The next import that has it will ask again. Results already saved keep their series.",
+                            action: "Forget match", danger: true})) return;
             try { await call("labmaps/" + m.id, "DELETE"); say("#labmapMsg", `Forgot the match for “${m.name}”.`); loadLabmaps(); }
             catch (e) { say("#labmapMsg", e.message, true); }
           }})));

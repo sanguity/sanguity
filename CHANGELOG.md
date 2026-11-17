@@ -236,6 +236,13 @@ Everything on `main` so far; it becomes the first tagged release.
   and never cut off. Only one shows as chosen, a button or More… naming what it picked, and the period is said in
   words beside them ("Last 2 years", "Apr 14, 2025 – today"). The date boxes show only for custom dates (or after
   dragging a chart to a range of its own), with **Clear dates** to go back; custom dates are kept on a reload.
+- **Confirmations in the app's own dialog** (#210), not the browser's pop-up: removing a passkey or an account,
+  turning off two-factor sign-in or a calendar feed, revoking a share link, a new watch secret, resetting settings
+  and the rest now ask in a window that follows light and dark mode, with a title, Cancel and a button named for
+  what it does ("Remove passkey", "Turn off feed"). One that can't be undone is red and starts on Cancel; Escape
+  cancels, and focus goes back to the button you pressed. Removing an account that alone owns a profile asks for
+  the new owner in the same window. The note after signing in with a recovery code is on the sign-in page, with a
+  Continue button, and a Dismiss on Admin that fails says so beside it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

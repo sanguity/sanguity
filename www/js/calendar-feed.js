@@ -68,7 +68,8 @@
       el("td", {text: when(o.last_fetched)}),
       el("td", {class: "acts"}, el("button", {class: "btn small", type: "button", text: "Turn off", "aria-label": `Turn off ${o.username}'s feed`,
         onclick: async () => {
-          if (!confirm(`Turn off ${o.username}'s calendar feed? Their calendar app stops getting updates.`)) return;
+          if (!await ask({title: `Turn off ${o.username}'s calendar feed?`, message: "Their calendar app stops getting updates.",
+                          action: "Turn off feed", danger: true})) return;
           try { await call(`profiles/${pid}/calendar/${o.id}`, "DELETE"); await load(); say(`${o.username}'s feed is off.`); }
           catch (e) { say(e.message, true); }
         }})))));
@@ -86,12 +87,14 @@
     $("#calCreate").disabled = false;
   };
   $("#calRotate").onclick = async () => {
-    if (!confirm("Get a new address? The old one stops working at once: you'll need to subscribe again with the new one.")) return;
+    if (!await ask({title: "Get a new address?", message: "The old one stops working at once: you'll need to subscribe again with the new one.",
+                    action: "Get new address", danger: true})) return;
     try { const j = await call(`profiles/${pid}/calendar/rotate`, "POST"); await load(); showSetup(j.path); say("New address made; the old one no longer works."); }
     catch (e) { say(e.message, true); }
   };
   $("#calRevoke").onclick = async () => {
-    if (!confirm("Turn off your calendar feed? Its address stops working; remove the subscription from your calendar app too.")) return;
+    if (!await ask({title: "Turn off your calendar feed?", message: "Its address stops working. Remove the subscription from your calendar app too.",
+                    action: "Turn off feed", danger: true})) return;
     try { await call(`profiles/${pid}/calendar`, "DELETE"); await load(); say("Your calendar feed is off."); }
     catch (e) { say(e.message, true); }
   };

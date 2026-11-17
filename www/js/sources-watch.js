@@ -36,7 +36,8 @@
     const has = st.has_secret || st.legacy;
     const go = el("button", {class: "btn small" + (has ? "" : " primary"), type: "button", id: "watchRotate", text: has ? "Make a new secret…" : "Make a secret",
       onclick: async () => {
-        if (has && !confirm("Make a new secret? The phone using the current one stops uploading until you give it the new one.")) return;
+        if (has && !await ask({title: "Make a new secret?", message: "The phone using the current one stops uploading until you give it the new one.",
+                               action: "Make new secret", danger: true})) return;
         go.disabled = true;
         try { const r = await call(`profiles/${PID}/watch/receiver/rotate`, "POST", {}); drawWatch(r, r.secret); }
         catch (e) { sayIn(msg, e.message, true); go.disabled = false; }

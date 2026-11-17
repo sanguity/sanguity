@@ -58,7 +58,10 @@ function viewsBar() {
         onclick: () => tvStore(views.map(v => ({...tvPlain(v), default: v === cur ? !cur.default : false})),
           cur.default ? `“${cur.name}” is no longer the default.` : `Labs now starts with “${cur.name}”.`)}),
       el("button", {class: "btn", type: "button", text: "Delete", "aria-label": `Delete the view ${cur.name}`,
-        onclick: () => { if (confirm(`Delete the saved view “${cur.name}”? The labs stay charted.`)) tvStore(views.filter(v => v !== cur).map(tvPlain), `Deleted “${cur.name}”.`); }}));
+        onclick: async () => {
+          if (!await ask({title: `Delete the view “${cur.name}”?`, message: "The labs it shows stay charted; only the saved view goes.",
+                          action: "Delete view", danger: true})) return;
+          tvStore(views.filter(v => v !== cur).map(tvPlain), `Deleted “${cur.name}”.`); }}));
   }
   if (can && !tvFormOpen) bar.append(el("button", {class: "btn", type: "button", id: "viewSaveOpen", text: "Save view…", disabled: state.sel.size ? null : "",
     title: state.sel.size ? "Save the labs charted now as a view" : "Pick some labs first",
