@@ -14,8 +14,9 @@ what your care actually cost. It runs on hardware you control; nothing is sent a
 ![Overview: key lab tiles with sparklines, watch and scale summaries, problems and upcoming visits](docs/screenshots/overview.png)
 
 > **Not medical advice.** Sanguity shows what your records say. It does not diagnose, interpret results or
-> recommend treatment. Highlighted values are flagged against the reference ranges in your own lab reports;
-> your care team interprets them in context.
+> recommend treatment. Highlighted values are flagged against the reference ranges in your own lab reports
+> (or, for a result whose report gives none, a range you set yourself, labelled "range from settings"); your care
+> team interprets them in context.
 
 All screenshots use the built-in **fictional demo data**. No real person's records appear in this repository.
 
@@ -354,8 +355,15 @@ from the internet; a phone on your home network or tailnet works without that.
   glucose, creatinine, BUN, calcium and magnesium by their molar mass; hemoglobin, MCHC, albumin and total protein by a
   power of ten); every other test stays in the unit its lab reported. Reference ranges convert with the values, and
   the value as reported is shown beside every converted one.
+- **Reference ranges from settings:** some results come without a range (typed in, a spreadsheet, some portals).
+  Under **Settings → Reference ranges** you can give a lab, in a stated unit, a low and high of your own, for anyone
+  or for female or male, and for an age band (set a birth date; the age on each result's day is used). They're used
+  only for a result with no range and no flag on its report, never instead of one, and only in the same unit
+  (nothing is converted). Wherever one colours a result (Trends, the heatmap, the Overview, the visit summary,
+  where it's printed with "(settings)"), it says "range from settings". It's your choice, not medical advice.
 - **Visit summary:** one or two printable pages to bring to an appointment (**Visit summary** in the header):
-  results out of range since the last visit, each against the range on its own report, trends of the key labs and
+  results out of range since the last visit, each against the range on its own report (or a range from settings
+  when the report gives none), trends of the key labs and
   any others picked, current medications, upcoming appointments and your own questions (kept as a draft for the
   profile). Anyone the profile is shared with can make one, viewers included; it's made on request, never stored,
   and each one is in the activity log.

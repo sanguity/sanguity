@@ -512,6 +512,31 @@ define("units", "units", "Units", {p: "reported" for p in UNIT_CHOICES}, unit_pr
 CHOICES["units"] = UNIT_CHOICES
 
 
+# ---------------------------------------------------------------- #44 reference ranges from settings (server/ranges.py)
+
+from . import ranges as _ranges
+
+
+def _range_check(f):
+    def check(v):
+        try:
+            return f(v)
+        except _ranges.RangeError as e:
+            raise SettingError(str(e)) from None
+    return check
+
+
+section("ranges", "Reference ranges", "Your own ranges, used only for results whose report gives none. Each is "
+        "labelled “range from settings” wherever it colours a result; a range printed on a report is always the one used.")
+define("ranges.birthDate", "ranges", "Birth date", "", _range_check(_ranges.check_birth), kind="birthdate",
+       help="Only to pick a range by age band: the age on the day of each result. Leave empty to use only ranges for every age.")
+define("ranges.sex", "ranges", "Sex for reference ranges", "", _range_check(_ranges.check_sex), kind="rangesex",
+       help="Only to pick a range set for female or male. Not set: only ranges for anyone are used.")
+define("ranges.overrides", "ranges", "Ranges for results without one", [], _range_check(_ranges.check_overrides),
+       kind="ranges", help="By the lab's name in the records and its unit: a result in another unit gets none, and nothing "
+                           "is converted. Leave the age empty for every age; a row for female or male wins over one for anyone.")
+
+
 # ---------------------------------------------------------------- storage
 
 def _where(scope, pid, uid):

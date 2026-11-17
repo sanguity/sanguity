@@ -87,6 +87,10 @@ Everything on `main` so far; it becomes the first tagged release.
   on Trends, the Overview tiles, the heatmap and the drawer. Only exact conversions are made (a change of prefix, a
   fixed molar mass for glucose, creatinine, BUN, calcium and magnesium, lb to kg by definition); any other test
   stays in its reported unit, and the reported value is always shown beside a converted one.
+- Reference ranges of your own for results whose report gives none (#44): set under Settings → Reference ranges by
+  lab and unit, optionally by sex and age band (with a birth date for the age on each result's day). They colour
+  those results on Trends, the heatmap, the Overview and the visit summary, always labelled "range from settings";
+  a range or flag printed on a report is never replaced, and a result in another unit gets none.
 
 **Sharing and new features (Phase 4)**
 - Reminders as a calendar feed (#51): a private iCalendar address per person and profile, made on the Settings page,

@@ -110,7 +110,7 @@ function renderPreview(s) {
   for (const id of s.sections) {
     if (id === "out_of_range") {
       parts.push(el("h3", {text: `Out of range since ${since} (${s.out_of_range.length})`}));
-      parts.push(s.out_of_range.length ? table(["Test", "Result", "Flag", "Its report's range", "Date", "Source"], s.out_of_range.map(r => el("tr", {},
+      parts.push(s.out_of_range.length ? table(["Test", "Result", "Flag", "Range", "Date", "Source"], s.out_of_range.map(r => el("tr", {},
         cell(r.label + (r.of > 1 ? ` (${r.out} of ${r.of})` : "")), cell(`${r.value} ${r.unit}`.trim()), cell(r.flag, "flag"),
         cell(r.range || "not given"), cell(fmtDay(r.date)), cell(r.source)))) : none("No results since then are outside the reference range on their own report."));
     } else if (id === "trends") {
@@ -136,6 +136,7 @@ function renderPreview(s) {
       parts.push(el("ul", {}, ...ex.rows.map(r => el("li", {text: [fmtDay(r.when), r.title, r.text].filter(Boolean).join(" · ")}))));
     }
   }
+  if (s.settings_note) parts.push(el("p", {class: "hint", id: "sumSettingsNote", text: s.settings_note}));   // #44
   parts.push(el("p", {class: "hint sum-notice", text: s.notice}));
   box.replaceChildren(...parts); box.hidden = false;
 }

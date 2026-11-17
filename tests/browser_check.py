@@ -20,7 +20,9 @@ Costs, sees the source's and the Health Link's hosts under Settings → Outside 
 Settings page and resets them (a milestone added there marked on Trends and a "since" period on Health; a
 workout rule, a catastrophic pattern refused first, counted on Health; drags and keyboard-moves the key-lab tiles, hides and
 reorders tabs, sets a default theme a fresh browser picks up, picks SI units and kg and sees them on Trends, the
-Overview tiles and the drawer with the reported values beside them), builds a visit summary (sections, a lab, questions
+Overview tiles and the drawer with the reported values beside them, sets ranges of its own for results whose
+report gives none and sees them used and labelled on Trends, the heatmap, the Overview and the visit summary, #44),
+builds a visit summary (sections, a lab, questions
 kept as a draft), previews it and downloads the PDF, reading it back, has two accounts in different time zones each see days split at their own midnight and
 dates in their own format (#42), makes the profile's watch receiver secret on the Settings page, shown once and then
 masked (#46), opens the account
@@ -155,7 +157,7 @@ def main():
         check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 10)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 11)
         strict.wait_for_selector("#watch h2", timeout=10000)
         check("under the CSP: the watch card shows the upload address", strict.evaluate("document.querySelector('#watch .w-addr').textContent").endswith(":8731/ingest"))
         strict.goto(base + "/summary.html")   # the visit summary page (#48)
@@ -1136,7 +1138,7 @@ def main():
             page.click("#settingsLink")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Trends", "Names", "Health", "Connected sources", "Milestones", "Tabs", "Appearance", "Dates and times", "Units"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Trends", "Names", "Health", "Connected sources", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…with the server's attachment and sync defaults as a switch, numbers and choices (#101, #102)",
                   js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length]") == [5, 3],
                   js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
@@ -1560,6 +1562,133 @@ def main():
             page.wait_for_selector("#watch .w-secret", timeout=10000)
             masked = js("document.querySelector('#watch .w-secret').textContent")
             check("…then only its last characters", masked.endswith(made[-4:]) and made not in page.content(), masked)
+            # ---- reference ranges from settings (#44): a profile whose results come without a range; its own ranges,
+            # set on the Settings page, colour those results on Trends, the heatmap, the Overview and the visit
+            # summary, labelled "range from settings", while a report's own range and flag stay; the page's rules
+            # (ranges.js) give the same answers as the server's (server/ranges.py); fits 375 px
+            from server import db as dbm, profiles as prof_r, ranges as rng, records as rec_r
+            was_profile = js("localStorage.getItem('ht-profile')")
+            days = [f"2025-{m:02d}-15" for m in range(6, 13)] + [f"2026-{m:02d}-{d_:02d}" for m in range(1, 11) for d_ in (5, 20)]
+            vals = [60, 90, 120, 250, 180, 160, 140, 130, 170, 210, 95, 12, 40, 80, 110, 140, 145, 160, 175, 120, 100, 90, 85, 70, 65, 300, 400]
+            fe = [[f"{d_}T08:00:00", v, None, None, "", str(v)] for d_, v in zip(days, vals)]
+            fe[3] = [fe[3][0], 250, 30, 400, "", "250"]   # its own report's range: in range by it, though above the setting's
+            fe[11] = [fe[11][0], 12, None, None, "L", "12"]   # flagged by its own lab, with no range: the flag stays
+            ug = [["2026-02-05T08:00:00", 500, None, None, "", "500"], ["2026-06-05T08:00:00", 90, None, None, "", "90"]]
+            db = dbm.connect()
+            owner = db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"]
+            rpid = prof_r.create_profile(db, "Ranges (fictional)", owner_id=owner)
+            with dbm.transaction(db):
+                rec_r.store(db, rpid, {"built": "2026-11-15", "source": "fictional",
+                                       "events": [{"id": i + 1, "t": f"{d_}T08:00:00", "k": "lab", "title": "Lab results"} for i, d_ in enumerate(days)],
+                                       "details": {}, "costs": [], "upcoming": [],
+                                       "labs": [{"name": "Ferritin", "unit": "ng/mL", "panel": "Iron", "n": len(fe), "txt": [], "pts": fe},
+                                                {"name": "Ferritin", "unit": "ug/L", "panel": "Iron", "n": 2, "txt": [], "pts": ug}]},
+                            "upload", fmt="csv")
+            db.close()
+            page.goto(base + f"/settings.html?profile={rpid}")
+            page.wait_for_selector("#sec-ranges [data-key='ranges.overrides'] .set-sugg .chip", timeout=10000)
+            chips = js("[...document.querySelectorAll('#sec-ranges .set-sugg .chip')].map(b => b.textContent)")
+            check("ranges: Settings suggests the labs whose results have no range, by unit",
+                  len(chips) == 2 and chips[0] == f"+ Ferritin (ng/mL) · {len(fe) - 2}", chips)
+            page.fill("#sec-ranges [data-key='ranges.birthDate'] input[type=date]", "1990-03-01")
+            page.click("#sec-ranges [data-key='ranges.birthDate'] button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-ranges > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.wait_for_selector("#sec-ranges [data-key='ranges.sex'] input[value=female]", timeout=10000)
+            page.check("#sec-ranges [data-key='ranges.sex'] input[value=female]")
+            page.click("#sec-ranges [data-key='ranges.sex'] button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-ranges > .msg').textContent.startsWith('Saved “Sex')", timeout=10000)
+            ov = "#sec-ranges [data-key='ranges.overrides']"
+            page.wait_for_selector(f"{ov} .set-sugg .chip", timeout=10000)
+            page.locator(f"{ov} .set-sugg .chip").first.click()
+            r1 = page.locator(f"{ov} .set-row:not(.set-head)").nth(0)
+            check("…a suggestion adds a row with its lab and unit", r1.locator("[data-k=lab]").input_value() == "Ferritin"
+                  and r1.locator("[data-k=unit]").input_value() == "ng/mL")
+            r1.locator("[data-k=low]").fill("200")
+            r1.locator("[data-k=high]").fill("20")
+            n_problems = len(problems)
+            page.locator(f"{ov} button:text-is('Save')").click()
+            page.wait_for_function(f"document.querySelector(\"{ov} .msg\").textContent.includes('low is above the high')", timeout=10000)
+            check("…a low above the high is refused, in words", True)
+            settle(200)
+            del problems[n_problems:]   # the refusal's 400 was asked for
+            r1.locator("[data-k=low]").fill("20")
+            r1.locator("[data-k=high]").fill("200")
+            page.locator(f"{ov} button:text-is('Add a range')").click()
+            r2 = page.locator(f"{ov} .set-row:not(.set-head)").nth(1)
+            r2.locator("[data-k=lab]").fill("Ferritin")
+            r2.locator("[data-k=unit]").fill("ng/mL")
+            r2.locator("[data-k=sex]").select_option("female")
+            r2.locator("[data-k=ageFrom]").fill("36")
+            r2.locator("[data-k=low]").fill("15")
+            r2.locator("[data-k=high]").fill("150")
+            pv = js("document.getElementById('rangesPreview').textContent")
+            check("…the preview says how many results the rows fit", pv.startswith(f"{len(fe)} results here have no range") and f"fit {len(fe) - 2}" in pv, pv)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("…and the ranges editor fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.locator(f"{ov} button:text-is('Save')").click()
+            page.wait_for_function("document.querySelector('#sec-ranges > .msg').textContent.startsWith('Saved “Ranges')", timeout=10000)
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.name === 'Ranges (fictional)'", timeout=20000)
+            got = js("SERIES.filter(s => !s.watch).flatMap(s => s.pts.map(p => [s.name, s.unit, p[0], p[2], p[3], p[4] || '', p.rs || '']))")
+            cfg = js("CFG.ranges")
+            want = []
+            for unit, pts in (("ng/mL", fe), ("ug/L", ug)):
+                for q in pts:
+                    hit = None if rng.has_own(q[2], q[3], q[4]) else rng.find(cfg, "Ferritin", unit, q[0])
+                    want.append(["Ferritin", unit, q[0], hit["low"] if hit else q[2], hit["high"] if hit else q[3],
+                                 rng.flag_for(q[1], hit) if hit else q[4], "settings" if hit else ""])
+            check("…the page applies them as the server does (ranges.js and server/ranges.py agree)", sorted(got) == sorted(want),
+                  [g for g in got if g not in want][:3])
+            check("…by the age on each result's day: the female 36+ row from 2026-03-01, the row for anyone before",
+                  [g[4] for g in got if g[1] == "ng/mL" and g[2][:10] in ("2026-02-20", "2026-03-20")] == [200, 150])
+            check("…never over a report's own range or flag, nor in another unit",
+                  [g[3:] for g in got if g[2].startswith(days[3])][0] == [30, 400, "", ""] and [g for g in got if g[2].startswith(days[11])][0][5:] == ["L", ""]
+                  and all(g[6] == "" for g in got if g[1] == "ug/L"))
+            js("state.sel = new Set(['Ferritin']); applyPreset('all'); switchTab('labs'); renderLabs()")
+            settle(400)
+            card = "[...document.querySelectorAll('#charts .chart')].find(c => c.querySelector('.unit').textContent.startsWith('ng/mL'))"
+            check("Trends: the chart says where the range came from, and colours the results outside it",
+                  "range from settings" in js(f"{card}.querySelector('.unit').textContent") and js(f"{card}.querySelectorAll('.pt.abn').length") > 0
+                  and js(f"!!{card}.querySelector('.refband')"), js(f"{card}.querySelector('.unit').textContent"))
+            js(f"{card}.querySelector('.hd button:not(.rename-btn)').click()")   # its table (the ✎ beside the name renames, #38)
+            settle(200)
+            table = js("document.querySelector('#charts .tablewrap').textContent")
+            check("…its table labels each such range, and keeps the report's own", "(range from settings)" in table and "30 – 400" in table, table[:200])
+            check("…and the caption says so", "range from settings" in page.inner_text("#view-labs .range-note")
+                  and "reference ranges in your own lab reports" in page.inner_text("#view-labs .range-note"))
+            js("state.tables.clear(); renderCharts()")
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 375 else 800})
+                js("switchTab('heatmap')")
+                settle(300)
+                check(f"heatmap ({width} px): the results coloured against the range from settings, and fits",
+                      js("document.querySelectorAll('#hm rect.cell[style*=\"--div-hi\"], #hm rect.cell[style*=\"--div-lo\"]').length") > 0
+                      and "range from settings" in page.inner_text("#view-heatmap .range-note") and js("document.documentElement.scrollWidth") <= width,
+                      js("document.documentElement.scrollWidth"))
+                js("switchTab('overview')")
+                settle(300)
+                check(f"Overview ({width} px): the flag says it's against a range from settings, and fits",
+                      js("document.querySelector('#view-overview .tile .st')?.title") == "Against a range from settings"
+                      and "(range from settings)" in page.inner_text("#view-overview .ov-row .r")
+                      and "range from settings" in page.inner_text("#view-overview .range-note") and js("document.documentElement.scrollWidth") <= width,
+                      js("document.querySelector('#view-overview .tile .st')?.title"))
+                js("switchTab('labs')")
+                settle(300)
+                check(f"Trends ({width} px) fits", js("document.documentElement.scrollWidth") <= width, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + f"/summary.html?profile={rpid}")
+            page.wait_for_selector("#build:not([hidden])", timeout=10000)
+            page.click("#previewBtn")
+            page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+            check("visit summary: a result without a range is judged against the range from settings, marked so",
+                  "(settings)" in js("document.getElementById('preview').textContent")
+                  and "range from settings" in js("document.getElementById('sumSettingsNote')?.textContent || ''"))
+            db = dbm.connect()
+            prof_r.delete_profile(db, rpid)
+            db.close()
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- connected sources (#32, #91), against the fake SMART on FHIR server standing in for an Epic sandbox:
             # an admin sets the source up and tests it, the profile connects by signing in, the first pull is previewed
             # and saved, Sync now brings a new result, and when the patient ends access the page asks to reconnect
