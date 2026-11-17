@@ -79,7 +79,7 @@ check changes without updating the list, and it exercises this table against a l
 | A SMART Health Link pasted on Sources | No | Yes (after confirming) | Yes | No | No | No |
 | The visit summary PDF and its questions draft | Yes | Yes | Yes | No | No | No |
 | Settings: read; their own settings | Yes | Yes | Yes | Their own only | No | No |
-| Settings: the profile's (tabs, ranges, milestones, ...) | No | Yes | Yes | No | No | No |
+| Settings: the profile's (tabs, ranges, milestones, ...), and starting them from a condition's preset (#186, `GET /api/profiles/{pid}/condition-presets`) | No | Yes | Yes | No | No | No |
 | A calendar feed of the profile for themself | Yes | Yes | Yes | No | No | No |
 | Everyone's calendar feeds of the profile: see, revoke | No | No | Yes | No | No | No |
 | Share links: make, list, revoke | No | No | Yes | No | No | No |

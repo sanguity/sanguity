@@ -17,7 +17,7 @@
   if (!main) return;
   const GROUPS = [
     {id: "dashboard", title: "Dashboard", part: "This profile", hint: "How this profile's tabs look, for everyone it's shared with",
-     has: ["sec-overview", "sec-tabs", "sec-trends", "sec-names"]},
+     has: ["sec-overview", "sec-tabs", "sec-trends", "sec-names", "sec-summary"]},   // sec-summary: #186
     {id: "labs", title: "Labs and ranges", part: "This profile", hint: "Ranges of your own for results that come without one",
      has: ["sec-ranges"]},
     {id: "activity", title: "Milestones and activity", part: "This profile", hint: "Named dates on every chart, and visits counted as workouts",

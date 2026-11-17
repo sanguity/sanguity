@@ -309,6 +309,19 @@ define("overview.homeTiles", "overview", "Home readings", [], some_of(HOME_TILES
             "home, or a visit's records.")
 CHOICES["overview.homeTiles"] = HOME_TILES
 
+# #186: the phone's and watch's measures the visit summary ticks at first (server/measures.py's sections, otherwise
+# unticked; tests/test_condition_presets.py keeps the two lists the same), chosen here or by a condition's preset
+SUMMARY_TICKS = {"home_bp": "Blood pressure at home", "glucose": "Blood glucose at home",
+                 "temperature": "Body temperature at home", "oxygen": "Blood oxygen at home",
+                 "respiratory": "Respiratory rate from the watch", "vo2max": "Cardio fitness (VO2 max)",
+                 "immunizations": "Immunizations", "ecg": "ECGs and irregular rhythm notifications", "bmi": "BMI and growth",
+                 "targets": "Your targets for home readings", "medlog": "Medication log"}   # as measures.LABELS (#234, #235)
+section("summary", "Visit summary", "What the visit summary on the Sharing page ticks before you choose.")
+define("summary.ticked", "summary", "Measures ticked at first", [], some_of(SUMMARY_TICKS, "Measures ticked at first"),
+       kind="choices", help="Those this profile has some of are ticked in the visit summary at first; you can still "
+                            "untick them there. The others start unticked.")
+CHOICES["summary.ticked"] = SUMMARY_TICKS
+
 define("visitWorkouts", "health", "Visits that count as workouts", [], workout_rules(), kind="rules",
        help="Past visits whose title contains the text count as a workout of that many minutes, once a day per rule, "
             "ignoring case. Tick “Regular expression” to match a pattern instead (an advanced option).")

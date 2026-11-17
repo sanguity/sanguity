@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from . import accounts, activity, db as dbm, settings
+from . import accounts, activity, db as dbm, presets, settings
 from .main import _client_ip, admin, get_db, need, user
 
 router = APIRouter()
@@ -117,6 +117,17 @@ def reset_section(pid: int, body: Section, request: Request, s=Depends(user), db
                 _log(db, s, pid, scope, {"section": body.section, "label": titles[body.section], "settings": gone, "reset": True}, request)
             reset += gone
     return {"reset": reset, "kept": [d.key for d in mine if d not in allowed], "settings": settings.merged(db, pid, s["id"])}
+
+
+# ---------------------------------------------------------------- dashboard presets by condition (#186)
+
+@router.get("/api/profiles/{pid}/condition-presets")
+def condition_presets(pid: int, s=Depends(user), db=Depends(get_db)):
+    """Settings → Dashboard → Start from a condition (presets.py): the conditions, their labs matched to this
+    profile's series, and those its problem list names. Owners and editors, who change the settings they fill in;
+    nothing is changed here."""
+    need(db, s, pid, "editor")
+    return presets.offer(db, pid, s["id"])
 
 
 # ---------------------------------------------------------------- a person's own settings, without a profile (#42)

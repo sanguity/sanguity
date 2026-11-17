@@ -457,6 +457,7 @@ const SCOPE_TAG = {install: "for this server", profile: "for this profile", user
 
 /* one setting: its name, where its value comes from, its editor, and a line for what went wrong saving it.
    changed() after every edit. */
+const SET_ITEMS = {};   // key -> the setting's item drawn last: put(value) fills its editor in, unsaved (presets.js, #186)
 function settingNode(st, changed, mixed) {
   const ro = !st.can_change;
   const msg = el("span", {class: "msg", role: "status"});
@@ -469,7 +470,10 @@ function settingNode(st, changed, mixed) {
     value: () => ed.get(),
     saved(value) { st.value = value; st.from = st.scope; from.textContent = FROM[st.from] || st.from; mark(); }};
   const mark = () => node.classList.toggle("set-changed", item.dirty());
-  ed = (EDITORS[st.kind] || jsonEditor)(st.value, () => { sayIn(msg, ""); mark(); changed(); }, ro, st);
+  const make = v => (EDITORS[st.kind] || jsonEditor)(v, () => { sayIn(msg, ""); mark(); changed(); }, ro, st);
+  ed = make(st.value);
+  item.put = v => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); mark(); changed(); };   // #186
+  SET_ITEMS[st.key] = item;
   node.append(el("h3", {class: "sub"}, st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
     st.help ? el("p", {class: "hint", text: st.help}) : null,
     ed.node, msg);
@@ -542,6 +546,7 @@ function sectionCard(sec, opts = {}) {
   card = el("section", {class: "card", id: "sec-" + sec.id},
     el("div", {class: "set-hd"}, el("h2", {text: sec.title}), reset),
     sec.help ? el("p", {class: "hint", text: sec.help}) : null,
+    sec.id === "overview" ? presetsBlock(sec) : null,   // "Start from a condition" (presets.js, #186)
     ...items.map(it => it.node),
     anyEditable ? el("div", {class: "set-foot"}, save, discard, msg) : null);
   return card;
@@ -579,6 +584,7 @@ async function load(note, force, all = false) {
   }
   catch (e) { sayIn($("#loadMsg"), e.message, true); if (all) box.replaceChildren(); return; }   // (changes not saved stay)
   sayIn($("#loadMsg"), "");
+  await presetsLoad(PID, d.role);   // Start from a condition's offer, for the Overview section (presets.js, #186)
   d.sections = d.sections.filter(sec => sec.settings.some(st => st.scope !== "install"));   // the server's own: on the Admin page (#167)
   const every = d.sections.flatMap(sec => sec.settings);
   NICK = every.find(st => st.key === "labNicknames")?.value || {};

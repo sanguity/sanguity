@@ -19,6 +19,7 @@ Sections, each optional (SECTIONS):
   measures       the phone's and watch's measures and the newer kinds of record (#225, server/measures.py): home
                  blood pressure, glucose, temperature, blood oxygen, respiratory rate, VO2 max, immunizations, ECGs,
                  BMI and growth; each offered only when the profile has some, and unticked unless the person ticks it
+                 (or Settings → Visit summary ticks it at first, #186)
   extra sections registered by other features (register_section), such as the journal's recent symptoms (#49)
 
 The "since" point is the last visit before today, or another past visit's date the person picks; with no past
@@ -293,7 +294,8 @@ def options(db, pid, uid):
     nick = cfg.get("labNicknames") or {}
     key_labs = [n for n in (cfg.get("overview") or {}).get("keyLabs") or [] if n in series]
     have = set(measures.offered(measures.context(db, pid, data, cfg)))   # (#225) those with something, unticked ("off")
-    secs = [{"id": s, "label": l, **({"off": True} if s in measures.IDS else {})} for s, l in sections()
+    ticked = set((cfg.get("summary") or {}).get("ticked") or [])   # unless Settings ticks them at first (#186)
+    secs = [{"id": s, "label": l, **({"off": True} if s in measures.IDS and s not in ticked else {})} for s, l in sections()
             if s not in measures.IDS or s in have]
     return {"today": now, "upcoming": _upcoming(data, now), "visits": _visits(data, now)[:40],
             "labs": sorted(({"name": n, "label": nick.get(n, n)} for n in series), key=lambda x: x["label"].lower()),

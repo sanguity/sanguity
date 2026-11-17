@@ -864,7 +864,7 @@ def main():
         check("no Sources card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 10)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 11)   # Visit summary (#186)
         check("no Settings card shows a stray “null” (#175)", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         check("…and Settings has no Watch and scale any more (#166)", not strict.evaluate("!!document.getElementById('watch')")
               and "Watch and scale" not in strict.evaluate("document.getElementById('setNav').textContent"))
@@ -4931,7 +4931,7 @@ def main():
             menu_click(page, "#settingsLink")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Lab charts", "Names", "Body and activity", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Lab charts", "Names", "Body and activity", "Visit summary", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…but not the server's sync defaults or outside connections: those are on the Admin page (#167)",
                   js("!document.getElementById('sec-sync') && !document.getElementById('outside') && !document.querySelector('.set-nav-list a[data-group=sources], .set-nav-list a[data-group=outside]')"))
             # ---- the Settings sidebar (settings-nav.js) and the top bar's menus (nav.js)
@@ -5261,6 +5261,7 @@ def main():
             page.click("#sec-overview .set-sugg .chip")
             check("…to put back", js(preview) == p0, js(preview)[-2:])
             grips = page.locator("#sec-overview .set-grip")
+            grips.nth(0).scroll_into_view_if_needed()   # (the section is taller since #186: the chip's click scrolled them away)
             g2, g0 = grips.nth(2).bounding_box(), grips.nth(0).bounding_box()
             page.mouse.move(g2["x"] + g2["width"] / 2, g2["y"] + g2["height"] / 2)
             page.mouse.down()
@@ -5282,6 +5283,116 @@ def main():
             js("switchTab('overview')")
             settle(300)
             check("…the Overview follows the new order", [t for t, _ in js(tiles)[:3]] == p2[:3], js(tiles)[:3])
+
+            # ---- Start from a condition (#186): Settings → Dashboard offers the condition the problem list names (the demo's
+            # lymphoma; not its resolved anemia), finds another by a synonym, and previews both: each list's guideline,
+            # the tiles interleaved most important first, the labs with no results here named without suggesting a test.
+            # Filled in, the Overview section is changed but not saved, and Discard changes puts it back; filled in again
+            # with a Labs view and the visit summary's ticks, each section saved, the Overview shows the preset's tiles,
+            # and Reset to defaults undoes it. At 1400 and 375 px, light and dark, axe-clean. A child's profile: below (#196).
+            api_get = "p => fetch('api/' + p, {cache: 'no-store'}).then(r => r.json())"
+            api_put = "([p, v]) => fetch('api/' + p, {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({value: v})}).then(r => r.status)"
+            saved_views = js(api_get, "profiles/1/settings")["trends"]["views"]
+            pre_tiles = "[...document.querySelectorAll('#preOut .tile')].map(t => t.dataset.lab)"
+            def presets_open():
+                page.goto(base + "/settings.html?profile=1#sec-overview")
+                page.wait_for_selector("#presets .pre-offer button", timeout=10000)
+                page.wait_for_load_state("networkidle")
+                settle(200)
+            presets_open()
+            offer = page.inner_text("#presets .pre-suggest")
+            check("presets (#186): the problem list's condition is offered, never applied by itself",
+                  "Hodgkin lymphoma, in remission" in offer and "Cancer, during treatment" in offer and "Anemia" not in offer
+                  and js("document.getElementById('prePanel').hidden && !document.querySelector('#sec-overview[data-dirty]')"), offer)
+            page.click("#presets .pre-offer button")
+            check("…choosing it opens the picker with it ticked, grouped by body system",
+                  js("document.querySelector('label[data-id=cancer-treatment] input').checked") and js("[...document.querySelectorAll('#preList legend')].map(l => l.textContent)")[:2]
+                  == ["Diabetes, thyroid and hormones", "Heart and blood vessels"], js("[...document.querySelectorAll('#preList legend')].map(l => l.textContent)"))
+            page.fill("#preFind", "CKD")
+            settle(100)
+            check("…the search finds a condition by a synonym, and says how many match",
+                  js("[...document.querySelectorAll('#preList label[data-id]')].filter(l => !l.hidden).map(l => l.textContent)") == ["Chronic kidney disease · also called CKD"]
+                  and page.inner_text("#preCount") == "1 of 9 match", page.inner_text("#preCount"))
+            page.check("label[data-id='chronic-kidney-disease'] input")
+            page.fill("#preFind", "")
+            src = page.inner_text("#preOut .pre-src")
+            check("…the preview names each list's guideline, worded as commonly followed, not yet reviewed by a clinician",
+                  "commonly followed for it according to KDIGO" in src and "ASCO-ONS Standards (2024)" in src and src.count("Not reviewed by a clinician yet") == 2
+                  and js("[...document.querySelectorAll('#preOut .pre-src a')].every(a => a.href.startsWith('https://') && a.rel.includes('noopener'))"), src[:300])
+            check("…Add to my tiles first: these labs are among the tiles already, so the tiles stay as they are",
+                  js(pre_tiles) == p2 and not js("document.querySelector('#preOut .pre-new')"), js(pre_tiles))
+            page.click("#prePanel input[value='replace']")
+            check("…Replace my tiles: both conditions' labs with results here, interleaved, most important first, at most 12",
+                  js(pre_tiles) == ["WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "Hemoglobin", "Platelet Count", "Potassium, Blood",
+                                    "Lymphocytes Absolute", "Sodium, Blood", "ALT", "AST", "Total Bilirubin", "Magnesium"], js(pre_tiles))
+            page.click("#preChosen button[aria-label='Remove Cancer, during treatment']")
+            missing = page.inner_text("#preMissing")
+            check("…one taken away: its tiles go, and the labs with no results here are named, suggesting no test",
+                  js(pre_tiles) == ["Creatinine", "Potassium, Blood", "Sodium, Blood", "Hemoglobin"]
+                  and missing.startswith("No results in this profile's records, so no tile: CKD-EPI eGFR; Urine Albumin/Creatinine Ratio;")
+                  and not re.search(r"should|need|recommend|get tested|ask your", page.inner_text("#presets"), re.I), missing)
+            check("…its home reading, blood pressure, as an Overview tile", "Overview tiles: Blood pressure." in page.inner_text("#preHome"), page.inner_text("#preHome"))
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 375 else 800})
+                for theme in ("light", "dark"):
+                    page.emulate_media(color_scheme=theme)
+                    settle(150)
+                    serious, other = axe_check(page, f"Settings start from a condition {width} {theme}")
+                    check(f"…the picker and its preview at {width} px, {theme}: axe finds nothing serious", not serious, "; ".join(serious + other)[:600])
+                    if width == 375:
+                        fit = phone_fits(page, f"presets {theme}")
+                        check(f"…and it fits 375 px ({theme})", not fit, "; ".join(fit)[:400])
+                    if os.environ.get("SANGUITY_SHOTS"):
+                        page.locator("#presets").screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"186-picker-{width}-{theme}.png"))
+            page.emulate_media(color_scheme=None)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#preFill")
+            check("…Fill these in changes the key labs below, not saved yet",
+                  js("SET_ITEMS['overview.keyLabs'].value()") == ["Creatinine", "Potassium, Blood", "Sodium, Blood", "Hemoglobin"]
+                  and js("!!document.querySelector('#sec-overview[data-dirty] [data-key=\"overview.keyLabs\"].set-changed')")
+                  and page.inner_text("#preOut .msg").startswith("Filled in: Key labs") and "Discard changes" in page.inner_text("#preOut .msg"),
+                  page.inner_text("#preOut .msg"))
+            check("…and its tiles' preview below follows", js("[...document.querySelectorAll('#sec-overview .set-preview .tile')].map(t => t.dataset.lab)")
+                  == ["Creatinine", "Potassium, Blood", "Sodium, Blood", "Hemoglobin"])
+            page.click("#sec-overview .set-foot button:text-is('Discard changes')")
+            check("…Discard changes puts them back as saved", js("SET_ITEMS['overview.keyLabs'].value()") == p2 and not js("document.querySelector('#sections > section[data-dirty]')"))
+            page.click("#preOpen")
+            page.fill("#preFind", "kidney")
+            page.check("label[data-id='chronic-kidney-disease'] input")
+            page.click("#prePanel input[value='replace']")
+            page.check("#preViews")
+            page.check("#preSummary")
+            page.click("#preFill")
+            check("…filled in with a view on Labs and the visit summary's ticks: three sections changed",
+                  js("[...document.querySelectorAll('#sections > section[data-dirty]')].map(s => s.id)") == ["sec-overview", "sec-trends", "sec-summary"],
+                  js("[...document.querySelectorAll('#sections > section[data-dirty]')].map(s => s.id)"))
+            for sec in ("overview", "trends", "summary"):
+                page.click(f"#sec-{sec} .set-foot button:text-is('Save')")
+                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            cfg = js(api_get, "profiles/1/settings")
+            check("…saved: the key labs, a Labs view named for the condition, blood pressure at home as a tile and ticked in the summary",
+                  cfg["overview"]["keyLabs"] == ["Creatinine", "Potassium, Blood", "Sodium, Blood", "Hemoglobin"] and cfg["overview"]["homeTiles"] == ["bp"]
+                  and {"name": "Chronic kidney disease", "labs": ["Creatinine", "Potassium, Blood", "Sodium, Blood", "Hemoglobin"], "default": False} in cfg["trends"]["views"]
+                  and cfg["summary"]["ticked"] == ["home_bp"], [cfg["overview"], cfg["summary"]])
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
+            js("switchTab('overview')")
+            settle(300)
+            check("…the Overview shows the preset's tiles, once: nothing is linked to the preset", [t for t, _ in js(tiles)][:4] == ["Creatinine", "Potassium, Blood", "Sodium, Blood", "Hemoglobin"],
+                  js(tiles)[:5])
+            presets_open()
+            for sec in ("overview", "summary"):
+                page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
+                answer_ask(page)
+                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            cfg = js(api_get, "profiles/1/settings")
+            KEY_LABS_DEFAULT = __import__("server.settings", fromlist=["KEY_LABS"]).KEY_LABS
+            check("…and Reset to defaults undoes it", cfg["overview"]["keyLabs"] == KEY_LABS_DEFAULT and cfg["overview"]["homeTiles"] == [] and cfg["summary"]["ticked"] == [],
+                  cfg["overview"])
+            check("…(the Labs view and the key labs' order put back as they were, for the checks below)",
+                  js(api_put, ["profiles/1/settings/trends.views", saved_views]) == 200 and js(api_put, ["profiles/1/settings/overview.keyLabs", p2]) == 200)
+            page.goto(base + "/")   # back on the records page, as the checks below expect
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
 
             # ---- #40 tabs: hide Costs and move Timeline up; gone from the bar and the arrow keys, a saved view or a
             # link to it opens the first shown tab, and one tab at least stays shown
@@ -6770,6 +6881,15 @@ def main():
             page.wait_for_function("document.getElementById('aboutMsg').textContent === 'Saved.'", timeout=10000)
             check("…a due date that can't be (more than 20 weeks after the birth) is refused in words; cleared, it's saved",
                   js(f"fetch('api/profiles/{cpid}/person').then(r => r.json())")["dueDate"] == "")
+            # ---- a condition's preset on a child's profile (#186): measures for adults left out, and said
+            page.goto(base + f"/settings.html?profile={cpid}#sec-overview")
+            page.wait_for_selector("#preKid", state="attached", timeout=10000)
+            page.wait_for_load_state("networkidle")
+            page.click("#preOpen")
+            page.check("label[data-id='chronic-kidney-disease'] input")
+            check("presets on a child's profile (#186): the adult-only eGFR is left out, and said",
+                  "a child's profile" in page.inner_text("#preKid") and page.inner_text("#preChild").startswith("Left out for a child's profile")
+                  and "CKD-EPI eGFR" in page.inner_text("#preChild") and "CKD-EPI eGFR" not in page.inner_text("#preMissing"), page.inner_text("#preOut")[:300])
             db = dbm.connect()
             prof_r.delete_profile(db, cpid)
             db.close()
