@@ -49,8 +49,7 @@ const SgOutside = (() => {
       if (!r.ok) throw new Error(r.status + " " + r.statusText);
       v = await r.json();
     } catch (e) {
-      msg.textContent = "Couldn't load the outside connections: " + e.message;
-      msg.classList.add("bad");
+      sayIn(msg, "Couldn't load the outside connections: " + e.message, true);
       return;
     }
     $("#outsideLead").textContent = v.nothing_else;

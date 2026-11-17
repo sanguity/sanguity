@@ -30,8 +30,9 @@ function switchTab(t, view) {
   const changed = t !== state.tab;
   if (changed && drawer.classList.contains("open")) closeDrawer();   // details belong to the tab they were opened from
   hideTip(); state.tab = t;
-  { const b = $("#tab-" + t), bar = b.parentElement; if (bar.scrollWidth > bar.clientWidth) bar.scrollTo({left: bar.scrollLeft + b.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - b.offsetWidth) / 2, behavior: "smooth"}); }
+  { const b = $("#tab-" + t), bar = b.parentElement; if (bar.scrollWidth > bar.clientWidth) bar.scrollTo({left: bar.scrollLeft + b.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - b.offsetWidth) / 2, behavior: smoothly()}); }
   for (const k of TABS) { $("#tab-" + k).setAttribute("aria-selected", t === k); $("#view-" + k).hidden = t !== k; }
+  { const b = $("#tab-" + t); viewTitle([b.textContent, PROFILE && PROFILE.name].filter(Boolean).join(" · "), changed && booted && !b.parentElement.contains(document.activeElement) && b.textContent); }   // "Labs · Ben · Sanguity"; said when opened from elsewhere (#209)
   // the records bar: its period on every tab with time (#171); the search on Timeline and Labs, the categories on Timeline
   $(".filters").style.display = t === "overview" ? "none" : "";
   $(".filters").classList.toggle("period-only", t === "health" || t === "costs");

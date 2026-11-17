@@ -25,8 +25,8 @@
   let timer = null, seq = 0, ok = 0, bad = 0, okRecs = 0, badRecs = 0, saving = false;
 
   const pid = () => +$("#profile").value;
-  const tell = (text, isBad = false, link = null) => {
-    msg.replaceChildren(text, ...(link ? [" ", link] : [])); msg.classList.toggle("bad", isBad);
+  const tell = (text, isBad = false, link = null, urgent = isBad) => {   // urgent: said at once (sayIn, util.js)
+    sayIn(msg, [text, ...(link ? [" ", link] : [])], urgent, {repeat: urgent}); msg.classList.toggle("bad", isBad);
   };
   const today = zToday;   // dates.js
   const rows = () => [...box.querySelectorAll(".man-row")];
@@ -110,7 +110,7 @@
     saveBtn.disabled = saving || !ready || fixing > 0 || recs.busy();
     const what = [ok ? plural(ok, "result", "results") : "", okRecs ? plural(okRecs, "record", "records") : ""].filter(Boolean).join(" and ");
     if (!saving) tell(fixing ? (badRecs ? `${plural(fixing, "entry needs", "entries need")} fixing before saving.` : `${bad === 1 ? "1 row needs" : bad + " rows need"} fixing before saving.`)
-      : recs.busy() ? "Uploading the file…" : ready ? `${what} ready to save.` + (dup ? ` ${plural(dup, "is", "are")} already in this profile.` : "") : "", fixing > 0);
+      : recs.busy() ? "Uploading the file…" : ready ? `${what} ready to save.` + (dup ? ` ${plural(dup, "is", "are")} already in this profile.` : "") : "", fixing > 0, null, false);   // as you type: said politely
   }
 
   /* ---------------------------------------------------------------- pasting from a spreadsheet */
@@ -198,10 +198,9 @@
       saving = false; ok = bad = okRecs = badRecs = 0;
       const links = [names.length ? el("a", {href: "index.html", text: "See them on Labs", onclick: () => openTrends(p, names)}) : null,
         others ? el("a", {href: "index.html", text: "See them on the timeline", onclick: () => openTab(p, "timeline")}) : null].filter(Boolean);
-      msg.replaceChildren(`Saved ${[n ? plural(n, "result", "results") : "", others ? plural(others, "record", "records") : ""].filter(Boolean).join(" and ") || "nothing new"}.`
+      sayIn(msg, [`Saved ${[n ? plural(n, "result", "results") : "", others ? plural(others, "record", "records") : ""].filter(Boolean).join(" and ") || "nothing new"}.`
         + (j.skipped ? ` ${plural(j.skipped, "was", "were")} in this profile already and left out.` : ""),
-        ...links.flatMap(a => [" ", a]));
-      msg.classList.remove("bad");
+        ...links.flatMap(a => [" ", a])]);
     } catch (e) {
       saving = false;
       tell("Couldn't save: " + e.message + " Nothing was saved.", true);

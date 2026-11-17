@@ -53,10 +53,10 @@ function sourceRow(s) {
       el("button", {class: "btn small primary", type: "button", text: "Test this connection", onclick: async () => {
         msg.replaceChildren(el("p", {class: "muted", text: "Reading its discovery…"}));
         try { const t = await call(`connect/sources/${s.id}/test`, "POST"); msg.replaceChildren(testResult(t)); if (t.ok) loadSetup(); }
-        catch (e) { msg.replaceChildren(el("p", {class: "msg bad", text: e.message})); } }}),
+        catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }}),
       el("button", {class: "btn small", type: "button", text: "Change", onclick: () => { fill(s); $("#fName").focus(); }}),
       el("button", {class: "btn small", type: "button", text: "Remove", onclick: async () => {
-        try { await call(`connect/sources/${s.id}`, "DELETE"); loadSetup(); } catch (e) { msg.replaceChildren(el("p", {class: "msg bad", text: e.message})); } }})),
+        try { await call(`connect/sources/${s.id}`, "DELETE"); loadSetup(); } catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }})),
     msg);
   return out;
 }
@@ -145,7 +145,7 @@ function drawSync(sec, note) {
   const msg = el("span", {class: "msg", role: "status"});
   const save = el("button", {class: "btn primary small", type: "button", id: "syncSave", text: "Save", disabled: true});
   const eds = [];
-  const changed = () => { save.disabled = eds.every(({st, ed}) => same(ed.get(), st.value)); msg.textContent = ""; msg.classList.remove("bad"); };
+  const changed = () => { save.disabled = eds.every(({st, ed}) => same(ed.get(), st.value)); sayIn(msg, ""); };
   const rows = sec.settings.map(st => {
     const ed = (SYNC_EDITORS[st.kind] || numberEditor)(st.value, changed, false, st);
     eds.push({st, ed});
@@ -161,7 +161,7 @@ function drawSync(sec, note) {
     for (const {st, ed} of todo) {
       try { last = await call(`settings/install/${encodeURIComponent(st.key)}`, "PUT", {value: ed.get()}); }
       catch (e) {
-        msg.textContent = `“${st.label}”: ${e.message}`; msg.classList.add("bad"); save.disabled = false;
+        sayIn(msg, `“${st.label}”: ${e.message}`, true); save.disabled = false;
         if (last) for (const x of last.sections.find(s => s.id === "sync").settings) { const o = eds.find(y => y.st.key === x.key); if (o) o.st.value = x.value; }
         return;
       }
@@ -173,9 +173,9 @@ function drawSync(sec, note) {
       if (!confirm("Put the sync defaults back to Sanguity's own?")) return;
       reset.disabled = true;
       try { drawSync((await call("settings/install/reset", "POST", {section: "sync"})).sections.find(s => s.id === "sync"), "The sync defaults are back to Sanguity's own."); }
-      catch (e) { msg.textContent = e.message; msg.classList.add("bad"); reset.disabled = false; }
+      catch (e) { sayIn(msg, e.message, true); reset.disabled = false; }
     }});
-  if (note) msg.textContent = note;
+  if (note) sayIn(msg, note);
   $("#sec-sync").replaceChildren(
     el("div", {class: "set-hd"}, el("h2", {text: sec.title}), reset),
     sec.help ? el("p", {class: "hint", text: sec.help}) : null,

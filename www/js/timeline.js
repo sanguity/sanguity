@@ -137,7 +137,7 @@ function renderList() {
     if (shown++ >= LIMIT) { frag.append(el("div", {class: "empty", text: `${v.length - LIMIT} ${state.asc ? "newer" : "older"} events not shown — narrow the date range or search.`})); break; }
     const m = fmtMonth(e.ts); if (m !== month) { month = m; frag.append(el("div", {class: "month", text: m})); }
     const c = CAT_OF[e.k];
-    frag.append(el("div", {class: "row" + (state.selEv === e.id ? " sel" : ""), tabindex: 0, onclick: () => openEvent(e), onkeydown: k => { if (k.key === "Enter") openEvent(e); }},
+    frag.append(el("div", {class: "row" + (state.selEv === e.id ? " sel" : ""), tabindex: 0, onclick: () => openEvent(e), onkeydown: k => { if (k.key === "Enter") { k.preventDefault(); openEvent(e); } }},
       el("span", {class: "d", text: fmtD(e.ts)}), el("span", {class: "key", style: {background: c.color}}),
       el("span", {class: "t", text: e.title}),
       el("span", {class: "b"}, e.abn ? el("span", {class: "badge abn", text: `${e.abn} out of range`}) : el("span", {class: "badge", text: KIND_LABEL[e.k]})),

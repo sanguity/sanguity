@@ -72,14 +72,14 @@
     const kinds = kindPicker(s.kinds, all, "k-new-" + s.id), since = sincePicker(null, "since-new-" + s.id);
     const msg = el("span", {class: "msg", role: "status"});
     const go = el("button", {class: "btn primary", type: "button", text: `Sign in at ${s.host}`, onclick: async () => {
-      msg.textContent = ""; msg.classList.remove("bad");
+      sayIn(msg, "");
       const chosen = kinds.get();
-      if (!chosen.length) { msg.textContent = "Choose at least one kind of record."; msg.classList.add("bad"); return; }
+      if (!chosen.length) { sayIn(msg, "Choose at least one kind of record.", true); return; }
       try {
         const r = await call(`profiles/${PID}/connect/start`, "POST",
           {source: s.id, kinds: chosen.length === all.length ? null : chosen, since: since.get()});
         location.assign(r.url);
-      } catch (e) { msg.textContent = e.message; msg.classList.add("bad"); }
+      } catch (e) { sayIn(msg, e.message, true); }
     }});
     return el("div", {class: "conn-choose", id: "choose-" + s.id},
       el("p", {class: "hint", text: "Sanguity asks the vendor only for what you choose here, and you can change it later."}),
@@ -115,14 +115,14 @@
             try {
               const r = await call(`profiles/${PID}/connections/${c.id}/remove`, "POST", {kind: k.id});
               load(`Removed the ${k.label.toLowerCase()} ${c.source} brought. Undo it from the import history to put them back.`);
-            } catch (e) { msg.textContent = e.message; msg.classList.add("bad"); ev.target.disabled = false; }
+            } catch (e) { sayIn(msg, e.message, true); ev.target.disabled = false; }
           }})))] : []));
     };
     drawRemove(c.chosen);
     const save = el("button", {class: "btn small primary", type: "button", text: "Save", onclick: async () => {
-      msg.textContent = ""; msg.classList.remove("bad");
+      sayIn(msg, "");
       const chosen = kinds.get();
-      if (!chosen.length) { msg.textContent = "Choose at least one kind of record."; msg.classList.add("bad"); return; }
+      if (!chosen.length) { sayIn(msg, "Choose at least one kind of record.", true); return; }
       const attach = {auto: auto.checked, types: types.map(l => l.querySelector("input")).filter(i => i.checked).map(i => i.value),
         max_mb: +maxMb.value, budget_mb: +budget.value};
       try {
@@ -134,7 +134,7 @@
           return;
         }
         load("Saved. The next sync pulls by the new choice.");
-      } catch (e) { msg.textContent = e.message; msg.classList.add("bad"); }
+      } catch (e) { sayIn(msg, e.message, true); }
     }});
     kinds.node.addEventListener("change", () => drawRemove(kinds.get()));
     return el("div", {class: "conn-options"},
@@ -146,7 +146,7 @@
         el("label", {}, "In all, for this connection, in MB ", budget, el("span", {class: "muted", text: ` (fetched so far: ${size(c.attach_bytes)})`})),
         Object.keys(own).length ? el("button", {class: "btn small", type: "button", text: "Use this server's defaults", onclick: async () => {
           try { await call(`profiles/${PID}/connections/${c.id}`, "PATCH", {attach: {auto: null, types: null, max_mb: null, budget_mb: null}}); load("Back to this server's attachment defaults."); }
-          catch (e) { msg.textContent = e.message; msg.classList.add("bad"); } }}) : null),
+          catch (e) { sayIn(msg, e.message, true); } }}) : null),
       removeRow,
       el("div", {class: "row"}, save, el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => box.querySelector(".conn-options").remove()}), msg));
   }
@@ -158,9 +158,9 @@
         const msg = el("span", {class: "msg", role: "status"});
         return el("li", {}, el("span", {text: `${x.title} · ${ATT_TYPES[x.type] || x.content_type || "unknown kind"} · ${size(x.size)} · ${WHY[x.why] || x.why}`}), " ",
           canEdit && c.state === "active" ? el("button", {class: "btn small", type: "button", text: "Fetch anyway", onclick: async ev => {
-            ev.target.disabled = true; msg.textContent = "Fetching…"; msg.classList.remove("bad");
+            ev.target.disabled = true; sayIn(msg, "Fetching…");
             try { const r = await call(`profiles/${PID}/connections/${c.id}/attachments/${x.id}/fetch`, "POST"); load(`Fetched “${x.title}” (${size(r.size)}).`); }
-            catch (e) { msg.textContent = e.message; msg.classList.add("bad"); ev.target.disabled = false; } }}) : null, msg);
+            catch (e) { sayIn(msg, e.message, true); ev.target.disabled = false; } }}) : null, msg);
       })));
   }
 
@@ -186,12 +186,12 @@
     if (!canEdit || c.state === "disconnected") return box;
     const row = el("div", {class: "row"}), msg = el("span", {class: "msg", role: "status"});
     const act = (label, fn, primary) => el("button", {class: "btn small" + (primary ? " primary" : ""), type: "button", text: label,
-      onclick: async () => { msg.textContent = ""; msg.classList.remove("bad"); try { await fn(); } catch (e) { msg.textContent = e.message; msg.classList.add("bad"); } }});
+      onclick: async () => { sayIn(msg, ""); try { await fn(); } catch (e) { sayIn(msg, e.message, true); } }});
     if (c.state === "needs reconnect") row.append(act("Sign in again", async () => {
       location.assign((await call(`profiles/${PID}/connections/${c.id}/reconnect`, "POST")).url); }, true));
     if (c.state === "active" && !["first pull preview", "first pull saving"].includes(c.phase))
       row.append(act(c.phase.startsWith("first pull ") ? "Pull again" : "Sync now", async () => {
-        await call(`profiles/${PID}/connections/${c.id}/sync`, "POST"); msg.textContent = "Pulling…"; load(); }));
+        await call(`profiles/${PID}/connections/${c.id}/sync`, "POST"); sayIn(msg, "Pulling…"); load(); }));
     row.append(act("What it pulls…", async () => {
       if (box.querySelector(".conn-options")) return;
       box.insertBefore(optionsForm(c, box), row.nextSibling);
@@ -221,13 +221,13 @@
     let d;
     const pid = PID;
     try { d = await call(`profiles/${pid}/connections`); }
-    catch (e) { if (pid === PID) $("#connList").replaceChildren(el("p", {class: "msg bad", text: e.message})); return; }
+    catch (e) { if (pid === PID) $("#connList").replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); return; }
     if (pid !== PID) return;   // another profile was picked meanwhile: its own load draws it
     const live = d.connections.filter(c => c.state !== "disconnected"), gone = d.connections.filter(c => c.state === "disconnected");
     const list = [...live.map(c => card(c, d.can_connect))];
     if (!live.length) list.push(el("p", {class: "muted", text: "This profile has no connected sources."}));
     if (gone.length) list.push(el("details", {}, el("summary", {text: `Disconnected (${gone.length})`}), ...gone.map(c => card(c, false))));
-    if (note) list.unshift(el("p", {class: "msg", text: note}));
+    if (note) { const m = el("p", {class: "msg"}); sayIn(m, note); list.unshift(m); }
     $("#connList").replaceChildren(...list);
     const ended = live.filter(c => c.state === "needs reconnect");
     $("#reconnect").hidden = !ended.length;

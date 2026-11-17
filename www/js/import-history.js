@@ -26,7 +26,7 @@
     el("div", {class: "row"}, el("span", {class: "msg", id: "historyMsg", role: "status"})),
     el("ul", {class: "hist", id: "historyList", "aria-label": "Imports"}));
   ($("main") || document.body).append(section);
-  const say = (text, bad = false) => { const m = $("#historyMsg"); m.textContent = text; m.classList.toggle("bad", bad); };
+  const say = (text, bad = false) => sayIn($("#historyMsg"), text, bad);   // shown and said (util.js, #209)
 
   async function call(path, method = "GET") {
     const r = await api(path, {method});

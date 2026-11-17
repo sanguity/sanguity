@@ -26,7 +26,6 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
 (() => {
   let ME = null, P = null, MEMBERS = [], MEMBERS_OF = null;   // MEMBERS_OF: the profile MEMBERS are of
   const sel = $("#profile"), main = $("main.sets");
-  const sayIn = (m, text, bad = false) => { m.textContent = text; m.classList.toggle("bad", bad); };
   $("#logout").onclick = async () => { try { await call("logout", "POST"); } catch (e) {} location.replace("login.html"); };
 
   /* ---------------------------------------------------------------- the sidebar: one group shown at a time */
@@ -80,6 +79,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     for (const a of list.querySelectorAll("a")) a.setAttribute("aria-current", a.dataset.group === g.id ? "page" : "false");
     main.dataset.group = g.id;
     $("#groupTitle").textContent = g.title;
+    viewTitle("Sharing: " + g.title, push && "Sharing: " + g.title);   // the browser tab's title; said when picked (#209)
     // on a phone the sidebar is one row that scrolls sideways: keep the group shown in sight
     const a = list.querySelector(`a[data-group="${g.id}"]`), at = a && a.getBoundingClientRect(), box = list.getBoundingClientRect();
     if (at && (at.left < box.left || at.right > box.right)) list.scrollLeft += at.left - box.left - 8;

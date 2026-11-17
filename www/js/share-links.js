@@ -15,7 +15,7 @@ function slRange(from, to) {
 function shareLinksPanel(p, {open = false} = {}) {
   const box = el("div", {class: "share-links", hidden: true});
   const msg = el("span", {class: "msg", role: "status"});
-  const fail = e => { msg.textContent = e.message; msg.classList.add("bad"); };
+  const fail = e => sayIn(msg, e.message, true);
   const list = el("div"), made = el("div");
   let info = null;
 
@@ -35,7 +35,7 @@ function shareLinksPanel(p, {open = false} = {}) {
         el("td", {}, l.state === "revoked" || l.state === "expired" ? null : el("button", {class: "btn small", type: "button", text: "Revoke",
           onclick: async () => {
             if (!confirm(`Revoke ${l.label ? `“${l.label}”` : "this link"}? It stops working at once, for anyone who has it.`)) return;
-            try { await call(`profiles/${p.id}/links/${l.id}`, "DELETE"); msg.textContent = "Revoked."; msg.classList.remove("bad"); await load(); } catch (e) { fail(e); }
+            try { await call(`profiles/${p.id}/links/${l.id}`, "DELETE"); sayIn(msg, "Revoked."); await load(); } catch (e) { fail(e); }
           }}))))))));
   }
 
@@ -110,7 +110,7 @@ function shareLinksPanel(p, {open = false} = {}) {
   }
   const add = el("button", {class: "btn small", type: "button", text: "New share link", onclick: () => {
     if (box.querySelector(".share-form")) return;
-    made.replaceChildren(); msg.textContent = "";
+    made.replaceChildren(); sayIn(msg, "");
     add.after(form());
   }});
   box.append(el("p", {class: "hint", text: "Let someone without an account read the part of this profile you choose. " +

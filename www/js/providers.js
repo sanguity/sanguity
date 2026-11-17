@@ -15,7 +15,7 @@
     if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || r.status + " " + r.statusText);
     return j;
   }
-  const say = (text, bad = false) => { const m = $("#status"); m.textContent = text; m.classList.toggle("bad", bad); };
+  const say = (text, bad = false) => sayIn($("#status"), text, bad);   // shown and said (util.js, #209)
   const kindLabel = {provider: "Provider", payer: "Insurer", sandbox: "Test sandbox"};
 
   /* copy a value, saying so; falls back to selecting it where the clipboard isn't available (plain HTTP) */
@@ -101,7 +101,7 @@
     for (const b of document.querySelectorAll(".dir-hit")) b.classList.toggle("sel", b.dataset.id === id);
     const u = new URL(location.href); u.searchParams.set("id", id); history.replaceState(null, "", u);
     show(j);
-    if (scroll) $("#detail").scrollIntoView({behavior: "smooth", block: "start"});
+    if (scroll) $("#detail").scrollIntoView({behavior: smoothly(), block: "start"});
   }
 
   /* the sources set up on this server that reach this entry's FHIR base (connect.js lists them) */

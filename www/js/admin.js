@@ -16,7 +16,7 @@ async function call(path, method = "GET", body) {
   }
   return j;
 }
-const say = (id, text, bad = false) => { const m = $(id); m.textContent = text; m.classList.toggle("bad", bad); };
+const say = (id, text, bad = false) => sayIn($(id), text, bad);   // shown and said (util.js, #209)
 const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and date format
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 let ME;
@@ -42,6 +42,7 @@ const AdminNav = (() => {
     for (const x of GROUPS) for (const id of x.has) document.getElementById(id).classList.toggle("grp-off", x !== g);
     for (const a of list.querySelectorAll("a")) a.setAttribute("aria-current", a.dataset.group === g.id ? "page" : "false");
     main.dataset.group = g.id;
+    viewTitle("Admin: " + g.title, push && "Admin: " + g.title);   // the browser tab's title; said when picked (#209)
     if (push && location.hash.slice(1) !== g.id) history.replaceState(null, "", "#" + g.id);
     if (scrollTo) scrollTo.scrollIntoView({block: "start"});
     else if (push) window.scrollTo({top: 0});
@@ -126,7 +127,7 @@ function confirmIdentity() {
     const secret = el("input", {type: "password", autocomplete: "current-password", placeholder: "Password or code",
       "aria-label": "Your password, or a code from your authenticator app", required: true});
     const done = ok => { box.hidden = true; box.replaceChildren(); ok ? resolve() : reject(new Error("Not done: you didn't confirm it's you.")); };
-    const failed = e => { msg.textContent = e.message; msg.classList.add("bad"); };
+    const failed = e => sayIn(msg, e.message, true);
     const viaPasskey = async () => {
       try {
         const o = await call("me/reauth/passkey/options", "POST");
@@ -151,9 +152,8 @@ function confirmIdentity() {
   });
 }
 function showTemp(username, pw, days) {
-  say("#userMsg", "");
-  $("#userMsg").replaceChildren(`One-time password for ${username}: `, el("code", {text: pw}),
-    ` — give it to them privately; it isn't shown again, and stops working if not used within ${days || 7} days.`);
+  say("#userMsg", [`One-time password for ${username}: `, el("code", {text: pw}),
+    ` — give it to them privately; it isn't shown again, and stops working if not used within ${days || 7} days.`]);
 }
 async function loadUsers() {
   const list = await call("users");

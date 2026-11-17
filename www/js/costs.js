@@ -53,8 +53,8 @@ function renderCosts() {
   const catCard = el("div", {class: "card"}, el("h2", {text: "By type of care"}), el("p", {class: "hint", text: "Grouped from billing codes on each claim. Click a row to list those claims below."}));
   const provCard = el("div", {class: "card"}, el("h2", {text: "Top providers"}), el("p", {class: "hint", text: "Ranked by total cost (insurance paid + your share)."}));
   two.append(catCard, provCard); box.append(two);
-  barList(catCard, groupCosts(rows, r => r.cat), k => { costState.cat = costState.cat === k ? "" : k; renderCosts(); $("#costTable").scrollIntoView({behavior: "smooth"}); }, costState.cat);
-  barList(provCard, groupCosts(rows, r => r.prov || "(unknown)").slice(0, 10), k => { costState.q = k; renderCosts(); $("#costTable").scrollIntoView({behavior: "smooth"}); });
+  barList(catCard, groupCosts(rows, r => r.cat), k => { costState.cat = costState.cat === k ? "" : k; renderCosts(); $("#costTable").scrollIntoView({behavior: smoothly()}); }, costState.cat);
+  barList(provCard, groupCosts(rows, r => r.prov || "(unknown)").slice(0, 10), k => { costState.q = k; renderCosts(); $("#costTable").scrollIntoView({behavior: smoothly()}); });
   // pharmacy
   const rx = rows.filter(r => r.kind === "pharmacy");
   if (rx.length) {
@@ -62,7 +62,7 @@ function renderCosts() {
     const pc = el("div", {class: "card"}, el("h2", {text: `Prescriptions (${rx.length} fills)`}));
     pc.append(el("div", {class: "tablewrap", style: {maxHeight: "360px"}}, el("table", {class: "data"},
       el("thead", {}, el("tr", {}, ["Drug", "Fills", "First", "Last", "Insurance paid", "Your share"].map(h => el("th", {text: h})))),
-      el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; renderCosts(); $("#costTable").scrollIntoView({behavior: "smooth"}); }},
+      el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; renderCosts(); $("#costTable").scrollIntoView({behavior: smoothly()}); }},
         el("td", {text: x.key}), el("td", {text: x.n}), el("td", {text: fmtD(dayTs(x.first))}), el("td", {text: fmtD(dayTs(x.last))}),
         el("td", {text: usd(x.paid)}), el("td", {text: usd(x.owe)})))))));
     box.append(pc);
@@ -125,20 +125,20 @@ function paidRows() { return inPeriod(oopRows()); }
 const srcText = r => r.type === "claim" ? `Claim: your share${r.ins ? " per " + r.ins : ""}` : OOP_SRC[r.src] + (r.est ? " (estimated)" : "");
 const oopKey = r => r.type === "claim" ? "c" + r.id : "p" + r.i;
 async function sendMark(body, msg) {
-  msg.textContent = "Saving…";
+  sayIn(msg, "Saving…");
   try {
     const r = await api(`profiles/${PROFILE.id}/costs/mark`, {method: "PUT", body: JSON.stringify(body)});
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) { msg.textContent = typeof j.detail === "string" ? j.detail : `Couldn't save (${r.status}).`; return; }
+    if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save (${r.status}).`, true); return; }
     const d = await api(`profiles/${PROFILE.id}/data`);   // a mark changes only the out-of-pocket part
     if (d.ok) DATA.oop = (await d.json()).oop;
     renderCosts();
-    const again = document.querySelector("#oopEdit [role=status]");
-    if (again) again.textContent = "Saved.";
-  } catch (e) { msg.textContent = "Couldn't reach the server: " + e.message; }
+    const again = document.querySelector("#oopEdit .oop-msg");
+    sayIn(again, "Saved.");
+  } catch (e) { sayIn(msg, "Couldn't reach the server: " + e.message, true); }
 }
 function oopEditor(r) {
-  const msg = el("p", {class: "hint", role: "status"});
+  const msg = el("p", {class: "hint oop-msg"});   // shown and said by sayIn (util.js, #209)
   const box = el("div", {class: "oop-edit", id: "oopEdit"});
   box.append(el("h3", {class: "sub", text: r.type === "claim" ? `Your share of “${r.claim.title}”, ${fmtD(dayTs(r.d))}`
     : `${usd2(r.amount)} to ${r.who || "(no payee)"}, ${fmtD(dayTs(r.d))}`}));
@@ -250,7 +250,7 @@ function renderPaid(box, claimRows, periodLabel) {
   const g1 = el("div", {}, el("h3", {class: "sub", text: "What it was for"})), g2 = el("div", {}, el("h3", {class: "sub", text: "Who was paid"}));
   two.append(g1, g2); card.append(two);
   const grp = keyFn => { const m = new Map(); for (const r of counted) { const k = keyFn(r), g = m.get(k) || {key: k, n: 0, v: 0}; g.n++; g.v += r.counted; m.set(k, g); } return [...m.values()].sort((a, b) => b.v - a.v); };
-  const pick = k => { paidState.q = paidState.q === k ? "" : k; renderCosts(); $("#paidTable").scrollIntoView({behavior: "smooth", block: "nearest"}); };
+  const pick = k => { paidState.q = paidState.q === k ? "" : k; renderCosts(); $("#paidTable").scrollIntoView({behavior: smoothly(), block: "nearest"}); };
   const bars = (host, groups) => {
     const max = Math.max(1, ...groups.map(g => g.v));
     for (const g of groups) host.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto", background: paidState.q === g.key ? "var(--hover)" : null}, onclick: () => pick(g.key)},

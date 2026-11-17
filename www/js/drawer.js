@@ -5,12 +5,26 @@
 const drawer = $("#drawer");
 let drawerReturn = null;
 function closeDrawer() {
-  if (drawer.classList.contains("open") && drawer.contains(document.activeElement) && drawerReturn?.isConnected) drawerReturn.focus({preventScroll: true});
-  drawerReturn = null; drawer.classList.remove("open");
+  const back = drawer.classList.contains("open") && drawer.contains(document.activeElement) && drawerReturn?.isConnected ? drawerReturn : null;
+  drawerReturn = null; drawer.classList.remove("open"); drawerCover();
+  if (back) back.focus({preventScroll: true});   // once the page behind isn't inert any more
   setTimeout(() => { if (!drawer.classList.contains("open")) $("#dbody").replaceChildren(); }, 250);   // unload any PDF / document once it has slid away
   drawer.setAttribute("aria-hidden", "true"); state.selEv = null; renderTimeline(); document.querySelectorAll(".row.sel").forEach(r => r.classList.remove("sel")); }
 $("#dclose").onclick = closeDrawer;
-function setWide(on) { drawer.classList.toggle("wide", on); $("#dwide").setAttribute("aria-pressed", on); $("#dwide").title = on ? "Narrower panel" : "Wider panel"; try { localStorage.setItem("ht-wide", on ? "1" : ""); } catch (e) {} }
+/* while the drawer covers the whole page (on a phone, or wide on a small screen), the page behind it is inert, so Tab
+   and a screen reader stay in the drawer; closed, the drawer itself is inert, out of Tab's way off-screen (#209) */
+let drawerBehind = [];
+function drawerCover() {
+  const open = drawer.classList.contains("open");
+  drawer.inert = !open;
+  for (const x of drawerBehind) x.inert = false;
+  drawerBehind = open && drawer.offsetWidth >= document.documentElement.clientWidth
+    ? [...document.body.children].filter(x => x !== drawer && !x.inert && !x.matches("script, .sg-live")) : [];
+  for (const x of drawerBehind) x.inert = true;
+}
+drawerCover();
+addEventListener("resize", drawerCover);
+function setWide(on) { drawer.classList.toggle("wide", on); drawerCover(); $("#dwide").setAttribute("aria-pressed", on); $("#dwide").title = on ? "Narrower panel" : "Wider panel"; try { localStorage.setItem("ht-wide", on ? "1" : ""); } catch (e) {} }
 $("#dwide").onclick = () => setWide(!drawer.classList.contains("wide"));
 try { if (localStorage.getItem("ht-wide")) setWide(true); } catch (e) {}
 addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
@@ -124,7 +138,7 @@ function openEvent(e) {
 }
 function showDrawer() {
   if (!drawer.classList.contains("open")) drawerReturn = document.activeElement;
-  drawer.classList.add("open"); drawer.setAttribute("aria-hidden", "false");
+  drawer.classList.add("open"); drawer.setAttribute("aria-hidden", "false"); drawerCover();
   $("#dclose").focus({preventScroll: true});
 }
 
@@ -148,12 +162,12 @@ function afterEdit(reopen) {
   location.reload();
 }
 async function sendEdit(path, opts, msg, reopen) {
-  msg.textContent = "Saving…";
+  sayIn(msg, "Saving…");
   try {
     const r = await api(`profiles/${PROFILE.id}/edits${path}`, opts);
-    if (!r.ok) { const j = await r.json().catch(() => ({})); msg.textContent = typeof j.detail === "string" ? j.detail : `Couldn't save the edit (${r.status}).`; return; }
+    if (!r.ok) { const j = await r.json().catch(() => ({})); sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the edit (${r.status}).`, true); return; }
     afterEdit(reopen);
-  } catch (err) { msg.textContent = "Couldn't reach the server: " + err.message; }
+  } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
 }
 function undoButton(x, msg, reopen) {
   return el("button", {class: "btn small", type: "button", text: "Undo", "data-edit": x.id, title: "Undo this edit",
@@ -188,7 +202,7 @@ function editPanel(e) {
     el("button", {class: "btn", type: "button", text: "Merge with…", onclick: () => {
       const near = DATA.events.filter(x => x.id !== e.id && x.k !== "exercise" && Math.abs(x.ts - e.ts) <= 7 * DAY)
         .sort((a, b) => Math.abs(a.ts - e.ts) - Math.abs(b.ts - e.ts)).slice(0, 50);
-      if (!near.length) { msg.textContent = "No other event within a week of this one to merge with."; return; }
+      if (!near.length) { sayIn(msg, "No other event within a week of this one to merge with."); return; }
       const sel = el("select", {"aria-label": "Event to merge into this one"},
         ...near.map(x => el("option", {value: x.id, text: `${fmtDT(x.ts)} · ${KIND_LABEL[x.k] || x.k} · ${x.title}`})));
       form("Fold this event into the open one (it keeps its own title and date)", sel, () => post({action: "merge", other: +sel.value}));

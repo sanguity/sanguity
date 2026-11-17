@@ -47,14 +47,14 @@ function openRename(anchor, kind, key) {
   input.value = shown;
   const msg = el("p", {class: "hint rename-msg", role: "status"});
   const save = async to => {
-    msg.textContent = "Saving…";
+    sayIn(msg, "Saving…");
     try {
       const res = await r.save(key, to);
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) { msg.textContent = typeof j.detail === "string" ? j.detail : `Couldn't save the name (${res.status}).`; return; }
+      if (!res.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the name (${res.status}).`, true); return; }
       r.done(j, key);
       afterRename(kind, key);
-    } catch (e) { msg.textContent = "Couldn't reach the server: " + e.message; }
+    } catch (e) { sayIn(msg, "Couldn't reach the server: " + e.message, true); }
   };
   const box = el("form", {class: "rename-box", role: "dialog", "aria-label": `Rename ${shown}`},
     el("label", {}, el("span", {text: `Show “${original}” as`}), input),

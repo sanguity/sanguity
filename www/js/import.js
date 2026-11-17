@@ -17,7 +17,7 @@ async function call(path, method = "GET") {
   if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || r.status + " " + r.statusText);
   return j;
 }
-const say = (text, bad = false) => { const m = $("#msg"); m.textContent = text; m.classList.toggle("bad", bad); };
+const say = (text, bad = false) => sayIn($("#msg"), text, bad);   // shown and said (util.js, #209)
 const size = n => n >= 2 ** 30 ? (n / 2 ** 30).toFixed(1) + " GB" : n >= 2 ** 20 ? (n / 2 ** 20).toFixed(1) + " MB"
   : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " bytes";
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;

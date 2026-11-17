@@ -933,3 +933,13 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
   .toggle .n,.toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:inherit}
   .seg>button:focus-visible,.seg>label:has(>input:focus-visible),.toggle:focus-visible,.toggle:has(>input:focus-visible){outline-color:CanvasText}
 }
+
+/* ---- keyboard and screen-reader basics (#209): "Skip to content" (util.js), shown while it has focus; the <main>
+   it moves focus to has no ring of its own; less motion when the person asks for it (a script's smooth scrolls go
+   through smoothly(), util.js) */
+.skip-link{position:fixed;left:12px;top:8px;z-index:100;padding:8px 14px;border-radius:8px;background:var(--raised);color:var(--ink);border:2px solid var(--accent);font-weight:600;font-size:14px;text-decoration:none;box-shadow:0 4px 16px rgba(0,0,0,.18);transform:translateY(calc(-100% - 16px))}
+.skip-link:focus{transform:none;outline:none}
+main[tabindex="-1"]:focus{outline:none}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important;animation-duration:1ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}
+}

@@ -101,3 +101,65 @@ const passkeyProblem = e => e && e.name === "NotAllowedError" ? "The passkey req
   : e && e.name === "InvalidStateError" ? "This device already has a passkey for your account."
   : e && e.name === "SecurityError" ? "Passkeys don't work at this address. Open Sanguity at its https:// name."
   : (e && e.message) || "The passkey didn't work.";
+
+/* ---- keyboard and screen-reader basics (#209)
+   announce(text, {error}): says a short message to screen readers through the page's one shared status line, two
+   visually hidden live regions every page has (#sgStatus, role=status: said when the reader is free, for saves and
+   changes; #sgAlert, role=alert: said at once, for errors). Nothing is shown: a message someone should see goes on
+   the page too, beside what it's about (sayIn does both). The same words twice in a row are said twice; messages
+   within a moment of each other are said together. Use it for anything that changes without moving focus. */
+const announce = (() => {
+  const box = {}, wait = {}, next = {};
+  const make = () => {
+    if (box.status || !document.body) return;
+    box.status = el("div", {class: "vh sg-live", id: "sgStatus", role: "status"});
+    box.alert = el("div", {class: "vh sg-live", id: "sgAlert", role: "alert"});
+    document.body.append(box.status, box.alert);
+  };
+  make();   // there from the start: a screen reader only follows a live region that was in the page before it changed
+  if (!box.status) document.addEventListener("DOMContentLoaded", make);
+  return (text, {error = false} = {}) => {
+    make();
+    const k = error ? "alert" : "status";
+    if (!box[k] || !text) return;
+    clearTimeout(wait[k]);
+    next[k] = [...(next[k] || []), String(text)];
+    box[k].textContent = "";   // emptied first, so the same words again are a change too
+    wait[k] = setTimeout(() => { box[k].textContent = next[k].join(" "); next[k] = []; }, 60);
+  };
+})();
+/* sayIn(m, text, bad): a page's message line (a .msg beside its Save button, a form's hint): shows the text (or
+   nodes: words with a link), marked .bad for an error, and says it through announce(), as an alert when bad. The
+   line itself stops being a live region (older markup has role=status), so it isn't said twice. An empty text
+   clears it and says nothing. repeat: false for a line redrawn as you type, whose same words again aren't said. */
+function sayIn(m, text, bad = false, {repeat = true} = {}) {
+  if (!m) return;
+  if (m.getAttribute("role") === "status") m.removeAttribute("role");
+  const was = m.textContent;
+  m.replaceChildren(...[].concat(text == null ? [] : text));
+  m.classList.toggle("bad", !!bad);
+  if (m.textContent && (repeat || m.textContent !== was)) announce(m.textContent, {error: !!bad});
+}
+/* viewTitle(title, say): the browser tab's title for what's shown ("Labs · Ben" → "Labs · Ben · Sanguity"), and,
+   when say is given, those words said politely: for a view changed by a sidebar link or a button elsewhere, which a
+   screen reader wouldn't otherwise mention (a tab picked in the tab bar already says it's selected) */
+function viewTitle(title, say) {
+  document.title = title ? `${title} · Sanguity` : "Sanguity";
+  if (say) announce(say);
+}
+/* scrollTo/scrollIntoView's behavior: "smooth", unless the person asked for less motion (CSS can't turn off a
+   script's smooth scroll; app.css turns off the transitions) */
+const smoothly = () => matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+/* "Skip to content": the first thing Tab reaches on a page with a top bar, shown while it has focus. It moves focus
+   to the page's <main> without changing the address (the records tabs and the sidebars' groups live there). */
+(() => {
+  const bar = document.querySelector("body > header"), main = document.querySelector("main");
+  if (!bar || !main) return;
+  main.id ||= "content";
+  document.body.prepend(el("a", {class: "skip-link", href: "#" + main.id, text: "Skip to content", onclick: ev => {
+    ev.preventDefault();
+    main.tabIndex = -1;
+    main.focus({preventScroll: true});
+    if (main.getBoundingClientRect().top < 0) main.scrollIntoView();
+  }}));
+})();
