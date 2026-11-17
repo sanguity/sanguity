@@ -166,6 +166,14 @@ Everything on `main` so far; it becomes the first tagged release.
 - Add → Journal entry opens the form for a new entry from any tab (from another page, it opens the records page
   with the form), and the journal's list, with its filters and search, has a home on the Timeline tab between the
   timeline and the events (#173).
+- A **Sources** page, in your menu, with a sidebar (#166): an **Overview** of every way records reach the profile
+  (its portals and health plans, its phone and watch, its latest uploads) with when each last brought something and
+  the warning of a source that stopped syncing; **Upload files**, **Type records in** and **Paste a Health Link**
+  (the Import page's tabs); **Portals and health plans** (Connected sources), where finding your provider is part of
+  connecting one, with each vendor's setup steps in one place, Admin; **Phone and watch** (Settings → Watch and
+  scale, now with when the phone last sent something); and the **Import history**. The Add menu's items open their
+  sections, and the old addresses (`import.html`, `connect.html`, `providers.html`, `settings.html#watch`) open the
+  matching one. The import history says again who imported each import and when.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

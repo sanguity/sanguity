@@ -14,31 +14,16 @@
 <link rel="stylesheet" href="css/app.css">
 <script src="js/theme.js"></script>
 </head>
+<!-- its old address: finding your provider is in the connect step of the Sources page now (#166); moved.js opens it -->
 <body class="acct-page">
-<header class="topbar" data-title="Find your provider">
-  <h1><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</h1>
-</header>
-<main class="acct dir">
-  <div class="card warn" id="insecure" role="alert" hidden></div>
-
-  <section class="card" id="finder" hidden>
-    <h2>Find your provider</h2>
-    <p class="hint">Search by hospital, clinic, health system or insurer, or by city or state. The list is kept on your
-      Sanguity server: searching it contacts no one.</p>
-    <div class="dir-src" id="srcNote" hidden></div>
-    <div class="form">
-      <label>Name, city or state <input type="search" id="q" autocomplete="off" spellcheck="false" maxlength="200"
-        placeholder="e.g. Mayo Clinic, Naples FL" aria-controls="results"></label>
-    </div>
-    <p class="msg" id="status" role="status"></p>
-    <ul class="dir-results" id="results" aria-label="Providers found"></ul>
+<main class="acct">
+  <section class="card">
+    <h2>This page has moved</h2>
+    <p>Finding your provider is part of connecting a portal or health plan, on the <a href="sources.html#portals">Sources</a> page now.</p>
   </section>
-
-  <section class="card" id="detail" hidden aria-live="polite"></section>
 </main>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
-<script src="js/nav.js"></script>
-<script src="js/providers.js"></script>
+<script src="js/moved.js"></script>
 </body>
 </html>

@@ -92,7 +92,7 @@ function syncNotice(rows) {
   box.replaceChildren(el("b", {text: "Connected sources need attention: "}),
     rows.map(r => `${r.source} (${part(r)})`).join("; ") + ". ",
     "Each profile's owners and editors see it on the profile's page and can sign in again or sync from ",
-    el("a", {href: "connect.html", text: "Connected sources"}), ".");
+    el("a", {href: "sources.html#portals", text: "Sources → Portals and health plans"}), ".");
 }
 
 /* ---------------------------------------------------------------- accounts (admin) */

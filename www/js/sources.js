@@ -7,7 +7,7 @@
 const sourceOf = imp => imp == null || !DATA || !DATA.imports ? null : DATA.imports[imp] || null;
 /* what an import is called: its own name (#38, rename.js), else its importer's label */
 const importName = imp => { const s = sourceOf(imp); return s ? s.name || s.label : ""; };
-const importHref = imp => `import.html?profile=${PROFILE ? PROFILE.id : ""}#import-${imp}`;
+const importHref = imp => `sources.html?profile=${PROFILE ? PROFILE.id : ""}#import-${imp}`;
 /* "C-CDA health summary, imported 3 Nov 2026" (and its last sync), as plain text for tooltips */
 function sourceText(imp) {
   const s = sourceOf(imp); if (!s) return "";

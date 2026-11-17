@@ -1,10 +1,10 @@
 /* Sanguity · the Settings page's sidebar: its sections in groups, one group shown at a time (after settings.js and
    settings-calendar.js, which draw the sections).
 
-   Each section (#sec-<id> from the server's list, and the page's own #calendar and #watch cards) belongs to a group.
-   The sidebar lists the groups that have something to show this person (the watch card only for owners and
-   editors); the address follows the group (settings.html#display), and an address naming a section
-   (settings.html#watch, #sec-units) opens that section's group and scrolls to it.
+   Each section (#sec-<id> from the server's list, and the page's own #calendar card) belongs to a group.
+   The sidebar lists the groups that have something to show this person; the address follows the group
+   (settings.html#display), and an address naming a section (settings.html#sec-units) opens that section's group
+   and scrolls to it.
    "Find a setting" shows, across every group, only the settings whose name or help mentions what's typed.
 
    Above the sections, the group's title and whose settings these are (WHO): this profile's, for everyone it's
@@ -25,25 +25,22 @@
      has: ["sec-appearance", "sec-dates", "sec-units"]},
     {id: "calendar", title: "Calendar feed", part: "You", hint: "Appointments and expected lab draws in your own calendar app",
      has: ["calendar"]},
-    {id: "watch", title: "Watch and scale", part: "Devices and sources", hint: "Where this profile's phone uploads watch and scale data",
-     has: ["watch"]},
   ];
   const OTHER = {id: "more", title: "More", part: "", hint: "", has: []};   // a section no group names yet
   /* whose settings each group holds: the registry's sections say it by their settings' scope (data-scope); a group
      missing here goes by that */
-  const WHO = {dashboard: "profile", labs: "profile", activity: "profile", display: "you", calendar: "feed", watch: "watch",
+  const WHO = {dashboard: "profile", labs: "profile", activity: "profile", display: "you", calendar: "feed",
     sources: "server", outside: "server"};
   const SAY = {
     profile: ["This profile", ", for everyone it's shared with."],
     view: ["This profile", ": you can view it, so these are shown as they are; its owners and editors change them."],
     you: ["Just for you", ", on every profile you see."],
     feed: ["Just for you", ": your own calendar feed of this profile."],
-    watch: ["This profile", ": the phone that uploads its watch and scale readings, set up by its owners and editors."],
     server: ["This server", ", for everyone on it."],
   };
   const SCOPE_WHO = {profile: "profile", user: "you", install: "server"};
   const groupOf = id => GROUPS.find(g => g.has.includes(id)) || (id.startsWith("sec-") ? OTHER : null);
-  const parts = () => [...main.querySelectorAll("#sections > section, #calendar, #watch")];
+  const parts = () => [...main.querySelectorAll("#sections > section, #calendar")];
   const partsOf = g => parts().filter(p => groupOf(p.id) === g);
   function whoOf(g) {
     let w = WHO[g.id];
@@ -125,7 +122,7 @@
     if (target) target.scrollIntoView({block: "start"});
     else if (push) window.scrollTo({top: 0});
   }
-  /* #display: a group; #watch or #sec-units: that section, in its group */
+  /* #display: a group; #sec-units: that section, in its group */
   function groupFromHash() {
     const h = decodeURIComponent(location.hash.slice(1));
     if (!h) return null;
@@ -138,7 +135,7 @@
   addEventListener("hashchange", () => { const r = groupFromHash(); if (r) show(r.g, {scrollTo: r.el, by: true}); });
   search.addEventListener("input", apply);
 
-  // the sections arrive later (the server's list, the watch card for owners and editors): group them as they do
+  // the sections arrive later (the server's list): group them as they do
   const redraw = () => { drawNav(); apply(); };
   new MutationObserver(redraw).observe(document.getElementById("sections"), {childList: true});
   new MutationObserver(redraw).observe(main, {attributes: true, subtree: true, attributeFilter: ["hidden", "data-dirty", "data-role"]});

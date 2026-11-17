@@ -87,7 +87,7 @@ def main(want):
                 "health": lambda: (home("health", "applyPreset('90d')"), shot("health")),
                 "timeline": lambda: (home("timeline", "applyPreset('1y')"), shot("timeline")),
                 "costs": lambda: (home("costs", "applyPreset(msKey(primaryMs()))"), shot("costs")),
-                "import": lambda: (page.goto(base + "/import.html"), page.wait_for_selector("#importer", state="visible", timeout=15000), settle(), shot("import")),
+                "import": lambda: (page.goto(base + "/sources.html?profile=1#upload"), page.wait_for_selector("#importer", state="visible", timeout=15000), settle(), shot("import")),
                 "settings": lambda: (page.goto(base + "/settings.html?profile=1"), page.wait_for_selector("#sec-overview .set-preview .tile", timeout=15000), settle(), shot("settings")),
                 "summary": lambda: (page.goto(base + "/summary.html?profile=1"), page.wait_for_selector("#build:not([hidden])", timeout=15000),
                                     page.click("#previewBtn"), page.wait_for_selector("#preview:not([hidden]) h3", timeout=15000), settle(),

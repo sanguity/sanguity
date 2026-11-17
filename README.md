@@ -45,7 +45,7 @@ on the **Settings** page, appear on every chart and as "since" periods.
 
 **Getting records in**
 
-- **Upload** a portal's or app's export on the **Import** page (a zip, a folder or single files): Epic MyChart,
+- **Upload** a portal's or app's export under **Sources** (a zip, a folder or single files): Epic MyChart,
   C-CDA, FHIR (Apple Health, Blue Button, portals), lab spreadsheets and Quest or Labcorp PDFs, insurers' claims, and
   more ([sources below](#supported-sources-today)). Each import is previewed before it's saved, can be undone from
   the import history, and records the same result from two sources once.
@@ -65,10 +65,13 @@ on the **Settings** page, appear on every chart and as "since" periods.
   format and a light or dark theme.
 - A **journal** of symptoms, side effects and notes, on the timeline and the charts, listed on the Timeline tab.
 
-**Finding your way.** One bar across the top: your records' tabs, **Add** (import records, connect a source, type
-records in, a journal entry) and your menu (visit summary, share links, settings, account, light or dark, log out).
+**Finding your way.** One bar across the top: your records' tabs, **Add** (upload files, connect a portal or plan, type
+records in, paste a Health Link, a journal entry) and your menu (visit summary, share links, settings, account, light or dark, log out).
 **Settings** is grouped in a sidebar (this profile's dashboard, labs and ranges, milestones; your display and
-calendar; devices and sources), one group at a time, with **Find a setting** to search them all.
+calendar), one group at a time, with **Find a setting** to search them all.
+**Sources** (in your menu) has everything about records coming in, in a sidebar the same way: an overview of every
+way records reach the profile and when each last brought something, upload, type in, paste a Health Link, portals
+and health plans, the phone and watch, and the import history.
 
 **Sharing and taking it with you**
 
@@ -84,7 +87,7 @@ calendar; devices and sources), one group at a time, with **Find a setting** to 
 
 | Visit summary | Import | On a phone |
 |---|---|---|
-| ![Visit summary preview: results since the last visit, trends and current medications](docs/screenshots/summary.png) | ![Import page: upload a zip, a folder or files, type records in or paste a link, with the import history](docs/screenshots/import.png) | ![The Overview on a phone](docs/screenshots/phone.png) |
+| ![Visit summary preview: results since the last visit, trends and current medications](docs/screenshots/summary.png) | ![Sources: upload a zip, a folder or files, with type records in, Health Links, portals, the phone and the import history beside it](docs/screenshots/import.png) | ![The Overview on a phone](docs/screenshots/phone.png) |
 
 ![Settings: the key-lab tiles, ordered by drag, keyboard or buttons](docs/screenshots/settings.png)
 
@@ -226,23 +229,23 @@ different; the file stays beside them as `data-before-v10.json`, and can be dele
 | C-CDA health summaries (XML), from most portals' "download my record" | Labs, visits, problems, medications, allergies, vitals, documents |
 | FHIR R4 (bundles and Blue Button / patient-access NDJSON), from portals, Apple Health's clinical records or insurers | Labs and vitals, visits and stays, conditions, medications, reports and imaging, documents; claims as CARIN Blue Button ExplanationOfBenefit |
 | Connected sources: a portal's SMART on FHIR API (Epic first) or a health plan's patient-access API | The same FHIR records, pulled on a schedule after you sign in once |
-| SMART Health Links and Cards (pasted on the import page) | The FHIR records the link holds, read as above |
+| SMART Health Links and Cards (pasted under Sources → Paste a Health Link) | The FHIR records the link holds, read as above |
 | Lab results spreadsheets (CSV) and Quest or Labcorp lab report PDFs | Lab results with units, ranges and flags |
 | Insurance claims exports (`uhc`, `bcbs` formats, or an EOB spreadsheet (CSV)) | Claims, billed / paid / your share, denials |
 | Payments export (`payments.json`) | Out-of-pocket payments and premiums |
 | Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition |
 | Apple Health on iPhone, via the Health Auto Export app (or an uploaded `export.xml`) | The same, with HRV as Apple's SDNN |
-| Typed in by hand on the import page (**Type them in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
+| Typed in by hand (**Sources → Type records in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
 
 If your portal's export doesn't import, please open an issue with an anonymised sample, or write an importer for
 it: [docs/importers.md](docs/importers.md) explains how (one Python file and a fictional test fixture).
 
 ### Connecting a phone (watch and scale data)
 
-Each profile has its own receiver secret, so each person's phone uploads to their own profile. On **Settings**, a
-profile's owners and editors see **Watch and scale**: the upload address to give the phone app (each
+Each profile has its own receiver secret, so each person's phone uploads to their own profile. Under **Sources →
+Phone and watch**, a profile's owners and editors see the upload address to give the phone app (each
 `PUBLIC_ORIGINS` host on `RECEIVER_PORT`, or `WATCH_UPLOAD_URL` if the receiver is behind your own HTTPS proxy) and
-**Make a secret**. The secret is shown once, to copy into the app; **Make a new secret** replaces it (the old one
+**Make a secret**, and when the phone last sent something. The secret is shown once, to copy into the app; **Make a new secret** replaces it (the old one
 stops working). An install from before kept working: `auth/watch_secret` stays the first profile's secret until that
 profile makes one here. The app hands the secrets to the receiver, encrypted, in `WATCH_DIR/keys/`.
 
@@ -255,7 +258,7 @@ Two phone apps upload to that address:
   `Bearer <the secret>`, data type Health Metrics in JSON (steps, distance, active energy, heart rate, resting heart
   rate, HRV, blood oxygen, respiratory rate, weight, body fat, lean mass, sleep), time grouping by hours, and a
   schedule (hourly or daily, since the last sync); then a second one for Workouts. The steps are on the
-  **Watch and scale** card too. Repeated and overlapping uploads count once, and the days are made the same way as
+  **Phone and watch** section too. Repeated and overlapping uploads count once, and the days are made the same way as
   for an uploaded Apple Health export, so both phones give the same Body and activity tab.
 
 Garmin Connect, Fitbit, Withings and most other watches and scales reach Sanguity this way, with no integration of
@@ -264,7 +267,7 @@ passes the readings on.
 
 ### Uploading records in the app
 
-**Add → Import records** (in the top bar, or on an empty profile) uploads a portal's or app's export to a profile you own or edit:
+**Add → Upload files** (in the top bar, or on an empty profile; **Sources → Upload files**) uploads a portal's or app's export to a profile you own or edit:
 a zip as you downloaded it, a folder you've unpacked (its folders are kept), or single files. Viewers can't upload.
 Each file streams to the server on its own, with progress, and is kept in the profile's folder encrypted, as the
 import's original files: they're included in **Export everything** and in backups, and go when the profile is
@@ -283,7 +286,7 @@ removed when the app next starts. While an import reads an upload, a decrypted c
 ### Connected sources
 
 Instead of downloading exports, a profile can be connected to a patient portal's FHIR API (SMART on FHIR, Epic's
-first) under **Connected sources** (`connect.html`, linked from the import page). Each install registers its own app
+first) under **Sources → Portals and health plans**. Each install registers its own app
 with each vendor ([why](docs/connected-sources-oauth.md)), so an admin sets each source up once, under **Admin →
 Connected-source apps**:
 
@@ -317,7 +320,7 @@ Nothing is sent anywhere: no email or push.
 
 ### Typing records in
 
-For records on paper, or from a portal that has no export, **Type them in** on the import page takes every kind of
+For records on paper, or from a portal that has no export, **Sources → Type records in** takes every kind of
 record Sanguity can import. Lab results go one per row, as in a spreadsheet (and rows copied from one can be pasted
 in); everything else has a form of its own, picked from **Add a record**: a visit, a hospital stay, a procedure, an
 imaging scan or a report, a medication or a pharmacy fill with its cost, a problem or diagnosis, an insurance claim,
@@ -352,9 +355,11 @@ start time and title. Like the records, they are encrypted at rest. Milestones a
 
 ### Finding your provider
 
-**Find your hospital or insurer** (linked from the import page) searches a directory of FHIR endpoints by name,
-location, city or state, and shows the FHIR base URL and what connecting needs: the app you register with that vendor
-yourself, and the return address and scopes to paste. Signing in comes with #32. Epic's and Oracle Health's lists
+**Find your hospital, clinic or insurer**, in the connect step of **Sources → Portals and health plans**, searches a
+directory of FHIR endpoints by name, location, city or state, and says whether it can be connected here: one set up on
+this server connects from there; otherwise an admin is taken to **Admin → Connected-source apps** with its FHIR base
+filled in (each vendor's setup steps are there, in one place), and everyone else is told what to ask their admin
+for. Epic's and Oracle Health's lists
 can't be shipped with Sanguity, so an admin adds them once (**Admin → Provider directory** shows what's there):
 `python3 tools/build_directory.py` (about 1 MB; see
 [docs/provider-directory.md](docs/provider-directory.md)). The app never looks anything up itself.
@@ -625,7 +630,8 @@ nginx.conf          Web server: the app's pages and security headers; passes /ap
 watch/receiver.py   phone uploads (Life Dashboard / Health Connect, Health Auto Export / Apple Health): archives, folds into SQLite, writes public/daily.json
 www/                index.html (markup), css/app.css, js/*.js (one plain script per tab, loaded in order),
                     login.html, setup.html (first account), account.html (password, devices, profiles, accounts),
-                    import.html (uploading a portal's export); manifest.webmanifest, icons/ and sw.js (install as a
+                    sources.html (records coming in: uploads, typing in, portals, the phone, the import history;
+                    import.html, connect.html and providers.html open its sections); manifest.webmanifest, icons/ and sw.js (install as a
                     phone app; tools/make_icons.py draws the icons)
 demo/               Fictional demo dataset generator
 tests/              API and upload tests, a headless browser check and a smoke test of the Docker install (all run in CI)

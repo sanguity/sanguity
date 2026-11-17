@@ -24,6 +24,7 @@ const FILES = [
   "js/pwa.js", "js/ranges.js", "js/rename.js", "js/same.js", "js/settings-calendar.js", "js/settings-nav.js", "js/settings.js", "js/setup.js",
   "js/sources.js", "js/summary.js", "js/theme.js", "js/timeline.js", "js/trends.js", "js/trends-views.js", "js/units.js",
   "js/util.js", "js/share.js", "js/share-links.js",
+  "sources.html", "js/moved.js", "js/sources-overview.js", "js/sources-page.js", "js/sources-watch.js",
 ];
 
 /* the part of a same-origin address after the app's own folder, if it's one of the app's own files: "" for the

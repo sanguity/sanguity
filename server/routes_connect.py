@@ -76,7 +76,7 @@ def start_get(pid: int, request: Request, source: int, s=Depends(user), db=Depen
     try:
         url = conns.start(db, s, pid, vendor=source, ip=_client_ip(request))
     except conns.Problem as e:
-        back = "../../../../connect.html?" + urllib.parse.urlencode({"profile": pid, "problem": str(e)[:300]})
+        back = "../../../../sources.html?" + urllib.parse.urlencode({"profile": pid, "problem": str(e)[:300]}) + "#portals"
         return RedirectResponse(back, status_code=303)
     return RedirectResponse(url, status_code=303)
 

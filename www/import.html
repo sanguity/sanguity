@@ -14,118 +14,16 @@
 <link rel="stylesheet" href="css/app.css">
 <script src="js/theme.js"></script>
 </head>
+<!-- its old address: Upload files, type records in and the import history are on the Sources page now (#166), and moved.js opens the matching section -->
 <body class="acct-page">
-<header class="topbar" data-title="Import records">
-  <h1><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</h1>
-</header>
-<main class="acct imp">
-  <div class="card warn" id="insecure" role="alert" hidden></div>
-
-  <section class="card" id="noProfiles" hidden>
-    <h2>Import records</h2>
-    <p>You can import into a profile you own or edit, and none is shared with you that way yet.
-      <a href="account.html#profiles">Create a profile</a>, or ask its owner to make you an editor.</p>
-  </section>
-
-  <section class="card" id="importer" hidden>
-    <h2>Import records</h2>
-    <p class="hint">Upload the export you downloaded from a patient portal or app: a zip, a folder, or single files. Files go to
-      your Sanguity server only, and are kept there encrypted as the import's original files.</p>
-    <p class="hint">Or <a href="connect.html">connect a source</a> by signing in to it, and new records come in by themselves. To find which hospital or insurer to connect, and how to set it up, <a href="providers.html">find your provider</a>.</p>
-    <div class="form inline">
-      <label>Profile <select id="profile"></select></label>
-    </div>
-
-    <div class="tabs acct-tabs imp-tabs" role="tablist" aria-label="What to upload" id="kindTabs">
-      <button role="tab" id="tab-zip" aria-controls="panel-zip" aria-selected="true">A zip</button>
-      <button role="tab" id="tab-folder" aria-controls="panel-folder" aria-selected="false" tabindex="-1">A folder</button>
-      <button role="tab" id="tab-files" aria-controls="panel-files" aria-selected="false" tabindex="-1">Single files</button>
-      <button role="tab" id="tab-manual" aria-controls="panel-manual" aria-selected="false" tabindex="-1">Type them in</button>
-      <button role="tab" id="tab-link" aria-controls="panel-link" aria-selected="false" tabindex="-1">Paste a link</button>
-    </div>
-    <div role="tabpanel" id="panel-zip" aria-labelledby="tab-zip">
-      <p class="hint">Most portals give you a zip (MyChart, Apple Health's export.zip, Blue Button). Upload it as it is: it's
-        unpacked on the server.</p>
-      <label class="btn pick">Choose a zip… <input type="file" id="pickZip" accept=".zip,application/zip"></label>
-    </div>
-    <div role="tabpanel" id="panel-folder" aria-labelledby="tab-folder" hidden>
-      <p class="hint">An export you've already unpacked. Everything in the folder is sent, with its folders kept.</p>
-      <label class="btn pick">Choose a folder… <input type="file" id="pickFolder" webkitdirectory multiple></label>
-    </div>
-    <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" hidden>
-      <p class="hint">One or more files: a C-CDA or FHIR file, a CSV of lab results, a lab report PDF from Quest or Labcorp…</p>
-      <label class="btn pick">Choose files… <input type="file" id="pickFiles" multiple></label>
-    </div>
-
-    <div role="tabpanel" id="panel-manual" aria-labelledby="tab-manual" hidden>
-      <p class="hint">For records on paper, or from a portal with no export: type in lab results, visits, hospital stays,
-        medications, claims, letters and more. Everything is checked as you go, and Save stores it all as one import, which
-        you can undo from the import history.</p>
-      <div class="form inline man-pick">
-        <label>Add a record <select id="manKind"><option value="labs">Lab results</option></select></label>
-        <button class="btn" id="manAddKind" type="button">Add</button>
-      </div>
-      <div class="man-items" id="manItems" aria-label="Records to save"></div>
-
-      <h3 class="man-h">Lab results</h3>
-      <p class="hint">One per row: the date, the test, its value and unit, and the reference range printed beside it (like
-        <i>13.5 - 17.5</i>, <i>&lt;200</i> or <i>&gt;60</i>). You can paste rows copied from a spreadsheet.</p>
-      <div class="man-rows" id="manRows" aria-label="Results to save"></div>
-      <datalist id="labNames"></datalist>
-      <div class="row">
-        <button class="btn" id="manAdd" type="button">Add a row</button>
-      </div>
-      <div class="row man-save">
-        <label class="man-keep" id="manKeepWrap" hidden><input type="checkbox" id="manKeep"> Save again what's already there</label>
-        <button class="btn primary" id="manSave" type="button" disabled>Save</button>
-        <span class="msg" id="manMsg" role="status"></span>
-      </div>
-    </div>
-
-    <div role="tabpanel" id="panel-link" aria-labelledby="tab-link" hidden>
-      <p class="hint">A SMART Health Link or Health Card that a provider, insurer or app gave you: paste the link (it starts
-        with <i>shlink:/</i>, or has <i>#shlink:/</i> in it), or scan its QR code. Sanguity shows what the link says first,
-        and contacts the link's server only when you choose Fetch.</p>
-      <label class="shl-text">Link <textarea id="shlText" rows="3" spellcheck="false" autocomplete="off"
-        placeholder="shlink:/… or https://…#shlink:/…"></textarea></label>
-      <div class="row">
-        <button class="btn" id="shlScan" type="button" hidden>Scan a QR code</button>
-        <span class="msg" id="shlMsg" role="status"></span>
-      </div>
-      <video id="shlVideo" class="shl-video" muted playsinline hidden></video>
-      <div class="shl-about" id="shlAbout" hidden>
-        <dl class="shl-facts" id="shlFacts"></dl>
-        <label class="shl-pass" id="shlPassRow" hidden>Passcode <input id="shlPass" type="password" autocomplete="off"></label>
-        <p class="hint" id="shlWho"></p>
-        <div class="row">
-          <button class="btn primary" id="shlGo" type="button">Fetch and preview</button>
-          <span class="msg" id="shlGoMsg" role="status"></span>
-        </div>
-      </div>
-      <div id="shlResult"></div>
-    </div>
-
-    <div class="drop" id="drop" tabindex="-1">Or drop a zip, a folder or files here</div>
-
-    <div id="chosen" hidden>
-      <div class="row imp-sum"><b id="sum"></b><button class="btn small" id="clear" type="button">Clear</button></div>
-      <ul class="imp-list" id="list" aria-label="Files to upload"></ul>
-    </div>
-    <div class="row" id="goRow">
-      <button class="btn primary" id="go" type="button" disabled>Upload</button>
-      <span class="msg" id="msg" role="status"></span>
-    </div>
+<main class="acct">
+  <section class="card">
+    <h2>This page has moved</h2>
+    <p>Upload files, type records in and the import history are on the <a href="sources.html">Sources</a> page now.</p>
   </section>
 </main>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
-<script src="js/nav.js"></script>
-<script src="js/dates.js"></script>
-<script src="js/import-jobs.js"></script>
-<script src="js/import.js"></script>
-<script src="js/import-history.js"></script>
-<script src="js/import-records.js"></script>
-<script src="js/import-manual.js"></script>
-<script src="js/import-shl.js"></script>
+<script src="js/moved.js"></script>
 </body>
 </html>

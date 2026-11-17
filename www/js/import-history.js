@@ -1,11 +1,11 @@
-/* Sanguity · import history (#24): a section of the import page listing the profile's imports, newest first, with
+/* Sanguity · import history (#24): a section of the Sources page (#166) listing the profile's imports, newest first, with
    who, the importer, the upload's files and counts, and an Undo for owners and editors.
      GET  api/profiles/{pid}/imports              {can_undo, imports: [...]}
      POST api/profiles/{pid}/imports/{id}/undo    removes everything that import brought
-   It follows the page's Profile choice; someone who only views a profile gets a choice of their own here (the
-   upload form only lists profiles they can import into). After an import finishes through window.sanguityImport
-   (import-jobs.js), the list is read again. Each import is #import-<id>: a record's Source link on the main page
-   (sources.js, #100) opens import.html?profile=<pid>#import-<id>, and that import is scrolled to and highlighted.
+   It follows the page's Profile choice, which lists every profile shared with you (sources-page.js); with none, a
+   choice of its own. After an import finishes through window.sanguityImport (import-jobs.js), the list is read again.
+   Each import is #import-<id>: a record's Source link on the main page (sources.js, #100) opens
+   sources.html?profile=<pid>#import-<id>, and that import is scrolled to and highlighted.
    Plain script in its own scope; $, el and api come from util.js. */
 "use strict";
 (function () {
@@ -13,7 +13,7 @@
                 procedure: ["procedure", "procedures"], study: ["report", "reports"], message: ["message", "messages"],
                 letter: ["letter", "letters"], document: ["document", "documents"], stay: ["hospital stay", "hospital stays"],
                 med: ["medication", "medications"], rx: ["pharmacy fill", "pharmacy fills"], claim: ["claim", "claims"]};
-  const ORIGIN = {upload: "Uploaded", dataset: "Loaded from the command line", build: "From the setup build"};
+  const ORIGIN = {upload: "Uploaded", manual: "Typed in", sync: "Synced", dataset: "Loaded from the command line", build: "From the setup build"};
   const n = (k, [one, many]) => `${k.toLocaleString()} ${k === 1 ? one : many}`;
   const when = t => fmtDT(t * 1000);   // dates.js
   let ME = null, PID = null, seq = 0;
@@ -52,7 +52,8 @@
   function item(e, canUndo) {
     const undone = e.state === "undone";
     const li = el("li", {class: undone ? "undone" : null, id: "import-" + e.id, tabindex: "-1", "data-import": e.id, "data-format": e.format},
-      el("div", {class: "hd"}, el("b", {text: e.name || e.label}), e.name ? el("span", {class: "muted", text: `(${e.label})`}) : null,   // its own name (#38) el("span", {class: "muted", text: `${ORIGIN[e.origin] || e.origin} ${when(e.at)} · ${e.by}`}),
+      el("div", {class: "hd"}, el("b", {text: e.name || e.label}), e.name ? el("span", {class: "muted", text: `(${e.label})`}) : null,   // its own name (#38)
+        el("span", {class: "muted", text: `${ORIGIN[e.origin] || e.origin} ${when(e.at)} · ${e.by}`}),
         undone ? el("span", {class: "tag", text: "undone"}) : null),
       e.files && e.files.length ? el("p", {class: "files muted", text: "Files: " + e.files.join(", ") +
         (e.file_count > e.files.length ? ` and ${(e.file_count - e.files.length).toLocaleString()} more` : "")}) : null,
@@ -134,21 +135,19 @@
     try { ME = await call("me"); } catch (e) { return; }
     const all = ME.profiles || [];
     if (!all.length) return;
-    const editable = all.filter(p => p.role === "owner" || p.role === "editor");
     const page = $("#profile");
-    if (editable.length === all.length && page) {   // the upload form's Profile choice is the same list: follow it
+    if (page) {   // the page's Profile choice is the same list: follow it
       const follow = () => { if (page.value) choose(page.value); };
       page.addEventListener("change", follow);
-      new MutationObserver(follow).observe(page, {childList: true});   // filled in by import.js
+      new MutationObserver(follow).observe(page, {childList: true});   // filled in by sources-page.js
       setTimeout(follow, 0);
-    } else {   // some are view-only: a choice of its own, over every profile, kept in step with the form's
+    } else {   // on a page without one: a choice of its own, over every profile
       const sel = $("#historyProfile");
       sel.replaceChildren(...all.map(p => el("option", {value: p.id, text: p.role === "viewer" ? `${p.name} (view only)` : p.name})));
       let want; try { want = +(new URLSearchParams(location.search).get("profile") || localStorage.getItem("ht-profile")); } catch (e) {}
       if (all.some(p => p.id === want)) sel.value = want;
       $("#historyPick").hidden = false;
       sel.onchange = () => choose(sel.value);
-      if (page) page.addEventListener("change", () => { sel.value = page.value; choose(sel.value); });
       choose(sel.value);
     }
   })();

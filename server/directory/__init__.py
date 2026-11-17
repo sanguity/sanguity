@@ -34,16 +34,6 @@ VENDORS = {
         "client": "A client ID. Epic issues a non-production one for its sandbox and a production one for hospitals. "
                   "Choose the confidential profile if you want access that lasts (refresh tokens); then you get a "
                   "client secret as well.",
-        "steps": [
-            "Sign up at Epic on FHIR (fhir.epic.com), then open Build Apps and create an app.",
-            "Application audience: Patients. Choose the R4 read APIs for the records you want (Patient, "
-            "AllergyIntolerance, Condition, DiagnosticReport, DocumentReference, Encounter, Immunization, "
-            "MedicationRequest, Observation, Procedure). Apps using only USCDI APIs are sent to US hospitals "
-            "automatically.",
-            "Under redirect URIs, paste the return address shown here, exactly.",
-            "Save the app, accept Epic's terms, and copy its client ID (and secret, if you chose one). You'll enter "
-            "them in Sanguity when sign-in arrives (#32).",
-        ],
         "scopes": ["openid", "fhirUser", "launch/patient", "offline_access", "patient/*.read"],
         "note": "Epic's sandbox works from any install. For a real hospital, your install needs a proper HTTPS "
                 "address, and the hospital needs your app's client ID: Epic sends it to US provider organisations "
@@ -59,15 +49,6 @@ VENDORS = {
         "needs_secret": False,
         "client": "A client ID from Oracle Health's code Console. A client secret only if your app is registered as "
                   "a confidential (server) app.",
-        "steps": [
-            "Sign up at Oracle Health's code Console and register a new app of type Patient, as a provider app "
-            "for patient access.",
-            "Under redirect URI, paste the return address shown here, exactly (trailing slashes count).",
-            "Choose the patient scopes listed here, with SMART v1 or v2.",
-            "Add a DNS TXT record cerner-client-id=<your client ID> on your address's domain, so the sign-in "
-            "page names your app instead of \"Unknown Application\".",
-            "Copy the client ID. You'll enter it in Sanguity when sign-in arrives (#32).",
-        ],
         "scopes": ["openid", "fhirUser", "launch/patient", "offline_access", "patient/*.read"],
         "note": "Oracle Health is unlikely to work for a home install. Outside its sandbox it wants the return "
                 "address on HTTPS, port 443, with a certificate from a public authority (not self-signed), and a DNS "
@@ -82,12 +63,6 @@ VENDORS = {
         "needs_secret": True,
         "client": "A client ID and a client secret: Blue Button accepts only confidential apps. Sanguity keeps the "
                   "secret on your server, encrypted.",
-        "steps": [
-            "Create a Blue Button 2.0 sandbox account and register an app.",
-            "Client type: confidential; grant type: authorization code (with PKCE).",
-            "Under callback URLs, paste the return address shown here, exactly.",
-            "Copy the client ID and client secret. You'll enter them in Sanguity when sign-in arrives (#32).",
-        ],
         "scopes": ["openid", "profile", "launch/patient", "patient/Patient.rs", "patient/ExplanationOfBenefit.rs",
                    "patient/Coverage.rs"],
         "note": "Production access means a public privacy policy and terms of service, an application and a demo "

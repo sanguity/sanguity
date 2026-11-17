@@ -62,7 +62,7 @@ const SgOutside = (() => {
       v.may_contact.length ? el("ul", {class: "out-hosts"}, ...v.may_contact.map(h => el("li", {}, code(h))))
         : el("p", {class: "muted", text: "No host: no source is set up or connected, so Sanguity contacts nobody on its own."}),
       el("p", {class: "muted"}, "A Health Link's host is contacted only when someone pastes the link and confirms it. ",
-        el("a", {href: "connect.html", text: "Connect or disconnect sources"}), "."),
+        el("a", {href: "sources.html#portals", text: "Connect or disconnect sources"}), "."),
       sub("Connected sources"),
       ...(v.sources.length ? v.sources.map(source) : [el("p", {class: "muted", text: "None."})]),
       sub("SMART Health Link fetches"),

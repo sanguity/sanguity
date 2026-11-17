@@ -1,4 +1,4 @@
-"""A profile's watch connection on the Settings page (#46, watch_keys.py): the receiver's setup instructions, and
+"""A profile's watch connection on the Sources page (#46, #166, watch_keys.py): the receiver's setup instructions, and
 making the profile's secret (or a new one in place of it). Only the profile's owners and editors see or change it;
 the secret is given out once, in the answer that makes it. Changes pass main.guard's CSRF check and are logged in
 the profile's activity (never the secret)."""
