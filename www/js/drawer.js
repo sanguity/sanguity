@@ -25,7 +25,8 @@ function resultTable(rows) {
   return el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data"},
     el("thead", {}, el("tr", {}, ["Component", "Value", "Ref range", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, rows.map(([n, v, u, rr, f]) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", title: "Show trend", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
-      el("td", {text: n}), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : "", text: f ? (f === "H" ? "▲ High" : "▼ Low") : ""}))))));
+      el("td", {title: renamedTitle("lab", n)}, nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
+        SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : "", text: f ? (f === "H" ? "▲ High" : "▼ Low") : ""}))))));
 }
 function resultBody(d, eid) {
   const out = [];

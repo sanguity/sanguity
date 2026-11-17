@@ -6,7 +6,7 @@ function latest(s) { return s.pts[s.pts.length - 1]; }
 function renderSeriesList() {
   const wrap = $("#series"); wrap.replaceChildren();
   const q = state.q;
-  const top = SERIES.filter(s => !s.watch && s.n >= 2 && (!q || s.name.toLowerCase().includes(q) || s.panel.toLowerCase().includes(q)));
+  const top = SERIES.filter(s => !s.watch && s.n >= 2 && (!q || s.name.toLowerCase().includes(q) || nice(s.name).toLowerCase().includes(q) || s.panel.toLowerCase().includes(q)));
   const groups = new Map();
   for (const s of top) { const g = s.watch ? s.panel : s.n >= 40 ? s.panel || "Other" : "Less frequent"; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(s); }
   const rank = g => g === "Less frequent" ? 2 : g.startsWith("Watch") ? 1 : 0;
@@ -21,7 +21,7 @@ function renderSeriesList() {
       const L = latest(s); const id = "s_" + s.name.replace(/\W/g, "_");
       wrap.append(el("label", {class: "srow", for: id},
         el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); wrap.querySelector("b").textContent = `${state.sel.size} selected`; tvRefresh(); }}),
-        el("span", {class: "nm", title: `${s.name} · ${s.n} results`, text: s.name}),
+        el("span", {class: "nm", title: `${renamedTitle("lab", s.name)} · ${s.n} results`, text: nice(s.name)}),
         el("span", {class: "lv" + (L && L[4] ? " abn" : ""), title: L ? `Latest ${fmtD(L[0])}` : "", text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : "text"})));
     }
   }
@@ -42,7 +42,15 @@ function shortTitle(t) {
   s = s.charAt(0).toUpperCase() + s.slice(1);
   return s.length > 24 ? s.slice(0, 23) + "…" : s;
 }
-const nice = n => CFG.labNicknames[n] || n;
+const nice = n => CFG.labNicknames[n] || n;   // the name a lab is shown by (Settings > Names, or renamed where shown: rename.js)
+/* under a Trends table: the source tags its results carry, each as shown, with the tag in the records and ✎ */
+function tagLine(pts) {
+  const tags = [...new Set(pts.map(p => p[6]).filter(t => t && t !== "Clinic"))];
+  if (!tags.length) return null;
+  return el("p", {class: "source tags"}, el("b", {text: tags.length > 1 ? "Source tags " : "Source tag "}),
+    ...tags.flatMap((t, i) => [i ? "; " : null, el("span", {title: renamedTitle("tag", t), text: srcName(t)}),
+      srcName(t) !== t ? el("span", {class: "muted", text: ` (${t})`}) : null, renameButton("tag", t)]));
+}
 function markEvents() { return state.marks ? EV.filter(e => MARK_KINDS.has(e.k) && e.ts >= state.from && e.ts <= state.to) : []; }
 function smooth7(pts, key = 1) {   // centered 7-day mean, by time
   const out = []; let a = 0, b = 0, sum = 0;
@@ -70,7 +78,7 @@ function chartCard(s) {
   const hasStages = s.kind === "stack" && pts.some(p => p.parts && (p.parts.deep || p.parts.rem || p.parts.light));
   const legend = hasStages ? el("span", {class: "lg"}, ...[["Deep", "--seq1"], ["REM", "--seq2"], ["Light", "--seq3"]].map(([n, c]) => el("span", {}, el("i", {style: {background: `var(${c})`}}), n)))
     : s.kind === "band" ? el("span", {class: "lg"}, el("span", {}, el("i", {style: {background: "var(--c-lab)", height: "3px"}}), "Daily average"), el("span", {}, el("i", {style: {background: "var(--c-lab)", opacity: .2}}), "Low–high")) : null;
-  card.append(el("div", {class: "hd"}, el("span", {class: "name", text: s.name}),
+  card.append(el("div", {class: "hd"}, el("span", {class: "name", title: renamedTitle("lab", s.name), text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
     el("span", {class: "unit", text: `${s.unit}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}`}), legend, read,
     el("button", {text: showTable ? "Chart" : "Table", onclick: () => { showTable ? state.tables.delete(s.name) : state.tables.add(s.name); renderCharts(); }}),
     el("button", {text: "✕", title: "Remove", onclick: () => { state.sel.delete(s.name); renderLabs(); }})));
@@ -79,9 +87,10 @@ function chartCard(s) {
       el("tbody", {}, [...pts].reverse().map(p => { const [a, b] = readText(s, p); return el("tr", {}, el("td", {text: s.watch ? fmtD(p.ts) : fmtDT(p.ts)}), el("td", {class: p[4] ? "abn" : "", text: a}),
         el("td", {text: (s.watch ? b : p[2] != null || p[3] != null ? `${p[2] ?? ""} – ${p[3] ?? ""}` : "") + (p[6] ? ` · ${p[6] === "Clinic" ? "clinic visit" + (p.org ? " (" + p.org + ")" : "") : srcName(p[6])}` : "") + (p.same ? " · same result from " + p.same.length + " more source" + (p.same.length > 1 ? "s" : "") : "")}), el("td", {class: p[4] ? "abn" : "", text: p[4] === "H" ? "▲ High" : p[4] === "L" ? "▼ Low" : ""})); })))));
     const src = seriesSource(s); if (src) card.append(src);
+    { const t = tagLine(pts); if (t) card.append(t); }   // its results' source tags, renamed here (#38)
     return card;
   }
-  const svg = el("svg:svg", {role: "img", class: "pz", "aria-label": `${s.name} over time`});
+  const svg = el("svg:svg", {role: "img", class: "pz", "aria-label": `${nice(s.name)} over time`});
   svg._s = s; svg._read = read;
   card.append(svg);
   requestAnimationFrame(() => drawChart(svg, s, pts, read));
@@ -193,9 +202,9 @@ function drawChart(svg, s, pts, read) {
     const nodes = [];
     if (mine) {
       const [a, b] = readText(s, mine);
-      nodes.push(el("div", {class: "v", text: a}), el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-lab)"}}), s.name), b ? el("div", {class: "s", text: b}) : null,
+      nodes.push(el("div", {class: "v", text: a}), el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-lab)"}}), nice(s.name), nice(s.name) !== s.name ? el("span", {class: "muted", text: ` (${s.name})`}) : null), b ? el("div", {class: "s", text: b}) : null,
         el("div", {class: "s", text: (s.watch ? fmtD(mine.ts) : fmtDT(mine.ts)) + (mine[2] != null || mine[3] != null ? ` · ref ${mine[2] ?? ""}–${mine[3] ?? ""}` : "")}),
-        mine[6] ? el("div", {class: "s", text: "Source: " + srcName(mine[6])}) : null,
+        mine[6] ? el("div", {class: "s", text: "Source: " + srcName(mine[6]) + (srcName(mine[6]) !== mine[6] ? ` (${mine[6]})` : "")}) : null,
         !s.watch && pointSources(s, mine) ? el("div", {class: "s", text: "From " + pointSources(s, mine)}) : null,
         mine[4] ? el("div", {class: "s", style: {color: "var(--crit)"}, text: mine[4] === "H" ? "▲ Above range" : "▼ Below range"}) : null);
     }

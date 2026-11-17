@@ -661,3 +661,17 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 .sets .set-view{border:1px solid var(--grid);border-radius:8px;padding:8px 10px;margin:6px 0;max-width:560px}
 .sets .set-view .row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
 .sets .set-view .row input:not([type=radio]){flex:1 1 140px;min-width:0}
+
+/* ---- renaming where a name is shown (#38): the ✎ beside a lab, tag or source, and its small form (js/rename.js) */
+.rename-btn{border:0;background:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 5px;margin-left:2px;border-radius:6px;line-height:1}
+.rename-btn:hover,.rename-btn:focus-visible{color:var(--ink);background:var(--hover)}
+.rename-box{position:fixed;z-index:60;background:var(--raised);border:1px solid var(--ring);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.18);padding:12px;width:320px;max-width:calc(100vw - 32px);box-sizing:border-box;display:flex;flex-direction:column;gap:8px;font-size:13px}
+.rename-box label{display:flex;flex-direction:column;gap:4px;color:var(--ink2);overflow-wrap:anywhere}
+.rename-box input{border:1px solid var(--ring);background:var(--surface);color:var(--ink);border-radius:8px;padding:6px 9px;font:inherit;min-width:0}
+.rename-acts{display:flex;flex-wrap:wrap;gap:6px}
+.rename-acts .btn{margin:0}
+.rename-acts .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.rename-box .hint{margin:0}
+.rename-msg:empty{display:none}
+#hm text.row.renamable{cursor:pointer}
+#hm text.row.renamable:hover,#hm text.row.renamable:focus{fill:var(--ink);text-decoration:underline;outline:none}

@@ -5,16 +5,20 @@
    Plain script, loaded in order by index.html after core.js; all files share one global scope. */
 "use strict";
 const sourceOf = imp => imp == null || !DATA || !DATA.imports ? null : DATA.imports[imp] || null;
+/* what an import is called: its own name (#38, rename.js), else its importer's label */
+const importName = imp => { const s = sourceOf(imp); return s ? s.name || s.label : ""; };
 const importHref = imp => `import.html?profile=${PROFILE ? PROFILE.id : ""}#import-${imp}`;
 /* "C-CDA health summary, imported 3 Nov 2026" (and its last sync), as plain text for tooltips */
 function sourceText(imp) {
   const s = sourceOf(imp); if (!s) return "";
-  return `${s.label}, imported ${fmtD(s.at * 1000)}` + (s.synced ? ` · last synced ${fmtDT(s.synced * 1000)}` : "");
+  return `${importName(imp)}${s.name ? ` (${s.label})` : ""}, imported ${fmtD(s.at * 1000)}` + (s.synced ? ` · last synced ${fmtDT(s.synced * 1000)}` : "");
 }
 /* one import as a link to the history, then when */
 function sourceNodes(imp, note) {
   const s = sourceOf(imp); if (!s) return [];
-  return [el("a", {href: importHref(imp), class: "src-link", "data-import": imp, title: "Open this import in the import history", text: s.label}),
+  return [el("a", {href: importHref(imp), class: "src-link", "data-import": imp, text: importName(imp),
+      title: (s.name ? `In the records: ${s.label}. ` : "") + "Open this import in the import history"}),
+    s.name ? el("span", {class: "muted", text: ` (${s.label})`}) : null, renameButton("import", imp),
     ` · imported ${fmtD(s.at * 1000)}`, s.synced ? ` · last synced ${fmtDT(s.synced * 1000)}` : null, note ? ` (${note})` : null];
 }
 /* the drawer's Source line for an event: its import, the import of anything merged into it or linked to it as the

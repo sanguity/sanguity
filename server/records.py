@@ -15,7 +15,8 @@ to data.json, and each part of it has its place:
   possible   [{ref, a, b}]                                   person said are the same (shown once) or not, applied
                                                              last; and the possible matches still undecided
                                                              (crossmatch.py, #96). Only when there are any
-  imports    {import id: {label, origin, format, at, synced}}  the imports rows: where each record came from (#100).
+  imports    {import id: {label, origin, format, at, synced, name?}}  the imports rows: where each record came from
+                                                             (#100); name: what the person calls it (#38).
                                                              Each event and lab series names its import as "imp"; a
                                                              series' results are all of its import. Sent once here,
                                                              so no row repeats its importer's label
@@ -255,12 +256,34 @@ def source_label(origin, fmt):
 
 
 def _source(r):
+    name = crypto.dec(r["name"]) if r["name"] else None
     return {"label": source_label(r["origin"], r["format"]), "origin": r["origin"], "format": r["format"],
-            "at": r["at"], "synced": r["synced"]}
+            "at": r["at"], "synced": r["synced"], **({"name": name} if name else {})}
+
+
+NAME_MAX = 80
+
+
+def rename_import(db, pid, iid, name):
+    """Give import iid of profile pid its own name (#38), or take it away (name empty or None: the importer's label
+    again). Call inside a transaction. Returns (the import's label, the name kept or None); None when there's no
+    such import. Raises ValueError for a name that's too long."""
+    r = db.execute("SELECT origin, format FROM imports WHERE id=? AND profile_id=?", (iid, pid)).fetchone()
+    if r is None:
+        return None
+    name = " ".join((name or "").split()) or None
+    if name and len(name) > NAME_MAX:
+        raise ValueError(f"A source's name can be at most {NAME_MAX} characters.")
+    label = source_label(r["origin"], r["format"])
+    if name == label:
+        name = None
+    db.execute("UPDATE imports SET name=? WHERE id=?", (crypto.enc(name) if name else None, iid))
+    _bump(db, pid)
+    return label, name
 
 
 def _assemble(db, pid):
-    imps = db.execute("SELECT id, at, origin, format, synced, meta FROM imports WHERE profile_id=? ORDER BY id", (pid,)).fetchall()
+    imps = db.execute("SELECT id, at, origin, format, synced, meta, name FROM imports WHERE profile_id=? ORDER BY id", (pid,)).fetchall()
     if not imps:
         return None
     out, costs = {}, []   # costs: (import, place in its list, row)

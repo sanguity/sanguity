@@ -521,6 +521,11 @@ SCHEMA = [
         changed INTEGER);
     CREATE INDEX journal_profile ON journal(profile_id);
     """,
+    # version 25: an import's own name (#38): what the person calls it in place of the importer's label ("C-CDA health
+    # summary" -> "Dr. Rivera's clinic"), shown wherever the records say where they came from. NULL: the label.
+    """
+    ALTER TABLE imports ADD COLUMN name TEXT;     -- encrypted
+    """,
 ]
 
 

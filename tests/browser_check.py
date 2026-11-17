@@ -267,6 +267,94 @@ def main():
                 page.keyboard.press("Escape")
             check("drawer closes on Escape", not js("document.getElementById('drawer').classList.contains('open')"))
 
+            # ---- renaming where a name is shown (#38): a lab from its Trends chart shows the new name on every tab and in
+            # the drawer, the name in the records on hover; back to it from the heatmap; an import from the drawer's
+            # Source line; a source tag from under a Trends table; the form fits 375 px; viewers get no ✎
+            lab = "Hemoglobin"
+            js("n => { switchTab('labs'); applyPreset('all'); state.sel.add(n); renderLabs(); }", lab)
+            settle(300)
+            page.click(f"#charts .chart .hd [data-rename=lab][data-key='{lab}']")
+            page.wait_for_selector(".rename-box input", timeout=5000)
+            check("rename: ✎ on a Trends chart opens a form with the name in it", js("document.querySelector('.rename-box input').value") == lab)
+            page.fill(".rename-box input", "Hgb (renamed)")
+            page.keyboard.press("Enter")
+            page.wait_for_function("n => CFG.labNicknames[n] === 'Hgb (renamed)' && !document.querySelector('.rename-box')", arg=lab, timeout=10000)
+            settle(300)
+            hd = js("n => { const b = document.querySelector(`#charts .chart .hd [data-key='${n}']`), h = b && b.parentElement; return h && [h.querySelector('.name').textContent, h.querySelector('.name').title]; }", lab)
+            check("…the chart is called by the new name, the name in the records on hover", hd == ["Hgb (renamed)", f"In the records: {lab}"], hd)
+            check("…and so is the list of labs", "Hgb (renamed)" in js("[...document.querySelectorAll('#series .nm')].map(x => x.textContent)"))
+            check("…focus goes back to its ✎", js("document.activeElement && document.activeElement.dataset.rename") == "lab")
+            check("…kept on the server", js("n => api('profiles/1/settings').then(r => r.json()).then(j => j.labNicknames[n])", lab) == "Hgb (renamed)")
+            js("switchTab('overview')")
+            settle(300)
+            check("…the Overview tile too", js("n => [...document.querySelectorAll('#view-overview .tile .lbl span[title]')].filter(s => s.title === n).map(s => s.textContent)", lab) == ["Hgb (renamed)"])
+            js("switchTab('heatmap')")
+            settle(300)
+            row = f"#hm text.row[data-key='{lab}']"
+            check("…the heatmap row too", page.locator(row).count() == 1 and page.locator(row).text_content().startswith("Hgb (renamed)"),
+                  page.locator(row).text_content() if page.locator(row).count() else None)
+            rid = js("n => { const e = EV.find(e => (DATA.details[e.id] || {}).type === 'result' && (DATA.details[e.id].rows || []).some(r => r[0] === n)); return e && e.id; }", lab)
+            js("id => openEvent(byId.get(id))", rid)
+            settle(200)
+            cell = js("n => { const td = [...document.querySelectorAll('#dbody table.data td')].find(td => td.title === 'In the records: ' + n); return td && td.textContent; }", lab)
+            check("…and the drawer's results, with the name in the records beside it", cell and "Hgb (renamed)" in cell and f"({lab})" in cell, cell)
+            page.keyboard.press("Escape")
+            page.click(row)
+            page.wait_for_selector(".rename-box", timeout=5000)
+            page.click(".rename-box button:text-is('Use the original name')")
+            page.wait_for_function("n => !(n in CFG.labNicknames) && !document.querySelector('.rename-box')", arg=lab, timeout=10000)
+            settle(300)
+            check("…and back to the name in the records from the heatmap", page.locator(row).text_content().startswith(lab))
+            # an import, from the drawer's Source line
+            js("id => openEvent(byId.get(id))", rid)
+            settle(200)
+            imp = js("id => byId.get(id).imp", rid)
+            label = js("i => DATA.imports[i].label", imp)
+            page.click("#dbody > .source [data-rename=import]")
+            page.wait_for_selector(".rename-box input", timeout=5000)
+            page.fill(".rename-box input", "Fictional clinic portal")
+            page.keyboard.press("Enter")
+            page.wait_for_function("i => DATA.imports[i].name === 'Fictional clinic portal' && !document.querySelector('.rename-box')", arg=imp, timeout=10000)
+            settle(200)
+            src = js("document.querySelector('#dbody > .source') && document.querySelector('#dbody > .source').textContent")
+            check("rename: an import from the drawer, its label kept beside it", js("document.getElementById('drawer').classList.contains('open')")
+                  and src and "Fictional clinic portal" in src and f"({label})" in src, src)
+            check("…in the import history too", js("i => api('profiles/1/imports').then(r => r.json()).then(j => j.imports.find(e => e.id === i).name)", imp) == "Fictional clinic portal")
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            page.click("#dbody > .source [data-rename=import]")
+            page.wait_for_selector(".rename-box input", timeout=5000)
+            box = js("(() => { const r = document.querySelector('.rename-box').getBoundingClientRect(); return [r.left, r.right, document.documentElement.scrollWidth]; })()")
+            check("…the rename form fits 375 px", box[0] >= 0 and box[1] <= 375 and box[2] <= 375, box)
+            page.keyboard.press("Escape")
+            check("…Escape closes the form, not the drawer", js("!document.querySelector('.rename-box') && document.getElementById('drawer').classList.contains('open')"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(200)
+            page.click("#dbody > .source [data-rename=import]")
+            page.wait_for_selector(".rename-box", timeout=5000)
+            page.click(".rename-box button:text-is('Use the original name')")
+            page.wait_for_function("i => !DATA.imports[i].name", arg=imp, timeout=10000)
+            page.keyboard.press("Escape")
+            # a source tag, from under the Trends table (the demo's results carry none, so one is given here)
+            js("n => { switchTab('labs'); const s = SERIES.find(s => s.name === n); s.pts[s.pts.length - 1][6] = 'EXT'; state.tables.add(n); renderLabs(); }", lab)
+            settle(200)
+            page.click("#charts .tags [data-rename=tag][data-key=EXT]")
+            page.wait_for_selector(".rename-box input", timeout=5000)
+            page.fill(".rename-box input", "Outside lab")
+            page.keyboard.press("Enter")
+            page.wait_for_function("CFG.sources.EXT === 'Outside lab' && !document.querySelector('.rename-box')", timeout=10000)
+            settle(200)
+            check("rename: a source tag from under the Trends table, shown in the table",
+                  js("[...document.querySelectorAll('#charts table.data td')].some(td => td.textContent.includes('Outside lab'))")
+                  and "Outside lab (EXT)" in js("document.querySelector('#charts .tags').textContent"))
+            page.click("#charts .tags [data-rename=tag][data-key=EXT]")
+            page.wait_for_selector(".rename-box", timeout=5000)
+            page.click(".rename-box button:text-is('Use the original name')")
+            page.wait_for_function("!('EXT' in CFG.sources)", timeout=10000)
+            check("…viewers get no ✎", js("""(() => { const role = PROFILE.role; PROFILE.role = 'viewer'; renderLabs();
+                const n = document.querySelectorAll('#charts [data-rename], #dbody [data-rename]').length; PROFILE.role = role; return n; })()""") == 0)
+            js("n => { const s = SERIES.find(s => s.name === n); s.pts[s.pts.length - 1].length = 6; state.tables.delete(n); renderLabs(); }", lab)
+
             # ---- an HTML record shows in the drawer with the stylesheet and picture saved beside it, scripts off
             js("openEvent(DATA.events.find(e => e.title === 'Visit summary (HTM)'))")   # ids are the database's
             page.wait_for_function("""(() => { const f = document.querySelector('#dbody iframe.doc'), d = f && f.contentDocument;
@@ -493,7 +581,8 @@ def main():
             page.select_option("#viewPick", "CBC (browser check)")
             settle(300)
             charted = js("[...document.querySelectorAll('#charts .chart .name')].map(n => n.textContent)")
-            check("picking a view charts its labs", picked() == sorted(labs3[:2]) and sorted(charted) == sorted(labs3[:2]), charted)
+            shown = js(f"{json.dumps(labs3[:2])}.map(nice)")   # charts show a lab's nickname, if it has one (#38)
+            check("picking a view charts its labs", picked() == sorted(labs3[:2]) and sorted(charted) == sorted(shown), charted)
             page.click("#tvBox button:text-is('Make default')")
             page.wait_for_function("CFG.trends.views.some(v => v.default && v.name === 'CBC (browser check)')", timeout=10000)
             check("…and making it the default marks it", js("document.querySelector('#tvBox [aria-pressed=true]').textContent") == "Default ✓"
@@ -1534,7 +1623,7 @@ def main():
             check("the drawer: the result once, saying the same result also came from the sync, with Undo link",
                   "the same result also came from" in page.inner_text("#dbody .same")
                   and page.locator("#dbody .same button", has_text="Undo link").count() == 1
-                  and js("[...document.querySelectorAll('#dbody td')].filter(td => td.textContent === 'Hemoglobin').length") == 1,
+                  and js("[...document.querySelectorAll('#dbody td')].filter(td => td.title === 'Hemoglobin').length") == 1,
                   page.inner_text("#dbody")[:500])
             check("…and fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.click("#dbody .same button:has-text('Undo link')")

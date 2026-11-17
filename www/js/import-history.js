@@ -52,7 +52,7 @@
   function item(e, canUndo) {
     const undone = e.state === "undone";
     const li = el("li", {class: undone ? "undone" : null, id: "import-" + e.id, tabindex: "-1", "data-import": e.id, "data-format": e.format},
-      el("div", {class: "hd"}, el("b", {text: e.label}), el("span", {class: "muted", text: `${ORIGIN[e.origin] || e.origin} ${when(e.at)} · ${e.by}`}),
+      el("div", {class: "hd"}, el("b", {text: e.name || e.label}), e.name ? el("span", {class: "muted", text: `(${e.label})`}) : null,   // its own name (#38) el("span", {class: "muted", text: `${ORIGIN[e.origin] || e.origin} ${when(e.at)} · ${e.by}`}),
         undone ? el("span", {class: "tag", text: "undone"}) : null),
       e.files && e.files.length ? el("p", {class: "files muted", text: "Files: " + e.files.join(", ") +
         (e.file_count > e.files.length ? ` and ${(e.file_count - e.files.length).toLocaleString()} more` : "")}) : null,

@@ -78,6 +78,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - Saved Trends views (#37): named sets of labs ("CBC", "Liver") kept per profile. Owners and editors save what's
   charted as a view from Trends, switch between views there, and make one the default, which Trends starts with
   instead of the labs set in Settings; views are renamed, changed and removed on the Settings page too.
+- Rename where a name is shown (#38): a lab from its Trends chart, a heatmap row or a result in the details; a
+  result's source tag under its Trends table; and an import (the source of every record) from its Source line. The
+  new name shows on every tab for everyone the profile is shared with, the name in the records stays on hover and
+  in the details, and "Use the original name" puts it back. Lab and tag names are the Names settings; an import's
+  name is its own (encrypted, schema version 25) and shows in the import history too.
 
 **Sharing and new features (Phase 4)**
 - Reminders as a calendar feed (#51): a private iCalendar address per person and profile, made on the Settings page,

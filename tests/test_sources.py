@@ -2,7 +2,8 @@
 """Where every record came from (#100: records.assemble's "imports" list and each record's "imp"): the records name
 their import, and the list matches the import history; an undone import's records and its entry are gone, and the
 cached records follow; a merged event lists both sources; an import's last sync time (#91) is carried; an export
-loaded again names its new import, not the old ones; the demo profile's records grow by only a few percent.
+loaded again names its new import, not the old ones; the demo profile's records grow by only a few percent; an
+import given its own name (#38) is called that in the records and the history, kept encrypted.
 Fictional data only.
 
   python3 tests/test_sources.py
@@ -25,7 +26,7 @@ subprocess.run([sys.executable, "-I", os.path.join(ROOT, "demo", "generate.py"),
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, db as dbm, main, profiles as prof, records   # noqa: E402
+from server import accounts, crypto, db as dbm, main, profiles as prof, records   # noqa: E402
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -194,6 +195,43 @@ class Sources(unittest.TestCase):
         self.assertEqual(list(got["imports"]), [str(iid)])
         self.assertEqual({x["imp"] for x in got["events"] + got["labs"]}, {iid})
         self.assertEqual(got["imports"][str(iid)]["label"], records.source_label("upload", "sanguity"))
+
+    # ---------------------------------------------------------------- an import's own name (#38)
+
+    def test_import_named(self):
+        iid = stored(self.pid, SECOND, "upload", "fhir")
+        label = records.source_label("upload", "fhir")
+        name = lambda body, i=iid, pid=self.pid, c=self.c, h=H: c.put(f"/api/profiles/{pid}/imports/{i}/name", json=body, headers=h)
+        r = name({"name": "  Clinic B  portal "})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json(), {"id": iid, "label": label, "name": "Clinic B portal"})
+        got = self.data()["imports"][str(iid)]   # served again, not the cached records from before
+        self.assertEqual((got["label"], got["name"]), (label, "Clinic B portal"))
+        self.assertNotIn("name", self.data()["imports"][str(self.first)])
+        hist = {e["id"]: e for e in self.history()}
+        self.assertEqual((hist[iid]["name"], hist[iid]["label"], hist[self.first]["name"]), ("Clinic B portal", label, None))
+        # encrypted at rest; logged without the name
+        db = dbm.connect()
+        try:
+            raw = db.execute("SELECT name FROM imports WHERE id=?", (iid,)).fetchone()[0]
+        finally:
+            db.close()
+        self.assertTrue(raw.startswith(crypto.FIELD) and "Clinic B" not in raw, raw)
+        log = self.c.get(f"/api/profiles/{self.pid}/activity?action=source").json()
+        self.assertEqual(log[0]["detail"], {"import": iid, "label": label, "named": True})
+        self.assertNotIn("Clinic B portal", json.dumps(log))
+        # refused: too long, no such import, another profile's import, without the CSRF header
+        self.assertEqual(name({"name": "x" * 81}).status_code, 400)
+        self.assertEqual(name({"name": "x"}, i=999999).status_code, 404)
+        self.assertEqual(name({"name": "x"}, i=self.first, pid=self.demo).status_code, 404)
+        self.assertEqual(name({"name": "x"}, h={}).status_code, 403)
+        # back to the label: no name, or the label itself
+        self.assertEqual(name({"name": label}).json()["name"], None)
+        name({"name": "Again"})
+        self.assertIsNone(name({}).json()["name"])
+        self.assertNotIn("name", self.data()["imports"][str(iid)])
+        self.assertEqual(self.c.get(f"/api/profiles/{self.pid}/activity?action=source").json()[0]["detail"]["named"], False)
+        self.assertEqual(self.c.post(f"/api/profiles/{self.pid}/imports/{iid}/undo", headers=H).status_code, 200)
 
     # ---------------------------------------------------------------- the page's data stays small
 
