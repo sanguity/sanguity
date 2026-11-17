@@ -1,4 +1,4 @@
-/* Sanguity · settings, helpers, formatting, shared state, persistence, date range, tooltip, milestones.
+/* Sanguity · settings, helpers, formatting, shared state, persistence, the records bar's period, tooltip, milestones.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 const CATS = [
@@ -66,10 +66,12 @@ const stateKey = () => "ht-state" + (PROFILE ? ":" + PROFILE.id : "");
 
 let DATA, EV = [], STAYS = [], SERIES = [], byId = new Map(), WATCH = null, STEPS = [];
 const hasLane = c => EV.some(e => CAT_OF[e.k] === c) || (c.k === "watch" && STEPS.length > 0);
-const state = { from: 0, to: 0, min: 0, max: 0, preset: "2y", cats: new Set(CATS.map(c => c.k).filter(k => k !== "claim")), q: "", tab: "overview", marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
+/* preset: the records bar's period (#171), shared by every tab with time ("period" below); labsView: the Labs tab's
+   "chart" or "heatmap" (#172) */
+const state = { from: 0, to: 0, min: 0, max: 0, preset: "2y", cats: new Set(CATS.map(c => c.k).filter(k => k !== "claim")), q: "", tab: "overview", labsView: "chart", marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
 
 /* ---------------------------------------------------------------- persistence */
-function save() { try { localStorage.setItem(stateKey(), JSON.stringify({preset: state.preset, from: state.from, to: state.to, cats: [...state.cats], known: CATS.map(c => c.k), tab: state.tab, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
+function save() { try { localStorage.setItem(stateKey(), JSON.stringify({preset: state.preset, from: state.from, to: state.to, cats: [...state.cats], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
 function restore() {
   try {
     let raw = localStorage.getItem(stateKey());
@@ -78,33 +80,83 @@ function restore() {
     const s = JSON.parse(raw || "null"); if (!s) return;
     if (s.cats) { const known = new Set(s.known || CATS.filter(c => c.k !== "watch").map(c => c.k)); state.cats = new Set([...s.cats, ...CATS.filter(c => !known.has(c.k) && c.k !== "claim").map(c => c.k)]); }
     if (s.sel) state.sel = new Set(s.sel);
-    if (s.tab && s.v === 2) state.tab = s.tab; if (s.preset) state.preset = s.preset;
+    if (s.tab && s.v === 2) [state.tab, state.labsView] = tabAlias(s.tab, s.labsView);   // Trends and Lab heatmap are Labs now (#172)
+    if (s.preset) state.preset = s.preset;
     if (typeof s.marks === "boolean") state.marks = s.marks; if (typeof s.smooth === "boolean") state.smooth = s.smooth; if (typeof s.asc === "boolean") state.asc = s.asc;
     if (s.preset === "custom" && s.from && s.to) { state.from = s.from; state.to = s.to; }
   } catch (e) {}
 }
 /* the light/dark toggle is in the top bar's menu (nav.js) */
 
-/* ---------------------------------------------------------------- range */
+/* ---------------------------------------------------------------- period (#171)
+   The records bar's one period, shared by every tab with time (Body and activity, Timeline, Labs, Costs): a preset
+   ("all", "5y" ... "30d"), a milestone ("m0", "m1"...: since that date), a calendar year ("2024"), or "custom" (dates
+   typed in, or a chart dragged or zoomed). state.from/to are its dates. Presets and milestones end at the latest
+   record; "All" is everything each tab has (Body and activity: the watch and scale data's span; Costs: every claim). */
 const PRESETS = [["all","All"],["5y","5y"],["2y","2y"],["1y","1y"],["6m","6m"],["90d","90d"],["30d","30d"]];
-function applyPreset(p) {
-  state.preset = p; const end = state.max + DAY;
-  const span = {"5y":1826,"2y":730,"1y":365,"6m":182,"90d":90,"30d":30}[p];
+const PRESET_DAYS = {"5y": 1826, "2y": 730, "1y": 365, "6m": 182, "90d": 90, "30d": 30};
+const PRESET_TEXT = {"5y": "the last 5 years", "2y": "the last 2 years", "1y": "the last year", "6m": "the last 6 months", "90d": "the last 90 days", "30d": "the last 30 days"};
+const isYearKey = k => /^\d{4}$/.test(k || "");
+/* the period's dates in state, drawing nothing (the tab switched to next draws it) */
+function setPeriod(p) {
+  if (p === "dx") p = msKey(primaryMs());   // the older saved key for the primary milestone ("all" if there's none)
+  const end = state.max + DAY, m = msOf(p);
+  if (!(p in PRESET_DAYS) && p !== "all" && !m && !isYearKey(p)) p = "all";   // e.g. a milestone since deleted
+  state.preset = p;
   if (p === "all") { const pad = (state.max - state.min) * .02 + DAY; state.from = state.min - pad; state.to = state.max + pad; }
-  else if (span) { state.to = end; state.from = end - span * DAY; }
-  renderAll();
+  else if (m) { state.to = end; state.from = Math.min(zParse(m.date + "T00:00:00"), end - 7 * DAY); }
+  else if (isYearKey(p)) { state.from = zParse(p + "-01-01T00:00:00"); state.to = zParse((+p + 1) + "-01-01T00:00:00") - 1; }
+  else { state.to = end; state.from = end - PRESET_DAYS[p] * DAY; }
 }
+function applyPreset(p) { setPeriod(p); renderAll(); }
 function setRange(a, b, fromUser = true) {
   const minSpan = 2 * DAY; if (b - a < minSpan) { const m = (a + b) / 2; a = m - minSpan/2; b = m + minSpan/2; }
   state.from = a; state.to = b; if (fromUser) state.preset = "custom"; renderAll();
 }
+/* the period in words, for a heading: "the last 2 years", "since diagnosis (Mar 1, 2026)", "2024", or its dates */
+function periodLabel(all = "everything on file") {
+  const p = state.preset, m = msOf(p);
+  if (m) return `since ${lcLabel(m.label)} (${fmtD(dayTs(m.date))})`;
+  return p === "all" ? all : isYearKey(p) ? p : PRESET_TEXT[p] || `${fmtD(state.from)} – ${fmtD(state.to)}`;
+}
+/* a tab's time window: the period's dates, or with "All" the span of what that tab shows ([first, last]) */
+const periodWindow = span => state.preset === "all" && span ? [span[0] - DAY / 2, span[1] + DAY / 2] : [state.from, state.to];
+/* rows with a .d (YYYY-MM-DD) inside the period: every row with "All" */
+function inPeriod(rows) {
+  if (state.preset === "all") return rows;
+  const a = isoDay(state.from), b = isoDay(state.to);
+  return rows.filter(r => r.d >= a && r.d <= b);
+}
+/* the calendar years with records, newest first: the records' own dates, watch days and payments */
+let YEARS = null;
+function periodYears() {
+  if (!YEARS) {
+    const ys = new Set();
+    for (const e of EV) if (/^\d{4}/.test(e.t || "")) ys.add(e.t.slice(0, 4));
+    for (const s of SERIES) if (s.watch) for (const p of s.pts) ys.add(String(p[0]).slice(0, 4));
+    for (const r of (DATA.outOfPocket || {}).payments || []) if (/^\d{4}/.test(r.d || "")) ys.add(r.d.slice(0, 4));
+    YEARS = [...ys].filter(isYearKey).sort().reverse();
+  }
+  return YEARS;
+}
 function renderFilters() {
-  const pre = $("#presets"); pre.replaceChildren(...PRESETS.map(([k, l]) => el("button", {"aria-pressed": state.preset === k, text: l, onclick: () => applyPreset(k)})));
+  const pm = primaryMs(), pk = pm ? msKey(pm) : null;   // the primary milestone has a button: "Since diagnosis"
+  $("#presets").replaceChildren(...[...PRESETS, ...(pm ? [[pk, "Since " + lcLabel(pm.label)]] : [])].map(([k, l]) =>
+    el("button", {type: "button", "aria-pressed": state.preset === k, text: l, title: k === pk ? "Since " + fmtD(dayTs(pm.date)) : null, onclick: () => applyPreset(k)})));
+  { const pre = $("#presets"), b = pre.querySelector("[aria-pressed=true]");   // on a phone the buttons scroll: the chosen one in view
+    if (b && pre.scrollWidth > pre.clientWidth) pre.scrollLeft = b.offsetLeft - pre.offsetLeft - (pre.clientWidth - b.offsetWidth) / 2; }
+  const pick = $("#periodPick"), on = isMsKey(state.preset) || isYearKey(state.preset) ? state.preset : "";
+  pick.replaceChildren(el("option", {value: "", text: MILESTONES.length ? "Milestone or year…" : "Year…"}),
+    MILESTONES.length ? el("optgroup", {label: "Since a milestone"}, ...MILESTONES.map((m, i) => el("option", {value: "m" + i, text: `Since ${lcLabel(m.label)} (${fmtD(dayTs(m.date))})`}))) : null,
+    el("optgroup", {label: "Calendar year"}, ...periodYears().map(y => el("option", {value: y, text: y}))));
+  pick.value = on; pick.classList.toggle("on", !!on);
   $("#from").value = isoDay(state.from); $("#to").value = isoDay(state.to);
+  $(".dates").classList.toggle("on", state.preset === "custom");
   const counts = {}; EV.forEach(e => { const c = CAT_OF[e.k]; if (c && inRange(e)) counts[c.k] = (counts[c.k] || 0) + 1; });
   $("#chips").replaceChildren(...CATS.filter(c => hasLane(c)).map(c => el("button", {class: "chip", "aria-pressed": state.cats.has(c.k), onclick: () => { state.cats.has(c.k) ? state.cats.delete(c.k) : state.cats.add(c.k); renderAll(); }},
     el("span", {class: "key", style: {background: c.color}}), `${c.label} `, el("span", {style: {color: "var(--muted)"}, text: counts[c.k] || 0}))));
 }
+$("#periodPick").onchange = ev => { if (ev.target.value) applyPreset(ev.target.value); };
 $("#from").onchange = () => { const v = zParse($("#from").value + "T00:00"); if (!isNaN(v)) setRange(v, Math.max(state.to, v + DAY)); };
 $("#to").onchange = () => { const v = zParse($("#to").value + "T23:59"); if (!isNaN(v)) setRange(Math.min(state.from, v - DAY), v); };
 let qT; $("#q").oninput = () => { clearTimeout(qT); qT = setTimeout(() => { state.q = $("#q").value.trim().toLowerCase(); renderAll(); }, 150); };
@@ -133,8 +185,6 @@ const msKey = m => m ? "m" + MILESTONES.indexOf(m) : "all";
 const isMsKey = k => k === "dx" || /^m\d+$/.test(k || "");
 const msOf = k => k === "dx" ? primaryMs() : isMsKey(k) ? MILESTONES[+k.slice(1)] || null : null;
 const lcLabel = s => /^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s;   // "Treatment start" -> "treatment start", "CAR-T" stays
-const msPeriods = () => MILESTONES.map((m, i) => ["m" + i, "Since " + lcLabel(m.label)]);
-function inPeriod(rows, p) {   // rows with a .d (YYYY-MM-DD) inside cost period p
-  const m = msOf(p);
-  return m ? rows.filter(r => r.d >= m.date) : p === "all" || isMsKey(p) ? rows : rows.filter(r => r.d.startsWith(p));
-}
+/* the old tab ids (#172): Trends and Lab heatmap are the Labs tab's chart and heatmap. -> [tab, labsView] */
+const TAB_ALIAS = {trends: ["labs", "chart"], heatmap: ["labs", "heatmap"]};
+const tabAlias = (t, view) => TAB_ALIAS[t] || [t, view === "heatmap" ? "heatmap" : "chart"];

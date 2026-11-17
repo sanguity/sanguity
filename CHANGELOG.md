@@ -146,6 +146,13 @@ Everything on `main` so far; it becomes the first tagged release.
   import, undo and corrections need. The page shows the same thing as before.
 - The default ports are 8730 (web app) and 8731 (phone uploads) instead of 8080 and 8081.
 - A crimson drop logo (#107, #109).
+- One period for the records tabs (#171), in the bar above them on every tab with time: All, 5 years down to 30
+  days, since each milestone (the primary one has its own button), a calendar year, or dates of your own. Picking
+  one on a tab keeps it on the others and on the next visit; Costs groups that period's claims by month or by year.
+  A period picked on the old Health tab gives way to this one.
+- Trends and Lab heatmap are one **Labs** tab, with a Chart / Heatmap switch, and Health is **Body and activity**
+  (#172). Saved views, names, units and ranges are unchanged; links to `#trends` and `#heatmap` open Labs as charts
+  or as a heatmap, and a saved tab layout puts Labs where the first of the two was, hidden only if both were.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

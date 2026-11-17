@@ -92,7 +92,7 @@ function openEvent(e) {
       el("button", {class: "btn", text: "Lab trends during this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); switchTab("labs"); closeDrawer(); }}));
   } else if (d.type === "exercise") {
     body.append(el("dl", {class: "kv"}, ...[["Activity", d.kind], ["Started", fmtDT(e.ts)], ["Ended", fmtDT(e.te)], ["Duration", d.minutes + " min"], ["Source", "Watch via Health Connect"]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
-      el("button", {class: "btn", text: "Health data around this day", onclick: () => openHealth(e.ts - 14*DAY, e.ts + 14*DAY)}));
+      el("button", {class: "btn", text: "Body and activity around this day", onclick: () => openHealth(e.ts - 14*DAY, e.ts + 14*DAY)}));
   } else if (d.type === "visit") {
     body.append(el("dl", {class: "kv"}, ...[["Provider", d.who], ["Location", d.where], ["Diagnosis", d.dx], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
     if (d.note) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}));

@@ -166,7 +166,7 @@
     try {
       localStorage.setItem("ht-profile", String(p));
       const k = "ht-state:" + p, s = JSON.parse(localStorage.getItem(k) || "{}") || {};
-      localStorage.setItem(k, JSON.stringify({...s, tab: "labs", sel: [...new Set([...(s.sel || []), ...names])], v: 2}));
+      localStorage.setItem(k, JSON.stringify({...s, tab: "labs", labsView: "chart", sel: [...new Set([...(s.sel || []), ...names])], v: 2}));
     } catch (e) {}
   }
   function openTab(p, tab) {
@@ -196,7 +196,7 @@
       box.replaceChildren(); addRow({date: rs.length ? valueOf(rs[rs.length - 1]).date : today()});
       recs.saved(); keepBox.checked = false; $("#manKeepWrap").hidden = true;
       saving = false; ok = bad = okRecs = badRecs = 0;
-      const links = [names.length ? el("a", {href: "index.html", text: "See them on Trends", onclick: () => openTrends(p, names)}) : null,
+      const links = [names.length ? el("a", {href: "index.html", text: "See them on Labs", onclick: () => openTrends(p, names)}) : null,
         others ? el("a", {href: "index.html", text: "See them on the timeline", onclick: () => openTab(p, "timeline")}) : null].filter(Boolean);
       msg.replaceChildren(`Saved ${[n ? plural(n, "result", "results") : "", others ? plural(others, "record", "records") : ""].filter(Boolean).join(" and ") || "nothing new"}.`
         + (j.skipped ? ` ${plural(j.skipped, "was", "were")} in this profile already and left out.` : ""),

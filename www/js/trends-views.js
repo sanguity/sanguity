@@ -54,9 +54,9 @@ function viewsBar() {
   if (can && cur) {
     bar.append(
       el("button", {class: "btn", type: "button", "aria-pressed": cur.default ? "true" : "false", text: cur.default ? "Default ✓" : "Make default",
-        title: cur.default ? "Trends starts with this view. Press to stop." : "Start Trends with this view",
+        title: cur.default ? "Labs starts with this view. Press to stop." : "Start Labs with this view",
         onclick: () => tvStore(views.map(v => ({...tvPlain(v), default: v === cur ? !cur.default : false})),
-          cur.default ? `“${cur.name}” is no longer the default.` : `Trends now starts with “${cur.name}”.`)}),
+          cur.default ? `“${cur.name}” is no longer the default.` : `Labs now starts with “${cur.name}”.`)}),
       el("button", {class: "btn", type: "button", text: "Delete", "aria-label": `Delete the view ${cur.name}`,
         onclick: () => { if (confirm(`Delete the saved view “${cur.name}”? The labs stay charted.`)) tvStore(views.filter(v => v !== cur).map(tvPlain), `Deleted “${cur.name}”.`); }}));
   }

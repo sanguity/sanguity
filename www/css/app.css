@@ -787,3 +787,12 @@ table.data.oop tr[aria-expanded=true] td{background:var(--hover)}
 .oop-form{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end}
 .oop-form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--ink2);min-width:0;max-width:100%}
 .oop-form select{max-width:100%}
+/* the records bar's one period (#171): presets, "Since <milestone>", a milestone or year picked, dates; the Labs tab's
+   Chart / Heatmap switch above its one range caption (#172) */
+.period-pick{border:1px solid var(--ring);background:var(--raised);border-radius:8px;padding:4px 6px;color:var(--ink2);max-width:16em;min-width:0}
+.period-pick.on{background:var(--hover);color:var(--ink);font-weight:650}
+.dates.on input{border-color:var(--axis);color:var(--ink)}
+.filters.period-only .search,.filters.period-only .chips{display:none!important}
+.labs-head{gap:8px 16px}
+.labs-head .range-note{margin:0}
+@media (max-width:700px){.period-pick{max-width:12em;padding:5px 6px}}

@@ -1,7 +1,8 @@
-/* Sanguity · shared chart behaviour: drag/pinch/scroll pan-zoom (Trends, Health, heatmap) and milestone markers.
+/* Sanguity · shared chart behaviour: drag/pinch/scroll pan-zoom (Labs' charts and heatmap, Body and activity), milestone
+   markers, and the Labs tab's Chart / Heatmap switch.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
-/* drag to pan, scroll wheel or pinch to zoom, double-click to reset — shared by Trends, Health and the lab heatmap.
+/* drag to pan, scroll wheel or pinch to zoom, double-click to reset — shared by Labs (both views) and Body and activity.
    plot(ev) -> the chart under the pointer (or null); span(plot) -> [left, width] of its time axis in client px;
    get() -> [a, b]; set(a, b) updates state; draw() redraws live; end() does the full render once the gesture stops. */
 function panZoom(box, {plot, span, get, set, draw, end, reset, start, minSpan = 2 * DAY}) {
@@ -61,7 +62,7 @@ function panZoom(box, {plot, span, get, set, draw, end, reset, start, minSpan = 
 }
 const svgSpan = svg => { const r = svg.getBoundingClientRect(), g = svg._geom, k = r.width / g.w; return [r.left + g.L * k, (g.R - g.L) * k]; };
 const mainWindow = {get: () => [state.from, state.to], set: (a, b) => { state.from = a; state.to = b; state.preset = "custom"; }, reset: () => applyPreset("all")};
-// Trends: every chart shares state.from/to, so they all move together
+// Labs, as charts: every chart shares state.from/to, so they all move together
 const chartsBox = $("#charts");
 const inWindow = s => s.pts.filter(p => p.ts >= state.from && p.ts <= state.to);
 panZoom(chartsBox, {...mainWindow,
@@ -69,16 +70,16 @@ panZoom(chartsBox, {...mainWindow,
   start: () => chartsBox.querySelectorAll(".chart svg").forEach(o => o._hover && o._hover(null)),
   draw: () => chartsBox.querySelectorAll(".chart svg").forEach(svg => { if (svg._s && svg._geom) drawChart(svg, svg._s, inWindow(svg._s), svg._read); }),
   end: () => { renderFilters(); renderCharts(); save(); }});
-// Lab heatmap: same date window as Trends; columns are draw days, so the time axis is the column area
+// Labs, as a heatmap: the same date window; columns are draw days, so the time axis is the column area
 panZoom($("#hmWrap"), {...mainWindow,
   plot: ev => ev.target.closest?.("#hm, #hmAxis") && $("#hm")._geom ? $("#hm") : null, span: svgSpan,
   draw: () => renderHeatmap(), end: () => { renderFilters(); renderHeatmap(); save(); }});   // renderHeatmap lives in a later file: call it, do not reference it at load
-// Health: all charts share the Health tab's own period
-panZoom($("#view-health"), {minSpan: 3 * DAY,
+// Body and activity: all its charts share the records bar's period too ("All" there is the watch and scale data's span)
+panZoom($("#view-health"), {...mainWindow, minSpan: 3 * DAY,
   plot: ev => { const s = ev.target.closest?.("svg"); return s && s._draw && s._geom ? s : null; }, span: svgSpan,
-  get: () => hRange(), set: (a, b) => { hState.custom = [a, b]; hState.period = "custom"; },
+  get: () => hRange(),
   draw: () => { const [a, b] = hRange(); $("#view-health").querySelectorAll("svg").forEach(s => s._draw && s._draw(a, b)); },
-  end: () => renderHealth(), reset: () => { hState.period = "all"; hState.custom = null; hSave(); renderHealth(); }});
+  end: () => { renderFilters(); renderHealth(); save(); }});
 /* milestone rules on a time chart: accent dashed line from y0 to y1, label on its own row at labelY (null = no labels) */
 const msInRange = (a, b) => MILESTONES.some(m => { const t = dayTs(m.date); return t >= a && t <= b; });
 function msMarks(g, x, a, b, y0, y1, R, labelY) {
@@ -100,6 +101,14 @@ function msMarks(g, x, a, b, y0, y1, R, labelY) {
 }
 function median(a) { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
 function niceTicks(lo, hi, n) { const span = hi - lo, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0))), step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= n) || 10 * mag; const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10)); return out; }
-function renderLabs() { renderSeriesList(); renderCharts(); save(); }
-function showSeries(name) { state.sel.add(name); closeDrawer(); switchTab("labs"); }
+/* the Labs tab (#172): the chosen labs as charts (each with its table), or every lab with ranges as a heatmap */
+function renderLabs() {
+  const hm = state.labsView === "heatmap";
+  $("#labsChart").hidden = hm; $("#labsHeatmap").hidden = !hm;
+  for (const b of $("#labsView").children) b.setAttribute("aria-pressed", b.dataset.view === state.labsView);
+  if (hm) renderHeatmap(); else { renderSeriesList(); renderCharts(); }
+  save();
+}
+$("#labsView").onclick = ev => { const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.labsView) return; hideTip(); state.labsView = b.dataset.view; renderLabs(); };
+function showSeries(name) { state.sel.add(name); state.labsView = "chart"; closeDrawer(); switchTab("labs"); }
 

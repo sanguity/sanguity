@@ -123,7 +123,7 @@ An object keyed by event id (as a string in JSON). Each has a `type`:
 Point `url` at the file as it sits in the upload; the app stores the documents with the records and rewrites the
 links. A document the export mentions but didn't include gets `"url": null` and a warning.
 
-### `labs`: series for the Trends charts
+### `labs`: series for the Labs charts
 
 ```json
 {"name": "Hemoglobin", "unit": "g/dL", "panel": "CBC", "n": 2, "loinc": "718-7",

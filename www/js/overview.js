@@ -38,8 +38,9 @@ function spark(s, pts, {w = 200, h = 34, band = true} = {}) {
   svg.replaceChildren(...g);
   return svg;
 }
-function goSeries(name, days = 182) { state.sel.add(name); const end = state.max + DAY; setRange(end - days * DAY, end); switchTab("labs"); }
-// beside every out-of-range colouring (Trends and the heatmap have the same line in index.html)
+/* a tile or row to its lab's chart on Labs, over the last 6 months (the records bar's "6m") */
+function goSeries(name) { state.sel.add(name); state.labsView = "chart"; setPeriod("6m"); switchTab("labs"); }
+// beside every out-of-range colouring (Labs has the same line in index.html)
 const RANGE_NOTE = "Out-of-range values are flagged against the reference ranges in your own lab reports. This isn't medical advice.";
 
 function renderOverview() {
@@ -86,7 +87,7 @@ function renderOverview() {
       el("span", {class: "r", text: refText(o.last)}),
       el("span", {class: "s", text: o.streak > 1 ? `${st.cls === "hi" ? "High" : "Low"} on the last ${o.streak} draws, since ${fmtD(o.since)}` : `First out-of-range result, ${fmtD(o.last.ts)}`})));
   }
-  if (out.length > 14) oc.append(el("p", {class: "hint", style: {marginTop: "8px"}, text: `${out.length - 14} more in Trends.`}));
+  if (out.length > 14) oc.append(el("p", {class: "hint", style: {marginTop: "8px"}, text: `${out.length - 14} more in Labs.`}));
   left.append(oc);
   // watch summary
   const wk = ["hr_rest", "sleep", "steps", "hr", "weight"];
@@ -101,7 +102,7 @@ function renderOverview() {
         const last = s.pts[s.pts.length - 1], pm = primaryMs(), dx = pm ? dayTs(pm.date) : NaN;
         const at = pm ? s.pts.filter(p => Math.abs(p.ts - dx) < 75 * DAY).sort((a, b) => Math.abs(a.ts - dx) - Math.abs(b.ts - dx))[0] : null;
         const d = at && last !== at ? last[1] - at[1] : null;
-        grid.append(el("button", {class: "tile", onclick: () => { hState.period = msKey(pm); hState.custom = null; switchTab("health"); }},
+        grid.append(el("button", {class: "tile", onclick: () => { setPeriod(msKey(pm)); switchTab("health"); }},
           el("span", {class: "lbl", text: "Weight"}),
           el("span", {class: "val"}, last ? last[1].toFixed(1) : "–", el("small", {text: s.unit})),
           ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
@@ -112,7 +113,7 @@ function renderOverview() {
       const cur = avg(s, now - 7 * DAY, now), base = avg(s, now - 35 * DAY, now - 7 * DAY);
       const label = {hr_rest: "Resting heart rate", sleep: "Sleep", steps: "Steps", hr: "Heart rate, average"}[s.key];
       const fmt = v => s.key === "steps" ? Math.round(v).toLocaleString() : s.key === "sleep" ? v.toFixed(1) : Math.round(v).toString();
-      grid.append(el("button", {class: "tile", onclick: () => { hState.period = "30d"; hState.custom = null; switchTab("health"); }},
+      grid.append(el("button", {class: "tile", onclick: () => { setPeriod("30d"); switchTab("health"); }},
         el("span", {class: "lbl", text: label}),
         el("span", {class: "val"}, cur == null ? "–" : fmt(cur), el("small", {text: s.key === "sleep" ? "h / night" : s.key === "steps" ? "/ day" : "bpm"})),
         el("span", {class: "delta", text: cur != null && base != null ? `${cur >= base ? "▲ +" : "▼ −"}${fmt(Math.abs(cur - base))} vs prior 4 weeks` : "not enough history yet"}),
@@ -139,7 +140,7 @@ function renderOverview() {
     const mini = (l, v) => el("div", {}, el("div", {style: {fontSize: "20px", fontWeight: 650}, text: v}), el("div", {class: "hint", style: {margin: 0}, text: l}));
     cc.append(el("div", {style: {display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "10px", margin: "6px 0 10px"}},
       mini("billed", usd(sumOf(dx, "billed"))), mini("paid by insurance", usd(sumOf(dx, "paid"))), mini("your share", usd(sumOf(dx, "owe")))),
-      el("button", {class: "btn", text: "Open Costs →", onclick: () => switchTab("costs")}));
+      el("button", {class: "btn", text: "Open Costs →", onclick: () => { if (pm) setPeriod(msKey(pm)); switchTab("costs"); }}));   // the same period
     right.append(cc);
   }
   // problem list
