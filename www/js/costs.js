@@ -41,13 +41,20 @@ function renderCosts() {
   const by = costState.by || (span > 48 ? "year" : "month");
   const mc = el("div", {class: "card"}, el("div", {class: "list-hd"}, el("h2", {text: `Insurance claims by ${by} · ${periodText}`}), el("span", {class: "spacer"}),
       el("div", {class: "seg", id: "costBy", role: "group", "aria-label": "Group the claims"}, ...[["month", "By month"], ["year", "By year"]].map(([k, l]) =>
-        el("button", {type: "button", "aria-pressed": by === k, text: l, onclick: () => { costState.by = k; renderCosts(); }})))),
-    el("div", {class: "legend", style: {margin: "4px 0 6px"}},
+        el("button", {type: "button", "aria-pressed": by === k, text: l, onclick: () => { costState.by = k; renderCosts(); }}))),
+      viewSeg("#costBars", "the claims by " + by, renderCosts)));   // Chart | Table (#60)
+  box.append(mc);
+  if (state.tables.has("#costBars")) mc.append(chartTable([by === "year" ? "Year" : "Month", "Insurance paid", "Your share", "Billed", "Claims"],
+    [...costBuckets(rows, by)].reverse().map(([k, m]) => [by === "year" ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"}),
+      usd(m.paid), usd(m.owe), usd(m.billed), m.n.toLocaleString()])));
+  else {
+    mc.append(el("div", {class: "legend", style: {margin: "4px 0 6px"}},
       el("span", {}, el("i", {style: {background: "var(--c-lab)"}}), "Paid by insurance"),
       el("span", {}, el("i", {style: {background: "var(--c-imaging)"}}), "Your share"),
       el("span", {}, el("i", {style: {background: "var(--stay)"}}), "Hospital stay")));
-  const svg = el("svg:svg", {role: "img", "aria-label": by === "year" ? "Yearly insurance costs" : "Monthly insurance costs"}); mc.append(svg); box.append(mc);
-  requestAnimationFrame(() => drawCostBars(svg, rows, by));
+    const svg = el("svg:svg", {role: "img", "aria-label": by === "year" ? "Yearly insurance costs" : "Monthly insurance costs"}); mc.append(svg);
+    requestAnimationFrame(() => drawCostBars(svg, rows, by));
+  }
   // category + provider breakdowns
   const two = el("div", {class: "ov-cols"});
   const catCard = el("div", {class: "card"}, el("h2", {text: "By type of care"}), el("p", {class: "hint", text: "Grouped from billing codes on each claim. Click a row to list those claims below."}));
@@ -238,12 +245,27 @@ function renderPaid(box, claimRows, periodLabel) {
       el("tbody", {}, [...years.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([y, v]) => el("tr", {},
         el("td", {text: y}), el("td", {text: usd2(v.HSA)}), el("td", {text: usd2(v.FSA)}), el("td", {text: v.n}), el("td", {text: v.rc}))))))));
   // cumulative: share listed vs bills paid
-  if (claims) {
-    const svg = el("svg:svg", {role: "img", "aria-label": "Cumulative share versus payments"});
-    card.append(el("div", {class: "legend", style: {margin: "10px 0 6px"}},
-      el("span", {}, el("i", {style: {background: "var(--c-imaging)"}}), "Your share per insurers, running total"),
-      el("span", {}, el("i", {style: {background: "var(--c-procedure)"}}), "Medical bills you paid, running total")), svg);
-    requestAnimationFrame(() => drawPaidCum(svg, claimRows, pays.filter(r => r.group === "Medical bills"), settled));
+  if (claims) {   // Chart | Table (#60): the table by month
+    const bills = pays.filter(r => r.group === "Medical bills");
+    card.append(el("div", {class: "list-hd", style: {marginTop: "10px"}}, el("h3", {class: "sub", style: {margin: 0}, text: "Your share and the bills you paid, running totals"}),
+      el("span", {class: "spacer"}), viewSeg("#paidCum", "the running totals", renderCosts)));
+    if (state.tables.has("#paidCum")) {
+      const m = new Map();
+      for (const [d, a, i] of [...claimRows.filter(r => r.owe).map(r => [r.d, r.owe, 0]), ...bills.map(r => [r.d, r.amount, 1])]) {
+        const k = d.slice(0, 7), v = m.get(k) || [0, 0]; v[i] += a; m.set(k, v);
+      }
+      const acc = [0, 0], out = [...m.entries()].sort((p, q) => p[0].localeCompare(q[0])).map(([k, [s, p]]) => {
+        acc[0] += s; acc[1] += p;
+        return [zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"}), usd(s), usd(p), usd(acc[0]), usd(acc[1]), usd(acc[0] - acc[1])];
+      });
+      card.append(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", settled ? "Reduced so far" : "Difference"], out.reverse()));
+    } else {
+      const svg = el("svg:svg", {role: "img", "aria-label": "Your share and the bills you paid, running totals. Table lists them by month."});
+      card.append(el("div", {class: "legend", style: {margin: "4px 0 6px"}},
+        el("span", {}, el("i", {style: {background: "var(--c-imaging)"}}), "Your share per insurers, running total"),
+        el("span", {}, el("i", {style: {background: "var(--c-procedure)"}}), "Medical bills you paid, running total")), svg);
+      requestAnimationFrame(() => drawPaidCum(svg, claimRows, bills, settled));
+    }
   }
   // breakdowns
   const two = el("div", {class: "ov-cols", style: {marginTop: "12px"}});
@@ -354,13 +376,20 @@ function barList(card, groups, onPick, active) {
   }
 }
 /* the claims' costs as bars, one per month or per year (by), every one from the first shown to the last */
-function drawCostBars(svg, rows, by = "month") {
-  if (!rows.length) { svg.replaceChildren(); return; }
+/* the claims' totals by month ("2025-03") or year ("2025"), every one from the first to the last, in order: the
+   chart's bars and its table's rows (#60) */
+function costBuckets(rows, by = "month") {
   const months = new Map(), yearly = by === "year", cut = yearly ? 4 : 7;
+  if (!rows.length) return months;
   const first = rows.reduce((a, r) => r.d < a ? r.d : a, rows[0].d), last = rows.reduce((a, r) => r.d > a ? r.d : a, rows[0].d);
   if (yearly) for (let y = +first.slice(0, 4); y <= +last.slice(0, 4); y++) months.set(String(y), {paid: 0, owe: 0, billed: 0, n: 0});
   else for (let d = zdate(dayTs(first.slice(0, 7) + "-01")); d <= dayTs(last.slice(0, 7) + "-01"); d.setMonth(d.getMonth() + 1)) months.set(d.iso().slice(0, 7), {paid: 0, owe: 0, billed: 0, n: 0});
   for (const r of rows) { const m = months.get(r.d.slice(0, cut)); if (m) { m.paid += r.paid || 0; m.owe += r.owe || 0; m.billed += r.billed || 0; m.n++; } }
+  return months;
+}
+function drawCostBars(svg, rows, by = "month") {
+  if (!rows.length) { svg.replaceChildren(); return; }
+  const months = costBuckets(rows, by), yearly = by === "year";
   const keys = [...months.keys()];
   const w = Math.max(320, svg.parentElement.clientWidth - 32), h = 220, L = 64, R = w - 10, T = 10, B = h - 24;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h);

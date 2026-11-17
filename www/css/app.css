@@ -167,8 +167,8 @@ svg text{fill:var(--muted);font-size:11px}
 .chart .hd .unit{color:var(--muted);font-size:12px}
 .chart .hd .read{margin-left:auto;font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink2)}
 .chart .hd .read b{color:var(--ink);font-size:14px}
-.chart .hd button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 4px}
-.chart .hd button:hover{color:var(--ink)}
+.chart .hd>button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 4px}
+.chart .hd>button:hover{color:var(--ink)}
 .chart svg{width:100%;display:block}
 .pz{touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
 .dragging .pz,.dragging .pz *{cursor:grabbing!important}
@@ -1025,3 +1025,27 @@ dialog.sg-ask::backdrop{background:rgba(0,0,0,.45)}
 @media (forced-colors: active){
   .sg-ask .btn.primary,.sg-ask .btn.danger{border:2px solid ButtonText}
 }
+
+/* ---- charts for everyone (#60): Chart | Table on every chart (a small pick-one .seg, #193), the tables in the
+   existing look, a ring on a chart that has keyboard focus, and the marks that say "out of range" without colour:
+   ▲ above the range, ▼ below, on the Labs charts, the heatmap's cells, the Overview's sparklines and their legends */
+.view-seg{font-size:12px;flex:none}
+.view-seg>button{padding:2px 9px}
+.chart .hd .view-seg{align-self:center}
+svg[role=application]:focus{outline:none}
+svg[role=application]:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+.chart-table{max-height:360px}
+path.pt.abn{stroke-width:1.5}
+.spark-abn{fill:var(--crit)}
+.hm-mark{fill:var(--ink);pointer-events:none}
+.abn-key{color:var(--crit);font-size:10px;letter-spacing:-1px}
+.hm-legend .hm-key{margin-left:12px;color:var(--ink2)}
+.hm-key b{color:var(--ink);font-size:10px}
+.hm-table{max-height:70vh}
+.hm-table th,.hm-table td{white-space:nowrap}
+.hm-table td{position:relative}   /* holds its visually-hidden "high"/"low", which would otherwise widen the page */
+.hm-table tbody th{position:sticky;top:auto;left:0;z-index:1;background:var(--surface)}
+.hm-table tbody th[scope=row]{color:var(--ink);font-weight:550;border-bottom:1px solid var(--grid)}
+.hm-table thead th:first-child{left:0;z-index:2}
+.hm-table tr.grp th{position:static;color:var(--muted);font-size:10.5px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;padding-top:10px}
+@media (max-width:700px){ .view-seg>button{padding:4px 10px} }

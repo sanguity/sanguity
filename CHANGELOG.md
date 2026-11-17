@@ -243,6 +243,13 @@ Everything on `main` so far; it becomes the first tagged release.
   cancels, and focus goes back to the button you pressed. Removing an account that alone owns a profile asks for
   the new owner in the same window. The note after signing in with a recovery code is on the sign-in page, with a
   Continue button, and a Dismiss on Admin that fails says so beside it.
+- **Every chart has a table, and out of range isn't shown by colour alone** (#60): **Chart | Table** beside each
+  Labs chart, the lab heatmap, each card on Body and activity and both Costs charts shows its values as a table
+  instead (the heatmap's as a table with a row per lab and a column per draw day); the Timeline's chart says its
+  events are listed under it. A Labs or Body and activity chart takes keyboard focus: ← and → step through its
+  points with the same readout and tooltip as hovering, said to screen readers, Home and End go to the first and
+  last, Escape lets go. An out-of-range result is marked ▲ (above its range) or ▼ (below) on the Labs charts, the
+  heatmap's cells, the Overview's sparklines and the visit summary's trends, as well as in red.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

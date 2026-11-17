@@ -103,12 +103,12 @@ function chartCard(s) {
     : s.kind === "band" ? el("span", {class: "lg"}, el("span", {}, el("i", {style: {background: "var(--c-lab)", height: "3px"}}), "Daily average"), el("span", {}, el("i", {style: {background: "var(--c-lab)", opacity: .2}}), "Low–high")) : null;
   card.append(el("div", {class: "hd"}, el("span", {class: "name", title: renamedTitle("lab", s.name), text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
     el("span", {class: "unit", text: `${s.unit}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), legend, read,
-    el("button", {text: showTable ? "Chart" : "Table", onclick: () => { showTable ? state.tables.delete(s.name) : state.tables.add(s.name); renderCharts(); }}),
-    el("button", {text: "✕", title: "Remove", onclick: () => { state.sel.delete(s.name); renderLabs(); }})));
+    viewSeg(s.name, nice(s.name), renderCharts),   // Chart | Table (#60)
+    el("button", {text: "✕", title: "Remove", "aria-label": `Remove ${nice(s.name)}`, onclick: () => { state.sel.delete(s.name); renderLabs(); }})));
   if (showTable) {
-    card.append(el("div", {class: "tablewrap"}, el("table", {class: "data"}, el("thead", {}, el("tr", {}, ["Date", "Value", s.watch ? "Detail" : "Ref range", ""].map(h => el("th", {text: h})))),
+    card.append(el("div", {class: "tablewrap"}, el("table", {class: "data"}, el("thead", {}, el("tr", {}, ["Date", "Value", s.watch ? "Detail" : "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
       el("tbody", {}, [...pts].reverse().map(p => { const [a, b] = readText(s, p); return el("tr", {}, el("td", {text: s.watch ? fmtD(p.ts) : fmtDT(p.ts)}), el("td", {class: p[4] ? "abn" : "", text: a + (!s.watch && b ? ` (reported ${ucOrig(s, p)})` : "")}),
-        el("td", {text: (s.watch ? b : p[2] != null || p[3] != null ? `${p[2] ?? ""} – ${p[3] ?? ""}${p.rs === "settings" ? " (" + RANGE_FROM_SETTINGS + ")" : ""}` : "") + (p[6] ? ` · ${p[6] === "Clinic" ? "clinic visit" + (p.org ? " (" + p.org + ")" : "") : srcName(p[6])}` : "") + (p.same ? " · same result from " + p.same.length + " more source" + (p.same.length > 1 ? "s" : "") : "")}), el("td", {class: p[4] ? "abn" : "", text: p[4] === "H" ? "▲ High" : p[4] === "L" ? "▼ Low" : ""})); })))));
+        el("td", {text: (s.watch ? b : p[2] != null || p[3] != null ? `${p[2] ?? ""} – ${p[3] ?? ""}${p.rs === "settings" ? " (" + RANGE_FROM_SETTINGS + ")" : ""}` : "") + (p[6] ? ` · ${p[6] === "Clinic" ? "clinic visit" + (p.org ? " (" + p.org + ")" : "") : srcName(p[6])}` : "") + (p.same ? " · same result from " + p.same.length + " more source" + (p.same.length > 1 ? "s" : "") : "")}), el("td", {class: p[4] ? "abn" : ""}, ...flagNodes(p[4]))); })))));   // the mark and the word, not colour alone (#60)
     const src = seriesSource(s); if (src) card.append(src);
     { const t = tagLine(pts); if (t) card.append(t); }   // its results' source tags, renamed here (#38)
     return card;
@@ -192,7 +192,7 @@ function drawChart(svg, s, pts, read) {
     if (smoothOn) { g.push(line(pts.map(p => [x(p.ts), y(p[1])]), "line", {"stroke-opacity": .3})); g.push(line(smooth7(pts).map((v, i) => [x(pts[i].ts), y(v)]), "line")); }
     else if (pts.length > 1) g.push(line(pts.map(p => [x(p.ts), y(p[1])]), "line"));
     const dense = pts.length > 120 || s.watch;
-    for (const p of pts) if (!dense || p[4]) g.push(el("svg:circle", {class: "pt" + (p[4] ? " abn" : ""), cx: x(p.ts), cy: y(p[1]), r: p[4] ? 4 : 3}));
+    for (const p of pts) if (!dense || p[4]) g.push(p[4] ? abnMark(x(p.ts), y(p[1]), p[4]) : el("svg:circle", {class: "pt", cx: x(p.ts), cy: y(p[1]), r: 3}));   // ▲ above, ▼ below its range (#60)
   }
   if (!pts.length) g.push(el("svg:text", {x: (L + R) / 2, y: (T + B) / 2, "text-anchor": "middle", text: "No values in this date range"}));
   const cross = el("svg:line", {class: "cross", y1: T, y2: B, visibility: "hidden"});
@@ -205,7 +205,7 @@ function drawChart(svg, s, pts, read) {
   const setRead = p => {
     read.replaceChildren();
     if (!p) { if (lastP) read.append("Latest ", el("b", {text: readText(s, lastP)[0].replace(` ${s.unit}`, "")}), ` · ${fmtD(lastP.ts)}`); return; }
-    read.append(el("b", {text: readText(s, p)[0]}), p[4] ? el("span", {style: {color: "var(--crit)", fontWeight: 650}, text: p[4] === "H" ? " ▲ High" : " ▼ Low"}) : "", ` · ${s.watch ? fmtD(p.ts) : fmtDT(p.ts)}`);
+    read.append(el("b", {text: readText(s, p)[0]}), p[4] ? el("span", {style: {color: "var(--crit)", fontWeight: 650}, text: " " + flagWord(p[4])}) : "", ` · ${s.watch ? fmtD(p.ts) : fmtDT(p.ts)}`);
   };
   setRead(null);
   svg._hover = t => {
@@ -217,9 +217,8 @@ function drawChart(svg, s, pts, read) {
     dot.setAttribute("cx", x(best.ts)); dot.setAttribute("cy", y(best[1])); dot.setAttribute("visibility", "visible");
     setRead(best); return best;
   };
-  hit.addEventListener("pointermove", ev => {
-    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (w / r.width);
-    const t = state.from + (px - L) / (R - L) * (state.to - state.from);
+  // what hovering at time t shows (every chart's readout at that date, this one's tooltip at ev); the keyboard too (#60)
+  const showAt = (t, px, ev) => {
     let mine = null; document.querySelectorAll("#charts svg").forEach(o => { const b = o._hover && o._hover(t); if (o === svg) mine = b; });
     const near = marks.filter(e => Math.abs(x(e.ts) - px) < 8);
     const nodes = [];
@@ -229,11 +228,23 @@ function drawChart(svg, s, pts, read) {
         el("div", {class: "s", text: (s.watch ? fmtD(mine.ts) : fmtDT(mine.ts)) + (mine[2] != null || mine[3] != null ? " · " + refText(mine) : "")}),
         mine[6] ? el("div", {class: "s", text: "Source: " + srcName(mine[6]) + (srcName(mine[6]) !== mine[6] ? ` (${mine[6]})` : "")}) : null,
         !s.watch && pointSources(s, mine) ? el("div", {class: "s", text: "From " + pointSources(s, mine)}) : null,
-        mine[4] ? el("div", {class: "s", style: {color: "var(--crit)"}, text: mine[4] === "H" ? "▲ Above range" : "▼ Below range"}) : null);
+        mine[4] ? el("div", {class: "s", style: {color: "var(--crit)"}, text: /^h/i.test(mine[4]) ? "▲ Above range" : /^l/i.test(mine[4]) ? "▼ Below range" : "◆ Flagged"}) : null);
     }
     for (const e of near.slice(0, 3)) nodes.push(el("div", {class: "s", style: {marginTop: "4px"}}, el("span", {class: "k", style: {background: CAT_OF[e.k].color}}), `${e.title} · ${fmtD(e.ts)}`));
     nodes.length ? showTip(nodes, ev) : hideTip();
+    return tipWords(nodes);
+  };
+  hit.addEventListener("pointermove", ev => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (w / r.width);
+    showAt(state.from + (px - L) / (R - L) * (state.to - state.from), px, ev);
   });
+  // the keyboard (#60): ← and → step through the results shown, with the same readout and tooltip as hovering
+  const unit = s.watch ? (s.kind === "stack" ? "night" : "day") : "result", nAbn = pts.filter(p => p[4]).length;
+  chartKeys(svg, `${nice(s.name)}: ${pts.length} ${unit}${pts.length === 1 ? "" : "s"}${pts.length ? ` from ${fmtD(pts[0].ts)} to ${fmtD(lastP.ts)}, latest ${readText(s, lastP)[0]}` : " in this period"}`
+    + `${nAbn ? `, ${nAbn} outside reference range` : ""}. Left and right arrow keys step through them.`,
+    () => pts.map(p => p.ts),
+    t => { const p = pts.find(p => p.ts === t); return showAt(t, x(t), svgPoint(svg, x(t), p ? y(p[1]) : T)); },
+    () => { document.querySelectorAll("#charts svg").forEach(o => o._hover && o._hover(null)); hideTip(); });
   hit.addEventListener("click", ev => {
     const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (w / r.width);
     const e = marks.find(e => Math.abs(x(e.ts) - px) < 8); if (e) openEvent(e);

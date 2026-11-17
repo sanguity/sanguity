@@ -13,9 +13,9 @@ function hmLevel(v, lo, hi) {
 }
 const hmFill = lv => lv === 0 ? "var(--div-mid)" : `color-mix(in oklab, var(--div-mid), var(${lv < 0 ? "--div-lo" : "--div-hi"}) ${Math.abs(lv) * 25}%)`;
 function renderHeatmap() {
-  const LEG = [[-4, "Far below"], [-2, "Below"], [0, "In range"], [2, "Above"], [4, "Far above"]];
-  $("#hmLegend").replaceChildren(...[-4, -3, -2, -1, 0, 1, 2, 3, 4].map(lv => el("i", {style: {background: hmFill(lv)}, title: lv})),
-    el("span", {text: "← far below · below · in range · above · far above →"}), el("span", {style: {color: "var(--muted)"}, text: "(distance outside the range, as a share of the range's width)"}));
+  const asTable = state.tables.has("#hm");   // Heatmap | Table (#60)
+  const hd = $("#hmHd"); hd.querySelector(".view-seg")?.remove(); hd.append(viewSeg("#hm", "the heatmap", renderHeatmap, "Heatmap"));
+  $("#hmLegend").hidden = $("#hmWrap").hidden = asTable; $("#hmTable").hidden = !asTable;
   const all = SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null)), rows = all.filter(labMatch);   // the Labs filter (#192, trends.js)
   labCount("#hmQn", rows.length, all.length);
   const panelOrder = ["CBC WITH DIFFERENTIAL", "COMPREHENSIVE METABOLIC PANEL"];
@@ -26,6 +26,7 @@ function renderHeatmap() {
   const days = new Map();
   for (const s of rows) for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) { const k = dayKey(p.ts); if (!days.has(k)) days.set(k, dayTs(k)); }
   const cols = [...days.entries()].sort((a, b) => a[1] - b[1]);
+  if (asTable) { hmTable(rows, cols); return; }
   const svg = $("#hm"), axis = $("#hmAxis");
   const avail = Math.max(320, svg.parentElement.clientWidth);
   const LW = avail < 600 ? 120 : 190, top = 34, rowH = 14, gap = 2;
@@ -35,6 +36,11 @@ function renderHeatmap() {
   }
   // columns always fit the width (fractional widths are fine); zoom in to get wider cells
   const cw = Math.max(1, Math.min(22, (avail - LW - 8) / cols.length));
+  // the colours, and the marks that say the same without them (#60): ▲ above the range, ▼ below, on cells wide enough
+  $("#hmLegend").replaceChildren(...[-4, -3, -2, -1, 0, 1, 2, 3, 4].map(lv => el("i", {style: {background: hmFill(lv)}, title: lv})),
+    el("span", {text: "← far below · below · in range · above · far above →"}), el("span", {style: {color: "var(--muted)"}, text: "(distance outside the range, as a share of the range's width)"}),
+    el("span", {class: "hm-key"}, el("b", {"aria-hidden": "true", text: "▲"}), " above the range, ", el("b", {"aria-hidden": "true", text: "▼"}), " below",
+      cw < 3 ? el("span", {style: {color: "var(--muted)"}, text: " (zoom in to see them on each cell, or show the table)"}) : null));
   const groups = []; let gy = top;
   const yOf = new Map();
   let lastPanel = null;
@@ -69,6 +75,7 @@ function renderHeatmap() {
       const r = el("svg:rect", {class: "cell", x: colX.get(k) + (cw > 6 ? .5 : 0), y: ry + 1, width: cw - (cw > 6 ? 1 : 0), height: rowH - gap, rx: cw > 8 ? 2 : 0, style: `fill:${lv == null ? "var(--grid)" : hmFill(lv)}`});
       r.dataset.s = s.name; r.dataset.k = k;
       g.push(r);
+      if (lv && cw >= 3) g.push(abnMark(colX.get(k) + cw / 2, ry + 1 + (rowH - gap) / 2, lv > 0 ? "H" : "L", Math.min(3.6, cw / 2 - .8), "hm-mark"));   // #60
     }
   }
   // month labels go in a separate axis strip that sticks to the bottom of the window until the heatmap's end scrolls into view
@@ -100,5 +107,30 @@ function renderHeatmap() {
     if (d.rename) { openRename(ev.target, "lab", d.key); return; } const k = d.k || (d.day && isoDay(+d.day)); if (!k) return;
     const e = EV.find(e => e.k === "lab" && isoDay(e.ts) === k) || EV.find(e => e.k === "procedure" && isoDay(e.ts) === k); if (e) openEvent(e);
   };
+}
+/* the heatmap as a table (#60): a row per lab, grouped by panel as on the heatmap, a column per draw day; a result
+   outside its reference range has ▲ or ▼ beside it, said as "high" or "low" */
+function hmTable(rows, cols) {
+  const box = $("#hmTable");
+  if (!rows.length || !cols.length) { box.replaceChildren(el("p", {class: "hint", text: "No lab draws in this date range."})); return; }
+  const bodies = [];
+  let panel = null, tb = null;
+  for (const s of rows) {
+    if ((s.panel || "Other") !== panel) {
+      panel = s.panel || "Other"; tb = el("tbody", {}); bodies.push(tb);
+      tb.append(el("tr", {class: "grp"}, el("th", {scope: "rowgroup", colspan: cols.length + 1, text: panel})));
+    }
+    const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(isoDay(p.ts), p);
+    tb.append(el("tr", {}, el("th", {scope: "row", title: renamedTitle("lab", s.name), text: `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`}),
+      ...cols.map(([k]) => {
+        const p = byDay.get(k); if (!p) return el("td", {});
+        const lv = hmLevel(p[1], p[2], p[3]), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it
+        return el("td", {class: w ? "abn" : null, title: p[2] != null || p[3] != null ? refText(p) : null}, p[5] || fmtNum(p[1]),
+          w ? el("span", {"aria-hidden": "true", text: " " + w[0]}) : null, w ? el("span", {class: "vh", text: " " + w[1].toLowerCase()}) : null);
+      })));
+  }
+  box.replaceChildren(el("p", {class: "hint", text: `${rows.length} lab${rows.length === 1 ? "" : "s"} on ${cols.length} draw day${cols.length === 1 ? "" : "s"}. ▲ above its reference range, ▼ below.`}),
+    el("div", {class: "tablewrap hm-table"}, el("table", {class: "data"},
+      el("thead", {}, el("tr", {}, el("th", {scope: "col", text: "Lab"}), ...cols.map(([, ts]) => el("th", {scope: "col", text: fmtD(ts)})))), ...bodies)));
 }
 
