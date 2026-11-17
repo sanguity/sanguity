@@ -328,28 +328,38 @@ function renderHealth() {
   renderVitals(box, vx);
 }
 
-/* ---------------------------------------------------------------- readings at home and at visits (#180) */
+/* ---------------------------------------------------------------- readings at home and at visits (#180, #184) */
 /* Blood pressure taken at home, as the phone apps send it (watch/receiver.py's bp_readings: [time, systolic,
    diastolic, pulse, source, app]), beside the readings taken at visits: the records' systolic and diastolic series
    (C-CDA, FHIR, typed-in vitals), paired by the minute they were taken. What the records and devices say only: no
    categories or targets of Sanguity's own; a reading's own flag from a clinic's report shows, ▲ or ▼ (#60). The same
-   visit's reading from two imports, or a home reading also in the records (typed in as vitals), is shown once. */
+   visit's reading from two imports, or a home reading also in the records (typed in as vitals), is shown once.
+   Body temperature and blood oxygen likewise (#184): a thermometer's readings (temp_readings: [time, °C, source, app])
+   in the person's temperature unit (#41), and the watch's daily blood oxygen, each beside the visits' readings. */
 const vitalCode = s => String(s.loinc || (/^loinc:([\w-]+)/.exec(s.key || "") || [])[1] || "");
 const VITALS = {   // which of the records' series hold a vital, by LOINC code or name
   sys: s => !s.watch && (vitalCode(s) === "8480-6" || /systolic/i.test(s.name || "")),
   dia: s => !s.watch && (vitalCode(s) === "8462-4" || /diastolic/i.test(s.name || "")),
+  temp: s => !s.watch && !!tempScale(s.unit) && (["8310-5", "8331-1", "8332-9", "8333-7", "8328-7", "8329-5", "8334-5"].includes(vitalCode(s))
+    || (/temp/i.test(s.name || "") && !/skin|room|change/i.test(s.name || ""))),
+  spo2: s => !s.watch && /%/.test(s.unit || "") && (["59408-5", "2708-6", "59417-6", "20564-1"].includes(vitalCode(s))
+    || /spo2|sp o2|oxygen sat|o2 sat|pulse ox/i.test(s.name || "")),
 };
+/* a temperature unit as "F" or "C" (°F, [degF], Cel...), or null; a value from one to the other */
+const tempScale = u => { const k = String(u || "").trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/^(°|deg)\s*/, "");
+  return k === "f" ? "F" : k === "c" || k === "cel" ? "C" : null; };
+const toScale = (v, from, to) => from === to ? v : to === "F" ? v * 9 / 5 + 32 : (v - 32) * 5 / 9;
 const minuteOf = t => Math.round(t / 6e4);
 const vitalSource = (s, p) => (p[6] && p[6] !== "Clinic" ? srcName(p[6]) : "") || importName(p.imp ?? s.imp) || "the records";
 /* the records' readings of a vital kept as one series or two (tests: one per value), paired by the minute:
-   [{t, v: [value of each], f: [its flag], src}], oldest first */
-function clinicReadings(tests) {
+   [{t, v: [value of each], f: [its flag], src}], oldest first; conv(series, value) puts a value in the unit shown */
+function clinicReadings(tests, conv = (s, v) => v) {
   const by = new Map();
   tests.forEach((test, i) => { for (const s of SERIES.filter(test)) for (const p of s.pts) {
     if (typeof p[1] !== "number" || !isFinite(p[1]) || !isFinite(p.ts)) continue;
     const k = minuteOf(p.ts); let r = by.get(k);
     if (!r) by.set(k, r = {t: p.ts, v: [], f: [], src: ""});
-    if (r.v[i] == null) { r.v[i] = p[1]; r.f[i] = p[4] || ""; r.src = r.src || vitalSource(s, p); }
+    if (r.v[i] == null) { r.v[i] = conv(s, p[1]); r.f[i] = p[4] || ""; r.src = r.src || vitalSource(s, p); }
   } });
   return [...by.values()].sort((p, q) => p.t - q.t);
 }
@@ -357,18 +367,29 @@ function clinicReadings(tests) {
 function notHome(home, clinic) {
   const at = new Map(home.map(h => [minuteOf(h.t), h]));
   return clinic.filter(c => { for (const d of [0, -1, 1]) { const h = at.get(minuteOf(c.t) + d);
-    if (h && h.v.every((v, i) => v === c.v[i])) { h.also = c.src; return false; } } return true; });
+    if (h && h.v.every((v, i) => Math.abs(v - c.v[i]) < .05)) { h.also = c.src; return false; } } return true; });
 }
 function hVitals() {
   const ok = r => Array.isArray(r) && isFinite(zParse(r[0]));
   const home = ((WATCH || {}).bp_readings || []).filter(r => ok(r) && isFinite(r[1]) && isFinite(r[2]))
     .map(r => ({t: zParse(r[0]), v: [+r[1], +r[2]], f: [], pulse: r[3] == null ? null : +r[3], src: r[4] ? `${r[4]} (${r[5] || "phone"})` : r[5] || "phone", home: true}))
     .sort((p, q) => p.t - q.t);
-  return {bp: {home, clinic: notHome(home, clinicReadings([VITALS.sys, VITALS.dia]))}};
+  // body temperature (#184): in °F or °C as chosen in Settings → Units (#41), else as the visits' records give it
+  const tSeries = SERIES.filter(VITALS.temp), pref = (CFG.units || {}).temperature;
+  const unit = pref === "F" || pref === "C" ? pref : tSeries.map(s => tempScale(s.unit)).find(Boolean) || "C";
+  const temps = ((WATCH || {}).temp_readings || []).filter(r => ok(r) && isFinite(r[1]))
+    .map(r => ({t: zParse(r[0]), v: [toScale(+r[1], "C", unit)], f: [], src: r[2] ? `${r[2]} (${r[3] || "phone"})` : r[3] || "phone", home: true}))
+    .sort((p, q) => p.t - q.t);
+  // blood oxygen (#184): the phone's daily average and low; the visits' readings one by one
+  const M = Object.fromEntries(((WATCH || {}).metrics || []).map(m => [m.key, m])), low = Object.fromEntries(M.spo2_min ? M.spo2_min.pts : []);
+  const days = (M.spo2_avg ? M.spo2_avg.pts : []).map(([d, v]) => ({t: dayTs(d), v: [v, low[d] ?? null], f: [], src: "Phone, the day's readings", home: true, day: true}));
+  return {bp: {home, clinic: notHome(home, clinicReadings([VITALS.sys, VITALS.dia]))},
+    temp: {unit: "°" + unit, chosen: pref === unit, home: temps, clinic: notHome(temps, clinicReadings([VITALS.temp], (s, v) => toScale(v, tempScale(s.unit), unit)))},
+    spo2: {home: days, clinic: clinicReadings([VITALS.spo2])}};
 }
 const bpText = r => `${r.v[0] != null ? fmtNum(r.v[0]) : "–"}/${r.v[1] != null ? fmtNum(r.v[1]) : "–"}`;
 const bpWhere = r => r.home ? `at home · ${r.src}${r.also ? ` · also in the records (${r.also})` : ""}` : `at a visit · ${r.src}`;
-const flagsOf = r => r.f.map((f, i) => f ? `${["Systolic", "Diastolic"][i]} ${flagWord(f)}` : "").filter(Boolean).join(", ");
+const flagsOf = (r, names = ["Systolic", "Diastolic"]) => r.f.map((f, i) => f ? `${names[i]} ${flagWord(f)}` : "").filter(Boolean).join(", ");
 /* the tile: the latest reading in the period, at home or at a visit */
 function vitalTiles(tile, a, b) {
   H.vit = H.vit || hVitals();
@@ -381,6 +402,8 @@ function renderVitals(box, {a, b, long, legend, head}) {
   H.vit = H.vit || hVitals();
   const {home, clinic} = H.vit.bp;
   if (home.length || clinic.length) bpCard(box, a, b, long, legend, head, home, clinic);
+  if (H.vit.temp.home.length || H.vit.temp.clinic.length) tempCard(box, a, b, legend, head, H.vit.temp);
+  if (H.vit.spo2.home.length || H.vit.spo2.clinic.length) oxygenCard(box, a, b, long, legend, head, H.vit.spo2);
 }
 function bpCard(box, a, b, long, legend, head, home, clinic) {
   const C = {home: "var(--c-lab)", clinic: "var(--ink2)"}, inP = r => r.t >= a && r.t <= b;
@@ -419,11 +442,13 @@ function bpCard(box, a, b, long, legend, head, home, clinic) {
 }
 /* on Labs, under a vital's chart: the same vital at home, on Body and activity */
 function vitalLink(s) {
-  if (!WATCH || !(VITALS.sys(s) || VITALS.dia(s))) return null;
+  const k = !WATCH ? null : VITALS.sys(s) || VITALS.dia(s) ? "bp" : VITALS.temp(s) ? "temp" : VITALS.spo2(s) ? "spo2" : null;
+  if (!k) return null;
   H = H || hData(); H.vit = H.vit || hVitals();
-  if (!H.vit.bp.home.length) return null;
-  return el("p", {class: "hint vital-link"}, "Readings taken at home are beside these on ",
-    el("a", {href: "#health", text: "Body and activity → Blood pressure", onclick: ev => { ev.preventDefault(); openVital("#h-bp"); }}), ".");
+  if (!H.vit[k].home.length) return null;
+  const [id, name] = {bp: ["#h-bp", "Blood pressure"], temp: ["#h-temp", "Body temperature"], spo2: ["#h-oxygen", "Blood oxygen"]}[k];
+  return el("p", {class: "hint vital-link"}, k === "spo2" ? "The phone's daily blood oxygen is beside these on " : "Readings taken at home are beside these on ",
+    el("a", {href: "#health", text: `Body and activity → ${name}`, onclick: ev => { ev.preventDefault(); openVital(id); }}), ".");
 }
 function openVital(id) {
   closeDrawer(); pickTab("health");
@@ -544,3 +569,63 @@ function hGlucose(box, a, b, {head, legend, byDay}) {
         ...ls.map(l => tipRow(G_C.lab, `${nice(l[3])}, lab: ${fmt(l[1])} ${u}${l[2] ? " · " + flagWord(l[2]) : ""}`))]}; }});
 }
 
+/* the latest few readings of a card, listed: text(r) -> what was measured */
+function latestList(card, all, n, text, where, flags) {
+  const recent = all.slice(-n).reverse();
+  if (!recent.length) return;
+  card.append(el("h3", {class: "sub", style: {marginTop: "10px"}, text: all.length > n ? `Latest ${n} of ${all.length} in this period (Table lists them all)` : "In this period"}),
+    el("ul", {class: "vital-list"}, ...recent.map(r => el("li", {}, el("b", {text: text(r)}), flags(r) ? el("span", {class: "abn", text: ` · ${flags(r)}`}) : "",
+      el("span", {class: "muted", text: ` · ${where(r)}`})))));
+}
+/* body temperature (#184): each reading at home and at a visit, in the unit chosen */
+function tempCard(box, a, b, legend, head, {unit, chosen, home, clinic}) {
+  const C = {home: "var(--c-imaging)", clinic: "var(--ink2)"};
+  const val = r => `${r.v[0].toFixed(1)} ${unit}`, where = r => `${fmtDT(r.t)} · ${r.home ? "at home" : "at a visit"} · ${r.src}${r.also ? ` · also in the records (${r.also})` : ""}`;
+  const flags = r => flagsOf(r, ["Temperature"]);
+  const card = el("div", {class: "card", id: "h-temp", tabindex: -1}, head("Body temperature", "#h-temp"),
+    el("p", {class: "hint", text: `Each reading of a thermometer at home, and the readings taken at visits, in ${unit}${chosen ? " (Settings → Units)" : ""}.`
+      + (clinic.some(r => r.f[0]) ? " ▲ or ▼ marks a reading the clinic's report flagged as high or low." : "")}));
+  box.append(card);
+  const all = [...home, ...clinic].filter(r => r.t >= a && r.t <= b).sort((p, q) => p.t - q.t);
+  if (state.tables.has("#h-temp")) {
+    card.append(chartTable(["Date and time", `Temperature (${unit})`, "Where", "Source"],
+      [...all].reverse().map(r => [fmtDT(r.t), [r.v[0].toFixed(1), r.f[0]], r.home ? "Home" : "Clinic visit", r.src + (r.also ? `; also in the records (${r.also})` : "")])));
+    return;
+  }
+  card.append(legend([[C.home, "At home", 1], [C.clinic, "At a visit", 1]]));
+  const homePts = home.map(r => [r.t, r.v[0], null, "", "", r]), clinicPts = clinic.map(r => [r.t, r.v[0], null, r.f[0], "", r]);
+  const nav = [...homePts, ...clinicPts].sort((p, q) => p[0] - q[0]);
+  hChart(card, a, b, {h: 160, fmtY: v => String(+v.toFixed(1)), label: "Body temperature", noun: "reading", nav, layers: [
+    {type: "pairs", data: homePts, color: C.home}, {type: "pairs", data: clinicPts, color: C.clinic, hollow: true, r: 3.5}],
+    tip: t => { const p = nearest(nav, t, 2); if (!p) return null; const r = p[5];
+      return {t: p[0], rows: [el("div", {class: "v", text: val(r)}), el("div", {class: "s", text: where(r)}), flags(r) ? el("div", {class: "s", text: flags(r)}) : null]}; }});
+  latestList(card, all, 3, val, where, flags);
+}
+/* blood oxygen (#184): the phone's daily average above the day's low, and each reading at a visit */
+function oxygenCard(box, a, b, long, legend, head, {home, clinic}) {
+  const C = {home: "var(--c-journal)", clinic: "var(--ink2)"};
+  const val = r => r.day ? `${fmtNum(r.v[0])}% average${r.v[1] != null ? `, low ${fmtNum(r.v[1])}%` : ""}` : `${fmtNum(r.v[0])}%`;
+  const where = r => r.day ? `${fmtD(r.t)} · ${r.src}` : `${fmtDT(r.t)} · at a visit · ${r.src}`, flags = r => flagsOf(r, ["SpO2"]);
+  const card = el("div", {class: "card", id: "h-oxygen", tabindex: -1}, head("Blood oxygen (SpO2)", "#h-oxygen"),
+    el("p", {class: "hint", text: (long ? "The phone's daily average by week, the band reaching down to the week's average low" : "The phone's daily average, the band reaching down to the day's low")
+      + "; readings taken at visits one by one." + (clinic.some(r => r.f[0]) ? " ▲ or ▼ marks a reading the clinic's report flagged as high or low." : "")}));
+  box.append(card);
+  const all = [...home, ...clinic].filter(r => r.t >= a && r.t <= b).sort((p, q) => p.t - q.t);
+  if (state.tables.has("#h-oxygen")) {
+    card.append(chartTable(["Date", "SpO2 (%)", "Day's low (%)", "Where", "Source"],
+      [...all].reverse().map(r => [r.day ? fmtD(r.t) : fmtDT(r.t), [fmtNum(r.v[0]), r.f[0]], r.v[1] != null ? fmtNum(r.v[1]) : "", r.day ? "Home, daily average" : "Clinic visit", r.src])));
+    return;
+  }
+  card.append(legend([[C.home, long ? "Phone, weekly" : "Phone, daily average", 1], [C.clinic, "At a visit", 1]]));
+  const dayPts = home.map(r => [r.t, r.v[0], r.v[1] ?? r.v[0]]), pts = long ? weekly(dayPts) : dayPts;
+  const clinicPts = clinic.map(r => [r.t, r.v[0], null, r.f[0], "", r]);
+  const nav = [...(long ? pts : home.map(r => [r.t, r.v[0], r.v[1], "", "", r])), ...clinicPts].sort((p, q) => p[0] - q[0]);
+  hChart(card, a, b, {h: 160, fmtY: v => Math.round(v) + "%", label: long ? "Blood oxygen, weekly" : "Blood oxygen", noun: long ? "week or reading" : "day or reading", nav, layers: [
+    {type: "band", data: pts, color: C.home}, {type: "line", data: pts, color: C.home, width: 1.6, gap: long ? 21 : 3},
+    ...(long ? [] : [{type: "dots", data: pts, color: C.home, r: pts.length > 200 ? 1.5 : 2.4}]),
+    {type: "pairs", data: clinicPts, color: C.clinic, hollow: true, r: 3.5}],
+    tip: t => { const p = nearest(nav, t, long ? 4 : .6); if (!p) return null; const r = p[5];
+      if (!r) return {t: p[0], rows: [el("div", {class: "v", text: `${fmtNum(p[1])}% average, low ${fmtNum(p[2])}%`}), el("div", {class: "s", text: `Week of ${fmtD(p[0] - 3 * DAY)} · phone, daily figures`})]};
+      return {t: p[0], rows: [el("div", {class: "v", text: val(r)}), el("div", {class: "s", text: where(r)}), flags(r) ? el("div", {class: "s", text: flags(r)}) : null]}; }});
+  latestList(card, all, 3, val, where, flags);
+}

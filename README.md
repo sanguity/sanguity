@@ -27,7 +27,7 @@ person's records appear in this repository.
 | Tab | What it shows |
 |---|---|
 | Overview | Key labs with sparklines, watch and scale summaries, active problems, allergies, immunizations, upcoming visits, costs since a milestone |
-| Body and activity | Watch, sleep and smart-scale data: weight and body composition, sleep stages, steps and workouts, heart rate and HRV; blood pressure taken at home beside the readings taken at visits; blood glucose from a meter or a continuous glucose monitor (CGM), with time in the standard ranges |
+| Body and activity | Watch, sleep and smart-scale data: weight and body composition, sleep stages, steps and workouts, heart rate and HRV; blood pressure, body temperature and blood oxygen taken at home beside the readings taken at visits; blood glucose from a meter or a continuous glucose monitor (CGM), with time in the standard ranges |
 | Timeline | Every visit, stay, lab draw, report, immunization, message, document and claim on one zoomable timeline, with a searchable list; each medication as spans from its start through dose changes to its stop, with pharmacy fills marked |
 | Labs | Lab results against reference ranges, as charts over time (each with a table of its values), with procedures, imaging and your milestones marked, and saved views of the labs you chart together; or as a heatmap of every draw, one row per lab; a name filter beside the list of labs narrows either |
 | Costs | Insurance claims by month or year, type of care and provider, and what you actually paid out of pocket: typed in, exported or from claims, matched to claims, counted once, with HSA and FSA totals |
@@ -245,7 +245,7 @@ different; the file stays beside them as `data-before-v10.json`, and can be dele
 | Lab results spreadsheets (CSV) and Quest or Labcorp lab report PDFs | Lab results with units, ranges and flags |
 | Insurance claims exports (`uhc`, `bcbs` formats, or an EOB spreadsheet (CSV)) | Claims, billed / paid / your share, denials |
 | Payments export (`payments.json`) | Out-of-pocket payments and premiums |
-| Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition, blood pressure (each reading, with its pulse when the cuff gives one), blood glucose (meter and CGM) |
+| Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition, blood pressure (each reading, with its pulse when the cuff gives one), body temperature, blood oxygen, blood glucose (meter and CGM) |
 | Apple Health on iPhone, via the Health Auto Export app (or an uploaded `export.xml`) | The same, with HRV as Apple's SDNN |
 | Apple Health's whole export zip (Export All Health Data) | The above, and the Health app's Health Records from hospitals and clinics (FHIR files in `clinical-records/`): visits, labs, medications, problems, allergies, immunizations, procedures |
 | Typed in by hand (**Sources → Type records in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, immunizations, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
@@ -270,7 +270,7 @@ Two phone apps upload to that address:
 - **iPhone: Health Auto Export** reads Apple Health (its REST API automations need the app's Premium subscription or
   trial). Add a REST API automation with the upload address as its URL, a header `Authorization` with the value
   `Bearer <the secret>`, data type Health Metrics in JSON (steps, distance, active energy, heart rate, resting heart
-  rate, HRV, blood oxygen, respiratory rate, weight, body fat, lean mass, sleep, blood pressure), time grouping by hours, and a
+  rate, HRV, blood oxygen, respiratory rate, weight, body fat, lean mass, sleep, blood pressure, body temperature), time grouping by hours, and a
   schedule (hourly or daily, since the last sync); then a second one for Workouts, and for a glucose meter or a CGM a
   third with Blood Glucose alone and no time grouping, so each reading comes on its own. The steps are on the
   **Phone and watch** section too. Repeated and overlapping uploads count once, and the days are made the same way as

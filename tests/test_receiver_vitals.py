@@ -1,7 +1,8 @@
-"""Home readings from the phone apps (#180): watch/receiver.py keeps each blood pressure reading that Life Dashboard
-Companion (Health Connect) or Health Auto Export (Apple Health) sends, with its pulse when one comes with it, and a
-daily summary of them; the same readings from either app give the same readings and days, and a reading sent again
-counts once. All data here is fictional, written for these tests.
+"""Home readings from the phone apps (#180, #184): watch/receiver.py keeps each blood pressure reading that Life
+Dashboard Companion (Health Connect) or Health Auto Export (Apple Health) sends, with its pulse when one comes with it,
+and each body temperature (in °C, whatever unit it came in), and a daily summary of them; the same readings from
+either app give the same readings and days (blood oxygen's daily figures too), and a reading sent again counts once.
+All data here is fictional, written for these tests.
 
   python tests/test_receiver_vitals.py
 """
@@ -146,6 +147,68 @@ class BloodPressure(Base):
         self.assertEqual(fresh.catch_up(), 3)
         got = fresh.summary()
         self.assertEqual((got["metrics"], got["bp_readings"]), (want["metrics"], want["bp_readings"]))
+
+
+THERMO = "Fictional Thermometer"
+# (local time, °F as an iPhone in the US sends it, the same in °C as Health Connect sends it)
+TEMP = [("2024-03-09 07:30:00", 98.6, 37.0), ("2024-03-09 22:15:00", 100.4, 38.0), ("2024-03-10 08:00:00", 99.5, 37.5)]
+# blood oxygen: (local time, %), the last one late in the evening
+SPO2 = [("2024-03-09 02:00:00", 97), ("2024-03-09 04:00:00", 94), ("2024-03-09 23:30:00", 96), ("2024-03-10 03:00:00", 98)]
+
+
+def ldc_temp_spo2(seq=1):
+    return {"source": "health_connect", "timezone": TZ, "sequence": seq, "timestamp": "2024-03-11T13:00:00Z",
+            "body_temperature": [{"uuid": f"t-{t}", "time": utc(t), "celsius": c, "source": THERMO} for t, _, c in TEMP],
+            "oxygen_saturation": [{"uuid": f"o-{t}", "time": utc(t), "percentage": v, "source": "Fictional Watch"} for t, v in SPO2]}
+
+
+def hae_temp_spo2(unit="degF"):
+    return {"data": {"metrics": [
+        {"name": "body_temperature", "units": unit, "data": [{"date": f"{t} {OFF}", "qty": f if unit == "degF" else c, "source": THERMO}
+                                                             for t, f, c in TEMP]},
+        {"name": "blood_oxygen_saturation", "units": "%", "data": [{"date": f"{t} {OFF}", "qty": v, "source": "Fictional Watch"} for t, v in SPO2]}]}}
+
+
+class TemperatureAndOxygen(Base):
+    """Body temperature (#184): kept reading by reading in °C and summed up by day, from both apps alike; blood
+    oxygen's daily average and low the same from both apps."""
+
+    def test_both_apps_give_the_same_readings_and_days(self):
+        self.ingest(ldc_temp_spo2())
+        other, third = rx.Store("9"), rx.Store("10")
+        self.ingest(hae_temp_spo2(), other)
+        self.ingest(hae_temp_spo2("degC"), third)
+        a, b, c = self.store.summary(), other.summary(), third.summary()
+        self.assertEqual([r[:3] for r in a["temp_readings"]], [["2024-03-09T13:30:00+00:00", 37, THERMO], ["2024-03-10T04:15:00+00:00", 38, THERMO],
+                                                               ["2024-03-10T14:00:00+00:00", 37.5, THERMO]])
+        for s in (b, c):
+            self.assertEqual([r[:3] for r in s["temp_readings"]], [r[:3] for r in a["temp_readings"]])
+            for k in ("body_temp", "body_temp_max", "spo2_avg", "spo2_min"):
+                self.assertEqual(pts(s, k), pts(a, k), k)
+        self.assertEqual([r[3] for r in a["temp_readings"]], ["Health Connect"] * 3)
+        self.assertEqual([r[3] for r in b["temp_readings"]], ["Apple Health"] * 3)
+        self.assertEqual(pts(a, "body_temp"), {"2024-03-09": 37.5, "2024-03-10": 37.5})   # the evening is the 9th, the phone's day
+        self.assertEqual(pts(a, "body_temp_max"), {"2024-03-09": 38, "2024-03-10": 37.5})
+        self.assertEqual(pts(a, "spo2_avg"), {"2024-03-09": 95.67, "2024-03-10": 98})
+        self.assertEqual(pts(a, "spo2_min"), {"2024-03-09": 94, "2024-03-10": 98})
+        m = {x["key"]: (x["name"], x["unit"]) for x in a["metrics"]}
+        self.assertEqual(m["body_temp"], ("Body temperature, daily average", "°C"))
+
+    def test_sent_again_counts_once(self):
+        self.ingest(ldc_temp_spo2())
+        want = self.store.summary()
+        self.ingest(ldc_temp_spo2(seq=2))
+        self.ingest(hae_temp_spo2())   # by the other app as well: 98.6 °F is the same reading as 37 °C
+        s = self.store.summary()
+        self.assertEqual(s["temp_readings"], want["temp_readings"])
+        for k in ("body_temp", "body_temp_max"):
+            self.assertEqual(pts(s, k), pts(want, k), k)
+
+    def test_a_unit_it_cant_read_is_left_out(self):
+        self.ingest(hae_temp_spo2("kelvin"))
+        s = self.store.summary()
+        self.assertNotIn("temp_readings", s)
+        self.assertEqual(pts(s, "spo2_min"), {"2024-03-09": 94, "2024-03-10": 98})   # the rest of the upload still counts
 
 
 class StoreFromBefore(Base):

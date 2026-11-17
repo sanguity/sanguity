@@ -499,6 +499,33 @@ if BIG:   # ---- --big: blood pressure at home and at visits (#180), with a gene
     for name, loinc, mu in (("Blood pressure, systolic", "8480-6", 130), ("Blood pressure, diastolic", "8462-4", 83)):
         pts = [[t, v, None, None, "", str(v)] for t in visits for v in [round(RB.gauss(mu, 6))]]
         VITALS.append({"name": name, "unit": "mmHg", "panel": "Vitals", "loinc": loinc, "key": f"loinc:{loinc}", "n": len(pts), "pts": pts, "txt": []})
+    # ---- body temperature and blood oxygen (#184): a thermometer during a few colds a year, a watch's oxygen each night
+    # for the last three years; at visits, both taken too
+    RT, temps, tdays = random.Random(END.toordinal() + 184), [], {}
+    d = FIRST
+    while d <= END:
+        if RT.random() < 3 / 365:   # a cold: a few days of readings, morning and evening
+            for k in range(RT.randint(2, 5)):
+                for h in (8, 20):
+                    t = datetime.combine(d + timedelta(days=k), datetime.min.time()).replace(hour=h, minute=RT.randint(0, 59), tzinfo=NY)
+                    c = round(RT.gauss(37.6 if k < 2 else 37.0, 0.3), 1)
+                    temps.append([t.astimezone(UTC).isoformat(), c, "Fictional Thermometer", "Health Connect"])
+                    tdays.setdefault(t.date().isoformat(), []).append(c)
+            d += timedelta(days=6)
+        d += timedelta(days=1)
+    temps.sort()
+    watch["temp_readings"] = temps
+    watch["metrics"] += [{"key": "body_temp", "name": "Body temperature, daily average", "unit": "°C", "group": "Body temperature",
+                          "pts": [[day, round(sum(x) / len(x), 2)] for day, x in sorted(tdays.items())]},
+                         {"key": "body_temp_max", "name": "Body temperature, daily highest", "unit": "°C", "group": "Body temperature",
+                          "pts": [[day, max(x)] for day, x in sorted(tdays.items())]}]
+    ox = [(day, round(RT.gauss(96.4, 0.8), 1), round(RT.gauss(93.5, 1.2), 1)) for day in
+          (d0.isoformat() for d0 in (END - timedelta(days=i) for i in range(3 * 365, -1, -1)))]
+    watch["metrics"] += [{"key": "spo2_avg", "name": "SpO2, daily average", "unit": "%", "group": "Oxygen & breathing", "pts": [[x, a] for x, a, _ in ox]},
+                         {"key": "spo2_min", "name": "SpO2, daily low", "unit": "%", "group": "Oxygen & breathing", "pts": [[x, min(a, lo)] for x, a, lo in ox]}]
+    for name, loinc, unit, mu, sd in (("Temperature", "8310-5", "°F", 98.2, 0.4), ("SpO2 (clinic)", "59408-5", "%", 97.5, 0.8)):
+        pts = [[t, v, None, None, "", str(v)] for t in visits for v in [round(RT.gauss(mu, sd), 1)]]
+        VITALS.append({"name": name, "unit": unit, "panel": "Vitals", "loinc": loinc, "key": f"loinc:{loinc}", "n": len(pts), "pts": pts, "txt": []})
 
 
 # ------------------------------------------------------------------ demo PDF (two plain pages)

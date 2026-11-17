@@ -15,8 +15,8 @@ and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
   Health tab as an uploaded export.xml, HRV as SDNN. On a day both apps sent one metric, Health Connect's value wins.
 - Blood glucose from both apps (#181, server/glucose.py): every reading kept, meter readings passed on as they are,
   a continuous glucose monitor's summarised per day (average, low, high, hours with readings, time in ranges).
-- Home blood pressure (#180) is kept reading by reading from both apps, a reading sent again (or by both) counted
-  once, and summed up by day; the summary lists the readings too.
+- Home blood pressure (#180) and body temperature (#184) are kept reading by reading from both apps, a reading sent
+  again (or by both) counted once, and summed up by day; the summary lists the readings too.
 - Writes per-day summaries for Sanguity: $DATA/public/daily.json, or public/profiles/<slot>/daily.json.
 
 One secret per profile (#46). The app makes each profile's secret on its Settings page and writes them all, sealed,
@@ -97,15 +97,18 @@ HAE_STAGE = {   # a sleep segment's "value" -> the receiver's stage; in bed over
     "core": "light", "deep": "deep", "rem": "rem", "awake": "awake", "asleep": "sleeping", "unspecified": "sleeping",
     "in bed": None, "inbed": None}
 
-# ---- home readings kept one by one (#180): blood pressure, from both phone apps
-HAE_VITALS = {"blood_pressure"}   # Health Auto Export metrics kept reading by reading (Store._hae_vitals)
+# ---- home readings kept one by one (#180, #184): blood pressure and body temperature, from both phone apps
+HAE_VITALS = {"blood_pressure", "body_temperature"}   # Health Auto Export metrics kept reading by reading (Store._hae_vitals)
 VITALS_META = {   # the daily summary of them, after the receiver's other metrics
     "bp_sys": ("Blood pressure, systolic, daily average", "mmHg", "Blood pressure"),
     "bp_dia": ("Blood pressure, diastolic, daily average", "mmHg", "Blood pressure"),
     "bp_sys_max": ("Blood pressure, systolic, daily highest", "mmHg", "Blood pressure"),
     "bp_dia_max": ("Blood pressure, diastolic, daily highest", "mmHg", "Blood pressure"),
     "bp_n": ("Blood pressure readings", "readings", "Blood pressure"),
+    "body_temp": ("Body temperature, daily average", "°C", "Body temperature"),
+    "body_temp_max": ("Body temperature, daily highest", "°C", "Body temperature"),
 }
+HAE_TEMP = {"degc": "C", "°c": "C", "c": "C", "cel": "C", "degf": "F", "°f": "F", "f": "F", "[degf]": "F"}   # a unit's spellings
 APP = {"health_connect": "Health Connect", "health_auto_export": "Apple Health"}   # which phone app sent a reading
 
 
@@ -291,7 +294,7 @@ class Store:
             PRIMARY KEY(src, start, stage));
         """)
         self._glucose_init()   # blood glucose (#181), below
-        self._vitals_tables()   # home blood pressure (#180)
+        self._vitals_tables()   # home blood pressure and body temperature (#180, #184)
 
     def meta(self, k, v=None):
         if v is None:
@@ -421,7 +424,7 @@ class Store:
             if name == "blood_glucose":   # (#181)
                 n += self._glucose_hae(c, m)
                 continue
-            if name in HAE_VITALS:   # home blood pressure (#180)
+            if name in HAE_VITALS:   # home blood pressure and body temperature (#180, #184)
                 n += self._hae_vitals(c, name, m.get("units"), rows)
                 continue
             hk = HAE_QUANTITY.get(name)
@@ -563,7 +566,7 @@ class Store:
             log(f"read the blood glucose of {n} earlier uploads")
         return n
 
-    # ------------------------------------------------------------ home readings kept one by one (#180)
+    # ------------------------------------------------------------ home readings kept one by one (#180, #184)
     def _vitals_tables(self):
         """Health Auto Export's readings kept one by one, and the store's own migration: a database from before #180
         has samples without v3, a blood pressure reading's pulse (its readings there show, without one)."""
@@ -581,7 +584,11 @@ class Store:
             if t is None:
                 continue
             row = None
-            if name == "blood_pressure":
+            if name == "body_temperature":   # in °C, as Health Connect sends it
+                v, scale = number(r.get("qty") if r.get("qty") is not None else r.get("Avg")), HAE_TEMP.get(str(unit or "").strip().lower())
+                if v is not None and scale:
+                    row = ("temp", round((v - 32) * 5 / 9, 2) if scale == "F" else v, None, None)
+            elif name == "blood_pressure":
                 sys_, dia = number(r.get("systolic")), number(r.get("diastolic"))
                 if sys_ is not None and dia is not None:
                     row = ("bp", sys_, dia, pulse_of(r))
@@ -595,14 +602,14 @@ class Store:
         """[(t, day, v, v2, v3, source, app)] of one kind from both apps, oldest first. A reading with the same minute
         and values as one already listed (sent again under another id, or by both apps) is that one: Health Connect's
         comes first."""
-        typ = {"bp": "blood_pressure"}[kind]
+        typ = {"bp": "blood_pressure", "temp": "body_temperature"}[kind]
         rows = [(t, d, number(v), number(v2), number(v3), src or "", "health_connect") for t, d, v, v2, v3, src in
                 self.db.execute("SELECT t, day, v, v2, v3, src FROM samples WHERE type=? ORDER BY t, uuid", (typ,))]
         rows += [(t, d, v, v2, v3, src, "health_auto_export") for t, d, v, v2, v3, src in
                  self.db.execute("SELECT t, day, v, v2, v3, src FROM hae_vitals WHERE kind=? ORDER BY t, src", (kind,))]
         out, seen = [], set()
         for r in rows:
-            k = (r[0] // 60, r[2], r[3])
+            k = (r[0] // 60, None if r[2] is None else round(r[2], 1), None if r[3] is None else round(r[3], 1))
             if r[2] is None or k in seen:
                 continue
             seen.add(k)
@@ -610,8 +617,9 @@ class Store:
         return sorted(out, key=lambda r: (r[0], r[6], r[5]))
 
     def _vitals_summary(self):
-        """{"days": {metric key: {day: value}}, "bp_readings": [[time, systolic, diastolic, pulse, source, app]]}: each
-        day's readings, average and highest, and the readings themselves (time in UTC)."""
+        """{"days": {metric key: {day: value}}, "bp_readings": [[time, systolic, diastolic, pulse, source, app]],
+        "temp_readings": [[time, °C, source, app]]}: each day's readings, average and highest, and the readings
+        themselves (time in UTC)."""
         days, out = {}, {}
 
         def put(key, d, v):
@@ -629,6 +637,15 @@ class Store:
         if bp:
             out["bp_readings"] = [[datetime.fromtimestamp(t, timezone.utc).isoformat(), compact(s), compact(di),
                                    None if p is None else compact(p), src or None, APP[app]] for t, _, s, di, p, src, app in bp]
+        temp, by = self._readings("temp"), {}
+        for _, d, c, *_ in temp:
+            by.setdefault(d, []).append(c)
+        for d, xs in by.items():
+            put("body_temp", d, sum(xs) / len(xs))
+            put("body_temp_max", d, max(xs))
+        if temp:
+            out["temp_readings"] = [[datetime.fromtimestamp(t, timezone.utc).isoformat(), compact(c), src or None, APP[app]]
+                                    for t, _, c, _, _, src, app in temp]
         return {"days": days, **out}
 
     # ------------------------------------------------------------ daily summary
@@ -716,7 +733,7 @@ class Store:
             "bone_mass": ("Bone mass", "lb", "Body"), "water_mass": ("Body water", "lb", "Body"),
             "bmr": ("Basal metabolic rate", "kcal/day", "Body"),
         }
-        vitals = self._vitals_summary()   # home blood pressure (#180)
+        vitals = self._vitals_summary()   # home blood pressure and body temperature (#180, #184)
         META.update(VITALS_META)
         out.update(vitals.pop("days"))
         metrics = [{"key": k, "name": META[k][0], "unit": META[k][1], "group": META[k][2],
