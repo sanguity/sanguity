@@ -59,6 +59,7 @@ QUANTITY = {
     "HKQuantityTypeIdentifierBodyMass": ("weight", "mass"),
     "HKQuantityTypeIdentifierBodyFatPercentage": ("body_fat", "percent"),
     "HKQuantityTypeIdentifierLeanBodyMass": ("lean_mass", "mass"),
+    "HKQuantityTypeIdentifierVO2Max": ("vo2max", "vo2"),   # cardio fitness, the watch's estimate (#226)
 }
 CUMULATIVE = {"steps", "distance_km", "active_cal"}   # summed over the day; the rest are averaged
 SLEEP = "HKCategoryTypeIdentifierSleepAnalysis"
@@ -82,6 +83,7 @@ UNITS = {   # kind -> {HealthKit unit: factor to the receiver's unit}
     "mass": {"lb": 1, "kg": LB, "g": LB / 1000, "st": 14, "oz": 1 / 16},
     "distance": {"km": 1, "m": 0.001, "mi": 1.609344, "ft": 0.0003048, "yd": 0.0009144},
     "energy": {"kcal": 1, "Cal": 1, "cal": 0.001, "kJ": 1 / 4.184, "J": 1 / 4184},
+    "vo2": {"mL/min·kg": 1, "mL/(kg·min)": 1, "ml/(kg·min)": 1, "mL/kg/min": 1},   # HealthKit writes mL/min·kg (#226)
 }
 
 META = {   # watch/receiver.py's, in its order, for the keys Apple Health has
@@ -92,6 +94,7 @@ META = {   # watch/receiver.py's, in its order, for the keys Apple Health has
     "hrv": ("HRV (SDNN)", "ms", "Heart"),   # Apple measures SDNN; Health Connect's is RMSSD
     "spo2_avg": ("SpO2, daily average", "%", "Oxygen & breathing"), "spo2_min": ("SpO2, daily low", "%", "Oxygen & breathing"),
     "resp": ("Respiratory rate", "breaths/min", "Oxygen & breathing"),
+    "vo2max": ("Cardio fitness (VO2 max)", "mL/kg/min", "Heart"),   # (#226)
     "sleep_h": ("Sleep", "hours", "Sleep"), "sleep_deep_min": ("Deep sleep", "min", "Sleep"),
     "sleep_rem_min": ("REM sleep", "min", "Sleep"), "sleep_light_min": ("Light sleep", "min", "Sleep"),
     "sleep_awake_min": ("Awake during sleep", "min", "Sleep"),

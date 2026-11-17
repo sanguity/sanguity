@@ -412,6 +412,67 @@ def add_ecg_watch(db, watch_dir):
     watch_store.save_import(db, 1, {"updated": w["updated"], "tz": w["tz"], "metrics": [], "exercise": [], "ecg": w["ecg"],
                                     "ecg_waves": w["ecg_waves"]})
 
+def fitness_readings():
+    """Fictional respiratory rate and VO2 max (#226), local times in New York, from August to mid-November 2026: a
+    watch's breathing rate twice a night [(local time, breaths a minute)], and its VO2 max estimate after an evening walk
+    every four days [(local time, mL/kg/min)]. Made by formula, so the same on every run."""
+    from datetime import date, timedelta
+    resp, vo2, d, i = [], [], date(2026, 8, 1), 0
+    while d <= date(2026, 11, 14):
+        for h in (2, 4):
+            resp.append((f"{d}T0{h}:{(i * 13) % 50 + 5:02d}:00", round(14 + (i % 7) * 0.3 + (h - 3) * 0.4, 1)))
+        if i % 4 == 1:
+            vo2.append((f"{d}T18:{(i * 7) % 50 + 5:02d}:00", round(39.5 + i * 0.02 + (i % 3) * 0.3, 1)))
+        d += timedelta(days=1)
+        i += 1
+    return resp, vo2
+
+
+RESP_VISITS = [("2025-01-14T10:20:00-05:00", 16, ""), ("2025-06-10T10:05:00-04:00", 14, ""), ("2026-08-12T10:15:00-04:00", 22, "H"),
+               ("2026-10-06T10:10:00-04:00", 15, "")]   # respiratory rates taken at visits (#226), one flagged by its report
+
+
+def add_fitness_records(build, watch_dir):
+    """Respiratory rate and VO2 max from both phone apps (#226), folded by the receiver itself into the demo's watch
+    summary: Health Auto Export's until mid-September (each upload sent twice), then Life Dashboard Companion's; and
+    respiratory rates taken at visits, in the records as a vitals series (RESP_VISITS)."""
+    import hashlib, tempfile as tf
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    rx = receiver()
+    rx.DATA = tf.mkdtemp(prefix="rx-", dir=TMP)
+    store = rx.Store()
+    ny, utc = ZoneInfo("America/New_York"), ZoneInfo("UTC")
+    at = lambda local: datetime.fromisoformat(local).replace(tzinfo=ny)
+
+    def send(p):
+        b = json.dumps(p).encode()
+        store.ingest(json.loads(b), hashlib.sha256(b).hexdigest())
+    resp, vo2 = fitness_readings()
+    hae = lambda rows: [{"date": at(t).strftime("%Y-%m-%d %H:%M:%S %z"), "qty": v, "source": "Fictional Watch"} for t, v in rows if t < "2026-09-15"]
+    for _ in (1, 2):
+        send({"data": {"metrics": [{"name": "respiratory_rate", "units": "count/min", "data": hae(resp)},
+                                   {"name": "vo2_max", "units": "ml/(kg·min)", "data": hae(vo2)}]}})
+    send({"source": "health_connect", "timezone": "America/New_York", "sequence": 1, "timestamp": "2026-11-15T12:00:00Z",
+          "respiratory_rate": [{"uuid": f"fictional-r-{t}", "time": at(t).astimezone(utc).isoformat(), "rate": v, "source": "Fictional Watch"}
+                               for t, v in resp if t >= "2026-09-15"],
+          "vo2_max": [{"uuid": f"fictional-v-{t}", "time": at(t).astimezone(utc).isoformat(), "vo2_milliliters_per_minute_kilogram": v,
+                       "source": "Fictional Watch"} for t, v in vo2 if t >= "2026-09-15"]})
+    got = store.summary()
+    path = os.path.join(watch_dir, "daily.json")
+    with open(path, encoding="utf-8") as f:
+        watch = json.load(f)
+    watch["metrics"] += [m for m in got["metrics"] if m["key"] in ("resp", "vo2max")]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(watch, f)
+    data_path = os.path.join(build, "data.json")
+    with open(data_path, encoding="utf-8") as f:
+        data = json.load(f)
+    pts = [[t, v, 12, 20, flag, str(v), "Lakeside Family Medicine"] for t, v, flag in RESP_VISITS]
+    data["labs"].append({"name": "Respiratory rate", "key": "loinc:9279-1", "loinc": "9279-1", "unit": "/min", "panel": "Vitals", "n": len(pts), "pts": pts, "txt": []})
+    with open(data_path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
 
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
@@ -427,6 +488,7 @@ def start_app():
     add_glucose_watch(os.path.join(TMP, "watch"))
     add_immunization_records(os.path.join(TMP, "build"))   # #179
     add_vitals_records(os.path.join(TMP, "build"), os.path.join(TMP, "watch"))
+    add_fitness_records(os.path.join(TMP, "build"), os.path.join(TMP, "watch"))   # #226
     sys.path.insert(0, ROOT)
     import uvicorn
     from server import atrest, db as dbm, main, profiles, security
@@ -1137,7 +1199,7 @@ def main():
             js("state.tables.clear(); switchTab('health')")
             settle(500)
             check("Body and activity (#60): every card with charts has Chart | Table",
-                  js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen"])
+                  js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen", "#h-resp", "#h-vo2"])
             page.focus("#h-body svg")
             page.keyboard.press("Home")
             settle(150)
@@ -1145,10 +1207,10 @@ def main():
             check("…its charts step from the keyboard too, with the hover's crosshair and tooltip", re.match(r"Weight: \d+ readings from", hk[0] or "")
                   and hk[1] == "block" and " lb" in hk[2] and hk[3] == "visible", hk)
             page.keyboard.press("Escape")
-            for k in ("#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen"):
+            for k in ("#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen", "#h-resp", "#h-vo2"):
                 page.click(f"{k} .view-seg button:text-is('Table')")
                 settle(200)
-            ht = js("['#h-body', '#h-glucose', '#h-sleep', '#h-activity', '#h-heart', '#h-bp', '#h-temp', '#h-oxygen'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
+            ht = js("['#h-body', '#h-glucose', '#h-sleep', '#h-activity', '#h-heart', '#h-bp', '#h-temp', '#h-oxygen', '#h-resp', '#h-vo2'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
             check("…Table shows each card's values as a table, a row per day or week", all(n > 0 for n in ht), ht)
             # Costs: both charts
             js("state.tables.clear(); switchTab('costs')")
@@ -1182,7 +1244,7 @@ def main():
             bad = []
             for theme in ("light", "dark"):
                 js("t => { document.documentElement.dataset.theme = t; }", theme)
-                for tab, keys in (("labs", ["Hemoglobin"]), ("heatmap", ["#hm"]), ("health", ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen"]), ("costs", ["#costBars", "#paidCum"])):
+                for tab, keys in (("labs", ["Hemoglobin"]), ("heatmap", ["#hm"]), ("health", ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen", "#h-resp", "#h-vo2"]), ("costs", ["#costBars", "#paidCum"])):
                     for table in (False, True):
                         js("([keys, on]) => { state.tables.clear(); if (on) keys.forEach(k => state.tables.add(k)); }", [keys, table])
                         js("t => t === 'heatmap' ? switchTab('labs', 'heatmap') : t === 'labs' ? switchTab('labs', 'chart') : switchTab(t)", tab)
@@ -1491,6 +1553,89 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             page.set_viewport_size({"width": 1400, "height": 900})
             js("state.tables.clear(); [state.preset, state.from, state.to] = window._was184; state.sel = new Set(window._was60[0]); switchTab(window._was184[3]); save()")
+
+            # ---- respiratory rate and cardio fitness (#226): the receiver folded a watch's breathing rate and VO2 max from
+            # both phone apps (add_fitness_records: Health Auto Export's sent twice, then Life Dashboard's) into the
+            # summary, a day each whichever app sent it; Body and activity has a small card for each, the visits'
+            # respiratory rates beside the phone's and told apart (one flagged by its report), VO2 max as the watch gives
+            # it with no fitness levels; Chart | Table, the keyboard, weeks over a long period; 1400 and 375 px, light and
+            # dark, axe clean
+            want_r, want_v = fitness_readings()
+            js("window._was226 = [state.preset, state.from, state.to, state.tab]; state.tables.clear(); setRange(dayTs('2026-08-01'), dayTs('2026-11-14')); switchTab('health')")
+            settle(500)
+            fc = js("""(() => { const r = document.getElementById('h-resp'), v = document.getElementById('h-vo2'), day = k => (WATCH.metrics.find(m => m.key === k) || {pts: []}).pts;
+                return r && v && {rdays: day('resp').length, vdays: day('vo2max').length, first: [day('resp')[0], day('vo2max')[0]], rhome: H.fit.resp.home.length,
+                  rclinic: H.fit.resp.clinic.length, vhome: H.fit.vo2.home.length, vunit: H.fit.vo2.unit, rlabel: r.querySelector('svg').getAttribute('aria-label'),
+                  vlabel: v.querySelector('svg').getAttribute('aria-label'), rlegend: r.querySelector('.legend').textContent, vlegend: v.querySelector('.legend').textContent,
+                  rhint: r.querySelector('.hint').textContent, vhint: v.querySelector('.hint').textContent, vtext: v.innerText,
+                  marks: [r.querySelectorAll('svg circle[fill="var(--surface)"]').length, r.querySelectorAll('svg path.pt.abn').length],
+                  order: [...document.querySelectorAll('#view-health > .card')].map(c => c.id).filter(Boolean).slice(-3),
+                  list: [...r.querySelectorAll('.vital-list li')].map(l => l.textContent)}; })()""")
+            r_days, v_days = len({t[:10] for t, _ in want_r}), len({t[:10] for t, _ in want_v})
+            check("respiratory rate and VO2 max (#226): read from both phone apps, a day each whichever app sent it",
+                  fc and fc["rdays"] == fc["rhome"] == r_days and fc["vdays"] == fc["vhome"] == v_days and fc["first"] == [["2026-08-01", 14], ["2026-08-02", 39.8]],
+                  fc and {k: fc[k] for k in ("rdays", "vdays", "first")})
+            check("…a small card each, after blood oxygen: the phone's days and the visits' respiratory rates told apart, a flagged one ▲",
+                  fc and fc["order"] == ["h-oxygen", "h-resp", "h-vo2"] and fc["rclinic"] == len(RESP_VISITS) and fc["marks"] == [1, 1]
+                  and "Phone, by day" in fc["rlegend"] and "At a visit" in fc["rlegend"] and "flagged as high or low" in fc["rhint"]
+                  and re.match(r"Respiratory rate: \d+ readings from", fc["rlabel"] or ""), fc and {k: fc[k] for k in ("order", "rclinic", "marks", "rlegend", "rlabel")})
+            check("…VO2 max as the watch gives it, in mL/kg/min, without fitness levels or judging words",
+                  fc and fc["vunit"] == "mL/kg/min" and "without fitness levels" in fc["vhint"] and "At a visit" not in fc["vlegend"]
+                  and re.match(r"Cardio fitness \(VO2 max\): \d+ days from", fc["vlabel"] or "")
+                  and not re.search(r"(?i)\b(poor|fair|good|excellent|superior|elite|normal|low|high|below|above|target|goal)\b", fc["vtext"]),
+                  fc and {k: fc[k] for k in ("vunit", "vhint", "vlabel")})
+            check("…its latest listed with the day and where it came from", fc and len(fc["list"]) == 3 and all("breaths/min" in l and "phone, the day's average" in l for l in fc["list"]),
+                  fc and fc["list"])
+            page.focus("#h-resp svg")
+            page.keyboard.press("Home")
+            settle(150)
+            tipped, visit = js("tip.innerText"), ""
+            for _ in range(16):   # on to the visit of 12 August
+                page.keyboard.press("ArrowRight")
+                settle(60)
+                if "at a visit" in js("tip.innerText"):
+                    visit = js("tip.innerText")
+                    break
+            check("…the respiratory rate chart steps from the keyboard: the phone's day, then the visit's reading with its report's flag",
+                  "14 breaths/min" in tipped and js("fmtD(dayTs('2026-08-01'))") in tipped and "phone, the day's average" in tipped
+                  and "22 breaths/min" in visit and "at a visit · Lakeside Family Medicine" in visit and "Respiratory rate ▲" in visit, [tipped, visit])
+            page.keyboard.press("Escape")
+            page.focus("#h-vo2 svg")
+            page.keyboard.press("End")
+            settle(150)
+            check("…and so does VO2 max's", "41.6 mL/kg/min" in js("tip.innerText") and "the watch's estimate" in js("tip.innerText"), js("tip.innerText"))
+            page.keyboard.press("Escape")
+            for k in ("#h-resp", "#h-vo2"):
+                page.click(f"{k} .view-seg button:text-is('Table')")
+                settle(200)
+            tb = js("""['#h-resp', '#h-vo2'].map(k => { const t = document.querySelector(k + ' table.data'); return t && [[...t.querySelectorAll('thead th')].map(h => h.textContent),
+                t.querySelectorAll('tbody tr').length, t.querySelectorAll('tbody td.abn').length, t.querySelector('tbody tr').textContent]; })""")
+            check("…Table lists every day and reading: the date, the value, where and from what",
+                  tb[0] and tb[0][0] == ["Date", "Respiratory rate (breaths/min)", "Where", "Source"] and tb[0][1] == r_days + 2 and tb[0][2] == 1
+                  and tb[1] and tb[1][0] == ["Date", "VO2 max (mL/kg/min)", "Source"] and tb[1][1] == v_days and "Phone, the watch's estimate" in tb[1][3], tb)
+            js("state.tables.clear(); applyPreset('1y'); renderHealth()")
+            settle(400)
+            wk = js("[document.querySelector('#h-resp svg').getAttribute('aria-label'), document.querySelector('#h-vo2 svg').getAttribute('aria-label'), document.querySelector('#h-resp .hint').textContent]")
+            check("…over a long period, weekly averages, said so", wk[0].startswith("Respiratory rate, weekly: ") and wk[1].startswith("Cardio fitness (VO2 max), weekly: ")
+                  and "daily average by week" in wk[2], wk)
+            js("setRange(dayTs('2026-08-01'), dayTs('2026-11-14'))")
+            bad, axe_f = [], []
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    for table in (False, True):
+                        js("on => { state.tables.clear(); if (on) { state.tables.add('#h-resp'); state.tables.add('#h-vo2'); } renderHealth(); }", table)
+                        settle(300)
+                        page.locator("#h-resp").scroll_into_view_if_needed()
+                        if width == 375:
+                            bad += phone_fits(page, f"respiratory rate and VO2 max {'tables' if table else 'charts'} ({theme})")
+                        axe_f += axe_check(page, f"respiratory rate and VO2 max {'tables' if table else 'charts'}, {width} px, {theme}")[0]
+            check("…both cards fit 375 px, and axe-core finds nothing serious at 1400 and 375 px, light and dark", not bad and not axe_f, (bad + axe_f)[:6])
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("state.tables.clear(); [state.preset, state.from, state.to] = window._was226; state.sel = new Set(window._was60[0]); switchTab(window._was226[3]); save()")
 
             # ---- each result against its own range (#58): the demo's creatinine (0.7–1.3 mg/dL) with two results from
             # an outside lab (0.6–1.2, add_range_records): the chart's band steps with each result's range and its
@@ -4055,9 +4200,9 @@ def main():
             check("key labs: the preview shows the Overview's tiles", p0 == [t for t, _ in before], p0[:4])
             page.click("#sec-overview button[aria-label='Remove Magnesium']")   # the demo has just the 12 default labs
             check("…a lab taken out leaves the preview", "Magnesium" not in js(preview))
-            check("…and is suggested among the profile's most-measured labs",   # first: the vitals taken at visits (#180, #184) have fewer
-                  js("[...document.querySelectorAll('#sec-overview .set-sugg .chip')].map(b => b.getAttribute('aria-label'))")
-                  == ["Add Magnesium", "Add Blood pressure, diastolic", "Add Blood pressure, systolic", "Add SpO2 (clinic)", "Add Temperature"])
+            sugg_ = js("[...document.querySelectorAll('#sec-overview .set-sugg .chip')].map(b => b.getAttribute('aria-label'))")
+            check("…and is suggested among the profile's most-measured labs",   # first: the vitals taken at visits (#180, #184, #226) have fewer
+                  sugg_ == ["Add Magnesium", "Add Blood pressure, diastolic", "Add Blood pressure, systolic", "Add Respiratory rate", "Add SpO2 (clinic)", "Add Temperature"], sugg_)
             page.click("#sec-overview .set-sugg .chip")
             check("…to put back", js(preview) == p0, js(preview)[-2:])
             grips = page.locator("#sec-overview .set-grip")

@@ -405,6 +405,7 @@ function renderVitals(box, {a, b, long, legend, head}) {
   if (home.length || clinic.length) bpCard(box, a, b, long, legend, head, home, clinic);
   if (H.vit.temp.home.length || H.vit.temp.clinic.length) tempCard(box, a, b, legend, head, H.vit.temp);
   if (H.vit.spo2.home.length || H.vit.spo2.clinic.length) oxygenCard(box, a, b, long, legend, head, H.vit.spo2);
+  fitnessCards(box, {a, b, long, legend, head});   // respiratory rate and VO2 max (#226), below
 }
 function bpCard(box, a, b, long, legend, head, home, clinic) {
   const C = {home: "var(--c-lab)", clinic: "var(--ink2)"}, inP = r => r.t >= a && r.t <= b;
@@ -627,6 +628,57 @@ function oxygenCard(box, a, b, long, legend, head, {home, clinic}) {
     {type: "pairs", data: clinicPts, color: C.clinic, hollow: true, r: 3.5}],
     tip: t => { const p = nearest(nav, t, long ? 4 : .6); if (!p) return null; const r = p[5];
       if (!r) return {t: p[0], rows: [el("div", {class: "v", text: `${fmtNum(p[1])}% average, low ${fmtNum(p[2])}%`}), el("div", {class: "s", text: `Week of ${fmtD(p[0] - 3 * DAY)} · phone, daily figures`})]};
+      return {t: p[0], rows: [el("div", {class: "v", text: val(r)}), el("div", {class: "s", text: where(r)}), flags(r) ? el("div", {class: "s", text: flags(r)}) : null]}; }});
+  latestList(card, all, 3, val, where, flags);
+}
+
+/* ---------------------------------------------------------------- respiratory rate and cardio fitness (#226) */
+/* The phone's daily figures from watch/receiver.py (resp and vo2max: from Health Connect, Health Auto Export or an
+   uploaded Apple Health export, made the same way), a small card each. Respiratory rate is the day's average of what
+   a watch measured (most measure it during sleep), beside the rates taken at visits (the records' vitals, LOINC 9279-1
+   or by name, per minute), told apart. VO2 max is the watch's own estimate of cardio fitness, in mL/kg/min, shown as it
+   gives it: no fitness levels or categories of Sanguity's own. */
+const RESP_TEST = s => !s.watch && /min/i.test(s.unit || "") && (vitalCode(s) === "9279-1" || /respirat|\bresp\b|breathing rate/i.test(s.name || ""));
+function hFitness() {
+  const M = Object.fromEntries(((WATCH || {}).metrics || []).map(m => [m.key, m]));
+  const days = (k, src) => (M[k] ? M[k].pts : []).map(([d, v]) => ({t: dayTs(d), v: [v], f: [], src, home: true, day: true}));
+  return {resp: {home: days("resp", "phone, the day's average"), clinic: clinicReadings([RESP_TEST]), unit: (M.resp || {}).unit || "breaths/min"},
+    vo2: {home: days("vo2max", "phone, the watch's estimate"), clinic: [], unit: (M.vo2max || {}).unit || "mL/kg/min"}};
+}
+function fitnessCards(box, vx) {
+  H.fit = H.fit || hFitness();
+  const {resp, vo2} = H.fit;
+  if (resp.home.length || resp.clinic.length) phoneDayCard(box, vx, {...resp, id: "h-resp", title: "Respiratory rate", name: "Respiratory rate", color: "var(--c-study)", near: .6,
+    hint: long => `${long ? "The phone's daily average by week" : "The phone's daily average"} of the breaths a minute a watch measured (most measure it during sleep); rates taken at visits one by one.`});
+  if (vo2.home.length) phoneDayCard(box, vx, {...vo2, id: "h-vo2", title: "Cardio fitness (VO2 max)", name: "VO2 max", color: "var(--c-procedure)", near: 4,
+    hint: long => `The watch's estimate of VO2 max, the most oxygen the body uses in hard exercise, in ${vo2.unit}${long ? ", by week" : ""}: as the device gives it, without fitness levels.`});
+}
+/* one card: the phone's days (weekly averages over a long period) as a line with dots, the visits' readings hollow */
+function phoneDayCard(box, {a, b, long, legend, head}, o) {
+  const C = {home: o.color, clinic: "var(--ink2)"}, key = "#" + o.id, visits = o.clinic.length > 0, fmt = v => fmtNum(Math.round(v * 10) / 10);
+  const val = r => `${fmt(r.v[0])} ${o.unit}`, flags = r => flagsOf(r, [o.name]);
+  const where = r => r.day ? `${fmtD(r.t)} · ${r.src}` : `${fmtDT(r.t)} · at a visit · ${r.src}`;
+  const card = el("div", {class: "card", id: o.id, tabindex: -1}, head(o.title, key),
+    el("p", {class: "hint", text: o.hint(long) + (o.clinic.some(r => r.f[0]) ? " ▲ or ▼ marks a reading the clinic's report flagged as high or low." : "")}));
+  box.append(card);
+  const all = [...o.home, ...o.clinic].filter(r => r.t >= a && r.t <= b).sort((p, q) => p.t - q.t);
+  if (state.tables.has(key)) {
+    card.append(chartTable(["Date", `${o.name} (${o.unit})`, ...(visits ? ["Where"] : []), "Source"],
+      [...all].reverse().map(r => [r.day ? fmtD(r.t) : fmtDT(r.t), [fmt(r.v[0]), r.f[0]], ...(visits ? [r.day ? "Phone" : "Clinic visit"] : []),
+        r.day ? r.src[0].toUpperCase() + r.src.slice(1) : r.src])));
+    return;
+  }
+  card.append(legend([[C.home, long ? "Phone, weekly average" : "Phone, by day", 1], ...(visits ? [[C.clinic, "At a visit", 1]] : [])]));
+  const dayPts = o.home.map(r => [r.t, r.v[0], null, "", "", r]), pts = long ? weekly(o.home.map(r => [r.t, r.v[0]])) : dayPts;
+  const clinicPts = o.clinic.map(r => [r.t, r.v[0], null, r.f[0], "", r]);
+  const nav = [...pts, ...clinicPts].sort((p, q) => p[0] - q[0]);
+  hChart(card, a, b, {h: 150, fmtY: v => String(+v.toFixed(1)), label: long ? `${o.title}, weekly` : o.title,
+    noun: visits ? "reading" : long ? "week" : "day", nav, layers: [   // "readings": the phone's days and the visits'
+    {type: "line", data: pts, color: C.home, width: 1.6, gap: long ? 21 : 10},
+    {type: "dots", data: pts, color: C.home, r: pts.length > 200 ? 1.5 : 2.6},
+    {type: "pairs", data: clinicPts, color: C.clinic, hollow: true, r: 3.5}],
+    tip: t => { const p = nearest(nav, t, long ? 4 : o.near); if (!p) return null; const r = p[5];
+      if (!r) return {t: p[0], rows: [el("div", {class: "v", text: `${fmt(p[1])} ${o.unit} average`}), el("div", {class: "s", text: `Week of ${fmtD(p[0] - 3 * DAY)} · phone, daily figures`})]};
       return {t: p[0], rows: [el("div", {class: "v", text: val(r)}), el("div", {class: "s", text: where(r)}), flags(r) ? el("div", {class: "s", text: flags(r)}) : null]}; }});
   latestList(card, all, 3, val, where, flags);
 }

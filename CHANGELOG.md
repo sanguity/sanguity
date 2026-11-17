@@ -401,6 +401,13 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The Sleep tile's stages in minutes** (#216): on Body and activity, the line under the average sleep said
   "1 min deep · 2 min REM", the nights' average hours rounded and called minutes; it now gives the minutes, as the
   sleep chart's tooltip and table do ("72 min deep · 105 min REM").
+- **Respiratory rate and cardio fitness (VO2 max) on Body and activity** (#226): the watch receiver reads VO2 max from
+  both phone apps (Health Connect's Vo2Max through Life Dashboard Companion, Apple Health's through Health Auto
+  Export) and the Apple Health importer from an uploaded export, beside the respiratory rate all three already
+  brought, the same readings giving the same days whichever way they came. Body and activity has a small card for
+  each: the phone's daily respiratory rate beside the rates taken at visits (the records' vitals), told apart, a
+  report's flag kept; VO2 max as the watch estimates it, in mL/kg/min, without fitness levels of Sanguity's own.
+  Chart | Table, the keyboard and weekly averages over a long period, like the other cards.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

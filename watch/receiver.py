@@ -81,6 +81,9 @@ SAMPLE_TYPES = {  # payload key -> value field(s)
     "bone_mass": ("kilograms", None),
     "body_water_mass": ("kilograms", None),
     "basal_metabolic_rate": ("kilocalories_per_day", None),
+    # cardio fitness (#226): Health Connect's Vo2MaxRecord, its value field named after the record's property
+    # (vo2MillilitersPerMinuteKilogram) as Life Dashboard names the others ("kilocalories_per_day"); inferred, not seen
+    "vo2_max": ("vo2_milliliters_per_minute_kilogram", None),
 }
 LB = 2.20462
 ASLEEP = {"sleeping", "light", "deep", "rem"}
@@ -100,8 +103,10 @@ HAE_QUANTITY = {
     "body_mass": "HKQuantityTypeIdentifierBodyMass",
     "body_fat_percentage": "HKQuantityTypeIdentifierBodyFatPercentage",
     "lean_body_mass": "HKQuantityTypeIdentifierLeanBodyMass",
+    "vo2_max": "HKQuantityTypeIdentifierVO2Max",   # cardio fitness (#226)
 }
-HAE_UNITS = {"rate": {"bpm": 1, "breaths/min": 1}, "count": {"steps": 1}}   # spellings besides HealthKit's own
+HAE_UNITS = {"rate": {"bpm": 1, "breaths/min": 1}, "count": {"steps": 1},   # spellings besides HealthKit's own
+             "vo2": {"ml/(kg·min)": 1, "ml/(kg*min)": 1, "ml/kg/min": 1, "ml/kg·min": 1, "mL/(kg·min)": 1, "mL/kg/min": 1}}
 HAE_STAGE = {   # a sleep segment's "value" -> the receiver's stage; in bed overlaps the others and isn't sleep
     "core": "light", "deep": "deep", "rem": "rem", "awake": "awake", "asleep": "sleeping", "unspecified": "sleeping",
     "in bed": None, "inbed": None}
@@ -787,6 +792,7 @@ class Store:
                                       ("heart_rate_variability", "hrv", None, None),
                                       ("oxygen_saturation", "spo2_avg", "spo2_min", None),
                                       ("respiratory_rate", "resp", None, None),
+                                      ("vo2_max", "vo2max", None, None),   # cardio fitness (#226)
                                       ("skin_temperature", "skin_temp", None, None)):
             acc = {}
             for d, s, n, mn, mx in q("SELECT day, SUM(v), COUNT(*), MIN(v), MAX(v) FROM samples WHERE type=? GROUP BY day", (typ,)):
@@ -850,6 +856,7 @@ class Store:
             "hrv": ("HRV (RMSSD)" if rmssd else "HRV (SDNN)", "ms", "Heart"), "hrv_sdnn": ("HRV (SDNN)", "ms", "Heart"),
             "spo2_avg": ("SpO2, daily average", "%", "Oxygen & breathing"), "spo2_min": ("SpO2, daily low", "%", "Oxygen & breathing"),
             "resp": ("Respiratory rate", "breaths/min", "Oxygen & breathing"),
+            "vo2max": ah.META["vo2max"],   # cardio fitness (#226)
             "sleep_h": ("Sleep", "hours", "Sleep"), "sleep_deep_min": ("Deep sleep", "min", "Sleep"),
             "sleep_rem_min": ("REM sleep", "min", "Sleep"), "sleep_light_min": ("Light sleep", "min", "Sleep"),
             "sleep_awake_min": ("Awake during sleep", "min", "Sleep"),
