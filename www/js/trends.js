@@ -9,7 +9,11 @@ function latest(s) { return s.pts[s.pts.length - 1]; }
    shown by or its panel. clearLabFilter(): no filter, both boxes emptied, the view drawn again */
 state.labQ = "";
 const labMatch = s => !state.labQ || [s.name, nice(s.name), s.panel || ""].some(t => t.toLowerCase().includes(state.labQ));
-function labCount(box, n, all) { $(box).textContent = state.labQ ? `${n || "None"} of ${all}` : `${all} lab${all === 1 ? "" : "s"}`; }   // "12 of 64", "64 labs"
+function labCount(box, n, all) {
+  $(box).textContent = state.labQ ? `${n || "None"} of ${all}` : `${all} lab${all === 1 ? "" : "s"}`;   // "12 of 64", "64 labs"
+  const hm = box === "#hmQn";   // and under the box, what it keeps, with Reset filters (#190, filters.js)
+  filterLine(state.labQ ? [`Showing lab names matching “${$(hm ? "#hmQ" : "#labQ").value.trim()}”`] : [], clearLabFilter, () => $(hm ? "#hmQ" : "#labQ"), $(hm ? "#hmSum" : "#labSum"));
+}
 const labFilterDraw = () => state.labsView === "heatmap" ? renderHeatmap() : renderSeriesList();
 function clearLabFilter() { state.labQ = ""; $("#labQ").value = $("#hmQ").value = ""; labFilterDraw(); }
 {

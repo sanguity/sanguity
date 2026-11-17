@@ -977,8 +977,7 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
 }
 
 /* ---- the Timeline's kinds (#189): each kind's chip (.toggle, above) with its "⋯" menu button joined on as one pill,
-   tinted with the chip while shown; its menu (Show only this, Show all) under it; "Show all" after the chips while any
-   is hidden */
+   tinted with the chip while shown; its menu (Show only this, Show all) under it */
 .kind{position:relative;display:inline-flex;align-items:stretch}
 .kind>.toggle{border-top-right-radius:0;border-bottom-right-radius:0;padding-right:8px}
 .kind-more{display:inline-flex;align-items:center;margin:0 0 0 -1px;border:1px solid var(--axis);border-radius:0 999px 999px 0;background:transparent;
@@ -987,16 +986,36 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
 .kind>.toggle[aria-pressed="true"]+.kind-more{background:color-mix(in srgb,var(--tone) 15%,var(--raised));border-color:color-mix(in srgb,var(--tone) 70%,var(--ink));color:var(--ink)}
 .kind>.toggle[aria-pressed="true"]+.kind-more:hover,.kind>.toggle[aria-pressed="true"]+.kind-more[aria-expanded="true"]{background:color-mix(in srgb,var(--tone) 28%,var(--raised))}
 .kind>.toggle:focus-visible,.kind-more:focus-visible{z-index:1}
-.kind-more:focus-visible,.kinds-all:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kind-more:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .kind>.menu-list{left:0;right:auto;min-width:170px}
-.kinds-all{border:0;background:none;padding:3px 6px;margin:0;color:var(--accent);font:inherit;font-size:13px;font-weight:600;text-decoration:underline;text-underline-offset:2px;cursor:pointer;border-radius:6px}
-.kinds-all:hover{color:var(--ink)}
-@media (max-width:700px){ .kind-more{padding:0 12px 0 10px} .kinds-all{padding:5px 8px} }
+@media (max-width:700px){ .kind-more{padding:0 12px 0 10px} }
 @media (forced-colors:active){
   .kind-more{background:Canvas;color:CanvasText;border:1px dashed CanvasText}
   .kind>.toggle[aria-pressed="true"]+.kind-more,.kind>.toggle[aria-pressed="true"]+.kind-more:is(:hover,[aria-expanded="true"]){forced-color-adjust:none;background:Highlight;color:HighlightText;border:1px solid Highlight}
-  .kinds-all{color:LinkText}
-  .kind-more:focus-visible,.kinds-all:focus-visible{outline-color:CanvasText}
+  .kind-more:focus-visible{outline-color:CanvasText}
+}
+
+/* ---- what the filters leave out (#190, filters.js): one line under a tab's filters while any narrows what's shown,
+   "Showing 3 of 11 kinds · matching “visit” · Reset filters", marked by an accent bar at its start; Reset as a link
+   (the ink's colour, underlined in the accent: the accent itself is too light for small text on the light theme).
+   The Timeline's has the records bar's whole last row (kept on a phone with the panel closed); the counts' caption
+   sits under the Timeline's tiles */
+.fsum{margin:0 0 8px;padding:1px 0 1px 9px;border-left:3px solid var(--accent);font-size:13px;line-height:1.5;color:var(--ink2);overflow-wrap:anywhere}
+.fsum-t{color:var(--ink)}
+.fsum-act{white-space:nowrap}
+.fsum-sep{color:var(--muted)}
+.fsum-reset{border:0;background:none;padding:2px 4px;margin:-2px 0 -2px -4px;color:var(--ink);font:inherit;font-weight:600;text-decoration:underline 2px var(--accent);text-underline-offset:3px;cursor:pointer;border-radius:6px;white-space:nowrap}
+.fsum-reset:hover{color:var(--accent)}
+.fsum-reset:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.filters>.fsum{flex:1 0 100%;margin:0}
+.series-hd .fsum{margin:0}
+.list-hd + .fsum{margin:4px 0 8px}
+.stats-note{margin:-6px 0 12px;font-size:12px;color:var(--ink2)}
+@media (max-width:700px){ .fsum-reset{padding:6px 6px;margin:-6px 0 -6px -6px} }
+@media (forced-colors:active){
+  .fsum{border-left-color:CanvasText}
+  .fsum-reset{color:LinkText}
+  .fsum-reset:focus-visible{outline-color:CanvasText}
 }
 
 /* ---- keyboard and screen-reader basics (#209): "Skip to content" (util.js), shown while it has focus; the <main>

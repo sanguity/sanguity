@@ -72,6 +72,7 @@ $("#optMarks").onchange = e => { state.marks = e.target.checked; renderCharts();
 $("#optSmooth").onchange = e => { state.smooth = e.target.checked; renderCharts(); save(); };
 function renderAll() {
   renderFilters();
+  renderFilterSum();   // what the filters leave out, and the Filters button's count (#190, filters.js)
   $("#optMarks").checked = state.marks; $("#optSmooth").checked = state.smooth;
   if (state.tab === "timeline") { renderStats(); renderTimeline(); renderList(); }
   else if (state.tab === "labs") renderLabs();

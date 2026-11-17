@@ -1057,12 +1057,16 @@ def main():
               t.querySelector(':scope > input[type=checkbox]') ? String(t.querySelector('input').checked) : t.getAttribute('aria-pressed')])"""
             check("the journal's kinds and “Only the dates shown” are on/off toggle chips that say true or false (#193)",
                   js(jtoggles) == [["Notes", "true"], ["Symptoms", "true"], ["Side effects", "true"], ["Only the dates shown", "false"]], js(jtoggles))
+            jsum = "(p => p && !p.hidden ? p.textContent : null)(document.querySelector('#journalHome .fsum'))"   # what the filters leave out (#190)
+            check("the journal's filters as they start: no filter line (#190)", js(jsum) is None, js(jsum))
             page.click("#journalHome .jfilters .toggle[data-kind=symptom]")   # the kinds are on/off chips (#193)
             check("…filtered by kind", page.locator("#journalHome .jrow").count() == 0 and "No entries match" in page.inner_text("#journalHome .jlist")
                   and js("document.querySelector('#journalHome .toggle[data-kind=symptom]').getAttribute('aria-pressed')") == "false")
+            check("…a line under them says so, with Reset filters (#190)", js(jsum) == "Showing 2 of 3 kinds · Reset filters", js(jsum))
             page.click("#journalHome .jfilters .toggle[data-kind=symptom]")
             page.fill("#journalHome .jfilters input[type=search]", "after lunch")
             check("…and by what they say", page.locator("#journalHome .jrow").count() == 1)
+            check("…said on that line too (#190)", js(jsum) == "Showing entries matching “after lunch” · Reset filters", js(jsum))
             page.check("#journalHome .jinrange input")
             js("id => setRange(byId.get(id).ts + 40 * DAY, byId.get(id).ts + 80 * DAY)", entry["id"])
             settle(300)
@@ -1075,7 +1079,21 @@ def main():
             settle(200)
             check("the journal's home fits 375 px", js("(c => document.documentElement.scrollWidth <= 375 && c.scrollWidth <= c.clientWidth)(document.getElementById('journalHome'))"),
                   js("(c => [document.documentElement.scrollWidth, c.scrollWidth, c.clientWidth])(document.getElementById('journalHome'))"))
+            theme_before = js("document.documentElement.dataset.theme || null")
+            jbad = []
+            for theme in ("light", "dark"):   # filtered, with its line (#190)
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                settle(100)
+                jbad += phone_fits(page, f"journal filtered, {theme}")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            check("…filtered, its line and Reset filters fit too, in light and dark (#190)", js(jsum) and not jbad, jbad)
             page.set_viewport_size({"width": 1400, "height": 900})
+            js("document.getElementById('sgStatus').textContent = ''")
+            page.click("#journalHome .fsum-reset")
+            check("…Reset filters puts every filter back, says so, focus in the journal's search (#190)", js(jsum) is None
+                  and page.input_value("#journalHome .jfilters input[type=search]") == "" and page.locator("#journalHome .jrow").count() == 1
+                  and js("[...document.querySelectorAll('#journalHome .jfilters .toggle')].every(t => (t.getAttribute('aria-pressed') || String(t.querySelector('input').checked)) === (t.dataset.kind ? 'true' : 'false'))")
+                  and said(page) == "Filters reset." and js("document.activeElement.matches('#journalHome .jfilters input[type=search]')"), js(jsum))
             js("TAB_HIDDEN.add('timeline'); journalHome()")
             check("…with the Timeline tab hidden, the list opens in the panel instead",
                   js("document.getElementById('dtitle').textContent") == "Journal" and page.locator("#dbody .jrow").count() == 1)
@@ -1715,7 +1733,8 @@ def main():
                   and ["claim", "false", f"{names['claim']}, {ks[lanes.index('claim')][3]}, hidden"] == ks[lanes.index("claim")][:3], ks)
             vis_n = names["visit"]
             check("…found by that name (\"Visits, 31, shown\")", page.get_by_role("button", name=re.compile(rf"^{vis_n}, \d+, shown$")).count() == 1)
-            check("…and \"Show all\" is there while a kind is hidden (Insurance claims start hidden)", js("!!document.querySelector('#chips .kinds-all')"))
+            check("…and as kinds start (Insurance claims hidden), no \"Show all\" button beside the chips and no filter line: Reset filters took that place (#190)",
+                  not js("!!document.querySelector('#chips .kinds-all')") and page.is_hidden("#fsum"))
             # Only this, by mouse: the ⋯ beside Visits, then "Show only Visits"
             page.click("#chips .kind-more[data-k=visit]")
             menu = "[...document.querySelectorAll('#chips .menu-list')].filter(m => !m.hidden).map(m => [m.id, ...[...m.querySelectorAll('[role=menuitem]')].map(i => i.textContent)])"
@@ -1763,7 +1782,7 @@ def main():
             settle(200)
             check("…Show all from it shows every kind, says so, focus kept on that ⋯, and \"Show all\" goes",
                   only() == lanes and said(page) == "Showing every kind" and js("document.activeElement.matches('.kind-more[data-k=lab]')")
-                  and not js("!!document.querySelector('#chips .kinds-all')"), [only(), js("document.activeElement.outerHTML")])
+                  and page.is_hidden("#fsum"), [only(), js("document.activeElement.outerHTML")])
             # a chip toggled by keyboard keeps focus; right-click (or the menu key, or a long press) on a chip opens its menu
             page.focus("#chips .toggle[data-k=imaging]")
             page.keyboard.press("Space")
@@ -1773,11 +1792,11 @@ def main():
             page.click("#chips .toggle[data-k=study]", button="right")
             check("kinds: right-click on a chip opens its menu", js(menu)[:1] == [["kindMenu-study", f"Show only {names['study']}", "Show all"]], js(menu))
             page.keyboard.press("Escape")
-            page.click("#chips .kinds-all")   # the visible "Show all", by mouse
+            page.click("#fsum .fsum-reset")   # the filter line's Reset filters (#190), where a "Show all" button was
             settle(200)
-            check("kinds: the \"Show all\" button shows every kind, focus on the first chip", only() == lanes
+            check("kinds: the filter line's Reset filters shows every kind (Insurance claims shown, as they were), focus on the first chip", only() == lanes
                   and js("document.activeElement === document.querySelector('#chips .toggle')"), only())
-            # 375 px, light and dark: the chips, a menu open on the last one, and "Show all" fit
+            # 375 px, light and dark: the chips and a menu open on the last one fit
             page.set_viewport_size({"width": 375, "height": 800})
             page.click("#ftoggle")
             js("state.cats.delete('claim'); renderAll()")
@@ -1787,18 +1806,176 @@ def main():
                 page.click(f"#chips .kind-more[data-k={last}]")
                 settle(150)
                 box = js(f"(r => [r.left, r.right])(document.getElementById('kindMenu-{last}').getBoundingClientRect())")
-                check(f"kinds at 375 px ({theme}): chips, Show all and an open menu fit", phone_fits(page, "Timeline kinds") == [] and box[0] >= 0 and box[1] <= 375
-                      and js("!!document.querySelector('#chips .kinds-all')"), [phone_fits(page, "Timeline kinds"), box])
+                check(f"kinds at 375 px ({theme}): chips and an open menu fit", phone_fits(page, "Timeline kinds") == [] and box[0] >= 0 and box[1] <= 375,
+                      [phone_fits(page, "Timeline kinds"), box])
                 page.click(f"#chips .kind-more[data-k={last}]")
             page.click("#chips .kind-more[data-k=visit]")
             page.click("#kindMenu-visit [role=menuitem]:first-child")
             settle(200)
             check("kinds at 375 px: Show only this from the ⋯", only() == ["visit"] and phone_fits(page, "Timeline kinds") == [], only())
-            page.click("#chips .kinds-all")
+            page.click("#fsum .fsum-reset")
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             js("state.cats.delete('claim'); renderAll()")   # as the checks after this expect: Insurance claims hidden
             page.click("#ftoggle")
             page.set_viewport_size({"width": 1400, "height": 900})
+
+            # ---- what the filters leave out (#190): on each tab that filters, one line saying how, ending in Reset filters,
+            # which puts that tab's filters back but not the period. The Timeline's is under the records bar, still shown on
+            # a phone with the panel closed, the Filters button counting the filters on and its counts captioned; the Labs
+            # name filter's is under its box (charts and heatmap); each Costs list's under its filters, their totals then
+            # for what's shown. Filtered and not, at 1400 and 375 px, light and dark (phone_fits, and the line's contrast).
+            # The journal's card is checked with the journal, above.
+            fsum = lambda sel="#fsum": js("s => (p => p && !p.hidden && p.getClientRects().length ? p.textContent : null)(document.querySelector(s))", sel)
+            start_kinds = "CATS.filter(hasLane).every(c => state.cats.has(c.k) === (c.k !== 'claim'))"
+            ftog = lambda: js("document.getElementById('ftoggle').textContent")
+            theme_before = js("document.documentElement.dataset.theme || null")
+            set_theme = lambda t: js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", t)
+            def line_look(sel):   # the line's words and its Reset against the background behind them: [contrast, contrast]
+                c = js("""s => { const p = document.querySelector(s), bg = n => { for (; n; n = n.parentElement) { const b = getComputedStyle(n).backgroundColor;
+                  if (b !== 'rgba(0, 0, 0, 0)' && b !== 'transparent') return b; } return 'rgb(255, 255, 255)'; };
+                  return [getComputedStyle(p.querySelector('.fsum-t')).color, getComputedStyle(p.querySelector('.fsum-reset')).color, bg(p)]; }""", sel)
+                return [contrast(c[0], c[2]), contrast(c[1], c[2])]
+            open_tab("timeline")
+            tl_preset = js("state.preset")
+            js("applyPreset('1y')")
+            settle(300)
+            check("filters (#190): the Timeline as it starts (only Insurance claims hidden): no filter line, no count on Filters, its counts not captioned",
+                  fsum() is None and js(start_kinds) and js("state.q") == "" and ftog() == "Filters" and page.is_hidden("#statsNote"), [fsum(), ftog()])
+            page.click("#chips .toggle[data-k=lab]")
+            js("document.getElementById('sgStatus').textContent = ''")
+            page.click("#q")
+            page.locator("#q").press_sequentially("Visit", delay=60)
+            settle(300)
+            want = js("(k => `Showing ${k.filter(c => state.cats.has(c.k)).length} of ${k.length} kinds · matching “Visit” · Reset filters`)(CATS.filter(hasLane))")
+            check("…a kind hidden and a search typed: one line under the records bar says so, “Showing 9 of 11 kinds · matching “Visit” · Reset filters”",
+                  fsum() == want and js("document.getElementById('fsum').parentElement.classList.contains('filters')"), [fsum(), want])
+            n_vis = js("EV.filter(visible).length")
+            check("…its counts say they're for what's shown, as the list's are", page.is_visible("#statsNote") and "for what's shown" in page.inner_text("#statsNote")
+                  and page.inner_text("#listTitle") == f"Events ({n_vis:,})", page.inner_text("#listTitle"))
+            n_said = f"{n_vis:,} event{'s' if n_vis != 1 else ''} match." if n_vis else "No events match."
+            check("…how many events match is said once typing stops, not for each key", said(page, tries=40) == n_said,
+                  [js("document.getElementById('sgStatus').textContent"), n_said])
+            for theme in ("light", "dark"):
+                set_theme(theme)
+                settle(100)
+                look = line_look("#fsum")
+                check(f"…at 1400 px ({theme}): the line and its Reset filters are readable", min(look) >= 4.5 and fsum() == want, look)
+            page.set_viewport_size({"width": 375, "height": 800})
+            for theme in ("light", "dark"):
+                set_theme(theme)
+                settle(200)
+                closed = [fsum() == want, page.is_hidden("#chips"), page.is_hidden("#q"), ftog()]
+                bad = phone_fits(page, f"Timeline filtered, {theme}")
+                page.click("#ftoggle")
+                settle(150)
+                bad += phone_fits(page, f"Timeline filtered, panel open, {theme}")
+                page.click("#ftoggle")
+                look = line_look("#fsum")
+                check(f"filters at 375 px ({theme}): with the panel closed the line stays, “Filters (2)” says how many are on; it fits, open or closed, and reads",
+                      closed == [True, True, True, "Filters (2)"] and not bad and min(look) >= 4.5, [closed, bad, look])
+            js("document.getElementById('sgStatus').textContent = ''")
+            page.click("#fsum .fsum-reset")
+            settle(200)
+            check("…Reset filters there puts the kinds and the search back, not the period; said; focus on the Filters button",
+                  fsum() is None and js(start_kinds) and js("state.q") == "" and page.input_value("#q") == "" and js("state.preset") == "1y"
+                  and ftog() == "Filters" and page.is_hidden("#statsNote") and said(page) == "Filters reset." and js("document.activeElement.id") == "ftoggle",
+                  [fsum(), js("state.preset"), js("document.activeElement.id")])
+            for theme in ("light", "dark"):
+                set_theme(theme)
+                settle(150)
+                bad = phone_fits(page, f"Timeline unfiltered, {theme}")
+                page.click("#ftoggle")
+                bad += phone_fits(page, f"Timeline unfiltered, panel open, {theme}")
+                page.click("#ftoggle")
+                check(f"…and unfiltered at 375 px ({theme}), it all fits, open or closed", not bad and fsum() is None, bad)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            set_theme(theme_before)
+            page.click("#chips .kind-more[data-k=visit]")
+            page.click("#kindMenu-visit [role=menuitem]:first-child")
+            settle(200)
+            check("…Show only Visits: “Showing only Visits · Reset filters”", fsum() == f"Showing only {names['visit']} · Reset filters", fsum())
+            page.focus("#fsum .fsum-reset")
+            page.keyboard.press("Enter")
+            settle(200)
+            check("…Reset filters by keyboard: as kinds start, focus on the first chip", fsum() is None and js(start_kinds)
+                  and js("document.activeElement === document.querySelector('#chips .toggle')"), js("document.activeElement.outerHTML"))
+            # Labs: the name filter's line, under its box in the list's header and the heatmap's
+            open_tab("labs")
+            js("clearLabFilter()")
+            settle(300)
+            check("filters on Labs (#190): no name filter, no line", fsum("#labSum") is None and ftog() == "Dates")
+            page.fill("#labQ", "hemo")
+            settle(400)
+            lab_want = "Showing lab names matching “hemo” · Reset filters"
+            check("…filtered: under the box, “Showing lab names matching “hemo” · Reset filters”", fsum("#labSum") == lab_want
+                  and js("document.getElementById('labSum').previousElementSibling.contains(document.getElementById('labQ'))"), fsum("#labSum"))
+            page.set_viewport_size({"width": 375, "height": 800})
+            for theme in ("light", "dark"):
+                set_theme(theme)
+                settle(200)
+                bad, look = phone_fits(page, f"Labs filtered, {theme}"), line_look("#labSum")
+                check(f"…at 375 px ({theme}) it fits and reads", not bad and min(look) >= 4.5 and fsum("#labSum") == lab_want, [bad, look])
+            page.set_viewport_size({"width": 1400, "height": 900})
+            set_theme(theme_before)
+            open_tab("heatmap")
+            settle(400)
+            check("…the heatmap's header has the same line", fsum("#hmSum") == lab_want, fsum("#hmSum"))
+            js("document.getElementById('sgStatus').textContent = ''")
+            page.click("#hmSum .fsum-reset")
+            settle(300)
+            check("…its Reset filters empties both boxes, said, focus in the heatmap's box", fsum("#hmSum") is None and js("state.labQ") == ""
+                  and page.input_value("#hmQ") == page.input_value("#labQ") == "" and said(page) == "Filters reset." and js("document.activeElement.id") == "hmQ")
+            open_tab("labs")
+            settle(300)
+            check("…and on the chart, no line", fsum("#labSum") is None)
+            # Costs: each list's filters, the claims' and the out-of-pocket amounts'
+            open_tab("costs")
+            js("applyPreset('all')")
+            settle(400)
+            claims_hint = "document.querySelector('#costTable .toolbar ~ p.hint').textContent"
+            check("filters on Costs (#190): unfiltered, no line by either list, the claims' totals for them all",
+                  fsum("#costTable .fsum") is None and fsum("#paidTable .fsum") is None and re.match(r"^[\d,]+ claims · billed", js(claims_hint)), js(claims_hint))
+            page.select_option("#costTable select.search", "Pharmacy")
+            settle(400)
+            c_want = js("(r => `Showing ${r.filter(x => x.cat === 'Pharmacy').length.toLocaleString()} of ${r.length.toLocaleString()} claims · type of care: Pharmacy · Reset filters`)(costRows())")
+            check("…a type of care picked: “Showing 13 of 96 claims · type of care: Pharmacy · Reset filters”, the totals for the claims shown",
+                  fsum("#costTable .fsum") == c_want and js(claims_hint).startswith("For the claims shown: billed $"), [fsum("#costTable .fsum"), c_want, js(claims_hint)])
+            page.click("#paidTable .toggle")   # HSA only
+            settle(400)
+            p_want = js("(r => `Showing ${r.filter(x => x.hsa === 'HSA').length.toLocaleString()} of ${r.length.toLocaleString()} amounts · paid with an HSA · Reset filters`)(paidRows())")
+            check("…HSA only: “Showing 12 of 40 amounts · paid with an HSA · Reset filters”, the total for the amounts shown",
+                  fsum("#paidTable .fsum") == p_want and page.inner_text("#paidTable .toolbar .hint").startswith("For the amounts shown: $"),
+                  [fsum("#paidTable .fsum"), p_want, page.inner_text("#paidTable .toolbar .hint")])
+            page.set_viewport_size({"width": 375, "height": 800})
+            for theme in ("light", "dark"):
+                set_theme(theme)
+                settle(200)
+                bad, look = phone_fits(page, f"Costs filtered, {theme}"), line_look("#paidTable .fsum") + line_look("#costTable .fsum")
+                check(f"…at 375 px ({theme}) both fit and read", not bad and min(look) >= 4.5, [bad, look])
+            page.set_viewport_size({"width": 1400, "height": 900})
+            set_theme(theme_before)
+            settle(300)   # the resize redraws the tab first (timeline.js), which would take the focus Reset gives
+            page.click("#costTable .fsum-reset")
+            settle(300)
+            check("…the claims' Reset filters clears their filters only, focus in their search",
+                  fsum("#costTable .fsum") is None and js("[costState.q, costState.cat, costState.deniedOnly]") == ["", "", False]
+                  and fsum("#paidTable .fsum") == p_want and js("document.activeElement.matches('#costTable input.search')"),
+                  [js("[costState.q, costState.cat, costState.deniedOnly]"), fsum("#paidTable .fsum"), p_want, js("document.activeElement.outerHTML.slice(0, 90)")])
+            page.click("#paidTable .fsum-reset")
+            settle(300)
+            check("…the amounts' puts HSA only off, focus on that toggle; the period kept", fsum("#paidTable .fsum") is None and js("paidState.q") == ""
+                  and js("document.activeElement.matches('#paidTable .toggle') && document.activeElement.getAttribute('aria-pressed') === 'false'")
+                  and js("state.preset") == "all" and re.match(r"^[\d,]+ amounts? · \$", page.inner_text("#paidTable .toolbar .hint")))
+            page.set_viewport_size({"width": 375, "height": 800})
+            for theme in ("light", "dark"):
+                set_theme(theme)
+                settle(200)
+                bad = phone_fits(page, f"Costs unfiltered, {theme}")
+                check(f"…and unfiltered at 375 px ({theme}), it fits", not bad, bad)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            set_theme(theme_before)
+            js("p => applyPreset(p)", tl_preset)
+            settle(200)
 
             # ---- Labs: the name filter in the lab list's header with its count, the overlays grouped apart from the
             # legend (#192); one filter for the chart's list and the heatmap, apart from the Timeline's search
