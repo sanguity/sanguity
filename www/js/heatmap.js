@@ -16,8 +16,8 @@ function renderHeatmap() {
   const LEG = [[-4, "Far below"], [-2, "Below"], [0, "In range"], [2, "Above"], [4, "Far above"]];
   $("#hmLegend").replaceChildren(...[-4, -3, -2, -1, 0, 1, 2, 3, 4].map(lv => el("i", {style: {background: hmFill(lv)}, title: lv})),
     el("span", {text: "← far below · below · in range · above · far above →"}), el("span", {style: {color: "var(--muted)"}, text: "(distance outside the range, as a share of the range's width)"}));
-  const q = state.q;
-  const rows = SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null) && (!q || s.name.toLowerCase().includes(q) || nice(s.name).toLowerCase().includes(q) || s.panel.toLowerCase().includes(q)));
+  const all = SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null)), rows = all.filter(labMatch);   // the Labs filter (#192, trends.js)
+  labCount("#hmQn", rows.length, all.length);
   const panelOrder = ["CBC WITH DIFFERENTIAL", "COMPREHENSIVE METABOLIC PANEL"];
   const prank = p => { const i = panelOrder.indexOf(p); return i < 0 ? 9 : i; };
   rows.sort((a, b) => prank(a.panel) - prank(b.panel) || a.panel.localeCompare(b.panel) || b.n - a.n);
@@ -30,7 +30,7 @@ function renderHeatmap() {
   const avail = Math.max(320, svg.parentElement.clientWidth);
   const LW = avail < 600 ? 120 : 190, top = 34, rowH = 14, gap = 2;
   if (!rows.length || !cols.length) {   // keep it draggable so you can pan back to where the draws are
-    svg.replaceChildren(el("svg:text", {x: LW, y: 20, text: "No lab draws in this date range."})); svg.setAttribute("viewBox", `0 0 ${avail} 30`); svg.setAttribute("width", avail); svg.setAttribute("height", 30);
+    svg.replaceChildren(el("svg:text", {x: LW, y: 20, text: !rows.length && state.labQ ? "No lab names match the filter." : "No lab draws in this date range."})); svg.setAttribute("viewBox", `0 0 ${avail} 30`); svg.setAttribute("width", avail); svg.setAttribute("height", 30);
     svg._geom = {L: LW, R: avail - 8, w: avail}; axis.replaceChildren(); axis.setAttribute("height", 0); return;
   }
   // columns always fit the width (fractional widths are fine); zoom in to get wider cells

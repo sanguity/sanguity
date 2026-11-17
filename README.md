@@ -29,7 +29,7 @@ person's records appear in this repository.
 | Overview | Key labs with sparklines, watch and scale summaries, active problems, upcoming visits, costs since a milestone |
 | Body and activity | Watch, sleep and smart-scale data: weight and body composition, sleep stages, steps and workouts, heart rate and HRV |
 | Timeline | Every visit, stay, lab draw, report, message, document and claim on one zoomable timeline, with a searchable list; each medication as spans from its start through dose changes to its stop, with pharmacy fills marked |
-| Labs | Lab results against reference ranges, as charts over time (each with a table of its values), with procedures, imaging and your milestones marked, and saved views of the labs you chart together; or as a heatmap of every draw, one row per lab |
+| Labs | Lab results against reference ranges, as charts over time (each with a table of its values), with procedures, imaging and your milestones marked, and saved views of the labs you chart together; or as a heatmap of every draw, one row per lab; a name filter beside the list of labs narrows either |
 | Costs | Insurance claims by month or year, type of care and provider, and what you actually paid out of pocket: typed in, exported or from claims, matched to claims, counted once, with HSA and FSA totals |
 
 ![Labs: blood counts dipping through treatment cycles, with milestone markers](docs/screenshots/trends.png)

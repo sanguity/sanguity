@@ -47,11 +47,12 @@ function switchTab(t, view, push) {
   { const b = $("#tab-" + t), bar = b.parentElement; if (bar.scrollWidth > bar.clientWidth) bar.scrollTo({left: bar.scrollLeft + b.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - b.offsetWidth) / 2, behavior: smoothly()}); }
   for (const k of TABS) { $("#tab-" + k).setAttribute("aria-selected", t === k); $("#view-" + k).hidden = t !== k; }
   { const b = $("#tab-" + t); viewTitle([b.textContent, PROFILE && PROFILE.name].filter(Boolean).join(" · "), changed && booted && !b.parentElement.contains(document.activeElement) && b.textContent); }   // "Labs · Ben · Sanguity"; said when opened from elsewhere (#209)
-  // the records bar: its period on every tab with time (#171); the search on Timeline and Labs, the categories on Timeline
+  // the records bar: its period on every tab with time (#171); the search and the categories on Timeline only (Labs
+  // filters its lab names in the list's own header, #192: trends.js)
   $(".filters").style.display = t === "overview" ? "none" : "";
-  $(".filters").classList.toggle("period-only", t === "health" || t === "costs");
-  $("#ftoggle").textContent = t === "health" || t === "costs" ? "Dates" : "Filters";   // what it opens on a phone
-  $("#q").placeholder = t === "timeline" ? "Search events…" : "Filter lab names…"; $("#chips").style.display = t === "timeline" ? "" : "none";
+  $(".filters").classList.toggle("period-only", t !== "timeline");
+  $("#ftoggle").textContent = t !== "timeline" ? "Dates" : "Filters";   // what it opens on a phone
+  $("#chips").style.display = t === "timeline" ? "" : "none";
   renderAll();
   if (changed) window.scrollTo({top: 0, left: 0, behavior: "instant"});   // each tab starts at the top
   tabAddress(push && changed);   // #208

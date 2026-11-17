@@ -226,6 +226,11 @@ Everything on `main` so far; it becomes the first tagged release.
   "just labs" is one choice; right-click on a chip, or the keyboard's menu key, opens it too. A **Show all** button
   follows the chips while any kind is hidden. A screen reader hears each chip's kind, count and state ("Visits, 31,
   shown"), and focus stays on the chip or menu used. Which kinds are shown is still kept per profile.
+- Labs: the name filter beside its list (#192). **Filter lab names** is at the top of the lab list, with how many
+  labs match ("3 of 12"), above what's selected, Clear, Defaults and the saved views, which stay in view while the
+  list scrolls; the heatmap has the same filter above its rows. The records bar's search box is the Timeline's
+  alone, and words typed in either no longer hide medications under the Labs charts. Procedures and
+  imaging, Medications and Journal are grouped as **Show on charts:**, apart from the legend.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

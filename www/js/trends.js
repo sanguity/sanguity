@@ -3,24 +3,47 @@
 "use strict";
 /* ---------------------------------------------------------------- labs */
 function latest(s) { return s.pts[s.pts.length - 1]; }
+/* ---- the Labs filter (#192): lab names, typed in the lab list's header (charts) or the heatmap's (#labQ, #hmQ: one
+   filter for both views, not kept after a reload). state.labQ is what's typed, in lower case ("" for none); the
+   Timeline's search is state.q. labMatch(s): a lab the filter lets through, by its name in the records, the name it's
+   shown by or its panel. clearLabFilter(): no filter, both boxes emptied, the view drawn again */
+state.labQ = "";
+const labMatch = s => !state.labQ || [s.name, nice(s.name), s.panel || ""].some(t => t.toLowerCase().includes(state.labQ));
+function labCount(box, n, all) { $(box).textContent = state.labQ ? `${n || "None"} of ${all}` : `${all} lab${all === 1 ? "" : "s"}`; }   // "12 of 64", "64 labs"
+const labFilterDraw = () => state.labsView === "heatmap" ? renderHeatmap() : renderSeriesList();
+function clearLabFilter() { state.labQ = ""; $("#labQ").value = $("#hmQ").value = ""; labFilterDraw(); }
+{
+  let t;
+  for (const [id, other] of [["#labQ", "#hmQ"], ["#hmQ", "#labQ"]]) $(id).oninput = ev => {
+    $(other).value = ev.target.value;
+    clearTimeout(t); t = setTimeout(() => {
+      state.labQ = ev.target.value.trim().toLowerCase(); labFilterDraw();
+      if (state.labQ) announce(`${$(id + "n").textContent} labs match.`);   // the count changes without moving focus (#209)
+    }, 150);
+  };
+}
 function renderSeriesList() {
-  const wrap = $("#series"); wrap.replaceChildren();
-  const q = state.q;
-  const top = SERIES.filter(s => !s.watch && s.n >= 2 && (!q || s.name.toLowerCase().includes(q) || nice(s.name).toLowerCase().includes(q) || s.panel.toLowerCase().includes(q)));
+  const wrap = $("#seriesRows"); wrap.replaceChildren();
+  const all = SERIES.filter(s => !s.watch && s.n >= 2), top = all.filter(labMatch);
+  labCount("#labQn", top.length, all.length);
   const groups = new Map();
   for (const s of top) { const g = s.watch ? s.panel : s.n >= 40 ? s.panel || "Other" : "Less frequent"; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(s); }
   const rank = g => g === "Less frequent" ? 2 : g.startsWith("Watch") ? 1 : 0;
   const order = [...groups.keys()].sort((a, b) => rank(a) - rank(b) || (rank(a) === 1 ? 0 : groups.get(b).length - groups.get(a).length));
-  wrap.append(el("div", {style: {padding: "12px 14px 6px", display: "flex", gap: "8px", alignItems: "center"}}, el("b", {text: `${state.sel.size} selected`}), el("span", {class: "spacer"}),
-    el("button", {class: "btn", style: {margin: 0}, text: "Clear", onclick: () => { state.sel.clear(); renderLabs(); }}),
-    el("button", {class: "btn", style: {margin: 0}, text: "Defaults", onclick: () => { state.sel = startLabs(); renderLabs(); }})),
-    el("div", {id: "tvBox"}, viewsBar()));   // saved views (#37, trends-views.js)
+  // the list's header (#192, index.html): under the filter, what's selected with Clear and Defaults, then the saved
+  // views (#37, trends-views.js); the header stays while the rows scroll, so typing in the filter keeps its focus
+  $("#seriesSel").replaceChildren(el("b", {text: `${state.sel.size} selected`}), el("span", {class: "spacer"}),
+    el("button", {class: "btn", type: "button", text: "Clear", onclick: () => { state.sel.clear(); renderLabs(); }}),
+    el("button", {class: "btn", type: "button", text: "Defaults", onclick: () => { state.sel = startLabs(); renderLabs(); }}));
+  $("#tvBox").replaceChildren(...[viewsBar()].filter(Boolean));
+  if (!top.length) wrap.append(el("p", {class: "hint lab-none"}, `No lab names match “${$("#labQ").value.trim()}”. `,
+    el("button", {class: "btn", type: "button", text: "Clear the filter", onclick: () => { clearLabFilter(); $("#labQ").focus(); }})));
   for (const g of order) {
     wrap.append(el("div", {class: "grp", text: g}));
     for (const s of g.startsWith("Watch") ? groups.get(g) : groups.get(g).sort((a, b) => b.n - a.n)) {
       const L = latest(s); const id = "s_" + s.name.replace(/\W/g, "_");
       wrap.append(el("label", {class: "srow", for: id},
-        el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); wrap.querySelector("b").textContent = `${state.sel.size} selected`; tvRefresh(); }}),
+        el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; tvRefresh(); }}),
         el("span", {class: "nm", title: `${renamedTitle("lab", s.name)} · ${s.n} results`, text: nice(s.name)}),
         el("span", {class: "lv" + (L && L[4] ? " abn" : ""), title: L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "", text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : "text"})));
     }
