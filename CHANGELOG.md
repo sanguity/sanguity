@@ -98,6 +98,10 @@ Everything on `main` so far; it becomes the first tagged release.
   that your own calendar app (iPhone, Mac, Google Calendar, Outlook) subscribes to. It lists upcoming appointments
   and, for labs drawn at a steady rhythm, the next expected draw as a tentative all-day event. Minimal details
   ("Appointment") by default; rotate or turn it off any time. Sanguity still sends nothing: the calendar app fetches.
+- Out-of-pocket costs without a finance-app export (#55): type in what you paid, with its receipt (kept as a
+  document) and whether an HSA or FSA paid it. The Costs tab lists every amount with where its number came from
+  (typed in, a finance export, or a claim's patient responsibility), matches payments to claims by amount, date and
+  provider (or by hand), counts each amount once, and totals HSA and FSA spending by year.
 - A journal of dated notes, symptoms and side effects, with a 0–10 severity and an optional link to one of the
   profile's medications (#49). Entries have their own timeline lane, show as markers on Trends (bigger means more
   severe), can be added from any event's panel, and are listed with filters under Journal. Owners and editors

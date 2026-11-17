@@ -20,7 +20,10 @@ drawer, Trends, Health and Costs show them as they show imported records. Every 
   claim      DATE PROVIDER-or-TITLE title BILLED paid owe  a "claim" event, its claim detail (with the claims
              status insurer claim category                 importers' `visit` hint) and its Costs row, filed under the
                                                            care category given or worked out by _claims.care_category
-  payment    DATE PAYEE AMOUNT group account memo          an entry of outOfPocket.payments
+  payment    DATE PAYEE AMOUNT group account memo hsa      an entry of outOfPocket.payments; hsa "HSA" or "FSA" tags it
+             upload file                                   (oop.py, #55); with a receipt (upload and file, as a
+                                                           document's), also a "document" event "Receipt: <payee>"
+                                                           opening it, which the payment names by key ("receipt")
   upcoming   DATE time TITLE who where                     an entry of `upcoming`
   vitals     DATE time where bp hr temp temp_unit height   points in the "Vitals" panel's series, named and keyed as
              height_unit spo2 resp weight weight_unit      the C-CDA importer names them (loinc:<code>); a weight goes
@@ -78,7 +81,7 @@ FIELDS = {   # kind -> its fields; LONG ones may hold a note
     "rx": ("date", "drug", "pharmacy", "supply", "billed", "paid", "owe", "insurer"),
     "problem": ("name", "status", "since", "type"),
     "claim": ("date", "provider", "title", "billed", "paid", "owe", "status", "insurer", "claim", "category"),
-    "payment": ("date", "payee", "amount", "group", "account", "memo"),
+    "payment": ("date", "payee", "amount", "group", "account", "memo", "hsa", "upload", "file"),
     "upcoming": ("date", "time", "title", "who", "where"),
     "vitals": ("date", "time", "where", "bp", "hr", "temp", "temp_unit", "height", "height_unit", "spo2", "resp", "weight", "weight_unit"),
     "home": ("date", "weight", "weight_unit", "steps"),
@@ -377,12 +380,36 @@ def _payment(r):
     t = r.when("date")
     r.need("payee", "amount")
     amount = r.money("amount")
-    if r.fields or not t:
+    if v["hsa"] and v["hsa"] not in ("HSA", "FSA"):
+        r.bad("hsa", f"has an account type Sanguity doesn't know ({v['hsa']}): HSA, FSA or none")
+    stored = _file(r) if v["upload"] else None
+    if r.fields or not t or (v["upload"] and not stored):
         return None, None, None
     key = _hkey("payment", t[:10], v["payee"], amount)
     p = {"d": t[:10], "payee": v["payee"], "group": v["group"] or "Medical bills", "amount": amount,
          "account": v["account"], "memo": v["memo"], "est": False, "key": key}
-    return {"payments": [p]}, _join(t[:10], v["payee"], f"${amount:,.2f}", p["group"]), key
+    if v["hsa"]:
+        p["hsa"] = v["hsa"]
+    parts = {"payments": [p]}
+    if stored:   # the receipt: a document of its own, which the payment names
+        ext = os.path.splitext(v["file"])[1].lstrip(".").lower()
+        det = {"type": "file", "url": f"{int(v['upload'])}/{v['file']}", "ext": ext, "src": SOURCE}
+        p["receipt"] = _hkey("receipt", t[:10], v["payee"], amount, v["file"])
+        parts.update(events=[_event(t, "document", f"Receipt: {v['payee']}", f"${amount:,.2f} · {SOURCE}", det, p["receipt"])],
+                     files={det["url"]: stored})
+    return parts, _join(t[:10], v["payee"], f"${amount:,.2f}", p["group"], v["hsa"], "receipt " + v["file"] if stored else ""), key
+
+
+def _file(r):
+    """The stored file of a record's upload and file fields (a document's, a payment's receipt), or None."""
+    v = r.v
+    ext = os.path.splitext(v["file"])[1].lstrip(".").lower()
+    if not re.fullmatch(r"\d{1,18}", v["upload"]) or not v["file"]:
+        return r.bad("upload", "has a file that wasn't uploaded: choose it again")
+    if ext not in DOC_TYPES:
+        return r.bad("upload", f"has a file Sanguity can't show ({v['file']}): attach a PDF or a picture (PNG, JPEG or GIF)")
+    stored, why = r.uploads(int(v["upload"]), v["file"])
+    return r.bad("upload", why) if why else stored
 
 
 def _upcoming(r):
@@ -493,17 +520,7 @@ def _document(r):
     r.need("title", "upload")
     if v["doctype"] and v["doctype"] not in ("document", "letter"):
         r.bad("doctype", f"has a kind of document Sanguity doesn't know ({v['doctype']})")
-    stored = None
-    if v["upload"]:
-        ext = os.path.splitext(v["file"])[1].lstrip(".").lower()
-        if not re.fullmatch(r"\d{1,18}", v["upload"]) or not v["file"]:
-            r.bad("upload", "has a file that wasn't uploaded: choose it again")
-        elif ext not in DOC_TYPES:
-            r.bad("upload", f"has a file Sanguity can't show ({v['file']}): attach a PDF or a picture (PNG, JPEG or GIF)")
-        else:
-            stored, why = r.uploads(int(v["upload"]), v["file"])
-            if why:
-                r.bad("upload", why)
+    stored = _file(r) if v["upload"] else None
     if r.fields or not t or not stored:
         return None, None, None
     k = v["doctype"] or "document"

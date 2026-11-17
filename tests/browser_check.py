@@ -8,7 +8,8 @@ the import page (a fictional C-CDA and a FHIR export, previewed, saved in the ba
 the C-CDA again, previewed as all duplicates and cancelled; the FHIR one then undone from the import history, and
 gone from the timeline; UHC, BCBS and spreadsheet claims, shown on the Costs tab; a CareSpace and an Epic MyChart
 export), types two lab results in on the import page and finds them on Trends, types a visit, a medication, a
-claim and a letter with a PDF into their own forms, finds them on the timeline and Costs and opens the PDF, uploads a lab with a spelling Sanguity
+claim and a letter with a PDF into their own forms, finds them on the timeline and Costs and opens the PDF, types in a payment with
+its receipt and an HSA tag and sees it matched to the claim, counted once and retagged FSA on Costs (#55), uploads a lab with a spelling Sanguity
 doesn't know, accepts the series suggested at the preview and finds it on Trends, then sees it matched as before on
 the next upload, pastes a fictional SMART Health Link served by a local HTTPS server (what it says is shown and
 nothing is fetched until Fetch; then its preview, and saved), sets up a connected source against the fake SMART on
@@ -1228,6 +1229,64 @@ def main():
             settle(300)
             costs = page.inner_text("#view-costs")
             check("the typed claim is on Costs, under its care category", "Typed office visit claim" in costs and "Doctor visits" in costs, costs[:300])
+
+            # ---- out-of-pocket costs without a finance export (#55): the typed claim's share is counted until a
+            # payment typed in with its receipt and an HSA tag matches it; the receipt opens; the tag changed to FSA
+            # on the Costs tab; HSA/FSA totals; the list fits 375 px
+            share = js("oopRows().filter(r => r.type === 'claim' && r.claim.title === 'Typed office visit claim').map(r => [r.counted, srcText(r)])")
+            check("the typed claim's share is counted out of pocket, saying it came from the claim",
+                  len(share) == 1 and share[0][0] == 50 and share[0][1].startswith("Claim: your share"), share)
+            page.goto(base + "/import.html?profile=2#payment")
+            page.wait_for_selector(".man-item[data-kind=payment]", timeout=10000)
+            check("the Costs tab's link opens a payment's form", js("document.querySelectorAll('.man-item').length") == 1)
+            page.fill(card(1, "date"), "2026-11-05")
+            page.fill(card(1, "payee"), "Lakeside Clinic (fictional)")
+            page.fill(card(1, "amount"), "$50.00")
+            page.select_option(card(1, "hsa"), "HSA")
+            page.set_input_files(card(1, "file"), pdf_path)
+            page.wait_for_function("document.querySelector('.man-item .man-file').textContent.includes('uploaded')", timeout=10000)
+            page.wait_for_function("document.getElementById('manMsg').textContent === '1 record ready to save.' && !document.getElementById('manSave').disabled", timeout=5000)
+            check("…which says it's paid with an HSA and has a receipt", "HSA" in js("document.querySelector('.man-check').textContent")
+                  and "receipt" in js("document.querySelector('.man-check').textContent"), js("document.querySelector('.man-check').textContent"))
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#manMsg a")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && DATA.oop", timeout=20000)
+            js("switchTab('costs')")
+            page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
+            js("costState.period = 'all'; paidState.q = ''; renderCosts()")
+            settle(300)
+            pay = js("oopRows().filter(r => r.type === 'pay' && r.who === 'Lakeside Clinic (fictional)' && r.amount === 50)"
+                     ".map(r => [r.src, r.hsa, r.claim && r.claim.title, r.receipt != null, r.match])")
+            check("the typed payment is listed as typed in, HSA, with its receipt, and matched to the claim",
+                  pay == [["typed", "HSA", "Typed office visit claim", True, "auto"]], pay)
+            check("…so the claim's share isn't counted again",
+                  js("oopRows().some(r => r.type === 'claim' && r.claim.title === 'Typed office visit claim')") is False)
+            check("the HSA total counts it, and HSA and FSA are listed by year",
+                  "$50" in page.inner_text("#oopHsa") and "2026" in page.inner_text("#oopTax"), [page.inner_text("#oopHsa"), js("!!document.getElementById('oopTax')")])
+            row = js("oopKey(oopRows().find(r => r.type === 'pay' && r.who === 'Lakeside Clinic (fictional)' && r.amount === 50))")
+            page.click(f"#paidTable tr[data-oop={row}]")
+            page.wait_for_selector("#oopEdit", timeout=5000)
+            check("a payment says where its number came from", "typed in" in page.inner_text("#oopEdit") and "matched by amount" in page.inner_text("#oopEdit"),
+                  page.inner_text("#oopEdit")[:300])
+            page.click("#oopEdit >> text=Open receipt")
+            page.wait_for_selector("#drawer.open #dbody iframe.doc", timeout=5000)
+            check("…and its receipt opens in the drawer as a document", "/documents/" in js("document.querySelector('#dbody iframe.doc').getAttribute('src')"))
+            js("closeDrawer()")
+            page.select_option("#oopHsaSel", "FSA")
+            page.click("#oopEdit >> text=Save")
+            page.wait_for_function("document.querySelector('#oopEdit [role=status]') && document.querySelector('#oopEdit [role=status]').textContent === 'Saved.'", timeout=10000)
+            check("tagged FSA on the Costs tab, it moves to the FSA total", "$50" in page.inner_text("#oopFsa") and "$0" in page.inner_text("#oopHsa"),
+                  [page.inner_text("#oopFsa"), page.inner_text("#oopHsa")])
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(300)
+            check("the out-of-pocket list and its editor fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            only = js("""(() => { const had = DATA.costs, o = DATA.oop; DATA.costs = []; DATA.oop = {payments: o.payments.map(p => ({...p, claim: null})), claims: []};
+                           renderCosts(); const out = [!!document.getElementById('paidCard'), !!document.getElementById('costTable'),
+                           document.getElementById('oopTotal').textContent]; DATA.costs = had; DATA.oop = o; return out; })()""")
+            check("with no claims at all, Costs shows the payments alone", only[0] and not only[1] and "Total out of pocket" in only[2], only)
+            js("paidState.open = null; renderCosts()")
 
             # ---- lab names matched on import (#23): a spelling lab-aliases.json doesn't know is suggested the profile's
             # Hemoglobin series at the preview; accepted, its point is charted with Hemoglobin; uploaded again, it's

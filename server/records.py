@@ -20,6 +20,9 @@ to data.json, and each part of it has its place:
                                                              Each event and lab series names its import as "imp"; a
                                                              series' results are all of its import. Sent once here,
                                                              so no row repeats its importer's label
+  oop        {payments, claims}                              out-of-pocket costs worked out (oop.py, #55): where
+                                                             each payment came from, HSA/FSA, the claim it paid,
+                                                             and what is counted; only with payments or marks
   journal    [{id, kind, t, title, severity, note, med, by...}]  the journal table: notes, symptoms and side
                                                              effects people wrote (journal.py), never part of an
                                                              import; left out while there are none
@@ -40,11 +43,11 @@ every row. '' means the record has no key; NULL, not worked out yet (backfill_ke
 import hashlib, hmac, json, threading
 from contextlib import contextmanager
 
-from . import crossmatch, crypto, edits, journal, medications, units
+from . import crossmatch, crypto, edits, journal, medications, oop, units
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
-SERVED = ("imports", "edits", "same", "possible", "journal", "medications")   # parts assemble() adds: never stored from an import (an export's data.json has them)
+SERVED = ("imports", "edits", "same", "possible", "journal", "medications", "oop")   # parts assemble() adds: never stored from an import (an export's data.json has them)
 
 
 def _enc(obj):
@@ -289,12 +292,14 @@ def _assemble(db, pid):
     imps = db.execute("SELECT id, at, origin, format, synced, meta, name FROM imports WHERE profile_id=? ORDER BY id", (pid,)).fetchall()
     if not imps:
         return None
-    out, costs = {}, []   # costs: (import, place in its list, row)
+    out, costs, pay_imps = {}, [], []   # costs: (import, place in its list, row)
     for r in imps:
         meta = _dec(r["meta"]) or {}
         costs += [(r["id"], seq, c) for seq, c in meta.pop("costs", [])]
         for k in SERVED:
             meta.pop(k, None)
+        pays = (meta.get("outOfPocket") or {}).get("payments") if isinstance(meta.get("outOfPocket"), dict) else None
+        pay_imps += [r["id"]] * (len(pays) if isinstance(pays, list) else 0)   # which import each payment came from (#55)
         _merge(out, meta)
     out["imports"] = {str(r["id"]): _source(r) for r in imps}
     events, details = [], {}
@@ -315,6 +320,7 @@ def _assemble(db, pid):
     labs = [{**_dec(r["body"]), "imp": r["import_id"], "pts": pts.get(r["id"], [])}
             for r in db.execute("SELECT id, import_id, body FROM series WHERE profile_id=? ORDER BY id", (pid,))]
     out = crossmatch.apply(db, pid, edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs}))
+    out = oop.annotate(db, pid, out, pay_imps)   # out-of-pocket: sources, HSA/FSA, matched to claims, counted once (#55)
     if (entries := journal.listing(db, pid)):   # only when there are some, like edits
         out["journal"] = entries
     if (meds := medications.history(out)):   # #50: each medication's spans and fills, only when there are some

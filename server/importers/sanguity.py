@@ -48,6 +48,7 @@ def parse(files):
         raise ValueError(f"{rel} isn't Sanguity data: it has no list of events.")
     for k, empty in (("details", {}), ("labs", []), ("costs", [])):
         data.setdefault(k, empty)
+    data.pop("oop", None)   # an export's out-of-pocket working (#55, oop.py): worked out again once loaded
 
     base, warnings, missing, outside = posixpath.dirname(rel), [], 0, 0
     for d in data["details"].values():

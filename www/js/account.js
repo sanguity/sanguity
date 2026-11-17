@@ -298,7 +298,11 @@ const WHAT = {
   outside: d => `had Sanguity contact ${d.host} (${d.purpose})`,
   discard: () => "cancelled an import at its preview",
   undo: d => `undid an import${d.label ? ` (${d.label})` : ""}, removing what it brought`,
-  edit: d => d.action === "same" || d.action === "not_same" ? (d.undone ? `undid a decision on two results of “${d.title || "a test"}”`
+  edit: d => d.action === "cost" ? `marked ${d.of === "claim" ? "a claim's share" : "an out-of-pocket payment"}` + [   // #55
+      "hsa" in d && (d.hsa ? ` as paid with an ${d.hsa}` : d.hsa === "" ? " as paid with neither an HSA nor an FSA" : " to be tagged from what it says"),
+      "claim" in d && ({claim: " as paying a claim", none: " as paying no claim"}[d.claim] || " to be matched again"),
+      "same" in d && (d.same === false ? " as a payment of its own" : " to be checked for duplicates again")].filter(Boolean).join(",") :
+    d.action === "same" || d.action === "not_same" ? (d.undone ? `undid a decision on two results of “${d.title || "a test"}”`
     : d.action === "same" ? `linked two results of “${d.title || "a test"}” from different sources as the same result`
     : `marked two results of “${d.title || "a test"}” from different sources as not the same`) :
     (d.undone ? "undid an edit of" : ({hide: "hid", rename: "renamed", date: "changed the date of", not_stay: "marked as not a hospital stay",
