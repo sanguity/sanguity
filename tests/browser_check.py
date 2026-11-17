@@ -1513,6 +1513,114 @@ def main():
             page.click("#ftoggle")
             page.set_viewport_size({"width": 1400, "height": 900})
 
+            # ---- Labs: the name filter in the lab list's header with its count, the overlays grouped apart from the
+            # legend (#192); one filter for the chart's list and the heatmap, apart from the Timeline's search
+            open_tab("labs")
+            js("clearLabFilter()")
+            settle(300)
+            check("Labs: the records bar shows no search box (Timeline's alone)", not page.is_visible("#q") and js("document.getElementById('ftoggle').textContent") == "Dates")
+            order = js("""(() => { const y = s => document.querySelector(s).getBoundingClientRect().top, hd = document.querySelector('#series .series-hd');
+              return [hd.contains(document.getElementById('labQ')), hd.contains(document.getElementById('viewPick')),
+                      [...hd.querySelectorAll('#seriesSel button')].map(b => b.textContent), y('#labQ') < y('#seriesSel') && y('#seriesSel') < y('#tvBox'),
+                      y('#tvBox') < y('#seriesRows')]; })()""")
+            check("…the name filter heads the lab list, above what's selected, Clear, Defaults and the saved views",
+                  order == [True, True, ["Clear", "Defaults"], True, True], order)
+            n_all = js("SERIES.filter(s => !s.watch && s.n >= 2).length")
+            rows = lambda: js("document.querySelectorAll('#seriesRows .srow').length")
+            check("…its count says how many labs there are", page.inner_text("#labQn") == f"{n_all} labs" and rows() == n_all, [page.inner_text("#labQn"), rows()])
+            sel_before = js("[...state.sel].sort()")
+            page.click("#labQ")
+            page.locator("#labQ").press_sequentially("hemo", delay=40)
+            settle(400)
+            want = js("SERIES.filter(s => !s.watch && s.n >= 2 && [s.name, nice(s.name), s.panel].some(t => t.toLowerCase().includes('hemo'))).length")
+            check("…typing filters the list and counts the matches (\"k of n\"), keeping the focus in the box",
+                  0 < want < n_all and rows() == want and page.inner_text("#labQn") == f"{want} of {n_all}"
+                  and js("document.activeElement.id") == "labQ" and js("state.labQ") == "hemo", [rows(), want, page.inner_text("#labQn")])
+            check("…said to a screen reader, and the charts and their selection stay as they were",
+                  said(page) == f"{want} of {n_all} labs match." and js("[...state.sel].sort()") == sel_before)
+            page.click("#seriesSel button:text-is('Clear')")
+            settle(300)
+            check("…Clear still clears while filtering, the filter kept", js("state.sel.size") == 0 and rows() == want and page.input_value("#labQ") == "hemo")
+            page.click("#seriesSel button:text-is('Defaults')")
+            settle(300)
+            check("…and Defaults brings the starting labs back", js("[...state.sel].sort()") == js("[...startLabs()].sort()") and js("state.sel.size") > 0)
+            check("…the saved views stay beside them", page.is_visible("#viewPick"))
+            page.click("#labsView button[data-view=heatmap]")
+            settle(400)
+            hm_all = js("SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null)).length")
+            hm_want = js("SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null) && labMatch(s)).length")
+            hm_rows = lambda: js("document.querySelectorAll('#hm text.row').length")
+            check("…the heatmap has the same filter in its header, its rows and count filtered by it",
+                  page.input_value("#hmQ") == "hemo" and hm_rows() == hm_want > 0 and page.inner_text("#hmQn") == f"{hm_want} of {hm_all}",
+                  [page.input_value("#hmQ"), hm_rows(), hm_want, page.inner_text("#hmQn")])
+            page.fill("#hmQ", "")
+            settle(400)
+            check("…emptied there, every lab with ranges", hm_rows() == hm_all and page.inner_text("#hmQn") == f"{hm_all} labs" and js("state.labQ") == "")
+            page.fill("#hmQ", "zzzz")
+            settle(400)
+            check("…and none matching says so", page.inner_text("#hmQn") == f"None of {hm_all}" and "No lab names match" in js("document.getElementById('hm').textContent"))
+            page.click("#labsView button[data-view=chart]")
+            settle(400)
+            check("…back on the chart, the list has what was typed there", page.input_value("#labQ") == "zzzz" and rows() == 0
+                  and page.inner_text("#labQn") == f"None of {n_all}" and "No lab names match “zzzz”" in page.inner_text("#seriesRows"))
+            page.click("#seriesRows button:text-is('Clear the filter')")
+            settle(300)
+            check("…its Clear the filter shows them all again, focus back in the box",
+                  rows() == n_all and page.input_value("#labQ") == "" and page.input_value("#hmQ") == "" and js("document.activeElement.id") == "labQ")
+            open_tab("timeline")
+            page.fill("#q", "hemo")
+            settle(400)
+            check("Timeline: its search keeps its own words, apart from the Labs filter", page.get_attribute("#q", "placeholder") == "Search events…"
+                  and js("state.q") == "hemo" and js("state.labQ") == "")
+            open_tab("labs")
+            settle(300)
+            check("…and doesn't filter the Labs list", rows() == n_all and page.input_value("#labQ") == "")
+            open_tab("timeline")
+            page.fill("#q", "")
+            settle(300)
+            open_tab("labs")
+            settle(300)
+            grp = js("""(() => { const g = document.getElementById('optMarks').closest('[role=group]'), lg = document.querySelector('#labsChart .legend');
+              return [g && document.getElementById(g.getAttribute('aria-labelledby')).textContent, ['optMarks', 'optMeds', 'optJournal'].map(id => g && g.contains(document.getElementById(id))),
+                      [...g.querySelectorAll('.toggle')].filter(t => !t.hidden).map(t => t.textContent.trim()),
+                      !!lg && !g.contains(lg) && !lg.querySelector('input, button') && lg.textContent.includes('Out of range')]; })()""")
+            check("…the chart overlays grouped under “Show on charts:”, the legend apart from them and only a legend",
+                  grp == ["Show on charts:", [True, True, True], ["Procedures & imaging", "Medications", "Journal"], True], grp)
+            marks0 = js("state.marks")
+            page.click("label:has(#optMarks)")
+            settle(300)
+            check("…Procedures & imaging still turns its marks off and on from there", js("state.marks") == (not marks0)
+                  and page.is_checked("#optMarks") == (not marks0))
+            page.click("label:has(#optMarks)")
+            settle(300)
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for mode in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", mode)
+                page.set_viewport_size({"width": 375, "height": 800})
+                open_tab("labs")
+                page.fill("#labQ", "hemo")
+                settle(400)
+                bad = phone_fits(page, f"Labs, filtered ({mode})")
+                look = js("""(() => { const i = document.getElementById('labQ'), n = document.getElementById('labQn'), r = i.getBoundingClientRect(), c = n.getBoundingClientRect();
+                  return [getComputedStyle(i).color !== getComputedStyle(i).backgroundColor, getComputedStyle(n).color !== getComputedStyle(document.querySelector('#series .series-hd')).backgroundColor,
+                          Math.abs(r.top - c.top) < r.height, c.right <= innerWidth]; })()""")
+                check(f"…at 375 px ({mode}): the filter and its count on one line, readable, the list and overlays fitting", look == [True, True, True, True] and not bad, [look, bad])
+                page.fill("#labQ", "zzzz")
+                settle(400)
+                bad = phone_fits(page, f"Labs, nothing matching ({mode})")
+                check(f"…nothing matching fits too ({mode})", page.is_visible("#seriesRows .lab-none") and not bad, bad)
+                page.click("#labsView button[data-view=heatmap]")
+                settle(400)
+                page.fill("#hmQ", "hemo")
+                settle(400)
+                bad = phone_fits(page, f"Labs heatmap, filtered ({mode})")
+                check(f"…and the heatmap's filter ({mode})", page.is_visible("#hmQ") and not bad, bad)
+                js("clearLabFilter()")
+                page.click("#labsView button[data-view=chart]")
+                settle(300)
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
+
             # ---- Timeline: event sort toggle
             page.click("#tab-timeline")
             settle()

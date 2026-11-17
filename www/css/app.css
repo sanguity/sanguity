@@ -737,6 +737,24 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 .tv .hint{margin:4px 0 0;font-size:12px}
 .tv .tv-msg:empty{display:none}
 .tv .btn:disabled{opacity:.45;cursor:default;background:var(--raised)}
+/* ---- Labs: the name filter in the lab list's header, and the chart overlays apart from the legend (#192). The
+   list's header (filter, what's selected, saved views) stays at the top while its rows scroll */
+.series-hd{position:sticky;top:0;z-index:1;background:var(--surface);padding:12px 14px 8px;border-bottom:1px solid var(--grid);display:flex;flex-direction:column;gap:8px}
+.series-hd .tv{padding:0}
+#tvBox:empty{display:none}
+.series-sel{display:flex;gap:6px;align-items:center}
+.series-sel .btn{margin:0}
+.lab-find{display:flex;gap:8px;align-items:center;min-width:0}
+.lab-find input{flex:1 1 auto;min-width:0;width:100%;border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:5px 10px;font-size:13px}
+.lab-find .n{flex:none;font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
+#labsHeatmap .list-hd{margin-bottom:6px}
+#labsHeatmap .lab-find{flex:0 1 300px;margin-left:8px}
+.lab-none{padding:10px 14px;margin:0!important}
+.lab-none .btn{margin:4px 0 0}
+.overlays{gap:6px 8px;margin:0 0 6px}
+.overlays .lbl{font-size:13px;font-weight:650;color:var(--ink2);margin-right:2px}
+.chart-legend{margin:0 0 10px}
+@media (max-width:700px){#labsHeatmap .lab-find{flex:1 1 100%;margin-left:0}}
 .sets .set-view{border:1px solid var(--grid);border-radius:8px;padding:8px 10px;margin:6px 0;max-width:560px}
 .sets .set-view .row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
 .sets .set-view .row input:not([type=radio]){flex:1 1 140px;min-width:0}

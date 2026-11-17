@@ -22,7 +22,8 @@ function medsLoad() {
 const medEnd = s => s.te ?? Math.max(s.ts, Date.now());
 const medFrom = m => Math.min(...m.spans.map(s => s.ts), ...m.fills.map(f => f.ts));
 const medTo = m => Math.max(...m.spans.map(medEnd), ...m.fills.map(f => f.ts + (f.supply || 0) * DAY));
-const medsShown = (a, b) => MEDS.filter(m => (m.spans.length || m.fills.length) && medTo(m) >= a && medFrom(m) <= b && (!state.q || m._q.includes(state.q)));
+/* q: the Timeline's search; the Labs charts show every medication, whatever was searched there (#192) */
+const medsShown = (a, b, q = state.q) => MEDS.filter(m => (m.spans.length || m.fills.length) && medTo(m) >= a && medFrom(m) <= b && (!q || m._q.includes(q)));
 const medShort = (n, max) => n.length > max ? n.slice(0, max - 1) + "…" : n;
 /* "5 Jan 2026 – 3 Mar 2026", "5 Jan 2026 – no end in the records", "stopped 5 Jan 2026 (no start or end date)" */
 function medSpanWhen(s) {
@@ -85,7 +86,7 @@ function medTip(m, ds, ev) {
 /* ---------------------------------------------------------------- Trends: the same rows under each chart, when ticked */
 let medsOnTrends = false;
 try { medsOnTrends = localStorage.getItem("sg-meds-trends") === "1"; } catch (e) {}
-const medsInWindow = () => medsOnTrends && state.cats.has("med") ? medsShown(state.from, state.to) : [];
+const medsInWindow = () => medsOnTrends && state.cats.has("med") ? medsShown(state.from, state.to, "") : [];
 CHART_LAYERS.push({
   space: () => { const n = medsInWindow().length; return n ? 6 + n * 22 : 0; },
   draw(g, x, top, R) {
