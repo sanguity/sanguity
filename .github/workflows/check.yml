@@ -53,7 +53,7 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tools/make_icons.py tools/screenshots.py .github/scripts/changes.py tests/test_ci_changes.py tests/test_medications.py tests/test_costs.py tests/test_backups.py tests/test_performance.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tools/make_icons.py tools/screenshots.py .github/scripts/changes.py tests/test_ci_changes.py tests/test_medications.py tests/test_costs.py tests/test_backups.py tests/test_performance.py tools/anonymise.py tests/test_anonymise.py
 
       - name: Which jobs a pull request runs (docs only, templates only, tests only, CI itself)
         run: python tests/test_ci_changes.py
@@ -199,6 +199,9 @@ jobs:
       # tests/test_importer_<name>.py: a new importer's tests run here without editing this file
       - name: Importer tests
         run: python -m unittest discover -s tests -p "test_importer*.py" -v
+
+      - name: "Anonymising an export (tools/anonymise.py over every fixture: imports the same, no names, identifiers or original dates left; unsafe zips refused)"
+        run: python tests/test_anonymise.py
 
       - name: Browser check (sign-in, every tab, drawer, pan/zoom, profiles, account page, every page at 375 px, no errors or NaN)
         run: python tests/browser_check.py

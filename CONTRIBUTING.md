@@ -3,8 +3,10 @@
 Thanks for helping. Sanguity holds people's medical records, so a few rules below are firm; the rest is ordinary
 open-source practice. Questions are welcome as issues.
 
-- **An export from your portal doesn't import?** Open a [portal-support issue](https://github.com/sanguity/sanguity/issues/new?template=portal-export.yml).
-  It explains how to make an anonymised sample. **Never attach real records to an issue or pull request.**
+- **An export from your portal doesn't import?** Open a [portal-support issue](https://github.com/sanguity/sanguity/issues/new?template=portal-export.yml)
+  with an anonymised sample: `tools/anonymise.py` makes one, and [docs/anonymising-exports.md](docs/anonymising-exports.md)
+  says what it catches, what it doesn't, and what to check before you share it. **Never attach real records to an
+  issue or pull request.**
 - **A security problem?** Don't open an issue: see [SECURITY.md](SECURITY.md).
 - **A bug or an idea?** Use the [bug report](https://github.com/sanguity/sanguity/issues/new?template=bug-report.yml)
   or [feature request](https://github.com/sanguity/sanguity/issues/new?template=feature-request.yml) form.
@@ -49,6 +51,7 @@ python tests/test_lab_mapping.py       # matching unknown lab names
 python tests/test_summary.py           # the visit summary PDF
 python tests/test_backups.py           # backups in Admin: schedule, pruning, late warning, restore check
 python -m unittest discover -s tests -p "test_importer*.py" -v   # the registry and every importer's fixtures
+python tests/test_anonymise.py         # tools/anonymise.py: every fixture's copy imports the same, nothing of it left
 python tests/browser_check.py          # headless browser: every tab, the drawer, pan/zoom, every page at 375 px
 python tests/test_performance.py       # the performance budgets on ten years of fictional records (docs/performance.md)
 ```
