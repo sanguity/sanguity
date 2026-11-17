@@ -29,6 +29,9 @@ to data.json, and each part of it has its place:
   medications [{name, key, rxnorm, spans, changes, fills...}]  each medication's listings as spans, its dose changes
                                                              and its pharmacy fills (medications.py, #50), worked out
                                                              from the events above; left out while there are none
+  reminders  [{id, med, name, times, days, from, until, tz, on, by...}]  the med_reminders table: medication reminders
+                                                             for the calendar feed (med_reminders.py, #162), never part
+                                                             of an import; left out while there are none
 
 store() takes such an object apart into the rows of one import; assemble() puts a profile's imports back
 together. An event's id is its row's, so the ids an import arrives with are mapped on the way in, the ones a lab
@@ -47,7 +50,7 @@ from . import crossmatch, crypto, edits, journal, medications, oop, units
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
-SERVED = ("imports", "edits", "same", "possible", "journal", "medications", "oop")   # parts assemble() adds: never stored from an import (an export's data.json has them)
+SERVED = ("imports", "edits", "same", "possible", "journal", "medications", "oop", "reminders")   # parts assemble() adds: never stored from an import (an export's data.json has them)
 
 
 def _enc(obj):
@@ -325,6 +328,9 @@ def _assemble(db, pid):
         out["journal"] = entries
     if (meds := medications.history(out)):   # #50: each medication's spans and fills, only when there are some
         out["medications"] = meds
+    from . import med_reminders
+    if (rem := med_reminders.listing(db, pid)):   # #162: reminders for the calendar feed, only when there are some
+        out["reminders"] = rem
     return units.annotate(out)   # which series can be shown in other units, exactly (#41)
 
 

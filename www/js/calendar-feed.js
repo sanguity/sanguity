@@ -59,12 +59,13 @@
         `Last fetched by your calendar app: ${when(f.last_fetched)}.`;
       $("#calDetailsNow").value = f.details;
       $("#calLabsNow").checked = f.labs;
+      $("#calMedsNow").checked = f.meds;   // medication reminders (#162)
     }
     const others = d.everyone || [];
     $("#calOthers").hidden = !others.length;
     $("#calList").replaceChildren(...others.map(o => el("tr", {},
       el("td", {text: o.username + (o.user_id === me ? " (you)" : "")}),
-      el("td", {text: SAYS[o.details] + (o.labs ? ", with expected labs" : "")}),
+      el("td", {text: SAYS[o.details] + (o.labs ? ", with expected labs" : "") + (o.meds ? ", with medication reminders" : "")}),
       el("td", {text: when(o.last_fetched)}),
       el("td", {class: "acts"}, el("button", {class: "btn small", type: "button", text: "Turn off", "aria-label": `Turn off ${o.username}'s feed`,
         onclick: async () => {
@@ -79,7 +80,7 @@
     const details = document.querySelector("input[name=calDetails]:checked").value;
     $("#calCreate").disabled = true;
     try {
-      const j = await call(`profiles/${pid}/calendar`, "POST", {details, labs: $("#calLabs").checked, tz: zone()});
+      const j = await call(`profiles/${pid}/calendar`, "POST", {details, labs: $("#calLabs").checked, meds: $("#calMeds").checked, tz: zone()});
       await load();
       showSetup(j.path);
       say("Your calendar feed is ready. Add it to your calendar app with the address below.");
@@ -104,6 +105,7 @@
   };
   $("#calDetailsNow").onchange = () => patch({details: $("#calDetailsNow").value});
   $("#calLabsNow").onchange = () => patch({labs: $("#calLabsNow").checked});
+  $("#calMedsNow").onchange = () => patch({meds: $("#calMedsNow").checked});   // (#162)
   $("#calCopy").onclick = async () => {
     const box = $("#calUrl");
     try { await navigator.clipboard.writeText(box.value); say("Address copied."); }

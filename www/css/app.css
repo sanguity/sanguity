@@ -924,6 +924,17 @@ svg text.medname{fill:var(--ink2);font-size:11px}
 .medfill.ev:hover,.medfill.ev.sel{fill:var(--ink);stroke:var(--ink)}
 .medchanges{margin:0;padding-left:18px}
 .medchanges li{margin:2px 0}
+/* ---- medication reminders through the calendar feed (#162, meds.js) */
+.mr-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.mr-item{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;border:1px solid var(--grid);border-radius:8px;padding:6px 10px}
+.mr-says{flex:1 1 220px;min-width:0;color:var(--ink)}
+.mr-state{flex:1 1 100%;order:3;font-size:12px;color:var(--ink2)}
+.mr-item.off .mr-says,.mr-item.ended .mr-says{color:var(--ink2)}
+.mr-acts{display:flex;flex-wrap:wrap;gap:6px}
+.mr-times{display:flex;flex-direction:column;gap:6px}
+.mr-time{display:flex;gap:8px;align-items:center}
+.mr-days{display:flex;flex-wrap:wrap;gap:6px}
+.mr-add{align-self:flex-start}
 /* out of pocket (#55): a payment counted once, the editor under the list */
 table.data.oop tr.oop-dup td{color:var(--muted)}
 table.data.oop tr[aria-expanded=true] td{background:var(--hover)}

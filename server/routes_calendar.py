@@ -52,12 +52,14 @@ class FeedIn(BaseModel):
     details: Literal["minimal", "full"] = "minimal"
     labs: bool = True
     tz: Optional[str] = None
+    meds: bool = True   # medication reminders (#162)
 
 
 class FeedPatch(BaseModel):
     details: Optional[Literal["minimal", "full"]] = None
     labs: Optional[bool] = None
     tz: Optional[str] = None
+    meds: Optional[bool] = None   # medication reminders (#162)
 
 
 @router.post("/api/profiles/{pid}/calendar")
@@ -66,7 +68,7 @@ def make(pid: int, body: FeedIn, request: Request, s=Depends(user), db=Depends(g
     with dbm.transaction(db):
         if calendar.mine(db, pid, s["id"]):
             raise HTTPException(409, "You already have a calendar feed of this profile. Rotate it for a new address.")
-        token = calendar.create(db, pid, s["id"], body.details, body.labs, body.tz)
+        token = calendar.create(db, pid, s["id"], body.details, body.labs, body.tz, body.meds)
         _log(db, s, pid, "create", request, details=body.details)
     return {"path": _path(pid, token), "feed": calendar.mine(db, pid, s["id"])}
 
@@ -85,15 +87,15 @@ def rotate(pid: int, request: Request, s=Depends(user), db=Depends(get_db)):
 
 @router.patch("/api/profiles/{pid}/calendar")
 def change(pid: int, body: FeedPatch, request: Request, s=Depends(user), db=Depends(get_db)):
-    """How much the feed says, and whether it lists expected labs; the address stays the same."""
+    """How much the feed says, and whether it lists expected labs and medication reminders; the address stays the same."""
     need(db, s, pid, "viewer")
     with dbm.transaction(db):
         before = calendar.mine(db, pid, s["id"])
-        if not before or not calendar.change(db, pid, s["id"], body.details, body.labs, body.tz):
+        if not before or not calendar.change(db, pid, s["id"], body.details, body.labs, body.tz, body.meds):
             raise HTTPException(404, "You have no calendar feed of this profile.")
         after = calendar.mine(db, pid, s["id"])
-        if (before["details"], before["labs"]) != (after["details"], after["labs"]):
-            _log(db, s, pid, "change", request, details=after["details"], labs=after["labs"])
+        if (before["details"], before["labs"], before["meds"]) != (after["details"], after["labs"], after["meds"]):
+            _log(db, s, pid, "change", request, details=after["details"], labs=after["labs"], meds=after["meds"])
     return {"feed": after}
 
 

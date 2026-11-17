@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 30**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 32**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -140,7 +140,10 @@ while the entry isn't saved yet), with only its random file name in `profiles/<i
 picture is sealed there with its metadata (GPS location, camera, time taken) taken out, and what it shows is in the
 entry's encrypted body. Deleting the entry deletes its photos; an export carries them in `journal/photos/`. The medication
 timeline (#50, `server/medications.py`) is worked out from the `med` and `rx` events each time the records are put
-together and listed as `medications`; it has no table and is never stored from an import. An import's
+together and listed as `medications`; it has no table and is never stored from an import. **med_reminders** (schema
+version 33, #162, `server/med_reminders.py`) are the reminders set on a medication for the calendar feed: like journal
+entries they belong to the profile and find their medication by its grouping key, so undo keeps them; the body (the
+medication, times, days, from, until, time zone) is encrypted, `active` says whether it's on. An import's
 **name** (schema version 25, #38) is what the person renamed it to, encrypted; the records call it by that wherever
 they say where a record came from, and NULL means the importer's label. **cost_marks** (schema version 27, #55,
 `server/oop.py`) hold what a person said about an out-of-pocket amount on the Costs tab: a payment or a claim's share
@@ -166,6 +169,7 @@ erDiagram
     results }o..o{ same_results : "matched by point key"
     profiles ||--o{ journal : "has"
     journal ||--o{ journal_photos : "shows"
+    profiles ||--o{ med_reminders : "has"
     profiles ||--o{ cost_marks : "has"
 
     profiles {
@@ -301,6 +305,18 @@ erDiagram
         int bytes
         int created
         int created_by FK
+    }
+    med_reminders {
+        int id PK
+        int profile_id FK
+        text body "🔒 JSON: medication key and name, times, days, from, until, time zone"
+        int active "1 on, 0 off (kept)"
+        int created_by FK
+        text created_name "the username then"
+        int created
+        int changed_by FK
+        text changed_name
+        int changed
     }
     cost_marks {
         int id PK
@@ -610,6 +626,7 @@ erDiagram
         text token_hash "SHA-256 of the address's token, unique"
         text details "minimal (default) or full"
         int labs "also expected lab draws"
+        int meds "also medication reminders (#162)"
         text tz "the zone of the browser that set it up"
         int created
         int rotated "when the token was last replaced"
@@ -772,6 +789,7 @@ heart rate is the profile setting `person.maxHr` (above), sealed like the other 
 | `edits` | `target_key`, `other_key`, `value` |
 | `same_results` | `a_key`, `b_key`, `value` |
 | `journal` | `body` |
+| `med_reminders` | `body` |
 | `share_links` | `label`, `scope` |
 | `cost_marks` | `target_key`, `value` |
 | `labmaps` | `source`, `target` |
@@ -798,8 +816,8 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries and their photos, cost marks, settings, visit summary drafts, calendar feeds, share links, undo history, its activity and outside contacts | the original exports |
-| An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links, journal entries and cost marks (they belong to the profile) |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries and their photos, medication reminders, cost marks, settings, visit summary drafts, calendar feeds, share links, undo history, its activity and outside contacts | the original exports |
+| An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links, journal entries, medication reminders and cost marks (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |
 | A profile's cycle records (#183: Delete all cycle data, or turning cycle tracking off) | the watch receiver's rows, and the records in every upload it archived (rewritten without them); `cycle.json` keeps only which deletion was done; what imported Apple Health exports brought (`watch/cycle/`, #223), and a waiting preview's | backups made before, exports and visit summaries already downloaded, an uploaded Apple Health export (kept as uploaded), the phone's own |

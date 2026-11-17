@@ -444,6 +444,10 @@ a lab panel has been drawn at a steady rhythm, the next expected draw as a tenta
 "expected, not scheduled". Sanguity sends no notifications: your calendar app fetches the feed every few hours.
 Events say only "Appointment" or "Labs expected" unless you choose full details (title, place, panels, source),
 since calendars often sync to a phone maker's or email provider's cloud; results and diagnoses are never included.
+**Medication reminders** (#162) are set on a current medication's details on the Timeline (owners and editors): times
+of day, which days, from and until. The feed lists them as repeating events in the time zone they were set in, saying
+only "Medication" unless you choose full details; they end on their until day, or on the day the records say the
+medication stopped, and each can be turned off. Your calendar app does the reminding.
 Anyone who can view a profile can make a feed of it for themself. The address is the only credential, so it's
 shown once; get a new one or turn the feed off there any time, and a feed stops when its person's access ends.
 Google Calendar and Outlook on the web fetch from their own servers, so they need Sanguity reachable over HTTPS

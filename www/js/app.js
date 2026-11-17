@@ -236,4 +236,5 @@ async function syncWarning(pid) {
   try { performance.mark("sanguity:ready"); } catch (e) {}   // the records page is ready: what docs/performance.md times (#201)
   drawerResume();   // after an edit's reload (drawer.js)
   journalResume();  // after a journal entry was saved (journal.js)
+  medsResume();     // after a medication reminder was saved (meds.js, #162)
 })();
