@@ -32,7 +32,7 @@
   <div class="seg" id="presets" role="group" aria-label="Period"></div>
   <select class="period-pick" id="periodPick" aria-label="Period: since a milestone, or a calendar year"></select>
   <div class="dates"><input type="date" id="from" aria-label="From"> – <input type="date" id="to" aria-label="To"></div>
-  <div class="chips" id="chips"></div>
+  <div class="chips" id="chips" role="group" aria-label="Kinds of records shown"></div>
   <input class="search" id="q" type="search" placeholder="Search events…">
   <button class="iconbtn ftoggle" id="ftoggle" type="button" aria-expanded="false">Filters</button>
 </div>
@@ -50,13 +50,13 @@
     </div>
     <div class="card">
       <div class="list-hd"><h2 id="listTitle">Events</h2><span class="spacer"></span>
-        <div class="seg" id="sortSeg" role="group" aria-label="Sort events"><button type="button" data-sort="desc">Newest first</button><button type="button" data-sort="asc">Oldest first</button></div></div>
+        <div class="seg" id="sortSeg" role="group" aria-label="Sort events"><button type="button" data-sort="desc" aria-pressed="true">Newest first</button><button type="button" data-sort="asc" aria-pressed="false">Oldest first</button></div></div>
       <div class="list" id="list"></div>
     </div>
   </section>
   <section id="view-labs" hidden>
     <div class="toolbar labs-head">
-      <div class="seg" id="labsView" role="group" aria-label="Show the lab results as"><button type="button" data-view="chart">Chart</button><button type="button" data-view="heatmap">Heatmap</button></div>
+      <div class="seg" id="labsView" role="group" aria-label="Show the lab results as"><button type="button" data-view="chart" aria-pressed="true">Chart</button><button type="button" data-view="heatmap" aria-pressed="false">Heatmap</button></div>
       <p class="range-note">Out-of-range values are flagged against the reference ranges in your own lab reports. This isn't medical advice.</p>
     </div>
     <div class="layout" id="labsChart">
@@ -70,7 +70,7 @@
             <span><i style="background:var(--stay)"></i>Hospital stay</span>
           </div>
           <span class="spacer"></span>
-          <label><input type="checkbox" id="optMarks"> Procedures &amp; imaging</label>
+          <label class="toggle"><input type="checkbox" id="optMarks"> Procedures &amp; imaging</label>
           <label hidden><input type="checkbox" id="optSmooth"> 7-day average</label>
         </div>
         <p class="hint chart-hint">Drag any chart sideways to move through time: every chart moves together.</p>

@@ -80,7 +80,7 @@ CHART_LAYERS.push({
   if (marks) {
     const box = el("input", {type: "checkbox", id: "optJournal", checked: jOnTrends || null, onchange: ev => {
       jOnTrends = ev.target.checked; try { localStorage.setItem("sg-journal-trends", jOnTrends ? "1" : "0"); } catch (e) {} renderCharts(); }});
-    marks.after(el("label", {id: "optJournalLabel"}, box, " Journal"));
+    marks.after(el("label", {id: "optJournalLabel", class: "toggle"}, box, " Journal"));
   }
   const legend = document.querySelector("#view-labs .legend");
   if (legend) legend.append(el("span", {class: "jlegend"}, el("svg:svg", {viewBox: "0 0 30 12", width: 30, height: 12, "aria-hidden": "true"},
@@ -133,10 +133,10 @@ function openJournal(e) {
    Its home is a card on the Timeline tab, between the timeline and the events list, added here (index.html has no
    place for it): the newest entries, with the filters and search. The panel shows the same list only when the
    Timeline tab is hidden (Settings → Tabs, #40). Saving or deleting reloads the page, so the card is built once. */
-const jFilter = {kind: "", med: "", q: "", inRange: false, all: false};
+const jFilter = {kinds: new Set(J_KINDS.map(([k]) => k)), med: "", q: "", inRange: false, all: false};   // kinds: those shown
 const J_FEW = 5;   // the card shows the newest five until "Show all"
 const JOURNAL_HINT = "What you write is kept with the records, not with any import: undoing an import leaves it. It's in “Export everything” and in backups.";
-const jMatch = e => (!jFilter.kind || e.j.kind === jFilter.kind) && (!jFilter.med || e.j.med === jFilter.med) &&
+const jMatch = e => jFilter.kinds.has(e.j.kind) && (!jFilter.med || e.j.med === jFilter.med) &&
   (!jFilter.q || e._q.includes(jFilter.q)) && (!jFilter.inRange || e.ts >= state.from && e.ts <= state.to);
 const jRow = e => el("button", {class: "jrow", type: "button", role: "listitem", onclick: () => openEvent(e), "aria-label": jSay(e.j)},
   el("span", {class: "d", text: fmtD(e.ts)}),
@@ -147,24 +147,31 @@ const jRow = e => el("button", {class: "jrow", type: "button", role: "listitem",
 /* the filters, the count and the entries, newest first; few: only the newest J_FEW until "Show all". -> {nodes, draw} */
 function jList(few) {
   const meds = [...new Set(JOURNAL.map(e => e.j.med).filter(Boolean))].sort();
-  const kind = el("select", {"aria-label": "Kind of entry"}, el("option", {value: "", text: "All kinds"}), ...J_KINDS.map(([v, t]) => el("option", {value: v, text: t + "s"})));
+  // the kinds, and "Only the dates shown", as on/off toggle chips (#193, app.css .toggle)
+  const kind = el("div", {class: "chips", role: "group", "aria-label": "Kinds of entry shown"}, ...J_KINDS.map(([k, t]) => {
+    const b = el("button", {type: "button", class: "toggle", "data-kind": k, "aria-pressed": jFilter.kinds.has(k), onclick: () => {
+      jFilter.kinds.has(k) ? jFilter.kinds.delete(k) : jFilter.kinds.add(k); b.setAttribute("aria-pressed", jFilter.kinds.has(k)); draw(); }},
+      t + "s ", el("span", {class: "n", text: JOURNAL.filter(e => e.j.kind === k).length}));
+    b.style.setProperty("--tone", "var(--c-journal)");
+    return b;
+  }));
   const med = el("select", {"aria-label": "Medication", hidden: !meds.length || null}, el("option", {value: "", text: "Any medication"}), ...meds.map(m => el("option", {value: m, text: m})));
   const q = el("input", {type: "search", placeholder: "Search the journal…", "aria-label": "Search the journal"});
-  const shown = el("label", {class: "jinrange"}, el("input", {type: "checkbox", checked: jFilter.inRange || null}), " Only the dates shown");
-  kind.value = jFilter.kind; med.value = jFilter.med; q.value = jFilter.q;
+  const shown = el("label", {class: "jinrange toggle"}, el("input", {type: "checkbox", checked: jFilter.inRange || null}), " Only the dates shown");
+  med.value = jFilter.med; q.value = jFilter.q;
   const list = el("div", {class: "jlist", role: "list"}), count = el("p", {class: "hint", role: "status"});
   const more = el("button", {class: "btn jmore", type: "button", hidden: "", onclick: () => { jFilter.all = !jFilter.all; draw(); }});
   const draw = () => {
-    Object.assign(jFilter, {kind: kind.value, med: med.value, q: q.value.trim().toLowerCase(), inRange: shown.firstChild.checked});
+    Object.assign(jFilter, {med: med.value, q: q.value.trim().toLowerCase(), inRange: shown.firstChild.checked});
     const v = JOURNAL.filter(jMatch).sort((a, b) => b.ts - a.ts), cut = few && !jFilter.all && v.length > J_FEW;
-    const filtered = jFilter.kind || jFilter.med || jFilter.q || jFilter.inRange;
+    const filtered = jFilter.kinds.size < J_KINDS.length || jFilter.med || jFilter.q || jFilter.inRange;
     count.textContent = !JOURNAL.length ? "" : cut ? `The newest ${J_FEW} of ${v.length}${filtered ? " that match" : ""}` : `${v.length} of ${JOURNAL.length} shown`;
     list.replaceChildren(...(cut ? v.slice(0, J_FEW) : v).map(jRow));
     if (!v.length) list.append(el("div", {class: "empty", text: JOURNAL.length ? "No entries match." : jCanWrite() ? "Add a note, a symptom or a side effect to start the journal." : "No one has written in this journal yet."}));
     more.hidden = !few || v.length <= J_FEW;
     more.textContent = jFilter.all ? "Show fewer" : `Show all ${v.length}`;
   };
-  for (const c of [kind, med]) c.onchange = draw;
+  med.onchange = draw;
   q.oninput = draw; shown.firstChild.onchange = draw;
   draw();
   return {nodes: [JOURNAL.length ? el("div", {class: "jfilters"}, kind, med, q, shown) : null, count, list, more], draw};

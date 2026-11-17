@@ -109,17 +109,11 @@ header.topbar .tabs button{white-space:nowrap}
   .menu-btn{max-width:10em}
 }
 .filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--grid);background:var(--surface)}
-.seg{display:flex;border:1px solid var(--ring);border-radius:8px;overflow:hidden;background:var(--raised)}
-.seg button{border:0;background:none;padding:5px 10px;cursor:pointer;color:var(--ink2);border-right:1px solid var(--ring)}
-.seg button:last-child{border-right:0}
-.seg button[aria-pressed="true"]{background:var(--hover);color:var(--ink);font-weight:650}
 .dates{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:13px}
 .dates input{border:1px solid var(--ring);background:var(--raised);border-radius:8px;padding:4px 6px}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--ring);background:var(--raised);border-radius:999px;padding:4px 11px 4px 9px;cursor:pointer;color:var(--ink2);font-size:13px}
 .chip .key{width:14px;height:3px;border-radius:2px}
-.chip[aria-pressed="false"]{opacity:.45}
-.chip[aria-pressed="false"] .key{background:var(--muted)!important}
 .search{border:1px solid var(--ring);background:var(--raised);border-radius:8px;padding:5px 10px;min-width:200px}
 main{padding:16px 20px 60px;max-width:1500px;margin:0 auto}
 footer.notice{max-width:1500px;margin:0 auto;padding:12px 20px 24px;border-top:1px solid var(--grid);color:var(--ink2);font-size:12px;box-sizing:border-box}
@@ -321,9 +315,6 @@ details.res > div{padding:0 12px 10px}
   main{padding:12px 10px 60px}
   .card{padding:12px;border-radius:10px;margin-bottom:12px}
   .filters{padding:8px 10px;gap:8px;position:relative}
-  .seg{max-width:100%;overflow-x:auto;scrollbar-width:none;flex:none}
-  .seg::-webkit-scrollbar{display:none}
-  .seg button{white-space:nowrap;flex:none;padding:6px 10px}
   .ftoggle{display:inline-block;margin-left:auto}
   .filters:not(.open) .dates,.filters:not(.open) .chips,.filters:not(.open) .search{display:none}
   .filters.open .chips{width:100%}
@@ -585,7 +576,7 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .sets .set-preview .tile{cursor:default}
 .sets .set-preview .set-wide,.sets .set-preview>p{grid-column:1 / -1;margin:0}
 .sets .set-radios{border:0;padding:0;margin:4px 0;display:flex;gap:16px;flex-wrap:wrap}
-.sets .set-radios label{display:flex;align-items:center;gap:4px}
+.sets .set-radios>label{display:flex;align-items:center;gap:4px}
 /* Settings: dates and times (#42), watch and scale (#46) */
 .sets .set-select{max-width:100%}
 .sets .w-kv{grid-template-columns:120px minmax(0,1fr)}
@@ -692,7 +683,6 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .jfilters{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 6px}
 .jfilters select,.jfilters input[type=search]{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:5px 9px;min-width:0;max-width:100%}
 .jfilters input[type=search]{flex:1 1 160px}
-.jinrange{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2)}
 .jlist{display:flex;flex-direction:column;margin-bottom:12px}
 .jrow{display:grid;grid-template-columns:86px 18px 1fr auto;gap:8px;align-items:center;text-align:left;border:0;border-bottom:1px solid var(--grid);background:none;padding:8px 6px;cursor:pointer;border-radius:6px;width:100%}
 .jrow:hover,.jrow:focus-visible{background:var(--hover)}
@@ -710,7 +700,6 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .jwhen{display:flex;flex-wrap:wrap;gap:10px}
 .jwhen .jfield{flex:1 1 140px}
 .jkinds{align-self:flex-start;max-width:100%}
-.jkinds button[aria-checked="true"]{background:var(--hover);color:var(--ink);font-weight:650}
 .jsev-in{display:flex;align-items:center;gap:10px}
 .jsev-in input{flex:1;min-width:0;accent-color:var(--c-journal)}
 .jsev-out{font-variant-numeric:tabular-nums;color:var(--ink);min-width:9.5em}
@@ -886,3 +875,61 @@ details.more>summary:focus-visible{outline:2px solid var(--accent);outline-offse
 details.more>:not(summary){margin:4px 0 0;max-width:72ch}
 details.more[open]{margin-bottom:10px}
 details.more code{overflow-wrap:anywhere}
+/* ---- pick one, and on or off: one look for each kind of control, everywhere (#193)
+   PICK ONE, a segmented control (.seg): one choice of a few, exactly one selected at a time. Its parts sit directly in it:
+     <div class="seg" role="group" aria-label="Group the claims"><button type="button" aria-pressed="true">By month</button>
+       <button type="button" aria-pressed="false">By year</button></div>
+     or role="radiogroup" of <button type="button" role="radio" aria-checked="true|false"> (only the checked one in the tab
+     order, arrow keys move: the journal form's kinds), or <label><input type="radio" name="…">Light</label> each, in a
+     <fieldset> with its <legend> (the radio stays for the keyboard and forms, see-through over its label: Settings).
+     Add "wrap" where the choices may not fit a phone: they wrap instead of scrolling sideways.
+     Selected: an accent tint, a bar under it and bold text. Forced colors: the system's highlight.
+   ON OR OFF, a toggle chip (.toggle): each shows or hides something by itself, so several can be on.
+     <button type="button" class="toggle" aria-pressed="true|false"><span class="key"></span>Visits <span class="n">31</span></button>
+     or <label class="toggle"><input type="checkbox" id="…"> Journal</label> (the box see-through over its chip). The key
+     and the count are optional; the chip's colour is --tone, set with node.style.setProperty("--tone", "var(--c-visit)")
+     (the accent if none). Shown: a tint of that colour, a solid border, a ✓, the key in colour. Hidden: outlined only, no
+     tint and no ✓, the key grey and the text muted: told apart by more than opacity, in light, dark and forced colors.
+   Both: an ARIA state is always "true" or "false" (el() writes a boolean so), and focus shows as an accent outline. */
+.seg{display:inline-flex;gap:1px;max-width:100%;min-width:0;margin:0;padding:0;border:1px solid var(--axis);border-radius:8px;overflow:hidden;background:var(--axis)}
+.seg>button,.seg>label{position:relative;flex:1 0 auto;display:inline-flex;align-items:center;justify-content:center;margin:0;border:0;border-radius:0;
+  background:var(--raised);padding:5px 10px;color:var(--ink2);font-size:inherit;font-weight:500;line-height:1.45;text-align:center;white-space:nowrap;cursor:pointer}
+.seg>button:hover,.seg>label:hover{color:var(--ink)}
+.seg>[aria-pressed="true"],.seg>[aria-checked="true"],.seg>label:has(>input:checked){background:color-mix(in srgb,var(--accent) 15%,var(--raised));
+  color:var(--ink);font-weight:650;box-shadow:inset 0 -2px 0 var(--accent)}
+.seg>label>input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:inherit}
+.seg>label:has(>input:disabled){cursor:default}
+.seg>button:focus-visible,.seg>label:has(>input:focus-visible){outline:2px solid var(--accent);outline-offset:-2px;z-index:1}
+.seg.wrap{flex-wrap:wrap}
+.seg.wrap>button,.seg.wrap>label{white-space:normal}
+button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline-flex;align-items:center;gap:6px;margin:0;border:1px solid var(--axis);border-radius:999px;
+  background:transparent;padding:3px 11px 3px 9px;color:var(--ink2);font-size:13px;font-weight:500;line-height:1.45;white-space:nowrap;cursor:pointer}
+.toggle:hover{border-color:var(--ink2);color:var(--ink)}
+.toggle[aria-pressed="true"],.toggle:has(>input:checked){background:color-mix(in srgb,var(--tone) 15%,var(--raised));border-color:color-mix(in srgb,var(--tone) 70%,var(--ink));color:var(--ink)}
+.toggle::before{content:"✓";content:"✓"/"";font-size:12px;font-weight:700;line-height:1;color:color-mix(in srgb,var(--tone) 55%,var(--ink))}
+.toggle[aria-pressed="false"]::before,.toggle:has(>input:not(:checked))::before{content:none}
+.toggle .key{flex:none;width:14px;height:3px;border-radius:2px;background:var(--tone)}
+.toggle .n{color:var(--ink2);font-variant-numeric:tabular-nums}
+.toggle[aria-pressed="false"] .key,.toggle:has(>input:not(:checked)) .key{background:var(--muted)}
+.toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:var(--muted)}
+.toggle>input{position:absolute;inset:0;width:100%;height:100%;margin:0;border-radius:inherit;opacity:0;cursor:pointer}
+.toggle:focus-visible,.toggle:has(>input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:700px){
+  .seg:not(.wrap){flex:none;overflow-x:auto;scrollbar-width:none}   /* the records bar's presets: they scroll, the chosen one kept in view */
+  .seg:not(.wrap)::-webkit-scrollbar{display:none}
+  .seg>button,.seg>label{flex:none;padding:6px 10px}
+  .seg.wrap>button,.seg.wrap>label{flex:1 0 auto}
+  button.toggle,label.toggle{padding:5px 12px 5px 10px}
+}
+@media (forced-colors:active){   /* selected or shown: the system's highlight, kept as is (no text backplate over it) */
+  .seg{background:CanvasText;border-color:CanvasText}
+  .seg>button,.seg>label{background:Canvas;color:CanvasText}
+  .seg>[aria-pressed="true"],.seg>[aria-checked="true"],.seg>label:has(>input:checked){forced-color-adjust:none;background:Highlight;color:HighlightText;box-shadow:none}
+  button.toggle,label.toggle{background:Canvas;color:CanvasText;border:1px dashed CanvasText}
+  .toggle[aria-pressed="true"],.toggle:has(>input:checked){forced-color-adjust:none;background:Highlight;color:HighlightText;border:1px solid Highlight}
+  .toggle::before{color:inherit}
+  .toggle .key{forced-color-adjust:none}
+  .toggle[aria-pressed="false"] .key,.toggle:has(>input:not(:checked)) .key{background:GrayText}
+  .toggle .n,.toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:inherit}
+  .seg>button:focus-visible,.seg>label:has(>input:focus-visible),.toggle:focus-visible,.toggle:has(>input:focus-visible){outline-color:CanvasText}
+}
