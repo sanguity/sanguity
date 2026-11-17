@@ -65,6 +65,11 @@ every chart and as "since" periods.
   format and a light or dark theme.
 - A **journal** of symptoms, side effects and notes, on the timeline and the charts.
 
+**Finding your way.** One bar across the top: your records' tabs, **Add** (import records, connect a source, type
+records in, a journal entry) and your menu (visit summary, share links, settings, account, light or dark, log out).
+**Settings** is grouped in a sidebar (this profile's dashboard, labs and ranges, milestones; your display and
+calendar; devices and sources), one group at a time, with **Find a setting** to search them all.
+
 **Sharing and taking it with you**
 
 - **Several people, one install.** Each person who signs in has their own account, and each person whose health is
@@ -259,7 +264,7 @@ passes the readings on.
 
 ### Uploading records in the app
 
-**Import** (in the header, or on an empty profile) uploads a portal's or app's export to a profile you own or edit:
+**Add → Import records** (in the top bar, or on an empty profile) uploads a portal's or app's export to a profile you own or edit:
 a zip as you downloaded it, a folder you've unpacked (its folders are kept), or single files. Viewers can't upload.
 Each file streams to the server on its own, with progress, and is kept in the profile's folder encrypted, as the
 import's original files: they're included in **Export everything** and in backups, and go when the profile is
@@ -431,7 +436,7 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   only for a result with no range and no flag on its report, never instead of one, and only in the same unit
   (nothing is converted). Wherever one colours a result (Trends, the heatmap, the Overview, the visit summary,
   where it's printed with "(settings)"), it says "range from settings". It's your choice, not medical advice.
-- **Visit summary:** one or two printable pages to bring to an appointment (**Visit summary** in the header):
+- **Visit summary:** one or two printable pages to bring to an appointment (**Visit summary** in your menu, top right):
   results out of range since the last visit, each against the range on its own report (or a range from settings
   when the report gives none), trends of the key labs and
   any others picked, current medications, upcoming appointments and your own questions (kept as a draft for the

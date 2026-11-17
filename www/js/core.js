@@ -83,9 +83,7 @@ function restore() {
     if (s.preset === "custom" && s.from && s.to) { state.from = s.from; state.to = s.to; }
   } catch (e) {}
 }
-/* the ◐ toggle: this browser's own theme, over the account's default (applyTheme in util.js; theme.js applied it first) */
-function setTheme(t) { try { t ? localStorage.setItem("ht-theme", t) : localStorage.removeItem("ht-theme"); } catch (e) {} applyTheme(); }
-$("#theme").onclick = () => { const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; setTheme(dark ? "light" : "dark"); };
+/* the light/dark toggle is in the top bar's menu (nav.js) */
 
 /* ---------------------------------------------------------------- range */
 const PRESETS = [["all","All"],["5y","5y"],["2y","2y"],["1y","1y"],["6m","6m"],["90d","90d"],["30d","30d"]];

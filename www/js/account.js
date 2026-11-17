@@ -613,13 +613,13 @@ addEventListener("hashchange", () => { if (tabsOn) openFromHash(); });
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   $("#pwHint").textContent = `At least ${ME.password_min} characters. A few unrelated words make a strong password you can remember.`;
   if (ME.user.must_change_pw) {   // nothing else is available until the one-time password is replaced (no tabs)
-    $("#mustChange").hidden = false; $("#back").hidden = true;
+    $("#mustChange").hidden = false; SgNav.lock();
     for (const id of ["#sessions", "#profiles", "#users", "#twofa", "#passkeys"]) $(id).hidden = true;
     $("#pwCur").focus();
     return;
   }
   if (ME.user.needs_two_factor) {   // the server requires it: set it up before anything else (no tabs)
-    $("#needTf").hidden = false; $("#back").hidden = true;
+    $("#needTf").hidden = false; SgNav.lock();
     for (const id of ["#sessions", "#profiles", "#users"]) $(id).hidden = true;
     await Promise.all([loadTwoFactor(), loadPasskeys()]);
     return;
