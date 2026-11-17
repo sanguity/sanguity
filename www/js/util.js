@@ -5,6 +5,8 @@ const $ = s => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
   const e = tag.startsWith("svg:") ? document.createElementNS("http://www.w3.org/2000/svg", tag.slice(4)) : document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
+    // an ARIA state is "true" or "false", never left out: CSS and screen readers read [aria-pressed="false"] as off
+    if (k.startsWith("aria-") && typeof v === "boolean") { e.setAttribute(k, String(v)); continue; }
     if (v == null || v === false) continue;
     if (k === "text") e.textContent = v;
     else if (k === "class") e.setAttribute("class", v);
