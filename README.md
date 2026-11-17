@@ -453,6 +453,11 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   only for a result with no range and no flag on its report, never instead of one, and only in the same unit
   (nothing is converted). Wherever one colours a result (Labs' charts and heatmap, the Overview, the visit summary,
   where it's printed with "(settings)"), it says "range from settings". It's your choice, not medical advice.
+- **Each result against its own range:** every result is judged against the range on its own report (or one from
+  settings), never one range across labs. When the results on a Labs chart have different ranges (two labs, or a lab
+  that changed its range), the chart's shaded band steps with each result's range and a line under its name says so
+  ("Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL"), compared in the units shown; its table
+  gives each row its own range.
 - **Visit summary:** one or two printable pages to bring to an appointment (**Sharing → Visit summary**, from your menu, top right):
   results out of range since the last visit, each against the range on its own report (or a range from settings
   when the report gives none), trends of the key labs and

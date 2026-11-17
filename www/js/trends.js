@@ -96,6 +96,14 @@ function readText(s, p) {
   if (s.kind === "bars") return [`${Math.round(p[1]).toLocaleString()} ${u}`, ""];
   return [`${p[5] || fmtNum(p[1])} ${u}`, ucOrig(s, p) ? "Reported as " + ucOrig(s, p) : ""];   // #41: as reported, beside a converted value
 }
+/* under a chart's name, when its results' reference ranges differ (two labs, or a lab that changed its range): which
+   ones, and that the band (or each table row) follows each result's own (#58) */
+function rangeNote(s, pts, table) {
+  const d = s.watch ? null : rangesDiffer(pts);
+  const parts = d ? d.split(/((?:[≤≥] )?-?[\d.]+(?:–-?[\d.]+)?)/).map((t, i) => i % 2 ? el("span", {class: "nw", text: t}) : t) : [];   // a range isn't broken across lines
+  return d ? el("p", {class: "rdiff"}, el("b", {text: RANGE_DIFFERS + ": "}), ...parts, ` ${s.unit}. `,
+    table ? "Each row gives its own." : "The shaded band steps with each result's own range.") : null;
+}
 function chartCard(s) {
   const card = el("div", {class: "chart"});
   const pts = s.pts.filter(p => p.ts >= state.from && p.ts <= state.to);
@@ -108,7 +116,8 @@ function chartCard(s) {
   card.append(el("div", {class: "hd"}, el("span", {class: "name", title: renamedTitle("lab", s.name), text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
     el("span", {class: "unit", text: `${s.unit}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), legend, read,
     viewSeg(s.name, nice(s.name), renderCharts),   // Chart | Table (#60)
-    el("button", {text: "✕", title: "Remove", "aria-label": `Remove ${nice(s.name)}`, onclick: () => { state.sel.delete(s.name); renderLabs(); }})));
+    el("button", {text: "✕", title: "Remove", "aria-label": `Remove ${nice(s.name)}`, onclick: () => { state.sel.delete(s.name); renderLabs(); }}),
+    rangeNote(s, pts, showTable)));
   if (showTable) {
     card.append(el("div", {class: "tablewrap"}, el("table", {class: "data"}, el("thead", {}, el("tr", {}, ["Date", "Value", s.watch ? "Detail" : "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
       el("tbody", {}, [...pts].reverse().map(p => { const [a, b] = readText(s, p); return el("tr", {}, el("td", {text: s.watch ? fmtD(p.ts) : fmtDT(p.ts)}), el("td", {class: p[4] ? "abn" : "", text: a + (!s.watch && b ? ` (reported ${ucOrig(s, p)})` : "")}),
@@ -133,8 +142,10 @@ function drawChart(svg, s, pts, read) {
   const x = t => L + (t - state.from) / (state.to - state.from) * (R - L);
   const smoothOn = state.smooth && s.watch && pts.length > 3;
   const vals = pts.map(p => p[1]).concat(s.kind === "band" ? pts.flatMap(p => [p.lo, p.hi]).filter(v => v != null) : []);
-  const lows = pts.map(p => p[2]).filter(v => v != null), highs = pts.map(p => p[3]).filter(v => v != null);
-  const refLo = lows.length ? median(lows) : null, refHi = highs.length ? median(highs) : null;
+  // the reference band: each result's own range, as steps when they differ (#58, ranges.js), never one range for all
+  const steps = s.watch ? [] : rangeSteps(pts, state.from, state.to);
+  const lows = steps.map(st => st.lo).filter(v => v != null), highs = steps.map(st => st.hi).filter(v => v != null);
+  const refLo = lows.length ? Math.min(...lows) : null, refHi = highs.length ? Math.max(...highs) : null;
   let lo, hi;
   if (s.kind === "stack" || s.kind === "bars") { lo = 0; hi = Math.max(1, ...vals) * 1.08; }
   else {
@@ -148,11 +159,19 @@ function drawChart(svg, s, pts, read) {
   const g = [];
   for (const st of STAYS) { if (st.te < state.from || st.ts > state.to) continue; const a = Math.max(L, x(st.ts)), b = Math.min(R, x(st.te)); g.push(el("svg:rect", {class: "stayband", x: a, y: T, width: Math.max(2, b - a), height: B - T})); }
   for (const v of niceTicks(lo, hi, 4)) { g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)})); g.push(el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: s.kind === "bars" && v >= 1000 ? (v / 1000) + "k" : fmtNum(v)})); }
-  if ((refLo != null || refHi != null) && !s.watch) {
-    const a = refHi != null ? Math.max(T, y(refHi)) : T, b = refLo != null ? Math.min(B, y(refLo)) : B;
-    if (b > a) g.push(el("svg:rect", {class: "refband", x: L, y: a, width: R - L, height: b - a}));
-    if (refHi != null && y(refHi) > T) g.push(el("svg:line", {class: "refedge", x1: L, x2: R, y1: y(refHi), y2: y(refHi)}));
-    if (refLo != null && y(refLo) < B) g.push(el("svg:line", {class: "refedge", x1: L, x2: R, y1: y(refLo), y2: y(refLo)}));
+  {
+    const edge = {lo: "", hi: ""};   // each edge as one stepped path, joined where neighbouring steps both have it
+    steps.forEach((st, i) => {
+      const xa = Math.max(L, x(st.a)), xb = Math.min(R, x(st.b)); if (xb <= xa) return;
+      const a = st.hi != null ? Math.max(T, y(st.hi)) : T, b = st.lo != null ? Math.min(B, y(st.lo)) : B;
+      if (b > a) g.push(el("svg:rect", {class: "refband", x: xa, y: a, width: xb - xa, height: b - a}));
+      for (const k of ["lo", "hi"]) {
+        if (st[k] == null) continue;
+        const ey = Math.max(T, Math.min(B, y(st[k]))).toFixed(1);
+        edge[k] += (i && steps[i - 1][k] != null && edge[k] ? `V${ey}` : `M${xa.toFixed(1)},${ey}`) + `H${xb.toFixed(1)}`;
+      }
+    });
+    for (const k of ["lo", "hi"]) if (edge[k]) g.push(el("svg:path", {class: "refedge", d: edge[k], fill: "none"}));
   }
   msMarks(g, x, state.from, state.to, hasMs ? 16 : T, B, R, 12);
   // treatment events: dashed rule + label (procedures labelled when there is room)
@@ -245,7 +264,7 @@ function drawChart(svg, s, pts, read) {
   // the keyboard (#60): ← and → step through the results shown, with the same readout and tooltip as hovering
   const unit = s.watch ? (s.kind === "stack" ? "night" : "day") : "result", nAbn = pts.filter(p => p[4]).length;
   chartKeys(svg, `${nice(s.name)}: ${pts.length} ${unit}${pts.length === 1 ? "" : "s"}${pts.length ? ` from ${fmtD(pts[0].ts)} to ${fmtD(lastP.ts)}, latest ${readText(s, lastP)[0]}` : " in this period"}`
-    + `${nAbn ? `, ${nAbn} outside reference range` : ""}. Left and right arrow keys step through them.`,
+    + `${nAbn ? `, ${nAbn} outside reference range` : ""}${rangesDiffer(pts) ? `. ${RANGE_DIFFERS}: ${rangesDiffer(pts)} ${s.unit}` : ""}. Left and right arrow keys step through them.`,
     () => pts.map(p => p.ts),
     t => { const p = pts.find(p => p.ts === t); return showAt(t, x(t), svgPoint(svg, x(t), p ? y(p[1]) : T)); },
     () => { document.querySelectorAll("#charts svg").forEach(o => o._hover && o._hover(null)); hideTip(); });

@@ -259,6 +259,10 @@ Everything on `main` so far; it becomes the first tagged release.
   still has Show all.
 - The visit summary's PDF says **High** or **Low** beside a trend's Now value when it's out of range, not by red
   alone, so a black-and-white print shows it; the trends table's columns are rebalanced so it fits (#213).
+- A Labs chart's reference band follows each result's own range instead of one range for all its results: when they
+  differ (two labs, or a lab that changed its range), the band steps with them and a line under the chart's name says
+  so, "Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL", compared after any unit conversion; the
+  chart's table gives each row its own, and the Overview's sparklines and the heatmap's row names follow suit (#58).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -68,7 +68,7 @@ function renderHeatmap() {
     g.push(el("svg:text", {class: "row" + (edit ? " renamable" : ""), x: LW - 8, y: ry + rowH - 4, "text-anchor": "end",
       ...(edit ? {"data-rename": "lab", "data-key": s.name, tabindex: 0, role: "button", "aria-label": `Rename ${nm}`} : {})},
       nm.length > (LW < 150 ? 17 : 28) ? nm.slice(0, LW < 150 ? 16 : 27) + "…" : nm,
-      el("svg:title", {text: renamedTitle("lab", s.name) + (edit ? " · click to rename" : "")})));
+      el("svg:title", {text: renamedTitle("lab", s.name) + (edit ? " · click to rename" : "") + rowRanges(s)})));
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(dayKey(p.ts), p);
     for (const [k, p] of byDay) {
       const lv = hmLevel(p[1], p[2], p[3]);
@@ -108,6 +108,12 @@ function renderHeatmap() {
     const e = EV.find(e => e.k === "lab" && isoDay(e.ts) === k) || EV.find(e => e.k === "procedure" && isoDay(e.ts) === k); if (e) openEvent(e);
   };
 }
+/* a lab row's name, hovered: its results' ranges when they differ in the period shown; each cell is coloured against
+   its own result's range (#58) */
+function rowRanges(s) {
+  const d = rangesDiffer(s.pts.filter(p => p.ts >= state.from && p.ts <= state.to));
+  return d ? `\n${RANGE_DIFFERS}: ${d} ${s.unit}` : "";
+}
 /* the heatmap as a table (#60): a row per lab, grouped by panel as on the heatmap, a column per draw day; a result
    outside its reference range has ▲ or ▼ beside it, said as "high" or "low" */
 function hmTable(rows, cols) {
@@ -121,7 +127,7 @@ function hmTable(rows, cols) {
       tb.append(el("tr", {class: "grp"}, el("th", {scope: "rowgroup", colspan: cols.length + 1, text: panel})));
     }
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(isoDay(p.ts), p);
-    tb.append(el("tr", {}, el("th", {scope: "row", title: renamedTitle("lab", s.name), text: `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`}),
+    tb.append(el("tr", {}, el("th", {scope: "row", title: renamedTitle("lab", s.name) + rowRanges(s), text:`${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`}),
       ...cols.map(([k]) => {
         const p = byDay.get(k); if (!p) return el("td", {});
         const lv = hmLevel(p[1], p[2], p[3]), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it

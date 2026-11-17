@@ -1068,3 +1068,8 @@ path.pt.abn{stroke-width:1.5}
 .hm-table thead th:first-child{left:0;z-index:2}
 .hm-table tr.grp th{position:static;color:var(--muted);font-size:10.5px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;padding-top:10px}
 @media (max-width:700px){ .view-seg>button{padding:4px 10px} }
+/* ---- each result against its own range (#58): under a chart's name, when its results' ranges differ, which ones;
+   the band itself steps with each result's range (trends.js) */
+.chart .hd .rdiff{flex-basis:100%;margin:0;font-size:12px;color:var(--ink2)}
+.chart .hd .rdiff b{font-weight:600;color:var(--ink)}
+.chart .hd .rdiff .nw{white-space:nowrap}
