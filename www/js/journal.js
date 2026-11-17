@@ -122,8 +122,8 @@ function openJournal(e) {
         acts.querySelector(".btn.primary").focus();
       }}));
   }
-  acts.append(el("button", {class: "btn", type: "button", text: "Day on the timeline", onclick: () => { setRange(e.ts - 15 * DAY, e.ts + 15 * DAY); switchTab("timeline"); }}),
-    el("button", {class: "btn", type: "button", text: "All journal entries", onclick: () => journalHome()}));
+  acts.append(el("button", {class: "btn", type: "button", text: "Day on the timeline", onclick: () => { setRange(e.ts - 15 * DAY, e.ts + 15 * DAY); pickTab("timeline"); }}),
+    el("button", {class: "btn", type: "button", text: "All journal entries", onclick: () => journalHome(true)}));
   body.append(acts, msg);
   showDrawer();
   renderTimeline();
@@ -193,12 +193,13 @@ function journalHomeCard() {
 }
 // "Only the dates shown" follows the timeline's dates: the events list is drawn again whenever they change
 { const evList = $("#list"); if (evList) new MutationObserver(() => { if (jFilter.inRange && jHomeDraw) jHomeDraw(); }).observe(evList, {childList: true}); }
-/* to the journal's home: the card on the Timeline tab, or the list in the panel when that tab is hidden */
-function journalHome() {
+/* to the journal's home: the card on the Timeline tab, or the list in the panel when that tab is hidden. push:
+   someone asked for it, so Back returns to the tab before (#208) */
+function journalHome(push) {
   const card = $("#journalHome");
   if (!card || !shownTabs().includes("timeline")) return openJournalList();
   if (drawer.classList.contains("open")) closeDrawer();
-  switchTab("timeline");
+  switchTab("timeline", null, push);
   const bar = document.querySelector("header")?.offsetHeight || 0;   // the top bar stays on screen: scroll to just under it
   window.scrollTo({top: card.getBoundingClientRect().top + scrollY - bar - 12, behavior: "instant"}); card.focus({preventScroll: true});
 }
@@ -288,7 +289,7 @@ function journalResume() {
   let r = null;
   try { r = JSON.parse(sessionStorage.getItem("sg-after-journal") || "null"); sessionStorage.removeItem("sg-after-journal"); } catch (e) {}
   if (location.hash === "#new-journal-entry") {
-    history.replaceState(null, "", location.pathname + location.search);   // a reload doesn't open it again
+    history.replaceState(null, "", location.pathname + location.search + tabHash());   // a reload doesn't open it again; the tab's # (#208)
     journalNew();
   } else if (r && r.entry && byId.has(-r.entry)) openEvent(byId.get(-r.entry));
   else if (r) journalHome();

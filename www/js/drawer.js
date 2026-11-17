@@ -67,7 +67,7 @@ function openEvent(e) {
   const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
   if (d.type === "result") body.append(...resultBody(d, e.id));
   else if (d.type === "labday") {
-    body.append(el("div", {}, el("button", {class: "btn", text: "Show this day in Lab trends", onclick: () => { setRange(e.ts - 45*DAY, e.ts + 45*DAY); switchTab("labs"); }})));
+    body.append(el("div", {}, el("button", {class: "btn", text: "Show this day in Lab trends", onclick: () => { setRange(e.ts - 45*DAY, e.ts + 45*DAY); pickTab("labs"); }})));
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
       const abn = (r.rows || []).filter(x => x[4]).length;
@@ -103,7 +103,7 @@ function openEvent(e) {
       d.note ? el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}) : null,
       d.discharge ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "Estimated: no admission record was available, so the end date is the last inpatient lab result."}),
       el("button", {class: "btn", text: "Zoom timeline to this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); closeDrawer(); }}),
-      el("button", {class: "btn", text: "Lab trends during this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); switchTab("labs"); closeDrawer(); }}));
+      el("button", {class: "btn", text: "Lab trends during this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); pickTab("labs"); closeDrawer(); }}));
   } else if (d.type === "exercise") {
     body.append(el("dl", {class: "kv"}, ...[["Activity", d.kind], ["Started", fmtDT(e.ts)], ["Ended", fmtDT(e.te)], ["Duration", d.minutes + " min"], ["Source", "Watch via Health Connect"]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
       el("button", {class: "btn", text: "Body and activity around this day", onclick: () => openHealth(e.ts - 14*DAY, e.ts + 14*DAY)}));

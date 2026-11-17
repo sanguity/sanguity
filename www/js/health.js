@@ -16,7 +16,7 @@ function hLoad() {
   } catch (e) {}
 }
 function hSave() { try { localStorage.setItem(hKey(), JSON.stringify({stays: hState.stays})); } catch (e) {} }
-function openHealth(a, b) { closeDrawer(); state.from = a; state.to = b; state.preset = "custom"; switchTab("health"); }
+function openHealth(a, b) { closeDrawer(); state.from = a; state.to = b; state.preset = "custom"; pickTab("health"); }
 function hData() {
   const M = Object.fromEntries(((WATCH || {}).metrics || []).map(m => [m.key, m]));
   const ser = k => (M[k] ? M[k].pts : []).map(([d, v]) => [dayTs(d), v]);

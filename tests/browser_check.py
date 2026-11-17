@@ -838,8 +838,8 @@ def main():
             page.wait_for_selector("#addMenuBtn", timeout=10000)
             menu_click(page, "#journalBtn")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted && document.getElementById('dtitle').textContent === 'New journal entry'", timeout=20000)
-            check("Add → Journal entry on another page opens the records page with the form, and the address is plain again",
-                  js("drawer.classList.contains('open') && location.hash === ''"), js("location.href"))
+            check("Add → Journal entry on another page opens the records page with the form, the address naming its tab again (#208)",
+                  js("drawer.classList.contains('open') && location.hash === tabHash() && location.hash !== '#new-journal-entry'"), js("location.href"))
             page.keyboard.press("Escape")
             page.click("#tab-timeline")
             settle()
@@ -1522,7 +1522,9 @@ def main():
             settle(200)
             check("import page fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.click(".import-job a[href='index.html']")   # "See them on the timeline"
+            check("…its link names the profile and the tab in the address (#208)",
+                  js("document.querySelector('.import-job a[href$=\"#timeline\"]')?.getAttribute('href')") == "index.html?profile=2#timeline")
+            page.click(".import-job a[href$='#timeline']")   # "See them on the timeline"
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && "
                                    "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)   # the saved view restored
             check("the imported records open on the timeline of the profile they went into", js("state.tab") == "timeline", js("state.tab"))
@@ -2165,6 +2167,69 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             js("switchTab('overview')")
+
+            # ---- the tab in the address (#208), in a browser of its own (its own history and saved view): picking a
+            # tab adds a history entry, so Back and Forward move between tabs; the app's own switches and the Labs view
+            # replace it; a reload, an old alias and a copied address in a new browser open the tab named; ?profile=
+            # stays beside the #, and an address with no # opens the tab last used
+            ready = "typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted"
+            session = [{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"]
+            tctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            tctx.add_cookies(session)
+            tp = tctx.new_page()
+            tp.on("pageerror", lambda e: problems.append(f"script error (tab address): {e}"))
+            blank = tp.evaluate("history.length")   # the new tab's about:blank
+            tp.goto(base + "/")
+            tp.wait_for_function(ready, timeout=20000)
+            addr = lambda: tp.evaluate("[location.search, location.hash, state.tab, state.labsView, history.length]")
+            n0 = tp.evaluate("history.length")
+            check("tab address: opening the page with no # names the tab it opens, without a history entry of its own",
+                  addr()[1:] == ["#overview", "overview", "chart", n0] and n0 == blank + 1, [addr(), blank])
+            for t in ("timeline", "labs", "costs"):
+                tp.click("#tab-" + t)
+            check("…picking Timeline, Labs and Costs adds an entry each, the address naming the tab", addr()[1:] == ["#costs", "costs", "chart", n0 + 3], addr())
+            tp.go_back()
+            tp.go_back()
+            tp.wait_for_function("state.tab === 'timeline'", timeout=5000)
+            check("…Back twice lands on Timeline", addr()[1:3] == ["#timeline", "timeline"] and tp.evaluate("!document.getElementById('view-timeline').hidden"), addr())
+            tp.go_forward()
+            tp.wait_for_function("state.tab === 'labs'", timeout=5000)
+            check("…and Forward on Labs", addr()[1:3] == ["#labs", "labs"], addr())
+            tp.evaluate("switchTab('overview'); switchTab('costs'); switchTab('heatmap')")
+            check("…the app's own switches replace the entry (Labs as the heatmap: #labs-heatmap)", addr()[1:] == ["#labs-heatmap", "labs", "heatmap", n0 + 3], addr())
+            tp.click("#labsView button[data-view=chart]")
+            check("…so does the Labs view", addr()[1:] == ["#labs", "labs", "chart", n0 + 3], addr())
+            tp.click("#labsView button[data-view=heatmap]")
+            tp.reload()
+            tp.wait_for_function(ready, timeout=20000)
+            check("…a reload keeps the tab and its view", addr()[1:4] == ["#labs-heatmap", "labs", "heatmap"], addr())
+            tp.evaluate("location.hash = '#trends'")
+            tp.wait_for_function("state.labsView === 'chart'", timeout=5000)
+            check("…an old alias opens its tab, the address then naming it", addr()[1:4] == ["#labs", "labs", "chart"], addr())
+            tp.goto(base + "/?profile=1#costs")
+            tp.wait_for_function(ready + " && state.tab === 'costs'", timeout=20000)
+            tp.click("#tab-health")
+            tp.click("#tab-labs")
+            tp.click("#labsView button[data-view=heatmap]")
+            check("…?profile= stays beside the #", addr()[:2] == ["?profile=1", "#labs-heatmap"], addr())
+            copied = tp.url
+            other = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)   # no saved view
+            other.add_cookies(session)
+            op = other.new_page()
+            op.on("pageerror", lambda e: problems.append(f"script error (copied address): {e}"))
+            op.goto(copied)
+            op.wait_for_function(ready, timeout=20000)
+            check("…a copied address opens the same tab in a new browser",
+                  op.evaluate("[location.search, location.hash, state.tab, state.labsView, !document.getElementById('labsHeatmap').hidden]")
+                  == ["?profile=1", "#labs-heatmap", "labs", "heatmap", True], op.evaluate("[location.href, state.tab, state.labsView]"))
+            other.close()
+            tp.go_back()
+            tp.wait_for_function("state.tab === 'health'", timeout=5000)
+            check("…and Back from there returns to Body and activity, the profile kept", addr()[:3] == ["?profile=1", "#health", "health"], addr())
+            tp.goto(base + "/")
+            tp.wait_for_function(ready, timeout=20000)
+            check("…while the address with no # opens the tab last used", addr()[1:3] == ["#health", "health"], addr())
+            tctx.close()
 
             # ---- #45 a default theme for the account: a fresh browser signed in as the same person uses it; the ◐
             # toggle still overrides it there; Reset to defaults follows the system again

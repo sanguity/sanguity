@@ -212,6 +212,12 @@ Everything on `main` so far; it becomes the first tagged release.
   errors at once. When the details panel covers the page on a phone, the page behind it can't be reached until
   it's closed. With less motion asked for in the system's settings, transitions and smooth scrolling are off.
   Opening an event from the timeline's list with Enter no longer closes it again straight away.
+- **The records tab is in the address** (#208): `#overview`, `#health`, `#timeline`, `#labs`, `#labs-heatmap`
+  (Labs as the heatmap) or `#costs`, beside `?profile=2`. Picking a tab, or a tile or button that opens one, adds a
+  history entry, so Back and Forward move between tabs; a reload or a copied link opens the same tab. The old
+  `#trends` and `#heatmap` still open Labs, an address with no `#` still opens the tab last used, and switching
+  profile opens that profile's last tab. The "See them on Labs" and "See them on the timeline" links after an
+  import name the profile and tab.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -67,7 +67,8 @@ on the **Settings** page, appear on every chart and as "since" periods.
 
 **Finding your way.** One bar across the top: your records' tabs, **Add** (upload files, connect a portal or plan, type
 records in, paste a Health Link, a journal entry) and your menu (sources, sharing, settings, account, light or dark,
-log out). **Settings** is grouped in a sidebar (this profile's dashboard, labs and ranges, milestones; your display),
+log out). The tab shown is in the address (`#timeline`, `#labs`, `#labs-heatmap`...), so Back moves between tabs and a
+copied link opens the same one. **Settings** is grouped in a sidebar (this profile's dashboard, labs and ranges, milestones; your display),
 one group at a time, with **Find a setting** to search them all.
 **Account** is you and this device: sign-in and security (password, two-factor sign-in, passkeys, where you're
 signed in), and this device (install as an app, offline records).

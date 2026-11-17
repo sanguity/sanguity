@@ -109,6 +109,6 @@ function renderLabs() {
   if (hm) renderHeatmap(); else { renderSeriesList(); renderCharts(); }
   save();
 }
-$("#labsView").onclick = ev => { const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.labsView) return; hideTip(); state.labsView = b.dataset.view; renderLabs(); };
-function showSeries(name) { state.sel.add(name); state.labsView = "chart"; closeDrawer(); switchTab("labs"); }
+$("#labsView").onclick = ev => { const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.labsView) return; hideTip(); state.labsView = b.dataset.view; renderLabs(); tabAddress(); };   // #labs or #labs-heatmap (#208)
+function showSeries(name) { state.sel.add(name); state.labsView = "chart"; closeDrawer(); pickTab("labs"); }
 

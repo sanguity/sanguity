@@ -53,15 +53,6 @@
     return card;
   }
 
-  function openTimeline(pid) {
-    // index.html opens the profile and tab it last saved for this browser (core.js: ht-profile, ht-state:<id>)
-    try {
-      localStorage.setItem("ht-profile", String(pid));
-      const k = "ht-state:" + pid, s = JSON.parse(localStorage.getItem(k) || "{}") || {};
-      localStorage.setItem(k, JSON.stringify({...s, tab: "timeline", v: 2}));
-    } catch (e) {}
-  }
-
   function countItems(c) {
     const kinds = Object.entries(c.kinds || {}).sort((a, b) => b[1] - a[1]);
     const items = kinds.filter(([k]) => k !== "labitem").map(([k, n]) => node("li", {text: plural(n, KIND[k] || [k, k])}));
@@ -195,7 +186,7 @@
       ln.matched ? node("p", {class: "hint", text: `${plural(ln.matched, ["lab name", "lab names"])} put in an existing series.`}) : null,
       j.linked ? node("p", {class: "hint", text: `${plural(j.linked, ["result", "results"])} shown once, as the same result from another source.`}) : null,
       notes(j),
-      node("p", {}, node("a", {href: "index.html", onclick: () => openTimeline(pid), text: "See them on the timeline"})));
+      node("p", {}, node("a", {href: `index.html?profile=${pid}#timeline`, text: "See them on the timeline"})));   // its profile and tab (#208)
   }
 
   function showFailed(card, text) {

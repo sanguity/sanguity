@@ -19,11 +19,25 @@ function applyTabs(cfg) {
   bar.append(...TAB_ORDER.map(t => $("#tab-" + t)));
   for (const t of TABS) $("#tab-" + t).hidden = TAB_HIDDEN.has(t);
 }
-// a link to a tab: index.html#labs (or #overview, #health, #timeline, #costs; the old #trends and #heatmap open Labs
-// as a chart or a heatmap) -> [tab, Labs view], or null
-const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); return TAB_ALIAS[h] || (TABS.includes(h) ? [h] : null); };
-/* t: a tab, or an old id ("trends", "heatmap": the Labs tab in that view); view: Labs' "chart" or "heatmap", if given */
-function switchTab(t, view) {
+/* the tab in the address (#208): index.html#overview, #health, #timeline, #labs (Labs as charts), #labs-heatmap (Labs
+   as the heatmap) or #costs; the old #trends and #heatmap still open Labs as charts or the heatmap. An address with
+   no # opens the tab last used (save(), core.js). tabOfHash: the address's [tab, Labs view], or null */
+const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"]};
+const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); return HASH_TABS[h] || (TABS.includes(h) ? [h] : null); };
+const tabHash = () => "#" + state.tab + (state.tab === "labs" && state.labsView === "heatmap" ? "-heatmap" : "");
+/* the address follows the tab shown: a new history entry when someone picks another tab (push), so Back and Forward
+   move between tabs; the boot, an old alias and the app's own switches replace the entry instead. history's own
+   calls fire no hashchange, so the listener below doesn't run again. At the boot, another # in the address (Add →
+   Journal entry's #new-journal-entry) is left for its page to read */
+function tabAddress(push) {
+  const h = tabHash();
+  if (location.hash === h || (!booted && location.hash.length > 1 && !tabOfHash())) return;
+  try { if (push) history.pushState(null, "", h); else history.replaceState(history.state, "", h); } catch (e) {}
+}
+const pickTab = (t, view) => switchTab(t, view, true);   // someone chose it: a tab, a tile, a button that opens a tab
+/* t: a tab, or an old id ("trends", "heatmap": the Labs tab in that view); view: Labs' "chart" or "heatmap", if given;
+   push: someone picked it (pickTab), so Back returns to the tab before */
+function switchTab(t, view, push) {
   if (TAB_ALIAS[t]) [t, state.labsView] = TAB_ALIAS[t];
   if (view === "chart" || view === "heatmap") state.labsView = view;
   if (!shownTabs().includes(t)) t = shownTabs()[0];
@@ -40,16 +54,18 @@ function switchTab(t, view) {
   $("#q").placeholder = t === "timeline" ? "Search events…" : "Filter lab names…"; $("#chips").style.display = t === "timeline" ? "" : "none";
   renderAll();
   if (changed) window.scrollTo({top: 0, left: 0, behavior: "instant"});   // each tab starts at the top
+  tabAddress(push && changed);   // #208
 }
-for (const k of TABS) $("#tab-" + k).onclick = () => switchTab(k);
+for (const k of TABS) $("#tab-" + k).onclick = () => pickTab(k);
 $(".tabs").addEventListener("keydown", ev => {   // left and right (Home, End) move between the shown tabs
   const shown = shownTabs(), i = shown.indexOf(ev.target.id.replace(/^tab-/, ""));
   if (i < 0) return;
   const next = {ArrowRight: shown[(i + 1) % shown.length], ArrowLeft: shown[(i + shown.length - 1) % shown.length], Home: shown[0], End: shown.at(-1)}[ev.key];
   if (!next) return;
-  ev.preventDefault(); switchTab(next); $("#tab-" + next).focus();
+  ev.preventDefault(); pickTab(next); $("#tab-" + next).focus();
 });
 let booted = false;
+// Back, Forward, a link or a typed address: the tab it names (an old alias's # becomes its tab's own)
 addEventListener("hashchange", () => { const t = tabOfHash(); if (t && booted) { if (t[1]) state.labsView = t[1]; switchTab(t[0]); } });
 $("#optMarks").onchange = e => { state.marks = e.target.checked; renderCharts(); save(); };
 $("#optSmooth").onchange = e => { state.smooth = e.target.checked; renderCharts(); save(); };
@@ -69,8 +85,10 @@ function emptyCard(...kids) {
   $(".tabs").hidden = true; $(".filters").hidden = true;
   document.querySelector("main").replaceChildren(el("div", {class: "card empty"}, ...kids));
 }
-function renderProfileMenu() {   // another profile: the page again (nav.js remembers the choice first)
-  $("#profile").onchange = () => location.reload();
+/* another profile: the page again (nav.js remembers the choice first), on the tab that profile last showed here, so
+   the address loses its tab's # (#208) */
+function renderProfileMenu() {
+  $("#profile").onchange = () => { try { history.replaceState(history.state, "", location.pathname + location.search); } catch (e) {} location.reload(); };
 }
 $("#logout").onclick = async () => { try { await api("logout", {method: "POST"}); } catch (e) {} location.replace("login.html"); };
 /* a connected source that stopped syncing (#102): one line under the header, linking to it. Owners and editors can
