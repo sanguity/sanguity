@@ -1,4 +1,4 @@
-/* Sanguity · Lab heatmap tab.
+/* Sanguity · Labs tab, as a heatmap (#172; the charts are trends.js): every lab with ranges, a column per draw.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---------------------------------------------------------------- heatmap */

@@ -1,21 +1,22 @@
-/* Sanguity · Health tab: watch and smart-scale charts.
+/* Sanguity · Body and activity tab ("health"): watch, sleep and smart-scale charts.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
-/* ---------------------------------------------------------------- health (watch + scale, no hospital data) */
-/* period and options, saved per profile (milestone periods belong to one person's dates); hLoad runs once the
-   profile is known. The one setting saved before profiles existed goes to the first profile opened. */
-const hState = {period: "90d", stays: true, custom: null};
+/* ---------------------------------------------------------------- body and activity (watch + scale, no hospital data) */
+/* its period is the records bar's (#171, core.js); its option, shading hospital stays, is saved per profile. hLoad runs
+   once the profile is known; the one setting saved before profiles existed goes to the first profile opened. A
+   period saved here before #171 gives way to the records bar's. */
+const hState = {stays: true};
 const hKey = () => "ht-health" + (PROFILE ? ":" + PROFILE.id : "");
 function hLoad() {
   try {
     let raw = localStorage.getItem(hKey());
     if (raw == null && (raw = localStorage.getItem("ht-health")) != null) localStorage.removeItem("ht-health");
-    Object.assign(hState, {period: "90d", stays: true}, JSON.parse(raw || "{}"), {custom: null});
+    const v = JSON.parse(raw || "{}");
+    hState.stays = typeof v.stays === "boolean" ? v.stays : true;
   } catch (e) {}
 }
-function hSave() { try { localStorage.setItem(hKey(), JSON.stringify({period: hState.period === "custom" ? "90d" : hState.period, stays: hState.stays})); } catch (e) {} }
-function openHealth(a, b) { hState.custom = [a, b]; hState.period = "custom"; closeDrawer(); switchTab("health"); }
-const hPeriods = () => [["30d", "30 days"], ["90d", "90 days"], ["1y", "1 year"], ...msPeriods(), ["all", "All"]];
+function hSave() { try { localStorage.setItem(hKey(), JSON.stringify({stays: hState.stays})); } catch (e) {} }
+function openHealth(a, b) { closeDrawer(); state.from = a; state.to = b; state.preset = "custom"; switchTab("health"); }
 function hData() {
   const M = Object.fromEntries(((WATCH || {}).metrics || []).map(m => [m.key, m]));
   const ser = k => (M[k] ? M[k].pts : []).map(([d, v]) => [dayTs(d), v]);
@@ -51,15 +52,8 @@ function hData() {
     hrv: ser("hrv"), first: all.length ? Math.min(...all) : Date.now(), last: all.length ? Math.max(...all) : Date.now()};
 }
 let H = null;
-function hRange() {
-  const end = H.last + DAY / 2;
-  if (hState.period === "custom" && hState.custom) return hState.custom;
-  const days = {"30d": 30, "90d": 90, "1y": 365}[hState.period];
-  if (days) return [end - days * DAY, end];
-  const m = msOf(hState.period);
-  if (m) return [Math.min(zParse(m.date + "T00:00:00"), end - 7 * DAY), end];
-  return [H.first - DAY / 2, end];
-}
+/* the charts' window: the records bar's period; with "All", from the first watch or scale day to the last */
+function hRange() { H = H || hData(); return periodWindow([H.first, H.last]); }
 const inR = (pts, a, b) => pts.filter(p => p[0] >= a && p[0] <= b);
 const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 function rolling(pts, days = 7) {  // trailing mean over the last `days` calendar days with data
@@ -146,10 +140,8 @@ function renderHealth() {
   if (!WATCH) { box.append(el("div", {class: "card empty", text: "No watch or scale data yet. It appears here once the phone syncs Health Connect to the receiver."})); return; }
   H = H || hData();
   const [a, b] = hRange(), len = b - a, long = len > 150 * DAY;
-  // toolbar
+  // toolbar (the period is in the records bar)
   box.append(el("div", {class: "toolbar"},
-    el("div", {class: "seg"}, ...hPeriods().map(([k, l]) => el("button", {"aria-pressed": hState.period === k, text: l, onclick: () => { hState.period = k; hState.custom = null; hSave(); renderHealth(); }})),
-      hState.period === "custom" ? el("button", {"aria-pressed": true, text: `${fmtD(a)} – ${fmtD(b)}`}) : null),
     el("label", {}, el("input", {type: "checkbox", checked: hState.stays || null, onchange: e => { hState.stays = e.target.checked; hSave(); renderHealth(); }}), "Shade hospital stays"),
     el("span", {class: "hint", style: {margin: 0}, text: `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`})),
     el("p", {class: "hint chart-hint", text: "Drag any chart sideways to move through time — every chart moves together · scroll or pinch to zoom · double-click to show everything."}));

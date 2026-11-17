@@ -19,7 +19,7 @@
     "EXT": "Outside lab"
   },
   "tabs": {
-    "order": ["overview", "health", "timeline", "labs", "heatmap", "costs"],
+    "order": ["overview", "health", "timeline", "labs", "costs"],
     "hidden": []
   },
   "visitWorkouts": [

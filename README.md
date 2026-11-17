@@ -27,21 +27,21 @@ person's records appear in this repository.
 | Tab | What it shows |
 |---|---|
 | Overview | Key labs with sparklines, watch and scale summaries, active problems, upcoming visits, costs since a milestone |
-| Health | Watch and smart-scale data: weight and body composition, sleep stages, steps and workouts, heart rate and HRV |
+| Body and activity | Watch, sleep and smart-scale data: weight and body composition, sleep stages, steps and workouts, heart rate and HRV |
 | Timeline | Every visit, stay, lab draw, report, message, document and claim on one zoomable timeline, with a searchable list; each medication as spans from its start through dose changes to its stop, with pharmacy fills marked |
-| Trends | Lab results over time against reference ranges, with procedures, imaging and your milestones marked, and saved views of the labs you chart together |
-| Lab heatmap | Every draw against its reference range, one row per lab |
-| Costs | Insurance claims by month, type of care and provider, and what you actually paid out of pocket: typed in, exported or from claims, matched to claims, counted once, with HSA and FSA totals |
+| Labs | Lab results against reference ranges, as charts over time (each with a table of its values), with procedures, imaging and your milestones marked, and saved views of the labs you chart together; or as a heatmap of every draw, one row per lab |
+| Costs | Insurance claims by month or year, type of care and provider, and what you actually paid out of pocket: typed in, exported or from claims, matched to claims, counted once, with HSA and FSA totals |
 
-![Trends: blood counts dipping through treatment cycles, with milestone markers](docs/screenshots/trends.png)
+![Labs: blood counts dipping through treatment cycles, with milestone markers](docs/screenshots/trends.png)
 
-Charts on Trends, Health and the heatmap move together: drag to pan, scroll or pinch to zoom, double-click to
-see everything. **Milestones** (diagnosis, surgery, treatment start…), added on the **Settings** page, appear on
-every chart and as "since" periods.
+One period, in the bar above the records, holds on every tab with time: All, the last 5 years down to 30 days, since
+a milestone, a calendar year, or dates of your own. Charts on Labs and Body and activity move together: drag to pan,
+scroll or pinch to zoom, double-click to see everything. **Milestones** (diagnosis, surgery, treatment start…), added
+on the **Settings** page, appear on every chart and as "since" periods.
 
-| Health | Timeline | Costs |
+| Body and activity | Timeline | Costs |
 |---|---|---|
-| ![Health tab](docs/screenshots/health.png) | ![Timeline tab](docs/screenshots/timeline.png) | ![Costs tab](docs/screenshots/costs.png) |
+| ![Body and activity tab](docs/screenshots/health.png) | ![Timeline tab](docs/screenshots/timeline.png) | ![Costs tab](docs/screenshots/costs.png) |
 
 **Getting records in**
 
@@ -59,7 +59,7 @@ every chart and as "since" periods.
 
 **Making it yours**
 
-- **Settings** per profile: the Overview's key-lab tiles, the tabs shown and their order, saved Trends views, lab
+- **Settings** per profile: the Overview's key-lab tiles, the tabs shown and their order, saved Labs views, lab
   and source nicknames (rename anything with the ✎ where it's shown), milestones, visits counted as workouts, your
   own reference ranges for results without one, and, per person, units (exact conversions only), time zone, date
   format and a light or dark theme.
@@ -256,7 +256,7 @@ Two phone apps upload to that address:
   rate, HRV, blood oxygen, respiratory rate, weight, body fat, lean mass, sleep), time grouping by hours, and a
   schedule (hourly or daily, since the last sync); then a second one for Workouts. The steps are on the
   **Watch and scale** card too. Repeated and overlapping uploads count once, and the days are made the same way as
-  for an uploaded Apple Health export, so both phones give the same Health tab.
+  for an uploaded Apple Health export, so both phones give the same Body and activity tab.
 
 Garmin Connect, Fitbit, Withings and most other watches and scales reach Sanguity this way, with no integration of
 their own: turn on their app's sync to Health Connect (Android) or Apple Health (iPhone), and the phone app above
@@ -327,8 +327,8 @@ with its PDF or picture attached. Dates take the forms a lab spreadsheet does (`
 
 Each entry is checked as you type and says what it will become, or which field is wrong and why; one the profile has
 already is pointed out and left out of the save unless you tick **Save again what's already there**. **Save** stores
-everything as one import, which shows wherever imported records do (the timeline and its panel, Trends, Health and
-Costs) and can be undone from the import history as a whole, the attached files and the home measurements included.
+everything as one import, which shows wherever imported records do (the timeline and its panel, Labs, Body and activity
+and Costs) and can be undone from the import history as a whole, the attached files and the home measurements included.
 Owners and editors only. An attached file is sent as an upload, so the upload limits above apply to it; it is kept
 encrypted like any other.
 
@@ -417,10 +417,10 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
 - **Export everything:** owners and editors can download a profile as one zip (records, documents, settings, watch
   data, uploaded files and activity) under **Account**, and load it into another install with `server.manage create-profile` and
   `import`.
-- **Settings:** each profile's dashboard preferences (key lab tiles, the labs Trends starts with, saved Trends views, lab and source
+- **Settings:** each profile's dashboard preferences (key lab tiles, the labs Labs starts with, saved Labs views, lab and source
   nicknames, visits counted as workouts, milestones) are changed on the **Settings** page by its owners and
   editors, with "Reset to defaults" per section. A lab, a result's source tag or an import can also be renamed right
-  where it's shown (the ✎ beside it on Trends, the heatmap and the details). A workout rule says "visits titled X count as workouts of N
+  where it's shown (the ✎ beside it on Labs' charts and heatmap and the details). A workout rule says "visits titled X count as workouts of N
   minutes": X is plain text found anywhere in the title, or, as an advanced option, a regular expression, which is
   checked before it's saved and refused if it could make matching slow. Milestones are named dates, one of them
   primary (the one the Overview counts from); they are encrypted like the records. They live in the database (backed up and exported with the profile); a
@@ -434,7 +434,7 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   Under **Settings → Reference ranges** you can give a lab, in a stated unit, a low and high of your own, for anyone
   or for female or male, and for an age band (set a birth date; the age on each result's day is used). They're used
   only for a result with no range and no flag on its report, never instead of one, and only in the same unit
-  (nothing is converted). Wherever one colours a result (Trends, the heatmap, the Overview, the visit summary,
+  (nothing is converted). Wherever one colours a result (Labs' charts and heatmap, the Overview, the visit summary,
   where it's printed with "(settings)"), it says "range from settings". It's your choice, not medical advice.
 - **Visit summary:** one or two printable pages to bring to an appointment (**Visit summary** in your menu, top right):
   results out of range since the last visit, each against the range on its own report (or a range from settings

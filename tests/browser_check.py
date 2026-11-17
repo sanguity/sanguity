@@ -317,25 +317,32 @@ def main():
             sys.exit(1)
         settle = lambda ms=500: page.wait_for_timeout(ms)
         js = page.evaluate
-        check("Health setting saved before profiles carries over", js("hState.period === '1y' && hState.stays === false && localStorage.getItem('ht-health') === null"))
-        check("view saved before profiles carries over", js("state.tab === 'heatmap' && state.preset === '1y' && localStorage.getItem('ht-state') === null && !!localStorage.getItem('ht-state:1')"))
+        check("Body and activity setting saved before profiles carries over", js("hState.stays === false && localStorage.getItem('ht-health') === null"))
+        check("view saved before profiles carries over, its Lab heatmap tab now Labs as a heatmap (#172)",
+              js("state.tab === 'labs' && state.labsView === 'heatmap' && state.preset === '1y' && localStorage.getItem('ht-state') === null && !!localStorage.getItem('ht-state:1')"))
+
+        def open_tab(t):   # "heatmap" and "labs": the Labs tab as a heatmap or as charts (#172)
+            page.click("#tab-" + ("labs" if t == "heatmap" else t))
+            if t in ("labs", "heatmap"):
+                page.click("#labsView button[data-view=%s]" % ("heatmap" if t == "heatmap" else "chart"))
+        view_of = lambda t: "labs" if t == "heatmap" else t
 
         try:
-            # ---- every tab renders its main content
+            # ---- every tab renders its main content (Labs as a heatmap first, so it's left showing charts)
             expect = {
                 "overview": "document.querySelectorAll('#view-overview .tile').length",
                 "health": "[...document.querySelectorAll('#view-health svg')].filter(s => s._draw && s.childNodes.length > 3).length",
                 "timeline": "document.querySelectorAll('#tl circle.ev').length + ',' + document.querySelectorAll('#list .row').length",
-                "labs": "[...document.querySelectorAll('#charts .chart svg')].filter(s => s.childNodes.length > 3).length",
-                "heatmap": "document.querySelectorAll('#hm rect.cell').length",
+                "heatmap": "document.querySelectorAll('#hm rect.cell').length + ',' + +!document.getElementById('labsHeatmap').hidden + ',' + +document.getElementById('labsChart').hidden",
+                "labs": "[...document.querySelectorAll('#charts .chart svg')].filter(s => s.childNodes.length > 3).length + ',' + +!document.getElementById('labsChart').hidden",
                 "costs": "document.querySelectorAll('#view-costs .stat').length",
             }
             for tab, probe in expect.items():
-                page.click(f"#tab-{tab}")
+                open_tab(tab)
                 settle()
                 n = js(probe)
-                visible = js(f"!document.getElementById('view-{tab}').hidden")
-                check(f"{tab} tab renders", visible and all(int(x) > 0 for x in str(n).split(",")), n)
+                visible = js(f"!document.getElementById('view-{view_of(tab)}').hidden")
+                check(f"{ {'heatmap': 'Labs (heatmap)', 'labs': 'Labs (charts)'}.get(tab, tab)} tab renders", visible and all(int(x) > 0 for x in str(n).split(",")), n)
                 if tab == "heatmap":   # a cell's tooltip says where the result came from (#100)
                     page.hover("#hm rect.cell[data-s]")
                     settle(100)
@@ -348,10 +355,10 @@ def main():
                       and "your care team interprets them" in page.inner_text("#notice"))
 
             # ---- next to out-of-range highlighting (#57): a caption on each tab that colours it, in light and dark, at 375 px
-            flagged = {   # the tab's out-of-range highlighting, and its caption
+            flagged = {   # the tab's out-of-range highlighting, and its caption (Labs has one for both its views)
                 "overview": "#view-overview .tile .st.hi, #view-overview .tile .st.lo",
-                "labs": "#charts .pt.abn",
                 "heatmap": "#hm rect.cell[style*='--div-hi'], #hm rect.cell[style*='--div-lo']",
+                "labs": "#charts .pt.abn",
             }
             theme_before = js("document.documentElement.dataset.theme || null")
             for theme in ("light", "dark"):
@@ -359,9 +366,9 @@ def main():
                 for width in (1400, 375):
                     page.set_viewport_size({"width": width, "height": 900 if width > 375 else 800})
                     for tab, marks in flagged.items():
-                        page.click(f"#tab-{tab}")
+                        open_tab(tab)
                         settle(300)
-                        note = page.locator(f"#view-{tab} .range-note")
+                        note = page.locator(f"#view-{view_of(tab)} .range-note")
                         shown = note.count() == 1 and note.is_visible()
                         text = note.inner_text() if shown else ""
                         check(f"{tab} ({theme}, {width} px): caption beside the out-of-range highlighting",
@@ -369,7 +376,7 @@ def main():
                               and "reference ranges in your own lab reports" in text and "isn't medical advice" in text, text)
                         legible = js("""(() => { const n = document.querySelector('#view-%s .range-note'), f = document.getElementById('notice');
                             const bg = getComputedStyle(document.body).backgroundColor;
-                            return getComputedStyle(n).color !== bg && getComputedStyle(f).color !== bg; })()""" % tab)
+                            return getComputedStyle(n).color !== bg && getComputedStyle(f).color !== bg; })()""" % view_of(tab))
                         check(f"{tab} ({theme}, {width} px): caption and footer readable, page fits",
                               legible and js("document.documentElement.scrollWidth") <= width, js("document.documentElement.scrollWidth"))
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
@@ -453,7 +460,7 @@ def main():
             page.wait_for_function("i => !DATA.imports[i].name", arg=imp, timeout=10000)
             page.keyboard.press("Escape")
             # a source tag, from under the Trends table (the demo's results carry none, so one is given here)
-            js("n => { switchTab('labs'); const s = SERIES.find(s => s.name === n); s.pts[s.pts.length - 1][6] = 'EXT'; state.tables.add(n); renderLabs(); }", lab)
+            js("n => { switchTab('labs', 'chart'); const s = SERIES.find(s => s.name === n); s.pts[s.pts.length - 1][6] = 'EXT'; state.tables.add(n); renderLabs(); }", lab)
             settle(200)
             page.click("#charts .tags [data-rename=tag][data-key=EXT]")
             page.wait_for_selector(".rename-box input", timeout=5000)
@@ -823,7 +830,7 @@ def main():
             js("switchTab('labs')")
             settle(300)
 
-            # ---- Health: drag changes its own period
+            # ---- Body and activity: drag changes the records bar's period (#171)
             page.click("#tab-health")
             settle()
             hbox = page.locator("#view-health svg.pz").first.bounding_box()
@@ -833,7 +840,76 @@ def main():
             page.mouse.move(hbox["x"] + hbox["width"] * 0.7, hbox["y"] + hbox["height"] * 0.5, steps=8)
             page.mouse.up()
             settle()
-            check("Health drag pans", js("hRange()[0]") < hbefore[0] and js("hState.period") == "custom")
+            check("Body and activity drag pans", js("hRange()[0]") < hbefore[0] and js("state.preset") == "custom")
+
+            # ---- one period for every tab with time (#171): picked on one tab, the same dates on the others (Labs in
+            # both its views, #172); a calendar year, a milestone or dates typed in; kept on a reload; Costs by month or
+            # by year; the records bar at 375 px on each tab, and none on the Overview
+            page.click("#tab-timeline")
+            page.click("#presets button:text-is('1y')")
+            settle()
+            want = js("[state.from, state.to]")
+            seen = {}
+            for t in ("labs", "heatmap", "health", "costs", "timeline"):
+                open_tab(t)
+                settle(300)
+                seen[t] = js("""[state.preset, document.querySelector('#presets [aria-pressed=true]')?.textContent,
+                    document.getElementById('from').value, getComputedStyle(document.querySelector('.filters')).display !== 'none']""")
+            check("period: 1y picked on Timeline is the period on Labs (charts and heatmap), Body and activity and Costs",
+                  all(v[:2] == ["1y", "1y"] and v[3] for v in seen.values()) and len({v[2] for v in seen.values()}) == 1, seen)
+            check("…Body and activity charts those dates", js("hRange()") == want, [js("hRange()"), want])
+            open_tab("costs")
+            settle(300)
+            check("…Costs counts the claims in them, and says so",
+                  js("costRows().length > 0 && costRows().every(r => r.d >= isoDay(state.from) && r.d <= isoDay(state.to))")
+                  and "the last year" in page.inner_text("#paidCard h2"), page.inner_text("#paidCard h2"))
+            open_tab("overview")
+            check("…the Overview has no records bar", js("getComputedStyle(document.querySelector('.filters')).display") == "none")
+            year = js("periodYears().find(y => (DATA.costs || []).some(r => r.d.startsWith(y)))")
+            open_tab("costs")
+            page.select_option("#periodPick", year)
+            settle(300)
+            check("period: a calendar year picked from the list", js("[state.preset, isoDay(state.from), isoDay(state.to)]") == [year, f"{year}-01-01", f"{year}-12-31"]
+                  and js("document.getElementById('periodPick').classList.contains('on') && !document.querySelector('#presets [aria-pressed=true]')"),
+                  js("[state.preset, isoDay(state.from), isoDay(state.to)]"))
+            check("…Costs lists that year's claims", js("costRows().length") == js("y => DATA.costs.filter(r => r.d.startsWith(y)).length", year) > 0,
+                  js("costRows().length"))
+            js("applyPreset('all')")
+            page.click("#costBy button:text-is('By year')")
+            settle(300)
+            labels = js("[...document.querySelectorAll('#view-costs svg[aria-label=\"Yearly insurance costs\"] text')].map(t => t.textContent).filter(t => !t.startsWith('$'))")
+            check("…and groups them by year when asked", labels and all(re.fullmatch(r"\d{4}", x) for x in labels)
+                  and "Insurance claims by year" in page.inner_text("#view-costs"), labels)
+            page.click("#costBy button:text-is('By month')")
+            js("costState.by = ''")
+            if js("MILESTONES.length"):
+                page.select_option("#periodPick", "m0")
+                settle(300)
+                check("period: since a milestone, picked from the list", js("[state.preset, isoDay(state.from)]") == ["m0", js("MILESTONES[0].date")],
+                      js("[state.preset, isoDay(state.from)]"))
+            open_tab("health")
+            start = js("isoDay(state.max - 120 * DAY)")
+            page.fill("#from", start)
+            settle(300)
+            check("period: dates typed in on Body and activity", js("[state.preset, isoDay(state.from), isoDay(hRange()[0])]") == ["custom", start, start],
+                  js("[state.preset, isoDay(state.from), isoDay(hRange()[0])]"))
+            open_tab("timeline")
+            settle(300)
+            check("…are the Timeline's too", js("[document.getElementById('from').value, isoDay(state.from)]") == [start, start]
+                  and js("document.querySelector('.dates').classList.contains('on')"), js("document.getElementById('from').value"))
+            page.reload()
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
+            check("…and kept on a reload", js("[state.preset, document.getElementById('from').value]") == ["custom", start],
+                  js("[state.preset, document.getElementById('from').value]"))
+            page.set_viewport_size({"width": 375, "height": 800})
+            for t in ("health", "timeline", "labs", "heatmap", "costs"):
+                open_tab(t)
+                settle(300)
+                fits = js("document.documentElement.scrollWidth")
+                check(f"the records bar on {t} fits 375 px, with its period showing", fits <= 375 and
+                      js("['presets', 'periodPick'].every(id => { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.right <= 375; })"), fits)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            open_tab("labs")
 
             # ---- Timeline: event sort toggle
             page.click("#tab-timeline")
@@ -849,10 +925,10 @@ def main():
 
             # ---- profile switcher: the second profile has no records yet, and its own saved view
             check("profile switcher shown", js("!document.getElementById('profile').hidden && document.getElementById('profile').options.length === 2"))
-            js("hState.period = '30d'; hSave()")
+            js("applyPreset('30d')")
             page.select_option("#profile", label="Second person")
             page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
-            check("Health period is kept per profile", js("hState.period") == "90d", js("hState.period"))
+            check("the period is kept per profile (not carried to another)", js("state.preset") == "2y", js("state.preset"))
             check("empty profile explains itself", "no records yet" in page.inner_text("main"))
             check("empty profile hides the tabs and filters", js("document.querySelector('.tabs').hidden && document.querySelector('.filters').hidden && getComputedStyle(document.querySelector('.tabs')).display === 'none'"))
             check("empty profile links to the import page", js("document.querySelector('main .empty a').getAttribute('href')") == "import.html?profile=2")
@@ -1050,7 +1126,7 @@ def main():
             # the imported claims are on the Costs tab: rows from each insurer, with their care categories and denials
             page.click("#tab-costs")
             settle()
-            js("costState.period = 'all'; renderCosts()")
+            js("applyPreset('all')")
             settle(200)
             rows = js("[...document.querySelectorAll('#costTable tbody tr')].map(tr => [...tr.cells].map(td => td.textContent))")
             by = {(r[0], r[2]): r for r in rows}
@@ -1066,7 +1142,7 @@ def main():
             page.select_option("#profile", label="My records")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             check("switching back restores the profile's tab", js("state.tab") == "timeline", js("state.tab"))
-            check("switching back restores the profile's Health period", js("hState.period") == "30d", js("hState.period"))
+            check("switching back restores the profile's period", js("state.preset") == "30d", js("state.preset"))
 
             # ---- import history (#24): the C-CDA and FHIR imports are listed; undoing the FHIR one takes its records
             # off the timeline and leaves the C-CDA's. The setup build's import can't be undone, and says why.
@@ -1235,7 +1311,7 @@ def main():
             check("…and the letter's PDF opens in the drawer", "/documents/" in src and got == [200, "application/pdf", "%PDF-1.4"], [src, got])
             js("closeDrawer(); switchTab('costs')")
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
-            js("costState.period = 'all'; renderCosts()")
+            js("applyPreset('all')")
             settle(300)
             costs = page.inner_text("#view-costs")
             check("the typed claim is on Costs, under its care category", "Typed office visit claim" in costs and "Doctor visits" in costs, costs[:300])
@@ -1264,7 +1340,7 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && DATA.oop", timeout=20000)
             js("switchTab('costs')")
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
-            js("costState.period = 'all'; paidState.q = ''; renderCosts()")
+            js("paidState.q = ''; applyPreset('all')")
             settle(300)
             pay = js("oopRows().filter(r => r.type === 'pay' && r.who === 'Lakeside Clinic (fictional)' && r.amount === 50)"
                      ".map(r => [r.src, r.hsa, r.claim && r.claim.title, r.receipt != null, r.match])")
@@ -1385,7 +1461,7 @@ def main():
             menu_click(page, "#settingsLink")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Trends", "Names", "Health", "Connected sources", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Lab charts", "Names", "Body and activity", "Connected sources", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…with the server's attachment and sync defaults as a switch, numbers and choices (#101, #102)",
                   js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length]") == [5, 3],
                   js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
@@ -1520,11 +1596,11 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             check("tabs: a hidden tab leaves the bar, the others in their new order",
-                  js(shown_tabs) == ["overview", "timeline", "health", "labs", "heatmap"], js(shown_tabs))
+                  js(shown_tabs) == ["overview", "timeline", "health", "labs"], js(shown_tabs))
             check("…a saved view naming it opens the first shown tab", js("state.tab") == "overview" and js("!document.getElementById('view-overview').hidden"), js("state.tab"))
             page.focus("#tab-overview")
             page.keyboard.press("ArrowLeft")
-            check("…the arrow keys skip it", js("state.tab") == "heatmap" and js("document.activeElement.id") == "tab-heatmap", js("state.tab"))
+            check("…the arrow keys skip it", js("state.tab") == "labs" and js("document.activeElement.id") == "tab-labs", js("state.tab"))
             page.keyboard.press("ArrowRight")
             js("switchTab('costs')")
             check("…asking for it opens the first shown tab", js("state.tab") == "overview", js("state.tab"))
@@ -1534,9 +1610,15 @@ def main():
             page.goto(base + "/#timeline")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             check("…while a link to a shown tab opens it", js("state.tab") == "timeline", js("state.tab"))
+            for old, view in (("heatmap", "heatmap"), ("trends", "chart"), ("labs", "chart")):   # #172: the old tabs' links open Labs
+                page.goto(base + "/#" + old)
+                page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
+                check(f"…a link to #{old} opens Labs as a {view}", js("[state.tab, state.labsView]") == ["labs", view]
+                      and js("id => !document.getElementById('view-labs').hidden && !document.getElementById(id).hidden", "labsHeatmap" if view == "heatmap" else "labsChart"),
+                      js("[state.tab, state.labsView]"))
             page.goto(base + "/settings.html?profile=1#sec-tabs")
             page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
-            for t in ("overview", "health", "labs", "heatmap"):
+            for t in ("overview", "health", "labs"):
                 page.uncheck(f"#sec-tabs input[data-tab={t}]")
             check("…and the last shown tab can't be hidden", js("document.querySelector('#sec-tabs input[data-tab=timeline]').disabled"))
             page.once("dialog", lambda d: d.accept())
@@ -1547,7 +1629,28 @@ def main():
             page.wait_for_function("document.querySelector('#sec-overview > .msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
-            check("…Reset to defaults shows every tab again", js(shown_tabs) == ["overview", "health", "timeline", "labs", "heatmap", "costs"], js(shown_tabs))
+            check("…Reset to defaults shows every tab again", js(shown_tabs) == ["overview", "health", "timeline", "labs", "costs"], js(shown_tabs))
+            # a layout saved before #172, with Trends and Lab heatmap: Labs takes the first one's place, and stays shown
+            # while either was; the Settings page lists the five tabs
+            db = dbm.connect()
+            db.execute("INSERT INTO settings(key, profile_id, user_id, value, sealed, changed, changed_by) VALUES('tabs', 1, NULL, ?, NULL, ?, NULL)",
+                       (json.dumps({"order": ["overview", "heatmap", "health", "timeline", "labs", "costs"], "hidden": ["labs", "costs"]}), int(time.time())))
+            db.close()
+            page.reload()
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
+            check("…a layout saved with Trends and Lab heatmap shows Labs where the heatmap was, shown as it was",
+                  js(shown_tabs) == ["overview", "labs", "health", "timeline"] and js("CFG.tabs") == {"order": ["overview", "labs", "health", "timeline", "costs"], "hidden": ["costs"]},
+                  [js(shown_tabs), js("CFG.tabs")])
+            page.goto(base + "/settings.html?profile=1#sec-tabs")
+            page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
+            check("…and Settings lists the five tabs, Labs shown", js("[...document.querySelectorAll('#sec-tabs input[data-tab]')].map(i => [i.dataset.tab, i.checked])")
+                  == [["overview", True], ["labs", True], ["health", True], ["timeline", True], ["costs", False]],
+                  js("[...document.querySelectorAll('#sec-tabs input[data-tab]')].map(i => [i.dataset.tab, i.checked])"))
+            page.once("dialog", lambda d: d.accept())
+            page.click("#sec-tabs button:text-is('Reset to defaults')")
+            page.wait_for_function("document.querySelector('#sec-tabs > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             js("switchTab('overview')")
 
             # ---- #45 a default theme for the account: a fresh browser signed in as the same person uses it; the ◐
@@ -1734,12 +1837,12 @@ def main():
                   js("[...document.querySelectorAll('#charts .mslabel')].some(t => t.textContent.includes('Browser check milestone'))"))
             page.click("#tab-health")
             settle()
-            page.click("#view-health .seg button:text-is('Since browser check milestone')")
+            page.click("#presets button:text-is('Since browser check milestone')")
             settle()
-            check("…and is a “since” period on Health", js("isoDay(hRange()[0])") == "2026-08-01",
-                  js("[hState.period, new Date(hRange()[0]).toISOString()]"))
+            check("…and is a “since” period in the records bar, on Body and activity", js("isoDay(hRange()[0])") == "2026-08-01",
+                  js("[state.preset, new Date(hRange()[0]).toISOString()]"))
             check("…the primary one, the Overview counts from", js("primaryMs().label") == "Browser check milestone")
-            page.click("#view-health .seg button:text-is('All')")
+            page.click("#presets button:text-is('All')")
             settle()
             counted = js("H.ex.filter(x => x.pt && x.rule === 'Browser check rule').length")
             check("the Health tab counts visits matching the rule", counted == days and days > 0, f"{counted} of {days} days ({want})")
@@ -1959,11 +2062,11 @@ def main():
             js("state.tables.clear(); renderCharts()")
             for width in (1400, 375):
                 page.set_viewport_size({"width": width, "height": 900 if width > 375 else 800})
-                js("switchTab('heatmap')")
+                js("switchTab('labs', 'heatmap')")
                 settle(300)
                 check(f"heatmap ({width} px): the results coloured against the range from settings, and fits",
                       js("document.querySelectorAll('#hm rect.cell[style*=\"--div-hi\"], #hm rect.cell[style*=\"--div-lo\"]').length") > 0
-                      and "range from settings" in page.inner_text("#view-heatmap .range-note") and js("document.documentElement.scrollWidth") <= width,
+                      and "range from settings" in page.inner_text("#view-labs .range-note") and js("document.documentElement.scrollWidth") <= width,
                       js("document.documentElement.scrollWidth"))
                 js("switchTab('overview')")
                 settle(300)
@@ -1972,9 +2075,9 @@ def main():
                       and "(range from settings)" in page.inner_text("#view-overview .ov-row .r")
                       and "range from settings" in page.inner_text("#view-overview .range-note") and js("document.documentElement.scrollWidth") <= width,
                       js("document.querySelector('#view-overview .tile .st')?.title"))
-                js("switchTab('labs')")
+                js("switchTab('labs', 'chart')")
                 settle(300)
-                check(f"Trends ({width} px) fits", js("document.documentElement.scrollWidth") <= width, js("document.documentElement.scrollWidth"))
+                check(f"Labs as charts ({width} px) fits", js("document.documentElement.scrollWidth") <= width, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + f"/summary.html?profile={rpid}")
             page.wait_for_selector("#build:not([hidden])", timeout=10000)
@@ -2263,7 +2366,7 @@ def main():
                                    "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)
             js("switchTab('costs')")
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
-            js("costState.period = 'all'; renderCosts()")
+            js("applyPreset('all')")
             settle(200)
             rows = js("[...document.querySelectorAll('#costTable tbody tr')].map(tr => [...tr.cells].map(td => td.textContent))")
             ins = set(js("DATA.costs.map(c => c.ins)"))

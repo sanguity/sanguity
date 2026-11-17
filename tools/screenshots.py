@@ -83,10 +83,10 @@ def main(want):
 
             shots = {
                 "overview": lambda: (home("overview"), shot("overview")),
-                "trends": lambda: (home("labs", "applyPreset('2y'); state.sel = new Set(['Hemoglobin', 'WBC']); renderAll(); renderLabs()"), shot("trends")),
-                "health": lambda: (home("health"), shot("health")),
+                "trends": lambda: (home("labs", "switchTab('labs', 'chart'); applyPreset('2y'); state.sel = new Set(['Hemoglobin', 'WBC']); renderAll(); renderLabs()"), shot("trends")),
+                "health": lambda: (home("health", "applyPreset('90d')"), shot("health")),
                 "timeline": lambda: (home("timeline", "applyPreset('1y')"), shot("timeline")),
-                "costs": lambda: (home("costs"), shot("costs")),
+                "costs": lambda: (home("costs", "applyPreset(msKey(primaryMs()))"), shot("costs")),
                 "import": lambda: (page.goto(base + "/import.html"), page.wait_for_selector("#importer", state="visible", timeout=15000), settle(), shot("import")),
                 "settings": lambda: (page.goto(base + "/settings.html?profile=1"), page.wait_for_selector("#sec-overview .set-preview .tile", timeout=15000), settle(), shot("settings")),
                 "summary": lambda: (page.goto(base + "/summary.html?profile=1"), page.wait_for_selector("#build:not([hidden])", timeout=15000),

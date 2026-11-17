@@ -36,9 +36,10 @@ class SettingError(ValueError):
 
 class Setting:
     def __init__(self, key, section, label, default, check, scope="profile", private=True, kind=None, help="",
-                 merge=False):
+                 merge=False, reread=False):
         self.key, self.section, self.label, self.default, self.check = key, section, label, default, check
         self.scope, self.private, self.kind, self.help, self.merge = scope, private, kind, help, merge
+        self.reread = reread   # a stored value is checked again when read: its check gives older values in today's terms
 
     def clean(self, value):
         return self.check(value)
@@ -261,16 +262,16 @@ KEY_LABS = ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt
             "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"]
 
 section("overview", "Overview", "The lab tiles at the top of the Overview tab.")
-section("trends", "Trends", "What the Trends tab shows before you pick anything.")
+section("trends", "Lab charts", "What the Labs tab charts before you pick anything.")
 section("names", "Names", "Shorter or clearer names shown instead of the ones in the records.")
-section("health", "Health", "How the Health tab counts activity.")
+section("health", "Body and activity", "How the Body and activity tab counts workouts.")
 
 define("overview.keyLabs", "overview", "Key labs", KEY_LABS, lab_list(), kind="tiles",
        help="One tile each, in this order, for the labs this profile has results for. While this is the default list "
             "and few of its labs have results here, the most-measured labs fill the tiles instead.")
 define("trends.defaultLabs", "trends", "Labs selected at first",
        ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "ALT"], lab_list(), kind="labs",
-       help="Charted on Trends until you choose others on this device.")
+       help="Charted on Labs until you choose others on this device.")
 define("labNicknames", "names", "Lab names", {
            "Automated Abs Neutrophil Cnt": "Neutrophils (absolute)", "Lymphocytes Absolute": "Lymphocytes (absolute)",
            "Platelet Count": "Platelets", "Potassium, Blood": "Potassium", "Sodium, Blood": "Sodium",
@@ -342,20 +343,23 @@ def milestone_list(most=50):
 section("milestones", "Milestones", "Named dates, like a diagnosis, a surgery or the start of a treatment: marked on "
         "every chart, and periods on Health and Costs count “since” each one.")
 define("milestones", "milestones", "Milestones", [], milestone_list(), kind="milestones",
-       help="The primary milestone is the one the Overview counts from and Health and Costs start at (the first, "
-            "if none is marked).")
+       help="The primary milestone is the one the Overview counts from, with its own “Since” button above the "
+            "records (the first, if none is marked).")
 
 
 # ---------------------------------------------------------------- tabs (#40) and theme (#45)
 
-TABS = ("overview", "health", "timeline", "labs", "heatmap", "costs")   # the main tabs' ids ("labs" is Trends)
-TAB_NAMES = {"overview": "Overview", "health": "Health", "timeline": "Timeline", "labs": "Trends", "heatmap": "Lab heatmap",
-             "costs": "Costs"}
+TABS = ("overview", "health", "timeline", "labs", "costs")   # the main tabs' ids ("health" is Body and activity)
+TAB_NAMES = {"overview": "Overview", "health": "Body and activity", "timeline": "Timeline", "labs": "Labs", "costs": "Costs"}
+OLD_TABS = {"heatmap": "labs", "trends": "labs"}   # #172: Trends ("labs") and Lab heatmap are the one Labs tab
 
 
 def tab_layout(v):
     """{"order": [tab ids], "hidden": [tab ids]}: every tab in order (one left out goes at the end, in the default
-    order, so a tab added later shows up), the hidden ones in that order. At least one tab stays shown."""
+    order, so a tab added later shows up), the hidden ones in that order. At least one tab stays shown.
+
+    A layout from before #172 names Trends ("labs") and Lab heatmap ("heatmap"): Labs takes the place of the first of
+    them, and is hidden only if both were (stored values are read through this too: reread)."""
     if not isinstance(v, dict) or set(v) - {"order", "hidden"}:
         raise SettingError("This must give the tabs' order and which are hidden.")
     lists = {}
@@ -364,11 +368,16 @@ def tab_layout(v):
         if not isinstance(x, list) or not all(isinstance(t, str) for t in x):
             raise SettingError("The tabs must be a list of tab names.")
         for t in x:
-            if t not in TABS:
+            if t not in TABS and t not in OLD_TABS:
                 raise SettingError(f"There's no tab called “{t[:40]}”.")
         lists[part] = x
-    order = list(dict.fromkeys(lists["order"])) + [t for t in TABS if t not in lists["order"]]
-    hidden = [t for t in order if t in set(lists["hidden"])]
+    hidden = set(lists["hidden"])
+    if (set(lists["order"]) | hidden) & set(OLD_TABS):   # from before #172: Labs hidden only if Trends and Lab heatmap were
+        labs = "heatmap" in hidden and bool(hidden & {"labs", "trends"})
+        hidden = {t for t in hidden if t not in ("labs", "trends", "heatmap")} | ({"labs"} if labs else set())
+    order = list(dict.fromkeys(OLD_TABS.get(t, t) for t in lists["order"]))
+    order += [t for t in TABS if t not in order]
+    hidden = [t for t in order if t in hidden]
     if len(hidden) == len(order):
         raise SettingError("At least one tab must stay shown.")
     return {"order": order, "hidden": hidden}
@@ -386,7 +395,7 @@ def theme(v):
 section("tabs", "Tabs", "Which tabs this profile shows, and in what order.")
 section("appearance", "Appearance", "How Sanguity looks for you, on every device you sign in on.")
 
-define("tabs", "tabs", "Tabs", {"order": list(TABS), "hidden": []}, tab_layout, kind="tabs", private=False,
+define("tabs", "tabs", "Tabs", {"order": list(TABS), "hidden": []}, tab_layout, kind="tabs", private=False, reread=True,
        help="A hidden tab leaves the tab bar and the arrow keys; a saved view or link to it opens the first shown tab.")
 define("theme", "appearance", "Theme", "system", theme, scope="user", kind="theme", private=False,
        help="Your default on every device. The ◐ button on the records page still picks light or dark for one browser.")
@@ -478,8 +487,8 @@ def trend_views(most=30):
 
 
 define("trends.views", "trends", "Saved views", [], trend_views(), kind="views",
-       help="Named sets of labs to pick from on Trends (save one there from what's charted). The default view is "
-            "what Trends charts at first, instead of the labs above.")
+       help="Named sets of labs to pick from on Labs (save one there from what's charted). The default view is "
+            "what Labs charts at first, instead of the labs above.")
 
 
 # ---------------------------------------------------------------- unit preferences (#41)
@@ -584,10 +593,11 @@ def stored(db, scope, pid=None, uid=None):
     where, args = _where(scope, pid, uid)
     out = {}
     for r in db.execute(f"SELECT key, value, sealed FROM settings WHERE {where}", args):
-        if r["key"] in SETTINGS:
+        s = SETTINGS.get(r["key"])
+        if s:
             try:
-                out[r["key"]] = _load(r)
-            except (ValueError, TypeError):
+                out[r["key"]] = s.clean(_load(r)) if s.reread else _load(r)
+            except (ValueError, TypeError):   # SettingError is one: a value no longer accepted is left at its default
                 continue
     return out
 

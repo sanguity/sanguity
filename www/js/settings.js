@@ -234,7 +234,7 @@ function tilesEditor(value, changed, ro, setting) {
 }
 
 /* #40 the main tabs: shown or hidden, in order; one at least stays shown */
-const TAB_LABEL = {overview: "Overview", health: "Health", timeline: "Timeline", labs: "Trends", heatmap: "Lab heatmap", costs: "Costs"};
+const TAB_LABEL = {overview: "Overview", health: "Body and activity", timeline: "Timeline", labs: "Labs", costs: "Costs"};   // #172
 function tabsEditor(value, changed, ro) {
   const hidden = new Set(value.hidden);
   let ol = null;
@@ -313,7 +313,7 @@ function viewsEditor(value, changed, ro) {
     return item;
   };
   list.append(...value.map(make));
-  const none = el("p", {class: "hint", text: "No saved views yet. Pick labs on Trends and press Save view…"});
+  const none = el("p", {class: "hint", text: "No saved views yet. Pick labs on Labs and press Save view…"});
   box.append(list, value.length ? null : none);
   if (!ro) box.append(el("div", {class: "set-add"},
     small("Add a view", "Add a view", () => { none.remove(); const it = make({name: "", labs: [], default: false}); list.append(it); it.querySelector("input").focus(); changed(); }),

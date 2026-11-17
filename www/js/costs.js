@@ -2,12 +2,10 @@
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---------------------------------------------------------------- costs */
-const costState = {period: "dx", q: "", cat: "", deniedOnly: false, sort: "d", dir: -1, limit: 200};
-function costPeriods() {
-  const yrs = [...new Set([...(DATA.costs || []), ...((DATA.outOfPocket || {}).payments || [])].map(r => r.d.slice(0, 4)))].sort().reverse();
-  return [...msPeriods(), ...yrs.map(y => [y, y]), ["all", "All"]];
-}
-function costRows() { return inPeriod(DATA.costs || [], costState.period); }
+/* the period is the records bar's (#171, core.js; "All" is every claim on file). by: the chart's bars, "month" or
+   "year" ("": by year once the claims shown span more than four years) */
+const costState = {q: "", cat: "", deniedOnly: false, sort: "d", dir: -1, limit: 200, by: "", seen: null};
+function costRows() { return inPeriod(DATA.costs || []); }
 const isDenied = r => /DENIED/i.test(r.status || "");
 const sumOf = (rows, k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
 function renderCosts() {
@@ -19,14 +17,13 @@ function renderCosts() {
         " (Import → Type them in → Out-of-pocket payment, with its receipt and whether an HSA or FSA paid it), or import an insurer's claims."] : [])));
     return;
   }
+  // a new period starts at the top of the lists, with no payment open
+  const seen = [state.preset, state.from, state.to].join();
+  if (costState.seen !== seen) { costState.seen = seen; costState.limit = 200; paidState.q = ""; paidState.open = null; }
   const rows = costRows();
-  const pm = msOf(costState.period);
-  const periodLabel = pm ? `since ${lcLabel(pm.label)} (${fmtD(dayTs(pm.date))})` : costState.period === "all" || isMsKey(costState.period) ? (claims ? "all claims on file" : "everything on file") : costState.period;
-  // period switch
-  box.append(el("div", {class: "toolbar"},
-    el("div", {class: "seg"}, ...costPeriods().map(([k, l]) => el("button", {"aria-pressed": costState.period === k, text: l, onclick: () => { costState.period = k; costState.limit = 200; paidState.q = ""; paidState.open = null; renderCosts(); }}))),
-    claims ? el("span", {class: "hint", style: {margin: 0}, text: insurerHint(DATA.costs)}) : null));
-  if (!claims) { renderPaid(box, rows, periodLabel); return; }   // payments only: no claims to chart or list
+  const periodText = periodLabel(claims ? "all claims on file" : "everything on file");
+  if (claims) box.append(el("div", {class: "toolbar"}, el("span", {class: "hint", style: {margin: 0}, text: insurerHint(DATA.costs)})));
+  if (!claims) { renderPaid(box, rows, periodText); return; }   // payments only: no claims to chart or list
   // stat tiles
   const billed = sumOf(rows, "billed"), paid = sumOf(rows, "paid"), owe = sumOf(rows, "owe");
   const denied = rows.filter(isDenied).length;
@@ -38,15 +35,19 @@ function renderCosts() {
     tile("Discounts & not covered", usd(Math.max(0, billed - paid - owe)), "network discounts, write-offs, denials"),
     tile("Claims", rows.length.toLocaleString(), `${rows.filter(r => r.kind === "pharmacy").length} pharmacy fills`),
     tile("Denied", denied.toLocaleString(), denied ? `${rows.filter(r => /PROVIDER_DENIED/i.test(r.status)).length} provider-denied` : "")));
-  renderPaid(box, rows, periodLabel);
-  // monthly chart
-  const mc = el("div", {class: "card"}, el("h2", {text: `Insurance claims by month · ${periodLabel}`}),
+  renderPaid(box, rows, periodText);
+  // the chart, by month or by year
+  const ds = rows.map(r => r.d).sort(), span = ds.length ? (+ds.at(-1).slice(0, 4) - +ds[0].slice(0, 4)) * 12 + (+ds.at(-1).slice(5, 7) - +ds[0].slice(5, 7)) + 1 : 0;
+  const by = costState.by || (span > 48 ? "year" : "month");
+  const mc = el("div", {class: "card"}, el("div", {class: "list-hd"}, el("h2", {text: `Insurance claims by ${by} · ${periodText}`}), el("span", {class: "spacer"}),
+      el("div", {class: "seg", id: "costBy", role: "group", "aria-label": "Group the claims"}, ...[["month", "By month"], ["year", "By year"]].map(([k, l]) =>
+        el("button", {type: "button", "aria-pressed": by === k, text: l, onclick: () => { costState.by = k; renderCosts(); }})))),
     el("div", {class: "legend", style: {margin: "4px 0 6px"}},
       el("span", {}, el("i", {style: {background: "var(--c-lab)"}}), "Paid by insurance"),
       el("span", {}, el("i", {style: {background: "var(--c-imaging)"}}), "Your share"),
       el("span", {}, el("i", {style: {background: "var(--stay)"}}), "Hospital stay")));
-  const svg = el("svg:svg", {role: "img", "aria-label": "Monthly insurance costs"}); mc.append(svg); box.append(mc);
-  requestAnimationFrame(() => drawCostMonths(svg, rows));
+  const svg = el("svg:svg", {role: "img", "aria-label": by === "year" ? "Yearly insurance costs" : "Monthly insurance costs"}); mc.append(svg); box.append(mc);
+  requestAnimationFrame(() => drawCostBars(svg, rows, by));
   // category + provider breakdowns
   const two = el("div", {class: "ov-cols"});
   const catCard = el("div", {class: "card"}, el("h2", {text: "By type of care"}), el("p", {class: "hint", text: "Grouped from billing codes on each claim. Click a row to list those claims below."}));
@@ -120,7 +121,7 @@ function oopRows() {
   }
   return rows;
 }
-function paidRows() { return inPeriod(oopRows(), costState.period); }
+function paidRows() { return inPeriod(oopRows()); }
 const srcText = r => r.type === "claim" ? `Claim: your share${r.ins ? " per " + r.ins : ""}` : OOP_SRC[r.src] + (r.est ? " (estimated)" : "");
 const oopKey = r => r.type === "claim" ? "c" + r.id : "p" + r.i;
 async function sendMark(body, msg) {
@@ -351,12 +352,14 @@ function barList(card, groups, onPick, active) {
         el("span", {style: {marginLeft: "8px", color: "var(--muted)"}, text: `${g.n} claim${g.n === 1 ? "" : "s"}${g.owe >= 1 ? ` · your share ${usd(g.owe)}` : ""}`}))));
   }
 }
-function drawCostMonths(svg, rows) {
+/* the claims' costs as bars, one per month or per year (by), every one from the first shown to the last */
+function drawCostBars(svg, rows, by = "month") {
   if (!rows.length) { svg.replaceChildren(); return; }
-  const months = new Map();
+  const months = new Map(), yearly = by === "year", cut = yearly ? 4 : 7;
   const first = rows.reduce((a, r) => r.d < a ? r.d : a, rows[0].d), last = rows.reduce((a, r) => r.d > a ? r.d : a, rows[0].d);
-  for (let d = zdate(dayTs(first.slice(0, 7) + "-01")); d <= dayTs(last.slice(0, 7) + "-01"); d.setMonth(d.getMonth() + 1)) months.set(d.iso().slice(0, 7), {paid: 0, owe: 0, billed: 0, n: 0});
-  for (const r of rows) { const m = months.get(r.d.slice(0, 7)); if (m) { m.paid += r.paid || 0; m.owe += r.owe || 0; m.billed += r.billed || 0; m.n++; } }
+  if (yearly) for (let y = +first.slice(0, 4); y <= +last.slice(0, 4); y++) months.set(String(y), {paid: 0, owe: 0, billed: 0, n: 0});
+  else for (let d = zdate(dayTs(first.slice(0, 7) + "-01")); d <= dayTs(last.slice(0, 7) + "-01"); d.setMonth(d.getMonth() + 1)) months.set(d.iso().slice(0, 7), {paid: 0, owe: 0, billed: 0, n: 0});
+  for (const r of rows) { const m = months.get(r.d.slice(0, cut)); if (m) { m.paid += r.paid || 0; m.owe += r.owe || 0; m.billed += r.billed || 0; m.n++; } }
   const keys = [...months.keys()];
   const w = Math.max(320, svg.parentElement.clientWidth - 32), h = 220, L = 64, R = w - 10, T = 10, B = h - 24;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h);
@@ -365,7 +368,7 @@ function drawCostMonths(svg, rows) {
   const x = i => L + slot * i + slot / 2, y = v => B - v / max * (B - T);
   const g = [];
   // hospital stays as shaded month slots
-  keys.forEach((k, i) => { const a = k + "-01", b = k + "-31"; if (STAYS.some(s => isoDay(s.ts) <= b && isoDay(s.te) >= a)) g.push(el("svg:rect", {x: L + slot * i, y: T, width: slot, height: B - T, fill: "var(--stay)"})); });
+  keys.forEach((k, i) => { const a = k + (yearly ? "-01-01" : "-01"), b = k + (yearly ? "-12-31" : "-31"); if (STAYS.some(s => isoDay(s.ts) <= b && isoDay(s.te) >= a)) g.push(el("svg:rect", {x: L + slot * i, y: T, width: slot, height: B - T, fill: "var(--stay)"})); });
   for (const v of niceTicks(0, max, 4)) { g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)})); g.push(el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: v >= 1e6 ? `$${(v / 1e6).toFixed(v % 1e6 ? 1 : 0)}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${v}`})); }
   g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
   const every = Math.ceil(keys.length / Math.max(2, Math.floor((R - L) / 56)));
@@ -374,9 +377,9 @@ function drawCostMonths(svg, rows) {
     const yp = y(m.paid), yo = y(m.paid + m.owe);
     if (m.paid > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yp, width: bw, height: Math.max(0, B - yp), fill: "var(--c-lab)", rx: m.owe > 0 && B - yo > 3 ? 0 : 2}));
     if (m.owe > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yo, width: bw, height: Math.max(1, yp - yo - (m.paid > 0 ? 1 : 0)), fill: "var(--c-imaging)", rx: 2}));
-    if (i % every === 0) g.push(el("svg:text", {x: cx, y: h - 6, "text-anchor": "middle", text: zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "short", year: "2-digit"})}));
+    if (i % every === 0) g.push(el("svg:text", {x: cx, y: h - 6, "text-anchor": "middle", text: yearly ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "short", year: "2-digit"})}));
     const hit = el("svg:rect", {x: L + slot * i, y: T, width: slot, height: B - T, fill: "transparent", style: "cursor:pointer"});
-    hit.addEventListener("pointermove", ev => showTip([el("div", {class: "v", text: usd(m.paid + m.owe)}), el("div", {class: "s", text: zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"})}),
+    hit.addEventListener("pointermove", ev => showTip([el("div", {class: "v", text: usd(m.paid + m.owe)}), el("div", {class: "s", text: yearly ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"})}),
       el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-lab)"}}), `Insurance paid ${usd(m.paid)}`),
       el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-imaging)"}}), `Your share ${usd(m.owe)}`),
       el("div", {class: "s", text: `${m.n} claims · billed ${usd(m.billed)}`})], ev));

@@ -403,8 +403,9 @@ class Settings(unittest.TestCase):
         pid = self.fresh_profile()
         self.assertEqual(self.merged(pid)["tabs"], {"order": list(settings.TABS), "hidden": []})
         # reordered and hidden; the hidden listed in the tabs' order, and a tab left out goes at the end, shown
-        m = self.put("tabs", {"order": ["timeline", "overview", "costs", "labs", "health"], "hidden": ["costs", "health"]}, pid=pid)
-        self.assertEqual(m["tabs"], {"order": ["timeline", "overview", "costs", "labs", "health", "heatmap"], "hidden": ["costs", "health"]})
+        self.assertEqual(settings.TABS, ("overview", "health", "timeline", "labs", "costs"))   # Trends + Lab heatmap = Labs (#172)
+        m = self.put("tabs", {"order": ["timeline", "overview", "costs", "labs"], "hidden": ["health", "costs"]}, pid=pid)
+        self.assertEqual(m["tabs"], {"order": ["timeline", "overview", "costs", "labs", "health"], "hidden": ["costs", "health"]})
         self.assertEqual(self.put("tabs", {"hidden": ["costs"]}, pid=pid)["tabs"], {"order": list(settings.TABS), "hidden": ["costs"]})
         for bad in ({"order": ["overview", "nope"]}, {"hidden": list(settings.TABS)}, {"order": "overview"}, ["overview"],
                     {"hidden": [3]}, {"order": [], "hidden": [], "extra": 1}):
@@ -419,6 +420,34 @@ class Settings(unittest.TestCase):
         actions = [(e["actor"], e["detail"].get("setting") or e["detail"].get("section")) for e in
                    self.c["robin"].get(f"/api/profiles/{pid}/activity?action=settings").json()]
         self.assertEqual(actions[:2], [("robin", "tabs"), ("lee", "tabs")])
+
+    def test_tabs_before_labs(self):
+        """#172: a layout naming Trends ("labs") and Lab heatmap ("heatmap"), saved before they were the one Labs tab,
+        whether sent again, stored from before, or in an export: Labs takes the first one's place and stays shown
+        while either was."""
+        pid = self.fresh_profile("Old layout (fictional)")
+        old = ["overview", "heatmap", "health", "timeline", "labs", "costs"]
+        for value, want in (
+                ({"order": old, "hidden": ["labs"]}, {"order": ["overview", "labs", "health", "timeline", "costs"], "hidden": []}),
+                ({"order": old, "hidden": ["heatmap"]}, {"order": ["overview", "labs", "health", "timeline", "costs"], "hidden": []}),
+                ({"order": old, "hidden": ["labs", "costs", "heatmap"]}, {"order": ["overview", "labs", "health", "timeline", "costs"], "hidden": ["labs", "costs"]}),
+                ({"order": ["trends", "timeline"]}, {"order": ["labs", "timeline", "overview", "health", "costs"], "hidden": []}),
+                ({"hidden": ["heatmap"]}, {"order": list(settings.TABS), "hidden": []})):
+            self.assertEqual(self.put("tabs", value, pid=pid)["tabs"], want, value)
+        self.put("tabs", {"hidden": old}, pid=pid, status=400)   # still one tab at least shown
+        # a row stored before the upgrade is read in today's tabs (merged, the Settings page's values, an export)
+        db = dbm.connect()
+        db.execute("DELETE FROM settings WHERE key='tabs' AND profile_id=?", (pid,))
+        db.execute("INSERT INTO settings(key, profile_id, user_id, value, sealed, changed, changed_by) VALUES('tabs', ?, NULL, ?, NULL, ?, NULL)",
+                   (pid, json.dumps({"order": ["heatmap", "overview", "health", "timeline", "labs", "costs"], "hidden": ["labs", "health"]}), dbm.now()))
+        stored = settings.stored(db, "profile", pid)["tabs"]
+        exported = settings.to_file(db, pid)["tabs"]
+        db.close()
+        want = {"order": ["labs", "overview", "health", "timeline", "costs"], "hidden": ["health"]}
+        self.assertEqual((self.merged(pid)["tabs"], stored, exported), (want, want, want))
+        # a settings.json from before (an export loaded back in, a setup build's) the same
+        self.assertEqual(settings.from_file({"tabs": {"order": old, "hidden": ["heatmap", "costs"]}})["tabs"],
+                         {"order": ["overview", "labs", "health", "timeline", "costs"], "hidden": ["costs"]})
 
     def test_theme(self):
         d = settings.SETTINGS["theme"]

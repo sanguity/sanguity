@@ -1,4 +1,4 @@
-/* Sanguity · Trends tab: lab and watch series charts.
+/* Sanguity · Labs tab, as charts (#172; the heatmap is heatmap.js): a chart per chosen lab, or its table.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---------------------------------------------------------------- labs */
@@ -43,7 +43,7 @@ function shortTitle(t) {
   return s.length > 24 ? s.slice(0, 23) + "…" : s;
 }
 const nice = n => CFG.labNicknames[n] || n;   // the name a lab is shown by (Settings > Names, or renamed where shown: rename.js)
-/* under a Trends table: the source tags its results carry, each as shown, with the tag in the records and ✎ */
+/* under a lab's table: the source tags its results carry, each as shown, with the tag in the records and ✎ */
 function tagLine(pts) {
   const tags = [...new Set(pts.map(p => p[6]).filter(t => t && t !== "Clinic"))];
   if (!tags.length) return null;

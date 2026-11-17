@@ -2,9 +2,12 @@
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---------------------------------------------------------------- tabs & boot */
-const TABS = ["overview", "health", "timeline", "labs", "heatmap", "costs"];
+/* "health" is Body and activity (watch, sleep and smart-scale data) and "labs" is Labs, the chart and heatmap of
+   the lab results (#172): Trends and Lab heatmap were two tabs, and their old ids still open Labs (TAB_ALIAS, core.js) */
+const TABS = ["overview", "health", "timeline", "labs", "costs"];
 /* the profile's tab layout (#40, CFG.tabs): its order, and the hidden tabs, which leave the tab bar and the arrow
-   keys; asking for a hidden tab (a saved view, a link, a button elsewhere) opens the first shown one */
+   keys; asking for a hidden tab (a saved view, a link, a button elsewhere) opens the first shown one. The server
+   gives a layout saved with the old tabs in the new ones (server/settings.py, tab_layout) */
 let TAB_ORDER = [...TABS], TAB_HIDDEN = new Set();
 const shownTabs = () => TAB_ORDER.filter(t => !TAB_HIDDEN.has(t));
 function applyTabs(cfg) {
@@ -16,16 +19,23 @@ function applyTabs(cfg) {
   bar.append(...TAB_ORDER.map(t => $("#tab-" + t)));
   for (const t of TABS) $("#tab-" + t).hidden = TAB_HIDDEN.has(t);
 }
-// a link to a tab: index.html#trends (or #overview, #health, #timeline, #heatmap, #costs)
-const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); return h === "trends" ? "labs" : TABS.includes(h) ? h : null; };
-function switchTab(t) {
+// a link to a tab: index.html#labs (or #overview, #health, #timeline, #costs; the old #trends and #heatmap open Labs
+// as a chart or a heatmap) -> [tab, Labs view], or null
+const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); return TAB_ALIAS[h] || (TABS.includes(h) ? [h] : null); };
+/* t: a tab, or an old id ("trends", "heatmap": the Labs tab in that view); view: Labs' "chart" or "heatmap", if given */
+function switchTab(t, view) {
+  if (TAB_ALIAS[t]) [t, state.labsView] = TAB_ALIAS[t];
+  if (view === "chart" || view === "heatmap") state.labsView = view;
   if (!shownTabs().includes(t)) t = shownTabs()[0];
   const changed = t !== state.tab;
   if (changed && drawer.classList.contains("open")) closeDrawer();   // details belong to the tab they were opened from
   hideTip(); state.tab = t;
   { const b = $("#tab-" + t), bar = b.parentElement; if (bar.scrollWidth > bar.clientWidth) bar.scrollTo({left: bar.scrollLeft + b.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - b.offsetWidth) / 2, behavior: "smooth"}); }
   for (const k of TABS) { $("#tab-" + k).setAttribute("aria-selected", t === k); $("#view-" + k).hidden = t !== k; }
-  $(".filters").style.display = t === "overview" || t === "costs" || t === "health" ? "none" : "";
+  // the records bar: its period on every tab with time (#171); the search on Timeline and Labs, the categories on Timeline
+  $(".filters").style.display = t === "overview" ? "none" : "";
+  $(".filters").classList.toggle("period-only", t === "health" || t === "costs");
+  $("#ftoggle").textContent = t === "health" || t === "costs" ? "Dates" : "Filters";   // what it opens on a phone
   $("#q").placeholder = t === "timeline" ? "Search events…" : "Filter lab names…"; $("#chips").style.display = t === "timeline" ? "" : "none";
   renderAll();
   if (changed) window.scrollTo({top: 0, left: 0, behavior: "instant"});   // each tab starts at the top
@@ -39,7 +49,7 @@ $(".tabs").addEventListener("keydown", ev => {   // left and right (Home, End) m
   ev.preventDefault(); switchTab(next); $("#tab-" + next).focus();
 });
 let booted = false;
-addEventListener("hashchange", () => { const t = tabOfHash(); if (t && booted) switchTab(t); });
+addEventListener("hashchange", () => { const t = tabOfHash(); if (t && booted) { if (t[1]) state.labsView = t[1]; switchTab(t[0]); } });
 $("#optMarks").onchange = e => { state.marks = e.target.checked; renderCharts(); save(); };
 $("#optSmooth").onchange = e => { state.smooth = e.target.checked; renderCharts(); save(); };
 function renderAll() {
@@ -47,7 +57,6 @@ function renderAll() {
   $("#optMarks").checked = state.marks; $("#optSmooth").checked = state.smooth;
   if (state.tab === "timeline") { renderStats(); renderTimeline(); renderList(); }
   else if (state.tab === "labs") renderLabs();
-  else if (state.tab === "heatmap") renderHeatmap();
   else if (state.tab === "costs") renderCosts();
   else if (state.tab === "health") renderHealth();
   else renderOverview();
@@ -118,9 +127,6 @@ async function syncWarning(pid) {
     // milestones are a setting since #39 (the server moved those of data.json and corrections.json in once)
     MILESTONES = CFG.milestones.filter(m => m && /^\d{4}-\d{2}-\d{2}/.test(m.date || ""))
       .map(m => ({...m, date: m.date.slice(0, 10), label: m.label || "Milestone"})).sort((a, b) => a.date.localeCompare(b.date));
-    // the saved "dx" period, or a milestone that no longer exists, falls back to the primary milestone or All
-    if (isMsKey(costState.period) && !msOf(costState.period) || costState.period === "dx") costState.period = msKey(primaryMs());
-    if (isMsKey(hState.period) && !msOf(hState.period) || hState.period === "dx") hState.period = primaryMs() ? msKey(primaryMs()) : "all";
   } catch (e) { emptyCard("Couldn't load the records: " + e.message); return; }
   applyTabs(CFG.tabs);
   applyTheme(CFG.theme);   // this user's default theme (#45), unless this browser has its own (the ◐ toggle)
@@ -189,10 +195,10 @@ async function syncWarning(pid) {
   const ts = DATA.events.map(e => e.ts).filter(isFinite); state.min = Math.min(...ts); state.max = Math.max(...ts);
   for (const s of SERIES) if (s.watch && s.pts.length) state.max = Math.max(state.max, s.pts[s.pts.length - 1].ts);
   $("#meta").textContent = `${DATA.source} · built ${fmtD(DATA.built)}` + (WATCH && WATCH.last_payload ? ` · watch synced ${fmtDT(WATCH.last_payload)}` : "");
-  restore();
-  { const t = tabOfHash(); if (t) state.tab = t; }
+  restore();   // a saved period naming a milestone that's since gone is All (setPeriod)
+  { const t = tabOfHash(); if (t) { state.tab = t[0]; if (t[1]) state.labsView = t[1]; } }
   if (!state.sel.size) state.sel = startLabs();   // the default saved view, else trends.defaultLabs (trends.js)
-  if (state.preset !== "custom") applyPreset(state.preset); else renderAll();
+  if (state.preset !== "custom" || !(state.to > state.from)) setPeriod(state.preset);
   switchTab(state.tab);
   booted = true;
   drawerResume();   // after an edit's reload (drawer.js)
