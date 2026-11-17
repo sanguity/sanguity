@@ -1,7 +1,7 @@
 /* Sanguity · Settings page (#35): a profile's settings, in the sections the server's registry (server/settings.py)
-   gives, each with a simple editor for its kind and Save, and "Reset to defaults" per section. Viewers see the
-   profile's settings without editors; their own (per-user) settings they can change. A new kind of setting adds
-   an editor to EDITORS. */
+   gives, each setting with a simple editor for its kind, and per section one Save, Discard changes and "Reset to
+   defaults" (#174). Viewers see the profile's settings without editors; their own (per-user) settings they can
+   change. A new kind of setting adds an editor to EDITORS. */
 "use strict";   // $, el and api come from util.js
 let ME, PID = null, LAB_NAMES = [], LABS = [], NICK = {}, HAS_CLAIMS = false;
 
@@ -108,12 +108,51 @@ function jsonEditor(value, changed, ro) {
 
 /* ---------------------------------------------------------------- #36, #40, #45: key-lab tiles, tabs, theme */
 
+/* a small menu of a row's actions: its ⋯ button opens it by touch, mouse or keyboard (Enter, Space or the down
+   arrow; then the arrow keys, and Escape to close it). entries: [{text, run}] */
+let openRowMenu = null;
+function closeRowMenu(focus) {
+  const m = openRowMenu;
+  if (!m) return;
+  m.list.hidden = true;
+  m.btn.setAttribute("aria-expanded", "false");
+  openRowMenu = null;
+  if (focus) m.btn.focus();
+}
+document.addEventListener("click", ev => { if (openRowMenu && !openRowMenu.wrap.contains(ev.target)) closeRowMenu(); });
+let rowMenus = 0;
+function rowMenu(label, entries, act) {
+  const id = "rowMenu" + (++rowMenus);
+  const btn = el("button", {class: "btn small set-more-btn", type: "button", "data-act": act, text: "⋯", "aria-label": label,
+    "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id});
+  const items = entries.map(e => el("button", {class: "menu-item", role: "menuitem", type: "button", tabindex: "-1", text: e.text,
+    onclick: () => { closeRowMenu(); e.run(); }}));
+  const list = el("div", {class: "menu-list", id, role: "menu", "aria-label": label, hidden: ""}, ...items);
+  const m = {btn, list, wrap: el("div", {class: "menu set-more"}, btn, list)};
+  const open = () => { closeRowMenu(); list.hidden = false; btn.setAttribute("aria-expanded", "true"); openRowMenu = m; };
+  btn.onclick = () => { if (openRowMenu === m) closeRowMenu(); else open(); };
+  btn.onkeydown = ev => {
+    if (ev.key === "ArrowDown" || ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); if (openRowMenu !== m) open(); items[0]?.focus(); }
+    else if (ev.key === "Escape" && openRowMenu === m) { ev.preventDefault(); closeRowMenu(); }
+  };
+  list.onkeydown = ev => {
+    const i = items.indexOf(document.activeElement);
+    const to = {ArrowDown: items[(i + 1) % items.length], ArrowUp: items[(i - 1 + items.length) % items.length], Home: items[0], End: items.at(-1)}[ev.key];
+    if (to) { ev.preventDefault(); to.focus(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); closeRowMenu(true); }
+    else if (ev.key === "Tab") closeRowMenu();
+  };
+  return m.wrap;
+}
+
 /* a list put in order three ways: drag an item by its handle (mouse, pen or touch), focus the handle and press
    up or down (Home, End), or its ↑ and ↓ buttons. items are strings; opts.name(item) names it, opts.body(item)
-   gives what its row shows, opts.extra(item, i) more buttons; opts.changed() after every change. */
+   gives what its row shows, opts.extra(item, i) more buttons; opts.changed() after every change. With opts.more
+   (item, i), more entries [{text, run}] for a menu of the row's actions that takes the buttons' place on a phone
+   (#174), so each row stays one line. */
 function orderList(items, opts) {
   let list = [...items];
-  const ol = el("ol", {class: "set-labs set-order"});
+  const ol = el("ol", {class: "set-labs set-order" + (opts.more && !opts.ro ? " has-more" : "")});
   const said = el("span", {class: "set-sr", "aria-live": "polite"});
   const refocus = (i, act) => ol.children[i]?.querySelector(`[data-act="${act}"]`)?.focus();
   const tell = i => { said.textContent = `${opts.name(list[i])}: ${i + 1} of ${list.length}.`; };
@@ -156,6 +195,20 @@ function orderList(items, opts) {
         el("button", {class: "btn small", type: "button", text: "↑", "data-act": "up", "aria-label": `Move ${n} up`, disabled: i === 0, onclick: () => move(i, i - 1, i > 1 ? "up" : "down")}),
         el("button", {class: "btn small", type: "button", text: "↓", "data-act": "down", "aria-label": `Move ${n} down`, disabled: i === list.length - 1, onclick: () => move(i, i + 1, i + 2 < list.length ? "down" : "up")}),
         ...(opts.extra ? opts.extra(it, i) : [])));
+      if (opts.more && !opts.ro) {
+        const last = list.length - 1;
+        li.append(rowMenu(`Move or remove ${n}`, [
+          ...(i > 1 ? [{text: "Move to the top", run: () => move(i, 0, "more")}] : []),
+          ...(i > 0 ? [{text: "Move up", run: () => move(i, i - 1, "more")}] : []),
+          ...(i < last ? [{text: "Move down", run: () => move(i, i + 1, "more")}] : []),
+          ...(i < last - 1 ? [{text: "Move to the bottom", run: () => move(i, last, "more")}] : []),
+          ...opts.more(it, i).map(e => ({text: e.text, run: () => {
+            e.run();
+            // the row may be gone: the focus goes to the row now in its place (or the last one)
+            if (!ol.contains(document.activeElement)) refocus(Math.min(i, list.length - 1), "more");
+          }})),
+        ], "more"));
+      }
       return li;
     }));
     if (!list.length) ol.append(el("li", {class: "muted", text: "None"}));
@@ -179,7 +232,8 @@ function tilesEditor(value, changed, ro, setting) {
     body: n => { const s = labInfo(n); return [el("span", {class: "set-name"}, nick(n), nick(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null),
       el("span", {class: "set-count muted", text: s ? `${s.pts.length} result${s.pts.length === 1 ? "" : "s"}` : "no results here"})]; },
     extra: n => [el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove ${nick(n)}`,
-      onclick: () => { ol.set(ol.get().filter(x => x !== n)); update(); input.focus(); }})]});
+      onclick: () => { ol.set(ol.get().filter(x => x !== n)); update(); input.focus(); }})],
+    more: n => [{text: "Remove", run: () => { ol.set(ol.get().filter(x => x !== n)); update(); }}]});
   function drawPreview() {
     const names = keyLabTiles(ol.get(), LABS, isDefault(ol.get()));
     preview.replaceChildren(...names.map(n => {
@@ -386,64 +440,139 @@ function rangesEditor(value, changed, ro) {
 }
 Object.assign(EDITORS, {birthdate: birthdateEditor, rangesex: rangesexEditor, ranges: rangesEditor});
 
-/* ---------------------------------------------------------------- the sections */
+/* ---------------------------------------------------------------- the sections (#174): each setting with its
+   editor, and one Save per section for every setting changed in it; Discard changes puts them back as saved. A
+   setting changed and not saved yet says so, its section has data-dirty (its group is marked in the sidebar,
+   settings-nav.js, and the section's Save stays in view while it's long), and leaving the page asks first. Whose
+   settings these are is said once per group, above them; a setting says it only where its section mixes them. */
 const FROM = {default: "default", install: "set for this server", profile: "set for this profile", user: "your own"};
-function settingNode(st, onSaved) {
+const SCOPE_TAG = {install: "for this server", profile: "for this profile", user: "just for you"};
+
+/* one setting: its name, where its value comes from, its editor, and a line for what went wrong saving it.
+   changed() after every edit. */
+function settingNode(st, changed, mixed) {
   const ro = !st.can_change;
   const msg = el("span", {class: "msg", role: "status"});
-  const save = el("button", {class: "btn primary small", type: "button", text: "Save", disabled: true, hidden: ro});
-  let ed;
-  const changed = () => { save.disabled = same(ed.get(), st.value); sayIn(msg, ""); };
-  ed = (EDITORS[st.kind] || jsonEditor)(st.value, changed, ro, st);
-  save.onclick = async () => {
-    save.disabled = true;
-    try {
-      await call(`profiles/${PID}/settings/${encodeURIComponent(st.key)}`, "PUT", {value: ed.get()});
-      await onSaved(`Saved “${st.label}”.`);
-    } catch (e) { sayIn(msg, e.message, true); save.disabled = false; }
-  };
-  const tag = el("span", {class: "tag", text: FROM[st.from] || st.from});
-  return el("div", {class: "set", "data-key": st.key},
-    el("h3", {class: "sub"}, st.label, tag, st.scope === "user" ? el("span", {class: "tag", text: "just for you"}) : null),
+  const from = el("span", {class: "tag", text: FROM[st.from] || st.from});
+  const unsaved = el("span", {class: "tag set-unsaved", text: "not saved"});
+  const node = el("div", {class: "set", "data-key": st.key, "data-scope": st.scope});
+  let ed = null;
+  const item = {st, node, msg,
+    dirty: () => !ro && !!ed && !same(ed.get(), st.value),
+    value: () => ed.get(),
+    saved(value) { st.value = value; st.from = st.scope; from.textContent = FROM[st.from] || st.from; mark(); }};
+  const mark = () => node.classList.toggle("set-changed", item.dirty());
+  ed = (EDITORS[st.kind] || jsonEditor)(st.value, () => { sayIn(msg, ""); mark(); changed(); }, ro, st);
+  node.append(el("h3", {class: "sub"}, st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
     st.help ? el("p", {class: "hint", text: st.help}) : null,
-    ed.node,
-    el("div", {class: "row"}, save, msg));
+    ed.node, msg);
+  return item;
 }
 
-async function load(note) {
+/* “A”, “A” and “B”, “A”, “B” and “C” */
+const quoted = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.length - 1 ? " and " : ", ") + `“${l}”`).join("");
+
+/* a section: its title, Reset to defaults, its settings and one Save for them all. opts.base is where its settings
+   are changed (the API's profiles/<id>/settings unless given); opts.reload(note, force) draws the sections again
+   after a save or a reset (note: {section, text} to say in this one; force: this section's id, to draw it again
+   even with changes not saved); opts.note is said in it once drawn. */
+function sectionCard(sec, opts = {}) {
+  const base = opts.base || `profiles/${PID}/settings`;
+  const reload = opts.reload || load;
+  const msg = el("span", {class: "msg", role: "status", text: opts.note || ""});
+  const anyEditable = sec.settings.some(st => st.can_change);
+  const changedHere = sec.settings.some(st => st.can_change && st.from !== "default" && st.from !== "install");
+  const mixed = new Set(sec.settings.map(st => st.scope)).size > 1;
+  const save = el("button", {class: "btn primary small", type: "button", text: "Save", disabled: true});
+  const discard = el("button", {class: "btn small", type: "button", text: "Discard changes", disabled: true});
+  let card = null;
+  const changed = () => {
+    const n = items.filter(it => it.dirty()).length;
+    save.disabled = discard.disabled = !n;
+    card?.toggleAttribute("data-dirty", n > 0);
+    if (n && !msg.classList.contains("bad")) sayIn(msg, "");
+  };
+  const items = sec.settings.map(st => settingNode(st, () => changed(), mixed));
+  save.onclick = async () => {
+    const todo = items.filter(it => it.dirty());
+    if (!todo.length) return;
+    save.disabled = discard.disabled = true;
+    sayIn(msg, "Saving…");
+    const done = [];
+    for (const it of todo) {
+      const value = it.value();
+      try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value}); }
+      catch (e) {
+        // the ones before it are saved; this one and the rest stay as changed, to put right and save again
+        sayIn(it.msg, e.message, true);
+        changed();
+        sayIn(msg, (done.length ? `Saved ${quoted(done)}. ` : "") + `${quoted([it.st.label])} isn't saved: ${e.message}`, true);
+        it.node.scrollIntoView({block: "nearest"});
+        if (done.length) reload();
+        return;
+      }
+      it.saved(value);
+      done.push(it.st.label);
+    }
+    changed();
+    await reload({section: sec.id, text: `Saved ${quoted(done)}.`});
+  };
+  discard.onclick = () => {
+    const fresh = sectionCard(sec, {...opts, note: "Changes discarded: back as saved."});
+    card.replaceWith(fresh);
+    const h = fresh.querySelector("h2");
+    h.tabIndex = -1;
+    h.focus();
+  };
+  const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", disabled: !changedHere, hidden: !anyEditable,
+    onclick: async () => {
+      if (!confirm(`Put the ${sec.title} settings back to their defaults?`)) return;
+      reset.disabled = true;
+      try { await call(`${base}/reset`, "POST", {section: sec.id}); await reload({section: sec.id, text: `${sec.title} settings are back to their defaults.`}, sec.id); }
+      catch (e) { sayIn(msg, e.message, true); reset.disabled = false; }
+    }});
+  card = el("section", {class: "card", id: "sec-" + sec.id},
+    el("div", {class: "set-hd"}, el("h2", {text: sec.title}), reset),
+    sec.help ? el("p", {class: "hint", text: sec.help}) : null,
+    ...items.map(it => it.node),
+    anyEditable ? el("div", {class: "set-foot"}, save, discard, msg) : null);
+  return card;
+}
+const unsavedSections = () => [...document.querySelectorAll("#sections > section[data-dirty]")];
+addEventListener("beforeunload", ev => { if (unsavedSections().length) { ev.preventDefault(); ev.returnValue = ""; } });
+/* another profile: changes not saved here would be lost. Asked before anything follows the picker (the calendar
+   feed does too), so saying no leaves the whole page on this profile. */
+document.addEventListener("change", ev => {
+  if (ev.target.id !== "profile" || PID == null) return;
+  const left = unsavedSections().map(c => c.querySelector("h2").textContent);
+  if (left.length && !confirm(`Your changes to ${quoted(left)} aren't saved. Switch to another profile and lose them?`)) {
+    ev.target.value = PID;
+    ev.stopImmediatePropagation();
+  }
+}, true);
+
+/* the profile's sections, drawn again: one with changes not saved stays as it is, unless it's the one forced or
+   all are drawn afresh (another profile); note: {section, text} to say in that section */
+async function load(note, force, all = false) {
   const box = $("#sections");
   let d;
   try { d = await call(`profiles/${PID}/settings/sections`); }
-  catch (e) { sayIn($("#loadMsg"), e.message, true); box.replaceChildren(); return; }
+  catch (e) { sayIn($("#loadMsg"), e.message, true); if (all) box.replaceChildren(); return; }   // (changes not saved stay)
   sayIn($("#loadMsg"), "");
   d.sections = d.sections.filter(sec => sec.settings.some(st => st.scope !== "install"));   // the server's own: on the Admin page (#167)
-  const all = d.sections.flatMap(sec => sec.settings);
-  NICK = all.find(st => st.key === "labNicknames")?.value || {};
-  for (const k of ["birthDate", "sex", "overrides"]) { const st = all.find(x => x.key === "ranges." + k); if (st) RANGE_CFG[k] = st.value; }   // #44
-  { const th = all.find(st => st.key === "theme"); if (th) applyTheme(th.value); }   // #45: the saved default, here too
-  const editable = d.role === "owner" || d.role === "editor";
-  $("#introHint").textContent = editable
-    ? "These change the dashboard for everyone this profile is shared with, unless a setting says it's just for you."
-    : "You can view this profile, so its settings are shown here as they are; only its owners and editors change them.";
-  box.replaceChildren(...d.sections.map(sec => {
-    const msg = el("span", {class: "msg", role: "status"});
-    const changedHere = sec.settings.some(st => st.can_change && st.from !== "default" && st.from !== "install");
-    const anyEditable = sec.settings.some(st => st.can_change);
-    const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", disabled: !changedHere, hidden: !anyEditable,
-      onclick: async () => {
-        if (!confirm(`Put the ${sec.title} settings back to their defaults?`)) return;
-        reset.disabled = true;
-        try { await call(`profiles/${PID}/settings/reset`, "POST", {section: sec.id}); await load({section: sec.id, text: `${sec.title} settings are back to their defaults.`}); }
-        catch (e) { sayIn(msg, e.message, true); reset.disabled = false; }
-      }});
-    const card = el("section", {class: "card", id: "sec-" + sec.id},
-      el("div", {class: "set-hd"}, el("h2", {text: sec.title}), reset),
-      sec.help ? el("p", {class: "hint", text: sec.help}) : null,
-      ...sec.settings.map(st => settingNode(st, text => load({section: sec.id, text}))),
-      msg);
-    if (note && note.section === sec.id) sayIn(msg, note.text);
-    return card;
-  }));
+  const every = d.sections.flatMap(sec => sec.settings);
+  NICK = every.find(st => st.key === "labNicknames")?.value || {};
+  for (const k of ["birthDate", "sex", "overrides"]) { const st = every.find(x => x.key === "ranges." + k); if (st) RANGE_CFG[k] = st.value; }   // #44
+  { const th = every.find(st => st.key === "theme"); if (th) applyTheme(th.value); }   // #45: the saved default, here too
+  document.querySelector("main.sets").dataset.role = d.role;   // whose settings each group's are (settings-nav.js)
+  const cards = d.sections.map(sec => {
+    const old = document.getElementById("sec-" + sec.id);
+    if (!all && old && old.parentNode === box && old.hasAttribute("data-dirty") && sec.id !== force) return old;
+    return sectionCard(sec, {note: note && note.section === sec.id ? note.text : ""});
+  });
+  const inPlace = !all && box.children.length === cards.length && d.sections.every((sec, i) => box.children[i].id === "sec-" + sec.id);
+  if (inPlace) cards.forEach((c, i) => { if (box.children[i] !== c) box.children[i].replaceWith(c); });
+  else box.replaceChildren(...cards);
 }
 
 /* the profile's labs: their names, suggested when adding a lab or a nickname, and their results, for the key-lab
@@ -479,7 +608,7 @@ async function loadLabNames() {
   let want; try { want = +(new URLSearchParams(location.search).get("profile") || localStorage.getItem("ht-profile")); } catch (e) {}
   if (ME.profiles.some(p => p.id === want)) sel.value = want;
   sel.closest("label").hidden = ME.profiles.length < 2;
-  const pick = () => { PID = +sel.value; try { localStorage.setItem("ht-profile", sel.value); } catch (e) {} loadLabNames().then(() => load()); loadWatch(); };
+  const pick = () => { PID = +sel.value; try { localStorage.setItem("ht-profile", sel.value); } catch (e) {} loadLabNames().then(() => load(null, null, true)); loadWatch(); };
   sel.onchange = pick;
   $("#intro").hidden = false;
   pick();

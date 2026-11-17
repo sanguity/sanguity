@@ -830,8 +830,8 @@ def main():
                   == [["CBC (browser check)", True], ["Kidney (browser check)", False]])
             check("…and fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.click("[data-key='trends.views'] button[aria-label='Remove the view Kidney (browser check)']")
-            page.click("[data-key='trends.views'] button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-trends > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#sec-trends .set-foot button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-trends .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
@@ -1498,6 +1498,69 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("…Settings and its sidebar fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            # ---- #174: the group's title and whose settings these are above it (no card of its own), one Save per
+            # section with a way back, and on a phone the page's title whole and each key lab one row with a menu
+            check("Settings at 375 px: the top bar's title is whole",
+                  js("(t => t.textContent === 'Settings' && t.scrollWidth <= t.clientWidth && t.scrollHeight <= t.clientHeight + 1)(document.querySelector('header .page-title'))"),
+                  js("(t => [t.scrollWidth, t.clientWidth, t.scrollHeight, t.clientHeight])(document.querySelector('header .page-title'))"))
+            check("…Display says, under its title, that its settings are just for you",
+                  js("document.getElementById('groupTitle').textContent") == "Display" and js("document.getElementById('introHint').textContent").startswith("Just for you")
+                  and js("getComputedStyle(document.getElementById('intro')).borderTopWidth") == "0px", js("document.getElementById('introHint').textContent"))
+            groups = js("""(() => { const out = {}; for (const a of document.querySelectorAll('.set-nav-list a')) { a.click();
+                out[a.dataset.group] = [document.getElementById('introHint').textContent.split(/[,:]/)[0],
+                  [...new Set([...document.querySelectorAll('#sections > section:not(.grp-off) .set[data-scope]')].map(s => s.dataset.scope))]]; }
+                return out; })()""")
+            say = {"profile": "This profile", "user": "Just for you", "install": "This server"}
+            check("…and every group says whose its settings are, as their scope has it",
+                  groups["dashboard"][0] == "This profile" and groups["calendar"][0] == "Just for you"
+                  and all(w in say.values() and len(sc) <= 1 and (not sc or say[sc[0]] == w) for w, sc in groups.values()), groups)
+            saves = js("[...document.querySelectorAll('#sections > section')].map(s => [...s.querySelectorAll('button')].filter(b => b.textContent === 'Save').length)")
+            check("…one Save per section (none per setting), and nothing marked unsaved on arrival",
+                  set(saves) == {1} and not js("[...document.querySelectorAll('#sections .set button')].some(b => b.textContent === 'Save')")
+                  and not js("document.querySelector('#sections > [data-dirty], .set-changed')"), saves)
+            page.click(".set-nav-list a[data-group=dashboard]")
+            rows = "[...document.querySelectorAll('#sec-overview .set-order li')]"
+            check("…on a phone each key lab is one row: its handle, name and a menu, the ↑ ↓ Remove buttons put away",
+                  js(f"""{rows}.every(li => {{ const r = li.getBoundingClientRect(), m = li.querySelector('.set-more-btn').getBoundingClientRect(),
+                      g = li.querySelector('.set-grip').getBoundingClientRect();
+                      return m.top - r.top < 30 && g.top - r.top < 30 && m.top >= r.top && m.bottom <= r.bottom && g.top >= r.top && g.bottom <= r.bottom && !li.querySelector('.set-acts').offsetParent; }})"""),
+                  js(f"{rows}.map(li => Math.round(li.getBoundingClientRect().height))"))
+            order = "[...document.querySelectorAll('#sec-overview .set-more-btn')].map(b => b.getAttribute('aria-label').slice('Move or remove '.length))"
+            o0 = js(order)
+            page.click("#sec-overview .set-order li:nth-child(1) .set-more-btn")
+            page.click("#sec-overview .set-order li:nth-child(1) .menu-item:text-is('Move down')")
+            check("…its menu, tapped, moves the lab down", js(order)[:2] == [o0[1], o0[0]], js(order)[:3])
+            check("…and it shows it isn't saved: on the setting, with its section's Save kept in view, and its group in the sidebar",
+                  js("document.querySelector(\"[data-key='overview.keyLabs']\").classList.contains('set-changed')")
+                  and js("getComputedStyle(document.querySelector('#sec-overview .set-foot')).position") == "sticky"
+                  and js("document.querySelector('.set-nav-list a[data-group=dashboard]').textContent") == "Dashboard, changes not saved")
+            page.focus("#sec-overview .set-order li:nth-child(2) .set-more-btn")
+            page.keyboard.press("Enter")
+            first_act = js("document.activeElement.textContent")
+            page.keyboard.press("ArrowDown")
+            check("…the menu works from the keyboard too: Enter opens it on its first action, the arrows move through it",
+                  first_act == "Move up" and js("document.activeElement.textContent") == "Move down", first_act)
+            page.keyboard.press("Escape")
+            check("…and Escape closes it, back on its button",
+                  js("document.activeElement.getAttribute('aria-label')") == f"Move or remove {o0[0]}" and js("document.querySelector('#sec-overview .set-order li:nth-child(2) .menu-list').hidden"))
+            page.keyboard.press("Enter")
+            page.keyboard.press("End")
+            page.keyboard.press("Enter")
+            check("…its last action takes the lab out, the focus on the row now in its place",
+                  o0[0] not in js(order) and js("document.activeElement.getAttribute('aria-label')") == f"Move or remove {o0[2]}", js(order)[:3])
+            leave = "(() => { const e = new Event('beforeunload', {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; })()"
+            check("…leaving the page with it not saved asks first", js(leave))
+            page.once("dialog", lambda d: d.dismiss())
+            page.select_option("#profile", label="Second person")
+            check("…so does switching profiles, which stays put when told to",
+                  js("PID") == 1 and js("document.getElementById('profile').value") == "1" and js("document.getElementById('sec-overview').hasAttribute('data-dirty')"))
+            page.click("#sec-overview .set-foot button:text-is('Discard changes')")
+            check("…Discard changes puts it back as saved, and nothing's left unsaved",
+                  js(order) == o0 and not js("document.querySelector('#sections > [data-dirty]')") and not js(leave)
+                  and js("document.querySelector('.set-nav-list a[data-group=dashboard]').textContent") == "Dashboard"
+                  and js("document.querySelector('#sec-overview .set-foot > .msg').textContent").startswith("Changes discarded"), js(order)[:3])
+            settle(200)
+            check("…and the key labs fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click(".set-nav-list a[data-group=dashboard]")
             page.click("#userMenuBtn")
@@ -1547,13 +1610,13 @@ def main():
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             first = before[0][0]
             page.click(f"#sec-overview button[aria-label='Move {first} down']")
-            page.click("#sec-overview .set button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-overview > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#sec-overview .set-foot button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-overview .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
             page.click("[data-key=labNicknames] button:text-is('Add a row')")
             page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=from]", first)
             page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Renamed in Settings")
-            page.click("[data-key=labNicknames] button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-names > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#sec-names .set-foot button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-names .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
             # ---- calendar feed (#51): made on the Settings page, its address shown once with setup steps, and the
             # address works for a calendar app with no session
             js("location.hash = 'calendar'")   # its group in the Settings sidebar
@@ -1593,7 +1656,7 @@ def main():
             for sec in ("overview", "names"):
                 page.once("dialog", lambda d: d.accept())
                 page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
-                page.wait_for_function(f"document.querySelector('#sec-{sec} > .msg').textContent.includes('back to their defaults')", timeout=10000)
+                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             js("switchTab('overview')")
@@ -1627,8 +1690,8 @@ def main():
             p2 = js(preview)
             check("…and so do the arrow keys on its handle, which keeps the focus",
                   p2[:3] == [p0[0], p0[2], p0[1]] and js("document.activeElement.dataset.act") == "grip", p2[:3])
-            page.click("#sec-overview .set button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-overview > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#sec-overview .set-foot button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-overview .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             js("switchTab('overview')")
@@ -1642,8 +1705,8 @@ def main():
             page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
             page.uncheck("#sec-tabs input[data-tab=costs]")
             page.click("#sec-tabs button[aria-label='Move Timeline up']")
-            page.click("#sec-tabs .set button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-tabs > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#sec-tabs .set-foot button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-tabs .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
             shown_tabs = "[...document.querySelectorAll('.tabs [role=tab]')].filter(b => !b.hidden).map(b => b.id.slice(4))"
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
@@ -1675,10 +1738,10 @@ def main():
             check("…and the last shown tab can't be hidden", js("document.querySelector('#sec-tabs input[data-tab=timeline]').disabled"))
             page.once("dialog", lambda d: d.accept())
             page.click("#sec-tabs button:text-is('Reset to defaults')")
-            page.wait_for_function("document.querySelector('#sec-tabs > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.wait_for_function("document.querySelector('#sec-tabs .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             page.once("dialog", lambda d: d.accept())
             page.click("#sec-overview button:text-is('Reset to defaults')")
-            page.wait_for_function("document.querySelector('#sec-overview > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.wait_for_function("document.querySelector('#sec-overview .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             check("…Reset to defaults shows every tab again", js(shown_tabs) == ["overview", "health", "timeline", "labs", "costs"], js(shown_tabs))
@@ -1700,7 +1763,7 @@ def main():
                   js("[...document.querySelectorAll('#sec-tabs input[data-tab]')].map(i => [i.dataset.tab, i.checked])"))
             page.once("dialog", lambda d: d.accept())
             page.click("#sec-tabs button:text-is('Reset to defaults')")
-            page.wait_for_function("document.querySelector('#sec-tabs > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.wait_for_function("document.querySelector('#sec-tabs .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             js("switchTab('overview')")
@@ -1711,8 +1774,8 @@ def main():
             page.goto(base + "/settings.html?profile=1#sec-appearance")
             page.wait_for_selector("#sec-appearance input[value=dark]", timeout=10000)
             page.check("#sec-appearance input[value=dark]")
-            page.click("#sec-appearance .set button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-appearance > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#sec-appearance .set-foot button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-appearance .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
             check("theme: saving a default applies it here", js("document.documentElement.dataset.theme") == "dark")
             fresh = browser.new_context(viewport={"width": 375, "height": 800}, bypass_csp=True)
             fresh.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")}
@@ -1733,7 +1796,7 @@ def main():
             fresh.close()
             page.once("dialog", lambda d: d.accept())
             page.click("#sec-appearance button:text-is('Reset to defaults')")
-            page.wait_for_function("document.querySelector('#sec-appearance > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.wait_for_function("document.querySelector('#sec-appearance .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             check("…and Reset to defaults follows the system again",
                   js("document.documentElement.dataset.theme === undefined && localStorage.getItem('ht-theme-default') === null"))
             # ---- #41 unit preferences: SI units and kg, picked on the Settings page, convert the demo's creatinine
@@ -1743,8 +1806,8 @@ def main():
             page.wait_for_selector("#sec-units input[name=units-lab][value=si]", timeout=10000)
             page.check("#sec-units input[name=units-lab][value=si]")
             page.check("#sec-units input[name=units-weight][value=kg]")
-            page.click("#sec-units .set button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-units > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#sec-units .set-foot button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-units .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             unit_of = "n => { const s = SERIES.find(s => s.name === n); const p = s && s.pts.at(-1); return s && {unit: s.unit, from: s.uc ? s.uc.from : null, v: p[1], orig: p.orig ? p.orig.v : null, lo: p[2]}; }"
@@ -1787,7 +1850,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             page.once("dialog", lambda d: d.accept())
             page.click("#sec-units button:text-is('Reset to defaults')")
-            page.wait_for_function("document.querySelector('#sec-units > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.wait_for_function("document.querySelector('#sec-units .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             check("…Reset to defaults shows units as reported again", js("document.querySelector('#sec-units input[name=units-lab]:checked').value") == "reported")
             # ---- visit summary (#48): pick the visit and sections, add a lab, type questions (kept as a draft),
             # preview, then download the PDF and read it back
@@ -1856,8 +1919,8 @@ def main():
             page.fill(f"{ms} .set-row:last-child input[data-k=label]", "Browser check milestone")
             page.check(f"{ms} .set-row:last-child input[data-k=primary]")
             check("…one primary at a time", js(f"document.querySelectorAll('{ms} input[data-k=primary]:checked').length") == 1)
-            page.click(f"{ms} button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-milestones > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#sec-milestones .set-foot button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-milestones .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
             rules = "[data-key=visitWorkouts]"
             page.click(f"{rules} button:text-is('Add a row')")
             page.fill(f"{rules} .set-row:last-child input[data-k=match]", "(a+)+$")
@@ -1865,7 +1928,7 @@ def main():
             page.fill(f"{rules} .set-row:last-child input[data-k=minutes]", "40")
             page.check(f"{rules} .set-row:last-child input[data-k=regex]")
             n0 = len(problems)
-            page.click(f"{rules} button:text-is('Save')")
+            page.click("#sec-health .set-foot button:text-is('Save')")
             page.wait_for_function(f"document.querySelector('{rules} .msg').textContent.includes('very slow')", timeout=10000)
             settle(200)
             refused = [p for p in problems[n0:] if ("HTTP 400" in p and p.endswith("/settings/visitWorkouts")) or "status of 400" in p]
@@ -1874,8 +1937,8 @@ def main():
                   "very slow" in js(f"document.querySelector('{rules} .msg').textContent") and len(refused) == 2, refused)
             page.fill(f"{rules} .set-row:last-child input[data-k=match]", want)
             page.uncheck(f"{rules} .set-row:last-child input[data-k=regex]")
-            page.click(f"{rules} button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-health > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#sec-health .set-foot button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-health .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("the milestones and workout rules fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
@@ -1904,7 +1967,7 @@ def main():
             for sec in ("milestones", "health"):
                 page.once("dialog", lambda d: d.accept())
                 page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
-                page.wait_for_function(f"document.querySelector('#sec-{sec} > .msg').textContent.includes('back to their defaults')", timeout=10000)
+                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             check("…both reset", js("MILESTONES.length === 0 && !CFG.visitWorkouts.length"), js("[MILESTONES, CFG.visitWorkouts]"))
@@ -1934,13 +1997,17 @@ def main():
             za.goto(base + "/settings.html?profile=1#sec-dates")
             za.wait_for_selector("#sec-dates select", timeout=10000)
             za.select_option("[data-key='dates.timeZone'] select", "America/Los_Angeles")
-            za.click("[data-key='dates.timeZone'] button:text-is('Save')")
-            za.wait_for_function("document.querySelector('#sec-dates > .msg').textContent.startsWith('Saved')", timeout=10000)
             za.select_option("[data-key='dates.format'] select", "dmy")
-            za.click("[data-key='dates.format'] button:text-is('Save')")
-            za.wait_for_function("document.querySelector('#sec-dates > .msg').textContent.startsWith('Saved')", timeout=10000)
+            za.click("#sec-dates .set-foot button:text-is('Save')")   # one Save for the section's two changes (#174)
+            za.wait_for_function("document.querySelector('#sec-dates .set-foot > .msg').textContent == 'Saved “Time zone” and “Date format”.'", timeout=10000)
             check("…changed on the Settings page, just for that person", mine(za)["dates.timeZone"] == "America/Los_Angeles"
                   and mine(zb)["dates.timeZone"] == "America/Chicago", (mine(za), mine(zb)))
+            zb.goto(base + "/settings.html?profile=1#dashboard")   # #174: a viewer of the profile
+            zb.wait_for_selector("#sec-dates .set-foot", state="attached", timeout=10000)
+            check("a viewer's Settings: the profile's groups say they're shown as they are, with no Save, while their own settings have one",
+                  zb.evaluate("document.getElementById('introHint').textContent").startswith("This profile: you can view it")
+                  and zb.evaluate("!document.querySelector('#sec-overview .set-foot, #sec-names .set-foot') && !!document.querySelector('#sec-units .set-foot')"),
+                  zb.evaluate("document.getElementById('introHint').textContent"))
             zb.evaluate("""Promise.all([['dates.timeZone', 'Pacific/Auckland'], ['dates.format', 'ymd']].map(([k, v]) =>
                 api('settings/user/' + k, {method: 'PUT', body: JSON.stringify({value: v})})))""")
             for pg in (za, zb):
@@ -2068,12 +2135,9 @@ def main():
             check("ranges: Settings suggests the labs whose results have no range, by unit",
                   len(chips) == 2 and chips[0] == f"+ Ferritin (ng/mL) · {len(fe) - 2}", chips)
             page.fill("#sec-ranges [data-key='ranges.birthDate'] input[type=date]", "1990-03-01")
-            page.click("#sec-ranges [data-key='ranges.birthDate'] button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-ranges > .msg').textContent.startsWith('Saved')", timeout=10000)
-            page.wait_for_selector("#sec-ranges [data-key='ranges.sex'] input[value=female]", timeout=10000)
             page.check("#sec-ranges [data-key='ranges.sex'] input[value=female]")
-            page.click("#sec-ranges [data-key='ranges.sex'] button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-ranges > .msg').textContent.startsWith('Saved “Sex')", timeout=10000)
+            page.click("#sec-ranges .set-foot button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-ranges .set-foot > .msg').textContent.startsWith('Saved “Birth date” and “Sex')", timeout=10000)
             ov = "#sec-ranges [data-key='ranges.overrides']"
             page.wait_for_selector(f"{ov} .set-sugg .chip", timeout=10000)
             page.locator(f"{ov} .set-sugg .chip").first.click()
@@ -2083,9 +2147,11 @@ def main():
             r1.locator("[data-k=low]").fill("200")
             r1.locator("[data-k=high]").fill("20")
             n_problems = len(problems)
-            page.locator(f"{ov} button:text-is('Save')").click()
+            page.locator("#sec-ranges .set-foot button:text-is('Save')").click()
             page.wait_for_function(f"document.querySelector(\"{ov} .msg\").textContent.includes('low is above the high')", timeout=10000)
-            check("…a low above the high is refused, in words", True)
+            check("…a low above the high is refused, in words, beside the setting and its section's Save",
+                  "isn't saved" in js("document.querySelector('#sec-ranges .set-foot > .msg').textContent")
+                  and js("document.getElementById('sec-ranges').hasAttribute('data-dirty')"), js("document.querySelector('#sec-ranges .set-foot > .msg').textContent"))
             settle(200)
             del problems[n_problems:]   # the refusal's 400 was asked for
             r1.locator("[data-k=low]").fill("20")
@@ -2104,8 +2170,8 @@ def main():
             settle(200)
             check("…and the ranges editor fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.locator(f"{ov} button:text-is('Save')").click()
-            page.wait_for_function("document.querySelector('#sec-ranges > .msg').textContent.startsWith('Saved “Ranges')", timeout=10000)
+            page.locator("#sec-ranges .set-foot button:text-is('Save')").click()
+            page.wait_for_function("document.querySelector('#sec-ranges .set-foot > .msg').textContent.startsWith('Saved “Ranges')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.name === 'Ranges (fictional)'", timeout=20000)
             got = js("SERIES.filter(s => !s.watch).flatMap(s => s.pts.map(p => [s.name, s.unit, p[0], p[2], p[3], p[4] || '', p.rs || '']))")

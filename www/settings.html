@@ -27,14 +27,15 @@
       or ask a profile's owner to share it with you.</p>
   </section>
 
-  <section class="card" id="intro" hidden>
-    <h2>Settings</h2>
-    <p class="hint" id="introHint"></p>
-    <div class="form inline">
-      <label>Profile <select id="profile"></select></label>
+  <!-- the group shown (settings-nav.js): its title, and whose settings these are -->
+  <div class="set-top" id="intro" hidden>
+    <div class="set-top-hd">
+      <h1 id="groupTitle">Settings</h1>
+      <label class="set-profile">Profile <select id="profile"></select></label>
     </div>
+    <p class="set-who" id="introHint"></p>
     <span class="msg" id="loadMsg" role="status"></span>
-  </section>
+  </div>
 
   <div id="sections"></div>
 
