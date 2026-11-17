@@ -598,6 +598,31 @@ SCHEMA = [
     UPDATE OR IGNORE settings SET key='person.sex' WHERE key='ranges.sex';
     DELETE FROM settings WHERE key IN ('ranges.birthDate', 'ranges.sex');
     """,
+    # version 31: the visit summary's questions draft per person (#219; summary.py). It was one per profile (the
+    # settings key summary.questions), so a viewer's edit replaced an owner's (docs/security-review.md, A4). Now one row
+    # per account and profile, encrypted, gone with the account, the profile or the account's access to it. Each shared
+    # draft moves once: to whoever kept it last, and, unless that was a viewer, to every owner and editor too, who saw it
+    # before; a viewer never gets someone else's. The sealed value is copied as it is (encrypted, not bound to its row).
+    """
+    CREATE TABLE summary_drafts(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        sealed TEXT NOT NULL,                      -- JSON text, encrypted
+        changed INTEGER NOT NULL,
+        UNIQUE(profile_id, user_id));
+    CREATE INDEX summary_drafts_user ON summary_drafts(user_id);
+    CREATE TRIGGER summary_drafts_unshared AFTER DELETE ON memberships BEGIN
+        DELETE FROM summary_drafts WHERE profile_id=OLD.profile_id AND user_id=OLD.user_id;
+    END;
+    INSERT OR IGNORE INTO summary_drafts(profile_id, user_id, sealed, changed)
+        SELECT s.profile_id, m.user_id, s.sealed, s.changed FROM settings s JOIN memberships m ON m.profile_id = s.profile_id
+        WHERE s.key = 'summary.questions' AND s.user_id IS NULL AND s.sealed IS NOT NULL
+          AND (m.user_id = s.changed_by
+               OR (m.role IN ('owner', 'editor') AND NOT EXISTS (SELECT 1 FROM memberships w WHERE w.profile_id = s.profile_id
+                                                                 AND w.user_id = s.changed_by AND w.role = 'viewer')));
+    DELETE FROM settings WHERE key = 'summary.questions';
+    """,
 ]
 
 

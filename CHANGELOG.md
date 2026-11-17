@@ -506,6 +506,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Install templates on backups** (#218): the TrueNAS, Unraid and CasaOS templates now say Sanguity writes its
   backups to the backups folder itself, on the schedule set under Admin → Backups (or with
   `python -m server.manage backup`), and to copy them off the machine too.
+- **A visit summary draft per person** (#219): the questions typed for the visit summary are each person's own
+  draft for the profile, so one person's never replaces another's (a viewer's an owner's, say); it goes when their
+  access to the profile does. Each profile's shared draft moves once, at the upgrade, to whoever kept it last and,
+  unless that was a viewer, to the profile's owners and editors (schema step 31, `summary_drafts`).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

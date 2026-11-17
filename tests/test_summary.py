@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The visit summary PDF (server/summary.py, server/pdfdoc.py, server/routes_summary.py, issue #48): the PDF opens
 and its text (read back with pypdf) holds every section, out-of-range results are judged against their own
-report's range (two sources of one test with different ranges), the questions draft is kept (encrypted) and saved
-when a PDF is made, who may make one (viewers too; not someone the profile isn't shared with), each one is logged,
+report's range (two sources of one test with different ranges), the questions draft is kept (encrypted, each
+person's own, #219) and saved when a PDF is made, who may make one (viewers too; not someone the profile isn't shared with), each one is logged,
 the download's headers, nothing is written to disk, and it stays within two pages. Fictional data only, dated from
 today so the "upcoming" appointments stay upcoming.
 
@@ -293,13 +293,12 @@ class Summary(unittest.TestCase):
         url = f"/api/profiles/{self.pid}/summary/questions"
         r = self.c["kim"].put(url, json={"text": "What do the numbers mean for me?"}, headers=H)   # a viewer may keep one
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(self.c["robin"].get(f"/api/profiles/{self.pid}/summary").json()["questions"], "What do the numbers mean for me?",
-                         "the draft is the profile's, seen by everyone it's shared with")
+        self.assertEqual(self.c["kim"].get(f"/api/profiles/{self.pid}/summary").json()["questions"], "What do the numbers mean for me?")
         self.assertEqual(self.c["zed"].put(url, json={"text": "x"}, headers=H).status_code, 404)
         self.assertEqual(self.c["robin"].put(url, json={"text": "x"}).status_code, 403, "the CSRF header is needed")
         self.assertEqual(self.c["robin"].put(url, json={"text": "x" * 5000}, headers=H).status_code, 422)
-        # making a PDF keeps its questions as the draft
-        self.pdf(questions="Ask about the lisinopril dose")
+        # making a PDF keeps its questions as the draft of whoever made it
+        self.pdf("lee", questions="Ask about the lisinopril dose")
         self.assertEqual(self.c["lee"].get(f"/api/profiles/{self.pid}/summary").json()["questions"], "Ask about the lisinopril dose")
         # encrypted at rest; not a setting the Settings screen or an export shows
         for f in os.listdir(TMP):
@@ -313,9 +312,36 @@ class Summary(unittest.TestCase):
             self.assertNotIn("summary", settings.to_file(db, self.pid))
         finally:
             db.close()
-        r = self.c["robin"].put(url, json={"text": "  \n"}, headers=H)
+        r = self.c["lee"].put(url, json={"text": "  \n"}, headers=H)
         self.assertEqual((r.status_code, r.json()["questions"]), (200, ""))
-        self.assertEqual(self.c["robin"].get(f"/api/profiles/{self.pid}/summary").json()["questions"], "")
+        self.assertEqual(self.c["lee"].get(f"/api/profiles/{self.pid}/summary").json()["questions"], "")
+        self.c["kim"].put(url, json={"text": ""}, headers=H)
+
+    def test_a_draft_per_person(self):
+        """(#219) Two accounts on one profile keep separate drafts; a viewer's never replaces an owner's."""
+        url = f"/api/profiles/{self.pid}/summary/questions"
+        draft = lambda who: self.c[who].get(f"/api/profiles/{self.pid}/summary").json()["questions"]   # noqa: E731
+        self.assertEqual(self.c["robin"].put(url, json={"text": "Robin's question"}, headers=H).status_code, 200)
+        self.assertEqual(self.c["lee"].put(url, json={"text": "Lee's question"}, headers=H).status_code, 200)
+        self.assertEqual(self.c["kim"].put(url, json={"text": "Kim's question"}, headers=H).status_code, 200)
+        self.assertEqual((draft("robin"), draft("lee"), draft("kim")), ("Robin's question", "Lee's question", "Kim's question"))
+        self.pdf("kim", questions="Kim, again")   # a viewer's PDF keeps the viewer's own
+        self.assertEqual((draft("robin"), draft("kim")), ("Robin's question", "Kim, again"), "the owner's draft is unchanged")
+        self.c["kim"].put(url, json={"text": ""}, headers=H)
+        self.assertEqual(draft("robin"), "Robin's question", "a viewer emptying theirs leaves the owner's")
+        # the draft goes with the account's access: leaving the profile and coming back starts from nothing
+        db = dbm.connect()
+        try:
+            n = lambda: db.execute("SELECT COUNT(*) FROM summary_drafts WHERE profile_id=? AND user_id=?",   # noqa: E731
+                                   (self.pid, self.uid["lee"])).fetchone()[0]
+            self.assertEqual(n(), 1)
+            self.assertEqual(self.c["lee"].delete(f"/api/profiles/{self.pid}/members/{self.uid['lee']}", headers=H).status_code, 200)
+            self.assertEqual(n(), 0, "gone with the membership")
+            db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (self.uid["lee"], self.pid))
+            self.assertEqual(draft("lee"), "")
+        finally:
+            db.close()
+        self.c["robin"].put(url, json={"text": ""}, headers=H)
 
     def test_roles_and_log(self):
         for who in ("robin", "lee", "kim"):   # owners, editors and viewers
@@ -605,6 +631,45 @@ class Summary(unittest.TestCase):
         from server import growth
         self.assertAlmostEqual(growth.pct(growth.tables(), "weight", "male", 100, 8.1), 96.711, 2)   # the page's own number
         self.assertEqual([growth.pct_text(p) for p in (0.2, 1, 2.4, 22.6, 99.7)], ["below the 1st", "1st", "2nd", "23rd", "above the 99th"])
+
+
+class SharedDraftMoves(unittest.TestCase):
+    """(#219) Schema step 31 moves each profile's shared draft (the settings key summary.questions) once: to whoever
+    kept it last and, unless that was a viewer, to every owner and editor; a viewer never gets someone else's."""
+    STEP = next(i for i, s in enumerate(dbm.SCHEMA) if "CREATE TABLE summary_drafts" in s)
+
+    def test_shared_drafts_move_to_the_people_who_saw_them(self):
+        import sqlite3
+        path = os.path.join(TMP, "step36.db")
+        db = sqlite3.connect(path, isolation_level=None)
+        db.row_factory = sqlite3.Row
+        try:
+            for v, sql in enumerate(dbm.SCHEMA[:self.STEP], start=1):
+                db.executescript("BEGIN;" + sql + f"PRAGMA user_version={v};COMMIT;")
+            for uid, name in enumerate(("owner", "editor", "viewer", "viewer2", "gone"), start=1):
+                db.execute("INSERT INTO users(id, username, pw_hash, created) VALUES(?, ?, 'x', 0)", (uid, name))
+            for pid in (1, 2, 3):
+                db.execute("INSERT INTO profiles(id, name, created) VALUES(?, ?, 0)", (pid, f"P{pid} (fictional)"))
+                for uid, role in ((1, "owner"), (2, "editor"), (3, "viewer"), (4, "viewer")):
+                    db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, ?)", (uid, pid, role))
+            sealed = {pid: f"enc:fictional-sealed-{pid}" for pid in (1, 2, 3)}   # copied as it is, never opened
+            # 1: kept last by the editor; 2: by a viewer; 3: by an account that's gone (changed_by NULL)
+            for pid, by in ((1, 2), (2, 3), (3, None)):
+                db.execute("""INSERT INTO settings(key, profile_id, user_id, value, sealed, changed, changed_by)
+                              VALUES('summary.questions', ?, NULL, NULL, ?, 5, ?)""", (pid, sealed[pid], by))
+            db.executescript("BEGIN;" + dbm.SCHEMA[self.STEP] + "COMMIT;")
+            got = {}
+            for r in db.execute("SELECT profile_id, user_id, sealed, changed FROM summary_drafts"):
+                got.setdefault(r["profile_id"], set()).add(r["user_id"])
+                self.assertEqual((r["sealed"], r["changed"]), (sealed[r["profile_id"]], 5), "the sealed value as it was")
+            self.assertEqual(got, {1: {1, 2}, 2: {3}, 3: {1, 2}})
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM settings WHERE key='summary.questions'").fetchone()[0], 0)
+            db.execute("DELETE FROM memberships WHERE user_id=2 AND profile_id=1")
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM summary_drafts WHERE user_id=2").fetchone()[0], 1,
+                             "leaving a profile removes that profile's draft only")
+        finally:
+            db.close()
+            os.remove(path)
 
 
 class Writer(unittest.TestCase):
