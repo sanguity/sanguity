@@ -484,6 +484,13 @@ Everything on `main` so far; it becomes the first tagged release.
   glucose table leaves out the time-in-ranges columns. The Overview's glucose tile says when its reading was typed in,
   with the meal note, and Body and activity draws typed-in glucose for a profile without a phone's. Typed-in readings'
   times are listed as typed (the clock's time), no longer moved by the phone's time zone.
+- **Vital signs from Epic visit records**: an Epic MyChart export's visit records (C-CDA) now bring the vital
+  signs taken at each visit (blood pressure, heart rate, temperature, blood oxygen, respiratory rate, height, BMI
+  and head circumference) into the same Vitals series the C-CDA and FHIR imports make, where before only body
+  weights came; the same reading repeated in several visit records counts once. CareSpace exports that name their
+  vitals by LOINC's long names ("Intravascular systolic Arterial system Pres Pt Qn") now bring their blood pressure
+  too. Vitals of the same value taken twice on one day are both kept, from every source (lab results still count
+  the same value on the same day once). Re-import an Epic export, or rebuild the setup build, to get them.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

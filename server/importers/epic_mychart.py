@@ -7,7 +7,8 @@ An export is a folder laid out like this (the file names carry the portal's name
     messages/<portal>_messages_long_conversations_full.json    optional: the whole of long conversations
     letters/<portal>_letters.json                              letters
     documents/[<folder>/]<YYYY-MM-DD>_<name>[_<n>].<ext>       documents
-    visit-records/**/*.xml, *.zip                              C-CDA visit records ("Download my record")
+    visit-records/**/*.xml, *.zip                              C-CDA visit records ("Download my record"): visits,
+                                                               body weights and the vital signs taken at each visit
     admissions.json                                            optional: {"admissions": [{"admit", "discharge", "where"}]}
 
 One upload may hold several exports, each in its own folder (one per health system), as build.py reads a primary
@@ -39,7 +40,8 @@ import re
 import zipfile
 
 from . import ccda
-from .common import ext_alias, inferred_stays, iso, lab_alias, lab_defs, resolve_name, stay, strip_html, unit_key
+from .common import (canonical_lab, ext_alias, inferred_stays, iso, lab_alias, lab_defs, resolve_name, stay, strip_html,
+                     unit_key)
 
 NAME = "epic-mychart"
 LABEL = "Epic MyChart export"
@@ -406,6 +408,26 @@ def _weights(out, doc, org):
             out.weights.setdefault(t[:16], [t, round(x * f, 1), doc.org or org])
 
 
+def _vitals(out, doc, tag):
+    """The visit record's Vital Signs section (blood pressure, heart rate, temperature, SpO2, respiratory rate,
+    height, BMI) as series in the "Vitals" panel, named as the C-CDA importer names them. Each visit record repeats
+    the last vitals taken, so the same reading often comes several times: _fold_external keeps it once. Weights are
+    _weights()'s."""
+    for v in ccda.vital_readings(doc):
+        if v.get("weight"):
+            continue
+        name = canonical_lab(v["name"], v["loinc"]) or v["name"]
+        s = out.labs.get(name)
+        if s is not None and s["unit"] and unit_key(s["unit"]) != unit_key(v["unit"]):
+            name = f"{name} ({v['unit']})"        # a result of the same name in other units: never one axis
+            s = out.labs.get(name)
+        if s is None:
+            s = out.labs[name] = {"unit": v["unit"], "pts": [], "txt": [], "code": None}
+        s["vital"], s["loinc"] = True, s.get("loinc") or v["loinc"]
+        s["pts"].append([v["t"], v["x"], None, None, "", v["raw"]] + ([tag] if tag else []))
+        out.panel_votes[name]["Vitals"] += 1
+
+
 # ------------------------------------------------------------------ the importer
 
 def _export(out, files, root, parts, org=None, tag=None):
@@ -441,6 +463,7 @@ def _export(out, files, root, parts, org=None, tag=None):
     _documents(out, files, root, org)
     for doc in docs:
         _weights(out, doc, org)
+        _vitals(out, doc, tag)
         ee = ccda._f(doc.root, "h:componentOf/h:encompassingEncounter")
         if ee is not None:
             ccda._visit(doc, out, ee)
@@ -459,9 +482,10 @@ def _fold_external(out):
                 out.panel_votes[canon].update(out.panel_votes[ext])
                 del out.labs[ext]
     for s in out.labs.values():
+        when = 16 if s.get("vital") else 10   # vitals: the same reading at the same minute (two the same day are two)
         seen, keep = set(), []
-        for p in sorted(s["pts"], key=lambda p: (p[0][:10], p[6] if len(p) > 6 else "")):
-            k = (p[0][:10], round(p[1], 4))
+        for p in sorted(s["pts"], key=lambda p: (p[0][:when], p[6] if len(p) > 6 else "")):
+            k = (p[0][:when], round(p[1], 4))
             if k not in seen:
                 seen.add(k)
                 keep.append(p)
@@ -476,7 +500,7 @@ def _series_list(out):
         votes = out.panel_votes[name]
         base = re.sub(r" \([^()]*\)$", "", name)          # "Hemoglobin (g/L)" is still hemoglobin, for its key
         canon = alias.get(name.lower()) or alias.get(base.lower())
-        loinc = (defs.get(canon) or {}).get("loinc")
+        loinc = (defs.get(canon) or {}).get("loinc") or s.get("loinc")   # vitals carry their own LOINC code
         key = (f"loinc:{loinc}" if loinc else f"{NAME}:component|{s['code']}" if s.get("code")
                else f"{NAME}:name|{name.strip().lower()}")
         series.append({"name": name, "unit": s["unit"], "panel": votes.most_common(1)[0][0] if votes else "",

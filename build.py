@@ -146,8 +146,11 @@ LAB_DEFS = lab_defs()
 series = []
 for name, s in labs.items():
     seen, pts = set(), []
-    for p in s["pts"]:   # the same value on the same day from two sources counts once; the earlier source's wins
-        k = (p[0][:10], round(p[1], 4))
+    # the same value on the same day from two sources counts once; the earlier source's wins. Vitals are taken
+    # several times a day, so for them it's the same minute: two readings of 128 that day are two.
+    when = 16 if s["panels"] and s["panels"].most_common(1)[0][0] == "Vitals" else 10
+    for p in s["pts"]:
+        k = (p[0][:when], round(p[1], 4))
         if k not in seen:
             seen.add(k)
             pts.append(p)

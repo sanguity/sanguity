@@ -428,7 +428,11 @@ def _results(doc, out):
                 key=_hkey(d, "lab", doc.src, *sorted(e["key"] for e in out.events if e["id"] in day["ids"])))
 
 
-def _vitals(doc, out):
+def vital_readings(doc):
+    """Each reading in a document's Vital Signs sections, as a dict: "t", "x" (in the series' unit), and either
+    "weight": True (x in pounds) or "name", "unit", "loinc" and "raw" (the value as reported, with its unit).
+    Readings without a time or a number, and codes VITALS doesn't know, are left out. epic_mychart.py reads its
+    visit records (C-CDA) with this too."""
     for sec in doc.sections("vitals"):
         pairs = []      # (observation, its organizer's time): organizers usually carry the time, observations sometimes don't
         for entry in _all(sec, "h:entry"):
@@ -446,7 +450,7 @@ def _vitals(doc, out):
             if c == WEIGHT_LOINC:
                 f = WEIGHT_UNITS.get(u)
                 if f and 1 < x * f < 600:   # from 1 lb: a baby's weight too (#196)
-                    out.weights.setdefault(t[:16], [t, round(x * f, 1), doc.src])
+                    yield {"t": t, "x": round(x * f, 1), "weight": True}
                 continue
             if c not in VITALS:
                 continue
@@ -459,9 +463,18 @@ def _vitals(doc, out):
                 x = round(x * 2.54, 1)
             elif name == "Temperature" and u in ("cel", "c", "°c"):
                 x = round(x * 9 / 5 + 32, 1)
-            sname, s = out.series(name, unit_out, c)
-            s["pts"].append([t, _clean(x), None, None, "", raw + (f" {unit}" if unit else ""), doc.src])
-            out.panel_votes[sname]["Vitals"] += 1
+            yield {"t": t, "x": _clean(x), "name": name, "unit": unit_out, "loinc": c,
+                   "raw": raw + (f" {unit}" if unit else "")}
+
+
+def _vitals(doc, out):
+    for v in vital_readings(doc):
+        if v.get("weight"):
+            out.weights.setdefault(v["t"][:16], [v["t"], v["x"], doc.src])
+            continue
+        sname, s = out.series(v["name"], v["unit"], v["loinc"])
+        s["pts"].append([v["t"], v["x"], None, None, "", v["raw"], doc.src])
+        out.panel_votes[sname]["Vitals"] += 1
 
 
 def _meds(doc, out):
