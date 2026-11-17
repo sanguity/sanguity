@@ -1,5 +1,5 @@
-/* Sanguity · the Settings page's sidebar: its sections in groups, one group shown at a time (after settings.js and
-   settings-calendar.js, which draw the sections).
+/* Sanguity · the Settings page's sidebar: its sections in groups, one group shown at a time (after settings.js, which
+   draws the sections). The calendar feed moved to the Sharing page (#168): settings.html#calendar opens it there.
 
    Each section (#sec-<id> from the server's list, and the page's own #calendar card) belongs to a group.
    The sidebar lists the groups that have something to show this person; the address follows the group
@@ -14,6 +14,9 @@
 (() => {
   const main = document.querySelector("main.sets");
   if (!main) return;
+  const moved = () => location.hash === "#calendar" && (location.replace("sharing.html" + location.search + "#calendar"), true);
+  if (moved()) return;
+  addEventListener("hashchange", moved);
   const GROUPS = [
     {id: "dashboard", title: "Dashboard", part: "This profile", hint: "How this profile's tabs look, for everyone it's shared with",
      has: ["sec-overview", "sec-tabs", "sec-trends", "sec-names"]},
@@ -23,8 +26,6 @@
      has: ["sec-milestones", "sec-health"]},
     {id: "display", title: "Display", part: "You", hint: "Theme, dates and units, on every profile you see",
      has: ["sec-appearance", "sec-dates", "sec-units"]},
-    {id: "calendar", title: "Calendar feed", part: "You", hint: "Appointments and expected lab draws in your own calendar app",
-     has: ["calendar"]},
   ];
   const OTHER = {id: "more", title: "More", part: "", hint: "", has: []};   // a section no group names yet
   /* whose settings each group holds: the registry's sections say it by their settings' scope (data-scope); a group

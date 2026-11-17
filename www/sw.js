@@ -15,15 +15,15 @@ const SCOPE = new URL(self.registration.scope);
 // connect-return.html: that's where a connected source's sign-in comes back, with a code in the address.
 const FILES = [
   "", "index.html", "login.html", "setup.html", "account.html", "import.html", "settings.html", "providers.html", "connect.html",
-  "summary.html", "share.html", "admin.html",
+  "summary.html", "share.html", "admin.html", "sharing.html",
   "manifest.webmanifest", "css/app.css", "css/summary.css",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png",
   "js/account.js", "js/activity.js", "js/admin.js", "js/admin-sources.js", "js/app.js", "js/charts.js", "js/connect.js", "js/core.js", "js/costs.js", "js/dates.js", "js/drawer.js", "js/health.js",
   "js/heatmap.js", "js/import-history.js", "js/import-jobs.js", "js/import-manual.js", "js/import-records.js", "js/import-shl.js",
   "js/import.js", "js/journal.js", "js/login.js", "js/meds.js", "js/nav.js", "js/offline.js", "js/outside.js", "js/overview.js", "js/providers.js",
-  "js/pwa.js", "js/ranges.js", "js/rename.js", "js/same.js", "js/settings-calendar.js", "js/settings-nav.js", "js/settings.js", "js/setup.js",
+  "js/pwa.js", "js/ranges.js", "js/rename.js", "js/same.js", "js/settings-nav.js", "js/settings.js", "js/setup.js",
   "js/sources.js", "js/summary.js", "js/theme.js", "js/timeline.js", "js/trends.js", "js/trends-views.js", "js/units.js",
-  "js/util.js", "js/share.js", "js/share-links.js",
+  "js/util.js", "js/share.js", "js/share-links.js", "js/sharing.js", "js/calendar-feed.js", "js/moved.js",
   "sources.html", "js/moved.js", "js/sources-overview.js", "js/sources-page.js", "js/sources-watch.js",
 ];
 

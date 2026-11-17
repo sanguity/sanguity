@@ -261,10 +261,12 @@ class Api(unittest.TestCase):
         self.assertEqual(sam.get("/api/profiles/1/data").status_code, 404)
         self.assertEqual(sam.get("/" + urls[0]).status_code, 404)
 
-        # a viewer can't share, rename or list members; a document id from another profile doesn't work
+        # a viewer can't share or rename, but sees who has access and as what (#168); someone without access doesn't;
+        # a document id from another profile doesn't work
         self.assertEqual(alex.put("/api/profiles/1/members", json={"username": "sam", "role": "viewer"}, headers=H).status_code, 403)
         self.assertEqual(alex.patch("/api/profiles/1", json={"name": "x"}, headers=H).status_code, 403)
-        self.assertEqual(alex.get("/api/profiles/1/members").status_code, 403)
+        self.assertEqual([(m["username"], m["role"]) for m in alex.get("/api/profiles/1/members").json()], [("alex", "viewer"), ("ben", "owner")])
+        self.assertEqual(sam.get("/api/profiles/1/members").status_code, 404)
         doc_id = urls[0].rsplit("/", 1)[1]
         self.assertEqual(alex.get(f"/api/profiles/{alex_pid}/documents/{doc_id}").status_code, 404)
 
@@ -275,7 +277,8 @@ class Api(unittest.TestCase):
         ben.put("/api/profiles/1/members", json={"username": "alex", "role": "owner"}, headers=H)
         self.assertEqual(len(alex.get("/api/profiles/1/members").json()), 2)
         self.assertEqual(ben.put("/api/profiles/1/members", json={"username": "ben", "role": "editor"}, headers=H).status_code, 200)
-        self.assertEqual(ben.get("/api/profiles/1/members").status_code, 403)
+        self.assertEqual(ben.put("/api/profiles/1/members", json={"username": "sam", "role": "viewer"}, headers=H).status_code, 403)
+        self.assertEqual(ben.get("/api/profiles/1/members").status_code, 200)   # an editor still sees who has access
         self.assertEqual(ben.get("/api/profiles/1/data").status_code, 200)
         alex.put("/api/profiles/1/members", json={"username": "ben", "role": "owner"}, headers=H)
         # a viewer may leave on their own

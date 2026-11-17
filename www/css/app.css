@@ -347,7 +347,6 @@ details.res > div{padding:0 12px 10px}
 @media (forced-colors:active){.chip .key,.row .key{forced-color-adjust:none}}
 /* ---- account page */
 main.acct{max-width:860px;margin:0 auto;padding:20px}
-.acct .acct-tabs{display:inline-flex;margin:0 0 14px;max-width:100%}
 .acct [role="tabpanel"]:focus{outline:none}
 .acct .card h2{margin-bottom:4px}
 .acct .install-steps{padding-left:20px;margin:6px 0;font-size:13px;color:var(--ink2)}
@@ -674,7 +673,7 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .sync-warn.quiet{border-left-color:var(--grid);color:var(--ink2);font-size:13px}
 .sync-warn a{margin-left:6px;white-space:nowrap}
 @media (max-width:600px){.sync-warn{margin:8px 12px 0}}
-/* calendar feed on the Settings page (settings-calendar.js, #51) */
+/* calendar feed on the Sharing page (calendar-feed.js, #51) */
 .cal .cal-opts{border:0;padding:0;margin:8px 0;display:grid;gap:6px;max-width:640px}
 .cal .cal-opts legend{font-size:13px;font-weight:550;color:var(--ink2);padding:0;margin-bottom:4px}
 .cal label.check{align-items:flex-start;font-weight:400;padding-bottom:0}
@@ -861,3 +860,7 @@ main.src[data-role=viewer] .src-edit{display:none}
 .src #detail h4.sub{margin:14px 0 6px;font-size:14px}
 .src #detail .dir-copy{margin-bottom:10px}
 @media (max-width:600px){ .src .src-row{flex-wrap:wrap} }
+/* the Sharing page (#168, sharing.html): Settings' sidebar (main.sets) with Account's cards; Profile set apart in it */
+.shr .shr-members td:first-child{overflow-wrap:anywhere}
+.shr .shr-share input{flex:1 1 140px;min-width:0}
+@media (max-width:760px){.shr .set-nav-list li.shr-apart{margin-left:4px;padding-left:10px;border-left:1px solid var(--ring)}}

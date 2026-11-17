@@ -1,7 +1,8 @@
-/* Sanguity · Account page: a profile's share links (#47; server/share_links.py), for its owners. Each link lets someone
+/* Sanguity · Sharing page: a profile's share links (#47; server/share_links.py), for its owners. Each link lets someone
    without an account read the part of the profile chosen here, until it expires or an owner revokes it. The form
    says plainly, as it's filled in, everything a holder of the link will see. The link's address is shown once.
-   Uses call() and when() from account.js (loaded after this file; called only once the page has loaded). */
+   Uses call() and when() from sharing.js (loaded after this file; called only once the page has loaded). With open,
+   the panel is shown at once, with no button to open it. */
 "use strict";
 const SL_HOURS = [[1, "1 hour"], [24, "1 day"], [72, "3 days"], [168, "7 days"], [720, "30 days"], [2160, "90 days"]];
 const SL_STATE = {active: "working", expired: "expired", revoked: "revoked", maker_not_owner: "stopped (its maker is no longer an owner)"};
@@ -11,7 +12,7 @@ function slRange(from, to) {
     : to ? `dated up to ${fmtD(dayTs(to))}` : "of any date";
 }
 
-function shareLinksPanel(p) {
+function shareLinksPanel(p, {open = false} = {}) {
   const box = el("div", {class: "share-links", hidden: true});
   const msg = el("span", {class: "msg", role: "status"});
   const fail = e => { msg.textContent = e.message; msg.classList.add("bad"); };
@@ -117,5 +118,6 @@ function shareLinksPanel(p) {
     list, add, made, msg);
   const toggle = el("button", {class: "btn small", type: "button", text: "Share links", "aria-expanded": "false",
     onclick: async () => { box.hidden = !box.hidden; toggle.setAttribute("aria-expanded", !box.hidden); if (!box.hidden) { try { await load(); } catch (e) { fail(e); } } }});
+  if (open) { toggle.hidden = true; box.hidden = false; load().catch(fail); }
   return el("div", {class: "share-links-wrap"}, toggle, box);
 }

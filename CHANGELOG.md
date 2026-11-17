@@ -174,6 +174,13 @@ Everything on `main` so far; it becomes the first tagged release.
   scale, now with when the phone last sent something); and the **Import history**. The Add menu's items open their
   sections, and the old addresses (`import.html`, `connect.html`, `providers.html`, `settings.html#watch`) open the
   matching one. The import history says again who imported each import and when.
+- A **Sharing** page, in your menu in place of Visit summary and Share links (#168): for the profile picked at
+  its top, a sidebar of People (who has access and as what, sharing with an account, changing roles, leaving),
+  Share links, Calendar feed, Visit summary, Export everything and Activity, with renaming and deleting the
+  profile, and making a new one, set apart under Profile. They left Account's Profiles tab, Settings and the
+  visit summary page, and their old addresses open them here. Someone who can only view a profile sees who has
+  access, the visit summary and their own calendar feed, and no owner's controls; any member can now see who
+  has access to a profile (`GET /api/profiles/{id}/members`), and only owners change it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

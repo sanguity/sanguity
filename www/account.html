@@ -22,12 +22,8 @@
   <div class="card warn" id="insecure" role="alert" hidden></div>
   <div class="card warn" id="mustChange" hidden>Choose your own password to continue. The one you signed in with was for one use only.</div>
 
-  <div class="tabs acct-tabs" role="tablist" aria-label="Account settings" id="acctTabs" hidden>
-    <button role="tab" id="tab-security" aria-controls="panel-security" aria-selected="true">Sign-in &amp; security</button>
-    <button role="tab" id="tab-profiles" aria-controls="panel-profiles" aria-selected="false" tabindex="-1">Profiles</button>
-  </div>
-
-  <div role="tabpanel" id="panel-security" aria-labelledby="tab-security">
+  <!-- profiles, and sharing them, are on the Sharing page (#168); account.html#profiles opens it -->
+  <div id="panel-security">
   <section class="card" id="password">
     <h2>Password</h2>
     <p class="hint" id="pwHint"></p>
@@ -67,26 +63,11 @@
   <section class="card" id="installApp"></section>
   <section class="card" id="offlineRecords"></section>
   </div>
-
-  <div role="tabpanel" id="panel-profiles" aria-labelledby="tab-profiles" hidden>
-  <section class="card" id="profiles">
-    <h2>Health profiles</h2>
-    <p class="hint">A profile is one person whose records are tracked. Owners can share a profile with other accounts:
-      <b>owner</b> (view, change and share), <b>editor</b> (view and change), <b>viewer</b> (view only).</p>
-    <div id="profList"></div>
-    <form id="profNew" class="form inline">
-      <label>New profile <input id="profName" maxlength="80" placeholder="Person's name" required></label>
-      <button class="btn" type="submit">Create</button><span class="msg" id="profMsg" role="status"></span>
-    </form>
-  </section>
-  </div>
 </main>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
 <script src="js/nav.js"></script>
 <script src="js/dates.js"></script>
-<script src="js/share-links.js"></script>
-<script src="js/activity.js"></script>
 <script src="js/account.js"></script>
 </body>
 </html>
