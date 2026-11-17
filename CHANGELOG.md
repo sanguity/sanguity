@@ -102,6 +102,10 @@ Everything on `main` so far; it becomes the first tagged release.
   profile's medications (#49). Entries have their own timeline lane, show as markers on Trends (bigger means more
   severe), can be added from any event's panel, and are listed with filters under Journal. Owners and editors
   write them, viewers read them; they're encrypted, kept when imports are undone, and included in exports.
+- A medication timeline (#50): each medication in its own row of the Timeline's Medications lane, as spans from its
+  start through each dose change to its stop (or on, where the records give no end), with pharmacy fills marked and,
+  when ticked, the same rows under the Trends charts. Its panel lists every listing with its dose, status, prescriber,
+  source and RxNorm code, the changes and the fills. It shows what the records say and judges nothing.
 - A visit summary to bring to an appointment: one or two printable pages (PDF) with results out of range since
   the last visit (each against its own report's range), trends of the key labs, current medications, upcoming
   appointments and your own questions, kept as a draft per profile (#48).

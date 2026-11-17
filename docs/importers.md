@@ -115,7 +115,7 @@ An object keyed by event id (as a string in JSON). Each has a `type`:
 | `labday` | `ids`: the `labitem` events of that draw |
 | `visit` | `who`, `where`, `dx`, `procs` (list), `note`, `src` |
 | `stay` | `admit`, `discharge`, `where`, `how` (where the dates came from) |
-| `med` | `instructions`, `status`, `src` |
+| `med` | `instructions`, `status`, `src`; when the record says: `end` (when it stopped), `prescriber`, `rxnorm` (its RxNorm code). The medication timeline (#50, `server/medications.py`) lays each medication's listings out as spans from these |
 | `conversation` | `subject`, `messages`: `[{"t", "from", "body", "att"}]` |
 | `letter` | `html` |
 | `claim` | `insurer`, `kind` (`Medical`/`Pharmacy`), `provider`, `claimId`, `billed`, `paid`, `owe`, `status`, `lines`, `visit` |

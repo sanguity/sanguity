@@ -32,7 +32,8 @@ and linked again there)
 and follows its link to the import history, makes a share link on the account page and opens it with no session
 under the real CSP (only the chosen sections and lab, no cookie, at 375 px too), finds the view in the activity and
 revokes it (#47), checks the "not medical advice" notice on every tab and beside
-out-of-range highlighting, and fails
+out-of-range highlighting, sees a medication's start, dose change, stop and pharmacy fills as spans on the
+timeline, in its history in the drawer and, when ticked, under the Trends charts (#50, at 375 px too), and fails
 on any script error, console error, failed request, request to another host or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -76,6 +77,30 @@ def add_html_record(build):
         json.dump(data, f)
 
 
+MED_RECORDS = 990101
+
+
+def add_med_records(build):
+    """A fictional medication with a dose change and a stop, listed by a clinic, with pharmacy fills (#50): the demo's
+    own medications are each listed once, with no end."""
+    path = os.path.join(build, "data.json")
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    i = MED_RECORDS
+    rows = [("2025-02-03T09:00:00", "Examplocin 5 mg tablet", "Active", None), ("2025-05-12T10:00:00", "Examplocin 10 mg tablet", "Active", None),
+            ("2025-08-20T10:00:00", "Examplocin 10 mg tablet", "Discontinued", "2025-09-30")]
+    for t, title, status, end in rows:
+        data["events"].append({"id": i, "t": t, "k": "med", "title": title, "sub": f"Take 1 tablet daily · {status}"})
+        data["details"][str(i)] = {"type": "med", "instructions": "Take 1 tablet daily", "status": status, "src": "Fictional Clinic",
+                                   "prescriber": "Dr. Rowan Vale", "rxnorm": "9990001", **({"end": end} if end else {})}
+        i += 1
+    for t, title in (("2025-02-05T17:00:00", "EXAMPLOCIN 5MG TAB"), ("2025-03-07T17:00:00", "EXAMPLOCIN 5MG TAB"), ("2025-05-14T17:00:00", "EXAMPLOCIN 10MG TAB")):
+        data["events"].append({"id": i, "t": t, "k": "rx", "title": title, "sub": "Pharmacy fill · 30-day supply"})
+        i += 1
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
+
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
@@ -85,6 +110,7 @@ def start_app():
     subprocess.run([sys.executable, "-I", os.path.join(ROOT, "demo", "generate.py"), os.path.join(TMP, "build"), "--end", "2026-11-15",
                     "--watch", os.path.join(TMP, "watch")], check=True, stdout=subprocess.DEVNULL)
     add_html_record(os.path.join(TMP, "build"))
+    add_med_records(os.path.join(TMP, "build"))
     sys.path.insert(0, ROOT)
     import uvicorn
     from server import atrest, db as dbm, main, profiles, security
@@ -471,7 +497,7 @@ def main():
                   js("[document.documentElement.scrollWidth, document.getElementById('dbody').scrollWidth]"))
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click("#dbody button[data-edit]")
-            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && (DATA.edits || []).length === 0", timeout=20000)
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && (DATA.edits || []).length === 0 && booted", timeout=20000)
             settle()
             check("undoing the edit brings it back", js(f"({there})", pick) and js(f"({listed})", pick))
             again = js(f"(t => EV.find(e => e.title === t.title && e.t === t.t).id)", pick)
@@ -488,7 +514,7 @@ def main():
                   js("[document.documentElement.scrollWidth, document.getElementById('dbody').scrollWidth]"))
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click("#dbody .edited button[data-edit]")
-            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && (DATA.edits || []).length === 0", timeout=20000)
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && (DATA.edits || []).length === 0 && booted", timeout=20000)
             check("…and undoing it restores the title", js(f"({there})", pick))
             page.keyboard.press("Escape")
 
@@ -574,6 +600,81 @@ def main():
             page.keyboard.press("Escape")
             page.click("#tab-timeline")
             settle()
+
+            # ---- the medication timeline (#50): spans with the dose change, the stop and the fills; the history in the
+            # drawer; the rows under each Trends chart when ticked; at 375 px
+            page.click("#tab-timeline")
+            js("setRange(dayTs('2025-01-01'), dayTs('2025-12-31'))")
+            settle()
+            med = js("""(() => { const m = MEDS.find(m => m.key === 'examplocin'); return m && {i: m.i, spans: m.spans.length, changes: m.changes.length,
+                fills: m.fills.length, stop: m.stop, open: m.spans.map(s => s.open)}; })()""")
+            check("the records' medication is laid out as spans: a dose change, a stop, three fills",
+                  med and med["spans"] == 2 and med["changes"] == 1 and med["fills"] == 3 and med["stop"] == "2025-09-30" and med["open"] == [False, False], med)
+            drawn = js(f"""({{bars: document.querySelectorAll('#tl .medbar[data-med="{med["i"]}"]').length,
+                change: document.querySelectorAll('#tl .medchange').length, stop: document.querySelectorAll('#tl .medstop').length,
+                fills: document.querySelectorAll('#tl .medfill[data-med="{med["i"]}"]').length,
+                name: [...document.querySelectorAll('#tl text.medname')].some(t => t.textContent.startsWith('Examplocin')),
+                dots: [...document.querySelectorAll('#tl circle[data-id]')].filter(c => ['med', 'rx'].includes(byId.get(+c.dataset.id)?.k)).length,
+                demoOpen: MEDS.filter(m => m.spans.some(s => s.open)).length}})""") if med else {}
+            check("…drawn in the Medications lane: two bars, a change tick, a stop cap and a fill mark each, no dots",
+                  drawn.get("bars") == 2 and drawn.get("change", 0) >= 1 and drawn.get("stop", 0) >= 1 and drawn.get("fills") == 3 and drawn.get("name") and drawn.get("dots") == 0, drawn)
+            check("…the demo's medications, listed with no end, run on as open spans", drawn.get("demoOpen", 0) >= 3, drawn)
+            if med:
+                bar = page.locator(f'#tl .medbar[data-med="{med["i"]}"][data-span="0"]')
+                bar.hover()
+                tip = page.inner_text("#tip")
+                check("hovering a span says what the records list, dated in this person's format", "Examplocin" in tip and "Dr. Rowan Vale" in tip
+                      and js("fmtD(dayTs('2025-02-03'))") in tip, tip)
+                bar.click()
+                settle(200)
+                body = page.inner_text("#dbody")
+                check("clicking a span opens the medication's history: its listings, the change and the fills",
+                      js("document.getElementById('dtitle').textContent").startswith("Examplocin") and page.locator("#dbody table.medspans tbody tr").count() == 2
+                      and page.locator("#dbody .medchanges li").count() == 1 and page.locator("#dbody table.medfills tbody tr").count() == 3
+                      and "Discontinued" in body and "9990001" in body and js("fmtD(dayTs('2025-09-30'))") in body, body[:400])
+                check("…saying what the records say, not advice", "This isn't medical advice" in body
+                      and not re.search(r"\b(should|recommend|missed|too (high|low))\b", body, re.I), body[-300:])
+                page.click("#dbody table.medfills tbody tr >> nth=0")
+                settle(200)
+                check("a fill in the history opens the fill, which leads back to the history",
+                      js("byId.get(state.selEv)?.k") == "rx" and page.locator("#dbody button:text-is('Medication history')").count() == 1)
+                page.click("#dbody button:text-is('Medication history')")
+                settle(200)
+                page.set_viewport_size({"width": 375, "height": 800})
+                settle(300)
+                check("the medication history fits 375 px", js("document.documentElement.scrollWidth <= 375 && document.getElementById('dbody').scrollWidth <= document.getElementById('dbody').clientWidth"),
+                      js("[document.documentElement.scrollWidth, document.getElementById('dbody').scrollWidth]"))
+                page.keyboard.press("Escape")
+                settle(200)
+                narrow = js(f"""(() => {{ const svg = document.getElementById('tl'), r = svg.getBoundingClientRect();
+                    const bars = [...svg.querySelectorAll('.medbar[data-med="{med["i"]}"]')].map(b => b.getBoundingClientRect());
+                    return {{fits: document.documentElement.scrollWidth <= 375 && r.right <= 375, bars: bars.length, inside: bars.every(b => b.left >= r.left - 1 && b.right <= r.right + 1),
+                      names: [...svg.querySelectorAll('text.medname')].every(t => t.firstChild.textContent.length <= 13)}}; }})()""")
+                check("the Medications lane fits 375 px, names shortened", narrow["fits"] and narrow["bars"] == 2 and narrow["inside"] and narrow["names"], narrow)
+                page.set_viewport_size({"width": 1400, "height": 900})
+                settle(200)
+                page.click("#tab-labs")
+                settle()
+                if not js("document.querySelectorAll('#charts .chart svg').length"):
+                    js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
+                    settle()
+                check("Trends leaves the medications out until they're ticked", not page.is_checked("#optMeds") and js("document.querySelectorAll('#charts .medbar').length") == 0)
+                page.check("#optMeds")
+                settle()
+                rows = js(f"""[...document.querySelectorAll('#charts .chart svg')].map(s => s.querySelectorAll('.medbar[data-med="{med["i"]}"]').length)""")
+                check("…then every chart has the medication's spans under its time axis", len(rows) > 0 and all(n == 2 for n in rows), rows)
+                page.locator(f'#charts .chart svg .medbar[data-med="{med["i"]}"] >> nth=0').click()
+                settle(200)
+                check("…and a span there opens the medication's history", js("document.getElementById('dtitle').textContent").startswith("Examplocin"))
+                page.keyboard.press("Escape")
+                page.set_viewport_size({"width": 375, "height": 800})
+                settle(300)
+                check("Trends with the medications fits 375 px", js("document.documentElement.scrollWidth <= 375"), js("document.documentElement.scrollWidth"))
+                page.set_viewport_size({"width": 1400, "height": 900})
+                page.uncheck("#optMeds")
+                settle(200)
+                page.click("#tab-timeline")
+                settle()
 
             # ---- where each record came from (#100): a Source line in the drawer, linking to the import in the history
             visit = js("EV.find(e => e.k === 'visit' && !e.hidden).id")

@@ -113,6 +113,7 @@ def same_records(data):
     data = json.loads(json.dumps(data))
     data.pop("imports", None)
     data.pop("unitConv", None)
+    data.pop("medications", None)   # #50: worked out from the events as they're served, naming their ids
     for x in data["events"] + data.get("labs", []):
         x.pop("imp", None)
         x.pop("conv", None)
