@@ -30,3 +30,5 @@ dev-keys/
 !tests/fixtures/**
 # the install templates (an Unraid template is .xml): no data in them
 !deploy/**
+# ...but not Python's bytecode from running deploy/check.py
+deploy/**/__pycache__/
