@@ -653,6 +653,7 @@ def main():
                 n: document.querySelectorAll('#tl .jmark').length, r: m && +m.getAttribute('r'), shape: m && m.tagName}; })()""")
             check("…on the timeline in its own Journal lane, sized by severity", lane["lane"] and lane["n"] == 1 and lane["shape"] == "circle" and abs(lane["r"] - 6.15) < 0.01, lane)
             check("…and in the event list", "Headache (browser check)" in page.inner_text("#list"))
+            js("closeDrawer()")   # the entry's panel covers the tab bar's right end on narrower or wider fonts
             page.click("#tab-labs")
             settle()
             if not js("document.querySelectorAll('#charts .chart svg').length"):
@@ -1041,7 +1042,7 @@ def main():
             # ---- profile switcher: the second profile has no records yet, and its own saved view
             check("profile switcher shown", js("!document.getElementById('profile').hidden && document.getElementById('profile').options.length === 2"))
             js("applyPreset('30d')")
-            page.select_option("#profile", label="Second person")
+            page.select_option("#profile", label="Second person (owner)")
             page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
             check("the period is kept per profile (not carried to another)", js("state.preset") == "2y", js("state.preset"))
             check("empty profile explains itself", "no records yet" in page.inner_text("main"))
@@ -1054,7 +1055,7 @@ def main():
             page.click("main .empty a")
             page.wait_for_selector("#importer", state="visible", timeout=10000)
             check("import page offers the profiles you can import into, the linked one chosen",
-                  js("[...document.querySelectorAll('#profile option')].map(o => o.textContent)") == ["My records", "Second person"]
+                  js("[...document.querySelectorAll('#profile option')].map(o => o.textContent)") == ["My records (owner)", "Second person (owner)"]
                   and js("document.getElementById('profile').value") == "2")
             import io, zipfile
             buf = io.BytesIO()
@@ -1254,7 +1255,7 @@ def main():
                   (by.get(("2026-02-03", "Valley Reference Laboratory")) or [""] * 8)[3:5] == ["Lab & pathology", "$200"],
                   by.get(("2026-02-03", "Valley Reference Laboratory")))
             check("…and the insurers named", {"UnitedHealthcare", "Blue Cross Blue Shield", "Insurance"} <= set(js("DATA.costs.map(c => c.ins)")))
-            page.select_option("#profile", label="My records")
+            page.select_option("#profile", label="My records (owner)")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && "
                                    "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)   # its saved view restored
             check("switching back restores the profile's tab", js("state.tab") == "timeline", js("state.tab"))
@@ -1267,7 +1268,7 @@ def main():
             check("the setup build's import is listed, with why it can't be undone and no Undo",
                   js("(() => { const li = document.querySelector('#history li[data-import]'); return !!li.querySelector('.note') && "
                      "li.querySelector('.note').textContent.includes('rebuild') && !li.querySelector('button.undo'); })()"))
-            page.select_option("#profile", label="Second person")
+            page.select_option("#profile", label="Second person (owner)")
             page.wait_for_selector("#history li[data-format='fhir']", timeout=10000)
             hist = js("[...document.querySelectorAll('#history li[data-import]')].map(li => li.dataset.format)")
             check("the import history lists the C-CDA, FHIR, claims, CareSpace and Epic imports, newest first",
@@ -1564,7 +1565,7 @@ def main():
             check("…and saves it", js(f"{last_card}.textContent").startswith("Imported."), js(f"{last_card}.textContent")[:200])
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
-            page.select_option("#profile", label="My records")
+            page.select_option("#profile", label="My records (owner)")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
 
             # ---- Settings (#35): change settings on the screen, and the dashboard follows; reset a section
@@ -1647,7 +1648,7 @@ def main():
             leave = "(() => { const e = new Event('beforeunload', {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; })()"
             check("…leaving the page with it not saved asks first", js(leave))
             page.once("dialog", lambda d: d.dismiss())
-            page.select_option("#profile", label="Second person")
+            page.select_option("#profile", label="Second person (owner)")
             check("…so does switching profiles, which stays put when told to",
                   js("PID") == 1 and js("document.getElementById('profile').value") == "1" and js("document.getElementById('sec-overview').hasAttribute('data-dirty')"))
             page.click("#sec-overview .set-foot button:text-is('Discard changes')")
@@ -2006,6 +2007,66 @@ def main():
             page.fill("#questions", "")   # leave no draft behind
             page.wait_for_function("document.getElementById('qMsg').textContent === 'Draft saved.'", timeout=10000)
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
+            # ---- the profile picker in the top bar (#170): on every page about a profile, each profile by name and
+            # your role; the page follows it and keeps its section; the address's ?profile= and this browser follow it
+            was_profile = js("localStorage.getItem('ht-profile')")
+            both = ["My records (owner)", "Second person (owner)"]
+            for path, ready in (("/", "typeof booted !== 'undefined' && booted"), ("/sources.html#portals", "!document.getElementById('intro').hidden"),
+                                ("/sharing.html#people", "!!document.querySelector('#memberList tbody tr')"),
+                                ("/settings.html#display", "!!document.querySelector('#sections > section')")):
+                page.goto(base + path)
+                page.wait_for_function(ready, timeout=20000)
+                check(f"{path}: the profile picker is in the top bar, each profile by name and role, and the page has no Profile choice of its own",
+                      js("document.querySelectorAll('#profile').length === 1 && !!document.querySelector('header.topbar #profilePick > select#profile') "
+                         "&& !document.querySelector('main #profile, main label.set-profile')")
+                      and page.get_by_role("combobox", name="Profile").is_visible()
+                      and js("[...document.getElementById('profile').options].map(o => o.textContent)") == both,
+                      js("[...document.querySelectorAll('#profile option')].map(o => o.textContent)"))
+            page.focus("header .brand-link")
+            page.keyboard.press("Tab")
+            check("…reached from the keyboard right after the brand and the page's title", js("document.activeElement.id") == "profile", js("document.activeElement.id"))
+            for path in ("/account.html", "/admin.html"):
+                page.goto(base + path)
+                page.wait_for_load_state("networkidle")
+                check(f"{path}: no profile picker, the page isn't about a profile", js("!document.getElementById('profile') && !document.getElementById('profilePick')"))
+            page.goto(base + "/sources.html?profile=2#portals")
+            page.wait_for_function("!document.getElementById('intro').hidden && document.getElementById('introHint').textContent.includes('Second person')", timeout=10000)
+            check("an address naming a profile (?profile=2) opens it, and this browser remembers it",
+                  js("document.getElementById('profile').value") == "2" and js("localStorage.getItem('ht-profile')") == "2")
+            page.select_option("#profile", "1")
+            page.wait_for_function("document.getElementById('introHint').textContent.includes('My records')", timeout=10000)
+            check("switching profile redraws the page for it, in the same section, and the address and this browser follow",
+                  js("[location.search, location.hash, document.querySelector('#srcNav [aria-current=page]').textContent, localStorage.getItem('ht-profile')]")
+                  == ["?profile=1", "#portals", "Portals and health plans", "1"],
+                  js("[location.search, location.hash, localStorage.getItem('ht-profile')]"))
+            page.goto(base + "/settings.html#display")
+            page.wait_for_selector("#sections > section", state="attached", timeout=10000)
+            page.select_option("#profile", "2")
+            page.wait_for_function("PID === 2 && !!document.querySelector('#sections > section')", timeout=10000)
+            check("…on Settings too, keeping its group", js("location.hash") == "#display" and js("localStorage.getItem('ht-profile')") == "2")
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted || !!document.querySelector('main .empty')", timeout=20000)
+            check("…and the records page opens the profile chosen there", js("PROFILE.id") == 2 and js("document.getElementById('profile').value") == "2")
+            page.select_option("#profile", "1")   # the records page loads again for it
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            check("…switching there opens the other", js("document.getElementById('profile').value") == "1" and js("localStorage.getItem('ht-profile')") == "1")
+            page.set_viewport_size({"width": 375, "height": 800})
+            box = "(s => { const r = document.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom, r.left, r.right]; })"
+            check("at 375 px the records page fits, the picker a row of its own between the menus and the tabs",
+                  js("document.documentElement.scrollWidth") <= 375 and js(box + "('#addMenu')")[1] <= js(box + "('#profilePick')")[0]
+                  and js(box + "('#profilePick')")[1] <= js(box + "('header .tabs')")[0] + 1 and js(box + "('#profilePick')")[3] <= 375,
+                  [js("document.documentElement.scrollWidth"), js(box + "('#addMenu')"), js(box + "('#profilePick')"), js(box + "('header .tabs')")])
+            for path, ready in (("/sources.html#portals", "!document.getElementById('intro').hidden"), ("/sharing.html#people", "!!document.querySelector('#memberList tbody tr')"),
+                                ("/settings.html#display", "!!document.querySelector('#sections > section')")):
+                page.goto(base + path)
+                page.wait_for_function(ready, timeout=20000)
+                check(f"…{path} fits too, the picker under the page's title and the menus, whole",
+                      js("document.documentElement.scrollWidth") <= 375 and page.is_visible("#profile")
+                      and js(box + "('.page-title')")[1] <= js(box + "('#profilePick')")[0] and js(box + "('#profilePick')")[3] <= 375
+                      and js(box + "('#profilePick')")[1] <= js(box + "('header.topbar')")[1],
+                      [js("document.documentElement.scrollWidth"), js(box + "('.page-title')"), js(box + "('#profilePick')")])
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- milestones (#39) and visits counted as workouts (#43) on the Settings page: a milestone added (primary)
             # shows as a marker on Trends and a "since" period on Health; a rule (a bad regular expression refused
             # first) makes the Health tab count the matching visits; both sections reset
@@ -2187,6 +2248,10 @@ def main():
             check("…an owner's group in the address shows People, saying share links are for owners",
                   zb.evaluate("document.querySelector('#shrNav [aria-current=page]').textContent") == "People" and "owners" in zb.inner_text("#pageMsg")
                   and zb.evaluate("location.hash") == "#people" and zb.evaluate("document.getElementById('links').hidden && document.getElementById('linksBody').children.length === 0"))
+            check("…with one profile, the top bar names it and their role, as a plain label (#170)",
+                  zb.evaluate("document.getElementById('profile').hidden && !document.getElementById('profileOne').hidden")
+                  and zb.evaluate("document.getElementById('profileOne').textContent") == "Profile: My records view only" and zb.is_visible("#profileOne .profile-role"),
+                  zb.evaluate("document.getElementById('profileOne').textContent"))
             zb.goto(base + "/import.html")
             zb.wait_for_selector("#importer", state="attached", timeout=10000)
             zb.evaluate("datesReady().then(() => true)")   # the zone read from the server, not only from the last visit
@@ -2429,7 +2494,7 @@ def main():
             page.wait_for_selector("#adminNote:not([hidden])", timeout=10000)
             check("connected sources: no setup on the everyday page, and an admin is pointed to Admin (#167)",
                   js("!document.getElementById('srcForm') && document.querySelector('#adminNote a').getAttribute('href')") == "admin.html#apps")
-            page.select_option("#profile", label="Second person")
+            page.select_option("#profile", label="Second person (owner)")
             page.wait_for_selector("#sourceButtons button", timeout=10000)
             conn_pid = js("+document.getElementById('profile').value")
             # the same results (#96): a spreadsheet of the fake patient's 4 March 2025 labs, with dates only and
@@ -2533,7 +2598,7 @@ def main():
             check("…and linking it again from the drawer shows it once", len(js(hgb_day)) == 1, js(hgb_day))
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/sources.html#portals")
-            page.select_option("#profile", label="Second person")
+            page.select_option("#profile", label="Second person (owner)")
             page.wait_for_function("document.getElementById('connList').textContent.includes('New records come in on a schedule')", timeout=20000)
             imports = lambda: js(f"fetch('api/profiles/{conn_pid}/connections').then(r => r.json()).then(j => j.connections[0].imports)")
             fake.add({"resourceType": "Observation", "status": "final", "effectiveDateTime": "2026-11-12T08:00:00Z",
@@ -2673,7 +2738,7 @@ def main():
             page.wait_for_function("[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake health plan') && "
                                    "(p.textContent.includes('Discovery works') || p.textContent.includes('tested ')))", timeout=10000)
             page.goto(base + "/sources.html#portals")
-            page.select_option("#profile", label="Second person")
+            page.select_option("#profile", label="Second person (owner)")
             page.wait_for_selector("#sourceButtons button:has-text('Fake health plan')", timeout=10000)
             page.click("#sourceButtons button:has-text('Fake health plan')")   # what to pull (#99), then sign in
             page.wait_for_selector(".conn-choose", timeout=10000)
@@ -2812,7 +2877,7 @@ def main():
             # changing their role, and declining keeps it; then sharing for real, and a role changed in the table
             page.select_option("#profile", "2")
             page.click("#shrNav a[data-group=people]")
-            page.wait_for_function("document.querySelector('#introHint').textContent.includes('Second person') && document.querySelectorAll('#memberList tbody tr').length === 1", timeout=10000)
+            page.wait_for_function("document.querySelector('#introHint').textContent.includes('Second person') && document.getElementById('people').dataset.profile === '2'", timeout=10000)
             check("picking another profile shows its people, and the address keeps the group", js("location.hash") == "#people"
                   and USER in page.inner_text("#memberList"))
             asked_share = []
@@ -2850,11 +2915,11 @@ def main():
             page.click("#profNew button[type=submit]")
             page.wait_for_function("document.getElementById('profMsg').textContent.startsWith('Created')", timeout=10000)
             third = js("document.getElementById('profile').value")
-            check("New profile makes one, and the page shows it", js("document.querySelector('#profile option:checked').textContent") == "Third person (fictional)"
+            check("New profile makes one, and the page shows it", js("document.querySelector('#profile option:checked').textContent") == "Third person (fictional) (owner)"
                   and js("document.querySelector('#profileBody input').value") == "Third person (fictional)", third)
             page.fill("#profileBody input", "Third person, renamed")
             page.click("#profileBody button:text-is('Rename')")
-            page.wait_for_function("document.getElementById('profileMsg').textContent === 'Renamed.' && document.querySelector('#profile option:checked').textContent === 'Third person, renamed'", timeout=10000)
+            page.wait_for_function("document.getElementById('profileMsg').textContent === 'Renamed.' && document.querySelector('#profile option:checked').textContent === 'Third person, renamed (owner)'", timeout=10000)
             check("Rename renames it, in the picker too", True)
             page.select_option("#profile", "2")
             page.wait_for_function("document.querySelector('#profileBody input').value === 'Second person'", timeout=10000)

@@ -68,11 +68,8 @@ function emptyCard(...kids) {
   $(".tabs").hidden = true; $(".filters").hidden = true;
   document.querySelector("main").replaceChildren(el("div", {class: "card empty"}, ...kids));
 }
-function renderProfileMenu() {
-  const sel = $("#profile"), list = ME.profiles;
-  sel.replaceChildren(...list.map(p => el("option", {value: p.id, text: p.name + (p.role === "viewer" ? " (view only)" : "")})));
-  sel.value = PROFILE.id; sel.hidden = list.length < 2;
-  sel.onchange = () => { try { localStorage.setItem("ht-profile", sel.value); } catch (e) {} location.reload(); };
+function renderProfileMenu() {   // another profile: the page again (nav.js remembers the choice first)
+  $("#profile").onchange = () => location.reload();
 }
 $("#logout").onclick = async () => { try { await api("logout", {method: "POST"}); } catch (e) {} location.replace("login.html"); };
 /* a connected source that stopped syncing (#102): one line under the header, linking to it. Owners and editors can
@@ -102,8 +99,8 @@ async function syncWarning(pid) {
     const canImport = p => p.role === "owner" || p.role === "editor";
     $("#importLink").hidden = !ME.profiles.some(canImport);
     if (!ME.profiles.length) { emptyCard("No health profiles are shared with you yet. ", el("a", {href: "sharing.html#profile", text: "Create one"}), " or ask a profile's owner to share it with ", el("b", {text: ME.user.username}), "."); return; }
-    let want; try { want = +localStorage.getItem("ht-profile"); } catch (e) {}
-    PROFILE = ME.profiles.find(p => p.id === want) || ME.profiles[0];
+    // the top bar's picker (nav.js, #170): the profile the address names, else this browser's last, else the first
+    PROFILE = ME.profiles.find(p => p.id === SgNav.profiles(ME.profiles));
     hLoad();
     renderProfileMenu();
     syncWarning(PROFILE.id);

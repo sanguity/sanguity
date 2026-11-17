@@ -514,8 +514,6 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .sets .set-top{margin:2px 0 14px}
 .sets .set-top-hd{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap}
 .sets .set-top h1{font-size:20px;font-weight:650;margin:0;letter-spacing:-.01em}
-.sets .set-top label.set-profile{display:flex;align-items:center;gap:8px}
-.sets .set-top label.set-profile[hidden]{display:none}
 .sets .set-who{margin:4px 0 0;color:var(--ink2);font-size:13px}
 .sets .set-who strong{color:var(--ink);font-weight:650}
 .sets .set-top .msg{display:block;margin-top:6px}
@@ -866,3 +864,16 @@ main.src[data-role=viewer] .src-edit{display:none}
 @media (max-width:760px){.shr .set-nav-list li.shr-apart{margin-left:4px;padding-left:10px;border-left:1px solid var(--ring)}}
 /* Account (#169): its cards' rows of buttons are not the timeline's rows (no divider, no hover) */
 #acctNav~section .row{border-bottom:0;padding:0;cursor:default}#acctNav~section .row:hover{background:none}
+/* the profile picker in the top bar (#170, nav.js): a select, or a plain label when there's only one profile */
+.profile-pick{display:flex;align-items:center;min-width:0;flex:0 1 auto}
+.profile-pick .iconbtn.profile{min-width:0;max-width:18em;text-overflow:ellipsis}
+.profile-one{display:flex;align-items:center;gap:6px;min-width:0;font-weight:550;white-space:nowrap}
+.profile-name{overflow:hidden;text-overflow:ellipsis}
+.profile-role{flex:none;font-weight:400;font-size:12px;color:var(--ink2);border:1px solid var(--ring);border-radius:999px;padding:0 7px}
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+@media (max-width:700px){
+  /* a row of its own beside a page's title, or as a select (the records page's tabs below it) */
+  header.topbar .page-title ~ .profile-pick,header.topbar .profile-pick.many{order:4;width:100%}
+  header.topbar .page-title + .profile-pick + .spacer{display:none}
+  .profile-pick .iconbtn.profile{max-width:100%}
+}

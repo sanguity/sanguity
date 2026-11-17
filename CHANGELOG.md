@@ -187,6 +187,11 @@ Everything on `main` so far; it becomes the first tagged release.
   `POST /api/settings/user/reset`). **Account** is a sidebar of two groups: Sign-in and security (password,
   two-factor sign-in, passkeys, where you're signed in) and This device (installing Sanguity, offline records).
   Every old address of what moved still opens its new home, also when followed from within the page.
+- **The profile picker is in the top bar** on every page about a profile (#170): the records, Sources, Sharing
+  and Settings, each profile by its name and your role (owner, editor or view only), or a plain label when you
+  have only one. Sources, Sharing and Settings dropped their own Profile choice; Account and Admin have none.
+  Switching it redraws the page for that profile in the same section and switches it on every page; an address
+  with `?profile=2` still opens that profile, and now opens it on the records page too.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -15,7 +15,7 @@
 <script src="js/theme.js"></script>
 </head>
 <body class="acct-page">
-<header class="topbar" data-title="Sources">
+<header class="topbar" data-title="Sources" data-profile>
   <h1><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</h1>
 </header>
 <!-- Sources (#166): every way records come into a profile, one section at a time (sources-page.js draws the sidebar).
@@ -32,11 +32,8 @@
       <a href="account.html#profiles">Create a profile</a>, or ask a profile's owner to share it with you.</p>
   </section>
 
-  <!-- the profile everything here is about, and what you can do with it -->
+  <!-- the profile everything here is about (the top bar's picker, nav.js), and what you can do with it -->
   <div class="set-top" id="intro" hidden>
-    <div class="set-top-hd">
-      <label class="set-profile">Profile <select id="profile"></select></label>
-    </div>
     <p class="set-who" id="introHint"></p>
   </div>
 
