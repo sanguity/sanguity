@@ -1,0 +1,9 @@
+{
+  "resourceType": "AllergyIntolerance",
+  "id": "J1K2",
+  "status": "active",
+  "criticality": "CRITL",
+  "substance": {"text": "Penicillin"},
+  "recordedDate": "2024-05-20",
+  "reaction": [{"manifestation": [{"text": "Hives"}, {"text": "Itching"}]}]
+}

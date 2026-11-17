@@ -270,6 +270,16 @@ Everything on `main` so far; it becomes the first tagged release.
   temporary folder beside it, compares it with the row counts its manifest now records, says whether it's good and
   deletes the copy; it never touches the live data (also `python -m server.manage check FILE`). Turning the schedule
   off, or keeping fewer, asks for the fresh check. Restoring stays a command-line step with the app stopped.
+- Connecting a patient portal or health plan is easier to set up (#165). **Admin → Connected-source apps** walks an
+  admin through registering this server's app with each kind of vendor (Epic, Oracle Health, health plans, other
+  SMART on FHIR servers) in numbered steps: what to look for on the vendor's developer site, the values to paste
+  with Copy buttons, the form, and **Test this connection** as the last step. A source can be marked **Waiting for
+  the vendor's review** (before the vendor has even given a client ID); Portals and health plans then says it's
+  coming and to upload the portal's export meanwhile, with a link to Upload files, instead of a connect button.
+  Upload files says that an iPhone's Apple Health export holds the Health app's Health Records, and the Apple
+  Health importer now brings them in with the same import (the FHIR files in `clinical-records/`); the FHIR
+  importer now reads allergies, immunizations and procedures too. docs/provider-directory.md has a place for
+  systems known to work, from people's reports. Schema version 30.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

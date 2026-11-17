@@ -4096,6 +4096,141 @@ def main():
             payer.stop()
             js(f"localStorage.setItem('ht-profile', {json.dumps(prev_profile or '')})" if prev_profile else "localStorage.removeItem('ht-profile')")
 
+            # ---- connecting a portal or health plan made easier (#165): Admin's walk-through per vendor (numbered steps,
+            # the values to paste with Copy, the form as a step of its own, Test this connection last), a source saved as
+            # waiting for the vendor's review, and what an everyday user sees for it on Portals and health plans (what's
+            # coming, and to upload the portal's export meanwhile, no connect button and no setup words), at 1400 and
+            # 375 px in light and dark; and the upload page's note on an iPhone's Health Records
+            look_165 = r"""sel => {
+              const rgb = c => { const x = document.createElement('canvas').getContext('2d'); x.fillStyle = c; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data]; };
+              const bg = n => { for (; n; n = n.parentElement) { const c = rgb(getComputedStyle(n).backgroundColor); if (c[3] > 0) return c; } return [255, 255, 255, 255]; };
+              const lum = c => { const v = c.slice(0, 3).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+              const ratio = n => { const [a, b] = [lum(rgb(getComputedStyle(n).color)), lum(bg(n))].sort((p, q) => q - p); return Math.round((a + 0.05) / (b + 0.05) * 10) / 10; };
+              const ns = [...document.querySelectorAll(sel)].filter(n => n.getClientRects().length);
+              return ns.length ? Math.min(...ns.map(ratio)) : 0;
+            }"""
+            theme_before_165 = js("document.documentElement.dataset.theme || null")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + "/admin.html#apps")
+            page.wait_for_function("!document.getElementById('admin').hidden && document.querySelector('#walk > li')", timeout=10000)
+            walk = lambda: js("""(() => { const w = document.getElementById('walk'); return {
+                n: w.children.length, steps: SETUP.guides[document.getElementById('fVendor').value].steps.length,
+                copies: [...w.querySelectorAll('.walk-copy')].map(c => [c.querySelector('.walk-k').textContent, c.querySelector('code').textContent,
+                                                                     !!c.querySelector('button')]),
+                form: !!w.querySelector(':scope > li #srcFields #fClient'), last: w.lastElementChild.querySelector('.walk-t').textContent,
+                test: !!w.lastElementChild.querySelector('#walkTest')}; })()""")
+            per = {}
+            for v in ("epic", "oracle", "insurer", "other"):
+                page.select_option("#fVendor", v)
+                per[v] = walk()
+            check("Admin's walk-through (#165): every vendor's steps numbered, then the form as a step, then Test this connection",
+                  all(w["n"] == w["steps"] + 2 and w["steps"] >= 4 and w["form"] and w["last"] == "Test this connection" and w["test"]
+                      for w in per.values()), per)
+            check("…each step with the values to paste and a Copy button: the return address for every vendor, the types Epic's "
+                  "scopes read, an insurer's scopes, a sandbox's FHIR base",
+                  all(any(c[0] == "Return address" and c[1] == base + "/connect/return" and c[2] for c in w["copies"]) for w in per.values())
+                  and any(c[0] == "Types it reads" and "Observation" in c[1] for c in per["epic"]["copies"])
+                  and any(c[0] == "Scopes" and "patient/ExplanationOfBenefit.read" in c[1] for c in per["insurer"]["copies"])
+                  and any(c[0] == "Sandbox FHIR base" and "bluebutton" in c[1] for c in per["insurer"]["copies"]),
+                  {k: w["copies"] for k, w in per.items()})
+            page.select_option("#fVendor", "epic")
+            ret = page.locator("#walk .walk-copy", has_text="Return address")
+            ret.get_by_role("button", name="Copy the return address").click()
+            page.wait_for_function("document.querySelector('#walk .walk-copy .msg').textContent !== ''", timeout=5000)
+            said = ret.locator(".msg").inner_text()
+            check("…Copy copies it, or selects it where the browser keeps the clipboard from the page", said in ("Copied.", "Selected: press Ctrl+C or ⌘C."), said)
+            page.fill("#fScopes", "launch/patient patient/Patient.read patient/Observation.read")
+            check("…the types to pick follow the scopes typed in", js("document.querySelector('#walk [data-paste=types]').textContent") == "Patient, Observation",
+                  js("document.querySelector('#walk [data-paste=types]').textContent"))
+            check("…and the last step can't test anything until the source is saved", js("document.getElementById('walkTest').disabled"))
+            # saved while the vendor reviews the app: first refused without a client ID, then saved as waiting
+            page.fill("#fName", "Lakeside Health (fictional)")
+            page.fill("#fIssuer", "https://fhir.lakeside.example/api/FHIR/R4")
+            page.fill("#fClient", "")
+            page.click("#fSave")
+            page.wait_for_function("document.getElementById('fMsg').textContent.includes('Waiting for the vendor')", timeout=10000)
+            check("a source with no client ID yet is refused, saying to tick Waiting for the vendor's review",
+                  "bad" in js("document.getElementById('fMsg').className"), page.inner_text("#fMsg"))
+            problems[:] = [x for x in problems if not ("HTTP 400: " in x and "/api/connect/sources" in x)
+                           and "status of 400" not in x]   # refused on purpose: that was the point
+            page.check("#fWaiting")
+            page.click("#fSave")
+            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Lakeside Health (fictional)') && "
+                                   "document.getElementById('walkTest').textContent === 'Test Lakeside Health (fictional)'", timeout=10000)
+            row = page.locator("#sourceList .prof", has_text="Lakeside Health (fictional)")
+            check("…then saved as waiting: tagged in the list, the walk-through staying on it at its last step, ready to test",
+                  "Waiting for review" in row.inner_text() and "people are told to upload" in row.inner_text()
+                  and js("document.activeElement.id") == "walkTest" and not js("document.getElementById('walkTest').disabled")
+                  and "waiting for the vendor's review" in page.inner_text("#fMsg"), [row.inner_text()[:300], page.inner_text("#fMsg")])
+            wait_id = js("SETUP.sources.find(s => s.name === 'Lakeside Health (fictional)').id")
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 800 if width == 375 else 900})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    settle(150)
+                    bad = phone_fits(page, f"Admin walk-through, {theme}") if width == 375 else []
+                    looks = {s: js(look_165, s) for s in ("#walk .walk-t", "#walk .walk-v", "#walk .walk-k", "#walk .walk-step > p",
+                                                         "#sourceList .walk-tag", "label.walk-wait")}
+                    wide = js("document.documentElement.scrollWidth")
+                    check(f"…the walk-through at {width} px, {theme}: readable steps, values, tags and the waiting switch"
+                          + (", nothing cut off, overlapping or scrolling sideways" if width == 375 else ""),
+                          not bad and wide <= width and all(v >= 4.5 for v in looks.values()), [bad[:6], wide, looks])
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before_165)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            # what an editor who isn't an admin sees for it (a second account, removed afterwards)
+            from server import db as dbm, security
+            sdb = dbm.connect()
+            uid3 = sdb.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, ?, 0, 0)", ("lee", security.hash_password(PW2))).lastrowid
+            sdb.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (uid3, conn_pid))
+            lctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            lp = lctx.new_page()
+            lp.on("pageerror", lambda e: problems.append(f"script error (lee): {e}"))
+            lp.goto(base + "/login.html")
+            lp.fill("#u", "lee")
+            lp.fill("#p", PW2)
+            lp.click("#b")
+            lp.wait_for_function("typeof PROFILE !== 'undefined' && PROFILE", timeout=20000)
+            lp.goto(base + f"/sources.html?profile={conn_pid}#portals")
+            lp.wait_for_selector(f"#wait-{wait_id}", timeout=10000)
+            note = lp.inner_text(f"#wait-{wait_id}")
+            setup_words = re.compile(r"client ID|FHIR|scope|discovery|redirect|issuer|PUBLIC_ORIGINS|Admin|\.env|vendor's developer", re.I)
+            check("Portals and health plans: a source waiting for review says it's coming and to upload the export meanwhile, "
+                  "in place of a connect button",
+                  "isn't ready to connect yet: it's waiting for Epic's review" in note and "upload them under Sources → Upload files" in note
+                  and not lp.locator("#sourceButtons button", has_text="Lakeside").count()
+                  and lp.locator(f"#wait-{wait_id} a", has_text="Upload files").get_attribute("href") == "#upload", note)
+            check("…in plain words, with nothing about the server's setup for someone who isn't an admin (#167)",
+                  not setup_words.search(note) and lp.is_hidden("#adminNote"), setup_words.findall(note))
+            for width in (1400, 375):
+                lp.set_viewport_size({"width": width, "height": 800 if width == 375 else 900})
+                for theme in ("light", "dark"):
+                    lp.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+                    lp.wait_for_timeout(150)
+                    bad = phone_fits(lp, f"Portals waiting, {theme}") if width == 375 else []
+                    looks = [lp.evaluate(look_165, s) for s in (f"#wait-{wait_id} p", f"#wait-{wait_id} .tag", f"#wait-{wait_id} a")]
+                    check(f"…the waiting note at {width} px, {theme}: readable" + (", and it fits" if width == 375 else ""),
+                          not bad and min(looks) >= 4.5 and lp.evaluate("document.documentElement.scrollWidth") <= width, [bad[:6], looks])
+            lp.set_viewport_size({"width": 1400, "height": 900})
+            lp.click(f"#wait-{wait_id} a")
+            lp.wait_for_function("document.querySelector('main.src').dataset.group === 'upload'", timeout=5000)
+            apple = lp.inner_text("#appleRecords")
+            check("…its Upload files opens the upload page, which says an iPhone's Apple Health export holds its Health Records",
+                  lp.evaluate("location.hash") == "#upload" and lp.is_visible("#appleRecords") and "Export All Health Data" in apple
+                  and "Health Records" in apple and "FHIR" in apple, apple)
+            lctx.close()
+            sdb.execute("DELETE FROM users WHERE id=?", (uid3,))
+            sdb.close()
+            # the review done: no longer waiting, so not shown to people until it has a client ID and a test; then removed
+            row = page.locator("#sourceList .prof", has_text="Lakeside Health (fictional)")
+            row.get_by_role("button", name="Review done").click()
+            page.wait_for_function("document.querySelector('#sourceList').textContent.includes('Paste the client ID')", timeout=10000)
+            check("Review done needs the client ID first, and says so", "Waiting for review" in row.inner_text(), row.inner_text()[:200])
+            problems[:] = [x for x in problems if not ("HTTP 400: " in x and "/api/connect/sources" in x)
+                           and "status of 400" not in x]   # refused on purpose: that was the point
+            page.evaluate(f"api('connect/sources/{wait_id}', {{method: 'DELETE'}}).then(r => r.status)")
+            page.reload()
+            page.wait_for_function("typeof SETUP !== 'undefined' && SETUP && !SETUP.sources.some(s => s.name === 'Lakeside Health (fictional)')", timeout=10000)
+
             # ---- every page at 375 px (#61): each records tab (Labs as charts and as a heatmap) with its filters open, an
             # event's drawer and the top bar's menus; every group of Sources (the profile with connected sources and
             # imports), Sharing, Settings, Account and Admin; and the sign-in page with no session; in light and dark:

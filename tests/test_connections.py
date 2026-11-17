@@ -993,6 +993,65 @@ class Connections(unittest.TestCase):
         # a source a profile is connected to can't be removed
         self.assertEqual(self.robin.delete(f"/api/connect/sources/{sid}", headers=H).status_code, 409)
 
+    def test_walk_through_per_vendor(self):   # #165: numbered steps, each with what to paste, for every vendor
+        g = self.robin.get("/api/connect/sources").json()["guides"]
+        self.assertEqual(set(g), {"epic", "oracle", "insurer", "other"})
+        for vendor, guide in g.items():
+            self.assertTrue(guide["reviewer"] and guide["steps"], vendor)
+            for st in guide["steps"]:
+                self.assertTrue(st["title"] and st["text"], (vendor, st))
+                self.assertLessEqual(set(st.get("paste", [])), {"return_address", "scopes", "types", "sandbox"})
+            pasted = {k for st in guide["steps"] for k in st.get("paste", [])}
+            self.assertIn("return_address", pasted, vendor)   # every vendor needs the return address registered
+            if guide["sandbox"]:
+                self.assertIn("sandbox", pasted, vendor)
+        self.assertTrue(any(st.get("link") for st in g["epic"]["steps"]))
+        self.assertTrue(any(st.get("portals") for st in g["insurer"]["steps"]))
+
+    def test_waiting_for_the_vendors_review(self):   # #165
+        base = {"name": "Riverside (fictional)", "vendor": "epic", "issuer": self.fake.fhir_base}
+        r = self.robin.post("/api/connect/sources", json=dict(base, client_id=""), headers=H)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("Waiting for the vendor's review", r.json()["detail"])
+        r = self.robin.post("/api/connect/sources", json=dict(base, waiting=True), headers=H)   # no client ID yet
+        self.assertEqual(r.status_code, 201, r.text)
+        sid, since = r.json()["id"], r.json()["waiting"]
+        self.assertTrue(since)
+        # people see it as coming, with what to do meanwhile, in plain words, and can't connect it
+        for c in (self.robin, self.kim):
+            mine = next(s for s in c.get(f"/api/profiles/{self.pid}/connections").json()["sources"] if s["id"] == sid)
+            self.assertTrue(mine["waiting"])
+            self.assertEqual(mine["note"], "Riverside (fictional) isn't ready to connect yet: it's waiting for Epic's review. "
+                                           "Meanwhile, download your records from its website or app and upload them under "
+                                           "Sources → Upload files.")
+        r = self.robin.post(f"/api/profiles/{self.pid}/connect/start", json={"source": sid}, headers=H)
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("waiting for Epic's review", r.json()["detail"])
+        # testing it works meanwhile (discovery is public); it stays waiting, and saving again keeps when it started
+        self.assertTrue(self.robin.post(f"/api/connect/sources/{sid}/test", headers=H).json()["ok"])
+        r = self.robin.patch(f"/api/connect/sources/{sid}", json={"name": "Riverside Health (fictional)"}, headers=H)
+        self.assertEqual((r.json()["waiting"], r.json()["tested"] is not None), (since, True))
+        # the review is done: not without a client ID, then with one, and people can connect it
+        r = self.robin.patch(f"/api/connect/sources/{sid}", json={"waiting": False}, headers=H)
+        self.assertEqual(r.status_code, 400)
+        cid = f"app-reviewed-{self.fake.port}"
+        self.fake.register_client(cid, [RETURN])
+        r = self.robin.patch(f"/api/connect/sources/{sid}", json={"waiting": False, "client_id": cid}, headers=H)
+        self.assertEqual((r.status_code, r.json()["waiting"]), (200, None))
+        mine = next(s for s in self.robin.get(f"/api/profiles/{self.pid}/connections").json()["sources"] if s["id"] == sid)
+        self.assertEqual((mine["waiting"], mine["note"]), (False, None))
+        self.assertTrue(self.connect(sid))
+        # marked again (a new review): kept apart from connecting again; the setup screen and the log say so
+        self.robin.patch(f"/api/connect/sources/{sid}", json={"waiting": True}, headers=H)
+        self.assertTrue(next(s for s in self.robin.get("/api/connect/sources").json()["sources"] if s["id"] == sid)["waiting"])
+        self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/connect/start", json={"source": sid}, headers=H).status_code, 409)
+        # an untested source that isn't waiting stays hidden from people, as before
+        r = self.robin.post("/api/connect/sources", json={"name": "Untested (fictional)", "vendor": "other", "client_id": "x",
+                                                         "issuer": "https://fhir.untested.example/R4"}, headers=H)
+        self.assertNotIn(r.json()["id"], [s["id"] for s in self.kim.get(f"/api/profiles/{self.pid}/connections").json()["sources"]])
+        self.assertEqual(self.robin.post("/api/connect/sources", json=dict(base, issuer="https://x.example/R4", client_id="y",
+                                                                          waiting="maybe"), headers=H).status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

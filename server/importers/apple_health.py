@@ -19,12 +19,20 @@ the export carries its UTC offset ("2024-03-09 23:41:07 -0500"), so a trip abroa
 Entity declarations are refused before the parser sees them (Apple's own DOCTYPE only declares elements and
 attributes), and so is any encoding but UTF-8.
 
+Health Records (#165): when the Health app holds records from hospitals and clinics (Apple's Health Records), the
+export has them beside export.xml as FHIR JSON, one resource per file, under clinical-records/ (some still DSTU2).
+They're read by the FHIR importer (fhir.py) and come in with the same import: visits, labs, medications, problems,
+reports and the rest, with the same source keys as when that folder is uploaded on its own, so neither duplicates
+the other. If they can't be read, the rest still comes in, with a warning.
+
 Standard library only.
 """
 import hashlib
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+
+from . import fhir
 
 NAME = "apple-health"
 LABEL = "Apple Health (export.xml)"
@@ -204,10 +212,30 @@ def parse(files):
         raise ValueError("This file isn't an Apple Health export: its root element isn't <HealthData>.")
     watch = agg.summary()
     warnings = agg.warnings()
-    if not watch["metrics"] and not watch["exercise"]:
+    data = {"events": [], "details": {}, "labs": [], "costs": []}
+    records = health_records(files)
+    if records:
+        try:
+            clinical = fhir.parse(records)
+        except ValueError as e:
+            warnings.append(f"The Health Records in this export couldn't be read, so only the Health app's own data "
+                            f"came in: {e}")
+        else:
+            data = clinical["data"]
+            warnings += ["Health Records: " + w for w in clinical["warnings"]]
+    if not watch["metrics"] and not watch["exercise"] and not data["events"] and not data["labs"]:
         warnings.append("The export holds none of the data the Health tab shows (steps, heart rate, sleep, "
-                        "weight and body composition, workouts).")
-    return {"data": {"events": [], "details": {}, "labs": [], "costs": [], "watch": watch}, "warnings": warnings}
+                        "weight and body composition, workouts)" + (", and no Health Records." if records else "."))
+    return {"data": {**data, "watch": watch}, "warnings": warnings}
+
+
+RECORDS_DIR = "clinical-records"
+
+
+def health_records(files):
+    """The Health app's Health Records in the upload: the files in a clinical-records folder, with their paths as
+    uploaded (so a document a record points to is found beside it)."""
+    return {p: a for p, a in files.items() if RECORDS_DIR in p.lower().split("/")[:-1]}
 
 
 def _stream(f, agg):

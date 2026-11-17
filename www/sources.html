@@ -67,6 +67,9 @@
     <div role="tabpanel" id="panel-zip" aria-labelledby="tab-zip">
       <p class="hint">Most portals give you a zip (MyChart, Apple Health's export.zip, Blue Button). Upload it as it is: it's
         unpacked on the server.</p>
+      <p class="hint" id="appleRecords">From an iPhone: in the Health app, tap your picture, then Export All Health Data,
+        and upload the zip it makes. If the Health app has Health Records from your hospitals or clinics, they're in it
+        too, as FHIR files, and come in as visits, lab results, medications and problems beside your activity and sleep.</p>
       <label class="btn pick">Choose a zip… <input type="file" id="pickZip" accept=".zip,application/zip"></label>
     </div>
     <div role="tabpanel" id="panel-folder" aria-labelledby="tab-folder" hidden>
@@ -171,6 +174,7 @@
       server) under <a href="admin.html#apps">Admin → Connected-source apps</a>.</p>
     <p class="hint" id="viewerNote" hidden>You can view this profile's connections; its owners and editors connect them.</p>
     <div class="row" id="sourceButtons"></div>
+    <div id="sourceWaiting"></div><!-- sources waiting for the vendor's review (#165, connect.js) -->
 
     <div class="dir-find" id="finder" hidden>
       <h3 class="sub">Find your hospital, clinic or insurer</h3>

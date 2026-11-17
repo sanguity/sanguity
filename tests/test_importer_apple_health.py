@@ -256,6 +256,68 @@ class Edges(Tmp):
                          {"2024-01-01": 1200, "2024-01-02": 2400, "2024-01-03": 1200})
 
 
+class HealthRecords(Tmp):
+    """Health Records (#165): the export's clinical-records/ folder, FHIR JSON from hospitals and clinics, comes in with
+    the same import, as the FHIR importer reads it on its own (tests/fixtures/importers/apple-health/health-records)."""
+    CASE = os.path.join(ROOT, "tests", "fixtures", "importers", "apple-health", "health-records")
+
+    @classmethod
+    def setUpClass(cls):
+        from server import importers as registry
+        cls.registry = registry
+        cls.files = registry.files_in(cls.CASE)
+        cls.out = ah.parse(cls.files)
+        cls.data = cls.out["data"]
+
+    def test_found_beside_export_xml(self):
+        self.assertEqual(sorted(ah.health_records(self.files)), sorted(p for p in self.files if "/clinical-records/" in p))
+        self.assertEqual(len(ah.health_records(self.files)), 7)
+        self.assertEqual(ah.health_records({"apple_health_export/export.xml": EXPORT,
+                                            "apple_health_export/clinical-records.json": EXPORT}), {})
+        self.assertEqual(self.registry.match(self.files)["importer"].NAME, "apple-health")   # not fhir: both come in
+
+    def test_records_and_the_watch_summary_in_one_import(self):
+        self.assertEqual(self.out["warnings"], [])
+        self.assertEqual(self.registry.check(self.out, self.files), [])
+        self.assertEqual(pts(self.data["watch"], "steps"), {"2025-05-30": 3200, "2025-05-31": 2100})
+        self.assertEqual(len(self.data["watch"]["exercise"]), 1)
+        kinds = sorted((e["k"], e["title"]) for e in self.data["events"] if not e.get("hidden"))
+        self.assertEqual(kinds, [("lab", "1 lab result"), ("med", "Metformin 500 mg tablet"), ("procedure", "Colonoscopy"),
+                                 ("procedure", "Immunization: COVID-19 vaccine, updated formula")])
+        glucose = next(s for s in self.data["labs"] if s.get("loinc") == "2345-7")
+        self.assertEqual(glucose["pts"][0][1:5], [104, 70, 99, "H"])
+        self.assertEqual(sorted((p["type"], p["name"]) for p in self.data["problems"]),
+                         [("Allergy", "Allergy: Sulfa drugs (Rash)"), ("Diagnosis", "Prediabetes")])
+
+    def test_same_records_and_keys_as_the_folder_on_its_own(self):
+        from server.importers import fhir
+        alone = fhir.parse(ah.health_records(self.files))["data"]
+        self.assertEqual(sorted(e["key"] for e in self.data["events"]), sorted(e["key"] for e in alone["events"]))
+        self.assertEqual(sorted(s["key"] for s in self.data["labs"]), sorted(s["key"] for s in alone["labs"]))
+        self.assertEqual({k: v for k, v in self.data.items() if k != "watch"}, alone)
+
+    def test_unreadable_records_leave_the_rest(self):
+        files = dict(self.files)
+        for p in ah.health_records(files):
+            files[p] = self.write("{ not json", p.rsplit("/", 1)[-1])[f"apple_health_export/{p.rsplit('/', 1)[-1]}"]
+        out = ah.parse(files)
+        self.assertEqual(pts(out["data"]["watch"], "steps"), {"2025-05-30": 3200, "2025-05-31": 2100})
+        self.assertEqual(out["data"]["events"], [])
+        self.assertTrue(any(w.startswith("The Health Records in this export couldn't be read") for w in out["warnings"]),
+                        out["warnings"])
+
+    def test_records_alone_are_not_an_empty_export(self):
+        bare = self.write(HEAD + "</HealthData>")
+        files = dict(ah.health_records(self.files), **bare)
+        out = ah.parse(files)
+        self.assertEqual(out["data"]["watch"]["metrics"], [])
+        self.assertTrue(out["data"]["events"])
+        self.assertFalse(any("none of the data" in w for w in out["warnings"]), out["warnings"])
+        empty = self.write("[]", "empty.json")["apple_health_export/empty.json"]
+        warned = ah.parse(dict(bare, **{"apple_health_export/clinical-records/empty.json": empty}))["warnings"]
+        self.assertTrue(any("and no Health Records" in w for w in warned), warned)
+
+
 class FlatMemory(Tmp):
     """A large export is streamed: peak memory doesn't grow with the number of records."""
 

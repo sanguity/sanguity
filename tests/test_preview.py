@@ -324,8 +324,10 @@ class Keys(unittest.TestCase):
                         self.assertEqual(len(present), len(set(present)))
                         if name != "sanguity":   # it passes the original importer's keys through, or none
                             self.assertNotIn(None, ka, f"{part} without a key")
-                            if part == "events":
-                                self.assertTrue(all(k.startswith(name + ":") for k in ka), ka)
+                            if part == "events":   # an Apple Health export's Health Records keep the FHIR importer's
+                                # keys, so the same records uploaded on their own are duplicates (#165)
+                                ok = (name + ":", "fhir:") if name == "apple-health" else name + ":"
+                                self.assertTrue(all(k.startswith(ok) for k in ka), ka)
                     seen += 1
         self.assertGreater(seen, 5)
 

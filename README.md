@@ -245,6 +245,7 @@ different; the file stays beside them as `data-before-v10.json`, and can be dele
 | Payments export (`payments.json`) | Out-of-pocket payments and premiums |
 | Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition |
 | Apple Health on iPhone, via the Health Auto Export app (or an uploaded `export.xml`) | The same, with HRV as Apple's SDNN |
+| Apple Health's whole export zip (Export All Health Data) | The above, and the Health app's Health Records from hospitals and clinics (FHIR files in `clinical-records/`): visits, labs, medications, problems, allergies, immunizations, procedures |
 | Typed in by hand (**Sources → Type records in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
 
 If your portal's export doesn't import, please open an issue with an anonymised sample, or write an importer for
@@ -303,10 +304,16 @@ Connected-source apps**:
 1. Set `PUBLIC_ORIGINS` in `.env` to the address you open Sanguity at; the return address is that plus
    `/connect/return`. The setup screen shows it, and warns when it's plain HTTP or only on your own network, which
    vendors are unlikely to accept in production.
-2. Register an app on the vendor's developer site (the screen has a guide per vendor) with that return address, and
-   paste its client ID (and secret, for a confidential client) into Sanguity. For Epic, "dynamic registration"
-   makes this install generate its own key for long-lived access.
-3. **Test this connection** reads the vendor's discovery and lists the hosts Sanguity will contact for it.
+2. Register an app on the vendor's developer site with that return address, and paste its client ID (and secret,
+   for a confidential client) into Sanguity. The screen walks you through it step by step for each kind of vendor
+   (Epic, Oracle Health, health plans, other SMART on FHIR servers), with the values to paste and Copy buttons. For
+   Epic, "dynamic registration" makes this install generate its own key for long-lived access.
+3. **Test this connection**, the walk-through's last step, reads the vendor's discovery and lists the hosts Sanguity
+   will contact for it.
+
+While a vendor reviews the app (Epic's production review, a health plan's approval), tick **Waiting for the vendor's
+review**: the client ID can wait, nobody can connect the source yet, and Portals and health plans says it's coming and
+to upload the portal's export meanwhile.
 
 Then owners and editors connect a profile by signing in at the vendor. The first pull is previewed like an upload
 (duplicates, lab names, Save or Cancel); after that Sanguity pulls what's new every `SYNC_HOURS` (12), updating

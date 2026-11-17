@@ -197,7 +197,9 @@ by itself; the person's "same result" shows it once, with both sources. For it t
 the source wrote it (a bare date as noon, `common.iso`), the value as reported in `pts[5]`, and the series' unit.
 `check()` refuses a key that isn't a non-empty string, or that is used twice within one import: among the events,
 among the lab series, among `problems` and among `upcoming` (each list separately). It doesn't check the prefix: the
-`sanguity` importer passes keys through unchanged, so a re-imported export keeps the keys the original importer gave.
+`sanguity` importer passes keys through unchanged, so a re-imported export keeps the keys the original importer gave,
+and the Apple Health importer reads an export's Health Records (`clinical-records/`) with the FHIR importer, keeping
+its `fhir:` keys, so the same records uploaded on their own are found as duplicates (#165).
 
 ### `costs`: one row per claim
 

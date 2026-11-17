@@ -1,0 +1,10 @@
+{
+  "resourceType": "MedicationRequest",
+  "id": "fict-med-4",
+  "status": "active",
+  "intent": "order",
+  "medicationCodeableConcept": {"text": "Metformin 500 mg tablet"},
+  "authoredOn": "2025-05-21",
+  "requester": {"display": "Dr. Morgan Ellery"},
+  "dosageInstruction": [{"text": "Take 1 tablet by mouth daily with breakfast"}]
+}

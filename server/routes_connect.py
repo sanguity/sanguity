@@ -21,7 +21,8 @@ Profiles (anyone the profile is shared with sees its connections; owners and edi
 Admins (vendor settings, option 1: each install registers its own app):
   GET    /api/connect/sources                               the setup screen: return address, guides, sources, counts
   POST   /api/connect/sources                               add one
-  PATCH  /api/connect/sources/{id}                          change one ("secret": "" removes it; leave it out to keep)
+  PATCH  /api/connect/sources/{id}                          change one ("secret": "" removes it; leave it out to keep;
+                                                            "waiting": true while the vendor reviews the app, #165)
   DELETE /api/connect/sources/{id}                          remove one no profile is connected to
   POST   /api/connect/sources/{id}/test                     "Test this connection": read its discovery
 
@@ -198,6 +199,7 @@ class Source(BaseModel):
     secret: Optional[str] = None
     auth: Optional[str] = None
     scopes: Optional[str] = None
+    waiting: Optional[bool] = None   # waiting for the vendor's review (#165)
 
 
 @router.get("/api/connect/sources")

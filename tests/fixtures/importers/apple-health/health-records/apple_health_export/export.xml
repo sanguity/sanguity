@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A small, fictional Apple Health export with Health Records beside it (clinical-records/), for #165. No real person's data. -->
+<!DOCTYPE HealthData [
+<!ELEMENT HealthData (ExportDate,Me,(Record|Correlation|Workout|ActivitySummary|ClinicalRecord)*)>
+<!ATTLIST HealthData
+  locale CDATA #REQUIRED
+>
+<!ELEMENT ExportDate EMPTY>
+<!ATTLIST ExportDate
+  value CDATA #REQUIRED
+>
+<!ELEMENT Me EMPTY>
+<!ELEMENT Record ((MetadataEntry|HeartRateVariabilityMetadataList)*)>
+<!ELEMENT MetadataEntry EMPTY>
+<!ELEMENT Workout ((MetadataEntry|WorkoutEvent|WorkoutStatistics|WorkoutRoute)*)>
+<!ELEMENT ClinicalRecord EMPTY>
+<!ATTLIST ClinicalRecord
+  type              CDATA #REQUIRED
+  identifier        CDATA #REQUIRED
+  sourceName        CDATA #REQUIRED
+  sourceURL         CDATA #REQUIRED
+  fhirVersion       CDATA #REQUIRED
+  receivedDate      CDATA #REQUIRED
+  resourceFilePath  CDATA #REQUIRED
+>
+]>
+<HealthData locale="en_US">
+ <ExportDate value="2025-06-02 08:00:00 -0700"/>
+ <Me HKCharacteristicTypeIdentifierDateOfBirth="" HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexNotSet"/>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Test Phone" unit="count" startDate="2025-05-30 09:00:00 -0700" endDate="2025-05-30 09:30:00 -0700" value="3200"/>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Test Phone" unit="count" startDate="2025-05-31 17:00:00 -0700" endDate="2025-05-31 17:20:00 -0700" value="2100"/>
+ <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Test Scale" unit="lb" startDate="2025-05-31 07:00:00 -0700" endDate="2025-05-31 07:00:00 -0700" value="161.2"/>
+ <Workout workoutActivityType="HKWorkoutActivityTypeWalking" duration="30" durationUnit="min" sourceName="Test Phone" startDate="2025-05-30 09:00:00 -0700" endDate="2025-05-30 09:30:00 -0700"/>
+ <ClinicalRecord type="HKClinicalTypeIdentifierLabResultRecord" identifier="Observation/fict-obs-1" sourceName="Lakeside Community Hospital" sourceURL="https://fhir.lakeside.example/api/FHIR/R4" fhirVersion="4.0.1" receivedDate="2025-05-21 10:00:00 -0700" resourceFilePath="/clinical-records/Observation-FICT1.json"/>
+</HealthData>

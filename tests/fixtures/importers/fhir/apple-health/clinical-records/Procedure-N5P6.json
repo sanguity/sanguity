@@ -1,0 +1,11 @@
+{
+  "resourceType": "Procedure",
+  "id": "N5P6",
+  "status": "completed",
+  "code": {"text": "Removal of skin lesion"},
+  "performedDateTime": "2024-06-14T10:30:00Z",
+  "performer": [{"actor": {"display": "Dr. Jamie Patel"}}],
+  "location": {"display": "Harbor View Hospital"},
+  "bodySite": [{"text": "Left forearm"}],
+  "notes": [{"text": "Healed well"}]
+}

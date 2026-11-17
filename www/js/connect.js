@@ -239,12 +239,17 @@
     }
     $("#viewerNote").hidden = d.can_connect;
     $("#noSources").hidden = !!d.sources.length || !d.can_connect;
-    $("#sourceButtons").replaceChildren(...(d.can_connect ? d.sources : []).map(s =>
+    $("#sourceButtons").replaceChildren(...(d.can_connect ? d.sources : []).filter(s => !s.waiting).map(s =>
       el("button", {class: "btn", type: "button", text: `Connect ${s.name}…`, title: `Signs in at ${s.host}`, onclick: () => {
         const open = document.getElementById("choose-" + s.id);
         if (open) { open.remove(); return; }
         $("#sourceButtons").after(connectForm(s));
       }})));
+    // waiting for the vendor's review (#165): what's coming, and what to do meanwhile, in place of a connect button
+    $("#sourceWaiting").replaceChildren(...(d.can_connect ? d.sources : []).filter(s => s.waiting).map(s =>
+      el("div", {class: "conn-wait", id: "wait-" + s.id}, el("p", {}, el("b", {text: s.name}), " ", el("span", {class: "tag", text: "Not ready yet"})),
+        el("p", {text: s.note}),
+        el("div", {class: "row"}, el("a", {class: "btn small", href: "#upload", text: "Upload files"})))));
     SgConnect.sources = d.sources; SgConnect.canConnect = d.can_connect;
     document.dispatchEvent(new CustomEvent("connect:sources"));
     for (const c of live) {   // the first pull's preview, as on the import page
@@ -259,7 +264,7 @@
   /* the connect step of finding your provider (providers.js): the sources set up here, and connecting one */
   window.SgConnect = {sources: [], canConnect: false, connect(id) {
     const s = SgConnect.sources.find(x => x.id === id);
-    if (!s || !SgConnect.canConnect) return;
+    if (!s || s.waiting || !SgConnect.canConnect) return;
     const open = document.getElementById("choose-" + s.id) || connectForm(s);
     $("#sourceButtons").after(open);
     open.scrollIntoView({block: "nearest"});

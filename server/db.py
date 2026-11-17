@@ -582,6 +582,12 @@ SCHEMA = [
         started INTEGER,
         finished INTEGER);
     """,
+    # version 29: a connected source waiting for its vendor's review (#165; connections.py): when an admin said so,
+    # NULL once the review is done. Nobody can connect it meanwhile, its client ID may still be empty (''), and
+    # Portals and health plans tells people to upload the portal's export instead.
+    """
+    ALTER TABLE smart_clients ADD COLUMN waiting INTEGER;
+    """,
 ]
 
 

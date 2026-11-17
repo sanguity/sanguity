@@ -658,6 +658,29 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .conn .conn-skipped ul{padding-left:18px;margin:6px 0}
 .conn .conn-skipped li{margin:4px 0;overflow-wrap:anywhere}
 .conn .conn-warning{font-weight:550}
+/* ---- connecting a portal or health plan made easier (#165): Admin's walk-through, numbered steps with values to
+   copy, the form a step of its own; a source waiting for the vendor's review, on Admin and on Portals and health plans */
+.conn #srcForm{max-width:680px}
+.conn .conn-guide{padding:10px 14px}
+.conn .conn-guide>p{margin:6px 0}
+.conn ol.walk{padding-left:24px;margin:10px 0 6px}
+.conn ol.walk>li{padding:2px 0 12px 4px;margin:0 0 10px;border-bottom:1px solid var(--grid);min-width:0}
+.conn ol.walk>li:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
+.conn ol.walk>li::marker{font-weight:700;color:var(--accent)}
+.conn .walk-t{margin:0 0 4px;font-size:14px;font-weight:650;color:var(--ink)}
+.conn .walk-step p{margin:4px 0}
+.conn .walk-copy{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;margin:8px 0}
+.conn .walk-k{flex:0 0 100%;font-size:12px;font-weight:600;color:var(--ink2)}
+.conn .walk-v{flex:1 1 240px;min-width:0;padding:5px 8px;background:color-mix(in srgb,var(--ink) 5%,var(--raised));color:var(--ink);font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.5}
+.conn .walk-acts{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
+.conn .walk-acts .msg{border:0;padding:0;margin:0;font-size:12px}
+.conn .walk-fields{display:grid;gap:10px;margin-top:8px}
+.conn .walk-fields .hint{margin:-4px 0 0}
+.conn label.walk-wait{justify-self:start;color:var(--ink)}
+.conn .walk-tag{color:var(--ink);background:color-mix(in srgb,var(--c-study) 22%,var(--raised))}
+.conn .conn-wait{border-left:3px solid var(--c-study);padding:4px 0 4px 12px;margin:10px 0}
+.conn .conn-wait p{margin:4px 0}
+.conn .conn-wait .tag{color:var(--ink);background:color-mix(in srgb,var(--c-study) 22%,var(--raised))}
 .sync-warn{margin:10px 20px 0;padding:8px 12px;border-left:3px solid var(--crit);background:var(--surface);border-radius:6px;font-size:14px;overflow-wrap:anywhere}
 .sync-warn.quiet{border-left-color:var(--grid);color:var(--ink2);font-size:13px}
 .sync-warn a{margin-left:6px;white-space:nowrap}
