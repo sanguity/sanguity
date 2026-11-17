@@ -14,12 +14,14 @@ Only conversions that are exact or fixed by definition, never an estimate:
   weight    lb and kg: 1 lb is 0.45359237 kg by definition.
   temp      degrees Fahrenheit and Celsius: C = (F - 32) x 5/9. Only for a temperature itself; a change in temperature
             (a watch's "skin temperature change") would need no offset, so it is never converted.
+  length    centimetres and inches (#194, a clinic's heights): 1 in is 2.54 cm by definition. The choice "ftin" (feet
+            and inches) shows a series in inches; About this person says a single height in feet and inches.
 
 A series that can be shown in another unit carries "conv" in the records the page loads (annotate, from
 records._assemble): {choice: [unit, a, b]}, the value in that unit being value x a + b. The choices are the values
 of the "units" setting (settings.py): "conventional" (mg/dL, g/dL) or "si" (mmol/L, umol/L, g/L) for lab tests,
-"lb" or "kg" for weights, "F" or "C" for temperatures. A choice the series is already in, or has no exact conversion
-to, is left out. The page keeps the value and unit as reported beside the converted one (www/js/units.js).
+"lb" or "kg" for weights, "F" or "C" for temperatures, "cm" or "ftin" for heights. A choice the series is already in,
+or has no exact conversion to, is left out. The page keeps the value and unit as reported beside the converted one (www/js/units.js).
 """
 from decimal import Decimal
 
@@ -49,6 +51,9 @@ LB_KG = Decimal("0.45359237")
 _WEIGHT = {"lb": "lb", "lbs": "lb", "[lb_av]": "lb", "kg": "kg"}
 _TEMP = {"°f": "F", "f": "F", "degf": "F", "[degf]": "F", "°c": "C", "c": "C", "cel": "C", "degc": "C"}
 WEIGHT_UNITS, TEMP_UNITS = {"lb": "lb", "kg": "kg"}, {"F": "°F", "C": "°C"}   # choice -> the unit shown
+IN_CM = Decimal("2.54")
+_LENGTH = {"cm": "cm", "in": "in", "[in_i]": "in", "inch": "in", "inches": "in"}
+LENGTH_UNITS = {"cm": "cm", "ftin": "in"}   # #194: a chart of heights in feet and inches is drawn in inches
 
 
 def _unit(canon, u):
@@ -110,6 +115,12 @@ def conversions(canon, unit, change=False):
         for choice, shown in WEIGHT_UNITS.items():
             if choice != have:
                 out[choice] = [shown, _num(LB_KG if have == "lb" else 1 / LB_KG), 0]
+        return out
+    if k in _LENGTH:   # #194
+        have = _LENGTH[k]
+        for choice, shown in LENGTH_UNITS.items():
+            if shown != have:
+                out[choice] = [shown, _num(IN_CM if have == "in" else 1 / IN_CM), 0]
         return out
     if k in _TEMP:
         have = _TEMP[k]

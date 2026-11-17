@@ -31,7 +31,8 @@ const DEFAULT_SETTINGS = {
   tabs: {order: ["overview", "health", "timeline", "labs", "heatmap", "costs"], hidden: []},   // #40, applied by app.js
   theme: "system",     // #45, this user's default: "light", "dark" or "system" (the ◐ toggle overrides it per browser)
   sources: {},         // short source tags on lab results -> display names, e.g. {"EXT": "Outside lab"}
-  units: {lab: "reported", weight: "reported", temperature: "reported"},   // #41, this user's (units.js)
+  units: {lab: "reported", weight: "reported", temperature: "reported", height: "reported"},   // #41, this user's (units.js)
+  person: {birthDate: "", sex: "", heights: []},   // #194, About this person (person.js has the helpers)
   visitWorkouts: [],   // past visits whose title matches count as workouts on Health, e.g. {"match": "physical therapy", "regex": false, "name": "Physical therapy", "minutes": 45}
   milestones: [],      // named dates, e.g. {"date": "2026-03-01", "label": "Diagnosis", "primary": true} (#39)
 };
@@ -50,7 +51,8 @@ function applySettings(u) {
     milestones: list(u.milestones, DEFAULT_SETTINGS.milestones),
     tabs: obj(u.tabs) ? u.tabs : DEFAULT_SETTINGS.tabs,
     theme: ["light", "dark", "system"].includes(u.theme) ? u.theme : DEFAULT_SETTINGS.theme,
-    units: {...DEFAULT_SETTINGS.units, ...(obj(u.units) ? u.units : {})}};
+    units: {...DEFAULT_SETTINGS.units, ...(obj(u.units) ? u.units : {})},
+    person: {...DEFAULT_SETTINGS.person, ...(obj(u.person) ? u.person : {})}};
   CFG.overview.keyLabs = list(CFG.overview.keyLabs, DEFAULT_SETTINGS.overview.keyLabs);
   CFG.trends.defaultLabs = list(CFG.trends.defaultLabs, DEFAULT_SETTINGS.trends.defaultLabs);
   CFG.trends.views = list(CFG.trends.views, DEFAULT_SETTINGS.trends.views);

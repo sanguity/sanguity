@@ -1337,6 +1337,7 @@ app.include_router(__import__("server.routes_summary", fromlist=["router"]).rout
 app.include_router(__import__("server.routes_share_links", fromlist=["router"]).router)  # share links (#47)
 app.include_router(__import__("server.routes_costs", fromlist=["router"]).router)     # out-of-pocket costs: HSA/FSA, matched to claims (#55)
 app.include_router(__import__("server.routes_backups", fromlist=["router"]).router)   # backups on the Admin page (#200)
+app.include_router(__import__("server.routes_person", fromlist=["router"]).router)    # about this person: birth date, sex, height (#194)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here

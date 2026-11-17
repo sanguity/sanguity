@@ -62,6 +62,7 @@ check changes without updating the list, and it exercises this table against a l
 |---|---|---|---|---|---|---|
 | A profile's records: Overview, Timeline, Labs, Body and activity, Costs, Medications, documents | Read | Read | Read | No (404) | Only the sections, labs and dates the link was made with; no documents, report text or settings | Upcoming appointments and expected lab draws, minimal by default |
 | The journal | Read | Add, change, delete | Add, change, delete | No | If the link includes it (without who wrote what) | No |
+| About this person: birth date, sex used for reference ranges, height history (#194) | Read | Change; add and remove heights | Change; add and remove heights | No | Only if its owner ticks About this person (unticked by default) | No |
 | Import history | Read | Undo, rename | Undo, rename | No | No | No |
 | Upload files, import (preview, save, discard), type in records, corrections, "same result", cost marks | No (403) | Yes | Yes | No | No | No |
 | Export everything (zip) | No | Yes | Yes | No | No | No |
@@ -525,6 +526,13 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 ### The journal, medications and costs (#49, #50, #55)
 - Read by anyone the profile is shared with; written by owners and editors; every change logged without its text;
   bodies and cost marks encrypted; in exports and backups.
+
+### About this person (#194)
+- Birth date, sex used for reference ranges and height history are three profile settings (`person.*`), sealed like
+  every health setting; no new column. Read by anyone the profile is shared with (`GET …/person`, viewer); changed by
+  owners and editors (`PUT …/person`, `POST …/person/heights`, `DELETE …/person/heights/{day}`), each change logged as
+  which setting changed, never its value. In exports and backups with the other settings. A share link shows them
+  only when its owner ticks "About this person", which is unticked by default; nothing else reaches them.
 
 ### The visit summary PDF (#48, #213)
 - Anyone who can view the profile; made in memory, never written to disk, `no-store`; every PDF logged without its

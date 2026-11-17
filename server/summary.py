@@ -214,7 +214,7 @@ def value_text(p):
 def _series(data, rcfg=None):
     """{name: {"name", "unit", "pts": [point dict with its source]}}: every import's series of a name put together
     (the same test from two sources is one trend), each result keeping its own range. With two units, the unit of
-    the latest result is kept. rcfg: the "ranges" settings, for results whose report gives no range (#44)."""
+    the latest result is kept. rcfg: ranges.config(), for results whose report gives no range (#44)."""
     imports = data.get("imports") or {}
     by = {}
     for s in data.get("labs") or []:
@@ -301,7 +301,7 @@ def build(db, pid, uid, profile_name, opts):
     data = records.assemble(db, pid) or {"events": [], "labs": []}
     cfg = settings.merged(db, pid, uid)
     nick = cfg.get("labNicknames") or {}
-    series = _series(data, cfg.get("ranges"))
+    series = _series(data, ranges.config(cfg))   # the ranges set, with About this person's birth date and sex (#194)
     visits, upcoming = _visits(data, now), _upcoming(data, now)
     wanted = [s for s in (opts.get("sections") or []) if s in {x for x, _ in sections()}]
     if not wanted:

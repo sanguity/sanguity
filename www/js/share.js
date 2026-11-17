@@ -41,6 +41,10 @@ const SH_DRAW = {
     el("div", {}, el("b", {text: (SH_KIND[j.kind] || "Note") + (j.title ? `: ${j.title}` : "")}),
       j.severity ? el("span", {class: "tag", text: `severity ${j.severity}`}) : null, el("span", {class: "muted", text: " " + shWhen(j.t)})),
     j.note ? el("p", {class: "share-note", text: j.note}) : null))) : el("p", {class: "muted", text: "No journal entries in this range."}),
+  about: a => el("div", {}, el("dl", {class: "share-about"},   // #194: only when the link's owner ticked it
+    el("dt", {text: "Birth date"}), el("dd", {text: a.birthDate ? shDay(a.birthDate) : "Not given"}),
+    el("dt", {text: "Sex used for reference ranges"}), el("dd", {text: a.sex || "Not given"})),
+    shTable(["Date", "Height"], (a.heights || []).map(h => [shDay(h.date), h.text]), "No heights written down in this range.")),
   costs: list => shTable(["Date", "Service", "Provider", "Billed", "Insurance paid", "Your share"],
     list.map(c => [shDay(c.t), c.title, c.provider, shUsd(c.billed), shUsd(c.paid), shUsd(c.owe)]), "No claims in this range."),
 };

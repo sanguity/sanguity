@@ -2,7 +2,8 @@
    at the top, with a sidebar of groups (as Settings' and Admin's): People (who has access and as what, sharing with
    an account, changing roles, leaving), Share links (share-links.js), Calendar feed (calendar-feed.js), Visit summary
    (summary.js), Export everything and the profile's Activity (activity.js). Set apart from sharing, under Profile:
-   renaming and deleting it (owners) and making a new one.
+   renaming and deleting it (owners) and making a new one; and About this person (#194): its birth date, sex used for
+   reference ranges and height history (person.js), which owners and editors change and viewers see.
 
    Someone who can only view a profile sees what they may (who has access, the visit summary, their own calendar
    feed) and no owner's controls: the groups they can't use aren't in the sidebar. The address follows the group
@@ -37,6 +38,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     {id: "summary", title: "Visit summary", has: ["summaryIntro", "build", "preview"]},
     {id: "export", title: "Export everything", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it."},
     {id: "activity", title: "Activity", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners."},
+    {id: "about", title: "About this person", part: "Profiles", has: ["about"]},   // #194
     {id: "profile", title: "Profile", part: "Profiles", has: ["profileCard", "newProfile"]},
   ];
   const ALIAS = {profiles: "people"};   // the old Account tab's name (account.html#profiles)
@@ -107,7 +109,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     $("#noProfiles").hidden = has;
     $("#intro").hidden = !has;
     $("#newProfile").hidden = false;
-    for (const id of ["people", "profileCard", "export", "links", "activity"]) $("#" + id).hidden = !has;
+    for (const id of ["people", "profileCard", "export", "links", "activity", "about"]) $("#" + id).hidden = !has;
     if (!has) {
       P = null;
       SgNav.profiles([]);
@@ -127,6 +129,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     if (current) show(current); else { const r = fromHash(); show(r.g, {scrollTo: r.el}); }
     $("#exportLink").href = `api/profiles/${p.id}/export`;
     drawProfileCard(p);
+    drawAbout(p);   // #194
     if (p.role === "owner") $("#linksBody").replaceChildren(shareLinksPanel(p, {open: true}));   // share-links.js
     else $("#linksBody").replaceChildren();
     sayIn($("#peopleMsg"), "");
@@ -248,6 +251,116 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       sayIn($("#profMsg"), `Created “${name}”: it's the profile shown here now, so you can share it under People.`);
     } catch (e) { sayIn($("#profMsg"), e.message, true); }
   };
+
+  /* ---------------------------------------------------------------- About this person (#194; person.js, server/person.py):
+     the birth date and the sex used for reference ranges, saved together; the height history, each entry added or
+     removed on its own; and the heights a clinic recorded in the records, beside it, each offered for the history.
+     Owners and editors change them; viewers see them as text. Heights show in this person's Units choice, else as
+     each was typed, with the other unit beside. */
+  let HEIGHT_PREF = null;   // this person's Units choice for heights (their own setting), read once
+  async function drawAbout(p) {
+    sayIn($("#aboutMsg"), "");
+    let a;
+    try {
+      if (HEIGHT_PREF == null) HEIGHT_PREF = ((await call("settings/user")).units || {}).height || "reported";
+      a = await call(`profiles/${p.id}/person`);
+    } catch (e) { $("#aboutBody").replaceChildren(); sayIn($("#aboutMsg"), e.message, true); return; }
+    if (P === p) showAbout(p, a);
+  }
+  const aboutDay = d => fmtD(zParse(d));
+  function showAbout(p, a) {
+    const msg = $("#aboutMsg"), fail = e => sayIn(msg, e.message, true), edit = a.can_change, today = isoDay(Date.now());
+    const age = a.birthDate ? ageOn(a.birthDate, today) : null;
+    const hText = h => { const u = heightUnit(HEIGHT_PREF, h.unit);
+      return el("span", {}, heightText(h.cm, u), el("span", {class: "muted", text: ` (${heightText(h.cm, u === "cm" ? "ftin" : "cm")})`})); };
+    /* a change: the server answers with everything again; drawn afresh, focus back on the control that had it */
+    async function send(path, method, payload, said) {
+      const had = document.activeElement && document.activeElement.id;
+      try {
+        const got = await call(path, method, payload);
+        if (P !== p) return;
+        showAbout(p, got);
+        sayIn($("#aboutMsg"), typeof said === "function" ? said(got) : said);
+        (had && document.getElementById(had) || $("#aboutHeightHd")).focus();
+      } catch (e) { fail(e); }
+    }
+    const parts = [];
+    // the birth date and sex
+    if (edit) {
+      const birth = el("input", {type: "date", id: "aboutBirth", value: a.birthDate, min: "1900-01-01", max: today});
+      const sexes = el("fieldset", {class: "about-sex"}, el("legend", {text: "Sex used for reference ranges"}),
+        el("div", {class: "seg wrap"}, ...[["female", "Female"], ["male", "Male"], ["", "Not set"]].map(([v, l]) =>
+          el("label", {}, el("input", {type: "radio", name: "aboutSex", value: v, checked: (a.sex || "") === v}), l))),
+        el("p", {class: "muted", text: "What labs base their reference ranges on, for ranges of your own set for female or male. " +
+          "It isn't gender identity, which Sanguity doesn't ask for."}));
+      parts.push(el("form", {class: "about-details", onsubmit: ev => { ev.preventDefault();
+        send(`profiles/${p.id}/person`, "PUT", {birthDate: birth.value || "", sex: sexes.querySelector("input:checked")?.value ?? ""}, "Saved."); }},
+        el("div", {class: "about-field"}, el("label", {for: "aboutBirth", text: "Birth date"}),
+          el("div", {class: "about-row"}, birth, el("button", {class: "btn small", type: "button", text: "Clear", "aria-label": "Clear the birth date",
+            onclick: () => { birth.value = ""; birth.focus(); }}), age != null ? el("span", {class: "muted", text: `aged ${age} today`}) : null),
+          el("p", {class: "muted", text: "For the age on each result's day: ranges of your own by age band, and what depends on age."})),
+        sexes,
+        el("div", {class: "about-row"}, el("button", {class: "btn primary", type: "submit", id: "aboutSave", text: "Save"}))));
+    } else {
+      parts.push(el("dl", {class: "about-dl"},
+        el("dt", {text: "Birth date"}), el("dd", {text: a.birthDate ? aboutDay(a.birthDate) + (age != null ? ` (aged ${age} today)` : "") : "Not set"}),
+        el("dt", {text: "Sex used for reference ranges"}), el("dd", {text: a.sexes[a.sex] || "Not set"})),
+        el("p", {class: "hint", text: `Only ${p.name}'s owners and editors can change these.`}));
+    }
+    // the height history, newest first
+    parts.push(el("h3", {class: "sub", id: "aboutHeightHd", tabindex: -1, text: "Height"}),
+      el("p", {class: "hint", text: "A dated history: a child grows, and an adult's may change. The height on a day is the latest one written down by then."}));
+    if (edit) {
+      const typed = HEIGHT_PREF === "cm" || HEIGHT_PREF === "ftin" ? HEIGHT_PREF : (a.heights.at(-1)?.unit || "cm");
+      const date = el("input", {type: "date", id: "heightDate", value: today, min: a.birthDate || "1900-01-01", max: today, required: true});
+      const cm = el("input", {type: "number", id: "heightCm", min: 20, max: 272, step: "any", inputmode: "decimal"});
+      const ft = el("input", {type: "number", id: "heightFt", min: 0, max: 8, step: 1, inputmode: "numeric"});
+      const inch = el("input", {type: "number", id: "heightIn", min: 0, max: 11.9, step: "any", inputmode: "decimal"});
+      const cmBox = el("label", {class: "about-num"}, "Height in cm", cm);
+      const ftBox = el("div", {class: "about-ftin"}, el("label", {class: "about-num"}, "Feet", ft), el("label", {class: "about-num"}, "Inches", inch));
+      const units = el("fieldset", {class: "about-typed"}, el("legend", {text: "Typed in"}),
+        el("div", {class: "seg"}, ...[["cm", "cm"], ["ftin", "ft and in"]].map(([v, l]) =>
+          el("label", {}, el("input", {type: "radio", name: "heightUnit", value: v, checked: v === typed}), l))));
+      const shown = () => { const f = units.querySelector("input:checked").value === "ftin"; cmBox.hidden = f; ftBox.hidden = !f; };
+      units.addEventListener("change", shown);
+      const num = i => i.value === "" ? null : +i.value;
+      parts.push(el("form", {class: "about-add", onsubmit: ev => { ev.preventDefault();
+        const unit = units.querySelector("input:checked").value, had = a.heights.some(h => h.date === date.value);
+        send(`profiles/${p.id}/person/heights`, "POST", unit === "ftin" ? {date: date.value, unit, ft: num(ft), inches: num(inch)} : {date: date.value, unit, cm: num(cm)},
+          `${had ? "Replaced" : "Added"} the height on ${aboutDay(date.value)}.`); }},
+        el("label", {class: "about-num"}, "Date", date), units, cmBox, ftBox,
+        el("button", {class: "btn", type: "submit", id: "heightAdd", text: "Add height"})));
+      shown();
+    }
+    const mine = [...a.heights].reverse();
+    parts.push(mine.length ? el("table", {class: "tbl about-heights"},
+      el("thead", {}, el("tr", {}, ...["Date", "Height", ""].map(h => el("th", {text: h})))),
+      el("tbody", {}, ...mine.map(h => el("tr", {}, el("td", {text: aboutDay(h.date)}), el("td", {}, hText(h)),
+        el("td", {class: "acts"}, edit ? el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove the height on ${aboutDay(h.date)}`,
+          onclick: async () => {
+            if (!await ask({title: "Remove this height?", message: `${heightText(h.cm, heightUnit(HEIGHT_PREF, h.unit))} on ${aboutDay(h.date)}. You can add it again.`,
+                            action: "Remove height", danger: true})) return;
+            send(`profiles/${p.id}/person/heights/${h.date}`, "DELETE", undefined, `Removed the height on ${aboutDay(h.date)}.`); }}) : null)))))
+      : el("p", {class: "muted", id: "aboutNoHeight", text: "No height written down yet."}));
+    // the heights a clinic recorded: beside the history, never in it until someone adds one
+    if (a.recorded.length) {
+      const MORE = 8, rows = a.recorded.map(r => el("tr", {}, el("td", {text: aboutDay(r.date)}), el("td", {}, hText(r)), el("td", {text: r.source || ""}),
+        el("td", {class: "acts"}, r.inHistory ? el("span", {class: "muted", text: "In the history"})
+          : edit ? el("button", {class: "btn small", type: "button", text: "Add to the history", "aria-label": `Add the height on ${aboutDay(r.date)} to the history`,
+            onclick: () => send(`profiles/${p.id}/person/heights`, "POST", {date: r.date, unit: r.unit, cm: r.cm}, `Added the height on ${aboutDay(r.date)}.`)}) : null)));
+      rows.slice(MORE).forEach(r => { r.hidden = true; });
+      const all = rows.length > MORE ? el("button", {class: "btn small", type: "button", text: `Show ${rows.length - MORE} more`,
+        onclick: () => { rows.forEach(r => { r.hidden = false; }); all.remove(); }}) : null;
+      parts.push(el("h3", {class: "sub", text: "Heights in the records"}),
+        el("p", {class: "hint", text: "Measured at a clinic and brought in with the records. They're shown here, not used, until " +
+          (edit ? "you add one to the history" : "an owner or editor adds one to the history") + ": an import can be undone, and a measurement can be off."}),
+        el("table", {class: "tbl about-heights about-recorded"},
+          el("thead", {}, el("tr", {}, ...["Date", "Height", "From", ""].map(h => el("th", {text: h})))), el("tbody", {}, ...rows)),
+        all ? el("div", {class: "about-row"}, all) : null);
+    }
+    $("#aboutBody").replaceChildren(...parts.filter(Boolean));
+    $("#about").dataset.profile = p.id;   // whose details are drawn (the browser check waits for it)
+  }
 
   /* ---------------------------------------------------------------- start */
   (async () => {

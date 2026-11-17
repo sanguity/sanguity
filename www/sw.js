@@ -21,7 +21,7 @@ const FILES = [
   "js/account.js", "js/activity.js", "js/admin.js", "js/admin-sources.js", "js/app.js", "js/charts.js", "js/connect.js", "js/core.js", "js/costs.js", "js/dates.js", "js/drawer.js", "js/filters.js", "js/health.js",
   "js/heatmap.js", "js/import-history.js", "js/import-jobs.js", "js/import-manual.js", "js/import-records.js", "js/import-shl.js",
   "js/import.js", "js/journal.js", "js/login.js", "js/meds.js", "js/nav.js", "js/offline.js", "js/outside.js", "js/overview.js", "js/providers.js",
-  "js/pwa.js", "js/ranges.js", "js/rename.js", "js/same.js", "js/settings-nav.js", "js/settings.js", "js/setup.js",
+  "js/person.js", "js/pwa.js", "js/ranges.js", "js/rename.js", "js/same.js", "js/settings-nav.js", "js/settings.js", "js/setup.js",
   "js/sources.js", "js/summary.js", "js/theme.js", "js/timeline.js", "js/trends.js", "js/trends-views.js", "js/units.js",
   "js/util.js", "js/share.js", "js/share-links.js", "js/sharing.js", "js/calendar-feed.js", "js/moved.js",
   "sources.html", "js/moved.js", "js/sources-overview.js", "js/sources-page.js", "js/sources-watch.js",

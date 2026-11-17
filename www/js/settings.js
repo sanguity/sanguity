@@ -365,7 +365,7 @@ function viewsEditor(value, changed, ro) {
 EDITORS.views = viewsEditor;
 /* #41 this user's units: one group of choices per part (lab tests, weights, temperatures), from the server's list */
 function unitsEditor(value, changed, ro, st) {
-  const parts = [["lab", "Lab tests"], ["weight", "Weight"], ["temperature", "Temperature"]];
+  const parts = [["lab", "Lab tests"], ["weight", "Weight"], ["temperature", "Temperature"], ["height", "Height"]];   // height: #194
   const boxes = parts.map(([part, label]) => el("fieldset", {class: "set-radios", "data-part": part}, el("legend", {text: label}),
     radioSeg(Object.entries((st.choices || {})[part] || {}).map(([v, l]) => el("label", {},
       el("input", {type: "radio", name: "units-" + part, value: v, checked: v === (value[part] || "reported"), disabled: ro, onchange: changed}), l)))));
@@ -375,18 +375,15 @@ function unitsEditor(value, changed, ro, st) {
 EDITORS.units = unitsEditor;
 
 /* ---------------------------------------------------------------- #44 reference ranges from settings (ranges.js) */
-let RANGE_CFG = {birthDate: "", sex: "", overrides: []};   // the saved values, for the preview of what the rows colour
-function birthdateEditor(value, changed, ro) {
-  const input = el("input", {type: "date", value: value || "", min: "1900-01-01", max: new Date().toISOString().slice(0, 10), disabled: ro,
-    oninput: changed, "aria-label": "Birth date", class: "set-date"});
-  const clear = ro ? null : el("button", {class: "btn small", type: "button", text: "Clear", onclick: () => { input.value = ""; changed(); }});
-  return {node: el("div", {class: "row"}, input, clear), get: () => input.value || ""};
-}
-function rangesexEditor(value, changed, ro) {
-  const opts = [["", "Not set"], ["female", "Female"], ["male", "Male"]];
-  const box = el("fieldset", {class: "set-radios"}, el("legend", {class: "set-sr", text: "Sex for reference ranges"}),
-    radioSeg(opts.map(([v, l]) => el("label", {}, el("input", {type: "radio", name: "rangeSex", value: v, checked: v === (value || ""), disabled: ro, onchange: changed}), l))));
-  return {node: box, get: () => box.querySelector("input:checked")?.value ?? ""};
+/* the birth date and sex the rows' ages and sexes are matched against: About this person's (#194, Sharing), loaded
+   with the sections; the preview of what the rows colour uses them */
+let RANGE_CFG = {birthDate: "", sex: "", overrides: []};
+function rangesUses() {
+  const b = RANGE_CFG.birthDate, s = RANGE_CFG.sex;
+  return el("p", {class: "hint", id: "rangesUses"}, "Ages and sexes are matched against ",
+    el("a", {href: `sharing.html?profile=${PID}#about`, text: "About this person"}), ": ",
+    b ? `born ${fmtD(zParse(b))}` : "no birth date (rows with an age band aren't used)", "; ",
+    s ? `sex used for reference ranges ${s}` : "no sex for reference ranges (only rows for anyone are used)", ".");
 }
 /* the profile's lab series with numeric results whose report gives no range or flag: [{name, unit, pts}] */
 const unranged = () => LABS.filter(s => !s.watch).map(s => ({name: s.name, unit: s.unit || "",
@@ -423,7 +420,7 @@ function rangesEditor(value, changed, ro) {
     for (const s of without) for (const p of s.pts) { const r = rangeRowFor(cfg, s.name, s.unit, String(p[0]).slice(0, 10)); if (r) { hit++; if ((r.high != null && p[1] > r.high) || (r.low != null && p[1] < r.low)) out++; } }
     preview.textContent = !total ? "Every lab result here has a range or flag from its report, so none of these would be used yet."
       : `${total} result${total === 1 ? "" : "s"} here ha${total === 1 ? "s" : "ve"} no range on ${total === 1 ? "its" : "their"} report; these ranges fit ${hit}` +
-        (hit ? `, ${out} of them outside.` : ".") + " Saved birth date and sex are used.";
+        (hit ? `, ${out} of them outside.` : ".");
     if (!ro) {
       const have = new Set(rows.map(r => rNorm(r.lab) + "\u001f" + rUnit(r.unit)));
       const left = without.filter(s => !have.has(rNorm(s.name) + "\u001f" + rUnit(s.unit))).sort((a, b) => b.pts.length - a.pts.length).slice(0, 8);
@@ -436,12 +433,12 @@ function rangesEditor(value, changed, ro) {
   body.append(...value.map(make));
   const box = el("div", {}, body);
   if (!ro) box.append(el("div", {class: "set-add"}, el("button", {class: "btn small", type: "button", text: "Add a range", onclick: () => add({sex: "any"})})), sugg);
-  box.append(preview);
+  box.append(preview, rangesUses());   // #194
   const ed = {node: box, get: read};
   queueMicrotask(update);
   return ed;
 }
-Object.assign(EDITORS, {birthdate: birthdateEditor, rangesex: rangesexEditor, ranges: rangesEditor});
+EDITORS.ranges = rangesEditor;
 
 /* ---------------------------------------------------------------- the sections (#174): each setting with its
    editor, and one Save per section for every setting changed in it; Discard changes puts them back as saved. A
@@ -567,14 +564,18 @@ document.addEventListener("change", async ev => {
    section */
 async function load(note, force, all = false) {
   const box = $("#sections");
-  let d;
-  try { d = await call(PID == null ? "settings/user/sections" : `profiles/${PID}/settings/sections`); }
+  let d, merged = null;
+  try {
+    // #194: About this person's birth date and sex (not on this screen), from the merged settings
+    [d, merged] = await Promise.all([call(PID == null ? "settings/user/sections" : `profiles/${PID}/settings/sections`),
+      PID == null ? null : call(`profiles/${PID}/settings`).catch(() => null)]);
+  }
   catch (e) { sayIn($("#loadMsg"), e.message, true); if (all) box.replaceChildren(); return; }   // (changes not saved stay)
   sayIn($("#loadMsg"), "");
   d.sections = d.sections.filter(sec => sec.settings.some(st => st.scope !== "install"));   // the server's own: on the Admin page (#167)
   const every = d.sections.flatMap(sec => sec.settings);
   NICK = every.find(st => st.key === "labNicknames")?.value || {};
-  for (const k of ["birthDate", "sex", "overrides"]) { const st = every.find(x => x.key === "ranges." + k); if (st) RANGE_CFG[k] = st.value; }   // #44
+  { const ov = every.find(x => x.key === "ranges.overrides"); RANGE_CFG = {...rangeConfig(merged), ...(ov ? {overrides: ov.value} : {})}; }   // #44
   { const th = every.find(st => st.key === "theme"); if (th) applyTheme(th.value); }   // #45: the saved default, here too
   document.querySelector("main.sets").dataset.role = d.role || "";   // whose settings each group's are (settings-nav.js)
   const cards = d.sections.map(sec => {
