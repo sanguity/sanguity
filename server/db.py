@@ -623,6 +623,23 @@ SCHEMA = [
                                                                  AND w.user_id = s.changed_by AND w.role = 'viewer')));
     DELETE FROM settings WHERE key = 'summary.questions';
     """,
+
+    # version 32: photos attached to journal entries (#161; journal_photos.py). The pictures are sealed files in
+    # profiles/<id>/journal/ under random names; a row says which entry a photo belongs to (NULL: sent, its entry not
+    # saved yet), its type and size. Nothing here says what a photo shows: its description is in the entry's encrypted
+    # body. Deleting the entry deletes its photos (journal_photos.drop_entry removes the files, the cascade the rows).
+    """
+    CREATE TABLE journal_photos(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        entry_id INTEGER REFERENCES journal(id) ON DELETE CASCADE,
+        file TEXT NOT NULL,                        -- its random name in profiles/<id>/journal/
+        type TEXT NOT NULL CHECK(type IN ('jpeg', 'png', 'webp')),
+        bytes INTEGER NOT NULL,
+        created INTEGER NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL);
+    CREATE INDEX journal_photos_profile ON journal_photos(profile_id, entry_id);
+    """,
 ]
 
 

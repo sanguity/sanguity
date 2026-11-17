@@ -34,7 +34,7 @@ label and scope are encrypted at rest (atrest.FIELDS): lab names and a clinician
 import json, re
 from datetime import date
 
-from . import activity, crypto, db as dbm, measures, person, records, security as sec, settings, summary
+from . import activity, crypto, db as dbm, journal, journal_photos, measures, person, records, security as sec, settings, summary
 
 SECTIONS = [
     ("visits", "Visits and hospital stays", "the date, the title and the clinic or clinician the record names"),
@@ -42,7 +42,10 @@ SECTIONS = [
     ("medications", "Medications", "the name, the instructions and the dates"),
     ("procedures", "Procedures, imaging and reports", "titles and dates only: not the reports' text, and no documents"),
     ("appointments", "Upcoming appointments", "the date and time, the title, with whom and where"),
-    ("journal", "Journal", "the notes, symptoms and side effects written here, with what they say (not who wrote them)"),
+    ("journal", "Journal", "the notes, symptoms, side effects and moods written here, with what they say and where on "
+                "the body (not who wrote them)"),
+    ("journal_photos", "Photos in the journal", "the photos attached to the journal entries shown, with what each "
+                       "shows (only with Journal; offered when there are some)"),   # #161: never unless ticked
     ("costs", "Costs and claims", "each claim's date, provider, what was billed, what insurance paid and your share"),
     ("about", "About this person", "the birth date, the sex labs base reference ranges on, and the heights written down "
               "(those in the dates chosen)"),   # #194: never unless ticked (the owner's page leaves it unticked)
@@ -64,7 +67,7 @@ class LinkError(ValueError):
 class ShareThrottle(sec.Throttle):
     """The sign-in throttle's rules for views: wrong tokens per address (bad:), and every view per link (link:), so
     a leaked link can't be scraped quickly. Opening the page is one view."""
-    FREE = {"bad": 10, "link": 60}
+    FREE = {"bad": 10, "link": 60, "photo": 60}   # photo: the journal photos a page shows (#161)
 
 
 throttle = ShareThrottle()
@@ -99,6 +102,8 @@ def clean(label, sections, labs, start, end, hours):
         raise LinkError(f"Pick at most {MAX_LABS} labs.")
     if labs and "results" not in sections:
         raise LinkError("Labs were picked, but Lab results isn't one of the sections.")
+    if "journal_photos" in sections and "journal" not in sections:   # #161
+        raise LinkError("Photos in the journal are shown with their entries: tick Journal too.")
     start, end = _day(start, "start"), _day(end, "end")
     if start and end and start > end:
         raise LinkError("The start date is after the end date.")
@@ -167,7 +172,9 @@ def offered(db, pid, uid):
     """The sections the owner's form offers (#225): every one, but a measure only when the profile has some of it."""
     body = records.served(db, pid)
     have = set(measures.offered(measures.context(db, pid, json.loads(body) if body else {}, settings.merged(db, pid, uid))))
-    return [{"id": i, "label": l, "what": w} for i, l, w in SECTIONS if i not in measures.IDS or i in have]
+    photos = journal_photos.any_attached(db, pid)   # #161: offered only when an entry has some
+    return [{"id": i, "label": l, "what": w} for i, l, w in SECTIONS
+            if (i not in measures.IDS or i in have) and (i != "journal_photos" or photos)]
 
 
 def lab_names(db, pid):
@@ -195,6 +202,19 @@ def viewed(db, link, ip):
     if link["label"]:
         detail["label"] = crypto.dec(link["label"])
     activity.log(db, "link", None, link["profile_id"], detail, ip, actor=SHARE_LINK)
+
+
+def photo(db, link, photo_id):
+    """(bytes, media type) of a journal photo this link shows (#161): "Photos in the journal" ticked, and an entry in
+    the link's dates lists it. None otherwise."""
+    scope = json.loads(crypto.dec(link["scope"]))
+    if "journal_photos" not in scope["sections"] or "journal" not in scope["sections"]:
+        return None
+    pid = link["profile_id"]
+    if not any(p.get("id") == photo_id for j in journal.listing(db, pid) if _in(summary._day(j.get("t")), scope)
+               for p in j.get("photos") or []):
+        return None
+    return journal_photos.get(db, pid, photo_id)
 
 
 def _in(d, scope):
@@ -259,9 +279,15 @@ def build(db, link, today=None):
                                        "who": _text(u.get("who"), 200), "where": _text(u.get("where"), 200)}
                                       for u in ups if _in(summary._day(u.get("t")), scope) and summary._day(u.get("t")) >= today),
                                      key=lambda u: u["t"])
-    if "journal" in want:
+    if "journal" in want:   # with where on the body, the group and the day's mood (#161); photos only when ticked
+        pics = "journal_photos" in want
         out["journal"] = sorted(({"t": _text(j.get("t"), 25), "kind": j.get("kind"), "title": _text(j.get("title"), 300),
-                                  "severity": j.get("severity"), "note": str(j.get("note") or "")[:4000]}
+                                  "severity": j.get("severity"), "note": str(j.get("note") or "")[:4000],
+                                  **({"mood": j.get("mood"), "energy": j.get("energy")} if j.get("kind") == "mood" else {}),
+                                  **({"where": [journal.REGIONS[w] for w in j["where"] if w in journal.REGIONS]} if j.get("where") else {}),
+                                  **({"group": _text(j["group"], 80)} if j.get("group") else {}),
+                                  **({"photos": [{"id": p["id"], "alt": _text(p.get("alt"), 300)} for p in j["photos"]]}
+                                     if pics and j.get("photos") else {})}
                                  for j in data.get("journal") or [] if isinstance(j, dict) and _in(summary._day(j.get("t")), scope)),
                                 key=lambda j: j["t"], reverse=True)
     if "costs" in want:

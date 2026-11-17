@@ -57,6 +57,8 @@ UPLOAD_MAX_TOTAL = _int("UPLOAD_MAX_TOTAL_MB", 16384) * MB
 UPLOAD_MAX_FILES = _int("UPLOAD_MAX_FILES", 20000)
 # a file unpacked from a zip may be at most this many times its compressed size (a zip bomb is thousands)
 UPLOAD_MAX_ZIP_RATIO = _int("UPLOAD_MAX_ZIP_RATIO", 200)
+# a photo attached to a journal entry (#161, journal_photos.py); nginx.conf caps one sent at 25 MB: raise both to go higher
+JOURNAL_PHOTO_MAX = _int("JOURNAL_PHOTO_MAX_MB", 20) * MB
 
 # connected sources (#32, #91: connections.py, smart.py, sync.py). Nothing is contacted until someone connects a
 # source an admin has set up; then only that source's issuer, and the hosts its discovery names.

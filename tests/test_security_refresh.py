@@ -90,6 +90,7 @@ ROUTES = {
     ("DELETE", "/api/profiles/{pid}/calendar"): (USER, "viewer"),
     ("DELETE", "/api/profiles/{pid}/calendar/{feed_id}"): (USER, "viewer"),   # anyone's: owners only (in the route)
     ("GET", "/api/profiles/{pid}/journal"): (USER, "viewer"),
+    ("GET", "/api/profiles/{pid}/journal/photos/{photo_id}"): (USER, "viewer"),   # a journal entry's photo (#161)
     ("GET", "/api/profiles/{pid}/person"): (USER, "viewer"),           # about this person (#194)
     ("GET", "/api/profiles/{pid}/summary"): (USER, "viewer"), ("PUT", "/api/profiles/{pid}/summary/questions"): (USER, "viewer"),
     ("POST", "/api/profiles/{pid}/summary/preview"): (USER, "viewer"), ("POST", "/api/profiles/{pid}/summary/pdf"): (USER, "viewer"),
@@ -110,6 +111,7 @@ ROUTES = {
     ("POST", "/api/profiles/{pid}/manual"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/costs/mark"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/journal"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/journal/{jid}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/journal/{jid}"): (USER, "editor"),
+    ("POST", "/api/profiles/{pid}/journal/group"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/journal/photos"): (USER, "editor"),   # #161
     ("PUT", "/api/profiles/{pid}/person"): (USER, "editor"), ("POST", "/api/profiles/{pid}/person/heights"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/person/heights/{day}"): (USER, "editor"),
     ("GET", "/api/profiles/{pid}/watch/receiver"): (USER, "editor"),
@@ -316,7 +318,8 @@ PLAIN = {
     "cost_marks": {"target"}, "devices": {"token_hash"}, "documents": {"id", "ext"},
     "edits": {"target", "action", "other"}, "events": {"key_hash"}, "import_undos": {"by_name"},
     "imports": {"origin", "format"}, "jobs": {"state", "stage", "importer", "keep", "same"},
-    "journal": {"created_name", "changed_name"}, "labmaps": {"lookup", "importer", "created_name", "changed_name"},
+    "journal": {"created_name", "changed_name"}, "journal_photos": {"file", "type"},   # #161: a random file name, jpeg/png/webp
+    "labmaps": {"lookup", "importer", "created_name", "changed_name"},
     "memberships": {"role"}, "meta": {"k", "v"}, "outside_contacts": {"purpose"},
     "passkeys": {"credential_id", "public_key", "rp_id", "name", "transports"},
     "profiles": {"name", "build_mtime", "watch_file"}, "recovery_codes": {"code_hash"}, "same_results": {"pair"},

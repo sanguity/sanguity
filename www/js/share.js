@@ -7,7 +7,7 @@
    Dates are shown in this browser's own zone and format (dates.js, without anyone's settings). */
 "use strict";
 const SH_KIND = {visit: "Visit", stay: "Hospital stay", procedure: "Procedure", imaging: "Imaging", study: "Report / study",
-  note: "Note", symptom: "Symptom", side_effect: "Side effect"};
+  note: "Note", symptom: "Symptom", side_effect: "Side effect", mood: "Mood"};
 const shDay = t => t ? fmtD(zParse(String(t).slice(0, 10))) : "";
 const shWhen = t => !t ? "" : /T\d\d:\d\d/.test(t) ? fmtDT(zParse(String(t).slice(0, 19))) : shDay(t);
 const shUsd = v => v == null ? "" : v.toLocaleString(undefined, {style: "currency", currency: "USD"});
@@ -39,8 +39,13 @@ const SH_DRAW = {
   appointments: list => shTable(["When", "What", "With", "Where"], list.map(a => [shWhen(a.t), a.title, a.who, a.where]), "No upcoming appointments."),
   journal: list => list.length ? el("div", {}, ...list.map(j => el("div", {class: "share-entry"},
     el("div", {}, el("b", {text: (SH_KIND[j.kind] || "Note") + (j.title ? `: ${j.title}` : "")}),
-      j.severity ? el("span", {class: "tag", text: `severity ${j.severity}`}) : null, el("span", {class: "muted", text: " " + shWhen(j.t)})),
-    j.note ? el("p", {class: "share-note", text: j.note}) : null))) : el("p", {class: "muted", text: "No journal entries in this range."}),
+      j.severity ? el("span", {class: "tag", text: `severity ${j.severity}`}) : null,
+      j.kind === "mood" ? el("span", {class: "tag", text: [j.mood != null && `mood ${j.mood}/10`, j.energy != null && `energy ${j.energy}/10`].filter(Boolean).join(", ")}) : null,
+      el("span", {class: "muted", text: " " + shWhen(j.t)})),
+    j.where?.length || j.group ? el("p", {class: "muted", text: [j.where?.length && "Where: " + j.where.join(", "), j.group && `Logged with “${j.group}”`].filter(Boolean).join(" · ")}) : null,   // #161
+    j.note ? el("p", {class: "share-note", text: j.note}) : null,
+    j.photos?.length ? el("div", {class: "share-pics"}, ...j.photos.map((p, i) => shPhoto(p, `Photo ${i + 1} of ${j.photos.length} for ${j.title || "this entry"}`))) : null)))
+    : el("p", {class: "muted", text: "No journal entries in this range."}),
   about: a => el("div", {}, el("dl", {class: "share-about"},   // #194: only when the link's owner ticked it
     el("dt", {text: "Birth date"}), el("dd", {text: a.birthDate ? shDay(a.birthDate) : "Not given"}),
     el("dt", {text: "Sex used for reference ranges"}), el("dd", {text: a.sex || "Not given"})),
@@ -48,6 +53,23 @@ const SH_DRAW = {
   costs: list => shTable(["Date", "Service", "Provider", "Billed", "Insurance paid", "Your share"],
     list.map(c => [shDay(c.t), c.title, c.provider, shUsd(c.billed), shUsd(c.paid), shUsd(c.owe)]), "No claims in this range."),
 };
+
+/* a journal photo (#161), only in a link whose owner ticked "Photos in the journal": asked for by the token like the
+   view itself, and shown from its own bytes as a data: address (the page's policy allows no other) */
+let SH_TOKEN = "";
+function shPhoto(p, fallback) {
+  const img = el("img", {alt: p.alt || fallback}), fig = el("figure", {class: "share-pic"}, img, p.alt ? el("figcaption", {text: p.alt}) : null);
+  (async () => {
+    try {
+      const r = await fetch("api/share/view", {method: "POST", cache: "no-store", credentials: "omit",
+        headers: {"X-Sanguity": "1", "Content-Type": "application/json"}, body: JSON.stringify({token: SH_TOKEN, photo: p.id})});
+      if (!r.ok) throw new Error(r.status);
+      const blob = await r.blob();
+      img.src = await new Promise((ok, no) => { const rd = new FileReader(); rd.onload = () => ok(rd.result); rd.onerror = no; rd.readAsDataURL(blob); });
+    } catch (e) { fig.replaceChildren(el("p", {class: "muted", text: "This photo couldn't be loaded. Reload the page to try again."})); }
+  })();
+  return fig;
+}
 
 /* the phone's and watch's measures, immunizations, ECGs and BMI (#225; server/measures.py): a block's lead lines, its
    table and the note under it. Times are the local times the phone took them at, written in this browser's format. */
@@ -68,6 +90,7 @@ async function shLoad() {
     $("#shareBody").replaceChildren();
   };
   if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) { broken(); return; }
+  SH_TOKEN = token;
   let r;
   try {
     r = await fetch("api/share/view", {method: "POST", cache: "no-store", credentials: "omit",
@@ -82,7 +105,8 @@ async function shLoad() {
     el("p", {class: "hint", text: `Shared read-only through a link, by an owner of this profile. It shows records ${range}, ` +
       `in these sections only: ${d.sections.map(s => s.label).join(", ")}. The link stops working on ${fmtDT(d.expires * 1000)}, ` +
       "or earlier if it's revoked. Each time it's opened, the profile's owners see that in its activity log."}));
-  $("#shareBody").replaceChildren(...d.sections.map(s => el("section", {class: "card", id: "share-" + s.id},
+  // #161: the journal's photos are shown with their entries, not as a section of their own
+  $("#shareBody").replaceChildren(...d.sections.filter(s => s.id !== "journal_photos").map(s => el("section", {class: "card", id: "share-" + s.id},
     el("h2", {text: s.label}), el("p", {class: "hint", text: "Shows " + s.what + "."}),
     SH_DRAW[s.id] ? SH_DRAW[s.id](d[s.id] || []) : shBlock(d[s.id] || {}))));   // a measure's block (#225)
 }

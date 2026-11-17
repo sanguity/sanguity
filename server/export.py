@@ -3,7 +3,10 @@
 The zip:
   README.txt          what this is and how to load it again
   data.json           the records, with each document link pointing at the copy in documents/, and the journal
-                      (notes, symptoms and side effects people wrote, journal.py) as its "journal" list
+                      (notes, symptoms, side effects and moods people wrote, journal.py) as its "journal" list, each
+                      photo an entry lists naming its file below ("file")
+  journal/photos/<id>.<jpg|png|webp>  the journal's photos (#161), as kept: their metadata was taken out when sent.
+                      Like the journal itself, they aren't loaded back in from an export
   settings.json       the settings set for the profile, shaped like settings.example.json (none: all at their defaults)
   documents/<id>/...  every document, and for HTML records the pictures and stylesheets they show
   watch/daily.json    the watch and scale summary shown with the profile (if any): its daily measures, home blood
@@ -18,7 +21,7 @@ It's written as it's sent, a piece at a time, so a large profile never sits in m
 """
 import datetime, gzip, json, os, re, shutil, urllib.parse, zipfile
 
-from . import crypto, cycle_tracking, ecg, profiles as prof, records, settings, uploads, watch_store
+from . import crypto, cycle_tracking, ecg, journal_photos, profiles as prof, records, settings, uploads, watch_store
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
 REF = re.compile(r"""(?:src|href)\s*=\s*["']([^"'#?]+)""", re.I)
@@ -44,7 +47,8 @@ def plan(db, pid, cycle=False):
     return {"pid": pid, "name": p["name"], "docs": docs, "activity": log,
             "data": records.assemble(db, pid), "uploads": uploads.stored_files(db, pid),
             "settings": settings.to_file(db, pid), "watch": watch, "waves": waves,
-            "cycle": cycle_tracking.for_export(db, pid) if cycle else None}
+            "cycle": cycle_tracking.for_export(db, pid) if cycle else None,
+            "photos": journal_photos.stored(db, pid)}   # #161
 
 
 def filename(name, now=None):
@@ -135,6 +139,10 @@ def stream(p, exported_by, now=None):
             name = f"documents/{m.group(1)}/{os.path.basename(doc[0])}"
             included[m.group(1)] = (name, doc)
             d["url"] = name + ("#" + frag if frag else "")   # a plain path, as build.py writes them
+        names = {i: journal_photos.export_name(i, kind) for i, kind, path in p.get("photos") or [] if os.path.isfile(path)}
+        for j in data.get("journal") or []:   # #161: each photo names its file in the zip
+            for ph in j.get("photos") or []:
+                ph["file"] = names.get(ph.get("id"))
         yield add_bytes("data.json", json.dumps(data, separators=(",", ":")).encode())
     # always there, even with nothing set, so loading the export back in (import_dataset) restores the settings exactly
     yield add_bytes("settings.json", json.dumps(p["settings"], indent=1, ensure_ascii=False).encode())
@@ -157,6 +165,9 @@ def stream(p, exported_by, now=None):
     for upload_id, rel, path in p["uploads"]:
         if os.path.isfile(path):
             yield from add_file(f"uploads/{upload_id}/{rel}", path, not rel.lower().endswith(STORED))
+    for photo_id, kind, path in p.get("photos") or []:   # #161: pictures are compressed already
+        if os.path.isfile(path):
+            yield from add_file(journal_photos.export_name(photo_id, kind), path, False)
     yield add_bytes("activity.json", json.dumps(p["activity"], indent=1).encode())
     readme = f"""Sanguity export: {p['name']}
 Exported {now:%Y-%m-%d %H:%M} by {exported_by}.
@@ -168,7 +179,7 @@ no longer need.
   settings.json      the profile's settings{'' if len(p['settings']) > 1 else ' (none set: all at their defaults)'}
   documents/         the documents, one folder each
   watch/daily.json   watch and scale summary{'' if p['watch'] else ' (none)'}
-{f"  watch/ecg/         each ECG recording's samples, by the key in daily.json: {len(p['waves'])}" + chr(10) if p.get('waves') else ''}{"  cycle/cycle.json   menstrual cycle records from the phone apps, ticked in for this export" + chr(10) if p.get('cycle') else ''}  uploads/           the files uploaded to import, as they were sent (zips unpacked): {len({u for u, _, _ in p['uploads']})} upload(s)
+{f"  watch/ecg/         each ECG recording's samples, by the key in daily.json: {len(p['waves'])}" + chr(10) if p.get('waves') else ''}{"  cycle/cycle.json   menstrual cycle records from the phone apps, ticked in for this export" + chr(10) if p.get('cycle') else ''}{f"  journal/photos/    the photos attached to journal entries: {len(p['photos'])}" + chr(10) if p.get('photos') else ''}  uploads/           the files uploaded to import, as they were sent (zips unpacked): {len({u for u, _, _ in p['uploads']})} upload(s)
   activity.json      who opened, shared or changed this profile, and when
 {f'''
 {len(missing)} document link(s) pointed at files that are no longer on the server and are left out.
@@ -185,7 +196,7 @@ To load it into a Sanguity install (into an empty profile, or replacing one's re
 # ---------------------------------------------------------------- loading an export
 
 ALLOWED = re.compile(r"^(data\.json|settings\.json|README\.txt|activity\.json|watch/daily\.json|watch/ecg/[0-9a-f]{16}\.json|"
-                     r"cycle/cycle\.json|documents/[^/]+/.+|uploads/\d+/.+)$")
+                     r"cycle/cycle\.json|documents/[^/]+/.+|uploads/\d+/.+|journal/photos/\d+\.(?:jpg|png|webp))$")
 WAVE = re.compile(r"^watch/ecg/([0-9a-f]{16})\.json$")   # (#225) kept as the app keeps them: gzipped, then sealed
 LEFT_OUT = {"cycle/cycle.json"}   # cycle records (#183): not loaded into the profile, nor kept in its folder
 UPLOAD = re.compile(r"^uploads/(\d+)/(.+)$")
@@ -216,7 +227,7 @@ def import_archive(db, pid, archive):
             if (m := UPLOAD.match(i.filename)):
                 sent.setdefault(int(m.group(1)), []).append((m.group(2), i))
                 continue
-            if i.filename in LEFT_OUT:
+            if i.filename in LEFT_OUT or i.filename.startswith("journal/"):   # #161: like the journal, not loaded
                 continue
             target = os.path.join(new, *parts)
             os.makedirs(os.path.dirname(target), exist_ok=True)

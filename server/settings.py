@@ -626,6 +626,25 @@ define("person.targets", "person", "Targets of your own", {}, _targets_check, ki
 LEGACY = {"ranges.birthDate": "person.birthDate", "ranges.sex": "person.sex"}   # old name in a settings.json -> now
 
 
+# ---------------------------------------------------------------- #161 the journal's symptom groups (server/journal.py)
+# Not on the Settings screen: the journal's card on the Timeline tab changes them (journal.js). Sealed: symptom names
+# are health information.
+from . import journal as _journal
+
+
+def _groups_check(v):
+    try:
+        return _journal.check_groups(v)
+    except _journal.JournalError as e:
+        raise SettingError(str(e)) from None
+
+
+section("journal", "Journal", "Symptom groups: your own named sets of symptoms, logged in one go.")
+define("journal.groups", "journal", "Symptom groups", [], _groups_check, kind="groups", screen=False,
+       help="Named sets of symptoms, such as “Migraine day”: headache, nausea, light sensitivity. Each is logged with "
+            "its own severity.")
+
+
 # ---------------------------------------------------------------- storage
 
 def _where(scope, pid, uid):

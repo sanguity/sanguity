@@ -196,8 +196,8 @@ class ShareLinks(unittest.TestCase):
         listed = self.c["robin"].get(f"/api/profiles/{self.pid}/links").json()
         self.assertNotIn(token, json.dumps(listed))
         self.assertIn("Hemoglobin", listed["labs"])
-        self.assertEqual([s["id"] for s in listed["sections"]], [s for s in share_links.SECTION_IDS if s not in measures.IDS],
-                         "every section, but a measure only when the profile has some (#225)")
+        self.assertEqual([s["id"] for s in listed["sections"]], [s for s in share_links.SECTION_IDS if s not in measures.IDS and s != "journal_photos"],
+                         "every section, but a measure, or the journal's photos (#161), only when the profile has some (#225)")
 
     def test_no_cookie_is_set_and_none_is_read(self):
         token, _ = self.make()

@@ -59,7 +59,7 @@ function resultBody(d, eid) {
 }
 function openEvent(e) {
   if (!e) return;
-  if (e.k === "journal") return openJournal(e);   // journal.js
+  if (e.k === "journal" || e.k === "mood") return openJournal(e);   // journal.js (a mood: #161)
   if (e.k === "cycle") return openCycle(e);       // cycle.js (#183)
   const d = DATA.details[e.id] || {}, c = CAT_OF[e.k] || CATS[2];
   state.selEv = e.id;
