@@ -436,6 +436,15 @@ Everything on `main` so far; it becomes the first tagged release.
   early: before 2 years the charts use the corrected age. A child's BMI (#195) says its percentile for age. Weights
   under 50 lb from C-CDA, Epic MyChart and CareSpace records are no longer left out, and C-CDA brings head
   circumference. Where measurements fall, sourced and labelled; never what that means.
+- **Connected sources pull immunizations, allergies, pharmacy fills and appointments** (#228): four new kinds to choose
+  per connection (Immunization, AllergyIntolerance, MedicationDispense and booked Appointments), and documents now
+  read ImagingStudy too. Their scopes are in the defaults the setup screen and its walk-through give (SMART v1 `.read`,
+  or `.rs` where discovery says v2; an insurer's stay claims alone; a discovery that lists its scopes type by type is
+  taken at its word). They come in as an upload of the same records would, with the same source keys, so a portal's
+  export file and a sync count each once. Turning one off stops it being pulled and can remove what it brought, as for
+  the other kinds: an appointment, an allergy or a pharmacy fill is told apart from a planned visit, a problem or a
+  claim's fill by the resource it came from. A source set up before says which kinds its scopes leave out; connections
+  made before ask to sign in again only when someone turns one of those on. The fake SMART server serves each.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
@@ -463,6 +472,12 @@ From an install with one watch receiver secret (before #46):
   secret until that profile makes its own on the Settings page. With your own compose file or install template, give
   the app write access to `WATCH_DIR/keys` (`compose.yaml` and `compose.release.yaml` mount it), or secrets made in
   Settings can't reach the receiver; the TrueNAS template doesn't mount it yet.
+
+From an install with connected sources (before #228):
+- To offer immunizations, allergies, pharmacy fills and appointments, add their scopes to each source under Admin →
+  Connected-source apps (the source says which kinds it leaves out; the walk-through lists the scopes) and their types
+  in the app's registration at the vendor. Existing connections keep pulling what they did, and ask to sign in again
+  only when someone turns a new kind on.
 
 From an install whose phone already sent blood glucose (before #181):
 - Nothing to do: on its first start after updating, the receiver reads the glucose in the uploads it has archived in

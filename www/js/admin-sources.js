@@ -116,6 +116,8 @@ function sourceRow(s) {
     s.waiting ? el("span", {class: "tag walk-tag", text: "Waiting for review"}) : null,
     el("p", {class: "muted", text: `${s.issuer} · ${s.auth} client · ${state}`}),
     el("p", {class: "muted", text: `On this install: ${plural(n.active, "active connection")}, ${n["needs reconnect"]} needing a reconnect, ${n.disconnected} disconnected. This count is never sent anywhere.`}),
+    (s.leaves_out || []).length ? el("p", {class: "muted src-leaves", text: `Its scopes leave out ${s.leaves_out.join(", ").toLowerCase()}, ` +   // #228
+      "so people can't choose them. To offer them, add their scopes under Change and in the app's registration at the vendor."}) : null,
     el("div", {class: "row"},
       el("button", {class: "btn small primary", type: "button", text: "Test this connection", onclick: async () => {
         msg.replaceChildren(el("p", {class: "muted", text: "Reading its discovery…"}));

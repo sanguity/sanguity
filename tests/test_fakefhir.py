@@ -356,7 +356,8 @@ class Searches(Base):
     def test_every_resource_type(self):
         tok = self.sign_in("pat-2")
         for t in ("Patient", "Observation", "Condition", "MedicationRequest", "Encounter", "DocumentReference",
-                  "DiagnosticReport", "ExplanationOfBenefit"):
+                  "DiagnosticReport", "ExplanationOfBenefit",
+                  "Immunization", "AllergyIntolerance", "MedicationDispense", "Appointment", "ImagingStudy"):   # #228
             for patient in ("pat-1", "pat-2"):
                 self.assertTrue(self.fake.resources(t, patient), (t, patient))
             status, _, b = self.search(tok["access_token"], f"{t}?patient=pat-2")
@@ -364,6 +365,21 @@ class Searches(Base):
             self.assertTrue(b["entry"], t)
             self.assertTrue(all(e["resource"].get("subject", e["resource"].get("patient", {})).get("reference", "Patient/pat-2")
                                 == "Patient/pat-2" for e in b["entry"]), t)
+
+    def test_appointments_name_their_patient_among_participants(self):   # #228
+        tok = self.sign_in("pat-1")
+        _, _, b = self.search(tok["access_token"], "Appointment?patient=pat-1")
+        self.assertEqual([e["resource"]["id"] for e in b["entry"]], ["appt-1"])
+        self.assertIn({"actor": {"reference": "Patient/pat-1"}, "status": "accepted"}, b["entry"][0]["resource"]["participant"])
+        self.assertEqual(self.search(tok["access_token"], "Appointment/appt-s1")[0], 403)   # another patient's
+        added = self.fake.add({"resourceType": "Appointment", "status": "booked", "start": "2099-05-01T09:00:00Z",
+                               "participant": [{"actor": {"reference": "Patient/pat-2"}}]}, patient="pat-1")
+        self.assertEqual([p["actor"]["reference"] for p in added["participant"]], ["Patient/pat-1"])
+        self.assertEqual(self.search(tok["access_token"], "Appointment?patient=pat-1")[2]["total"], 2)
+        # each new type needs its own scope, v1 or v2
+        for scope, status in (("patient/Observation.read", 403), ("patient/Appointment.read", 200), ("patient/Appointment.rs", 200)):
+            t = self.sign_in("pat-1", scopes=["launch/patient", scope])
+            self.assertEqual(self.search(t["access_token"], "Appointment?patient=pat-1")[0], status, scope)
 
     def test_binary_attachments(self):
         tok = self.sign_in("pat-1")

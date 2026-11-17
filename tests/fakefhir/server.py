@@ -18,7 +18,9 @@ PATIENT_FIELD = {
     "DocumentReference": "subject", "DiagnosticReport": "subject", "MedicationStatement": "subject",
     "Procedure": "subject", "ExplanationOfBenefit": "patient", "Immunization": "patient",
     "AllergyIntolerance": "patient", "Coverage": "beneficiary",
+    "MedicationDispense": "subject", "ImagingStudy": "subject",   # #228
 }
+# An Appointment names its patient among its participants (#228): one is added where it names none
 FIXTURE_UPDATED = "2025-10-01T00:00:00.000Z"   # meta.lastUpdated of everything loaded from fixtures
 JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 DIGEST_INFO = {   # PKCS#1 v1.5 DigestInfo prefixes (RFC 8017 §9.2)
@@ -86,6 +88,15 @@ def scope_allows(scopes, rtype: str, op: str) -> bool:
         if perm in ("read", "*") or (perm not in ("write",) and re.fullmatch(r"c?r?u?d?s?", perm) and op in perm):
             return True
     return False
+
+
+def _with_patient(appointment: dict, patient: str, replace=False):
+    """An Appointment's patient is one of its participants: add it where none is named (or, replace, swap it)."""
+    parts = [p for p in appointment.get("participant") or [] if not (replace and str(((p or {}).get("actor") or {})
+                                                                                   .get("reference", "")).startswith("Patient/"))]
+    if not any(str(((p or {}).get("actor") or {}).get("reference", "")).startswith("Patient/") for p in parts):
+        parts.append({"actor": {"reference": f"Patient/{patient}"}, "status": "accepted"})
+    appointment["participant"] = parts
 
 
 def outcome(code: str, message: str) -> dict:
@@ -308,6 +319,8 @@ class FakeFHIR:
         r.setdefault("id", rtype.lower() + "-" + secrets.token_hex(4))
         if patient and rtype in PATIENT_FIELD:
             r[PATIENT_FIELD[rtype]] = {"reference": f"Patient/{patient}"}
+        if patient and rtype == "Appointment":
+            _with_patient(r, patient, replace=True)
         with self._lock:
             r["meta"] = dict(r.get("meta") or {}, versionId="1", lastUpdated=self._stamp())
             self._store(r)
@@ -425,6 +438,8 @@ class FakeFHIR:
             rtype = r["resourceType"]
             if rtype in PATIENT_FIELD and PATIENT_FIELD[rtype] not in r:
                 r[PATIENT_FIELD[rtype]] = {"reference": f"Patient/{patient}"}
+            if rtype == "Appointment":
+                _with_patient(r, patient)
             r["meta"] = dict(r.get("meta") or {}, versionId="1", lastUpdated=FIXTURE_UPDATED)
             self._binaries(r, patient, attachments)
             self._store(r)
@@ -462,6 +477,10 @@ class FakeFHIR:
             return r["id"]
         if rtype == "Binary":
             return self._owner.get(("Binary", r["id"]))
+        if rtype == "Appointment":
+            ref = next((ref for p in r.get("participant") or [] for ref in [((p or {}).get("actor") or {}).get("reference") or ""]
+                        if ref.startswith("Patient/")), None)
+            return ref_id(ref) if ref else None
         ref = (r.get(PATIENT_FIELD.get(rtype, "")) or {}).get("reference")
         return ref_id(ref) if ref else None
 

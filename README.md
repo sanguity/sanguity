@@ -367,9 +367,12 @@ as you choose. The count of connections per source is shown to admins and never 
 `.env`: `SYNC_MAX_RESOURCES` (20000 per pull), `SYNC_MAX_ATTACHMENT_MB` (50, the most any attachment can be),
 `CONNECT_TIMEOUT` (30 seconds).
 
-When connecting, you choose what to pull: lab results, vital signs, visits and stays, problems, medications,
-documents, and claims where the source offers them, and how far back. Sanguity asks the vendor only for the scopes
-that choice needs. **What it pulls…** on a connection changes the choice for future pulls; a kind turned off keeps
+When connecting, you choose what to pull: lab results, vital signs, visits and stays, appointments, problems,
+allergies, medications, pharmacy fills, immunizations, documents (with imaging studies), and claims where the source
+offers them, and how far back. Sanguity asks the vendor only for the scopes that choice needs, and the records come in
+with the same source keys as the portal's export file would give them, so a file and a sync of the same records count
+once. A source set up before appointments, allergies, fills and immunizations were pulled needs their scopes added
+(the setup screen says which it leaves out); its connections ask to sign in again only when someone turns one on. **What it pulls…** on a connection changes the choice for future pulls; a kind turned off keeps
 what it brought unless you remove it, which is an entry in the import history that undoing puts back. Attachments
 (visit notes, scans, reports) follow rules set for the whole server under Admin → Connected-source apps (fetched automatically or
 only when asked, which kinds of file, the largest, and a total per connection), which each connection can change;

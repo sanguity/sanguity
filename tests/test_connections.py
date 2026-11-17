@@ -766,7 +766,8 @@ class Connections(unittest.TestCase):
         r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "visits"}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(visits(), [])
-        self.assertFalse(self.data().get("upcoming"), "the upcoming appointments went too")
+        # the visit planned in the records (a planned Encounter) went too; a booked Appointment is a kind of its own (#228)
+        self.assertEqual([u["key"] for u in self.data().get("upcoming") or []], ["fhir:Appointment/appt-1"])
         hist = self.robin.get(f"/api/profiles/{self.pid}/imports").json()["imports"]
         self.assertTrue(hist[0]["removal"], hist[0])
         self.assertIn("removed", hist[0]["label"])
@@ -780,7 +781,7 @@ class Connections(unittest.TestCase):
         r = self.robin.post(f"/api/profiles/{self.pid}/imports/{hist[0]['id']}/undo", headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(len(visits()), had)
-        self.assertTrue(self.data().get("upcoming"))
+        self.assertEqual(len(self.data().get("upcoming")), 2)
         self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {k: v for k, v in before.items() if k != "imports"})
         # labs work the same way, series and all
         r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "labs"}, headers=H)
@@ -791,6 +792,206 @@ class Connections(unittest.TestCase):
         self.assertEqual(self.counts()["results"], before["results"])
         self.assertEqual(self.kim.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "labs"},
                                        headers=H).status_code, 403)   # viewers can't
+
+    # ---------------------------------------------------------------- immunizations, allergies, fills, appointments (#228)
+
+    OLD_SCOPES = ("launch/patient offline_access patient/Patient.read patient/Observation.read patient/Condition.read "
+                  "patient/MedicationRequest.read patient/Encounter.read patient/DocumentReference.read "
+                  "patient/DiagnosticReport.read patient/ExplanationOfBenefit.read patient/Binary.read")   # the default before #228
+    NEW_KINDS = ("appointments", "allergies", "fills", "immunizations")
+
+    def mine(self, kinds=None):
+        """What the profile has that #228's resources bring: {name: [source keys]}, each record once per key."""
+        d = self.data()
+        ev = lambda k, rtype: [e.get("key") for e in d["events"] if e["k"] == k and str(e.get("key")).startswith(f"fhir:{rtype}/")]
+        return {"immunizations": ev("immunization", "Immunization"), "fills": ev("rx", "MedicationDispense"),
+                "imaging": ev("imaging", "ImagingStudy"),
+                "allergies": [x.get("key") for x in d.get("problems") or [] if x.get("type") == "Allergy"],
+                "appointments": [x.get("key") for x in d.get("upcoming") or [] if str(x.get("key")).startswith("fhir:Appointment/")]}
+
+    def upload_bundle(self, resources):
+        """Upload the resources as a FHIR bundle file, as someone would from their portal's export, and save it."""
+        from server import uploads
+        body = json.dumps({"resourceType": "Bundle", "type": "collection",
+                           "entry": [{"fullUrl": f"{self.fake.fhir_base}/{r['resourceType']}/{r['id']}", "resource": r}
+                                     for r in resources]}).encode()
+        db = dbm.connect()
+        try:
+            up = uploads.create(db, self.pid, self.uids["robin"])
+            uploads.add_file(db, self.pid, up, "portal-export.json", __import__("io").BytesIO(body))
+            uploads.finish(db, self.pid, up)
+        finally:
+            db.close()
+        r = self.robin.post(f"/api/profiles/{self.pid}/uploads/{up}/import", json={}, headers=H)
+        self.assertEqual(r.status_code, 202, r.text)
+        jid, end = r.json()["id"], time.time() + 30
+        while time.time() < end:
+            j = self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()
+            if j["state"] == "preview":
+                self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/jobs/{jid}/confirm", headers=H).status_code, 202)
+            elif j["state"] in ("done", "failed"):
+                self.assertEqual(j["state"], "done", j)
+                return j
+            time.sleep(0.05)
+        self.fail("the upload didn't finish")
+
+    def test_new_kinds_asked_for_and_pulled_as_an_upload_would(self):
+        sid = self.source()
+        offered = {k["id"]: k for k in self.offered(sid)}
+        self.assertTrue(all(offered[k]["allowed"] for k in self.NEW_KINDS), offered)
+        self.assertEqual(offered["fills"]["label"], "Pharmacy fills")
+        self.assertIn("imaging studies", offered["documents"]["brings"])
+        # the scopes asked for by default: each new type, v1 (.read) or v2 (.rs) as discovery says
+        default = conns.default_scopes()
+        for t in ("Immunization", "AllergyIntolerance", "MedicationDispense", "Appointment", "ImagingStudy"):
+            self.assertIn(f"patient/{t}.read", default.split())
+            self.assertIn(f"patient/{t}.rs", conns.default_scopes({"capabilities": ["permission-v2"]}).split())
+            self.assertTrue(conns.scope_allows(f"patient/{t}.rs", t) and conns.scope_allows(f"patient/{t}.read", t))
+        self.assertNotIn("Immunization", conns.default_scopes(vendor="insurer"))   # an insurer: claims alone, as before
+        # a discovery that lists its patient scopes type by type is taken at its word; a wildcard covers them all
+        listed = {"scopes_supported": ["launch/patient", "patient/Observation.read", "patient/Immunization.read"]}
+        self.assertEqual(conns.default_scopes(listed), "launch/patient offline_access patient/Patient.read "
+                                                       "patient/Observation.read patient/Immunization.read")
+        self.assertEqual(conns.default_scopes({"scopes_supported": ["patient/*.read"]}), default)
+        # choosing only the new kinds asks for only their scopes (and the patient's)
+        r = self.robin.post(f"/api/profiles/{self.pid}/connect/start", headers=H, json={"source": sid, "kinds": list(self.NEW_KINDS)})
+        self.assertEqual(r.status_code, 200, r.text)
+        types = {s.split("/")[1].split(".")[0] for s in q(r.json()["url"])["scope"].split() if s.startswith("patient/")}
+        self.assertEqual(types, {"Patient", "Appointment", "AllergyIntolerance", "MedicationDispense", "Immunization"})
+        # the same records uploaded first as a portal's export file: the sync's first pull finds them already here
+        pat = [x for t in ("Immunization", "AllergyIntolerance", "MedicationDispense", "Appointment", "ImagingStudy")
+               for x in self.fake.resources(t, "pat-1")]
+        self.assertEqual(len(pat), 5)
+        self.upload_bundle(pat)
+        from_file = self.mine()
+        self.assertEqual(from_file, {"immunizations": ["fhir:Immunization/imm-1"], "fills": ["fhir:MedicationDispense/disp-1"],
+                                     "imaging": ["fhir:ImagingStudy/img-1"], "allergies": ["fhir:AllergyIntolerance/allergy-1"],
+                                     "appointments": ["fhir:Appointment/appt-1"]})
+        cid = self.connect(sid)
+        self.fake.clear_requests()
+        self.first_pull(cid)
+        searched = {r.path for r in self.fhir_paths()}
+        self.assertTrue({"/fhir/Immunization", "/fhir/AllergyIntolerance", "/fhir/MedicationDispense", "/fhir/Appointment",
+                         "/fhir/ImagingStudy"} <= searched, searched)
+        self.assertEqual(self.mine(), from_file)   # each once: the file and the sync carry the same source keys (#96)
+        d = self.data()
+        allergy = next(x for x in d["problems"] if x.get("type") == "Allergy")
+        self.assertEqual((allergy["name"], allergy.get("severity"), allergy.get("criticality")),
+                         ("Allergy: Sulfamethoxazole (Hives)", "Moderate", "High"))
+        self.assertTrue(any(x.get("type") != "Allergy" for x in d["problems"]), "the problem list's own entries came too")
+        fill = next(e for e in d["events"] if e.get("key") == "fhir:MedicationDispense/disp-1")
+        self.assertIn("Harbor Street Pharmacy", fill["sub"])
+        # a sync on its own brings the same as the upload did: a fresh profile, the same connection's records
+        db = dbm.connect()
+        other = prof.create_profile(db, "Robin again (fictional)", owner_id=self.uids["robin"])
+        db.close()
+        was, self.pid = self.pid, other
+        try:
+            self.first_pull(self.connect(sid))
+            self.assertEqual(self.mine(), from_file)
+            # and a later pull brings a new one in, as an import of its own
+            self.fake.add({"resourceType": "Immunization", "status": "completed", "occurrenceDateTime": "2026-10-20",
+                           "vaccineCode": {"coding": [{"system": "http://hl7.org/fhir/sid/cvx", "code": "141"}]}}, patient="pat-1")
+            res = self.pull(self.listed_ids()[0])
+            self.assertTrue(res["ok"], res)
+            self.assertEqual(res["counts"]["kinds"], {"immunization": 1}, res)
+            self.assertEqual(len(self.mine()["immunizations"]), 2)
+        finally:
+            self.pid = was
+
+    def offered(self, sid):
+        return next(x for x in self.robin.get(f"/api/profiles/{self.pid}/connections").json()["sources"] if x["id"] == sid)["kinds"]
+
+    def listed_ids(self):
+        return [c["id"] for c in self.robin.get(f"/api/profiles/{self.pid}/connections").json()["connections"]]
+
+    def test_new_kinds_turned_off_and_removed(self):
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        had, before = self.mine(), self.counts()
+        self.assertTrue(all(had.values()), had)
+        planned = [u for u in self.data()["upcoming"] if u["key"] == "fhir:Encounter/enc-3"]
+        self.assertTrue(planned)
+        # off: their searches stop
+        self.assertEqual(self.patch(cid, {"kinds": [k for k in conns.KINDS if k not in self.NEW_KINDS]}).status_code, 200)
+        self.fake.clear_requests()
+        self.assertTrue(self.pull(cid)["ok"])
+        searched = {r.path for r in self.fhir_paths()}
+        self.assertFalse(searched & {"/fhir/Immunization", "/fhir/AllergyIntolerance", "/fhir/MedicationDispense",
+                                     "/fhir/Appointment"}, searched)
+        self.assertIn("/fhir/ImagingStudy", searched)   # imaging studies come with documents, still on
+        self.assertEqual(self.mine(), had)   # what they brought stays until removed
+        # removed one kind at a time: only what that kind brought, nothing that shares its place
+        problems = lambda: [x for x in self.data().get("problems") or [] if x.get("type") != "Allergy"]
+        n_problems = len(problems())
+        claims_rx = lambda: [e for e in self.data()["events"] if e["k"] in ("claim", "rx") and str(e.get("key")).startswith("fhir:ExplanationOfBenefit/")]
+        n_claims = len(claims_rx())
+        removed = []
+        for kind in self.NEW_KINDS:
+            r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": kind}, headers=H)
+            self.assertEqual(r.status_code, 200, (kind, r.text))
+            removed.append(r.json()["import"])
+            self.assertEqual(self.mine()[kind], [], kind)
+        self.assertEqual(self.mine()["imaging"], had["imaging"])
+        self.assertEqual(len(problems()), n_problems, "the problem list's own entries stay")
+        self.assertEqual(len(claims_rx()), n_claims, "claims stay")
+        self.assertEqual([u["key"] for u in self.data()["upcoming"]], ["fhir:Encounter/enc-3"], "the planned visit stays")
+        hist = self.robin.get(f"/api/profiles/{self.pid}/imports").json()["imports"]
+        self.assertEqual(hist[0]["counts"]["kinds"], {"immunization": 1}, hist[0])   # immunizations last: one event
+        self.assertIn("Immunizations from", hist[0]["label"])
+        # the problem list removed: allergies stay, and the other way round
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "problems"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(problems(), [])
+        self.robin.post(f"/api/profiles/{self.pid}/imports/{r.json()['import']}/undo", headers=H)
+        # undone from the history, each comes back
+        for iid in reversed(removed):
+            self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/imports/{iid}/undo", headers=H).status_code, 200)
+        self.assertEqual(self.mine(), had)
+        self.assertEqual(len(problems()), n_problems)
+        self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {k: v for k, v in before.items() if k != "imports"})
+        # documents removed takes the imaging studies too
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "documents"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.mine()["imaging"], [])
+
+    def test_a_connection_made_before_asks_to_sign_in_again_only_for_a_new_kind(self):
+        sid = self.source(scopes=self.OLD_SCOPES)
+        mine = next(x for x in self.robin.get("/api/connect/sources").json()["sources"] if x["id"] == sid)
+        self.assertEqual(mine["leaves_out"], ["Appointments", "Allergies", "Pharmacy fills", "Immunizations"])
+        offered = {k["id"]: k["allowed"] for k in self.offered(sid)}
+        self.assertFalse(any(offered[k] for k in self.NEW_KINDS), offered)   # the setup doesn't ask for them
+        self.assertTrue(offered["documents"])
+        cid = self.connect(sid)   # everything its access allows
+        self.first_pull(cid)
+        self.assertEqual(self.mine()["immunizations"], [])
+        # the admin adds the new scopes (as the walk-through now lists them); the connection goes on as it was
+        r = self.robin.patch(f"/api/connect/sources/{sid}", json={"scopes": conns.default_scopes()}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(next(x for x in self.robin.get("/api/connect/sources").json()["sources"] if x["id"] == sid)["leaves_out"], [])
+        self.fake.clear_requests()
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        self.assertFalse({r.path for r in self.fhir_paths()} & {"/fhir/Immunization", "/fhir/Appointment"})   # not granted: not asked
+        c = self.listed(cid)
+        self.assertEqual(c["state"], "active")   # nobody is asked to sign in again for kinds they haven't turned on
+        self.assertFalse(any(k["allowed"] for k in c["kinds"] if k["id"] in self.NEW_KINDS), c["kinds"])
+        self.assertEqual(self.patch(cid, {"since": "2020-01-01"}).status_code, 200)   # other changes need no sign-in
+        # turning one on does: signing in again asks for its scope, and the next pull brings it
+        r = self.patch(cid, {"kinds": c["chosen"] + ["immunizations"]})
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("Sign in again", r.json()["detail"])
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/reconnect", headers=H, json={"kinds": c["chosen"] + ["immunizations"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        scope = q(r.json()["url"])["scope"].split()
+        self.assertIn("patient/Immunization.read", scope)
+        self.assertNotIn("patient/Appointment.read", scope)   # only the kind turned on
+        self.assertTrue(self.back(self.fake.authorize(r.json()["url"], patient="pat-1")).json()["reconnected"])
+        self.assertIn("immunizations", self.listed(cid)["chosen"])
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(self.mine()["immunizations"], ["fhir:Immunization/imm-1"])
+        self.assertEqual(self.mine()["appointments"], [])
 
     # ---------------------------------------------------------------- attachments (#101)
 
@@ -1010,6 +1211,14 @@ class Connections(unittest.TestCase):
                 self.assertIn("sandbox", pasted, vendor)
         self.assertTrue(any(st.get("link") for st in g["epic"]["steps"]))
         self.assertTrue(any(st.get("portals") for st in g["insurer"]["steps"]))
+        # #228: the scopes (and types) it says to paste are the setup's defaults, with the new types; an app registered
+        # before is told to add them at the vendor
+        s = self.robin.get("/api/connect/sources").json()
+        for t in ("Immunization", "AllergyIntolerance", "MedicationDispense", "Appointment", "ImagingStudy"):
+            self.assertIn(f"patient/{t}.read", s["default_scopes"].split())
+            self.assertNotIn(t, s["insurer_scopes"])
+        for vendor in ("epic", "oracle", "other"):
+            self.assertTrue(any("MedicationDispense" in n and "sign in again" in n for n in g[vendor]["notes"]), vendor)
 
     def test_waiting_for_the_vendors_review(self):   # #165
         base = {"name": "Riverside (fictional)", "vendor": "epic", "issuer": self.fake.fhir_base}
