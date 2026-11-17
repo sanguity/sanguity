@@ -1684,6 +1684,10 @@ class XmlFile:
             return an.birth(v)
         if kl in APPLE_DATES or (l == "ExportDate" and kl == "value"):
             return an.quick_date(v)
+        if l == "ClinicalRecord" and kl == "sourceName":   # a Health Records entry: the health system it came from
+            return an.org(v)
+        if l == "ClinicalRecord" and kl == "sourceURL" and not an.keep_orgs:   # that health system's own server
+            return re.sub(r"(?i)^(https?://)[^/]+", r"\1fhir.example.org", v)
         if kl in ("sourceName", "device"):
             return an.device(v)
         if l == "Record" and kl == "value":
