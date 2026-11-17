@@ -3,7 +3,7 @@
 Roles on a profile:  owner (view, import/edit, share, delete) · editor (view, import/edit) · viewer (view).
 Admin is an account flag for managing accounts only; it gives no access to anyone's records.
 """
-import json, logging, os, secrets, string, sys, threading, urllib.parse
+import json, logging, os, secrets, string, sys, threading, traceback, urllib.parse
 from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
@@ -24,6 +24,40 @@ if not audit.handlers:
     audit.addHandler(_h)
     audit.setLevel(logging.INFO)
     audit.propagate = False
+
+
+def quiet_traceback(exc):
+    """A traceback with where each exception happened (file, line, function, the line of code) and its type, but not
+    its message, nor its cause's or context's: an importer's message quotes a file's name, and an unexpected
+    KeyError or ValueError can quote a record's text (#203)."""
+    chain, seen = [], set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        chain.append(exc)
+        exc = exc.__cause__ or (None if exc.__suppress_context__ else exc.__context__)
+    parts = []
+    for e in reversed(chain):   # the first one raised first, as Python prints them
+        frames = "".join(traceback.format_list(traceback.extract_tb(e.__traceback__)))
+        parts.append(f"Traceback (most recent call last):\n{frames}{type(e).__module__}.{type(e).__qualname__}"
+                     " (its message isn't logged: it may quote records)")
+    return "\n\nWhile handling that, another exception:\n\n".join(parts)
+
+
+class QuietTracebacks(logging.Filter):
+    """Logs a record's exception with quiet_traceback instead of the full one (ASVS 7.1.2): on the "sanguity" loggers
+    (failed imports, pulls and backups) and on uvicorn's error log (an error in a request)."""
+    def filter(self, record):
+        if record.exc_info and record.exc_info[1] is not None:
+            record.exc_text, record.exc_info = quiet_traceback(record.exc_info[1]), None
+        return True
+
+
+if not log.handlers:   # in place of Python's last-resort handler: the same stderr and plain format, quieter
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(message)s"))
+    _h.addFilter(QuietTracebacks())
+    log.addHandler(_h)
+logging.getLogger("uvicorn.error").addFilter(QuietTracebacks())
 RANK = {"viewer": 1, "editor": 2, "owner": 3}
 WWW = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "www")
 

@@ -101,11 +101,13 @@ async def _token(request: Request):
 def view(request: Request, token: str = Depends(_token), db=Depends(get_db)):
     ip = _client_ip(request)
     bad = "bad:" + ip
-    wait = links.throttle.wait(bad)
-    if wait:
-        return _bare(429, wait)
+    # a working token opens its link even while this address is waiting for wrong ones (#203): behind a reverse
+    # proxy everyone shares its address, so otherwise a stranger's few wrong tokens would shut out every holder
     link = links.find(db, token)
     if link is None:
+        wait = links.throttle.wait(bad)
+        if wait:
+            return _bare(429, wait)
         links.throttle.fail(bad)
         if token:
             _audit("share.refused", request, warn=False)

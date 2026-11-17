@@ -235,9 +235,10 @@ class ShareLinks(unittest.TestCase):
     def test_throttled(self):
         for _ in range(share_links.ShareThrottle.FREE["bad"]):
             self.view("y" * 43, 404)
-        token, _ = self.make()
-        r = self.view(token, 429)
+        r = self.view("y" * 43, 429)
         self.assertIn("retry-after", r.headers)
+        token, _ = self.make()
+        self.view(token)   # a working link still opens from that address (#203: it may be a shared proxy's)
         share_links.throttle._fails.clear()
         for _ in range(share_links.ShareThrottle.FREE["link"]):
             self.view(token)

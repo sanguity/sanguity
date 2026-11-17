@@ -50,6 +50,7 @@ python tests/test_milestones.py        # milestones and workout rules on the Set
 python tests/test_lab_mapping.py       # matching unknown lab names
 python tests/test_summary.py           # the visit summary PDF
 python tests/test_backups.py           # backups in Admin: schedule, pruning, late warning, restore check
+python tests/test_security_refresh.py  # the security review's checks: each route's access, columns encrypted or plain
 python -m unittest discover -s tests -p "test_importer*.py" -v   # the registry and every importer's fixtures
 python tests/test_anonymise.py         # tools/anonymise.py: every fixture's copy imports the same, nothing of it left
 python tests/browser_check.py          # headless browser: every tab, the drawer, pan/zoom, every page at 375 px
@@ -110,7 +111,11 @@ change. In short (the guide has the details):
   encrypted with the data key (`crypto.enc`, AES-256-GCM), in the database and on disk. A new column or file that
   holds anything about someone's health is encrypted too; only ids, timestamps, states and counts stay plain.
   [docs/database.md](docs/database.md#what-is-encrypted) lists what is. CI checks that no demo text is readable on
-  disk.
+  disk, and `tests/test_security_refresh.py` that every new text column is either in `atrest.FIELDS` or listed as
+  plain on purpose.
+- **Every route says who may call it.** A new API route needs its session dependency (`user`, `admin`, ...) and, on a
+  profile, a `need()` with the least role; `tests/test_security_refresh.py` lists every route and fails until the
+  new one is added there and to [docs/security-review.md](docs/security-review.md#who-can-reach-what).
 - **No outside requests.** Sanguity makes none and has no telemetry; a feature that needs one is opt-in.
 - **Not medical advice.** Sanguity shows what the records say. It doesn't diagnose, interpret or recommend, and
   its wording shouldn't either.
