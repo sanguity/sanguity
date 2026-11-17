@@ -49,3 +49,26 @@ let RANGES_USED = 0;   // how many results took a range from settings (app.js)
 const RANGE_NOTE_SETTINGS = " Results whose report gives no range are coloured against a range you set in Settings, marked “range from settings”.";
 /* "ref 70–99" for a result, said as from settings when it is */
 const refText = p => `ref ${p[2] ?? ""}–${p[3] ?? ""}` + (p.rs === "settings" ? ` (${RANGE_FROM_SETTINGS})` : "");
+/* ---- each result against its own range on a chart (#58): never one range across results or labs.
+   A result's range (p[2], p[3]) is already in the units shown (units.js converts it with the value, #41), so ranges
+   from two labs are compared after conversion. rangeWords(p): "0.7–1.3", "≤ 5" or "≥ 60" (null: it has none).
+   rangeSteps(pts, from, to): the reference band as steps in time, [{a, b, lo, hi}], each result's range from halfway
+   after the result before it to halfway to the next (from and to at the ends); results with no range take no part,
+   and neighbours with the same range are one step, so a series whose results all agree is one band.
+   rangesDiffer(pts): the different ranges of these results, in order ("0.7–1.3 and 0.6–1.2"), or null if they agree. */
+const rangeWords = p => p[2] != null && p[3] != null ? `${p[2]}–${p[3]}` : p[3] != null ? `≤ ${p[3]}` : p[2] != null ? `≥ ${p[2]}` : null;
+const rangeKey = rangeWords;
+function rangeSteps(pts, from, to) {
+  const rp = pts.filter(p => rangeKey(p) != null), out = [];
+  rp.forEach((p, i) => {
+    const a = i ? (rp[i - 1].ts + p.ts) / 2 : from, b = i < rp.length - 1 ? (p.ts + rp[i + 1].ts) / 2 : to, last = out[out.length - 1];
+    if (last && last.key === rangeKey(p)) last.b = b; else out.push({a, b, lo: p[2], hi: p[3], key: rangeKey(p)});
+  });
+  return out;
+}
+function rangesDiffer(pts) {
+  const w = [...new Set(pts.map(rangeWords).filter(Boolean))];
+  if (w.length < 2) return null;
+  return w.length > 4 ? w.slice(0, 3).join(", ") + ` and ${w.length - 3} more` : w.slice(0, -1).join(", ") + " and " + w[w.length - 1];
+}
+const RANGE_DIFFERS = "Reference range differs between results";

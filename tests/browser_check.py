@@ -106,6 +106,33 @@ def add_med_records(build):
         json.dump(data, f)
 
 
+RANGE_RECORDS = 990201
+
+
+def add_range_records(build):
+    """Two creatinine results from a fictional outside lab whose range (0.6–1.2 mg/dL) isn't the demo clinic's
+    (0.7–1.3), between the clinic's own (#58): one chart with two ranges. 1.25 is high by its own lab's range, though
+    inside the clinic's."""
+    path = os.path.join(build, "data.json")
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    cr = next(s for s in data["labs"] if s["name"] == "Creatinine")
+    i = RANGE_RECORDS
+    for t, v, flag in (("2026-07-15T09:10:00", 0.95, ""), ("2026-09-10T09:05:00", 1.25, "H")):
+        cr["pts"].append([t, v, 0.6, 1.2, flag, str(v)])
+        data["events"].append({"id": i, "t": t, "k": "lab", "title": "1 lab result", "sub": "CREATININE"})
+        data["details"][str(i)] = {"type": "labday", "ids": [i + 1]}
+        data["events"].append({"id": i + 1, "t": t, "k": "labitem", "title": "CREATININE", "sub": "Final · Fictional Outside Lab", "hidden": 1})
+        data["details"][str(i + 1)] = {"type": "result", "order": "CREATININE", "collected": t[:16].replace("T", " "), "resulted": t[:10],
+                                       "status": "Final", "specimen": "Blood", "lab": "Fictional Outside Lab", "dx": [],
+                                       "rows": [["Creatinine", str(v), "mg/dL", "0.6 - 1.2", flag]], "report": [], "comments": []}
+        i += 2
+    cr["pts"].sort(key=lambda p: p[0])
+    cr["n"] = len(cr["pts"])
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
+
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
@@ -116,6 +143,7 @@ def start_app():
                     "--watch", os.path.join(TMP, "watch")], check=True, stdout=subprocess.DEVNULL)
     add_html_record(os.path.join(TMP, "build"))
     add_med_records(os.path.join(TMP, "build"))
+    add_range_records(os.path.join(TMP, "build"))
     sys.path.insert(0, ROOT)
     import uvicorn
     from server import atrest, db as dbm, main, profiles, security
@@ -808,6 +836,73 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             js("state.tables.clear(); [state.sel, state.preset, state.from, state.to] = window._was60; state.labsView = 'chart'; save()")
             page.set_viewport_size({"width": 1400, "height": 900})
+
+            # ---- each result against its own range (#58): the demo's creatinine (0.7–1.3 mg/dL) with two results from
+            # an outside lab (0.6–1.2, add_range_records): the chart's band steps with each result's range and its
+            # header says the ranges differ; its table gives each row its own; 1.25 is high by its own lab's range though
+            # inside the clinic's; the heatmap and the drawer judge each result by its own; a series whose ranges agree
+            # has one band and no note; the chart and its table fit 375 px, in light and dark
+            js("window._was58 = [new Set(state.sel), state.preset, state.from, state.to]; state.tables.clear(); state.sel = new Set(['Creatinine', 'Hemoglobin']); applyPreset('all'); switchTab('labs', 'chart'); renderLabs()")
+            settle(400)
+            cr_card = "[...document.querySelectorAll('#charts .chart')].find(c => c.querySelector('.name').textContent === 'Creatinine')"
+            hb_card = "[...document.querySelectorAll('#charts .chart')].find(c => c.querySelector('.name').textContent === 'Hemoglobin')"
+            note = js(f"{cr_card}.querySelector('.hd .rdiff')?.textContent || ''")
+            check("own ranges (#58): a chart whose results' ranges differ says which, in its header",
+                  note.startswith("Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL.") and "steps with each result's own range" in note, note)
+            bands = js(f"""[...{cr_card}.querySelectorAll('svg .refband')].map(r => [+r.getAttribute('y'), +r.getAttribute('height'), +r.getAttribute('x'), +r.getAttribute('width')])""")
+            geo = js(f"{cr_card}.querySelector('svg')._geom")
+            check("…its band steps with each result's own range: two ranges, five steps (clinic, outside, clinic, outside, clinic) across the chart",
+                  len(bands) == 5 and len({(round(b[0], 1), round(b[1], 1)) for b in bands}) == 2
+                  and abs(bands[0][2] - geo["L"]) < .5 and abs(sum(b[3] for b in bands) - (geo["R"] - geo["L"])) < 1, [bands, geo])
+            check("…its edges are each one stepped line", js(f"{cr_card}.querySelectorAll('svg path.refedge').length") == 2
+                  and "V" in js(f"{cr_card}.querySelector('svg path.refedge').getAttribute('d')"))
+            hi = js("SERIES.find(s => s.name === 'Creatinine').pts.filter(p => p[4]).map(p => [p[0], p[1], p[2], p[3], p[4]])")
+            check("…1.25 mg/dL is high by its own lab's range (0.6–1.2), though inside the clinic's, and is marked ▲",
+                  ["2026-09-10T09:05:00", 1.25, 0.6, 1.2, "H"] in hi and js(f"{cr_card}.querySelectorAll('svg .pt.abn').length") == len(hi), hi)
+            check("…the chart says so to screen readers",
+                  "Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL" in js(f"{cr_card}.querySelector('svg').getAttribute('aria-label')"))
+            check("…a chart whose results' ranges agree has one band and no note",
+                  js(f"{hb_card}.querySelectorAll('svg .refband').length") == 1 and not js(f"!!{hb_card}.querySelector('.rdiff')"))
+            js("state.tables.add('Creatinine'); renderCharts()")
+            settle(200)
+            rows = js(f"""[...{cr_card}.querySelectorAll('table.data tbody tr')].map(r => [...r.cells].map(c => c.textContent))""")
+            outside = [r for r in rows if r[0].startswith(("Jul 15, 2026", "Sep 10, 2026"))]
+            check("…its table gives each row its own range, and the note says so",
+                  len(outside) == 2 and all(r[2].startswith("0.6 – 1.2") for r in outside)
+                  and all(r[2].startswith("0.7 – 1.3") for r in rows if r not in outside) and "▲ High" in [r[3] for r in outside]
+                  and js(f"{cr_card}.querySelector('.rdiff').textContent").endswith("Each row gives its own."), outside)
+            js("state.tables.clear(); switchTab('labs', 'heatmap')")
+            settle(400)
+            hm = js("""(() => { const s = SERIES.find(s => s.name === 'Creatinine'), p = s.pts.find(p => p[0].startsWith('2026-09-10'));
+                return [hmLevel(p[1], p[2], p[3]), [...document.querySelectorAll('#hm text.row')].find(t => t.firstChild.textContent === 'Creatinine')?.querySelector('title').textContent]; })()""")
+            check("heatmap (#58): the outside lab's 1.25 is coloured high against its own range; the row's name says the ranges differ",
+                  hm[0] > 0 and "Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL" in (hm[1] or ""), hm)
+            js("openEvent(EV.find(e => e.k === 'lab' && e.t.startsWith('2026-09-10')))")   # its id is the database's
+            page.wait_for_selector("#drawer.open #dbody table.data", timeout=10000)
+            dr = js("[...document.querySelectorAll('#dbody table.data tbody tr')].map(r => [...r.cells].map(c => c.textContent)).find(c => c[0].includes('Creatinine'))")
+            check("drawer (#58): the outside lab's result with its own range, said High", dr and re.match(r"0\.6 ?[-–] ?1\.2", dr[2]) and "High" in dr[-1], dr)
+            page.keyboard.press("Escape")
+            js("switchTab('overview')")
+            settle(300)
+            sp = js("""[...document.querySelectorAll('#view-overview .tile')].find(t => t.textContent.includes('Creatinine'))?.querySelectorAll('svg .spark-ref').length ?? -1""")
+            check("Overview (#58): the creatinine tile's sparkline shades each result's own range, stepped", sp == 5, sp)
+            # 375 px, light and dark: the note under the name, in the chart and in the table
+            theme_before = js("document.documentElement.dataset.theme || null")
+            page.set_viewport_size({"width": 375, "height": 800})
+            bad = []
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for table in (False, True):
+                    js("on => { state.tables.clear(); if (on) state.tables.add('Creatinine'); switchTab('labs', 'chart'); }", table)
+                    settle(400)
+                    bad += phone_fits(page, f"Creatinine {'table' if table else 'chart'} ({theme})")
+                    look = js(f"""(n => n && [getComputedStyle(n).color, getComputedStyle(document.body).backgroundColor, n.getBoundingClientRect().right])({cr_card}.querySelector('.rdiff'))""")
+                    if not look or look[0] == look[1] or look[2] > 375:
+                        bad.append(f"note ({theme}, {'table' if table else 'chart'}): {look}")
+            check("own ranges (#58): the chart and table with the note fit 375 px and read, in light and dark", not bad, bad[:6])
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            js("state.tables.clear(); [state.sel, state.preset, state.from, state.to] = window._was58; state.labsView = 'chart'; save()")
 
             # ---- detail drawer for every kind of event
             for k in js("[...new Set(EV.filter(e => !e.hidden).map(e => e.k))].sort()"):
@@ -3077,6 +3172,8 @@ def main():
             heads = js("[...document.querySelectorAll('#charts .chart .unit')].map(u => u.textContent)")
             check("Trends: the chart says it's converted; bilirubin's doesn't", len(heads) == 2   # charts come in the series' order
                   and sorted(h.split(" · ")[0] for h in heads) == ["mg/dL", "µmol/L (converted from mg/dL)"], heads)
+            rd = js("document.querySelector('#charts .chart .rdiff')?.textContent || ''")   # #58: ranges compared once converted
+            check("…and the two labs' creatinine ranges, converted, still differ", rd.startswith("Reference range differs between results: 61.9–115 and 53–106 µmol/L"), rd)
             js("state.tables.add('Creatinine'); renderCharts()")
             cell = js("document.querySelector('#charts table.data tbody td:nth-child(2)').textContent")
             check("…its table shows the reported value beside each", re.search(r"µmol/L \(reported [\d.]+ mg/dL, ref 0\.7–1\.3\)", cell), cell)
