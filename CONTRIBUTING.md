@@ -28,7 +28,11 @@ demo records. `dev-data/` and `dev-keys/` are ignored by git. To try a branch be
 
 ## Run the tests
 
-CI ([`.github/workflows/check.yml`](.github/workflows/check.yml)) runs all of these on every pull request. Run
+CI ([`.github/workflows/check.yml`](.github/workflows/check.yml)) runs all of these on every pull request that can
+affect them: a pull request that changes only documentation runs just the changelog check, one that changes only
+the install templates (`deploy/`) just the templates job, and one that changes only tests or `tools/` skips the image
+jobs ([`.github/scripts/changes.py`](.github/scripts/changes.py) has the rules). Pushes to `main`, releases and
+changes to CI itself run everything. Run
 them before you push:
 
 ```sh

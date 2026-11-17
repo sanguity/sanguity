@@ -10,7 +10,39 @@ permissions:
   contents: read
 
 jobs:
+  # Which jobs this pull request's changes can affect (.github/scripts/changes.py). A push to main, a release
+  # (workflow_call) or a change to CI runs everything. A job skipped here counts as passed for branch protection.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.c.outputs.app }}
+      image: ${{ steps.c.outputs.image }}
+      templates: ${{ steps.c.outputs.templates }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2   # a pull request's merge commit and its base: the files the pull request changes
+      - id: c
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only HEAD^1 HEAD | tee /dev/stderr | python3 -I .github/scripts/changes.py >> "$GITHUB_OUTPUT"
+          else
+            python3 -I .github/scripts/changes.py --all < /dev/null >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: CHANGELOG.md is in the format the release workflow reads
+        run: python -I .github/scripts/changelog.py check
+
   check:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -21,7 +53,10 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tools/make_icons.py tools/screenshots.py tests/test_medications.py tests/test_costs.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tools/make_icons.py tools/screenshots.py .github/scripts/changes.py tests/test_ci_changes.py tests/test_medications.py tests/test_costs.py
+
+      - name: Which jobs a pull request runs (docs only, templates only, tests only, CI itself)
+        run: python tests/test_ci_changes.py
 
       - name: Shell scripts parse
         run: bash -n docker/dev-stack.sh
@@ -29,8 +64,6 @@ jobs:
       - name: JSON templates parse
         run: for f in *.example.json lab-aliases.json; do python -m json.tool "$f" > /dev/null || exit 1; done
 
-      - name: CHANGELOG.md is in the format the release workflow reads
-        run: python -I .github/scripts/changelog.py check
 
       - uses: astral-sh/setup-uv@v10.3.3
         with:
@@ -165,6 +198,8 @@ jobs:
 
   # The install as the README describes it: build the images, start the stack, then set up and use it through nginx
   docker:
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -256,6 +291,8 @@ jobs:
   # The install templates in deploy/: each parses, uses the released image, and has the same services, folders and
   # ports as compose.release.yaml. The TrueNAS app is rendered with TrueNAS's own app library, as their CI does.
   templates:
+    needs: changes
+    if: needs.changes.outputs.templates == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -282,6 +319,8 @@ jobs:
   # mounted: the four services of compose.release.yaml, then the same image as one container (docker/allinone.py,
   # what the Unraid template runs)
   release-image:
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -385,6 +424,8 @@ jobs:
   # started on the same folders and key. The database is migrated as the app starts: its schema must reach this
   # code's version, the records must still be served, and the account made on the old version must still sign in.
   upgrade:
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
