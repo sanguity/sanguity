@@ -532,6 +532,19 @@ Everything on `main` so far; it becomes the first tagged release.
   everything (`journal/photos/`) and backups, and in a share link only when "Photos in the journal" is ticked. A
   day's mood and energy (0–10 each) is a fourth kind of entry, in its own Mood & energy lane on the timeline and its
   own row under the Labs charts. Schema step 32 adds the `journal_photos` table.
+- Export as FHIR (#205): Sharing → Export everything offers a second format, FHIR R4, a standard bundle other health
+  apps can read, with a choice of what to include and a note of what a bundle has no place for (the journal, settings,
+  workouts, out-of-pocket payments, the activity log). Labs and vitals as Observations with each result's own range
+  and flag, visits and stays as Encounters, upcoming visits as Appointments, conditions, allergies, medications and
+  fills, immunizations, procedures, imaging, documents (their files beside the bundle in the zip), messages and claims
+  (ExplanationOfBenefit); home readings with the Patient as performer and the phone's device, blood pressure as one
+  Observation with two components, CGM days as daily summaries, ECGs with the device's classification and the
+  waveform; the birth date on the Patient and the sex used for reference ranges as HL7's sex-parameter-for-clinical-use
+  extension, never as gender; heights; cycle records only when ticked. Ids are stable; the bundle is written as it's
+  sent. Sanguity's FHIR importer reads it back into the same records (home readings, the phone's measures and ECGs
+  into the watch data, conversations, a statement's prescriber, a visit's note, values with their precision kept),
+  checked over the demo and every FHIR fixture, and every bundle against HL7's FHIR R4 JSON schema
+  ([docs/fhir-export.md](docs/fhir-export.md)).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

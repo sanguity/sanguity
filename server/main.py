@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, backup_jobs, config, crypto, db as dbm, edits, export, hrzones, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
+from . import accounts, activity, alerts, atrest, backup, backup_jobs, config, crypto, db as dbm, edits, export, fhir_export, hrzones, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -1037,11 +1037,27 @@ def profile_data(pid: int, request: Request, s=Depends(user), db=Depends(get_db)
 
 
 @app.get("/api/profiles/{pid}/export")
-def profile_export(pid: int, request: Request, cycle: bool = False, s=Depends(user), db=Depends(get_db)):
+def profile_export(pid: int, request: Request, cycle: bool = False, format: str = "sanguity", include: str = "",
+                   s=Depends(user), db=Depends(get_db)):
     """Everything in the profile as one zip, streamed (owners and editors). ?cycle=1: with the cycle records, when
-    tracking is on (#183): ticked in each time, never by default."""
+    tracking is on (#183): ticked in each time, never by default. ?format=fhir (#205): a FHIR R4 bundle instead
+    (fhir_export.py), of the parts named in include= (fhir_export.PARTS' keys, comma-separated; all when empty)."""
     need(db, s, pid, "editor")
+    if format not in ("sanguity", "fhir"):
+        raise HTTPException(400, "The format is sanguity or fhir.")
     prof.sync_build(db, pid)
+    if format == "fhir":   # #205
+        try:
+            parts = fhir_export.parts_of(include)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        p = fhir_export.plan(db, pid, parts, cycle=cycle)
+        activity.log(db, "export", s, pid, {"format": "fhir", "parts": [k for k in fhir_export.PART_KEYS if k in parts],
+                                            **({"cycle": True} if p["cycle"] else {})}, ip=_client_ip(request))
+        now = settings.local_now(db, s["id"])
+        zone = settings.effective(db, None, s["id"])["dates.timeZone"][0] or None   # times without an offset are the person's
+        return StreamingResponse(fhir_export.stream(p, s["username"], now, zone), media_type="application/zip",
+                                 headers={"Content-Disposition": f'attachment; filename="{fhir_export.filename(p["name"], now)}"'})
     p = export.plan(db, pid, cycle=cycle)
     activity.log(db, "export", s, pid, {"cycle": True} if p["cycle"] else None, ip=_client_ip(request))
     now = settings.local_now(db, s["id"])   # dated in the exporting person's own time zone (#42)

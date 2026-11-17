@@ -2230,6 +2230,51 @@ def main():
                   plain == "api/profiles/1/export" and href() == "api/profiles/1/export?cycle=1", [plain, href()])
             page.uncheck("#exportCycle")
             cy_axe += axe_check(page, "Sharing export with the cycle tick")[0]
+            # ---- Export as FHIR (#205): the format, what to include and a note of what a bundle has no place for; the
+            # cycle tick goes with it; the download a FHIR R4 bundle; at 1400 and 375 px, light and dark
+            import io as _io, zipfile as _zip
+            fx_bad, fx_axe, fx_theme = [], [], js("document.documentElement.dataset.theme || null")
+            page.check("input[name=exportFormat][value=fhir]")
+            check("Export everything offers FHIR R4: chosen, it lists what to include, all ticked, and what a bundle has no place for",
+                  js("!document.getElementById('exportParts').hidden && [...document.querySelectorAll('input[name=exportPart]')].every(x => x.checked)")
+                  and "the journal, settings" in page.inner_text("#exportNotMapped") and page.inner_text("#exportLink") == "Export as FHIR"
+                  and href() == "api/profiles/1/export?format=fhir", [href(), page.inner_text("#exportLink")])
+            page.uncheck("input[name=exportPart][value=claims]")
+            page.check("#exportCycle")
+            check("…unticking one names the others in the link, and the cycle tick goes with it",
+                  href() == "api/profiles/1/export?format=fhir&include=labs,visits,problems,meds,immunizations,procedures,documents,messages,"
+                            "home,ecg,person&cycle=1", href())
+            got = page.request.get(base + "/" + href())
+            fz = _zip.ZipFile(_io.BytesIO(got.body())) if got.ok else None
+            fb = json.loads(fz.read("bundle.json")) if fz else {}
+            kinds = {e["resource"]["resourceType"] for e in fb.get("entry", [])}
+            check("…and downloads a FHIR R4 bundle of what was ticked: no claims, the cycle records, the documents' files beside it",
+                  fb.get("resourceType") == "Bundle" and "ExplanationOfBenefit" not in kinds and {"DiagnosticReport", "Encounter", "DocumentReference"} <= kinds
+                  and "cycle_flow" in json.dumps(fb) and any(n.startswith("documents/") for n in fz.namelist())
+                  and got.headers.get("content-disposition", "").endswith('-fhir.zip"'), [got.status, sorted(kinds)])
+            page.uncheck("#exportCycle")
+            page.check("input[name=exportPart][value=claims]")
+            for x in js("[...document.querySelectorAll('input[name=exportPart]')].map(x => x.value)"):
+                page.uncheck(f"input[name=exportPart][value={x}]")
+            page.click("#exportLink")
+            page.wait_for_selector("#exportMsg.bad", timeout=5000)
+            check("…with nothing ticked it says so and doesn't download", page.inner_text("#exportMsg") == "Tick at least one kind of record to include.")
+            for x in js("[...document.querySelectorAll('input[name=exportPart]')].map(x => x.value)"):
+                page.check(f"input[name=exportPart][value={x}]")
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    settle(200)
+                    if width == 375:
+                        fx_bad += phone_fits(page, f"Sharing export as FHIR, {theme}")
+                    fx_axe += axe_check(page, f"Sharing export as FHIR {theme} {width}")[0]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", fx_theme)
+            check("…it fits at 375 px, and axe-core finds nothing serious at 1400 and 375 px in light and dark", not fx_bad and not fx_axe, (fx_bad + fx_axe)[:6])
+            page.check("input[name=exportFormat][value=sanguity]")
+            check("…and Sanguity's own again: the list goes, the link is the plain export", js("document.getElementById('exportParts').hidden")
+                  and href() == "api/profiles/1/export" and page.inner_text("#exportLink") == "Export everything", href())
             page.goto(base + "/sharing.html?profile=1#summary")
             page.wait_for_selector("#sections input[value=cycle]", state="attached", timeout=10000)
             check("…the visit summary offers it too, unticked each time while the other sections are ticked",

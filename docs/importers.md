@@ -230,6 +230,16 @@ with status `Replaced` and amounts of 0 (its own under `original`), so nothing c
 the adjustment later marks the one it saved before. Coverage only names the insurer and plan; cancelled and
 entered-in-error EOBs are left out with a warning.
 
+**Home readings and Sanguity's own FHIR export (#205).** An `Observation` the Patient measured (its performer the
+Patient) of blood pressure, body temperature, blood oxygen or glucose is a home reading: the FHIR importer puts it in
+`watch` (`bp_readings`, `temp_readings`, `spo2_readings`, `glucose_readings`), with the device that took it
+(`Observation.device`) as its source, and one with no device as typed in. It also reads what Sanguity's FHIR export
+writes in codes of its own ([docs/fhir-export.md](fhir-export.md)): the phone's daily measures into `watch` metrics,
+ECGs (the waveform's `SampledData` as `ecg_waves`) and irregular rhythm notifications into `ecg`, `Communication`s into
+`message` events (one per conversation, by `inResponseTo`), a `DocumentReference`'s record kind, a `MedicationStatement`'s
+prescriber from the `MedicationRequest` it's based on, a visit's note from its `Encounter`'s narrative, and a decimal's
+precision as written ("2.0" stays "2.0"). Cycle records in such an export are left out, with a warning.
+
 ### PDF lab reports: layouts
 
 `pdf_labs.py` (`NAME = "pdf-labs"`) reads the lab reports that Quest's and Labcorp's patient portals give as PDFs.
