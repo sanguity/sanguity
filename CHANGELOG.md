@@ -453,6 +453,13 @@ Everything on `main` so far; it becomes the first tagged release.
   read only for a profile with cycle tracking on, kept as the import's own (undoing it removes them) and never in the
   watch summary; turning tracking off or deleting deletes them, a waiting preview's too. The import preview counts
   the new kinds (cycle records only there).
+- **Backups include the phone and watch data** (#227): each profile's watch receiver database, copied as the receiver
+  last saved it (still encrypted), and every upload it archived, so home blood pressure, glucose, ECGs and the rest
+  are no longer left to a copy of `WATCH_DIR`. The app reads the receiver's folder read-only for it (`compose.yaml`,
+  `compose.release.yaml` and the templates mount it so; only `keys/` stays writable). **Check a backup** opens and
+  counts it too, and `server.manage restore` hands it to the receiver, which puts it back when it starts, keeping what
+  it had aside. **Admin → Backups** says what's in a backup and what isn't, when the receiver last saved, and how many
+  uploads came after that. Installs without a phone are unaffected.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
@@ -496,6 +503,13 @@ From an install whose phone may have sent cycle records (before #183):
 - Nothing to do: on its first start after updating, the receiver rewrites each upload archived in `raw/` without any
   menstrual cycle record, sexual activity or basal body temperature it holds, once, as cycle tracking starts off for
   every profile.
+
+From an install with your own compose file or template (before #227):
+- For backups to include the phone and watch data, the app needs the receiver's folder read-only: in `compose.yaml`
+  add `- ${WATCH_DIR:-./watch-data}:/srv/watch-store:ro` and `SANGUITY_WATCH_STORE: /srv/watch-store` to the `app`
+  service; in `compose.release.yaml` mount `- ${WATCH_DIR:-./watch-data}:/watch:ro` in place of the `/watch/public`
+  line. Until then **Admin → Backups** says the backups don't have it. Restoring now stops the receiver too
+  (README, Backup and restore).
 
 Moving an install from a git checkout to the published image: see [Upgrading to a release](README.md#upgrading-to-a-release).
 

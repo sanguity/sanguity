@@ -1140,6 +1140,7 @@ path.pt.abn{stroke-width:1.5}
 .bk .bk-name{font-size:11px;overflow-wrap:anywhere}
 .bk .bk-result{margin-top:8px}
 .bk .bk-result .bk-state{font-weight:400;max-width:75ch}
+.bk .bk-result .bk-watch{margin:14px 0 6px;font-size:14px;max-width:75ch}   /* the phone and watch data (#227) */
 .bk .bk-counts{max-width:480px}
 .bk .bk-counts caption{text-align:left;font-size:12px;color:var(--muted);padding-bottom:4px}
 .bk .bk-counts td{font-variant-numeric:tabular-nums}

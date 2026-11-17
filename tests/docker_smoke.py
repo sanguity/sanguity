@@ -89,6 +89,11 @@ def main():
                   and "default-src 'none'" in (h.get("Content-Security-Policy") or ""))
             check("a document isn't reachable signed out", req("/" + docs[0].split("#")[0], signed_in=False)[0] == 401)
         check("watch data is served for the profile", req(f"/api/profiles/{pid}/watch")[0] in (200, 204))
+        # backups take the receiver's data from its folder, mounted read-only (#227); the first account is an admin,
+        # and the only one, so it needs no second factor yet
+        st, _, body = req("/api/backups")
+        watch = (json.loads(body).get("watch") or {}) if st == 200 else {}
+        check("backups can see the watch receiver's folder", watch.get("visible") is True, (st, watch))
 
         # ---- an upload through nginx: one file far above the 64 KB every other API request is held to
         check("the import page is served", req("/import.html", signed_in=False)[0] == 200)

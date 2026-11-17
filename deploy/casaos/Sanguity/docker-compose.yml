@@ -46,7 +46,7 @@ services:
       - /DATA/AppData/$AppID/data:/data
       - /DATA/AppData/$AppID/backups:/backups
       - /DATA/AppData/$AppID/records:/srv/records:ro
-      - /DATA/AppData/$AppID/watch/public:/watch/public:ro
+      - /DATA/AppData/$AppID/watch:/watch:ro   # read-only: its summaries, and its data for backups (#227)
       - /DATA/AppData/$AppID/watch/keys:/watch/keys   # the receiver's per-profile secrets, written by the app (#46)
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3)"]

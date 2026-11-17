@@ -4394,6 +4394,31 @@ def main():
                   and "encryption key isn't in the backups" in js("document.querySelector('#backups > .bk-key').textContent")
                   and js("document.querySelector('#backups > .bk-key').checkVisibility()"), js("location.hash"))
             check("…no backup yet, said in words", js("document.getElementById('bkState').textContent").startswith("No backups yet"))
+            # ---- the watch receiver's data in backups (#227): what's in them and what isn't, said on the Backups group;
+            # first with no receiver's folder in sight, then with a receiver's (fictional readings, one upload after its
+            # last save); Check a backup counts them beside the folder's now
+            more = js("document.querySelector('#backups details.more').textContent")
+            check("Backups (#227): says the phone and watch data is in them, and what isn't (exports, the key, the configuration)",
+                  "the watch receiver's data" in more and "Not in it: your original exports, the encryption key, and the configuration" in more
+                  and "phone and watch data" in js("document.querySelector('#backups > .hint').textContent"), more[:300])
+            check("…no receiver's folder in sight: not in the backups, said in words",
+                  js("document.getElementById('bkWatch').textContent").startswith("Not in the backups: the app can't see the watch receiver's folder"),
+                  js("document.getElementById('bkWatch').textContent"))
+            import hashlib as _hl, tempfile as _tf
+            from server import config as _config
+            rx227 = receiver()
+            rx227.DATA = _tf.mkdtemp(prefix="rx-backup-", dir=TMP)
+            st227 = rx227.Store()
+            for seq, rows in ((1, [("2026-11-10T12:05:00Z", 124, 80), ("2026-11-11T12:00:00Z", 121, 79)]), (2, [("2026-11-12T12:10:00Z", 126, 81)])):
+                body = json.dumps({"source": "health_connect", "timezone": "America/New_York", "sequence": seq, "timestamp": "2026-11-12T13:00:00Z",
+                                   "blood_pressure": [{"uuid": f"fictional-bk-{t}", "time": t, "systolic": s, "diastolic": d, "source": "Fictional Cuff"}
+                                                      for t, s, d in rows]}).encode()
+                rx227.archive(body)
+                if seq == 1:   # the second upload came after the receiver's last save
+                    st227.ingest(json.loads(body), _hl.sha256(body).hexdigest())
+                    st227.save()
+                    time.sleep(0.01)
+            _config.WATCH_STORE = rx227.DATA
             page.click("#bkNow")
             page.wait_for_function("document.getElementById('bkNowMsg').textContent.startsWith('Backed up')", timeout=30000)
             made = sorted(n for n in os.listdir(bk_dir) if n.startswith("sanguity-backup-"))
@@ -4405,8 +4430,19 @@ def main():
             page.wait_for_selector("#bkResult .bk-state", timeout=30000)
             res = page.inner_text("#bkResult")
             check("…Check a backup restores a copy, says it's good with the counts, and the copy is gone",
-                  res.startswith("✓ Good.") and "The copy was deleted" in res and js("document.querySelectorAll('#bkResult .bk-counts tbody tr').length") == 6
+                  res.startswith("✓ Good.") and "The copy was deleted" in res and js("document.querySelectorAll('#bkResult .bk-counts:not(.bk-watch-counts) tbody tr').length") == 6
                   and sorted(os.listdir(bk_dir)) == made and "✓ good" in page.inner_text("#bkList tbody"), (res[:300], os.listdir(bk_dir)))
+            bk_watch = js("document.getElementById('bkWatch').textContent")   # (#227)
+            check("…(#227) the receiver's data is in it: for how many profiles, when it was last saved, the upload that came after",
+                  bk_watch.startswith("In the backups: the receiver's data for 1 profile, as the receiver last saved it,") and "every upload it archived" in bk_watch
+                  and "1 upload came after that save: in the backup as it arrived, and folded in when the receiver starts after a restore." in bk_watch, bk_watch)
+            wrows = js("[...document.querySelectorAll('#bkResult .bk-watch-counts tbody tr')].map(r => [...r.children].map(c => c.textContent))")
+            check("…(#227) Check a backup opens and counts the phone and watch data, beside the receiver's folder now, never naming cycle records",
+                  "Its phone and watch data, for 1 profile, opens and is intact too, as the receiver last saved it" in res
+                  and "with 1 upload that came after that save" in res
+                  and wrows[0] == ["Readings", "2", "2", "2"] and wrows[-1] == ["Archived uploads", "2", "2", "2"]
+                  and [r[0] for r in wrows] == ["Readings", "Sleep records", "Workouts", "ECGs", "Archived uploads"]
+                  and "cycle" not in res.lower(), (res[-400:], wrows))
             page.click("#bkSchedSeg label:has-text('Daily')")
             page.fill("#bkKeep", "3")
             page.click("#bkSchedule button[type=submit]")
@@ -4445,7 +4481,7 @@ def main():
             for theme in ("light", "dark"):
                 js(f"localStorage.setItem('ht-theme', '{theme}'); applyTheme()")
                 settle(150)
-                low = js("""[...document.querySelectorAll('#backups .bk-state, #backups .bk-key, #backups .kv dd, #bkResult .bk-state, #backupNotice')]
+                low = js("""[...document.querySelectorAll('#backups .bk-state, #backups .bk-key, #backups .kv dd, #bkResult .bk-state, #bkResult .bk-watch, #backupNotice')]
                             .map(e => [e.id || e.className, getComputedStyle(e).color, getComputedStyle(document.getElementById('backups')).backgroundColor])""")
                 low = [(w, contrast(c, bg)) for w, c, bg in low if contrast(c, bg) < 4.5]
                 check(f"…readable in the {theme} theme (text contrast 4.5 or more)", low == [], low)
@@ -4457,6 +4493,7 @@ def main():
                 page.set_viewport_size({"width": 1400, "height": 900})
             js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was_200)}); applyTheme()" if theme_was_200 else "localStorage.removeItem('ht-theme'); applyTheme()")
             os.replace(os.path.join(bk_dir, stale_name), os.path.join(bk_dir, made[0]))   # up to date again for the checks below
+            _config.WATCH_STORE = ""   # (#227) as before, for the checks below
             page.goto(base + "/settings.html?profile=1")   # back to Settings for the checks below
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             first = before[0][0]

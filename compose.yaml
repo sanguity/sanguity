@@ -44,6 +44,7 @@ services:
       SANGUITY_RECORDS: /srv/records
       SANGUITY_WATCH_FILE: /srv/watch/daily.json
       SANGUITY_WATCH_KEYS: /srv/watch-keys/receiver-secrets.json   # each profile's receiver secret, for the receiver (#46)
+      SANGUITY_WATCH_STORE: /srv/watch-store   # the receiver's whole folder, read-only: its data goes in backups (#227)
       RECEIVER_PORT: ${RECEIVER_PORT:-8731}   # for the upload address shown on the Settings page
       WATCH_UPLOAD_URL: ${WATCH_UPLOAD_URL:-}
       SESSION_DAYS: ${SESSION_DAYS:-30}
@@ -72,6 +73,7 @@ services:
       - ${RECORDS_DIR:-./records}:/srv/records:ro
       - ${WATCH_DIR:-./watch-data}/public:/srv/watch:ro
       - ${WATCH_DIR:-./watch-data}/keys:/srv/watch-keys   # the app writes the receiver's per-profile secrets here
+      - ${WATCH_DIR:-./watch-data}:/srv/watch-store:ro   # read-only: backups take its databases and uploads (#227)
       - ./www:/srv/www:ro   # only for documents of older installs kept in www/files*/ (see sources.json "files")
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3)"]

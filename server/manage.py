@@ -29,6 +29,8 @@
                                          while the app runs: the live data isn't touched
   restore ARCHIVE [--yes]                replace the database, profiles and setup build with a backup's; the app must
                                          be stopped: docker compose run --rm --no-deps app python -m server.manage restore ...
+                                         The phone and watch data in it goes to the receiver, which puts it back when
+                                         it next starts (#227)
 """
 import os, shutil, sys, tempfile, zipfile
 
@@ -99,8 +101,12 @@ def _backup_command(cmd, args):
             got = backup.check(args[0])
             if not got["ok"]:
                 sys.exit("Not good: " + " ".join(got["problems"]))
+            w = got.get("watch")   # the receiver's data (#227)
             print(f"Good: the backup from {got['created']} restored into a temporary folder, {got['files']} files and "
-                  f"{sum(c['backup'] for c in got['counts'].values())} database rows as it had when it was made. The copy was deleted.")
+                  f"{sum(c['backup'] for c in got['counts'].values())} database rows as it had when it was made"
+                  + (f", and the phone and watch data of {w['profiles']} profile{'s' if w['profiles'] != 1 else ''} "
+                     f"({w['counts']['readings']['backup']} readings, {w['counts']['uploads']['backup']} archived uploads)"
+                     if w else ", without phone and watch data") + ". The copy was deleted.")
         elif cmd == "restore" and args:
             m = backup.verify(args[0])
             print(f"Backup from {m['created']}: {len(m['files'])} files. Restoring replaces this install's accounts, "
@@ -109,6 +115,18 @@ def _backup_command(cmd, args):
                 sys.exit("Nothing changed. (Add --yes to restore without being asked.)")
             m, aside = backup.restore(args[0])
             print(f"Restored. The data it replaced is in {aside}. Start the app again.")
+            w = m.get("watch_restored")   # the receiver's data (#227)
+            if w and w["staged"]:
+                print(f"The phone and watch data is waiting for the watch receiver in {w['folder']}. Restart the receiver "
+                      "too (docker compose restart receiver; the all-in-one container: restart it): when it starts it "
+                      "puts the data back, and moves what it has now to before-restore-<time>/ in its folder.")
+            elif w:
+                print(f"The phone and watch data is in {w['folder']}: the receiver's keys folder ({os.path.dirname(config.WATCH_KEYS)}) "
+                      "can't be written here. With the receiver stopped, move its watch.db, raw/ and profiles/ aside in "
+                      "WATCH_DIR, move the ones from that folder in, then start the receiver.")
+            else:
+                print("This backup has no phone and watch data (made by an older version, or there was none): the "
+                      "watch receiver's data was left as it is.")
         else:
             sys.exit(__doc__)
     except backup.BackupError as e:

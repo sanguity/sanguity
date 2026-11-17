@@ -26,8 +26,9 @@ ROOT = os.path.dirname(HERE)
 IMAGE = "ghcr.io/sanguity/sanguity"
 SERVICES = {"setup", "app", "web", "receiver"}
 # Where the TrueNAS app can't match compose.release.yaml exactly: its library mounts a whole dataset, so the app's one
-# writable /watch stands for both of compose's mounts, public/ (read-only there) and keys/ (#46, written by the app)
-TRUENAS_SAME = {("app", "/watch"): ("/watch/public", "/watch/keys")}
+# writable /watch stands for both of compose's mounts, the whole folder (read-only there: its summaries, and its data
+# for backups, #227) and keys/ (#46, written by the app)
+TRUENAS_SAME = {("app", "/watch"): ("/watch", "/watch/keys")}
 failed, passed = [], []
 
 
@@ -229,7 +230,7 @@ def unraid(want):
               c.get("Type") in ("Port", "Path", "Variable", "Label", "Device") and c.get("Target") is not None and c.get("Default") is not None)
         check(f"unraid: Config {c.get('Name')}'s value is its default", (c.text or "") == c.get("Default"), c.text)
     paths = {c.get("Target"): c.get("Mode") for c in configs if c.get("Type") == "Path"}
-    # every folder the services mount; a folder inside another (the app's /watch/public) is covered by it
+    # every folder the services mount; a folder inside another (the app's /watch/keys) is covered by it
     mounts = {}
     for s in want.values():
         for t, ro in s["mounts"].items():

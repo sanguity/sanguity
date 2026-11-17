@@ -40,6 +40,7 @@ ENV SANGUITY_VERSION=${VERSION} \
     SANGUITY_BACKUPS=/backups \
     SANGUITY_WATCH=/watch \
     SANGUITY_WATCH_FILE=/watch/public/daily.json     SANGUITY_WATCH_KEYS=/watch/keys/receiver-secrets.json \
+    SANGUITY_WATCH_STORE=/watch \
     SANGUITY_RECORDS=/srv/records \
     SANGUITY_CONFIG=/config \
     SANGUITY_AUTH=/run/secrets/sanguity \

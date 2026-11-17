@@ -220,6 +220,9 @@ Not opened as issues; written up here for the owner to file or drop:
     writable.
   - The app has no published port; the receiver's is `RECEIVER_PORT`.
   - The key file is mounted read-only, apart from the data and the backups.
+  - The app sees the watch receiver's folder read-only (#227: its databases and archived uploads go in backups); it
+    writes only `keys/` there (the receiver's secrets, and a restore's data for the receiver to take). The receiver
+    sees nothing of the app's. TrueNAS's app library mounts the whole dataset writable (deploy/README.md).
   - API docs and OpenAPI are switched off, and uvicorn sends no `Server` header.
 
 ## V2 Authentication
@@ -386,7 +389,7 @@ made, failed, checked and the schedule changed.
 | 8.1.2 | Cached copies on the server purged | N/A | No server cache. An upload's decrypted copy for an import is in a private temporary folder removed when the import step ends (`uploads.open_plain`); the PDF is made in memory. |
 | 8.1.3 | Few parameters, no sensitive ones in URLs | Met; see 13.1.3 | Sensitive values go in request bodies. An upload's file name is a query parameter (the body is the file), no longer logged by nginx (#203). |
 | 8.1.4 | Abnormal request volume detected | Fixed (#78) | Failed sign-ins are throttled, logged and kept 30 days (`alerts.py`); admins see a notice on the Admin page. Share links and feeds are throttled per link or feed. Other endpoints need a signed-in session and aren't rate-limited (Accepted). |
-| 8.1.5 | Backups made | Met | `server.manage backup`, or **Admin → Backups** (Back up now, or a daily or weekly schedule, #200): a consistent SQLite copy plus files, with a manifest of SHA-256 hashes and row counts. **Check a backup** restores one into a temporary folder in the backups folder, compares it and deletes it, leaving the live data as it was. Admins only (with their second factor); turning the schedule off or keeping fewer needs the fresh check (4.3.3); no endpoint downloads or restores a backup. |
+| 8.1.5 | Backups made | Met | `server.manage backup`, or **Admin → Backups** (Back up now, or a daily or weekly schedule, #200): a consistent SQLite copy plus files, with a manifest of SHA-256 hashes and row counts, and the watch receiver's databases (each a whole snapshot it replaces at once) and archived uploads (#227), counted too. **Check a backup** restores one into a temporary folder in the backups folder, compares it and deletes it, leaving the live data as it was. Admins only (with their second factor); turning the schedule off or keeping fewer needs the fresh check (4.3.3); no endpoint downloads or restores a backup. |
 | 8.1.6 | Backups stored securely | Met | The data in them is encrypted, and the key isn't included. |
 | 8.2.1 | Anti-caching headers | Met | As 8.1.1. |
 | 8.2.2 | Nothing sensitive in browser storage | Met; see A5, A6 | `localStorage` holds view preferences only: theme, period, tab, which lab series are picked, the profile last opened. `sessionStorage` holds an entry's id across a reload. The one copy of records a device may keep is offline records (#56), off unless turned on per device. |
@@ -600,6 +603,10 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   by backup name, never a path, and restores into a temporary folder that's deleted; nothing downloads or restores a
   backup over the live data (that stays a command-line step with the app stopped). `backup_runs` holds file names,
   sizes, states and counts only. Every backup, failure, check and schedule change is an account event.
+- The phone and watch data (#227) goes in as the receiver sealed it, never decrypted on the way; a check opens each
+  database in memory only. Cycle records (#183) are compared but never named on the page or in a check's result: only a
+  profile's owners and editors may know they're kept. A restore writes the receiver's data to its `keys/restore/`,
+  which the receiver takes at start, keeping what it had aside; nothing in the API reaches either.
 
 ### Big records stay fast (#201) and the anonymiser (#34)
 - Performance budgets change no access or storage. The anonymiser is out of scope (see the top of this document).

@@ -32,8 +32,8 @@ sanguity → Package settings → Change visibility, or no catalog can pull it.
 - every template uses the released image;
 - TrueNAS and CasaOS run the same four services as `compose.release.yaml`, with the same mounts (read-only
   where it is), container ports, commands and read-only root filesystems. One difference is allowed: TrueNAS's
-  app library mounts whole datasets, so its app container sees the watch folder read-only rather than only the
-  watch summary in `public/`;
+  app library mounts whole datasets, so its app container has the one watch folder writable, where compose mounts
+  it read-only (its summaries, and its data for backups, #227) with only `keys/` writable;
 - the Unraid container mounts every folder those services do, publishes 8080→8730 and 8081→8731, and sets
   PUID, PGID and TZ;
 - the key folder isn't inside the data folder;

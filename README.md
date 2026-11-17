@@ -289,9 +289,9 @@ as fewer), and the share of readings below 54, below 70, 70–180 and above 180 
 (not advice), in mg/dL or mmol/L as chosen under **Settings → Units**. A reading is a CGM's when it says so (Health
 Connect's specimen, interstitial fluid) or when its source sends readings minutes apart (`server/glucose.py`). The
 receiver keeps every reading, encrypted, so a reading sent twice counts once: a CGM adds about 10 MB a year to its
-`watch.db` and 3 MB to `raw/` in `WATCH_DIR` (copied as under [Backup and restore](#backup-and-restore), not in the
-app's own backups), and only the days reach the page. An uploaded Apple Health `export.xml` brings its glucose in too
-(#223), read by the same rules, so a reading both brought counts once.
+`watch.db` and 3 MB to `raw/` in `WATCH_DIR` (both in the app's backups, see [Backup and restore](#backup-and-restore)),
+and only the days reach the page. An uploaded Apple Health `export.xml` brings its glucose in too (#223), read by the
+same rules, so a reading both brought counts once.
 
 Menstrual cycle tracking (#183) is off for every profile until one of its owners turns it on under **Sources → Phone
 and watch → Cycle tracking**: periods, flow, ovulation tests, cervical mucus and spotting from either phone app. Off,
@@ -598,9 +598,8 @@ Health records are worth more than uptime: keep copies off this machine.
 
 | What | Where | How |
 |---|---|---|
-| Accounts, profiles, records as loaded | `DATA_DIR` (default `./data`) | `docker compose exec app python -m server.manage backup` writes one checked archive to `BACKUP_DIR` (default `./backups`), safe while the app runs; `--keep 14` keeps the newest 14 |
+| Accounts, profiles, records as loaded, and the phone and watch data | `DATA_DIR` (default `./data`) and `WATCH_DIR` (default `./watch-data`) | `docker compose exec app python -m server.manage backup` writes one checked archive to `BACKUP_DIR` (default `./backups`), safe while the app runs and phones upload; `--keep 14` keeps the newest 14 |
 | Your original exports | `RECORDS_DIR` | copy them; Sanguity only reads them |
-| Watch and scale data | `WATCH_DIR` | `watch.db` plus `raw/`, the receiver's archive of every upload (`receiver.py --reprocess` rebuilds the database from it); encrypted, so they need `auth/data_key` too |
 | Secrets and configuration | `auth/`, `.env`, `sources.json`, `corrections.json` (settings are in the database) | copy them; keep `auth/data_key` somewhere other than the backups (see below) |
 
 **In the app** (**Admin → Backups**): when the newest backup was made, its size and the folder it went to, with a
@@ -610,6 +609,18 @@ keeps the newest N, deleting older `sanguity-backup-*.tar.gz` files from the fol
 backup** restores one into a temporary folder beside it, compares it with what its manifest says it holds (every
 file's checksum, the database's row counts, that this install's key opens it), says whether it's good, and deletes
 the copy; the live data isn't touched. The backups go to `BACKUP_DIR`, so copy that folder off this machine too.
+
+**The phone and watch data** (#227) is in every backup: for each profile, the watch receiver's database (`watch.db`,
+copied as the receiver last saved it, still encrypted) and every upload it archived (`raw/`), so readings that came
+after its last save are there too, and folded in when it starts after a restore. Its summaries (`public/`) and
+`keys/` aren't copied: they're made again from the database and the app's. The app reads `WATCH_DIR` read-only for
+this and never writes it, except `keys/`; **Admin → Backups** says what the next backup takes, and when the receiver
+last saved. An install whose compose file is older doesn't show the app the receiver's folder: add the read-only
+line to the `app` service (`- ${WATCH_DIR:-./watch-data}:/srv/watch-store:ro` and `SANGUITY_WATCH_STORE: /srv/watch-store`
+in `compose.yaml`; `- ${WATCH_DIR:-./watch-data}:/watch:ro` in place of the `/watch/public` line in `compose.release.yaml`),
+or copy `WATCH_DIR`'s `watch.db`, `profiles/` and `raw/` yourself. Installs without a phone have nothing there and
+nothing changes. A backup can't be rewritten: what's deleted later, cycle records included (#183), stays in the
+backups made before until they're deleted.
 
 Or run the backup from cron on the host (on TrueNAS: **System > Advanced > Cron Jobs**); the Admin page shows these
 too, and warns when the newest is over a week old:
@@ -626,10 +637,16 @@ into a temporary folder as the Admin page does) and copied anywhere.
 and a backup from an older version is upgraded when the app starts:
 
 ```sh
-docker compose stop app web
+docker compose stop app web receiver
 docker compose run --rm --no-deps app python -m server.manage restore /backups/sanguity-backup-YYYYMMDD-HHMMSS.tar.gz
 docker compose up -d
 ```
+
+The phone and watch data goes to `WATCH_DIR/keys/restore/` (the one folder of the receiver's the app may write), and
+the receiver puts it back when it starts, moving what it had to `WATCH_DIR/before-restore-<time>/`; if the receiver
+was left running, `docker compose restart receiver`. On the all-in-one container (Unraid), stop it, run the restore
+with the same folders, and start it again. A backup from before #227 has no phone and watch data, and the receiver's
+is left as it is.
 
 **Restoring on another machine** needs the `auth/data_key` the backup was made with: put it in place first.
 A restore checks the backup opens with the key before replacing anything.
