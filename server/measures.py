@@ -123,12 +123,37 @@ def _src(name, app):
 
 # ---------------------------------------------------------------- each section
 
-def _home(c, readings, keep):
-    """[(local time, reading)] of a vitals list (bp_readings, temp_readings) in the period, newest first."""
+TYPED = "Typed in"   # the app of a reading typed in on Sources (#224), as health.js's TYPED
+
+
+def _minute(t):
+    """Minutes since the epoch of an ISO time, or None."""
+    try:
+        return int(datetime.fromisoformat(str(t).replace("Z", "+00:00")).timestamp() // 60)
+    except ValueError:
+        return None
+
+
+def _once_typed(rows, values, app):
+    """rows less each one typed in (#224) that a phone sent too: the same values (within .05) within a minute, as the
+    page shows it once (health.js onceTyped). values: the indexes of a row's values; app: the index of its app."""
+    sent = {}
+    for r in rows:
+        if r[app] != TYPED and _minute(r[0]) is not None:
+            sent.setdefault(_minute(r[0]), []).append(r)
+    def also_sent(r):
+        m = _minute(r[0])
+        return m is not None and any(all(_num(p[i]) is not None and _num(r[i]) is not None and abs(_num(p[i]) - _num(r[i])) < .05
+                                         for i in values) for d in (0, -1, 1) for p in sent.get(m + d, []))
+    return [r for r in rows if r[app] != TYPED or not also_sent(r)]
+
+
+def _home(c, readings, keep, values, app):
+    """[(local time, reading)] of a vitals list (bp_readings, temp_readings) in the period, newest first, a reading
+    typed in and sent by a phone counted once."""
+    rows = [list(r) + [None] * (app + 1 - len(r)) for r in c.watch.get(readings) or [] if isinstance(r, list) and len(r) >= 2]
     out = []
-    for r in c.watch.get(readings) or []:
-        if not isinstance(r, list) or len(r) < 2:
-            continue
+    for r in _once_typed(rows, values, app):
         t = c.local(r[0])
         if t and keep(t[:10]):
             out.append((t, r))
@@ -137,7 +162,7 @@ def _home(c, readings, keep):
 
 def home_bp(c, keep, most):
     rs = []
-    for t, r in _home(c, "bp_readings", keep):
+    for t, r in _home(c, "bp_readings", keep, (1, 2), 5):
         r = list(r) + [None] * (6 - len(r))
         s, d = _num(r[1]), _num(r[2])
         if s is not None and d is not None:
@@ -150,7 +175,7 @@ def home_bp(c, keep, most):
     return _block([("Date and time", "time", 110), ("Systolic/diastolic (mmHg)", "text", 130), ("Pulse (bpm)", "text", 70),
                    ("Device", "text", None)],
                   [[t, f"{_n(s)}/{_n(d)}", _n(p), src] for t, s, d, p, src in rs], lead,
-                  "Taken at home and sent by a phone app, as the device measured them. Readings taken at visits are in the records.",
+                  "Taken at home, sent by a phone app or typed in, as the device measured them. Readings taken at visits are in the records.",
                   "No readings at home in this period.", most)
 
 
@@ -158,7 +183,7 @@ def temperature(c, keep, most):
     f = c.units.get("temperature") == "F"
     unit = "°F" if f else "°C"
     rs = []
-    for t, r in _home(c, "temp_readings", keep):
+    for t, r in _home(c, "temp_readings", keep, (1,), 3):
         r = list(r) + [None] * (4 - len(r))
         v = _num(r[1])
         if v is not None:
@@ -168,7 +193,7 @@ def temperature(c, keep, most):
         n = len(rs)
         lead.append(f"{_s(n, 'reading')} · average {_n(sum(x[1] for x in rs) / n, 1)} {unit} · highest {_n(max(x[1] for x in rs), 1)} {unit}")
     return _block([("Date and time", "time", 110), (f"Temperature ({unit})", "text", 110), ("Device", "text", None)],
-                  [[t, _n(v, 1), src] for t, v, src in rs], lead, "Taken at home and sent by a phone app, as the thermometer measured them.",
+                  [[t, _n(v, 1), src] for t, v, src in rs], lead, "Taken at home, sent by a phone app or typed in, as the thermometer measured them.",
                   "No readings at home in this period.", most)
 
 
