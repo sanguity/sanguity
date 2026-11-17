@@ -560,6 +560,28 @@ SCHEMA = [
         at INTEGER NOT NULL,
         UNIQUE(profile_id, target));
     """,
+    # version 28: backups made and checked from the Admin page (backup_jobs.py, #200): Back up now, the schedule's
+    # backups and Check a backup, one row each, run in turn in the background; the page polls the one running. The
+    # backups themselves are the files in BACKUP_DIR; these rows say who asked, how it went and what a check found.
+    # Nothing here is health information (names of backup files, sizes, row counts), so nothing is encrypted.
+    """
+    CREATE TABLE backup_runs(
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL CHECK(kind IN ('backup', 'check')),
+        origin TEXT NOT NULL CHECK(origin IN ('manual', 'schedule')),
+        state TEXT NOT NULL CHECK(state IN ('queued', 'running', 'done', 'failed')),
+        file TEXT,                                 -- the backup's file name in BACKUP_DIR: made, or checked
+        size INTEGER,                              -- bytes, once made
+        stage TEXT, done INTEGER, total INTEGER,   -- how far it has got, while running
+        ok INTEGER,                                -- a check: 1 the backup is good, 0 it isn't
+        message TEXT,                              -- why it failed, or what a check found wrong
+        result TEXT,                               -- JSON: a check's counts, or the older backups a backup removed
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,                -- the username then, or "scheduled backup"
+        created INTEGER NOT NULL,
+        started INTEGER,
+        finished INTEGER);
+    """,
 ]
 
 

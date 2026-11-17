@@ -53,6 +53,9 @@ Account events (no profile), readable by admins:
   outside       {"host", "purpose"}: Sanguity contacted a vendor with no profile involved (an admin's "Test this
                 connection", connections.py)
   settings.user / settings.install   like a profile's settings entry: someone's own setting, or the install's (admin)
+  backup.create {"name", "size", "removed"} / backup.check {"name", "ok"} / backup.fail {"error"} / backup.schedule
+                {"schedule", "keep", "from"}: a backup made (Back up now, or actor SCHEDULED_BACKUP), checked by
+                restoring a copy, failing, or the schedule changed (backup_jobs.py, #200)
 
 Entries keep the actor's username as it was, so they read the same after an account is gone. A profile's entries
 go with the profile. Entries older than ACTIVITY_DAYS are pruned (at most once a day, when something is logged).
@@ -66,11 +69,13 @@ PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
-                   "labmap.remove", "settings.user", "settings.install", "connect.source", "outside")
+                   "labmap.remove", "settings.user", "settings.install", "connect.source", "outside",
+                   "backup.create", "backup.check", "backup.fail", "backup.schedule")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
 SCHEDULED_SYNC = "scheduled sync"   # a connected source's pull on its schedule (sync.py)
 SHARE_LINK = "share link"           # whoever holds a share link, opening it (share_links.py)
-SYSTEM = (COMMAND_LINE, SETUP_BUILD, SCHEDULED_SYNC, SHARE_LINK)
+SCHEDULED_BACKUP = "scheduled backup"   # a backup on the Admin page's schedule (backup_jobs.py, #200)
+SYSTEM = (COMMAND_LINE, SETUP_BUILD, SCHEDULED_SYNC, SHARE_LINK, SCHEDULED_BACKUP)
 
 
 def log(db, action, who=None, profile_id=None, detail=None, ip=None, session_id=None, actor=None, item=None):

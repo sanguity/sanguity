@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, edits, export, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
+from . import accounts, activity, alerts, atrest, backup, backup_jobs, config, crypto, db as dbm, edits, export, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -84,14 +84,17 @@ async def lifespan(app):
                 print(f"Removed {gone} upload(s) left unfinished for over a day.", flush=True)
             if (stopped := jobs.recover(db)):
                 print(f"Marked {stopped} import(s) the last stop interrupted as failed; nothing of them was saved.", flush=True)
+            backup_jobs.recover(db)   # backups and checks a stop interrupted (#200)
             _setup_code(db)
         finally:
             db.close()
         jobs.start()
         sync.start()   # connected sources' scheduled pulls (#91)
+        backup_jobs.start()   # Back up now, scheduled backups and checks (#200)
         try:
             yield
         finally:
+            backup_jobs.stop()
             sync.stop()
             jobs.stop()
 
@@ -579,7 +582,10 @@ def me(s=Depends(any_user), db=Depends(get_db)):
             "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
             "password_min": _password_min(db, s), "session_ends": _session_ends(db, s),
             # the install's HTTPS address (PUBLIC_ORIGINS), for "install from this address" on a plain-HTTP page (#56)
-            "https_address": next((o for o in sorted(config.PUBLIC_ORIGINS) if o.startswith("https://")), None)}
+            "https_address": next((o for o in sorted(config.PUBLIC_ORIGINS) if o.startswith("https://")), None),
+            # backups late or failing (#200): the Admin menu item says so, for admins who may use it
+            "backups_late": bool(s["is_admin"]) and not (s["must_change_pw"] or needs_2fa)
+                            and not accounts.admin_needs_second_factor(db, s) and backup_jobs.late(db)}
 
 
 def _session_ends(db, s):
@@ -1296,6 +1302,7 @@ app.include_router(__import__("server.routes_journal", fromlist=["router"]).rout
 app.include_router(__import__("server.routes_summary", fromlist=["router"]).router)   # the visit summary PDF (#48)
 app.include_router(__import__("server.routes_share_links", fromlist=["router"]).router)  # share links (#47)
 app.include_router(__import__("server.routes_costs", fromlist=["router"]).router)     # out-of-pocket costs: HSA/FSA, matched to claims (#55)
+app.include_router(__import__("server.routes_backups", fromlist=["router"]).router)   # backups on the Admin page (#200)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here
