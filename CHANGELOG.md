@@ -510,6 +510,8 @@ Everything on `main` so far; it becomes the first tagged release.
   draft for the profile, so one person's never replaces another's (a viewer's an owner's, say); it goes when their
   access to the profile does. Each profile's shared draft moves once, at the upgrade, to whoever kept it last and,
   unless that was a viewer, to the profile's owners and editors (schema step 31, `summary_drafts`).
+- **Picked lab names cleared at sign-out** (#220): signing out, or reaching the sign-in page, takes the lab names
+  picked on Labs out of what the browser keeps of each profile's view; the period, tab and kinds stay as they were.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
