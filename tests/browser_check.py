@@ -3134,6 +3134,140 @@ def main():
                 page.keyboard.press("Escape")
                 settle(200)
 
+            # ---- the medication log (#235): on the medication with #162's reminder, a dose logged from its drawer (taken
+            # late, with a note), corrected and removed; today's doses on the Overview, built from the reminder's times when
+            # today is one of its days, a dose logged there with one click; the doses as marks on the medication's span on
+            # the Timeline and, when ticked, as a row under the Labs charts (keyboard too); the weekly count of what was
+            # logged; never "due"; the visit summary's "Medication log" when ticked; 1400 and 375 px, light and dark, axe
+            if cur:
+                js("k => openMedication(MEDS.find(m => m.key === k))", cur["key"])
+                settle(200)
+                check("medication log: a current medication's drawer offers Log a dose", page.locator("#dbody button:text-is('Log a dose')").count() == 1)
+                page.click("#dbody button:text-is('Log a dose')")
+                settle(200)
+                f235 = js("""({title: document.getElementById('dtitle').textContent, st: document.querySelector('#dbody [role=radiogroup] [aria-checked=true]').textContent,
+                    focus: document.activeElement.textContent, date: document.querySelector('#dbody input[type=date]').value, today: zToday(),
+                    time: !!document.querySelector('#dbody input[type=time]').value})""")
+                check("…its form starts at Taken, today, now", f235["title"] == "Log a dose" and f235["st"] == "Taken" and f235["focus"] == "Taken"
+                      and f235["date"] == f235["today"] and f235["time"], f235)
+                page.keyboard.press("ArrowRight")
+                check("…the arrow keys pick what happened", js("document.querySelector('#dbody [role=radiogroup] [aria-checked=true]').textContent") == "Taken late")
+                bad235, axe235 = [], []
+                theme235 = js("document.documentElement.dataset.theme || null")
+
+                def sweep235(label, where=None):
+                    for width in (1400, 375):
+                        page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                        for theme in ("light", "dark"):
+                            js("t => { document.documentElement.dataset.theme = t; }", theme)
+                            settle(250)
+                            if where:
+                                page.locator(where).first.scroll_into_view_if_needed()
+                            if width < 400:
+                                bad235.extend(phone_fits(page, f"{label} ({theme})"))
+                            axe235.extend(axe_check(page, f"{label}, {width} px, {theme}")[0])
+                    page.set_viewport_size({"width": 1400, "height": 900})
+                    js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme235)
+                sweep235("dose form")
+                page.fill("#dbody textarea", "Fictional note: later than usual")
+                page.click("#dbody button:text-is('Log dose')")
+                page.wait_for_load_state("load")
+                page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .dose-item')", timeout=20000)
+                settle(300)
+                item = page.inner_text("#dbody .dose-item")
+                week = page.inner_text("#dbody .dose-week")
+                check("logged: the medication opens again with the dose, its note and who logged it, and this week's count of what was logged",
+                      item.startswith("Taken late") and "Fictional note: later than usual" in item and f"Logged by {USER}" in item
+                      and week == "This week: 1 of 1 logged dose taken (1 late)", [item, week])
+                body235 = page.inner_text("#dbody")
+                check("…the drawer never says a dose was due or should be taken", not re.search(r"(?i)\b(due|should|missed|overdue|adherence|forgot)\b", body235), body235[-400:])
+                sweep235("medication drawer with its log", "#dbody .doselist")
+                page.click("#dbody .dose-item button:text-is('Edit')")
+                settle(200)
+                page.click("#dbody [role=radiogroup] button:text-is('Taken')")
+                page.click("#dbody button:text-is('Save')")
+                page.wait_for_load_state("load")
+                page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .dose-item')", timeout=20000)
+                check("…corrected: Taken, the note kept", page.inner_text("#dbody .dose-item").startswith("Taken ·") and "later than usual" in page.inner_text("#dbody .dose-item"))
+                page.keyboard.press("Escape")
+                # today's doses on the Overview: the reminder's times when today is one of its days, else one row for it
+                js("switchTab('overview')")
+                settle(300)
+                today235 = js("""(() => { const c = document.getElementById('ovDoses'); if (!c) return null;
+                    const k = MR_DAYS[(zdate(Date.now()).getDay() + 6) % 7][0];
+                    return {rows: [...c.querySelectorAll('.dose-today')].map(r => [r.querySelector('.dose-slot').textContent, r.querySelector('.dose-med').textContent,
+                              r.querySelectorAll('.dose-quick button').length, r.querySelector('.dose-got')?.textContent || '']),
+                            weekday: ['mo', 'tu', 'we', 'th', 'fr'].includes(k), cur: MEDS.filter(mrCurrent).length,
+                            week: c.querySelector('.dose-week').textContent, text: c.textContent}; })()""")
+                mine = [r for r in (today235 or {}).get("rows", []) if r[1] == cur["name"]]
+                want = ["8:00 AM", "8:00 PM", "Also"] if today235 and today235["weekday"] else ["Today"]
+                check("Overview: today's medication doses, a row for each of the reminder's times today (or one), the dose logged beside it",
+                      today235 and [r[0] for r in mine] == want and "Taken" in mine[-1][3] and len({r[1] for r in today235["rows"]}) == today235["cur"], today235)
+                check("…one click logs a dose, three choices a row; the week's count; never \"due\"",
+                      today235 and all(r[2] in (0, 3) for r in today235["rows"]) and today235["week"].startswith("This week: ")
+                      and not re.search(r"(?i)\b(due|should|missed|overdue)\b", today235["text"]), today235 and today235["week"])
+                sweep235("Overview with today's doses", "#ovDoses")
+                row = page.locator("#ovDoses .dose-today", has=page.locator(".dose-quick")).first
+                what = row.locator(".dose-med").inner_text()
+                row.locator(".dose-quick button:text-is('Skipped')").click()
+                page.wait_for_load_state("load")
+                page.wait_for_function("typeof booted !== 'undefined' && booted && document.getElementById('ovDoses')", timeout=20000)
+                settle(300)
+                check("…clicked Skipped: logged now, and the row says so", js("""w => [...document.querySelectorAll('#ovDoses .dose-today')].some(r =>
+                    r.querySelector('.dose-med').textContent === w && /Skipped · /.test(r.querySelector('.dose-got')?.textContent || ''))""", what), what)
+                # the Timeline: marks on the span, by shape, with a tooltip
+                js("setRange(Date.now() - 20 * DAY, Date.now() + 5 * DAY); switchTab('timeline')")
+                settle(400)
+                marks = js("""k => { const m = MEDS.find(m => m.key === k);
+                    return [...document.querySelectorAll(`#tl .dosemark[data-med="${m.i}"]`)].map(n => n.getAttribute('class')); }""", cur["key"])
+                check("Timeline: each dose a mark on the medication's span (● taken, ○ skipped)", sorted(marks) == ["dosemark skipped", "dosemark taken"], marks)
+                page.locator("#tl .dosemark").last.hover()   # the last drawn: two logged a moment apart overlap
+                settle(150)
+                check("…hovering one says what happened and when", re.match(r"(Taken|Skipped)", page.inner_text("#tip")) and cur["name"] in page.inner_text("#tip"), page.inner_text("#tip"))
+                # Labs: a row of doses under each chart when ticked
+                page.click("#tab-labs")
+                settle()
+                if not js("document.querySelectorAll('#charts .chart svg').length"):
+                    js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
+                    settle()
+                check("Labs: \"Doses logged\" under Show on charts, off until ticked", page.locator("#optDoses").count() == 1 and not page.is_checked("#optDoses")
+                      and js("document.querySelectorAll('#charts .dosemark').length") == 0)
+                page.check("#optDoses")
+                settle(300)
+                per = js("[...document.querySelectorAll('#charts .chart svg')].map(s => s.querySelectorAll('.dosemark').length)")
+                check("…ticked, every chart has a row of the doses, and its legend says the shapes", per and all(n >= 2 for n in per)
+                      and js("!document.getElementById('doseLegend').hidden") and "◆ taken late" in page.inner_text("#doseLegend"), per)
+                page.locator("#charts .chart svg .dosemark").first.focus()
+                page.keyboard.press("Enter")
+                settle(200)
+                check("…a mark there opens the medication by keyboard", js("document.getElementById('dtitle').textContent") == cur["name"])
+                page.keyboard.press("Escape")
+                sweep235("Labs with the doses row", "#charts .chart")
+                page.uncheck("#optDoses")
+                settle(200)
+                # the visit summary: "Medication log", unticked until chosen
+                page.goto(base + "/sharing.html?profile=1#summary")
+                page.wait_for_function("OPTS && OPTS.profile.id === 1 && !document.getElementById('build').hidden", timeout=10000)
+                check("visit summary: the medication log offered unticked", page.locator("#sections input[value=medlog]").count() == 1
+                      and not page.is_checked("#sections input[value=medlog]"))
+                js("document.getElementById('since').selectedIndex = document.getElementById('since').options.length - 1")
+                for k in js("[...document.querySelectorAll('#sections input')].map(i => i.value)"):
+                    (page.check if k == "medlog" else page.uncheck)(f"#sections input[value={k}]")
+                page.click("#previewBtn")
+                page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+                pv = page.inner_text("#preview")
+                check("…ticked, the preview lists each dose with what happened and the count of what was logged",
+                      js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent)")[0].startswith("Medication log")
+                      and re.search(re.escape(cur["name"]) + r": 1 of 2 logged doses taken, 1 skipped", pv)
+                      and "Skipped" in pv and not re.search(r"(?i)\b(due|should|missed)\b", pv), pv[:400])
+                sweep235("summary preview with the medication log", "#preview")
+                check("the medication log's form, drawer, today's doses, Labs row and summary fit 375 px, light and dark", not bad235, bad235[:6])
+                check("…and pass axe-core's WCAG A and AA rules at 1400 and 375 px, light and dark", not axe235, axe235[:6])
+                page.goto(base + "/")
+                page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                js("setRange(dayTs('2025-01-01'), dayTs('2025-12-31')); switchTab('timeline')")
+                settle()
+
             # ---- where each record came from (#100): a Source line in the drawer, linking to the import in the history
             visit = js("EV.find(e => e.k === 'visit' && !e.hidden).id")
             js("id => openEvent(byId.get(id))", visit)
@@ -3660,7 +3794,8 @@ def main():
             page.click("#ftoggle")
             open_tab("labs")
             settle(300)
-            check("…and the chart overlays", max(js(fit, "#view-labs .toggle")) <= 375 and len(js(fit, "#view-labs .toggle")) == 1 + 3, js(fit, "#view-labs .toggle"))
+            check("…and the chart overlays", max(js(fit, "#view-labs .toggle")) <= 375   # and Doses logged once doses are (#235)
+                  and len(js(fit, "#view-labs .toggle")) == 1 + 3 + (1 if js("DOSES.length") else 0), js(fit, "#view-labs .toggle"))
             page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- Timeline kinds: each chip's name says its state; Show all and Only this by mouse, keyboard and on a
@@ -3992,7 +4127,8 @@ def main():
                       [...g.querySelectorAll('.toggle')].filter(t => !t.hidden).map(t => t.textContent.trim()),
                       !!lg && !g.contains(lg) && !lg.querySelector('input, button') && lg.textContent.includes('Out of range')]; })()""")
             check("…the chart overlays grouped under “Show on charts:”, the legend apart from them and only a legend",
-                  grp == ["Show on charts:", [True, True, True], ["Procedures & imaging", "Medications", "Journal"], True], grp)
+                  grp == ["Show on charts:", [True, True, True], ["Procedures & imaging", "Medications"] + (["Doses logged"] if js("DOSES.length") else [])
+                          + ["Journal"], True], grp)   # Doses logged once doses are (#235)
             marks0 = js("state.marks")
             page.click("label:has(#optMarks)")
             settle(300)
@@ -5440,7 +5576,8 @@ def main():
             # glucose and temperature tiles after the key labs, with the latest value, its date and where it came from;
             # 1400 and 375 px, light and dark, axe-core clean
             shots = os.environ.get("SANGUITY_SHOTS")
-            m225 = ["home_bp", "glucose", "temperature", "oxygen", "respiratory", "vo2max", "immunizations", "ecg"]
+            m225 = ["home_bp", "glucose", "temperature", "oxygen", "respiratory", "vo2max", "immunizations", "ecg",
+                    "medlog"]   # the medication log (#235): doses logged above
             was_profile = js("localStorage.getItem('ht-profile')")
             page.goto(base + "/sharing.html?profile=1#summary")
             page.wait_for_function("document.getElementById('profile').value === '1' && OPTS && OPTS.profile.id === 1 && "

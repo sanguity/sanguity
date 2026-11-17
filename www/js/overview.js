@@ -234,5 +234,6 @@ function renderOverview() {
     el("span", {class: "r", text: fmtD(e.ts)}), el("span", {}),
     e.sub ? el("span", {class: "s", text: e.sub}) : null));
   right.append(rc);
+  { const td = todayDoses(); if (td) right.prepend(td); }   // today's medication doses (medlog.js, #235)
 }
 

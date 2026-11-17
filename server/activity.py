@@ -39,7 +39,8 @@ Profile events (profile_id set), readable by the profile's owners:
                 records.rename_import, #38; never the name)
   medication    {"change": "reminder.add" | "reminder.change" | "reminder.on" | "reminder.off" | "reminder.delete", "times"?}:
                 a medication reminder set, changed, turned on or off, or removed (med_reminders.py, #162; never which
-                medication)
+                medication); {"change": "dose.add" | "dose.change" | "dose.delete", "status"}: a dose logged, corrected
+                or removed (med_log.py, #235; never the medication or the note)
   link          {"change": "create" | "revoke" | "view", "link", "label"?, ...}: a share link made or revoked by an owner
                 (with its sections, number of labs, dates and hours), or opened by whoever holds it: actor SHARE_LINK,
                 with the viewer's address (share_links.py, #47; never the token)

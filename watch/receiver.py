@@ -22,6 +22,10 @@ and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
 - ECG recordings and irregular rhythm notifications from Health Auto Export (#182, server/ecg.py): each one kept by its
   key (sent again: once), listed in the summary's "ecg"; a recording's samples written beside the summary as a file of
   its own, ecg/<16 hex>.json.gz, sealed, which the app reads when its drawer opens. Health Connect has no ECG type.
+- Medication doses from Health Auto Export (#235, server/med_log.py): Apple Health's Medications dose events (iOS 26
+  and later, the app's "medications" list), each kept by its medication, time and scheduled time (sent again: once),
+  only while marked Taken or Skipped (another status, such as Not Logged, takes it out again), listed in the summary's
+  "med_doses". Health Connect has no dose events.
 - A workout's heart rate (#197, server/hrzones.py): Health Auto Export's readings during it (or only its average and
   maximum), Health Connect's heart rate samples in the session's time; kept as seconds at each bpm, so the app works
   out the zones for whatever maximum heart rate applies.
@@ -326,6 +330,7 @@ class Store:
         self.db.executescript(cycle.TABLE)   # menstrual cycle records, kept only while tracking is on (#183)
         self._ecg_init()   # ECG recordings and irregular rhythm notifications (#182)
         self._workout_hr_init()   # a workout's heart rate (#197)
+        self._meds_init()   # medication doses (#235)
 
     def meta(self, k, v=None):
         if v is None:
@@ -345,6 +350,7 @@ class Store:
         n = self._glucose_backfill()   # an existing database's glucose, once (#181)
         n += self._ecg_backfill()   # and its ECGs, once (#182)
         n += self._workout_hr_backfill()   # and its Health Auto Export workouts' heart rate, once (#197)
+        n += self._meds_backfill()   # and its medication doses, once (#235)
         saved = self.meta("saved")
         if self.loaded and not saved:
             return n   # a database from before snapshots: it was written as uploads came in, so it is current
@@ -490,6 +496,7 @@ class Store:
         for w in d.get("workouts") or []:
             n += self._hae_workout(c, w) if isinstance(w, dict) else 0
         n += self._ecg_hae(c, d)   # (#182)
+        n += self._meds_hae(c, d)   # (#235)
         c.execute("INSERT INTO processed VALUES(?,?,?)", (0, digest, datetime.now(timezone.utc).isoformat()))
         self.meta("last_payload", datetime.now(timezone.utc).isoformat(timespec="seconds"))
         self.db.commit()
@@ -662,6 +669,49 @@ class Store:
         for name in os.listdir(d) if os.path.isdir(d) else ():
             if name.endswith(".json.gz") and name not in keep:
                 os.remove(os.path.join(d, name))
+
+    # ------------------------------------------------------------ medication doses from Health Auto Export (#235)
+    def _meds_init(self):
+        self.db.execute("CREATE TABLE IF NOT EXISTS hae_doses(key TEXT PRIMARY KEY, start INTEGER, row TEXT)")
+        if not self.loaded:
+            self.meta("meds", 1)   # a new database: every upload's doses are folded in as they come
+
+    def _meds_hae(self, c, d):
+        """Health Auto Export's dose events, by key: one sent again replaces itself, and one no longer marked Taken or
+        Skipped (the person un-logged it) is taken out."""
+        n = 0
+        for m in d.get("medications") or []:
+            got = hae_dose(m) if isinstance(m, dict) else None
+            if got is None:
+                continue
+            key, start, row = got
+            if row is None:
+                c.execute("DELETE FROM hae_doses WHERE key=?", (key,))
+            else:
+                c.execute("INSERT OR REPLACE INTO hae_doses VALUES(?,?,?)", (key, start, json.dumps(row)))
+                n += 1
+        return n
+
+    def _meds_backfill(self):
+        """A database from before the receiver read doses: fold in those of every Health Auto Export upload in raw/
+        once. Returns how many uploads had some."""
+        if not self.loaded or self.meta("meds") is not None:
+            return 0
+        c, n = self.db.cursor(), 0
+        for _, path in raw_files(self.slot):
+            try:
+                p = json.loads(read_raw(path))
+                n += bool(is_hae(p) and self._meds_hae(c, p["data"]))
+            except Exception as e:
+                log("skip", path, e)
+        self.meta("meds", 1)
+        self.db.commit()
+        if n:
+            log(f"read the medication doses of {n} earlier uploads")
+        return n
+
+    def _meds_summary(self):
+        return [json.loads(r) for (r,) in self.db.execute("SELECT row FROM hae_doses ORDER BY start, key")]
 
     # ------------------------------------------------------------ home readings kept one by one (#180, #184)
     def _vitals_tables(self):
@@ -893,9 +943,10 @@ class Store:
                     "pts": sorted(out[k].items())} for k in META if k in out]
         metrics += glucose.summary(self.db)   # blood glucose (#181): meter readings, and CGM days summarised
         ecgs = self._ecg_summary()   # ECGs and irregular rhythm notifications (#182), without their samples
+        doses = self._meds_summary()   # medication doses logged in Apple Health (#235)
         return {"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tz": self.meta("tz") or DEFAULT_TZ,
                 "last_payload": self.meta("last_payload"), "metrics": metrics, "exercise": exercises, **vitals,
-                **({"ecg": ecgs} if ecgs else {})}
+                **({"ecg": ecgs} if ecgs else {}), **({"med_doses": doses} if doses else {})}
 
     def write_summary(self):
         path = summary_file(self.slot)
@@ -981,9 +1032,31 @@ def hae_workout_hr(w, s, e):
 
 def is_hae(p):
     """A Health Auto Export upload: {"data": {"metrics": [...], "workouts": [...]}}, or its ECG and heart rate
-    notification automations' {"data": {"ecg": [...]}} and {"data": {"heartRateNotifications": [...]}} (#182)."""
+    notification automations' {"data": {"ecg": [...]}} and {"data": {"heartRateNotifications": [...]}} (#182), or its
+    medications automation's {"data": {"medications": [...]}} (#235)."""
     d = p.get("data") if isinstance(p, dict) else None
-    return isinstance(d, dict) and any(k in d for k in ("metrics", "workouts", "ecg", "heartRateNotifications"))
+    return isinstance(d, dict) and any(k in d for k in ("metrics", "workouts", "ecg", "heartRateNotifications", "medications"))
+
+
+HAE_DOSE = {"taken": "taken", "skipped": "skipped"}   # Apple Health's dose statuses that say what the person logged
+
+
+def hae_dose(m):
+    """One of Health Auto Export's dose events ({displayText, nickname?, start, scheduledDate?, status, dosage?, units,
+    ...}) as (key, start, summary row or None): the row [start with its offset, name, "taken" | "skipped", dosage, units,
+    "Apple Health"]; None for a status that isn't a dose logged (Not Interacted, Notification Not Sent, Snoozed, Not
+    Logged, Unspecified). The key is the medication, the start and the scheduled time, so a status changed later
+    replaces the dose. None altogether when it has no name or start it can read."""
+    name = " ".join(str(m.get("displayText") or m.get("nickname") or "").split())[:300]   # the drug's name, as the records list it
+    t = hae_when(m.get("start"))
+    if not name or t is None:
+        return None
+    key = hashlib.sha256(f"{name.lower()}|{t.isoformat()}|{m.get('scheduledDate') or ''}".encode()).hexdigest()[:24]
+    status = HAE_DOSE.get(" ".join(str(m.get("status") or "").lower().split()))
+    if status is None:
+        return key, int(t.timestamp()), None
+    dose = number(m.get("dosage"))
+    return key, int(t.timestamp()), [t.isoformat(), name, status, dose, str(m.get("units") or "") if dose is not None else "", APP["health_auto_export"]]
 
 
 def ecg_files(slot):

@@ -21,6 +21,10 @@ the person ticks what they want a clinician or relative to see.
   targets        targets of the person's own for home readings (#234, server/targets.py), as their care team gave
                  them: each with who set it and when, and how many of the period's readings at home were above or
                  below it (for CGM, the time in the person's own range beside the standard one, each labelled)
+
+  medlog         the medication log (#235, server/med_log.py): each dose logged, typed in or sent by the phone
+                 (Apple Health's Medications), with what happened and its note; a line per medication counting what
+                 was logged ("12 of 14 logged doses taken"), never what was expected
 Cycle tracking (#183) isn't here: the visit summary has its own section for it (cycle_tracking.py), offered only to
 owners and editors while it's on and ticked each time, and share links never offer it.
 
@@ -37,7 +41,7 @@ oxygen has a Readings column only when some were typed in.
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import ecg, glucose, growth, person, targets as tg, watch_store
+from . import ecg, glucose, growth, med_log, medications, person, targets as tg, watch_store
 
 SECTIONS = [   # (id, label, what a share link shows: said on the owner's form and the link's page)
     ("home_bp", "Blood pressure at home", "each reading taken at home with a phone app: the date and time, both pressures, "
@@ -57,6 +61,9 @@ SECTIONS = [   # (id, label, what a share link shows: said on the owner's form a
                               "measurement falls on the WHO's or the CDC's growth charts"),
     ("targets", "Your targets for home readings", "each target typed in as the care team gave it, who set it and when, and how many "
                                                   "readings at home were above or below it"),   # #234
+
+    ("medlog", "Medication log", "each dose logged as taken, taken late or skipped: the date and time, the medication, its "
+                                 "note, and whether it was typed in or sent by a phone"),   # (#235)
 ]
 IDS = [s for s, _, _ in SECTIONS]
 LABELS = {s: l for s, l, _ in SECTIONS}
@@ -504,8 +511,34 @@ def targets_block(c, keep, most):
                   "No targets entered.", most)
 
 
+def _doses(c):
+    """[(local wall time, medication, status, note, where from)] of the medication log (#235): typed in (records'
+    "doses") and the phone's (the watch summary's "med_doses"), oldest first."""
+    out = [(d["t"], d.get("name") or d.get("med") or "", d.get("status"), str(d.get("note") or "")[:1000], "Typed in")
+           for d in c.data.get("doses") or [] if isinstance(d, dict) and _day(d.get("t")) and d.get("status") in med_log.STATUSES]
+    out += [(d["t"], d["name"], d["status"], "", f"{d['app']}" + (f", {d['dose']}" if d["dose"] else ""))
+            for d in med_log.phone_doses(c.watch, c.tz)]
+    return sorted(out, key=lambda x: x[0])
+
+
+def medlog(c, keep, most):
+    rows = [d for d in _doses(c) if keep(d[0][:10])]
+    lead, by = [], {}
+    for d in rows:
+        by.setdefault(medications.med_key(d[1]), []).append(d)
+    for ds in sorted(by.values(), key=lambda ds: ds[-1][1].lower()):
+        lead.append(f"{ds[-1][1]}: " + med_log.said(med_log.counts([{"status": d[2]} for d in ds])))
+    rows = rows[::-1]   # newest first
+    return _block([("Date and time", "time", 110), ("Medication", "text", 150), ("What happened", "text", 80), ("Note", "text", 150),
+                   ("From", "text", None)],
+                  [[t, name[:200], med_log.LABEL.get(st, st), note, src] for t, name, st, note, src in rows], lead,
+                  "As logged, typed in or in Apple Health's Medications: what the person said happened, nothing more.",
+                  "No doses logged in this period.", most)
+
+
 BUILD = {"home_bp": home_bp, "glucose": glucose_block, "temperature": temperature, "oxygen": oxygen, "respiratory": respiratory,
-         "vo2max": vo2max, "immunizations": immunizations, "ecg": ecg_block, "bmi": bmi, "targets": targets_block}
+         "vo2max": vo2max, "immunizations": immunizations, "ecg": ecg_block, "bmi": bmi, "targets": targets_block,
+         "medlog": medlog}
 
 
 def offered(c):
@@ -522,6 +555,8 @@ def offered(c):
         "ecg": bool(c.watch.get("ecg")),
         "bmi": bool(c.person["heights"]) and (bool(_weights(c)) or bool(c.person["birthDate"] and c.person["sex"])),
         "targets": bool(tg.of(c.cfg)),   # #234: only when some target is entered
+
+        "medlog": bool(_doses(c)),   # (#235)
     }
     return [s for s in IDS if has[s]]
 

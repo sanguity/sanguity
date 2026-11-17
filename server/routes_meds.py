@@ -1,13 +1,16 @@
 """Medication reminders (#162, med_reminders.py): list, set, change, turn off and remove a profile's reminders. Viewers
 read them (the records the page loads list them too, as "reminders"); owners and editors set them. The calendar feed
-(routes_calendar.py) lists those turned on. The CSRF check in main.guard covers each change like every other, and each
-goes in the profile's activity log as "medication" (what was done and how many times a day, never the medication)."""
+(routes_calendar.py) lists those turned on. The medication log (#235, med_log.py): list, log, correct and remove doses,
+the same way ("doses" in the records). The CSRF check in main.guard covers each change like every other, and each goes
+in the profile's activity log as "medication" (what was done, how many times a day or the dose's status, never the
+medication or a note)."""
+from datetime import timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from . import activity, db as dbm, med_reminders as mr, settings
+from . import activity, db as dbm, med_log, med_reminders as mr, settings
 from .main import _client_ip, get_db, need, user
 
 router = APIRouter()
@@ -92,4 +95,63 @@ def remove_reminder(pid: int, rid: int, request: Request, s=Depends(user), db=De
         if mr.remove(db, pid, rid) is None:
             raise HTTPException(404, "No such reminder.")
         _log(db, s, pid, "reminder.delete", request)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- the medication log (#235)
+
+class Dose(BaseModel):
+    med: str                       # the medication's grouping key
+    t: str                         # YYYY-MM-DDTHH:MM, the person's own wall-clock time
+    status: str                    # taken, late, skipped
+    note: Optional[str] = None
+    slot: Optional[str] = None     # the reminder time ("HH:MM") it was logged against, from today's list
+
+
+def _dose(db, pid, s, body, keep_med=None):
+    today = settings.local_now(db, s["id"]).date() + timedelta(days=1)   # a day's grace: the browser's zone may be ahead
+    try:
+        return med_log.check(db, pid, body.med, body.t, body.status, body.note, body.slot, today, keep_med)
+    except med_log.DoseError as x:
+        raise HTTPException(400, str(x))
+
+
+@router.get("/api/profiles/{pid}/medications/doses")
+def list_doses(pid: int, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "viewer")
+    return {"doses": med_log.listing(db, pid)}
+
+
+@router.post("/api/profiles/{pid}/medications/doses", status_code=201)
+def add_dose(pid: int, body: Dose, request: Request, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    d = _dose(db, pid, s, body)
+    with dbm.transaction(db):
+        did = med_log.add(db, pid, s, d)
+        activity.log(db, "medication", s, pid, med_log.log_detail("add", d), _client_ip(request))
+    return {"id": did}
+
+
+@router.put("/api/profiles/{pid}/medications/doses/{did}")
+def change_dose(pid: int, did: int, body: Dose, request: Request, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    was = med_log.get(db, pid, did)
+    if was is None:
+        raise HTTPException(404, "No such dose in the log.")
+    d = _dose(db, pid, s, body, was.get("med"))
+    with dbm.transaction(db):
+        if med_log.change(db, pid, did, s, d) is None:
+            raise HTTPException(404, "No such dose in the log.")
+        activity.log(db, "medication", s, pid, med_log.log_detail("change", d), _client_ip(request))
+    return {"ok": True}
+
+
+@router.delete("/api/profiles/{pid}/medications/doses/{did}")
+def remove_dose(pid: int, did: int, request: Request, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    with dbm.transaction(db):
+        was = med_log.remove(db, pid, did)
+        if was is None:
+            raise HTTPException(404, "No such dose in the log.")
+        activity.log(db, "medication", s, pid, med_log.log_detail("delete", was), _client_ip(request))
     return {"ok": True}

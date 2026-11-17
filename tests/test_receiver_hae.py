@@ -1,6 +1,7 @@
 """iPhone sync through Health Auto Export (#148): watch/receiver.py takes the app's REST API uploads beside Life
 Dashboard Companion's, on the same address, with the profile's secret in an "Authorization: Bearer" header, and
-folds them into the same daily summary. All data here is fictional, written for these tests.
+folds them into the same daily summary; and Apple Health's medication doses (#235). All data here is fictional,
+written for these tests.
 
   python tests/test_receiver_hae.py
 """
@@ -227,6 +228,56 @@ class BesideLifeDashboard(Base):
         self.assertFalse(rx.is_hae({"data": {"other": []}}))
         self.assertFalse(rx.is_hae({"data": "x"}))
         self.assertTrue(rx.is_hae({"data": {"workouts": []}}))
+
+
+def dose(name, start, status, scheduled=None, **more):
+    """One of Health Auto Export's medication dose events (#235), as its export format documents them (iOS 26)."""
+    return {"displayText": name, "start": f"{start} {Z}", **({"scheduledDate": f"{scheduled} {Z}"} if scheduled else {}),
+            "status": status, "isArchived": False, "units": "count", "codings": [], **more}
+
+
+class MedicationDoses(Base):
+    """Apple Health's Medications dose events from Health Auto Export (#235): Taken and Skipped kept, by medication,
+    start and scheduled time; sent again once; a later status replaces it, and one that isn't a dose logged takes it out."""
+    def test_doses_kept_once_and_replaced(self):
+        A = "Fictionamide 10 mg tablet"
+        first = {"data": {"medications": [
+            dose(A, "2024-03-09 08:05:00", "Taken", "2024-03-09 08:00:00", dosage=1, scheduledDosage=1),
+            dose(A, "2024-03-09 20:00:00", "Skipped", "2024-03-09 20:00:00"),
+            dose(A, "2024-03-10 08:00:00", "Snoozed", "2024-03-10 08:00:00"),
+            dose(A, "2024-03-10 20:00:00", "Not Logged", "2024-03-10 20:00:00"),
+            {"start": f"2024-03-10 08:00:00 {Z}", "status": "Taken"},   # no name: left out
+        ]}}
+        self.assertTrue(rx.is_hae(first))
+        self.ingest(first)
+        s = self.store.summary()
+        self.assertEqual(s["med_doses"], [["2024-03-09T08:05:00-05:00", A, "taken", 1.0, "count", "Apple Health"],
+                                          ["2024-03-09T20:00:00-05:00", A, "skipped", None, "", "Apple Health"]])
+        again = {"data": {"medications": [dose(A, "2024-03-09 08:05:00", "Taken", "2024-03-09 08:00:00", dosage=1),
+                                          dose(A, "2024-03-09 20:00:00", "Taken", "2024-03-09 20:00:00", dosage=1)]}}
+        self.ingest(again)
+        self.assertEqual([r[2] for r in self.store.summary()["med_doses"]], ["taken", "taken"], "sent again: once; Skipped became Taken")
+        self.ingest({"data": {"medications": [dose(A, "2024-03-09 20:00:00", "Not Logged", "2024-03-09 20:00:00")]}})
+        self.assertEqual(len(self.store.summary()["med_doses"]), 1, "un-logged in Apple Health: taken out")
+
+    def test_reprocess_and_backfill(self):
+        b = body({"data": {"medications": [dose("Fictionamide 10 mg tablet", "2024-03-09 08:05:00", "Taken")]}})
+        rx.archive(b)
+        fresh = rx.Store()
+        self.assertEqual(fresh.catch_up(), 1)
+        self.assertEqual(len(fresh.summary()["med_doses"]), 1)
+        # a database from before #235 (no "meds" mark): its archived uploads' doses are read once
+        fresh.db.execute("DELETE FROM hae_doses")
+        fresh.db.execute("DELETE FROM meta WHERE k='meds'")
+        fresh.save()
+        old = rx.Store()
+        self.assertEqual(old._meds_backfill(), 1)
+        self.assertEqual(len(old.summary()["med_doses"]), 1)
+        self.assertEqual(old._meds_backfill(), 0, "once")
+
+    def test_no_doses_no_list(self):
+        self.ingest(hae_payload())
+        self.assertNotIn("med_doses", self.store.summary())
 
 
 class Upload(unittest.TestCase):
