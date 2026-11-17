@@ -934,6 +934,29 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
   .seg>button:focus-visible,.seg>label:has(>input:focus-visible),.toggle:focus-visible,.toggle:has(>input:focus-visible){outline-color:CanvasText}
 }
 
+/* ---- the Timeline's kinds (#189): each kind's chip (.toggle, above) with its "⋯" menu button joined on as one pill,
+   tinted with the chip while shown; its menu (Show only this, Show all) under it; "Show all" after the chips while any
+   is hidden */
+.kind{position:relative;display:inline-flex;align-items:stretch}
+.kind>.toggle{border-top-right-radius:0;border-bottom-right-radius:0;padding-right:8px}
+.kind-more{display:inline-flex;align-items:center;margin:0 0 0 -1px;border:1px solid var(--axis);border-radius:0 999px 999px 0;background:transparent;
+  padding:0 10px 0 8px;color:var(--ink2);font:inherit;font-size:14px;font-weight:700;line-height:1;cursor:pointer}
+.kind-more:hover,.kind-more[aria-expanded="true"]{color:var(--ink);background:var(--hover)}
+.kind>.toggle[aria-pressed="true"]+.kind-more{background:color-mix(in srgb,var(--tone) 15%,var(--raised));border-color:color-mix(in srgb,var(--tone) 70%,var(--ink));color:var(--ink)}
+.kind>.toggle[aria-pressed="true"]+.kind-more:hover,.kind>.toggle[aria-pressed="true"]+.kind-more[aria-expanded="true"]{background:color-mix(in srgb,var(--tone) 28%,var(--raised))}
+.kind>.toggle:focus-visible,.kind-more:focus-visible{z-index:1}
+.kind-more:focus-visible,.kinds-all:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kind>.menu-list{left:0;right:auto;min-width:170px}
+.kinds-all{border:0;background:none;padding:3px 6px;margin:0;color:var(--accent);font:inherit;font-size:13px;font-weight:600;text-decoration:underline;text-underline-offset:2px;cursor:pointer;border-radius:6px}
+.kinds-all:hover{color:var(--ink)}
+@media (max-width:700px){ .kind-more{padding:0 12px 0 10px} .kinds-all{padding:5px 8px} }
+@media (forced-colors:active){
+  .kind-more{background:Canvas;color:CanvasText;border:1px dashed CanvasText}
+  .kind>.toggle[aria-pressed="true"]+.kind-more,.kind>.toggle[aria-pressed="true"]+.kind-more:is(:hover,[aria-expanded="true"]){forced-color-adjust:none;background:Highlight;color:HighlightText;border:1px solid Highlight}
+  .kinds-all{color:LinkText}
+  .kind-more:focus-visible,.kinds-all:focus-visible{outline-color:CanvasText}
+}
+
 /* ---- keyboard and screen-reader basics (#209): "Skip to content" (util.js), shown while it has focus; the <main>
    it moves focus to has no ring of its own; less motion when the person asks for it (a script's smooth scrolls go
    through smoothly(), util.js) */
