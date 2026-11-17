@@ -1804,6 +1804,113 @@ def main():
             js("w => { state.tables.clear(); [state.preset, state.from, state.to] = w; state.sel = new Set(w[4]); switchTab(w[3]); save(); }", was197)
             settle(300)
 
+            # ---- BMI over time (#195): with a height in About this person's history (typed in cm, then in feet and
+            # inches), each weight's BMI with the height in effect on its day, as server/person.py works it out; under
+            # the weight chart, in a tile and in the card's table; the number only, until the WHO's adult categories
+            # are turned on (named as the WHO's, remembered); the calculation in kg and lb, cm and ft/in; under 20 on a
+            # weight's day, never the adult categories, and a child's BMI only from a height of the 3 months before;
+            # 1400 and 375 px, light and dark, axe clean
+            from server import person as person_b
+            was195 = js("[state.preset, state.from, state.to, state.tab]")
+            api195 = lambda m, path, body=None: js("([m, p, b]) => fetch('api/' + p, {method: m, headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+                                                   "body: b == null ? undefined : JSON.stringify(b)}).then(r => r.status)", [m, path, body])
+
+            def health195():
+                page.reload()
+                page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+                js("state.tables.clear(); setRange(dayTs('2025-06-01'), dayTs('2026-11-14')); switchTab('health')")
+                settle(500)
+            js("state.tables.clear(); setRange(dayTs('2025-06-01'), dayTs('2026-11-14')); switchTab('health')")
+            settle(400)
+            none = page.inner_text("#h-body .bmi") if page.locator("#h-body .bmi").count() else ""
+            check("BMI (#195): with no height, the weight card says a height in About this person gives each weight's BMI, and there's no BMI tile",
+                  "With a height under About this person" in none and js("document.querySelector('#h-body .bmi a').getAttribute('href')") == "sharing.html?profile=1#about"
+                  and "BMI" not in js("[...document.querySelectorAll('#view-health .tile .lbl')].map(l => l.textContent)"), none)
+            st195 = [api195("POST", "profiles/1/person/heights", {"date": "2019-01-10", "unit": "cm", "cm": 178}),
+                     api195("POST", "profiles/1/person/heights", {"date": "2026-03-02", "unit": "ftin", "ft": 5, "inches": 9.9})]
+            health195()
+            hs195 = js("fetch('api/profiles/1/person').then(r => r.json())")["heights"]
+            got = js("H.bmi.map(r => [isoDay(r.t), r.w[1], r.v, r.h.date, r.child])")
+            want = [person_b.bmi(w_, "lb", person_b.height_on(hs195, d_)["cm"]) for d_, w_, *_ in got]
+            check("…each weight's BMI with the height in effect on its day (both heights used), as the server works it out",
+                  st195 == [200, 200] and len(got) == js("H.scale.length + H.clinic.length") and all(abs(g[2] - w_) < 1e-9 for g, w_ in zip(got, want))
+                  and {g[3] for g in got} == {"2019-01-10", "2026-03-02"} and all((g[0] >= "2026-03-02") == (g[3] == "2026-03-02") for g in got) and not any(g[4] for g in got),
+                  (st195, got[:2], want[:2]))
+            units = js("[bmiOf(70, 'kg', 175), bmiOf(154.32358352941432, 'lb', 175), bmiOf(160, 'lb', 175.26), bmiOf(180, 'lb', 180), bmiOf(0, 'kg', 170), bmiOf(70, 'st', 170), bmiOf(70, 'kg', null)]")
+            want_u = [person_b.bmi(70, "kg", 175), person_b.bmi(154.32358352941432, "lb", 175), person_b.bmi(160, "lb", person_b.from_ftin(5, 9)), person_b.bmi(180, "lb", 180), None, None, None]
+            check("…the page's calculation in kg and lb, with heights in cm and in feet and inches, the server's", all(
+                (u is None and w_ is None) or (u is not None and w_ is not None and abs(u - w_) < 1e-9) for u, w_ in zip(units, want_u)) and abs(units[0] - 22.857142857) < 1e-8, units)
+            cats = js("[16, 18.44, 18.45, 24.94, 24.95, 29.96, 30, 41.2].map(v => whoBmi(v).range)")
+            check("…the WHO's categories read at one decimal, as BMI is shown, the same as the server", cats == [person_b.who_bmi(v)["range"] for v in (16, 18.44, 18.45, 24.94, 24.95, 29.96, 30, 41.2)], cats)
+            tiles = js("[...document.querySelectorAll('#view-health .tile')].map(t => [t.querySelector('.lbl').textContent, t.querySelector('.val').textContent, t.querySelector('.delta').textContent])")
+            bt = next((t for t in tiles if t[0] == "BMI"), None)
+            last195 = js("(() => { const r = H.bmi.filter(r => r.t >= state.from && r.t <= state.to).at(-1); return [bmiRound(r.v).toFixed(1), fmtD(r.t)]; })()")
+            body195 = page.inner_text("#h-body")
+            check("…the latest in a tile beside the weight's, the number only (no category) by default",
+                  bt and [x[0] for x in tiles].index("BMI") == [x[0] for x in tiles].index("Weight") + 1 and bt[1] == last195[0] + "kg/m²" and bt[2] == "latest " + last195[1]
+                  and "World Health Organization" not in body195 and "WHO" not in bt[2] and not js("document.getElementById('bmiWho').checked") and js("document.querySelectorAll('#h-body .band-label').length") == 0
+                  and not re.search(r"(?i)\b(normal|overweight|obes|underweight|healthy|ideal|target|goal)", body195), (bt, last195))
+            check("…a chart under the weight's, labelled and said in words", js("document.querySelector('#h-body .bmi svg').getAttribute('aria-label')").startswith("BMI: ")
+                  and "each weight with the height in effect on its day" in page.inner_text("#h-body .bmi .hint"))
+            page.click("#bmiWho")
+            settle(400)
+            bands = js("[...document.querySelectorAll('#h-body .bmi .band-label')].map(t => t.textContent)")
+            bt = next(t for t in js("[...document.querySelectorAll('#view-health .tile')].map(t => [t.querySelector('.lbl').textContent, t.querySelector('.delta').textContent])") if t[0] == "BMI")
+            check("…turned on, the WHO's categories for adults as labelled bands, the tile naming the WHO's range, the hint saying whose they are",
+                  bands and all(b_.startswith("WHO ") for b_ in bands) and bt[1] == "WHO: " + person_b.who_bmi(float(last195[0]))["range"]
+                  and "World Health Organization's categories of BMI for adults" in page.inner_text("#h-body .bmi") and "not advice" in page.inner_text("#h-body .bmi"), (bands, bt))
+            page.focus("#h-body .bmi svg")
+            page.keyboard.press("End")
+            settle(150)
+            tipt = js("tip.innerText")
+            page.keyboard.press("Escape")
+            check("…the chart steps from the keyboard: the BMI, the weight and where it was taken, the height used, the WHO's category",
+                  tipt.startswith("BMI " + last195[0]) and "lb on the smart scale" in tipt and "Height 5 ft 9.9 in, from" in tipt and "The WHO's category for adults: " in tipt, tipt)
+            page.click("#h-body .view-seg button:text-is('Table')")
+            settle(300)
+            tb195 = js("(() => { const t = document.querySelector('#h-body table.data'); return [[...t.querySelectorAll('thead th')].map(h => h.textContent), "
+                       "[...t.querySelectorAll('tbody tr')].map(r => [...r.children].map(c => c.textContent))]; })()")
+            hd = tb195[0]
+            check("…Table has each weight's BMI and, turned on, the WHO's category",
+                  hd[:5] == ["Date", "Weight (lb)", "From", "BMI (kg/m²)", "WHO adult category"] and tb195[1][0][3] == last195[0]
+                  and tb195[1][0][4] == js(f"whoWords({float(last195[0])})") and "(“" in tb195[1][0][4], (hd, tb195[1][:1]))
+            page.click("#h-body .view-seg button:text-is('Chart')")
+            health195()
+            check("…the choice is remembered for this profile", js("hState.bmiWho") and js("document.getElementById('bmiWho').checked"))
+            bad, axe195 = [], []
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    for table in (False, True):
+                        js("on => { state.tables.clear(); if (on) state.tables.add('#h-body'); renderHealth(); }", table)
+                        settle(300)
+                        page.locator("#h-body").scroll_into_view_if_needed()
+                        if width == 375:
+                            bad += phone_fits(page, f"BMI {'table' if table else 'chart'} ({theme})")
+                        axe195 += axe_check(page, f"BMI {'table' if table else 'chart'}, {width} px, {theme}")[0]
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…fits 375 px, and axe-core finds nothing serious at 1400 and 375 px, light and dark, with the WHO's categories on", not bad and not axe195, (bad + axe195)[:6])
+            # under 20 on a weight's day: no adult categories, and a height from the 3 months before the weight
+            st195 = api195("PUT", "profiles/1/person", {"birthDate": "2008-01-15"})
+            health195()
+            kid = js("H.bmi.map(r => [isoDay(r.t), r.h.date, r.age, r.child])")
+            check("…for someone under 20 on a weight's day: no adult categories offered, and only the weights of the 3 months after a height",
+                  st195 == 200 and kid and all(k[3] and k[2] < 20 and k[1] == "2026-03-02" and "2026-03-02" <= k[0] <= "2026-06-02" for k in kid)
+                  and not js("!!document.getElementById('bmiWho')") and js("document.querySelectorAll('#h-body .band-label').length") == 0
+                  and "Under 20, it's shown without the adult categories" in page.inner_text("#h-body .bmi"), kid[:3])
+            # put back: no birth date, no heights, the categories off
+            st195 = [api195("PUT", "profiles/1/person", {"birthDate": ""}), api195("DELETE", "profiles/1/person/heights/2019-01-10"),
+                     api195("DELETE", "profiles/1/person/heights/2026-03-02")]
+            js("hState.bmiWho = false; hSave()")
+            page.reload()
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            js("w => { state.tables.clear(); [state.preset, state.from, state.to] = w; switchTab(w[3]); save(); }", was195)
+            settle(300)
+            check("…and put back as it was (no height, no birth date)", st195 == [200, 200, 200] and js("!personOf().heights.length && !personOf().birthDate"), st195)
+
             # ---- each result against its own range (#58): the demo's creatinine (0.7–1.3 mg/dL) with two results from
             # an outside lab (0.6–1.2, add_range_records): the chart's band steps with each result's range and its
             # header says the ranges differ; its table gives each row its own; 1.25 is high by its own lab's range though

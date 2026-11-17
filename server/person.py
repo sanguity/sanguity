@@ -33,11 +33,13 @@ the same for the page:
   age_months_on(birth, day) whole months on that day, or None (a child's age, for growth charts)
   sex_for_ranges(cfg)       "female", "male" or ""
   height_on(heights, day)   the entry in effect on that day: the latest dated on or before it, or None
+  bmi(weight, unit, cm)     kg/m² from a weight in "kg" or "lb" and a height in cm (#195; www/js/growth.js bmiOf)
+  who_bmi(v)                the WHO's adult category of a BMI, read at one decimal as it's shown (#195)
 Clinic-recorded heights (a "Height" or "Body height" series in the records, recorded()) are shown beside the history,
 each with "Add to the history"; they are never part of it by themselves: an import can be undone or replaced, and a
 height measured with shoes on is the person's to accept or not.
 """
-import datetime, re
+import datetime, math, re
 
 SEXES = {"": "Not set", "female": "Female", "male": "Male"}
 UNITS = ("cm", "ftin")
@@ -167,6 +169,31 @@ def height_on(heights, day):
         if h["date"] <= day and (best is None or h["date"] > best["date"]):
             best = h
     return best
+
+
+# ---------------------------------------------------------------- BMI (#195; www/js/growth.js does the same on the page)
+LB_KG = 0.45359237   # by definition
+WHO_BMI = ((float("-inf"), 18.5, "under 18.5", "underweight"), (18.5, 25, "18.5–24.9", "normal weight"),
+           (25, 30, "25–29.9", "pre-obesity"), (30, float("inf"), "30 and over", "obesity"))   # the WHO's, for adults
+
+
+def bmi(weight, unit, cm):
+    """kg/m² from a weight in "kg" or "lb" and a height in cm, or None."""
+    for v in (weight, cm):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not v > 0:
+            return None
+    kg = weight * LB_KG if unit == "lb" else weight if unit == "kg" else None
+    return None if kg is None else kg / (cm / 100) ** 2
+
+
+def who_bmi(v):
+    """The WHO's adult category of a BMI, read at one decimal as it is shown: {"range", "name"}. Only for adults (20
+    and over), only where the person asked for it, and always said as the WHO's."""
+    r = math.floor(v * 10 + 0.5) / 10   # half up, as the page's Math.round
+    for lo, hi, rng, name in WHO_BMI:
+        if lo <= r < hi:
+            return {"range": rng, "name": name}
+    return None
 
 
 def ftin(cm):

@@ -54,6 +54,7 @@ python tests/test_milestones.py        # milestones and workout rules on the Set
 python tests/test_lab_mapping.py       # matching unknown lab names
 python tests/test_summary.py           # the visit summary PDF
 python tests/test_person.py            # About this person: birth date, sex for ranges, height history (#194)
+python tests/test_growth.py            # BMI from weight and height (#195)
 python tests/test_backups.py           # backups in Admin: schedule, pruning, late warning, restore check
 python tests/test_security_refresh.py  # the security review's checks: each route's access, columns encrypted or plain
 python -m unittest discover -s tests -p "test_importer*.py" -v   # the registry and every importer's fixtures
