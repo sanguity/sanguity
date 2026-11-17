@@ -77,6 +77,8 @@ and health plans, the phone and watch, and the import history.
 **Sharing** gathers everything about who sees a profile and how its records go out: its people and their roles,
 share links, your calendar feed, the visit summary, Export everything and its activity, with renaming, deleting and
 adding profiles set apart under Profile.
+The **profile** a page is about is in the top bar, by name and your role, on the records, Sources, Sharing and
+Settings; switching it there switches it on every page.
 
 **Sharing and taking it with you**
 

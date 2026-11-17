@@ -1,18 +1,19 @@
 /* Sanguity · the top bar on every signed-in page (after util.js and pwa.js, before the page's own script).
 
-   One row: the brand (back to the records), the page's title or, on the records page, its profile picker and tabs,
-   then two menus. Add: import records, connect a source, type records in, a journal entry. The person's own menu:
-   sharing (who sees the profile, share links, calendar feed, visit summary, export: #168), settings, account, Admin
-   (admins only: nav.js asks the API itself, #167), the light/dark toggle, log out. The items keep the ids the pages
-   already use (#importLink, #journalBtn, #settingsLink, #theme, #logout, #who), so each page's script sets them up as
-   before; nav.js only builds the bar and opens and closes the menus.
+   One row: the brand (back to the records), the page's title, the profile picker on the pages about a profile
+   (#170), the records page's tabs, then two menus. Add: import records, connect a source, type records in, a
+   journal entry. The person's own menu: sharing (who sees the profile, share links, calendar feed, visit summary,
+   export: #168), settings, account, Admin (admins only: nav.js asks the API itself, #167), the light/dark toggle,
+   log out. The items keep the ids the pages already use (#importLink, #journalBtn, #settingsLink, #theme, #logout,
+   #who), so each page's script sets them up as before; nav.js only builds the bar and opens and closes the menus.
 
-   <header class="topbar" data-title="Settings"> gets the bar; anything already inside it (the records page's
-   profile picker, tabs and Install app button) stays where it is, between the brand and the menus. */
+   <header class="topbar" data-title="Settings" data-profile> gets the bar, with the profile picker for data-profile;
+   anything already inside it (the records page's profile picker, tabs and Install app button) stays where it is,
+   between the brand and the menus. */
 "use strict";
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
-  if (!header) return {sync() {}, lock() {}};
+  if (!header) return {sync() {}, lock() {}, profiles() { return null; }};
   const svgLogo = header.querySelector("h1");
   const onRecords = !!document.getElementById("tab-overview");
 
@@ -23,6 +24,56 @@ const SgNav = (() => {
     svgLogo.append(a);
   }
   if (header.dataset.title) svgLogo.after(el("span", {class: "page-title", text: header.dataset.title}));
+
+  /* the profile picker (#170), on the pages about a profile (<header data-profile>, and the records page, whose
+     #profile is already in the bar): every profile shared with you, by name and your role, or a plain label when
+     there's only one. It keeps the id #profile, so the page's scripts read its value and follow its "change" as
+     they did their own select's. The page fills it once it knows who's signed in: SgNav.profiles(list, want). The
+     choice is this browser's (ht-profile) and the address's (?profile=2, when the address names one). */
+  const ROLE = {owner: "owner", editor: "editor", viewer: "view only"};
+  let pick = header.querySelector("#profile");
+  if (pick || header.hasAttribute("data-profile")) {
+    const fresh = !pick;
+    if (fresh) pick = el("select", {id: "profile"});
+    pick.className = "iconbtn profile";
+    pick.removeAttribute("hidden");
+    pick.setAttribute("aria-label", "Profile");
+    const wrap = el("div", {class: "profile-pick", id: "profilePick", hidden: ""});
+    if (fresh) (header.querySelector(".page-title") || svgLogo).after(wrap); else pick.before(wrap);
+    wrap.append(pick, el("span", {class: "profile-one", id: "profileOne", hidden: ""}));
+    // before the page's own "change" listeners, so a page that reloads (the records page) opens the new one
+    pick.addEventListener("change", () => remember(pick.value), true);
+  }
+  function remember(id) {
+    try { localStorage.setItem("ht-profile", String(id)); } catch (e) {}
+    const q = new URLSearchParams(location.search);
+    if (!q.has("profile") || q.get("profile") === String(id)) return;
+    q.set("profile", id);
+    try { history.replaceState(history.state, "", location.pathname + "?" + q + location.hash); } catch (e) {}
+  }
+  /* fill the picker with the profiles shared with you and choose one: want, else the address's, else this
+     browser's last, else the first. Returns the profile's id (null when there are none). */
+  function profiles(list, want) {
+    if (!pick) return null;
+    const wrap = pick.parentElement, one = wrap.querySelector(".profile-one");
+    list = list || [];
+    if (!list.some(p => p.id === want)) {
+      try { want = +(new URLSearchParams(location.search).get("profile") || localStorage.getItem("ht-profile")); } catch (e) {}
+    }
+    const p = list.find(x => x.id === want) || list[0];
+    const label = x => `${x.name} (${ROLE[x.role] || x.role})`;
+    pick.replaceChildren(...list.map(x => el("option", {value: x.id, text: label(x)})));
+    wrap.hidden = !p;
+    if (!p) return null;
+    pick.value = p.id;
+    remember(p.id);
+    pick.hidden = list.length < 2;
+    one.hidden = list.length !== 1;
+    wrap.classList.toggle("many", list.length > 1);
+    one.replaceChildren(el("span", {class: "vh", text: "Profile: "}), el("span", {class: "profile-name", text: p.name}), " ",
+      el("span", {class: "profile-role", text: ROLE[p.role] || p.role}));
+    return p.id;
+  }
 
   let openMenu = null;
   function close(m, focusBtn) {
@@ -133,5 +184,5 @@ const SgNav = (() => {
     const b = header.querySelector(".brand-link");
     if (b) { b.removeAttribute("href"); b.removeAttribute("title"); }
   }
-  return {sync, lock};
+  return {sync, lock, profiles};
 })();

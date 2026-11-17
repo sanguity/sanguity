@@ -219,8 +219,10 @@
     clearTimeout(timer);
     if (!PID) return;
     let d;
-    try { d = await call(`profiles/${PID}/connections`); }
-    catch (e) { $("#connList").replaceChildren(el("p", {class: "msg bad", text: e.message})); return; }
+    const pid = PID;
+    try { d = await call(`profiles/${pid}/connections`); }
+    catch (e) { if (pid === PID) $("#connList").replaceChildren(el("p", {class: "msg bad", text: e.message})); return; }
+    if (pid !== PID) return;   // another profile was picked meanwhile: its own load draws it
     const live = d.connections.filter(c => c.state !== "disconnected"), gone = d.connections.filter(c => c.state === "disconnected");
     const list = [...live.map(c => card(c, d.can_connect))];
     if (!live.length) list.push(el("p", {class: "muted", text: "This profile has no connected sources."}));

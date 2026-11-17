@@ -110,19 +110,16 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     for (const id of ["people", "profileCard", "export", "links", "activity"]) $("#" + id).hidden = !has;
     if (!has) {
       P = null;
-      sel.replaceChildren();
+      SgNav.profiles([]);
       for (const id of ["calendar", "summaryIntro", "build", "preview"]) $("#" + id).hidden = true;
       drawNav(); show(PROFILE);
       return;
     }
-    sel.replaceChildren(...ME.profiles.map(p => el("option", {value: p.id, text: p.name + (p.role === "viewer" ? " (view only)" : "")})));
-    sel.value = ME.profiles.some(p => p.id === want) ? want : ME.profiles[0].id;
-    sel.closest("label").hidden = ME.profiles.length < 2;
+    SgNav.profiles(ME.profiles, want);   // the top bar's picker (nav.js, #170): want, else the address's or this browser's
     pick();
   }
   async function pick() {
     const p = P = ME.profiles.find(x => x.id === +sel.value);
-    try { localStorage.setItem("ht-profile", String(p.id)); } catch (e) {}
     const [a, b] = SAYS[p.role];
     $("#introHint").replaceChildren(el("strong", {text: a}), b(p.name));
     for (const g of GROUPS) if (g.needs) for (const id of g.has) $("#" + id).hidden = !allowed(g);
@@ -141,6 +138,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     if (P !== p) return;   // another profile was picked meanwhile
     MEMBERS = got; MEMBERS_OF = p.id;
     drawPeople(p);
+    $("#people").dataset.profile = p.id;   // whose people are drawn (the browser check waits for it)
     if (current.id === "activity") drawActivity();
   }
   /* the profile's activity (owners), drawn when its group is shown, once its people are known (for the filter) */
@@ -255,8 +253,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
     main.prepend(nav);
     main.classList.add("with-nav");
-    let want; try { want = +(new URLSearchParams(location.search).get("profile") || localStorage.getItem("ht-profile")); } catch (e) {}
-    fill(want);
+    fill();   // the profile the address names, else this browser's last (nav.js)
     addEventListener("hashchange", follow);
   })();
 })();

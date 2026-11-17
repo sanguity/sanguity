@@ -3,7 +3,7 @@
    providers.js, sources-watch.js, sources-overview.js), which draw their sections as they did on their own pages.
 
    This script signs the page in (who's signed in, the plain-HTTP warning, Log out), fills the one Profile choice every
-   section follows (#profile: every profile shared with you, the view-only ones marked), and shows one group of
+   section follows (#profile, the top bar's picker: nav.js, #170), and shows one group of
    sections at a time. The address follows the group (sources.html#portals); an address naming something inside a
    section (#import-12, a record's Source link, #100) opens that section's group, and the old pages' addresses
    (import.html#manual, connect.html, providers.html, settings.html#watch: moved.js) land on theirs.
@@ -103,11 +103,8 @@ const SgSources = (() => {
     { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
     if (!me.profiles.length) { nav.hidden = true; main.classList.remove("with-nav"); $("#noProfiles").hidden = false; return null; }
     ME = me;
-    sel.replaceChildren(...me.profiles.map(p => el("option", {value: p.id, text: p.name + (p.role === "viewer" ? " (view only)" : "")})));
-    let want; try { want = +(new URLSearchParams(location.search).get("profile") || localStorage.getItem("ht-profile")); } catch (e) {}
-    if (me.profiles.some(p => p.id === want)) sel.value = want;
-    sel.closest("label").hidden = me.profiles.length < 2;
-    sel.addEventListener("change", hint);   // for this page only, as the Import and Connect pages did: not the records page's choice
+    SgNav.profiles(me.profiles);   // the top bar's picker (nav.js, #170)
+    sel.addEventListener("change", hint);
     $("#intro").hidden = false;
     hint();
     return me;

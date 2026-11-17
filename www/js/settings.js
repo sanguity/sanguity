@@ -618,17 +618,14 @@ addEventListener("hashchange", moved);
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   if (!ME.profiles.length) {   // no profile yet: their own settings, and how to get one
     $("#noProfiles").hidden = false;
-    $("#profile").closest("label").hidden = true;
+    SgNav.profiles([]);   // no profile: the top bar's picker (nav.js, #170) stays out of sight
     $("#intro").hidden = false;
     load(null, null, true);
     return;
   }
   const sel = $("#profile");
-  sel.replaceChildren(...ME.profiles.map(p => el("option", {value: p.id, text: p.name + (p.role === "viewer" ? " (view only)" : "")})));
-  let want; try { want = +(new URLSearchParams(location.search).get("profile") || localStorage.getItem("ht-profile")); } catch (e) {}
-  if (ME.profiles.some(p => p.id === want)) sel.value = want;
-  sel.closest("label").hidden = ME.profiles.length < 2;
-  const pick = () => { PID = +sel.value; try { localStorage.setItem("ht-profile", sel.value); } catch (e) {} loadLabNames().then(() => load(null, null, true)); };
+  SgNav.profiles(ME.profiles);   // the top bar's picker (nav.js, #170): the address's profile, else this browser's last
+  const pick = () => { PID = +sel.value; loadLabNames().then(() => load(null, null, true)); };
   sel.onchange = pick;
   $("#intro").hidden = false;
   pick();
