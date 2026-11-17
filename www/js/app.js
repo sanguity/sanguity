@@ -214,7 +214,7 @@ async function syncWarning(pid) {
     for (const x of WATCH.exercise || []) {
       const ev = {id: ++wid, t: x.start, end: x.end, k: "exercise", title: x.name.replace(/_/g, " "), sub: `${x.minutes} min`};
       ev.ts = zParse(ev.t); ev.te = zParse(ev.end); ev._q = (ev.title + " workout exercise").toLowerCase();
-      DATA.events.push(ev); byId.set(ev.id, ev); DATA.details[ev.id] = {type: "exercise", kind: x.kind, minutes: x.minutes};
+      DATA.events.push(ev); byId.set(ev.id, ev); DATA.details[ev.id] = {type: "exercise", kind: x.kind, minutes: x.minutes, hr: x.hr};   // hr: heart rate zones (#197)
     }
     wid = ecgLoad(wid);   // ECGs and irregular rhythm notifications (ecg.js, #182)
     EV = DATA.events;

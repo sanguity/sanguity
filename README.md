@@ -27,7 +27,7 @@ person's records appear in this repository.
 | Tab | What it shows |
 |---|---|
 | Overview | Key labs with sparklines, watch and scale summaries, active problems, allergies, immunizations, upcoming visits, costs since a milestone |
-| Body and activity | Watch, sleep and smart-scale data: weight and body composition, sleep stages, steps and workouts, heart rate and HRV; blood pressure, body temperature, blood oxygen and respiratory rate taken at home beside the readings taken at visits; cardio fitness (VO2 max) as the watch estimates it; blood glucose from a meter or a continuous glucose monitor (CGM), with time in the standard ranges |
+| Body and activity | Watch, sleep and smart-scale data: weight and body composition, sleep stages, steps and workouts (with heart rate zones from the age or a measured maximum), heart rate and HRV; blood pressure, body temperature, blood oxygen and respiratory rate taken at home beside the readings taken at visits; cardio fitness (VO2 max) as the watch estimates it; blood glucose from a meter or a continuous glucose monitor (CGM), with time in the standard ranges |
 | Timeline | Every visit, stay, lab draw, report, immunization, message, document and claim on one zoomable timeline, with a searchable list; each medication as spans from its start through dose changes to its stop, with pharmacy fills marked |
 | Labs | Lab results against reference ranges, as charts over time (each with a table of its values), with procedures, imaging and your milestones marked, and saved views of the labs you chart together; or as a heatmap of every draw, one row per lab; a name filter beside the list of labs narrows either |
 | Costs | Insurance claims by month or year, type of care and provider, and what you actually paid out of pocket: typed in, exported or from claims, matched to claims, counted once, with HSA and FSA totals |
@@ -271,7 +271,7 @@ Two phone apps upload to that address:
   trial). Add a REST API automation with the upload address as its URL, a header `Authorization` with the value
   `Bearer <the secret>`, data type Health Metrics in JSON (steps, distance, active energy, heart rate, resting heart
   rate, HRV, blood oxygen, respiratory rate, VO2 max, weight, body fat, lean mass, sleep, blood pressure, body temperature), time grouping by hours, and a
-  schedule (hourly or daily, since the last sync); then a second one for Workouts, and for a glucose meter or a CGM a
+  schedule (hourly or daily, since the last sync); then a second one for Workouts, with their heart rate data, and for a glucose meter or a CGM a
   third with Blood Glucose alone and no time grouping, so each reading comes on its own; and for a watch's ECGs, one
   with the data type ECG and one with Heart Rate Notifications (synced daily: a recording is about 1 MB as the app
   sends it). The steps are on the
@@ -310,6 +310,14 @@ mV scale, its 15,360 samples (30 seconds at 512 Hz) loaded only when the drawer 
 samples are kept apart from the summary, one sealed file per recording: about 50 KB each, beside the receiver's
 `daily.json` in `WATCH_DIR` (`ecg/`) or in the profile's folder for an import. ECGs are never in a share link or the
 visit summary. The name and birth date at the top of each of Apple's ECG files are read past and never kept.
+Heart rate zones on workouts (#197) are the commonly published five (50–60%, 60–70%, 70–80%, 80–90% and 90% and
+above of a maximum heart rate), from a maximum measured and typed in **About this person** (on the Sharing page), or
+else estimated by the common formula, 220 minus the age on the workout's day; without a birth date or a maximum
+there are none. Health Auto Export sends each workout's heart rate minute by minute, and Health Connect keeps the
+watch's heart rate samples during it, so both give the time in each zone; an uploaded Apple Health export gives only
+each workout's average and highest. The receiver keeps a workout's readings as seconds at each heart rate, so a birth
+date or maximum entered later applies to every workout; the page gets the minutes in each zone, never the readings.
+A convention, labelled so, not advice.
 
 ### Uploading records in the app
 

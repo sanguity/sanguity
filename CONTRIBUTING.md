@@ -47,7 +47,7 @@ python tests/test_watch_store.py       # imported watch data
 python tests/test_glucose.py           # blood glucose from the phone apps: meters, CGMs, time in ranges
 python tests/test_cycle.py             # cycle tracking, opt-in: off keeps nothing, owners only, deletion (#183)
 python tests/test_ecg.py               # ECGs and irregular rhythm notifications: the same from an export and the phone (#182)
-python tests/test_receiver_activity.py # respiratory rate and VO2 max from the phone apps and exports (#226)
+python tests/test_receiver_activity.py # respiratory rate, VO2 max, heart rate zones on workouts (#226, #197)
 python tests/test_import_history.py    # import history and undo
 python tests/test_edits.py             # corrections made in the app
 python tests/test_milestones.py        # milestones and workout rules on the Settings page

@@ -141,7 +141,7 @@ jobs:
       - name: "ECGs and irregular rhythm notifications (#182; the same events from an export and the phone, samples apart and sealed, never shared)"
         run: python tests/test_ecg.py
 
-      - name: Respiratory rate and VO2 max from the phone apps and an export (#226; the same days from each, sent again once)
+      - name: Respiratory rate, VO2 max and workouts' heart rate zones from the phone apps and an export (#226, #197; the same days from each, zones from age or a measured maximum)
         run: python tests/test_receiver_activity.py
 
       - name: Import history and undo (restores records, watch data and costs exactly; roles; raw files; by origin)

@@ -1264,3 +1264,17 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .ecg-sum th{text-align:left;font-weight:500;color:var(--muted);padding-right:16px}
 .ecg-note{color:var(--ink2)}
 @media (forced-colors:active){ .ecg-line{stroke:CanvasText} .ecg-cursor{stroke:Highlight} }
+
+/* ---- heart rate zones on workouts (#197, health.js): five steps of one hue, light to dark (dark to light in dark
+   mode), checked for step and surface contrast; the zones table in the card and the drawer */
+:root{--zone1:#86b6ef; --zone2:#5598e7; --zone3:#2f78d4; --zone4:#1d58a8; --zone5:#123a70}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){--zone1:#1d4f91; --zone2:#2d6fc4; --zone3:#4b8fe6; --zone4:#7fb1f0; --zone5:#b5d3f8}}
+:root[data-theme="dark"]{--zone1:#1d4f91; --zone2:#2d6fc4; --zone3:#4b8fe6; --zone4:#7fb1f0; --zone5:#b5d3f8}
+.zones-tbl{border-collapse:collapse;font-size:13px;margin:6px 0;min-width:min(100%,320px)}
+.zones-tbl th,.zones-tbl td{text-align:left;padding:4px 12px 4px 0;border-top:1px solid var(--grid);font-weight:400}
+.zones-tbl thead th{color:var(--ink2);font-weight:550;font-size:12px;border-top:0}
+.zones-tbl tbody th{white-space:nowrap}
+.zone-key{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
+.zone-line{margin:4px 0}
+.zones-need a,.zones-one a{color:var(--accent)}
+.zone-open{border:0;background:none;padding:0;font:inherit;font-weight:600;color:var(--accent);text-decoration:underline;cursor:pointer}

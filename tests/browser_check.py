@@ -474,6 +474,54 @@ def add_fitness_records(build, watch_dir):
         json.dump(data, f)
 
 
+ZONE_BIRTH = "1990-09-10"   # #197: a birthday between the first workouts below and the later ones (35, then 36)
+
+
+def add_workout_hr(watch_dir):
+    """Workouts with heart rate from both phone apps (#197), folded by the receiver into the demo's watch summary (the
+    demo's own workouts have none): through Health Auto Export, a run on 8 September with its minute-by-minute readings
+    (5 min at 100 bpm, 10 at 120, 10 at 140, 5 at 160) and a ride on 12 September with only its average and highest;
+    through Life Dashboard Companion, a walk on 20 October and a run on 10 November, with heart rate samples every 5
+    seconds during them (15 min at 105 and 30 at 125; 10 min at 150, 15 at 165, 5 at 175). Local times in New York."""
+    import hashlib, tempfile as tf
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    rx = receiver()
+    rx.DATA = tf.mkdtemp(prefix="rx-", dir=TMP)
+    store = rx.Store()
+    ny, utc = ZoneInfo("America/New_York"), ZoneInfo("UTC")
+    at = lambda local: datetime.fromisoformat(local).replace(tzinfo=ny)
+    hae_t = lambda t: t.strftime("%Y-%m-%d %H:%M:%S %z")
+
+    def send(p):
+        b = json.dumps(p).encode()
+        store.ingest(json.loads(b), hashlib.sha256(b).hexdigest())
+    run = at("2026-09-08T07:00:00")
+    rows = [{"date": hae_t(run + timedelta(minutes=i)), "Min": v - 3, "Avg": v, "Max": v + 2, "units": "count/min", "source": "Fictional Watch"}
+            for i, v in enumerate([100] * 5 + [120] * 10 + [140] * 10 + [160] * 5)]
+    ride = at("2026-09-12T18:00:00")
+    send({"data": {"workouts": [
+        {"id": "FICTIONAL-RUN", "name": "Outdoor Run", "start": hae_t(run), "end": hae_t(run + timedelta(minutes=30)), "duration": 1800,
+         "heartRateData": rows, "heartRate": {"avg": {"qty": 130, "units": "bpm"}, "max": {"qty": 162, "units": "bpm"}}},
+        {"id": "FICTIONAL-RIDE", "name": "Outdoor Cycle", "start": hae_t(ride), "end": hae_t(ride + timedelta(minutes=40)), "duration": 2400,
+         "avgHeartRate": {"qty": 128, "units": "bpm"}, "maxHeartRate": {"qty": 158, "units": "bpm"}}]}})
+    hc, samples = [], []
+    for name, start, runs in (("walking", at("2026-10-20T07:00:00"), [(15, 105), (30, 125)]),
+                              ("running", at("2026-11-10T18:00:00"), [(10, 150), (15, 165), (5, 175)])):
+        bpm = [v for m, v in runs for _ in range(m * 12)]
+        samples += [{"uuid": f"fictional-hr-{name}-{i}", "time": (start + timedelta(seconds=5 * i)).astimezone(utc).isoformat(), "bpm": v,
+                     "source": "Fictional Watch"} for i, v in enumerate(bpm)]
+        hc.append({"uuid": f"fictional-{name}", "start_time": start.astimezone(utc).isoformat(), "end_time": (start + timedelta(seconds=5 * len(bpm))).astimezone(utc).isoformat(),
+                   "type": 79 if name == "walking" else 56, "name": name, "title": name.capitalize(), "duration_seconds": 5 * len(bpm), "source": "Fictional Watch"})
+    send({"source": "health_connect", "timezone": "America/New_York", "sequence": 1, "timestamp": "2026-11-15T12:00:00Z", "heart_rate": samples, "exercise": hc})
+    path = os.path.join(watch_dir, "daily.json")
+    with open(path, encoding="utf-8") as f:
+        watch = json.load(f)
+    watch["exercise"] = sorted(watch["exercise"] + store.summary()["exercise"], key=lambda x: x["start"])
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(watch, f)
+
+
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
@@ -489,6 +537,7 @@ def start_app():
     add_immunization_records(os.path.join(TMP, "build"))   # #179
     add_vitals_records(os.path.join(TMP, "build"), os.path.join(TMP, "watch"))
     add_fitness_records(os.path.join(TMP, "build"), os.path.join(TMP, "watch"))   # #226
+    add_workout_hr(os.path.join(TMP, "watch"))   # #197
     sys.path.insert(0, ROOT)
     import uvicorn
     from server import atrest, db as dbm, main, profiles, security
@@ -1636,6 +1685,124 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             page.set_viewport_size({"width": 1400, "height": 900})
             js("state.tables.clear(); [state.preset, state.from, state.to] = window._was226; state.sel = new Set(window._was60[0]); switchTab(window._was226[3]); save()")
+
+            # ---- heart rate zones on workouts (#197): the receiver kept the heart rate of four workouts from both phone apps
+            # (add_workout_hr): without a birth date or a measured maximum, no zones, and the card and the workout's
+            # details say how to add one (About this person); with a birth date, five zones from 220 minus the age on each
+            # workout's day (a birthday between them), the time in each from the readings, a ride with only its average
+            # and highest shown against them; minutes a week in each zone on Body and activity, Chart | Table and the
+            # keyboard, the period's workouts listed, each opening its details; a measured maximum typed in About this
+            # person replaces the estimate; 1400 and 375 px, light and dark, axe clean
+            put_person = lambda body: js("b => fetch('api/profiles/1/person', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+                                         "body: JSON.stringify(b)}).then(r => r.status)", body)
+            was197 = js("[state.preset, state.from, state.to, state.tab, [...state.sel]]")   # the page loads again below: kept here
+            js("state.tables.clear(); setRange(dayTs('2026-08-01'), dayTs('2026-11-14')); switchTab('health')")
+            settle(500)
+            zn = js("""(() => { const c = document.getElementById('h-zones'); return c && {text: c.innerText, link: c.querySelector('.zones-need a')?.getAttribute('href'),
+                svg: !!c.querySelector('svg'), seg: !!c.querySelector('.view-seg'), basis: WATCH.hrZones, hr: WATCH.exercise.filter(x => x.hr).map(x => x.hr)}; })()""")
+            check("heart rate zones (#197): without a birth date or a measured maximum, no zones: the card says how to add one, linking to About this person",
+                  zn and "need a birth date or a measured maximum heart rate" in zn["text"] and zn["link"] == "sharing.html?profile=1#about" and not zn["svg"] and not zn["seg"]
+                  and zn["basis"] == {"basis": None, "maxHr": None, "workouts": True} and len(zn["hr"]) == 4 and not any("zones" in h or "hist" in h for h in zn["hr"]),
+                  zn and {k: zn[k] for k in ("link", "svg", "basis")})
+            js("openEvent(EV.find(e => e.k === 'exercise' && e.ts === zParse('2026-09-08T11:00:00+00:00')))")
+            page.wait_for_selector("#drawer.open .zones-one", timeout=5000)
+            dz = page.inner_text("#dbody")
+            check("…and so do the workout's details, beside its average and highest", "Average 130 bpm · highest 162 bpm" in dz and "add one in About this person" in dz, dz[-300:])
+            js("closeDrawer()")
+            check("…a birth date saved in About this person", put_person({"birthDate": ZONE_BIRTH}) == 200)
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            js("state.tables.clear(); setRange(dayTs('2026-08-01'), dayTs('2026-11-14')); switchTab('health')")
+            settle(500)
+            hrs = js("WATCH.exercise.filter(x => x.hr).map(x => [x.start.slice(0, 10), x.hr.zmax, x.hr.age, x.hr.basis, x.hr.zones || null, !!x.hr.hist])")
+            check("…then five zones from 220 minus the age on each workout's day (35, then 36 after the birthday), the time in each from the readings",
+                  hrs == [["2026-09-08", 185, 35, "age", [0, 300, 600, 600, 300, 0], False], ["2026-09-12", 184, 36, "age", None, False],
+                          ["2026-10-20", 184, 36, "age", [0, 900, 1800, 0, 0, 0], False], ["2026-11-10", 184, 36, "age", [0, 0, 0, 0, 1500, 300], False]], hrs)
+            zc = js("""(() => { const c = document.getElementById('h-zones'); return c && {hint: c.querySelector('.hint').textContent, label: c.querySelector('svg')?.getAttribute('aria-label'),
+                legend: [...c.querySelectorAll('.legend span')].map(s => s.textContent), list: [...c.querySelectorAll('.zones-list li')].map(l => l.textContent),
+                order: [...document.querySelectorAll('#view-health > .card')].map(c => c.id).filter(Boolean)}; })()""")
+            check("…a card after Activity: minutes a week in each zone, the zones said to be from the common formula, 220 minus age, and not advice",
+                  zc and zc["order"][zc["order"].index("h-activity") + 1] == "h-zones" and "220 minus age (the common formula)" in zc["hint"]
+                  and "184 bpm at 36 on the latest here" in zc["hint"] and "not advice" in zc["hint"] and re.match(r"Heart rate zones, minutes a week: 3 weeks from", zc["label"] or "")
+                  and zc["legend"] == ["Zone 1 · 50–60%", "Zone 2 · 60–70%", "Zone 3 · 70–80%", "Zone 4 · 80–90%", "Zone 5 · 90% and above"], zc)
+            check("…the period's workouts with heart rate listed, the ride with its average and highest only",
+                  zc and len(zc["list"]) == 4 and "most time in zone 4" in zc["list"][0] and "average and highest only" in zc["list"][2]
+                  and "most time in zones 2 and 3" in zc["list"][3]
+                  and not re.search(r"(?i)\b(good|great|poor|bad|too|risk|danger|normal)\b", " ".join(zc["list"]) + zc["hint"]), zc and zc["list"])
+            page.focus("#h-zones svg")
+            page.keyboard.press("End")
+            settle(150)
+            check("…the chart steps a week at a time from the keyboard, the tooltip giving each zone's minutes",
+                  all(w in js("tip.innerText") for w in ("Week of " + js("fmtD(dayTs('2026-11-09'))"), "1 workout with readings", "Zone 5: 5 min", "Zone 4: 25 min")), js("tip.innerText"))
+            page.keyboard.press("Escape")
+            page.click("#h-zones .view-seg button:text-is('Table')")
+            settle(200)
+            zt = js("""(() => { const t = document.querySelector('#h-zones table.data'); return t && [[...t.querySelectorAll('thead th')].map(h => h.textContent),
+                [...t.querySelectorAll('tbody tr')].map(r => [...r.cells].map(c => c.textContent))]; })()""")
+            check("…Table: a row a week, the minutes in each zone, below zone 1 and the workouts counted",
+                  zt and zt[0] == ["Week", "Zone 1 (min)", "Zone 2 (min)", "Zone 3 (min)", "Zone 4 (min)", "Zone 5 (min)", "Below zone 1 (min)", "Workouts with readings"]
+                  and [r[1:] for r in zt[1]] == [["0", "0", "0", "25", "5", "0", "1"], ["15", "30", "0", "0", "0", "0", "1"], ["5", "10", "10", "5", "0", "0", "1"]], zt)
+            js("state.tables.clear(); renderHealth()")
+            settle(300)
+            page.click("#h-zones .zones-list li:last-child .zone-open")   # the run on 8 September: its details
+            page.wait_for_selector("#drawer.open .zones-tbl", timeout=5000)
+            rows_ = js("[...document.querySelectorAll('#dbody .zones-tbl tbody tr')].map(r => [...r.cells].map(c => c.textContent))")
+            dz = page.inner_text("#dbody")
+            check("…a workout's details: the time in each zone with its heart rate range, and where the zones come from",
+                  rows_ == [["Zone 5", "167 bpm and above", "0 min"], ["Zone 4", "148–166 bpm", "5 min (17%)"], ["Zone 3", "130–147 bpm", "10 min (33%)"],
+                            ["Zone 2", "111–129 bpm", "10 min (33%)"], ["Zone 1", "93–110 bpm", "5 min (17%)"], ["Below zone 1", "under 93 bpm", "0 min"]]
+                  and "Average 130 bpm (zone 3) · highest 162 bpm (zone 4)" in dz and "an estimated maximum heart rate of 185 bpm: 220 minus age 35, the common formula" in dz, [rows_, dz[-400:]])
+            js("closeDrawer(); openEvent(EV.find(e => e.k === 'exercise' && e.ts === zParse('2026-09-12T22:00:00+00:00')))")
+            page.wait_for_selector("#drawer.open .zones-one", timeout=5000)
+            dz = page.inner_text("#dbody")
+            check("…a workout with only its average and highest: both against the zones, and why there's no time in each",
+                  "Average 128 bpm (zone 2) · highest 158 bpm (zone 4)" in dz and "only its average and highest" in dz and not js("!!document.querySelector('#dbody .zones-tbl')"), dz[-300:])
+            js("closeDrawer()")
+            # a measured maximum, typed in About this person
+            page.goto(base + "/sharing.html?profile=1#about")
+            page.wait_for_selector("#about[data-profile='1'] #aboutMaxHr", timeout=10000)
+            page.fill("#aboutMaxHr", "190")
+            page.click("#aboutSave")
+            page.wait_for_function("document.getElementById('aboutMsg').textContent === 'Saved.'", timeout=10000)
+            check("…a measured maximum heart rate typed in About this person (owners and editors)",
+                  js("fetch('api/profiles/1/person').then(r => r.json())")["maxHr"] == 190 and "220 minus the age" in page.inner_text("#about"))
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            js("state.tables.clear(); setRange(dayTs('2026-08-01'), dayTs('2026-11-14')); switchTab('health')")
+            settle(500)
+            mz = js("[document.querySelector('#h-zones .hint').textContent, WATCH.exercise.filter(x => x.hr).map(x => [x.hr.zmax, x.hr.basis, x.hr.zones || null])]")
+            check("…replaces the estimate for every workout, and the card says so",
+                  "the maximum heart rate entered in About this person, 190 bpm" in mz[0] and mz[1][3] == [190, "measured", [0, 0, 0, 600, 900, 300]]
+                  and all(z[0] == 190 for z in mz[1]), mz)
+            bad, axe_z = [], []
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    for table in (False, True):
+                        js("on => { closeDrawer(); state.tables.clear(); if (on) state.tables.add('#h-zones'); renderHealth(); }", table)
+                        settle(300)
+                        page.locator("#h-zones").scroll_into_view_if_needed()
+                        if width == 375:
+                            bad += phone_fits(page, f"heart rate zones {'table' if table else 'chart'} ({theme})")
+                        axe_z += axe_check(page, f"heart rate zones {'table' if table else 'chart'}, {width} px, {theme}")[0]
+                    js("openEvent(EV.find(e => e.k === 'exercise' && e.ts === zParse('2026-09-08T11:00:00+00:00')))")
+                    page.wait_for_selector("#drawer.open .zones-tbl", timeout=5000)
+                    settle(200)
+                    if width == 375:
+                        bad += phone_fits(page, f"a workout's zones in the drawer ({theme})")
+                    axe_z += axe_check(page, f"a workout's zones in the drawer, {width} px, {theme}")[0]
+                    js("closeDrawer()")
+            check("…the card, its table and a workout's details fit 375 px, and axe-core finds nothing serious at 1400 and 375 px, light and dark",
+                  not bad and not axe_z, (bad + axe_z)[:6])
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…(the birth date and maximum cleared again for the checks after)", put_person({"birthDate": "", "maxHr": 0}) == 200)
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            js("w => { state.tables.clear(); [state.preset, state.from, state.to] = w; state.sel = new Set(w[4]); switchTab(w[3]); save(); }", was197)
+            settle(300)
 
             # ---- each result against its own range (#58): the demo's creatinine (0.7–1.3 mg/dL) with two results from
             # an outside lab (0.6–1.2, add_range_records): the chart's band steps with each result's range and its

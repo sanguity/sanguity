@@ -39,7 +39,7 @@ function hData() {
   const sleep = ser("sleep_h").map(([t, v]) => { const d = isoDay(t); return [t, v, ...parts.map(m => (m[d] || 0) / 60)]; });
   const lo = M.hr_min ? Object.fromEntries(M.hr_min.pts) : {}, hi = M.hr_max ? Object.fromEntries(M.hr_max.pts) : {};
   const hr = ser("hr_avg").map(([t, v]) => [t, v, lo[isoDay(t)], hi[isoDay(t)]]);
-  const ex = ((WATCH || {}).exercise || []).map(x => ({t: zParse(x.start), name: (x.name || "").replace(/_/g, " "), kind: x.kind, min: x.minutes || 0}));
+  const ex = ((WATCH || {}).exercise || []).map(x => ({t: zParse(x.start), name: (x.name || "").replace(/_/g, " "), kind: x.kind, min: x.minutes || 0, hr: x.hr}));   // hr: its heart rate and zones (#197)
   // visits matching a settings rule (e.g. physical therapy) count as workouts: one per rule per day, past visits only.
   // A rule's text is found anywhere in the title, ignoring case; with "regex" it is a regular expression the server
   // checked is safe to run (server/settings.py, whose rule_matches does the same)
@@ -301,6 +301,8 @@ function renderHealth() {
     const kinds = new Map(); for (const x of exIn) { const k = x.name || "Workout"; const v = kinds.get(k) || {n: 0, min: 0}; v.n++; v.min += x.min; kinds.set(k, v); }
     if (kinds.size) cal.append(el("p", {class: "hint", style: {marginTop: "6px"}, text: [...kinds.entries()].sort((p, q) => q[1].min - p[1].min).slice(0, 6).map(([k, v]) => `${k}: ${v.n}× · ${Math.round(v.min / 6) / 10} h`).join("   ·   ")}));
   });
+
+  hZones(box, a, b, {long, legend, head, byDay});   // heart rate zones on workouts (#197, below)
 
   // heart
   const ht = el("div", {class: "card", id: "h-heart"}, head("Heart", "#h-heart"),
@@ -681,4 +683,90 @@ function phoneDayCard(box, {a, b, long, legend, head}, o) {
       if (!r) return {t: p[0], rows: [el("div", {class: "v", text: `${fmt(p[1])} ${o.unit} average`}), el("div", {class: "s", text: `Week of ${fmtD(p[0] - 3 * DAY)} · phone, daily figures`})]};
       return {t: p[0], rows: [el("div", {class: "v", text: val(r)}), el("div", {class: "s", text: where(r)}), flags(r) ? el("div", {class: "s", text: flags(r)}) : null]}; }});
   latestList(card, all, 3, val, where, flags);
+}
+
+/* ---------------------------------------------------------------- heart rate zones on workouts (#197) */
+/* The commonly published five zones (50–60%, 60–70%, 70–80%, 80–90% and 90% and above of a maximum heart rate), from
+   the maximum entered in About this person or else estimated as 220 minus the age on each workout's day, the common
+   formula, said so wherever zones show. server/hrzones.py works out each workout's seconds in each zone from the
+   phone's readings (WATCH.exercise[i].hr: avg, max, zmax, basis, age, zones: [below zone 1, zone 1 … 5]); without
+   readings only its average and highest are shown against the zones. Without a birth date or a maximum, no zones:
+   it says how to add one. A convention, never a judgement of the workout. */
+const Z_PCT = [50, 60, 70, 80, 90];
+const Z_C = ["var(--zone1)", "var(--zone2)", "var(--zone3)", "var(--zone4)", "var(--zone5)"];
+const zoneBounds = zmax => Z_PCT.map(p => Math.floor((zmax * p + 50) / 100));   // each zone's lower limit, as hrzones.bounds
+const zoneOf = (bpm, zmax) => zoneBounds(zmax).filter(x => Math.round(bpm) >= x).length;   // 0: below zone 1
+const zoneRange = (k, zmax) => { const lo = zoneBounds(zmax); return k === 5 ? `${lo[4]} bpm and above` : `${lo[k - 1]}–${lo[k] - 1} bpm`; };
+const zoneName = k => k ? `zone ${k}` : "below zone 1";
+const zMin = s => Math.round(s / 60);
+const aboutLink = () => el("a", {href: `sharing.html?profile=${PROFILE.id}#about`, text: "About this person"});
+/* where a workout's zones come from, in words */
+const zoneBasis = hr => hr.basis === "measured" ? `the maximum heart rate entered in About this person, ${hr.zmax} bpm`
+  : `an estimated maximum heart rate of ${hr.zmax} bpm: 220 minus age ${hr.age}, the common formula`;
+/* how to get zones, when there's no birth date or maximum */
+const zonesNeed = () => el("p", {class: "hint zones-need"}, "Heart rate zones need a birth date or a measured maximum heart rate: ",
+  canEdit() ? "add one in " : "an owner or editor can add one in ", aboutLink(), ".");
+/* one workout's heart rate and zones: for the drawer (workout details) and the zones card */
+function workoutZones(hr) {
+  if (!hr || (hr.avg == null && hr.max == null)) return null;
+  const k = v => hr.zmax ? ` (${zoneName(zoneOf(v, hr.zmax))})` : "";
+  const parts = [el("p", {class: "zone-line"}, [hr.avg != null ? `Average ${Math.round(hr.avg)} bpm${k(hr.avg)}` : "", hr.max != null ? `highest ${Math.round(hr.max)} bpm${k(hr.max)}` : ""].filter(Boolean).join(" · "))];
+  if (!hr.zmax) return el("div", {class: "zones-one"}, ...parts, zonesNeed());
+  if (hr.zones) {
+    const total = hr.zones.reduce((s, x) => s + x, 0) || 1;
+    parts.push(el("table", {class: "tbl zones-tbl"}, el("caption", {class: "vh", text: "Time in each heart rate zone"}),
+      el("thead", {}, el("tr", {}, ...["Zone", "Heart rate", "Time"].map(h => el("th", {scope: "col", text: h})))),
+      el("tbody", {}, ...[5, 4, 3, 2, 1, 0].map(z => el("tr", {}, el("th", {scope: "row"}, z ? el("i", {class: "zone-key", style: {background: Z_C[z - 1]}}) : null, z ? `Zone ${z}` : "Below zone 1"),
+        el("td", {text: z ? zoneRange(z, hr.zmax) : `under ${zoneBounds(hr.zmax)[0]} bpm`}),
+        el("td", {text: `${zMin(hr.zones[z])} min${hr.zones[z] ? ` (${Math.round(hr.zones[z] / total * 100)}%)` : ""}`}))))));
+  } else parts.push(el("p", {class: "muted", text: "The phone sent no readings during it, only its average and highest, so the time in each zone isn't known."}));
+  parts.push(el("p", {class: "muted", text: `Zones from ${zoneBasis(hr)}. A common convention, not advice.`}));
+  return el("div", {class: "zones-one"}, ...parts);
+}
+/* the card on Body and activity: minutes in each zone a week, from the workouts with readings; the period's workouts
+   with heart rate listed, each opening its details. head, legend and byDay are renderHealth's */
+function hZones(box, a, b, {long, legend, head, byDay}) {
+  const info = (WATCH || {}).hrZones || {}, withHr = H.ex.filter(x => x.hr && (x.hr.avg != null || x.hr.max != null));
+  if (!withHr.length) return;
+  const inP = withHr.filter(x => x.t >= a && x.t <= b), key = "#h-zones";
+  const card = el("div", {class: "card", id: "h-zones", tabindex: -1});
+  box.append(card);
+  if (!info.basis) {   // nothing to show zones against: say how to add one
+    card.append(el("div", {class: "list-hd"}, el("h2", {text: "Heart rate zones"})),
+      el("p", {class: "hint", text: `${withHr.length} workout${withHr.length === 1 ? " has" : "s have"} heart rate from the phone.`}), zonesNeed());
+    return;
+  }
+  const last = [...inP].reverse().find(x => x.hr.zmax) || [...withHr].reverse().find(x => x.hr.zmax);
+  card.append(head("Heart rate zones", key), el("p", {class: "hint", text: "Minutes a week in each of the five common zones, from the workouts the phone sent heart rate readings for. "
+    + (info.basis === "measured" ? `Zones from the maximum heart rate entered in About this person, ${info.maxHr} bpm.`
+      : `Zones from an estimated maximum heart rate, 220 minus age (the common formula), so it follows the age on each workout's day${last ? `: ${last.hr.zmax} bpm at ${last.hr.age} on the latest here` : ""}.`)
+    + " A common convention, not advice."}));
+  const wk = t => { const d = zdate(t); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime() + 3 * DAY; };
+  const weeks = new Map();
+  for (const x of withHr) { if (!x.hr.zones) continue; const k = wk(x.t), w = weeks.get(k) || {z: [0, 0, 0, 0, 0, 0], n: 0}; x.hr.zones.forEach((s, i) => { w.z[i] += s; }); w.n++; weeks.set(k, w); }
+  const pts = [...weeks.entries()].sort((p, q) => p[0] - q[0]).map(([t, w]) => [t, ...w.z.slice(1).map(s => s / 60), w]);
+  if (state.tables.has(key)) {
+    card.append(chartTable(["Week", ...[1, 2, 3, 4, 5].map(k => `Zone ${k} (min)`), "Below zone 1 (min)", "Workouts with readings"],
+      byDay(pts).map(({t, v: [p]}) => ["Week of " + fmtD(t - 3 * DAY), ...p.slice(1, 6).map(m => String(Math.round(m))), String(zMin(p[6].z[0])), String(p[6].n)])));
+  } else {
+    card.append(legend(Z_PCT.map((p, i) => [Z_C[i], `Zone ${i + 1} · ${p}${i < 4 ? `–${Z_PCT[i + 1]}` : "% and above"}${i < 4 ? "%" : ""}`])));
+    hChart(card, a, b, {h: 180, fmtY: v => Math.round(v) + "m", label: "Heart rate zones, minutes a week", noun: "week", nav: pts, layers: [
+      {type: "bars", data: pts, keys: ["z1", "z2", "z3", "z4", "z5"], colors: Z_C, every: 7 * DAY}],
+      tip: t => { const p = nearest(pts, t, 4); if (!p) return null;
+        return {t: p[0], rows: [el("div", {class: "v", text: `Week of ${fmtD(p[0] - 3 * DAY)}`}), el("div", {class: "s", text: `${p[6].n} workout${p[6].n === 1 ? "" : "s"} with readings`}),
+          ...[5, 4, 3, 2, 1].map(k => p[k] >= 0.5 ? tipRow(Z_C[k - 1], `Zone ${k}: ${Math.round(p[k])} min`) : null),
+          p[6].z[0] >= 30 ? el("div", {class: "s", text: `Below zone 1: ${zMin(p[6].z[0])} min`}) : null]}; }});
+  }
+  // the period's workouts with heart rate, the latest first; each opens its details (the drawer)
+  const recent = inP.slice(-5).reverse();
+  if (!recent.length) { card.append(el("p", {class: "hint", text: "No workouts with heart rate in this period."})); return; }
+  card.append(el("h3", {class: "sub", style: {marginTop: "10px"}, text: inP.length > 5 ? `Latest 5 of ${inP.length} workouts with heart rate in this period` : "Workouts with heart rate in this period"}),
+    el("ul", {class: "vital-list zones-list"}, ...recent.map(x => {
+      const ev = EV.find(e => e.k === "exercise" && e.ts === x.t), z = x.hr.zones, most = z ? Math.max(...z.slice(1)) : 0;
+      const top = most > 0 ? [1, 2, 3, 4, 5].filter(k => z[k] === most) : [];   // the zone (or zones, tied) with the most time
+      const what = [x.hr.avg != null ? `average ${Math.round(x.hr.avg)} bpm` : "", x.hr.max != null ? `highest ${Math.round(x.hr.max)}` : "",
+        top.length ? `most time in zone${top.length > 1 ? "s" : ""} ${listOf(top.map(String))}` : z ? "" : "average and highest only"].filter(Boolean).join(", ");
+      return el("li", {}, ev ? el("button", {class: "zone-open", type: "button", text: `${x.name || "Workout"}, ${x.min} min`, onclick: () => openEvent(ev)}) : el("b", {text: `${x.name || "Workout"}, ${x.min} min`}),
+        ` · ${what}`, el("span", {class: "muted", text: ` · ${fmtDT(x.t)}`}));
+    })));
 }

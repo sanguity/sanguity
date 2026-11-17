@@ -366,9 +366,12 @@ class _Aggregates:
             sec = (end - start).total_seconds()
         words = "".join(" " + c.lower() if c.isupper() and i else c.lower() for i, c in enumerate(typ)).split()
         k = (start.astimezone(timezone.utc), end.astimezone(timezone.utc), typ)
-        self.workouts.setdefault(k, {
+        entry = self.workouts.setdefault(k, {
             "key": workout_key(k[0], k[1], hk_type), "start": k[0].isoformat(), "end": k[1].isoformat(),
             "name": " ".join(words).capitalize(), "kind": "_".join(words), "minutes": round(sec / 60)})
+        hr = _workout_hr(el)
+        if hr and "hr" not in entry:
+            entry["hr"] = hr
 
     # -------------------------------------------------------------- summary
     def _sleep_days(self):
@@ -443,6 +446,22 @@ class _Aggregates:
         if self.bad_dates:
             w.append(f"Skipped {self.bad_dates} record{'s' * (self.bad_dates != 1)} with a date it couldn't read.")
         return w
+
+
+def _workout_hr(el):
+    """A workout's heart rate (#197): its WorkoutStatistics for heart rate (iOS 16 and later), {"avg", "max"} in bpm,
+    or None. The export's heart rate readings during it are summed into days as they stream past, not kept, so
+    there's no time in zones for an uploaded export (server/hrzones.py)."""
+    for st in el.iter("WorkoutStatistics"):
+        if st.get("type") == "HKQuantityTypeIdentifierHeartRate" and st.get("unit") in (None, "count/min"):
+            out = {}
+            for k, a in (("avg", "average"), ("max", "maximum")):
+                try:
+                    out[k] = round(float(st.get(a)), 1)
+                except (TypeError, ValueError):
+                    pass
+            return out or None
+    return None
 
 
 def workout_key(start, end, hk_type):
