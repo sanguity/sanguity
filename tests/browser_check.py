@@ -36,7 +36,9 @@ and follows its link to the import history, makes a share link on the account pa
 under the real CSP (only the chosen sections and lab, no cookie, at 375 px too), finds the view in the activity and
 revokes it (#47), checks the "not medical advice" notice on every tab and beside
 out-of-range highlighting, sees a medication's start, dose change, stop and pharmacy fills as spans on the
-timeline, in its history in the drawer and, when ticked, under the Trends charts (#50, at 375 px too), and fails
+timeline, in its history in the drawer and, when ticked, under the Trends charts (#50, at 375 px too), opens every tab
+and every page's groups at 375 px in light and dark with nothing scrolling sideways and no control cut off or
+overlapping (#61), and fails
 on any script error, console error, failed request, request to another host or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
@@ -163,6 +165,89 @@ def stopped(e):
         if l not in seen:
             seen.append(l)
     return lines[0] + ("" if not seen else " | " + " | ".join(seen[:6]))
+
+
+# what phone_fits measures, in the page (#61)
+PHONE_FITS_JS = r"""(() => {
+  const vw = document.documentElement.clientWidth, out = [];
+  const name = e => {
+    const t = (e.getAttribute("aria-label") || e.textContent || e.value || e.getAttribute("placeholder") || "").replace(/\s+/g, " ").trim().slice(0, 30);
+    return e.tagName.toLowerCase() + (e.id ? "#" + e.id : "") + (t ? ` "${t}"` : "");
+  };
+  const sw = document.documentElement.scrollWidth;
+  if (sw > vw) {   // name the outermost boxes that stick out, leaving out what scrolls inside a box of its own or is fixed
+    const free = e => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) { const cs = getComputedStyle(a);
+      if (cs.overflowX !== "visible" || cs.position === "fixed") return false; } return getComputedStyle(e).position !== "fixed"; };
+    const wide = [...document.body.querySelectorAll("*")].filter(e => e.getBoundingClientRect().right > vw + 0.5 && !e.closest("svg *") && free(e))
+      .map(e => [e, e.getBoundingClientRect().right]);
+    const top = wide.filter(([e]) => !wide.some(([p]) => p !== e && p.contains(e))).slice(0, 3).map(([e, r]) => name(e) + " to " + Math.round(r));
+    out.push(`the page scrolls sideways: ${sw} px wide (${top.join(", ")})`);
+  }
+  const CONTROLS = "a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=switch], [role=checkbox], [role=radio], [tabindex]:not([tabindex='-1'])";
+  const layer = e => {   // a control's layer: a fixed or sticky bar, a popup or dialog, or the page itself
+    for (let a = e; a && a !== document.body; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if (cs.position === "fixed" || cs.position === "sticky" || a.matches("dialog, [popover]") || (cs.position === "absolute" && cs.zIndex !== "auto")) return a;
+    }
+    return document.body;
+  };
+  const items = [];
+  for (const e of document.querySelectorAll(CONTROLS)) {
+    if (e.closest("svg, [inert]") || !e.checkVisibility({checkOpacity: true, checkVisibilityCSS: true})) continue;
+    // the part that can be seen: cut to every box around it that scrolls or hides its overflow (a row of tabs that
+    // scrolls sideways shows only some of them); none if it's clipped away (visually hidden)
+    let rects = [...e.getClientRects()].map(r => ({l: r.left, r: r.right, t: r.top, b: r.bottom})), hidden = false;
+    for (let a = e; a && a !== document.documentElement; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if ((cs.clip && cs.clip !== "auto") || (cs.clipPath && cs.clipPath !== "none")) { hidden = true; break; }
+      if (a !== e && (cs.overflowX !== "visible" || cs.overflowY !== "visible")) {
+        const c = a.getBoundingClientRect(), x = cs.overflowX !== "visible", y = cs.overflowY !== "visible";
+        rects = rects.map(r => ({l: x ? Math.max(r.l, c.left) : r.l, r: x ? Math.min(r.r, c.right) : r.r, t: y ? Math.max(r.t, c.top) : r.t, b: y ? Math.min(r.b, c.bottom) : r.b}));
+      }
+      if (cs.position === "fixed") break;
+    }
+    rects = rects.filter(r => r.r - r.l > 2 && r.b - r.t > 2);   // nothing left to see, or a 1 px visually-hidden box
+    if (hidden || !rects.length) continue;
+    const l = Math.min(...rects.map(r => r.l)), r = Math.max(...rects.map(r => r.r)), b = Math.max(...rects.map(r => r.b)), lay = layer(e);
+    if (r <= 0 || b + scrollY <= 0 || (l >= vw && lay !== document.body)) continue;   // moved off the screen on purpose: a skip link, a closed drawer
+    if (l < -0.5 || r > vw + 0.5) out.push(`${name(e)} is cut off at the screen's edge (${Math.round(l)} to ${Math.round(r)} px)`);
+    items.push({e, rects, lay});
+  }
+  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+    const a = items[i], b = items[j];
+    if (a.lay !== b.lay || a.e.contains(b.e) || b.e.contains(a.e)) continue;
+    if (a.rects.some(p => b.rects.some(q => Math.min(p.r, q.r) - Math.max(p.l, q.l) > 2 && Math.min(p.b, q.b) - Math.max(p.t, q.t) > 2)))
+      out.push(`${name(a.e)} overlaps ${name(b.e)}`);
+  }
+  return out;
+})()"""
+
+
+def phone_fits(page, label="", ignore=()):
+    """What doesn't fit a phone-width page (#61), as a list of problems, empty when it fits. Set the viewport first
+    (375 px wide; the sweep "every page at 375 px" uses 375 x 800) and open what is to be measured: a tab, a group, a
+    menu or panel. It measures what is drawn now and changes nothing, so it also works under the real CSP.
+
+    Reported:
+    - the page scrolls sideways (the document is wider than the viewport), naming the outermost boxes that stick out;
+    - a control cut off at the screen's edge: part of it on screen, part off;
+    - two controls overlapping by more than 2 px each way, in the same layer.
+    A control is a link, button, input, select, textarea, summary, an element with a widget role (button, tab,
+    switch, checkbox, radio) or one in the tab order. SVG content (chart marks) is left out.
+
+    Not reported, so these don't need ignoring: controls that aren't drawn (display:none, visibility:hidden,
+    opacity 0, inside a closed <details> or an [inert] part); the part of a control scrolled out of sight inside a
+    box that scrolls (the tab bar, the period presets, a sidebar's row of groups, a wide table's wrapper) or hidden
+    by its overflow; a control clipped away or 2 px or less across (a visually-hidden skip link), or moved wholly
+    off the screen to the left or top (a skip link until it's focused), or to the right inside a fixed panel (the
+    closed drawer); a control inside another (a button in a summary); and controls in different layers — a fixed or
+    sticky bar, a <dialog> or [popover], or an absolutely positioned box with a z-index (an open menu, the drawer) is
+    meant to lie over the page.
+
+    label goes before each problem ("Sources #upload: …"). ignore is a list of substrings: a problem containing one
+    is dropped, for a known one owned by another issue (say which, beside it)."""
+    found = [p for p in page.evaluate(PHONE_FITS_JS) if not any(i in p for i in ignore)]
+    return [f"{label}: {p}" if label else p for p in found]
 
 
 def main():
@@ -433,6 +518,12 @@ def main():
         hp.set_viewport_size({"width": 375, "height": 800})
         hp.wait_for_timeout(200)
         check("share links: the shared page fits 375 px", hp.evaluate("document.documentElement.scrollWidth") <= 375, hp.evaluate("document.documentElement.scrollWidth"))
+        shared_bad = phone_fits(hp, "light")   # #61: and no control cut off or overlapping, in light and dark
+        hp.emulate_media(color_scheme="dark")
+        hp.wait_for_timeout(100)
+        shared_bad += phone_fits(hp, "dark") + ([] if hp.evaluate("matchMedia('(prefers-color-scheme: dark)').matches") else ["dark: not dark"])
+        hp.emulate_media(color_scheme=None)
+        check("share links: …with no control cut off or overlapping, in light and dark (#61)", not shared_bad, shared_bad[:8] or "")
         strict.set_viewport_size({"width": 375, "height": 800})
         strict.wait_for_timeout(200)
         check("share links: the owner's panel fits 375 px", strict.evaluate("document.documentElement.scrollWidth") <= 375, strict.evaluate("document.documentElement.scrollWidth"))
@@ -3149,6 +3240,62 @@ def main():
             allowed.discard(origin(payer.fhir_base))
             payer.stop()
             js(f"localStorage.setItem('ht-profile', {json.dumps(prev_profile or '')})" if prev_profile else "localStorage.removeItem('ht-profile')")
+
+            # ---- every page at 375 px (#61): each records tab (Labs as charts and as a heatmap) with its filters open, an
+            # event's drawer and the top bar's menus; every group of Sources (the profile with connected sources and
+            # imports), Sharing, Settings, Account and Admin; and the sign-in page with no session; in light and dark:
+            # nothing scrolls sideways, and no control is cut off at the edge or overlaps another (phone_fits). The
+            # shared page (share.html) is checked the same way with the share links, under the real CSP.
+            phone_known = ()   # problems owned by another issue, each with the issue's number beside it: none now
+            theme_was = js("localStorage.getItem('ht-theme')")
+            page.set_viewport_size({"width": 375, "height": 800})
+            for theme in ("light", "dark"):
+                js(f"localStorage.setItem('ht-theme', '{theme}')")
+                page.goto(base + "/")
+                page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+                bad = []
+                for t in ("overview", "health", "timeline", "heatmap", "labs", "costs"):
+                    open_tab(t)
+                    settle(250)
+                    bad += phone_fits(page, t, phone_known)
+                    if page.is_visible("#ftoggle"):
+                        page.click("#ftoggle")
+                        settle(150)
+                        bad += phone_fits(page, t + " with its filters open", phone_known)
+                        page.click("#ftoggle")
+                    if t == "timeline":
+                        page.click("#list .row >> nth=0")
+                        page.wait_for_function("document.getElementById('drawer').classList.contains('open')", timeout=5000)
+                        settle(250)
+                        bad += phone_fits(page, "the drawer", phone_known)
+                        page.keyboard.press("Escape")
+                        settle(250)
+                for m in ("#addMenuBtn", "#userMenuBtn"):
+                    page.click(m)
+                    bad += phone_fits(page, m + " open", phone_known)
+                    page.keyboard.press("Escape")
+                check(f"at 375 px, {theme}: every records tab, with its filters open, the drawer and the menus fit, no control cut off or overlapping (#61)",
+                      js("document.documentElement.dataset.theme") == theme and not bad, bad[:8] or "")
+                bad, seen = [], []
+                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+                    page.goto(base + "/" + path)
+                    page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
+                    settle(300)
+                    for g in js("[...document.querySelectorAll('.set-nav a[data-group]')].map(a => a.dataset.group)"):
+                        page.click(f".set-nav a[data-group={g}]")
+                        settle(150)
+                        bad += phone_fits(page, f"{path.split('.')[0]} #{g}", phone_known)
+                        seen.append(f"{path.split('.')[0]}#{g}")
+                ctx = browser.new_context(viewport={"width": 375, "height": 800}, color_scheme=theme)   # no session: the sign-in page
+                lp = ctx.new_page()
+                lp.goto(base + "/login.html")
+                lp.wait_for_selector("#u", timeout=10000)
+                bad += phone_fits(lp, "sign-in", phone_known)
+                ctx.close()
+                check(f"at 375 px, {theme}: every group of Sources, Sharing, Settings, Account and Admin, and the sign-in page, fit, "
+                      "no control cut off or overlapping (#61)", len(seen) >= 25 and not bad, bad[:8] or f"{len(seen)} groups")
+            js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was)})" if theme_was else "localStorage.removeItem('ht-theme')")
+            page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- account page: password and devices; profiles and their sharing on the Sharing page (#168); the Admin
             # page: accounts (#167)

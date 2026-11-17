@@ -193,7 +193,7 @@ jobs:
       - name: Importer tests
         run: python -m unittest discover -s tests -p "test_importer*.py" -v
 
-      - name: Browser check (sign-in, every tab, drawer, pan/zoom, profiles, account page, no errors or NaN)
+      - name: Browser check (sign-in, every tab, drawer, pan/zoom, profiles, account page, every page at 375 px, no errors or NaN)
         run: python tests/browser_check.py
 
   # The install as the README describes it: build the images, start the stack, then set up and use it through nginx

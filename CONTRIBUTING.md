@@ -48,7 +48,7 @@ python tests/test_milestones.py        # milestones and workout rules on the Set
 python tests/test_lab_mapping.py       # matching unknown lab names
 python tests/test_summary.py           # the visit summary PDF
 python -m unittest discover -s tests -p "test_importer*.py" -v   # the registry and every importer's fixtures
-python tests/browser_check.py          # headless browser: every tab, the drawer, pan/zoom, account and import pages
+python tests/browser_check.py          # headless browser: every tab, the drawer, pan/zoom, every page at 375 px
 ```
 
 CI also checks that the Python files compile, the JSON templates parse, `compose.yaml` is valid, the demo data is
@@ -118,7 +118,8 @@ change. In short (the guide has the details):
    the issue (`Closes #123`), and include a screenshot of the demo data for a visible change.
 3. Update the README or the docs in the same pull request when behaviour changes.
 4. CI must pass. A maintainer reviews the code, and for a front-end change also tries it at phone width (375 px)
-   and in dark mode. Expect questions and requests for changes; they're normal.
+   and in dark mode. The browser check opens every page at 375 px; for a control that only shows after a click,
+   check it there with `phone_fits` in `tests/browser_check.py`. Expect questions and requests for changes; they're normal.
 5. Once approved, a maintainer squash-merges it.
 
 By contributing you agree that your contribution is licensed under the [GNU AGPL v3.0](LICENSE), like the rest of

@@ -218,6 +218,10 @@ Everything on `main` so far; it becomes the first tagged release.
   `#trends` and `#heatmap` still open Labs, an address with no `#` still opens the tab last used, and switching
   profile opens that profile's last tab. The "See them on Labs" and "See them on the timeline" links after an
   import name the profile and tab.
+- The phone layout is tested at 375 px on every change (#61): the browser check opens every records tab (with its
+  filters open, an event's details and the top bar's menus), every group of Sources, Sharing, Settings, Account and
+  Admin, the sign-in page and a share link's page, in light and dark, and fails if the page scrolls sideways or a
+  button, link or field is cut off at the screen's edge or overlaps another.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
