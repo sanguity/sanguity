@@ -90,6 +90,9 @@ class Connections(unittest.TestCase):
         self.fake = FakeFHIR(patients=["robin-example"]).start()
         self.addCleanup(self.fake.stop)
         db = dbm.connect()
+        # sources from earlier tests stay in the database; when the OS hands this fake a port an earlier one had, its
+        # address would match theirs and adding a source would be refused as a duplicate (409): move theirs aside
+        db.execute("UPDATE smart_clients SET issuer = issuer || '/earlier-test-' || id WHERE issuer = ?", (self.fake.fhir_base,))
         self.pid = prof.create_profile(db, "Robin (fictional)", owner_id=self.uids["robin"])
         db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (self.uids["kim"], self.pid))
         db.close()
