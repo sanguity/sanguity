@@ -1150,7 +1150,16 @@ class Api(unittest.TestCase):
         html_url, pdf_url = det["Visit summary"]["url"], det["Report"]["url"]
         self.assertTrue(html_url.endswith("/visit%20summary.htm"), html_url)
         self.assertEqual(ben.get("/" + html_url).headers["content-type"], "text/html; charset=utf-8")
+        # (#221) an HTML record is sandboxed even in a tab of its own, so a refresh in it can't move the tab; a PDF and
+        # the record's pictures and stylesheets aren't (a sandbox would stop a PDF rendering)
+        csp = lambda url: ben.get(url).headers["content-security-policy"]   # noqa: E731
+        self.assertTrue(csp("/" + html_url).endswith("; sandbox allow-same-origin"), csp("/" + html_url))
+        self.assertIn("script-src 'none'", csp("/" + html_url))
+        self.assertIn("sandbox allow-same-origin", csp("/" + det["Bare"]["url"]), "described as HTML")
         base = "/" + html_url.rsplit("/", 1)[0]
+        for url in ("/" + pdf_url, base + "/style.css", base + "/visit_files/logo.png"):
+            self.assertNotIn("sandbox", csp(url), url)
+            self.assertIn("script-src 'none'", csp(url), url)
         self.assertEqual(ben.get(base + "/style.css").headers["content-type"], "text/css; charset=utf-8")
         self.assertEqual(ben.get(base + "/visit_files/logo.png").status_code, 200)
         self.assertEqual(ben.get(base + "/notes.json").status_code, 404)          # pictures and stylesheets only

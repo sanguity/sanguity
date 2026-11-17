@@ -47,7 +47,7 @@ on any script error, console error, failed request, request to another host or N
   pip install -r requirements-dev.txt && playwright install chromium
   python3 tests/browser_check.py
 """
-import json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.request
+import json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request
 
 from playwright.sync_api import sync_playwright
 
@@ -70,7 +70,8 @@ def add_html_record(build):
     os.makedirs(folder, exist_ok=True)
     with open(os.path.join(build, "files", "visit summary.htm"), "w", encoding="utf-8") as f:
         f.write('<link rel="stylesheet" href="visit summary_files/style.css"><p id="t">Visit summary</p>'
-                '<img id="i" src="visit summary_files/logo.png">')
+                '<img id="i" src="visit summary_files/logo.png">'
+                '<meta http-equiv="refresh" content="1; url=https://example.invalid/moved">')   # it mustn't move its tab (#221)
     with open(os.path.join(folder, "style.css"), "w", encoding="utf-8") as f:
         f.write("#t { color: rgb(255, 0, 0) }")
     with open(os.path.join(folder, "logo.png"), "wb") as f:   # a 1x1 PNG
@@ -2478,7 +2479,31 @@ def main():
                         sandbox: f.getAttribute('sandbox')}; })()""")
             check("HTML record loads its own stylesheet and picture", look["color"] == "rgb(255, 0, 0)" and look["img"] == 1, look)
             check("HTML record can't run scripts", "allow-scripts" not in (look["sandbox"] or "") and look["sandbox"] is not None, look["sandbox"])
+            # ---- an HTML record opened in its own tab (Open in new tab) can't send it elsewhere (#221): it's served with
+            # "sandbox allow-same-origin" in its CSP, so its refresh is refused as in the drawer's frame; PDFs and
+            # pictures are served without it, so they still open. A context of its own: bypass_csp would drop the sandbox.
+            doc_src = js("document.querySelector('#dbody iframe.doc').getAttribute('src')")
+            pdf_src = js("Object.values(DATA.details).find(d => d && d.type === 'file' && (d.ext || '').toLowerCase() === 'pdf' && d.url)?.url")
             page.keyboard.press("Escape")
+            tab_ctx =browser.new_context(viewport={"width": 1400, "height": 900})
+            tab_ctx.add_cookies(page.context.cookies())
+            tab = tab_ctx.new_page()
+            tab.on("request", elsewhere)
+            doc_abs = urllib.parse.urljoin(page.url, doc_src)
+            served = tab.goto(doc_abs)
+            tab.wait_for_timeout(2000)   # the record asks for its refresh after 1 second
+            csp = lambda r: r.headers.get("content-security-policy") or ""   # noqa: E731
+            check("an HTML record opened in its own tab stays put: its refresh doesn't move the tab (#221)",
+                  tab.url == doc_abs and tab.inner_text("#t") == "Visit summary" and "sandbox allow-same-origin" in csp(served),
+                  [tab.url, csp(served)])
+            pic = tab_ctx.request.get(doc_abs.rsplit("/", 1)[0] + "/visit%20summary_files/logo.png")
+            pdf = tab_ctx.request.get(urllib.parse.urljoin(page.url, pdf_src)) if pdf_src else None
+            check("…a PDF and a record's picture are served without the sandbox, so they still open",
+                  pdf is not None and pdf.status == 200 and pdf.headers["content-type"] == "application/pdf" and "sandbox" not in csp(pdf)
+                  and pic.status == 200 and pic.headers["content-type"] == "image/png" and "sandbox" not in csp(pic) and "script-src 'none'" in csp(pic),
+                  [pdf_src, pdf and pdf.status, pdf and csp(pdf), pic.status, csp(pic)])
+            tab_ctx.close()
+            problems[:] = [x for x in problems if "Refused to execute the redirect" not in x]   # the drawer's frame refused it too
 
             # ---- corrections (#33): hide an event from the drawer, see it leave the timeline, undo; rename shows "Edited"
             page.click("#tab-timeline")
