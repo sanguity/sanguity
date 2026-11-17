@@ -601,6 +601,9 @@ def _max_hr_check(v):
 define("person.maxHr", "person", "Maximum heart rate", 0, _max_hr_check, kind="maxhr", screen=False,
        help="A maximum heart rate measured (in an exercise test, say), in beats a minute; 0 when not set. Heart rate "
             "zones on workouts use it, else the common estimate of 220 minus the age.")
+
+define("person.dueDate", "person", "Due date, if born early", "", _person_check(_person.check_due), kind="duedate", screen=False,
+       help="For a baby born early, the day they were due: growth charts use the corrected age before 2 years (#196).")
 LEGACY = {"ranges.birthDate": "person.birthDate", "ranges.sex": "person.sex"}   # old name in a settings.json -> now
 
 

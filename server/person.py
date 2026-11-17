@@ -11,9 +11,11 @@ together here, each optional:
               heights are stored in, to two decimals), unit how it was typed ("cm", or "ftin" for feet and inches),
               so "as reported" shows it that way again. From 20 to 272 cm, dated from 1900 to today, and not before
               the birth date.
+  dueDate     "" (not set) or YYYY-MM-DD (#196): for a baby born early, the day they were due, after the birth date
+              and at most 20 weeks after it. Growth charts use it for the corrected age before 2 years.
 
-Stored as three profile settings (server/settings.py, section "person", not on the Settings screen): person.birthDate,
-person.sex and person.heights, sealed (encrypted) like every setting that can hold health information. So they are
+Stored as profile settings (server/settings.py, section "person", not on the Settings screen): person.birthDate,
+person.sex, person.heights and person.dueDate (#196), sealed (encrypted) like every setting that can hold health information. So they are
 in the merged settings every page loads (CFG.person on the records page), exported with the profile's settings.json
 and loaded back with it, and backed up with the database. Owners and editors change them, on Sharing → About this
 person (routes_person.py, which also checks the three agree: no height before the birth date); viewers see them.
@@ -28,7 +30,7 @@ judge a result or replace a report's own range.
 
 Helpers for the features built on it (BMI #195, growth percentiles #196, heart-rate zones #197); www/js/person.js has
 the same for the page:
-  of(cfg)                   the three values from the merged settings (settings.merged), filled in
+  of(cfg)                   the values from the merged settings (settings.merged), filled in
   age_on(birth, day)        whole years on that day (both YYYY-MM-DD...), or None
   age_months_on(birth, day) whole months on that day, or None (a child's age, for growth charts)
   sex_for_ranges(cfg)       "female", "male" or ""
@@ -45,6 +47,7 @@ SEXES = {"": "Not set", "female": "Female", "male": "Male"}
 UNITS = ("cm", "ftin")
 CM_MIN, CM_MAX = 20, 272
 MOST = 400                # height entries
+DUE_MOST = 140            # days a due date may be after the birth date (20 weeks: born at 20 weeks or later), #196
 IN_CM = 2.54
 
 
@@ -113,11 +116,34 @@ def check_heights(v):
     return out
 
 
-def check_together(birth, heights):
-    """No height dated before the birth date (a typo in one or the other)."""
+def check_due(v):
+    """"" (not set) or YYYY-MM-DD: the day a baby born early was due (#196), for the corrected age growth charts use
+    before 2 years. check_together holds it to the birth date."""
+    if v in ("", None):
+        return ""
+    d = _day(v) if isinstance(v, str) and len(v) == 10 else None
+    if d is None:
+        raise PersonError("The due date must be a day, like 2024-05-01.")
+    if not datetime.date(1900, 1, 1) <= d <= datetime.date.today() + datetime.timedelta(days=DUE_MOST):
+        raise PersonError("The due date must be from 1900 to a few months from today.")
+    return d.isoformat()
+
+
+def check_together(birth, heights, due=""):
+    """No height dated before the birth date (a typo in one or the other); a due date only with a birth date, after it
+    (born early) and at most DUE_MOST days after it."""
     if birth and heights and heights[0]["date"] < birth:
         raise PersonError(f"There's a height on {heights[0]['date']}, before the birth date ({birth}). "
                           "Change or remove that height, or check the birth date.")
+    if due:
+        if not birth:
+            raise PersonError("A due date goes with a birth date: set the birth date too, or clear the due date.")
+        gap = (_day(due) - _day(birth)).days
+        if gap <= 0:
+            raise PersonError("A due date is for a baby born early, so it's after the birth date. Clear it if they "
+                              "weren't born early.")
+        if gap > DUE_MOST:
+            raise PersonError(f"The due date is more than {DUE_MOST // 7} weeks after the birth date. Check both dates.")
 
 
 def from_ftin(ft, inch):
@@ -131,9 +157,10 @@ def from_ftin(ft, inch):
 # ---------------------------------------------------------------- helpers for what is built on it
 
 def of(cfg):
-    """{"birthDate", "sex", "heights"} from the merged settings (settings.merged), each filled in."""
+    """{"birthDate", "sex", "heights", "dueDate"} from the merged settings (settings.merged), each filled in."""
     p = (cfg or {}).get("person") or {}
-    return {"birthDate": p.get("birthDate") or "", "sex": p.get("sex") or "", "heights": list(p.get("heights") or [])}
+    return {"birthDate": p.get("birthDate") or "", "sex": p.get("sex") or "", "heights": list(p.get("heights") or []),
+            "dueDate": p.get("dueDate") or ""}
 
 
 def age_on(birth, day):

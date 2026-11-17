@@ -51,7 +51,8 @@ REACTION, SEVERITY, CRITICALITY, ALLERGY_STATUS = ("2.16.840.1.113883.10.20.22.4
 VITALS = {"8302-2": ("Height", "in"), "8306-3": ("Height", "in"), "8310-5": ("Temperature", "°F"),
           "8867-4": ("Heart rate (clinic)", "bpm"), "8480-6": ("Blood pressure, systolic", "mmHg"),
           "8462-4": ("Blood pressure, diastolic", "mmHg"), "59408-5": ("SpO2 (clinic)", "%"), "2708-6": ("SpO2 (clinic)", "%"),
-          "9279-1": ("Respiratory rate (clinic)", "/min"), "39156-5": ("BMI", "kg/m²")}
+          "9279-1": ("Respiratory rate (clinic)", "/min"), "39156-5": ("BMI", "kg/m²"),
+          "9843-4": ("Head circumference", "cm"), "8287-5": ("Head circumference", "cm")}   # head circumference: #196
 WEIGHT_LOINC = "29463-7"
 WEIGHT_UNITS = {"kg": 2.20462, "lb": 1.0, "[lb_av]": 1.0, "lbs": 1.0, "g": 0.00220462, "[oz_av]": 0.0625}
 
@@ -444,7 +445,7 @@ def _vitals(doc, out):
             u = unit.strip().lower()
             if c == WEIGHT_LOINC:
                 f = WEIGHT_UNITS.get(u)
-                if f and 50 < x * f < 600:
+                if f and 1 < x * f < 600:   # from 1 lb: a baby's weight too (#196)
                     out.weights.setdefault(t[:16], [t, round(x * f, 1), doc.src])
                 continue
             if c not in VITALS:
@@ -454,6 +455,8 @@ def _vitals(doc, out):
                 x = round(x / 2.54, 1)
             elif name == "Height" and u == "m":
                 x = round(x / 0.0254, 1)
+            elif name == "Head circumference" and u in ("in", "[in_i]"):   # #196
+                x = round(x * 2.54, 1)
             elif name == "Temperature" and u in ("cel", "c", "°c"):
                 x = round(x * 9 / 5 + 32, 1)
             sname, s = out.series(name, unit_out, c)

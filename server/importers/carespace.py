@@ -265,7 +265,7 @@ def parse(files, org=None, tag=None):
                 lb = float(val.get("value")) * f
             except (TypeError, ValueError):
                 continue
-            if t and f and 50 < lb < 600:
+            if t and f and 1 < lb < 600:   # from 1 lb: a baby's weight too (#196)
                 clinic_w.setdefault(t[:16], [t, round(lb, 1), org])
 
         procs_by_day = collections.defaultdict(list)

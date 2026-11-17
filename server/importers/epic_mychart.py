@@ -402,7 +402,7 @@ def _weights(out, doc, org):
         x, _, unit = ccda._value(obs)
         f = ccda.WEIGHT_UNITS.get(unit.strip().lower())
         t = ccda._when(obs)
-        if t and f and x is not None and 50 < x * f < 600:
+        if t and f and x is not None and 1 < x * f < 600:   # from 1 lb: a baby's weight too (#196)
             out.weights.setdefault(t[:16], [t, round(x * f, 1), doc.org or org])
 
 

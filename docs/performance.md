@@ -61,7 +61,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `sync_s` | A connected source's first pull of the big FHIR patient (186 requests), its preview saved | 1.7 s | 15 s |
 | `page_ready_ms` | The records page, loaded on each tab, from the request to its `sanguity:ready` mark (`www/js/app.js`) | 132 ms (Body and activity) | 1,500 ms |
 | `tab_draw_ms` | A tab's first draw with the period **All**, the page loaded on another tab, to the next frame | 110 ms (Body and activity) | 1,000 ms |
-| `tab_elements` | Elements in a tab with the period **All** | 16,181 (Body and activity) | 18,000 |
+| `tab_elements` | Elements in a tab with the period **All** | 16,185 (Body and activity) | 18,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
 

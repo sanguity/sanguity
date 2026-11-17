@@ -266,6 +266,24 @@ class Keys(unittest.TestCase):
         self.assertEqual(labs["Hemoglobin (mmol/L)"], "loinc:718-7|mmol/L")
         self.assertEqual(labs["Glucose, Blood"], "loinc:2345-7")      # no split, no suffix
 
+    def test_a_childs_vitals(self):
+        """#196: a child's weight (under 50 lb, once left out) and head circumference (in cm, or in inches) are kept."""
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(FIX, "maple-grove-ccd.xml"), encoding="utf-8") as f:
+            s = f.read()
+        s = s.replace('<value xsi:type="PQ" value="80" unit="kg"/>', '<value xsi:type="PQ" value="12.4" unit="kg"/>')
+        s = s.replace('<code code="8867-4" codeSystem="2.16.840.1.113883.6.1" displayName="Heart rate"/>\n                <value xsi:type="PQ" value="72" unit="/min"/>',
+                      '<code code="9843-4" codeSystem="2.16.840.1.113883.6.1" displayName="Head Occipital-frontal circumference"/>\n'
+                      '                <value xsi:type="PQ" value="18.5" unit="[in_i]"/>')
+        p = os.path.join(tmp, "x.xml")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(s)
+        d = ccda.parse({"x.xml": p})["data"]
+        self.assertEqual(d["clinicWeights"][0][1], 27.3, "12.4 kg, in lb")
+        head = next(x for x in d["labs"] if x["name"] == "Head circumference")
+        self.assertEqual((head["unit"], head["pts"][0][1], head["key"]), ("cm", 47.0, "loinc:9843-4"))
+
 
 class Refuse(unittest.TestCase):
     def test_no_ccda(self):

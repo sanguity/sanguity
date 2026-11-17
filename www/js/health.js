@@ -178,6 +178,7 @@ function renderHealth() {
   if (!WATCH) {   // #199: what would be here, and where it comes from (its owners and editors set the phone up)
     box.append(emptyState("Steps, sleep, heart rate and weight from a phone, watch or smart scale appear here once a phone sends them.",
       canEdit() ? {href: `sources.html?profile=${PROFILE.id}#phone`, text: "Connect a phone"} : null));
+    growthCard(box, (title, key) => el("div", {class: "list-hd"}, el("h2", {text: title}), el("span", {class: "spacer"}), viewSeg(key, title, renderHealth)));   // a child's growth from the records (#196)
     return;
   }
   H = H || hData();
@@ -257,6 +258,7 @@ function renderHealth() {
       tip: t => { const p = nearest(H.lean, t, 10); return p && {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)} lb`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
   }
 
+  growthCard(box, head);   // a child's growth charts (#196, below)
   hGlucose(box, a, b, {head, legend, byDay});   // blood glucose (#181, below)
 
   // sleep
@@ -794,14 +796,15 @@ function hZones(box, a, b, {long, legend, head, byDay}) {
    person turns them on (hState.bmiWho, remembered per profile), always named as the WHO's, never for a weight taken
    under 20. */
 const bmiNum = r => bmiRound(r.v).toFixed(1);
-const bmiWords = r => bmiNum(r);
+const bmiWords = r => { const p = r.child ? bmiChildPct(r) : null; return bmiNum(r) + (p == null ? "" : ` (${pctText(p)} percentile for age)`); };   // #196
 const whoWords = v => { const c = whoBmi(v); return c ? `${c.range} (“${c.name}”)` : ""; };
 const bmiHeight = h => heightText(h.cm, heightUnit((CFG.units || {}).height, h.unit));
 function bmiTile(tile, a, b) {
   if (!H.bmi.length) return;
+  if (H.bmi.some(r => r.child)) growthLoad();   // a child's percentile for age (#196)
   const inP = H.bmi.filter(r => r.t >= a && r.t <= b), last = inP.at(-1) || H.bmi.at(-1);
-  const who = hState.bmiWho && !last.child && whoBmi(last.v);
-  tile("BMI", bmiNum(last), "kg/m²", who ? `WHO: ${who.range}` : `${inP.length ? "latest" : "last"} ${fmtD(last.t)}`, "#h-body");
+  const who = hState.bmiWho && !last.child && whoBmi(last.v), pct = last.child ? bmiChildPct(last) : null;
+  tile("BMI", bmiNum(last), "kg/m²", who ? `WHO: ${who.range}` : pct != null ? `${pctText(pct)} percentile for age` : `${inP.length ? "latest" : "last"} ${fmtD(last.t)}`, "#h-body");
 }
 function bmiChart(card, a, b, {long}) {
   if (state.tables.has("#h-body")) return;   // the table has a BMI column instead
@@ -817,7 +820,7 @@ function bmiChart(card, a, b, {long}) {
   }
   const adult = all.some(r => !r.child), who = hState.bmiWho && adult;
   box.append(el("p", {class: "hint", text: "Body mass index: the weight in kilograms divided by the square of the height in metres, each weight with the height in effect on its day (About this person)."
-    + (all.some(r => r.child) ? " Under 20, it's shown without the adult categories." : "")}));
+    + (all.some(r => r.child) ? " Under 20, it's shown without the adult categories" + (SEX_CODE[personOf().sex] ? ", with its percentile for age and sex on the CDC's chart (Growth charts, below)." : ".") : "")}));
   if (adult) box.append(el("div", {class: "toolbar"}, el("label", {},
     el("input", {type: "checkbox", id: "bmiWho", checked: hState.bmiWho || null, onchange: e => { hState.bmiWho = e.target.checked; hSave(); renderHealth(); }}),
     "Show the WHO's categories for adults")));
@@ -836,5 +839,163 @@ function bmiChart(card, a, b, {long}) {
         el("div", {class: "s", text: `${fmtD(r.t)} · ${r.w[1].toFixed(1)} lb${r.w[2] ? ` at a clinic visit (${r.w[2]})` : " on the smart scale"}`}),
         el("div", {class: "s", text: `Height ${bmiHeight(r.h)}, from ${fmtD(dayTs(r.h.date))}`}),
         who && !r.child ? el("div", {class: "s", text: `The WHO's category for adults: ${whoWords(r.v)}`}) : null,
-        r.child ? el("div", {class: "s", text: `Aged ${r.age}: under 20, no adult categories`}) : null]}; }});
+        r.child ? el("div", {class: "s", text: `Aged ${r.age}: ${bmiChildPct(r) != null ? "the percentile is the CDC's, for age and sex" : "under 20, no adult categories"}`}) : null]}; }});
+}
+
+/* ---------------------------------------------------------------- children's growth (#196; growth.js) */
+/* For a profile with a birth date and a sex used for reference ranges, the measurements taken before 20 over the
+   published growth charts' percentile curves for age and sex, each measurement's percentile in its readout, the table
+   and the latest list: weight (the smart scale's and the clinic visits'), height (About this person's history, and the
+   heights in the records), BMI from 2 years (#195's, each weight with the height of its day) and head circumference
+   under 2 when the records have it. The WHO's charts to 2 years, the CDC's from 2 to 20, picked as a pair; ages before
+   2 corrected for a baby born early (About this person's due date). Where measurements fall, sourced and labelled;
+   never what that means. Weights in kg and lengths in cm, or lb and inches as chosen under Settings → Units. */
+const grState = {set: null};   // the chart set picked on this page: "who" or "cdc"
+let GT;   // the growth tables once fetched (null if they couldn't be)
+const LEN_CM = {cm: 1, in: 2.54, "[in_i]": 2.54, inch: 2.54, inches: 2.54, m: 100};
+const isHeightSeries = s => !s.watch && (/^(body )?height\b|^height$|^stature$/i.test(s.name || "") || ["8302-2", "8306-3", "3137-7", "8308-9"].includes(vitalCode(s)));
+const isHeadSeries = s => !s.watch && (/head circ|occipital|\bofc\b/i.test(s.name || "") || ["9843-4", "8287-5"].includes(vitalCode(s)));
+const G_NAME = {weight: "Weight", height: "Height", head: "Head circumference", bmi: "BMI"};
+const gName = (key, set) => key === "height" && set === "who" ? "Length" : G_NAME[key];
+const gUnit = key => { const u = CFG.units || {};
+  return key === "bmi" ? ["kg/m²", 1] : key === "weight" ? (u.weight === "lb" ? ["lb", 1 / LB_KG] : ["kg", 1]) : u.height === "ftin" ? ["in", 1 / 2.54] : ["cm", 1]; };
+const gVal = m => { const [u, f] = gUnit(m.key); return `${(m.x * f).toFixed(1)} ${u}`; };
+const G_SET = {who: ["Birth to 2 years (WHO)", "the WHO Child Growth Standards"], cdc: ["2 to 20 years (CDC)", "the CDC growth charts"]};
+function gAgeText(age) {
+  const t = d => { const m = Math.floor(d / MONTH_DAYS + 1e-9);
+    return d < 31 ? `${d} day${d === 1 ? "" : "s"}` : m < 24 ? `${m} month${m === 1 ? "" : "s"}` : `${Math.floor(m / 12)} years${m % 12 ? ` ${m % 12} month${m % 12 === 1 ? "" : "s"}` : ""}`; };
+  return age.corrected ? `${t(age.chrono)} (corrected: ${t(age.days)})` : t(age.chrono);
+}
+/* the measurements taken before 20, each {t, day, key, x (kg, cm or kg/m²), src, age, set, p}; null without a birth
+   date and sex, or with none */
+function growthData() {
+  const P = personOf();
+  if (!P.birthDate || !SEX_CODE[P.sex]) return null;
+  H = H || hData();
+  const out = [], seen = new Set(), hist = new Set(P.heights.map(h => h.date));
+  const add = (t, key, x, src) => {
+    const day = isoDay(t), age = growthAge(day);
+    if (!age || !(x > 0) || seen.has(key + day + x.toFixed(1))) return;
+    const set = growthSet(age.days);
+    if ((key === "head" && set !== "who") || (key === "bmi" && set !== "cdc")) return;   // the charts there are
+    seen.add(key + day + x.toFixed(1));
+    out.push({t, day, key, x, src, age, set, p: GT ? growthPct(GT, key, P.sex, age.days, x) : null});
+  };
+  for (const p of [...H.scale, ...H.clinic]) add(p[0], "weight", p[1] * LB_KG, p[2] ? `clinic visit (${p[2]})` : "smart scale");
+  for (const h of P.heights) add(dayTs(h.date), "height", h.cm, "About this person");
+  for (const [test, key] of [[isHeightSeries, "height"], [isHeadSeries, "head"]]) for (const s of SERIES.filter(test)) {
+    const f = LEN_CM[String(s.unit || "").trim().toLowerCase()];
+    if (f) for (const p of s.pts) if (typeof p[1] === "number" && isFinite(p.ts) && !(key === "height" && hist.has(isoDay(p.ts)))) add(p.ts, key, p[1] * f, `the records (${vitalSource(s, p)})`);
+  }
+  for (const r of H.bmi) if (r.child) add(r.t, "bmi", r.v, `the weight, with the height of ${fmtD(dayTs(r.h.date))}`);
+  out.sort((p, q) => p.t - q.t || p.key.localeCompare(q.key));
+  return out.length ? {sex: P.sex, meas: out} : null;
+}
+/* a child's BMI on the BMI chart (#195): its percentile for age and sex, once the tables are here */
+function bmiChildPct(r) {
+  const P = personOf(), age = GT && SEX_CODE[P.sex] ? growthAge(isoDay(r.t)) : null;
+  return age && growthSet(age.days) === "cdc" ? growthPct(GT, "bmi", P.sex, age.days, r.v) : null;
+}
+function growthLoad() {   // fetch the tables once, and draw Body and activity again when they're here
+  if (GT !== undefined || GROWTH_T) return;
+  growthTables().then(t => { GT = t || null; if (state.tab === "health") renderHealth(); });
+}
+function growthCard(box, head) {
+  const P = personOf();
+  if (!P.birthDate || !SEX_CODE[P.sex]) return;
+  if (GT === undefined) { if (growthData()) growthLoad(); return; }   // drawn again once the tables are here
+  const D = growthData();
+  if (!D) return;
+  const card = el("div", {class: "card", id: "h-growth", tabindex: -1}, head("Growth charts", "#h-growth"),
+    el("p", {class: "hint", text: "Where each measurement falls on the published growth charts for age and sex: the WHO's from birth to 2 years, the CDC's from 2 to 20, as the CDC recommends. "
+      + "They show where measurements fall, not what that means."}));
+  box.append(card);
+  if (!GT) { card.append(el("p", {class: "hint", text: "The growth charts' tables couldn't be loaded. Reload the page to try again."})); return; }
+  const corrected = D.meas.some(m => m.age.corrected);
+  const note = el("p", {class: "hint growth-src", text: "Charts: the WHO Child Growth Standards (2006), birth to 2 years; the CDC growth charts (2000, with BMI for age from the 2022 extended charts), 2 to 20 years. "
+    + "Curves as each publishes them: the WHO's 3rd, 15th, 50th, 85th and 97th percentiles, the CDC's 5th to 95th."
+    + (corrected ? " Before 2 years, ages are corrected for being born early (the due date in About this person)." : "")});
+  if (state.tables.has("#h-growth")) {   // every measurement, newest first, with both charts' sets
+    card.append(chartTable(["Date", "Age", "Measurement", "Value", "Percentile", "Chart", "From"],
+      [...D.meas].reverse().map(m => [fmtD(m.t), gAgeText(m.age), gName(m.key, m.set), gVal(m), m.p == null ? "" : pctText(m.p), m.set.toUpperCase(), m.src])), note);
+    return;
+  }
+  const sets = ["who", "cdc"].filter(s => D.meas.some(m => m.set === s));
+  if (!sets.includes(grState.set)) grState.set = D.meas.at(-1).set;
+  const set = grState.set;
+  if (sets.length > 1) card.append(el("div", {class: "seg wrap growth-set", role: "group", "aria-label": "Growth charts for"},
+    ...sets.map(s => el("button", {type: "button", "aria-pressed": s === set, text: G_SET[s][0], onclick: () => {
+      if (grState.set === s) return; grState.set = s; hideTip(); renderHealth(); $("#h-growth .growth-set [aria-pressed=true]")?.focus(); }}))));
+  else card.append(el("p", {class: "growth-one", text: `${G_SET[set][0].replace(/ \(.*/, "")}: ${G_SET[set][1]}`}));
+  const keys = set === "who" ? ["weight", "height", "head"] : ["weight", "height", "bmi"];
+  const grid = el("div", {class: "growth-grid"});
+  card.append(grid);
+  for (const key of keys) {
+    const pts = D.meas.filter(m => m.set === set && m.key === key);
+    if (!pts.length) continue;
+    const [u] = gUnit(key), cell = el("div", {class: "growth-cell"}, el("h3", {class: "sub", text: `${gName(key, set)} for age (${u})`}));
+    grid.append(cell);
+    growthChart(cell, D.sex, set, key, pts);
+  }
+  const latest = keys.map(k => D.meas.filter(m => m.set === set && m.key === k).at(-1)).filter(Boolean);
+  card.append(el("h3", {class: "sub", text: "Latest on these charts"}), el("ul", {class: "vital-list"}, ...latest.map(m => el("li", {},
+    el("b", {text: `${gName(m.key, m.set)} ${gVal(m)}`}), m.p == null ? "" : ` · ${pctText(m.p)} percentile`,
+    el("span", {class: "muted", text: ` · ${fmtD(m.t)} · aged ${gAgeText(m.age)} · from ${m.src}`})))), note);
+}
+/* one chart: x the age in days, the publisher's percentile curves, and the measurements */
+function growthChart(host, sex, set, key, pts) {
+  const [unit, f] = gUnit(key), Y = 365.25;
+  const curves = set === "who" ? GT.who.curves : key === "bmi" ? GT.cdc.bmiCurves : GT.cdc.curves;
+  const from = set === "who" ? 0 : 24 * MONTH_DAYS, last = Math.max(...pts.map(m => m.age.days));
+  const to = set === "who" ? WHO_TO : Math.min(CDC_TO, Math.max(6 * Y, (Math.ceil(last / Y) + 2) * Y));
+  const lines = curves.map(c => [c, growthCurve(GT, key, sex, c, from, to).map(([d, x]) => [d, x * f])]);
+  const name = `${gName(key, set)} for age`;
+  const svg = el("svg:svg", {class: "growth-chart"});
+  host.append(svg);
+  const at = d => pts.find(m => m.age.days === d);
+  const rows = m => [el("div", {class: "v", text: `${gVal(m)} · ${m.p == null ? "no percentile" : pctText(m.p) + " percentile"}`}),
+    el("div", {class: "s", text: `${fmtD(m.t)} · aged ${gAgeText(m.age)}`}), el("div", {class: "s", text: `From ${m.src} · ${set === "who" ? "WHO" : "CDC"} chart`})];
+  const draw = () => {
+    if (!svg.isConnected) return;
+    const w = Math.max(260, host.clientWidth), h = 230, L = 40, R = w - 40, T = 10, B = h - 36;
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg.style.width = "100%"; svg._geom = {L, R, w};
+    let lo = Infinity, hi = -Infinity;
+    for (const [, ln] of lines) for (const p of ln) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
+    for (const m of pts) { lo = Math.min(lo, m.x * f); hi = Math.max(hi, m.x * f); }
+    const pad = (hi - lo) * 0.05 || 1; lo -= pad; hi += pad;
+    const x = d => L + (d - from) / (to - from) * (R - L), y = v => B - (v - lo) / (hi - lo) * (B - T);
+    const g = [];
+    for (const v of niceTicks(lo, hi, 5)) { g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)})); g.push(el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: String(+v.toFixed(1))})); }
+    g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
+    const yrs = (to - from) / Y, step = set === "who" ? (w < 420 ? 6 : 3) * MONTH_DAYS : (yrs > 9 || w < 420 ? 2 : 1) * Y;
+    for (let d = from; d <= to + 1; d += step) g.push(el("svg:text", {x: x(d), y: B + 15, "text-anchor": "middle", text: String(Math.round(set === "who" ? d / MONTH_DAYS : d / Y))}));
+    g.push(el("svg:text", {x: (L + R) / 2, y: h - 3, "text-anchor": "middle", text: set === "who" ? "Age (months)" : "Age (years)"}));
+    const labels = [];   // each curve named at its end, moved apart where the curves end close together
+    for (const [c, ln] of lines) {
+      if (ln.length < 2) continue;
+      g.push(el("svg:path", {class: "growth-curve" + (c === 50 ? " mid" : ""), d: "M" + ln.map(p => `${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("L")}));
+      labels.push([y(ln[ln.length - 1][1]) + 4, pctText(c)]);
+    }
+    labels.sort((p, q) => p[0] - q[0]);
+    for (let i = 1; i < labels.length; i++) labels[i][0] = Math.max(labels[i][0], labels[i - 1][0] + 10);
+    const over = labels.length ? labels[labels.length - 1][0] - (B + 4) : 0;
+    if (over > 0) for (let i = labels.length - 1; i >= 0; i--) labels[i][0] = Math.min(labels[i][0], (i === labels.length - 1 ? B + 4 : labels[i + 1][0] - 10));
+    for (const [ly, text] of labels) g.push(el("svg:text", {class: "growth-pct", x: R + 4, y: ly, text}));
+    if (pts.length > 1) g.push(el("svg:path", {d: "M" + pts.map(m => `${x(m.age.days).toFixed(1)},${y(m.x * f).toFixed(1)}`).join("L"), fill: "none", stroke: "var(--c-lab)", "stroke-width": 1.4, opacity: .7}));
+    for (const m of pts) g.push(el("svg:circle", {cx: x(m.age.days), cy: y(m.x * f), r: pts.length > 60 ? 2.4 : 3.6, fill: "var(--c-lab)", stroke: "var(--surface)", "stroke-width": 1}));
+    const cross = el("svg:line", {class: "cross", y1: T, y2: B, visibility: "hidden"});
+    const hit = el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"});
+    const near = cx => { let best = null; for (const m of pts) { const dx = Math.abs(x(m.age.days) - cx); if (dx <= 14 && (!best || dx < best[0])) best = [dx, m]; } return best && best[1]; };
+    const show = (m, ev) => { cross.setAttribute("x1", x(m.age.days)); cross.setAttribute("x2", x(m.age.days)); cross.setAttribute("visibility", "visible"); showTip(rows(m), ev); };
+    hit.addEventListener("pointermove", ev => { const r = svg.getBoundingClientRect(), m = near((ev.clientX - r.left) * (w / r.width));
+      if (m) show(m, ev); else { hideTip(); cross.setAttribute("visibility", "hidden"); } });
+    hit.addEventListener("pointerleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
+    g.push(cross, hit);
+    svg.replaceChildren(...g);
+    chartKeys(svg, `${name}, ${set === "who" ? "the WHO's chart, birth to 2 years" : "the CDC's chart, 2 to 20 years"}: ${pts.length} measurement${pts.length === 1 ? "" : "s"}, the latest ${gVal(pts.at(-1))}`
+      + `${pts.at(-1).p == null ? "" : `, ${pctText(pts.at(-1).p)} percentile`}. Left and right arrow keys step through them.`,
+      () => [...new Set(pts.map(m => m.age.days))], d => { const m = at(d); if (!m) return ""; const r = rows(m); show(m, svgPoint(svg, x(d), T)); return tipWords(r); },
+      () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
+  };
+  requestAnimationFrame(draw);
 }

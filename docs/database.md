@@ -369,11 +369,13 @@ Reference ranges from settings (#44, `server/ranges.py`) are an ordinary profile
 either end open), applied when the page or the visit summary reads the records, never written into them. The birth
 date and sex they are matched against are About this person's.
 
-About this person (#194, `server/person.py`) is four profile settings, sealed, not on the Settings screen (Sharing →
+About this person (#194, `server/person.py`) is five profile settings, sealed, not on the Settings screen (Sharing →
 About this person changes them): `person.birthDate` ("" or YYYY-MM-DD), `person.sex` ("", "female" or "male": the sex
 labs base reference ranges on) and `person.heights` (a list of `{date, cm, unit}`, oldest first, one per day: the
 height in centimetres to two decimals, and `unit` "cm" or "ftin", how it was typed); and, since #197, `person.maxHr`
-(a measured maximum heart rate in whole bpm, 0 when not set, for heart rate zones). **Schema version 30** moved #44's
+(a measured maximum heart rate in whole bpm, 0 when not set, for heart rate zones); and, since #196, `person.dueDate`
+("" or YYYY-MM-DD: for a baby born early, the day they were due, after the birth date and at most 20 weeks after it;
+growth charts use it for the corrected age before 2 years; no schema step, a setting like the others). **Schema version 30** moved #44's
 `ranges.birthDate` and `ranges.sex` to `person.birthDate` and `person.sex` for every profile, once, by renaming the rows
 (the sealed values are unchanged); a `settings.json` from before (an export, the setup build's) is read with the old
 names as the new ones.
