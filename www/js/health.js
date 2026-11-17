@@ -5,7 +5,7 @@
 /* its period is the records bar's (#171, core.js); its option, shading hospital stays, is saved per profile. hLoad runs
    once the profile is known; the one setting saved before profiles existed goes to the first profile opened. A
    period saved here before #171 gives way to the records bar's. */
-const hState = {stays: true};
+const hState = {stays: true, bmiWho: false};   // bmiWho: the WHO's adult BMI categories shown (#195)
 const hKey = () => "ht-health" + (PROFILE ? ":" + PROFILE.id : "");
 function hLoad() {
   try {
@@ -13,9 +13,10 @@ function hLoad() {
     if (raw == null && (raw = localStorage.getItem("ht-health")) != null) localStorage.removeItem("ht-health");
     const v = JSON.parse(raw || "{}");
     hState.stays = typeof v.stays === "boolean" ? v.stays : true;
+    hState.bmiWho = v.bmiWho === true;
   } catch (e) {}
 }
-function hSave() { try { localStorage.setItem(hKey(), JSON.stringify({stays: hState.stays})); } catch (e) {} }
+function hSave() { try { localStorage.setItem(hKey(), JSON.stringify({stays: hState.stays, bmiWho: hState.bmiWho})); } catch (e) {} }
 function openHealth(a, b) { closeDrawer(); state.from = a; state.to = b; state.preset = "custom"; pickTab("health"); }
 function hData() {
   const M = Object.fromEntries(((WATCH || {}).metrics || []).map(m => [m.key, m]));
@@ -57,7 +58,8 @@ function hData() {
   }
   ex.sort((p, q) => p.t - q.t);
   const all = [...scale, ...ser("steps"), ...ser("hr_rest"), ...sleep, ...hr].map(p => p[0]);
-  return {scale, clinic, sleep, hr, ex, rest: ser("hr_rest"), steps: ser("steps"), fat: ser("body_fat"), lean: ser("lean_mass"), bmr: ser("bmr"),
+  const bmi = bmiSeries([...scale, ...clinic].sort((p, q) => p[0] - q[0]), "lb");   // #195: each weight with the height of its day
+  return {scale, clinic, bmi, sleep, hr, ex, rest: ser("hr_rest"), steps: ser("steps"), fat: ser("body_fat"), lean: ser("lean_mass"), bmr: ser("bmr"),
     hrv: ser("hrv"), first: all.length ? Math.min(...all) : Date.now(), last: all.length ? Math.max(...all) : Date.now()};
 }
 let H = null;
@@ -129,6 +131,14 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
       } else if (l.type === "dots") {
         const r = l.r || (pts.length > 200 ? 1.8 : 3);
         for (const p of pts) g.push(el("svg:circle", {cx: x(p[0]), cy: y(p[1]), r, fill: l.hollow ? "var(--surface)" : l.color, stroke: l.hollow ? l.color : "var(--surface)", "stroke-width": l.hollow ? 1.5 : 1, opacity: l.opacity || 1}));
+      } else if (l.type === "ybands") {   // ranges of the value across the chart, each labelled (the WHO's BMI categories, #195)
+        l.bands.forEach(([from, to, label], i) => {
+          const top = y(Math.min(hi, to)), bot = y(Math.max(lo, from));
+          if (!(bot - top > 0)) return;
+          if (i % 2) g.push(el("svg:rect", {x: L, y: top, width: R - L, height: bot - top, fill: "color-mix(in srgb, var(--muted) 12%, transparent)"}));
+          if (from > lo && from < hi) g.push(el("svg:line", {class: "gridline band-edge", x1: L, x2: R, y1: bot, y2: bot}));
+          if (bot - top >= 14) g.push(el("svg:text", {x: R - 4, y: top + 12, "text-anchor": "end", class: "band-label", text: label}));
+        });
       } else if (l.type === "pairs") {   // two values of one reading, [t, a, b, flag of a, flag of b] (#180): a line between two dots; a flagged value is ▲ / ▼ (#60)
         for (const p of pts) {
           const cx = x(p[0]);
@@ -187,6 +197,7 @@ function renderHealth() {
   const chg = (cur, base, f, u = "") => cur != null && base != null ? `${cur >= base ? "▲ +" : "▼ −"}${f(Math.abs(cur - base))}${u}` : "";
   const latestW = wIn.length ? wIn[wIn.length - 1] : wAll[wAll.length - 1];
   tile("Weight", latestW ? latestW[1].toFixed(1) : "–", "lb", wIn.length > 1 ? `${chg(wIn[wIn.length - 1][1], wIn[0][1], v => v.toFixed(1), " lb")} over this period` : latestW ? `last ${fmtD(latestW[0])}` : "", "#h-body");
+  bmiTile(tile, a, b);   // BMI (#195, below)
   const fIn = inR(H.fat, a, b);
   if (H.fat.length) tile("Body fat", fIn.length ? fIn[fIn.length - 1][1].toFixed(1) : "–", "%", fIn.length > 1 ? `${chg(fIn[fIn.length - 1][1], fIn[0][1], v => v.toFixed(1), " pts")} over this period` : "no readings in this period", "#h-body");
   gTile(tile, a, b);   // blood glucose (#181, below)
@@ -220,8 +231,10 @@ function renderHealth() {
   box.append(body);
   if (state.tables.has("#h-body")) {
     const comp = H.fat.length || H.lean.length;
-    body.append(chartTable(["Date", "Weight (lb)", "From", ...(comp ? ["Body fat (%)", "Lean mass (lb)"] : [])],
-      byDay(wAll, H.fat, H.lean).map(({t, v: [w, fat, lean]}) => [fmtD(t), f1(w), w ? (w[2] ? `Clinic visit (${w[2]})` : "Smart scale") : "", ...(comp ? [f1(fat), f1(lean)] : [])])));
+    const bm = H.bmi.length > 0, who = bm && hState.bmiWho && H.bmi.some(r => !r.child);   // BMI (#195)
+    body.append(chartTable(["Date", "Weight (lb)", "From", ...(bm ? ["BMI (kg/m²)"] : []), ...(who ? ["WHO adult category"] : []), ...(comp ? ["Body fat (%)", "Lean mass (lb)"] : [])],
+      byDay(wAll, H.fat, H.lean, H.bmi.map(r => [r.t, r.v, r])).map(({t, v: [w, fat, lean, bp]}) => [fmtD(t), f1(w), w ? (w[2] ? `Clinic visit (${w[2]})` : "Smart scale") : "",
+        ...(bm ? [bp ? bmiWords(bp[2]) : ""] : []), ...(who ? [bp && !bp[2].child ? whoWords(bp[2].v) : ""] : []), ...(comp ? [f1(fat), f1(lean)] : [])])));
   } else body.append(legend([[C.w, "Smart scale", 1], [C.clinic, "Clinic visit", 1], [C.w, "14-day average"]]));
   const wTrend = rolling(wAll, 14);
   if (!state.tables.has("#h-body")) hChart(body, a, b, {h: 220, fmtY: v => Math.round(v), label: "Weight", noun: "reading", nav: wAll, layers: [
@@ -229,8 +242,11 @@ function renderHealth() {
     {type: "dots", data: H.clinic, color: C.clinic, hollow: true, r: 3},
     {type: "dots", data: H.scale, color: C.w, opacity: .55}],
     tip: t => { const p = nearest(wAll, t, len > 200 * DAY ? 10 : 4); if (!p) return null; const fat = nearest(H.fat, p[0], .6), lean = nearest(H.lean, p[0], .6);
+      const bp = H.bmi.find(r => r.w === p);   // its BMI (#195)
       return {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)} lb`}), el("div", {class: "s", text: fmtD(p[0]) + (p[2] ? ` · clinic visit (${p[2]})` : " · smart scale")}),
+        bp ? el("div", {class: "s", text: `BMI ${bmiWords(bp)}`}) : null,
         fat ? tipRow(C.fat, `Body fat ${fat[1].toFixed(1)}%`) : null, lean ? tipRow(C.lean, `Lean mass ${lean[1].toFixed(1)} lb`) : null]}; }});
+  bmiChart(body, a, b, vx);   // BMI over time (#195, below)
   if ((H.fat.length || H.lean.length) && !state.tables.has("#h-body")) {
     const two = el("div", {class: "ov-cols", style: {gridTemplateColumns: "1fr 1fr", marginTop: "10px"}});
     const c1 = el("div", {}, el("h3", {class: "sub", text: "Body fat (%)"})), c2 = el("div", {}, el("h3", {class: "sub", text: "Lean mass (lb)"}));
@@ -769,4 +785,56 @@ function hZones(box, a, b, {long, legend, head, byDay}) {
       return el("li", {}, ev ? el("button", {class: "zone-open", type: "button", text: `${x.name || "Workout"}, ${x.min} min`, onclick: () => openEvent(ev)}) : el("b", {text: `${x.name || "Workout"}, ${x.min} min`}),
         ` · ${what}`, el("span", {class: "muted", text: ` · ${fmtDT(x.t)}`}));
     })));
+}
+
+
+/* ---------------------------------------------------------------- BMI over time (#195; growth.js) */
+/* Each weight's BMI with the height in effect on its day (About this person's history): a line under the weight's,
+   the latest in a tile, and a column in the card's table. The number only; the WHO's categories for adults when the
+   person turns them on (hState.bmiWho, remembered per profile), always named as the WHO's, never for a weight taken
+   under 20. */
+const bmiNum = r => bmiRound(r.v).toFixed(1);
+const bmiWords = r => bmiNum(r);
+const whoWords = v => { const c = whoBmi(v); return c ? `${c.range} (“${c.name}”)` : ""; };
+const bmiHeight = h => heightText(h.cm, heightUnit((CFG.units || {}).height, h.unit));
+function bmiTile(tile, a, b) {
+  if (!H.bmi.length) return;
+  const inP = H.bmi.filter(r => r.t >= a && r.t <= b), last = inP.at(-1) || H.bmi.at(-1);
+  const who = hState.bmiWho && !last.child && whoBmi(last.v);
+  tile("BMI", bmiNum(last), "kg/m²", who ? `WHO: ${who.range}` : `${inP.length ? "latest" : "last"} ${fmtD(last.t)}`, "#h-body");
+}
+function bmiChart(card, a, b, {long}) {
+  if (state.tables.has("#h-body")) return;   // the table has a BMI column instead
+  const all = H.bmi, box = el("div", {class: "bmi"}, el("h3", {class: "sub", text: "BMI (kg/m²)"}));
+  if (!all.length) {   // weights, but none with a height known by its day
+    if (!H.scale.length && !H.clinic.length) return;
+    const none = !personOf().heights.length;
+    box.append(el("p", {class: "hint"}, none ? "With a height under " : "No weight here has a height from its day or before in ",
+      canEdit() ? el("a", {href: `sharing.html?profile=${PROFILE.id}#about`, text: "About this person"}) : "About this person",
+      none ? ", each weight's BMI is shown here." : `, so none has a BMI${personOf().birthDate ? " (under 20, the height must be from the 3 months before the weight)" : ""}.`));
+    card.append(box);
+    return;
+  }
+  const adult = all.some(r => !r.child), who = hState.bmiWho && adult;
+  box.append(el("p", {class: "hint", text: "Body mass index: the weight in kilograms divided by the square of the height in metres, each weight with the height in effect on its day (About this person)."
+    + (all.some(r => r.child) ? " Under 20, it's shown without the adult categories." : "")}));
+  if (adult) box.append(el("div", {class: "toolbar"}, el("label", {},
+    el("input", {type: "checkbox", id: "bmiWho", checked: hState.bmiWho || null, onchange: e => { hState.bmiWho = e.target.checked; hSave(); renderHealth(); }}),
+    "Show the WHO's categories for adults")));
+  if (who) box.append(el("p", {class: "hint", text: "The World Health Organization's categories of BMI for adults (20 and over): under 18.5, 18.5–24.9, 25–29.9, and 30 and over. "
+    + "Shown because they were turned on; they're the WHO's, not advice."}));
+  card.append(box);
+  const C = {bmi: "var(--c-lab)", clinic: "var(--muted)"};
+  const pts = all.map(r => [r.t, r.v, r]), clinic = pts.filter(p => p[2].w[2]), scale = pts.filter(p => !p[2].w[2]);
+  hChart(box, a, b, {h: 150, fmtY: v => String(+v.toFixed(1)), label: "BMI", noun: "weight", nav: pts, layers: [
+    ...(who ? [{type: "ybands", data: [], bands: WHO_BMI.map(([lo, hi, range]) => [lo, hi, "WHO " + range])}] : []),
+    {type: "line", data: rolling(pts, 14), color: C.bmi, width: 2, gap: 45},
+    {type: "dots", data: clinic, color: C.clinic, hollow: true, r: 3},
+    {type: "dots", data: long && scale.length > 400 ? [] : scale, color: C.bmi, opacity: .55}],
+    tip: t => { const p = nearest(pts, t, b - a > 200 * DAY ? 10 : 4); if (!p) return null; const r = p[2];
+      return {t: p[0], rows: [el("div", {class: "v", text: `BMI ${bmiWords(r)}`}),
+        el("div", {class: "s", text: `${fmtD(r.t)} · ${r.w[1].toFixed(1)} lb${r.w[2] ? ` at a clinic visit (${r.w[2]})` : " on the smart scale"}`}),
+        el("div", {class: "s", text: `Height ${bmiHeight(r.h)}, from ${fmtD(dayTs(r.h.date))}`}),
+        who && !r.child ? el("div", {class: "s", text: `The WHO's category for adults: ${whoWords(r.v)}`}) : null,
+        r.child ? el("div", {class: "s", text: `Aged ${r.age}: under 20, no adult categories`}) : null]}; }});
 }

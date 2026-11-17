@@ -419,6 +419,11 @@ Everything on `main` so far; it becomes the first tagged release.
   a card of the minutes a week in each zone, with Chart | Table, the keyboard, and the period's workouts listed, each
   opening its details. The receiver's store adds a column for it as it loads an older one, reading its earlier
   workouts' heart rate again once.
+- **BMI over time** (#195): with a height in About this person, each weight on Body and activity (the smart scale's
+  and the clinic visits') has its BMI, worked out with the height in effect on its day: a chart under the weight's,
+  the latest in a tile, and a column in the card's table. The number only; the WHO's categories for adults (under
+  18.5, 18.5–24.9, 25–29.9, 30 and over) only when turned on, named as the WHO's and remembered per profile, and never
+  for a weight taken under 20, whose BMI also needs a height from the 3 months before it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

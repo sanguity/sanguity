@@ -502,7 +502,9 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   typed in cm or in feet and inches and shown in your units. Heights a clinic recorded in the records are shown beside
   it, and added to it only when you say. Each is optional and encrypted; owners and editors change them, everyone the
   profile is shared with sees them, and a share link shows them only if its owner ticks them. They're for the age on
-  each result's day and ranges of your own by age and sex, never to judge a result.
+  each result's day and ranges of your own by age and sex, never to judge a result. With a height, Body and activity
+  shows each weight's BMI, worked out with the height in effect on its day: the number only, with the WHO's
+  categories for adults if you turn them on (never under 20).
 - **Reference ranges from settings:** some results come without a range (typed in, a spreadsheet, some portals).
   Under **Settings → Reference ranges** you can give a lab, in a stated unit, a low and high of your own, for anyone
   or for female or male, and for an age band (by the birth date in About this person; the age on each result's day is used). They're used
