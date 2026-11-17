@@ -29,7 +29,7 @@ All screenshots use the built-in **fictional demo data**. No real person's recor
 | Timeline | Every visit, stay, lab draw, report, message, document and claim on one zoomable timeline, with a searchable list; each medication as spans from its start through dose changes to its stop, with pharmacy fills marked |
 | Trends | Lab results over time against reference ranges, with procedures, imaging and your milestones marked, and saved views of the labs you chart together |
 | Lab heatmap | Every draw against its reference range, one row per lab |
-| Costs | Insurance claims by month, type of care and provider, and what you actually paid out of pocket |
+| Costs | Insurance claims by month, type of care and provider, and what you actually paid out of pocket: typed in, exported or from claims, matched to claims, counted once, with HSA and FSA totals |
 
 ![Trends: blood counts dipping through treatment cycles, with milestone markers](docs/screenshots/trends.png)
 
@@ -274,7 +274,7 @@ For records on paper, or from a portal that has no export, **Type them in** on t
 record Sanguity can import. Lab results go one per row, as in a spreadsheet (and rows copied from one can be pasted
 in); everything else has a form of its own, picked from **Add a record**: a visit, a hospital stay, a procedure, an
 imaging scan or a report, a medication or a pharmacy fill with its cost, a problem or diagnosis, an insurance claim,
-an out-of-pocket payment, an upcoming appointment, vitals taken at a visit (blood pressure, heart rate, temperature,
+an out-of-pocket payment (with its receipt, and whether an HSA or FSA paid it), an upcoming appointment, vitals taken at a visit (blood pressure, heart rate, temperature,
 height, SpO2, breathing rate, weight), a weight or step count measured at home, a workout, or a letter or document
 with its PDF or picture attached. Dates take the forms a lab spreadsheet does (`2026-03-04`, `4 Mar 2026`, and
 `03/04/2026` when the other dates settle which is the day).

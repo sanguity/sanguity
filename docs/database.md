@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 26**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 27**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -136,7 +136,11 @@ records the page loads list them as `journal`, and an export carries them in its
 timeline (#50, `server/medications.py`) is worked out from the `med` and `rx` events each time the records are put
 together and listed as `medications`; it has no table and is never stored from an import. An import's
 **name** (schema version 25, #38) is what the person renamed it to, encrypted; the records call it by that wherever
-they say where a record came from, and NULL means the importer's label.
+they say where a record came from, and NULL means the importer's label. **cost_marks** (schema version 27, #55,
+`server/oop.py`) hold what a person said about an out-of-pocket amount on the Costs tab: a payment or a claim's share
+tagged HSA or FSA, a payment matched to a claim (or to none), two look-alike payments said to be two. Like edits they
+belong to the profile and find their payment or claim by a keyed hash of its key. (Versions 26 and 27 belong to work
+landing alongside.)
 
 ```mermaid
 erDiagram
@@ -155,6 +159,7 @@ erDiagram
     profiles ||--o{ same_results : "has"
     results }o..o{ same_results : "matched by point key"
     profiles ||--o{ journal : "has"
+    profiles ||--o{ cost_marks : "has"
 
     profiles {
         int id PK
@@ -279,6 +284,15 @@ erDiagram
         int changed_by FK
         text changed_name
         int changed
+    }
+    cost_marks {
+        int id PK
+        int profile_id FK
+        text target "HMAC of the payment's or claim's key"
+        text target_key "🔒 the key"
+        text value "🔒 JSON: hsa, claim, same"
+        int created_by FK
+        int at
     }
 ```
 
@@ -593,6 +607,7 @@ erDiagram
 | `same_results` | `a_key`, `b_key`, `value` |
 | `journal` | `body` |
 | `share_links` | `label`, `scope` |
+| `cost_marks` | `target_key`, `value` |
 | `labmaps` | `source`, `target` |
 | `settings` | `sealed` |
 | `smart_clients` | `secret` |
@@ -615,8 +630,8 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries, settings, calendar feeds, share links, undo history, its activity and outside contacts | the original exports |
-| An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links and journal entries (they belong to the profile) |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries, cost marks, settings, calendar feeds, share links, undo history, its activity and outside contacts | the original exports |
+| An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links, journal entries and cost marks (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |
 | An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, its calendar feeds, pending sign-ins | activity, uploads, jobs, journal entries, lab-name matches and share links it made (their links become `NULL`; such a share link stops working) |

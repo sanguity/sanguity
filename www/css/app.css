@@ -728,3 +728,10 @@ svg text.medname{fill:var(--ink2);font-size:11px}
 .medfill.ev:hover,.medfill.ev.sel{fill:var(--ink);stroke:var(--ink)}
 .medchanges{margin:0;padding-left:18px}
 .medchanges li{margin:2px 0}
+/* out of pocket (#55): a payment counted once, the editor under the list */
+table.data.oop tr.oop-dup td{color:var(--muted)}
+table.data.oop tr[aria-expanded=true] td{background:var(--hover)}
+.oop-edit{border:1px solid var(--ring);border-radius:10px;padding:10px 12px;margin-top:10px}
+.oop-form{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end}
+.oop-form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--ink2);min-width:0;max-width:100%}
+.oop-form select{max-width:100%}

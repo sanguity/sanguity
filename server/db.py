@@ -546,6 +546,20 @@ SCHEMA = [
         last_viewed INTEGER);
     CREATE INDEX share_links_profile ON share_links(profile_id);
     """,
+    # version 27: what people said about out-of-pocket costs on the Costs tab (oop.py, #55): a payment or a claim's
+    # share tagged HSA or FSA, a payment matched to a claim (or to none), two payments that look alike said to be two.
+    # Like edits, a mark belongs to the profile, never to an import, and finds its payment or claim by key.
+    """
+    CREATE TABLE cost_marks(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        target TEXT NOT NULL,                      -- keyed hash (security.pepper_mac) of the payment's or claim's key
+        target_key TEXT NOT NULL,                  -- the key, encrypted
+        value TEXT NOT NULL,                       -- JSON, encrypted: {hsa?, claim?, same?}
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        at INTEGER NOT NULL,
+        UNIQUE(profile_id, target));
+    """,
 ]
 
 

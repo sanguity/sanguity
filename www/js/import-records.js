@@ -37,7 +37,8 @@
       ["insurer", "Insurer"], ["claim", "Claim #", "text", OPT], ["category", "Type of care", "select", [["", "Work it out"], ...CATS.map(c => [c, c])]]]],
     payment: ["Out-of-pocket payment", [["date", "Date", "date"], ["payee", "Paid to"], ["amount", "Amount", "money"],
       ["group", "For", "select", ["Medical bills", "Pharmacy", "Health insurance premiums", "Dental", "Vision", "Equipment & supplies", "Other medical"].map(g => [g, g])],
-      ["account", "Paid from", "text", OPT], ["memo", "Memo", "text", OPT]]],
+      ["account", "Paid from", "text", OPT], ["hsa", "HSA or FSA", "select", [["", "Neither"], ["HSA", "HSA"], ["FSA", "FSA"]]],
+      ["memo", "Memo", "text", OPT], ["file", "Receipt (optional)", "file"]]],   // #55: the receipt is kept as a document
     upcoming: ["Upcoming appointment", [["date", "Date", "date"], ["time", "Time", "time"], ["title", "Title", "text", "Follow-up visit"],
       ["who", "Who"], ["where", "Where"]]],
     vitals: ["Vitals", [["date", "Date", "date"], ["time", "Time", "time"], ["where", "Where", "text", OPT], ["bp", "Blood pressure", "text", "120/80"],
@@ -192,6 +193,9 @@
     (next ? next.querySelector("[data-f]") : picker).focus();
     changed();
   });
+
+  // the Costs tab's "Type in what you paid" (#55) opens import.html#payment: this tab, with a payment's form
+  if (location.hash === "#payment") { showKind("manual"); add("payment"); }
 
   window.sanguityRecords = {
     values, show,
