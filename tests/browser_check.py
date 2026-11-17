@@ -152,6 +152,19 @@ def menu_click(pg, item):
     pg.click(item)
 
 
+def stopped(e):
+    """A stopped check's error, with the lines of Playwright's call log that say why (what covered an element,
+    what it waited for), so a failure on CI's machines can be read without running it again."""
+    lines = str(e).splitlines()
+    why = [l.strip() for l in lines[1:] if any(w in l for w in ("intercepts pointer", "not visible", "not stable", "outside of the viewport",
+                                                                  "waiting for", "element is", "retrying", "resolved to"))]
+    seen = []
+    for l in why:
+        if l not in seen:
+            seen.append(l)
+    return lines[0] + ("" if not seen else " | " + " | ".join(seen[:6]))
+
+
 def main():
     srv, base = start_app()
     problems, passed = [], []
@@ -3085,7 +3098,14 @@ def main():
             problems[before:] = [x for x in problems[before:] if "401" not in x]   # signed out on the way, on purpose
             ctx.close()
         except Exception as e:   # report what was caught so far instead of a bare traceback
-            problems.append(f"check stopped: {str(e).splitlines()[0]}")
+            problems.append(f"check stopped: {stopped(e)}")
+            try:   # what the page showed when it stopped, for failures that only happen on CI's machines
+                problems.append("page then: " + page.url + " " + page.evaluate("JSON.stringify({profile: document.getElementById('profile')?.value, "
+                                "group: document.querySelector('main')?.dataset.group, buttons: document.getElementById('sourceButtons')?.textContent.slice(0, 200), "
+                                "mine: document.getElementById('mine')?.className, intro: document.getElementById('introHint')?.textContent.slice(0, 120), "
+                                "drawer: document.getElementById('drawer')?.className})"))
+            except Exception:
+                pass
             if "pk" in locals():
                 problems.append(f"passkey page at {pk.url}: " + str(pk.evaluate("document.body.innerText.slice(0, 300)")))
         # ---- install as a phone app (#56), on a phone-sized page under the real CSP: the manifest and service worker
@@ -3259,7 +3279,7 @@ def main():
             problems[before:] = [x for x in problems[before:] if "ERR_INTERNET_DISCONNECTED" not in x and "401" not in x]
             ctx.close()
         except Exception as e:   # report what was caught so far instead of a bare traceback
-            problems.append(f"PWA check stopped: {str(e).splitlines()[0]}")
+            problems.append(f"PWA check stopped: {stopped(e)}")
             if "ph" in locals():
                 problems.append(f"phone page at {ph.url}: " + str(ph.evaluate("document.body.innerText.slice(0, 300)")))
         browser.close()
