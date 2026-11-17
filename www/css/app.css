@@ -1228,3 +1228,11 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .glu-tir li b{color:var(--ink);font-weight:650;font-variant-numeric:tabular-nums}
 .glu-tir .hint{margin:4px 0 0}
 @media (forced-colors:active){ .glu-bar span,.glu-tir li i{forced-color-adjust:none} }
+
+/* ---- home and clinic readings on Body and activity (#180) */
+.vital-list{list-style:none;margin:2px 0 0;padding:0;font-size:13px}
+.vital-list li{padding:4px 0;border-bottom:1px solid var(--grid)}
+.vital-list li:last-child{border-bottom:0}
+.vital-list .muted{color:var(--ink2)}
+.vital-list .abn{color:var(--crit);font-weight:600}
+.vital-link{margin:6px 0 0}

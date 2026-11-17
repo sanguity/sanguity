@@ -120,6 +120,7 @@ function chartCard(s) {
     viewSeg(s.name, nice(s.name), renderCharts),   // Chart | Table (#60)
     el("button", {text: "✕", title: "Remove", "aria-label": `Remove ${nice(s.name)}`, onclick: () => { state.sel.delete(s.name); renderLabs(); }}),
     rangeNote(s, pts, showTable)));
+  { const v = vitalLink(s); if (v) card.append(v); }   // a vital's readings at home, on Body and activity (#180, health.js)
   if (showTable) {
     card.append(el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": `${nice(s.name)}, as a table`}, el("table", {class: "data"}, el("thead", {}, el("tr", {}, ["Date", "Value", s.watch ? "Detail" : "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
       el("tbody", {}, [...pts].reverse().map(p => { const [a, b] = readText(s, p); return el("tr", {}, el("td", {text: s.watch ? fmtD(p.ts) : fmtDT(p.ts)}), el("td", {class: p[4] ? "abn" : "", text: a + (!s.watch && b ? ` (reported ${ucOrig(s, p)})` : "")}),
