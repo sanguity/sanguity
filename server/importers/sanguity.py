@@ -19,20 +19,35 @@ def _data_file(files):
     return hits[0] if hits else None
 
 
+def _mentions(path, words):
+    """Which of words the file has, read a megabyte at a time: in a big record's data.json (an export of years of
+    records, #201) the events come after the profile-wide lists, the payments among them, far past the first 64 KB."""
+    found, tail = set(), b""
+    with open(path, "rb") as f:
+        while len(found) < len(words) and (piece := f.read(1 << 20)):
+            chunk = tail + piece
+            found.update(w for w in words if w.encode() in chunk)
+            tail = chunk[-16:]
+    return found
+
+
 def detect(files):
     rel = _data_file(files)
     if not rel:
         return 0.0
     with open(files[rel], "rb") as f:
         head = f.read(64 * 1024).decode("utf-8", "replace")
-    if not head.lstrip().startswith("{") or SIGNATURE[0] not in head:
+    if not head.lstrip().startswith("{"):
+        return 0.0
+    found = _mentions(files[rel], SIGNATURE)
+    if SIGNATURE[0] not in found:
         return 0.0
     readme = posixpath.join(posixpath.dirname(rel), "README.txt")
     if readme in files:
         with open(files[readme], "rb") as f:
             if f.read(64).startswith(b"Sanguity export"):
                 return 1.0
-    return 0.9 if SIGNATURE[1] in head else 0.6
+    return 0.9 if SIGNATURE[1] in found else 0.6
 
 
 def parse(files):

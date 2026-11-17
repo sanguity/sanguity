@@ -158,6 +158,14 @@ class SanguityImporter(unittest.TestCase):
         docs = [d for d in out["data"]["details"].values() if d.get("type") == "file"]
         self.assertTrue(docs and all(d["url"] for d in docs))
 
+    def test_events_after_the_first_64_kb(self):   # a big record's export lists its payments first (#201)
+        with tempfile.TemporaryDirectory() as d:
+            payments = [{"d": "2026-01-03", "payee": "Example Health Plan", "amount": 186.0}] * 2000
+            with open(os.path.join(d, "data.json"), "w", encoding="utf-8") as f:
+                json.dump({"built": "2026-11-15T06:00:00", "outOfPocket": {"payments": payments}, "events": [], "details": {}}, f)
+            self.assertGreater(os.path.getsize(os.path.join(d, "data.json")), 64 * 1024)
+            self.assertEqual(reg.run(reg.files_in(d))["importer"], "sanguity")
+
     def test_keys_pass_through(self):
         out = reg.run(reg.files_in(os.path.join(FIXTURES, "importers", "sanguity", "export")))
         self.assertEqual({e["id"]: e["key"] for e in out["data"]["events"] if "key" in e},

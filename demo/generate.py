@@ -6,16 +6,20 @@ two-year story that exercises every tab: routine labs, a diagnosis, six treatmen
 blood-count dips, one hospital stay, recovery with physical therapy, insurance claims, payments, and
 watch + smart-scale data.
 
-Usage:  python3 -I demo/generate.py [OUT_DIR] [--end YYYY-MM-DD]
+Usage:  python3 -I demo/generate.py [OUT_DIR] [--end YYYY-MM-DD] [--big]
         OUT_DIR defaults to www/ and receives data.json, settings.json, watch/daily.json and
         files/demo-report.pdf (all git-ignored). --watch DIR writes daily.json there instead (the Docker
         setup points it at the receiver's public folder). The same --end date always produces the same data.
+        --big adds eight more years before the story (#201): about 5,000 lab results in 47 tests, 2,000 claims,
+        1,000 small documents (files/big/) and ten years of daily watch data, for the performance budgets
+        (docs/performance.md, tests/test_performance.py). Still fictional, still the same on every run.
 """
 import json, math, os, random, sys
 from datetime import date, datetime, timedelta
 
 argv = sys.argv[1:]
-WATCH_DIR = None
+WATCH_DIR, BIG = None, "--big" in argv
+argv = [a for a in argv if a != "--big"]
 if "--watch" in argv:
     i = argv.index("--watch"); WATCH_DIR = argv[i + 1]; del argv[i:i + 2]
 sys.argv = sys.argv[:1] + argv
@@ -35,6 +39,7 @@ TX = DX + timedelta(days=21)                # first treatment cycle
 CYCLES, CYCLE_DAYS = 6, 21
 TX_END = TX + timedelta(days=CYCLES * CYCLE_DAYS)
 STAY_CYCLE = 3                              # febrile-neutropenia admission during this cycle
+FIRST = END - timedelta(days=3652) if BIG else START   # --big: ten years of records (#201)
 
 CANCER = "Riverbend Cancer Center"
 CLINIC = "Lakeside Family Medicine"
@@ -113,6 +118,7 @@ LABS = {   # name: (unit, panel, lo, hi, baseline, decimals)
     "Sodium, Blood": ("mmol/L", "COMPREHENSIVE METABOLIC PANEL", 136, 145, 140, 0),
     "Magnesium": ("mg/dL", "MAGNESIUM", 1.7, 2.2, 2.0, 1),
 }
+CORE = list(LABS)
 CBC = [n for n, v in LABS.items() if v[1].startswith("CBC")]
 CMP = [n for n, v in LABS.items() if v[1].startswith("COMP")]
 series = {n: [] for n in LABS}
@@ -148,9 +154,8 @@ def lab_value(name, d):
 def draw(d, names, h=8, inpatient=False):
     t = at(d, h, R.randint(0, 50))
     ids, abn, orders = [], 0, []
-    for order, members in (("CBC WITH DIFFERENTIAL", [n for n in names if n in CBC]),
-                           ("COMPREHENSIVE METABOLIC PANEL", [n for n in names if n in CMP]),
-                           ("MAGNESIUM", [n for n in names if n == "Magnesium"])):
+    for order in dict.fromkeys(v[1] for v in LABS.values()):   # one result per panel, in LABS' order
+        members = [n for n in names if LABS[n][1] == order]
         if not members:
             continue
         rows, a = [], 0
@@ -194,7 +199,7 @@ while d < END - timedelta(days=3):                      # follow-up: monthly, th
     draw_days.add((d, "full"))
     d += timedelta(days=30 if d < TX_END + timedelta(days=200) else 60)
 for dd, kind in sorted(draw_days):
-    names = list(LABS) if kind == "full" else CBC + ["ALT", "AST", "Total Bilirubin"] if kind == "liver" else CBC
+    names = CORE if kind == "full" else CBC + ["ALT", "AST", "Total Bilirubin"] if kind == "liver" else CBC
     if kind == "full" and R.random() < 0.5:
         names = [n for n in names if n != "Magnesium"]
     draw(dd, names)
@@ -303,8 +308,79 @@ add(at(TX_END + timedelta(days=25), 15), "letter", "End of treatment letter", CA
 add(at(TX_END + timedelta(days=21), 16), "document", "PET/CT end of treatment (PDF)", HOSPITAL,
     {"type": "file", "ext": "pdf", "url": "files/demo-report.pdf"})
 
+# ------------------------------------------------------------------ --big: eight more years before the story (#201)
+# A record the size of a long-kept one, for the performance budgets: routine care every couple of weeks, with more
+# tests than the story's, monthly prescriptions, claims for all of it, and a small PDF for each scanned document
+BIG_DOCS = []   # (file name, title, date): written with the demo's PDF below
+if BIG:
+    EXTRA = {   # name: (unit, panel, lo, hi, baseline, decimals), all made up for the demo
+        "Total Cholesterol": ("mg/dL", "LIPID PANEL", 125, 200, 182, 0), "LDL Cholesterol": ("mg/dL", "LIPID PANEL", 0, 100, 96, 0),
+        "HDL Cholesterol": ("mg/dL", "LIPID PANEL", 40, 90, 52, 0), "Triglycerides": ("mg/dL", "LIPID PANEL", 0, 150, 118, 0),
+        "Hemoglobin A1c": ("%", "HEMOGLOBIN A1C", 4.0, 5.6, 5.4, 1), "Glucose, Fasting": ("mg/dL", "GLUCOSE", 70, 99, 92, 0),
+        "TSH": ("uIU/mL", "THYROID PANEL", 0.4, 4.5, 1.9, 2), "Free T4": ("ng/dL", "THYROID PANEL", 0.8, 1.8, 1.2, 2),
+        "Vitamin D, 25-Hydroxy": ("ng/mL", "VITAMIN D", 30, 100, 34, 0), "Vitamin B12": ("pg/mL", "VITAMIN B12", 200, 900, 480, 0),
+        "Ferritin": ("ng/mL", "IRON STUDIES", 30, 400, 120, 0), "Iron": ("ug/dL", "IRON STUDIES", 60, 170, 98, 0),
+        "TIBC": ("ug/dL", "IRON STUDIES", 250, 450, 330, 0), "Transferrin Saturation": ("%", "IRON STUDIES", 20, 50, 30, 0),
+        "Chloride, Blood": ("mmol/L", "BASIC METABOLIC PANEL", 98, 107, 102, 0), "CO2, Blood": ("mmol/L", "BASIC METABOLIC PANEL", 22, 29, 25, 0),
+        "BUN": ("mg/dL", "BASIC METABOLIC PANEL", 7, 20, 14, 0), "Calcium": ("mg/dL", "BASIC METABOLIC PANEL", 8.6, 10.3, 9.4, 1),
+        "eGFR": ("mL/min/1.73m2", "BASIC METABOLIC PANEL", 60, 120, 96, 0),
+        "Albumin": ("g/dL", "HEPATIC PANEL", 3.5, 5.0, 4.3, 1), "Alkaline Phosphatase": ("U/L", "HEPATIC PANEL", 44, 147, 78, 0),
+        "Total Protein": ("g/dL", "HEPATIC PANEL", 6.0, 8.3, 7.1, 1), "RBC": ("M/uL", "RED CELL INDICES", 4.5, 5.9, 5.1, 2),
+        "Hematocrit": ("%", "RED CELL INDICES", 41, 53, 45, 1), "MCV": ("fL", "RED CELL INDICES", 80, 100, 89, 0),
+        "MCH": ("pg", "RED CELL INDICES", 27, 33, 30, 1), "RDW": ("%", "RED CELL INDICES", 11.5, 14.5, 13.1, 1),
+        "C-Reactive Protein": ("mg/L", "INFLAMMATION", 0, 5, 1.6, 1), "Sed Rate": ("mm/hr", "INFLAMMATION", 0, 20, 8, 0),
+        "Uric Acid": ("mg/dL", "URIC ACID", 3.5, 7.2, 5.6, 1), "Phosphorus": ("mg/dL", "PHOSPHORUS", 2.5, 4.5, 3.4, 1),
+        "PSA": ("ng/mL", "PSA", 0, 4, 0.9, 2), "LDH": ("U/L", "LDH", 140, 280, 190, 0),
+        "Urine Specific Gravity": ("", "URINALYSIS", 1.005, 1.030, 1.018, 3), "Urine pH": ("", "URINALYSIS", 5.0, 8.0, 6.0, 1),
+    }
+    LABS.update(EXTRA)
+    series.update({n: [] for n in EXTRA})
+    ROUTINE = [n for n in EXTRA if EXTRA[n][1] in ("BASIC METABOLIC PANEL", "RED CELL INDICES")]
+    OPTIONAL = [n for n in EXTRA if n not in ROUTINE]
+    d = FIRST + timedelta(days=5)
+    while d < START - timedelta(days=4):   # a draw every two weeks or so: the story's tests, the routine ones, and some others
+        draw(d, CORE + ROUTINE + R.sample(OPTIONAL, R.randint(1, 6)))
+        d += timedelta(days=R.randint(13, 19))
+    d = FIRST + timedelta(days=9)
+    while d < START:   # routine visits, about monthly
+        visit(d, R.choice(("Office visit", "Office visit", "Follow-up visit", "Annual physical")), PCP, CLINIC,
+              R.choice(("Routine check-up", "Blood pressure check", "Seasonal allergies", "Annual physical")))
+        clinic_weights.append([at(d, 10), round(182 + R.uniform(-3, 3), 1), CLINIC])
+        d += timedelta(days=R.randint(24, 40))
+    for name, instr in (("Lisinopril 10 mg tablet", "Take 1 tablet daily"), ("Atorvastatin 20 mg tablet", "Take 1 tablet at bedtime"),
+                        ("Cetirizine 10 mg tablet", "Take 1 tablet daily as needed")):
+        add(at(FIRST + timedelta(days=20), 11), "med", name, f"{instr} · Active", {"type": "med", "instructions": instr, "status": "Active", "src": CLINIC})
+        f = FIRST + timedelta(days=21)
+        while f <= END:   # a fill every month, for ten years
+            add(at(f, 17), "rx", name, "Pharmacy fill · 30-day supply")
+            claim(f, "Corner Pharmacy", name, round(R.uniform(12, 60), 2), "Pharmacy", kind="pharmacy", drug=name)
+            f += timedelta(days=30)
+    OTHER = (("Dental cleaning", "Example Dental", "Dental"), ("Eye exam", "Clearview Eye Care", "Vision"),
+             ("Physical therapy session", PT, "Physical therapy"), ("Urgent care visit", "Harbor Urgent Care", "Urgent care"),
+             ("Chiropractic adjustment", "Spine & Joint Chiropractic", "Other care"), ("Office visit", CLINIC, "Doctor visits"))
+    n_claims = len(costs)
+    d = FIRST + timedelta(days=3)
+    while n_claims < 2000:   # other care, until there are 2,000 claims in all
+        title, prov, cat = R.choice(OTHER)
+        owed_bills.append((d, prov, claim(d, prov, title, round(R.uniform(90, 480), 2), cat)))
+        n_claims += 1
+        d += timedelta(days=R.randint(2, 6))
+        if d >= END:
+            d = FIRST + timedelta(days=R.randint(1, 30))
+    for i in range(1000):   # 1,000 scanned documents, a small PDF each
+        d = FIRST + timedelta(days=i * 3640 // 1000 + R.randint(0, 2))
+        title = R.choice(("Visit summary", "Lab report", "Referral letter", "Insurance statement", "Imaging report", "Discharge instructions"))
+        name = f"doc-{i + 1:04d}.pdf"
+        BIG_DOCS.append((name, title, d))
+        add(at(d, 15), "document", f"{title} (PDF)", R.choice((CLINIC, HOSPITAL, CANCER)), {"type": "file", "ext": "pdf", "url": f"files/big/{name}"})
+    for i in range(120):   # portal messages
+        d = FIRST + timedelta(days=R.randint(0, (START - FIRST).days))
+        msgs = [{"from": "You", "t": at(d, 19, 5), "body": "Can I get a refill before my next visit?", "att": []},
+                {"from": f"{PCP} (care team)", "t": at(d + timedelta(days=1), 9, 40), "body": "Yes, it has been sent to your pharmacy.", "att": []}]
+        add(msgs[0]["t"], "message", "Refill request", f"{len(msgs)} messages", {"type": "conversation", "messages": msgs})
+
 # ------------------------------------------------------------------ out-of-pocket payments
-m = date(START.year, START.month, 1)
+m = date(FIRST.year, FIRST.month, 1)
 while m <= END:
     payments.append({"d": m.replace(day=3).isoformat(), "payee": INSURER, "group": "Health insurance premiums",
                      "amount": 186.0, "account": "Checking", "memo": "Monthly premium", "est": False})
@@ -325,7 +401,7 @@ problems = [{"name": "Hodgkin lymphoma, in remission", "type": "Diagnosis", "dat
             {"name": "Anemia", "type": "Diagnosis", "date": (DX - timedelta(days=21)).isoformat(), "status": "Resolved", "src": CLINIC}]
 
 # ------------------------------------------------------------------ watch + smart scale (from a month before diagnosis)
-wstart = max(START, DX - timedelta(days=30))
+wstart = FIRST if BIG else max(START, DX - timedelta(days=30))
 met = {k: {} for k in ("steps", "hr_rest", "hr_avg", "hr_min", "hr_max", "hrv", "sleep_h", "sleep_deep_min", "sleep_rem_min",
                        "sleep_light_min", "weight", "body_fat", "lean_mass", "bmr")}
 exercise = []
@@ -402,7 +478,7 @@ lab_series = [{"name": n, "unit": LABS[n][0], "panel": LABS[n][1], "n": len(p), 
 lab_series.sort(key=lambda s: (-s["n"], s["name"]))
 data = {"built": at(END, 6), "source": "Sanguity demo data (fictional)", "events": events, "details": details, "labs": lab_series,
         "upcoming": upcoming, "problems": problems, "costs": costs,
-        "outOfPocket": {"payments": payments, "exported": END.isoformat(), "range": [START.isoformat(), END.isoformat()],
+        "outOfPocket": {"payments": payments, "exported": END.isoformat(), "range": [FIRST.isoformat(), END.isoformat()],
                         "excluded": "transfers between your own accounts", "balance": {"owed": 0, "asOf": END.isoformat()}},
         "milestones": [{"date": DX.isoformat(), "label": "Diagnosis", "primary": True}, {"date": TX.isoformat(), "label": "Treatment start"},
                        {"date": TX_END.isoformat(), "label": "End of treatment"}],
@@ -424,9 +500,12 @@ pdf(os.path.join(OUT, "files", "demo-report.pdf"),
       f"Exam: PET/CT end of treatment     Date: {(TX_END + timedelta(days=21)).isoformat()}", "",
       "Impression: No residual abnormal uptake.", "Complete metabolic response."],
      ["Page 2", "", "This file exists so the document viewer has something to show.", "It contains no real health information."]])
+for name, title, d in BIG_DOCS:   # --big's documents
+    os.makedirs(os.path.join(OUT, "files", "big"), exist_ok=True)
+    pdf(os.path.join(OUT, "files", "big", name), [[f"{title} - {d.isoformat()}", "", "FICTIONAL DEMO DOCUMENT - not a real patient"]])
 write_json(os.path.join(OUT, "data.json"), data, separators=(",", ":"))   # last: the app re-imports when it changes
 kinds = {}
 for e in events:
     kinds[e["k"]] = kinds.get(e["k"], 0) + 1
 print(f"wrote {OUT}: {len(events)} events {kinds}, {len(lab_series)} lab series, {len(costs)} claims, "
-      f"{len(payments)} payments, {len(exercise)} workouts, {START} to {END}")
+      f"{len(payments)} payments, {len(exercise)} workouts, {sum(s['n'] for s in lab_series)} lab results, {FIRST} to {END}")

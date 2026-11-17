@@ -22,12 +22,21 @@ function hData() {
   const ser = k => (M[k] ? M[k].pts : []).map(([d, v]) => [dayTs(d), v]);
   // drop readings that sit >12% away from the median of the other weights within 90 days (e.g. a profile weight typed into another app)
   const rawW = ser("weight"), cwRaw = (DATA.clinicWeights || []).map(([t, v]) => [dayTs(t.slice(0, 10)), v]);
-  const ref = [...rawW, ...cwRaw];
-  const scale = rawW.filter(p => { const near = ref.filter(q => q !== p && Math.abs(q[0] - p[0]) < 90 * DAY).map(q => q[1]).sort((x, y) => x - y);
+  // the others within 90 days are found in the readings put in time order, not by looking through every reading for
+  // each one (ten years of a daily scale took seconds, #201)
+  const ref = [...rawW, ...cwRaw].sort((x, y) => x[0] - y[0]);
+  const scale = rawW.filter(p => {
+    let lo = 0, hi = ref.length;   // the first reading less than 90 days before
+    while (lo < hi) { const m = (lo + hi) >> 1; if (ref[m][0] <= p[0] - 90 * DAY) lo = m + 1; else hi = m; }
+    const near = [];
+    for (let i = lo; i < ref.length && ref[i][0] < p[0] + 90 * DAY; i++) if (ref[i] !== p) near.push(ref[i][1]);
+    near.sort((x, y) => x - y);
     return near.length < 3 || Math.abs(p[1] - near[near.length >> 1]) / near[near.length >> 1] <= 0.12; });
   const scaleDays = new Set(scale.map(p => isoDay(p[0])));
   const clinic = (DATA.clinicWeights || []).map(([t, v, org]) => [dayTs(t.slice(0, 10)), v, org]).filter(p => !scaleDays.has(isoDay(p[0])));
-  const sleep = ser("sleep_h").map(([t, v]) => { const d = isoDay(t), g = k => ((M[k] ? Object.fromEntries(M[k].pts) : {})[d] || 0) / 60; return [t, v, g("sleep_deep_min"), g("sleep_rem_min"), g("sleep_light_min")]; });
+  const byDay = k => M[k] ? Object.fromEntries(M[k].pts) : {};   // once per metric, not once per night (#201)
+  const parts = ["sleep_deep_min", "sleep_rem_min", "sleep_light_min"].map(byDay);
+  const sleep = ser("sleep_h").map(([t, v]) => { const d = isoDay(t); return [t, v, ...parts.map(m => (m[d] || 0) / 60)]; });
   const lo = M.hr_min ? Object.fromEntries(M.hr_min.pts) : {}, hi = M.hr_max ? Object.fromEntries(M.hr_max.pts) : {};
   const hr = ser("hr_avg").map(([t, v]) => [t, v, lo[isoDay(t)], hi[isoDay(t)]]);
   const ex = ((WATCH || {}).exercise || []).map(x => ({t: zParse(x.start), name: (x.name || "").replace(/_/g, " "), kind: x.kind, min: x.minutes || 0}));
