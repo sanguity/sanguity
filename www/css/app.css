@@ -935,6 +935,26 @@ svg text.medname{fill:var(--ink2);font-size:11px}
 .mr-time{display:flex;gap:8px;align-items:center}
 .mr-days{display:flex;flex-wrap:wrap;gap:6px}
 .mr-add{align-self:flex-start}
+/* ---- the medication log (#235, medlog.js): marks by shape (● taken, ◆ taken late, ○ skipped), the drawer's list,
+   the Overview's today's doses */
+.dosemark{fill:var(--ink);stroke:var(--surface);stroke-width:1}
+.dosemark.skipped{fill:var(--surface);stroke:var(--ink);stroke-width:1.3}
+.doseicon{flex:none;vertical-align:-1px}
+.doselist{list-style:none;margin:6px 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.dose-item{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;border-bottom:1px solid var(--grid);padding:4px 0}
+.dose-says{flex:1 1 200px;min-width:0}
+.dose-src,.dose-note{flex:1 1 100%;font-size:12px;color:var(--ink2);padding-left:20px}
+.dose-note{white-space:pre-wrap;color:var(--ink)}
+.dose-item .mr-acts{padding-left:20px}
+.dose-week{margin:4px 0 8px;font-weight:600}
+table.data.doseweeks td,table.data.doseweeks th{text-align:right}
+table.data.doseweeks td:first-child,table.data.doseweeks th:first-child{text-align:left}
+.dose-today{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;border-bottom:1px solid var(--grid);padding:6px 0}
+.dose-slot{flex:0 0 72px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.dose-today .dose-med{flex:1 1 160px;min-width:0;text-align:left}
+.dose-got,.dose-quick{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.dose-done{display:inline-flex;gap:5px;align-items:center}
+.dose-st{align-self:flex-start}
 /* out of pocket (#55): a payment counted once, the editor under the list */
 table.data.oop tr.oop-dup td{color:var(--muted)}
 table.data.oop tr[aria-expanded=true] td{background:var(--hover)}

@@ -223,6 +223,7 @@ async function syncWarning(pid) {
   journalLoad();   // the journal's entries join EV as events of kind "journal" (journal.js)
   await cycleLoad();   // cycle tracking, only when turned on and for owners and editors (cycle.js, #183)
   medsLoad();      // each medication's spans and fills (meds.js, #50)
+  medLogLoad();    // the medication log: doses typed in and the phone's (medlog.js, #235)
   const ts = DATA.events.map(e => e.ts).filter(isFinite); state.min = Math.min(...ts); state.max = Math.max(...ts);
   for (const s of SERIES) if (s.watch && s.pts.length) state.max = Math.max(state.max, s.pts[s.pts.length - 1].ts);
   $("#meta").textContent = [DATA.source, DATA.built && "built " + fmtD(DATA.built), WATCH && WATCH.last_payload && "watch synced " + fmtDT(WATCH.last_payload)]

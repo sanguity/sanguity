@@ -64,6 +64,7 @@ check changes without updating the list, and it exercises this table against a l
 | A watch's ECG recordings and irregular rhythm notifications (#182): the events with the records, a recording's samples by `GET /api/profiles/{pid}/watch/ecg/{name}` when its drawer opens | Read | Read | Read | No (404) | Only if its owner ticks "ECGs and irregular rhythm notifications" (#225, unticked by default): the date and what the device said, never the samples | No |
 | The journal | Read | Add, change, delete | Add, change, delete | No | If the link includes it (without who wrote what) | No |
 | The journal's photos (#161): `GET /api/profiles/{pid}/journal/photos/{id}`, sent first by `PUT …/journal/photos` | Read | Send, attach, remove | Send, attach, remove | No (404) | Only if its owner ticks "Photos in the journal" too (unticked by default; offered only when there are some), each fetched with the token like the view | No |
+| The medication log (#235): `…/medications/doses` | Read | Log, correct, remove | Log, correct, remove | No | Only if its owner ticks "Medication log" (unticked by default), in the link's dates, notes included | No |
 | Medication reminders (#162): `…/medications/reminders` | Read | Set, change, turn off, remove | Set, change, turn off, remove | No | No | Each time as a recurring event, "Medication" unless the feed is set to full details; on unless the feed's person turns them off |
 | The phone's and watch's measures in a visit summary or a share link (#225): home blood pressure, glucose, temperature, blood oxygen, respiratory rate, VO2 max, immunizations, BMI and growth | Read (summary) | Read (summary) | Read (summary; ticks them for a link) | No | Only the measures its owner ticked (each unticked by default), in the link's dates; cycle tracking never | No |
 | About this person: birth date, sex used for reference ranges, height history (#194) | Read | Change; add and remove heights | Change; add and remove heights | No | Only if its owner ticks About this person (unticked by default) | No |
@@ -548,6 +549,8 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 - Medication reminders (#162, `med_reminders`): the same, the body (medication, times, days, dates, zone) encrypted,
   the activity log saying only what was done and how many times a day. A calendar feed lists them only while they are
   on, minimal ("Medication") unless its person chose full details; the feed's own rules (above) are unchanged.
+- The medication log (#235, `med_doses`): the same again; the activity log keeps the dose's status, never the
+  medication or the note. A phone's doses arrive with the watch data (Health Auto Export, sealed like the rest of it).
 
 ### About this person (#194)
 - Birth date, sex used for reference ranges and height history are three profile settings (`person.*`), sealed like

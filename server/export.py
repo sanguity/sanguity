@@ -4,7 +4,7 @@ The zip:
   README.txt          what this is and how to load it again
   data.json           the records, with each document link pointing at the copy in documents/, and the journal
                       (notes, symptoms, side effects and moods people wrote, journal.py) as its "journal" list, each
-                      photo an entry lists naming its file below ("file")
+                      photo an entry lists naming its file below ("file"); the medication log (#235, med_log.py) as "doses" and medication reminders (#162) as "reminders"
   journal/photos/<id>.<jpg|png|webp>  the journal's photos (#161), as kept: their metadata was taken out when sent.
                       Like the journal itself, they aren't loaded back in from an export
   settings.json       the settings set for the profile, shaped like settings.example.json (none: all at their defaults)
@@ -176,6 +176,7 @@ This file holds someone's health records. Keep it somewhere private, ideally enc
 no longer need.
 
   data.json          the records ({len(included)} documents linked), and the journal ("journal": {len(data.get('journal') or []) if p['data'] else 0} entries)
+                     and the medication log ("doses": {len(data.get('doses') or []) if p['data'] else 0} logged; a phone's are in watch/daily.json)
   settings.json      the profile's settings{'' if len(p['settings']) > 1 else ' (none set: all at their defaults)'}
   documents/         the documents, one folder each
   watch/daily.json   watch and scale summary{'' if p['watch'] else ' (none)'}

@@ -448,7 +448,7 @@ class Summary(unittest.TestCase):
         self.assertFalse(set(measures.IDS) & {s["id"] for s in o["sections"]}, "a profile without them isn't offered them")
         o = self.c["kim"].get(f"/api/profiles/{self.measures_profile()}/summary").json()   # viewers too: they read them already
         secs = {s["id"]: s for s in o["sections"]}
-        has = [s for s in measures.IDS if s != "targets"]   # targets (#234): only once one is entered
+        has = [s for s in measures.IDS if s not in ("targets", "medlog")]   # targets (#234): only once one is entered; the medication log (#235): only with doses logged
         self.assertEqual([s for s in measures.IDS if s in secs], has, "each one this profile has")
         self.assertTrue(all(secs[s].get("off") for s in has), "unticked unless the person ticks them")
         self.assertFalse(any(secs[s].get("off") for s in ALL), "the summary's own sections stay ticked")

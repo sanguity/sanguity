@@ -69,6 +69,10 @@ on the **Settings** page, appear on every chart and as "since" periods.
   your own symptom groups logged in one go, where on the body (a front and back outline, or a list), photos with
   their location data taken out, a day's mood and energy in a lane of their own, and a body map of where symptoms
   have been.
+- A **medication log** (#235): doses taken, taken late or skipped, logged from a medication's details or the
+  Overview's "Today's medication doses" (with the reminder times set on it, #162), on the medication's span on the
+  timeline and, when ticked, under the Labs charts, with a weekly count of what was logged. Apple Health's Medications
+  doses come in through Health Auto Export; it records what you say happened and never says a dose was due.
 
 **Finding your way.** One bar across the top: your records' tabs, **Add** (upload files, connect a portal or plan, type
 records in, paste a Health Link, a journal entry) and your menu (sources, sharing, settings, account, light or dark,
@@ -324,6 +328,10 @@ watch's heart rate samples during it, so both give the time in each zone; an upl
 each workout's average and highest. The receiver keeps a workout's readings as seconds at each heart rate, so a birth
 date or maximum entered later applies to every workout; the page gets the minutes in each zone, never the readings.
 A convention, labelled so, not advice.
+Medication doses (#235) logged in Apple Health's Medications (iOS 26 and later) come through Health Auto Export's
+medications automation: the receiver keeps those marked Taken or Skipped, once each, and drops one later marked
+otherwise (Not Logged, Snoozed...); they join the doses typed in on the medication's log, said to be from Apple Health,
+and can't be changed in Sanguity. Health Connect has no dose events, so from Android doses are typed in only.
 
 ### Uploading records in the app
 

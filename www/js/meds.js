@@ -9,6 +9,8 @@
    Reminders (#162, server/med_reminders.py): DATA.reminders = [{id, med (the medication's key), name, times, days,
    from, until, tz, on, by, at}], set in a medication's drawer by owners and editors for a current medication, listed
    by the calendar feed (Sharing → Calendar feed) as repeating events; the drawer says when one has ended.
+   The medication log (#235, medlog.js) adds its doses to the drawer (medLogSection) and as marks on each span in the
+   Timeline's lane (medDoseMarks).
    Plain script, loaded in order by index.html after journal.js; all files share one global scope. */
 "use strict";
 let MEDS = [], medSel = null;   // the medications; the one open in the drawer (its index)
@@ -52,6 +54,7 @@ function medRow(g, m, x, y, L, R, color, opts = {}) {
     if (s.stopped && x2 >= L && x2 <= R) g.push(el("svg:line", {class: "medstop", x1: b, x2: b, y1: y - 6, y2: y + 6, "pointer-events": "none"}));
     if (s.open && x2 <= R + 1) g.push(el("svg:path", {d: `M${b + 1},${y - 4}L${b + 6},${y}L${b + 1},${y + 4}Z`, fill: color, "fill-opacity": .6, "pointer-events": "none"}));
   });
+  if (opts.selectable) medDoseMarks(g, m, x, y, L, R);   // doses logged, on the span (medlog.js, #235)
   for (const f of m.fills) {
     const fx = x(f.ts); if (fx < L - 2 || fx > R + 2) continue;
     if (f.supply) { const fe = Math.min(R, x(f.ts + f.supply * DAY)); if (fe > fx + 1) g.push(el("svg:line", {class: "medsupply", x1: Math.max(L, fx), x2: fe, y1: y + 7, y2: y + 7, "pointer-events": "none"})); }
@@ -77,6 +80,7 @@ TL_LANES.med = {
 function medTip(m, ds, ev) {
   if (!m) return hideTip();
   if (ds.fill) { const e = byId.get(+ds.fill); if (e) return showEvTip(e, ev); }
+  if (ds.dose != null) return doseTip(m, +ds.dose, ev);   // a dose logged (medlog.js, #235)
   const s = m.spans[+ds.span]; if (!s) return hideTip();
   showTip([el("div", {class: "v", text: m.name}),
     el("div", {class: "s"}, el("span", {class: "k", style: {background: CAT_OF.med.color}}), medSpanWhen(s)),
@@ -143,6 +147,7 @@ function openMedication(m) {
         el("td", {text: fmtD(f.ts)}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: f.title})), el("td", {text: f.pharmacy || ""}), el("td", {text: f.supply ? `${f.supply} days` : ""})))))));
   }
   body.append(...medReminderSection(m));   // reminders through the calendar feed (#162)
+  body.append(...medLogSection(m));        // the doses logged (medlog.js, #235)
   const notes = JOURNAL.filter(e => e.j.med && medKeyOf(e.j.med) === m.key);
   if (notes.length) body.append(el("div", {class: "sect", text: "Journal entries linked to it"}),
     ...notes.sort((a, b) => a.ts - b.ts).map(e => el("button", {class: "btn", type: "button", text: `${fmtD(e.ts)} · ${e.title}`, onclick: () => openEvent(e)})));

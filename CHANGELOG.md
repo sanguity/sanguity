@@ -553,6 +553,15 @@ Everything on `main` so far; it becomes the first tagged release.
   reminders that day, and its details say so; each reminder can be turned off or removed, and a feed can leave them
   out ("Medication reminders" on Sharing → Calendar feed). Medications typed in work the same; reminders are kept when
   imports are undone, and encrypted.
+- **A medication log** (#235): owners and editors log a dose as taken, taken late or skipped, with its time and a
+  note, from the medication's details or from the Overview's "Today's medication doses" (a row for each of the day's
+  reminder times when #162's reminders are set, else one per current medication; one click logs it now), and correct
+  or remove it. Doses show as marks on the medication's span on the Timeline (● taken, ◆ taken late, ○ skipped), as a
+  row under the Labs charts when "Doses logged" is ticked, and counted per week of what was logged ("12 of 14 logged
+  doses taken"), never of what was expected. From an iPhone, Apple Health's Medications doses (iOS 26) come through
+  Health Auto Export's medications automation, read by the watch receiver; Health Connect has no dose events, so from
+  Android they're typed only. Encrypted, the profile's own (kept when imports are undone), in Export everything, and
+  in the visit summary and share links only when "Medication log" is ticked.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
