@@ -72,6 +72,11 @@ const WHAT = {
   "profile.delete": d => `deleted the profile “${d.name}”${d.members > 1 ? ` (shared with ${d.members - 1} other${d.members > 2 ? "s" : ""})` : ""}`,
   "labmap.change": d => `changed the lab name match for “${d.name}” from ${d.from ? `“${d.from}”` : "its own series"} to ${d.to ? `“${d.to}”` : "its own series"}`,
   "labmap.remove": d => `removed the lab name match for “${d.name}”${d.target ? ` (to “${d.target}”)` : ""}`,
+  // backups (#200): made (Back up now, or the schedule), checked, failing, the schedule changed
+  "backup.create": d => `made a backup, ${d.name}` + (d.removed ? `, removing ${d.removed} older one${d.removed === 1 ? "" : "s"}` : ""),
+  "backup.check": d => `checked the backup ${d.name}: ${d.ok ? "good" : "not good"}`,
+  "backup.fail": d => `couldn't make a backup (${d.error})`,
+  "backup.schedule": d => d.schedule === "off" ? "turned off scheduled backups" : `scheduled backups ${d.schedule}, keeping the newest ${d.keep}`,
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],

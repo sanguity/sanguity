@@ -531,14 +531,24 @@ Health records are worth more than uptime: keep copies off this machine.
 | Watch and scale data | `WATCH_DIR` | `watch.db` plus `raw/`, the receiver's archive of every upload (`receiver.py --reprocess` rebuilds the database from it); encrypted, so they need `auth/data_key` too |
 | Secrets and configuration | `auth/`, `.env`, `sources.json`, `corrections.json` (settings are in the database) | copy them; keep `auth/data_key` somewhere other than the backups (see below) |
 
-Run the backup every night, for example from cron on the host (on TrueNAS: **System > Advanced > Cron Jobs**):
+**In the app** (**Admin → Backups**): when the newest backup was made, its size and the folder it went to, with a
+warning when it's late (on every Admin group and on the Admin menu item). **Back up now** makes one in the
+background. The schedule (off, daily or weekly) has the app make one when the newest is a day or a week old, and
+keeps the newest N, deleting older `sanguity-backup-*.tar.gz` files from the folder and nothing else. **Check a
+backup** restores one into a temporary folder beside it, compares it with what its manifest says it holds (every
+file's checksum, the database's row counts, that this install's key opens it), says whether it's good, and deletes
+the copy; the live data isn't touched. The backups go to `BACKUP_DIR`, so copy that folder off this machine too.
+
+Or run the backup from cron on the host (on TrueNAS: **System > Advanced > Cron Jobs**); the Admin page shows these
+too, and warns when the newest is over a week old:
 
 ```sh
 0 3 * * * cd /path/to/sanguity && docker compose exec -T app python -m server.manage backup --keep 14
 ```
 
 ZFS snapshots of these folders are fine too: SQLite recovers from a snapshot as from a power cut. The archive is
-still worth having, since it can be checked (`python -m server.manage verify FILE`) and copied anywhere.
+still worth having, since it can be checked (`python -m server.manage verify FILE`, or `check FILE` to restore it
+into a temporary folder as the Admin page does) and copied anywhere.
 
 **Restore** with the app stopped; the data it replaces is moved to `DATA_DIR/before-restore-<time>/`, not deleted,
 and a backup from an older version is upgraded when the app starts:

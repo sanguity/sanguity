@@ -1073,3 +1073,34 @@ path.pt.abn{stroke-width:1.5}
 .chart .hd .rdiff{flex-basis:100%;margin:0;font-size:12px;color:var(--ink2)}
 .chart .hd .rdiff b{font-weight:600;color:var(--ink)}
 .chart .hd .rdiff .nw{white-space:nowrap}
+
+
+/* ---- backups on the Admin page (#200, admin-backups.js): the key reminder set apart, the backups' state in words
+   with ✓ or ⚠ (not colour alone), the progress of a backup or a check, the backups and what a check counted */
+.bk .bk-key{margin:10px 0;padding:8px 12px;border-left:3px solid var(--c-study);border-radius:0 8px 8px 0;font-size:13px;
+  background:color-mix(in srgb,var(--c-study) 10%,transparent)}
+.bk code{overflow-wrap:anywhere}
+.bk .bk-state{margin:10px 0 6px;font-size:14px;font-weight:600}
+.bk .bk-state.good{color:var(--good-text)}
+.bk .bk-state.bad{border-left:3px solid var(--crit);padding-left:10px}
+.bk .kv{grid-template-columns:110px minmax(0,1fr)}
+.bk .bk-progress{display:grid;gap:4px;margin:8px 0;font-size:13px;color:var(--ink2);max-width:480px}
+.bk .bk-progress progress{width:100%;height:8px;accent-color:var(--accent)}
+.bk .bk-sched{display:grid;gap:6px;margin:4px 0 0}
+.bk .bk-sched .hint{margin:0;max-width:70ch}
+.acct .bk label.bk-keep{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.bk .bk-keep input{width:5.5em}
+.bk .bk-name{font-size:11px;overflow-wrap:anywhere}
+.bk .bk-result{margin-top:8px}
+.bk .bk-result .bk-state{font-weight:400;max-width:75ch}
+.bk .bk-counts{max-width:480px}
+.bk .bk-counts caption{text-align:left;font-size:12px;color:var(--muted);padding-bottom:4px}
+.bk .bk-counts td{font-variant-numeric:tabular-nums}
+.acct .tag.bk-late{color:var(--ink);background:color-mix(in srgb,var(--c-study) 30%,transparent)}
+.menu-item .badge.bk-late{color:var(--ink);border-color:var(--c-study);background:color-mix(in srgb,var(--c-study) 20%,transparent)}
+main[data-group=backups] #backupNotice{display:none}   /* the Backups group says it itself */
+@media (max-width:640px){   /* the counts stay a table with its headings on a phone */
+  .acct .tbl.bk-counts thead{display:table-header-group}
+  .acct .tbl.bk-counts tr{display:table-row}
+  .acct .tbl.bk-counts td{border-top:1px solid var(--grid);padding:6px 8px 6px 0}
+}

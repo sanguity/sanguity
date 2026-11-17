@@ -263,6 +263,13 @@ Everything on `main` so far; it becomes the first tagged release.
   differ (two labs, or a lab that changed its range), the band steps with them and a line under the chart's name says
   so, "Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL", compared after any unit conversion; the
   chart's table gives each row its own, and the Overview's sparklines and the heatmap's row names follow suit (#58).
+- **Backups in Admin** (#200): **Admin → Backups** says when the newest backup was made, how big it is and where it
+  went, and warns when it's late or the last one failed (on every Admin group, beside Backups in the sidebar and on
+  the Admin menu item). **Back up now** and a schedule the app keeps (off, daily or weekly, keeping the newest N of
+  its own backup files and nothing else in the folder) run in the background. **Check a backup** restores one into a
+  temporary folder beside it, compares it with the row counts its manifest now records, says whether it's good and
+  deletes the copy; it never touches the live data (also `python -m server.manage check FILE`). Turning the schedule
+  off, or keeping fewer, asks for the fresh check. Restoring stays a command-line step with the app stopped.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

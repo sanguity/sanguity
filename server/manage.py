@@ -24,6 +24,9 @@
   reencrypt                              with the app stopped, after adding a key (setup new-key): re-encrypt everything
                                          with it, so the old key can be removed (starting the app does this too)
   verify ARCHIVE                         check a backup is complete and undamaged
+  check ARCHIVE                          restore a backup into a temporary folder beside it, compare it with what it
+                                         says it holds, then delete the copy (the Admin page's Check a backup); safe
+                                         while the app runs: the live data isn't touched
   restore ARCHIVE [--yes]                replace the database, profiles and setup build with a backup's; the app must
                                          be stopped: docker compose run --rm --no-deps app python -m server.manage restore ...
 """
@@ -82,7 +85,7 @@ def _user(db, name):
 
 
 def _backup_command(cmd, args):
-    """backup, verify and restore: these work on the files, so no database connection is held open meanwhile."""
+    """backup, verify, check and restore: these work on the files, so no database connection is held open meanwhile."""
     try:
         if cmd == "backup":
             keep = int(args[args.index("--keep") + 1]) if "--keep" in args else None
@@ -92,6 +95,12 @@ def _backup_command(cmd, args):
         elif cmd == "verify" and args:
             m = backup.verify(args[0])
             print(f"OK: backup from {m['created']}, {len(m['files'])} files, database schema {m['schema']}.")
+        elif cmd == "check" and args:
+            got = backup.check(args[0])
+            if not got["ok"]:
+                sys.exit("Not good: " + " ".join(got["problems"]))
+            print(f"Good: the backup from {got['created']} restored into a temporary folder, {got['files']} files and "
+                  f"{sum(c['backup'] for c in got['counts'].values())} database rows as it had when it was made. The copy was deleted.")
         elif cmd == "restore" and args:
             m = backup.verify(args[0])
             print(f"Backup from {m['created']}: {len(m['files'])} files. Restoring replaces this install's accounts, "
@@ -107,7 +116,7 @@ def _backup_command(cmd, args):
 
 
 def run(argv):
-    if argv and argv[0] in ("backup", "verify", "restore"):
+    if argv and argv[0] in ("backup", "verify", "check", "restore"):
         return _backup_command(argv[0], argv[1:])
     dbm.init()
     db = dbm.connect()

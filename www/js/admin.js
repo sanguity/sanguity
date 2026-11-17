@@ -1,5 +1,6 @@
 /* Sanguity · the Admin page (#167): what only admins do, for the whole server, in one place, with a sidebar of groups
-   (as the Settings page's, settings-nav.js): Accounts (and requiring two-factor sign-in), Connected-source apps and
+   (as the Settings page's, settings-nav.js): Accounts (and requiring two-factor sign-in), Backups (admin-backups.js,
+   #200), Connected-source apps and
    their sync defaults, the Provider directory (both admin-sources.js), Lab name matches, Outside connections
    (outside.js) and Install activity (activity.js). Someone who isn't an admin gets a page saying so, and no menu item
    (nav.js). Admins need a second factor of their own once the server has more than one account: until then each
@@ -28,6 +29,7 @@ $("#logout").onclick = async () => { try { await call("logout", "POST"); } catch
    #sec-sync, #outside) opens that section's group and scrolls to it. */
 const GROUPS = [
   {id: "accounts", title: "Accounts", has: ["users"]},
+  {id: "backups", title: "Backups", has: ["backups"]},   // #200
   {id: "apps", title: "Connected-source apps", has: ["admin", "sec-sync"]},
   {id: "directory", title: "Provider directory", has: ["directory"]},
   {id: "labs", title: "Lab name matches", has: ["labmaps"]},
@@ -103,8 +105,8 @@ function syncNotice(rows) {
    server refuses the rest of this page until then too) */
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = true; $("#users").hidden = false;
-  $("#secNotice").hidden = $("#syncNotice").hidden = true;
-  for (const id of ["#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
+  $("#secNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
+  for (const id of ["#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
@@ -116,16 +118,17 @@ function gateCard(card) {
   card.hidden = false;
 }
 /* resetting a password, turning off someone's 2FA or making an admin needs a fresh check (the password, a code or a
-   passkey within a few minutes): when the server asks, ask the person, then try again */
-async function fresh(action) {
+   passkey within a few minutes): when the server asks, ask the person, then try again. box: where to ask (Backups
+   has its own, #200) */
+async function fresh(action, box = $("#reauth")) {
   try { return await action(); }
   catch (e) { if (e.detail !== "reauth_required") throw e; }
-  await confirmIdentity();
+  await confirmIdentity(box);
   return action();
 }
-function confirmIdentity() {
+function confirmIdentity(box = $("#reauth")) {
   return new Promise((resolve, reject) => {
-    const box = $("#reauth"), msg = el("span", {class: "msg", role: "status"});
+    const msg = el("span", {class: "msg", role: "status"});
     const secret = el("input", {type: "password", autocomplete: "current-password", placeholder: "Password or code",
       "aria-label": "Your password, or a code from your authenticator app", required: true});
     const done = ok => { box.hidden = true; box.replaceChildren(); ok ? resolve() : reject(new Error("Not done: you didn't confirm it's you.")); };
@@ -329,6 +332,6 @@ function loadInstallLog() {
   loadDirectory();      // admin-sources.js
   if (ME.user.admin_needs_two_factor) { adminGate(); AdminNav.again(); return; }
   loadInstallLog();
-  await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadRequireTf(), loadSetup(), loadSync()]);
+  await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadRequireTf(), loadSetup(), loadSync(), loadBackups()]);
   AdminNav.again();
 })();

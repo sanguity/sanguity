@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 27**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 28**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -588,6 +588,41 @@ erDiagram
         text revoked_name
         int views
         int last_viewed
+    }
+```
+
+## Backups (install-wide)
+
+The backups themselves are files in `BACKUP_DIR` (`server/backup.py`); `backup_runs` (schema version 28, #200) is
+what the Admin page's **Backups** asked for and how it went: **Back up now**, the schedule's backups (origin
+`schedule`, made by "scheduled backup") and **Check a backup**, one row each. `server/backup_jobs.py` runs them in
+turn in the background (`queued` → `running` → `done` or `failed`), and the page polls the one running. A check
+that ran and found the backup damaged is `done` with `ok` 0 and what it found in `message`. A backup's file is named
+before the database is copied, so a database restored from that backup knows its own row; at start-up, rows left
+running are marked done if their file was finished, failed otherwise. The newest 100 rows are kept. Nothing here is
+health information (file names, sizes, row counts), so nothing is encrypted. The schedule and how many backups to
+keep are in `meta` (`backup.schedule`, `backup.keep`).
+
+```mermaid
+erDiagram
+    users ||--o{ backup_runs : "asked for"
+
+    backup_runs {
+        int id PK
+        text kind "backup or check"
+        text origin "manual or schedule"
+        text state "queued, running, done or failed"
+        text file "the backup's name in BACKUP_DIR"
+        int size "bytes, once made"
+        text stage "with done and total: how far it has got"
+        int ok "a check: 1 good, 0 not"
+        text message "why it failed, or what a check found"
+        text result "JSON: a check's counts, or the backups a backup removed"
+        int created_by FK "NULL: the schedule, or the account is gone"
+        text created_name "the username then, or scheduled backup"
+        int created
+        int started
+        int finished
     }
 ```
 

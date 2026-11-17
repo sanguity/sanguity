@@ -33,6 +33,7 @@
 
   <div class="card warn" id="secNotice" hidden></div>
   <div class="card warn" id="syncNotice" hidden></div>
+  <div class="card warn" id="backupNotice" hidden></div>
 
   <!-- Accounts, and requiring two-factor sign-in (admin.js) -->
   <section class="card" id="users" hidden>
@@ -57,6 +58,36 @@
       </form>
     </div>
     <span class="msg" id="userMsg" role="status"></span>
+  </section>
+
+  <!-- Backups (#200): the newest backup, Back up now, the schedule, and checking a backup (admin-backups.js) -->
+  <section class="card bk" id="backups" hidden>
+    <h2>Backups</h2>
+    <p class="hint">A checked copy of the accounts, profiles and records, written to the backups folder. Copy them off
+      this server too.</p>
+    <p class="bk-key"><b>The encryption key isn't in the backups.</b> Keep a copy of the key file somewhere else, like a
+      password manager or a USB stick in a drawer: without it no backup can be read, and nobody can recover it.
+      <span id="bkKeyFile"></span></p>
+    <details class="more"><summary>More about this</summary>
+      <p>A backup holds the database (accounts, profiles, records, settings), each profile's documents and uploads, and
+        the setup build. Not in it: your original exports, the watch receiver's data, and the configuration (.env,
+        sources.json). Making one is safe while people use the app.</p>
+      <p>Where the backups folder is on the server is the install's choice (BACKUP_DIR in .env; ./backups by default).
+        Restoring one replaces the live data, so it's done on the server with the app stopped
+        (python -m server.manage restore), never from this page.</p>
+    </details>
+    <div id="bkStatus" class="bk-status"></div>
+    <div class="row"><button class="btn primary" type="button" id="bkNow">Back up now</button>
+      <span class="msg" id="bkNowMsg" role="status"></span></div>
+    <div id="bkProgress" class="bk-progress" hidden></div>
+    <h3 class="sub">Schedule</h3>
+    <form id="bkSchedule" class="bk-sched"></form>
+    <div id="bkReauth" class="reauth" hidden></div>
+    <h3 class="sub">Check a backup</h3>
+    <p class="hint">Restores a backup into a temporary folder beside it, compares it with what it says it holds, then
+      deletes the copy. The live data isn't touched.</p>
+    <div id="bkList"></div>
+    <div id="bkResult" class="bk-result" role="status"></div>
   </section>
 
   <!-- Connected-source apps: each vendor's app for this server, and the defaults of every connection (admin-sources.js) -->
@@ -145,6 +176,7 @@
 <script src="js/activity.js"></script>
 <script src="js/admin.js"></script>
 <script src="js/admin-sources.js"></script>
+<script src="js/admin-backups.js"></script>
 <script src="js/outside.js"></script>
 </body>
 </html>

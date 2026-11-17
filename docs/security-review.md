@@ -202,7 +202,7 @@ The issue asked for these items in particular.
 | 4.2.2 | CSRF protection | Met | `X-Sanguity` header plus Origin check on every state-changing `/api/` call (`main.guard`), and SameSite=Strict (`test_csrf`). |
 | 4.3.1 | Admin interfaces use multi-factor | Met (#75) | The `admin` dependency refuses every admin route (`admin_two_factor_required`) until the admin has an authenticator app or a passkey, once the server has more than one account (`accounts.admin_needs_second_factor`). The owner exempted a one-person install: with no other accounts there is nobody to manage. `server.manage` on the command line needs no second factor, and stays the way back in. |
 | 4.3.2 | No directory browsing or metadata files | Met | nginx serves an allow-list of paths, with no autoindex. `.git` and the config files aren't reachable. |
-| 4.3.3 | Step-up for lower-value systems | Met (#75) | Resetting a password, turning off someone's two-factor sign-in and making someone an admin (`main.fresh`) need the password, a code or a passkey within `REAUTH_MINUTES` (5). Signing in counts. `POST /api/me/reauth` and `/api/me/reauth/passkey` renew it. Schema version 9 adds `sessions.verified_at`; sessions from before it ask at their next such action. |
+| 4.3.3 | Step-up for lower-value systems | Met (#75) | Resetting a password, turning off someone's two-factor sign-in, making someone an admin, and turning scheduled backups off or keeping fewer (#200) (`main.fresh`) need the password, a code or a passkey within `REAUTH_MINUTES` (5). Signing in counts. `POST /api/me/reauth` and `/api/me/reauth/passkey` renew it. Schema version 9 adds `sessions.verified_at`; sessions from before it ask at their next such action. |
 
 ## V5 Validation, sanitization and encoding
 
@@ -271,7 +271,7 @@ The issue asked for these items in particular.
 | 8.1.2 | Cached copies on the server purged | N/A | No server cache. |
 | 8.1.3 | Few parameters, no sensitive ones in URLs | Met | Sensitive values go in request bodies. |
 | 8.1.4 | Abnormal request volume detected | Fixed (#78) | Failed sign-ins are throttled, logged and kept 30 days (`alerts.py`); admins see a notice under **Account** when one address or account fails 10 times in a day, or 30 failures pile up (`/api/security/notice`). Other endpoints need a signed-in session and aren't rate-limited (Accepted). |
-| 8.1.5 | Backups made | Met | `server.manage backup`: a consistent SQLite copy plus files, with a manifest of SHA-256 hashes. Verify and restore are tested. |
+| 8.1.5 | Backups made | Met | `server.manage backup`, or **Admin → Backups** (Back up now, or a daily or weekly schedule the app keeps, #200): a consistent SQLite copy plus files, with a manifest of SHA-256 hashes and row counts. Verify and restore are tested; **Check a backup** restores one into a temporary folder in the backups folder, compares it and deletes it, and a test shows it leaves the live data as it was. The Admin page warns when the newest is late or a backup failed. Admins only (with their second factor); turning the schedule off or keeping fewer needs the fresh check (4.3.3); no endpoint downloads or restores a backup. |
 | 8.1.6 | Backups stored securely | Met | The data in them is encrypted, and the key isn't included. |
 | 8.2.1 | Anti-caching headers | Met | As 8.1.1. |
 | 8.2.2 | Nothing sensitive in browser storage | Met | `localStorage` holds view preferences only: theme, date range, tab, which lab series are picked. No records or tokens. |

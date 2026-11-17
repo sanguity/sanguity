@@ -178,7 +178,11 @@ const SgNav = (() => {
   let locked = false;
   document.addEventListener("DOMContentLoaded", () => {
     api("me").then(r => r.ok ? r.json() : null).then(me => {
-      if (me && me.user && me.user.is_admin && !locked) document.getElementById("adminLink").hidden = false;
+      if (me && me.user && me.user.is_admin && !locked) {
+        const a = document.getElementById("adminLink");
+        a.hidden = false;
+        if (me.backups_late) a.append(" ", el("span", {class: "badge bk-late", text: "⚠ backups late"}));   // #200: Admin → Backups says why
+      }
     }).catch(() => {});
   });
   /* nothing to go to but Log out (a password to change or a second factor to set up first, account.js) */

@@ -47,6 +47,7 @@ python tests/test_edits.py             # corrections made in the app
 python tests/test_milestones.py        # milestones and workout rules on the Settings page
 python tests/test_lab_mapping.py       # matching unknown lab names
 python tests/test_summary.py           # the visit summary PDF
+python tests/test_backups.py           # backups in Admin: schedule, pruning, late warning, restore check
 python -m unittest discover -s tests -p "test_importer*.py" -v   # the registry and every importer's fixtures
 python tests/browser_check.py          # headless browser: every tab, the drawer, pan/zoom, every page at 375 px
 ```

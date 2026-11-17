@@ -374,11 +374,11 @@ def main():
               and strict.evaluate("document.querySelector('#srcNav a[aria-current=page]').dataset.group") == "phone")
         # the Admin page (#167): its sidebar of groups, each part drawn by its own script
         strict.goto(base + "/admin.html")
-        for sel in ("#userList table", "#sec-sync .set", "#sourceList", "#dirSources ul", "#labmapList", "#outsideBody h3", "#acctLog tbody tr"):
+        for sel in ("#userList table", "#sec-sync .set", "#sourceList", "#dirSources ul", "#labmapList", "#outsideBody h3", "#acctLog tbody tr", "#bkStatus .kv"):
             strict.wait_for_selector(sel, state="attached", timeout=10000)
         groups = strict.evaluate("[...document.querySelectorAll('#admNav a')].map(a => a.textContent)")
         check("under the CSP: the Admin page's scripts run, with a sidebar of its groups", groups ==
-              ["Accounts", "Connected-source apps", "Provider directory", "Lab name matches", "Outside connections", "Install activity"], groups)
+              ["Accounts", "Backups", "Connected-source apps", "Provider directory", "Lab name matches", "Outside connections", "Install activity"], groups)
         strict.wait_for_selector("#adminLink:not([hidden])", state="attached", timeout=10000)
         check("…and the menu offers Admin to an admin", strict.evaluate("document.getElementById('adminLink').getAttribute('href')") == "admin.html")
         check("no Admin card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
@@ -2864,7 +2864,7 @@ def main():
                   js(display, "directory") != "none" and js(display, "sec-sync") == "none" and js("location.hash") == "#directory")
             check("…the provider directory says what's loaded, and how to add Epic's and Oracle Health's lists",
                   "Medicare" in dir_text and "not loaded" in dir_text and "python3 tools/build_directory.py" in dir_text, dir_text[:400])
-            for gid in ("accounts", "apps", "directory", "labs", "outside", "activity"):
+            for gid in ("accounts", "backups", "apps", "directory", "labs", "outside", "activity"):
                 page.click(f"#admNav a[data-group={gid}]")
                 page.set_viewport_size({"width": 375, "height": 800})
                 settle(150)
@@ -2872,6 +2872,82 @@ def main():
                     check(f"Admin's {gid} group fits 375 px", False, js("document.documentElement.scrollWidth"))
                 page.set_viewport_size({"width": 1400, "height": 900})
             check("…and each of its groups fits 375 px", True)
+            # ---- backups in Admin (#200): the key reminder in the card's lead; Back up now runs in the background and
+            # then says what it made (when, size, where); Check a backup says it's good, its temporary copy gone; the
+            # schedule is a pick-one with how many to keep, and turning it off is asked first in the app's dialog; a
+            # backup gone stale shows the warning on every group, beside Backups in the sidebar and on the Admin menu
+            # item. In light and dark, at 1400 and 375 px.
+            bk_dir = os.path.join(TMP, "backups")
+            page.click("#admNav a[data-group=backups]")
+            page.wait_for_selector("#bkStatus .kv", timeout=10000)
+            check("Backups (#200): its own group, the key reminder in the lead (not behind More about this)",
+                  js(display, "backups") != "none" and js("location.hash") == "#backups"
+                  and "encryption key isn't in the backups" in js("document.querySelector('#backups > .bk-key').textContent")
+                  and js("document.querySelector('#backups > .bk-key').checkVisibility()"), js("location.hash"))
+            check("…no backup yet, said in words", js("document.getElementById('bkState').textContent").startswith("No backups yet"))
+            page.click("#bkNow")
+            page.wait_for_function("document.getElementById('bkNowMsg').textContent.startsWith('Backed up')", timeout=30000)
+            made = sorted(n for n in os.listdir(bk_dir) if n.startswith("sanguity-backup-"))
+            bk_text = page.inner_text("#bkStatus")
+            check("…Back up now runs in the background, then says what it made: when, how big and where", len(made) == 1
+                  and made[0] in js("document.getElementById('bkNowMsg').textContent") and "✓ Up to date." in bk_text
+                  and bk_dir in bk_text and "1 backup in the folder" in bk_text and js("document.getElementById('bkProgress').hidden"), (made, bk_text[:300]))
+            page.click("#bkList tbody button")
+            page.wait_for_selector("#bkResult .bk-state", timeout=30000)
+            res = page.inner_text("#bkResult")
+            check("…Check a backup restores a copy, says it's good with the counts, and the copy is gone",
+                  res.startswith("✓ Good.") and "The copy was deleted" in res and js("document.querySelectorAll('#bkResult .bk-counts tbody tr').length") == 6
+                  and sorted(os.listdir(bk_dir)) == made and "✓ good" in page.inner_text("#bkList tbody"), (res[:300], os.listdir(bk_dir)))
+            page.click("#bkSchedSeg label:has-text('Daily')")
+            page.fill("#bkKeep", "3")
+            page.click("#bkSchedule button[type=submit]")
+            page.wait_for_function("document.getElementById('bkNowMsg').textContent.startsWith('Backups are scheduled daily')", timeout=10000)
+            sched = "fetch('api/backups').then(r => r.json()).then(s => [s.schedule, s.keep])"
+            check("…the schedule: daily, keeping the newest 3, saved", js(sched) == ["daily", 3] and "daily, keeping the newest 3" in page.inner_text("#bkStatus"), js(sched))
+            page.click("#bkSchedSeg label:has-text('Off')")
+            page.click("#bkSchedule button[type=submit]")
+            asked = answer_ask(page)
+            for _ in range(50):   # the fresh check, if the sign-in was more than a few minutes ago
+                if js("!document.getElementById('bkReauth').hidden || document.getElementById('bkNowMsg').textContent.startsWith('Scheduled backups are off')"):
+                    break
+                settle(100)
+            if js("!document.getElementById('bkReauth').hidden"):
+                page.fill("#bkReauth input[type=password]", PW)
+                page.click("#bkReauth button[type=submit]")
+            page.wait_for_function("document.getElementById('bkNowMsg').textContent.startsWith('Scheduled backups are off')", timeout=10000)
+            check("…turning it off is asked first, in the app's dialog", asked[0] == "Turn off scheduled backups?" and js(sched)[0] == "off", asked)
+            # stale: the backup made 10 days ago, as far as the app can tell (its name says when it was made)
+            stale_name = time.strftime("sanguity-backup-%Y%m%d-%H%M%S.tar.gz", time.localtime(time.time() - 10 * 86400))
+            os.replace(os.path.join(bk_dir, made[0]), os.path.join(bk_dir, stale_name))
+            page.goto(base + "/admin.html#accounts")
+            page.reload()   # only the address's #part changed: load the page again
+            page.wait_for_selector("#backupNotice:not([hidden])", timeout=10000)
+            notice = page.inner_text("#backupNotice")
+            check("…a late backup: the warning on every group (Accounts here), saying how old and linking to Backups", "Backups need attention" in notice
+                  and "10 days old" in notice and js("document.querySelector('#backupNotice a').getAttribute('href')") == "#backups", notice)
+            check("…and beside Backups in the sidebar, in words", js("document.querySelector('#admNav a[data-group=backups] .bk-late')?.textContent") == "late")
+            page.click("#userMenuBtn")
+            check("…and on the Admin menu item", js("document.querySelector('#adminLink .badge')?.textContent") == "⚠ backups late",
+                  js("document.getElementById('adminLink').textContent"))
+            page.keyboard.press("Escape")
+            page.click("#backupNotice a")
+            page.wait_for_selector("#bkStatus .kv", timeout=10000)
+            theme_was_200 = js("localStorage.getItem('ht-theme')")
+            for theme in ("light", "dark"):
+                js(f"localStorage.setItem('ht-theme', '{theme}'); applyTheme()")
+                settle(150)
+                low = js("""[...document.querySelectorAll('#backups .bk-state, #backups .bk-key, #backups .kv dd, #bkResult .bk-state, #backupNotice')]
+                            .map(e => [e.id || e.className, getComputedStyle(e).color, getComputedStyle(document.getElementById('backups')).backgroundColor])""")
+                low = [(w, contrast(c, bg)) for w, c, bg in low if contrast(c, bg) < 4.5]
+                check(f"…readable in the {theme} theme (text contrast 4.5 or more)", low == [], low)
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900})
+                    settle(150)
+                    fits = phone_fits(page, f"Admin Backups, {theme}, {width} px")
+                    check(f"…Backups fits {width} px in the {theme} theme", fits == [], fits)
+                page.set_viewport_size({"width": 1400, "height": 900})
+            js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was_200)}); applyTheme()" if theme_was_200 else "localStorage.removeItem('ht-theme'); applyTheme()")
+            os.replace(os.path.join(bk_dir, stale_name), os.path.join(bk_dir, made[0]))   # up to date again for the checks below
             page.goto(base + "/settings.html?profile=1")   # back to Settings for the checks below
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             first = before[0][0]
