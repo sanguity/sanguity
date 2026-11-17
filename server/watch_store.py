@@ -18,6 +18,8 @@ Where it is kept, in the profile's own folder (so encryption at rest, deletion a
   <profile_dir>/watch/ecg/<16 hex>.json.gz  an imported ECG recording's samples (#182, server/ecg.py), one file per
                                          recording by its key (so the same recording in two exports is one file),
                                          read only when its drawer opens; rebuild removes those no import lists any more
+  <profile_dir>/watch/cycle/<import id>.json  an Apple Health import's cycle records (#223), only while tracking is
+                                         on: never in a summary here (cycle_tracking.py has them)
 The merged file is rebuilt (rebuild) from the imports' own files, legacy first and then by import id, a later import
 winning per day and workout as it did when it came in; only files whose import still exists count. All are sealed
 with the app's key (crypto.write_file).
@@ -97,7 +99,31 @@ def merge(low, high):
     out["exercise"] = sorted(lo + hi, key=_by_start)
     if low.get("ecg") or high.get("ecg"):   # ECGs and irregular rhythm notifications by key (#182)
         out["ecg"] = ecg.merge(low.get("ecg"), high.get("ecg"))
+    # ---- home readings and heights (#223): an export's and the app's laid together, a reading in both once
+    for k, n in (("bp_readings", 3), ("temp_readings", 2)):
+        if low.get(k) or high.get(k):
+            out[k] = _readings(low.get(k), high.get(k), n)
+    if low.get("heights") or high.get("heights"):   # [day, cm, source, unit]: one a day, high's
+        by = {h[0]: h for src in (low, high) for h in src.get("heights") or [] if isinstance(h, list) and h}
+        out["heights"] = [by[d] for d in sorted(by)]
     return out
+
+
+def _readings(low, high, n):
+    """Two lists of home readings ([UTC time, value..., source, app]; n: how many leading fields say which reading it
+    is) laid together, oldest first: a reading in both (the same minute and values, as the receiver counts them) is
+    high's."""
+    out, seen = [], set()
+    for src in (high, low):
+        for r in src or []:
+            t = _instant(r[0]) if isinstance(r, list) and r else None
+            if not isinstance(t, float):
+                continue
+            k = (int(t) // 60, *(round(v, 1) if isinstance(v, (int, float)) else None for v in r[1:n]))
+            if k not in seen:
+                seen.add(k)
+                out.append((t, r))
+    return [r for _, r in sorted(out, key=lambda x: x[0])]
 
 
 def _write(path, obj):
@@ -203,13 +229,27 @@ def save_import(db, pid, summary, import_id=None):
     _migrate_profile(db, pid)
     summary = dict(summary)
     _save_waves(pid, summary.pop("ecg_waves", None))   # ECG samples (#182): files of their own, before the summary lists them
+    from . import cycle_tracking   # an export's cycle records (#223): never in the summary, kept apart only while on
+    cycle_tracking.save_imported(db, pid, import_id, summary.pop("cycle", None))
     if import_id is None:
         _write(layer_path(pid), merge(_read(layer_path(pid)), summary))
     else:
         _write(layer_path(pid, import_id), summary)
     rebuild(db, pid)
-    days = {d for m in summary.get("metrics") or [] for d, _ in m.get("pts") or []}
-    return {"path": target, "days": len(days), "workouts": len(summary.get("exercise") or []), **ecg.counts(summary)}
+    # by date: a glucose meter's reading is keyed by its time (#223)
+    days = {str(d)[:10] for m in summary.get("metrics") or [] for d, _ in m.get("pts") or []}
+    return {"path": target, "days": len(days), "workouts": len(summary.get("exercise") or []), **ecg.counts(summary),
+            **measure_counts(summary)}   # (#223)
+
+
+def measure_counts(summary):
+    """The home readings, glucose and heights in a summary, those it has (#223, for the import's counts): blood
+    pressure and temperature readings, meter readings, days with a CGM's, and heights."""
+    pts = {m.get("key"): m.get("pts") or [] for m in (summary or {}).get("metrics") or [] if isinstance(m, dict)}
+    n = {"bp_readings": len((summary or {}).get("bp_readings") or []), "temp_readings": len((summary or {}).get("temp_readings") or []),
+         "glucose_readings": len(pts.get("glucose_meter", [])), "cgm_days": len(pts.get("glucose_avg", [])),
+         "heights": len((summary or {}).get("heights") or [])}
+    return {k: v for k, v in n.items() if v}
 
 
 def has_import(pid, import_id):
@@ -227,18 +267,29 @@ def forget_import(db, pid, import_id):
         return None
     aside = os.path.join(imports_dir(pid), f"{UNDOING}{int(import_id)}-{secrets.token_hex(4)}")
     os.replace(path, aside)
+    from . import cycle_tracking   # its cycle records (#223) go with it
+    cyc = cycle_tracking.imported_path(pid, import_id)
+    cyc_aside = cyc + UNDOING + secrets.token_hex(4) if os.path.isfile(cyc) else None
+    if cyc_aside:
+        os.replace(cyc, cyc_aside)
     try:
         rebuild(db, pid, prune=False)
     except BaseException:
         os.replace(aside, path)
+        if cyc_aside:
+            os.replace(cyc_aside, cyc)
         raise
 
     def finish(committed):
         if committed:
             _remove(aside)
+            if cyc_aside:
+                _remove(cyc_aside)
             rebuild(db, pid)   # the ECG samples only the undone import listed go now (#182)
         else:
             os.replace(aside, path)
+            if cyc_aside and os.path.isfile(cyc_aside):   # unless tracking was turned off meanwhile
+                os.replace(cyc_aside, cyc)
             rebuild(db, pid)
     return finish
 
@@ -263,6 +314,7 @@ def migrate(db):
     for r in db.execute("SELECT id FROM profiles ORDER BY id").fetchall():
         pid = r["id"]
         n += _migrate_profile(db, pid)
+        _tidy_cycle(db, pid)   # (#223)
         d = imports_dir(pid)
         if not os.path.isdir(d):
             continue
@@ -274,6 +326,19 @@ def migrate(db):
         if stale:
             rebuild(db, pid)
     return n
+
+
+def _tidy_cycle(db, pid):
+    """At start-up: drop the cycle records (#223) of imports that no longer exist, and of an undo stopped half-way."""
+    from . import cycle_tracking
+    d = cycle_tracking.imported_dir(pid)
+    names = os.listdir(d) if os.path.isdir(d) else []
+    ids = [int(x[:-5]) for x in names if x.endswith(".json") and x[:-5].isdigit()]
+    live = {r[0] for r in db.execute("SELECT id FROM imports WHERE profile_id=? AND id IN (SELECT value FROM json_each(?))",
+                                     (pid, json.dumps(ids)))} if ids else set()
+    for x in names:
+        if not (x.endswith(".json") and x[:-5].isdigit() and int(x[:-5]) in live):
+            _remove(os.path.join(d, x))
 
 
 def load(db, pid):

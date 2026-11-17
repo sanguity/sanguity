@@ -39,7 +39,8 @@ the same for the page:
   who_bmi(v)                the WHO's adult category of a BMI, read at one decimal as it's shown (#195)
 Clinic-recorded heights (a "Height" or "Body height" series in the records, recorded()) are shown beside the history,
 each with "Add to the history"; they are never part of it by themselves: an import can be undone or replaced, and a
-height measured with shoes on is the person's to accept or not.
+height measured with shoes on is the person's to accept or not. So are the heights an uploaded Apple Health export
+brought (from_phone(), #223: the watch summary's "heights"), shown with them, marked as from the phone.
 """
 import datetime, math, re
 
@@ -268,3 +269,23 @@ def recorded(data, most=40):
             if d and CM_MIN <= cm <= CM_MAX and d.isoformat() not in out:
                 out[d.isoformat()] = {"date": d.isoformat(), "cm": cm, "unit": "ftin" if f == IN_CM else "cm", "source": source}
     return sorted(out.values(), key=lambda h: h["date"], reverse=True)[:most]
+
+
+# ---------------------------------------------------------------- heights from the phone (#223)
+PHONE = "Apple Health on the phone"
+
+
+def from_phone(watch, most=40):
+    """Heights an uploaded Apple Health export brought (the watch summary's "heights": [day, cm, source, unit typed]),
+    as recorded() gives a clinic's: [{date, cm, unit, source, phone: True}], newest first, those a height can't be
+    left out. Shown beside the history like a clinic's, never part of it by themselves."""
+    out = []
+    for h in (watch or {}).get("heights") or []:
+        if not isinstance(h, list) or len(h) < 2 or isinstance(h[1], bool) or not isinstance(h[1], (int, float)):
+            continue
+        d = _day(h[0])
+        if d and CM_MIN <= h[1] <= CM_MAX:
+            src = str(h[2])[:60] if len(h) > 2 and h[2] else ""
+            out.append({"date": d.isoformat(), "cm": round(h[1], 2), "unit": "ftin" if len(h) > 3 and h[3] == "ftin" else "cm",
+                        "source": PHONE + (f" ({src})" if src else ""), "phone": True})
+    return sorted(out, key=lambda h: h["date"], reverse=True)[:most]

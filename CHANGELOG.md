@@ -445,6 +445,14 @@ Everything on `main` so far; it becomes the first tagged release.
   the other kinds: an appointment, an allergy or a pharmacy fill is told apart from a planned visit, a problem or a
   claim's fill by the resource it came from. A source set up before says which kinds its scopes leave out; connections
   made before ask to sign in again only when someone turns one of those on. The fake SMART server serves each.
+- Uploaded Apple Health exports bring in the same new measures as the phone apps (#223): home blood pressure (each
+  correlation, with the cuff's pulse when it's there), body temperature and blood glucose (meter or CGM, decided as
+  for Health Auto Export) from `export.xml`, summed up by the receiver's own code, so an upload and the app give the
+  same days and a reading both brought is listed once. Heights from the phone are offered on About this person beside
+  a clinic's, marked as from the phone, each with "Add to the history"; none is added by itself. Cycle records are
+  read only for a profile with cycle tracking on, kept as the import's own (undoing it removes them) and never in the
+  watch summary; turning tracking off or deleting deletes them, a waiting preview's too. The import preview counts
+  the new kinds (cycle records only there).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

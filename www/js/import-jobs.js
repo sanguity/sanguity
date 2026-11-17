@@ -66,6 +66,13 @@
     if (c.workouts && !(c.kinds || {}).exercise) items.push(node("li", {text: plural(c.workouts, KIND.exercise)}));
     if (c.ecgs) items.push(node("li", {text: plural(c.ecgs, ["ECG recording", "ECG recordings"])}));   // #182
     if (c.rhythm) items.push(node("li", {text: plural(c.rhythm, ["irregular rhythm notification", "irregular rhythm notifications"])}));
+    // #223: an Apple Health export's home readings, glucose, heights and (only while cycle tracking is on) cycle records
+    if (c.bp_readings) items.push(node("li", {text: plural(c.bp_readings, ["blood pressure reading", "blood pressure readings"])}));
+    if (c.temp_readings) items.push(node("li", {text: plural(c.temp_readings, ["body temperature reading", "body temperature readings"])}));
+    if (c.glucose_readings) items.push(node("li", {text: plural(c.glucose_readings, ["glucose meter reading", "glucose meter readings"])}));
+    if (c.cgm_days) items.push(node("li", {text: plural(c.cgm_days, ["day of CGM readings", "days of CGM readings"])}));
+    if (c.heights) items.push(node("li", {text: plural(c.heights, ["height, offered for About this person", "heights, offered for About this person"])}));
+    if (c.cycle) items.push(node("li", {text: plural(c.cycle, ["cycle tracking record", "cycle tracking records"])}));
     return items;
   }
   const rangeText = r => r ? (r.from === r.to ? ` from ${day(r.from)}` : ` from ${day(r.from)} to ${day(r.to)}`) : "";

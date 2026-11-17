@@ -52,6 +52,11 @@
     if (c.workouts) out.push(n(c.workouts, ["workout", "workouts"]));
     if (c.ecgs) out.push(n(c.ecgs, ["ECG recording", "ECG recordings"]));   // #182
     if (c.rhythm) out.push(n(c.rhythm, ["irregular rhythm notification", "irregular rhythm notifications"]));
+    if (c.bp_readings) out.push(n(c.bp_readings, ["blood pressure reading", "blood pressure readings"]));   // #223 (never cycle records)
+    if (c.temp_readings) out.push(n(c.temp_readings, ["body temperature reading", "body temperature readings"]));
+    if (c.glucose_readings) out.push(n(c.glucose_readings, ["glucose meter reading", "glucose meter readings"]));
+    if (c.cgm_days) out.push(n(c.cgm_days, ["day of CGM readings", "days of CGM readings"]));
+    if (c.heights) out.push(n(c.heights, ["height", "heights"]));
     return out.length ? out.join(", ") : "No records";
   }
 

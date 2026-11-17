@@ -117,15 +117,7 @@ HAE_STAGE = {   # a sleep segment's "value" -> the receiver's stage; in bed over
 
 # ---- home readings kept one by one (#180, #184): blood pressure and body temperature, from both phone apps
 HAE_VITALS = {"blood_pressure", "body_temperature"}   # Health Auto Export metrics kept reading by reading (Store._hae_vitals)
-VITALS_META = {   # the daily summary of them, after the receiver's other metrics
-    "bp_sys": ("Blood pressure, systolic, daily average", "mmHg", "Blood pressure"),
-    "bp_dia": ("Blood pressure, diastolic, daily average", "mmHg", "Blood pressure"),
-    "bp_sys_max": ("Blood pressure, systolic, daily highest", "mmHg", "Blood pressure"),
-    "bp_dia_max": ("Blood pressure, diastolic, daily highest", "mmHg", "Blood pressure"),
-    "bp_n": ("Blood pressure readings", "readings", "Blood pressure"),
-    "body_temp": ("Body temperature, daily average", "°C", "Body temperature"),
-    "body_temp_max": ("Body temperature, daily highest", "°C", "Body temperature"),
-}
+VITALS_META = ah.VITALS_META   # the daily summary of them, after the other metrics (shared with export.xml, #223)
 HAE_TEMP = {"degc": "C", "°c": "C", "c": "C", "cel": "C", "degf": "F", "°f": "F", "f": "F", "[degf]": "F"}   # a unit's spellings
 APP = {"health_connect": "Health Connect", "health_auto_export": "Apple Health"}   # which phone app sent a reading
 
@@ -694,46 +686,14 @@ class Store:
                 self.db.execute("SELECT t, day, v, v2, v3, src FROM samples WHERE type=? ORDER BY t, uuid", (typ,))]
         rows += [(t, d, v, v2, v3, src, "health_auto_export") for t, d, v, v2, v3, src in
                  self.db.execute("SELECT t, day, v, v2, v3, src FROM hae_vitals WHERE kind=? ORDER BY t, src", (kind,))]
-        out, seen = [], set()
-        for r in rows:
-            k = (r[0] // 60, None if r[2] is None else round(r[2], 1), None if r[3] is None else round(r[3], 1))
-            if r[2] is None or k in seen:
-                continue
-            seen.add(k)
-            out.append(r)
-        return sorted(out, key=lambda r: (r[0], r[6], r[5]))
+        return ah.once(rows)   # the same rule as an uploaded export.xml's (#223)
 
     def _vitals_summary(self):
         """{"days": {metric key: {day: value}}, "bp_readings": [[time, systolic, diastolic, pulse, source, app]],
         "temp_readings": [[time, °C, source, app]]}: each day's readings, average and highest, and the readings
-        themselves (time in UTC)."""
-        days, out = {}, {}
-
-        def put(key, d, v):
-            days.setdefault(key, {})[d] = round(v, 2)
-        bp = [r for r in self._readings("bp") if r[3] is not None]
-        by = {}
-        for _, d, s, di, *_ in bp:
-            by.setdefault(d, []).append((s, di))
-        for d, xs in by.items():
-            put("bp_sys", d, sum(s for s, _ in xs) / len(xs))
-            put("bp_dia", d, sum(di for _, di in xs) / len(xs))
-            put("bp_sys_max", d, max(s for s, _ in xs))
-            put("bp_dia_max", d, max(di for _, di in xs))
-            put("bp_n", d, len(xs))
-        if bp:
-            out["bp_readings"] = [[datetime.fromtimestamp(t, timezone.utc).isoformat(), compact(s), compact(di),
-                                   None if p is None else compact(p), src or None, APP[app]] for t, _, s, di, p, src, app in bp]
-        temp, by = self._readings("temp"), {}
-        for _, d, c, *_ in temp:
-            by.setdefault(d, []).append(c)
-        for d, xs in by.items():
-            put("body_temp", d, sum(xs) / len(xs))
-            put("body_temp_max", d, max(xs))
-        if temp:
-            out["temp_readings"] = [[datetime.fromtimestamp(t, timezone.utc).isoformat(), compact(c), src or None, APP[app]]
-                                    for t, _, c, _, _, src, app in temp]
-        return {"days": days, **out}
+        themselves (time in UTC). Summed up as an uploaded export.xml's are (apple_health.home_summary, #223)."""
+        name = lambda rows: [(*r[:6], APP[r[6]]) for r in rows]
+        return ah.home_summary(name(self._readings("bp")), name(self._readings("temp")))
 
     # ------------------------------------------------------------ menstrual cycle tracking, opt-in (#183, server/cycle.py)
     def _cycle_in(self, fold):

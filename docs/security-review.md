@@ -582,8 +582,9 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 - Delete all cycle data and turning it off hide them at once and ask the receiver, through the secrets file, to empty
   its table (then `VACUUM`, so no free page keeps them) and rewrite every archived upload without them; `cycle.json`
   says which deletion was done. What can't be reached is said on the card: backups made before (they can't be
-  rewritten), files already downloaded, an uploaded Apple Health export (kept as uploaded; Sanguity doesn't read cycle
-  records from it), and the phone. Tests: `tests/test_cycle.py`.
+  rewritten), files already downloaded, an uploaded Apple Health export (kept as uploaded; its cycle records are read only while tracking is on,
+  #223, kept sealed as the import's own in `watch/cycle/<import id>.json`, never in a summary, and deleted with the
+  rest at once by the app, waiting previews included), and the phone. Tests: `tests/test_cycle.py`.
 
 ### Offline records and installing the app (#56)
 - The service worker keeps only the app's own pages, styles, scripts and icons, never `/api/`, documents or the

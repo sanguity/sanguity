@@ -376,7 +376,8 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       const all = rows.length > MORE ? el("button", {class: "btn small", type: "button", text: `Show ${rows.length - MORE} more`,
         onclick: () => { rows.forEach(r => { r.hidden = false; }); all.remove(); }}) : null;
       parts.push(el("h3", {class: "sub", text: "Heights in the records"}),
-        el("p", {class: "hint", text: "Measured at a clinic and brought in with the records. They're shown here, not used, until " +
+        el("p", {class: "hint", text: "Measured at a clinic and brought in with the records, or in the phone's Health app and brought in with its export. " +   // #223
+          "They're shown here, not used, until " +
           (edit ? "you add one to the history" : "an owner or editor adds one to the history") + ": an import can be undone, and a measurement can be off."}),
         el("table", {class: "tbl about-heights about-recorded"},
           el("thead", {}, el("tr", {}, ...["Date", "Height", "From", ""].map(h => el("th", {text: h})))), el("tbody", {}, ...rows)),

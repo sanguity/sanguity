@@ -66,12 +66,13 @@
         el("h3", {class: "sub", text: "Sending them from the phone"}),
         el("ul", {class: "cy-list"},
           el("li", {text: "Android: in Health Connect, let Life Dashboard Companion read cycle tracking (menstruation, ovulation tests, cervical mucus, spotting). It sends them with the rest."}),
-          el("li", {text: "iPhone: in Health Auto Export, add a REST API automation like the others, with Cycle Tracking's menstrual flow, ovulation test result, cervical mucus quality and spotting (intermenstrual bleeding), and no time grouping."})),
+          el("li", {text: "iPhone: in Health Auto Export, add a REST API automation like the others, with Cycle Tracking's menstrual flow, ovulation test result, cervical mucus quality and spotting (intermenstrual bleeding), and no time grouping."}),
+          el("li", {id: "cycleExport", text: "Or upload the Health app's export (Export All Health Data) under Upload files: its cycle records come in while this is on, and are left out while it's off."})),   // #223
         reach());
       if (owner) {
         const del = el("button", {class: "btn", type: "button", id: "cycleDelete", text: "Delete all cycle data…", onclick: async () => {
           if (!await ask({title: "Delete all cycle data?", action: "Delete all", danger: true, message: [
-            "Everything kept for this profile is deleted: the receiver's database and every upload it archived. Cycle tracking stays on, so new records from the phone are kept again.",
+            "Everything kept for this profile is deleted: the receiver's database, every upload it archived, and what imported Apple Health exports brought. Cycle tracking stays on, so new records from the phone are kept again.",   // #223
             "Backups made before now, downloaded exports and summaries, uploaded Apple Health exports and your phone keep their own copies: deleting can't reach them."]})) return;
           send(`profiles/${PID}/cycle/delete`, "POST", {}, del);
         }});

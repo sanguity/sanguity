@@ -30,18 +30,40 @@ birth date at their top are never kept) and export.xml's irregular rhythm notifi
 list, each recording's samples into "ecg_waves" ({key: waveform}), which watch_store.save_import keeps as files of
 their own, apart from the summary.
 
+The phone apps' newer measures (#223), read as watch/receiver.py reads Health Auto Export's, so an uploaded export
+and the app give the same days, and a reading in both counts once (the same keys and rules; watch_store merges them):
+  - Home blood pressure: each HKCorrelationTypeIdentifierBloodPressure, its systolic and diastolic records together,
+    with the pulse when a heart rate record is in the correlation (from an app that wrote the two records without a
+    correlation: the pair with the same source and time). Body temperature (HKQuantityTypeIdentifierBodyTemperature,
+    °C or °F). Both kept reading by reading, keyed by source and time, and summed up by day as the receiver does
+    (once() and home_summary(), which the receiver uses too): the bp_* and body_temp* metrics and the summary's
+    "bp_readings" and "temp_readings" lists.
+  - Blood glucose (HKQuantityTypeIdentifierBloodGlucose, mg/dL or mmol/L by the app's exact conversion, #41): kept as
+    server/glucose.py keeps Health Auto Export's readings, which then decides meter or CGM by how often each source
+    sends and makes the same glucose_* metrics.
+  - Height (HKQuantityTypeIdentifierHeight): the latest of each day, in the summary's "heights" list ([day, cm,
+    source, unit typed]), never a metric. About this person shows them beside the height history, marked as from the
+    phone, each with "Add to the history" like a clinic's (#194, routes_person.py); none is added by itself.
+  - Menstrual cycle records (#183, server/cycle.py), only when parse is asked to (cycle=True, which jobs.py passes
+    only for a profile with cycle tracking on): flow, ovulation tests, cervical mucus and spotting, read as Health
+    Auto Export's (cycle.from_hae), in the summary's "cycle" list, which watch_store.save_import takes out and keeps
+    apart (cycle_tracking.py), never in daily.json. Otherwise they are skipped as they stream past: not kept, not
+    even in the preview. Sexual activity and basal body temperature are never read.
+
 Standard library only.
 """
 import hashlib
 import re
+import sqlite3
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
 from . import fhir
-from .. import ecg   # ECG recordings and irregular rhythm notifications (#182)
+from .. import cycle as cycles, ecg, glucose   # cycle records (#183), ECGs (#182), blood glucose (#181)
 
 NAME = "apple-health"
 LABEL = "Apple Health (export.xml)"
+READS_CYCLE = True   # parse(files, cycle=True) reads cycle records too (jobs.py, only while tracking is on; #223)
 
 HEAD_BYTES = 256 * 1024   # Apple's DTD is ~10 KB; the <HealthData root follows it
 LB = 2.20462              # as watch/receiver.py
@@ -99,6 +121,25 @@ META = {   # watch/receiver.py's, in its order, for the keys Apple Health has
     "sleep_rem_min": ("REM sleep", "min", "Sleep"), "sleep_light_min": ("Light sleep", "min", "Sleep"),
     "sleep_awake_min": ("Awake during sleep", "min", "Sleep"),
     "weight": ("Weight", "lb", "Body"), "body_fat": ("Body fat", "%", "Body"), "lean_mass": ("Lean mass", "lb", "Body"),
+}
+# ---- the phone apps' newer measures (#223): read reading by reading, summed up as the receiver does
+BP, BP_SYS, BP_DIA = ("HKCorrelationTypeIdentifierBloodPressure", "HKQuantityTypeIdentifierBloodPressureSystolic",
+                      "HKQuantityTypeIdentifierBloodPressureDiastolic")
+HR = "HKQuantityTypeIdentifierHeartRate"
+GLUCOSE, TEMP, HEIGHT = ("HKQuantityTypeIdentifierBloodGlucose", "HKQuantityTypeIdentifierBodyTemperature",
+                         "HKQuantityTypeIdentifierHeight")
+CYCLE = ("HKCategoryTypeIdentifierMenstrualFlow", "HKCategoryTypeIdentifierOvulationTestResult",
+         "HKCategoryTypeIdentifierCervicalMucusQuality", "HKCategoryTypeIdentifierIntermenstrualBleeding")   # cycle.py's
+TEMP_SCALE = {"degc": "C", "°c": "C", "c": "C", "cel": "C", "degf": "F", "°f": "F", "f": "F", "[degf]": "F"}   # spellings
+HEIGHT_CM = {"cm": 1, "m": 100, "mm": 0.1, "in": 2.54, "ft": 30.48}
+VITALS_META = {   # the daily summary of home blood pressure and body temperature (#180, #184), after the other metrics
+    "bp_sys": ("Blood pressure, systolic, daily average", "mmHg", "Blood pressure"),
+    "bp_dia": ("Blood pressure, diastolic, daily average", "mmHg", "Blood pressure"),
+    "bp_sys_max": ("Blood pressure, systolic, daily highest", "mmHg", "Blood pressure"),
+    "bp_dia_max": ("Blood pressure, diastolic, daily highest", "mmHg", "Blood pressure"),
+    "bp_n": ("Blood pressure readings", "readings", "Blood pressure"),
+    "body_temp": ("Body temperature, daily average", "°C", "Body temperature"),
+    "body_temp_max": ("Body temperature, daily highest", "°C", "Body temperature"),
 }
 WORKOUT_PREFIX = "HKWorkoutActivityType"
 DURATION = {"min": 60, "s": 1, "sec": 1, "hr": 3600, "h": 3600}
@@ -203,14 +244,15 @@ def detect(files):
 
 
 # ------------------------------------------------------------------ parse
-def parse(files):
+def parse(files, cycle=False):
+    """cycle: also read menstrual cycle records (#183, #223); only for a profile that has cycle tracking on."""
     path = _export_file(files)
     if not path:
         raise ValueError("No export.xml found. In the Health app, tap your picture, then Export All Health Data, "
                          "and upload the zip it makes (or the export.xml inside it).")
     head = _head(path, 4096)
     _check_encoding(head)
-    agg = _Aggregates()
+    agg = _Aggregates(cycle)
     try:
         with open(path, "rb") as f:
             _stream(_Guarded(f), agg)
@@ -239,7 +281,8 @@ def parse(files):
         else:
             data = clinical["data"]
             warnings += ["Health Records: " + w for w in clinical["warnings"]]
-    if not watch["metrics"] and not watch["exercise"] and not watch.get("ecg") and not data["events"] and not data["labs"]:
+    if not watch["metrics"] and not watch["exercise"] and not watch.get("ecg") and not watch.get("heights") \
+            and not watch.get("cycle") and not data["events"] and not data["labs"]:
         warnings.append("The export holds none of the data the Health tab shows (steps, heart rate, sleep, "
                         "weight and body composition, workouts, ECGs)" + (", and no Health Records." if records else "."))
     return {"data": {**data, "watch": watch}, "warnings": warnings}
@@ -271,6 +314,8 @@ def _stream(f, agg):
                 agg.record(el)
             elif tag == "Workout":
                 agg.workout(el)
+            elif tag == "Correlation":   # home blood pressure (#223)
+                agg.correlation(el)
             elif tag == "ExportDate":
                 agg.exported = _when(el.get("value"))
             root.clear()   # drops this element and everything under it
@@ -284,7 +329,7 @@ def _tz_name(el):
 
 
 class _Aggregates:
-    def __init__(self):
+    def __init__(self, cycle=False):
         self.root_seen = False
         self.exported = None
         self.cum = {}       # (key, day, source) -> total   (sources overlap: phone and watch both count steps)
@@ -295,6 +340,14 @@ class _Aggregates:
         self.bad_units = {}
         self.bad_dates = 0
         self.rhythm = {}    # key -> irregular rhythm notification (#182)
+        # the phone apps' newer measures (#223)
+        self.bp = {}        # (source, epoch) -> (time, systolic, diastolic, pulse): the correlations
+        self.bp_part = {}   # (source, epoch) -> {type: (time, value)}: systolic and diastolic records outside one
+        self.temp = {}      # (source, epoch) -> (time, °C)
+        self.gl = None      # an in-memory database with glucose.TABLE, from the first reading
+        self.gl_skipped = 0
+        self.heights = {}   # day -> (time, cm, source, unit typed)
+        self.cycle = {} if cycle else None   # HealthKit type -> rows as Health Auto Export sends them; None: not read
 
     def _note_tz(self, el, at):
         name = _tz_name(el) if len(el) else None
@@ -311,6 +364,8 @@ class _Aggregates:
             return
         q = QUANTITY.get(typ)
         if not q:
+            if typ in MORE:   # (#223)
+                MORE[typ](self, el)
             return
         key, kind = q
         start, end = _when(el.get("startDate")), _when(el.get("endDate"))
@@ -373,6 +428,90 @@ class _Aggregates:
         if hr and "hr" not in entry:
             entry["hr"] = hr
 
+    # -------------------------------------------------------------- the phone apps' newer measures (#223)
+    def correlation(self, el):
+        if el.get("type") != BP:
+            return
+        got = {}
+        for r in el.iter("Record"):
+            if r.get("type") in (BP_SYS, BP_DIA, HR) and r.get("type") not in got:
+                got[r.get("type")] = _number(r.get("value"))
+        t = _when(el.get("startDate"))
+        if t is None:
+            self.bad_dates += 1
+        elif got.get(BP_SYS) is not None and got.get(BP_DIA) is not None:
+            self.bp[(el.get("sourceName") or "", int(t.timestamp()))] = (t, got[BP_SYS], got[BP_DIA], got.get(HR))
+
+    def _bp_part(self, el):   # the same records again at the top level (or there alone, from some apps)
+        t, v = _when(el.get("startDate")), _number(el.get("value"))
+        if t is not None and v is not None:
+            self.bp_part.setdefault((el.get("sourceName") or "", int(t.timestamp())), {})[el.get("type")] = (t, v)
+
+    def _temp(self, el):
+        t, v, unit = _when(el.get("startDate")), _number(el.get("value")), el.get("unit")
+        scale = TEMP_SCALE.get(str(unit or "").strip().lower())
+        if t is None:
+            self.bad_dates += 1
+        elif v is not None and not scale:
+            self.bad_units[(el.get("type"), unit)] = self.bad_units.get((el.get("type"), unit), 0) + 1
+        elif v is not None:
+            self.temp[(el.get("sourceName") or "", int(t.timestamp()))] = (t, round((v - 32) * 5 / 9, 2) if scale == "F" else v)
+
+    def _glucose(self, el):
+        t, v = _when(el.get("startDate")), glucose.to_mgdl(el.get("value"), el.get("unit"))
+        if t is None or v is None:
+            self.gl_skipped += 1
+            return
+        if self.gl is None:
+            self.gl = sqlite3.connect(":memory:")
+            self.gl.executescript(glucose.TABLE)
+        glucose._put(self.gl, "hae", el.get("sourceName") or "", str(int(t.timestamp())), t, v, None)   # as the receiver's
+
+    def _height(self, el):
+        t, v, unit = _when(el.get("startDate")), _number(el.get("value")), el.get("unit") or ""
+        f = HEIGHT_CM.get(unit)
+        if t is None or v is None or f is None:
+            return
+        cm, day = round(v * f, 2), t.date().isoformat()
+        if day not in self.heights or t >= self.heights[day][0]:
+            self.heights[day] = (t, cm, el.get("sourceName") or "", "ftin" if unit in ("in", "ft") else "cm")
+
+    def _cycle(self, el):
+        if self.cycle is None:   # cycle tracking off: not read, not kept
+            return
+        row = {"date": el.get("startDate"), "value": el.get("value"), "source": el.get("sourceName") or ""}
+        for m in el.iter("MetadataEntry"):   # HKMenstrualCycleStart: a flow record that starts a cycle
+            row.setdefault(m.get("key"), m.get("value"))
+        self.cycle.setdefault(el.get("type"), []).append(row)
+
+    def _more(self):
+        """The newer measures' part of the summary: (metrics, top-level fields)."""
+        for k, parts in self.bp_part.items():   # a systolic and diastolic pair outside any correlation
+            if k not in self.bp and BP_SYS in parts and BP_DIA in parts:
+                self.bp[k] = (parts[BP_SYS][0], parts[BP_SYS][1], parts[BP_DIA][1], None)
+        app = "Apple Health"
+        bp = [(e, t.date().isoformat(), s, d, p, src, app) for (src, e), (t, s, d, p) in sorted(self.bp.items(), key=lambda x: (x[0][1], x[0][0]))]
+        temp = [(e, t.date().isoformat(), c, None, None, src, app) for (src, e), (t, c) in sorted(self.temp.items(), key=lambda x: (x[0][1], x[0][0]))]
+        out = home_summary(once(bp), once(temp))
+        days = out.pop("days")
+        metrics = [{"key": k, "name": VITALS_META[k][0], "unit": VITALS_META[k][1], "group": VITALS_META[k][2],
+                    "pts": [[d, v] for d, v in sorted(days[k].items())]} for k in VITALS_META if k in days]
+        if self.gl is not None:
+            metrics += [{**m, "pts": [list(p) for p in m["pts"]]} for m in glucose.summary(self.gl)]
+            self.gl.close()
+            self.gl = None
+        if self.heights:
+            out["heights"] = [[d, cm, src or None, u] for d, (_, cm, src, u) in sorted(self.heights.items())]
+        if self.cycle:
+            con = sqlite3.connect(":memory:")
+            con.executescript(cycles.TABLE)
+            for typ, rows in self.cycle.items():
+                cycles.from_hae(con, {"name": typ, "data": rows}, _when)
+            if recs := cycles.records(con):
+                out["cycle"] = recs
+            con.close()
+        return metrics, out
+
     # -------------------------------------------------------------- summary
     def _sleep_days(self):
         """Per day: the stage totals (seconds) of the one source that slept best that day, as the receiver's."""
@@ -432,11 +571,12 @@ class _Aggregates:
                     put(f"sleep_{k}_min", d, a[k] / 60)
         metrics = [{"key": k, "name": META[k][0], "unit": META[k][1], "group": META[k][2],
                     "pts": [[d, v] for d, v in sorted(out[k].items())]} for k in META if k in out]
+        more, extra = self._more()   # home blood pressure, temperature, glucose, heights and cycle records (#223)
         exercise = sorted(self.workouts.values(), key=lambda x: x["start"])
         exported = self.exported.isoformat() if self.exported else None
         tz = self.tz or (self.exported.strftime("UTC%z") if self.exported else "UTC")
         return {"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tz": tz,
-                "last_payload": exported, "source": NAME, "metrics": metrics, "exercise": exercise}
+                "last_payload": exported, "source": NAME, "metrics": metrics + more, "exercise": exercise, **extra}
 
     def warnings(self):
         w = []
@@ -445,6 +585,9 @@ class _Aggregates:
                      f"in a unit it can't convert ({unit!r}).")
         if self.bad_dates:
             w.append(f"Skipped {self.bad_dates} record{'s' * (self.bad_dates != 1)} with a date it couldn't read.")
+        if n := self.gl_skipped:   # (#223)
+            w.append(f"Skipped {n} blood glucose record{'s' * (n != 1)} not in mg/dL or mmol/L, not a reading a meter "
+                     "or sensor could give, or with a date it couldn't read.")
         return w
 
 
@@ -462,6 +605,72 @@ def _workout_hr(el):
                     pass
             return out or None
     return None
+
+
+# ---- the phone apps' newer measures (#223): which record types are read by what, and the summing up the receiver shares
+MORE = {BP_SYS: _Aggregates._bp_part, BP_DIA: _Aggregates._bp_part, TEMP: _Aggregates._temp,
+        GLUCOSE: _Aggregates._glucose, HEIGHT: _Aggregates._height, **{t: _Aggregates._cycle for t in CYCLE}}
+
+
+def _number(v):
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    return v if v == v and abs(v) != float("inf") else None
+
+
+def _compact(v):
+    """128.0 -> 128, 36.65 -> 36.65 (the receiver's numbers, as short as they can be written)."""
+    v = round(v, 2)
+    return int(v) if v == int(v) else v
+
+
+def once(rows):
+    """Home readings [(epoch, day, v, v2, v3, source, app)], less any with the same minute and values as one before
+    it (sent again under another id, by both phone apps, or in an export and the app), oldest first. The receiver's
+    rule (watch/receiver.py) and an export's."""
+    out, seen = [], set()
+    for r in rows:
+        k = (r[0] // 60, None if r[2] is None else round(r[2], 1), None if r[3] is None else round(r[3], 1))
+        if r[2] is None or k in seen:
+            continue
+        seen.add(k)
+        out.append(r)
+    return sorted(out, key=lambda r: (r[0], r[6], r[5]))
+
+
+def home_summary(bp, temp):
+    """{"days": {metric key: {day: value}}, "bp_readings": [[time, systolic, diastolic, pulse, source, app]],
+    "temp_readings": [[time, °C, source, app]]} from once()'s readings (app: its name, as shown): each day's average
+    and highest, and the readings themselves (time in UTC). The receiver's summary and an export's (#180, #184)."""
+    days, out = {}, {}
+
+    def put(key, d, v):
+        days.setdefault(key, {})[d] = round(v, 2)
+    bp = [r for r in bp if r[3] is not None]
+    by = {}
+    for _, d, s, di, *_ in bp:
+        by.setdefault(d, []).append((s, di))
+    for d, xs in by.items():
+        put("bp_sys", d, sum(s for s, _ in xs) / len(xs))
+        put("bp_dia", d, sum(di for _, di in xs) / len(xs))
+        put("bp_sys_max", d, max(s for s, _ in xs))
+        put("bp_dia_max", d, max(di for _, di in xs))
+        put("bp_n", d, len(xs))
+    if bp:
+        out["bp_readings"] = [[datetime.fromtimestamp(t, timezone.utc).isoformat(), _compact(s), _compact(di),
+                               None if p is None else _compact(p), src or None, app] for t, _, s, di, p, src, app in bp]
+    by = {}
+    for _, d, c, *_ in temp:
+        by.setdefault(d, []).append(c)
+    for d, xs in by.items():
+        put("body_temp", d, sum(xs) / len(xs))
+        put("body_temp_max", d, max(xs))
+    if temp:
+        out["temp_readings"] = [[datetime.fromtimestamp(t, timezone.utc).isoformat(), _compact(c), src or None, app]
+                                for t, _, c, _, _, src, app in temp]
+    return {"days": days, **out}
 
 
 def workout_key(start, end, hk_type):
