@@ -231,6 +231,11 @@ Everything on `main` so far; it becomes the first tagged release.
   list scrolls; the heatmap has the same filter above its rows. The records bar's search box is the Timeline's
   alone, and words typed in either no longer hide medications under the Labs charts. Procedures and
   imaging, Medications and Journal are grouped as **Show on charts:**, apart from the legend.
+- The period has one way to pick it (#191): the preset buttons (All, 5y … 30d and the primary milestone) and one
+  **More…** menu with the other milestones, the calendar years and **Custom dates…**, worked by mouse or keyboard
+  and never cut off. Only one shows as chosen, a button or More… naming what it picked, and the period is said in
+  words beside them ("Last 2 years", "Apr 14, 2025 – today"). The date boxes show only for custom dates (or after
+  dragging a chart to a range of its own), with **Clear dates** to go back; custom dates are kept on a reload.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

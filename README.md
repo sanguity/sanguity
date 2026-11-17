@@ -35,7 +35,7 @@ person's records appear in this repository.
 ![Labs: blood counts dipping through treatment cycles, with milestone markers](docs/screenshots/trends.png)
 
 One period, in the bar above the records, holds on every tab with time: All, the last 5 years down to 30 days, since
-a milestone, a calendar year, or dates of your own. Charts on Labs and Body and activity move together: drag to pan,
+a milestone, a calendar year (under **More…**), or dates of your own (**More… → Custom dates…**). Charts on Labs and Body and activity move together: drag to pan,
 scroll or pinch to zoom, double-click to see everything. **Milestones** (diagnosis, surgery, treatment start…), added
 on the **Settings** page, appear on every chart and as "since" periods.
 

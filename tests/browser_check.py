@@ -1241,6 +1241,9 @@ def main():
             page.mouse.up()
             settle()
             check("Body and activity drag pans", js("hRange()[0]") < hbefore[0] and js("state.preset") == "custom")
+            check("…its own range: the date boxes show it, and More… says Custom dates (#191)",
+                  js("[!document.getElementById('dates').hidden, document.getElementById('from').value === isoDay(state.from), document.getElementById('periodMoreBtn').textContent]")
+                  == [True, True, "Custom dates▾"], js("[document.getElementById('dates').hidden, document.getElementById('periodMoreBtn').textContent]"))
 
             # ---- one period for every tab with time (#171): picked on one tab, the same dates on the others (Labs in
             # both its views, #172); a calendar year, a milestone or dates typed in; kept on a reload; Costs by month or
@@ -1267,15 +1270,16 @@ def main():
             check("…the Overview has no records bar", js("getComputedStyle(document.querySelector('.filters')).display") == "none")
             year = js("periodYears().find(y => (DATA.costs || []).some(r => r.d.startsWith(y)))")
             open_tab("costs")
-            page.select_option("#periodPick", year)
-            settle(300)
-            check("period: a calendar year picked from the list", js("[state.preset, isoDay(state.from), isoDay(state.to)]") == [year, f"{year}-01-01", f"{year}-12-31"]
-                  and js("document.getElementById('periodPick').classList.contains('on') && !document.querySelector('#presets [aria-pressed=true]')"),
-                  js("[state.preset, isoDay(state.from), isoDay(state.to)]"))
+            page.click("#periodMoreBtn")   # the other periods are in More… (#191)
             opaque = r"c => { const m = c.match(/rgba?\(([^)]+)\)/); return !!m && (m[1].split(',').length < 4 || +m[1].split(',')[3] === 1); }"
-            check("…the picked period's list is readable: the select and its options have solid backgrounds (an open list can't show a see-through one)",
-                  js(f"(({opaque}))(getComputedStyle(document.getElementById('periodPick')).backgroundColor) && [...document.querySelectorAll('#periodPick option')].every(o => (({opaque}))(getComputedStyle(o).backgroundColor))"),
-                  js("[getComputedStyle(document.getElementById('periodPick')).backgroundColor, getComputedStyle(document.querySelector('#periodPick option')).backgroundColor]"))
+            check("…the More… menu is readable: a solid background (not see-through over the page)",
+                  js(f"(({opaque}))(getComputedStyle(document.getElementById('periodMoreList')).backgroundColor)"),
+                  js("getComputedStyle(document.getElementById('periodMoreList')).backgroundColor"))
+            page.click(f"#periodMoreList [data-period='{year}']")
+            settle(300)
+            check("period: a calendar year picked from More…", js("[state.preset, isoDay(state.from), isoDay(state.to)]") == [year, f"{year}-01-01", f"{year}-12-31"]
+                  and js("y => { const b = document.getElementById('periodMoreBtn'); return b.classList.contains('on') && b.textContent.startsWith(y) && !document.querySelector('#presets [aria-pressed=true]'); }", year),
+                  js("[state.preset, isoDay(state.from), isoDay(state.to), document.getElementById('periodMoreBtn').textContent]"))
             check("…Costs lists that year's claims", js("costRows().length") == js("y => DATA.costs.filter(r => r.d.startsWith(y)).length", year) > 0,
                   js("costRows().length"))
             js("applyPreset('all')")
@@ -1286,13 +1290,18 @@ def main():
                   and "Insurance claims by year" in page.inner_text("#view-costs"), labels)
             page.click("#costBy button:text-is('By month')")
             js("costState.by = ''")
-            if js("MILESTONES.length"):
-                page.select_option("#periodPick", "m0")
+            other = js("(m => m ? msKey(m) : null)(MILESTONES.find(m => m !== primaryMs()))")   # the primary one is a button
+            check("the demo has a milestone besides the primary one, for More…", other is not None)
+            if other:
+                page.click("#periodMoreBtn")
+                page.click(f"#periodMoreList [data-period={other}]")
                 settle(300)
-                check("period: since a milestone, picked from the list", js("[state.preset, isoDay(state.from)]") == ["m0", js("MILESTONES[0].date")],
+                check("period: since a milestone, picked from More…", js("[state.preset, isoDay(state.from)]") == [other, js("k => msOf(k).date", other)],
                       js("[state.preset, isoDay(state.from)]"))
             open_tab("health")
             start = js("isoDay(state.max - 120 * DAY)")
+            page.click("#periodMoreBtn")
+            page.click("#periodMoreList [data-period=custom]")
             page.fill("#from", start)
             settle(300)
             check("period: dates typed in on Body and activity", js("[state.preset, isoDay(state.from), isoDay(hRange()[0])]") == ["custom", start, start],
@@ -1300,7 +1309,7 @@ def main():
             open_tab("timeline")
             settle(300)
             check("…are the Timeline's too", js("[document.getElementById('from').value, isoDay(state.from)]") == [start, start]
-                  and js("document.querySelector('.dates').classList.contains('on')"), js("document.getElementById('from').value"))
+                  and js("!document.getElementById('dates').hidden"), js("document.getElementById('from').value"))
             # the kinds' chips say which are shown: aria-pressed "true" or "false" (never left out), and an off one has no
             # tint (#193: on/off toggle chips, not faded)
             chips = r"[...document.querySelectorAll('#chips .toggle')].map(b => [b.textContent.trim().split(/ \d/)[0], b.getAttribute('aria-pressed'), getComputedStyle(b).backgroundColor])"
@@ -1315,16 +1324,131 @@ def main():
             settle(200)
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
-            check("…and kept on a reload", js("[state.preset, document.getElementById('from').value]") == ["custom", start],
-                  js("[state.preset, document.getElementById('from').value]"))
+            check("…and kept on a reload, the date boxes showing them", js("[state.preset, document.getElementById('from').value, !document.getElementById('dates').hidden]") == ["custom", start, True],
+                  js("[state.preset, document.getElementById('from').value, !document.getElementById('dates').hidden]"))
             page.set_viewport_size({"width": 375, "height": 800})
             for t in ("health", "timeline", "labs", "heatmap", "costs"):
                 open_tab(t)
                 settle(300)
                 fits = js("document.documentElement.scrollWidth")
                 check(f"the records bar on {t} fits 375 px, with its period showing", fits <= 375 and
-                      js("['presets', 'periodPick'].every(id => { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.right <= 375; })"), fits)
+                      js("['presets', 'periodMoreBtn'].every(id => { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.right <= 375; })"), fits)
             page.set_viewport_size({"width": 1400, "height": 900})
+
+            # ---- the period's controls (#191): each kind of period (a preset, All, the primary milestone's button, another
+            # milestone and a calendar year from More…, custom dates) shows exactly one chosen control and its words; the
+            # date boxes only for custom dates, Clear dates going back; More… is a menu worked by keyboard (arrow keys,
+            # Escape back to its button), closed by a click outside, nothing in it cut off and its text readable, in light
+            # and dark at 1400 and 375 px; old saved period keys still open
+            period = r"""(() => {
+              const more = document.getElementById('periodMoreBtn'), words = document.getElementById('periodWords');
+              return {chosen: [...[...document.querySelectorAll('#presets [aria-pressed=true]')].map(b => b.textContent),
+                               ...(more.classList.contains('on') ? ['More: ' + more.textContent.replace('▾', '')] : [])],
+                      words: words.hidden ? null : words.textContent, dates: !document.getElementById('dates').hidden,
+                      ticked: [...document.querySelectorAll('#periodMoreList [aria-checked=true]')].map(i => i.dataset.period)};
+            })()"""
+            was = js("[state.from, state.to]")   # the custom dates above, put back after
+            open_tab("timeline")
+            settle(200)
+            pm = js("[msKey(primaryMs()), 'Since ' + lcLabel(primaryMs().label), fmtD(dayTs(primaryMs().date))]")
+            om = js("(m => [msKey(m), 'Since ' + lcLabel(m.label), fmtD(dayTs(m.date))])(MILESTONES.find(m => m !== primaryMs()))")
+            yr = js("periodYears()[1]")   # a whole year before this one
+            kinds = [("2y", "#presets button:text-is('2y')", ["2y"], "Last 2 years", []),
+                     ("all", "#presets button:text-is('All')", ["All"], "Everything on file", []),
+                     (pm[0], f"#presets button:text-is('{pm[1]}')", [pm[1]], pm[2] + " – today", []),
+                     (om[0], f"#periodMoreList [data-period={om[0]}]", ["More: " + om[1]], om[2] + " – today", [om[0]]),
+                     (yr, f"#periodMoreList [data-period='{yr}']", ["More: " + yr], js(f"fmtD(dayTs('{yr}-01-01')) + ' – ' + fmtD(dayTs('{yr}-12-31'))"), [yr])]
+            for key, sel, chosen, words, ticked in kinds:
+                if sel.startswith("#periodMoreList"):
+                    page.click("#periodMoreBtn")
+                page.click(sel)
+                settle(250)
+                got = js(period)
+                check(f"period {key}: one control chosen, its words beside it, no date boxes", js("state.preset") == key
+                      and got == {"chosen": chosen, "words": words, "dates": False, "ticked": ticked}, got)
+            page.click("#periodMoreBtn")
+            page.click("#periodMoreList [data-period=custom]")
+            settle(250)
+            got = js(period)
+            check("period custom: Custom dates… shows the date boxes (the period's dates, to change), More… the one chosen",
+                  got == {"chosen": ["More: Custom dates"], "words": None, "dates": True, "ticked": ["custom"]} and js("document.activeElement.id") == "from"
+                  and js("[document.getElementById('from').value, document.getElementById('to').value]") == [f"{yr}-01-01", f"{yr}-12-31"],
+                  [got, js("document.activeElement.id")])
+            page.click("#datesClear")
+            settle(250)
+            check("…and Clear dates goes back to the period before, the boxes gone", js(period)["chosen"] == ["More: " + yr] and not js(period)["dates"]
+                  and js("document.activeElement.id") == "periodMoreBtn", [js(period), js("document.activeElement.id")])
+            js("applyPreset('2y')")
+            settle(200)
+            menu_state = "[document.getElementById('periodMoreBtn').getAttribute('aria-expanded'), document.getElementById('periodMoreList').hidden, document.activeElement.id || document.activeElement.textContent]"
+            check("More… is a menu button: aria-haspopup, aria-expanded and a menu of radio items",
+                  js("(b => [b.getAttribute('aria-haspopup'), b.getAttribute('aria-expanded'), document.getElementById(b.getAttribute('aria-controls')).getAttribute('role')])(document.getElementById('periodMoreBtn'))")
+                  == ["menu", "false", "menu"] and js("[...document.querySelectorAll('#periodMoreList button')].every(i => i.getAttribute('role') === 'menuitemradio' && i.tabIndex === -1)"))
+            page.focus("#periodMoreBtn")
+            page.keyboard.press("Enter")
+            first = js(menu_state)
+            page.keyboard.press("ArrowDown")
+            second = js("document.activeElement.dataset.period")
+            page.keyboard.press("End")
+            last = js("document.activeElement.dataset.period")
+            page.keyboard.press("Escape")
+            check("…Enter opens it on its first item, arrow keys and End move, Escape closes it and focus goes back to the button",
+                  first[:2] == ["true", False] and first[2].startswith(om[1]) and second and last == "custom"
+                  and js(menu_state) == ["false", True, "periodMoreBtn"], [first, second, last, js(menu_state)])
+            page.keyboard.press("ArrowDown")
+            page.keyboard.press("ArrowDown")
+            page.keyboard.press("Enter")
+            settle(250)
+            check("…Enter on an item picks it, focus back on More…", js("state.preset") == second and js(menu_state) == ["false", True, "periodMoreBtn"],
+                  [js("state.preset"), js(menu_state)])
+            page.click("#periodMoreBtn")
+            page.mouse.click(1300, page.locator("#periodMoreBtn").bounding_box()["y"] + 10)   # the records bar's empty end
+            check("…and a click outside closes it", js(menu_state)[:2] == ["false", True], js(menu_state)[:2])
+            menu_look = r"""(() => {
+              const rgb = c => { const x = document.createElement('canvas').getContext('2d'); x.fillStyle = c; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data]; };
+              const bg = n => { for (; n; n = n.parentElement) { const c = rgb(getComputedStyle(n).backgroundColor); if (c[3] > 0) return c; } return [255, 255, 255, 255]; };
+              const lum = c => { const v = c.slice(0, 3).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+              const ratio = n => { const [a, b] = [lum(rgb(getComputedStyle(n).color)), lum(bg(n))].sort((p, q) => q - p); return Math.round((a + 0.05) / (b + 0.05) * 10) / 10; };
+              const list = document.getElementById('periodMoreList'), r = list.getBoundingClientRect(), items = [...list.querySelectorAll('[role=menuitemradio]')];
+              return {inside: r.left >= 0 && r.right <= document.documentElement.clientWidth, solid: rgb(getComputedStyle(list).backgroundColor)[3] === 255,
+                      cut: items.filter(i => i.scrollWidth > i.clientWidth + 1 || i.getBoundingClientRect().right > r.right).map(i => i.textContent),
+                      text: Math.min(...items.map(ratio)), quiet: Math.min(...[...list.querySelectorAll('.menu-head, .menu-note')].map(ratio)),
+                      chosen: ratio(document.getElementById('periodMoreBtn')), words: ratio(document.getElementById('periodWords'))};
+            })()"""
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 800 if width == 375 else 900})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    js(f"applyPreset('{yr}')")   # More… chosen, its item ticked
+                    settle(200)
+                    bad = phone_fits(page, f"{theme}, {yr}") if width == 375 else []
+                    page.click("#periodMoreBtn")
+                    settle(100)
+                    look = js(menu_look)
+                    if width == 375:
+                        bad += phone_fits(page, f"{theme}, More… open")
+                    page.keyboard.press("Escape")
+                    check(f"period at {width} px, {theme}: the More… menu fits the screen, nothing in it cut off, its text and the chosen period readable",
+                          look["inside"] and look["solid"] and not look["cut"] and look["text"] >= 4.5 and look["quiet"] >= 4.5
+                          and look["chosen"] >= 4.5 and look["words"] >= 4.5, look)
+                    if width == 375:
+                        page.click("#periodMoreBtn")
+                        page.click("#periodMoreList [data-period=custom]")
+                        settle(200)
+                        bad += phone_fits(page, f"{theme}, custom dates")
+                        check(f"period at 375 px, {theme}: the presets, More…, the words and the date boxes fit, no control cut off or overlapping",
+                              not bad and js("['presets', 'periodMoreBtn', 'from', 'to', 'datesClear'].every(id => { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.right <= 375; })"),
+                              bad[:6])
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            # periods saved before #191: "dx" (the primary milestone), a milestone, a year
+            for key, chosen in (("dx", [pm[1]]), (om[0], ["More: " + om[1]]), (yr, ["More: " + yr])):
+                js("k => localStorage.setItem(stateKey(), JSON.stringify({...JSON.parse(localStorage.getItem(stateKey())), preset: k}))", key)
+                page.reload()
+                page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
+                check(f"a period saved as {key!r} opens as it was", js(period)["chosen"] == chosen and not js(period)["dates"], js(period))
+            js("([a, b]) => setRange(a, b)", was)
             open_tab("labs")
 
             # ---- pick one and on or off (#193): every pick-one group (.seg) on each records tab, and the journal form's
@@ -1335,8 +1459,8 @@ def main():
               const on = b => b.getAttribute('aria-pressed') === 'true' || b.getAttribute('aria-checked') === 'true' || !!b.querySelector(':scope > input:checked');
               const said = b => ['true', 'false'].includes(b.getAttribute('aria-pressed') || b.getAttribute('aria-checked')) || !!b.querySelector(':scope > input[type=radio]');
               const groups = [...document.querySelectorAll('.seg')].filter(vis).map(g => {
-                let n = [...g.children].filter(on).length;   // the period: a preset, or (until #191) a milestone or year, or dates
-                if (g.id === 'presets') n += document.getElementById('periodPick').classList.contains('on') + document.querySelector('.dates').classList.contains('on');
+                let n = [...g.children].filter(on).length;   // the period: a preset, or More… naming what it picked (#191)
+                if (g.id === 'presets') n += document.getElementById('periodMoreBtn').classList.contains('on');
                 return [g.id || g.getAttribute('aria-label'), n, [...g.children].every(said)];
               });
               const toggles = [...document.querySelectorAll('.toggle')].filter(vis).map(t => {
