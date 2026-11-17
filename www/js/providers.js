@@ -141,8 +141,8 @@ function show({entry: e, vendors, return_addresses: back}) {
     el("p", {class: "muted", text: v.client}),
 
     el("div", {class: "row"},
-      el("button", {class: "btn primary", type: "button", disabled: "", text: "Connect"}),
-      el("span", {class: "muted", text: "Sign-in comes with #32."})),
+      el("a", {class: "btn primary", href: "connect.html", text: "Connected sources"}),
+      el("span", {class: "muted", text: "An admin adds the source there with the details above; then each profile connects by signing in."})),
 
     e.aliases && e.aliases.length ? el("details", {class: "dir-aka"},
       el("summary", {text: `Its ${e.aliases_total || e.aliases.length} location${(e.aliases_total || e.aliases.length) === 1 ? "" : "s"} and other names`}),

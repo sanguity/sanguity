@@ -267,7 +267,7 @@ section("health", "Health", "How the Health tab counts activity.")
 
 define("overview.keyLabs", "overview", "Key labs", KEY_LABS, lab_list(), kind="tiles",
        help="One tile each, in this order, for the labs this profile has results for. While this is the default list "
-            "and few of its labs have results here, the most-measured labs fill the tiles instead (#36).")
+            "and few of its labs have results here, the most-measured labs fill the tiles instead.")
 define("trends.defaultLabs", "trends", "Labs selected at first",
        ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "ALT"], lab_list(), kind="labs",
        help="Charted on Trends until you choose others on this device.")
@@ -479,7 +479,7 @@ def trend_views(most=30):
 
 define("trends.views", "trends", "Saved views", [], trend_views(), kind="views",
        help="Named sets of labs to pick from on Trends (save one there from what's charted). The default view is "
-            "what Trends charts at first, instead of the labs above (#37).")
+            "what Trends charts at first, instead of the labs above.")
 
 
 # ---------------------------------------------------------------- unit preferences (#41)
