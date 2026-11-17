@@ -92,6 +92,7 @@ def main():
 
         # ---- an upload through nginx: one file far above the 64 KB every other API request is held to
         check("the import page is served", req("/import.html", signed_in=False)[0] == 200)
+        check("the getting-started guide is served (#199)", req("/guide.html", signed_in=False)[0] == 200)
         st, _, body = req(f"/api/profiles/{pid}/uploads", method="POST")
         check("an upload starts", st == 200, body[:200])
         if st == 200:

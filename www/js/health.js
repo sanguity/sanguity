@@ -149,7 +149,11 @@ const tipRow = (color, text) => el("div", {class: "s"}, color ? el("span", {clas
 
 function renderHealth() {
   const box = $("#view-health"); box.replaceChildren();
-  if (!WATCH) { box.append(el("div", {class: "card empty", text: "No watch or scale data yet. It appears here once the phone syncs Health Connect to the receiver."})); return; }
+  if (!WATCH) {   // #199: what would be here, and where it comes from (its owners and editors set the phone up)
+    box.append(emptyState("Steps, sleep, heart rate and weight from a phone, watch or smart scale appear here once a phone sends them.",
+      canEdit() ? {href: `sources.html?profile=${PROFILE.id}#phone`, text: "Connect a phone"} : null));
+    return;
+  }
   H = H || hData();
   const [a, b] = hRange(), len = b - a, long = len > 150 * DAY;
   // toolbar (the period is in the records bar)

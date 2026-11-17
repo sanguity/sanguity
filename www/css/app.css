@@ -1127,3 +1127,47 @@ main[data-group=backups] #backupNotice{display:none}   /* the Backups group says
   .acct .tbl.bk-counts tr{display:table-row}
   .acct .tbl.bk-counts td{border-top:1px solid var(--grid);padding:6px 8px 6px 0}
 }
+
+
+/* ---- the getting-started guide and empty states (#199): guide.html's steps (guide.js), the way back to it on
+   Sources, and an empty state anywhere (emptyState, util.js): what would appear there, and one next step */
+main.acct.guide{max-width:640px}
+.guide-hd h1{font-size:20px;font-weight:650;margin:2px 0 12px;letter-spacing:-.01em}
+.guide-steps{list-style:none;display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 16px;padding:0;font-size:13px;color:var(--ink2)}
+.guide-steps li>*{display:inline-flex;align-items:center;gap:7px;color:inherit;text-decoration:none;padding:3px 0}
+.guide-steps a:hover{color:var(--ink);text-decoration:underline}
+.guide-steps a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.guide-n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--axis);font-size:12px;font-weight:650;flex:none}
+.guide-steps .cur{color:var(--ink);font-weight:650}
+.guide-steps .done .guide-n{border-color:var(--good-text);color:var(--good-text)}
+.guide-steps .cur .guide-n{background:var(--accent);border-color:var(--accent);color:#fff}
+.guide-step h2{font-size:17px;margin:0 0 4px}
+.guide-step h2:focus{outline:none}
+.guide-step .form{max-width:none;margin-top:12px}
+.guide-step .form input{width:100%;max-width:360px;font-weight:400}
+.guide .row{border-bottom:0;padding:0;margin-top:12px;cursor:default}
+.guide .row:hover{background:none}
+.guide-opt{font-weight:450;color:var(--ink2);font-size:14px}
+.guide-ways{list-style:none;margin:12px 0;padding:0;display:grid;gap:8px}
+.guide-way{display:grid;gap:2px;padding:11px 14px;border:1px solid var(--ring);border-radius:10px;background:var(--raised);color:var(--ink);text-decoration:none}
+.guide-way:hover{border-color:var(--accent);background:var(--hover)}
+.guide-way:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.guide-way b{font-weight:650}
+.guide-way b::after{content:" →";color:var(--accent)}
+.guide-way span{font-size:13px;color:var(--ink2)}
+.guide-have{margin:10px 0 0}
+.guide-tick{color:var(--good-text);font-weight:700}
+.acct .muted.guide-later{margin:14px 0 0;font-size:13px;color:var(--ink2)}
+.guide-skip{text-align:center;margin:4px 0 24px}
+.linkish{border:0;background:none;padding:6px;color:var(--ink2);text-decoration:underline;cursor:pointer;font-size:13px}
+.linkish:hover{color:var(--ink)}
+.guide-back{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin:0 0 14px;padding:10px 14px;border:1px solid var(--accent);border-radius:10px;background:var(--range);font-size:13px}
+.card.empty-state{text-align:center;padding:28px 20px;color:var(--ink2)}
+.empty-state p{margin:0 auto 12px;max-width:60ch}
+.empty-state:not(.card){padding:4px 0;color:var(--ink2);list-style:none}
+.empty-state:not(.card) p{margin:0 0 8px}
+.empty-state .btn.empty-next{margin:0;padding:7px 14px;font-size:13px;font-weight:550;background:var(--accent);border:1px solid transparent;color:#fff}
+.empty-state:not(.card) .btn.empty-next{padding:4px 11px;font-size:12px}
+.empty-state .btn.empty-next:hover{filter:brightness(1.08)}
+.empty-state .btn.empty-next:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (forced-colors:active){ .empty-state .btn.empty-next,.guide-back,.guide-way{border-color:ButtonText} }

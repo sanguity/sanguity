@@ -71,6 +71,7 @@ addEventListener("hashchange", () => { const t = tabOfHash(); if (t && booted) {
 $("#optMarks").onchange = e => { state.marks = e.target.checked; renderCharts(); save(); };
 $("#optSmooth").onchange = e => { state.smooth = e.target.checked; renderCharts(); save(); };
 function renderAll() {
+  if (!DATA) return;   // no records (an empty profile's card, #199): nothing to draw, as when the window is resized
   renderFilters();
   renderFilterSum();   // what the filters leave out, and the Filters button's count (#190, filters.js)
   $("#optMarks").checked = state.marks; $("#optSmooth").checked = state.smooth;
@@ -82,10 +83,13 @@ function renderAll() {
   save();
 }
 /* no records to show (an empty profile, none shared, or an error): a message instead of the tabs, and none of the
-   controls that would render them, since those need DATA and the tab sections this replaces */
+   controls that would render them, since those need DATA and the tab sections this replaces. One empty state
+   (emptyState, util.js: #199), or the words of an error */
 function emptyCard(...kids) {
   $(".tabs").hidden = true; $(".filters").hidden = true;
-  document.querySelector("main").replaceChildren(el("div", {class: "card empty"}, ...kids));
+  const one = kids.length === 1 && kids[0].nodeType ? kids[0] : el("div", {class: "card"}, ...kids);
+  one.classList.add("empty");
+  document.querySelector("main").replaceChildren(one);
 }
 /* another profile: the page again (nav.js remembers the choice first), on the tab that profile last showed here, so
    the address loses its tab's # (#208) */
@@ -119,7 +123,8 @@ async function syncWarning(pid) {
     $("#who").textContent = ME.user.username;
     const canImport = p => p.role === "owner" || p.role === "editor";
     $("#importLink").hidden = !ME.profiles.some(canImport);
-    if (!ME.profiles.length) { emptyCard("No health profiles are shared with you yet. ", el("a", {href: "sharing.html#profile", text: "Create one"}), " or ask a profile's owner to share it with ", el("b", {text: ME.user.username}), "."); return; }
+    // the first-run guide and the empty states (#199): with no profile, make one (guide.html?new)
+    if (!ME.profiles.length) { emptyCard(emptyState(`No health profile is shared with you yet: make one of your own, or ask a profile's owner to share theirs with ${ME.user.username}.`, {href: "guide.html?new", text: "Make a profile"})); return; }
     // the top bar's picker (nav.js, #170): the profile the address names, else this browser's last, else the first
     PROFILE = ME.profiles.find(p => p.id === SgNav.profiles(ME.profiles));
     hLoad();
@@ -129,10 +134,16 @@ async function syncWarning(pid) {
     const r = await api(`profiles/${PROFILE.id}/data`);
     if (r.status === 401) { location.replace("login.html"); return; }
     if (r.status >= 500) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || r.status + " " + r.statusText); }
-    if (r.status === 204) {
-      if (canImport(PROFILE)) emptyCard(`${PROFILE.name} has no records yet. `, el("a", {href: `sources.html?profile=${PROFILE.id}#upload`, text: "Import records"}),
-        " from a patient portal or app: upload the zip, folder or files it gave you.");
-      else emptyCard(`${PROFILE.name} has no records yet. Its owner, or an editor, can import them.`);
+    if (r.status === 204) {   // no records yet (#199): the getting-started guide, opened by itself the first time
+      if (PROFILE.role === "owner" && ME.profiles.length === 1) {   // your own profile, and your only one
+        const u = await api("settings/user").then(x => x.ok ? x.json() : {}).catch(() => ({}));
+        if (u.guide === "") { location.replace(`guide.html?profile=${PROFILE.id}`); return; }   // not finished or skipped yet
+      }
+      emptyCard(canImport(PROFILE)
+        ? emptyState(`${PROFILE.name} has no records yet: lab results, visits, medications and the rest appear here once they're brought in.`,
+            {href: `guide.html?profile=${PROFILE.id}`, text: "Get started"})
+        : emptyState(`${PROFILE.name} has no records yet: its owners and editors bring them in, and they appear here for you too.`,
+            {href: `sharing.html?profile=${PROFILE.id}#people`, text: "See who has access"}));
       return;
     }
     if (!r.ok) throw new Error(r.status + " " + r.statusText);
@@ -212,7 +223,8 @@ async function syncWarning(pid) {
   medsLoad();      // each medication's spans and fills (meds.js, #50)
   const ts = DATA.events.map(e => e.ts).filter(isFinite); state.min = Math.min(...ts); state.max = Math.max(...ts);
   for (const s of SERIES) if (s.watch && s.pts.length) state.max = Math.max(state.max, s.pts[s.pts.length - 1].ts);
-  $("#meta").textContent = `${DATA.source} · built ${fmtD(DATA.built)}` + (WATCH && WATCH.last_payload ? ` · watch synced ${fmtDT(WATCH.last_payload)}` : "");
+  $("#meta").textContent = [DATA.source, DATA.built && "built " + fmtD(DATA.built), WATCH && WATCH.last_payload && "watch synced " + fmtDT(WATCH.last_payload)]
+    .filter(Boolean).join(" · ");   // a profile of imports alone has no build to name (#199: it said "undefined · built")
   restore();   // a saved period naming a milestone that's since gone is All (setPeriod)
   { const t = tabOfHash(); if (t) { state.tab = t[0]; if (t[1]) state.labsView = t[1]; } }
   if (!state.sel.size) state.sel = startLabs();   // the default saved view, else trends.defaultLabs (trends.js)

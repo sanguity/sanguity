@@ -21,6 +21,11 @@ const el = (tag, attrs = {}, ...kids) => {
    readers. Strings become paragraphs; nulls are left out. Pages write the same <details class="more"> by hand. */
 const moreAbout = (...kids) => el("details", {class: "more"}, el("summary", {text: "More about this"}),
   ...kids.flat().filter(k => k != null && k !== "").map(k => typeof k === "string" ? el("p", {text: k}) : k));
+/* An empty state (#199): one sentence saying what would appear here, and the one next step, a link ({href, text}) or
+   a button ({onclick, text}); none (null) for someone who can't take it. tag: "div" for a whole card's place, "li"
+   inside a list. The records tabs, the Sources and Sharing lists and the journal use it. */
+const emptyState = (what, next, {tag = "div", cls = "card"} = {}) => el(tag, {class: `${cls} empty-state`.trim()}, el("p", {text: what}),
+  next ? el(next.href ? "a" : "button", {class: "btn primary empty-next", href: next.href, type: next.href ? null : "button", text: next.text, onclick: next.onclick}) : null);
 /* every backend call: same-origin cookie, never cached, and the X-Sanguity header the API requires on changes */
 const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,
   headers: {...(opts.method && opts.method !== "GET" ? {"X-Sanguity": "1", "Content-Type": "application/json"} : {}), ...opts.headers}});

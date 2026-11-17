@@ -132,7 +132,13 @@ function renderList() {
   $("#listTitle").textContent = `Events (${v.length.toLocaleString()})`;
   for (const b of $("#sortSeg").children) b.setAttribute("aria-pressed", (b.dataset.sort === "asc") === state.asc);
   const list = $("#list"); list.replaceChildren();
-  if (!v.length) { list.append(el("div", {class: "empty", text: "Nothing matches these filters."})); return; }
+  if (!v.length) {   // #199: what would be here, and the one way back to it
+    list.append(emptyState("No events in this period match these filters.", {text: "Show everything", onclick: () => {
+      setPeriod("all"); resetTimelineFilters(); announce("Showing everything.");
+      const h = $("#listTitle"); h.tabIndex = -1; h.focus();   // the button goes with the empty list
+    }}, {cls: ""}));
+    return;
+  }
   let month = "", frag = document.createDocumentFragment(), shown = 0;
   const LIMIT = 600;
   for (const e of v) {

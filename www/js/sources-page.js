@@ -73,6 +73,15 @@ const SgSources = (() => {
   const follow = () => { const r = fromHash(); show(r.id, {scrollTo: r.el}); };
   main.prepend(nav);
   main.classList.add("with-nav");
+  /* the way back to the getting-started guide (#199): its links here carry ?guide=records or ?guide=phone */
+  const fromGuide = new URLSearchParams(location.search).get("guide"), back = el("a", {class: "btn primary small", id: "guideBack", text: "Back to the guide"});
+  const backTo = () => { back.href = `guide.html?profile=${encodeURIComponent(sel.value || new URLSearchParams(location.search).get("profile") || "")}#${fromGuide}`; };
+  if (fromGuide === "records" || fromGuide === "phone") {
+    backTo();
+    sel.addEventListener("change", backTo);
+    nav.after(el("p", {class: "guide-back", id: "guideBar"}, el("span", {text: fromGuide === "phone"
+      ? "Getting started: set up the phone here, then go back to the guide." : "Getting started: bring in the first records here, then go back to the guide."}), back));
+  }
   follow();
   addEventListener("hashchange", follow);
   // the import history's section comes from its own script (import-history.js), after this one
@@ -105,6 +114,7 @@ const SgSources = (() => {
     if (!me.profiles.length) { nav.hidden = true; main.classList.remove("with-nav"); $("#noProfiles").hidden = false; return null; }
     ME = me;
     SgNav.profiles(me.profiles);   // the top bar's picker (nav.js, #170)
+    backTo();   // #199
     sel.addEventListener("change", hint);
     $("#intro").hidden = false;
     hint();

@@ -53,8 +53,13 @@ function renderOverview() {
   const box = $("#view-overview"); box.replaceChildren();
   const labDays = EV.filter(e => e.k === "lab").map(e => e.ts);
   const lastDraw = labDays.length ? Math.max(...labDays) : null;
+  // no lab results yet (#199): what the tiles would show, and where results come from, in place of the tiles and the
+  // out-of-range card (which would otherwise say everything is in range)
+  const noLabs = !SERIES.some(s => !s.watch && s.pts.length);
+  if (noLabs) box.append(emptyState("Key lab results appear here as tiles, each with its latest value and whether it's outside its reference range.",
+    canEdit() ? {href: `sources.html?profile=${PROFILE.id}#manual`, text: "Add lab results"} : null));
   // key lab tiles
-  box.append(el("div", {class: "ov-h"}, el("h2", {text: "Key labs"}), el("p", {class: "hint", text: lastDraw ? `latest draw ${fmtD(lastDraw)} · sparklines show the last 6 months · click a tile for its full trend` : ""})));
+  if (!noLabs) box.append(el("div", {class: "ov-h"}, el("h2", {text: "Key labs"}), el("p", {class: "hint", text: lastDraw ? `latest draw ${fmtD(lastDraw)} · sparklines show the last 6 months · click a tile for its full trend` : ""})));
   const tiles = el("div", {class: "tiles"});
   const keyLabs = keyLabTiles(CFG.overview.keyLabs, SERIES, JSON.stringify(CFG.overview.keyLabs) === JSON.stringify(DEFAULT_SETTINGS.overview.keyLabs));
   for (const n of keyLabs) {
@@ -70,7 +75,7 @@ function renderOverview() {
       el("span", {class: "delta", text: (d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")} since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : "")}),
       spark(s, recent)));
   }
-  box.append(tiles, el("p", {class: "range-note", text: RANGE_NOTE + (RANGES_USED ? RANGE_NOTE_SETTINGS : "")}));
+  if (!noLabs) box.append(tiles, el("p", {class: "range-note", text: RANGE_NOTE + (RANGES_USED ? RANGE_NOTE_SETTINGS : "")}));
   const cols = el("div", {class: "ov-cols"}), left = el("div", {}), right = el("div", {});
   cols.append(left, right); box.append(cols);
   // out of range at latest draw, with how long
@@ -94,7 +99,7 @@ function renderOverview() {
       el("span", {class: "s", text: o.streak > 1 ? `${st.cls === "hi" ? "High" : "Low"} on the last ${o.streak} draws, since ${fmtD(o.since)}` : `First out-of-range result, ${fmtD(o.last.ts)}`})));
   }
   if (out.length > 14) oc.append(el("p", {class: "hint", style: {marginTop: "8px"}, text: `${out.length - 14} more in Labs.`}));
-  left.append(oc);
+  if (!noLabs) left.append(oc);
   // watch summary
   const wk = ["hr_rest", "sleep", "steps", "hr", "weight"];
   const ws = wk.map(k => SERIES.find(s => s.key === k)).filter(Boolean);

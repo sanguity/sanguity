@@ -36,10 +36,11 @@ class SettingError(ValueError):
 
 class Setting:
     def __init__(self, key, section, label, default, check, scope="profile", private=True, kind=None, help="",
-                 merge=False, reread=False):
+                 merge=False, reread=False, screen=True):
         self.key, self.section, self.label, self.default, self.check = key, section, label, default, check
         self.scope, self.private, self.kind, self.help, self.merge = scope, private, kind, help, merge
         self.reread = reread   # a stored value is checked again when read: its check gives older values in today's terms
+        self.screen = screen   # shown on the Settings screen (False: kept for a page of its own, like the guide's, #199)
 
     def clean(self, value):
         return self.check(value)
@@ -399,6 +400,23 @@ define("tabs", "tabs", "Tabs", {"order": list(TABS), "hidden": []}, tab_layout, 
        help="A hidden tab leaves the tab bar and the arrow keys; a saved view or link to it opens the first shown tab.")
 define("theme", "appearance", "Theme", "system", theme, scope="user", kind="theme", private=False,
        help="Your default on every device. The ◐ button on the records page still picks light or dark for one browser.")
+
+
+# ---------------------------------------------------------------- the getting-started guide (#199): each person's own
+# Whether this person finished the guide (guide.html) or skipped it: until then, signing in to an empty profile of
+# their own opens it. Not on the Settings screen; the guide stays a menu item away whatever this says.
+
+GUIDE_STATES = ("", "skipped", "done")
+
+
+def guide_state(v):
+    if v not in GUIDE_STATES:
+        raise SettingError("The guide is done, skipped, or not yet either.")
+    return v
+
+
+section("guide", "Getting started", "The guide to a profile's first records.")
+define("guide", "guide", "Getting started guide", "", guide_state, scope="user", kind="guide", private=False, screen=False)
 
 
 # ---------------------------------------------------------------- dates and times (#42): each person's own

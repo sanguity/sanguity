@@ -1326,7 +1326,7 @@ if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves w
     @app.get("/", include_in_schema=False)
     def page(page: str = "index.html"):
         if page not in ("index.html", "login.html", "setup.html", "account.html", "import.html", "settings.html", "providers.html", "summary.html", "share.html",
-                        "admin.html", "sources.html", "sharing.html"):
+                        "admin.html", "sources.html", "sharing.html", "guide.html"):
             raise HTTPException(404)
         return FileResponse(os.path.join(WWW, page), media_type="text/html",
                             headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP})

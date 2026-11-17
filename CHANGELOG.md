@@ -280,6 +280,17 @@ Everything on `main` so far; it becomes the first tagged release.
   Health importer now brings them in with the same import (the FHIR files in `clinical-records/`); the FHIR
   importer now reads allergies, immunizations and procedures too. docs/provider-directory.md has a place for
   systems known to work, from people's reports. Schema version 30.
+- **A getting-started guide, from a fresh install to a profile with records** (#199): after setup, and whenever you
+  sign in to an empty profile of your own until you finish or skip it, **Getting started** walks you through whose
+  records the profile holds (its name), bringing in the first records (upload an export, connect a portal or health
+  plan, or type them in, each on its own Sources section, with **Back to the guide**), a phone (optional), then the
+  Overview. Every step can be skipped, and the guide stays in your menu. Someone given another person's profile gets
+  none of its owner's steps: an editor starts at the first records, a viewer is told its owners and editors set it
+  up. Empty places say what would appear there, with one next step: an empty profile (**Get started**), each records
+  tab with nothing to show (lab results, a phone, claims and payments; the Timeline's **Show everything**), Sources'
+  Overview and Import history, share links and the journal. The Overview no longer says everything is in range when
+  there are no lab results, and the records page's footer no longer reads "undefined · built" for a profile of
+  imports.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
