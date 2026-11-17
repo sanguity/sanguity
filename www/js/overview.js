@@ -73,7 +73,9 @@ function homeTiles() {
       const m = G && G.meter.length ? G.meter.at(-1) : null, d = G && G.days.length ? G.days.at(-1) : null;
       if (d && (!m || d.t >= m[0] - DAY / 2)) out.push(tile("Blood glucose", G.fmt(d.avg), `${G.unit} avg`,
         `${fmtD(d.t)} · the day's CGM average (${G.fmt(d.lo)}–${G.fmt(d.hi)}) · phone app`, "#h-glucose"));
-      else out.push(tile("Blood glucose", m ? G.fmt(m[1]) : "–", G ? G.unit : "", m ? `${fmtDT(m[0])} · a meter reading · from a phone app` : "no readings yet", "#h-glucose"));
+      else out.push(tile("Blood glucose", m ? G.fmt(m[1]) : "–", G ? G.unit : "", !m ? "no readings yet"
+        : m[2] ? `${fmtDT(m[0])} · a meter reading at home · ${[m[2], m[3]].filter(Boolean).join(", ")}`   // typed in, its meal note (#232)
+        : `${fmtDT(m[0])} · a meter reading · from a phone app`, "#h-glucose"));
     }
   }
   return out;

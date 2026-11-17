@@ -519,7 +519,7 @@ function gData() {
   const meter = [...phone, ...typed.map(r => [zParse(r[0]), cv(+r[1]), r[3] || TYPED, G_MEAL[r[4]] || ""]).filter(p => !phone.some(q => near(p, q)))]
     .sort((p, q) => p[0] - q[0]);
   // lab glucose in this chart's unit, by the server's exact factor (mg/dL to mmol/L) when the units differ
-  const F = (base.conv || {}).si?.[1], want = mmol ? "mmol/l" : "mg/dl";
+  const F = ((base ? base.conv : WATCH.glucose_conv) || {}).si?.[1], want = mmol ? "mmol/l" : "mg/dl";   // typed in only: no base (#232)
   const inUnit = (v, u) => { const k = String(u || "").toLowerCase().replace(/\s/g, "");
     return k === want ? v : !F ? null : k === "mg/dl" ? v * F : k === "mmol/l" ? v / F : null; };
   const lab = [];
@@ -547,7 +547,9 @@ function gTile(tile, a, b) {
   if (!G) return;
   const P = gPeriod(a, b), [, l, h] = G.std;
   if (P.n) tile("Glucose", G.fmt(P.avg), `${G.unit} avg`, `${gPct(P.in)} of CGM readings in ${l}–${h}`, "#h-glucose");
-  else if (P.meter.length) tile("Glucose", G.fmt(mean(P.meter.map(p => p[1]))), `${G.unit} avg`, `${P.meter.length} meter reading${P.meter.length === 1 ? "" : "s"}`, "#h-glucose");
+  else if (P.meter.length) { const k = P.meter.filter(p => p[2]).length;   // typed in among them (#232)
+    tile("Glucose", G.fmt(mean(P.meter.map(p => p[1]))), `${G.unit} avg`, `${P.meter.length} meter reading${P.meter.length === 1 ? "" : "s"}` +
+      (!k ? "" : k === P.meter.length ? " typed in" : `, ${k} typed in`), "#h-glucose"); }
   else tile("Glucose", "–", G.unit, `last ${fmtD(G.last)}`, "#h-glucose");
 }
 /* the card: time in ranges for the period's CGM days, then the chart or its table (#60). head, legend and byDay are

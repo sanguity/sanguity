@@ -536,7 +536,8 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   and each one is in the activity log. The phone's and watch's measures are sections of their own, offered when the
   profile has some and unticked until you tick them (#225): blood pressure and temperature taken at home (the count,
   average, highest and the readings), glucose by day (a CGM's time in the standard published ranges, labelled as
-  such), blood oxygen, respiratory rate, VO2 max, immunizations, ECGs and BMI (for a child, the growth charts'
+  such; each reading typed in at home with its meal note, #232), blood oxygen (the watch's days and each reading
+  typed in), respiratory rate, VO2 max, immunizations, ECGs and BMI (for a child, the growth charts'
   percentiles). A share link offers the same, unticked; never cycle tracking. **Settings → Overview → Home
   readings** adds blood pressure, glucose and temperature tiles after the key labs, each the latest reading with its
   date and where it came from.
