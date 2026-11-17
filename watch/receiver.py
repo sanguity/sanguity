@@ -4,7 +4,9 @@ and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
 
 - Verifies X-Signature (HMAC-SHA256 of the raw body; Life Dashboard), or the secret itself sent as
   "Authorization: Bearer <secret>" (Health Auto Export, which can add a header but not sign), with one profile's
-  secret (below), which says whose upload it is.
+  secret (below), which says whose upload it is. An upload with neither header, or a wrong bearer secret, is refused
+  before its body is read; an address that sent BAD_FREE bad signatures or secrets in 15 minutes waits before the
+  receiver reads another signed body from it, the waits doubling up to 15 minutes, as for sign-ins (#222).
 - Archives every payload, gzipped, under <slot>/raw/YYYY/MM/DD/ (the source of truth).
 - Folds records into an SQLite database following docs/webhook.md:
   dedupe on uuid / sequence, bucket replace-vs-combine, deletions.
@@ -65,6 +67,7 @@ from server import glucose   # noqa: E402  (blood glucose, meters and CGMs, #181
 from server import cycle   # noqa: E402  (menstrual cycle tracking, opt-in, #183)
 from server import ecg   # noqa: E402  (ECG recordings and irregular rhythm notifications, #182)
 from server import hrzones   # noqa: E402  (a workout's heart rate, #197)
+from server import security   # noqa: E402  (the app's own throttle, for bad signatures, #222)
 
 DATA = os.environ.get("DATA", "/data")
 SECRET_FILE = os.environ.get("SECRET_FILE", "/run/secret/watch_secret")
@@ -72,6 +75,18 @@ KEYS_FILE = os.environ.get("KEYS_FILE") or os.path.join(DATA, "keys", "receiver-
 DEFAULT_TZ = os.environ.get("TZ_DEFAULT", "UTC")
 PORT = int(os.environ.get("PORT", "8080"))
 MAX_BODY = 32 * 1024 * 1024
+BAD_FREE = 10   # bad signatures or secrets an address may send in 15 minutes before it waits (#222)
+
+
+class BadSignatures(security.Throttle):
+    """Bad signatures and secrets per address (#222), in memory: after BAD_FREE inside the window, the address waits
+    (30 seconds, doubling, at most 15 minutes) before another signed body is read. A restart forgets them. A phone
+    still signing with the secret from before one was made again in the app is refused either way; given the new one,
+    it waits at most 15 minutes. A right bearer secret is known before the body is read, so it's never held up."""
+    FREE = {"ip": BAD_FREE}
+
+
+throttle = BadSignatures()
 
 SAMPLE_TYPES = {  # payload key -> value field(s)
     "heart_rate": ("bpm", None),
@@ -1055,25 +1070,48 @@ class H(BaseHTTPRequestHandler):
             return self._send(204)
         self._send(404)
 
+    def _refuse(self, code, wait=0):
+        """Answer without reading the body, and close the connection (what's left of the body is never read)."""
+        self.close_connection = True
+        self.send_response(code)
+        if wait:
+            self.send_header("Retry-After", str(wait))
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", "0")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
     def do_POST(self):
         if self.path.split("?")[0] not in ("/ingest", "/ingest/"):
             return self._send(404)
-        n = int(self.headers.get("Content-Length") or 0)
-        if n <= 0 or n > MAX_BODY:
-            return self._send(413 if n > MAX_BODY else 400)
-        body = self.rfile.read(n)
-        given, slot = (self.headers.get("X-Signature") or "").encode(), None
+        given = (self.headers.get("X-Signature") or "").strip().encode()
         auth = (self.headers.get("Authorization") or "").strip()   # Health Auto Export's header: "Bearer <secret>"
         token = (auth[7:].strip() if auth[:7].lower() == "bearer " else "").encode()
-        for s, key in keys():   # every one compared, so the time taken doesn't say which matched
-            expected = ("sha256=" + hmac.new(key, body, hashlib.sha256).hexdigest()).encode()
-            signed = hmac.compare_digest(expected, given)
-            bearer = hmac.compare_digest(key, token) if token else False
-            if (signed or bearer) and slot is None:
-                slot = s
+        if not given and not token:   # (#222) neither signed nor carrying a secret: refused before reading anything
+            log("rejected: neither signed nor a secret, from", self.client_address[0])
+            return self._refuse(401)
+        n = int(self.headers.get("Content-Length") or 0) if (self.headers.get("Content-Length") or "").isdigit() else 0
+        if n <= 0 or n > MAX_BODY:
+            return self._refuse(413 if n > MAX_BODY else 400)
+        ip, slot, body = "ip:" + self.client_address[0], None, None
+        if token:   # the secret itself: checked before the body is read, every one compared (#222)
+            for s, key in keys():
+                if hmac.compare_digest(key, token) and slot is None:
+                    slot = s
+        if slot is None and given:
+            if (wait := throttle.wait(ip)):   # too many bad ones from this address lately: not read (#222)
+                return self._refuse(429, wait)
+            body = self.rfile.read(n)
+            for s, key in keys():   # every one compared, so the time taken doesn't say which matched
+                expected = ("sha256=" + hmac.new(key, body, hashlib.sha256).hexdigest()).encode()
+                if hmac.compare_digest(expected, given) and slot is None:
+                    slot = s
         if slot is None:
+            throttle.fail(ip)
             log("rejected: bad signature from", self.client_address[0])
-            return self._send(401)
+            return self._refuse(401)
+        if body is None:
+            body = self.rfile.read(n)
         try:   # cycle records left out unless this profile turned tracking on, before anything is kept (#183)
             body = cycle.keep(body, cycle_on(slot))
         except ValueError:

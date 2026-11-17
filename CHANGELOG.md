@@ -515,6 +515,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - **HTML records can't move their tab** (#221): an HTML record (a portal message, a Health Link's attachment) opened
   with Open in new tab is sandboxed as it is in the records panel, so a refresh in it can't send the tab elsewhere.
   PDFs and pictures open as before.
+- **The watch receiver refuses unsigned uploads at once** (#222): an upload with neither a signature nor the
+  profile's secret is refused before any of it is read, and so is a wrong secret; after 10 bad signatures or secrets
+  in 15 minutes, an address waits (from 30 seconds, doubling, at most 15 minutes) before its next signed upload is
+  read. Health Auto Export with the right secret is never held up; a signing app (Life Dashboard) waits only if
+  its own address sent the bad ones.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
