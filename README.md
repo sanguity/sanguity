@@ -518,6 +518,13 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   checked before it's saved and refused if it could make matching slow. Milestones are named dates, one of them
   primary (the one the Overview counts from); they are encrypted like the records. They live in the database (backed up and exported with the profile); a
   `settings.json` from before is moved in once at the upgrade and kept as `settings-before-v18.json`.
+- **Start from a condition** (Settings → Dashboard, #186): pick one or more conditions (type 2 diabetes, chronic
+  kidney disease, high blood pressure, heart failure, thyroid disease, high cholesterol, liver disease, anemia,
+  cancer during treatment) to preview and fill in the key-lab tiles and home readings commonly followed for them,
+  as a published guideline lists them (named and linked), and if you like a Labs view per condition and the visit
+  summary's ticks. Filled in once, then yours to change; Discard changes and Reset to defaults undo it. Labs with no
+  results here are named, never suggested; a child's profile leaves adult measures out. A condition the problem list
+  names is offered (never from allergies). [docs/condition-presets.md](docs/condition-presets.md) says how to add one.
 - **Units:** each person picks, for themself, mg/dL or mmol/L for lab tests, lb or kg, °F or °C, and cm or feet and
   inches for heights (**Settings → Units**). A value is converted only when the conversion is exact for that test (`server/units.py` lists them:
   glucose, creatinine, BUN, calcium and magnesium by their molar mass; hemoglobin, MCHC, albumin and total protein by a
@@ -775,6 +782,8 @@ docker/allinone.py  The published image's default command: every service in one 
 docker/dev-stack.sh A test copy from any branch beside a real install (see above)
 build.py            Builds a profile's data.json from the exports listed in sources.json (standard-library Python 3)
 lab-aliases.json    Canonical lab names, LOINC codes and other spellings that map onto them
+condition-presets.json  Settings → Dashboard's presets by condition: labs by LOINC code, home readings, a guideline
+                    each (docs/condition-presets.md says how to add one)
 nginx.conf          Web server: the app's pages and security headers; passes /api/ to the app
 watch/receiver.py   phone uploads (Life Dashboard / Health Connect, Health Auto Export / Apple Health): archives, folds into SQLite, writes public/daily.json
 www/                index.html (markup), css/app.css, js/*.js (one plain script per tab, loaded in order),

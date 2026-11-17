@@ -84,6 +84,7 @@ ROUTES = {
     ("DELETE", "/api/profiles/{pid}/settings/{key}"): (USER, "viewer"),
     ("POST", "/api/profiles/{pid}/settings/reset"): (USER, "viewer"),
     ("PUT", "/api/profiles/{pid}/settings/{key}/name"): (USER, "viewer"),
+    ("GET", "/api/profiles/{pid}/condition-presets"): (USER, "editor"),   # Start from a condition (#186): fills in settings
     ("GET", "/api/profiles/{pid}/connections"): (USER, "viewer"), ("GET", "/api/profiles/{pid}/connections/warnings"): (USER, "viewer"),
     ("GET", "/api/profiles/{pid}/calendar"): (USER, "viewer"), ("POST", "/api/profiles/{pid}/calendar"): (USER, "viewer"),
     ("POST", "/api/profiles/{pid}/calendar/rotate"): (USER, "viewer"), ("PATCH", "/api/profiles/{pid}/calendar"): (USER, "viewer"),
@@ -274,7 +275,7 @@ class Reach(unittest.TestCase):
         table = [
             (V, [p + "/data", p + "/watch", p + "/members", p + "/imports", p + "/settings", p + "/settings/sections",
                 p + "/connections", p + "/connections/warnings", p + "/calendar", p + "/journal", p + "/summary", p + "/person"]),
-            (E, [p + "/export", p + "/jobs", p + "/edits", p + "/watch/receiver", p + "/cycle"]),
+            (E, [p + "/export", p + "/jobs", p + "/edits", p + "/watch/receiver", p + "/cycle", p + "/condition-presets"]),
             (O, [p + "/activity", p + "/links"]),
             (A, ["/api/users", "/api/activity", "/api/ownerless", "/api/security/notice", "/api/settings", "/api/settings/install",
                 "/api/labmaps", "/api/connect/sources", "/api/backups"]),

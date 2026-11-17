@@ -562,6 +562,16 @@ Everything on `main` so far; it becomes the first tagged release.
   Health Auto Export's medications automation, read by the watch receiver; Health Connect has no dose events, so from
   Android they're typed only. Encrypted, the profile's own (kept when imports are undone), in Export everything, and
   in the visit summary and share links only when "Medication log" is ticked.
+- **Start from a condition** (#186): Settings → Dashboard has a picker of conditions (type 2 diabetes, chronic kidney
+  disease, high blood pressure, heart failure, thyroid disease, high cholesterol, liver disease, anemia and cancer
+  during treatment), searchable by name or synonym and grouped by body system. Picking one or more previews the
+  key-lab tiles of the labs commonly followed for them, interleaved most important first, and their home readings,
+  naming and linking each condition's published guideline; labs with no results in the profile are named, never
+  suggested. **Fill these in** adds to or replaces the tiles, and can save a Labs view per condition and tick the
+  visit summary's measures at first (a new setting, Settings → Visit summary); each is saved as usual, and Discard
+  changes and Reset to defaults undo it. A condition the problem list names is offered, never from an allergy; a
+  child's profile leaves adult measures out. The definitions are `condition-presets.json`, checked by
+  `tests/test_condition_presets.py`, each awaiting a clinician's review; `docs/condition-presets.md` says how to add one.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

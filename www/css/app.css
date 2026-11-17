@@ -1439,3 +1439,24 @@ svg text.growth-pct{font-size:10px}
 .about .tgt-who input[type=text]{width:14em}
 .about .tgt-form>.about-row{margin-top:0;flex-basis:100%}
 @media (forced-colors:active){ .tgt-key{forced-color-adjust:none;border-color:CanvasText} }
+
+
+/* ---- Start from a condition (#186, presets.js): Settings → Dashboard's picker, searchable and grouped by body
+   system in a box that scrolls (for a long list), the chosen ones as chips, and what they'd fill in */
+.sets .set-presets .pre-panel{margin-top:10px;max-width:720px}
+.sets .pre-find{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sets .pre-find input{flex:1 1 200px;max-width:320px}
+.sets .pre-chosen{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.sets .pre-list{max-height:18rem;overflow-y:auto;border:1px solid var(--grid);border-radius:10px;padding:2px 12px 8px;background:var(--surface)}
+.sets .pre-sys{border:0;margin:4px 0 0;padding:0;min-width:0}
+.sets .pre-sys legend{font-size:12.5px;font-weight:600;color:var(--ink2);padding:6px 0 2px}
+.sets .pre-sys label.check,.sets .pre-out label.check{padding:3px 0;font-weight:400;align-items:flex-start}
+.sets .pre-sys label.check input,.sets .pre-out label.check input{margin-top:3px;flex:none}
+.sets .pre-src{margin:0;padding-left:18px;font-size:13.5px;line-height:1.45}
+.sets .pre-src li{margin:3px 0}
+.sets .pre-mode{margin:12px 0 0}
+.sets .pre-tiles{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:6px}
+.sets .pre-tiles .tile{cursor:default}
+.sets .pre-tiles>p{grid-column:1 / -1;margin:0}
+.sets .pre-tiles .pre-new{margin-left:auto}
+.sets .pre-offer{margin:6px 0}

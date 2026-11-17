@@ -57,6 +57,7 @@ python tests/test_person.py            # About this person: birth date, sex for 
 python tests/test_fhir_export.py       # Export as FHIR: read back into the same records, valid against the R4 schema (#205)
 python tests/test_med_log.py           # the medication log: doses logged, counted, kept, shared only when ticked (#235)
 python tests/test_growth.py            # BMI (#195), and the growth charts' tables against published percentiles (#196)
+python tests/test_condition_presets.py # dashboard presets by condition: the definitions file, matching, children (#186)
 python tests/test_backups.py           # backups in Admin: schedule, pruning, late warning, restore check
 python tests/test_security_refresh.py  # the security review's checks: each route's access, columns encrypted or plain
 python -m unittest discover -s tests -p "test_importer*.py" -v   # the registry and every importer's fixtures
@@ -101,6 +102,19 @@ change. In short (the guide has the details):
 - Put sample uploads under `tests/fixtures/importers/<NAME>/`. `tests/test_importers.py` checks the registry picks
   your importer for them and that the output keeps to the contract. Add `tests/test_importer_<name>.py` for edge
   cases.
+
+### Adding a condition to the dashboard presets
+
+Settings → Dashboard → "Start from a condition" reads [`condition-presets.json`](condition-presets.json): for each
+condition, the labs commonly followed for it by LOINC code, most important first, the readings taken at home that go
+with it, and the published guideline that says so. To add one ([docs/condition-presets.md](docs/condition-presets.md)
+has the details):
+
+- Cite a published guideline accurately (publisher, title, year, an `https://` address), and list its labs by LOINC
+  code; name a code `lab-aliases.json` doesn't know in the file's own `labs`, with the spellings labs print.
+- Leave `"reviewed": false`: a clinician's review of each definition before it ships is recommended.
+- Run `python tests/test_condition_presets.py`: codes and check digits, no lab twice, a source each.
+- Word it as what's "commonly followed for" the condition, never as a test anyone should have.
 
 ## Rules this project keeps
 

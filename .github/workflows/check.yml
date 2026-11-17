@@ -53,7 +53,7 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py tests/test_security_refresh.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tools/make_icons.py tools/screenshots.py .github/scripts/changes.py tests/test_ci_changes.py tests/test_medications.py tests/test_costs.py tests/test_backups.py tests/test_performance.py tools/anonymise.py tests/test_anonymise.py tests/test_glucose.py tests/test_person.py tests/test_receiver_vitals.py tests/test_cycle.py tests/test_ecg.py tests/test_receiver_activity.py tests/test_growth.py tools/growth_tables.py tests/test_fhir_export.py tests/fhir_schema_check.py tools/fhir_schema_subset.py tests/test_med_log.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py tests/test_security_refresh.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tools/make_icons.py tools/screenshots.py .github/scripts/changes.py tests/test_ci_changes.py tests/test_medications.py tests/test_costs.py tests/test_backups.py tests/test_performance.py tools/anonymise.py tests/test_anonymise.py tests/test_glucose.py tests/test_person.py tests/test_receiver_vitals.py tests/test_cycle.py tests/test_ecg.py tests/test_receiver_activity.py tests/test_growth.py tools/growth_tables.py tests/test_fhir_export.py tests/fhir_schema_check.py tools/fhir_schema_subset.py tests/test_med_log.py tests/test_condition_presets.py
 
       - name: Which jobs a pull request runs (docs only, templates only, tests only, CI itself)
         run: python tests/test_ci_changes.py
@@ -62,7 +62,7 @@ jobs:
         run: bash -n docker/dev-stack.sh
 
       - name: JSON templates parse
-        run: for f in *.example.json lab-aliases.json; do python -m json.tool "$f" > /dev/null || exit 1; done
+        run: for f in *.example.json lab-aliases.json condition-presets.json; do python -m json.tool "$f" > /dev/null || exit 1; done
 
 
       - uses: astral-sh/setup-uv@v10.3.3
@@ -200,6 +200,9 @@ jobs:
 
       - name: BMI and growth charts (kg and lb, cm and feet and inches, the height of each day, the WHO's adult categories; the bundled WHO and CDC tables against published percentiles, their sources and checksums; #195, #196)
         run: python tests/test_growth.py
+
+      - name: Dashboard presets by condition (the definitions file's LOINC codes, sources and spellings; labs matched to a profile's series, the problem list's suggestion, children; #186)
+        run: python tests/test_condition_presets.py
 
       - name: Fake FHIR server for connected sources (PKCE sign-in, refresh and revocation, scopes, paging, _lastUpdated, 429/5xx, request record)
         run: python tests/test_fakefhir.py
@@ -388,7 +391,7 @@ jobs:
         run: |
           docker run --rm sanguity-release:ci python3 -c "
           import os
-          need = ['/app/docker/setup.py', '/app/docker/allinone.py', '/app/receiver.py', '/app/build.py', '/app/lab-aliases.json',
+          need = ['/app/docker/setup.py', '/app/docker/allinone.py', '/app/receiver.py', '/app/build.py', '/app/lab-aliases.json', '/app/condition-presets.json',
                   '/app/demo/generate.py', '/usr/share/nginx/html/index.html', '/etc/sanguity/nginx.d/default.conf']
           never = ['/app/auth', '/app/data', '/app/sources.json', '/usr/share/nginx/html/data.json']
           assert all(os.path.isfile(f) for f in need), [f for f in need if not os.path.isfile(f)]
