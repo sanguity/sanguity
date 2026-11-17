@@ -123,6 +123,16 @@ function openEvent(e) {
       el("tbody", {}, d.lines.map(l => el("tr", {}, el("td", {text: l.date || ""}), el("td", {}, l.desc || "", ...(l.denied || []).map(x => el("div", {style: {color: "var(--crit)", fontSize: "12px"}, text: "Denied: " + x}))),
         el("td", {text: l.code || ""}), el("td", {text: l.billed ? usd(l.billed) : ""})))))));
     if (/denied/.test(st)) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "\"Provider denied\" usually means the provider must correct or resubmit the claim and you aren't billed for it; \"denied\" can mean you are. The EOB on your insurer's site has the exact reason."}));
+  } else if (d.type === "immunization") {   // #179: what the record says of a vaccine given, as recorded
+    body.append(el("dl", {class: "kv"}, ...[["Vaccine", d.vaccine], ["Code", d.code ? `${d.system ? d.system + " " : ""}${d.code}` : ""],
+      ["Given", fmtD(e.ts)], ["Dose", d.dose], ["Amount", d.amount], ["Route", d.route], ["Site", d.site], ["Lot", d.lot],
+      ["Made by", d.manufacturer], ["Given by", d.performer], ["Where", d.where], ["Status", d.status], ["Reason", d.reason], ["Source", d.src]]
+      .filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
+    if (d.note) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}));
+  } else if (d.type === "med" && e.k === "rx") {   // #179: a pharmacy fill (FHIR MedicationDispense), not a medication list's line
+    body.append(el("dl", {class: "kv"}, ...[["Filled", fmtD(e.ts)], ["Pharmacy", d.pharmacy], ["Quantity", d.quantity],
+      ["Days' supply", d.daysSupply ? String(d.daysSupply) : ""], ["Instructions", d.instructions], ["Prescribed by", d.prescriber],
+      ["Status", d.status], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
   } else if (d.type === "med") {
     const typed = d.src === "Typed in";   // hand entry (import page): the dates are the ones typed
     body.append(el("dl", {class: "kv"}, ...[["Instructions", d.instructions], ["Status", d.status], [typed ? "Started" : "Listed since", fmtD(e.ts)],

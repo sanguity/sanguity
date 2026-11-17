@@ -31,6 +31,9 @@
       ["billed", "Billed", "money", OPT], ["paid", "Insurance paid", "money", OPT], ["owe", "You paid", "money", OPT], ["insurer", "Insurer", "text", OPT]]],
     problem: ["Problem or diagnosis", [["name", "Problem or diagnosis"], ["status", "Status", "select", [["Active", "Active"], ["Resolved", "Resolved"], ["Inactive", "Inactive"]]],
       ["since", "Since", "date", OPT], ["type", "Type", "select", [["Diagnosis", "Diagnosis"], ["Problem", "Problem"], ["Allergy", "Allergy"]]]]],
+    immunization: ["Immunization", [["date", "Date given", "date"], ["vaccine", "Vaccine", "text", "Flu shot, Tdap…"],   // #179
+      ["dose", "Dose number", "text", OPT], ["site", "Site", "text", "Left arm"], ["lot", "Lot number", "text", OPT],
+      ["who", "Given by", "text", OPT], ["where", "Where", "text", "Clinic or pharmacy"]]],
     claim: ["Insurance claim", [["date", "Date of service", "date"], ["provider", "Provider"], ["title", "Service", "text", "Office visit"],
       ["billed", "Billed", "money"], ["paid", "Plan paid", "money"], ["owe", "You owe", "money"],
       ["status", "Status", "select", [["", "–"], ["Paid", "Paid"], ["Processed", "Processed"], ["Pending", "Pending"], ["Denied", "Denied"]]],

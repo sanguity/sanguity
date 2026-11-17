@@ -173,9 +173,10 @@ class Bundle(Shape, unittest.TestCase):
     def test_warnings_name_what_was_skipped(self):
         w = " ".join(self.out["warnings"])
         self.assertIn("Observation (social-history)", w)
-        self.assertNotIn("Immunization", w)   # imported since #165, as a procedure
+        self.assertNotIn("Immunization", w)   # imported since #165, its own kind since #179
         self.assertIn("inline", w)
-        self.assertEqual([e["title"] for e in by_kind(self.data, "procedure")], ["Immunization: Influenza vaccine"])
+        self.assertEqual([e["title"] for e in by_kind(self.data, "immunization")], ["Influenza vaccine"])
+        self.assertEqual(by_kind(self.data, "procedure"), [])
 
 
 class Ndjson(Shape, unittest.TestCase):
@@ -237,13 +238,135 @@ class AppleHealthFolder(Shape, unittest.TestCase):
         allergy = next(p for p in self.data["problems"] if p["type"] == "Allergy")
         self.assertEqual((allergy["name"], allergy["date"], allergy["status"]), ("Allergy: Penicillin (Hives, Itching)", "2024-05-20", "Active"))
         procs = {e["title"]: e for e in by_kind(self.data, "procedure")}
-        self.assertEqual(sorted(procs), ["Immunization: Influenza, seasonal, injectable", "Removal of skin lesion"])   # not the one not given
-        flu = self.data["details"][procs["Immunization: Influenza, seasonal, injectable"]["id"]]
-        self.assertEqual((flu["type"], flu["provider"], flu["report"]), ("result", "Avery Lin, RN", [["Body site", "Left arm", 0], ["Lot", "FICT-0042", 0]]))
+        self.assertEqual(sorted(procs), ["Removal of skin lesion"])
+        (flu,) = by_kind(self.data, "immunization")   # #179: a kind of its own; not the one not given
+        self.assertEqual((flu["title"], flu["sub"], flu["key"]), ("Influenza, seasonal, injectable", "Avery Lin, RN", "fhir:Immunization/L3M4"))
+        self.assertEqual(self.data["details"][flu["id"]], {"type": "immunization", "vaccine": "Influenza, seasonal, injectable",
+                                                          "site": "Left arm", "lot": "FICT-0042", "performer": "Avery Lin, RN",
+                                                          "status": "Completed", "src": "Avery Lin, RN"})
+        self.assertEqual((allergy["substance"], allergy["reactions"], allergy["criticality"]), ("Penicillin", ["Hives", "Itching"], "Low"))
         cut = procs["Removal of skin lesion"]
         self.assertEqual((cut["t"], cut["sub"]), ("2024-06-14T10:30:00+00:00", "Dr. Jamie Patel · Harbor View Hospital"))
         self.assertEqual(self.data["details"][cut["id"]]["report"], [["Body site", "Left forearm", 0], ["Notes", "Healed well", 0]])
         self.assertEqual(cut["key"], "fhir:Procedure/N5P6")
+
+
+class PortalEverything(Shape, unittest.TestCase):
+    """#179: a portal's bundle with immunizations, allergies, a procedure, pharmacy fills, appointments and imaging
+    studies, each into the kind C-CDA (tests/fixtures/importers/ccda/harbor-view-ccd, the same records), the claims'
+    fills or a planned Encounter gives it."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.out = fhir.parse(upload(os.path.join(FIX, "portal-everything")))
+        cls.data = cls.out["data"]
+        from server.importers import ccda
+        cls.ccda = ccda.parse(upload(os.path.join(ROOT, "tests", "fixtures", "importers", "ccda", "harbor-view-ccd")))["data"]
+
+    def test_contract(self):
+        from server import importers
+        self.assertDataShape(self.data)
+        self.assertEqual(importers.check(self.out), [])
+        self.assertEqual(self.out["warnings"], [])   # every kind in it is read now
+
+    def detail(self, e):
+        return self.data["details"][e["id"]]
+
+    def test_immunizations(self):
+        flu, hepb = sorted(by_kind(self.data, "immunization"), key=lambda e: e["title"], reverse=True)   # not the one not done
+        self.assertEqual(len(by_kind(self.data, "immunization")), 2)
+        self.assertEqual((flu["title"], flu["t"], flu["sub"], flu["key"]),
+                         ("Influenza vaccine", "2025-10-02T10:15:00-05:00", "Dose 1 · Sam Ortega, RN · Harbor View Clinic", "fhir:Immunization/hv-imm-flu"))
+        self.assertEqual(self.detail(flu), {"type": "immunization", "vaccine": "Influenza vaccine", "code": "150", "system": "CVX",
+                                            "dose": "1", "amount": "0.5 mL", "route": "Intramuscular", "site": "Left deltoid",
+                                            "lot": "FICT-FLU-11", "manufacturer": "Fictional Vaccines Inc.", "performer": "Sam Ortega, RN",
+                                            "where": "Harbor View Clinic", "status": "Completed", "src": "Harbor View Clinic"})
+        self.assertEqual((hepb["t"], self.detail(hepb)["dose"], self.detail(hepb).get("performer")), ("2025-04-10T12:00:00", "2 of 3", None))
+        self.assertEqual(by_kind(self.data, "procedure")[0]["title"], "Colonoscopy")   # immunizations are no procedures (#165 made them so)
+
+    def test_immunizations_take_the_shape_ccda_gives_them(self):
+        def shape(data):   # C-CDA writes a person's name "Sam Ortega RN", FHIR's text "Sam Ortega, RN"
+            return {e["title"]: (e["k"], e["t"], e["sub"].replace(",", ""),
+                                 {k: v.replace(",", "") if k == "performer" else v for k, v in data["details"][e["id"]].items()})
+                    for e in by_kind(data, "immunization")}
+        fh, cd = shape(self.data), shape(self.ccda)
+        self.assertEqual(fh["Influenza vaccine"], cd["Influenza vaccine"])
+        # where FHIR gives the series' doses it says "2 of 3"; C-CDA has the dose number alone
+        hb = cd["Hepatitis B vaccine"]
+        self.assertEqual(fh["Hepatitis B vaccine"], (hb[0], hb[1], "Dose 2 of 3 · Harbor View Clinic", {**hb[3], "dose": "2 of 3"}))
+
+    def test_allergies_as_ccda_reads_them(self):
+        by = {p["substance"]: p for p in self.data["problems"] if p["type"] == "Allergy"}
+        self.assertEqual(sorted(by), ["Peanuts", "Penicillin G"])   # not the refuted one
+        pcn = by["Penicillin G"]
+        self.assertEqual({k: v for k, v in pcn.items() if k not in ("key", "src", "date")},
+                         {k: v for k, v in self.ccda["problems"][0].items() if k not in ("key", "src", "date")})
+        self.assertEqual((pcn["name"], pcn["reactions"], pcn["severity"], pcn["criticality"], pcn["status"], pcn["code"], pcn["system"]),
+                         ("Allergy: Penicillin G (Hives)", ["Hives"], "Moderate", "High", "Active", "7980", "RxNorm"))
+        self.assertEqual(set(pcn), set(self.ccda["problems"][0]))
+        self.assertEqual((by["Peanuts"]["reactions"], by["Peanuts"]["severity"]), (["Anaphylaxis", "Rash"], "Severe"))   # the worst reaction's
+
+    def test_pharmacy_fills(self):
+        (fill,) = by_kind(self.data, "rx")   # not the cancelled one
+        self.assertEqual((fill["title"], fill["sub"], fill["key"]),
+                         ("Atorvastatin 20 mg tablet", "Pharmacy fill · Harbor View Pharmacy · 30-day supply", "fhir:MedicationDispense/hv-md-1"))
+        self.assertEqual(self.detail(fill), {"type": "med", "instructions": "Take 1 tablet by mouth daily", "status": "Completed",
+                                             "src": "Harbor View Pharmacy", "pharmacy": "Harbor View Pharmacy", "daysSupply": 30,
+                                             "quantity": "30 tablet", "prescriber": "Dr. Priya Lindqvist", "rxnorm": "617311"})
+        from server import medications   # #50: the fill sits under its prescription's medication, with its pharmacy and supply
+        (m,) = medications.history(json.loads(json.dumps(self.data)))   # as the app has them: detail ids as text
+        self.assertEqual(m["fills"], [{"t": "2025-09-01", "id": fill["id"], "title": "Atorvastatin 20 mg tablet",
+                                       "pharmacy": "Harbor View Pharmacy", "supply": 30}])
+
+    def test_appointments(self):
+        self.assertEqual(self.data["upcoming"], [{"t": "2027-02-12T09:30:00-06:00", "title": "Annual physical", "who": "Dr. Priya Lindqvist",
+                                                  "where": "Harbor View Clinic, Building B", "dx": "Yearly check-up", "procs": [],
+                                                  "key": "fhir:Appointment/hv-ap-1"}])   # not the fulfilled or cancelled ones
+        # the fields a planned Encounter's and an appointment typed in have (manual_items._upcoming)
+        self.assertEqual(set(self.data["upcoming"][0]), {"t", "title", "who", "where", "dx", "procs", "key"})
+
+    def test_imaging_studies(self):
+        x = {e["title"]: e for e in by_kind(self.data, "imaging")}
+        self.assertEqual(sorted(x), ["Chest X-ray, 2 views", "Knee X-ray, 3 views"])   # the chest study is its report's, once
+        knee = x["Knee X-ray, 3 views"]
+        self.assertEqual((knee["sub"], knee["key"]), ("Dr. Priya Lindqvist · Harbor View Clinic, Building B", "fhir:ImagingStudy/hv-is-knee"))
+        self.assertEqual(self.detail(knee)["report"], [["Modality", "X-ray", 0], ["Body site", "Knee", 0], ["Series", "1", 0], ["Images", "3", 0]])
+
+    def test_keys_stable_and_unique(self):
+        again = fhir.parse(upload(os.path.join(FIX, "portal-everything")))["data"]
+        self.assertEqual(keys(again), keys(self.data))
+        ks = [e["key"] for e in self.data["events"]]
+        self.assertEqual(len(ks), len(set(ks)))
+
+
+class HealthCard(unittest.TestCase):
+    """#179: a SMART Health Card's vaccination bundle (tests/shl_server.vaccination_bundle): no ids, only CVX codes,
+    a display for who gave it. Each dose is an immunization of its own, keyed by its day and code, the same on every
+    import."""
+
+    def parse(self):
+        sys.path.insert(0, os.path.join(ROOT, "tests"))
+        import shl_server
+        tmp = tempfile.mkdtemp(prefix="sanguity-shc-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        with open(os.path.join(tmp, "card.json"), "w", encoding="utf-8") as f:
+            json.dump(shl_server.vaccination_bundle(), f)
+        return fhir.parse(upload(tmp))
+
+    def test_doses(self):
+        out = self.parse()
+        from server import importers
+        self.assertEqual(importers.check(out), [])
+        imms = by_kind(out["data"], "immunization")
+        self.assertEqual([(e["t"], e["title"], e["sub"]) for e in imms],
+                         [("2025-01-15T12:00:00", "COVID-19 vaccine", "Fictional County Health Department"),
+                          ("2025-02-12T12:00:00", "COVID-19 vaccine", "Fictional County Health Department")])
+        self.assertEqual(out["data"]["details"][imms[0]["id"]],
+                         {"type": "immunization", "vaccine": "COVID-19 vaccine", "code": "207", "system": "CVX", "lot": "FICT-0001",
+                          "performer": "Fictional County Health Department", "status": "Completed",
+                          "src": "Fictional County Health Department"})
+        self.assertTrue(all(e["key"].startswith("fhir:h:") for e in imms) and imms[0]["key"] != imms[1]["key"])
+        self.assertEqual([e["key"] for e in by_kind(self.parse()["data"], "immunization")], [e["key"] for e in imms])
 
 
 def keys(data):

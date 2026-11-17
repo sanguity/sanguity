@@ -12,7 +12,8 @@
   const KIND = {visit: ["visit", "visits"], lab: ["lab draw", "lab draws"], imaging: ["imaging study", "imaging studies"],
                 procedure: ["procedure", "procedures"], study: ["report", "reports"], message: ["message", "messages"],
                 letter: ["letter", "letters"], document: ["document", "documents"], stay: ["hospital stay", "hospital stays"],
-                med: ["medication", "medications"], rx: ["pharmacy fill", "pharmacy fills"], claim: ["claim", "claims"]};
+                med: ["medication", "medications"], rx: ["pharmacy fill", "pharmacy fills"], claim: ["claim", "claims"],
+                immunization: ["immunization", "immunizations"]};   // #179
   const ORIGIN = {upload: "Uploaded", manual: "Typed in", sync: "Synced", dataset: "Loaded from the command line", build: "From the setup build"};
   const n = (k, [one, many]) => `${k.toLocaleString()} ${k === 1 ? one : many}`;
   const when = t => fmtDT(t * 1000);   // dates.js
@@ -43,6 +44,9 @@
     else if (c.events) out.push(n(c.events, ["event", "events"]));
     if (c.results) out.push(n(c.results, ["lab result", "lab results"]) + " in " + n(c.series || 0, ["test", "tests"]));
     if (c.documents) out.push(n(c.documents, ["attached file", "attached files"]));
+    if (c.allergies) out.push(n(c.allergies, ["allergy", "allergies"]));   // #179 (jobs.summarise)
+    if (c.problems) out.push(n(c.problems, ["problem or diagnosis", "problems or diagnoses"]));
+    if (c.upcoming) out.push(n(c.upcoming, ["upcoming appointment", "upcoming appointments"]));
     if (c.entries) out.push(n(c.entries, ["problem, appointment or weight", "problems, appointments or weights"]));
     if (c.watch_days) out.push(n(c.watch_days, ["day", "days"]) + " of watch data");
     if (c.workouts) out.push(n(c.workouts, ["workout", "workouts"]));

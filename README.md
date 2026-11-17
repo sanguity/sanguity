@@ -26,9 +26,9 @@ person's records appear in this repository.
 
 | Tab | What it shows |
 |---|---|
-| Overview | Key labs with sparklines, watch and scale summaries, active problems, upcoming visits, costs since a milestone |
+| Overview | Key labs with sparklines, watch and scale summaries, active problems, allergies, immunizations, upcoming visits, costs since a milestone |
 | Body and activity | Watch, sleep and smart-scale data: weight and body composition, sleep stages, steps and workouts, heart rate and HRV; blood glucose from a meter or a continuous glucose monitor (CGM), with time in the standard ranges |
-| Timeline | Every visit, stay, lab draw, report, message, document and claim on one zoomable timeline, with a searchable list; each medication as spans from its start through dose changes to its stop, with pharmacy fills marked |
+| Timeline | Every visit, stay, lab draw, report, immunization, message, document and claim on one zoomable timeline, with a searchable list; each medication as spans from its start through dose changes to its stop, with pharmacy fills marked |
 | Labs | Lab results against reference ranges, as charts over time (each with a table of its values), with procedures, imaging and your milestones marked, and saved views of the labs you chart together; or as a heatmap of every draw, one row per lab; a name filter beside the list of labs narrows either |
 | Costs | Insurance claims by month or year, type of care and provider, and what you actually paid out of pocket: typed in, exported or from claims, matched to claims, counted once, with HSA and FSA totals |
 
@@ -238,17 +238,17 @@ different; the file stays beside them as `data-before-v10.json`, and can be dele
 |---|---|
 | Epic MyChart exports (one primary, any number of others) | Lab and test results, imaging and procedure reports, messages, letters, documents, C-CDA visit records |
 | CareSpace / OncoEMR patient portal | Lab results, visits, medications, problems, vitals, documents |
-| C-CDA health summaries (XML), from most portals' "download my record" | Labs, visits, problems, medications, allergies, vitals, documents |
-| FHIR R4 (bundles and Blue Button / patient-access NDJSON), from portals, Apple Health's clinical records or insurers | Labs and vitals, visits and stays, conditions, medications, reports and imaging, documents; claims as CARIN Blue Button ExplanationOfBenefit |
+| C-CDA health summaries (XML), from most portals' "download my record" | Labs, visits, problems, medications, allergies (with their reactions and severity), immunizations, vitals, documents |
+| FHIR R4 (bundles and Blue Button / patient-access NDJSON), from portals, Apple Health's clinical records or insurers | Labs and vitals, visits and stays, upcoming appointments, conditions, allergies, immunizations, procedures, medications and pharmacy fills, reports and imaging studies, documents; claims as CARIN Blue Button ExplanationOfBenefit |
 | Connected sources: a portal's SMART on FHIR API (Epic first) or a health plan's patient-access API | The same FHIR records, pulled on a schedule after you sign in once |
-| SMART Health Links and Cards (pasted under Sources → Paste a Health Link) | The FHIR records the link holds, read as above |
+| SMART Health Links and Cards (pasted under Sources → Paste a Health Link) | The FHIR records the link holds, read as above: a vaccination card's immunizations, for one |
 | Lab results spreadsheets (CSV) and Quest or Labcorp lab report PDFs | Lab results with units, ranges and flags |
 | Insurance claims exports (`uhc`, `bcbs` formats, or an EOB spreadsheet (CSV)) | Claims, billed / paid / your share, denials |
 | Payments export (`payments.json`) | Out-of-pocket payments and premiums |
 | Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition, blood glucose (meter and CGM) |
 | Apple Health on iPhone, via the Health Auto Export app (or an uploaded `export.xml`) | The same, with HRV as Apple's SDNN |
 | Apple Health's whole export zip (Export All Health Data) | The above, and the Health app's Health Records from hospitals and clinics (FHIR files in `clinical-records/`): visits, labs, medications, problems, allergies, immunizations, procedures |
-| Typed in by hand (**Sources → Type records in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
+| Typed in by hand (**Sources → Type records in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, immunizations, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
 
 If your portal's export doesn't import, please open an issue with an anonymised sample (`tools/anonymise.py` makes
 one: see [docs/anonymising-exports.md](docs/anonymising-exports.md)), or write an importer for it:
@@ -354,7 +354,7 @@ Nothing is sent anywhere: no email or push.
 For records on paper, or from a portal that has no export, **Sources → Type records in** takes every kind of
 record Sanguity can import. Lab results go one per row, as in a spreadsheet (and rows copied from one can be pasted
 in); everything else has a form of its own, picked from **Add a record**: a visit, a hospital stay, a procedure, an
-imaging scan or a report, a medication or a pharmacy fill with its cost, a problem or diagnosis, an insurance claim,
+imaging scan or a report, a medication or a pharmacy fill with its cost, a problem or diagnosis, an immunization, an insurance claim,
 an out-of-pocket payment (with its receipt, and whether an HSA or FSA paid it), an upcoming appointment, vitals taken at a visit (blood pressure, heart rate, temperature,
 height, SpO2, breathing rate, weight), a weight or step count measured at home, a workout, or a letter or document
 with its PDF or picture attached. Dates take the forms a lab spreadsheet does (`2026-03-04`, `4 Mar 2026`, and

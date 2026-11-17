@@ -155,12 +155,40 @@ function renderOverview() {
       el("button", {class: "btn", text: "Open Costs →", onclick: () => { if (pm) setPeriod(msKey(pm)); pickTab("costs"); }}));   // the same period
     right.append(cc);
   }
-  // problem list
-  const probs =(DATA.problems || []).filter(p => (p.status || "").toLowerCase() === "active");
+  // problem list (allergies have a card of their own, under it: #179)
+  const probs =(DATA.problems || []).filter(p => (p.status || "").toLowerCase() === "active" && p.type !== "Allergy");
   if (probs.length) {
     const pc = el("div", {class: "card"}, el("h2", {text: `Active problem list (${probs.length})`}), listOf(probs.map(p => p.src)) ? el("p", {class: "hint", text: "As recorded by " + listOf(probs.map(p => p.src))}) : null);
     for (const p of probs) pc.append(el("div", {class: "ov-row", style: {cursor: "default"}}, el("span", {class: "n", style: {fontWeight: 450}, text: p.name}), el("span", {class: "r", text: p.date ? fmtD(dayTs(p.date)) : ""}), el("span", {})));
     left.append(pc);
+  }
+  // ---- allergies and immunizations (#179): as the records say them, from C-CDA, FHIR, a Health Card or typed in
+  const ended = s => /^(resolved|inactive|refuted|entered in error)$/i.test(s || "");
+  const allergies = (DATA.problems || []).filter(p => p.type === "Allergy" && !ended(p.status));
+  if (allergies.length) {
+    const ac = el("div", {class: "card", id: "ovAllergies"}, el("h2", {text: `Allergies and intolerances (${allergies.length})`}),
+      listOf(allergies.map(p => p.src)) ? el("p", {class: "hint", text: "As recorded by " + listOf(allergies.map(p => p.src))}) : null);
+    for (const p of allergies) ac.append(el("div", {class: "ov-row", style: {cursor: "default"}},
+      el("span", {class: "n", style: {fontWeight: 450}, text: p.substance || p.name.replace(/^Allergy: /, "")}),
+      el("span", {class: "r", text: p.date ? fmtD(dayTs(p.date)) : ""}), el("span", {}),
+      el("span", {class: "s", text: [(p.reactions || []).length ? "Reaction: " + p.reactions.join(", ") : "", p.severity ? "Severity: " + p.severity : "",
+        p.criticality ? "Criticality: " + p.criticality : "", p.status && p.status !== "Active" ? p.status : ""].filter(Boolean).join(" · ")})));
+    left.append(ac);
+  }
+  const imms = EV.filter(e => e.k === "immunization" && !e.hidden).sort((a, b) => b.ts - a.ts);
+  if (imms.length) {
+    const ic = el("div", {class: "card", id: "ovImmunizations"}, el("h2", {text: `Immunizations (${imms.length})`}),
+      el("p", {class: "hint", text: "Vaccines the records say were given, newest first"}));
+    for (const e of imms.slice(0, 8)) {
+      const d = DATA.details[e.id] || {};
+      ic.append(el("div", {class: "ov-row", ...pressable(() => openEvent(e))},
+        el("span", {class: "n"}, el("span", {class: "key", style: {display: "inline-block", width: "12px", height: "3px", borderRadius: "2px", background: CAT_OF[e.k].color, marginRight: "8px", verticalAlign: "middle"}}), e.title),
+        el("span", {class: "r", text: fmtD(e.ts)}), el("span", {}),
+        el("span", {class: "s", text: [d.dose ? "Dose " + d.dose : "", d.where || d.performer].filter(Boolean).join(" · ")})));
+    }
+    if (imms.length > 8) ic.append(el("button", {class: "btn", style: {marginTop: "8px"}, text: `All ${imms.length} on the Timeline →`, onclick: () => {
+      setPeriod("all"); state.cats = new Set(["immunization"]); pickTab("timeline"); }}));
+    left.append(ic);
   }
   // recent events
   const rc = el("div", {class: "card"}, el("h2", {text: "Recent"}));

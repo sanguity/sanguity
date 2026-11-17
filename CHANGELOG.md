@@ -335,6 +335,24 @@ Everything on `main` so far; it becomes the first tagged release.
   and is drawn alongside only when asked. A reading is a CGM's by its specimen when it says so, otherwise by how often
   its source reads (`server/glucose.py`). The performance budgets' big fixture has three years of meter readings and
   CGM days.
+- **Immunizations and allergies from FHIR records and SMART Health Links** (#179). Immunizations are a kind of record
+  of their own: the vaccine and its CVX code, the date, the dose number (and the series' doses where given), the
+  amount, route, site, lot, maker, who gave it and where, as recorded. They come from FHIR `Immunization` (portals'
+  exports, Apple's Health Records), from SMART Health Cards (a vaccination card's doses, which have
+  no ids, are keyed by their day and vaccine code so a card imported again is found as a duplicate; a dose with only
+  a CVX code is named in plain words for the common vaccines), from a C-CDA's Immunizations section (refused and
+  planned ones left out), and typed in (**Sources → Type records in → Immunization**). They have their own lane and
+  chip on the Timeline, in a colour of their own (3:1 against the page in light and dark), open in the drawer with
+  what the record says, and are listed on the Overview, newest first. Allergies from FHIR `AllergyIntolerance` and
+  C-CDA are read into one shape (`common.allergy`): the substance, its reactions, the severity and criticality and
+  the status as recorded, and the Overview lists them in an **Allergies and intolerances** card under the problem
+  list (no longer in it). The FHIR importer also reads `MedicationDispense` (pharmacy fills, beside their
+  prescription on the medication timeline, #50), booked `Appointment`s (upcoming visits) and `ImagingStudy` (an
+  imaging event, unless a report in the upload describes it), and `Procedure` stays a procedure. The import preview
+  and the import history list immunizations, allergies, other problems and upcoming appointments. Records imported
+  from FHIR on a build of `main` between #165 and this change have their immunizations as procedures; undo that import
+  under **Sources → Import history** and import the files again to have them as immunizations (no release had them
+  as procedures, so there is no migration). Connected sources don't pull these types yet.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

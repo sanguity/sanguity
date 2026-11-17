@@ -303,6 +303,52 @@ class Refuse(unittest.TestCase):
             ccda.parse({"u16.xml": p})
 
 
+class Immunizations(unittest.TestCase):
+    """#179: the Immunizations section, and allergies with their severity, criticality and status observations
+    (tests/fixtures/importers/ccda/harbor-view-ccd; test_importer_fhir compares it with the same records as FHIR)."""
+    HV = os.path.join(ROOT, "tests", "fixtures", "importers", "ccda", "harbor-view-ccd", "harbor-view-ccd.xml")
+
+    def setUp(self):
+        self.out = ccda.parse({"harbor-view-ccd.xml": self.HV})
+        self.d = self.out["data"]
+
+    def test_given_ones_only(self):
+        from server import importers as registry
+        self.assertEqual(registry.check(self.out), [])
+        imms = [e for e in self.d["events"] if e["k"] == "immunization"]   # not the refused or the planned one
+        self.assertEqual([(e["t"], e["title"], e["sub"], e["key"]) for e in imms],
+                         [("2025-04-10T12:00:00", "Hepatitis B vaccine", "Dose 2 · Harbor View Clinic", "ccda:2.16.840.1.113883.19.5.77777.3^IMM-HEPB-2"),
+                          ("2025-10-02T10:15:00-05:00", "Influenza vaccine", "Dose 1 · Sam Ortega RN · Harbor View Clinic",
+                           "ccda:2.16.840.1.113883.19.5.77777.3^IMM-FLU-2025")])
+        self.assertEqual(self.d["details"][imms[1]["id"]],
+                         {"type": "immunization", "vaccine": "Influenza vaccine", "code": "150", "system": "CVX", "dose": "1",
+                          "amount": "0.5 mL", "route": "Intramuscular", "site": "Left deltoid", "lot": "FICT-FLU-11",
+                          "manufacturer": "Fictional Vaccines Inc.", "performer": "Sam Ortega RN", "where": "Harbor View Clinic",
+                          "status": "Completed", "src": "Harbor View Clinic"})
+
+    def test_the_same_history_in_two_documents_is_one(self):
+        two = ccda.parse({"a.xml": self.HV, "b.xml": self.HV})["data"]
+        self.assertEqual(len([e for e in two["events"] if e["k"] == "immunization"]), 2)
+
+    def test_without_ids_keyed_by_day_and_code(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(self.HV, encoding="utf-8") as f:
+            text = f.read().replace('extension="IMM-FLU-2025"', 'nullFlavor="NI"').replace('<id root="2.16.840.1.113883.19.5.77777.3" extension="IMM-HEPB-2"/>', "")
+        p = os.path.join(tmp, "x.xml")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(text)
+        ks = [e["key"] for e in ccda.parse({"x.xml": p})["data"]["events"] if e["k"] == "immunization"]
+        self.assertTrue(all(k.startswith("ccda:") for k in ks) and len(set(ks)) == 2, ks)
+        self.assertEqual(ks, [e["key"] for e in ccda.parse({"x.xml": p})["data"]["events"] if e["k"] == "immunization"])
+
+    def test_allergy_parts_as_recorded(self):
+        (a,) = self.d["problems"]
+        self.assertEqual(a, {"name": "Allergy: Penicillin G (Hives)", "type": "Allergy", "date": "2010-01-01", "status": "Active",
+                             "src": "Harbor View Clinic", "substance": "Penicillin G", "reactions": ["Hives"], "severity": "Moderate",
+                             "criticality": "High", "code": "7980", "system": "RxNorm", "key": "ccda:2.16.840.1.113883.19.5.77777.5^AL-PCN"})
+
+
 class Contract(unittest.TestCase):
     def test_output_passes_the_registry_check(self):   # the shape the app stores (server/importers/__init__.py)
         from server import importers as registry

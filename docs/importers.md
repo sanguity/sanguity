@@ -96,7 +96,7 @@ The same object build.py and `demo/generate.py` write as data.json. Required key
 |---|---|
 | `id` | A number unique within this import. `details` and `costs` refer to it. |
 | `t` | When, as ISO 8601. Keep the source's offset when it has one; a bare date becomes noon (`common.iso`). |
-| `k` | Kind: `lab` (one draw: a day's results), `labitem` (one result in it, with `hidden: 1`), `imaging`, `study`, `procedure`, `visit`, `stay` (hospital stay), `med`, `document`, `letter`, `message`, `appt_msg`, `auto_msg`, `claim`, `rx` (pharmacy fill). |
+| `k` | Kind: `lab` (one draw: a day's results), `labitem` (one result in it, with `hidden: 1`), `imaging`, `study`, `procedure`, `immunization` (a vaccine given, #179), `visit`, `stay` (hospital stay), `med`, `document`, `letter`, `message`, `appt_msg`, `auto_msg`, `claim`, `rx` (pharmacy fill). |
 | `title`, `sub` | The line shown, and the smaller one under it (who, where, the source). |
 | `end` | Optional end time, for visits, stays and conversations that span time. |
 | `abn` | Optional count of abnormal results, which marks the event. |
@@ -115,7 +115,8 @@ An object keyed by event id (as a string in JSON). Each has a `type`:
 | `labday` | `ids`: the `labitem` events of that draw |
 | `visit` | `who`, `where`, `dx`, `procs` (list), `note`, `src` |
 | `stay` | `admit`, `discharge`, `where`, `how` (where the dates came from) |
-| `med` | `instructions`, `status`, `src`; when the record says: `end` (when it stopped), `prescriber`, `rxnorm` (its RxNorm code). The medication timeline (#50, `server/medications.py`) lays each medication's listings out as spans from these |
+| `med` | `instructions`, `status`, `src`; when the record says: `end` (when it stopped), `prescriber`, `rxnorm` (its RxNorm code). The medication timeline (#50, `server/medications.py`) lays each medication's listings out as spans from these. On an `rx` event (a pharmacy fill with no claim, such as a FHIR MedicationDispense, #179) also `pharmacy`, `daysSupply` (a number) and `quantity` |
+| `immunization` | **A vaccine given** (#179): `vaccine`, `src`, and what the record gives of `code` and `system` (`"CVX"` where it's a CVX code), `dose` (the dose number as recorded: `"2"`, or `"2 of 3"` with the series' doses), `amount` (`"0.5 mL"`), `route`, `site`, `lot`, `manufacturer`, `performer` (who gave it), `where`, `status`, `reason`, `note`. Build it with `common.immunization(vaccine, src, **fields)`, which gives the title, the sub line and this detail, so every source's look the same |
 | `conversation` | `subject`, `messages`: `[{"t", "from", "body", "att"}]` |
 | `letter` | `html` |
 | `claim` | `insurer`, `kind` (`Medical`/`Pharmacy`), `provider`, `claimId`, `billed`, `paid`, `owe`, `status`, `lines`, `visit` |
@@ -259,7 +260,7 @@ To add a layout:
 | Key | Shape |
 |---|---|
 | `upcoming` | `[{"t": "2026-12-01", "title", "who", "where", "dx", "procs"}]`: future appointments |
-| `problems` | `[{"name", "type", "date", "status", "src"}]`: the problem list |
+| `problems` | `[{"name", "type", "date", "status", "src"}]`: the problem list. An allergy or intolerance (#179) has type `"Allergy"`, name `"Allergy: <substance> (<reactions>)"` and, as recorded, `substance`, `reactions` (a list), `severity`, `criticality`, `code` and `system`: `common.allergy()` builds it, as the C-CDA and FHIR importers do |
 | `milestones` | `[{"date", "label", "primary": true}]`: named dates for chart markers. Since #39 they are a profile setting, changed on the Settings page; an import's are kept but not shown (an older export loaded back in whole brings them into its settings) |
 | `clinicWeights` | `[[time, pounds, where]]`: weights measured at visits, charted with the scale's |
 | `outOfPocket` | `{"payments": [{"d", "payee", "group", "amount", "account", "memo", "est", "key"?, "hsa"?, "receipt"?, "claim"?}], "exported", "range", "excluded", "balance"}`. Optional per payment (#55): `key` a source key, `hsa` `"HSA"` or `"FSA"`, `receipt` the key of a document event holding its receipt, `claim` the key of the claim event it paid. The served records add `oop` (server/oop.py): where each payment came from, its HSA/FSA tag, the claim it was matched to and what is counted; an import's own `oop` is ignored |
@@ -278,6 +279,8 @@ The pieces build.py uses, as plain functions (standard library only):
 | `resolve_name(name, unit, org, labs)` | The series to add a result to: the canonical one when units agree, `"<name> (<org>)"` when they don't |
 | `stay(admit, discharge, where, org, how, exact=None)` | A hospital stay event from real admit/discharge dates |
 | `inferred_stays(admissions, inpatient_ts, org)` | Hospital stays guessed from inpatient results, for sources without admit/discharge dates |
+| `immunization(vaccine, src, **fields)`, `dose_text(n, of)` | An immunization's title, sub line and detail (#179); a dose number as `"2"` or `"2 of 3"` |
+| `allergy(substance, reactions, severity, criticality, status, date, src, code, system)` | An allergy's entry of `problems` (#179) |
 
 The stay helpers return `{"t", "title", "sub", "detail", "end"}`; add an `id` and `"k": "stay"`. If a helper is
 missing something your format needs, add to it rather than copying it, and keep build.py's output unchanged

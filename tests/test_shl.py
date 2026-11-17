@@ -283,6 +283,26 @@ class Links(unittest.TestCase):
         finally:
             db.close()
 
+    def test_vaccination_health_card_imports_immunizations(self):   # #179: what Health Cards most often carry
+        payload = {"iss": self.srv.base + "/issuer", "nbf": 1_700_000_000,
+                   "vc": {"type": ["https://smarthealth.cards#health-card", "https://smarthealth.cards#immunization"],
+                          "credentialSubject": {"fhirVersion": "4.0.1", "fhirBundle": shl_server.vaccination_bundle()}}}
+        link = self.srv.share({"verifiableCredential": [shl.sign_card(payload, self.issuer_key, "issuer-1")]}, cty=shl.CARD)
+        r = self.imported(link)
+        self.assertEqual([c["signature"] for c in r["cards"]], ["verified"])
+        j = self.wait(r["job"], save=False)
+        self.assertEqual((j["state"], j["counts"]["kinds"]), ("preview", {"immunization": 2}), j)
+        self.assertEqual(self.wait(r["job"])["state"], "done")
+        data = self.robin.get(f"/api/profiles/{self.pid}/data").json()
+        imms = sorted((e for e in data["events"] if e["k"] == "immunization"), key=lambda e: e["t"])
+        self.assertEqual([(e["t"][:10], e["title"]) for e in imms], [("2025-01-15", "COVID-19 vaccine"), ("2025-02-12", "COVID-19 vaccine")])
+        self.assertEqual(data["details"][str(imms[1]["id"])],   # the shape the C-CDA and FHIR importers give one
+                         {"type": "immunization", "vaccine": "COVID-19 vaccine", "code": "207", "system": "CVX", "lot": "FICT-0002",
+                          "performer": "Fictional County Health Department", "status": "Completed", "src": "Fictional County Health Department"})
+        again = self.imported(self.srv.share({"verifiableCredential": [shl.sign_card(payload, self.issuer_key, "issuer-1")]}, cty=shl.CARD))
+        j = self.wait(again["job"], save=False)   # the same card again: both doses found by their keys
+        self.assertEqual((j["state"], j["new"], j["duplicates"]["kinds"]), ("preview", False, {"immunization": 2}), j)
+
     def test_health_card_with_an_invalid_signature_is_left_out(self):
         r = self.post("import", {"link": self.card_link(self.other_key, "2026-03-02"), "confirm": True})
         self.assertEqual(r.status_code, 422, r.text)

@@ -1,7 +1,9 @@
 """C-CDA importer: the HL7 "download my record" XML most US patient portals offer.
 
-Reads the header encounter and the Results, Vital Signs, Medications, Problems, Allergies and Encounters sections of
-one or more C-CDA documents (CCD summaries or per-visit records) into the data.json shape build.py writes.
+Reads the header encounter and the Results, Vital Signs, Medications, Problems, Allergies, Immunizations and Encounters
+sections of one or more C-CDA documents (CCD summaries or per-visit records) into the data.json shape build.py writes.
+Allergies and immunizations take the shape common.allergy and common.immunization give them, which the FHIR importer
+and hand entry share (#179).
 
 Lab series take their canonical names from lab-aliases.json (by LOINC code, then name or alias), so the same test
 from different sources lines up; names it doesn't know stay as reported, for the mapping step (#23).
@@ -16,6 +18,7 @@ import re
 import xml.etree.ElementTree as ET
 from datetime import date
 
+from . import common
 from .common import canonical_lab
 
 NAME = "ccda"
@@ -34,9 +37,15 @@ SECTIONS = {
     "problems": ({"2.16.840.1.113883.10.20.22.2.5.1", "2.16.840.1.113883.10.20.22.2.5"}, {"11450-4"}),
     "allergies": ({"2.16.840.1.113883.10.20.22.2.6.1", "2.16.840.1.113883.10.20.22.2.6"}, {"48765-2"}),
     "encounters": ({"2.16.840.1.113883.10.20.22.2.22.1", "2.16.840.1.113883.10.20.22.2.22"}, {"46240-8"}),
+    "immunizations": ({"2.16.840.1.113883.10.20.22.2.2.1", "2.16.840.1.113883.10.20.22.2.2"}, {"11369-6"}),   # #179
 }
 CODE_SYSTEMS = {"2.16.840.1.113883.6.1": "LOINC", "2.16.840.1.113883.6.96": "SNOMED CT", "2.16.840.1.113883.6.90": "ICD-10-CM",
-                "2.16.840.1.113883.6.103": "ICD-9-CM", "2.16.840.1.113883.6.88": "RxNorm", "2.16.840.1.113883.6.12": "CPT"}
+                "2.16.840.1.113883.6.103": "ICD-9-CM", "2.16.840.1.113883.6.88": "RxNorm", "2.16.840.1.113883.6.12": "CPT",
+                "2.16.840.1.113883.12.292": "CVX", "2.16.840.1.113883.6.69": "NDC"}
+CVX = "2.16.840.1.113883.12.292"
+# allergy entry templates (#179): reaction, severity, criticality and status observations
+REACTION, SEVERITY, CRITICALITY, ALLERGY_STATUS = ("2.16.840.1.113883.10.20.22.4.9", "2.16.840.1.113883.10.20.22.4.8",
+                                                   "2.16.840.1.113883.10.20.22.4.145", "2.16.840.1.113883.10.20.22.4.28")
 
 # vitals by LOINC: (series name as build.py names it, unit)
 VITALS = {"8302-2": ("Height", "in"), "8306-3": ("Height", "in"), "8310-5": ("Temperature", "°F"),
@@ -245,6 +254,7 @@ class _Out:
         self.labs, self.panel_votes = {}, collections.defaultdict(collections.Counter)
         self.problems, self.weights, self.warnings = [], {}, []
         self.seen_visits, self.seen_meds, self.seen_problems, self.seen_results = set(), set(), set(), set()
+        self.seen_immunizations = set()
         self.keys = set()
 
     def unique(self, key, *fields):
@@ -535,6 +545,10 @@ def _problems(doc, out):
             out.problems.append(p)
 
 
+def _has_template(el, root):
+    return any(x.get("root") == root for x in _all(el, "h:templateId"))
+
+
 def _allergies(doc, out):
     for obs, act in _problem_rows(doc, "allergies"):
         if obs.get("negationInd") == "true":        # "no known allergies"
@@ -543,20 +557,62 @@ def _allergies(doc, out):
         name = doc.name(agent) or _txt(_f(obs, "h:participant/h:participantRole/h:playingEntity/h:name"))
         if not name:
             continue
+        inner = [r for r in obs.iter(H + "observation") if r is not obs and r.get("classCode", "OBS") == "OBS"]
         reactions = [doc.name(_f(r, "h:value")) for r in _all(obs, "h:entryRelationship/h:observation")
-                     if r.get("classCode") == "OBS" and _f(r, "h:value") is not None
-                     and any(x.get("root") == "2.16.840.1.113883.10.20.22.4.9" for x in _all(r, "h:templateId"))]
+                     if r.get("classCode") == "OBS" and _f(r, "h:value") is not None and _has_template(r, REACTION)]
+
+        def said(root):   # #179: the severity, criticality or status observation's value, as recorded
+            return next((doc.name(_f(r, "h:value")) for r in inner if _has_template(r, root) and doc.name(_f(r, "h:value"))), "")
         st = _f(act, "h:statusCode")
-        status = PROBLEM_STATUS.get(st.get("code") if st is not None else "", "Active")
-        p = {"name": f"Allergy: {name}" + (f" ({', '.join(r for r in reactions if r)})" if any(reactions) else ""),
-             "type": "Allergy", "date": (_when(obs) or _when(act) or "")[:10] or None, "status": status, "src": doc.src}
+        status = said(ALLERGY_STATUS) or PROBLEM_STATUS.get(st.get("code") if st is not None else "", "Active")
+        agent_code = agent.get("code") if agent is not None and not agent.get("nullFlavor") else None
+        p = common.allergy(name, reactions, severity=said(SEVERITY), criticality=said(CRITICALITY), status=status,
+                           date=(_when(obs) or _when(act) or "")[:10] or None, src=doc.src, code=agent_code,
+                           system=CODE_SYSTEMS.get(agent.get("codeSystem"), agent.get("codeSystem")) if agent_code else None)
         key = (p["name"].lower(), p["date"])
         if key not in out.seen_problems:
             out.seen_problems.add(key)
-            agent_code = agent.get("code") if agent is not None else None
             p["key"] = out.unique(_idkey(act) or _hkey(p["date"], "allergy", agent_code or name),
                                   p["date"], "allergy", agent_code or name, p["name"])
             out.problems.append(p)
+
+
+def _immunizations(doc, out):
+    """#179: each immunization given (not refused, not planned) as an "immunization" event (common.immunization)."""
+    for sec in doc.sections("immunizations"):
+        for sa in _all(sec, "h:entry/h:substanceAdministration"):
+            st = _f(sa, "h:statusCode")
+            if sa.get("negationInd") == "true" or sa.get("moodCode", "EVN") != "EVN" or \
+                    (st is not None and st.get("code") in ("nullified", "cancelled", "aborted")):
+                continue
+            t = _when(sa)
+            prod = _f(sa, "h:consumable/h:manufacturedProduct")
+            mat = _f(prod, "h:manufacturedMaterial")
+            code = _f(mat, "h:code")
+            name = doc.name(code) or _txt(_f(mat, "h:name"))
+            if not t or not name:
+                continue
+            coded = [c for c in ([code] if code is not None else []) + _all(code, "h:translation") if c.get("code")]
+            cvx = next((c for c in coded if c.get("codeSystem") == CVX), coded[0] if coded else None)
+            if (t[:10], name.lower()) in out.seen_immunizations:   # the same history in two documents
+                continue
+            out.seen_immunizations.add((t[:10], name.lower()))
+            perf = _f(sa, "h:performer")
+            dq = _f(sa, "h:doseQuantity")
+            reason = [doc.name(_f(o, "h:value")) for o in _all(sa, "h:entryRelationship[@typeCode='RSON']/h:observation")]
+            rep = _f(sa, "h:repeatNumber")
+            title, sub, det = common.immunization(
+                name, doc.src, code=cvx.get("code") if cvx is not None else None,
+                system=CODE_SYSTEMS.get(cvx.get("codeSystem"), cvx.get("codeSystem")) if cvx is not None else None,
+                dose=rep.get("value") if rep is not None else None,
+                amount=" ".join(x for x in [dq.get("value"), dq.get("unit") if dq.get("unit") != "1" else ""] if x) if dq is not None else "",
+                route=doc.name(_f(sa, "h:routeCode")), site=doc.name(_f(sa, "h:approachSiteCode")),
+                lot=_txt(_f(mat, "h:lotNumberText")), manufacturer=_txt(_f(prod, "h:manufacturerOrganization/h:name")),
+                performer=_person(perf) if _f(perf, ".//h:assignedPerson") is not None else "",
+                where=_txt(_f(perf, "h:assignedEntity/h:representedOrganization/h:name")),
+                status=(st.get("code") or "").capitalize() if st is not None else "", reason="; ".join(x for x in reason if x))
+            out.add(t, "immunization", title, sub, det,
+                    key=_idkey(sa) or _hkey(t[:10], "immunization", (cvx.get("code") if cvx is not None else None) or name))
 
 
 def _visit(doc, out, enc):
@@ -629,6 +685,7 @@ def parse(files):
         _meds(doc, out)
         _problems(doc, out)
         _allergies(doc, out)
+        _immunizations(doc, out)
     series = []
     for name, s in out.labs.items():
         pts = sorted(s["pts"], key=lambda p: p[0])
@@ -654,7 +711,8 @@ def parse(files):
     series.sort(key=lambda s: (-s["n"], s["name"]))
     out.events.sort(key=lambda e: e["t"])
     if not (out.events or series or out.problems or out.weights):
-        out.warnings.append("The C-CDA document was read but held no visits, results, vitals, medications or problems.")
+        out.warnings.append("The C-CDA document was read but held no visits, results, vitals, medications, problems or "
+                            "immunizations.")
     data = {"events": out.events, "details": out.details, "labs": series, "costs": [], "problems": out.problems,
             "clinicWeights": sorted(out.weights.values())}
     return {"data": data, "warnings": out.warnings}

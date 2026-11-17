@@ -12,7 +12,7 @@ tag on the points ("Typed in") differs. A test name matched to a series on an ea
 remembered for hand entry, else for a spreadsheet) goes into that series here too, in the readback and when saved.
 
 items are the other kinds: {"kind": "visit" | "stay" | "procedure" | "imaging" | "study" | "med" | "rx" | "problem" |
-"claim" | "payment" | "upcoming" | "vitals" | "home" | "workout" | "document", <field>: <text>...}; manual_items.py
+"immunization" | "claim" | "payment" | "upcoming" | "vitals" | "home" | "workout" | "document", <field>: <text>...}; manual_items.py
 lists each kind's fields and what it becomes. Both lists are optional (a body with only "rows" works as it always
 has), and one save may hold any mix of them. A document's file isn't in the body (the API's bodies stay under nginx's
 64 KB cap): the page sends it through the upload routes first (routes_uploads.py: nginx's upload route and its

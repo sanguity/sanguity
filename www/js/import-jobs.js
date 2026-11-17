@@ -17,7 +17,7 @@
                 appt_msg: ["appointment message", "appointment messages"], auto_msg: ["automated message", "automated messages"],
                 letter: ["letter", "letters"], document: ["document", "documents"], stay: ["hospital stay", "hospital stays"],
                 med: ["medication", "medications"], rx: ["pharmacy fill", "pharmacy fills"], claim: ["claim", "claims"],
-                exercise: ["workout", "workouts"]};
+                exercise: ["workout", "workouts"], immunization: ["immunization", "immunizations"]};   // #179
 
   function node(tag, attrs, ...kids) {
     const e = document.createElement(tag);
@@ -58,6 +58,10 @@
     const items = kinds.filter(([k]) => k !== "labitem").map(([k, n]) => node("li", {text: plural(n, KIND[k] || [k, k])}));
     if (c.results) items.push(node("li", {text: plural(c.results, ["lab result", "lab results"]) + " in " + plural(c.series || 0, ["test", "tests"])}));
     if (c.documents) items.push(node("li", {text: plural(c.documents, ["attached file", "attached files"])}));
+    // #179: what goes to the profile's lists (jobs.summarise)
+    if (c.allergies) items.push(node("li", {text: plural(c.allergies, ["allergy", "allergies"])}));
+    if (c.problems) items.push(node("li", {text: plural(c.problems, ["problem or diagnosis", "problems or diagnoses"])}));
+    if (c.upcoming) items.push(node("li", {text: plural(c.upcoming, ["upcoming appointment", "upcoming appointments"])}));
     if (c.watch_days) items.push(node("li", {text: plural(c.watch_days, ["day of activity data", "days of activity data"])}));
     if (c.workouts && !(c.kinds || {}).exercise) items.push(node("li", {text: plural(c.workouts, KIND.exercise)}));
     return items;

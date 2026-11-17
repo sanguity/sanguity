@@ -17,6 +17,8 @@ drawer, Trends, Health and Costs show them as they show imported records. Every 
   rx         DATE DRUG pharmacy supply billed paid owe     an "rx" event (pharmacy fill); with an amount, a Pharmacy
              insurer                                       claim detail and its Costs row, as the claims importers
   problem    NAME status since type                       an entry of `problems`
+  immunization DATE VACCINE dose site lot who where       an "immunization" event (#179), with the detail the C-CDA
+                                                           and FHIR importers give one (common.immunization)
   claim      DATE PROVIDER-or-TITLE title BILLED paid owe  a "claim" event, its claim detail (with the claims
              status insurer claim category                 importers' `visit` hint) and its Costs row, filed under the
                                                            care category given or worked out by _claims.care_category
@@ -69,6 +71,7 @@ WATCH_META = {"weight": ("Weight", "lb", "Body"), "steps": ("Steps", "steps", "A
 
 LABEL = {"labs": "Lab result", "visit": "Visit", "stay": "Hospital stay", "procedure": "Procedure", "imaging": "Imaging",
          "study": "Report or study", "med": "Medication", "rx": "Pharmacy fill", "problem": "Problem or diagnosis",
+         "immunization": "Immunization",
          "claim": "Insurance claim", "payment": "Out-of-pocket payment", "upcoming": "Upcoming appointment",
          "vitals": "Vitals", "home": "Home measurement", "workout": "Workout", "document": "Document"}
 
@@ -80,6 +83,7 @@ FIELDS = {   # kind -> its fields; LONG ones may hold a note
     "med": ("name", "instructions", "start", "stop", "prescriber", "status"),
     "rx": ("date", "drug", "pharmacy", "supply", "billed", "paid", "owe", "insurer"),
     "problem": ("name", "status", "since", "type"),
+    "immunization": ("date", "vaccine", "dose", "site", "lot", "who", "where"),   # #179
     "claim": ("date", "provider", "title", "billed", "paid", "owe", "status", "insurer", "claim", "category"),
     "payment": ("date", "payee", "amount", "group", "account", "memo", "hsa", "upload", "file"),
     "upcoming": ("date", "time", "title", "who", "where"),
@@ -95,7 +99,7 @@ DEFAULTS = {"temp_unit", "height_unit", "weight_unit", "doctype", "status", "typ
 NEED = {"date": "a date", "admit": "the admission date", "discharge": "the discharge date", "start": "the date it was started",
         "title": "a title", "name": "a name", "drug": "the drug's name", "billed": "the amount billed", "payee": "who was paid",
         "amount": "the amount paid", "minutes": "how many minutes", "activity": "the activity", "upload": "a file",
-        "provider": "the provider or a title"}
+        "provider": "the provider or a title", "vaccine": "the vaccine's name"}
 CAPTION = {"admit_time": "admission time", "discharge_time": "discharge time", "bp": "blood pressure", "hr": "heart rate",
            "temp": "temperature", "spo2": "SpO2", "resp": "breathing rate", "owe": "amount you owe", "paid": "amount paid",
            "billed": "amount billed", "amount": "amount", "supply": "days' supply", "stop": "stop date", "since": "date",
@@ -345,6 +349,19 @@ def _problem(r):
     p = {"name": v["name"], "type": v["type"] or "Diagnosis", "date": since[:10] if since else None,
          "status": v["status"] or "Active", "src": SOURCE, "key": key}
     return {"problems": [p]}, _join(v["name"], p["status"], f"since {p['date']}" if p["date"] else ""), key
+
+
+def _immunization(r):   # #179
+    v = r.v
+    t = r.when("date")
+    r.need("vaccine")
+    if r.fields or not t:
+        return None, None, None
+    title, sub, det = common.immunization(v["vaccine"], SOURCE, dose=v["dose"], site=v["site"], lot=v["lot"],
+                                          performer=v["who"], where=v["where"])
+    key = _hkey("immunization", t[:10], v["vaccine"], v["dose"])
+    return ({"events": [_event(t, "immunization", title, sub, det, key)]},
+            _join(t[:10], v["vaccine"], f"dose {v['dose']}" if v["dose"] else "", v["where"]), key)
 
 
 def _claim(r):
