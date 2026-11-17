@@ -95,7 +95,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
     let lo = Infinity, hi = -Infinity;
     for (const l of layers) for (const p of l.data) {
       if (p[0] < a || p[0] > b) continue;
-      const vs = l.type === "bars" ? [l.keys.reduce((s, _, i) => s + (p[i + 1] || 0), 0)] : l.type === "band" ? [p[1], p[2]] : [p[1]];
+      const vs = l.type === "bars" ? [l.keys.reduce((s, _, i) => s + (p[i + 1] || 0), 0)] : l.type === "band" || l.type === "pairs" ? [p[1], p[2]] : [p[1]];
       for (const v of vs) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     }
     if (!isFinite(lo)) { svg.replaceChildren(el("svg:text", {x: w / 2, y: h / 2, "text-anchor": "middle", text: "No data in this period"})); return; }
@@ -129,6 +129,13 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
       } else if (l.type === "dots") {
         const r = l.r || (pts.length > 200 ? 1.8 : 3);
         for (const p of pts) g.push(el("svg:circle", {cx: x(p[0]), cy: y(p[1]), r, fill: l.hollow ? "var(--surface)" : l.color, stroke: l.hollow ? l.color : "var(--surface)", "stroke-width": l.hollow ? 1.5 : 1, opacity: l.opacity || 1}));
+      } else if (l.type === "pairs") {   // two values of one reading, [t, a, b, flag of a, flag of b] (#180): a line between two dots; a flagged value is ▲ / ▼ (#60)
+        for (const p of pts) {
+          const cx = x(p[0]);
+          if (p[1] != null && p[2] != null) g.push(el("svg:line", {x1: cx, x2: cx, y1: y(p[1]), y2: y(p[2]), stroke: l.color, "stroke-width": 1.5, opacity: .7}));
+          for (const i of [1, 2]) if (p[i] != null) g.push(p[i + 2] ? abnMark(cx, y(p[i]), p[i + 2]) : el("svg:circle", {cx, cy: y(p[i]), r: l.r || 3,
+            fill: l.hollow ? "var(--surface)" : l.color, stroke: l.hollow ? l.color : "var(--surface)", "stroke-width": l.hollow ? 1.5 : 1}));
+        }
       }
     }
     const cross = el("svg:line", {class: "cross", y1: T, y2: B, visibility: "hidden"});
@@ -191,6 +198,7 @@ function renderHealth() {
   tile("Steps", stIn != null ? Math.round(stIn).toLocaleString() : "–", "/ day", stPrev != null ? `${chg(stIn, stPrev, v => Math.round(v).toLocaleString())} vs previous period` : "", "#h-activity");
   const exIn = H.ex.filter(x => x.t >= a && x.t <= b);
   tile("Workouts", exIn.length, exIn.length === 1 ? "session" : "sessions", exIn.length ? `${Math.round(exIn.reduce((s, x) => s + x.min, 0) / 60 * 10) / 10} hours total` : "", "#h-activity");
+  vitalTiles(tile, a, b);   // the latest blood pressure (#180)
   box.append(tiles);
 
   const C = {w: "var(--c-lab)", clinic: "var(--muted)", fat: "var(--c-imaging)", lean: "var(--c-procedure)", deep: "var(--seq1)", rem: "var(--seq2)", light: "var(--seq3)", steps: "var(--c-lab)", hr: "var(--c-letter)", rest: "var(--c-message)"};
@@ -204,6 +212,7 @@ function renderHealth() {
     return [...m.values()].sort((p, q) => q.t - p.t); };
   const f1 = p => p ? p[1].toFixed(1) : "", f0 = p => p ? Math.round(p[1]).toLocaleString() : "";
   const weekOf = t => "Week of " + fmtD(t - 3 * DAY);
+  const vx = {a, b, long, legend, head};   // for the readings' cards (#180)
   // body
   const body = el("div", {class: "card", id: "h-body"}, head("Weight & body composition", "#h-body"),
     el("p", {class: "hint", text: "Scale readings, with weights taken at clinic visits filling the gaps. The line is a 14-day average."}));
@@ -300,7 +309,7 @@ function renderHealth() {
   if (state.tables.has("#h-heart")) {
     ht.append(chartTable(["Date", "Resting (bpm)", "Average (bpm)", "Low–high (bpm)", ...(H.hrv.length ? ["Heart rate variability (ms)"] : [])],
       byDay(rest, H.hr, H.hrv).map(({t, v: [r, h, hv]}) => [fmtD(t), f0(r), f0(h), h && h[2] != null ? `${Math.round(h[2])}–${Math.round(h[3])}` : "", ...(H.hrv.length ? [f0(hv)] : [])])));
-    return;
+    return renderVitals(box, vx);   // the readings' cards come after the heart's (#180)
   }
   ht.append(legend([[C.rest, "Resting"], [C.hr, "Daily average"], ["color-mix(in srgb, " + C.hr + " 30%, transparent)", "Daily low–high"]]));
   hChart(ht, a, b, {h: 210, fmtY: v => Math.round(v), label: "Heart rate", noun: "day", nav: H.hr.length ? H.hr : rest, layers: [
@@ -316,6 +325,109 @@ function renderHealth() {
     hChart(hv, a, b, {h: 140, label: "Heart rate variability", noun: "day", nav: H.hrv, layers: [{type: "line", data: rolling(H.hrv, 7), color: C.rest, gap: 10}, {type: "dots", data: H.hrv, color: C.rest, opacity: .4}],
       tip: t => { const p = nearest(H.hrv, t, .6); return p && {t: p[0], rows: [el("div", {class: "v", text: `${Math.round(p[1])} ms`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
   }
+  renderVitals(box, vx);
+}
+
+/* ---------------------------------------------------------------- readings at home and at visits (#180) */
+/* Blood pressure taken at home, as the phone apps send it (watch/receiver.py's bp_readings: [time, systolic,
+   diastolic, pulse, source, app]), beside the readings taken at visits: the records' systolic and diastolic series
+   (C-CDA, FHIR, typed-in vitals), paired by the minute they were taken. What the records and devices say only: no
+   categories or targets of Sanguity's own; a reading's own flag from a clinic's report shows, ▲ or ▼ (#60). The same
+   visit's reading from two imports, or a home reading also in the records (typed in as vitals), is shown once. */
+const vitalCode = s => String(s.loinc || (/^loinc:([\w-]+)/.exec(s.key || "") || [])[1] || "");
+const VITALS = {   // which of the records' series hold a vital, by LOINC code or name
+  sys: s => !s.watch && (vitalCode(s) === "8480-6" || /systolic/i.test(s.name || "")),
+  dia: s => !s.watch && (vitalCode(s) === "8462-4" || /diastolic/i.test(s.name || "")),
+};
+const minuteOf = t => Math.round(t / 6e4);
+const vitalSource = (s, p) => (p[6] && p[6] !== "Clinic" ? srcName(p[6]) : "") || importName(p.imp ?? s.imp) || "the records";
+/* the records' readings of a vital kept as one series or two (tests: one per value), paired by the minute:
+   [{t, v: [value of each], f: [its flag], src}], oldest first */
+function clinicReadings(tests) {
+  const by = new Map();
+  tests.forEach((test, i) => { for (const s of SERIES.filter(test)) for (const p of s.pts) {
+    if (typeof p[1] !== "number" || !isFinite(p[1]) || !isFinite(p.ts)) continue;
+    const k = minuteOf(p.ts); let r = by.get(k);
+    if (!r) by.set(k, r = {t: p.ts, v: [], f: [], src: ""});
+    if (r.v[i] == null) { r.v[i] = p[1]; r.f[i] = p[4] || ""; r.src = r.src || vitalSource(s, p); }
+  } });
+  return [...by.values()].sort((p, q) => p.t - q.t);
+}
+/* a clinic reading that is a home one (the same values within a minute) is left out, the home one saying so */
+function notHome(home, clinic) {
+  const at = new Map(home.map(h => [minuteOf(h.t), h]));
+  return clinic.filter(c => { for (const d of [0, -1, 1]) { const h = at.get(minuteOf(c.t) + d);
+    if (h && h.v.every((v, i) => v === c.v[i])) { h.also = c.src; return false; } } return true; });
+}
+function hVitals() {
+  const ok = r => Array.isArray(r) && isFinite(zParse(r[0]));
+  const home = ((WATCH || {}).bp_readings || []).filter(r => ok(r) && isFinite(r[1]) && isFinite(r[2]))
+    .map(r => ({t: zParse(r[0]), v: [+r[1], +r[2]], f: [], pulse: r[3] == null ? null : +r[3], src: r[4] ? `${r[4]} (${r[5] || "phone"})` : r[5] || "phone", home: true}))
+    .sort((p, q) => p.t - q.t);
+  return {bp: {home, clinic: notHome(home, clinicReadings([VITALS.sys, VITALS.dia]))}};
+}
+const bpText = r => `${r.v[0] != null ? fmtNum(r.v[0]) : "–"}/${r.v[1] != null ? fmtNum(r.v[1]) : "–"}`;
+const bpWhere = r => r.home ? `at home · ${r.src}${r.also ? ` · also in the records (${r.also})` : ""}` : `at a visit · ${r.src}`;
+const flagsOf = r => r.f.map((f, i) => f ? `${["Systolic", "Diastolic"][i]} ${flagWord(f)}` : "").filter(Boolean).join(", ");
+/* the tile: the latest reading in the period, at home or at a visit */
+function vitalTiles(tile, a, b) {
+  H.vit = H.vit || hVitals();
+  const {home, clinic} = H.vit.bp, all = [...home, ...clinic].filter(r => r.t >= a && r.t <= b).sort((p, q) => p.t - q.t);
+  if (!home.length && !clinic.length) return;
+  const last = all.at(-1);
+  tile("Blood pressure", last ? bpText(last) : "–", "mmHg", last ? `${all.length} reading${all.length === 1 ? "" : "s"} · latest ${last.home ? "at home" : "at a visit"}, ${fmtD(last.t)}` : "no readings in this period", "#h-bp");
+}
+function renderVitals(box, {a, b, long, legend, head}) {
+  H.vit = H.vit || hVitals();
+  const {home, clinic} = H.vit.bp;
+  if (home.length || clinic.length) bpCard(box, a, b, long, legend, head, home, clinic);
+}
+function bpCard(box, a, b, long, legend, head, home, clinic) {
+  const C = {home: "var(--c-lab)", clinic: "var(--ink2)"}, inP = r => r.t >= a && r.t <= b;
+  const card = el("div", {class: "card", id: "h-bp", tabindex: -1}, head("Blood pressure", "#h-bp"),
+    el("p", {class: "hint", text: long ? "Readings taken at home as weekly averages, the band running from diastolic up to systolic; readings taken at visits one by one, systolic above diastolic."
+      : "Each reading's two pressures, systolic above diastolic, joined by a line: taken at home, and at visits."}));
+  box.append(card);
+  const all = [...home, ...clinic].filter(inP).sort((p, q) => p.t - q.t);
+  if (state.tables.has("#h-bp")) {   // the list of readings: when, both pressures, pulse, where and from what
+    card.append(chartTable(["Date and time", "Systolic (mmHg)", "Diastolic (mmHg)", "Pulse (bpm)", "Where", "Source"],
+      [...all].reverse().map(r => [fmtDT(r.t), [r.v[0] != null ? fmtNum(r.v[0]) : "", r.f[0]], [r.v[1] != null ? fmtNum(r.v[1]) : "", r.f[1]],
+        r.pulse != null ? fmtNum(r.pulse) : "", r.home ? "Home" : "Clinic visit", r.src + (r.also ? `; also in the records (${r.also})` : "")])));
+    return;
+  }
+  card.append(legend([[C.home, long ? "At home, weekly average" : "At home", 1], [C.clinic, "At a visit", 1]]));
+  if (clinic.some(r => r.f.some(Boolean))) card.querySelector(".hint").append(" ▲ or ▼ marks a value the clinic's report flagged as high or low.");
+  const wk = long ? weekly(home.map(r => [r.t, r.v[0], r.v[1]])) : [];
+  const homePts = home.map(r => [r.t, r.v[0], r.v[1], "", "", r]), clinicPts = clinic.map(r => [r.t, r.v[0], r.v[1], r.f[0], r.f[1], r]);
+  const nav = [...(long ? wk : homePts), ...clinicPts].sort((p, q) => p[0] - q[0]);
+  hChart(card, a, b, {h: 220, fmtY: v => Math.round(v), label: long ? "Blood pressure, home readings by week" : "Blood pressure", noun: "reading", nav, layers: long ? [
+    {type: "band", data: wk, color: C.home},
+    {type: "line", data: wk.map(p => [p[0], p[1]]), color: C.home, width: 1.6},
+    {type: "line", data: wk.map(p => [p[0], p[2]]), color: C.home, width: 1.6},
+    {type: "pairs", data: clinicPts, color: C.clinic, hollow: true, r: 3.5}] : [
+    {type: "pairs", data: homePts, color: C.home, r: homePts.length > 200 ? 2 : 3},
+    {type: "pairs", data: clinicPts, color: C.clinic, hollow: true, r: 3.5}],
+    tip: t => { const p = nearest(nav, t, long ? 4 : 2); if (!p) return null; const r = p[5];
+      if (!r) return {t: p[0], rows: [el("div", {class: "v", text: `${Math.round(p[1])}/${Math.round(p[2])} mmHg`}), el("div", {class: "s", text: `Week of ${fmtD(p[0] - 3 * DAY)} · average of the readings at home`})]};
+      return {t: p[0], rows: [el("div", {class: "v", text: `${bpText(r)} mmHg`}), el("div", {class: "s", text: `${fmtDT(r.t)} · ${bpWhere(r)}`}),
+        r.pulse != null ? el("div", {class: "s", text: `Pulse ${fmtNum(r.pulse)} bpm`}) : null, flagsOf(r) ? el("div", {class: "s", text: flagsOf(r)}) : null]}; }});
+  // the latest readings, listed (all of them with Table)
+  const recent = all.slice(-5).reverse();
+  if (recent.length) card.append(el("h3", {class: "sub", style: {marginTop: "10px"}, text: all.length > 5 ? `Latest 5 of ${all.length} readings in this period (Table lists them all)` : "Readings in this period"}),
+    el("ul", {class: "vital-list"}, ...recent.map(r => el("li", {}, el("b", {text: `${bpText(r)} mmHg`}), r.pulse != null ? ` · pulse ${fmtNum(r.pulse)}` : "",
+      flagsOf(r) ? el("span", {class: "abn", text: ` · ${flagsOf(r)}`}) : "", el("span", {class: "muted", text: ` · ${fmtDT(r.t)} · ${bpWhere(r)}`})))));
+}
+/* on Labs, under a vital's chart: the same vital at home, on Body and activity */
+function vitalLink(s) {
+  if (!WATCH || !(VITALS.sys(s) || VITALS.dia(s))) return null;
+  H = H || hData(); H.vit = H.vit || hVitals();
+  if (!H.vit.bp.home.length) return null;
+  return el("p", {class: "hint vital-link"}, "Readings taken at home are beside these on ",
+    el("a", {href: "#health", text: "Body and activity → Blood pressure", onclick: ev => { ev.preventDefault(); openVital("#h-bp"); }}), ".");
+}
+function openVital(id) {
+  closeDrawer(); pickTab("health");
+  requestAnimationFrame(() => { const c = $(id); if (c) { c.scrollIntoView({behavior: smoothly(), block: "start"}); c.focus({preventScroll: true}); } });
 }
 
 /* ---------------------------------------------------------------- blood glucose (#181) */

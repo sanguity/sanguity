@@ -472,6 +472,34 @@ if BIG:   # blood glucose (#181), in the shape server/glucose.py writes: a meter
              "in": ("CGM readings 70–180 mg/dL", "%"), "gt180": ("CGM readings above 180 mg/dL", "%")}
     watch["metrics"] += [{"key": "glucose_" + k, "name": GMETA[k][0], "unit": GMETA[k][1], "group": "Glucose", "pts": sorted(glu[k].items())} for k in GMETA]
 
+VITALS = []   # --big: the vitals taken at visits, as lab series (below)
+if BIG:   # ---- --big: blood pressure at home and at visits (#180), with a generator of its own so nothing above changes
+    from zoneinfo import ZoneInfo
+    RB, NY, UTC = random.Random(END.toordinal() + 180), ZoneInfo("America/New_York"), ZoneInfo("UTC")
+    bp, days = [], {}
+    d = FIRST
+    while d <= END:
+        for h in (7, 21):   # a cuff at home: some mornings, fewer evenings
+            if RB.random() < (0.3 if h == 7 else 0.08):
+                t = datetime(d.year, d.month, d.day, h, RB.randint(0, 59), tzinfo=NY)
+                s, di = round(RB.gauss(126, 6)), round(RB.gauss(80, 4))
+                bp.append([t.astimezone(UTC).isoformat(), s, di, round(RB.gauss(68, 5)) if RB.random() < 0.8 else None, "Fictional Cuff", "Health Connect"])
+                days.setdefault(d.isoformat(), []).append((s, di))
+        d += timedelta(days=1)
+    watch["bp_readings"] = bp
+    for k, name, f in (("bp_sys", "systolic, daily average", lambda x: sum(s for s, _ in x) / len(x)),
+                       ("bp_dia", "diastolic, daily average", lambda x: sum(di for _, di in x) / len(x)),
+                       ("bp_sys_max", "systolic, daily highest", lambda x: max(s for s, _ in x)),
+                       ("bp_dia_max", "diastolic, daily highest", lambda x: max(di for _, di in x))):
+        watch["metrics"].append({"key": k, "name": "Blood pressure, " + name, "unit": "mmHg", "group": "Blood pressure",
+                                 "pts": [[day, round(f(x), 2)] for day, x in sorted(days.items())]})
+    watch["metrics"].append({"key": "bp_n", "name": "Blood pressure readings", "unit": "readings", "group": "Blood pressure",
+                             "pts": [[day, len(x)] for day, x in sorted(days.items())]})
+    visits = [t for t, _, org in clinic_weights if org == CLINIC]
+    for name, loinc, mu in (("Blood pressure, systolic", "8480-6", 130), ("Blood pressure, diastolic", "8462-4", 83)):
+        pts = [[t, v, None, None, "", str(v)] for t in visits for v in [round(RB.gauss(mu, 6))]]
+        VITALS.append({"name": name, "unit": "mmHg", "panel": "Vitals", "loinc": loinc, "key": f"loinc:{loinc}", "n": len(pts), "pts": pts, "txt": []})
+
 
 # ------------------------------------------------------------------ demo PDF (two plain pages)
 def pdf(path, pages):
@@ -497,6 +525,7 @@ def pdf(path, pages):
 # ------------------------------------------------------------------ write
 events.sort(key=lambda e: e["t"])
 lab_series = [{"name": n, "unit": LABS[n][0], "panel": LABS[n][1], "n": len(p), "pts": sorted(p), "txt": []} for n, p in series.items()]
+lab_series += VITALS
 lab_series.sort(key=lambda s: (-s["n"], s["name"]))
 data = {"built": at(END, 6), "source": "Sanguity demo data (fictional)", "events": events, "details": details, "labs": lab_series,
         "upcoming": upcoming, "problems": problems, "costs": costs,

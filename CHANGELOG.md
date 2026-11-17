@@ -363,6 +363,14 @@ Everything on `main` so far; it becomes the first tagged release.
   Settings → Labs and ranges once, for every profile (schema version 30), and an export from before still loads them.
   The records page has helpers for what's built on them next (age on a day in years and months, the sex for ranges,
   the height in effect on a day; `www/js/person.js`, `server/person.py`).
+- **Home blood pressure beside clinic readings** (#180): the watch receiver keeps each blood pressure reading a
+  home cuff writes to Health Connect or Apple Health (time, both pressures, the pulse when the cuff gives one), from
+  either phone app, a reading sent again or by both apps counted once, and sums each day up (readings, average,
+  highest). Body and activity has a blood pressure card: each reading's two pressures as a pair of points, at home
+  and at visits told apart (the visits' from the records' systolic and diastolic series), weekly averages over a long
+  period, the latest readings listed with their time and source, Chart | Table and the keyboard like the other
+  charts; a clinic reading keeps its report's flag, and nothing else is judged. A blood pressure chart on Labs links
+  to it. The receiver's store adds a pulse column to its readings as it loads an older one.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

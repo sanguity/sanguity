@@ -209,6 +209,79 @@ def add_immunization_records(build):
         json.dump(data, f)
 
 
+def receiver():
+    """watch/receiver.py, loaded as a module (it folds the fictional phone uploads below as it folds real ones)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("watch_receiver", os.path.join(ROOT, "watch", "receiver.py"))
+    rx = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(rx)
+    return rx
+
+
+def home_readings():
+    """Fictional home blood pressure (#180), morning and some evenings from July to mid-November 2026, local times in
+    New York: [(local time, systolic, diastolic, pulse or None)]. Made by formula, so the same on every run."""
+    from datetime import date, timedelta
+    out, d, i = [], date(2026, 7, 1), 0
+    while d <= date(2026, 11, 14):
+        if i % 6 != 5:   # a few mornings missed
+            out.append((f"{d}T07:{(i * 7) % 40 + 5:02d}:00", 120 + (i * 7) % 11 + (4 if i % 9 == 0 else 0), 76 + (i * 5) % 7, None if i % 4 == 3 else 62 + i % 9))
+        if i % 3 == 0:
+            out.append((f"{d}T21:{(i * 3) % 30 + 10:02d}:00", 116 + (i * 5) % 9, 74 + (i * 3) % 6, 70 + i % 5))
+        d += timedelta(days=1)
+        i += 1
+    return out
+
+
+def add_vitals_records(build, watch_dir):
+    """Home blood pressure from both phone apps (#180), folded by the receiver itself into the demo's watch summary:
+    through Health Auto Export until mid-September (some uploads sent twice, overlapping), then Life Dashboard
+    Companion, each upload sent again; and blood pressure taken at visits, in the records as systolic and diastolic
+    series, one of them flagged high by its report and one the same as a home reading (typed in as vitals too)."""
+    import hashlib, tempfile as tf
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    rx = receiver()
+    rx.DATA = tf.mkdtemp(prefix="rx-", dir=TMP)
+    store = rx.Store()
+    ny = ZoneInfo("America/New_York")
+    at = lambda local: datetime.fromisoformat(local).replace(tzinfo=ny)
+    rows = home_readings()
+    iphone, android = [r for r in rows if r[0] < "2026-09-15"], [r for r in rows if r[0] >= "2026-09-15"]
+
+    def send(p):
+        b = json.dumps(p).encode()
+        store.ingest(json.loads(b), hashlib.sha256(b).hexdigest())
+    for chunk in (iphone[:60], iphone[50:], iphone[50:]):   # overlapping, and one sent twice
+        send({"data": {"metrics": [{"name": "blood_pressure", "units": "mmHg", "data": [
+            {"date": at(t).strftime("%Y-%m-%d %H:%M:%S %z"), "systolic": s, "diastolic": d, "source": "Fictional Cuff",
+             **({"pulse": p} if p is not None else {})} for t, s, d, p in chunk]}]}})
+    for seq in (1, 2):
+        send({"source": "health_connect", "timezone": "America/New_York", "sequence": seq, "timestamp": "2026-11-15T12:00:00Z",
+              "blood_pressure": [{"uuid": f"fictional-bp-{t}", "time": at(t).astimezone(ZoneInfo("UTC")).isoformat(), "systolic": s, "diastolic": d,
+                                  "source": "Fictional Cuff", **({"pulse": p} if p is not None else {})} for t, s, d, p in android]})
+    got = store.summary()
+    path = os.path.join(watch_dir, "daily.json")
+    with open(path, encoding="utf-8") as f:
+        watch = json.load(f)
+    watch["metrics"] += [m for m in got["metrics"] if m["key"] in rx.VITALS_META]
+    watch["bp_readings"] = got["bp_readings"]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(watch, f)
+    same = next(r for r in rows if r[0].startswith("2026-10-20T07"))   # a home reading typed in as vitals as well
+    visits = [("2025-01-14T10:20:00-05:00", 126, 80, "", ""), ("2025-06-10T10:05:00-04:00", 131, 84, "", ""),
+              ("2026-08-12T10:15:00-04:00", 138, 86, "", ""), ("2026-10-06T10:10:00-04:00", 146, 92, "H", "H"),
+              (at(same[0]).isoformat(), same[1], same[2], "", "")]
+    data_path = os.path.join(build, "data.json")
+    with open(data_path, encoding="utf-8") as f:
+        data = json.load(f)
+    for name, loinc, i in (("Blood pressure, systolic", "8480-6", 1), ("Blood pressure, diastolic", "8462-4", 2)):
+        pts = [[v[0], v[i], None, None, v[i + 2], str(v[i]), "Typed in" if v[0] == at(same[0]).isoformat() else "Lakeside Family Medicine"] for v in visits]
+        data["labs"].append({"name": name, "key": f"loinc:{loinc}", "loinc": loinc, "unit": "mmHg", "panel": "Vitals", "n": len(pts), "pts": pts, "txt": []})
+    with open(data_path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
+
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
@@ -222,6 +295,7 @@ def start_app():
     add_range_records(os.path.join(TMP, "build"))
     add_glucose_watch(os.path.join(TMP, "watch"))
     add_immunization_records(os.path.join(TMP, "build"))   # #179
+    add_vitals_records(os.path.join(TMP, "build"), os.path.join(TMP, "watch"))
     sys.path.insert(0, ROOT)
     import uvicorn
     from server import atrest, db as dbm, main, profiles, security
@@ -930,7 +1004,7 @@ def main():
             js("state.tables.clear(); switchTab('health')")
             settle(500)
             check("Body and activity (#60): every card with charts has Chart | Table",
-                  js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart"])
+                  js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp"])
             page.focus("#h-body svg")
             page.keyboard.press("Home")
             settle(150)
@@ -938,10 +1012,10 @@ def main():
             check("…its charts step from the keyboard too, with the hover's crosshair and tooltip", re.match(r"Weight: \d+ readings from", hk[0] or "")
                   and hk[1] == "block" and " lb" in hk[2] and hk[3] == "visible", hk)
             page.keyboard.press("Escape")
-            for k in ("#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart"):
+            for k in ("#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp"):
                 page.click(f"{k} .view-seg button:text-is('Table')")
                 settle(200)
-            ht = js("['#h-body', '#h-glucose', '#h-sleep', '#h-activity', '#h-heart'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
+            ht = js("['#h-body', '#h-glucose', '#h-sleep', '#h-activity', '#h-heart', '#h-bp'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
             check("…Table shows each card's values as a table, a row per day or week", all(n > 0 for n in ht), ht)
             # Costs: both charts
             js("state.tables.clear(); switchTab('costs')")
@@ -975,7 +1049,7 @@ def main():
             bad = []
             for theme in ("light", "dark"):
                 js("t => { document.documentElement.dataset.theme = t; }", theme)
-                for tab, keys in (("labs", ["Hemoglobin"]), ("heatmap", ["#hm"]), ("health", ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart"]), ("costs", ["#costBars", "#paidCum"])):
+                for tab, keys in (("labs", ["Hemoglobin"]), ("heatmap", ["#hm"]), ("health", ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp"]), ("costs", ["#costBars", "#paidCum"])):
                     for table in (False, True):
                         js("([keys, on]) => { state.tables.clear(); if (on) keys.forEach(k => state.tables.add(k)); }", [keys, table])
                         js("t => t === 'heatmap' ? switchTab('labs', 'heatmap') : t === 'labs' ? switchTab('labs', 'chart') : switchTab(t)", tab)
@@ -1078,6 +1152,104 @@ def main():
             check("…a period without glucose says so, with the last reading's date", "No glucose readings in this period (the last on Nov 14, 2026)." in none[0]
                   and re.match(r"Glucose – ?mg/dL last Nov 14, 2026", none[1]) and "Time in ranges" not in none[0], none)
             js("[state.preset, state.from, state.to] = window._was181; renderHealth()")
+
+            # ---- home blood pressure beside clinic readings (#180): the receiver folded fictional uploads from both phone
+            # apps (add_vitals_records: overlapping and repeated ones) into the summary, each reading once; Body and activity
+            # charts them with the records' systolic and diastolic series, home and clinic told apart, one clinic reading
+            # flagged by its report and one that is also a home reading shown once; the readings listed, Chart | Table and
+            # the keyboard like the other charts; Labs' blood pressure links there; 1400 and 375 px, light and dark, axe clean
+            want_home = len(home_readings())
+            js("window._was180 = [state.preset, state.from, state.to, state.tab]; state.tables.clear(); setRange(dayTs('2026-08-01'), dayTs('2026-10-31')); switchTab('health')")
+            settle(500)
+            bp = js("""(() => { const c = document.getElementById('h-bp'), s = c && c.querySelector('svg');
+                return c && {readings: (WATCH.bp_readings || []).length, apps: [...new Set(WATCH.bp_readings.map(r => r[5]))].sort(), home: H.vit.bp.home.length,
+                  clinic: H.vit.bp.clinic.length, label: s.getAttribute('aria-label'), legend: c.querySelector('.legend').textContent,
+                  pairs: [...s.querySelectorAll('line[stroke]')].filter(l => l.getAttribute('stroke') !== 'var(--axis)').length,
+                  flagged: s.querySelectorAll('path.pt.abn').length, hollow: s.querySelectorAll('circle[fill="var(--surface)"]').length,
+                  also: H.vit.bp.home.filter(h => h.also).map(h => [isoDay(h.t), h.also]),
+                  inPeriod: [...H.vit.bp.home, ...H.vit.bp.clinic].filter(r => r.t >= state.from && r.t <= state.to).length,
+                  list: [...c.querySelectorAll('.vital-list li')].map(l => l.textContent), tile: [...document.querySelectorAll('#view-health .tile')].find(t => t.textContent.startsWith('Blood pressure'))?.textContent}; })()""")
+            check("blood pressure (#180): every home reading from both phone apps once, though uploads overlapped and came twice",
+                  bp and bp["readings"] == want_home == bp["home"] and bp["apps"] == ["Apple Health", "Health Connect"], bp and [bp["readings"], want_home, bp["apps"]])
+            check("…and the receiver's daily summary: readings, average and highest each day",
+                  js("['bp_sys', 'bp_dia', 'bp_sys_max', 'bp_dia_max', 'bp_n'].every(k => WATCH.metrics.some(m => m.key === k && m.pts.length > 100))")
+                  and js("WATCH.metrics.find(m => m.key === 'bp_n').pts.reduce((s, p) => s + p[1], 0)") == want_home)
+            check("…on Body and activity one chart with both pressures as paired points, at home and at visits told apart, the clinic's readings from the records' systolic and diastolic series",
+                  bp and bp["clinic"] == 4 and "At home" in bp["legend"] and "At a visit" in bp["legend"] and bp["pairs"] == bp["inPeriod"] > 30
+                  and bp["hollow"] >= 2 and re.match(r"Blood pressure: \d+ readings from", bp["label"] or ""), bp and {k: bp[k] for k in ("clinic", "legend", "pairs", "inPeriod", "hollow", "label")})
+            check("…a clinic reading's own flag shows (▲, its report said high); nothing is judged otherwise",
+                  bp and bp["flagged"] == 2 and "flagged as high or low" in page.inner_text("#h-bp .hint")
+                  and not re.search(r"(?i)\b(normal|elevated|hypertension|stage|target|goal)\b", page.inner_text("#h-bp")), bp and bp["flagged"])
+            check("…a home reading also in the records (typed in as vitals) is shown once, saying so",
+                  bp and bp["also"] == [["2026-10-20", "Typed in"]], bp and bp["also"])
+            check("…the latest readings listed with their time and source, and a tile with the latest",
+                  bp and len(bp["list"]) == 5 and all("mmHg" in l and "Fictional Cuff (Health Connect)" in l for l in bp["list"])
+                  and bp["tile"] and "mmHg" in bp["tile"] and "latest at home" in bp["tile"], bp and [bp["list"][:2], bp["tile"]])
+            page.focus("#h-bp svg")
+            page.keyboard.press("End")
+            settle(150)
+            tipped = js("tip.innerText")
+            page.keyboard.press("Home")
+            settle(150)
+            first = js("tip.innerText")
+            check("…its readings step from the keyboard, the tooltip saying the pressures, when and where",
+                  "mmHg" in tipped and "at home · Fictional Cuff" in tipped and first != tipped, [first, tipped])
+            page.keyboard.press("Escape")
+            js("setRange(dayTs('2026-10-01'), dayTs('2026-10-10'))")
+            settle(300)
+            page.focus("#h-bp svg")
+            for _ in range(40):   # to the visit on 6 October
+                if "at a visit" in js("tip.innerText") and "Systolic ▲ High" in js("tip.innerText"):
+                    break
+                page.keyboard.press("ArrowRight")
+                settle(60)
+            check("…a visit's reading says where it came from and its flags", "at a visit · Lakeside Family Medicine" in js("tip.innerText")
+                  and "Systolic ▲ High, Diastolic ▲ High" in js("tip.innerText"), js("tip.innerText"))
+            page.keyboard.press("Escape")
+            page.click("#h-bp .view-seg button:text-is('Table')")
+            settle(200)
+            tb = js("""(() => { const t = document.querySelector('#h-bp table.data'); return t && {heads: [...t.querySelectorAll('thead th')].map(h => h.textContent),
+                rows: [...t.querySelectorAll('tbody tr')].map(r => [...r.children].map(td => td.textContent))}; })()""")
+            n_in = js("[...H.vit.bp.home, ...H.vit.bp.clinic].filter(r => r.t >= state.from && r.t <= state.to).length")
+            check("…Table lists every reading in the period: time, both pressures, pulse, where and source; the flags in words",
+                  tb and tb["heads"] == ["Date and time", "Systolic (mmHg)", "Diastolic (mmHg)", "Pulse (bpm)", "Where", "Source"] and len(tb["rows"]) == n_in
+                  and any(r[4] == "Clinic visit" and r[1].endswith("▲ High") and r[5] == "Lakeside Family Medicine" for r in tb["rows"])
+                  and any(r[4] == "Home" and r[3] for r in tb["rows"]), tb and [tb["heads"], len(tb["rows"]), n_in, tb["rows"][:2]])
+            js("state.tables.clear(); applyPreset('all')")
+            settle(400)
+            wk = js("[document.querySelector('#h-bp svg').getAttribute('aria-label'), document.querySelectorAll('#h-bp svg circle').length, document.querySelectorAll('#h-bp svg path[opacity=\"0.16\"]').length]")
+            check("…over a long period the home readings are weekly averages, a band from diastolic to systolic, the visits' readings still one by one",
+                  wk[0].startswith("Blood pressure, home readings by week:") and wk[2] == 1 and 0 < wk[1] <= 2 * 5, wk)
+            # from Labs: the blood pressure series link to the chart
+            js("state.sel = new Set(['Blood pressure, systolic']); switchTab('labs', 'chart')")
+            settle(400)
+            link = page.locator("#charts .chart .vital-link a")
+            check("…Labs' blood pressure chart says the home readings are on Body and activity", link.count() == 1
+                  and "Readings taken at home are beside these" in page.inner_text("#charts .chart .vital-link"))
+            link.click()
+            settle(600)
+            check("…and its link opens Body and activity at the blood pressure chart",
+                  js("state.tab") == "health" and js("document.activeElement.id") == "h-bp"
+                  and js("(r => r.top < innerHeight && r.bottom > 0)(document.getElementById('h-bp').getBoundingClientRect())"), [js("state.tab"), js("document.activeElement.id")])
+            js("setRange(dayTs('2026-09-25'), dayTs('2026-10-31')); switchTab('health')")
+            bad, axe_bp = [], []
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    for table in (False, True):
+                        js("on => { state.tables.clear(); if (on) state.tables.add('#h-bp'); renderHealth(); }", table)
+                        settle(300)
+                        page.locator("#h-bp").scroll_into_view_if_needed()
+                        if width == 375:
+                            bad += phone_fits(page, f"blood pressure {'table' if table else 'chart'} ({theme})")
+                        axe_bp += axe_check(page, f"blood pressure {'table' if table else 'chart'}, {width} px, {theme}")[0]
+            check("…the chart, its list and its table fit 375 px, and axe-core finds nothing serious at 1400 and 375 px, light and dark",
+                  not bad and not axe_bp, (bad + axe_bp)[:6])
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("state.tables.clear(); [state.preset, state.from, state.to] = window._was180; state.sel = new Set(window._was60[0]); switchTab(window._was180[3]); save()")
 
             # ---- each result against its own range (#58): the demo's creatinine (0.7–1.3 mg/dL) with two results from
             # an outside lab (0.6–1.2, add_range_records): the chart's band steps with each result's range and its
@@ -3363,8 +3535,9 @@ def main():
             check("key labs: the preview shows the Overview's tiles", p0 == [t for t, _ in before], p0[:4])
             page.click("#sec-overview button[aria-label='Remove Magnesium']")   # the demo has just the 12 default labs
             check("…a lab taken out leaves the preview", "Magnesium" not in js(preview))
-            check("…and is suggested among the profile's most-measured labs",
-                  js("[...document.querySelectorAll('#sec-overview .set-sugg .chip')].map(b => b.getAttribute('aria-label'))") == ["Add Magnesium"])
+            check("…and is suggested among the profile's most-measured labs",   # first: the blood pressure taken at visits (#180) has fewer
+                  js("[...document.querySelectorAll('#sec-overview .set-sugg .chip')].map(b => b.getAttribute('aria-label'))")
+                  == ["Add Magnesium", "Add Blood pressure, diastolic", "Add Blood pressure, systolic"])
             page.click("#sec-overview .set-sugg .chip")
             check("…to put back", js(preview) == p0, js(preview)[-2:])
             grips = page.locator("#sec-overview .set-grip")
