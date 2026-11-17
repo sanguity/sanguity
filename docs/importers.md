@@ -301,7 +301,8 @@ hospitals. Those modules, and `common.py`, must stay standard-library only.
 - **Deterministic output.** The same upload gives the same records: no `datetime.now()` in the records, sort what
   you collect from dicts or folders.
 - **Never put real records in the repo.** Fixtures are made up: fictional people, providers and values, like
-  `demo/`. Change every name, date and number in anything derived from a real export.
+  `demo/`. Change every name, date and number in anything derived from a real export: `tools/anonymise.py` does
+  most of it ([docs/anonymising-exports.md](anonymising-exports.md)), and you check the rest by hand.
 
 ## Fixtures and tests
 

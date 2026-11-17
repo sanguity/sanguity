@@ -299,6 +299,14 @@ Everything on `main` so far; it becomes the first tagged release.
   draws ten years of watch data in a tenth of a second instead of two (eight on a phone); Costs lists 200 amounts at
   a time under its out-of-pocket card, with **Show 200 more**, like its claims; and a big profile's own export
   imports again (it was "not recognised" once its payments filled the first 64 KB).
+- **An anonymised sample of an export, for an importer** (#34): `tools/anonymise.py` copies an export (a file, a
+  folder or a zip: C-CDA, FHIR, Apple Health, Epic MyChart, CareSpace, lab and claims CSV, claims JSON) with the
+  names of people and organisations, identifiers, addresses, phone numbers and emails made up (the same everywhere
+  they appear), every date moved back by one random number of whole weeks, birth dates kept to the year, notes and
+  messages replaced and documents swapped for placeholders, and keeps the files, fields, codes, units, values and
+  ranges, so the copy still imports. It says what it changed and which kept text to read before sharing, and
+  refuses PDFs, unsafe zips and XML entities. [docs/anonymising-exports.md](docs/anonymising-exports.md) is honest
+  about what it misses; CONTRIBUTING and the portal-export issue form point to it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

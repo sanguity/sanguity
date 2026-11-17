@@ -250,8 +250,9 @@ different; the file stays beside them as `data-before-v10.json`, and can be dele
 | Apple Health's whole export zip (Export All Health Data) | The above, and the Health app's Health Records from hospitals and clinics (FHIR files in `clinical-records/`): visits, labs, medications, problems, allergies, immunizations, procedures |
 | Typed in by hand (**Sources → Type records in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
 
-If your portal's export doesn't import, please open an issue with an anonymised sample, or write an importer for
-it: [docs/importers.md](docs/importers.md) explains how (one Python file and a fictional test fixture).
+If your portal's export doesn't import, please open an issue with an anonymised sample (`tools/anonymise.py` makes
+one: see [docs/anonymising-exports.md](docs/anonymising-exports.md)), or write an importer for it:
+[docs/importers.md](docs/importers.md) explains how (one Python file and a fictional test fixture).
 
 ### Connecting a phone (watch and scale data)
 
@@ -670,6 +671,8 @@ www/                index.html (markup), css/app.css, js/*.js (one plain script 
                     import.html, connect.html and providers.html open its sections); manifest.webmanifest, icons/ and sw.js (install as a
                     phone app; tools/make_icons.py draws the icons)
 demo/               Fictional demo dataset generator (--big: ten years of records, for the performance budgets)
+tools/              anonymise.py (an anonymised copy of an export, to share as a sample: docs/anonymising-exports.md),
+                    screenshots.py, make_icons.py, build_directory.py
 tests/              API and upload tests, a headless browser check, the performance budgets (docs/performance.md)
                     and a smoke test of the Docker install (all run in CI)
 *.example.json      Templates for sources.json and settings.json (a new build-linked profile's first settings;

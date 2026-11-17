@@ -14,8 +14,15 @@ body:
 
         ### How to anonymise a sample
 
-        Work on a **copy** of the export, never the original. Keep a few records of each kind (a lab panel, a
-        visit, a document, a claim), not the whole history. Then, in every file, replace:
+        **Use `tools/anonymise.py`** (one Python file, no dependencies, nothing sent anywhere):
+        `python3 anonymise.py MyExport.zip` writes `MyExport-anonymised.zip` beside it, with names, identifiers,
+        addresses and notes replaced and every date moved, in a copy that still imports.
+        [docs/anonymising-exports.md](https://github.com/sanguity/sanguity/blob/main/docs/anonymising-exports.md)
+        explains what it catches and what it doesn't. **It can miss things, free text above all: look through the
+        copy before you attach it**, using the checks below.
+
+        Doing it by hand instead? Work on a **copy** of the export, never the original. Keep a few records of each
+        kind (a lab panel, a visit, a document, a claim), not the whole history. Then, in every file, replace:
 
         - **Names**: yours, family members', and anyone else's (use made-up ones, like "Alex Example");
         - **Dates of birth**, and move the other dates too (shift them all by the same number of days, so the order
