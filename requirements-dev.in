@@ -3,3 +3,6 @@
 -r requirements.in
 httpx
 playwright
+# axe-core (Deque, MPL-2.0) bundled as axe.min.js, for the accessibility checks in tests/browser_check.py (#202). Only
+# its script is used, injected into pages under test; the app itself never loads it.
+axe-playwright-python==0.1.8

@@ -93,7 +93,7 @@ function renderOverview() {
   if (!out.length) oc.append(el("div", {class: "empty", style: {padding: "16px"}, text: "Everything measured recently is within its reference range."}));
   for (const o of out.slice(0, 14)) {
     const st = statusOf(o.last);
-    oc.append(el("div", {class: "ov-row", onclick: () => goSeries(o.s.name)},
+    oc.append(el("div", {class: "ov-row", ...pressable(() => goSeries(o.s.name))},
       el("span", {class: "n", text: nice(o.s.name)}), el("span", {class: "v"}, `${o.last[5] || fmtNum(o.last[1])} ${o.s.unit} `, el("span", {class: "st " + st.cls, text: st.text}), ucOrig(o.s, o.last) ? el("span", {class: "orig", text: " reported " + ucOrig(o.s, o.last)}) : null),
       el("span", {class: "r", text: refText(o.last)}),
       el("span", {class: "s", text: o.streak > 1 ? `${st.cls === "hi" ? "High" : "Low"} on the last ${o.streak} draws, since ${fmtD(o.since)}` : `First out-of-range result, ${fmtD(o.last.ts)}`})));
@@ -165,7 +165,7 @@ function renderOverview() {
   // recent events
   const rc = el("div", {class: "card"}, el("h2", {text: "Recent"}));
   const recent = EV.filter(e => !e.hidden && e.k !== "auto_msg").sort((a, b) => b.ts - a.ts).slice(0, 10);
-  for (const e of recent) rc.append(el("div", {class: "ov-row", onclick: () => openEvent(e)},
+  for (const e of recent) rc.append(el("div", {class: "ov-row", ...pressable(() => openEvent(e))},
     el("span", {class: "n"}, el("span", {class: "key", style: {display: "inline-block", width: "12px", height: "3px", borderRadius: "2px", background: CAT_OF[e.k].color, marginRight: "8px", verticalAlign: "middle"}}), e.title),
     el("span", {class: "r", text: fmtD(e.ts)}), el("span", {}),
     e.sub ? el("span", {class: "s", text: e.sub}) : null));

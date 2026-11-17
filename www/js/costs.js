@@ -70,7 +70,7 @@ function renderCosts() {
     pc.append(el("div", {class: "tablewrap", style: {maxHeight: "360px"}}, el("table", {class: "data"},
       el("thead", {}, el("tr", {}, ["Drug", "Fills", "First", "Last", "Insurance paid", "Your share"].map(h => el("th", {text: h})))),
       el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; renderCosts(); $("#costTable").scrollIntoView({behavior: smoothly()}); }},
-        el("td", {text: x.key}), el("td", {text: x.n}), el("td", {text: fmtD(dayTs(x.first))}), el("td", {text: fmtD(dayTs(x.last))}),
+        el("td", {}, el("button", {class: "cell-btn", type: "button", text: x.key})), el("td", {text: x.n}), el("td", {text: fmtD(dayTs(x.first))}), el("td", {text: fmtD(dayTs(x.last))}),
         el("td", {text: usd(x.paid)}), el("td", {text: usd(x.owe)})))))));
     box.append(pc);
   }
@@ -81,9 +81,9 @@ function renderCosts() {
     (!costState.q || `${r.title} ${r.prov} ${r.cat} ${r.ins}`.toLowerCase().includes(costState.q.toLowerCase())));
   const k = costState.sort, dir = costState.dir;
   list.sort((a, b) => (typeof a[k] === "number" ? (a[k] - b[k]) : String(a[k]).localeCompare(String(b[k]))) * dir);
-  const q = el("input", {class: "search", type: "search", placeholder: "Search service, provider, drug…", value: costState.q});
+  const q = el("input", {class: "search", type: "search", placeholder: "Search service, provider, drug…", "aria-label": "Search claims", value: costState.q});
   q.oninput = () => { clearTimeout(window._cq); window._cq = setTimeout(() => { costState.q = q.value; renderCosts(); const n = $("#costTable input.search"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
-  const sel = el("select", {class: "search", style: {minWidth: "0"}, onchange: e => { costState.cat = e.target.value; renderCosts(); }}, el("option", {value: "", text: "All types of care"}), ...cats.map(c => el("option", {value: c, text: c, selected: c === costState.cat || null})));
+  const sel = el("select", {class: "search", "aria-label": "Type of care", style: {minWidth: "0"}, onchange: e => { costState.cat = e.target.value; renderCosts(); }}, el("option", {value: "", text: "All types of care"}), ...cats.map(c => el("option", {value: c, text: c, selected: c === costState.cat || null})));
   const den = el("label", {style: {display: "inline-flex", gap: "6px", alignItems: "center", fontSize: "13px", color: "var(--ink2)"}},
     el("input", {type: "checkbox", checked: costState.deniedOnly || null, onchange: e => { costState.deniedOnly = e.target.checked; renderCosts(); }}), "Denied only");
   // with filters on: what they keep, with Reset filters, and the totals for the claims shown (#190, filters.js)
@@ -96,10 +96,15 @@ function renderCosts() {
     el("p", {class: "hint", text: totals}));
   const cols = [["d", "Date"], ["title", "Service / drug"], ["prov", "Provider"], ["cat", "Type"], ["billed", "Billed"], ["paid", "Ins. paid"], ["owe", "Your share"], ["status", "Status"]];
   tc.append(el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data"},
-    el("thead", {}, el("tr", {}, cols.map(([key, h]) => el("th", {style: {cursor: "pointer", whiteSpace: "nowrap"}, text: h + (costState.sort === key ? (costState.dir > 0 ? " ▲" : " ▼") : ""),
-      onclick: () => { costState.dir = costState.sort === key ? -costState.dir : (["d", "billed", "paid", "owe"].includes(key) ? -1 : 1); costState.sort = key; renderCosts(); }})))),
+    // a column's sort is a button in its header, its order said by aria-sort; a claim opens from its name, a button, or
+    // anywhere on its row by pointer (#202: by keyboard too, and said as what they are)
+    el("thead", {}, el("tr", {}, cols.map(([key, h], i) => el("th", {scope: "col", style: {whiteSpace: "nowrap"}, "aria-sort": costState.sort === key ? (costState.dir > 0 ? "ascending" : "descending") : null},
+      el("button", {class: "cell-btn", type: "button", text: h + (costState.sort === key ? (costState.dir > 0 ? " ▲" : " ▼") : ""), onclick: () => {
+        costState.dir = costState.sort === key ? -costState.dir : (["d", "billed", "paid", "owe"].includes(key) ? -1 : 1); costState.sort = key; renderCosts();
+        $(`#costTable th:nth-child(${i + 1}) button`)?.focus(); }}))))),
     el("tbody", {}, list.slice(0, costState.limit).map(r => el("tr", {class: "link", onclick: () => openEvent(byId.get(r.id))},
-      el("td", {text: r.d}), el("td", {text: r.title.length > 60 ? r.title.slice(0, 59) + "…" : r.title}), el("td", {text: r.prov}), el("td", {text: r.cat}),
+      el("td", {text: r.d}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: r.title.length > 60 ? r.title.slice(0, 59) + "…" : r.title})),
+      el("td", {text: r.prov}), el("td", {text: r.cat}),
       el("td", {text: usd(r.billed)}), el("td", {text: usd(r.paid)}), el("td", {class: r.owe > 0 ? "" : "", text: usd(r.owe)}),
       el("td", {class: isDenied(r) ? "abn" : "", text: (r.status || "").replace(/_/g, " ").toLowerCase()})))))));
   if (list.length > costState.limit) tc.append(el("button", {class: "btn", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - costState.limit)} more`, onclick: () => { costState.limit += 200; renderCosts(); }}));
@@ -303,17 +308,19 @@ function renderPaid(box, claimRows, periodLabel) {
   const shown = Math.max(paidState.limit, list.findIndex(r => oopKey(r) === paidState.open) + 1);   // the open one too
   tw.append(el("div", {class: "tablewrap", style: {maxHeight: "420px"}}, el("table", {class: "data oop"},
     el("thead", {}, el("tr", {}, ["Date", "Paid to", "For", "Where the number came from", "HSA/FSA", "Amount"].map(h => el("th", {text: h})))),
-    el("tbody", {}, list.slice(0, shown).map(r => el("tr", {class: "link" + (r.dup != null ? " oop-dup" : ""), "data-oop": oopKey(r), tabindex: 0,
-      "aria-expanded": paidState.open === oopKey(r) ? "true" : "false",
-      onclick: () => toggle(r), onkeydown: ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(r); } }},
-      el("td", {style: {whiteSpace: "nowrap"}, text: fmtD(dayTs(r.d))}), el("td", {text: r.who || "—"}),
+    // a row opens its editor under the table, from anywhere on it by pointer; its date is the button that says whether
+    // it's open (#202: a table's row can't be expanded itself)
+    el("tbody", {}, list.slice(0, shown).map(r => el("tr", {class: "link" + (r.dup != null ? " oop-dup" : ""), "data-oop": oopKey(r), onclick: () => toggle(r)},
+      el("td", {style: {whiteSpace: "nowrap"}}, el("button", {class: "cell-btn", type: "button", "aria-expanded": paidState.open === oopKey(r), text: fmtD(dayTs(r.d)),
+        onclick: ev => { ev.stopPropagation(); toggle(r); $(`#paidTable tr[data-oop="${oopKey(r)}"] .cell-btn`)?.focus({preventScroll: true}); }})),
+      el("td", {text: r.who || "—"}),
       el("td", {title: r.memo || null, text: r.type === "claim" ? `${r.group} · ${r.claim.title}` : r.group + (r.claim ? " · paid a claim" : "")}),
       el("td", {text: srcText(r) + (r.receipt != null ? " · receipt" : "")}),
       el("td", {text: r.hsa || ""}),
       el("td", {style: {fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: r.amount < 0 ? "var(--good-text)" : null},
         text: (r.amount < 0 ? `${usd2(-r.amount)} refund` : usd2(r.amount)) + (r.dup != null ? " · counted once" : "")})))))));
   if (list.length > shown) tw.append(el("button", {class: "btn", type: "button", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - shown)} more`,
-    onclick: () => { paidState.limit = shown + 200; renderCosts(); $(`#paidTable tbody tr:nth-child(${shown + 1})`)?.focus(); }}));   // the first one added
+    onclick: () => { paidState.limit = shown + 200; renderCosts(); $(`#paidTable tbody tr:nth-child(${shown + 1}) .cell-btn`)?.focus(); }}));   // the first one added
   const open = paidState.open && rows.find(r => oopKey(r) === paidState.open);
   if (open) tw.append(oopEditor(open));
   card.append(tw);
@@ -326,7 +333,7 @@ function drawPaidCum(svg, claimRows, payRows, settled) {
   const t0 = day(pts[0].d), t1 = Math.max(day(pts[pts.length - 1].d), t0 + 864e5 * 30);
   const series = [[], []], acc = [0, 0];
   for (const p of pts) { acc[p.s] += p.a; series[p.s].push([day(p.d), acc[p.s]]); }
-  const w = Math.max(320, svg.parentElement.clientWidth - 32), narrow = w < 560;
+  const w = Math.max(240, svg.parentElement.clientWidth - 32), narrow = w < 560;   // 240: fits 320 px (#202)
   const h = 210, L = 56, R = w - (narrow ? 10 : 150), T = narrow ? 34 : 10, B = h - 24;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h);
   const max = Math.max(1, acc[0], acc[1]) * 1.08;
@@ -375,7 +382,8 @@ function barList(card, groups, onPick, active) {
   const max = Math.max(1, ...groups.map(g => g.paid + g.owe));
   for (const g of groups) {
     const w1 = g.paid / max * 100, w2 = g.owe / max * 100;
-    card.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto", background: active === g.key ? "var(--hover)" : null}, onclick: () => onPick(g.key),
+    card.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto", background: active === g.key ? "var(--hover)" : null}, ...pressable(() => onPick(g.key)),
+      "aria-pressed": active === undefined ? null : active === g.key,   // a type of care picked filters the claims (#202)
       title: `${g.key}: ${g.n} claims · billed ${usd(g.billed)} · insurance paid ${usd(g.paid)} · your share ${usd(g.owe)}`},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}),
       el("span", {class: "v", text: usd(g.paid + g.owe)}),
@@ -401,7 +409,7 @@ function drawCostBars(svg, rows, by = "month") {
   if (!rows.length) { svg.replaceChildren(); return; }
   const months = costBuckets(rows, by), yearly = by === "year";
   const keys = [...months.keys()];
-  const w = Math.max(320, svg.parentElement.clientWidth - 32), h = 220, L = 64, R = w - 10, T = 10, B = h - 24;
+  const w = Math.max(240, svg.parentElement.clientWidth - 32), h = 220, L = 64, R = w - 10, T = 10, B = h - 24;   // 240: fits 320 px (#202)
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h);
   const max = Math.max(1, ...[...months.values()].map(m => m.paid + m.owe)) * 1.08;
   const slot = (R - L) / keys.length, bw = Math.max(2, Math.min(24, slot * .7));

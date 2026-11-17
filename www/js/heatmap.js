@@ -66,7 +66,7 @@ function renderHeatmap() {
     const ry = yOf.get(s.name);
     const nm = nice(s.name), edit = canRename();   // an editor renames a row by its name (#38, rename.js)
     g.push(el("svg:text", {class: "row" + (edit ? " renamable" : ""), x: LW - 8, y: ry + rowH - 4, "text-anchor": "end",
-      ...(edit ? {"data-rename": "lab", "data-key": s.name, tabindex: 0, role: "button", "aria-label": `Rename ${nm}`} : {})},
+      ...(edit ? {"data-rename": "lab", "data-key": s.name} : {})},   // clicked; by keyboard, the ✎ in the heatmap's table or a chart (#202: the grid is one picture)
       nm.length > (LW < 150 ? 17 : 28) ? nm.slice(0, LW < 150 ? 16 : 27) + "…" : nm,
       el("svg:title", {text: renamedTitle("lab", s.name) + (edit ? " · click to rename" : "") + rowRanges(s)})));
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(dayKey(p.ts), p);
@@ -101,7 +101,6 @@ function renderHeatmap() {
       pointSources(s, p) ? el("div", {class: "s", text: "From " + pointSources(s, p)}) : null], ev);   // with any linked as the same (#96)
   };
   svg.onpointerleave = hideTip;
-  svg.onkeydown = ev => { const d = ev.target.dataset || {}; if (d.rename && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); openRename(ev.target, "lab", d.key); } };
   svg.onclick = ev => {
     const d = ev.target.dataset || {};
     if (d.rename) { openRename(ev.target, "lab", d.key); return; } const k = d.k || (d.day && isoDay(+d.day)); if (!k) return;
@@ -127,7 +126,7 @@ function hmTable(rows, cols) {
       tb.append(el("tr", {class: "grp"}, el("th", {scope: "rowgroup", colspan: cols.length + 1, text: panel})));
     }
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(isoDay(p.ts), p);
-    tb.append(el("tr", {}, el("th", {scope: "row", title: renamedTitle("lab", s.name) + rowRanges(s), text:`${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`}),
+    tb.append(el("tr", {}, el("th", {scope: "row", title: renamedTitle("lab", s.name) + rowRanges(s)}, `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`, renameButton("lab", s.name)),
       ...cols.map(([k]) => {
         const p = byDay.get(k); if (!p) return el("td", {});
         const lv = hmLevel(p[1], p[2], p[3]), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it

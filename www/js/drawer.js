@@ -28,8 +28,8 @@ function setWide(on) { drawer.classList.toggle("wide", on); drawerCover(); $("#d
 $("#dwide").onclick = () => setWide(!drawer.classList.contains("wide"));
 try { if (localStorage.getItem("ht-wide")) setWide(true); } catch (e) {}
 addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
-function docFrame(html, h = 420) {
-  const f = el("iframe", {class: "doc", sandbox: "allow-popups", style: {height: h + "px"}});
+function docFrame(html, h = 420, title = "The record as it was sent") {   // title: what a screen reader says of the frame (#202)
+  const f = el("iframe", {class: "doc", sandbox: "allow-popups", title, style: {height: h + "px"}});
   f.srcdoc = `<!doctype html><meta charset=utf-8><base target=_blank><style>body{font:14px/1.45 system-ui,sans-serif;color:#111;margin:14px}table{border-collapse:collapse}td,th{padding:2px 6px}</style>${html}`;
   f.onload = () => { try { f.style.height = Math.min(1600, f.contentDocument.body.scrollHeight + 30) + "px"; } catch (e) {} };
   return f;
@@ -39,7 +39,7 @@ function resultTable(rows) {
   return el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data"},
     el("thead", {}, el("tr", {}, ["Component", "Value", "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
     el("tbody", {}, rows.map(([n, v, u, rr, f], i) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", title: "Show trend", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
-      el("td", {title: renamedTitle("lab", n)}, nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
+      el("td", {title: renamedTitle("lab", n)}, SERIES.some(s => s.name === n && s.n) ? el("button", {class: "cell-btn", type: "button", text: nice(n)}) : nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
         SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}, ...rowOrig(rows[i])), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : ""}, ...flagNodes(f)))))));   // the mark and the word (#60)
 }
 /* #41: a converted row's value and range as reported (units.js), on its own line under the value */
@@ -53,7 +53,7 @@ function resultBody(d, eid) {
   const t = resultTable(d.rows); if (t) out.push(el("div", {class: "sect", text: "Results"}), t);
   const same = sameNotes(eid, d); if (same) out.push(same);   // the same result from another source (same.js)
   for (const [k, h, isHtml] of d.report || []) out.push(el("div", {class: "sect", text: k === "combinedRTFNarrativeImpression" ? "Report" : k}),
-    isHtml ? docFrame(h) : el("pre", {class: "report", text: h.replace(/\r\n/g, "\n").trim()}));
+    isHtml ? docFrame(h, 420, k === "combinedRTFNarrativeImpression" ? "Report" : k) : el("pre", {class: "report", text: h.replace(/\r\n/g, "\n").trim()}));
   if (d.comments && d.comments.length) out.push(el("div", {class: "sect", text: "Provider comments"}), ...d.comments.map(c => el("p", {text: c})));
   return out;
 }
@@ -78,10 +78,10 @@ function openEvent(e) {
     for (const m of d.messages) {
       const html = /<[a-z][\s\S]*>/i.test(m.body);
       body.append(el("div", {class: "msg"}, el("div", {class: "mh"}, el("b", {text: m.from}), " · " + fmtDT(m.t)),
-        html ? docFrame(m.body, 200) : el("pre", {text: m.body.replace(/\r\n/g, "\n").trim()}),
+        html ? docFrame(m.body, 200, `Message from ${m.from}`) : el("pre", {text: m.body.replace(/\r\n/g, "\n").trim()}),
         m.att && m.att.length ? el("div", {class: "mh", text: "Attachments: " + m.att.join(", ")}) : null));
     }
-  } else if (d.type === "letter") body.append(docFrame(d.html, 600));
+  } else if (d.type === "letter") body.append(docFrame(d.html, 600, e.title || "Letter"));
   else if (d.type === "file") {
     body.append(el("div", {class: "btns"}, el("a", {class: "btn", href: d.url, target: "_blank", rel: "noopener", text: "Open in new tab"}), el("a", {class: "btn", href: d.url, download: "", text: "Download"})));
     // documents fill the panel's remaining height so the viewer's own scrollbar and toolbar stay on screen
