@@ -917,7 +917,8 @@ def rename_profile(pid: int, body: ProfileIn, request: Request, s=Depends(user),
 
 @app.get("/api/profiles/{pid}/members")
 def members(pid: int, s=Depends(user), db=Depends(get_db)):
-    need(db, s, pid, "owner")
+    """Who has access, and as what: anyone with access may see it (the Sharing page's People, #168); only owners change it."""
+    need(db, s, pid, "viewer")
     return [dict(r) for r in db.execute(
         """SELECT u.id AS user_id, u.username, m.role FROM memberships m JOIN users u ON u.id = m.user_id
            WHERE m.profile_id=? ORDER BY u.username COLLATE NOCASE""", (pid,))]
@@ -1318,7 +1319,7 @@ if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves w
     @app.get("/", include_in_schema=False)
     def page(page: str = "index.html"):
         if page not in ("index.html", "login.html", "setup.html", "account.html", "import.html", "settings.html", "providers.html", "summary.html", "share.html",
-                        "admin.html", "sources.html"):
+                        "admin.html", "sources.html", "sharing.html"):
             raise HTTPException(404)
         return FileResponse(os.path.join(WWW, page), media_type="text/html",
                             headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP})

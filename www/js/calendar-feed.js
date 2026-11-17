@@ -1,7 +1,7 @@
-/* Sanguity · Settings page: the calendar feed (#51; server/routes_calendar.py). Its own block, beside the settings
-   sections: make a private feed of the profile for your own calendar app, see its address once with setup steps,
-   change how much it says, get a new address, or turn it off. Owners also see and can turn off everyone's feeds.
-   Follows the page's profile picker (#profile, filled by settings.js) without changing settings.js. */
+/* Sanguity · Sharing page: the calendar feed (#51; server/routes_calendar.py; on Settings until #168). Its own block:
+   make a private feed of the profile for your own calendar app, see its address once with setup steps, change how
+   much it says, get a new address, or turn it off. Owners also see and can turn off everyone's feeds.
+   Follows the page's profile picker (#profile, filled by sharing.js) without changing sharing.js. */
 "use strict";   // $, el and api come from util.js
 (() => {
   let pid = null, me = null;
@@ -108,7 +108,7 @@
   };
   $("#calDone").onclick = () => { $("#calSetup").hidden = true; $("#calUrl").value = ""; say(""); };
 
-  /* follow the profile picker: settings.js fills it once, then sets its value */
+  /* follow the profile picker: sharing.js fills it, then sets its value */
   const sel = $("#profile");
   const pick = () => { const v = +sel.value; if (v && v !== pid) { pid = v; say(""); load(); } };
   sel.addEventListener("change", pick);

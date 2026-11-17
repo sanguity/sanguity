@@ -143,7 +143,7 @@ def start_app():
     return srv, f"http://127.0.0.1:{port}"
 
 
-USER_MENU = {"#logout", "#settingsLink", "#summaryLink", "#theme"}
+USER_MENU = {"#logout", "#settingsLink", "#sharingLink", "#theme"}
 
 
 def menu_click(pg, item):
@@ -209,7 +209,6 @@ def main():
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
         check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 10)
-        strict.wait_for_selector("#calendar:not([hidden])", state="attached", timeout=10000)   # in its own group, so not visible
         check("no Settings card shows a stray “null” (#175)", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         check("…and Settings has no Watch and scale any more (#166)", not strict.evaluate("!!document.getElementById('watch')")
               and "Watch and scale" not in strict.evaluate("document.getElementById('setNav').textContent"))
@@ -228,9 +227,19 @@ def main():
         strict.wait_for_selector("#adminLink:not([hidden])", state="attached", timeout=10000)
         check("…and the menu offers Admin to an admin", strict.evaluate("document.getElementById('adminLink').getAttribute('href')") == "admin.html")
         check("no Admin card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
-        strict.goto(base + "/summary.html")   # the visit summary page (#48)
+        # the Sharing page (#168): its sidebar, each part drawn by its own script
+        strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
         check("under the CSP: summary.js runs", strict.evaluate("document.querySelectorAll('#sections input').length") == 5)
+        strict.wait_for_selector("#calendar:not([hidden])", state="attached", timeout=10000)   # in its own group, so not visible
+        strict.wait_for_selector("#memberList tbody tr", state="attached", timeout=10000)
+        strict.click("#shrNav a[data-group=activity]")   # drawn when its group is opened
+        strict.wait_for_selector("#actBody .activity tbody tr", timeout=10000)
+        groups = strict.evaluate("[...document.querySelectorAll('#shrNav a')].map(a => a.textContent)")
+        check("under the CSP: the Sharing page's scripts run, with a sidebar of its groups, Profile set apart", groups ==
+              ["People", "Share links", "Calendar feed", "Visit summary", "Export everything", "Activity", "Profile"]
+              and strict.evaluate("document.querySelector('#shrNav a[data-group=profile]').closest('li').previousElementSibling.classList.contains('set-nav-part')"), groups)
+        check("no Sharing card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
         strict.wait_for_selector(".dir-hit", timeout=10000)
         check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
@@ -253,7 +262,7 @@ def main():
               strict.evaluate("[document.getElementById('fVendor').value, document.getElementById('fIssuer').value.startsWith('https://'), "
                               "document.getElementById('fName').value]") == ["insurer", True, "Medicare (Blue Button 2.0)"]
               and "Blue Button" in strict.inner_text("#guide"), strict.evaluate("document.getElementById('fName').value"))
-        # ---- share links (#47), under the CSP: an owner makes one on the Account page, saying what a holder sees; a
+        # ---- share links (#47), under the CSP: an owner makes one on the Sharing page, saying what a holder sees; a
         # browser with no session opens it (at 1400 and 375 px) and sees only the chosen sections and lab, with no
         # cookie set; the view is in the profile's activity; once revoked, the link says it doesn't work
         def sl_until(pg, expr, tries=100):   # wait_for_function evaluates a string, which the CSP forbids; evaluate isn't
@@ -262,10 +271,11 @@ def main():
                     return True
                 pg.wait_for_timeout(100)
             raise TimeoutError(expr)
-        strict.goto(base + "/account.html#profiles")
-        strict.wait_for_selector("#profList .prof .share-links-wrap", timeout=10000)
-        mine = strict.locator("#profList .prof", has_text="My records")
-        mine.locator(".share-links-wrap > button").click()
+        strict.goto(base + "/sharing.html?profile=1#links")
+        strict.wait_for_selector("#links .share-links button:has-text('New share link')", timeout=10000)
+        mine = strict.locator("#links")
+        check("share links: the panel is open in its group, with no button to open it",
+              strict.evaluate("document.querySelector('#links .share-links-wrap > button').hidden && !document.querySelector('#links .share-links').hidden"))
         mine.locator("button", has_text="New share link").click()
         form = mine.locator(".share-form")
         form.locator("input[aria-label='Name for this link']").fill("Dr. Fictional")
@@ -309,18 +319,15 @@ def main():
         strict.wait_for_timeout(200)
         check("share links: the owner's panel fits 375 px", strict.evaluate("document.documentElement.scrollWidth") <= 375, strict.evaluate("document.documentElement.scrollWidth"))
         strict.set_viewport_size({"width": 1400, "height": 900})
-        strict.reload()
-        strict.wait_for_selector("#profList .prof .share-links-wrap", timeout=10000)
-        mine = strict.locator("#profList .prof", has_text="My records")
-        mine.get_by_role("button", name="Activity", exact=True).click()
-        sl_until(strict, "[...document.querySelectorAll('#profList .activity tbody tr')].some(r => r.textContent.includes('opened the share link “Dr. Fictional”'))")
-        row = strict.evaluate("[...document.querySelectorAll('#profList .activity tbody tr')].find(r => r.textContent.includes('opened the share link')).textContent")
+        strict.goto(base + "/sharing.html?profile=1#activity")   # the same page: Activity is read afresh when it's opened
+        sl_until(strict, "[...document.querySelectorAll('#actBody .activity tbody tr')].some(r => r.textContent.includes('opened the share link “Dr. Fictional”'))")
+        row = strict.evaluate("[...document.querySelectorAll('#actBody .activity tbody tr')].find(r => r.textContent.includes('opened the share link')).textContent")
         check("share links: the view is in the profile's activity, as the share link", "share link" in row and share_url.split("#")[1] not in row, row)
-        mine.locator(".share-links-wrap > button").click()
-        strict.wait_for_selector("#profList .share-links button:has-text('Revoke')", timeout=10000)
+        strict.click("#shrNav a[data-group=links]")
+        strict.wait_for_selector("#links .share-links button:has-text('Revoke')", timeout=10000)
         strict.once("dialog", lambda d: d.accept())
         mine.locator(".share-links button", has_text="Revoke").first.click()
-        sl_until(strict, "document.querySelector('#profList .share-links table').textContent.includes('revoked')")
+        sl_until(strict, "document.querySelector('#links .share-links table').textContent.includes('revoked')")
         hp.reload()
         sl_until(hp, "document.querySelector('#shareHead h2').textContent === \"This link doesn't work\"")
         check("share links: a revoked link shows nothing", hp.evaluate("document.getElementById('shareBody').children.length") == 0)
@@ -1601,7 +1608,7 @@ def main():
                 return out; })()""")
             say = {"profile": "This profile", "user": "Just for you", "install": "This server"}
             check("…and every group says whose its settings are, as their scope has it",
-                  groups["dashboard"][0] == "This profile" and groups["calendar"][0] == "Just for you"
+                  groups["dashboard"][0] == "This profile" and groups["display"][0] == "Just for you" and "calendar" not in groups
                   and all(w in say.values() and len(sc) <= 1 and (not sc or say[sc[0]] == w) for w, sc in groups.values()), groups)
             saves = js("[...document.querySelectorAll('#sections > section')].map(s => [...s.querySelectorAll('button')].filter(b => b.textContent === 'Save').length)")
             check("…one Save per section (none per setting), and nothing marked unsaved on arrival",
@@ -1708,10 +1715,12 @@ def main():
             page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Renamed in Settings")
             page.click("#sec-names .set-foot button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-names .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
-            # ---- calendar feed (#51): made on the Settings page, its address shown once with setup steps, and the
-            # address works for a calendar app with no session
-            js("location.hash = 'calendar'")   # its group in the Settings sidebar
+            # ---- calendar feed (#51): made on the Sharing page (#168; Settings' old address opens it there), its address
+            # shown once with setup steps, and the address works for a calendar app with no session
+            page.goto(base + "/settings.html?profile=1#calendar")
+            page.wait_for_url("**/sharing.html?profile=1#calendar", timeout=10000)
             page.wait_for_selector("#calendar:not([hidden]) #calNew:not([hidden])", timeout=10000)
+            check("Settings' old calendar address opens Sharing → Calendar feed", js("document.querySelector('#shrNav [aria-current=page]').textContent") == "Calendar feed")
             check("calendar feed: minimal details are the default", js("document.querySelector('input[name=calDetails]:checked').value") == "minimal")
             page.click("#calCreate")
             page.wait_for_selector("#calSetup:not([hidden])", timeout=10000)
@@ -1733,7 +1742,7 @@ def main():
             page.click("#calDone")
             check("…and the address isn't kept on the page once done", js("document.getElementById('calUrl').value") == "")
             settle(200)
-            check("the Settings page fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            check("the Sharing page's calendar feed fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
@@ -1947,10 +1956,16 @@ def main():
             # preview, then download the PDF and read it back
             page.goto(base + "/")   # from the main page, after the settings checks above
             page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
-            check("the header links to the visit summary", js("document.getElementById('summaryLink').getAttribute('href')") == "summary.html")
-            was_profile = js("localStorage.getItem('ht-profile')")   # the summary page remembers the profile picked, as Settings does
+            menu = js("[...document.querySelectorAll('#userMenuList [role=menuitem]')].map(x => x.textContent)")
+            check("your menu has one Sharing item, in place of Visit summary and Share links (#168)",
+                  js("document.getElementById('sharingLink').getAttribute('href')") == "sharing.html" and "Sharing" in menu
+                  and "Visit summary" not in menu and "Share links" not in menu, menu)
+            was_profile = js("localStorage.getItem('ht-profile')")   # the Sharing page remembers the profile picked, as Settings does
             page.goto(base + "/summary.html?profile=2")   # the second profile: results from several imports, Ferritin typed in
+            page.wait_for_url("**/sharing.html?profile=2#summary", timeout=10000)   # the old address opens Sharing → Visit summary
             page.wait_for_selector("#build:not([hidden])", timeout=10000)
+            check("the old visit summary address opens Sharing → Visit summary, on that profile",
+                  js("document.getElementById('profile').value") == "2" and js("document.querySelector('#shrNav [aria-current=page]').textContent") == "Visit summary")
             check("the summary page offers every section", js("[...document.querySelectorAll('#sections input')].map(i => i.value)") ==
                   ["out_of_range", "trends", "medications", "appointments", "questions"])
             check("…the last visit is the default since point", js("document.querySelector('#since option').textContent.startsWith('The last visit (')"))
@@ -1969,7 +1984,7 @@ def main():
             check("…and Ferritin among the trends", "Ferritin" in js("document.getElementById('preview').textContent"))
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
-            check("the summary page and its preview fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            check("the visit summary and its preview fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
             with page.expect_download(timeout=20000) as dl:
                 page.click("#download")
@@ -2127,12 +2142,35 @@ def main():
             check("…a journal entry's time is theirs too: 11:30 pm in Auckland, not in this browser's Chicago",
                   zb.evaluate("jTime('2026-03-10T23:30') === Date.parse('2026-03-10T10:30:00Z') && isoDay(jTime('2026-03-10')) === '2026-03-10'"),
                   zb.evaluate("new Date(jTime('2026-03-10T23:30')).toISOString()"))
-            zb.goto(base + "/summary.html?profile=1")
+            zb.goto(base + "/sharing.html?profile=1#summary")
             zb.wait_for_selector("#build:not([hidden]) #since option", state="attached", timeout=10000)
             since_opt = zb.evaluate("document.querySelector('#since option').textContent")
-            check("…the visit summary page writes dates in their format", bool(__import__("re").search(r"\(.*, \d{4}-\d{2}-\d{2}\)", since_opt)), since_opt)
+            check("…the visit summary writes dates in their format", bool(__import__("re").search(r"\(.*, \d{4}-\d{2}-\d{2}\)", since_opt)), since_opt)
+            # a viewer's Sharing page (#168): who has access, the visit summary and their own calendar feed, and no
+            # owner's controls; an address for an owner's group shows People instead, saying why
+            zb.wait_for_selector("#memberList tbody tr", state="attached", timeout=10000)
+            groups = zb.evaluate("[...document.querySelectorAll('#shrNav a')].map(a => a.textContent)")
+            check("a viewer's Sharing page: People, Calendar feed, Visit summary and Profile only", groups == ["People", "Calendar feed", "Visit summary", "Profile"], groups)
+            zb.click("#shrNav a[data-group=people]")
+            people = zb.inner_text("#people")
+            check("…who has access and as what, with Leave for themselves and no role menus, Remove or Share",
+                  USER in people and "owner" in people and USER2 in people and zb.evaluate("!document.querySelector('#people select, #people form')")
+                  and zb.evaluate("[...document.querySelectorAll('#people button')].map(b => b.textContent).join()") == "Leave"
+                  and f"ask {USER}" in people, people[:300])
+            zb.click("#shrNav a[data-group=calendar]")
+            zb.wait_for_selector("#calendar:not([hidden]) #calNew:not([hidden])", timeout=10000)
+            check("…their own calendar feed can be made, with no list of everyone's", zb.evaluate("document.getElementById('calOthers').hidden"))
+            zb.click("#shrNav a[data-group=profile]")
+            check("…Profile: no Rename or Delete, only New profile", zb.evaluate("!document.querySelector('#profileCard button, #profileCard input')")
+                  and zb.is_visible("#profNew"), zb.inner_text("#profileCard"))
+            zb.goto(base + "/sharing.html?profile=1#links")
+            zb.wait_for_selector("#memberList tbody tr", timeout=10000)
+            check("…an owner's group in the address shows People, saying share links are for owners",
+                  zb.evaluate("document.querySelector('#shrNav [aria-current=page]').textContent") == "People" and "owners" in zb.inner_text("#pageMsg")
+                  and zb.evaluate("location.hash") == "#people" and zb.evaluate("document.getElementById('links').hidden && document.getElementById('linksBody').children.length === 0"))
             zb.goto(base + "/import.html")
             zb.wait_for_selector("#importer", state="attached", timeout=10000)
+            zb.evaluate("datesReady().then(() => true)")   # the zone read from the server, not only from the last visit
             check("…the import pages read them too", zb.evaluate("DATES.zone") == "Pacific/Auckland" and zb.evaluate("zToday()") == zb.evaluate(
                 "new Intl.DateTimeFormat('en-CA', {timeZone: 'Pacific/Auckland'}).format(new Date())"), zb.evaluate("DATES.zone"))
             # Sources for someone who can only view the profile (#166): what reaches it and its history, nothing to add
@@ -2331,7 +2369,7 @@ def main():
                 settle(300)
                 check(f"Labs as charts ({width} px) fits", js("document.documentElement.scrollWidth") <= width, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.goto(base + f"/summary.html?profile={rpid}")
+            page.goto(base + f"/sharing.html?profile={rpid}#summary")
             page.wait_for_selector("#build:not([hidden])", timeout=10000)
             page.click("#previewBtn")
             page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
@@ -2654,11 +2692,13 @@ def main():
             payer.stop()
             js(f"localStorage.setItem('ht-profile', {json.dumps(prev_profile or '')})" if prev_profile else "localStorage.removeItem('ht-profile')")
 
-            # ---- account page: password, devices, profiles with sharing; the Admin page: accounts (#167)
+            # ---- account page: password and devices; profiles and their sharing on the Sharing page (#168); the Admin
+            # page: accounts (#167)
             page.goto(base + "/account.html")
-            page.wait_for_function("document.querySelectorAll('#sessList tbody tr').length > 0 && document.querySelectorAll('#profList .prof').length === 2", timeout=10000)
-            check("account page lists devices and profiles, and nothing of the server's (#167)",
-                  js("!document.getElementById('tab-admin') && !document.getElementById('users') && !document.getElementById('labmaps') && !document.getElementById('secNotice')"))
+            page.wait_for_function("document.querySelectorAll('#sessList tbody tr').length > 0", timeout=10000)
+            check("account page lists devices, and nothing of the server's (#167) or of profiles (#168)",
+                  js("!document.getElementById('tab-admin') && !document.getElementById('users') && !document.getElementById('labmaps') && !document.getElementById('secNotice')")
+                  and js("!document.getElementById('acctTabs') && !document.getElementById('profiles') && !document.getElementById('profList')"))
             page.goto(base + "/account.html#users")   # the old Admin tab's addresses open the Admin page
             page.wait_for_url("**/admin.html#users", timeout=10000)
             page.wait_for_function("!document.getElementById('users').hidden && document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
@@ -2670,21 +2710,15 @@ def main():
             check("Admin lists the lab name match, who made it and from what, with Change and Remove (#23)",
                   any("Hemoglobin Whole Bld" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "Change" in t and "Remove" in t for t in lm)
                   and "only admins can change or remove" in page.inner_text("#labmaps") and js(display, "labmaps") != "none", lm)
-            # two tabs: Sign-in & security first; the address keeps the tab, old links still land
-            page.goto(base + "/account.html")
-            page.wait_for_function("document.querySelectorAll('#profList .prof').length === 2", timeout=10000)
+            # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on Account
             vis = lambda sel: js(f"!document.querySelector('{sel}').hidden")
-            check("account tabs: security shown first, of two", vis("#panel-security") and not vis("#panel-profiles") and js("document.querySelectorAll('#acctTabs [role=tab]').length") == 2)
-            page.click("#tab-profiles")
-            check("a tab shows its panel and goes in the address", vis("#panel-profiles") and not vis("#panel-security") and js("location.hash") == "#profiles")
-            page.reload()
-            page.wait_for_function("document.querySelectorAll('#profList .prof').length === 2", timeout=10000)
-            check("the tab survives a reload", vis("#panel-profiles"))
+            page.goto(base + "/account.html#profiles")
+            page.wait_for_url("**/sharing.html#people", timeout=10000)
+            page.wait_for_selector("#memberList tbody tr", timeout=10000)
+            check("the old Profiles tab's address opens Sharing → People", js("document.querySelector('#shrNav [aria-current=page]').textContent") == "People")
             page.goto(base + "/account.html#twofa")
             page.wait_for_function("document.getElementById('tfHint').textContent.length > 0", timeout=10000)
-            check("an old section link opens the tab that holds it", vis("#panel-security") and js("location.hash") == "#twofa")
-            page.focus("#tab-security"); page.keyboard.press("ArrowRight")
-            check("arrow keys move between tabs", vis("#panel-profiles") and js("document.activeElement.id") == "tab-profiles")
+            check("an old section link still opens Account", vis("#panel-security") and js("location.hash") == "#twofa")
             page.goto(base + "/admin.html#accounts")
             page.wait_for_function("document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
             page.fill("#userName", "alex")
@@ -2703,7 +2737,7 @@ def main():
             page.click("#adminTf a")
             page.wait_for_url("**/account.html#security", timeout=10000)
             page.wait_for_function("!document.getElementById('panel-security').hidden && document.getElementById('tfHint').textContent.length > 0", timeout=10000)
-            check("which opens it", vis("#panel-security") and not vis("#panel-profiles"))
+            check("which opens it", vis("#panel-security"))
             page.locator("#twofa").get_by_role("button", name="Turn on").click()
             page.wait_for_selector("#twofa .tf-key")
             key = js("document.querySelector('#twofa .tf-key').textContent").replace(" ", "")
@@ -2718,45 +2752,82 @@ def main():
             page.click("#tfMsg a")
             page.wait_for_function("!document.getElementById('adminTools').hidden && document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
             check("with 2FA on, the account tools are back", js("document.getElementById('adminTf').hidden && !document.querySelector('.adm-gate')"))
-            page.goto(base + "/account.html#profiles")
-            page.wait_for_function("document.querySelectorAll('#profList .prof').length === 2", timeout=10000)
-            # activity: the profile's log shows the records being opened (by this run), and filters by kind;
-            # the admin's account log shows the account just created
-            page.click("#tab-profiles")
-            mine = page.locator("#profList .prof", has_text="My records")
-            mine.get_by_role("button", name="Activity").click()
-            page.wait_for_function("[...document.querySelectorAll('#profList .activity tbody tr')].some(r => r.textContent.includes('opened the records'))", timeout=10000)
-            check("profile activity shows the records being opened", True)
-            mine.locator(".activity select").nth(1).select_option("document")
-            page.wait_for_function("[...document.querySelectorAll('#profList .activity tbody tr')].every(r => r.textContent.includes('opened') && !r.textContent.includes('opened the records'))", timeout=10000)
-            check("activity filters by kind", js("document.querySelector('#profList .activity tbody').textContent.includes('demo-report.pdf') || document.querySelector('#profList .activity tbody').textContent.includes('Nothing yet')"))
+            # activity: the profile's log (Sharing → Activity, #168) shows the records being opened (by this run), and
+            # filters by kind; the admin's account log shows the account just created
+            page.goto(base + "/sharing.html?profile=1#activity")
+            page.wait_for_function("[...document.querySelectorAll('#actBody .activity tbody tr')].some(r => r.textContent.includes('opened the records'))", timeout=10000)
+            check("profile activity shows the records being opened", js(display, "activity") != "none" and js(display, "people") == "none")
+            page.locator("#actBody .activity select").nth(1).select_option("document")
+            page.wait_for_function("[...document.querySelectorAll('#actBody .activity tbody tr')].every(r => r.textContent.includes('opened') && !r.textContent.includes('opened the records'))", timeout=10000)
+            check("activity filters by kind", js("document.querySelector('#actBody .activity tbody').textContent.includes('demo-report.pdf') || document.querySelector('#actBody .activity tbody').textContent.includes('Nothing yet')"))
             page.goto(base + "/admin.html#activity")
             page.wait_for_function("document.querySelector('#acctLog tbody') && document.querySelector('#acctLog tbody').textContent.includes('created the account alex')", timeout=10000)
             check("admin sees the install's activity, under Admin → Install activity", js(display, "installLog") != "none" and js(display, "users") == "none")
-            page.goto(base + "/account.html#profiles")
-            page.wait_for_function("document.querySelectorAll('#profList .prof').length === 2", timeout=10000)
-            href = js("document.querySelector('#profList .prof a[download]').getAttribute('href')")
+            page.goto(base + "/sharing.html?profile=1#export")
+            page.wait_for_selector("#exportLink", timeout=10000)
+            href = js("document.getElementById('exportLink').getAttribute('href')")
             head = js(f"fetch('{href}').then(r => r.arrayBuffer()).then(b => [...new Uint8Array(b.slice(0, 2))])")
-            check("Export everything downloads a zip", head == [0x50, 0x4B], head)
-            # sharing with someone who already has access asks before changing their role; declining keeps it
-            page.click("#tab-profiles")
+            check("Export everything downloads a zip", href == "api/profiles/1/export" and head == [0x50, 0x4B], (href, head))
+            # People on the second profile (picked at the top): sharing with someone who already has access asks before
+            # changing their role, and declining keeps it; then sharing for real, and a role changed in the table
+            page.select_option("#profile", "2")
+            page.click("#shrNav a[data-group=people]")
+            page.wait_for_function("document.querySelector('#introHint').textContent.includes('Second person') && document.querySelectorAll('#memberList tbody tr').length === 1", timeout=10000)
+            check("picking another profile shows its people, and the address keeps the group", js("location.hash") == "#people"
+                  and USER in page.inner_text("#memberList"))
             asked_share = []
             page.once("dialog", lambda d: (asked_share.append(d.message), d.dismiss()))
-            form = page.locator("#profList .prof", has_text="Second person").locator("form")
+            form = page.locator("#shareWith form")
             form.locator("input").fill(USER)
             form.locator("select").select_option("viewer")
             form.get_by_role("button", name="Share").click()
             settle(300)
             check("sharing with an existing member asks first", asked_share and "already has access as owner" in asked_share[0], asked_share[:1])
             check("declining keeps their role", js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m[0].role)") == "owner")
-            # deleting a profile: the button stays off until its name is typed exactly
-            second = page.locator("#profList .prof", has_text="Second person")
+            form.locator("input").fill("alex")
+            form.locator("select").select_option("editor")
+            form.get_by_role("button", name="Share").click()
+            page.wait_for_function("document.querySelectorAll('#memberList tbody tr').length === 2 && document.getElementById('peopleMsg').textContent === 'Shared with alex as editor.'", timeout=10000)
+            check("sharing adds them, as the role chosen", js("document.querySelector(\"#memberList select[aria-label=\\\"alex's role\\\"]\").value") == "editor")
+            page.select_option("#memberList select[aria-label=\"alex's role\"]", "viewer")
+            page.wait_for_function("document.getElementById('peopleMsg').textContent === 'alex is now a viewer.'", timeout=10000)
+            check("changing a role in the table saves it", js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m.find(x => x.username === 'alex').role)") == "viewer")
+            page.once("dialog", lambda d: d.accept())
+            page.click("#memberList button[aria-label='Remove alex']")
+            page.wait_for_function("document.querySelectorAll('#memberList tbody tr').length === 1", timeout=10000)
+            check("Remove takes their access away", "alex" not in page.inner_text("#memberList"))
+            page.set_viewport_size({"width": 375, "height": 800})
+            for g in ("people", "links", "calendar", "summary", "export", "activity", "profile"):
+                page.click(f"#shrNav a[data-group={g}]")
+                settle(200)
+                check(f"Sharing → {g} fits 375 px, its item in sight in the sidebar's row", js("document.documentElement.scrollWidth") <= 375
+                      and js(f"(() => {{ const a = document.querySelector('#shrNav a[data-group={g}]').getBoundingClientRect(), b = document.querySelector('#shrNav ul').getBoundingClientRect(); return a.left >= b.left - 1 && a.right <= b.right + 1; }})()"),
+                      js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            # Profile, apart from sharing: a new profile is made and shown; deleting one needs its name typed exactly
+            page.click("#shrNav a[data-group=profile]")
+            page.fill("#profName", "Third person (fictional)")
+            page.click("#profNew button[type=submit]")
+            page.wait_for_function("document.getElementById('profMsg').textContent.startsWith('Created')", timeout=10000)
+            third = js("document.getElementById('profile').value")
+            check("New profile makes one, and the page shows it", js("document.querySelector('#profile option:checked').textContent") == "Third person (fictional)"
+                  and js("document.querySelector('#profileBody input').value") == "Third person (fictional)", third)
+            page.fill("#profileBody input", "Third person, renamed")
+            page.click("#profileBody button:text-is('Rename')")
+            page.wait_for_function("document.getElementById('profileMsg').textContent === 'Renamed.' && document.querySelector('#profile option:checked').textContent === 'Third person, renamed'", timeout=10000)
+            check("Rename renames it, in the picker too", True)
+            page.select_option("#profile", "2")
+            page.wait_for_function("document.querySelector('#profileBody input').value === 'Second person'", timeout=10000)
+            second = page.locator("#profileCard")
             second.get_by_role("button", name="Delete profile…").click()
             go = second.get_by_role("button", name="Delete it and everything in it")
             check("delete needs the profile's name first", go.is_disabled())
             second.get_by_label("Type Second person to confirm").fill("Second person")
             go.click()
-            page.wait_for_function("![...document.querySelectorAll('#profList .prof')].some(p => p.textContent.includes('Second person'))", timeout=10000)
+            page.wait_for_function("![...document.querySelectorAll('#profile option')].some(o => o.textContent.includes('Second person')) && document.getElementById('pageMsg').textContent.startsWith('Deleted')", timeout=10000)
+            check("…and another profile is shown after it", js("document.getElementById('profile').value") != "2")
+            js(f"api('profiles/{third}', {{method: 'DELETE', body: JSON.stringify({{confirm_name: 'Third person, renamed'}})}}).then(r => r.status)")
+            js("localStorage.setItem('ht-profile', '1')")
             gone_from = len(problems)
             check("deleting a profile removes it", js("fetch('api/profiles/2/data').then(r => r.status)") == 404)
             problems[gone_from:] = [x for x in problems[gone_from:] if "404" not in x]   # that 404 was the point

@@ -66,12 +66,15 @@ on the **Settings** page, appear on every chart and as "since" periods.
 - A **journal** of symptoms, side effects and notes, on the timeline and the charts, listed on the Timeline tab.
 
 **Finding your way.** One bar across the top: your records' tabs, **Add** (upload files, connect a portal or plan, type
-records in, paste a Health Link, a journal entry) and your menu (visit summary, share links, settings, account, light or dark, log out).
-**Settings** is grouped in a sidebar (this profile's dashboard, labs and ranges, milestones; your display and
-calendar), one group at a time, with **Find a setting** to search them all.
+records in, paste a Health Link, a journal entry) and your menu (sources, sharing, settings, account, light or dark,
+log out). **Settings** is grouped in a sidebar (this profile's dashboard, labs and ranges, milestones; your display),
+one group at a time, with **Find a setting** to search them all.
 **Sources** (in your menu) has everything about records coming in, in a sidebar the same way: an overview of every
 way records reach the profile and when each last brought something, upload, type in, paste a Health Link, portals
 and health plans, the phone and watch, and the import history.
+**Sharing** gathers everything about who sees a profile and how its records go out: its people and their roles,
+share links, your calendar feed, the visit summary, Export everything and its activity, with renaming, deleting and
+adding profiles set apart under Profile.
 
 **Sharing and taking it with you**
 
@@ -140,7 +143,7 @@ hour or more on the Pi itself (a Pi with 1 GB of memory may need swap). Later bu
 
 Open `http://<this machine>:8730` and enter the setup code to create the first account. It becomes the admin
 and owns the records already on the server; until you add your own, that is the fictional demo. Add accounts for
-other people under **Admin** (in your menu, for admins), then share profiles with them under **Account**.
+other people under **Admin** (in your menu, for admins), then share profiles with them under **Sharing → People**.
 
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy
 `sources.example.json` to `sources.json` and describe them, then `docker compose run --rm setup rebuild`; the first profile picks up the rebuild automatically.
@@ -366,7 +369,7 @@ can't be shipped with Sanguity, so an admin adds them once (**Admin → Provider
 
 ### Calendar reminders
 
-**Settings → Calendar feed** gives you a private address for your own calendar app (iPhone or Mac Calendar, Google
+**Sharing → Calendar feed** gives you a private address for your own calendar app (iPhone or Mac Calendar, Google
 Calendar, Outlook) to subscribe to. It lists the profile's upcoming appointments, imported or typed in, and, where
 a lab panel has been drawn at a steady rhythm, the next expected draw as a tentative all-day event marked
 "expected, not scheduled". Sanguity sends no notifications: your calendar app fetches the feed every few hours.
@@ -379,7 +382,7 @@ from the internet; a phone on your home network or tailnet works without that.
 
 ### Share links
 
-**Account → Profiles → Share links** (owners) makes a read-only link to part of a profile for someone without an
+**Sharing → Share links** (owners) makes a read-only link to part of a profile for someone without an
 account, such as a clinician or a relative. You choose the sections (visits and stays, lab results, medications,
 procedures and imaging, upcoming appointments, the journal, costs), which labs, and a date range, and the form says
 plainly what anyone holding the link will see: the profile's name and those records, nothing else (no documents,
@@ -422,7 +425,7 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   unless they did so, or signed in, within the last 5 minutes (`REAUTH_MINUTES` in `.env`). The command line
   (`server.manage`) needs neither, so it stays the way back in, for example after an admin loses their phone.
 - **Export everything:** owners and editors can download a profile as one zip (records, documents, settings, watch
-  data, uploaded files and activity) under **Account**, and load it into another install with `server.manage create-profile` and
+  data, uploaded files and activity) under **Sharing → Export everything**, and load it into another install with `server.manage create-profile` and
   `import`.
 - **Settings:** each profile's dashboard preferences (key lab tiles, the labs Labs starts with, saved Labs views, lab and source
   nicknames, visits counted as workouts, milestones) are changed on the **Settings** page by its owners and
@@ -443,16 +446,16 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   only for a result with no range and no flag on its report, never instead of one, and only in the same unit
   (nothing is converted). Wherever one colours a result (Labs' charts and heatmap, the Overview, the visit summary,
   where it's printed with "(settings)"), it says "range from settings". It's your choice, not medical advice.
-- **Visit summary:** one or two printable pages to bring to an appointment (**Visit summary** in your menu, top right):
+- **Visit summary:** one or two printable pages to bring to an appointment (**Sharing → Visit summary**, from your menu, top right):
   results out of range since the last visit, each against the range on its own report (or a range from settings
   when the report gives none), trends of the key labs and
   any others picked, current medications, upcoming appointments and your own questions (kept as a draft for the
   profile). Anyone the profile is shared with can make one, viewers included; it's made on request, never stored,
   and each one is in the activity log.
-- **Delete profile:** an owner can delete a profile and everything in it under **Account**, after typing its name;
+- **Delete profile:** an owner can delete a profile and everything in it under **Sharing → Profile**, after typing its name;
   the original exports and older backups are left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
-  changed it, and when (**Account > Activity**); admins see account changes (**Admin > Install activity**). Entries are kept for a year
+  changed it, and when (**Sharing → Activity**); admins see account changes (**Admin > Install activity**). Entries are kept for a year
   (`ACTIVITY_DAYS` in `.env`).
 - **Encrypted at rest** (AES-256-GCM): records, documents, settings and the sensitive database fields are
   unreadable without the key in `auth/data_key`, so a copied data folder or backup gives nothing away. See
@@ -629,7 +632,7 @@ lab-aliases.json    Canonical lab names, LOINC codes and other spellings that ma
 nginx.conf          Web server: the app's pages and security headers; passes /api/ to the app
 watch/receiver.py   phone uploads (Life Dashboard / Health Connect, Health Auto Export / Apple Health): archives, folds into SQLite, writes public/daily.json
 www/                index.html (markup), css/app.css, js/*.js (one plain script per tab, loaded in order),
-                    login.html, setup.html (first account), account.html (password, devices, profiles, accounts),
+                    login.html, setup.html (first account), account.html (password, devices), sharing.html (a profile's people and how it's shared),
                     sources.html (records coming in: uploads, typing in, portals, the phone, the import history;
                     import.html, connect.html and providers.html open its sections); manifest.webmanifest, icons/ and sw.js (install as a
                     phone app; tools/make_icons.py draws the icons)

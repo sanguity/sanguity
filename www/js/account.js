@@ -1,5 +1,6 @@
-/* Sanguity · account page: password, two-factor sign-in, passkeys, signed-in devices, this device, and profiles with
-   their sharing and activity (activity.js). The server's administration is on the Admin page (admin.js, #167). */
+/* Sanguity · account page: password, two-factor sign-in, passkeys, signed-in devices and this device. Profiles, with
+   their sharing and activity, are on the Sharing page (sharing.js, #168); the server's administration is on the Admin
+   page (admin.js, #167). */
 "use strict";   // $, el and api come from util.js
 /* api() from util.js, returning the JSON answer, or throwing with the server's message */
 async function call(path, method = "GET", body) {
@@ -52,66 +53,6 @@ async function loadSessions() {
 $("#sessOthers").onclick = async () => {
   try { const r = await call("sessions/revoke-others", "POST"); say("#sessMsg", `Signed out ${r.revoked} device${r.revoked === 1 ? "" : "s"}.`); loadSessions(); }
   catch (e) { say("#sessMsg", e.message, true); }
-};
-
-/* ---------------------------------------------------------------- profiles and sharing */
-const ROLES = ["owner", "editor", "viewer"];
-function roleSelect(value, onchange) {
-  const s = el("select", {"aria-label": "Role", onchange}, ...ROLES.map(r => el("option", {value: r, text: r})));
-  s.value = value; return s;
-}
-async function loadProfiles() {
-  ME = await call("me");
-  const box = $("#profList");
-  if (!ME.profiles.length) { box.replaceChildren(el("p", {class: "hint", text: "No profiles are shared with you yet."})); return; }
-  const cards = [];
-  for (const p of ME.profiles) {
-    const msg = el("span", {class: "msg", role: "status"});
-    const fail = e => { msg.textContent = e.message; msg.classList.add("bad"); };
-    const head = el("div", {class: "prof-hd"}, el("b", {text: p.name}), el("span", {class: "tag", text: p.role}),
-      el("span", {class: "muted", text: p.members > 1 ? `shared with ${p.members - 1} other${p.members > 2 ? "s" : ""}` : "only you"}));
-    const body = [head];
-    if (p.role !== "viewer")   // owners and editors can take everything with them
-      body.push(el("div", {class: "row"},
-        el("a", {class: "btn small", href: `api/profiles/${p.id}/export`, download: "", text: "Export everything"}),
-        el("span", {class: "muted", text: "a zip of the records, documents, settings and activity; keep it private"})));
-    if (p.role === "owner") {
-      const name = el("input", {value: p.name, maxlength: 80, "aria-label": "Profile name"});
-      body.push(el("div", {class: "row"}, name, el("button", {class: "btn small", type: "button", text: "Rename",
-        onclick: async () => { try { await call("profiles/" + p.id, "PATCH", {name: name.value}); loadProfiles(); } catch (e) { fail(e); } }})));
-      const members = await call(`profiles/${p.id}/members`);
-      body.push(el("table", {class: "tbl"}, el("tbody", {}, ...members.map(m => el("tr", {},
-        el("td", {}, m.username, m.user_id === ME.user.id ? el("span", {class: "muted", text: " (you)"}) : null),
-        el("td", {}, roleSelect(m.role, async ev => { try { await call(`profiles/${p.id}/members`, "PUT", {username: m.username, role: ev.target.value}); loadProfiles(); } catch (e) { ev.target.value = m.role; fail(e); } })),
-        el("td", {}, el("button", {class: "btn small", type: "button", text: m.user_id === ME.user.id ? "Leave" : "Remove",
-          onclick: async () => { if (!confirm(m.user_id === ME.user.id ? `Stop having access to ${p.name}?` : `Remove ${m.username}'s access to ${p.name}?`)) return;
-            try { await call(`profiles/${p.id}/members/${m.user_id}`, "DELETE"); loadProfiles(); } catch (e) { fail(e); } }})))))));
-      const who = el("input", {placeholder: "username", autocapitalize: "none", spellcheck: "false", "aria-label": "Share with username", required: true});
-      const role = roleSelect("viewer");
-      body.push(el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
-        // sharing with someone who already has access would quietly change their role: say so first
-        const name = who.value.trim(), had = members.find(m => m.username.toLowerCase() === name.toLowerCase());
-        if (had && had.role === role.value) { fail(new Error(`${had.username} already has access as ${had.role}.`)); return; }
-        if (had && !confirm(`${had.username} already has access as ${had.role}. Change them to ${role.value}?`)) return;
-        try { await call(`profiles/${p.id}/members`, "PUT", {username: name, role: role.value}); loadProfiles(); } catch (e) { fail(e); } }},
-        el("span", {class: "muted", text: "Share with"}), who, "as", role, el("button", {class: "btn small", type: "submit", text: "Share"})));
-      body.push(activityPanel(`profiles/${p.id}/activity`, members));
-      body.push(shareLinksPanel(p));   // share links (#47), js/share-links.js
-      body.push(deletePanel(p, fail));
-    } else {
-      body.push(el("div", {class: "row"}, el("button", {class: "btn small", type: "button", text: "Leave this profile",
-        onclick: async () => { if (!confirm(`Stop having access to ${p.name}? An owner can share it with you again.`)) return;
-          try { await call(`profiles/${p.id}/members/${ME.user.id}`, "DELETE"); loadProfiles(); } catch (e) { fail(e); } }})));
-    }
-    body.push(msg);
-    cards.push(el("div", {class: "prof"}, ...body));
-  }
-  box.replaceChildren(...cards);
-}
-$("#profNew").onsubmit = async ev => {
-  ev.preventDefault();
-  try { await call("profiles", "POST", {name: $("#profName").value}); $("#profNew").reset(); say("#profMsg", "Created."); loadProfiles(); }
-  catch (e) { say("#profMsg", e.message, true); }
 };
 
 /* ---------------------------------------------------------------- two-factor sign-in */
@@ -230,70 +171,16 @@ async function loadPasskeys() {
     nm, pw, el("button", {class: "btn primary small", type: "submit", text: "Add a passkey"})));
 }
 
-/* ---------------------------------------------------------------- deleting a profile */
-function deletePanel(p, fail) {
-  const typed = el("input", {autocomplete: "off", spellcheck: "false"});   // no placeholder: it would look filled in
-  const go = el("button", {class: "btn small danger", type: "button", text: "Delete it and everything in it", disabled: true});
-  typed.oninput = () => { go.disabled = typed.value.trim() !== p.name; };
-  go.onclick = async () => {
-    go.disabled = true;
-    try {
-      const r = await call(`profiles/${p.id}`, "DELETE", {confirm_name: typed.value});
-      try { if (localStorage.getItem("ht-profile") === String(p.id)) localStorage.removeItem("ht-profile"); } catch (e) {}
-      say("#profMsg", `Deleted “${p.name}”.` + (r.unlinked_build ? " Its records came from the setup build, which won't be loaded into a profile again unless an admin asks for it." : ""));
-      loadProfiles();
-    } catch (e) { fail(e); go.disabled = false; }
-  };
-  const box = el("div", {class: "danger-zone", hidden: true},
-    el("p", {}, "This deletes ", el("b", {text: p.name}), " for everyone it's shared with: its records, documents, settings, ",
-      "activity log and sharing. Your original exports and the watch receiver's data stay, and so do backups made before now. ",
-      "It can't be undone."),
-    el("div", {class: "row"}, el("a", {class: "btn small", href: `api/profiles/${p.id}/export`, download: "", text: "Export everything first"})),
-    el("label", {}, `Type ${p.name} to confirm`, typed),
-    el("div", {class: "row"}, go));
-  const open = el("button", {class: "btn small", type: "button", text: "Delete profile…", "aria-expanded": "false",
-    onclick: () => { box.hidden = !box.hidden; open.setAttribute("aria-expanded", !box.hidden); if (!box.hidden) typed.focus(); }});
-  return el("div", {class: "activity-wrap"}, open, box);
-}
-
-/* ---------------------------------------------------------------- tabs */
-/* Sign-in & security, Profiles. The address (#security, #profiles) keeps the tab across a reload, and older links to
-   a section (#password, #twofa, #passkeys, #sessions) open the tab that holds it. The Admin tab's old addresses
-   (#admin, #users, #labmaps) open the Admin page (#167). */
-const TAB_OF = {security: "security", password: "security", twofa: "security", passkeys: "security", sessions: "security",
-  profiles: "profiles"};
-const TAB_NAMES = ["security", "profiles"];
-const MOVED = {"#admin": "admin.html", "#users": "admin.html#users", "#labmaps": "admin.html#labmaps"};
-let tabsOn = false;
-function showTab(name, {focus = false, remember = true} = {}) {
-  if (!TAB_NAMES.includes(name) || $("#tab-" + name).hidden) name = "security";
-  for (const t of TAB_NAMES) {
-    const on = t === name, btn = $("#tab-" + t);
-    btn.setAttribute("aria-selected", on); btn.tabIndex = on ? 0 : -1;
-    $("#panel-" + t).hidden = !on;
-  }
-  if (focus) $("#tab-" + name).focus();
-  if (remember && tabsOn && location.hash.slice(1) !== name && TAB_OF[location.hash.slice(1)] !== name)
-    history.replaceState(null, "", "#" + name);
-  return name;
-}
+/* ---------------------------------------------------------------- the address */
+/* An address naming a section (#password, #twofa, #passkeys, #sessions) scrolls to it; #security (the old tab's
+   name) is the page itself. The old Profiles tab's address opens the Sharing page (#168), and the old Admin tab's
+   (#admin, #users, #labmaps) the Admin page (#167). */
+const MOVED = {"#profiles": "sharing.html#people", "#admin": "admin.html", "#users": "admin.html#users", "#labmaps": "admin.html#labmaps"};
 function openFromHash() {
-  const key = location.hash.slice(1), tab = showTab(TAB_OF[key] || "security", {remember: false});
-  const target = key && key !== tab && document.getElementById(key);
+  const target = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
   if (target && !target.hidden) target.scrollIntoView({block: "start"});
 }
-$("#acctTabs").addEventListener("click", ev => {
-  const b = ev.target.closest("[role=tab]");
-  if (b) showTab(b.id.slice(4));
-});
-$("#acctTabs").addEventListener("keydown", ev => {   // arrow keys move between tabs, as for any tab list
-  const shown = TAB_NAMES.filter(t => !$("#tab-" + t).hidden), i = shown.indexOf(document.activeElement.id.slice(4));
-  if (i < 0) return;
-  const next = ev.key === "ArrowRight" ? shown[(i + 1) % shown.length] : ev.key === "ArrowLeft" ? shown[(i + shown.length - 1) % shown.length]
-    : ev.key === "Home" ? shown[0] : ev.key === "End" ? shown[shown.length - 1] : null;
-  if (next) { ev.preventDefault(); showTab(next, {focus: true}); }
-});
-addEventListener("hashchange", () => { if (MOVED[location.hash]) location.replace(MOVED[location.hash]); else if (tabsOn) openFromHash(); });
+addEventListener("hashchange", () => { if (MOVED[location.hash]) location.replace(MOVED[location.hash]); else openFromHash(); });
 
 /* ---------------------------------------------------------------- start */
 (async () => {
@@ -303,20 +190,19 @@ addEventListener("hashchange", () => { if (MOVED[location.hash]) location.replac
   $("#who").textContent = ME.user.username;
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   $("#pwHint").textContent = `At least ${ME.password_min} characters. A few unrelated words make a strong password you can remember.`;
-  if (ME.user.must_change_pw) {   // nothing else is available until the one-time password is replaced (no tabs)
+  if (ME.user.must_change_pw) {   // nothing else is available until the one-time password is replaced
     $("#mustChange").hidden = false; SgNav.lock();
-    for (const id of ["#sessions", "#profiles", "#twofa", "#passkeys"]) $(id).hidden = true;
+    for (const id of ["#sessions", "#twofa", "#passkeys"]) $(id).hidden = true;
     $("#pwCur").focus();
     return;
   }
-  if (ME.user.needs_two_factor) {   // the server requires it: set it up before anything else (no tabs)
+  if (ME.user.needs_two_factor) {   // the server requires it: set it up before anything else
     $("#needTf").hidden = false; SgNav.lock();
-    for (const id of ["#sessions", "#profiles"]) $(id).hidden = true;
+    $("#sessions").hidden = true;
     await Promise.all([loadTwoFactor(), loadPasskeys()]);
     return;
   }
-  $("#acctTabs").hidden = false; tabsOn = true;
   openFromHash();
-  await Promise.all([loadSessions(), loadProfiles(), loadTwoFactor(), loadPasskeys()]);
+  await Promise.all([loadSessions(), loadTwoFactor(), loadPasskeys()]);
   openFromHash();   // again: the cards above have their content now, so a section link lands where it should
 })();

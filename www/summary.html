@@ -12,80 +12,18 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Sanguity">
 <link rel="stylesheet" href="css/app.css">
-<link rel="stylesheet" href="css/summary.css">
 <script src="js/theme.js"></script>
 </head>
-<body class="acct-page">
-<header class="topbar" data-title="Visit summary">
-  <h1><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</h1>
-</header>
-<main class="acct sum">
-  <div class="card warn" id="insecure" role="alert" hidden></div>
-
-  <section class="card" id="noProfiles" hidden>
+<!-- the visit summary moved to the Sharing page (#168): moved.js sends this address (and its ?profile=) on to it -->
+<body class="acct-page" data-moved="sharing.html#summary">
+<main class="acct">
+  <section class="card">
     <h2>Visit summary</h2>
-    <p>A summary is made from a health profile's records, and none is shared with you yet. <a href="account.html#profiles">Create a profile</a>,
-      or ask a profile's owner to share it with you.</p>
+    <p>The visit summary is on the Sharing page now: <a href="sharing.html#summary">Sharing → Visit summary</a>.</p>
   </section>
-
-  <section class="card" id="intro" hidden>
-    <h2>Visit summary</h2>
-    <p class="hint">One or two pages to print or bring to an appointment: results out of range since the last visit,
-      trends of your key labs, current medications, upcoming appointments and your own questions. It's made from the
-      records you see in Sanguity, each time you ask, and isn't kept. Anyone the profile is shared with can make one.</p>
-    <div class="form inline">
-      <label>Profile <select id="profile"></select></label>
-    </div>
-    <span class="msg" id="loadMsg" role="status"></span>
-  </section>
-
-  <form id="build" hidden>
-    <section class="card">
-      <h2>Which visit</h2>
-      <div class="form inline">
-        <label>For <select id="appt"></select></label>
-        <label>Changes since <select id="since"></select></label>
-      </div>
-      <p class="hint" id="whenHint"></p>
-    </section>
-
-    <section class="card">
-      <h2>What to include</h2>
-      <div class="sum-sections" id="sections"></div>
-      <h3 class="sub">Labs to trend</h3>
-      <p class="hint" id="keyHint"></p>
-      <ul class="sum-picked" id="picked"></ul>
-      <div class="sum-add">
-        <input id="labIn" list="labNames" placeholder="Another lab" aria-label="Another lab to trend" maxlength="120">
-        <button class="btn small" type="button" id="labAdd">Add</button>
-      </div>
-      <datalist id="labNames"></datalist>
-    </section>
-
-    <section class="card">
-      <h2>My questions</h2>
-      <p class="hint">One per line. Kept as a draft for this profile until you change it, for everyone it's shared with.</p>
-      <textarea id="questions" rows="6" maxlength="4000" aria-label="My questions"
-        placeholder="What should I ask about at this visit?"></textarea>
-      <span class="msg" id="qMsg" role="status"></span>
-    </section>
-
-    <section class="card">
-      <div class="row">
-        <button class="btn" type="button" id="previewBtn">Preview</button>
-        <button class="btn primary" type="submit" id="download">Download PDF</button>
-      </div>
-      <span class="msg" id="buildMsg" role="status"></span>
-      <p class="hint sum-notice" id="notice"></p>
-    </section>
-  </form>
-
-  <section class="card sum-preview" id="preview" hidden aria-live="polite"></section>
 </main>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
-<script src="js/nav.js"></script>
-<script src="js/dates.js"></script>
-<script src="js/summary.js"></script>
+<script src="js/moved.js"></script>
 </body>
 </html>

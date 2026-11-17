@@ -101,7 +101,7 @@ async function syncWarning(pid) {
     $("#who").textContent = ME.user.username;
     const canImport = p => p.role === "owner" || p.role === "editor";
     $("#importLink").hidden = !ME.profiles.some(canImport);
-    if (!ME.profiles.length) { emptyCard("No health profiles are shared with you yet. ", el("a", {href: "account.html#profiles", text: "Create one"}), " or ask a profile's owner to share it with ", el("b", {text: ME.user.username}), "."); return; }
+    if (!ME.profiles.length) { emptyCard("No health profiles are shared with you yet. ", el("a", {href: "sharing.html#profile", text: "Create one"}), " or ask a profile's owner to share it with ", el("b", {text: ME.user.username}), "."); return; }
     let want; try { want = +localStorage.getItem("ht-profile"); } catch (e) {}
     PROFILE = ME.profiles.find(p => p.id === want) || ME.profiles[0];
     hLoad();

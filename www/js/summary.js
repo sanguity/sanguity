@@ -1,19 +1,12 @@
-/* Sanguity · the visit summary page (#48): pick the visit and the "since" point, tick sections, add labs to trend,
-   type questions (kept as the profile's draft as you type), preview, download the PDF. The server builds both the
-   preview and the PDF from the same records (server/summary.py); nothing here is put into innerHTML. */
+/* Sanguity · the visit summary (#48), on the Sharing page (#168): pick the visit and the "since" point, tick
+   sections, add labs to trend, type questions (kept as the profile's draft as you type), preview, download the PDF.
+   The server builds both the preview and the PDF from the same records (server/summary.py); nothing here is put
+   into innerHTML. Follows the page's profile picker (#profile, filled by sharing.js); call() is sharing.js's. */
 "use strict";   // $, el and api come from util.js
-let ME, PID = null, OPTS = null, PICKED = [];
+let PID = null, OPTS = null, PICKED = [];
 
-async function call(path, method = "GET", body) {
-  const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body)});
-  if (r.status === 401) { location.replace("login.html"); throw new Error("signed out"); }
-  const j = r.status === 204 ? null : await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || (Array.isArray(j.detail) ? "Please check the fields." : r.status + " " + r.statusText));
-  return j;
-}
 const sayIn = (m, text, bad = false) => { m.textContent = text; m.classList.toggle("bad", bad); };
 const fmtDay = d => d ? fmtD(dayTs(d)) : "";   // a day, in this person's date format (dates.js, #42)
-$("#logout").onclick = async () => { try { await call("logout", "POST"); } catch (e) {} location.replace("login.html"); };
 
 /* ---------------------------------------------------------------- the choices */
 function chosen() {
@@ -42,11 +35,11 @@ $("#labIn").addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.pre
 
 /* the questions draft, kept a moment after typing stops */
 let qTimer = null, qSaved = "";
-async function saveQuestions() {
+async function saveQuestions(pid = PID) {   // pid: the profile they were typed for, when switching away from it
   clearTimeout(qTimer); qTimer = null;
   const text = $("#questions").value;
   if (text === qSaved) return;
-  try { await call(`profiles/${PID}/summary/questions`, "PUT", {text}); qSaved = text; sayIn($("#qMsg"), "Draft saved."); }
+  try { await call(`profiles/${pid}/summary/questions`, "PUT", {text}); qSaved = text; sayIn($("#qMsg"), "Draft saved."); }
   catch (e) { sayIn($("#qMsg"), "The draft wasn't saved: " + e.message, true); }
 }
 $("#questions").addEventListener("input", () => { sayIn($("#qMsg"), ""); clearTimeout(qTimer); qTimer = setTimeout(saveQuestions, 800); });
@@ -166,22 +159,19 @@ $("#build").onsubmit = async ev => {
   finally { b.disabled = false; }
 };
 
-/* ---------------------------------------------------------------- start */
-(async () => {
-  try { ME = await call("me"); } catch (e) { return; }
-  await datesReady();   // dates in this person's time zone and format (dates.js)
-  if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
-  if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
-  $("#who").textContent = ME.user.username;
-  { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
-  if (!ME.profiles.length) { $("#noProfiles").hidden = false; return; }
+/* ---------------------------------------------------------------- follow the profile picker */
+/* sharing.js fills it once it knows who's signed in (and the dates' format, dates.js), then sets its value; a
+   questions draft not saved yet is saved to the profile it was typed for before the next one loads */
+(() => {
   const sel = $("#profile");
-  sel.replaceChildren(...ME.profiles.map(p => el("option", {value: p.id, text: p.name + (p.role === "viewer" ? " (view only)" : "")})));
-  let want; try { want = +(new URLSearchParams(location.search).get("profile") || localStorage.getItem("ht-profile")); } catch (e) {}
-  if (ME.profiles.some(p => p.id === want)) sel.value = want;
-  sel.closest("label").hidden = ME.profiles.length < 2;
-  const pick = async () => { if (qTimer) await saveQuestions(); PID = +sel.value; try { localStorage.setItem("ht-profile", sel.value); } catch (e) {} load(); };
-  sel.onchange = pick;
-  $("#intro").hidden = false;
-  pick();
+  const pick = async () => {
+    const v = +sel.value, was = PID;
+    if (!v || v === PID) return;
+    PID = v;
+    if (qTimer && was) await saveQuestions(was);
+    $("#summaryIntro").hidden = false;
+    load();
+  };
+  sel.addEventListener("change", pick);
+  new MutationObserver(pick).observe(sel, {childList: true});
 })();

@@ -1,6 +1,6 @@
-/* Sanguity · activity logs (account.js, admin.js): what each entry says, and a log that opens on demand. A profile's log
-   (GET profiles/<id>/activity) on the Account page's Profiles tab; the install's account events (GET activity) on the
-   Admin page. Uses the page's own call() and when() (account.js, admin.js). */
+/* Sanguity · activity logs (sharing.js, admin.js): what each entry says, and a log that opens on demand. A profile's log
+   (GET profiles/<id>/activity) on the Sharing page, under Activity (#168); the install's account events (GET activity)
+   on the Admin page. Uses the page's own call() and when() (sharing.js, admin.js). */
 "use strict";
 const WHAT = {
   view: () => "opened the records",
