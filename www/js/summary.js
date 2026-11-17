@@ -59,7 +59,7 @@ async function load() {
   $("#whenHint").textContent = OPTS.upcoming.length ? "Upcoming appointments come from the records; the next one is chosen."
     : "There are no upcoming appointments in the records.";
   $("#sections").replaceChildren(...OPTS.sections.map(s => el("label", {class: "check"},
-    el("input", {type: "checkbox", value: s.id, checked: !s.ask || null}), s.label,
+    el("input", {type: "checkbox", value: s.id, checked: !(s.ask || s.off) || null}), s.label,   // off: a measure, unticked (#225)
     s.ask ? el("span", {class: "muted", text: " (only if you tick it, each time)"}) : null)));   // cycle records (#183)
   $("#keyHint").textContent = OPTS.keyLabs.length
     ? `The key labs from Settings: ${OPTS.keyLabs.map(labelOf).join(", ")}. Add any others here.`
@@ -73,8 +73,8 @@ async function load() {
 
 /* ---------------------------------------------------------------- preview */
 const cell = (text, cls) => el("td", {class: cls, text: text ?? ""});
-function table(heads, rows) {
-  return el("div", {class: "scroll"}, el("table", {class: "tbl"},
+function table(heads, rows, cls = "") {   // a region that can be scrolled from the keyboard on a narrow screen (#225's wider tables)
+  return el("div", {class: "scroll", tabindex: 0, role: "region", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
     el("thead", {}, el("tr", {}, ...heads.map(h => el("th", {text: h})))), el("tbody", {}, ...rows)));
 }
 function spark(pts) {
@@ -89,6 +89,8 @@ function spark(pts) {
     ...pts.map((p, i) => el("svg:circle", {cx: x(ts[i]).toFixed(1), cy: y(p[1]).toFixed(1), r: p[2] ? 2 : 1.3, fill: p[2] ? "var(--crit)" : "var(--ink)"})));
   return svg;
 }
+/* a measures block's cell (#225): a day, or a local wall time, in this person's format; else its text */
+const measureCell = (kind, v) => !v ? v : kind === "day" ? fmtDay(v) : kind === "time" ? fmtDT(zParse(v)) : v;
 function renderPreview(s) {
   const box = $("#preview"), since = fmtDay(s.since.date);
   const labels = Object.fromEntries(OPTS.sections.map(x => [x.id, x.label]));
@@ -123,6 +125,12 @@ function renderPreview(s) {
     } else if (id === "questions") {
       parts.push(el("h3", {text: `My questions (${s.questions.length})`}));
       parts.push(s.questions.length ? el("ol", {}, ...s.questions.map(q => el("li", {text: q}))) : none("No questions written down."));
+    } else if (s.measures && s.measures[id]) {   // the phone's and watch's measures (#225): lead lines, a table, a note
+      const b = s.measures[id];
+      parts.push(el("h3", {text: `${labels[id] || id}${b.history ? "" : ` since ${since}`} (${b.total})`}), ...b.lead.map(t => el("p", {text: t})));
+      parts.push(b.rows.length ? table(b.cols.map(c => c[0]), b.rows.map(r => el("tr", {}, ...r.map((v, i) => cell(measureCell(b.cols[i][1], v))))), "measures") : none(b.empty));
+      if (b.total > b.rows.length) parts.push(el("p", {class: "hint", text: `The latest ${b.rows.length} of ${b.total} are listed.`}));
+      if (b.note) parts.push(el("p", {class: "hint", text: b.note}));
     } else {
       const ex = s.extra.find(x => x.id === id); if (!ex) continue;
       parts.push(el("h3", {text: `${labels[id] || id} (${ex.rows.length})`}));

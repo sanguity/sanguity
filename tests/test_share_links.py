@@ -24,7 +24,7 @@ import logging, shutil   # noqa: E402
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, crypto, db as dbm, main, profiles as prof, records, share_links   # noqa: E402
+from server import accounts, crypto, db as dbm, main, measures, profiles as prof, records, share_links   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -49,6 +49,19 @@ DATA = {"built": "2026-11-01T00:00:00+00:00", "source": "fictional",
                  {"name": "SodiumSECRET", "unit": "mmol/L", "panel": "BMP", "n": 1, "txt": [], "pts": [[D(-30) + "T08:00:00", 140, 135, 145, ""]]}],
         "upcoming": [{"t": D(12) + "T10:30:00", "title": "Follow-up visit", "who": "Dr. Fictional Example", "where": "Riverside Clinic"},
                      {"t": D(-3), "title": "Already happened PASTAPPT", "who": "", "where": ""}]}
+
+
+# #225: a fictional phone's readings, in the watch summary's shape (watch/receiver.py)
+U = lambda n, h: f"{D(n)}T{h:02d}:00:00+00:00"
+PHONE = {"tz": "UTC", "exercise": [], "metrics": [
+    {"key": "spo2_avg", "unit": "%", "pts": [[D(-10), 97.2], [D(-1), 96.0]]},
+    {"key": "glucose_meter", "unit": "mg/dL", "pts": [[D(-4) + "T07:12", 104.0]]},
+    *({"key": "glucose_" + k, "unit": "", "pts": [[D(-5), v]]} for k, v in (("avg", 131.0), ("min", 62.0), ("max", 212.0), ("n", 288),
+                                                                          ("hours", 24.0), ("lt54", 0.0), ("lt70", 4.0), ("in", 78.0), ("gt180", 18.0)))],
+    "bp_readings": [[U(-40, 8), 150, 95, 70, "Fictional cuff", "Health Connect"], [U(-9, 8), 132, 84, 68, "Fictional cuff", "Health Connect"],
+                    [U(-2, 20), 126, 80, None, None, "Apple Health"]],
+    "temp_readings": [[U(-8, 7), 37.4, None, "Health Connect"]],
+    "ecg": [{"key": "ecg:0123456789abcdef", "type": "ecg", "start": U(-6, 10), "classification": "Sinus Rhythm", "avg_hr": 72}]}
 
 
 def read(*path):
@@ -174,7 +187,8 @@ class ShareLinks(unittest.TestCase):
         listed = self.c["robin"].get(f"/api/profiles/{self.pid}/links").json()
         self.assertNotIn(token, json.dumps(listed))
         self.assertIn("Hemoglobin", listed["labs"])
-        self.assertEqual([s["id"] for s in listed["sections"]], share_links.SECTION_IDS)
+        self.assertEqual([s["id"] for s in listed["sections"]], [s for s in share_links.SECTION_IDS if s not in measures.IDS],
+                         "every section, but a measure only when the profile has some (#225)")
 
     def test_no_cookie_is_set_and_none_is_read(self):
         token, _ = self.make()
@@ -347,6 +361,55 @@ class ShareLinks(unittest.TestCase):
             db.close()
 
     # ---------------------------------------------------------------- the page and the web server
+
+    # ---------------------------------------------------------------- the phone's and watch's measures (#225)
+
+    @classmethod
+    def phone_profile(cls):
+        if getattr(cls, "ppid", None):
+            return cls.ppid
+        path = os.path.join(TMP, "phone", "daily.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        crypto.write_file(path, json.dumps(PHONE).encode())
+        db = dbm.connect()
+        cls.ppid = prof.create_profile(db, "Sam Example (fictional)", owner_id=cls.uid["robin"], watch_file=path)
+        with dbm.transaction(db):
+            records.store(db, cls.ppid, {"events": [{"id": 1, "t": D(-200), "k": "immunization", "title": "Hepatitis B vaccine FICTIONAL"}],
+                                         "labs": [], "details": {"1": {"dose": "1 mL"}}}, "dataset")
+        db.close()
+        return cls.ppid
+
+    def test_measures_offered_when_present_and_only_when_ticked(self):
+        pid = self.phone_profile()
+        offered = [s["id"] for s in self.c["robin"].get(f"/api/profiles/{pid}/links").json()["sections"]]
+        self.assertEqual([s for s in offered if s in measures.IDS], ["home_bp", "glucose", "temperature", "oxygen", "immunizations", "ecg"])
+        self.assertNotIn("cycle", share_links.SECTION_IDS, "cycle tracking is never offered for a link (#183)")
+        token, _ = self.make(pid=pid, sections=["visits", "results", "medications", "about"])   # the form's usual ones: none ticked
+        text = self.view(token).text
+        for word in ("Fictional cuff", "132/84", "Sinus", "Hepatitis", "glucose", "SpO2", "home_bp"):
+            self.assertNotIn(word, text)
+
+    def test_measures_in_a_link_and_its_range(self):
+        pid = self.phone_profile()
+        token, link = self.make(pid=pid, sections=["home_bp", "glucose", "temperature", "oxygen", "immunizations", "ecg"],
+                                **{"from": D(-20), "to": D(-3)})
+        self.assertEqual(link["sections"], ["home_bp", "glucose", "temperature", "oxygen", "immunizations", "ecg"])
+        j = self.view(token).json()
+        self.assertEqual([s["id"] for s in j["sections"]], link["sections"])
+        self.assertTrue(all(s["what"] for s in j["sections"]))
+        self.assertEqual(j["home_bp"]["rows"], [[D(-9) + "T08:00", "132/84", "68", "Fictional cuff (Health Connect)"]],
+                         "only the readings in the range: not the one 40 days ago, nor the one 2 days ago")
+        self.assertEqual(j["home_bp"]["lead"], ["1 reading · average 132/84 mmHg · highest systolic 132, highest diastolic 84"])
+        self.assertEqual([r[0] for r in j["glucose"]["rows"]], [D(-4), D(-5)])
+        self.assertIn("standard published ranges", j["glucose"]["note"])
+        self.assertEqual(j["temperature"]["rows"][0][1], "37.4", "°C: the units of the owner who made it")
+        self.assertEqual(j["oxygen"]["rows"], [[D(-10), "97.2", ""]])
+        self.assertEqual(j["immunizations"]["rows"], [], "the vaccine was given before the range")
+        self.assertEqual(j["ecg"]["rows"], [[D(-6), "ECG: Sinus Rhythm", "72 bpm average"]])
+        for k in ("metrics", "bp_readings", "ecg_waves", "samples", "tz", "last_payload"):
+            self.assertNotIn(f'"{k}"', json.dumps(j))
+        token, _ = self.make(pid=pid, sections=["immunizations"])
+        self.assertEqual(self.view(token).json()["immunizations"]["rows"], [[D(-200), "Hepatitis B vaccine FICTIONAL", "1 mL", ""]])
 
     def test_page_and_nginx_routes(self):
         html = read("www", "share.html")

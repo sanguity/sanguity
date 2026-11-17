@@ -460,6 +460,14 @@ Everything on `main` so far; it becomes the first tagged release.
   counts it too, and `server.manage restore` hands it to the receiver, which puts it back when it starts, keeping what
   it had aside. **Admin → Backups** says what's in a backup and what isn't, when the receiver last saved, and how many
   uploads came after that. Installs without a phone are unaffected.
+- The new measures in the visit summary, share links and Overview tiles (#225): home blood pressure (since the last
+  visit: count, average, highest and the readings), glucose by day (a CGM's time in the standard published ranges,
+  labelled as the standard), body temperature, blood oxygen, respiratory rate, VO2 max, immunizations, ECGs (what the
+  watch said, never the trace) and BMI with a child's growth percentiles (server/growth.py, the page's own tables) are
+  sections of their own in the summary's preview and PDF and on a share link's page, each offered only when the
+  profile has some and unticked by default; cycle tracking stays the summary's own (#183) and is never offered for a
+  link. Settings → Overview → Home readings puts blood pressure, glucose and temperature tiles after the key labs.
+  Export everything now carries each ECG's samples (`watch/ecg/<key>.json`), and loading the export keeps them.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

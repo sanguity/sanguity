@@ -49,6 +49,36 @@ function goSeries(name) { state.sel.add(name); state.labsView = "chart"; setPeri
 // beside every out-of-range colouring (Labs has the same line in index.html)
 const RANGE_NOTE = "Out-of-range values are flagged against the reference ranges in your own lab reports. This isn't medical advice.";
 
+/* ---- readings taken at home as tiles (#225): blood pressure, glucose and body temperature, chosen under Settings →
+   Overview → Home readings, after the key labs. Each the latest reading, at home or at a visit, with its date and
+   where it came from (health.js's hVitals and gData, the same readings as Body and activity); a click opens its card. */
+function homeTiles() {
+  const want = (CFG.overview || {}).homeTiles || [];
+  if (!want.length) return [];
+  const V = hVitals(), out = [];
+  const latest = rows => rows.reduce((m, r) => !m || r.t > m.t ? r : m, null);
+  const where = r => r.home ? `at home · ${r.src}` : `at a visit · ${r.src}`;
+  const tile = (label, val, unit, sub, id) => el("button", {class: "tile home-tile", "data-home": id.slice(3), onclick: () => openVital(id)},
+    el("span", {class: "lbl"}, el("span", {text: label})), el("span", {class: "val"}, val, el("small", {text: unit})),
+    el("span", {class: "delta", text: sub}));
+  for (const k of want) {
+    if (k === "bp") {
+      const r = latest([...V.bp.home, ...V.bp.clinic]);
+      out.push(tile("Blood pressure", r ? bpText(r) : "–", "mmHg", r ? `${fmtDT(r.t)} · ${where(r)}` : "no readings yet", "#h-bp"));
+    } else if (k === "temp") {
+      const r = latest([...V.temp.home, ...V.temp.clinic]);
+      out.push(tile("Body temperature", r ? r.v[0].toFixed(1) : "–", V.temp.unit, r ? `${fmtDT(r.t)} · ${where(r)}` : "no readings yet", "#h-temp"));
+    } else if (k === "glucose") {
+      if (G === undefined) G = gData();
+      const m = G && G.meter.length ? G.meter.at(-1) : null, d = G && G.days.length ? G.days.at(-1) : null;
+      if (d && (!m || d.t >= m[0] - DAY / 2)) out.push(tile("Blood glucose", G.fmt(d.avg), `${G.unit} avg`,
+        `${fmtD(d.t)} · the day's CGM average (${G.fmt(d.lo)}–${G.fmt(d.hi)}) · phone app`, "#h-glucose"));
+      else out.push(tile("Blood glucose", m ? G.fmt(m[1]) : "–", G ? G.unit : "", m ? `${fmtDT(m[0])} · a meter reading · from a phone app` : "no readings yet", "#h-glucose"));
+    }
+  }
+  return out;
+}
+
 function renderOverview() {
   const box = $("#view-overview"); box.replaceChildren();
   const labDays = EV.filter(e => e.k === "lab").map(e => e.ts);
@@ -75,7 +105,9 @@ function renderOverview() {
       el("span", {class: "delta", text: (d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")} since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : "")}),
       spark(s, recent)));
   }
-  if (!noLabs) box.append(tiles, el("p", {class: "range-note", text: RANGE_NOTE + (RANGES_USED ? RANGE_NOTE_SETTINGS : "")}));
+  const home = homeTiles();   // readings taken at home, when chosen in Settings (#225)
+  if (!noLabs) { tiles.append(...home); box.append(tiles, el("p", {class: "range-note", text: RANGE_NOTE + (RANGES_USED ? RANGE_NOTE_SETTINGS : "")})); }
+  else if (home.length) box.append(el("div", {class: "ov-h"}, el("h2", {text: "Home readings"})), el("div", {class: "tiles"}, ...home));
   const cols = el("div", {class: "ov-cols"}), left = el("div", {}), right = el("div", {});
   cols.append(left, right); box.append(cols);
   // out of range at latest draw, with how long

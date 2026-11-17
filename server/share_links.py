@@ -16,9 +16,11 @@ What a holder sees is built here from the records at each view (records.served, 
 the link's scope; nothing else of the profile is reachable through it: no documents, no report text, no settings,
 no other profile, nothing to change. Records without a date are left out, since the range can't be judged. About
 this person (#194: birth date, sex used for reference ranges, heights) is shown only when its section is ticked, and
-the owner's page leaves it unticked. A watch's ECGs and irregular rhythm notifications (#182) are watch data, not
-records, so no link shows them: #225 can add a section for them, unticked unless the owner ticks it, with rows from
-ecg.shared_rows(watch_store.load(db, pid), from, to).
+the owner's page leaves it unticked. So are the phone's and watch's measures and the newer kinds of record (#225,
+server/measures.py: home blood pressure, glucose, temperature, blood oxygen, respiratory rate, VO2 max, immunizations,
+ECGs and irregular rhythm notifications as the device stated them, never their samples, BMI and growth): each a
+section of its own, offered only when the profile has some, shown only when ticked, in the units of the owner who made
+the link. Cycle tracking (#183) is never offered here, whatever the profile's setting.
 
   sections   chosen from SECTIONS; each says plainly what it shows (the owner's page repeats it)
   labs       for "results": the lab series to show, by name; empty = every lab
@@ -32,7 +34,7 @@ label and scope are encrypted at rest (atrest.FIELDS): lab names and a clinician
 import json, re
 from datetime import date
 
-from . import activity, crypto, db as dbm, person, records, security as sec, settings, summary
+from . import activity, crypto, db as dbm, measures, person, records, security as sec, settings, summary
 
 SECTIONS = [
     ("visits", "Visits and hospital stays", "the date, the title and the clinic or clinician the record names"),
@@ -44,6 +46,7 @@ SECTIONS = [
     ("costs", "Costs and claims", "each claim's date, provider, what was billed, what insurance paid and your share"),
     ("about", "About this person", "the birth date, the sex labs base reference ranges on, and the heights written down "
               "(those in the dates chosen)"),   # #194: never unless ticked (the owner's page leaves it unticked)
+    *measures.SECTIONS,   # #225: the phone's and watch's measures, immunizations, ECGs, BMI; never unless ticked
 ]
 SECTION_IDS = [s for s, _, _ in SECTIONS]
 VISIT_KINDS, PROCEDURE_KINDS = ("visit", "stay"), ("procedure", "imaging", "study")
@@ -160,6 +163,13 @@ def revoke(db, pid, lid, who):
     return crypto.dec(r["label"]) if r["label"] else ""
 
 
+def offered(db, pid, uid):
+    """The sections the owner's form offers (#225): every one, but a measure only when the profile has some of it."""
+    body = records.served(db, pid)
+    have = set(measures.offered(measures.context(db, pid, json.loads(body) if body else {}, settings.merged(db, pid, uid))))
+    return [{"id": i, "label": l, "what": w} for i, l, w in SECTIONS if i not in measures.IDS or i in have]
+
+
 def lab_names(db, pid):
     """The profile's lab series names, to pick from (watch metrics aren't labs)."""
     body = records.served(db, pid)
@@ -260,6 +270,10 @@ def build(db, link, today=None):
                                 "billed": num(c.get("billed")), "paid": num(c.get("paid")), "owe": num(c.get("owe"))}
                                for c in data.get("costs") or [] if isinstance(c, dict) and _in(summary._day(c.get("d")), scope)),
                               key=lambda c: c["t"], reverse=True)
+    mw = [s for s in scope["sections"] if s in measures.IDS]
+    if mw:   # (#225) in the units of the owner who made the link
+        c = measures.context(db, pid, data, settings.merged(db, pid, link["created_by"]))
+        out.update(measures.blocks(c, mw, lambda d: _in(d, scope), most=measures.LINK_MOST))
     if "about" in want:   # About this person (#194), only when the owner ticked it
         p = person.of(settings.nest(settings.stored(db, "profile", pid)))
         out["about"] = {"birthDate": p["birthDate"], "sex": person.SEXES[p["sex"]] if p["sex"] else "",

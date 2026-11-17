@@ -262,7 +262,7 @@ def rule_matches(rule, title):
 KEY_LABS = ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Lymphocytes Absolute", "Creatinine",
             "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"]
 
-section("overview", "Overview", "The lab tiles at the top of the Overview tab.")
+section("overview", "Overview", "The tiles at the top of the Overview tab: key labs, and readings taken at home if you choose them.")
 section("trends", "Lab charts", "What the Labs tab charts before you pick anything.")
 section("names", "Names", "Shorter or clearer names shown instead of the ones in the records.")
 section("health", "Body and activity", "How the Body and activity tab counts workouts.")
@@ -301,6 +301,13 @@ define("sync.staleDays", "sync", "Warn when a connection hasn't synced for (days
        whole(1, 365, "The number of days"), scope="install", private=False, kind="number",
        help="The profile's main page and the admins' notices say so, with a link to the connection.")
 CHOICES = {"sync.attachTypes": ATTACHMENT_TYPES}
+
+# #225: readings taken at home (and at visits) as Overview tiles beside the key labs, each with its latest value
+HOME_TILES = {"bp": "Blood pressure", "glucose": "Blood glucose", "temp": "Body temperature"}
+define("overview.homeTiles", "overview", "Home readings", [], some_of(HOME_TILES, "Home readings"), kind="choices",
+       help="A tile each, after the key labs, with the latest reading, its date and where it came from: a phone app at "
+            "home, or a visit's records.")
+CHOICES["overview.homeTiles"] = HOME_TILES
 
 define("visitWorkouts", "health", "Visits that count as workouts", [], workout_rules(), kind="rules",
        help="Past visits whose title contains the text count as a workout of that many minutes, once a day per rule, "

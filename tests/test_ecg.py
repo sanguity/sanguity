@@ -344,20 +344,58 @@ class App(unittest.TestCase):
         w = watch_store.wave(self.db, pid, k.split(":")[1])
         self.assertEqual(len(w["samples"]), 15360)
 
-    def test_never_in_a_share_link_or_the_visit_summary(self):
+    def test_in_a_share_link_or_the_visit_summary_only_when_ticked(self):
+        """#225: a section of their own, unticked unless chosen; what the device said, never the samples."""
         pid = prof.create_profile(self.db, "Sharing test", owner_id=self.uid)
         watch_store.save_import(self.db, pid, self.watch)
         c = self.client()
-        r = c.post(f"/api/profiles/{pid}/links", json={"label": "Everything", "sections": list(share_links.SECTION_IDS), "hours": 24}, headers=H)
-        self.assertEqual(r.status_code, 200, r.text)
-        view = TestClient(main.app).post("/api/share/view", json={"token": r.json()["path"].split("#", 1)[1]}, headers=H)
-        self.assertEqual(view.status_code, 200, view.text)
-        built = summary.build(self.db, pid, self.uid, "Sharing test", {"sections": [s for s, _ in summary.sections()]})
-        for text in (view.text, json.dumps(built, ensure_ascii=False)):
-            for word in ("ECG", "Sinus", "Atrial", "Inconclusive", "rhythm", "Lead I"):
-                self.assertNotIn(word, text)
-        self.assertNotIn("ecg", {s for s, _ in summary.sections()})
-        self.assertNotIn("ecg", share_links.SECTION_IDS)
+        offered = c.get(f"/api/profiles/{pid}/links").json()["sections"]
+        self.assertIn("ecg", [s["id"] for s in offered], "offered: the profile has some")
+        self.assertIn("ecg", [s["id"] for s in c.get(f"/api/profiles/{pid}/summary").json()["sections"] if s.get("off")])
+        but = [s for s in share_links.SECTION_IDS if s != "ecg"]
+        for sections, shown in ((but, False), (["ecg"], True)):
+            r = c.post(f"/api/profiles/{pid}/links", json={"label": "Everything", "sections": sections, "hours": 24}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            view = TestClient(main.app).post("/api/share/view", json={"token": r.json()["path"].split("#", 1)[1]}, headers=H)
+            self.assertEqual(view.status_code, 200, view.text)
+            built = summary.build(self.db, pid, self.uid, "Sharing test", {"sections": [s for s, _ in summary.sections() if s in sections or s == "questions"],
+                                                                         "since": "2026-09-01"})
+            for text in (view.text, json.dumps(built, ensure_ascii=False)):
+                for word in ("Sinus", "Atrial", "Inconclusive", "Irregular rhythm notification"):
+                    (self.assertIn if shown else self.assertNotIn)(word, text)
+                for word in ("Lead I", "samples", "15360"):
+                    self.assertNotIn(word, text, "never the samples")
+        self.assertNotIn("cycle", share_links.SECTION_IDS)
+
+    def test_the_export_carries_the_samples_and_loads_them_again(self):
+        """#225: Export everything gives each recording's samples as watch/ecg/<16 hex>.json; loading it puts them
+        back beside the loaded daily.json, sealed, where the drawer reads them."""
+        import zipfile
+        from server import export
+        from server import records
+        pid = prof.create_profile(self.db, "ECG export", owner_id=self.uid)
+        with dbm.transaction(self.db):
+            records.store(self.db, pid, {"events": [{"id": 1, "t": "2026-10-01", "k": "visit", "title": "Visit"}], "labs": []}, "dataset")
+        watch_store.save_import(self.db, pid, self.watch)
+        z = zipfile.ZipFile(io.BytesIO(b"".join(export.stream(export.plan(self.db, pid), "ecg-robin"))))
+        names = sorted(n for n in z.namelist() if n.startswith("watch/ecg/"))
+        self.assertEqual(len(names), 3)
+        k = next(e["key"] for e in self.watch["ecg"] if e["type"] == "ecg")
+        self.assertEqual(json.loads(z.read(f"watch/ecg/{k.split(':')[1]}.json"))["samples"], self.watch["ecg_waves"][k]["samples"])
+        self.assertIn("watch/ecg/", z.read("README.txt").decode())
+        back = prof.create_profile(self.db, "ECG loaded", owner_id=self.uid)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as out:
+            for n in z.namelist():
+                out.writestr(n, z.read(n))
+            out.writestr("watch/ecg/0123456789abcdef.json", b"not json")   # a damaged one is left out
+        buf.seek(0)
+        export.import_archive(self.db, back, buf)
+        self.assertEqual(watch_store.wave(self.db, back, k.split(":")[1])["samples"], self.watch["ecg_waves"][k]["samples"])
+        self.assertIsNone(watch_store.wave(self.db, back, "0123456789abcdef"))
+        p = watch_store.wave_path(self.db, back, k.split(":")[1])
+        with open(p, "rb") as f:
+            self.assertNotIn(b"samples", f.read(), "sealed")
 
     def test_the_hook_for_sharing_later(self):
         rows = ecg.shared_rows({**self.watch, "tz": "America/New_York"}, "2026-10-01", "2026-10-31")

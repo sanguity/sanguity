@@ -307,8 +307,15 @@ function themeEditor(value, changed, ro) {
         try { localStorage.removeItem("ht-theme"); } catch (e) {} applyTheme(); note.textContent = "This browser now uses your default."; }}));
   return {node: el("div", {}, box, note.childNodes.length ? note : null), get: () => box.querySelector("input:checked")?.value || value};
 }
+/* #225 some of a few choices, each a checkbox (the Overview's home readings as tiles), in the server's order */
+function choicesEditor(value, changed, ro, setting) {
+  const boxes = Object.entries(setting.choices || {}).map(([id, label]) => el("label", {class: "check"},
+    el("input", {type: "checkbox", value: id, checked: value.includes(id) || null, disabled: ro, onchange: changed}), " " + label));
+  return {node: el("div", {class: "row set-choices", role: "group", "aria-label": setting.label}, ...boxes),
+    get: () => boxes.map(b => b.querySelector("input")).filter(i => i.checked).map(i => i.value)};
+}
 const EDITORS = {labs: labsEditor, tiles: tilesEditor, names: namesEditor, rules: rulesEditor, tabs: tabsEditor, theme: themeEditor,
-  milestones: milestonesEditor};
+  milestones: milestonesEditor, choices: choicesEditor};
 
 /* ---------------------------------------------------------------- dates and times (#42): each person's own time
    zone and date format (dates.js uses them on every page) */

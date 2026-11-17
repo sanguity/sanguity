@@ -43,7 +43,7 @@ def state(pid: int, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "owner")
     prof.sync_build(db, pid)
     return {"links": links.listing(db, pid), "labs": links.lab_names(db, pid), "max_hours": links.MAX_HOURS,
-            "sections": [{"id": i, "label": l, "what": w} for i, l, w in links.SECTIONS]}
+            "sections": links.offered(db, pid, s["id"])}   # a measure only when there's some (#225)
 
 
 @router.post("/api/profiles/{pid}/links")

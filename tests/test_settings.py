@@ -276,6 +276,7 @@ class Settings(unittest.TestCase):
                ("overview.keyLabs", ["  "]),
                ("overview.keyLabs", [f"Lab {i}" for i in range(51)]),
                ("labNicknames", ["not", "a", "map"]),
+               ("overview.homeTiles", ["bp", "steps"]), ("overview.homeTiles", "bp"),   # #225: home readings as tiles
                ("sources", {"EXT": ""})]
         before = self.merged(1)
         for key, value in bad:
@@ -286,6 +287,9 @@ class Settings(unittest.TestCase):
         self.assertEqual(self.put("overview.keyLabs", [" Ferritin ", "Ferritin", "Hemo  globin"])["overview"]["keyLabs"],
                          ["Ferritin", "Hemo globin"])
         self.c["robin"].delete("/api/profiles/1/settings/overview.keyLabs", headers=H)
+        self.assertEqual(before["overview"]["homeTiles"], [], "no home tiles unless chosen (#225)")
+        self.assertEqual(self.put("overview.homeTiles", ["temp", "bp", "temp"])["overview"]["homeTiles"], ["bp", "temp"], "in the list's order")
+        self.c["robin"].delete("/api/profiles/1/settings/overview.homeTiles", headers=H)
 
     # ---------------------------------------------------------------- who may
 
