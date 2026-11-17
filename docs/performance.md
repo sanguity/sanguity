@@ -9,7 +9,9 @@ pull request that can affect the app (#201).
 
 `python3 -I demo/generate.py <folder> --end 2026-11-15 --big` writes the demo with eight more years before its
 story: routine care every couple of weeks with more tests than the story's, three prescriptions filled every month,
-other care, portal messages and scanned documents. It is fictional and the same on every run, like the demo.
+other care, portal messages and scanned documents; and readings from home (#180, #184): blood pressure a few
+mornings a week, a thermometer during colds, a watch's blood oxygen each night for the last three years, with the
+same taken at the clinic's visits. It is fictional and the same on every run, like the demo.
 
 | | The demo | `--big` |
 |---|---:|---:|
@@ -22,6 +24,7 @@ other care, portal messages and scanned documents. It is fictional and the same 
 | Watch and scale days | 20 months | 10 years |
 | Blood glucose (#181) | none | 3 years of meter readings, 336 CGM days |
 | Workouts | 115 | 1,026 |
+| Home blood pressure and temperature readings | – | 1,381 and 180 |
 
 Blood glucose (#181) reaches the page as days, never as a CGM's five-minute readings, so the fixture has the days and
 the meter's readings, in the receiver's shape: 77 KB of the watch data and about 800 elements on Body and activity (a
@@ -50,7 +53,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `records_gzip_bytes` | The same as nginx sends it (gzip at its default level) | 439 KB | 600 KB |
 | `records_cold_s` | That request right after the records changed, put together from the database | 0.28 s | 2.5 s |
 | `records_s` | That request again with nothing changed (the server keeps the answer) | 0.003 s | 0.25 s |
-| `watch_bytes`, `watch_s` | `GET /api/profiles/{id}/watch`: ten years of watch and scale days, with the glucose | 989 KB, 0.02 s | 1.2 MB, 0.5 s |
+| `watch_bytes`, `watch_s` | `GET /api/profiles/{id}/watch`: ten years of watch and scale days, with the glucose and the home readings | 1.28 MB, 0.03 s | 1.5 MB, 0.5 s |
 | `build_load_s` | The big build loaded into a profile (the first start, `setup rebuild`) | 0.19 s | 5 s |
 | `export_s` | **Export everything** of the big profile: a 1.4 MB zip with its 1,000 documents | 0.55 s | 6 s |
 | `import_s` | That zip imported into an empty profile through the background job: uploaded, previewed, saved | 0.86 s | 10 s |
@@ -58,7 +61,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `sync_s` | A connected source's first pull of the big FHIR patient (186 requests), its preview saved | 1.7 s | 15 s |
 | `page_ready_ms` | The records page, loaded on each tab, from the request to its `sanguity:ready` mark (`www/js/app.js`) | 132 ms (Body and activity) | 1,500 ms |
 | `tab_draw_ms` | A tab's first draw with the period **All**, the page loaded on another tab, to the next frame | 110 ms (Body and activity) | 1,000 ms |
-| `tab_elements` | Elements in a tab with the period **All** | 15,355 (Body and activity) | 18,000 |
+| `tab_elements` | Elements in a tab with the period **All** | 16,181 (Body and activity) | 18,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
 

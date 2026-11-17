@@ -233,11 +233,30 @@ def home_readings():
     return out
 
 
+def temp_spo2_readings():
+    """Fictional body temperature and blood oxygen (#184), local times in New York: a cold in August and one in October,
+    a thermometer's readings morning and evening [(local time, °C)]; and a watch's blood oxygen three times a night from
+    August to mid-November [(local time, %)]. Made by formula, so the same on every run."""
+    from datetime import date, timedelta
+    temps = [(f"{d}T{h}:{10 + (i * 7) % 40:02d}:00", round(37.0 + (0.9 if i < 3 else 0.2) - 0.1 * (i % 3), 1))
+             for start in (date(2026, 8, 20), date(2026, 10, 2)) for i, (d, h) in enumerate((start + timedelta(days=k), h) for k in range(4) for h in ("08", "20"))]
+    import random
+    rnd, spo2, d, i = random.Random(184), [], date(2026, 8, 1), 0
+    while d <= date(2026, 11, 14):
+        for h in (1, 3, 5):
+            spo2.append((f"{d}T0{h}:{(i * 11) % 50 + 5:02d}:00", rnd.choice((93, 94, 95, 95, 96, 96, 96, 97, 97, 98))))
+        d += timedelta(days=1)
+        i += 1
+    return temps, spo2
+
+
 def add_vitals_records(build, watch_dir):
     """Home blood pressure from both phone apps (#180), folded by the receiver itself into the demo's watch summary:
     through Health Auto Export until mid-September (some uploads sent twice, overlapping), then Life Dashboard
     Companion, each upload sent again; and blood pressure taken at visits, in the records as systolic and diastolic
-    series, one of them flagged high by its report and one the same as a home reading (typed in as vitals too)."""
+    series, one of them flagged high by its report and one the same as a home reading (typed in as vitals too).
+    Body temperature and blood oxygen the same way (#184): Health Auto Export's in °F, Life Dashboard's in °C; at the
+    visits, a temperature in °F (one flagged high) and SpO2."""
     import hashlib, tempfile as tf
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -260,12 +279,22 @@ def add_vitals_records(build, watch_dir):
         send({"source": "health_connect", "timezone": "America/New_York", "sequence": seq, "timestamp": "2026-11-15T12:00:00Z",
               "blood_pressure": [{"uuid": f"fictional-bp-{t}", "time": at(t).astimezone(ZoneInfo("UTC")).isoformat(), "systolic": s, "diastolic": d,
                                   "source": "Fictional Cuff", **({"pulse": p} if p is not None else {})} for t, s, d, p in android]})
+    temps, spo2 = temp_spo2_readings()   # #184: before mid-September from the iPhone, in °F; then from Health Connect
+    hae_when = lambda t: at(t).strftime("%Y-%m-%d %H:%M:%S %z")
+    for _ in (1, 2):
+        send({"data": {"metrics": [
+            {"name": "body_temperature", "units": "degF", "data": [{"date": hae_when(t), "qty": round(c * 9 / 5 + 32, 2), "source": "Fictional Thermometer"} for t, c in temps if t < "2026-09-15"]},
+            {"name": "blood_oxygen_saturation", "units": "%", "data": [{"date": hae_when(t), "qty": v, "source": "Fictional Watch"} for t, v in spo2 if t < "2026-09-15"]}]}})
+    utc = lambda t: at(t).astimezone(ZoneInfo("UTC")).isoformat()
+    send({"source": "health_connect", "timezone": "America/New_York", "sequence": 3, "timestamp": "2026-11-15T12:00:00Z",
+          "body_temperature": [{"uuid": f"fictional-t-{t}", "time": utc(t), "celsius": c, "source": "Fictional Thermometer"} for t, c in temps if t >= "2026-09-15"],
+          "oxygen_saturation": [{"uuid": f"fictional-o-{t}", "time": utc(t), "percentage": v, "source": "Fictional Watch"} for t, v in spo2 if t >= "2026-09-15"]})
     got = store.summary()
     path = os.path.join(watch_dir, "daily.json")
     with open(path, encoding="utf-8") as f:
         watch = json.load(f)
-    watch["metrics"] += [m for m in got["metrics"] if m["key"] in rx.VITALS_META]
-    watch["bp_readings"] = got["bp_readings"]
+    watch["metrics"] += [m for m in got["metrics"] if m["key"] in rx.VITALS_META or m["key"] in ("spo2_avg", "spo2_min")]
+    watch["bp_readings"], watch["temp_readings"] = got["bp_readings"], got["temp_readings"]
     with open(path, "w", encoding="utf-8") as f:
         json.dump(watch, f)
     same = next(r for r in rows if r[0].startswith("2026-10-20T07"))   # a home reading typed in as vitals as well
@@ -278,6 +307,10 @@ def add_vitals_records(build, watch_dir):
     for name, loinc, i in (("Blood pressure, systolic", "8480-6", 1), ("Blood pressure, diastolic", "8462-4", 2)):
         pts = [[v[0], v[i], None, None, v[i + 2], str(v[i]), "Typed in" if v[0] == at(same[0]).isoformat() else "Lakeside Family Medicine"] for v in visits]
         data["labs"].append({"name": name, "key": f"loinc:{loinc}", "loinc": loinc, "unit": "mmHg", "panel": "Vitals", "n": len(pts), "pts": pts, "txt": []})
+    for name, loinc, unit, vals in (("Temperature", "8310-5", "°F", [(98.4, ""), (100.6, "H"), (98.1, ""), (98.6, "")]),
+                                    ("SpO2 (clinic)", "59408-5", "%", [(98, ""), (97, ""), (97, ""), (96, "")])):   # #184
+        pts = [[v[0], x, None, None, f, str(x), "Lakeside Family Medicine"] for v, (x, f) in zip(visits, vals)]
+        data["labs"].append({"name": name, "key": f"loinc:{loinc}", "loinc": loinc, "unit": unit, "panel": "Vitals", "n": len(pts), "pts": pts, "txt": []})
     with open(data_path, "w", encoding="utf-8") as f:
         json.dump(data, f)
 
@@ -1004,7 +1037,7 @@ def main():
             js("state.tables.clear(); switchTab('health')")
             settle(500)
             check("Body and activity (#60): every card with charts has Chart | Table",
-                  js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp"])
+                  js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen"])
             page.focus("#h-body svg")
             page.keyboard.press("Home")
             settle(150)
@@ -1012,10 +1045,10 @@ def main():
             check("…its charts step from the keyboard too, with the hover's crosshair and tooltip", re.match(r"Weight: \d+ readings from", hk[0] or "")
                   and hk[1] == "block" and " lb" in hk[2] and hk[3] == "visible", hk)
             page.keyboard.press("Escape")
-            for k in ("#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp"):
+            for k in ("#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen"):
                 page.click(f"{k} .view-seg button:text-is('Table')")
                 settle(200)
-            ht = js("['#h-body', '#h-glucose', '#h-sleep', '#h-activity', '#h-heart', '#h-bp'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
+            ht = js("['#h-body', '#h-glucose', '#h-sleep', '#h-activity', '#h-heart', '#h-bp', '#h-temp', '#h-oxygen'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
             check("…Table shows each card's values as a table, a row per day or week", all(n > 0 for n in ht), ht)
             # Costs: both charts
             js("state.tables.clear(); switchTab('costs')")
@@ -1049,7 +1082,7 @@ def main():
             bad = []
             for theme in ("light", "dark"):
                 js("t => { document.documentElement.dataset.theme = t; }", theme)
-                for tab, keys in (("labs", ["Hemoglobin"]), ("heatmap", ["#hm"]), ("health", ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp"]), ("costs", ["#costBars", "#paidCum"])):
+                for tab, keys in (("labs", ["Hemoglobin"]), ("heatmap", ["#hm"]), ("health", ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen"]), ("costs", ["#costBars", "#paidCum"])):
                     for table in (False, True):
                         js("([keys, on]) => { state.tables.clear(); if (on) keys.forEach(k => state.tables.add(k)); }", [keys, table])
                         js("t => t === 'heatmap' ? switchTab('labs', 'heatmap') : t === 'labs' ? switchTab('labs', 'chart') : switchTab(t)", tab)
@@ -1250,6 +1283,100 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             page.set_viewport_size({"width": 1400, "height": 900})
             js("state.tables.clear(); [state.preset, state.from, state.to] = window._was180; state.sel = new Set(window._was60[0]); switchTab(window._was180[3]); save()")
+
+            # ---- body temperature and blood oxygen in full (#184): the receiver folded a thermometer's readings from both
+            # apps (Health Auto Export's in °F, sent twice; Life Dashboard's in °C) and a watch's blood oxygen into the
+            # summary; Body and activity has a small card for each beside the visits' readings (a temperature in °F, one
+            # flagged high; SpO2), in the person's temperature unit (#41); Chart | Table, the keyboard, the Labs links, and
+            # 1400 and 375 px in light and dark with axe-core
+            want_t, want_o = temp_spo2_readings()
+            js("window._was184 = [state.preset, state.from, state.to, state.tab]; state.tables.clear(); setRange(dayTs('2026-08-01'), dayTs('2026-11-14')); switchTab('health')")
+            settle(500)
+            tc = js("""(() => { const c = document.getElementById('h-temp'), o = document.getElementById('h-oxygen'), day = k => (WATCH.metrics.find(m => m.key === k) || {pts: []}).pts;
+                return c && o && {readings: (WATCH.temp_readings || []).length, apps: [...new Set(WATCH.temp_readings.map(r => r[3]))].sort(), days: day('body_temp').length,
+                  max: day('body_temp_max').length, unit: H.vit.temp.unit, home: H.vit.temp.home.length, clinic: H.vit.temp.clinic.length, hint: c.querySelector('.hint').textContent,
+                  label: c.querySelector('svg').getAttribute('aria-label'), legend: c.querySelector('.legend').textContent, list: [...c.querySelectorAll('.vital-list li')].map(l => l.textContent),
+                  first: H.vit.temp.home[0].v[0], o2days: day('spo2_avg').length, o2low: day('spo2_min').length, o2home: H.vit.spo2.home.length, o2clinic: H.vit.spo2.clinic.length,
+                  o2label: o.querySelector('svg').getAttribute('aria-label'), o2band: o.querySelectorAll('svg path[opacity="0.16"]').length,
+                  o2hollow: o.querySelectorAll('svg circle[fill="var(--surface)"]').length, o2legend: o.querySelector('.legend').textContent}; })()""")
+            spo2_days = len({t[:10] for t, _ in want_o})
+            check("body temperature (#184): every reading from both phone apps once, in °C whatever unit it came in, and each day's average and highest",
+                  tc and tc["readings"] == len(want_t) == tc["home"] and tc["apps"] == ["Apple Health", "Health Connect"] and tc["days"] == tc["max"] == 8,
+                  tc and {k: tc[k] for k in ("readings", "apps", "days", "max")})
+            check("…a card on Body and activity: the readings at home and at visits told apart, in the records' unit (°F) while Units says “as reported”",
+                  tc and tc["unit"] == "°F" and tc["clinic"] == 4 and abs(tc["first"] - (37.9 * 9 / 5 + 32)) < 0.01 and "At home" in tc["legend"] and "At a visit" in tc["legend"]
+                  and "in °F." in tc["hint"] and re.match(r"Body temperature: \d+ readings from", tc["label"] or ""), tc and {k: tc[k] for k in ("unit", "clinic", "first", "hint", "label")})
+            check("…its latest readings listed with time and source", tc and len(tc["list"]) == 3 and all("°F" in l and ("Fictional Thermometer" in l or "Lakeside" in l) for l in tc["list"]), tc and tc["list"])
+            check("blood oxygen (#184): the phone's daily average and low from both apps, a card with the days as a band and the visits' readings apart",
+                  tc and tc["o2days"] == tc["o2low"] == tc["o2home"] == spo2_days and tc["o2clinic"] == 4 and tc["o2band"] == 1 and tc["o2hollow"] >= 1
+                  and "Phone, daily average" in tc["o2legend"] and tc["o2label"].startswith("Blood oxygen:"), tc and {k: tc[k] for k in ("o2days", "o2low", "o2home", "o2clinic", "o2band", "o2hollow", "o2label")})
+            page.focus("#h-temp svg")
+            page.keyboard.press("Home")   # the first: the visit on 12 August, then the cold's first reading at home
+            settle(150)
+            tipped = [js("tip.innerText")]
+            page.keyboard.press("ArrowRight")
+            settle(150)
+            tipped.append(js("tip.innerText"))
+            check("…the temperature chart steps from the keyboard, the tooltip saying the reading, when and where",
+                  "98.1 °F" in tipped[0] and "at a visit · Lakeside Family Medicine" in tipped[0] and "100.2 °F" in tipped[1]
+                  and "at home · Fictional Thermometer (Apple Health)" in tipped[1], tipped)
+            page.keyboard.press("Escape")
+            page.focus("#h-oxygen svg")
+            page.keyboard.press("End")
+            settle(150)
+            check("…and so does blood oxygen's", "% average, low" in js("tip.innerText"), js("tip.innerText"))
+            page.keyboard.press("Escape")
+            js("setRange(dayTs('2025-06-01'), dayTs('2025-06-30'))")
+            settle(300)
+            check("…a visit's temperature keeps its report's flag (▲), and the hint says what it means",
+                  js("document.querySelectorAll('#h-temp svg path.pt.abn').length") == 1 and "flagged as high or low" in page.inner_text("#h-temp .hint")
+                  and not re.search(r"(?i)\b(normal|fever|low oxygen|hypox|target|goal)\b", page.inner_text("#h-temp") + page.inner_text("#h-oxygen")))
+            js("setRange(dayTs('2026-08-01'), dayTs('2026-11-14'))")
+            settle(300)
+            for k in ("#h-temp", "#h-oxygen"):
+                page.click(f"{k} .view-seg button:text-is('Table')")
+                settle(200)
+            tb = js("""['#h-temp', '#h-oxygen'].map(k => { const t = document.querySelector(k + ' table.data'); return t && [[...t.querySelectorAll('thead th')].map(h => h.textContent),
+                t.querySelectorAll('tbody tr').length, [...t.querySelectorAll('tbody tr')].map(r => r.children[2].textContent)]; })""")
+            check("…Table lists every reading: time, value, where and source (blood oxygen by day, with the day's low)",
+                  tb[0] and tb[0][0] == ["Date and time", "Temperature (°F)", "Where", "Source"] and tb[0][1] == len(want_t) + 2 and {"Home", "Clinic visit"} <= set(tb[0][2])
+                  and tb[1] and tb[1][0] == ["Date", "SpO2 (%)", "Day's low (%)", "Where", "Source"] and tb[1][1] == spo2_days + 2, tb and [tb[0] and tb[0][:2], tb[1] and tb[1][:2]])
+            # the unit preference (#41): °C chosen, the visits' °F readings shown in °C too
+            js("CFG.units = {...CFG.units, temperature: 'C'}; H.vit = null; state.tables.clear(); renderHealth()")
+            settle(300)
+            tu = js("[H.vit.temp.unit, H.vit.temp.clinic.map(r => +r.v[0].toFixed(1)), document.querySelector('#h-temp .hint').textContent, H.vit.temp.home[0].v[0]]")
+            check("…with °C chosen in Settings → Units, every reading is in °C, the visits' converted (100.6 °F is 38.1 °C)",
+                  tu[0] == "°C" and 38.1 in tu[1] and "in °C (Settings → Units)" in tu[2] and tu[3] == 37.9, tu)
+            js("CFG.units = {...CFG.units, temperature: 'reported'}; H.vit = null; renderHealth()")
+            # from Labs: the temperature and SpO2 charts link to their cards
+            for series, card in (("Temperature", "h-temp"), ("SpO2 (clinic)", "h-oxygen")):
+                js("n => { state.sel = new Set([n]); switchTab('labs', 'chart'); }", series)
+                settle(400)
+                link = page.locator("#charts .chart .vital-link a")
+                ok = link.count() == 1
+                if ok:
+                    link.click()
+                    settle(600)
+                check(f"…Labs' {series} chart links to its card on Body and activity", ok and js("state.tab") == "health" and js("document.activeElement.id") == card,
+                      [ok, js("state.tab"), js("document.activeElement.id")])
+            js("setRange(dayTs('2026-08-01'), dayTs('2026-11-14')); switchTab('health')")
+            bad, axe_tc = [], []
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    for table in (False, True):
+                        js("on => { state.tables.clear(); if (on) { state.tables.add('#h-temp'); state.tables.add('#h-oxygen'); } renderHealth(); }", table)
+                        settle(300)
+                        page.locator("#h-temp").scroll_into_view_if_needed()
+                        if width == 375:
+                            bad += phone_fits(page, f"temperature and oxygen {'tables' if table else 'charts'} ({theme})")
+                        axe_tc += axe_check(page, f"temperature and oxygen {'tables' if table else 'charts'}, {width} px, {theme}")[0]
+            check("…both cards fit 375 px, and axe-core finds nothing serious at 1400 and 375 px, light and dark", not bad and not axe_tc, (bad + axe_tc)[:6])
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("state.tables.clear(); [state.preset, state.from, state.to] = window._was184; state.sel = new Set(window._was60[0]); switchTab(window._was184[3]); save()")
 
             # ---- each result against its own range (#58): the demo's creatinine (0.7–1.3 mg/dL) with two results from
             # an outside lab (0.6–1.2, add_range_records): the chart's band steps with each result's range and its
@@ -3535,9 +3662,9 @@ def main():
             check("key labs: the preview shows the Overview's tiles", p0 == [t for t, _ in before], p0[:4])
             page.click("#sec-overview button[aria-label='Remove Magnesium']")   # the demo has just the 12 default labs
             check("…a lab taken out leaves the preview", "Magnesium" not in js(preview))
-            check("…and is suggested among the profile's most-measured labs",   # first: the blood pressure taken at visits (#180) has fewer
+            check("…and is suggested among the profile's most-measured labs",   # first: the vitals taken at visits (#180, #184) have fewer
                   js("[...document.querySelectorAll('#sec-overview .set-sugg .chip')].map(b => b.getAttribute('aria-label'))")
-                  == ["Add Magnesium", "Add Blood pressure, diastolic", "Add Blood pressure, systolic"])
+                  == ["Add Magnesium", "Add Blood pressure, diastolic", "Add Blood pressure, systolic", "Add SpO2 (clinic)", "Add Temperature"])
             page.click("#sec-overview .set-sugg .chip")
             check("…to put back", js(preview) == p0, js(preview)[-2:])
             grips = page.locator("#sec-overview .set-grip")

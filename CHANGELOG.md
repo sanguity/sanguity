@@ -371,6 +371,12 @@ Everything on `main` so far; it becomes the first tagged release.
   period, the latest readings listed with their time and source, Chart | Table and the keyboard like the other
   charts; a clinic reading keeps its report's flag, and nothing else is judged. A blood pressure chart on Labs links
   to it. The receiver's store adds a pulse column to its readings as it loads an older one.
+- **Body temperature and blood oxygen in full** (#184): the watch receiver keeps each body temperature reading from
+  either phone app, in °C whatever unit it came in, and sums each day up (average, highest). Body and activity has a
+  small card for each: a thermometer's readings, and the phone's daily blood oxygen as a band from the day's low up
+  to its average, each beside the readings taken at visits from the records, told apart, with their list,
+  Chart | Table and the keyboard. Temperatures are shown in °F or °C as chosen under Settings → Units (or as the
+  records give them), the visits' converted exactly. The temperature and SpO2 charts on Labs link to them.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

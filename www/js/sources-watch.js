@@ -68,7 +68,7 @@
         li(b("URL"), ": the upload address above (", el("code", {class: "w-addr", text: addr}), ")."),
         li(b("Headers"), ": add one with the key ", el("code", {class: "w-addr", text: "Authorization"}), " and the value ",
           el("code", {class: "w-secret", text: header}), secret ? [" ", copyBtn(header, "Copy the header value")] : "", ": ", b("Bearer"), ", a space, then the secret."),
-        li(b("Data type"), ": Health Metrics, ", b("Export format"), ": JSON. Choose step count, walking + running distance, active energy, heart rate, resting heart rate, heart rate variability, blood oxygen saturation, respiratory rate, weight, body fat percentage, lean body mass, sleep analysis and blood pressure."),
+        li(b("Data type"), ": Health Metrics, ", b("Export format"), ": JSON. Choose step count, walking + running distance, active energy, heart rate, resting heart rate, heart rate variability, blood oxygen saturation, respiratory rate, weight, body fat percentage, lean body mass, sleep analysis, blood pressure and body temperature."),
         li(b("Time grouping"), ": hours (and keep it: changing it later sends the same steps again in other intervals)."),
         li(b("Sync"), ": hourly or daily, with the date range ", b("Since last sync"), " or ", b("Today"), ". Repeated or overlapping uploads count once."),
         li("Add a second automation the same way with the data type ", b("Workouts"), "."),

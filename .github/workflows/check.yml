@@ -132,7 +132,7 @@ jobs:
       - name: Blood glucose from both phone apps (#181; the same days from each, mg/dL and mmol/L, time in ranges, meter or CGM, a year's size)
         run: python tests/test_glucose.py
 
-      - name: Home readings from the phone apps (blood pressure; the same from both apps, counted once; older stores)
+      - name: Home readings from the phone apps (blood pressure, body temperature, blood oxygen; the same from both apps, once)
         run: python tests/test_receiver_vitals.py
 
       - name: Import history and undo (restores records, watch data and costs exactly; roles; raw files; by origin)

@@ -43,7 +43,7 @@ BUDGETS = {
     "records_gzip_bytes": 600_000,      # the same as nginx sends it (gzip at nginx's default level, 1)
     "records_cold_s": 2.5,              # .../data right after the records changed: put together from the database
     "records_s": 0.25,                  # .../data again, nothing changed (kept, records.served)
-    "watch_bytes": 1_200_000,           # GET .../watch: ten years of daily watch data
+    "watch_bytes": 1_500_000,           # GET .../watch: ten years of daily watch data, and home readings (#180, #184)
     "watch_s": 0.5,
     "build_load_s": 5,                  # the big build loaded into a profile (the first start, `setup rebuild`)
     "export_s": 6,                      # "Export everything" of the big profile, a zip with its 1,000 documents
