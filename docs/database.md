@@ -369,10 +369,11 @@ Reference ranges from settings (#44, `server/ranges.py`) are an ordinary profile
 either end open), applied when the page or the visit summary reads the records, never written into them. The birth
 date and sex they are matched against are About this person's.
 
-About this person (#194, `server/person.py`) is three profile settings, sealed, not on the Settings screen (Sharing →
+About this person (#194, `server/person.py`) is four profile settings, sealed, not on the Settings screen (Sharing →
 About this person changes them): `person.birthDate` ("" or YYYY-MM-DD), `person.sex` ("", "female" or "male": the sex
 labs base reference ranges on) and `person.heights` (a list of `{date, cm, unit}`, oldest first, one per day: the
-height in centimetres to two decimals, and `unit` "cm" or "ftin", how it was typed). **Schema version 30** moved #44's
+height in centimetres to two decimals, and `unit` "cm" or "ftin", how it was typed); and, since #197, `person.maxHr`
+(a measured maximum heart rate in whole bpm, 0 when not set, for heart rate zones). **Schema version 30** moved #44's
 `ranges.birthDate` and `ranges.sex` to `person.birthDate` and `person.sex` for every profile, once, by renaming the rows
 (the sealed values are unchanged); a `settings.json` from before (an export, the setup build's) is read with the old
 names as the new ones.
@@ -682,6 +683,13 @@ drawer opens (`GET /api/profiles/{pid}/watch/ecg/{name}`). An ECG from an upload
 same way in the profile's folder (`watch/ecg/`, `server/watch_store.py`), one file per recording whichever import
 brought it, and removed once no import lists it. Health Auto Export sends a recording as about 1 MB of JSON, kept in
 `raw/` like every upload.
+**A workout's heart rate (#197)** is `exercise.hr`, a column added as an older store loads (its earlier uploads'
+workouts read again from `raw/` once, marked `workout_hr` in `meta`): Health Auto Export's heart rate for the workout
+as [`server/hrzones.py`](../server/hrzones.py) packs it, `{"avg", "max", "hist": [[bpm, seconds]]}`. Health Connect's
+sessions carry none; their heart rate comes from `samples` in the session's time when the summary is written (an
+index `samples_t` on type and time makes that quick). The summary gives each workout's `hr`; the app turns the
+seconds at each bpm into minutes in each zone when the page asks, so only those reach the page. The measured maximum
+heart rate is the profile setting `person.maxHr` (above), sealed like the other settings.
 
 ## What is encrypted
 

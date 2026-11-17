@@ -408,6 +408,17 @@ Everything on `main` so far; it becomes the first tagged release.
   each: the phone's daily respiratory rate beside the rates taken at visits (the records' vitals), told apart, a
   report's flag kept; VO2 max as the watch estimates it, in mL/kg/min, without fitness levels of Sanguity's own.
   Chart | Table, the keyboard and weekly averages over a long period, like the other cards.
+- **Heart rate zones on workouts** (#197): the commonly published five zones, from a maximum heart rate typed in About
+  this person (a new optional field, for owners and editors) or else the common estimate, 220 minus the age on each
+  workout's day, labelled so; nothing without a birth date or a maximum, and the page says how to add one. The watch
+  receiver keeps each workout's heart rate from both phone apps (Health Auto Export's minute-by-minute readings, or
+  only its average and highest; the heart rate samples Health Connect holds for the session's time) as seconds at each
+  bpm, and the app works out the minutes in each zone when the page asks (`server/hrzones.py`), so the readings never
+  reach the page; an uploaded Apple Health export brings each workout's average and highest. A workout's details show
+  the time in each zone with its heart rate range, or its average and highest against the zones; Body and activity has
+  a card of the minutes a week in each zone, with Chart | Table, the keyboard, and the period's workouts listed, each
+  opening its details. The receiver's store adds a column for it as it loads an older one, reading its earlier
+  workouts' heart rate again once.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

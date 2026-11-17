@@ -304,18 +304,25 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
           el("label", {}, el("input", {type: "radio", name: "aboutSex", value: v, checked: (a.sex || "") === v}), l))),
         el("p", {class: "muted", text: "What labs base their reference ranges on, for ranges of your own set for female or male. " +
           "It isn't gender identity, which Sanguity doesn't ask for."}));
+      const maxHr = el("input", {type: "number", id: "aboutMaxHr", min: 100, max: 230, step: 1, inputmode: "numeric", value: a.maxHr || ""});   // #197
       parts.push(el("form", {class: "about-details", onsubmit: ev => { ev.preventDefault();
-        send(`profiles/${p.id}/person`, "PUT", {birthDate: birth.value || "", sex: sexes.querySelector("input:checked")?.value ?? ""}, "Saved."); }},
+        send(`profiles/${p.id}/person`, "PUT", {birthDate: birth.value || "", sex: sexes.querySelector("input:checked")?.value ?? "",
+          maxHr: maxHr.value === "" ? 0 : +maxHr.value}, "Saved."); }},
         el("div", {class: "about-field"}, el("label", {for: "aboutBirth", text: "Birth date"}),
           el("div", {class: "about-row"}, birth, el("button", {class: "btn small", type: "button", text: "Clear", "aria-label": "Clear the birth date",
             onclick: () => { birth.value = ""; birth.focus(); }}), age != null ? el("span", {class: "muted", text: `aged ${age} today`}) : null),
           el("p", {class: "muted", text: "For the age on each result's day: ranges of your own by age band, and what depends on age."})),
         sexes,
+        el("div", {class: "about-field"}, el("label", {for: "aboutMaxHr", text: "Maximum heart rate, measured (bpm)"}),   // heart rate zones (#197)
+          el("div", {class: "about-row"}, maxHr),
+          el("p", {class: "muted", text: "Only if you know it from a test, an exercise test for example. Heart rate zones on workouts use it; " +
+            "left empty, they use the common estimate, 220 minus the age."})),
         el("div", {class: "about-row"}, el("button", {class: "btn primary", type: "submit", id: "aboutSave", text: "Save"}))));
     } else {
       parts.push(el("dl", {class: "about-dl"},
         el("dt", {text: "Birth date"}), el("dd", {text: a.birthDate ? aboutDay(a.birthDate) + (age != null ? ` (aged ${age} today)` : "") : "Not set"}),
-        el("dt", {text: "Sex used for reference ranges"}), el("dd", {text: a.sexes[a.sex] || "Not set"})),
+        el("dt", {text: "Sex used for reference ranges"}), el("dd", {text: a.sexes[a.sex] || "Not set"}),
+        el("dt", {text: "Maximum heart rate, measured"}), el("dd", {text: a.maxHr ? `${a.maxHr} bpm` : "Not set (heart rate zones use 220 minus the age)"})),   // #197
         el("p", {class: "hint", text: `Only ${p.name}'s owners and editors can change these.`}));
     }
     // the height history, newest first

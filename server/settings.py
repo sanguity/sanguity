@@ -588,6 +588,19 @@ define("person.sex", "person", "Sex used for reference ranges", "", _person_chec
        screen=False, help="What labs base their reference ranges on: female, male, or not set. Not gender identity.")
 define("person.heights", "person", "Height", [], _person_check(_person.check_heights), kind="heights", screen=False,
        help="Dated heights, in centimetres, each with the unit it was typed in.")
+from . import hrzones as _hrzones   # #197: a measured maximum heart rate, for heart rate zones on workouts
+
+
+def _max_hr_check(v):
+    try:
+        return _hrzones.check_max(v)
+    except _hrzones.ZoneError as e:
+        raise SettingError(str(e)) from None
+
+
+define("person.maxHr", "person", "Maximum heart rate", 0, _max_hr_check, kind="maxhr", screen=False,
+       help="A maximum heart rate measured (in an exercise test, say), in beats a minute; 0 when not set. Heart rate "
+            "zones on workouts use it, else the common estimate of 220 minus the age.")
 LEGACY = {"ranges.birthDate": "person.birthDate", "ranges.sex": "person.sex"}   # old name in a settings.json -> now
 
 

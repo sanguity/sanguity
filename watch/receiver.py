@@ -20,6 +20,9 @@ and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
 - ECG recordings and irregular rhythm notifications from Health Auto Export (#182, server/ecg.py): each one kept by its
   key (sent again: once), listed in the summary's "ecg"; a recording's samples written beside the summary as a file of
   its own, ecg/<16 hex>.json.gz, sealed, which the app reads when its drawer opens. Health Connect has no ECG type.
+- A workout's heart rate (#197, server/hrzones.py): Health Auto Export's readings during it (or only its average and
+  maximum), Health Connect's heart rate samples in the session's time; kept as seconds at each bpm, so the app works
+  out the zones for whatever maximum heart rate applies.
 - Writes per-day summaries for Sanguity: $DATA/public/daily.json, or public/profiles/<slot>/daily.json.
 - Menstrual cycle records (#183, server/cycle.py) only for a profile whose owner turned cycle tracking on ("cycle" in
   $KEYS_FILE): for any other they are taken out of the upload before it is archived, so they are never kept at all.
@@ -58,6 +61,7 @@ from server.importers import apple_health as ah   # noqa: E402  (Apple Health's 
 from server import glucose   # noqa: E402  (blood glucose, meters and CGMs, #181)
 from server import cycle   # noqa: E402  (menstrual cycle tracking, opt-in, #183)
 from server import ecg   # noqa: E402  (ECG recordings and irregular rhythm notifications, #182)
+from server import hrzones   # noqa: E402  (a workout's heart rate, #197)
 
 DATA = os.environ.get("DATA", "/data")
 SECRET_FILE = os.environ.get("SECRET_FILE", "/run/secret/watch_secret")
@@ -311,6 +315,7 @@ class Store:
         self._vitals_tables()   # home blood pressure and body temperature (#180, #184)
         self.db.executescript(cycle.TABLE)   # menstrual cycle records, kept only while tracking is on (#183)
         self._ecg_init()   # ECG recordings and irregular rhythm notifications (#182)
+        self._workout_hr_init()   # a workout's heart rate (#197)
 
     def meta(self, k, v=None):
         if v is None:
@@ -329,6 +334,7 @@ class Store:
         were new. Those already in it are recognised by their digest and skipped."""
         n = self._glucose_backfill()   # an existing database's glucose, once (#181)
         n += self._ecg_backfill()   # and its ECGs, once (#182)
+        n += self._workout_hr_backfill()   # and its Health Auto Export workouts' heart rate, once (#197)
         saved = self.meta("saved")
         if self.loaded and not saved:
             return n   # a database from before snapshots: it was written as uploads came in, so it is current
@@ -382,9 +388,9 @@ class Store:
             n += 1
         for r in p.get("exercise") or []:
             s, e = parse_t(r["start_time"]), parse_t(r["end_time"])
-            c.execute("INSERT OR REPLACE INTO exercise VALUES(?,?,?,?,?,?,?,?,?)",
+            c.execute(EXERCISE_INSERT,
                       (r.get("uuid") or f"ex@{r['start_time']}", int(s.timestamp()), int(e.timestamp()), day(s),
-                       r.get("type"), r.get("name"), r.get("title"), r.get("duration_seconds"), r.get("source")))
+                       r.get("type"), r.get("name"), r.get("title"), r.get("duration_seconds"), r.get("source"), None))
             n += 1
         n += self._glucose_hc(c, p, tz)   # blood glucose (#181)
         n += self._cycle_in(lambda: cycle.from_health_connect(c, p, tz)) if cycle.has_any(p) else 0   # (#183)
@@ -522,9 +528,10 @@ class Store:
         except (TypeError, ValueError, KeyError):
             sec = (e - s).total_seconds()
         key = ah.workout_key(s, e, ah.WORKOUT_PREFIX + name.replace(" ", ""))   # as an export.xml's same workout
-        c.execute("INSERT OR REPLACE INTO exercise VALUES(?,?,?,?,?,?,?,?,?)",
+        hr = hae_workout_hr(w, s, e)   # (#197)
+        c.execute(EXERCISE_INSERT,
                   (key, int(s.timestamp()), int(e.timestamp()), s.date().isoformat(), None, "_".join(words),
-                   " ".join(words).capitalize(), round(sec), "health_auto_export"))
+                   " ".join(words).capitalize(), round(sec), "health_auto_export", json.dumps(hr) if hr else None))
         return 1
 
     def _hae_summary(self):
@@ -778,6 +785,41 @@ class Store:
         elif os.path.exists(path):
             os.remove(path)
 
+    # ------------------------------------------------------------ a workout's heart rate (#197, server/hrzones.py)
+    def _workout_hr_init(self):
+        """The store's own migration: exercise gains hr (Health Auto Export's heart rate for the workout, as
+        hrzones.packed writes it), and samples an index by time, for the heart rate during a Health Connect session.
+        A database from before reads its Health Auto Export workouts again from raw/ once (_workout_hr_backfill)."""
+        if "hr" not in {r[1] for r in self.db.execute("PRAGMA table_info(exercise)")}:
+            self.db.execute("ALTER TABLE exercise ADD COLUMN hr TEXT")
+        self.db.execute("CREATE INDEX IF NOT EXISTS samples_t ON samples(type, t)")
+        if not self.loaded:
+            self.meta("workout_hr", 1)
+
+    def _workout_hr_backfill(self):
+        if not self.loaded or self.meta("workout_hr") is not None:
+            return 0
+        c, n = self.db.cursor(), 0
+        for _, path in raw_files(self.slot):
+            try:
+                p = json.loads(read_raw(path))
+                if is_hae(p):
+                    n += sum(self._hae_workout(c, w) for w in p["data"].get("workouts") or [] if isinstance(w, dict))
+            except Exception as e:
+                log("skip", path, e)
+        self.meta("workout_hr", 1)
+        self.db.commit()
+        return 0
+
+    def _workout_hr(self, s, e, hr):
+        """A workout's "hr" for the summary: Health Auto Export's as kept, else the heart rate samples Health Connect
+        sent during it (hourly buckets can't be put in zones); None without either."""
+        if hr:
+            return json.loads(hr)
+        got = hrzones.packed(*hrzones.histogram(self.db.execute(
+            "SELECT t, v FROM samples WHERE type='heart_rate' AND t BETWEEN ? AND ?", (s, e)).fetchall(), s, e))
+        return got or None
+
     # ------------------------------------------------------------ daily summary
     def summary(self):
         q = self.db.execute
@@ -846,8 +888,9 @@ class Store:
             for d, v in days.items():
                 out.setdefault(k, {}).setdefault(d, v)   # a day Health Connect gave this metric for keeps its value
         exercises =[{"start": datetime.fromtimestamp(s, timezone.utc).isoformat(), "end": datetime.fromtimestamp(e, timezone.utc).isoformat(),
-                      "name": (title or name or f"type {typ}"), "kind": name or typ, "minutes": round((dur or (e - s)) / 60)}
-                     for s, e, typ, name, title, dur in q("SELECT start_t, end_t, type, name, title, duration FROM exercise ORDER BY start_t")]
+                      "name": (title or name or f"type {typ}"), "kind": name or typ, "minutes": round((dur or (e - s)) / 60),
+                      **({"hr": h} if (h := self._workout_hr(s, e, hr)) else {})}   # its heart rate (#197)
+                     for s, e, typ, name, title, dur, hr in q("SELECT start_t, end_t, type, name, title, duration, hr FROM exercise ORDER BY start_t")]
         META = {
             "steps": ("Steps", "steps", "Activity"), "distance_km": ("Distance", "km", "Activity"),
             "active_cal": ("Active calories", "kcal", "Activity"),
@@ -930,6 +973,32 @@ def cycle_sweep(stores):
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 crypto.write_file(path, json.dumps({"on": slot in on, "purged": token, "records": [],
                                                     "purged_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}).encode())
+
+
+EXERCISE_INSERT = ("INSERT OR REPLACE INTO exercise(uuid, start_t, end_t, day, type, name, title, duration, src, hr) "
+                   "VALUES(?,?,?,?,?,?,?,?,?,?)")
+
+
+def hae_workout_hr(w, s, e):
+    """A Health Auto Export workout's heart rate (#197), as hrzones.packed writes it, or None: its minute-by-minute
+    readings ("heartRateData": [{date, Min, Avg, Max}], or {date, qty}) and its average and maximum ("heartRate":
+    {avg, max}, each {qty, units}; older versions "avgHeartRate" and "maxHeartRate"), the app's own figures winning."""
+    rows = w.get("heartRateData") if isinstance(w.get("heartRateData"), list) else []
+    readings, top = [], []
+    for r in rows:
+        if not isinstance(r, dict) or (t := hae_when(r.get("date"))) is None:
+            continue
+        v = number(r.get("Avg") if r.get("Avg") is not None else r.get("qty"))
+        if v is not None:
+            readings.append((int(t.timestamp()), v))
+            top.append(number(r.get("Max")) or v)
+    hist, avg, mx = hrzones.histogram(readings, int(s.timestamp()), int(e.timestamp()))
+    hr = w.get("heartRate") if isinstance(w.get("heartRate"), dict) else {}
+    a = number(hr.get("avg")) if hr.get("avg") is not None else number(w.get("avgHeartRate"))
+    m = number(hr.get("max")) if hr.get("max") is not None else number(w.get("maxHeartRate"))
+    if m is None and top:
+        m = max(top)
+    return hrzones.packed(hist, a if a is not None else avg, m if m is not None else mx) or None
 
 
 def is_hae(p):

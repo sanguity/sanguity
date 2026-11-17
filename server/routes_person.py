@@ -1,6 +1,7 @@
-"""About this person (person.py, #194): a profile's birth date, sex used for reference ranges, and height history.
+"""About this person (person.py, #194): a profile's birth date, sex used for reference ranges, and height history; and
+a measured maximum heart rate, for heart rate zones on workouts (#197, hrzones.py).
 Viewers read them (and the heights a clinic recorded in the records, shown beside the history); owners and editors
-change them. They are three profile settings (person.*), so every change is checked by the setting's own check and
+change them. They are profile settings (person.*), so every change is checked by the setting's own check and
 logged in the profile's activity like any setting (which one, never its value); main.guard's CSRF check covers the
 PUT, POST and DELETE like every other change."""
 import json
@@ -9,11 +10,12 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from . import activity, db as dbm, person, records, settings
+from . import activity, db as dbm, hrzones, person, records, settings
 from .main import _client_ip, get_db, need, user
 
 router = APIRouter()
-KEYS = {"birthDate": "person.birthDate", "sex": "person.sex", "heights": "person.heights"}
+KEYS = {"birthDate": "person.birthDate", "sex": "person.sex", "heights": "person.heights",
+        "maxHr": "person.maxHr"}   # a measured maximum heart rate, for heart rate zones (#197; 0: not set)
 
 
 def _values(db, pid):
@@ -44,7 +46,8 @@ def _save(db, s, pid, update, request, detail=None):
             v["birthDate"], v["sex"], v["heights"] = (person.check_birth(v["birthDate"]), person.check_sex(v["sex"]),
                                                       person.check_heights(v["heights"]))
             person.check_together(v["birthDate"], v["heights"])
-        except person.PersonError as e:
+            v["maxHr"] = hrzones.check_max(v["maxHr"])
+        except (person.PersonError, hrzones.ZoneError) as e:
             raise HTTPException(400, str(e))
         for k in changes:
             key = KEYS[k]
@@ -62,13 +65,15 @@ def about(pid: int, s=Depends(user), db=Depends(get_db)):
 class Details(BaseModel):
     birthDate: Optional[str] = None     # "" clears it; left out: unchanged
     sex: Optional[str] = None           # "", "female" or "male"; left out: unchanged
+    maxHr: Optional[float] = None       # a measured maximum heart rate, bpm; 0 clears it; left out: unchanged (#197)
 
 
 @router.put("/api/profiles/{pid}/person")
 def change(pid: int, body: Details, request: Request, s=Depends(user), db=Depends(get_db)):
-    """Change the birth date, the sex used for reference ranges, or both (only those given, and only if they differ)."""
+    """Change the birth date, the sex used for reference ranges, the measured maximum heart rate (#197), or some of
+    them (only those given, and only if they differ)."""
     role = need(db, s, pid, "editor")
-    _save(db, s, pid, lambda have: {k: v for k, v in (("birthDate", body.birthDate), ("sex", body.sex))
+    _save(db, s, pid, lambda have: {k: v for k, v in (("birthDate", body.birthDate), ("sex", body.sex), ("maxHr", body.maxHr))
                                     if v is not None and v != have[k]}, request)
     return view(db, pid, role)
 
