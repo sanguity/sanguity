@@ -16,6 +16,9 @@ Sections, each optional (SECTIONS):
   medications    current medications (status active, or no status and no end date)
   appointments   upcoming appointments
   questions      the person's own questions, typed before generating
+  measures       the phone's and watch's measures and the newer kinds of record (#225, server/measures.py): home
+                 blood pressure, glucose, temperature, blood oxygen, respiratory rate, VO2 max, immunizations, ECGs,
+                 BMI and growth; each offered only when the profile has some, and unticked unless the person ticks it
   extra sections registered by other features (register_section), such as the journal's recent symptoms (#49)
 
 The "since" point is the last visit before today, or another past visit's date the person picks; with no past
@@ -30,7 +33,7 @@ notice on every page.
 """
 import contextvars, datetime, json, re
 
-from . import crypto, db as dbm, pdfdoc, ranges, records, settings
+from . import crypto, db as dbm, measures, pdfdoc, ranges, records, settings
 
 SECTIONS = [("out_of_range", "Out-of-range results"), ("trends", "Trends since the last visit"),
             ("medications", "Current medications"), ("appointments", "Upcoming appointments"),
@@ -48,20 +51,19 @@ ACTIVE = {"active", "current", "taking", "ongoing", "in progress"}
 
 # Other features add a section here (register_section): (id, label, rows(db, pid, data, since, today) -> [{"when",
 # "title", "text"}]). The journal (#49) is meant to add "symptoms", recent symptoms; rows are shown as a list.
-# A watch's ECGs and irregular rhythm notifications (#182) are watch data, not records, so never in the summary as it
-# is: #225 can offer them as a section of their own here, left unticked, with rows from
-# ecg.shared_rows(watch_store.load(db, pid), since, today).
+# A watch's ECGs and irregular rhythm notifications (#182) are watch data, not records: measures.py offers them, with
+# the other phone and watch measures, as sections of their own, left unticked (#225).
 EXTRA = []
 
 
 def register_section(sid, label, rows):
-    if sid in {s for s, _ in SECTIONS} or sid in {s for s, _, _ in EXTRA}:
+    if sid in {s for s, _ in SECTIONS} or sid in measures.IDS or sid in {s for s, _, _ in EXTRA}:
         raise ValueError(f"summary section {sid} is registered twice")
     EXTRA.append((sid, label, rows))
 
 
 def sections():
-    return [*SECTIONS, *((s, l) for s, l, _ in EXTRA)]
+    return [*SECTIONS, *((s, l) for s, l, _ in measures.SECTIONS), *((s, l) for s, l, _ in EXTRA)]
 
 
 class SummaryError(ValueError):
@@ -289,9 +291,12 @@ def options(db, pid, uid):
     series = _series(data)
     nick = cfg.get("labNicknames") or {}
     key_labs = [n for n in (cfg.get("overview") or {}).get("keyLabs") or [] if n in series]
+    have = set(measures.offered(measures.context(db, pid, data, cfg)))   # (#225) those with something, unticked ("off")
+    secs = [{"id": s, "label": l, **({"off": True} if s in measures.IDS else {})} for s, l in sections()
+            if s not in measures.IDS or s in have]
     return {"today": now, "upcoming": _upcoming(data, now), "visits": _visits(data, now)[:40],
             "labs": sorted(({"name": n, "label": nick.get(n, n)} for n in series), key=lambda x: x["label"].lower()),
-            "keyLabs": key_labs, "questions": questions(db, pid), "sections": [{"id": s, "label": l} for s, l in sections()],
+            "keyLabs": key_labs, "questions": questions(db, pid), "sections": secs,
             "notice": NOTICE, "has_records": bool(data.get("events") or data.get("labs"))}
 
 
@@ -375,6 +380,10 @@ def build(db, pid, uid, profile_name, opts):
         out["appointments"] = [{**u, "this": i == appt} for i, u in enumerate(upcoming[:10])]
     if "questions" in wanted:
         out["questions"] = question_list(clean_questions(opts.get("questions")))
+    mw = [x for x in wanted if x in measures.IDS]   # the phone's and watch's measures (#225): since the "since" day
+    if mw:
+        out["measures"] = measures.blocks(measures.context(db, pid, data, cfg), mw, lambda d: since < d <= now,
+                                          history=lambda d: d <= now, most=measures.SUMMARY_MOST)
     extra = []
     for sid, lbl, fn in EXTRA:
         if sid in wanted:
@@ -424,10 +433,10 @@ class _Layout:
         self.page.line(MARGIN, self.y, pdfdoc.WIDTH - MARGIN, self.y, 0.6, RULE)
         self.y -= 13
 
-    def note(self, text, size=8.5):
+    def note(self, text, size=8.5, color=MUTED):
         for line in pdfdoc.wrap(text, size, pdfdoc.WIDTH - 2 * MARGIN):
             self.need(12)
-            self.page.text(MARGIN, self.y, line, size, False, MUTED)
+            self.page.text(MARGIN, self.y, line, size, False, color)
             self.y -= 12
 
     def table(self, sid, cols, rows, cells, draw=None):
@@ -597,6 +606,22 @@ def _render(s):
                         lay.page.text(MARGIN + 20, lay.y, line, 10, False, INK)
                         lay.y -= 13
                     lay.y -= 3
+            elif sid in measures.IDS:   # (#225) a block: its lead lines, a table, and a note under it, in words
+                b = s["measures"][sid]
+                lay.need(26 + 12 * len(b["lead"]) + 27)   # the heading, its lead lines and a row under them, together
+                lay.heading(labels.get(sid, sid) + ("" if b["history"] else f" since {fmt_date(since['date'])}"), b["total"])
+                for line in b["lead"]:
+                    lay.note(line, 9, INK)
+                if not b["rows"]:
+                    lay.note(b["empty"])
+                    continue
+                kinds = [k for _, k, _ in b["cols"]]
+                lay.table(sid, [(h.upper(), w) for h, _, w in b["cols"]], b["rows"],
+                          lambda r, kinds=kinds: [_cell(k, v) for k, v in zip(kinds, r)])
+                if b["total"] > len(b["rows"]):
+                    lay.note(f"The latest {len(b['rows'])} of {b['total']}; Sanguity has them all.", 7.5)
+                if b["note"]:
+                    lay.note(b["note"], 7.5)
             else:
                 ex = next(x for x in s["extra"] if x["id"] == sid)
                 lay.heading(labels.get(sid, sid), len(ex["rows"]))
@@ -636,6 +661,8 @@ def _render(s):
 def _count(s, sid):
     if sid in ("out_of_range", "trends", "medications", "appointments", "questions"):
         return len(s.get(sid) or [])
+    if sid in measures.IDS:
+        return len(((s.get("measures") or {}).get(sid) or {}).get("rows") or [])
     return len(next((x["rows"] for x in s.get("extra") or [] if x["id"] == sid), []))
 
 
@@ -648,6 +675,15 @@ def _short(d):
     if f == "ymd" or x.year != (year or today().year):
         return fmt_date(d)
     return f"{x.day} {x.strftime('%b')}" if f == "dmy" else f"{x.strftime('%b')} {x.day}"
+
+
+def _cell(kind, v):
+    """A measures block's cell (#225): a day or a local time written as the other dates are, else its text."""
+    if kind == "day" and v:
+        return _short(v[:10])
+    if kind == "time" and v:
+        return f"{_short(v[:10])} {v[11:16]}"
+    return str(v if v is not None else "")
 
 
 def filename(profile_name, day):

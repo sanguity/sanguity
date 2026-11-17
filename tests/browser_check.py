@@ -885,7 +885,7 @@ def main():
         # the Sharing page (#168): its sidebar, each part drawn by its own script
         strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
-        check("under the CSP: summary.js runs", strict.evaluate("document.querySelectorAll('#sections input').length") == 5)
+        check("under the CSP: summary.js runs", strict.evaluate("document.querySelectorAll('#sections input:checked').length") == 5)   # #225: measures unticked
         strict.wait_for_selector("#calendar:not([hidden])", state="attached", timeout=10000)   # in its own group, so not visible
         strict.wait_for_selector("#memberList tbody tr", state="attached", timeout=10000)
         strict.click("#shrNav a[data-group=activity]")   # drawn when its group is opened
@@ -2232,7 +2232,7 @@ def main():
             page.goto(base + "/sharing.html?profile=1#summary")
             page.wait_for_selector("#sections input[value=cycle]", state="attached", timeout=10000)
             check("…the visit summary offers it too, unticked each time while the other sections are ticked",
-                  js("!document.querySelector('#sections input[value=cycle]').checked && [...document.querySelectorAll('#sections input')].filter(i => i.value !== 'cycle').every(i => i.checked)"))
+                  js("!document.querySelector('#sections input[value=cycle]').checked && [...document.querySelectorAll('#sections input')].filter(i => i.value !== 'cycle' && !OPTS.sections.find(x => x.id === i.value).off).every(i => i.checked)"))   # #225: measures unticked too
             page.goto(base + "/sources.html?profile=1#phone")
             page.wait_for_selector("#cycleDelete", timeout=10000)
             page.click("#cycleDelete")
@@ -4873,6 +4873,150 @@ def main():
             check("…and the questions draft is still there", js("document.getElementById('questions').value").startswith("Is the ferritin result"))
             page.fill("#questions", "")   # leave no draft behind
             page.wait_for_function("document.getElementById('qMsg').textContent === 'Draft saved.'", timeout=10000)
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
+            # ---- the phone's and watch's measures in the visit summary, share links and Overview tiles (#225): on profile 1
+            # (the readings browser_check folds in: home blood pressure, glucose, temperature, oxygen, respiratory rate,
+            # VO2 max, ECGs, immunizations), each measure is a summary section of its own, offered unticked; ticked, the
+            # preview and the PDF show it (glucose's time in ranges labelled as the standard); a share link's form offers
+            # them unticked and its page shows the ones ticked; Settings → Overview → Home readings puts blood pressure,
+            # glucose and temperature tiles after the key labs, with the latest value, its date and where it came from;
+            # 1400 and 375 px, light and dark, axe-core clean
+            shots = os.environ.get("SANGUITY_SHOTS")
+            m225 = ["home_bp", "glucose", "temperature", "oxygen", "respiratory", "vo2max", "immunizations", "ecg"]
+            was_profile = js("localStorage.getItem('ht-profile')")
+            page.goto(base + "/sharing.html?profile=1#summary")
+            page.wait_for_function("document.getElementById('profile').value === '1' && OPTS && OPTS.profile.id === 1 && "
+                                   "!document.getElementById('build').hidden", timeout=10000)
+            offered = js("[...document.querySelectorAll('#sections input')].map(i => [i.value, i.checked])")
+            got = dict(offered)
+            check("visit summary (#225): the phone's and watch's measures are offered as sections of their own, unticked",
+                  all(k in got and got[k] is False for k in m225) and all(got[k] for k in ("out_of_range", "trends", "medications", "appointments", "questions"))
+                  and len(got) == len(offered), offered)
+            js("document.getElementById('since').selectedIndex = document.getElementById('since').options.length - 1")   # the oldest visit: more readings
+            for k in got:
+                (page.check if k in ("home_bp", "glucose", "ecg", "immunizations", "temperature") else page.uncheck)(f"#sections input[value={k}]")
+            page.click("#previewBtn")
+            page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+            heads = js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent)")
+            pv = js("document.getElementById('preview').textContent")
+            check("…ticked, the preview shows each: blood pressure at home with the count, average and highest, and its readings",
+                  len(heads) == 5 and heads[0].startswith("Blood pressure at home since") and re.search(r"\d+ readings? · average \d+/\d+ mmHg · highest systolic \d+", pv)
+                  and js("document.querySelectorAll('#preview table').length") == 5, heads)
+            check("…glucose by day, CGM time in ranges labelled as the standard published ranges (not anyone's targets)",
+                  "Blood glucose from the phone" in pv and "time in the standard ranges" in pv and "standard published ranges" in pv
+                  and "not anyone's own targets" in pv and not re.search(r"(?i)\b(normal|good|bad|target range)\b", pv), heads)
+            check("…immunizations as a list, and ECGs as the watch said them (no traces)", any(h.startswith("Immunizations (") for h in heads)
+                  and "traces themselves aren't included" in pv and re.search(r"ECG: \w", pv) and "samples" not in pv, heads)
+            p225_bad, p225_axe = [], []
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    settle(200)
+                    if width == 375:
+                        p225_bad += phone_fits(page, f"summary preview with measures ({theme})")
+                        p225_bad += [] if js("document.documentElement.scrollWidth") <= 375 else [f"summary page {js('document.documentElement.scrollWidth')} px wide"]
+                    p225_axe += axe_check(page, f"summary preview with measures, {width} px, {theme}")[0]
+            js("delete document.documentElement.dataset.theme")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…the summary with the measures fits 375 px, and axe-core finds nothing serious, light and dark", not p225_bad and not p225_axe, (p225_bad + p225_axe)[:6])
+            with page.expect_download(timeout=20000) as dl:
+                page.click("#download")
+            pdf_path = os.path.join(TMP, "summary-measures.pdf")
+            dl.value.save_as(pdf_path)
+            from pypdf import PdfReader
+            text = "\n".join(p_.extract_text() for p_ in PdfReader(pdf_path).pages)
+            check("…and the PDF has them, in words (black-and-white safe): the readings, time in ranges, the immunizations, the ECGs",
+                  all(w in text for w in ("Blood pressure at home since", "SYSTOLIC/DIASTOLIC", "Blood glucose from the phone", "standard published ranges",
+                                          "Body temperature at home", "isn't medical advice")), text[:400])
+            # share links: the form offers them unticked; a link made with two shows those two on its page
+            page.goto(base + "/sharing.html?profile=1#links")
+            page.wait_for_selector("#links .share-links button:has-text('New share link')", timeout=10000)
+            page.locator("#links .share-links button", has_text="New share link").click()
+            form = page.locator("#links .share-form")
+            form.wait_for(timeout=10000)
+            boxes = js("Object.fromEntries([...document.querySelectorAll('#links .share-form .share-sections input')].map(i => [i.value, i.checked]))")
+            check("share links (#225): the form offers the measures as sections, unticked; never cycle tracking",
+                  all(boxes.get(k) is False for k in m225) and "cycle" not in boxes and boxes.get("visits") is True, boxes)
+            for k in boxes:
+                (form.locator(f".share-sections input[value={k}]").check if k in ("home_bp", "glucose") else form.locator(f".share-sections input[value={k}]").uncheck)()
+            form.locator("input[type=date]").first.fill("")
+            check("…and says what each one shows", "Blood pressure at home: each reading taken at home" in form.locator(".share-sees").inner_text(), form.locator(".share-sees").inner_text()[:200])
+            form.locator("button[type=submit]").click()
+            page.wait_for_selector(".share-made .share-url", timeout=10000)
+            url225 = page.input_value(".share-made .share-url")
+            holder = browser.new_context(viewport={"width": 1400, "height": 900}, device_scale_factor=1)
+            hp = holder.new_page()
+            hp.goto(url225)
+            hp.wait_for_selector("#share-home_bp", timeout=10000)
+            sh = hp.evaluate("""[[...document.querySelectorAll('#shareBody > section')].map(s => s.id),
+              [...document.querySelectorAll('#share-home_bp tbody tr')].length, document.querySelector('#share-glucose').textContent]""")
+            check("…its page shows only those two: the readings at home, and glucose with the standard ranges labelled",
+                  sh[0] == ["share-home_bp", "share-glucose"] and sh[1] > 0 and "standard published ranges" in sh[2], sh[:2])
+            sl_bad, sl_axe = [], []
+            for width in (1400, 375):
+                hp.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    hp.emulate_media(color_scheme=theme)
+                    hp.wait_for_timeout(200)
+                    if width == 375:
+                        sl_bad += phone_fits(hp, f"share page with measures ({theme})")
+                        sl_bad += [] if hp.evaluate("document.documentElement.scrollWidth") <= 375 else ["share page too wide"]
+                    sl_axe += axe_check(hp, f"share page with measures, {width} px, {theme}")[0]
+            if shots:
+                hp.set_viewport_size({"width": 375, "height": 800})
+                hp.emulate_media(color_scheme="dark")
+                hp.screenshot(path=os.path.join(shots, "225-share-375-dark.png"), full_page=True)
+            hp.emulate_media(color_scheme=None)
+            holder.close()
+            check("…which fits 375 px, and axe-core finds nothing serious, light and dark", not sl_bad and not sl_axe, (sl_bad + sl_axe)[:6])
+            page.locator("#links .share-links button", has_text="Revoke").first.click()
+            answer_ask(page, yes=True)
+            # Overview tiles: chosen under Settings → Overview → Home readings
+            page.goto(base + "/settings.html?profile=1#sec-overview")
+            page.wait_for_selector("#sec-overview .set[data-key='overview.homeTiles'] input[type=checkbox]", timeout=10000)
+            ht = js("[...document.querySelectorAll(\"#sec-overview .set[data-key='overview.homeTiles'] input\")].map(i => [i.value, i.checked, i.parentElement.textContent.trim()])")
+            check("Overview tiles (#225): Settings → Overview offers home readings as tiles, none chosen by default",
+                  ht == [["bp", False, "Blood pressure"], ["glucose", False, "Blood glucose"], ["temp", False, "Body temperature"]], ht)
+            for k in ("bp", "glucose", "temp"):
+                page.check(f"#sec-overview .set[data-key='overview.homeTiles'] input[value={k}]")
+            page.click("#sec-overview .set-foot button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-overview .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.goto(base + "/?profile=1")
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            js("switchTab('overview')")
+            settle(400)
+            tiles = js("""[...document.querySelectorAll('#view-overview .tiles .tile.home-tile')].map(t => [t.dataset.home, t.querySelector('.lbl').textContent,
+              t.querySelector('.val').textContent, t.querySelector('.delta').textContent])""")
+            check("…chosen, the Overview shows them after the key labs: the latest value, its date and where it came from",
+                  [t[0] for t in tiles] == ["bp", "glucose", "temp"] and re.match(r"\d+/\d+mmHg", tiles[0][2] if tiles else "")
+                  and all(re.search(r"\d{4}", t[3]) and ("at home" in t[3] or "at a visit" in t[3] or "phone app" in t[3]) for t in tiles)
+                  and js("document.querySelector('#view-overview .tiles .tile:last-child').classList.contains('home-tile')"), tiles)
+            ov_bad, ov_axe = [], []
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    settle(200)
+                    page.locator("#view-overview .home-tile").first.scroll_into_view_if_needed()
+                    if width == 375:
+                        ov_bad += phone_fits(page, f"Overview with home tiles ({theme})")
+                        ov_bad += [] if js("document.documentElement.scrollWidth") <= 375 else ["Overview too wide"]
+                    if shots and width == 375 and theme == "dark":
+                        page.screenshot(path=os.path.join(shots, "225-tiles-375-dark.png"))
+                    ov_axe += axe_check(page, f"Overview with home tiles, {width} px, {theme}")[0]
+            js("delete document.documentElement.dataset.theme")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…the tiles fit 375 px, and axe-core finds nothing serious, light and dark", not ov_bad and not ov_axe, (ov_bad + ov_axe)[:6])
+            js("window.scrollTo(0, 0)")
+            page.click("#view-overview .home-tile[data-home=bp]")
+            try:
+                page.wait_for_function("state.tab === 'health' && document.activeElement && document.activeElement.id === 'h-bp'", timeout=5000)
+            except Exception:
+                pass
+            check("…a tile opens its card on Body and activity", js("state.tab") == "health" and js("document.activeElement.id") == "h-bp",
+                  [js("state.tab"), js("document.activeElement.id"), js("!!document.getElementById('h-bp')"), js("document.activeElement.tagName")])
+            js("fetch('api/profiles/1/settings/overview.homeTiles', {method: 'DELETE', headers: {'X-Sanguity': '1'}})")
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- the profile picker in the top bar (#170): on every page about a profile, each profile by name and
             # your role; the page follows it and keeps its section; the address's ?profile= and this browser follow it

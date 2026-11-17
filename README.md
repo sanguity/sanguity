@@ -310,8 +310,9 @@ sent both ways is one. Its drawer shows what the watch said, word for word: the 
 device, lead and software version; Sanguity doesn't read or judge the trace. The trace is drawn small with a time and
 mV scale, its 15,360 samples (30 seconds at 512 Hz) loaded only when the drawer opens and downloadable as CSV. The
 samples are kept apart from the summary, one sealed file per recording: about 50 KB each, beside the receiver's
-`daily.json` in `WATCH_DIR` (`ecg/`) or in the profile's folder for an import. ECGs are never in a share link or the
-visit summary. The name and birth date at the top of each of Apple's ECG files are read past and never kept.
+`daily.json` in `WATCH_DIR` (`ecg/`) or in the profile's folder for an import. ECGs are in a share link or the visit
+summary only when ticked there (#225): the date and what the watch said, never the trace; Export everything carries
+each recording's samples as `watch/ecg/<key>.json`. The name and birth date at the top of each of Apple's ECG files are read past and never kept.
 Heart rate zones on workouts (#197) are the commonly published five (50–60%, 60–70%, 70–80%, 80–90% and 90% and
 above of a maximum heart rate), from a maximum measured and typed in **About this person** (on the Sharing page), or
 else estimated by the common formula, 220 minus the age on the workout's day; without a birth date or a maximum
@@ -530,7 +531,13 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   when the report gives none), trends of the key labs and
   any others picked, current medications, upcoming appointments and your own questions (kept as a draft for the
   profile). Anyone the profile is shared with can make one, viewers included; it's made on request, never stored,
-  and each one is in the activity log.
+  and each one is in the activity log. The phone's and watch's measures are sections of their own, offered when the
+  profile has some and unticked until you tick them (#225): blood pressure and temperature taken at home (the count,
+  average, highest and the readings), glucose by day (a CGM's time in the standard published ranges, labelled as
+  such), blood oxygen, respiratory rate, VO2 max, immunizations, ECGs and BMI (for a child, the growth charts'
+  percentiles). A share link offers the same, unticked; never cycle tracking. **Settings → Overview → Home
+  readings** adds blood pressure, glucose and temperature tiles after the key labs, each the latest reading with its
+  date and where it came from.
 - **Delete profile:** an owner can delete a profile and everything in it under **Sharing → Profile**, after typing its name;
   the original exports and older backups are left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or

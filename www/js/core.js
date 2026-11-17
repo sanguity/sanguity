@@ -25,7 +25,8 @@ const usd = v => (v || 0).toLocaleString(undefined, {style: "currency", currency
    defaults filled in; these are only what the page uses if that fails, and should match the server's defaults. */
 const DEFAULT_SETTINGS = {
   overview: {keyLabs: ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Lymphocytes Absolute", "Creatinine",
-    "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"]},
+    "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"],
+    homeTiles: []},    // #225: "bp", "glucose", "temp" as tiles after the key labs (overview.js)
   trends: {defaultLabs: ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "ALT"],
     views: []},        // #37, saved views: [{name, labs, default}] (trends.js)
   labNicknames: {"Automated Abs Neutrophil Cnt": "Neutrophils (absolute)", "Lymphocytes Absolute": "Lymphocytes (absolute)", "Platelet Count": "Platelets",

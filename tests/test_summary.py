@@ -24,7 +24,7 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 from pypdf import PdfReader   # noqa: E402
 
-from server import accounts, db as dbm, main, pdfdoc, profiles as prof, records, settings, summary   # noqa: E402
+from server import accounts, crypto, db as dbm, main, measures, pdfdoc, profiles as prof, records, settings, summary   # noqa: E402
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -77,6 +77,35 @@ OUTSIDE_LAB = {"events": [], "details": {}, "costs": [],
                          "pts": [[day(-10), 250, 30, 400, "", "250"]]}]}
 QUESTIONS = "Should I keep taking lisinopril in the morning?\n- Is the ferritin (high) result worth rechecking?\n\n"
 ALL = [s for s, _ in summary.SECTIONS]
+
+
+def utc(n, hour):
+    return f"{d(n)}T{hour:02d}:00:00+00:00"
+
+
+# #225: a fictional phone's readings (the watch summary's shape, watch/receiver.py), the last visit 30 days ago
+PHONE = {"updated": utc(0, 6), "tz": "UTC", "last_payload": None, "exercise": [], "metrics": [
+    {"key": "spo2_avg", "name": "SpO2, daily average", "unit": "%", "group": "Oxygen & breathing", "pts": [[d(-40), 95.0], [d(-10), 97.2], [d(-5), 96.4]]},
+    {"key": "spo2_min", "name": "SpO2, daily low", "unit": "%", "group": "Oxygen & breathing", "pts": [[d(-10), 91.0], [d(-5), 93.0]]},
+    {"key": "resp", "name": "Respiratory rate", "unit": "breaths/min", "group": "Oxygen & breathing", "pts": [[d(-10), 14.2], [d(-5), 15.0]]},
+    {"key": "vo2max", "name": "Cardio fitness (VO2 max)", "unit": "mL/(kg·min)", "group": "Heart", "pts": [[d(-20), 41.3]]},
+    {"key": "weight", "name": "Weight", "unit": "lb", "group": "Body", "pts": [[d(-12), 165.0], [d(-3), 164.2]]},
+    {"key": "glucose_meter", "name": "Blood glucose, meter readings", "unit": "mg/dL", "group": "Glucose",
+     "pts": [[d(-4) + "T07:12", 104.0], [d(-4) + "T19:40", 131.0]]},
+    *({"key": "glucose_" + k, "name": k, "unit": "", "group": "Glucose", "pts": [[d(-6), a], [d(-5), b]]} for k, a, b in (
+        ("avg", 120.0, 131.0), ("min", 70.0, 62.0), ("max", 190.0, 212.0), ("n", 96, 288), ("hours", 8.0, 24.0),
+        ("lt54", 2.0, 0.03), ("lt70", 8.0, 4.0), ("in", 70.0, 78.0), ("gt180", 22.0, 18.0)))],
+    "bp_readings": [[utc(-40, 8), 150, 95, 70, "Fictional cuff", "Health Connect"], [utc(-9, 8), 132, 84, 68, "Fictional cuff", "Health Connect"],
+                    [utc(-2, 20), 126, 80, None, None, "Apple Health"]],
+    "temp_readings": [[utc(-8, 7), 37.4, "Fictional thermometer", "Health Connect"], [utc(-7, 7), 36.8, None, "Apple Health"]],
+    "ecg": [{"key": "ecg:0123456789abcdef", "type": "ecg", "start": utc(-6, 10), "classification": "Sinus Rhythm", "avg_hr": 72,
+             "device": "Fictional Watch"},
+            {"key": "rhythm:fedcba9876543210", "type": "irregular_rhythm", "start": utc(-50, 3), "device": "Fictional Watch"}]}
+MEASURED = {"built": day(0), "source": "fictional", "labs": [], "costs": [], "upcoming": [],
+            "events": [{"id": 1, "t": day(-30), "k": "visit", "title": "Follow-up visit", "sub": ""},
+                       {"id": 2, "t": day(-400), "k": "immunization", "title": "Tetanus vaccine (fictional)"},
+                       {"id": 3, "t": day(-60), "k": "immunization", "title": "Influenza vaccine (fictional)"}],
+            "details": {"3": {"dose": "0.5 mL", "where": "Maple Street Clinic"}}}
 
 
 def client():
@@ -348,6 +377,130 @@ class Summary(unittest.TestCase):
         reader, text = text_of(r.content)
         self.assertIn("No current medications in the records.", text)
         self.assertIn(f"the last {summary.DEFAULT_DAYS} days", text)
+
+    # ---------------------------------------------------------------- the phone's and watch's measures (#225)
+
+    @classmethod
+    def measures_profile(cls):
+        """A profile with a phone's readings (a fictional watch summary), immunizations and a height: made once."""
+        if getattr(cls, "mpid", None):
+            return cls.mpid
+        db = dbm.connect()
+        path = os.path.join(TMP, "phone", "daily.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        crypto.write_file(path, json.dumps(PHONE).encode())
+        cls.mpid = prof.create_profile(db, "Sam (fictional)", owner_id=cls.uid["robin"], watch_file=path)
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (cls.uid["kim"], cls.mpid))
+        with dbm.transaction(db):
+            records.store(db, cls.mpid, MEASURED, "dataset")
+        db.close()
+        c = cls.c["robin"]
+        assert c.post(f"/api/profiles/{cls.mpid}/person/heights", json={"date": d(-300), "cm": 175}, headers=H).status_code == 200
+        return cls.mpid
+
+    def mpreview(self, who="robin", **kw):
+        pid = self.measures_profile()
+        r = self.c[who].post(f"/api/profiles/{pid}/summary/preview", json=self.opts(appointment=None, **kw), headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        return r.json()
+
+    def test_measures_offered_only_when_present_and_unticked(self):
+        o = self.c["robin"].get(f"/api/profiles/{self.pid}/summary").json()
+        self.assertFalse(set(measures.IDS) & {s["id"] for s in o["sections"]}, "a profile without them isn't offered them")
+        o = self.c["kim"].get(f"/api/profiles/{self.measures_profile()}/summary").json()   # viewers too: they read them already
+        secs = {s["id"]: s for s in o["sections"]}
+        self.assertEqual([s for s in measures.IDS if s in secs], measures.IDS, "each one this profile has")
+        self.assertTrue(all(secs[s].get("off") for s in measures.IDS), "unticked unless the person ticks them")
+        self.assertFalse(any(secs[s].get("off") for s in ALL), "the summary's own sections stay ticked")
+        self.assertNotIn("cycle", secs, "cycle tracking is off here: not offered (#183 has its own section)")
+        self.assertEqual(len(o["sections"]), len(secs), "no section twice")
+
+    def test_measures_since_the_last_visit(self):
+        s = self.mpreview(sections=measures.IDS)
+        self.assertEqual(s["since"]["date"], d(-30))
+        m = s["measures"]
+        bp = m["home_bp"]
+        self.assertEqual([r[1] for r in bp["rows"]], ["126/80", "132/84"], "newest first; the reading before the visit left out")
+        self.assertEqual(bp["lead"], ["2 readings · average 129/82 mmHg · highest systolic 132, highest diastolic 84"])
+        self.assertEqual(bp["rows"][1], [d(-9) + "T08:00", "132/84", "68", "Fictional cuff (Health Connect)"])
+        self.assertEqual(m["temperature"]["lead"], ["2 readings · average 37.1 °C · highest 37.4 °C"])
+        self.assertEqual([r[0] for r in m["oxygen"]["rows"]], [d(-5), d(-10)])
+        self.assertEqual(m["oxygen"]["lead"], ["2 days · average 96.8% · lowest 91%"])
+        self.assertEqual(m["respiratory"]["rows"], [[d(-5), "15"], [d(-10), "14.2"]])
+        self.assertEqual(m["vo2max"]["rows"], [[d(-20), "41.3"]])
+        g = m["glucose"]
+        self.assertEqual([r[:2] for r in g["rows"]], [[d(-4), "Meter: 2"], [d(-5), "CGM: 288 in 24 h"],
+                                                     [d(-6), "CGM: 96 in 8 h"]])
+        self.assertEqual(g["rows"][1][2:], ["62–212", "131", "78%", "4%", "under 0.1%", "18%"])
+        self.assertIn("time in the standard ranges: 76% 70–180, 5% below 70 (0.5% below 54), 19% above 180", g["lead"][0])
+        self.assertIn("standard published ranges", g["note"])
+        self.assertIn("not anyone's own targets", g["note"])
+        self.assertEqual([r[1] for r in m["immunizations"]["rows"]], ["Influenza vaccine (fictional)", "Tetanus vaccine (fictional)"],
+                         "every immunization, not only since the visit")
+        self.assertTrue(m["immunizations"]["history"])
+        self.assertEqual(m["ecg"]["rows"], [[d(-6), "ECG: Sinus Rhythm", "72 bpm average · Fictional Watch"]], "since the visit only")
+        self.assertEqual([r[1:3] for r in m["bmi"]["rows"]], [["BMI", "24.3 kg/m²"], ["BMI", "24.4 kg/m²"]])
+        self.assertNotIn("samples", json.dumps(s))
+
+    def test_measures_in_the_persons_units(self):
+        c = self.c["robin"]
+        try:
+            c.put("/api/settings/user/units", json={"value": {"lab": "si", "temperature": "F", "weight": "kg"}}, headers=H)
+            m = self.mpreview(sections=["glucose", "temperature", "bmi"])["measures"]
+            self.assertEqual(m["glucose"]["cols"][2][0], "Low–high (mmol/L)")
+            self.assertEqual(m["glucose"]["rows"][1][2:4], ["3.4–11.8", "7.3"])
+            self.assertIn("3.9–10.0 mmol/L", m["glucose"]["note"])
+            self.assertEqual(m["temperature"]["rows"][0][1], "98.2")
+            self.assertIn("weight 74.5 kg", m["bmi"]["rows"][0][4])
+        finally:
+            c.put("/api/settings/user/units", json={"value": {}}, headers=H)
+
+    def test_measures_in_the_pdf(self):
+        pid = self.measures_profile()
+        r = self.c["robin"].post(f"/api/profiles/{pid}/summary/pdf", json=self.opts(appointment=None, sections=measures.IDS), headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        reader, text = text_of(r.content)
+        self.assertLessEqual(len(reader.pages), 2)
+        for want in (f"Blood pressure at home since {summary.fmt_date(d(-30))} (2)", "2 readings · average 129/82 mmHg", "132/84",
+                     "Fictional cuff (Health Connect)", "Body temperature at home", "37.4", "Blood glucose from the phone",
+                     "CGM: 288 in 24 h", "under 0.1%", "standard published ranges", "Blood oxygen from the watch",
+                     "Respiratory rate", "VO2 max", "Immunizations (2)", "Influenza vaccine (fictional)", "ECG: Sinus Rhythm",
+                     "BMI and growth", "24.3 kg/m²", "isn't medical advice"):
+            self.assertIn(want, text)
+        self.assertNotIn("150/95", text, "before the visit")
+
+    def test_measures_listed_at_most_so_many(self):
+        many = {**PHONE, "bp_readings": [[f"{d(-1 - i // 4)}T{8 + i % 4:02d}:00:00+00:00", 120 + i % 9, 80, None, None, "Apple Health"]
+                                         for i in range(60)]}
+        c = measures.Ctx(many, {}, {})
+        b = measures.blocks(c, ["home_bp"], lambda x: True, most=measures.SUMMARY_MOST)["home_bp"]
+        self.assertEqual((len(b["rows"]), b["total"]), (measures.SUMMARY_MOST, 60))
+        self.assertTrue(b["lead"][0].startswith("60 readings"))
+        pdf, fit = summary.render({"profile": "x", "prepared": d(0), "date_format": "", "for": None, "since": {"date": d(-30), "label": ""},
+                                   "sections": ["home_bp"], "notice": summary.NOTICE, "measures": {"home_bp": b}, "extra": []})
+        self.assertIn(f"The latest {measures.SUMMARY_MOST} of 60", text_of(pdf)[1])
+
+    def test_a_childs_growth_percentiles(self):
+        """#196's percentiles on the server (growth.py, as growth.js): a child's weights, heights and BMI, each on the
+        WHO's chart to 2 years or the CDC's from 2, for age and sex; an adult's BMI is the number only."""
+        cfg = {"person": {"birthDate": d(-365 * 6), "sex": "female", "heights": [{"date": d(-20), "cm": 116.0, "unit": "cm"}]}}
+        kid = {"metrics": [{"key": "weight", "unit": "lb", "pts": [[d(-10), 46.0]]}]}
+        b = measures.blocks(measures.Ctx(kid, {}, cfg), ["bmi"], lambda x: True)["bmi"]
+        rows = {r[1]: r for r in b["rows"]}
+        self.assertEqual(set(rows), {"Weight", "Height", "BMI"})
+        for r in rows.values():
+            self.assertRegex(r[3], r"^\d+(st|nd|rd|th)$")
+            self.assertIn("CDC chart" if r[1] != "BMI" else "height 116 cm", r[4])
+        self.assertEqual(rows["BMI"][2], "15.5 kg/m²")
+        self.assertIn("CDC growth charts", b["note"])
+        baby = {"person": {"birthDate": d(-200), "sex": "male", "heights": [{"date": d(-5), "cm": 67.0, "unit": "cm"}]}}
+        rows = measures.blocks(measures.Ctx({"metrics": [{"key": "weight", "unit": "lb", "pts": [[d(-3), 17.0]]}]}, {}, baby),
+                               ["bmi"], lambda x: True)["bmi"]["rows"]
+        self.assertEqual(sorted(r[1] for r in rows), ["Length", "Weight"], "no BMI before 2 years")
+        self.assertTrue(all("WHO chart" in r[4] for r in rows))
+        from server import growth
+        self.assertAlmostEqual(growth.pct(growth.tables(), "weight", "male", 100, 8.1), 96.711, 2)   # the page's own number
+        self.assertEqual([growth.pct_text(p) for p in (0.2, 1, 2.4, 22.6, 99.7)], ["below the 1st", "1st", "2nd", "23rd", "above the 99th"])
 
 
 class Writer(unittest.TestCase):

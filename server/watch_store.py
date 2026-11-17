@@ -206,9 +206,9 @@ def _prune_waves(pid, merged):
             _remove(os.path.join(d, n))
 
 
-def wave(db, pid, name):
-    """A recording's samples by its file name's 16 hex (ecg.NAME_RE), or None: beside the profile's watch file (a
-    phone receiver's, watch/receiver.py) first, then the imports'."""
+def wave_path(db, pid, name):
+    """Where a recording's samples are, by its file name's 16 hex (ecg.NAME_RE), or None: beside the profile's watch
+    file (a phone receiver's, watch/receiver.py) first, then the imports'."""
     if not ecg.NAME_RE.match(name or ""):
         return None
     r = db.execute("SELECT watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
@@ -216,8 +216,14 @@ def wave(db, pid, name):
     for d in dirs:
         p = os.path.join(d, name + ".json.gz")
         if os.path.isfile(p):
-            return ecg.unpack(crypto.read_file(p))
+            return p
     return None
+
+
+def wave(db, pid, name):
+    """A recording's samples (wave_path), or None."""
+    p = wave_path(db, pid, name)
+    return ecg.unpack(crypto.read_file(p)) if p else None
 
 
 def save_import(db, pid, summary, import_id=None):

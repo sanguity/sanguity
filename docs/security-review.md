@@ -61,8 +61,9 @@ check changes without updating the list, and it exercises this table against a l
 | What | Viewer | Editor | Owner | Admin (not a member) | Share-link holder | Calendar feed |
 |---|---|---|---|---|---|---|
 | A profile's records: Overview, Timeline, Labs, Body and activity, Costs, Medications, documents | Read | Read | Read | No (404) | Only the sections, labs and dates the link was made with; no documents, report text or settings | Upcoming appointments and expected lab draws, minimal by default |
-| A watch's ECG recordings and irregular rhythm notifications (#182): the events with the records, a recording's samples by `GET /api/profiles/{pid}/watch/ecg/{name}` when its drawer opens | Read | Read | Read | No (404) | No (watch data is in no link; #225 may add a section, unticked by default) | No |
+| A watch's ECG recordings and irregular rhythm notifications (#182): the events with the records, a recording's samples by `GET /api/profiles/{pid}/watch/ecg/{name}` when its drawer opens | Read | Read | Read | No (404) | Only if its owner ticks "ECGs and irregular rhythm notifications" (#225, unticked by default): the date and what the device said, never the samples | No |
 | The journal | Read | Add, change, delete | Add, change, delete | No | If the link includes it (without who wrote what) | No |
+| The phone's and watch's measures in a visit summary or a share link (#225): home blood pressure, glucose, temperature, blood oxygen, respiratory rate, VO2 max, immunizations, BMI and growth | Read (summary) | Read (summary) | Read (summary; ticks them for a link) | No | Only the measures its owner ticked (each unticked by default), in the link's dates; cycle tracking never | No |
 | About this person: birth date, sex used for reference ranges, height history (#194) | Read | Change; add and remove heights | Change; add and remove heights | No | Only if its owner ticks About this person (unticked by default) | No |
 | Import history | Read | Undo, rename | Undo, rename | No | No | No |
 | Upload files, import (preview, save, discard), type in records, corrections, "same result", cost marks | No (403) | Yes | Yes | No | No | No |
@@ -546,6 +547,9 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 ### The visit summary PDF (#48, #213)
 - Anyone who can view the profile; made in memory, never written to disk, `no-store`; every PDF logged without its
   questions or results. The questions draft is encrypted (A4).
+- The phone's and watch's measures, immunizations, ECGs and BMI (#225, `server/measures.py`) are sections of their own,
+  offered only when the profile has some and unticked unless the person ticks them; the same for share links, built
+  from named fields only (no samples, no raw summary). No new route or column.
 
 ### Share links (#47)
 - **Token (3.2.2, 6.3.1, 3.1.1, 8.1.3):** 256 random bits (`security.new_token`), shown once; only its SHA-256 is

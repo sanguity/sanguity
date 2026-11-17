@@ -1297,3 +1297,12 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .growth-curve.mid{stroke-width:1.8;opacity:.8}
 svg text.growth-pct{font-size:10px}
 .growth-src{margin-top:10px}
+
+/* ---- the phone's and watch's measures in the visit summary and on a share link (#225): their tables stay tables with
+   their headings on a phone (a CGM day's numbers mean nothing without them), scrolling sideways inside their box */
+@media (max-width:640px){
+  .acct .tbl.measures thead{display:table-header-group}
+  .acct .tbl.measures tr{display:table-row}
+  .acct .tbl.measures td{border-top:1px solid var(--grid);padding:6px 8px 6px 0}
+}
+.acct .tbl.measures th,.acct .tbl.measures td{white-space:nowrap}

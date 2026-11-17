@@ -19,9 +19,9 @@ $("#theme").onclick = () => {
 };
 
 /* a table that scrolls sideways inside its card on a narrow screen, never the page */
-function shTable(heads, rows, empty) {
+function shTable(heads, rows, empty, cls = "") {   // cls "measures": stays a table on a phone (#225)
   if (!rows.length) return el("p", {class: "muted", text: empty});
-  return el("div", {class: "share-scroll"}, el("table", {class: "tbl"},
+  return el("div", {class: "share-scroll", tabindex: 0, role: "region", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
     el("thead", {}, el("tr", {}, ...heads.map(h => el("th", {text: h})))),
     el("tbody", {}, ...rows.map(r => el("tr", {}, ...r.map(c => c && c.nodeType ? el("td", {}, c) : el("td", {text: c == null ? "" : String(c)})))))));
 }
@@ -49,6 +49,16 @@ const SH_DRAW = {
     list.map(c => [shDay(c.t), c.title, c.provider, shUsd(c.billed), shUsd(c.paid), shUsd(c.owe)]), "No claims in this range."),
 };
 
+/* the phone's and watch's measures, immunizations, ECGs and BMI (#225; server/measures.py): a block's lead lines, its
+   table and the note under it. Times are the local times the phone took them at, written in this browser's format. */
+function shBlock(b) {
+  const cellOf = (kind, v) => !v ? v : kind === "day" ? shDay(v) : kind === "time" ? fmtDT(zParse(v)) : v;
+  return el("div", {}, ...(b.lead || []).map(t => el("p", {text: t})),
+    shTable((b.cols || []).map(c => c[0]), (b.rows || []).map(r => r.map((v, i) => cellOf(b.cols[i][1], v))), b.empty || "None in this range.", "measures"),
+    b.total > (b.rows || []).length ? el("p", {class: "hint", text: `The latest ${b.rows.length} of ${b.total}.`}) : null,
+    b.note ? el("p", {class: "hint", text: b.note}) : null);
+}
+
 async function shLoad() {
   const status = $("#shareStatus");
   const token = location.hash.slice(1);
@@ -73,7 +83,8 @@ async function shLoad() {
       `in these sections only: ${d.sections.map(s => s.label).join(", ")}. The link stops working on ${fmtDT(d.expires * 1000)}, ` +
       "or earlier if it's revoked. Each time it's opened, the profile's owners see that in its activity log."}));
   $("#shareBody").replaceChildren(...d.sections.map(s => el("section", {class: "card", id: "share-" + s.id},
-    el("h2", {text: s.label}), el("p", {class: "hint", text: "Shows " + s.what + "."}), SH_DRAW[s.id](d[s.id] || []))));
+    el("h2", {text: s.label}), el("p", {class: "hint", text: "Shows " + s.what + "."}),
+    SH_DRAW[s.id] ? SH_DRAW[s.id](d[s.id] || []) : shBlock(d[s.id] || {}))));   // a measure's block (#225)
 }
 shLoad();
 addEventListener("hashchange", shLoad);

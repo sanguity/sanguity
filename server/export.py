@@ -6,16 +6,19 @@ The zip:
                       (notes, symptoms and side effects people wrote, journal.py) as its "journal" list
   settings.json       the settings set for the profile, shaped like settings.example.json (none: all at their defaults)
   documents/<id>/...  every document, and for HTML records the pictures and stylesheets they show
-  watch/daily.json    the watch and scale summary shown with the profile (if any)
+  watch/daily.json    the watch and scale summary shown with the profile (if any): its daily measures, home blood
+                      pressure and temperature readings, glucose, workouts, ECGs and irregular rhythm notifications
+  watch/ecg/<16 hex>.json  each ECG recording's samples (#182), the file the summary's ECG of that key draws (#225):
+                      the person's data like the rest; loading the export keeps them beside its daily.json again
   uploads/<id>/...    the files uploaded on the import page, as they were (zips unpacked), one folder per upload
   activity.json       the profile's activity log
   cycle/cycle.json    menstrual cycle records (#183), only when the person exporting ticked them in, each time
                       (cycle_tracking.for_export); loading an export leaves them out, as cycle tracking is per install
 It's written as it's sent, a piece at a time, so a large profile never sits in memory or on disk.
 """
-import datetime, json, os, re, shutil, urllib.parse, zipfile
+import datetime, gzip, json, os, re, shutil, urllib.parse, zipfile
 
-from . import crypto, cycle_tracking, profiles as prof, records, settings, uploads, watch_store
+from . import crypto, cycle_tracking, ecg, profiles as prof, records, settings, uploads, watch_store
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
 REF = re.compile(r"""(?:src|href)\s*=\s*["']([^"'#?]+)""", re.I)
@@ -31,10 +34,16 @@ def plan(db, pid, cycle=False):
     for e in log:
         e["detail"] = json.loads(crypto.dec(e["detail"])) if e["detail"] else {}
         e["detail"].pop("key", None)
+    watch = watch_store.load(db, pid)   # the merged summary (receiver + imports), or None
+    waves = {}   # ECG samples (#225): file name -> where they are, for each recording the summary lists
+    for e in (watch or {}).get("ecg") or []:
+        name = ecg.file_name(e.get("key")) if isinstance(e, dict) else None
+        path = watch_store.wave_path(db, pid, name[:-8]) if name else None
+        if path:
+            waves[name[:-8]] = path
     return {"pid": pid, "name": p["name"], "docs": docs, "activity": log,
             "data": records.assemble(db, pid), "uploads": uploads.stored_files(db, pid),
-            "settings": settings.to_file(db, pid),
-            "watch": watch_store.load(db, pid),   # the merged summary (receiver + imports), or None
+            "settings": settings.to_file(db, pid), "watch": watch, "waves": waves,
             "cycle": cycle_tracking.for_export(db, pid) if cycle else None}
 
 
@@ -137,6 +146,12 @@ def stream(p, exported_by, now=None):
                                     not rel.lower().endswith(STORED))
     if p["watch"]:
         yield add_bytes("watch/daily.json", json.dumps(p["watch"], separators=(",", ":")).encode())
+    for name, path in sorted((p.get("waves") or {}).items()):   # each ECG's samples, as plain JSON (#225)
+        try:
+            raw = gzip.decompress(crypto.read_file(path))
+        except (OSError, ValueError, EOFError, crypto.KeyError_):
+            continue
+        yield add_bytes(f"watch/ecg/{name}.json", raw)
     if p.get("cycle"):   # ticked in for this export (#183)
         yield add_bytes("cycle/cycle.json", json.dumps(p["cycle"], indent=1, ensure_ascii=False).encode())
     for upload_id, rel, path in p["uploads"]:
@@ -153,7 +168,7 @@ no longer need.
   settings.json      the profile's settings{'' if len(p['settings']) > 1 else ' (none set: all at their defaults)'}
   documents/         the documents, one folder each
   watch/daily.json   watch and scale summary{'' if p['watch'] else ' (none)'}
-{"  cycle/cycle.json   menstrual cycle records from the phone apps, ticked in for this export" + chr(10) if p.get('cycle') else ''}  uploads/           the files uploaded to import, as they were sent (zips unpacked): {len({u for u, _, _ in p['uploads']})} upload(s)
+{f"  watch/ecg/         each ECG recording's samples, by the key in daily.json: {len(p['waves'])}" + chr(10) if p.get('waves') else ''}{"  cycle/cycle.json   menstrual cycle records from the phone apps, ticked in for this export" + chr(10) if p.get('cycle') else ''}  uploads/           the files uploaded to import, as they were sent (zips unpacked): {len({u for u, _, _ in p['uploads']})} upload(s)
   activity.json      who opened, shared or changed this profile, and when
 {f'''
 {len(missing)} document link(s) pointed at files that are no longer on the server and are left out.
@@ -169,7 +184,9 @@ To load it into a Sanguity install (into an empty profile, or replacing one's re
 
 # ---------------------------------------------------------------- loading an export
 
-ALLOWED = re.compile(r"^(data\.json|settings\.json|README\.txt|activity\.json|watch/daily\.json|cycle/cycle\.json|documents/[^/]+/.+|uploads/\d+/.+)$")
+ALLOWED = re.compile(r"^(data\.json|settings\.json|README\.txt|activity\.json|watch/daily\.json|watch/ecg/[0-9a-f]{16}\.json|"
+                     r"cycle/cycle\.json|documents/[^/]+/.+|uploads/\d+/.+)$")
+WAVE = re.compile(r"^watch/ecg/([0-9a-f]{16})\.json$")   # (#225) kept as the app keeps them: gzipped, then sealed
 LEFT_OUT = {"cycle/cycle.json"}   # cycle records (#183): not loaded into the profile, nor kept in its folder
 UPLOAD = re.compile(r"^uploads/(\d+)/(.+)$")
 # a zip that unpacks to more than this is refused before anything is written (a damaged or hostile archive could
@@ -203,6 +220,14 @@ def import_archive(db, pid, archive):
                 continue
             target = os.path.join(new, *parts)
             os.makedirs(os.path.dirname(target), exist_ok=True)
+            if (w := WAVE.match(i.filename)):   # an ECG's samples, beside the daily.json that lists it (watch_store.wave)
+                try:
+                    wave = ecg.unpack(ecg.pack(json.loads(zf.read(i))))
+                except (ValueError, TypeError, AttributeError):
+                    wave = None
+                if wave:
+                    crypto.write_file(target + ".gz", ecg.pack(wave))
+                continue
             crypto.write_file(target, zf.read(i))   # kept encrypted in the profile's folder
         shutil.rmtree(dest, ignore_errors=True)
         os.replace(new, dest)
