@@ -5,6 +5,8 @@
    markers in a row under each chart's time axis (CHART_LAYERS, trends.js). Severity is shown by the marker's size,
    the kind by its shape (note: square, symptom: circle, side effect: diamond), and both are in its label: never by
    colour alone. Owners and editors add, change and delete entries (server/routes_journal.py); viewers read them.
+   The journal's home is a card on the Timeline tab with its filters and search; Add → Journal entry opens the form
+   for a new one from any tab (#173).
    Plain script, loaded in order by index.html after trends.js; all files share one global scope. */
 "use strict";
 const J_KINDS = [["note", "Note"], ["symptom", "Symptom"], ["side_effect", "Side effect"]];
@@ -31,8 +33,10 @@ function journalLoad() {
     return e;
   });
   EV = EV.concat(JOURNAL);
-  $("#journalBtn").hidden = false;
-  $("#journalBtn").onclick = () => openJournalList();
+  // Add → Journal entry (nav.js): the new-entry form, from any tab; the panel gives focus back to the Add button
+  $("#journalBtn").hidden = !jCanWrite();
+  $("#journalBtn").onclick = () => { $("#addMenuBtn")?.focus({preventScroll: true}); journalNew(); };
+  journalHomeCard();
 }
 
 /* ---------------------------------------------------------------- marks: shape by kind, size by severity */
@@ -119,16 +123,29 @@ function openJournal(e) {
       }}));
   }
   acts.append(el("button", {class: "btn", type: "button", text: "Day on the timeline", onclick: () => { setRange(e.ts - 15 * DAY, e.ts + 15 * DAY); switchTab("timeline"); }}),
-    el("button", {class: "btn", type: "button", text: "All journal entries", onclick: () => openJournalList()}));
+    el("button", {class: "btn", type: "button", text: "All journal entries", onclick: () => journalHome()}));
   body.append(acts, msg);
   showDrawer();
   renderTimeline();
 }
 
-const jFilter = {kind: "", med: "", q: "", inRange: false};
-function openJournalList() {
-  state.selEv = null;
-  const body = jDrawer("Journal", JOURNAL.length ? `${JOURNAL.length} entr${JOURNAL.length === 1 ? "y" : "ies"} written by the people who use this profile` : "Nothing written yet");
+/* ---------------------------------------------------------------- the list, and the journal's home (#173)
+   Its home is a card on the Timeline tab, between the timeline and the events list, added here (index.html has no
+   place for it): the newest entries, with the filters and search. The panel shows the same list only when the
+   Timeline tab is hidden (Settings → Tabs, #40). Saving or deleting reloads the page, so the card is built once. */
+const jFilter = {kind: "", med: "", q: "", inRange: false, all: false};
+const J_FEW = 5;   // the card shows the newest five until "Show all"
+const JOURNAL_HINT = "What you write is kept with the records, not with any import: undoing an import leaves it. It's in “Export everything” and in backups.";
+const jMatch = e => (!jFilter.kind || e.j.kind === jFilter.kind) && (!jFilter.med || e.j.med === jFilter.med) &&
+  (!jFilter.q || e._q.includes(jFilter.q)) && (!jFilter.inRange || e.ts >= state.from && e.ts <= state.to);
+const jRow = e => el("button", {class: "jrow", type: "button", role: "listitem", onclick: () => openEvent(e), "aria-label": jSay(e.j)},
+  el("span", {class: "d", text: fmtD(e.ts)}),
+  el("svg:svg", {class: "jicon", viewBox: "0 0 18 18", width: 18, height: 18, "aria-hidden": "true"},
+    jShape(e.j, 9, 9, {fill: "var(--c-journal)", "fill-opacity": jRated(e.j) ? .25 + e.j.severity * .065 : .85, stroke: "var(--c-journal)"})),
+  el("span", {class: "t"}, el("b", {text: e.title}), el("span", {class: "s", text: [J_LABEL[e.j.kind], e.j.med].filter(Boolean).join(" · ")})),
+  jRated(e.j) ? el("span", {class: "badge", text: `${e.j.severity}/10`}) : el("span"));
+/* the filters, the count and the entries, newest first; few: only the newest J_FEW until "Show all". -> {nodes, draw} */
+function jList(few) {
   const meds = [...new Set(JOURNAL.map(e => e.j.med).filter(Boolean))].sort();
   const kind = el("select", {"aria-label": "Kind of entry"}, el("option", {value: "", text: "All kinds"}), ...J_KINDS.map(([v, t]) => el("option", {value: v, text: t + "s"})));
   const med = el("select", {"aria-label": "Medication", hidden: !meds.length || null}, el("option", {value: "", text: "Any medication"}), ...meds.map(m => el("option", {value: m, text: m})));
@@ -136,34 +153,66 @@ function openJournalList() {
   const shown = el("label", {class: "jinrange"}, el("input", {type: "checkbox", checked: jFilter.inRange || null}), " Only the dates shown");
   kind.value = jFilter.kind; med.value = jFilter.med; q.value = jFilter.q;
   const list = el("div", {class: "jlist", role: "list"}), count = el("p", {class: "hint", role: "status"});
+  const more = el("button", {class: "btn jmore", type: "button", hidden: "", onclick: () => { jFilter.all = !jFilter.all; draw(); }});
   const draw = () => {
     Object.assign(jFilter, {kind: kind.value, med: med.value, q: q.value.trim().toLowerCase(), inRange: shown.firstChild.checked});
-    const v = JOURNAL.filter(e => (!jFilter.kind || e.j.kind === jFilter.kind) && (!jFilter.med || e.j.med === jFilter.med) &&
-      (!jFilter.q || e._q.includes(jFilter.q)) && (!jFilter.inRange || e.ts >= state.from && e.ts <= state.to)).sort((a, b) => b.ts - a.ts);
-    count.textContent = JOURNAL.length ? `${v.length} of ${JOURNAL.length} shown` : "";
-    list.replaceChildren(...v.map(e => el("button", {class: "jrow", type: "button", role: "listitem", onclick: () => openEvent(e), "aria-label": jSay(e.j)},
-      el("span", {class: "d", text: fmtD(e.ts)}),
-      el("svg:svg", {class: "jicon", viewBox: "0 0 18 18", width: 18, height: 18, "aria-hidden": "true"},
-        jShape(e.j, 9, 9, {fill: "var(--c-journal)", "fill-opacity": jRated(e.j) ? .25 + e.j.severity * .065 : .85, stroke: "var(--c-journal)"})),
-      el("span", {class: "t"}, el("b", {text: e.title}), el("span", {class: "s", text: [J_LABEL[e.j.kind], e.j.med].filter(Boolean).join(" · ")})),
-      jRated(e.j) ? el("span", {class: "badge", text: `${e.j.severity}/10`}) : el("span"))));
+    const v = JOURNAL.filter(jMatch).sort((a, b) => b.ts - a.ts), cut = few && !jFilter.all && v.length > J_FEW;
+    const filtered = jFilter.kind || jFilter.med || jFilter.q || jFilter.inRange;
+    count.textContent = !JOURNAL.length ? "" : cut ? `The newest ${J_FEW} of ${v.length}${filtered ? " that match" : ""}` : `${v.length} of ${JOURNAL.length} shown`;
+    list.replaceChildren(...(cut ? v.slice(0, J_FEW) : v).map(jRow));
     if (!v.length) list.append(el("div", {class: "empty", text: JOURNAL.length ? "No entries match." : jCanWrite() ? "Add a note, a symptom or a side effect to start the journal." : "No one has written in this journal yet."}));
+    more.hidden = !few || v.length <= J_FEW;
+    more.textContent = jFilter.all ? "Show fewer" : `Show all ${v.length}`;
   };
   for (const c of [kind, med]) c.onchange = draw;
   q.oninput = draw; shown.firstChild.onchange = draw;
-  body.append(
-    jCanWrite() ? el("div", {class: "btns"}, el("button", {class: "btn primary", type: "button", text: "Add an entry", onclick: () => journalForm(null, {}, openJournalList)})) : null,
-    el("div", {class: "jfilters"}, kind, med, q, shown), count, list,
-    el("p", {class: "hint", text: "The journal is what you wrote, kept with the records: it isn't part of any import, so undoing an import leaves it. It's in “Export everything” and in backups."}));
   draw();
+  return {nodes: [JOURNAL.length ? el("div", {class: "jfilters"}, kind, med, q, shown) : null, count, list, more], draw};
+}
+/* the card on the Timeline tab: none for someone who can only read a journal no one has written in */
+let jHomeDraw = null;
+function journalHomeCard() {
+  const events = $("#list")?.closest(".card");
+  $("#journalHome")?.remove(); jHomeDraw = null;
+  if (!events || !JOURNAL.length && !jCanWrite()) return;
+  const n = JOURNAL.length;
+  const card = el("section", {class: "card jhome", id: "journalHome", tabindex: -1, "aria-labelledby": "journalHomeTitle"},
+    el("div", {class: "list-hd"}, el("h2", {id: "journalHomeTitle", text: n ? `Journal (${n})` : "Journal"}), el("span", {class: "spacer"}),
+      jCanWrite() ? el("button", {class: "btn primary", type: "button", text: "New entry", onclick: () => journalNew()}) : null),
+    el("p", {class: "hint", text: (n ? "Notes, symptoms and side effects written by the people who use this profile. " : "Nothing written yet. ") + JOURNAL_HINT}));
+  if (n) { const v = jList(true); card.append(...v.nodes.filter(Boolean)); jHomeDraw = v.draw; }
+  events.before(card);
+}
+// "Only the dates shown" follows the timeline's dates: the events list is drawn again whenever they change
+{ const evList = $("#list"); if (evList) new MutationObserver(() => { if (jFilter.inRange && jHomeDraw) jHomeDraw(); }).observe(evList, {childList: true}); }
+/* to the journal's home: the card on the Timeline tab, or the list in the panel when that tab is hidden */
+function journalHome() {
+  const card = $("#journalHome");
+  if (!card || !shownTabs().includes("timeline")) return openJournalList();
+  if (drawer.classList.contains("open")) closeDrawer();
+  switchTab("timeline");
+  const bar = document.querySelector("header")?.offsetHeight || 0;   // the top bar stays on screen: scroll to just under it
+  window.scrollTo({top: card.getBoundingClientRect().top + scrollY - bar - 12, behavior: "instant"}); card.focus({preventScroll: true});
+}
+function openJournalList() {
+  state.selEv = null;
+  const body = jDrawer("Journal", JOURNAL.length ? `${JOURNAL.length} entr${JOURNAL.length === 1 ? "y" : "ies"} written by the people who use this profile` : "Nothing written yet");
+  body.append(...[jCanWrite() ? el("div", {class: "btns"}, el("button", {class: "btn primary", type: "button", text: "Add an entry", onclick: () => journalForm(null, {}, openJournalList)})) : null,
+    ...jList(false).nodes, el("p", {class: "hint", text: JOURNAL_HINT})].filter(Boolean));   // append(null) would write "null"
   showDrawer();
   renderTimeline();
+}
+/* a new entry, in the panel over whatever is on screen; Cancel closes it */
+function journalNew() {
+  if (!jCanWrite()) return journalHome();
+  journalForm(null, {}, closeDrawer);
 }
 
 /* the add / edit form. j: the entry (null: a new one); preset: {kind, t} for a new one; back(): what Cancel shows */
 function journalForm(j, preset, back) {
   const isNew = !j, cur = j || {kind: preset.kind || "symptom", t: preset.t || isoDay(Date.now()), title: "", severity: 5, note: "", med: null};
-  const body = jDrawer(isNew ? "New journal entry" : "Edit journal entry", isNew ? "A note, a symptom or a side effect" : `${J_LABEL[cur.kind]} · ${jWhen(cur)}`);
+  const whose = ME && ME.profiles.length > 1 ? ` · ${PROFILE.name}` : "";   // which profile's journal, when there's a choice
+  const body = jDrawer(isNew ? "New journal entry" : "Edit journal entry", isNew ? "A note, a symptom or a side effect" + whose : `${J_LABEL[cur.kind]} · ${jWhen(cur)}`);
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   const uid = Math.random().toString(36).slice(2, 8), id = n => `j-${n}-${uid}`;
   const kinds = el("div", {class: "seg jkinds", role: "radiogroup", "aria-label": "Kind of entry"});
@@ -226,12 +275,15 @@ async function jSend(path, opts, msg, reopen) {
     location.reload();
   } catch (err) { msg.textContent = "Couldn't reach the server: " + err.message; }
 }
+/* after that reload, or arriving from Add → Journal entry on another page (nav.js links to ./#new-journal-entry) */
 function journalResume() {
   let r = null;
   try { r = JSON.parse(sessionStorage.getItem("sg-after-journal") || "null"); sessionStorage.removeItem("sg-after-journal"); } catch (e) {}
-  if (!r) return;
-  if (r.entry && byId.has(-r.entry)) openEvent(byId.get(-r.entry));
-  else openJournalList();
+  if (location.hash === "#new-journal-entry") {
+    history.replaceState(null, "", location.pathname + location.search);   // a reload doesn't open it again
+    journalNew();
+  } else if (r && r.entry && byId.has(-r.entry)) openEvent(byId.get(-r.entry));
+  else if (r) journalHome();
 }
 
 /* in the drawer of any event: write a journal note dated to it */

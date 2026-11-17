@@ -67,12 +67,13 @@ const SgNav = (() => {
   const action = (id, text, attrs = {}) => el("button", {class: "menu-item", role: "menuitem", type: "button", id, text, ...attrs});
   const sep = () => el("div", {class: "menu-sep", role: "separator"});
 
-  /* Add: records in, by any of the ways the import page offers; a journal entry on the records page */
+  /* Add: records in, by any of the ways the import page offers; a journal entry, whose form journal.js opens on the
+     records page (from another page, the link takes you there and it opens, #173) */
   const add = menu("addMenu", "Add", "+", [
     link("import.html", "Import records", {id: "importLink", "data-needs": "import"}),
     link("connect.html", "Connect a source", {"data-needs": "import"}),
     link("import.html#manual", "Type records in", {"data-needs": "import"}),
-    ...(onRecords ? [sep(), action("journalBtn", "Journal entry", {hidden: ""})] : []),
+    sep(), onRecords ? action("journalBtn", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "Journal entry", {id: "journalBtn"}),
   ]);
   /* the person's own menu */
   const who = el("span", {id: "who", text: "Account"});

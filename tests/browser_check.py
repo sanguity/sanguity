@@ -556,8 +556,29 @@ def main():
             page.keyboard.press("Escape")
 
             # ---- the journal (#49): a symptom added from an event's drawer, pre-dated to it, shown in the Journal lane
-            # and as a marker on Trends sized by its severity; the list with its filters; deleted again at the end
+            # and as a marker on Trends sized by its severity; its home on the Timeline tab with the filters (#173); deleted
+            # again at the end
             check("the journal starts empty", js("JOURNAL.length === 0 && !document.getElementById('journalBtn').hidden"))
+            js("switchTab('overview')")
+            menu_click(page, "#journalBtn")
+            settle(200)
+            check("Add → Journal entry opens the new-entry form, over the tab you were on (#173)",
+                  js("document.getElementById('dtitle').textContent === 'New journal entry' && state.tab === 'overview'")
+                  and page.input_value("#dbody input[type=date]") == js("isoDay(Date.now())") and page.is_visible("#dbody .jform input[type=text]"),
+                  js("[document.getElementById('dtitle').textContent, state.tab]"))
+            check("…saying whose journal, with more than one profile", js("document.getElementById('dsub').textContent").endswith(" · My records"),
+                  js("document.getElementById('dsub').textContent"))
+            page.click("#dbody .jform button:text-is('Cancel')")
+            settle(300)
+            check("…and Cancel closes it, giving focus back to Add", js("!drawer.classList.contains('open') && document.activeElement.id === 'addMenuBtn'"),
+                  js("document.activeElement.id"))
+            page.click("#tab-timeline")
+            settle()
+            home = js("""(() => { const c = document.getElementById('journalHome'), cards = [...document.querySelectorAll('#view-timeline > .card')];
+                return c && {title: c.querySelector('h2').textContent, at: cards.indexOf(c), tl: cards.findIndex(x => x.contains(document.getElementById('tl'))),
+                ev: cards.findIndex(x => x.contains(document.getElementById('list'))), add: !!c.querySelector('button.primary'), rows: c.querySelectorAll('.jrow').length}; })()""")
+            check("the journal has a home on the Timeline tab, between the timeline and the events, with New entry even when empty",
+                  home and home["title"] == "Journal" and home["tl"] < home["at"] < home["ev"] and home["add"] and home["rows"] == 0, home)
             day_of = js("(() => { const e = EV.find(e => e.k === 'visit' && !e.hidden && /T\\d\\d:\\d\\d/.test(e.t)); openEvent(e); return {id: e.id, day: isoDay(e.ts)}; })()")
             settle(200)
             page.click("#dbody .jadd button")
@@ -615,25 +636,50 @@ def main():
             settle(200)
             check("the Journal box on Trends hides the markers", js("document.querySelectorAll('#charts .jmark').length") == 0)
             page.check("#optJournal")
-            menu_click(page, "#journalBtn")
+            js("id => openEvent(byId.get(id))", entry["id"])
             settle(200)
-            check("the Journal button lists the entries", js("document.getElementById('dtitle').textContent") == "Journal" and page.locator("#dbody .jrow").count() == 1)
-            page.select_option("#dbody .jfilters select", "note")
-            check("…filtered by kind", page.locator("#dbody .jrow").count() == 0 and "No entries match" in page.inner_text("#dbody .jlist"))
-            page.select_option("#dbody .jfilters select", "symptom")
-            page.fill("#dbody .jfilters input[type=search]", "after lunch")
-            check("…and by what they say", page.locator("#dbody .jrow").count() == 1)
+            page.click("#dbody .btns button:text-is('All journal entries')")
+            settle(300)
+            check("“All journal entries” goes to the journal's home on the Timeline tab, focused",
+                  js("state.tab === 'timeline' && !drawer.classList.contains('open') && document.activeElement.id === 'journalHome'")
+                  and page.inner_text("#journalHome h2") == "Journal (1)" and page.locator("#journalHome .jrow").count() == 1,
+                  js("[state.tab, document.activeElement.id]"))
+            page.select_option("#journalHome .jfilters select", "note")
+            check("…filtered by kind", page.locator("#journalHome .jrow").count() == 0 and "No entries match" in page.inner_text("#journalHome .jlist"))
+            page.select_option("#journalHome .jfilters select", "symptom")
+            page.fill("#journalHome .jfilters input[type=search]", "after lunch")
+            check("…and by what they say", page.locator("#journalHome .jrow").count() == 1)
+            page.check("#journalHome .jinrange input")
+            js("id => setRange(byId.get(id).ts + 40 * DAY, byId.get(id).ts + 80 * DAY)", entry["id"])
+            settle(300)
+            check("…and, ticked, by the timeline's dates as they change", page.locator("#journalHome .jrow").count() == 0)
+            js("id => setRange(byId.get(id).ts - 20 * DAY, byId.get(id).ts + 20 * DAY)", entry["id"])
+            settle(300)
+            check("…back in the dates shown, it's listed again", page.locator("#journalHome .jrow").count() == 1)
+            page.uncheck("#journalHome .jinrange input")
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
-            check("the journal list fits 375 px", js("document.documentElement.scrollWidth <= 375 && document.getElementById('dbody').scrollWidth <= document.getElementById('dbody').clientWidth"),
-                  js("[document.documentElement.scrollWidth, document.getElementById('dbody').scrollWidth]"))
+            check("the journal's home fits 375 px", js("(c => document.documentElement.scrollWidth <= 375 && c.scrollWidth <= c.clientWidth)(document.getElementById('journalHome'))"),
+                  js("(c => [document.documentElement.scrollWidth, c.scrollWidth, c.clientWidth])(document.getElementById('journalHome'))"))
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.click("#dbody .jrow")
+            js("TAB_HIDDEN.add('timeline'); journalHome()")
+            check("…with the Timeline tab hidden, the list opens in the panel instead",
+                  js("document.getElementById('dtitle').textContent") == "Journal" and page.locator("#dbody .jrow").count() == 1)
+            js("TAB_HIDDEN.delete('timeline'); closeDrawer()")
+            settle(300)
+            page.click("#journalHome .jrow")
             settle(200)
             page.click("#dbody .btns button:text-is('Delete')")
             page.click("#dbody .btns button.primary:text-is('Delete')")
-            page.wait_for_function("typeof JOURNAL !== 'undefined' && EV.length > 0 && JOURNAL.length === 0 && document.getElementById('dtitle').textContent === 'Journal'", timeout=20000)
-            check("deleting the entry takes it off the timeline and Trends", js("document.querySelectorAll('#charts .jmark, #tl .jmark').length") == 0)
+            page.wait_for_function("typeof JOURNAL !== 'undefined' && EV.length > 0 && JOURNAL.length === 0 && booted && document.activeElement.id === 'journalHome'", timeout=20000)
+            check("deleting the entry takes it off the timeline and Trends, back to the journal's home",
+                  js("document.querySelectorAll('#charts .jmark, #tl .jmark').length") == 0 and page.inner_text("#journalHome h2") == "Journal")
+            page.goto(base + "/account.html")
+            page.wait_for_selector("#addMenuBtn", timeout=10000)
+            menu_click(page, "#journalBtn")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted && document.getElementById('dtitle').textContent === 'New journal entry'", timeout=20000)
+            check("Add → Journal entry on another page opens the records page with the form, and the address is plain again",
+                  js("drawer.classList.contains('open') && location.hash === ''"), js("location.href"))
             page.keyboard.press("Escape")
             page.click("#tab-timeline")
             settle()
@@ -2030,6 +2076,8 @@ def main():
             zb.wait_for_selector("#list .row .d", timeout=10000)
             shown = zb.evaluate("document.querySelector('#list .row .d').textContent")
             check("…the timeline's event list in that format", bool(__import__("re").fullmatch(r"\d{4}-\d{2}-\d{2}", shown)), shown)
+            check("a viewer gets no Journal entry under Add, and no journal card while no one has written in it (#173)",
+                  zb.evaluate("document.getElementById('journalBtn').hidden && !document.getElementById('journalHome')"))
             check("…and the header", " built 20" in zb.evaluate("document.getElementById('meta').textContent"), zb.evaluate("document.getElementById('meta').textContent"))
             check("…a journal entry's time is theirs too: 11:30 pm in Auckland, not in this browser's Chicago",
                   zb.evaluate("jTime('2026-03-10T23:30') === Date.parse('2026-03-10T10:30:00Z') && isoDay(jTime('2026-03-10')) === '2026-03-10'"),

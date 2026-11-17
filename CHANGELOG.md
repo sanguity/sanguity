@@ -163,6 +163,9 @@ Everything on `main` so far; it becomes the first tagged release.
   per section, with **Discard changes**, replaces a Save per setting; a change not saved yet is marked, and so is
   its group in the sidebar. On a phone the page title in the top bar is no longer cut off, and each key lab is
   one row, its moves and Remove in a small menu (#174).
+- Add → Journal entry opens the form for a new entry from any tab (from another page, it opens the records page
+  with the form), and the journal's list, with its filters and search, has a home on the Timeline tab between the
+  timeline and the events (#173).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

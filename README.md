@@ -63,7 +63,7 @@ on the **Settings** page, appear on every chart and as "since" periods.
   and source nicknames (rename anything with the ✎ where it's shown), milestones, visits counted as workouts, your
   own reference ranges for results without one, and, per person, units (exact conversions only), time zone, date
   format and a light or dark theme.
-- A **journal** of symptoms, side effects and notes, on the timeline and the charts.
+- A **journal** of symptoms, side effects and notes, on the timeline and the charts, listed on the Timeline tab.
 
 **Finding your way.** One bar across the top: your records' tabs, **Add** (import records, connect a source, type
 records in, a journal entry) and your menu (visit summary, share links, settings, account, light or dark, log out).
