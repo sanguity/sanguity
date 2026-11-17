@@ -15,11 +15,18 @@ What becomes what:
     DiagnosticReport               groups its lab Observations; without lab results it is a `study`/`imaging` event
                                    with its conclusion; presentedForm attachments become documents
     Condition                      `problems`
-    AllergyIntolerance             `problems`, type "Allergy", with its reactions (#165, as the C-CDA importer does)
-    Immunization, Procedure        a `procedure` event ("Immunization: <vaccine>"), with reason, site, dose, lot,
-                                   outcome and notes where given (#165: Apple's Health Records hold all three)
+    AllergyIntolerance             `problems`, type "Allergy", with its substance, reactions, severity, criticality and
+                                   status as recorded (#165; #179: common.allergy, the shape the C-CDA importer writes)
+    Immunization                   an `immunization` event (#179, common.immunization): vaccine and its CVX code, dose
+                                   number, amount, route, site, lot, manufacturer, who gave it and where (Health
+                                   Cards' too, which have no ids: keyed by their day and vaccine code)
+    Procedure                      a `procedure` event, with reason, site, outcome and notes where given (#165)
     MedicationRequest/Statement    `med` events (DSTU2 MedicationOrder too)
+    MedicationDispense             an `rx` event (a pharmacy fill, #179), as the claims' fills: pharmacy, days' supply,
+                                   quantity, prescriber and RxNorm code in a `med` detail
     Encounter                      `visit`; inpatient classes become a `stay` with `end`; planned ones go to `upcoming`
+    Appointment                    booked (or pending) ones go to `upcoming` (#179); the others are visits or nothing
+    ImagingStudy                   an `imaging` event, unless a DiagnosticReport here describes it (#179)
     DocumentReference              `document` events pointing at the attached file inside the upload
     ExplanationOfBenefit           a `claim` event (pharmacy: `rx`) with its claim detail and a `costs` row, as the
                                    claims importers make them (CARIN Blue Button; see _fhir_claims.py)
@@ -33,6 +40,7 @@ import hashlib, json, posixpath, re
 from collections import Counter, defaultdict
 from datetime import datetime
 
+from . import common
 from .common import canonical_lab, unit_key
 
 NAME = "fhir"
@@ -40,13 +48,29 @@ LABEL = "FHIR records (Apple Health, Blue Button, patient portals)"
 
 LOINC = "http://loinc.org"
 RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm"
+CVX = "http://hl7.org/fhir/sid/cvx"
+SYSTEMS = {CVX: "CVX", "urn:oid:2.16.840.1.113883.12.292": "CVX", "http://snomed.info/sct": "SNOMED CT", RXNORM: "RxNorm",
+           "http://hl7.org/fhir/sid/ndc": "NDC", "http://www.whocc.no/atc": "ATC", "urn:oid:1.2.36.1.2001.1005.17": "AIR"}
+# a Health Card's Immunization often carries only its CVX code: the common ones named in plain words (#179); any other
+# is "Vaccine (CVX <code>)"
+CVX_NAMES = {**dict.fromkeys(("207", "208", "210", "211", "212", "213"), "COVID-19 vaccine"),
+             **dict.fromkeys(("88", "140", "141", "150", "158", "161", "171", "185", "186", "197"), "Influenza vaccine"),
+             "115": "Tdap vaccine", "187": "Shingles vaccine (recombinant)", "33": "Pneumococcal vaccine (PPSV23)",
+             "133": "Pneumococcal conjugate vaccine (PCV13)", "215": "Pneumococcal conjugate vaccine (PCV15)",
+             "216": "Pneumococcal conjugate vaccine (PCV20)", "43": "Hepatitis B vaccine", "08": "Hepatitis B vaccine",
+             "52": "Hepatitis A vaccine", "83": "Hepatitis A vaccine", "03": "MMR vaccine", "21": "Varicella vaccine",
+             "165": "HPV vaccine"}
+MODALITY = {"CT": "CT", "MR": "MRI", "DX": "X-ray", "CR": "X-ray", "US": "Ultrasound", "MG": "Mammogram", "NM": "Nuclear medicine",
+            "PT": "PET", "XA": "Angiography", "RF": "Fluoroscopy", "BMD": "Bone density"}   # DICOM's codes, in plain words
+CRITICALITY = {"CRITL": "Low", "CRITH": "High", "CRITU": "Unable to assess"}   # DSTU2's codes; R4's read as they are
 SOURCE = "FHIR"   # source tag on lab points when the performing organisation is unknown
 
 # resource types that are only looked up through references, never imported on their own
 SUPPORTING = {"Patient", "Practitioner", "PractitionerRole", "Organization", "Location", "Medication", "Specimen",
               "Provenance", "RelatedPerson", "Coverage"}
 IMPORTED = {"Observation", "DiagnosticReport", "Condition", "MedicationRequest", "MedicationStatement", "MedicationOrder",
-            "Encounter", "DocumentReference", "ExplanationOfBenefit", "AllergyIntolerance", "Immunization", "Procedure"}
+            "Encounter", "DocumentReference", "ExplanationOfBenefit", "AllergyIntolerance", "Immunization", "Procedure",
+            "MedicationDispense", "Appointment", "ImagingStudy"}
 KNOWN = SUPPORTING | IMPORTED | {
     "Bundle", "AllergyIntolerance", "Immunization", "Procedure", "CarePlan", "CareTeam", "Goal", "Device", "Claim",
     "ExplanationOfBenefit", "Coverage", "ImagingStudy", "MedicationAdministration", "MedicationDispense", "ServiceRequest",
@@ -424,14 +448,28 @@ def _server(r):
     return m.group(1) if m else ""
 
 
+def _code_of(cc, prefer=None):
+    """(code, system name) of a CodeableConcept: the coding in the preferred system, else the first coded one."""
+    cs = [c for c in (cc or {}).get("coding") or [] if isinstance(c, dict) and c.get("code")] if isinstance(cc, dict) else []
+    c = next((c for c in cs if (c.get("system") or "").rstrip("/") == prefer), None) if prefer else None
+    c = c or (cs[0] if cs else None)
+    if not c:
+        return None, None
+    system = (c.get("system") or "").rstrip("/")
+    return c["code"], SYSTEMS.get(system, system or None)
+
+
 def _coding_keys(cc):
     return sorted(f"{c.get('system') or ''}|{c['code']}" for c in (cc or {}).get("coding") or [] if c.get("code")) \
         if isinstance(cc, dict) else []
 
 
 HASH_TIME = ("effectiveDateTime", "effectiveInstant", "issued", "authoredOn", "dateWritten", "dateAsserted",
-             "onsetDateTime", "recordedDate", "dateRecorded", "date", "created", "indexed")
-HASH_CODE = ("code", "medicationCodeableConcept", "type", "vaccineCode")
+             "onsetDateTime", "recordedDate", "dateRecorded", "date", "created", "indexed",
+             # #179: the times of the kinds read since #165 (last, so no other kind's key changes); Health Cards'
+             # immunizations have no id, and two doses of one vaccine differ only by their day
+             "occurrenceDateTime", "performedDateTime", "whenHandedOver", "whenPrepared", "start", "started")
+HASH_CODE = ("code", "medicationCodeableConcept", "type", "vaccineCode", "procedureCode")
 
 
 def resource_key(r, mixed=False):
@@ -474,7 +512,16 @@ def parse(files):
     lab_days = defaultdict(list)            # day -> [labitem ids]
     lab_day_meta = defaultdict(lambda: {"t": None, "abn": 0, "orders": set()})
     used_obs = set()
+    reported_studies = set()                # ImagingStudies a report here describes (the report is the event)
     skipped, inline, remote, missing = Counter(), 0, 0, 0
+    keys_seen = set()
+
+    def fresh(key):
+        """#179: False for a record whose key this upload had already (the same immunization twice in a Health Card)."""
+        if key in keys_seen:
+            return False
+        keys_seen.add(key)
+        return True
 
     def org_of(r):
         for key in ("performer", "serviceProvider", "custodian", "author", "asserter", "recorder", "informationSource",
@@ -621,6 +668,8 @@ def parse(files):
                   {"type": "result", "order": order, "name": order, "collected": t[:16].replace("T", " "),
                    "resulted": (iso(r.get("issued")) or t)[:10], "provider": prov, "status": status, "lab": org,
                    "dx": [], "rows": [], "report": report, "comments": []}, key=rkey(r))
+        if members or report or r.get("presentedForm"):   # #179: the study this report is, not an event of its own
+            reported_studies.update(id(idx.get(ref, r)) for ref in r.get("imagingStudy") or [] if idx.get(ref, r))
         # the report's plain key is on its result event, so each form adds #presentedForm/<position, from 1>
         for i, att in enumerate(r.get("presentedForm") or [], 1):
             document(f"{rkey(r)}#presentedForm/{i}", t, order, att, r, rel, org)
@@ -684,50 +733,147 @@ def parse(files):
                              "date": (iso(onset) or "")[:10] or None,
                              "status": status_of(r.get("clinicalStatus")) or ("Resolved" if r.get("abatementDateTime") else ""),
                              "src": org_of(r) or who_of(r), "key": rkey(r)})
-        elif rt == "AllergyIntolerance":   # #165: Apple's Health Records hold these (DSTU2 and R4)
+        elif rt == "AllergyIntolerance":   # #165, and #179: the parts C-CDA's are read into (common.allergy)
             vs = status_of(r.get("verificationStatus")).lower()
             if vs in ("entered in error", "refuted") or (r.get("status") or "") in ("entered-in-error", "refuted"):
                 continue
-            name = text_of(r.get("code")) or text_of(r.get("substance")) or "Allergy"
-            reactions = list(dict.fromkeys(text_of(m) for x in r.get("reaction") or [] if isinstance(x, dict)
-                                           for m in x.get("manifestation") or [] if text_of(m)))
+            cc = r.get("code") or r.get("substance")   # DSTU2: substance
+            reacts = [x for x in r.get("reaction") or [] if isinstance(x, dict)]
+            rank = {"mild": 1, "moderate": 2, "severe": 3}
+            sev = max((str(x.get("severity") or "") for x in reacts), key=lambda s: rank.get(s.lower(), 0), default="")
             onset = r.get("onsetDateTime") or r.get("onset") or r.get("recordedDate") or r.get("assertedDate")
-            problems.append({"name": f"Allergy: {name}" + (f" ({', '.join(reactions)})" if reactions else ""),
-                             "type": "Allergy", "date": (iso(onset) or "")[:10] or None,
-                             "status": status_of(r.get("clinicalStatus")) or cap(r.get("status") or ""),
-                             "src": org_of(r) or who_of(r), "key": rkey(r)})
-        elif rt in ("Immunization", "Procedure"):   # #165: a procedure event with what the record says
-            if r.get("status") in ("entered-in-error", "not-done") or r.get("wasNotGiven") or r.get("notPerformed"):
+            code, system = _code_of(cc)
+            p = common.allergy(text_of(cc), [text_of(m) for x in reacts for m in x.get("manifestation") or []], severity=sev,
+                               criticality=CRITICALITY.get(str(r.get("criticality") or ""), r.get("criticality") or ""),
+                               status=status_of(r.get("clinicalStatus")) or cap(r.get("status") or ""),
+                               date=(iso(onset) or "")[:10] or None, src=org_of(r) or who_of(r), code=code, system=system)
+            problems.append({**p, "key": rkey(r)})
+        elif rt == "Immunization":   # #179: a kind of its own (#165 made them procedures)
+            if r.get("status") in ("entered-in-error", "not-done") or r.get("wasNotGiven"):
                 continue
-            imm = rt == "Immunization"
+            t = iso(r.get("occurrenceDateTime") or r.get("date"))
+            if not t or not fresh(rkey(r)):
+                continue
+            proto = next((x for x in r.get("protocolApplied") or r.get("vaccinationProtocol") or [] if isinstance(x, dict)), {})
+            dose = r.get("doseQuantity") if isinstance(r.get("doseQuantity"), dict) else {}
+            who, org = "", ""
+            for p in r.get("performer") if isinstance(r.get("performer"), list) else [r.get("performer")]:
+                actor = (p.get("actor") or p) if isinstance(p, dict) else None   # R4: {function, actor}; DSTU2: the actor
+                hit = idx.get(actor, r) if actor else None
+                kind = (hit or {}).get("resourceType") or ((actor or {}).get("reference") or "").split("/")[0]
+                name = idx.name(actor, r) if actor else ""
+                if kind == "Organization":
+                    org = org or name
+                elif name:
+                    who = who or name   # a person, or (Health Cards) only a display: who gave it, as recorded
+            code, system = _code_of(r.get("vaccineCode"), prefer=CVX)
+            vc = r.get("vaccineCode") if isinstance(r.get("vaccineCode"), dict) else {}
+            named = vc.get("text") or next((c.get("display") for c in vc.get("coding") or [] if isinstance(c, dict) and c.get("display")), "")
+            if not named and system == "CVX":   # only a code: its plain name, or the code itself
+                named = CVX_NAMES.get(code) or f"Vaccine (CVX {code})"
+            title, sub, det = common.immunization(
+                named or text_of(vc), org or who or SOURCE, code=code, system=system,
+                dose=common.dose_text(proto.get("doseNumberPositiveInt") or proto.get("doseNumberString") or proto.get("doseSequence"),
+                                      proto.get("seriesDosesPositiveInt") or proto.get("seriesDosesString") or proto.get("seriesDoses")),
+                amount=" ".join(x for x in [fmt(num(dose.get("value"))) if num(dose.get("value")) is not None else "",
+                                            dose.get("unit") or dose.get("code") or ""] if x),
+                route=text_of(r.get("route")), site=text_of(r.get("site")),
+                lot=r.get("lotNumber") if isinstance(r.get("lotNumber"), str) else "",
+                manufacturer=idx.name(r.get("manufacturer"), r), performer=who,
+                where=org or (idx.name(r.get("location"), r) if r.get("location") else ""), status=cap(r.get("status") or ""),
+                reason="; ".join(text_of(c) for c in r.get("reasonCode") or ((r.get("explanation") or {}).get("reason") or [])
+                                 if text_of(c)),
+                note="; ".join(n.get("text") for n in r.get("note") or [] if isinstance(n, dict) and n.get("text")))
+            b.add(t, "immunization", title, sub, det, key=rkey(r))
+        elif rt == "Procedure":   # #165: a procedure event with what the record says
+            if r.get("status") in ("entered-in-error", "not-done") or r.get("notPerformed"):
+                continue
             per = r.get("performedPeriod") or {}
-            t = iso((r.get("occurrenceDateTime") or r.get("date")) if imm else (r.get("performedDateTime") or per.get("start")))
+            t = iso(r.get("performedDateTime") or per.get("start"))
             if not t:
                 continue
-            name = text_of(r.get("vaccineCode" if imm else "code")) or ("Vaccine" if imm else "Procedure")
-            title = f"Immunization: {name}" if imm else name
+            title = text_of(r.get("code")) or "Procedure"
             who = who_of(r) or next((x.get("display") for p in (r.get("performer") if isinstance(r.get("performer"), list)
                                                                else [r.get("performer")])   # DSTU2: a display only
                                      for x in [(p or {}).get("actor") or p] if isinstance(x, dict) and x.get("display")
                                      and not x.get("reference")), "")
             org = org_of(r) or (idx.name(r.get("location"), r) if r.get("location") else "")
-            dose = r.get("doseQuantity") if isinstance(r.get("doseQuantity"), dict) else {}
             report = [[k, v, 0] for k, v in (
                 ("Reason", "; ".join(text_of(c) for c in r.get("reasonCode") or r.get("reason") or [] if text_of(c))),
-                ("Body site", text_of(r.get("site") if imm else r.get("bodySite"))),
-                ("Dose", " ".join(str(x) for x in [fmt(num(dose.get("value"))) if num(dose.get("value")) is not None else "",
-                                                   dose.get("unit") or ""] if x)),
-                ("Lot", r.get("lotNumber") if isinstance(r.get("lotNumber"), str) else ""),
+                ("Body site", text_of(r.get("bodySite"))),
                 ("Outcome", text_of(r.get("outcome"))),
                 ("Notes", "; ".join(n.get("text") for n in r.get("note") or r.get("notes") or []   # DSTU2: notes
                                    if isinstance(n, dict) and n.get("text"))))
                 if v]
-            end = iso(per.get("end")) if not imm else None
+            end = iso(per.get("end"))
             b.add(t, "procedure", title, " · ".join(x for x in [who, org] if x),
                   {"type": "result", "order": title, "name": title, "collected": t[:16].replace("T", " "),
                    "resulted": t[:10], "provider": who or None, "status": cap(r.get("status") or ""), "lab": org or None,
                    "dx": [], "rows": [], "report": report, "comments": []},
                   end=end if end and end > t else None, key=rkey(r))
+        elif rt == "MedicationDispense":   # #179: a pharmacy fill, an `rx` event as the claims' and #50's fills
+            if r.get("status") in ("entered-in-error", "cancelled", "declined", "stopped", "preparation", "in-progress"):
+                continue
+            t = iso(r.get("whenHandedOver") or r.get("whenPrepared"))
+            if not t or not fresh(rkey(r)):
+                continue
+            name = text_of(r.get("medicationCodeableConcept")) or idx.name(r.get("medicationReference"), r) or "Medication"
+            pharmacy = next((idx.name((p or {}).get("actor"), r) for p in r.get("performer") or [] if isinstance(p, dict)
+                             and idx.name(p.get("actor"), r)), "") or (idx.name(r.get("location"), r) if r.get("location") else "")
+            supply = num((r.get("daysSupply") or {}).get("value")) if isinstance(r.get("daysSupply"), dict) else None
+            q = r.get("quantity") if isinstance(r.get("quantity"), dict) else {}
+            med = idx.get(r.get("medicationReference"), r) if r.get("medicationReference") else None
+            rx = codes(r.get("medicationCodeableConcept"), RXNORM) or codes((med or {}).get("code"), RXNORM)
+            prescriber = next((who_of(idx.get(a, r)) for a in r.get("authorizingPrescription") or []
+                               if isinstance(idx.get(a, r), dict)), "")
+            det = {"type": "med", "instructions": "; ".join(d.get("text") for d in r.get("dosageInstruction") or []
+                                                            if isinstance(d, dict) and d.get("text")) or None,
+                   "status": cap(r.get("status") or "") or None, "src": pharmacy or SOURCE, "pharmacy": pharmacy or None,
+                   "daysSupply": supply, "quantity": " ".join(x for x in [fmt(num(q.get("value"))) if num(q.get("value")) is not None
+                                                                          else "", q.get("unit") or ""] if x) or None,
+                   "prescriber": prescriber or None, "rxnorm": rx[0] if rx else None}
+            b.add(t, "rx", name, " · ".join(x for x in ["Pharmacy fill", pharmacy, f"{fmt(supply)}-day supply" if supply else ""] if x),
+                  {k: v for k, v in det.items() if v is not None}, key=rkey(r))
+        elif rt == "Appointment":   # #179: booked visits go to `upcoming`, as planned Encounters do
+            if r.get("status") not in ("booked", "pending"):
+                continue   # fulfilled, arrived and checked-in ones are visits (their Encounter); cancelled and no-shows aren't
+            t = iso(r.get("start"))
+            if not t or not fresh(rkey(r)):
+                continue
+            who, where = "", ""
+            for p in r.get("participant") or []:
+                actor = (p or {}).get("actor") if isinstance(p, dict) else None
+                hit = idx.get(actor, r) if actor else None
+                kind = (hit or {}).get("resourceType") or ((actor or {}).get("reference") or "").split("/")[0]
+                if kind in ("Practitioner", "PractitionerRole") and not who:
+                    who = idx.name(actor, r)
+                elif kind in ("Location", "HealthcareService", "Organization") and not where:
+                    where = idx.name(actor, r)
+            title = r.get("description") or text_of(r.get("serviceType")) or text_of(r.get("appointmentType")) \
+                or text_of(r.get("type")) or "Appointment"
+            upcoming.append({"t": t, "title": title, "who": who, "where": where,
+                             "dx": "; ".join(text_of(c) for c in r.get("reasonCode") or r.get("reason") or [] if text_of(c)),
+                             "procs": [], "key": rkey(r)})
+        elif rt == "ImagingStudy":   # #179: a study no DiagnosticReport here describes is an `imaging` event of its own
+            t = iso(r.get("started"))
+            if not t or id(r) in reported_studies or r.get("status") in ("entered-in-error", "cancelled"):
+                continue
+            series = [x for x in r.get("series") or [] if isinstance(x, dict)]
+            mods = list(dict.fromkeys(MODALITY.get(c, c) for x in series + [r] for m in (x.get("modality") if isinstance(x.get("modality"), list)
+                                      else [x.get("modality")]) if isinstance(m, dict) for c in [m.get("display") or m.get("code")] if c))
+            title = r.get("description") or text_of(r.get("procedureCode")) or (" / ".join(mods) + " study" if mods else "Imaging study")
+            org = (idx.name(r.get("location"), r) if r.get("location") else "") or org_of(r)
+            who = idx.name(r.get("referrer"), r) if r.get("referrer") else ""
+            report = [[k, v, 0] for k, v in (
+                ("Modality", ", ".join(mods)),
+                ("Body site", ", ".join(dict.fromkeys(text_of(x.get("bodySite")) for x in series if text_of(x.get("bodySite"))))),
+                ("Series", str(r.get("numberOfSeries") or len(series) or "")),
+                ("Images", str(r.get("numberOfInstances") or "")),
+                ("Reason", "; ".join(text_of(c) for c in r.get("reasonCode") or [] if text_of(c)))) if v]
+            b.add(t, "imaging", title, " · ".join(x for x in [who, org] if x),
+                  {"type": "result", "order": title, "name": title, "collected": t[:16].replace("T", " "), "resulted": t[:10],
+                   "provider": who or None, "status": cap(r.get("status") or ""), "lab": org or None, "dx": [], "rows": [],
+                   "report": report, "comments": []}, key=rkey(r))
         elif rt in ("MedicationRequest", "MedicationStatement", "MedicationOrder"):
             if r.get("status") in ("entered-in-error",):
                 continue

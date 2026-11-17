@@ -30,6 +30,22 @@ def bundle(day="2026-03-04", value=12.1, name="Hemoglobin"):
             "referenceRange": [{"low": {"value": 13.5, "unit": "g/dL"}, "high": {"value": 17.5, "unit": "g/dL"}}]}}]}
 
 
+def vaccination_bundle():
+    """A fictional SMART Health Card's bundle (#179), in the spec's vaccination shape: resources without ids, named
+    resource:0..n, the patient first, and each Immunization with its CVX code, day, lot and who gave it (a display
+    only). Two doses of one vaccine, which differ only by their day and lot."""
+    def imm(n, day, lot):
+        return {"fullUrl": f"resource:{n}", "resource": {
+            "resourceType": "Immunization", "status": "completed",
+            "vaccineCode": {"coding": [{"system": "http://hl7.org/fhir/sid/cvx", "code": "207"}]},
+            "patient": {"reference": "resource:0"}, "occurrenceDateTime": day,
+            "performer": [{"actor": {"display": "Fictional County Health Department"}}], "lotNumber": lot}}
+    return {"resourceType": "Bundle", "type": "collection", "entry": [
+        {"fullUrl": "resource:0", "resource": {"resourceType": "Patient", "name": [{"family": "Example", "given": ["Robin"]}],
+                                                "birthDate": "1980-01-01"}},
+        imm(1, "2025-01-15", "FICT-0001"), imm(2, "2025-02-12", "FICT-0002")]}
+
+
 def _cert(folder):
     key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])

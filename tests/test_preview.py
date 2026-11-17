@@ -161,6 +161,23 @@ class Preview(unittest.TestCase):
                 self.assertEqual(self.robin.get(f"/api/profiles/{pid}/data").json(), data)
                 self.assertEqual(done["skipped"]["events"], first["counts"]["events"])
 
+    def test_immunizations_allergies_and_appointments_listed_and_found_again(self):   # #179
+        pid = self.profile("portal-everything")
+        files = folder_files(os.path.join(FIX, "fhir", "portal-everything"))
+        first, _ = self.previewed(pid, files)
+        c = first["counts"]
+        self.assertEqual((c["kinds"]["immunization"], c["kinds"]["rx"], c["kinds"]["imaging"], c["allergies"], c["upcoming"]), (2, 1, 2, 2, 1), c)
+        self.assertNotIn("problems", c)   # only allergies: no other problem
+        self.assertEqual(self.save(pid, first)["state"], "done")
+        data = self.robin.get(f"/api/profiles/{pid}/data").json()
+        self.assertEqual(sorted(e["title"] for e in data["events"] if e["k"] == "immunization"), ["Hepatitis B vaccine", "Influenza vaccine"])
+        self.assertEqual(sorted(p["substance"] for p in data["problems"]), ["Peanuts", "Penicillin G"])
+        again, _ = self.previewed(pid, files)   # the same export again: nothing new, by source key
+        self.assertFalse(again["new"], again)
+        self.assertEqual((again["counts"]["events"], again["duplicates"]["kinds"]["immunization"], again["duplicates"]["other"]),
+                         (0, 2, 3), again)   # the two allergies and the appointment, by key
+        self.assertNotIn("allergies", again["counts"])
+
     def test_an_overlapping_export_adds_only_whats_new(self):
         pid = self.profile("Overlap")
         j, _ = self.previewed(pid, {"labs.csv": CSV_HEAD + MARCH})

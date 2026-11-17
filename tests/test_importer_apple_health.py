@@ -282,8 +282,8 @@ class HealthRecords(Tmp):
         self.assertEqual(pts(self.data["watch"], "steps"), {"2025-05-30": 3200, "2025-05-31": 2100})
         self.assertEqual(len(self.data["watch"]["exercise"]), 1)
         kinds = sorted((e["k"], e["title"]) for e in self.data["events"] if not e.get("hidden"))
-        self.assertEqual(kinds, [("lab", "1 lab result"), ("med", "Metformin 500 mg tablet"), ("procedure", "Colonoscopy"),
-                                 ("procedure", "Immunization: COVID-19 vaccine, updated formula")])
+        self.assertEqual(kinds, [("immunization", "COVID-19 vaccine, updated formula"),   # its own kind since #179
+                                 ("lab", "1 lab result"), ("med", "Metformin 500 mg tablet"), ("procedure", "Colonoscopy")])
         glucose = next(s for s in self.data["labs"] if s.get("loinc") == "2345-7")
         self.assertEqual(glucose["pts"][0][1:5], [104, 70, 99, "H"])
         self.assertEqual(sorted((p["type"], p["name"]) for p in self.data["problems"]),

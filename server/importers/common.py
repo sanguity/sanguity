@@ -168,3 +168,51 @@ def inferred_stays(admissions, inpatient_ts, org=""):
                     "detail": {"type": "stay", "admit": c[0][:10], "lastResult": c[-1], "results": len(c)},
                     "end": c[-1][:10] + "T23:59:00"})
     return out
+
+
+# ---- immunizations and allergies (#179): one shape, whichever importer reads them (or hand entry types them)
+IMMUNIZATION_FIELDS = ("code", "system", "dose", "amount", "route", "site", "lot", "manufacturer", "performer", "where",
+                       "status", "reason", "note")
+
+
+def _line(v):
+    return " ".join(str(v).split()) if isinstance(v, (str, int, float)) and not isinstance(v, bool) else ""
+
+
+def immunization(vaccine, src, **fields):
+    """An immunization as (title, sub, detail) for an "immunization" event (docs/importers.md): the detail is
+    {"type": "immunization", "vaccine", "src"} and those of IMMUNIZATION_FIELDS the record gives, as text: "dose" is
+    the dose number as recorded ("2", or "2 of 3" with the series' doses), "amount" the dose given ("0.5 mL"),
+    "performer" who gave it, "where" the clinic or pharmacy. The sub line is the dose, who and where."""
+    vaccine = _line(vaccine) or "Vaccine"
+    det = {"type": "immunization", "vaccine": vaccine}
+    det.update({k: _line(fields[k]) for k in IMMUNIZATION_FIELDS if _line(fields.get(k))})
+    det["src"] = _line(src)
+    sub = " · ".join(x for x in [f"Dose {det['dose']}" if det.get("dose") else "", det.get("performer"), det.get("where")] if x)
+    return vaccine, sub, det
+
+
+def dose_text(number, of=None):
+    """The dose number as recorded, with the series' number of doses when given: "2", "2 of 3"."""
+    n, m = _line(number), _line(of)
+    return f"{n} of {m}" if n and m else n
+
+
+def allergy(substance, reactions=(), severity="", criticality="", status="", date=None, src="", code=None, system=None):
+    """An entry of `problems` for an allergy or intolerance, as the C-CDA and FHIR importers both write it: name
+    "Allergy: <substance> (<reactions>)", type "Allergy", and the parts as recorded: substance, reactions (a list),
+    severity of the reaction ("Mild", "Moderate", "Severe"), criticality (the risk the record gives: "High", "Low"),
+    the substance's code and its system."""
+    substance = _line(substance) or "Allergy"
+    reactions = list(dict.fromkeys(r for r in (_line(x) for x in reactions or ()) if r))
+    p = {"name": f"Allergy: {substance}" + (f" ({', '.join(reactions)})" if reactions else ""), "type": "Allergy",
+         "date": date or None, "status": _line(status), "src": _line(src), "substance": substance}
+    if reactions:
+        p["reactions"] = reactions
+    for k, v in (("severity", severity), ("criticality", criticality)):
+        v = _line(v).replace("-", " ")
+        if v:
+            p[k] = v[:1].upper() + v[1:]
+    if _line(code):
+        p["code"], p["system"] = _line(code), _line(system) or None
+    return p

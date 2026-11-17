@@ -7,6 +7,7 @@ const CATS = [
   {k:"lab",       label:"Labs",             color:"var(--c-lab)",     kinds:["lab"]},
   {k:"imaging",   label:"Imaging",          color:"var(--c-imaging)", kinds:["imaging"]},
   {k:"procedure", label:"Procedures",       color:"var(--c-procedure)",kinds:["procedure"]},
+  {k:"immunization", label:"Immunizations", color:"var(--c-immunization)", kinds:["immunization"]},   // #179: vaccines given
   {k:"study",     label:"Reports & studies",color:"var(--c-study)",   kinds:["study"]},
   {k:"message",   label:"Messages",         color:"var(--c-message)", kinds:["message","appt_msg","auto_msg"]},
   {k:"letter",    label:"Letters & docs",   color:"var(--c-letter)",  kinds:["letter","document"]},
@@ -16,7 +17,7 @@ const CATS = [
   {k:"journal",   label:"Journal",          color:"var(--c-journal)", kinds:["journal"]},   // the person's own entries (journal.js)
 ];
 const CAT_OF = {}; CATS.forEach(c => c.kinds.forEach(k => CAT_OF[k] = c));
-const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim",journal:"Journal"};
+const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim",journal:"Journal",immunization:"Immunization"};
 const usd = v => (v || 0).toLocaleString(undefined, {style: "currency", currency: "USD", maximumFractionDigits: 0});
 /* The profile's settings (server/settings.py), changed on the Settings page. The server sends every one, with its
    defaults filled in; these are only what the page uses if that fails, and should match the server's defaults. */

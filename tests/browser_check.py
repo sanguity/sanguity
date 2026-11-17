@@ -174,6 +174,41 @@ def add_glucose_watch(watch):
         json.dump(daily, f)
 
 
+IMM_RECORDS = 990301
+
+
+def add_immunization_records(build):
+    """#179: fictional immunizations, allergies and a pharmacy fill as the C-CDA and FHIR importers write them
+    (common.immunization, common.allergy; a MedicationDispense's fill): the demo has none."""
+    sys.path.insert(0, ROOT)
+    from server.importers import common
+    path = os.path.join(build, "data.json")
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    i = IMM_RECORDS
+    for t, vaccine, fields in (
+            ("2024-03-14T09:20:00", "Tdap vaccine", {"code": "115", "system": "CVX", "dose": "1", "site": "Right arm", "lot": "FICT-TDAP-3",
+                                                      "where": "Fictional Corner Pharmacy"}),
+            ("2025-09-10T15:00:00", "COVID-19 vaccine", {"code": "208", "system": "CVX", "lot": "FICT-0002", "where": "Fictional County Health Department"}),
+            ("2025-10-02T10:15:00", "Influenza vaccine", {"code": "150", "system": "CVX", "dose": "1", "amount": "0.5 mL", "route": "Intramuscular",
+                                                           "site": "Left deltoid", "lot": "FICT-FLU-11", "manufacturer": "Fictional Vaccines Inc.",
+                                                           "performer": "Sam Ortega, RN", "where": "Fictional Clinic", "status": "Completed"})):
+        title, sub, det = common.immunization(vaccine, fields.get("where", ""), **fields)
+        data["events"].append({"id": i, "t": t, "k": "immunization", "title": title, "sub": sub})
+        data["details"][str(i)] = det
+        i += 1
+    data["events"].append({"id": i, "t": "2025-09-01T16:30:00", "k": "rx", "title": "Fictionalol 25 mg tablet",
+                           "sub": "Pharmacy fill · Fictional Corner Pharmacy · 30-day supply"})
+    data["details"][str(i)] = {"type": "med", "instructions": "Take 1 tablet daily", "status": "Completed", "src": "Fictional Corner Pharmacy",
+                               "pharmacy": "Fictional Corner Pharmacy", "daysSupply": 30, "quantity": "30 tablet", "prescriber": "Dr. Rowan Vale"}
+    data["problems"] = data.get("problems", []) + [
+        common.allergy("Penicillin G", ["Hives"], severity="Moderate", criticality="High", status="Active", date="2010-01-01", src="Fictional Clinic"),
+        common.allergy("Peanuts", ["Anaphylaxis", "Rash"], severity="Severe", status="Active", date="2019-03-08", src="Fictional Clinic"),
+        common.allergy("Latex", ["Itching"], status="Resolved", date="2015-05-01", src="Fictional Clinic")]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
+
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
@@ -186,6 +221,7 @@ def start_app():
     add_med_records(os.path.join(TMP, "build"))
     add_range_records(os.path.join(TMP, "build"))
     add_glucose_watch(os.path.join(TMP, "watch"))
+    add_immunization_records(os.path.join(TMP, "build"))   # #179
     sys.path.insert(0, ROOT)
     import uvicorn
     from server import atrest, db as dbm, main, profiles, security
@@ -1118,6 +1154,87 @@ def main():
                 check(f"drawer opens for {k}", ok)
                 page.keyboard.press("Escape")
             check("drawer closes on Escape", not js("document.getElementById('drawer').classList.contains('open')"))
+
+            # ---- immunizations and allergies (#179): the Overview lists the allergies with their reactions, severity and
+            # criticality as recorded (not the resolved one, and not again in the problem list) and the immunizations newest
+            # first; Enter on one opens it in the drawer with what the record says; a pharmacy fill (a FHIR
+            # MedicationDispense's) shows its pharmacy and supply; the Timeline has the kind's lane and chip in its own
+            # colour, 3:1 against the page in light and dark; at 1400 and 375 px in both themes it fits and axe finds nothing
+            open_tab("overview")
+            settle(300)
+            al = js("[...document.querySelectorAll('#ovAllergies .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.s').textContent])")
+            check("immunizations (#179): the Overview lists allergies with their reactions, severity and criticality as recorded, not the resolved one",
+                  al == [["Penicillin G", "Reaction: Hives · Severity: Moderate · Criticality: High"], ["Peanuts", "Reaction: Anaphylaxis, Rash · Severity: Severe"]], al)
+            check("…and not again in the problem list", not js("[...document.querySelectorAll('#view-overview .card')].some(c => /Active problem list/.test(c.textContent) && /Penicillin/.test(c.textContent))"))
+            im = js("[...document.querySelectorAll('#ovImmunizations .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.r').textContent, r.querySelector('.s').textContent])")
+            check("…and the immunizations, newest first, with the dose and where", [[n, s] for n, _, s in im] ==
+                  [["Influenza vaccine", "Dose 1 · Fictional Clinic"], ["COVID-19 vaccine", "Fictional County Health Department"],
+                   ["Tdap vaccine", "Dose 1 · Fictional Corner Pharmacy"]] and all(r for _, r, _ in im), im)
+            page.focus("#ovImmunizations .ov-row")
+            page.keyboard.press("Enter")
+            settle(300)
+            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
+            want = {"Vaccine": "Influenza vaccine", "Code": "CVX 150", "Dose": "1", "Amount": "0.5 mL", "Route": "Intramuscular", "Site": "Left deltoid",
+                    "Lot": "FICT-FLU-11", "Made by": "Fictional Vaccines Inc.", "Given by": "Sam Ortega, RN", "Where": "Fictional Clinic", "Status": "Completed"}
+            check("…Enter on one opens it in the drawer, said as an Immunization, with what the record says",
+                  js("document.getElementById('drawer').classList.contains('open')") and js("document.getElementById('dtitle').textContent") == "Influenza vaccine"
+                  and js("document.getElementById('dsub').textContent").startswith("Immunization · ") and {k: kv.get(k) for k in want} == want, kv)
+            imm_axe = axe_check(page, "immunization drawer, light")
+            page.keyboard.press("Escape")
+            js("openEvent(EV.find(e => e.title === 'Fictionalol 25 mg tablet'))")
+            settle(200)
+            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
+            check("…a pharmacy fill from FHIR shows its pharmacy, quantity and supply, not a medication list's note",
+                  {k: kv.get(k) for k in ("Pharmacy", "Quantity", "Days' supply", "Prescribed by")} ==
+                  {"Pharmacy": "Fictional Corner Pharmacy", "Quantity": "30 tablet", "Days' supply": "30", "Prescribed by": "Dr. Rowan Vale"}
+                  and "medication list" not in js("document.getElementById('dbody').textContent"), kv)
+            page.keyboard.press("Escape")
+            open_tab("timeline")
+            js("applyPreset('all'); state.cats.add('immunization'); renderAll()")
+            settle(300)
+            lane = js("""(() => { const c = CATS.find(c => c.k === 'immunization'), chip = document.querySelector('#chips .toggle[data-k=immunization]');
+              const marks = [...document.querySelectorAll('#tl circle.ev')].filter(m => byId.get(+m.dataset.id)?.k === 'immunization');
+              return {chip: chip && chip.getAttribute('aria-label'), label: [...document.querySelectorAll('#tl .lane-label')].map(t => t.textContent).includes('Immunizations'),
+                      marks: marks.length, fill: marks[0] && getComputedStyle(marks[0]).fill, key: chip && getComputedStyle(chip.querySelector('.key')).backgroundColor}; })()""")
+            check("…the Timeline has an Immunizations lane, its marks in the kind's colour, and a chip saying how many",
+                  lane["chip"] == "Immunizations, 3, shown" and lane["label"] and lane["marks"] == 3 and lane["fill"] == lane["key"], lane)
+            theme_before, bad, axe_bad = js("document.documentElement.dataset.theme || null"), [], list(imm_axe[0])
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    open_tab("timeline")
+                    settle(250)
+                    c = js("""(() => { const m = [...document.querySelectorAll('#tl circle.ev')].find(m => byId.get(+m.dataset.id)?.k === 'immunization');
+                      return [getComputedStyle(m).fill, getComputedStyle(document.querySelector('.card') || document.body).backgroundColor, getComputedStyle(document.body).backgroundColor]; })()""")
+                    if min(contrast(c[0], c[1]), contrast(c[0], c[2])) < 3:
+                        bad.append(f"{theme} {width}: the lane's colour {c[0]} is {min(contrast(c[0], c[1]), contrast(c[0], c[2]))}:1 against the page")
+                    if width == 375:
+                        bad += phone_fits(page, f"timeline, {theme}")
+                    axe_bad += axe_check(page, f"timeline {theme} {width}")[0]
+                    open_tab("overview")
+                    settle(250)
+                    page.locator("#ovImmunizations").scroll_into_view_if_needed()
+                    if width == 375:
+                        bad += phone_fits(page, f"overview, {theme}")
+                        box = js("[...document.querySelectorAll('#ovAllergies, #ovImmunizations')].map(c => c.getBoundingClientRect().right)")
+                        if len(box) != 2 or max(box) > 375:
+                            bad.append(f"{theme}: the cards stick out at 375 px {box}")
+                    axe_bad += axe_check(page, f"overview {theme} {width}")[0]
+                    page.focus("#ovImmunizations .ov-row")
+                    page.keyboard.press("Enter")
+                    settle(300)
+                    if width == 375:
+                        bad += phone_fits(page, f"immunization drawer, {theme}")
+                    axe_bad += axe_check(page, f"immunization drawer {theme} {width}")[0]
+                    page.keyboard.press("Escape")
+                    settle(200)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            check("…the lane is 3:1 against the page, and the Timeline, Overview and drawer fit 375 px, in light and dark", not bad, bad[:6])
+            check("…and axe-core finds nothing serious on them at 1400 and 375 px, in light and dark (#202)", not axe_bad, axe_bad[:6])
+            open_tab("overview")
+            settle(200)
 
             # ---- renaming where a name is shown (#38): a lab from its Trends chart shows the new name on every tab and in
             # the drawer, the name in the records on hover; back to it from the heatmap; an import from the drawer's
@@ -2506,6 +2623,22 @@ def main():
             up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
             check("the job is done, read by the FHIR importer", job is not None and tuple(job) == ("done", "fhir"), job and tuple(job))
+            # ---- the import preview lists the new kinds (#179): a portal's bundle with immunizations, allergies, a fill and an
+            # appointment, previewed, then cancelled so the profile stays as it was
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                z.write(os.path.join(ROOT, "tests", "fixtures", "importers", "fhir", "portal-everything", "bundle.json"), "portal/bundle.json")
+            page.set_input_files("#pickZip", files=[{"name": "portal-everything.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
+            cards = js("document.querySelectorAll('.import-job').length")
+            page.click("#go")
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
+                                   f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            items = js(f"[...{last_card}.querySelectorAll('li')].map(li => li.textContent)")
+            check("import preview (#179): it lists the immunizations, allergies, pharmacy fill and upcoming appointment it would add",
+                  all(x in items for x in ("2 immunizations", "2 allergies", "1 pharmacy fill", "1 upcoming appointment", "1 procedure", "2 imaging studies")), items)
+            js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            page.wait_for_function(f"{last_card}.textContent.startsWith('Cancelled.')", timeout=10000)
             # ...and insurer claims (#30): a UHC and a BCBS claims.json in zips, and a generic EOB spreadsheet on its own
             claims_fix = os.path.join(ROOT, "tests", "fixtures", "importers")
             for n, (name, rel) in enumerate([("uhc", "uhc/member-export/claims.json"), ("bcbs", "bcbs/member-export/claims.json"),

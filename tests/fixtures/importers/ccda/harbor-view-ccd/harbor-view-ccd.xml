@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fictional test data (#179). Harbor View Clinic, its staff and Robin Example do not exist. A CCD with the
+     immunizations and allergies of tests/fixtures/importers/fhir/portal-everything, so the two importers can be
+     compared: two vaccines given (one with its dose number, route, site, amount, lot, maker and who gave it), one
+     refused and one planned, which are left out; an allergy with its reaction, severity, criticality and status. -->
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <typeId root="2.16.840.1.113883.1.3" extension="POCD_HD000040"/>
+  <templateId root="2.16.840.1.113883.10.20.22.1.1" extension="2015-08-01"/>
+  <templateId root="2.16.840.1.113883.10.20.22.1.2" extension="2015-08-01"/>
+  <id root="2.16.840.1.113883.19.5.77777.1" extension="TEST-CCD-0179"/>
+  <code code="34133-9" codeSystem="2.16.840.1.113883.6.1" displayName="Summarization of Episode Note"/>
+  <title>Health summary</title>
+  <effectiveTime value="20251015090000-0500"/>
+  <recordTarget><patientRole><id extension="000179" root="2.16.840.1.113883.19.5.77777.2"/>
+    <patient><name><given>Robin</given><family>Example</family></name></patient></patientRole></recordTarget>
+  <custodian><assignedCustodian><representedCustodianOrganization><name>Harbor View Clinic</name></representedCustodianOrganization></assignedCustodian></custodian>
+  <component>
+    <structuredBody>
+
+      <!-- ============================== Immunizations -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.2.1" extension="2015-08-01"/>
+          <code code="11369-6" codeSystem="2.16.840.1.113883.6.1" displayName="History of Immunization Narrative"/>
+          <title>Immunizations</title>
+          <text>
+            <table><tbody>
+              <tr><td ID="imm-flu">Influenza vaccine</td><td>Oct 2, 2025</td></tr>
+              <tr><td ID="imm-hepb">Hepatitis B vaccine</td><td>Apr 10, 2025</td></tr>
+            </tbody></table>
+          </text>
+          <entry>
+            <substanceAdministration classCode="SBADM" moodCode="EVN" negationInd="false">
+              <templateId root="2.16.840.1.113883.10.20.22.4.52" extension="2015-08-01"/>
+              <id root="2.16.840.1.113883.19.5.77777.3" extension="IMM-FLU-2025"/>
+              <statusCode code="completed"/>
+              <effectiveTime value="20251002101500-0500"/>
+              <repeatNumber value="1"/>
+              <routeCode code="C28161" codeSystem="2.16.840.1.113883.3.26.1.1" displayName="Intramuscular"/>
+              <approachSiteCode code="LD" codeSystem="2.16.840.1.113883.5.1052" displayName="Left deltoid"/>
+              <doseQuantity value="0.5" unit="mL"/>
+              <consumable>
+                <manufacturedProduct classCode="MANU">
+                  <templateId root="2.16.840.1.113883.10.20.22.4.54" extension="2014-06-09"/>
+                  <manufacturedMaterial>
+                    <code code="150" codeSystem="2.16.840.1.113883.12.292" displayName="Influenza vaccine">
+                      <originalText><reference value="#imm-flu"/></originalText>
+                    </code>
+                    <lotNumberText>FICT-FLU-11</lotNumberText>
+                  </manufacturedMaterial>
+                  <manufacturerOrganization><name>Fictional Vaccines Inc.</name></manufacturerOrganization>
+                </manufacturedProduct>
+              </consumable>
+              <performer>
+                <assignedEntity>
+                  <id root="2.16.840.1.113883.19.5.77777.4" extension="NURSE-1"/>
+                  <assignedPerson><name><given>Sam</given><family>Ortega</family><suffix>RN</suffix></name></assignedPerson>
+                  <representedOrganization><name>Harbor View Clinic</name></representedOrganization>
+                </assignedEntity>
+              </performer>
+            </substanceAdministration>
+          </entry>
+          <entry>
+            <substanceAdministration classCode="SBADM" moodCode="EVN" negationInd="false">
+              <templateId root="2.16.840.1.113883.10.20.22.4.52" extension="2015-08-01"/>
+              <id root="2.16.840.1.113883.19.5.77777.3" extension="IMM-HEPB-2"/>
+              <statusCode code="completed"/>
+              <effectiveTime value="20250410"/>
+              <repeatNumber value="2"/>
+              <consumable>
+                <manufacturedProduct classCode="MANU">
+                  <manufacturedMaterial>
+                    <code code="43" codeSystem="2.16.840.1.113883.12.292" displayName="Hepatitis B vaccine"/>
+                    <lotNumberText>FICT-HEPB-07</lotNumberText>
+                  </manufacturedMaterial>
+                </manufacturedProduct>
+              </consumable>
+              <performer><assignedEntity><representedOrganization><name>Harbor View Clinic</name></representedOrganization></assignedEntity></performer>
+            </substanceAdministration>
+          </entry>
+          <entry>
+            <!-- refused: not given -->
+            <substanceAdministration classCode="SBADM" moodCode="EVN" negationInd="true">
+              <templateId root="2.16.840.1.113883.10.20.22.4.52" extension="2015-08-01"/>
+              <id root="2.16.840.1.113883.19.5.77777.3" extension="IMM-ZOSTER"/>
+              <statusCode code="completed"/>
+              <effectiveTime value="20251002"/>
+              <consumable><manufacturedProduct classCode="MANU"><manufacturedMaterial>
+                <code code="187" codeSystem="2.16.840.1.113883.12.292" displayName="Zoster vaccine recombinant"/>
+              </manufacturedMaterial></manufacturedProduct></consumable>
+            </substanceAdministration>
+          </entry>
+          <entry>
+            <!-- planned, not given yet -->
+            <substanceAdministration classCode="SBADM" moodCode="INT">
+              <templateId root="2.16.840.1.113883.10.20.22.4.52" extension="2015-08-01"/>
+              <id root="2.16.840.1.113883.19.5.77777.3" extension="IMM-HEPB-3"/>
+              <statusCode code="active"/>
+              <effectiveTime value="20251010"/>
+              <consumable><manufacturedProduct classCode="MANU"><manufacturedMaterial>
+                <code code="43" codeSystem="2.16.840.1.113883.12.292" displayName="Hepatitis B vaccine"/>
+              </manufacturedMaterial></manufacturedProduct></consumable>
+            </substanceAdministration>
+          </entry>
+        </section>
+      </component>
+
+      <!-- ============================== Allergies -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.6.1" extension="2015-08-01"/>
+          <code code="48765-2" codeSystem="2.16.840.1.113883.6.1"/>
+          <title>Allergies</title>
+          <text>Penicillin G: hives (moderate).</text>
+          <entry>
+            <act classCode="ACT" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.30" extension="2015-08-01"/>
+              <id root="2.16.840.1.113883.19.5.77777.5" extension="AL-PCN"/>
+              <code code="CONC" codeSystem="2.16.840.1.113883.5.6"/>
+              <statusCode code="active"/>
+              <entryRelationship typeCode="SUBJ">
+                <observation classCode="OBS" moodCode="EVN">
+                  <templateId root="2.16.840.1.113883.10.20.22.4.7" extension="2014-06-09"/>
+                  <code code="ASSERTION" codeSystem="2.16.840.1.113883.5.4"/>
+                  <effectiveTime><low value="2010"/></effectiveTime>
+                  <value xsi:type="CD" code="416098002" codeSystem="2.16.840.1.113883.6.96" displayName="Drug allergy"/>
+                  <participant typeCode="CSM"><participantRole classCode="MANU"><playingEntity classCode="MMAT">
+                    <code code="7980" codeSystem="2.16.840.1.113883.6.88" displayName="Penicillin G"/>
+                  </playingEntity></participantRole></participant>
+                  <entryRelationship typeCode="SUBJ" inversionInd="true">
+                    <observation classCode="OBS" moodCode="EVN">
+                      <templateId root="2.16.840.1.113883.10.20.22.4.28" extension="2019-06-20"/>
+                      <code code="33999-4" codeSystem="2.16.840.1.113883.6.1" displayName="Status"/>
+                      <value xsi:type="CE" code="55561003" codeSystem="2.16.840.1.113883.6.96" displayName="Active"/>
+                    </observation>
+                  </entryRelationship>
+                  <entryRelationship typeCode="SUBJ" inversionInd="true">
+                    <observation classCode="OBS" moodCode="EVN">
+                      <templateId root="2.16.840.1.113883.10.20.22.4.145"/>
+                      <code code="82606-5" codeSystem="2.16.840.1.113883.6.1" displayName="Criticality"/>
+                      <value xsi:type="CD" code="CRITH" codeSystem="2.16.840.1.113883.5.1063" displayName="High"/>
+                    </observation>
+                  </entryRelationship>
+                  <entryRelationship typeCode="MFST" inversionInd="true">
+                    <observation classCode="OBS" moodCode="EVN">
+                      <templateId root="2.16.840.1.113883.10.20.22.4.9" extension="2014-06-09"/>
+                      <code code="ASSERTION" codeSystem="2.16.840.1.113883.5.4"/>
+                      <value xsi:type="CD" code="247472004" codeSystem="2.16.840.1.113883.6.96" displayName="Hives"/>
+                      <entryRelationship typeCode="SUBJ" inversionInd="true">
+                        <observation classCode="OBS" moodCode="EVN">
+                          <templateId root="2.16.840.1.113883.10.20.22.4.8" extension="2014-06-09"/>
+                          <code code="SEV" codeSystem="2.16.840.1.113883.5.4"/>
+                          <value xsi:type="CD" code="6736007" codeSystem="2.16.840.1.113883.6.96" displayName="Moderate"/>
+                        </observation>
+                      </entryRelationship>
+                    </observation>
+                  </entryRelationship>
+                </observation>
+              </entryRelationship>
+            </act>
+          </entry>
+        </section>
+      </component>
+
+    </structuredBody>
+  </component>
+</ClinicalDocument>

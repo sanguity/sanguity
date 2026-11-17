@@ -373,6 +373,12 @@ def summarise(data):
     days = [d for d in days if re.match(r"^\d{4}-\d{2}-\d{2}$", d)]
     counts = {"events": sum(kinds.values()), "kinds": dict(sorted(kinds.items())), "series": len(labs),
               "results": sum(len(s.get("pts") or []) for s in labs)}
+    # #179: the profile-wide lists' allergies, other problems and upcoming visits, for the preview to list
+    probs = [p for p in data.get("problems") or [] if isinstance(p, dict)]
+    lists = {"allergies": sum(1 for p in probs if p.get("type") == "Allergy"),
+             "problems": sum(1 for p in probs if p.get("type") != "Allergy"),
+             "upcoming": sum(1 for u in data.get("upcoming") or [] if isinstance(u, dict))}
+    counts.update({k: n for k, n in lists.items() if n})
     return {"counts": counts, "range": {"from": min(days), "to": max(days)} if days else None}
 
 

@@ -263,6 +263,8 @@ class Manual(unittest.TestCase):
             {"kind": "rx", "date": "2026-05-05", "drug": "Ferrous sulfate 325 mg tablet", "pharmacy": "Corner Pharmacy (fictional)",
              "supply": "30", "billed": "$12.00", "paid": "8", "owe": "4.00", "insurer": "Example Health (fictional)"},
             {"kind": "problem", "name": "Iron deficiency anemia", "status": "Active", "since": "2026-05-04"},
+            {"kind": "immunization", "date": "2026-05-04", "vaccine": "Influenza vaccine", "dose": "1", "site": "Left arm",
+             "lot": "FICT-0099", "who": "Sam Ortega, RN (fictional)", "where": "Lakeside Clinic (fictional)"},
             {"kind": "claim", "date": "2026-05-04", "provider": "Lakeside Clinic (fictional)", "title": "Office visit",
              "billed": "$240.00", "paid": "180", "owe": "60", "status": "Paid", "insurer": "Example Health (fictional)"},
             {"kind": "payment", "date": "2026-06-01", "payee": "Lakeside Clinic (fictional)", "amount": "60", "group": "Medical bills"},
@@ -275,7 +277,7 @@ class Manual(unittest.TestCase):
         ], pid=pid)
         self.assertEqual(r.status_code, 200, r.text)
         j = r.json()
-        self.assertEqual(j["counts"]["typed"], {"claim": 1, "home": 1, "imaging": 1, "med": 1, "payment": 1, "problem": 1, "procedure": 1,
+        self.assertEqual(j["counts"]["typed"], {"claim": 1, "home": 1, "imaging": 1, "immunization": 1, "med": 1, "payment": 1, "problem": 1, "procedure": 1,
                                                 "rx": 1, "stay": 1, "study": 1, "upcoming": 1, "visit": 1, "vitals": 1, "workout": 1})
         self.assertEqual((j["counts"]["watch_days"], j["counts"]["workouts"]), (1, 1))
         data = self.data(pid)
@@ -307,6 +309,12 @@ class Manual(unittest.TestCase):
                           "owe": 60.0, "status": "Paid", "cat": "Doctor visits", "prov": "Lakeside Clinic (fictional)", "title": "Office visit"})
         self.assertEqual((det("claim")["type"], det("claim")["kind"], det("claim")["visit"]),
                          ("claim", "Medical", {"date": "2026-05-04", "provider": "Lakeside Clinic (fictional)"}))
+        # #179: an immunization typed in has the detail the C-CDA and FHIR importers give one
+        self.assertEqual((ev["immunization"]["t"], ev["immunization"]["title"], ev["immunization"]["sub"]),
+                         ("2026-05-04T12:00:00", "Influenza vaccine", "Dose 1 · Sam Ortega, RN (fictional) · Lakeside Clinic (fictional)"))
+        self.assertEqual(det("immunization"), {"type": "immunization", "vaccine": "Influenza vaccine", "dose": "1", "site": "Left arm",
+                                               "lot": "FICT-0099", "performer": "Sam Ortega, RN (fictional)",
+                                               "where": "Lakeside Clinic (fictional)", "src": "Typed in"})
         self.assertEqual({k: data["problems"][0][k] for k in ("name", "status", "date", "type")},
                          {"name": "Iron deficiency anemia", "status": "Active", "date": "2026-05-04", "type": "Diagnosis"})
         pay = data["outOfPocket"]["payments"][0]
@@ -439,6 +447,15 @@ class Manual(unittest.TestCase):
         self.assertEqual((r.status_code, r.json()["detail"]), (400, "There's nothing to save: type a result first."))
         self.assertEqual(self.items([{"kind": "visit", "date": "2026-01-01"}] * 101, pid=pid).status_code, 422)
         self.assertEqual(count(pid), before)
+
+    def test_an_immunization_needs_its_vaccine_and_is_found_again(self):   # #179
+        pid = self.refuse_pid
+        r = self.items([{"kind": "immunization", "date": "2026-02-01", "dose": "2"}], save=False, pid=pid)
+        self.assertEqual(r.json()["items"][0]["fields"], {"vaccine": "needs the vaccine's name"})
+        imm = {"kind": "immunization", "date": "2026-02-01", "vaccine": "Tdap vaccine", "where": "Corner Pharmacy (fictional)"}
+        self.assertEqual(self.items([imm], pid=pid).status_code, 200)
+        r = self.items([dict(imm, vaccine=" tdap  VACCINE ")], save=False, pid=pid)
+        self.assertEqual([x["duplicate"] for x in r.json()["items"]], [True])   # the same, typed again
 
     def test_viewer_cant_save_records(self):
         before = count(self.pid)
