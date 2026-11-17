@@ -41,23 +41,28 @@ def _save(db, s, pid, update, request, detail=None):
     people adding heights at once both keep theirs). Each is checked, then that they agree; then stored, with one
     activity entry per setting changed."""
     with dbm.transaction(db):
-        have = _values(db, pid)
-        changes = update(have)
-        if not changes:
-            return
-        v = {**have, **changes}
-        try:
-            v["birthDate"], v["sex"], v["heights"], v["dueDate"] = (person.check_birth(v["birthDate"]), person.check_sex(v["sex"]),
-                                                                    person.check_heights(v["heights"]), person.check_due(v["dueDate"]))
-            person.check_together(v["birthDate"], v["heights"], v["dueDate"])
-            v["maxHr"] = hrzones.check_max(v["maxHr"])
-        except (person.PersonError, hrzones.ZoneError) as e:
-            raise HTTPException(400, str(e))
-        for k in changes:
-            key = KEYS[k]
-            settings.put(db, key, v[k], "profile", pid, by=s["id"])
-            activity.log(db, "settings", s, pid, {"setting": key, "label": settings.SETTINGS[key].label, **(detail or {})},
-                         _client_ip(request))
+        apply(db, s, pid, update, request, detail)
+
+
+def apply(db, s, pid, update, request, detail=None):
+    """_save's work inside a transaction the caller holds (heights typed in on the import page, routes_manual.py #224)."""
+    have = _values(db, pid)
+    changes = update(have)
+    if not changes:
+        return
+    v = {**have, **changes}
+    try:
+        v["birthDate"], v["sex"], v["heights"], v["dueDate"] = (person.check_birth(v["birthDate"]), person.check_sex(v["sex"]),
+                                                                person.check_heights(v["heights"]), person.check_due(v["dueDate"]))
+        person.check_together(v["birthDate"], v["heights"], v["dueDate"])
+        v["maxHr"] = hrzones.check_max(v["maxHr"])
+    except (person.PersonError, hrzones.ZoneError) as e:
+        raise HTTPException(400, str(e))
+    for k in changes:
+        key = KEYS[k]
+        settings.put(db, key, v[k], "profile", pid, by=s["id"])
+        activity.log(db, "settings", s, pid, {"setting": key, "label": settings.SETTINGS[key].label, **(detail or {})},
+                     _client_ip(request))
 
 
 @router.get("/api/profiles/{pid}/person")

@@ -4155,6 +4155,179 @@ def main():
             check("with no claims at all, Costs shows the payments alone", only[0] and not only[1] and "Total out of pocket" in only[2], only)
             js("paidState.open = null; renderCosts()")
 
+            # ---- readings typed in at home (#224): blood pressure, glucose, temperature and blood oxygen typed on Sources
+            # for the demo person, whose phone sends the same measures; checked as typed (plausible values, the unit),
+            # one the phone sent already found; saved, each on its card beside the phone's and the visits', "Typed in";
+            # typed again for its minute it's corrected; undone from the import history, gone. A height into About this
+            # person's history. 1400 and 375 px, light and dark, axe-core
+            def typed_form(pid):
+                page.goto(base + f"/sources.html?profile={pid}")
+                page.wait_for_selector("#srcOverview", state="visible", timeout=10000)
+                page.click("#srcNav a[data-group=manual]")
+                page.wait_for_selector("#typeIn", state="visible", timeout=10000)
+
+            def add_record(kind):
+                page.select_option("#manKind", kind)
+                page.click("#manAddKind")
+            typed_form(1)
+            kinds = js("[...document.querySelectorAll('#manKind option')].map(o => o.textContent)")
+            check("typed in at home (#224): a form each for blood pressure, glucose, temperature, blood oxygen and height",
+                  all(k in kinds for k in ("Blood pressure at home", "Blood glucose at home", "Temperature at home", "Blood oxygen at home",
+                                           "Weight or steps at home", "Height")), kinds)
+            add_record("home_bp")
+            page.fill(card(1, "date"), "2026-11-10")
+            page.fill(card(1, "time"), "05:55")
+            page.fill(card(1, "sys"), "300")
+            page.fill(card(1, "dia"), "81")
+            add_record("home_glucose")
+            page.fill(card(2, "date"), "2026-11-10")
+            page.fill(card(2, "time"), "06:10")
+            page.fill(card(2, "glucose"), "104")
+            page.select_option(card(2, "glucose_unit"), "mmol/L")
+            add_record("home_temp")
+            page.fill(card(3, "date"), "2026-11-10")
+            page.fill(card(3, "time"), "06:20")
+            page.fill(card(3, "temp"), "37.4")
+            add_record("home_spo2")
+            page.fill(card(4, "date"), "2026-11-10")
+            page.fill(card(4, "time"), "06:25")
+            page.fill(card(4, "spo2"), "97")
+            page.wait_for_function("document.querySelectorAll('.man-item [aria-invalid=true]').length === 3", timeout=5000)
+            errs224 = js("[...document.querySelectorAll('.man-item .man-err')].map(e => e.textContent).filter(Boolean)")
+            check("…a value that doesn't look right is refused, saying what was expected, and a unit chosen wrong is named",
+                  any("expected 50 to 260" in e for e in errs224) and any("looks like mg/dL, not mmol/L" in e for e in errs224)
+                  and any("looks like °C, not °F" in e for e in errs224) and page.is_disabled("#manSave"), errs224)
+            page.fill(card(1, "sys"), "126")
+            page.fill(card(1, "pulse"), "66")
+            page.select_option(card(2, "glucose_unit"), "mg/dL")
+            page.select_option(card(2, "meal"), "before")
+            page.select_option(card(3, "temp_unit"), "C")
+            page.wait_for_function("document.getElementById('manMsg').textContent === '4 records ready to save.'", timeout=5000)
+            said = js("[...document.querySelectorAll('.man-item .man-check')].map(c => c.textContent)")
+            check("…fixed, each says what it becomes", said == ["✓ Blood pressure at home · 2026-11-10 05:55 · 126/81 mmHg · pulse 66",
+                  "✓ Blood glucose at home · 2026-11-10 06:10 · glucose 104 mg/dL · before a meal", "✓ Temperature at home · 2026-11-10 06:20 · 37.4 °C",
+                  "✓ Blood oxygen at home · 2026-11-10 06:25 · SpO2 97%"], said)
+            wall = js("""fetch('api/profiles/1/watch').then(r => r.json()).then(w => { const r = w.bp_readings.filter(x => x[5] !== 'Typed in').at(-1);
+                         const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {timeZone: w.tz, year: 'numeric', month: '2-digit', day: '2-digit',
+                           hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).formatToParts(new Date(r[0])).map(x => [x.type, x.value]));
+                         return [`${p.year}-${p.month}-${p.day}`, `${p.hour}:${p.minute}`, String(r[1]), String(r[2])]; })""")
+            add_record("home_bp")
+            for f, v in zip(("date", "time", "sys", "dia"), wall):
+                page.fill(card(5, f), v)
+            page.wait_for_function("document.querySelectorAll('.man-item .dup').length === 1", timeout=5000)
+            check("…one the phone sent already is found, and left out", "already in this profile" in js("document.querySelector('.man-item:nth-child(5) .man-check').textContent"),
+                  [wall, js("document.querySelector('.man-item:nth-child(5) .man-check').textContent")])
+            page.click(".man-item:nth-child(5) .del")
+            page.wait_for_function("document.getElementById('manMsg').textContent === '4 records ready to save.'", timeout=5000)
+            bad, axe224 = [], []
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    settle(200)
+                    if width == 375:
+                        bad += phone_fits(page, f"home reading forms ({theme})")
+                    axe224 += axe_check(page, f"home reading forms, {width} px, {theme}")[0]
+            js("delete document.documentElement.dataset.theme")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…the forms fit 375 px, and axe-core finds nothing serious at 1400 and 375 px, light and dark", not bad and not axe224, (bad + axe224)[:6])
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            check("…saved as one import, with a link to Body and activity", page.inner_text("#manMsg").startswith("Saved 4 records.")
+                  and "See them on Body and activity" in page.inner_text("#manMsg"), page.inner_text("#manMsg"))
+            page.click("#manMsg a")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 1 && state.tab === 'health'", timeout=20000)
+            js("window._was224 = [state.preset, state.from, state.to]; state.tables.clear(); setRange(dayTs('2026-10-20'), dayTs('2026-11-14')); switchTab('health')")
+            settle(500)
+            got = js("""(() => { const one = (rs, f) => rs.filter(r => r.typed).map(f);
+                return {bp: one(H.vit.bp.home, r => [r.v, r.pulse, r.src]), phone: H.vit.bp.home.filter(r => !r.typed).length, clinic: H.vit.bp.clinic.length,
+                  temp: one(H.vit.temp.home, r => [+r.v[0].toFixed(1), r.src]), tempUnit: H.vit.temp.unit, o2: H.vit.spo2.typed.map(r => [r.v, r.src]), o2days: H.vit.spo2.home.length,
+                  glu: G.meter.filter(m => m[2]).map(m => [m[1], m[2], m[3]]), gluPhone: G.meter.filter(m => !m[2]).length,
+                  o2legend: document.querySelector('#h-oxygen .legend').textContent, gluLegend: document.querySelector('#h-glucose .legend').textContent}; })()""")
+            check("…each on its card beside the phone's readings, told apart as typed in: blood pressure with its pulse, the temperature in the records' unit",
+                  got["bp"] == [[[126, 81], 66, "Typed in"]] and got["phone"] > 20 and got["temp"] == [[99.3, "Typed in"]] and got["tempUnit"] == "°F"
+                  and got["o2"] == [[[97], "Typed in"]] and got["o2days"] > 20 and "At home, one reading" in got["o2legend"], got)
+            check("…glucose with the meter's readings, its meal note said", got["glu"] == [[104, "Typed in", "before a meal"]] and got["gluPhone"] > 0
+                  and "from the phone or typed in" in got["gluLegend"], got["glu"])
+            js("setRange(dayTs('2026-11-09'), zParse('2026-11-10T06:30'))")   # up to just after them: the latest listed
+            settle(300)
+            lists = js("['#h-bp', '#h-temp', '#h-oxygen'].map(k => [...document.querySelectorAll(k + ' .vital-list li')].map(l => l.textContent).find(t => t.includes('Typed in')) || '')")
+            check("…listed with time and source among the latest readings", all("at home · Typed in" in l for l in lists), lists)
+            js("setRange(dayTs('2026-10-20'), dayTs('2026-11-14'))")
+            settle(300)
+            page.focus("#h-temp svg")
+            page.keyboard.press("End")   # the latest temperature: the one typed in
+            settle(150)
+            check("…the keyboard reaches a typed reading, the tooltip saying where it came from", "at home · Typed in" in js("tip.innerText"), js("tip.innerText"))
+            page.keyboard.press("Escape")
+            for k in ("#h-bp", "#h-temp", "#h-oxygen", "#h-glucose"):
+                page.click(f"{k} .view-seg button:text-is('Table')")
+                settle(200)
+            tb = js("""['#h-bp', '#h-temp', '#h-oxygen', '#h-glucose'].map(k => [...document.querySelectorAll(k + ' table.data tbody tr')].map(r => r.textContent).filter(t => /typed in/i.test(t)))""")
+            check("…and in each card's Table", [len(x) for x in tb] == [1, 1, 1, 1] and "Home, one reading" in tb[2][0] and "(typed in, before a meal)" in tb[3][0], tb)
+            bad, axe224 = [], []
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    for table in (False, True):
+                        js("on => { state.tables.clear(); if (on) for (const k of ['#h-bp', '#h-temp', '#h-oxygen', '#h-glucose']) state.tables.add(k); renderHealth(); }", table)
+                        settle(300)
+                        page.locator("#h-bp").scroll_into_view_if_needed()
+                        if width == 375:
+                            bad += phone_fits(page, f"typed readings' cards, {'tables' if table else 'charts'} ({theme})")
+                        axe224 += axe_check(page, f"typed readings' cards, {'tables' if table else 'charts'}, {width} px, {theme}")[0]
+            js("delete document.documentElement.dataset.theme; state.tables.clear(); renderHealth()")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…the cards with them fit 375 px, and axe-core finds nothing serious at 1400 and 375 px, light and dark", not bad and not axe224, (bad + axe224)[:6])
+            # corrected: typed again for the same date and time, the later one is shown, once
+            typed_form(1)
+            add_record("home_bp")
+            for f, v in (("date", "2026-11-10"), ("time", "05:55"), ("sys", "124"), ("dia", "80")):
+                page.fill(card(1, f), v)
+            page.wait_for_function("document.querySelector('.man-item .man-check').textContent.startsWith('✓')", timeout=5000)
+            check("…typed again for its date and time, a reading says it replaces the one before",
+                  "replaces the reading typed in before for that time" in js("document.querySelector('.man-item .man-check').textContent"),
+                  js("document.querySelector('.man-item .man-check').textContent"))
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            fixed = js("fetch('api/profiles/1/watch').then(r => r.json()).then(w => w.bp_readings.filter(r => r[5] === 'Typed in'))")
+            check("…and once saved it is the one shown", fixed == [["2026-11-10T05:55:00", 124, 80, None, None, "Typed in"]], fixed)
+            # undone from the import history, newest first: the typed readings go, the phone's stay
+            page.goto(base + "/sources.html?profile=1#history")
+            page.reload()   # the same page as the form: only its hash changed, so the list is loaded afresh
+            page.wait_for_function("document.querySelectorAll(\"#historyList li[data-format='manual']\").length === 2", timeout=10000)
+            what = js("[...document.querySelectorAll(\"#historyList li[data-format='manual'] .what\")].map(p => p.textContent).slice(0, 2)")
+            check("…the import history lists each save with its readings taken at home",
+                  len(what) == 2 and what[0].startswith("1 reading taken at home") and what[1].startswith("4 readings taken at home"), what)
+            for _ in range(2):
+                page.click("#history li[data-format='manual']:not(.undone) button.undo")
+                page.click("#history li[data-format='manual']:not(.undone) .confirm button.danger")
+                page.wait_for_function("document.getElementById('historyMsg').textContent.startsWith('Undone')", timeout=10000)
+                js("document.getElementById('historyMsg').textContent = ''")
+            left = js("fetch('api/profiles/1/watch').then(r => r.json()).then(w => [['bp_readings', 'temp_readings', 'spo2_readings', 'glucose_readings']"
+                      ".map(k => (w[k] || []).filter(r => r.includes('Typed in')).length), w.bp_readings.length > 20])")
+            check("…undone, the typed readings are gone and the phone's stay", left == [[0, 0, 0, 0], True], left)
+            # a height typed in goes into About this person's history, which is where it's changed or removed
+            typed_form(2)
+            add_record("height")
+            page.fill(card(1, "date"), "2026-11-02")
+            page.select_option(card(1, "height_unit"), "in")
+            page.fill(card(1, "height"), "5 ft 7 in")
+            page.wait_for_function("document.getElementById('manMsg').textContent === '1 record ready to save.'", timeout=5000)
+            check("…a height says it goes into About this person's history", "height 5 ft 7 in · into About this person's height history"
+                  in js("document.querySelector('.man-item .man-check').textContent"), js("document.querySelector('.man-item .man-check').textContent"))
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#manMsg a:text-is('See the height history')")
+            page.wait_for_selector("#about .about-heights", timeout=10000)
+            check("…and is there, as typed", "5 ft 7 in" in page.inner_text("#about .about-heights"), page.inner_text("#about .about-heights")[:200])
+            js("fetch('api/profiles/2/person/heights/2026-11-02', {method: 'DELETE', headers: {'X-Sanguity': '1'}})")
+            js("localStorage.setItem('ht-profile', '1')")
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 1", timeout=20000)
+            js("[state.preset, state.from, state.to] = window._was224 || [state.preset, state.from, state.to]; save()")
+
             # ---- lab names matched on import (#23): a spelling lab-aliases.json doesn't know is suggested the profile's
             # Hemoglobin series at the preview; accepted, its point is charted with Hemoglobin; uploaded again, it's
             # matched as before without being asked

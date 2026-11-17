@@ -32,6 +32,14 @@ drawer, Trends, Health and Costs show them as they show imported records. Every 
              (at least one measurement)                    to clinicWeights in pounds
   home       DATE weight weight_unit steps                 daily points of the watch summary's "weight" and "steps"
              (at least one)                                metrics (watch_store.save_import, as the import's own)
+  home_bp    DATE time SYS DIA pulse                       readings taken at home (#224), one each, in the watch
+  home_glucose DATE time GLUCOSE glucose_unit meal         summary's lists of readings the phone's are in, marked
+  home_temp  DATE time TEMP temp_unit                      "Typed in" where the phone's name their app (READINGS):
+  home_spo2  DATE time SPO2                                bp_readings, glucose_readings, temp_readings, spo2_readings.
+                                                           Glucose is kept in mg/dL and temperature in °C, as the
+                                                           receiver keeps the phone's; a meal note only when chosen
+  height     DATE HEIGHT height_unit                       an entry of About this person's height history (#194,
+                                                           person.py), not of the import: see HEIGHT below
   workout    DATE time MINUTES ACTIVITY                    a workout in the watch summary's "exercise"
   document   DATE time TITLE doctype where UPLOAD FILE     a "document" (or "letter") event whose "file" detail opens
                                                            the file: a finished upload holding it (routes_uploads.py),
@@ -46,8 +54,19 @@ are series points (keyed by series), clinic weights and watch points have no key
 
 Home measurements and workouts belong here as well as in Health: hand entry is the one place to type in anything
 the app can import, and saved here they are the import's own, so undoing the import takes them away too.
+
+Readings typed in at home (#224) are the import's own watch data too, so Body and activity draws them on the cards
+the phone's are on (health.js), saying "Typed in", and undoing the save takes them away. A reading is found again by
+its minute: typed again for the same date and time with other values, the later save's is the one shown (watch_store
+merges a later import over an earlier one), which is how a reading typed wrong is corrected; with the same values it
+is a duplicate, as is one the phone sent already (the same values within a minute, in the summary's time zone).
+HEIGHT: a height typed in goes straight into About this person's history, the person's own list of heights (a
+clinic's heights in the records wait there to be added, because an import can be undone; one the person typed is one
+they accept). There it is changed or removed (Sharing → About this person); undoing the save leaves it, as undo
+leaves every setting.
 """
 import hashlib, os, re
+from datetime import date, datetime, timedelta, timezone
 
 from .importers import _claims, common, csv_labs
 
@@ -66,14 +85,26 @@ VITALS = {"sys": ("Blood pressure, systolic", "mmHg", "8480-6"), "dia": ("Blood 
           "resp": ("Respiratory rate (clinic)", "/min", "9279-1")}
 # plausible ranges, in the series' units: a typo like 1200 for a heart rate is refused, not charted
 PLAUSIBLE = {"sys": (50, 260), "dia": (20, 200), "hr": (20, 250), "temp": (86, 113), "height": (10, 100), "spo2": (50, 100),
-             "resp": (4, 80), "weight": (2, 900), "steps": (0, 200000), "minutes": (1, 1440)}
+             "resp": (4, 80), "weight": (2, 900), "steps": (0, 200000), "minutes": (1, 1440),
+             "pulse": (20, 250)}   # #224: a home reading's pulse; its glucose and temperature by unit in HOME_RANGE
 WATCH_META = {"weight": ("Weight", "lb", "Body"), "steps": ("Steps", "steps", "Activity")}   # watch/receiver.py's
+# ---- readings typed in at home (#224): the watch summary's list each kind goes in, and where its app is in a row
+READINGS = {"home_bp": "bp_readings", "home_glucose": "glucose_readings", "home_temp": "temp_readings", "home_spo2": "spo2_readings"}
+APP_AT = {"bp_readings": 5, "glucose_readings": 3, "temp_readings": 3, "spo2_readings": 3}   # [time, value(s)..., source, app]
+VALUES = {"bp_readings": (1, 2), "glucose_readings": (1,), "temp_readings": (1,), "spo2_readings": (1,)}   # what's compared
+HOME_RANGE = {("glucose", "mg/dL"): (20, 600), ("glucose", "mmol/L"): (1.1, 33.3),   # what home meters read
+              ("temp", "°C"): (30, 45), ("temp", "°F"): (86, 113)}
+GLUCOSE_UNITS = {"mg/dl": "mg/dL", "mmol/l": "mmol/L"}
+MEALS = {"before": "before a meal", "after": "after a meal", "other": "other"}
+MGDL_PER_MMOL = 18.0156   # server/glucose.py's, the app's exact conversion (units.py)
 
 LABEL = {"labs": "Lab result", "visit": "Visit", "stay": "Hospital stay", "procedure": "Procedure", "imaging": "Imaging",
          "study": "Report or study", "med": "Medication", "rx": "Pharmacy fill", "problem": "Problem or diagnosis",
          "immunization": "Immunization",
          "claim": "Insurance claim", "payment": "Out-of-pocket payment", "upcoming": "Upcoming appointment",
-         "vitals": "Vitals", "home": "Home measurement", "workout": "Workout", "document": "Document"}
+         "vitals": "Vitals", "home": "Weight or steps at home", "workout": "Workout", "document": "Document",
+         "home_bp": "Blood pressure at home", "home_glucose": "Blood glucose at home", "home_temp": "Temperature at home",
+         "home_spo2": "Blood oxygen at home", "height": "Height"}   # #224
 
 _STUDY = ("date", "time", "title", "where", "who", "text")
 FIELDS = {   # kind -> its fields; LONG ones may hold a note
@@ -89,21 +120,28 @@ FIELDS = {   # kind -> its fields; LONG ones may hold a note
     "upcoming": ("date", "time", "title", "who", "where"),
     "vitals": ("date", "time", "where", "bp", "hr", "temp", "temp_unit", "height", "height_unit", "spo2", "resp", "weight", "weight_unit"),
     "home": ("date", "weight", "weight_unit", "steps"),
+    "home_bp": ("date", "time", "sys", "dia", "pulse"),   # #224
+    "home_glucose": ("date", "time", "glucose", "glucose_unit", "meal"),
+    "home_temp": ("date", "time", "temp", "temp_unit"),
+    "home_spo2": ("date", "time", "spo2"),
+    "height": ("date", "height", "height_unit"),
     "workout": ("date", "time", "minutes", "activity"),
     "document": ("date", "time", "title", "doctype", "where", "upload", "file"),
 }
 LONG_FIELDS = {"note", "text", "dx", "instructions"}
 DATE_FIELDS = {"date", "admit", "discharge", "start", "stop", "since"}
 # filled in by the page for every record of a kind, so a record with only these is still empty
-DEFAULTS = {"temp_unit", "height_unit", "weight_unit", "doctype", "status", "type"}
+DEFAULTS = {"temp_unit", "height_unit", "weight_unit", "doctype", "status", "type", "glucose_unit"}
 NEED = {"date": "a date", "admit": "the admission date", "discharge": "the discharge date", "start": "the date it was started",
         "title": "a title", "name": "a name", "drug": "the drug's name", "billed": "the amount billed", "payee": "who was paid",
         "amount": "the amount paid", "minutes": "how many minutes", "activity": "the activity", "upload": "a file",
-        "provider": "the provider or a title", "vaccine": "the vaccine's name"}
+        "provider": "the provider or a title", "vaccine": "the vaccine's name",
+        "sys": "the systolic pressure (the higher number)", "dia": "the diastolic pressure (the lower number)",   # #224
+        "glucose": "the glucose reading", "temp": "the temperature", "spo2": "the oxygen saturation (SpO2)", "height": "the height"}
 CAPTION = {"admit_time": "admission time", "discharge_time": "discharge time", "bp": "blood pressure", "hr": "heart rate",
            "temp": "temperature", "spo2": "SpO2", "resp": "breathing rate", "owe": "amount you owe", "paid": "amount paid",
            "billed": "amount billed", "amount": "amount", "supply": "days' supply", "stop": "stop date", "since": "date",
-           "start": "start date"}
+           "start": "start date", "sys": "systolic pressure", "dia": "diastolic pressure", "glucose": "glucose reading"}
 
 
 def _norm(f):
@@ -514,6 +552,124 @@ def _home(r):
                                   f"{int(steps):,} steps" if steps is not None else ""), ("home", day, weight is not None, steps is not None))
 
 
+# ---- readings typed in at home (#224): a row each of the watch summary's lists of readings (READINGS)
+
+def _home_when(r):
+    """The reading's local time (a date alone is noon), or None; not after today (a typo, not a reading)."""
+    t = r.when("date", "time")
+    if t and t[:10] > (date.today() + timedelta(days=1)).isoformat():   # a day's slack for a time zone ahead
+        return r.bad("date", f"has a date after today ({r.v['date']})")
+    return t
+
+
+def _in_range(r, f, x, what, kind, unit, other):
+    """x within HOME_RANGE for the unit typed; one that fits the other unit says so (a unit chosen wrong)."""
+    lo, hi = HOME_RANGE[(kind, unit)]
+    if x is None or lo <= x <= hi:
+        return x
+    olo, ohi = HOME_RANGE[(kind, other)]
+    if olo <= x <= ohi:
+        return r.bad(f, f"has a {what} that looks like {other}, not {unit} ({_fmt(x)}): choose {other}, or check the number")
+    return r.bad(f, f"has a {what} that doesn't look right ({_fmt(x)} {unit}; expected {_fmt(lo)} to {_fmt(hi)})")
+
+
+def _reading(r, t, row, shown):
+    """What a reading read becomes: its row in its list (READINGS), at the local time it was typed for."""
+    return {"readings": [(READINGS[r.kind], [t, *row])]}, _join(_display(t), *shown), (r.kind, t[:16])
+
+
+def _home_bp(r):
+    t = _home_when(r)
+    r.need("sys", "dia")
+    sys_ = r.plausible("sys", r.number("sys", unit="mmHg"), "systolic pressure")
+    dia = r.plausible("dia", r.number("dia", unit="mmHg"), "diastolic pressure")
+    pulse = r.plausible("pulse", r.number("pulse", "pulse", unit="bpm"), "pulse")
+    if sys_ is not None and dia is not None and dia >= sys_:
+        r.bad("dia", f"is as high as the systolic or higher ({_fmt(dia)}, {_fmt(sys_)}): the systolic is the higher number, as in 120/80")
+    if r.fields or not t:
+        return None, None, None
+    return _reading(r, t, [sys_, dia, pulse, None, SOURCE],
+                    [f"{_fmt(sys_)}/{_fmt(dia)} mmHg", f"pulse {_fmt(pulse)}" if pulse is not None else ""])
+
+
+def _home_glucose(r):
+    v = r.v
+    t = _home_when(r)
+    r.need("glucose")
+    unit = GLUCOSE_UNITS.get((v["glucose_unit"] or "mg/dL").lower().replace(" ", ""))
+    if not unit:
+        r.bad("glucose_unit", f"has a unit Sanguity doesn't know for glucose ({v['glucose_unit']}): mg/dL or mmol/L")
+    meal = v["meal"].lower()
+    meal = next((k for k, w in MEALS.items() if meal in (k, w)), None) if meal else ""
+    if meal is None:
+        r.bad("meal", f"has a note Sanguity doesn't know ({v['meal']}): before a meal, after a meal, other, or none")
+    x = r.number("glucose", "glucose reading", unit=unit) if unit else None
+    x = _in_range(r, "glucose", x, "glucose reading", "glucose", unit, "mmol/L" if unit == "mg/dL" else "mg/dL") if unit else None
+    if r.fields or not t:
+        return None, None, None
+    mgdl = round(x * MGDL_PER_MMOL, 2) if unit == "mmol/L" else x   # kept in mg/dL, as the phone's are (server/glucose.py)
+    return _reading(r, t, [mgdl, None, SOURCE, meal or None], [f"glucose {_fmt(x)} {unit}", MEALS.get(meal, "")])
+
+
+def _home_temp(r):
+    v = r.v
+    t = _home_when(r)
+    r.need("temp")
+    scale = (v["temp_unit"] or "F").upper().lstrip("°")
+    if scale not in ("F", "C"):
+        r.bad("temp_unit", f"has a unit Sanguity doesn't know for a temperature ({v['temp_unit']}): °F or °C")
+    unit = "°" + scale if scale in ("F", "C") else None
+    x = r.number("temp", unit=unit) if unit else None
+    x = _in_range(r, "temp", x, "temperature", "temp", unit, "°C" if unit == "°F" else "°F") if unit else None
+    if r.fields or not t:
+        return None, None, None
+    c = round((x - 32) * 5 / 9, 2) if scale == "F" else x   # kept in °C, as the receiver keeps the phone's
+    return _reading(r, t, [c, None, SOURCE], [f"{_fmt(x)} {unit}"])
+
+
+def _home_spo2(r):
+    t = _home_when(r)
+    r.need("spo2")
+    x, (lo, hi) = r.number("spo2", "oxygen saturation", unit="%"), PLAUSIBLE["spo2"]
+    if x is not None and not lo <= x <= hi:
+        r.bad("spo2", f"has an oxygen saturation (SpO2) that doesn't look right ({_fmt(x)}%; expected {lo} to {hi})")
+    if r.fields or not t:
+        return None, None, None
+    return _reading(r, t, [x, None, SOURCE], [f"SpO2 {_fmt(x)}%"])
+
+
+_FTIN = re.compile(r"(\d+(?:\.\d+)?)\s*(?:ft|feet|foot|')\s*(?:(\d+(?:\.\d+)?)\s*(?:in|inches|inch|\"|'')?)?", re.I)
+
+
+def _height(r):
+    """A height for About this person's history (person.py): {date, cm, unit}, unit "cm" or "ftin" as it was typed.
+    That it isn't before the birth date is checked where the history is (routes_manual.py)."""
+    from . import person
+    v = r.v
+    t = r.when("date")
+    r.need("height")
+    unit, cm = (v["height_unit"] or "cm").lower(), None
+    if unit not in ("cm", "in"):
+        r.bad("height_unit", f"has a unit Sanguity doesn't know for a height ({v['height_unit']}): cm, or feet and inches")
+    elif v["height"]:
+        m = _FTIN.fullmatch(v["height"]) if unit == "in" else None
+        x = float(m.group(1)) * 12 + float(m.group(2) or 0) if m else r.number("height", unit=unit)
+        cm = None if x is None else round(x * person.IN_CM if unit == "in" else x, 2)
+    if t and t[:10] > date.today().isoformat():
+        r.bad("date", f"has a date after today ({v['date']})")
+    entry = None
+    if cm is not None:
+        try:
+            entry = person.check_height({"date": t[:10] if t else "2000-01-01", "cm": cm, "unit": "ftin" if unit == "in" else "cm"})
+        except person.PersonError as e:
+            why = str(e)[0].lower() + str(e)[1:].rstrip(".")
+            r.bad("height", f"has a height that doesn't look right ({v['height']} {'in' if unit == 'in' else 'cm'}): {why}")
+    if r.fields or not t or not entry:
+        return None, None, None
+    shown = _join(t[:10], "height " + person.text(entry["cm"], entry["unit"]), "into About this person's height history")
+    return {"heights": [entry]}, shown, ("height", t[:10])
+
+
 def _workout(r):
     v = r.v
     t = r.when("date", "time")
@@ -552,11 +708,12 @@ def _document(r):
 
 def build(records, base_id=0):
     """The data.json shape for records read with no problems (their "parts"), events numbered from base_id + 1, and
-    where each part came from: ({"data", "watch", "files"}, {"events": {event id: n}, "points": {(series name,
-    point index): n}, "meta": {(path, index): n}, "watch": [(n, part)]})."""
+    where each part came from: ({"data", "watch", "files", "heights"}, {"events": {event id: n}, "points": {(series
+    name, point index): n}, "meta": {(path, index): n}, "watch": [(n, part)], "heights": [(n, entry)]}). heights are
+    About this person's (#224), kept apart from the import."""
     events, details, costs, series, problems, upcoming, payments, weights = [], {}, [], {}, [], [], [], []
-    metrics, workouts, files = {}, [], {}
-    origin = {"events": {}, "points": {}, "meta": {}, "watch": []}
+    metrics, workouts, files, readings, heights = {}, [], {}, {}, []
+    origin = {"events": {}, "points": {}, "meta": {}, "watch": [], "heights": heights}
     for rec in records:
         p, n = rec["parts"] or {}, rec["n"]
         for x in p.get("events", []):
@@ -583,6 +740,10 @@ def build(records, base_id=0):
         for w in p.get("workouts", []):
             workouts.append(w)
             origin["watch"].append((n, ("w", w["key"], w["start"])))
+        for lst, row in p.get("readings", []):   # #224
+            readings.setdefault(lst, []).append(row)
+            origin["watch"].append((n, ("r", lst, row[0], tuple(row[i] for i in VALUES[lst]))))
+        heights += [(n, h) for h in p.get("heights", [])]
         files.update(p.get("files", {}))
     labs = []
     for s in series.values():
@@ -605,8 +766,11 @@ def build(records, base_id=0):
         data["clinicWeights"] = weights
     for m in metrics.values():
         m["pts"].sort()
-    watch = {"metrics": list(metrics.values()), "exercise": sorted(workouts, key=lambda w: w["start"])} if metrics or workouts else None
-    return {"data": data, "watch": watch, "files": files}, origin
+    watch = None
+    if metrics or workouts or readings:
+        watch = {"metrics": list(metrics.values()), "exercise": sorted(workouts, key=lambda w: w["start"])}
+        watch.update({lst: sorted(rows, key=lambda q: q[0]) for lst, rows in readings.items()})   # typed in at home (#224)
+    return {"data": data, "watch": watch, "files": files, "heights": [h for _, h in heights]}, origin
 
 
 def watch_duplicates(have, origin):
@@ -618,12 +782,68 @@ def watch_duplicates(have, origin):
            for p in m.get("pts") or [] if isinstance(p, list) and len(p) > 1}
     wk = {w.get("key") for w in have.get("exercise") or [] if isinstance(w, dict)} - {None}
     ws = {str(w.get("start"))[:16] for w in have.get("exercise") or [] if isinstance(w, dict)}
+    rd = _readings_by_minute(have)
     seen, dup = {}, {}
     for n, part in origin:
         if part[0] == "m":
             is_dup = (part[1], part[2]) in pts and pts[(part[1], part[2])] == part[3]
+        elif part[0] == "r":   # #224: the same values typed before for that minute, or sent by the phone within a minute of it
+            is_dup = _same_reading(rd, part) is not None
         else:
             is_dup = part[1] in wk or part[2][:16] in ws
         seen[n] = True
         dup[n] = dup.get(n, True) and is_dup
     return {n for n, d in dup.items() if d}
+
+
+# ---- readings typed in at home (#224): found again by their minute, in the summary's own time zone
+
+def _round(vs):
+    return tuple(None if x is None else round(float(x), 1) for x in vs)
+
+
+def _readings_by_minute(have):
+    """{(list, local minute "YYYY-MM-DDTHH:MM"): [(values, typed?)]} of the summary's readings. A phone's are instants
+    (UTC), put in the summary's time zone (the receiver's "tz"; UTC without one); typed ones are local times already."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    try:
+        tz = ZoneInfo(str(have.get("tz") or "UTC"))
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = timezone.utc
+    out = {}
+    for lst, at in APP_AT.items():
+        for row in have.get(lst) or []:
+            if not isinstance(row, list) or len(row) <= at:
+                continue
+            typed = row[at] == SOURCE
+            try:
+                t = datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            wall = (t.astimezone(tz).replace(tzinfo=None) if t.tzinfo else t).isoformat()[:16]
+            out.setdefault((lst, wall), []).append((_round(row[i] for i in VALUES[lst]), typed))
+    return out
+
+
+def _same_reading(rd, part):
+    """("typed" or "phone", the values) of the reading the summary has already for a typed one, else None."""
+    _, lst, t, vs = part
+    vs, t0 = _round(vs), datetime.fromisoformat(t[:16])
+    for d in (0, -1, 1):
+        for have, typed in rd.get((lst, (t0 + timedelta(minutes=d)).isoformat()[:16]), ()):
+            if have == vs and (typed is (d == 0) or not typed):
+                return "typed" if typed else "phone"
+    return None
+
+
+def watch_replaces(have, origin):
+    """{record number: note} for readings typed again for a minute with other values: the later is the one shown."""
+    if not have:
+        return {}
+    rd, out = _readings_by_minute(have), {}
+    for n, part in origin:
+        if part[0] != "r" or _same_reading(rd, part):
+            continue
+        if any(typed for _, typed in rd.get((part[1], part[2][:16]), ())):
+            out[n] = "replaces the reading typed in before for that time (undoing this save brings it back)"
+    return out

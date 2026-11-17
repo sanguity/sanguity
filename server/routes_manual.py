@@ -12,7 +12,8 @@ tag on the points ("Typed in") differs. A test name matched to a series on an ea
 remembered for hand entry, else for a spreadsheet) goes into that series here too, in the readback and when saved.
 
 items are the other kinds: {"kind": "visit" | "stay" | "procedure" | "imaging" | "study" | "med" | "rx" | "problem" |
-"immunization" | "claim" | "payment" | "upcoming" | "vitals" | "home" | "workout" | "document", <field>: <text>...}; manual_items.py
+"immunization" | "claim" | "payment" | "upcoming" | "vitals" | "home" | "home_bp" | "home_glucose" | "home_temp" |
+"home_spo2" | "height" | "workout" | "document", <field>: <text>...}; manual_items.py
 lists each kind's fields and what it becomes. Both lists are optional (a body with only "rows" works as it always
 has), and one save may hold any mix of them. A document's file isn't in the body (the API's bodies stay under nginx's
 64 KB cap): the page sends it through the upload routes first (routes_uploads.py: nginx's upload route and its
@@ -33,6 +34,11 @@ of each kind were typed in counts["typed"]). Home measurements and workouts are 
 (watch_store.save_import with its id). So undoing the import (history.py) takes all of it away: the records, the
 documents and the uploads holding their files, and the watch data. Owners and editors only; the CSRF check in
 main.guard covers the POST like every other change.
+
+Readings typed in at home (#224) are watch data too; one the phone or an earlier save has already is a duplicate, one
+typed again for its minute with other values says it replaces it. A height typed in goes into About this person's
+history (routes_person.apply, in the same transaction, logged as that setting's change), not the import: undo leaves
+it; a save of heights alone makes no import (import_id None). One dated before the birth date is refused here.
 """
 import collections, os
 from typing import Any, Dict, List
@@ -41,8 +47,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import (activity, db as dbm, importers as registry, jobs, labmap, manual_items, preview, profiles as prof, records,
-               uploads, watch_store)
+from . import (activity, db as dbm, importers as registry, jobs, labmap, manual_items, person, preview, profiles as prof,
+               records, routes_person, uploads, watch_store)
 from .importers import common, csv_labs
 from .main import _client_ip, get_db, need, user
 
@@ -217,14 +223,40 @@ def _item(rec, dup=None):
 
 
 def _without_watch_dups(watch, origin, found, keep):
-    """The watch summary less the points and workouts of records whose watch data the profile has already."""
+    """The watch summary less the points, workouts and readings of records whose watch data the profile has already."""
     if not watch or keep:
         return watch
-    drop = {part[:3] if part[0] == "m" else part[:2] for n, part in origin if found.get(n)}
+    drop = {part[:3] if part[0] in "mr" else part[:2] for n, part in origin if found.get(n)}
     metrics = [{**m, "pts": [p for p in m["pts"] if ("m", m["key"], p[0]) not in drop]} for m in watch["metrics"]]
     metrics = [m for m in metrics if m["pts"]]
     exercise = [w for w in watch["exercise"] if ("w", w["key"]) not in drop]
-    return {"metrics": metrics, "exercise": exercise} if metrics or exercise else None
+    readings = {lst: [r for r in watch[lst] if ("r", lst, r[0]) not in drop] for lst in manual_items.APP_AT if watch.get(lst)}   # #224
+    readings = {lst: rows for lst, rows in readings.items() if rows}
+    return {"metrics": metrics, "exercise": exercise, **readings} if metrics or exercise or readings else None
+
+
+# ---- heights typed in (#224): into About this person's history (person.py), apart from the import
+
+def _heights(db, pid, recs):
+    """{record number: "all"} for the heights typed that the history has already, from the history as stored
+    (routes_person). One dated before the birth date is refused (its record marked, as person.check_together would
+    refuse it); one replacing that day's says so in its notes."""
+    typed = [r for r in recs if r["ok"] and r["kind"] == "height"]
+    if not typed:
+        return {}
+    have = routes_person._values(db, pid)
+    by_day, dup = {h["date"]: h for h in have["heights"]}, {}
+    for r in typed:
+        h = r["parts"]["heights"][0]
+        old = by_day.get(h["date"])
+        if have["birthDate"] and h["date"] < have["birthDate"]:
+            why = f"has a date before the birth date in About this person ({have['birthDate']})"
+            r.update(ok=False, parts=None, problems=[why], fields={"date": why})
+        elif old and abs(old["cm"] - h["cm"]) < 0.05:
+            dup[r["n"]] = "all"
+        elif old:
+            r["notes"].append(f"replaces the height of that day in About this person ({person.text(old['cm'], old['unit'])})")
+    return dup
 
 
 @router.post("/api/profiles/{pid}/manual")
@@ -238,10 +270,14 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
     results = [r for _, r, p, _ in got if r and not p]
     lab = labmap.apply_remembered(db, MATCHED_AS, csv_labs.build(results, source=SOURCE, sub=SOURCE))[0] if results else {}
     base = max([e["id"] for e in lab.get("events") or []], default=0)
+    found_heights = _heights(db, pid, recs)   # #224, before building: one refused isn't built
     built, origin = manual_items.build([r for r in recs if r["ok"]], base_id=base)
     data = _combine(lab, built["data"])
     have_watch = watch_store.load(db, pid) if origin["watch"] else None
     dups, dup_rows, found = _duplicates(db, pid, data, lab, got, origin, have_watch)
+    found.update(found_heights)
+    for n, note in manual_items.watch_replaces(have_watch, origin["watch"]).items():   # typed again, other values (#224)
+        next(r for r in recs if r["n"] == n)["notes"].append(note)
 
     shown = [_describe(*x, matched, dup_rows.get(x[0], False)) for x in got]
     items = [_item(r, found.get(r["n"])) for r in recs]
@@ -258,7 +294,8 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
         return JSONResponse({"detail": msg, **answer}, status_code=400)
     new = data if body.keep_duplicates else preview.trim(data, dups)
     watch = _without_watch_dups(built["watch"], origin["watch"], found, body.keep_duplicates)
-    if not preview.adds_anything(new) and not watch:
+    heights = [h for n, h in origin["heights"] if body.keep_duplicates or n not in found]   # #224
+    if not preview.adds_anything(new) and not watch and not heights:
         return JSONResponse({"detail": "Everything here is in this profile already, so nothing was saved. To save it "
                                        "again anyway, tick “Save again what's already there”.", **answer}, status_code=400)
     if registry.check({"data": new, "warnings": []}):   # a bug, not the typist's doing
@@ -269,15 +306,21 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
     saved_rows = sum(1 for n, r, p, _ in got if r and not p and (body.keep_duplicates or not dup_rows.get(n)))
     kinds = ["labs"] * saved_rows + [r["kind"] for r in recs if body.keep_duplicates or found.get(r["n"]) != "all"]
     counts["typed"] = dict(sorted(collections.Counter(kinds).items()))
-    files = built["files"]
+    files, iid = built["files"], None
     with dbm.transaction(db):
-        keepdocs, counts["documents"] = prof.index_documents(db, pid, new["details"], lambda url: files.get(url))
-        iid = records.store(db, pid, new, NAME, fmt=NAME)
-        prof.link_documents(db, iid, keepdocs)
-        if watch:   # last: its file is written once everything else is in the transaction
-            w = watch_store.save_import(db, pid, watch, import_id=iid)
-            counts.update(watch_days=w["days"], workouts=w["workouts"])
-        activity.log(db, "import", s, pid, {"importer": NAME, "counts": counts, **({"skipped": skipped} if skipped else {})},
-                     ip=_client_ip(request))
+        if heights:   # About this person's history, not the import's (manual_items.py, HEIGHT): first, so a refusal saves nothing
+            days = {h["date"] for h in heights}
+            routes_person.apply(db, s, pid, lambda have: {"heights": [h for h in have["heights"] if h["date"] not in days] + heights},
+                                request, {"change": "add", "typed": True})
+            counts["heights_set"] = len(heights)   # put in About this person; "heights" is an export's offered ones (#223)
+        if preview.adds_anything(new) or watch:   # heights alone aren't an import: nothing for undo to take away
+            keepdocs, counts["documents"] = prof.index_documents(db, pid, new["details"], lambda url: files.get(url))
+            iid = records.store(db, pid, new, NAME, fmt=NAME)
+            prof.link_documents(db, iid, keepdocs)
+            if watch:   # last: its file is written once everything else is in the transaction
+                w = watch_store.save_import(db, pid, watch, import_id=iid)
+                counts.update(watch_days=w["days"], workouts=w["workouts"], **({"readings": w["readings"]} if w.get("readings") else {}))
+            activity.log(db, "import", s, pid, {"importer": NAME, "counts": counts, **({"skipped": skipped} if skipped else {})},
+                         ip=_client_ip(request))
     return {"import_id": iid, "counts": counts, "range": summary["range"], "rows": shown, "items": items,
             "skipped": skipped, "series": [x["name"] for x in new["labs"]]}

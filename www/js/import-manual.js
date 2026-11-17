@@ -192,11 +192,16 @@
       // counts.results counts vitals too (they're charted as series): what was typed is in counts.typed
       const typed = (j.counts || {}).typed || {}, n = typed.labs || 0, names = j.series || [];
       const others = Object.entries(typed).filter(([k]) => k !== "labs").reduce((a, [, c]) => a + c, 0);
+      // #224: readings taken at home are on Body and activity, a height in About this person; the rest on the timeline
+      const HEALTH = ["home", "home_bp", "home_glucose", "home_temp", "home_spo2", "workout"];
+      const onHealth = HEALTH.some(k => typed[k]), onTimeline = Object.keys(typed).some(k => k !== "labs" && k !== "height" && !HEALTH.includes(k));
       box.replaceChildren(); addRow({date: rs.length ? valueOf(rs[rs.length - 1]).date : today()});
       recs.saved(); keepBox.checked = false; $("#manKeepWrap").hidden = true;
       saving = false; ok = bad = okRecs = badRecs = 0;
       const links = [names.length ? el("a", {href: recordsLink(p, "labs"), text: "See them on Labs", onclick: () => openTrends(p, names)}) : null,
-        others ? el("a", {href: recordsLink(p, "timeline"), text: "See them on the timeline"}) : null].filter(Boolean);
+        onTimeline ? el("a", {href: recordsLink(p, "timeline"), text: "See them on the timeline"}) : null,
+        onHealth ? el("a", {href: recordsLink(p, "health"), text: "See them on Body and activity"}) : null,
+        typed.height ? el("a", {href: `sharing.html?profile=${p}#about`, text: "See the height history"}) : null].filter(Boolean);
       sayIn(msg, [`Saved ${[n ? plural(n, "result", "results") : "", others ? plural(others, "record", "records") : ""].filter(Boolean).join(" and ") || "nothing new"}.`
         + (j.skipped ? ` ${plural(j.skipped, "was", "were")} in this profile already and left out.` : ""),
         ...links.flatMap(a => [" ", a])]);

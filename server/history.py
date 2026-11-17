@@ -90,7 +90,9 @@ def _entry(db, pid, imp):
         note = json.loads(crypto.dec(r["note"])) if r and r["note"] else None
     if note:
         summary = {**summary, "counts": note.get("counts")}
-    own = db.execute("SELECT name FROM imports WHERE id=?", (iid,)).fetchone()   # its own name (#38), if given
+    if not summary.get("counts") and watch_store.has_import(pid, iid):   # typed in (no job): its watch data counted too (#224)
+        summary = {**summary, "counts": {**_counts(db, iid), **watch_store.import_counts(pid, iid)}}
+    own =db.execute("SELECT name FROM imports WHERE id=?", (iid,)).fetchone()   # its own name (#38), if given
     return {"id": iid, "name": crypto.dec(own["name"]) if own and own["name"] else None, "at": imp["at"], "origin": origin, "format": imp["format"],
             "label": (note or {}).get("label") or label(imp["format"], origin), "removal": bool(note and note.get("removed")),
             "by": by, "job": job["id"] if job else None, "upload": job["upload_id"] if job else None,
