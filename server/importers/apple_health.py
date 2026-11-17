@@ -25,6 +25,11 @@ They're read by the FHIR importer (fhir.py) and come in with the same import: vi
 reports and the rest, with the same source keys as when that folder is uploaded on its own, so neither duplicates
 the other. If they can't be read, the rest still comes in, with a warning.
 
+ECGs (#182, server/ecg.py): the recordings in electrocardiograms/ beside export.xml (one CSV file each; the name and
+birth date at their top are never kept) and export.xml's irregular rhythm notifications go into the summary's "ecg"
+list, each recording's samples into "ecg_waves" ({key: waveform}), which watch_store.save_import keeps as files of
+their own, apart from the summary.
+
 Standard library only.
 """
 import hashlib
@@ -33,6 +38,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
 from . import fhir
+from .. import ecg   # ECG recordings and irregular rhythm notifications (#182)
 
 NAME = "apple-health"
 LABEL = "Apple Health (export.xml)"
@@ -212,6 +218,13 @@ def parse(files):
         raise ValueError("This file isn't an Apple Health export: its root element isn't <HealthData>.")
     watch = agg.summary()
     warnings = agg.warnings()
+    # ---- ECGs (#182): the electrocardiograms folder's recordings, and export.xml's irregular rhythm notifications
+    ecgs, waves, ecg_warnings = ecg.from_export(files)
+    if ecgs or agg.rhythm:
+        watch["ecg"] = ecg.merge(list(agg.rhythm.values()), ecgs)
+    if waves:
+        watch["ecg_waves"] = waves
+    warnings += ecg_warnings
     data = {"events": [], "details": {}, "labs": [], "costs": []}
     records = health_records(files)
     if records:
@@ -223,9 +236,9 @@ def parse(files):
         else:
             data = clinical["data"]
             warnings += ["Health Records: " + w for w in clinical["warnings"]]
-    if not watch["metrics"] and not watch["exercise"] and not data["events"] and not data["labs"]:
+    if not watch["metrics"] and not watch["exercise"] and not watch.get("ecg") and not data["events"] and not data["labs"]:
         warnings.append("The export holds none of the data the Health tab shows (steps, heart rate, sleep, "
-                        "weight and body composition, workouts)" + (", and no Health Records." if records else "."))
+                        "weight and body composition, workouts, ECGs)" + (", and no Health Records." if records else "."))
     return {"data": {**data, "watch": watch}, "warnings": warnings}
 
 
@@ -278,6 +291,7 @@ class _Aggregates:
         self.tz, self.tz_at = None, None
         self.bad_units = {}
         self.bad_dates = 0
+        self.rhythm = {}    # key -> irregular rhythm notification (#182)
 
     def _note_tz(self, el, at):
         name = _tz_name(el) if len(el) else None
@@ -288,6 +302,10 @@ class _Aggregates:
         typ = el.get("type")
         if typ == SLEEP:
             return self._sleep(el)
+        if typ == ecg.IRREGULAR:   # (#182)
+            if (ev := ecg.from_record(el, _when)) is not None:
+                self.rhythm[ev["key"]] = ev
+            return
         q = QUANTITY.get(typ)
         if not q:
             return

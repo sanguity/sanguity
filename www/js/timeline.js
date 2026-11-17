@@ -61,8 +61,9 @@ function renderTimeline() {
         g.push(el("svg:line", {x1: x, x2: Math.min(S.R, S.x(e.te)), y1: y, y2: y, stroke: c.color, "stroke-width": 2, "stroke-opacity": .45, "stroke-linecap": "round", "pointer-events": "none"}));
       }
       const r = e.k === "lab" ? Math.min(9, 3.5 + Math.sqrt(e.n || 1) * .9) : e.k === "auto_msg" || e.k === "appt_msg" ? 3.5 : 5;
-      const fill = e.k === "appt_msg" || e.k === "auto_msg" ? "var(--surface)" : c.color;
-      g.push(el("svg:circle", {class: "ev" + (state.selEv === e.id ? " sel" : ""), cx: x, cy: y, r, fill, stroke: e.k === "appt_msg" || e.k === "auto_msg" ? c.color : "var(--surface)", "stroke-width": e.k === "appt_msg" || e.k === "auto_msg" ? 1.5 : 1.5, "data-id": e.id}));
+      const hollow = e.k === "appt_msg" || e.k === "auto_msg" || e.k === "rhythm";   // #182: a notification, beside the recordings' dots
+      const fill = hollow ? "var(--surface)" : c.color;
+      g.push(el("svg:circle", {class: "ev" + (state.selEv === e.id ? " sel" : ""), cx: x, cy: y, r, fill, stroke: hollow ? c.color : "var(--surface)", "stroke-width": e.k === "rhythm" ? 2 : 1.5, "data-id": e.id}));
       if (e.abn && e.k === "lab") g.push(el("svg:circle", {cx: x, cy: y - r - 4, r: 2, fill: "var(--crit)", "pointer-events": "none"}));
     }
   });

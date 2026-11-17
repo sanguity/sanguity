@@ -61,6 +61,7 @@ check changes without updating the list, and it exercises this table against a l
 | What | Viewer | Editor | Owner | Admin (not a member) | Share-link holder | Calendar feed |
 |---|---|---|---|---|---|---|
 | A profile's records: Overview, Timeline, Labs, Body and activity, Costs, Medications, documents | Read | Read | Read | No (404) | Only the sections, labs and dates the link was made with; no documents, report text or settings | Upcoming appointments and expected lab draws, minimal by default |
+| A watch's ECG recordings and irregular rhythm notifications (#182): the events with the records, a recording's samples by `GET /api/profiles/{pid}/watch/ecg/{name}` when its drawer opens | Read | Read | Read | No (404) | No (watch data is in no link; #225 may add a section, unticked by default) | No |
 | The journal | Read | Add, change, delete | Add, change, delete | No | If the link includes it (without who wrote what) | No |
 | About this person: birth date, sex used for reference ranges, height history (#194) | Read | Change; add and remove heights | Change; add and remove heights | No | Only if its owner ticks About this person (unticked by default) | No |
 | Import history | Read | Undo, rename | Undo, rename | No | No | No |

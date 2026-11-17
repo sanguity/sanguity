@@ -15,6 +15,9 @@ Where it is kept, in the profile's own folder (so encryption at rest, deletion a
                                          profiles.watch_file is pointed at it (and back to none when nothing is left)
   <profile_dir>/watch/apple-health.json  the imports merged, for a profile that already reads another file (a
                                          receiver's), kept beside it and merged in when read, the receiver winning
+  <profile_dir>/watch/ecg/<16 hex>.json.gz  an imported ECG recording's samples (#182, server/ecg.py), one file per
+                                         recording by its key (so the same recording in two exports is one file),
+                                         read only when its drawer opens; rebuild removes those no import lists any more
 The merged file is rebuilt (rebuild) from the imports' own files, legacy first and then by import id, a later import
 winning per day and workout as it did when it came in; only files whose import still exists count. All are sealed
 with the app's key (crypto.write_file).
@@ -22,7 +25,7 @@ with the app's key (crypto.write_file).
 import json, os, secrets
 from datetime import datetime, timezone
 
-from . import crypto, profiles as prof
+from . import crypto, ecg, profiles as prof
 
 SIDE = "apple-health.json"
 LEGACY = "legacy.json"   # imported before imports were kept apart, or with no import id: not undoable
@@ -92,6 +95,8 @@ def merge(low, high):
     starts = {_instant(x.get("start")) for x in hi}
     lo = [x for x in low.get("exercise") or [] if not (x.get("key") and x["key"] in keys) and _instant(x.get("start")) not in starts]
     out["exercise"] = sorted(lo + hi, key=_by_start)
+    if low.get("ecg") or high.get("ecg"):   # ECGs and irregular rhythm notifications by key (#182)
+        out["ecg"] = ecg.merge(low.get("ecg"), high.get("ecg"))
     return out
 
 
@@ -129,14 +134,17 @@ def layers(db, pid):
     return sorted(i for i in ids if i in live)
 
 
-def rebuild(db, pid):
+def rebuild(db, pid, prune=True):
     """Write the merged imports file again from the imports' own summaries; when nothing is left, remove it (and point
-    watch_file back at none, if it was pointed at it). Returns the merged summary, or None."""
+    watch_file back at none, if it was pointed at it). Returns the merged summary, or None. prune: also remove the ECG
+    samples no import lists any more (#182; an undo does that only once it has committed)."""
     target, current = _target(db, pid)
     merged = _read(layer_path(pid))
     for iid in layers(db, pid):
         merged = merge(merged, _read(layer_path(pid, iid)))
     own = own_path(pid)
+    if prune:
+        _prune_waves(pid, merged)
     if merged is None:
         _remove(target)
         if target == own and current and _same(current, own):
@@ -148,6 +156,44 @@ def rebuild(db, pid):
     return merged
 
 
+# ---- ECG recordings' samples (#182): a file each, apart from the summary, read when a recording's drawer opens
+def waves_dir(pid):
+    return os.path.join(prof.profile_dir(pid), "watch", "ecg")
+
+
+def _save_waves(pid, waves):
+    for k, w in (waves or {}).items():
+        name = ecg.file_name(k)
+        if name and isinstance(w, dict):
+            os.makedirs(waves_dir(pid), exist_ok=True)
+            crypto.write_file(os.path.join(waves_dir(pid), name), ecg.pack(w))
+
+
+def _prune_waves(pid, merged):
+    """Remove the samples of recordings no import lists any more (an import undone)."""
+    d = waves_dir(pid)
+    if not os.path.isdir(d):
+        return
+    keep = {ecg.file_name(e.get("key")) for e in (merged or {}).get("ecg") or [] if isinstance(e, dict)}
+    for n in os.listdir(d):
+        if n.endswith(".json.gz") and n not in keep:
+            _remove(os.path.join(d, n))
+
+
+def wave(db, pid, name):
+    """A recording's samples by its file name's 16 hex (ecg.NAME_RE), or None: beside the profile's watch file (a
+    phone receiver's, watch/receiver.py) first, then the imports'."""
+    if not ecg.NAME_RE.match(name or ""):
+        return None
+    r = db.execute("SELECT watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
+    dirs = ([os.path.join(os.path.dirname(r["watch_file"]), "ecg")] if r and r["watch_file"] else []) + [waves_dir(pid)]
+    for d in dirs:
+        p = os.path.join(d, name + ".json.gz")
+        if os.path.isfile(p):
+            return ecg.unpack(crypto.read_file(p))
+    return None
+
+
 def save_import(db, pid, summary, import_id=None):
     """Store an imported summary for the profile, replacing an earlier import's overlapping days and workouts. With
     import_id (the records import it came with, jobs.py) it is kept as that import's own, so undoing the import takes
@@ -155,13 +201,15 @@ def save_import(db, pid, summary, import_id=None):
     (days with at least one point, in this summary)."""
     target, _ = _target(db, pid)
     _migrate_profile(db, pid)
+    summary = dict(summary)
+    _save_waves(pid, summary.pop("ecg_waves", None))   # ECG samples (#182): files of their own, before the summary lists them
     if import_id is None:
         _write(layer_path(pid), merge(_read(layer_path(pid)), summary))
     else:
         _write(layer_path(pid, import_id), summary)
     rebuild(db, pid)
     days = {d for m in summary.get("metrics") or [] for d, _ in m.get("pts") or []}
-    return {"path": target, "days": len(days), "workouts": len(summary.get("exercise") or [])}
+    return {"path": target, "days": len(days), "workouts": len(summary.get("exercise") or []), **ecg.counts(summary)}
 
 
 def has_import(pid, import_id):
@@ -180,7 +228,7 @@ def forget_import(db, pid, import_id):
     aside = os.path.join(imports_dir(pid), f"{UNDOING}{int(import_id)}-{secrets.token_hex(4)}")
     os.replace(path, aside)
     try:
-        rebuild(db, pid)
+        rebuild(db, pid, prune=False)
     except BaseException:
         os.replace(aside, path)
         raise
@@ -188,6 +236,7 @@ def forget_import(db, pid, import_id):
     def finish(committed):
         if committed:
             _remove(aside)
+            rebuild(db, pid)   # the ECG samples only the undone import listed go now (#182)
         else:
             os.replace(aside, path)
             rebuild(db, pid)

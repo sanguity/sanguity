@@ -75,6 +75,7 @@ ROUTES = {
     ("POST", "/api/connect/return"): (USER, "editor"),                 # on the profile the sign-in was started for
     # a profile's: viewers
     ("GET", "/api/profiles/{pid}/data"): (USER, "viewer"), ("GET", "/api/profiles/{pid}/watch"): (USER, "viewer"),
+    ("GET", "/api/profiles/{pid}/watch/ecg/{name}"): (USER, "viewer"),   # an ECG recording's samples (#182)
     ("GET", "/api/profiles/{pid}/documents/{doc}"): (USER, "viewer"),
     ("GET", "/api/profiles/{pid}/documents/{doc}/{part:path}"): (USER, "viewer"),
     ("GET", "/api/profiles/{pid}/members"): (USER, "viewer"), ("GET", "/api/profiles/{pid}/imports"): (USER, "viewer"),

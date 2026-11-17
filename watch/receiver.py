@@ -17,6 +17,9 @@ and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
   a continuous glucose monitor's summarised per day (average, low, high, hours with readings, time in ranges).
 - Home blood pressure (#180) and body temperature (#184) are kept reading by reading from both apps, a reading sent
   again (or by both) counted once, and summed up by day; the summary lists the readings too.
+- ECG recordings and irregular rhythm notifications from Health Auto Export (#182, server/ecg.py): each one kept by its
+  key (sent again: once), listed in the summary's "ecg"; a recording's samples written beside the summary as a file of
+  its own, ecg/<16 hex>.json.gz, sealed, which the app reads when its drawer opens. Health Connect has no ECG type.
 - Writes per-day summaries for Sanguity: $DATA/public/daily.json, or public/profiles/<slot>/daily.json.
 - Menstrual cycle records (#183, server/cycle.py) only for a profile whose owner turned cycle tracking on ("cycle" in
   $KEYS_FILE): for any other they are taken out of the upload before it is archived, so they are never kept at all.
@@ -54,6 +57,7 @@ from server import crypto   # noqa: E402  (the app's own encryption and key file
 from server.importers import apple_health as ah   # noqa: E402  (Apple Health's mapping, for Health Auto Export)
 from server import glucose   # noqa: E402  (blood glucose, meters and CGMs, #181)
 from server import cycle   # noqa: E402  (menstrual cycle tracking, opt-in, #183)
+from server import ecg   # noqa: E402  (ECG recordings and irregular rhythm notifications, #182)
 
 DATA = os.environ.get("DATA", "/data")
 SECRET_FILE = os.environ.get("SECRET_FILE", "/run/secret/watch_secret")
@@ -259,7 +263,7 @@ def _migrate(slot):
             if os.path.exists(db + ext):
                 os.remove(db + ext)
         n += 1
-    paths = [p for _, p in raw_files(slot)] + [db, summary_file(slot)]
+    paths = [p for _, p in raw_files(slot)] + [db, summary_file(slot)] + ecg_files(slot)   # ECG samples (#182)
     for p in paths:
         if os.path.isfile(p):
             with open(p, "rb") as f:
@@ -301,6 +305,7 @@ class Store:
         self._glucose_init()   # blood glucose (#181), below
         self._vitals_tables()   # home blood pressure and body temperature (#180, #184)
         self.db.executescript(cycle.TABLE)   # menstrual cycle records, kept only while tracking is on (#183)
+        self._ecg_init()   # ECG recordings and irregular rhythm notifications (#182)
 
     def meta(self, k, v=None):
         if v is None:
@@ -318,6 +323,7 @@ class Store:
         """Fold in the uploads archived since the last snapshot (all of raw/ for a new database). Returns how many
         were new. Those already in it are recognised by their digest and skipped."""
         n = self._glucose_backfill()   # an existing database's glucose, once (#181)
+        n += self._ecg_backfill()   # and its ECGs, once (#182)
         saved = self.meta("saved")
         if self.loaded and not saved:
             return n   # a database from before snapshots: it was written as uploads came in, so it is current
@@ -462,6 +468,7 @@ class Store:
                 n += 1
         for w in d.get("workouts") or []:
             n += self._hae_workout(c, w) if isinstance(w, dict) else 0
+        n += self._ecg_hae(c, d)   # (#182)
         c.execute("INSERT INTO processed VALUES(?,?,?)", (0, digest, datetime.now(timezone.utc).isoformat()))
         self.meta("last_payload", datetime.now(timezone.utc).isoformat(timespec="seconds"))
         self.db.commit()
@@ -575,6 +582,64 @@ class Store:
         if n:
             log(f"read the blood glucose of {n} earlier uploads")
         return n
+
+    # ------------------------------------------------------------ ECGs and irregular rhythm notifications (#182, server/ecg.py)
+    def _ecg_init(self):
+        self.db.execute("CREATE TABLE IF NOT EXISTS ecg(key TEXT PRIMARY KEY, start TEXT, meta TEXT, wave BLOB)")
+        if not self.loaded:
+            self.meta("ecg", 1)   # a new database: every upload's ECGs are folded in as they come
+
+    def _ecg_hae(self, c, d):
+        """Health Auto Export's ECGs and irregular rhythm notifications, by key: one sent again replaces itself, keeping
+        what only the earlier copy had (its samples, when the later one came without)."""
+        evs, waves, skipped = ecg.from_hae(d, hae_when)
+        if skipped:
+            log(f"left out {skipped} of Health Auto Export's ECG and heart notification entries (no start it could read, "
+                "or a high or low heart rate alert)")
+        for ev in evs:
+            old = c.execute("SELECT meta, wave FROM ecg WHERE key=?", (ev["key"],)).fetchone()
+            meta = {**json.loads(old[0]), **ev} if old else ev
+            wave = ecg.pack(waves[ev["key"]]) if ev["key"] in waves else (old[1] if old else None)
+            c.execute("INSERT OR REPLACE INTO ecg VALUES(?,?,?,?)", (ev["key"], ev["start"], json.dumps(meta), wave))
+        return len(evs)
+
+    def _ecg_backfill(self):
+        """A database from before the receiver read ECGs: fold in those of every Health Auto Export upload in raw/ once
+        (an ECG automation's uploads were archived, then left out). Returns how many uploads had some."""
+        if not self.loaded or self.meta("ecg") is not None:
+            return 0
+        c, n = self.db.cursor(), 0
+        for _, path in raw_files(self.slot):
+            try:
+                p = json.loads(read_raw(path))
+                n += bool(is_hae(p) and self._ecg_hae(c, p["data"]))
+            except Exception as e:
+                log("skip", path, e)
+        self.meta("ecg", 1)
+        self.db.commit()
+        if n:
+            log(f"read the ECGs of {n} earlier uploads")
+        return n
+
+    def _ecg_summary(self):
+        return [{**json.loads(m), **({"wave": True} if w else {})}
+                for m, w in self.db.execute("SELECT meta, wave IS NOT NULL FROM ecg ORDER BY start, key")]
+
+    def write_waves(self):
+        """Each recording's samples beside the summary (ecg/<16 hex>.json.gz, sealed), and none it no longer lists."""
+        d = os.path.join(os.path.dirname(summary_file(self.slot)), "ecg")
+        keep = set()
+        for k, w in self.db.execute("SELECT key, wave FROM ecg WHERE wave IS NOT NULL"):
+            name = ecg.file_name(k)
+            if not name:
+                continue
+            keep.add(name)
+            if not os.path.isfile(os.path.join(d, name)):
+                os.makedirs(d, exist_ok=True)
+                crypto.write_file(os.path.join(d, name), w)
+        for name in os.listdir(d) if os.path.isdir(d) else ():
+            if name.endswith(".json.gz") and name not in keep:
+                os.remove(os.path.join(d, name))
 
     # ------------------------------------------------------------ home readings kept one by one (#180, #184)
     def _vitals_tables(self):
@@ -799,12 +864,15 @@ class Store:
         metrics = [{"key": k, "name": META[k][0], "unit": META[k][1], "group": META[k][2],
                     "pts": sorted(out[k].items())} for k in META if k in out]
         metrics += glucose.summary(self.db)   # blood glucose (#181): meter readings, and CGM days summarised
+        ecgs = self._ecg_summary()   # ECGs and irregular rhythm notifications (#182), without their samples
         return {"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tz": self.meta("tz") or DEFAULT_TZ,
-                "last_payload": self.meta("last_payload"), "metrics": metrics, "exercise": exercises, **vitals}
+                "last_payload": self.meta("last_payload"), "metrics": metrics, "exercise": exercises, **vitals,
+                **({"ecg": ecgs} if ecgs else {})}
 
     def write_summary(self):
         path = summary_file(self.slot)
         os.makedirs(os.path.dirname(path), exist_ok=True)
+        self.write_waves()   # first, so the summary never lists samples that aren't there yet (#182)
         crypto.write_file(path, json.dumps(self.summary(), separators=(",", ":")).encode())
         self._cycle_write()   # (#183)
 
@@ -858,9 +926,16 @@ def cycle_sweep(stores):
 
 
 def is_hae(p):
-    """A Health Auto Export upload: {"data": {"metrics": [...], "workouts": [...]}}."""
+    """A Health Auto Export upload: {"data": {"metrics": [...], "workouts": [...]}}, or its ECG and heart rate
+    notification automations' {"data": {"ecg": [...]}} and {"data": {"heartRateNotifications": [...]}} (#182)."""
     d = p.get("data") if isinstance(p, dict) else None
-    return isinstance(d, dict) and ("metrics" in d or "workouts" in d)
+    return isinstance(d, dict) and any(k in d for k in ("metrics", "workouts", "ecg", "heartRateNotifications"))
+
+
+def ecg_files(slot):
+    """The ECG samples written beside a slot's summary (#182)."""
+    d = os.path.join(os.path.dirname(summary_file(slot)), "ecg")
+    return [os.path.join(d, n) for n in sorted(os.listdir(d))] if os.path.isdir(d) else []
 
 
 def hae_when(s):

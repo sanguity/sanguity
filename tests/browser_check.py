@@ -369,6 +369,50 @@ def cycle_receiver_sweep():
     rx.cycle_sweep({"": store})
 
 
+ECG_FIXTURE = os.path.join(ROOT, "tests", "fixtures", "importers", "apple-health", "ecg", "apple_health_export")
+
+
+def add_ecg_watch(db, watch_dir):
+    """#182: a watch's fictional ECGs and irregular rhythm notifications (tests/fixtures/importers/apple-health/ecg, made
+    by tests/test_ecg.py) for profile 1 both ways, as they would come: Health Auto Export's uploads folded by the receiver
+    into daily.json, its samples beside it in ecg/, and the same recordings in an uploaded Apple Health export saved by
+    watch_store (only its ECGs). The app merges the two by key: five events, each with the phone's average heart rate and
+    the export's lead and software version."""
+    import hashlib, tempfile as tf
+    from datetime import datetime, timedelta, timezone
+    from server import ecg, watch_store
+    from server.importers import apple_health
+    rx = receiver()
+    rx.DATA = tf.mkdtemp(prefix="rx-ecg-", dir=TMP)
+    store, off = rx.Store(), timezone(timedelta(hours=-4))
+    files = {"apple_health_export/export.xml": os.path.join(ECG_FIXTURE, "export.xml"),
+             **{f"apple_health_export/electrocardiograms/{n}": os.path.join(ECG_FIXTURE, "electrocardiograms", n)
+                for n in sorted(os.listdir(os.path.join(ECG_FIXTURE, "electrocardiograms")))}}
+    w = apple_health.parse(files)["data"]["watch"]
+    hae = lambda iso: datetime.fromisoformat(iso).astimezone(off).strftime("%Y-%m-%d %H:%M:%S %z")
+    recs = [e for e in w["ecg"] if e["type"] == "ecg"]
+    payload = {"data": {"ecg": [{"start": hae(e["start"]), "end": hae(e["end"]), "classification": e["classification"],
+                                 "averageHeartRate": 65 + 16 * i, "samplingFrequency": e["rate"], "source": "Fictional Watch",
+                                 "voltageMeasurements": [{"date": i, "voltage": v, "units": "mcV"} for i, v in enumerate(w["ecg_waves"][e["key"]]["samples"])]}
+                                for i, e in enumerate(recs)],
+                        "heartRateNotifications": [{"heartNotification": "irregular_rhythm_notification", "start": hae(e["start"]), "end": hae(e["end"]),
+                                                    "source": {"name": "Fictional Watch"}} for e in w["ecg"] if e["type"] == "irregular_rhythm"]}}
+    b = json.dumps(payload).encode()
+    store.ingest(json.loads(b), hashlib.sha256(b).hexdigest())
+    path = os.path.join(watch_dir, "daily.json")
+    with open(path, encoding="utf-8") as f:
+        daily = json.load(f)
+    daily["ecg"] = store.summary()["ecg"]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(daily, f)
+    os.makedirs(os.path.join(watch_dir, "ecg"), exist_ok=True)
+    for k, blob in store.db.execute("SELECT key, wave FROM ecg WHERE wave IS NOT NULL"):
+        with open(os.path.join(watch_dir, "ecg", ecg.file_name(k)), "wb") as f:
+            f.write(blob)   # as the receiver writes them, here unsealed like the demo's daily.json
+    watch_store.save_import(db, 1, {"updated": w["updated"], "tz": w["tz"], "metrics": [], "exercise": [], "ecg": w["ecg"],
+                                    "ecg_waves": w["ecg_waves"]})
+
+
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
@@ -392,6 +436,7 @@ def start_app():
     atrest.load_pepper(db)
     add_cycle_watch(os.path.join(TMP, "watch"))   # #183 (sealed with the key just made): shown only once turned on
     profiles.bootstrap(db)
+    add_ecg_watch(db, os.path.join(TMP, "watch"))   # #182, once profile 1 reads that watch file
     uid = db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, ?, 1, 0)", (USER, security.hash_password(PW))).lastrowid
     db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'owner')", (uid,))
     profiles.create_profile(db, "Second person", owner_id=uid)
@@ -1749,6 +1794,125 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
             settle(300)
+
+            # ---- ECG recordings and irregular rhythm notifications (#182, add_ecg_watch): a lane and chip of their own in a
+            # colour 3:1 against the page; the page's data holds no samples, loaded only when a recording's drawer opens; the
+            # drawer says what the device said (classification word for word, average heart rate, device, lead, software)
+            # and nothing of its own; the trace is drawn, takes focus with a text summary, and ← → step through it saying
+            # the voltage; its summary table and "Download as CSV"; a notification is a hollow mark with no trace; at 1400
+            # and 375 px in light and dark it fits and axe finds nothing serious (screenshots too, when SANGUITY_SHOTS names a folder)
+            shots = os.environ.get("SANGUITY_SHOTS")
+            open_tab("timeline")
+            js("applyPreset('all'); state.cats.add('ecg'); renderAll()")
+            settle(300)
+            lane = js("""(() => { const chip = document.querySelector('#chips .toggle[data-k=ecg]');
+              const marks = [...document.querySelectorAll('#tl circle.ev')].filter(m => ['ecg', 'rhythm'].includes(byId.get(+m.dataset.id)?.k));
+              return {chip: chip && chip.getAttribute('aria-label'), label: [...document.querySelectorAll('#tl .lane-label')].map(t => t.textContent).includes('ECG & rhythm'),
+                      filled: marks.filter(m => byId.get(+m.dataset.id).k === 'ecg').map(m => getComputedStyle(m).fill),
+                      hollow: marks.filter(m => byId.get(+m.dataset.id).k === 'rhythm').map(m => getComputedStyle(m).stroke),
+                      key: chip && getComputedStyle(chip.querySelector('.key')).backgroundColor,
+                      samples: /"samples":\\[/.test(JSON.stringify(WATCH)), n: (WATCH.ecg || []).length}; })()""")
+            check("ECG (#182): the Timeline has an ECG & rhythm lane, three recordings as dots and two notifications as rings in its colour, and a chip",
+                  lane["chip"] == "ECG & rhythm, 5, shown" and lane["label"] and len(lane["filled"]) == 3 and len(lane["hollow"]) == 2
+                  and set(lane["filled"]) == set(lane["hollow"]) == {lane["key"]}, lane)
+            check("…the page's watch data lists the five events (phone and export merged by key) and holds none of the samples",
+                  lane["n"] == 5 and not lane["samples"], lane)
+            js("openEvent(EV.find(e => e.k === 'ecg' && /Atrial/.test(e.title)))")
+            page.wait_for_selector("#dbody svg.ecg-svg polyline", timeout=10000)
+            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
+            want = {"Classification": "Atrial Fibrillation", "Average heart rate": "81 bpm", "Symptoms": "Rapid, pounding, or fluttering heartbeat",
+                    "Recorded with": "Fictional Watch", "Software version": "2.0"}
+            check("…a recording's drawer says what the device said: its classification word for word, average heart rate, symptoms, device",
+                  js("document.getElementById('dtitle').textContent") == "ECG: Atrial Fibrillation"
+                  and js("document.getElementById('dsub').textContent").startswith("ECG (watch) · ") and {k: kv.get(k) for k in want} == want, kv)
+            text = js("document.getElementById('dbody').textContent")
+            check("…and no word of Sanguity's own on it: not normal or abnormal, and not medical advice said",
+                  not re.search(r"(?i)\b(ab)?normal\b|irregular heartbeat detected|healthy", text) and "isn't medical advice" in text, text[:300])
+            tr = js("""(() => { const s = document.querySelector('#dbody svg.ecg-svg');
+              return {rows: s.querySelectorAll('polyline.ecg-line').length, pts: [...s.querySelectorAll('polyline')].reduce((n, p) => n + p.points.length, 0),
+                      ticks: [...s.querySelectorAll('.ecg-tick')].map(t => t.textContent), tab: s.getAttribute('tabindex'), role: s.getAttribute('role'),
+                      label: s.getAttribute('aria-label'), sum: Object.fromEntries([...document.querySelectorAll('#dbody table.ecg-sum tr')].map(r => [r.cells[0] ? r.querySelector('th').textContent : '', r.querySelector('td').textContent])),
+                      edits: !!document.querySelector('#dbody .edit-acts')}; })()""")
+            check("…its trace is drawn small, three rows of 10 seconds with a time and mV scale, each column's highs and lows",
+                  tr["rows"] == 3 and 1500 < tr["pts"] < 4000 and {"0 s", "10 s", "20 s", "30 s", "+1 mV", "−1 mV", "0"} <= set(tr["ticks"]), {k: tr[k] for k in ("rows", "pts")})
+            check("…it takes focus with a text summary for screen readers: what it is, how long, the device's classification, and the keys",
+                  tr["tab"] == "0" and tr["role"] == "application" and all(w in (tr["label"] or "") for w in ("30 seconds", "512 Hz", "Lead I", "Atrial Fibrillation", "arrow keys")), tr["label"])
+            check("…and a summary table in place of 15,360 rows: duration, sample rate, lead, classification, samples",
+                  {k: tr["sum"].get(k) for k in ("Duration", "Sample rate", "Lead", "Classification", "Samples")} ==
+                  {"Duration": "30 s", "Sample rate": "512 Hz", "Lead": "Lead I", "Classification": "Atrial Fibrillation", "Samples": "15,360"}
+                  and not tr["edits"], tr["sum"])
+            page.focus("#dbody svg.ecg-svg")
+            page.keyboard.press("ArrowRight")
+            first = js("document.querySelector('#dbody .ecg-readout').textContent")
+            for _ in range(3):
+                page.keyboard.press("ArrowRight")
+            later = js("document.querySelector('#dbody .ecg-readout').textContent")
+            page.keyboard.press("End")
+            settle(150)
+            end = js("document.querySelector('#dbody .ecg-readout').textContent")
+            heard = js("document.getElementById('sgStatus').textContent")
+            cursor = js("document.querySelector('#dbody .ecg-cursor').getAttribute('visibility')")
+            check("…← → step through it half a second at a time and End goes to its end, saying the voltage there",
+                  re.fullmatch(r"At 0 s: −?[\d.]+ mV", first.replace("-", "−")) and later.startswith("At 1.5 s: ") and end.startswith("At 30 s: ")
+                  and heard.endswith(end) and cursor == "visible", [first, later, end, heard, cursor])
+            page.keyboard.press("Escape")
+            check("…Escape lets the trace go, and the drawer stays open", js("document.querySelector('#dbody .ecg-cursor').getAttribute('visibility')") == "hidden"
+                  and js("document.getElementById('drawer').classList.contains('open')"))
+            with page.expect_download(timeout=20000) as dl:
+                page.click("#dbody button:has-text('Download as CSV')")
+            with open(dl.value.path(), encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            check("…Download as CSV gives every sample with its time, in µV", re.fullmatch(r"ecg-2026-10-0[34]-\d{4}\.csv", dl.value.suggested_filename)
+                  and lines[0] == "Time (s),Voltage (µV)" and len(lines) == 15361 and lines[1].startswith("0,") and lines[-1].startswith("29.998"),
+                  [dl.value.suggested_filename, lines[:2], lines[-1:], len(lines)])
+            ecg_axe = list(axe_check(page, "ECG drawer, light")[0])
+            page.keyboard.press("Escape")
+            js("openEvent(EV.find(e => e.k === 'rhythm'))")
+            settle(200)
+            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
+            check("…a notification's drawer says what it is, when, the period it covers and the device, with no trace",
+                  js("document.getElementById('dtitle').textContent") == "Irregular rhythm notification" and kv.get("Recorded with") == "Fictional Watch"
+                  and "Period it covers" in kv and not js("!!document.querySelector('#dbody svg.ecg-svg')"), kv)
+            page.keyboard.press("Escape")
+            theme_before, bad = js("document.documentElement.dataset.theme || null"), []
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    open_tab("timeline")
+                    settle(250)
+                    c = js("""(() => { const m = [...document.querySelectorAll('#tl circle.ev')].find(m => byId.get(+m.dataset.id)?.k === 'ecg');
+                      return [getComputedStyle(m).fill, getComputedStyle(document.querySelector('.card') || document.body).backgroundColor, getComputedStyle(document.body).backgroundColor]; })()""")
+                    if min(contrast(c[0], c[1]), contrast(c[0], c[2])) < 3:
+                        bad.append(f"{theme} {width}: the lane's colour {c[0]} is {min(contrast(c[0], c[1]), contrast(c[0], c[2]))}:1 against the page")
+                    if width == 375:
+                        bad += phone_fits(page, f"timeline with ECGs, {theme}")
+                    js("openEvent(EV.find(e => e.k === 'ecg' && /Sinus/.test(e.title)))")
+                    page.wait_for_selector("#dbody svg.ecg-svg polyline", timeout=10000)
+                    settle(150)
+                    ink = js("""(() => { const l = document.querySelector('#dbody .ecg-line'), t = document.querySelector('#dbody .ecg-tick'), bg = getComputedStyle(document.querySelector('#dbody .ecg-svg')).backgroundColor;
+                      return [getComputedStyle(l).stroke, getComputedStyle(t).fill, bg, document.querySelector('#dbody .ecg-svg').getBoundingClientRect().right, document.getElementById('drawer').getBoundingClientRect().right]; })()""")
+                    if contrast(ink[0], ink[2]) < 4.5 or contrast(ink[1], ink[2]) < 4.5:
+                        bad.append(f"{theme} {width}: the trace {ink[0]} or its scale {ink[1]} is faint against {ink[2]}")
+                    if ink[3] > ink[4] + 0.5:
+                        bad.append(f"{theme} {width}: the trace sticks out of the drawer {ink[3:]}")
+                    if width == 375:
+                        bad += phone_fits(page, f"ECG drawer, {theme}")
+                        page.screenshot(path=os.path.join(shots, f"182-drawer-375-{theme}.png")) if shots else None
+                    elif shots:
+                        page.screenshot(path=os.path.join(shots, f"182-drawer-1400-{theme}.png"))
+                    ecg_axe += axe_check(page, f"ECG drawer {theme} {width}")[0]
+                    page.keyboard.press("Escape")
+                    settle(200)
+                    if shots:
+                        page.screenshot(path=os.path.join(shots, f"182-timeline-{width}-{theme}.png"))
+                    ecg_axe += axe_check(page, f"timeline with ECGs {theme} {width}")[0]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            check("…the lane is 3:1 and the trace 4.5:1 against the page, and the Timeline and drawer fit 375 px, in light and dark", not bad, bad[:6])
+            check("…and axe-core finds nothing serious on them at 1400 and 375 px, in light and dark (#202)", not ecg_axe, ecg_axe[:6])
+            open_tab("overview")
+            settle(200)
 
             # ---- renaming where a name is shown (#38): a lab from its Trends chart shows the new name on every tab and in
             # the drawer, the name in the records on hover; back to it from the heatmap; an import from the drawer's

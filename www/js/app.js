@@ -216,6 +216,7 @@ async function syncWarning(pid) {
       ev.ts = zParse(ev.t); ev.te = zParse(ev.end); ev._q = (ev.title + " workout exercise").toLowerCase();
       DATA.events.push(ev); byId.set(ev.id, ev); DATA.details[ev.id] = {type: "exercise", kind: x.kind, minutes: x.minutes};
     }
+    wid = ecgLoad(wid);   // ECGs and irregular rhythm notifications (ecg.js, #182)
     EV = DATA.events;
     applyUnits(SERIES.filter(s => s.watch));   // after the clinic weights joined the scale's (#41)
   }

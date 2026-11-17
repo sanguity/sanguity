@@ -16,7 +16,9 @@ What a holder sees is built here from the records at each view (records.served, 
 the link's scope; nothing else of the profile is reachable through it: no documents, no report text, no settings,
 no other profile, nothing to change. Records without a date are left out, since the range can't be judged. About
 this person (#194: birth date, sex used for reference ranges, heights) is shown only when its section is ticked, and
-the owner's page leaves it unticked.
+the owner's page leaves it unticked. A watch's ECGs and irregular rhythm notifications (#182) are watch data, not
+records, so no link shows them: #225 can add a section for them, unticked unless the owner ticks it, with rows from
+ecg.shared_rows(watch_store.load(db, pid), from, to).
 
   sections   chosen from SECTIONS; each says plainly what it shows (the owner's page repeats it)
   labs       for "results": the lab series to show, by name; empty = every lab

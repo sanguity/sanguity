@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE HealthData [
+<!ELEMENT HealthData (ExportDate,Me,(Record|Correlation|Workout|ActivitySummary)*)>
+<!ATTLIST HealthData locale CDATA #REQUIRED>
+]>
+<HealthData locale="en_US">
+ <ExportDate value="2026-11-01 09:00:00 -0400"/>
+ <Me HKCharacteristicTypeIdentifierDateOfBirth="" HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexNotSet"/>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Fictional Watch" unit="count" startDate="2026-10-03 08:00:00 -0400" endDate="2026-10-03 08:59:00 -0400" value="900"/>
+ <Record type="HKCategoryTypeIdentifierHighHeartRateEvent" sourceName="Fictional Watch" startDate="2026-10-05 14:00:00 -0400" endDate="2026-10-05 14:10:00 -0400" value="HKCategoryValueNotApplicable"/>
+ <Record type="HKCategoryTypeIdentifierIrregularHeartRhythmEvent" sourceName="Fictional Watch" sourceVersion="11.0" creationDate="2026-10-03 01:15:00 -0400" startDate="2026-10-02 23:05:00 -0400" endDate="2026-10-03 01:15:00 -0400" value="HKCategoryValueNotApplicable"/>
+ <Record type="HKCategoryTypeIdentifierIrregularHeartRhythmEvent" sourceName="Fictional Watch" sourceVersion="11.0" creationDate="2026-10-19 05:10:00 -0400" startDate="2026-10-19 03:30:00 -0400" endDate="2026-10-19 05:10:00 -0400" value="HKCategoryValueNotApplicable"/>
+</HealthData>

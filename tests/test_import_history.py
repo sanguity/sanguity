@@ -379,7 +379,7 @@ class History(unittest.TestCase):
         self.assertTrue(os.path.isfile(watch_store.layer_path(pid, a["import_id"])))
         self.assertEqual(self.db.execute("SELECT state FROM uploads WHERE id=?", (a["upload_id"],)).fetchone()[0], "ready")
 
-        def failing_rebuild(db, p):   # the watch step itself fails: its summary is put back
+        def failing_rebuild(db, p, **kw):   # the watch step itself fails: its summary is put back
             raise OSError("no space left")
         real_rebuild, watch_store.rebuild = watch_store.rebuild, failing_rebuild
         try:

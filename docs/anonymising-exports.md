@@ -65,7 +65,8 @@ Look these over before you share the copy:
 It keeps everything an importer works from: the folder layout, field names and XML tags, codes (LOINC, SNOMED,
 CPT, ICD-10, RxNorm), test, medication and diagnosis names, units, values (unless `--jitter`), reference ranges,
 flags, claim amounts and time-zone offsets. Formats it knows in detail: C-CDA (any portal), FHIR (bundles, single
-resources, NDJSON, Apple Health's clinical records), Apple Health's `export.xml`, Epic MyChart and CareSpace exports,
+resources, NDJSON, Apple Health's clinical records), Apple Health's `export.xml` and its ECG files (`electrocardiograms/`:
+the name and birth date at the top of each replaced, the recording kept), Epic MyChart and CareSpace exports,
 lab and claims CSV, insurers' claims JSON, and Sanguity's own export. Other JSON, XML, CSV and text it cleans by the
 same general rules, and says so in the report.
 
