@@ -36,7 +36,9 @@ person's records appear in this repository.
 
 One period, in the bar above the records, holds on every tab with time: All, the last 5 years down to 30 days, since
 a milestone, a calendar year (under **More…**), or dates of your own (**More… → Custom dates…**). Charts on Labs and Body and activity move together: drag to pan,
-scroll or pinch to zoom, double-click to see everything. **Milestones** (diagnosis, surgery, treatment start…), added
+scroll or pinch to zoom, double-click to see everything. Every chart can be shown as a table instead (Chart | Table
+beside it; the Timeline's list is its table), the Labs and Body and activity charts can be stepped through with the
+arrow keys, and an out-of-range result is marked ▲ or ▼ as well as coloured. **Milestones** (diagnosis, surgery, treatment start…), added
 on the **Settings** page, appear on every chart and as "since" periods.
 
 | Body and activity | Timeline | Costs |

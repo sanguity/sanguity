@@ -68,6 +68,8 @@ function renderTimeline() {
   });
   if (!lanes.length) g.push(el("svg:text", {x: w/2, y: top + 20, "text-anchor": "middle", text: "No categories selected"}));
   tlSvg.replaceChildren(...g);
+  // its table alternative is the list under it (#60): the same events, filters and period, each with its date, kind and title
+  tlSvg.setAttribute("aria-label", `Timeline of medical events, ${fmtD(state.from)} to ${fmtD(state.to)}. The events it shows are listed under Events, below.`);
 }
 /* zoom & pan */
 let drag = null;

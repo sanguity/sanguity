@@ -109,7 +109,7 @@ function renderPreview(s) {
       parts.push(el("h3", {text: `Trends since ${since} (${s.trends.length})`}));
       parts.push(s.trends.length ? table(["Test", "Then", "Now", "Change", "Since", "", "Now's range"], s.trends.map(r => el("tr", {},
         cell(r.label + (r.unit ? ` (${r.unit})` : "")), cell(r.then ? `${r.then.value} · ${fmtDay(r.then.date)}` : "none before"),
-        cell(r.now ? `${r.now.value} · ${fmtDay(r.now.date)}` : "no new result", r.now && r.now.flag ? "flag" : null),
+        cell(r.now ? `${r.now.value}${r.now.flag ? ` ${{High: "▲", Low: "▼"}[r.now.flag] || "◆"} ${r.now.flag}` : ""} · ${fmtDay(r.now.date)}` : "no new result", r.now && r.now.flag ? "flag" : null),   // in words, not red alone (#60)
         cell(r.change || ""), cell(String(r.since)), el("td", {}, spark(r.spark)), cell(r.now ? r.now.range : "")))) : none("None of the key labs has results."));
     } else if (id === "medications") {
       parts.push(el("h3", {text: `Current medications (${s.medications.length})`}));

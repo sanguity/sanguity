@@ -72,12 +72,17 @@ function weekly(pts, fn = mean) {  // [[t, v...]] -> weekly buckets (Monday), av
 }
 
 /* one chart: x = time [a, b]; layers: bars (stacked), band, line, dots */
-function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = false, tip}) {
-  const svg = el("svg:svg", {role: "img", class: "pz"}); host.append(svg);
+/* label, noun, nav (#60): what the chart shows ("Weight"), what each point is ("reading"), and the points the
+   keyboard steps through ([[t, …]], the ones its tip reads) */
+function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = false, tip, label = "Chart", noun = "day", nav = layers[0].data}) {
+  const svg = el("svg:svg", {role: "img", class: "pz", "aria-label": label}); host.append(svg);
   svg._draw = (a, b) => {   // also called live while dragging, with the new window
     if (!svg.isConnected) return;   // re-rendered before this frame came round
     const cs = getComputedStyle(host), w = Math.max(260, host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)), L = 44, R = w - 8, T = msInRange(a, b) ? 22 : 8, B = h - 22;
     svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg.style.width = "100%"; svg._geom = {L, R, w};
+    const navIn = nav.filter(p => p[0] >= a && p[0] <= b);   // the keyboard's points (#60)
+    chartKeys(svg, `${label}: ${navIn.length} ${noun}${navIn.length === 1 ? "" : "s"}${navIn.length ? ` from ${fmtD(navIn[0][0])} to ${fmtD(navIn[navIn.length - 1][0])}` : " in this period"}. Left and right arrow keys step through them.`,
+      () => navIn.map(p => p[0]), () => "", () => {});   // until it's drawn (below)
     let lo = Infinity, hi = -Infinity;
     for (const l of layers) for (const p of l.data) {
       if (p[0] < a || p[0] > b) continue;
@@ -128,6 +133,13 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
     hit.addEventListener("pointerleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
     g.push(cross, hit);
     svg.replaceChildren(...g);
+    // the keyboard (#60): the same crosshair and tooltip as hovering, the tooltip at the top of the crosshair
+    chartKeys(svg, svg.getAttribute("aria-label"), () => navIn.map(p => p[0]), t => {
+      const nodes = tip && tip(t); if (!nodes) return "";
+      cross.setAttribute("x1", x(nodes.t)); cross.setAttribute("x2", x(nodes.t)); cross.setAttribute("visibility", "visible");
+      showTip(nodes.rows, svgPoint(svg, x(nodes.t), T));
+      return tipWords(nodes.rows);
+    }, () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
   };
   requestAnimationFrame(() => svg._draw(a, b));
   return svg;
@@ -170,55 +182,77 @@ function renderHealth() {
   const C = {w: "var(--c-lab)", clinic: "var(--muted)", fat: "var(--c-imaging)", lean: "var(--c-procedure)", deep: "var(--seq1)", rem: "var(--seq2)", light: "var(--seq3)", steps: "var(--c-lab)", hr: "var(--c-letter)", rest: "var(--c-message)"};
   const legend = items => el("div", {class: "legend", style: {margin: "4px 0 6px"}}, ...items.map(([c, t, round]) => el("span", {}, el("i", {style: {background: c, borderRadius: round ? "50%" : null, width: round ? "9px" : null, height: round ? "9px" : null}}), t)));
 
+  /* Chart | Table on each card (#60): its charts, or one table of what they show, a row per day (or week) in the
+     period, newest first. byDay([pts, …]) -> [{t, v: [the point from each on that day, or undefined]}] */
+  const head = (title, key) => el("div", {class: "list-hd"}, el("h2", {text: title}), el("span", {class: "spacer"}), viewSeg(key, title, renderHealth));
+  const byDay = (...sets) => { const m = new Map();
+    sets.forEach((pts, i) => { for (const p of inR(pts, a, b)) { const k = isoDay(p[0]); if (!m.has(k)) m.set(k, {t: p[0], v: []}); m.get(k).v[i] = p; } });
+    return [...m.values()].sort((p, q) => q.t - p.t); };
+  const f1 = p => p ? p[1].toFixed(1) : "", f0 = p => p ? Math.round(p[1]).toLocaleString() : "";
+  const weekOf = t => "Week of " + fmtD(t - 3 * DAY);
   // body
-  const body = el("div", {class: "card", id: "h-body"}, el("h2", {text: "Weight & body composition"}),
-    el("p", {class: "hint", text: "Scale readings, with weights taken at clinic visits filling the gaps. The line is a 14-day average."}),
-    legend([[C.w, "Smart scale", 1], [C.clinic, "Clinic visit", 1], [C.w, "14-day average"]]));
+  const body = el("div", {class: "card", id: "h-body"}, head("Weight & body composition", "#h-body"),
+    el("p", {class: "hint", text: "Scale readings, with weights taken at clinic visits filling the gaps. The line is a 14-day average."}));
   box.append(body);
+  if (state.tables.has("#h-body")) {
+    const comp = H.fat.length || H.lean.length;
+    body.append(chartTable(["Date", "Weight (lb)", "From", ...(comp ? ["Body fat (%)", "Lean mass (lb)"] : [])],
+      byDay(wAll, H.fat, H.lean).map(({t, v: [w, fat, lean]}) => [fmtD(t), f1(w), w ? (w[2] ? `Clinic visit (${w[2]})` : "Smart scale") : "", ...(comp ? [f1(fat), f1(lean)] : [])])));
+  } else body.append(legend([[C.w, "Smart scale", 1], [C.clinic, "Clinic visit", 1], [C.w, "14-day average"]]));
   const wTrend = rolling(wAll, 14);
-  hChart(body, a, b, {h: 220, fmtY: v => Math.round(v), layers: [
+  if (!state.tables.has("#h-body")) hChart(body, a, b, {h: 220, fmtY: v => Math.round(v), label: "Weight", noun: "reading", nav: wAll, layers: [
     {type: "line", data: wTrend, color: C.w, width: 2, gap: 45},
     {type: "dots", data: H.clinic, color: C.clinic, hollow: true, r: 3},
     {type: "dots", data: H.scale, color: C.w, opacity: .55}],
     tip: t => { const p = nearest(wAll, t, len > 200 * DAY ? 10 : 4); if (!p) return null; const fat = nearest(H.fat, p[0], .6), lean = nearest(H.lean, p[0], .6);
       return {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)} lb`}), el("div", {class: "s", text: fmtD(p[0]) + (p[2] ? ` · clinic visit (${p[2]})` : " · smart scale")}),
         fat ? tipRow(C.fat, `Body fat ${fat[1].toFixed(1)}%`) : null, lean ? tipRow(C.lean, `Lean mass ${lean[1].toFixed(1)} lb`) : null]}; }});
-  if (H.fat.length || H.lean.length) {
+  if ((H.fat.length || H.lean.length) && !state.tables.has("#h-body")) {
     const two = el("div", {class: "ov-cols", style: {gridTemplateColumns: "1fr 1fr", marginTop: "10px"}});
     const c1 = el("div", {}, el("h3", {class: "sub", text: "Body fat (%)"})), c2 = el("div", {}, el("h3", {class: "sub", text: "Lean mass (lb)"}));
     two.append(c1, c2); body.append(two);
-    hChart(c1, a, b, {h: 150, fmtY: v => v.toFixed(0), layers: [{type: "line", data: H.fat, color: C.fat, gap: 45}, {type: "dots", data: H.fat, color: C.fat}],
+    hChart(c1, a, b, {h: 150, fmtY: v => v.toFixed(0), label: "Body fat", noun: "reading", layers: [{type: "line", data: H.fat, color: C.fat, gap: 45}, {type: "dots", data: H.fat, color: C.fat}],
       tip: t => { const p = nearest(H.fat, t, 10); return p && {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)}%`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
-    hChart(c2, a, b, {h: 150, fmtY: v => v.toFixed(0), layers: [{type: "line", data: H.lean, color: C.lean, gap: 45}, {type: "dots", data: H.lean, color: C.lean}],
+    hChart(c2, a, b, {h: 150, fmtY: v => v.toFixed(0), label: "Lean mass", noun: "reading", layers: [{type: "line", data: H.lean, color: C.lean, gap: 45}, {type: "dots", data: H.lean, color: C.lean}],
       tip: t => { const p = nearest(H.lean, t, 10); return p && {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)} lb`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
   }
 
   // sleep
-  const sl = el("div", {class: "card", id: "h-sleep"}, el("h2", {text: "Sleep"}),
-    el("p", {class: "hint", text: long ? "Weekly averages per night, split by stage." : "Each bar is one night, split by stage. Nights without stage data show total sleep."}),
-    legend([[C.deep, "Deep"], [C.rem, "REM"], [C.light, "Light"], ["var(--muted)", "Asleep, no stages"]]));
+  const sl = el("div", {class: "card", id: "h-sleep"}, head("Sleep", "#h-sleep"),
+    el("p", {class: "hint", text: long ? "Weekly averages per night, split by stage." : "Each bar is one night, split by stage. Nights without stage data show total sleep."}));
   box.append(sl);
   const nights = H.sleep.map(p => { const st = p[2] + p[3] + p[4]; return [p[0], p[2], p[3], p[4], st > 0 ? 0 : p[1]]; });
   const sBars = long ? weekly(nights) : nights;
-  hChart(sl, a, b, {h: 200, fmtY: v => v + "h", layers: [{type: "bars", data: sBars, keys: ["deep", "rem", "light", "other"], colors: [C.deep, C.rem, C.light, "var(--muted)"], every: long ? 7 * DAY : DAY}],
+  const mins = v => v ? String(Math.round(v * 60)) : "";
+  if (state.tables.has("#h-sleep")) sl.append(chartTable([long ? "Week" : "Night", long ? "Asleep (h, average a night)" : "Asleep (h)", "Deep (min)", "REM (min)", "Light (min)"],
+    byDay(sBars).map(({t, v: [p]}) => [long ? weekOf(t) : fmtD(t), (p[1] + p[2] + p[3] + p[4]).toFixed(1), mins(p[1]), mins(p[2]), mins(p[3])])));
+  else sl.append(legend([[C.deep, "Deep"], [C.rem, "REM"], [C.light, "Light"], ["var(--muted)", "Asleep, no stages"]]));
+  if (!state.tables.has("#h-sleep")) hChart(sl, a, b, {h: 200, fmtY: v => v + "h", label: long ? "Sleep, weekly averages" : "Sleep", noun: long ? "week" : "night", nav: sBars, layers: [{type: "bars", data: sBars, keys: ["deep", "rem", "light", "other"], colors: [C.deep, C.rem, C.light, "var(--muted)"], every: long ? 7 * DAY : DAY}],
     tip: t => { const p = nearest(sBars, t, long ? 4 : .6); if (!p) return null; const tot = p[1] + p[2] + p[3] + p[4];
       return {t: p[0], rows: [el("div", {class: "v", text: `${tot.toFixed(1)} h${long ? " avg / night" : ""}`}), el("div", {class: "s", text: long ? "Week of " + fmtD(p[0] - 3 * DAY) : fmtD(p[0])}),
         p[1] ? tipRow(C.deep, `Deep ${Math.round(p[1] * 60)} min`) : null, p[2] ? tipRow(C.rem, `REM ${Math.round(p[2] * 60)} min`) : null, p[3] ? tipRow(C.light, `Light ${Math.round(p[3] * 60)} min`) : null]}; }});
 
   // activity
-  const act = el("div", {class: "card", id: "h-activity"}, el("h2", {text: "Activity"}),
-    el("p", {class: "hint", text: long ? "Average steps per day, by week, with a 30-day average line." : "Steps per day, with a 7-day average line."}),
-    legend([[C.steps, long ? "Steps / day (weekly avg)" : "Steps"], ["var(--ink2)", long ? "30-day average" : "7-day average"]]));
+  const act = el("div", {class: "card", id: "h-activity"}, head("Activity", "#h-activity"),
+    el("p", {class: "hint", text: long ? "Average steps per day, by week, with a 30-day average line." : "Steps per day, with a 7-day average line."}));
   box.append(act);
   const stBars = long ? weekly(H.steps) : H.steps;
-  hChart(act, a, b, {h: 190, fmtY: v => v >= 1000 ? Math.round(v / 1000) + "k" : v, layers: [
+  if (state.tables.has("#h-activity")) {   // steps and workouts, by day or by week (the weeks as weekly() makes them)
+    const wk = t => { const d = zdate(t); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime() + 3 * DAY; };
+    const exBy = new Map(); for (const x of exIn) { const t = long ? wk(x.t) : dayTs(isoDay(x.t)); exBy.set(t, [...(exBy.get(t) || []), x]); }
+    const exPts = [...exBy.keys()].map(t => [t]);
+    act.append(chartTable([long ? "Week" : "Date", long ? "Steps (average a day)" : "Steps", "Workouts"],
+      byDay(stBars, exPts).map(({t, v: [p, e]}) => [long ? weekOf(t) : fmtD(t), f0(p),
+        (exBy.get(e ? e[0] : NaN) || []).map(x => x.pt ? `${x.rule} appointment, counted as ${x.min} min` : `${x.name || "Workout"} ${x.min} min`).join("; ")])));
+  } else act.append(legend([[C.steps, long ? "Steps / day (weekly avg)" : "Steps"], ["var(--ink2)", long ? "30-day average" : "7-day average"]]));
+  if (!state.tables.has("#h-activity")) hChart(act, a, b, {h: 190, fmtY: v => v >= 1000 ? Math.round(v / 1000) + "k" : v, label: long ? "Steps, weekly averages" : "Steps", noun: long ? "week" : "day", nav: stBars, layers: [
     {type: "bars", data: stBars.map(p => [p[0], p[1]]), keys: ["steps"], colors: [C.steps], every: long ? 7 * DAY : DAY},
     {type: "line", data: rolling(H.steps, long ? 30 : 7), color: "var(--ink2)", width: 1.6, gap: 10}],
     tip: t => { const p = nearest(stBars, t, long ? 4 : .6); return p && {t: p[0], rows: [el("div", {class: "v", text: `${Math.round(p[1]).toLocaleString()} steps${long ? " / day avg" : ""}`}), el("div", {class: "s", text: long ? "Week of " + fmtD(p[0] - 3 * DAY) : fmtD(p[0])})]}; }});
-  // workout calendar
+  // workout calendar (in the table instead, with Table, #60)
   const cal = el("div", {style: {marginTop: "12px"}}, el("h3", {class: "sub", text: `Workouts · ${exIn.length} in this period${exIn.some(x => x.pt) ? ` (${listOf([...new Set(exIn.filter(x => x.pt).map(x => x.rule))].map(r => { const xs = exIn.filter(x => x.pt && x.rule === r); return `${xs.length} ${r.toLowerCase()} appointment${xs.length === 1 ? "" : "s"}, counted as ${xs[0].min} min each`; }))})` : ""}`}));
-  act.append(cal);
-  requestAnimationFrame(() => {
+  if (!state.tables.has("#h-activity")) act.append(cal);
+  if (!state.tables.has("#h-activity")) requestAnimationFrame(() => {
     const start = zdate(a); start.setHours(12, 0, 0, 0); start.setDate(start.getDate() - (start.getDay() + 6) % 7);
     const weeks = Math.ceil((b - start.getTime()) / (7 * DAY)), w = Math.max(300, cal.clientWidth), L = 28;
     const cs = Math.max(3, Math.min(20, Math.floor((w - L) / weeks) - 2)), gap = cs > 6 ? 2 : 1, hh = 7 * (cs + gap) + 16;
@@ -243,12 +277,17 @@ function renderHealth() {
   });
 
   // heart
-  const ht = el("div", {class: "card", id: "h-heart"}, el("h2", {text: "Heart"}),
-    el("p", {class: "hint", text: "Resting heart rate, and the daily average heart rate inside the day's low–high range."}),
-    legend([[C.rest, "Resting"], [C.hr, "Daily average"], ["color-mix(in srgb, " + C.hr + " 30%, transparent)", "Daily low–high"]]));
+  const ht = el("div", {class: "card", id: "h-heart"}, head("Heart", "#h-heart"),
+    el("p", {class: "hint", text: "Resting heart rate, and the daily average heart rate inside the day's low–high range."}));
   box.append(ht);
   const rest = H.rest, restT = rolling(rest, long ? 14 : 5);
-  hChart(ht, a, b, {h: 210, fmtY: v => Math.round(v), layers: [
+  if (state.tables.has("#h-heart")) {
+    ht.append(chartTable(["Date", "Resting (bpm)", "Average (bpm)", "Low–high (bpm)", ...(H.hrv.length ? ["Heart rate variability (ms)"] : [])],
+      byDay(rest, H.hr, H.hrv).map(({t, v: [r, h, hv]}) => [fmtD(t), f0(r), f0(h), h && h[2] != null ? `${Math.round(h[2])}–${Math.round(h[3])}` : "", ...(H.hrv.length ? [f0(hv)] : [])])));
+    return;
+  }
+  ht.append(legend([[C.rest, "Resting"], [C.hr, "Daily average"], ["color-mix(in srgb, " + C.hr + " 30%, transparent)", "Daily low–high"]]));
+  hChart(ht, a, b, {h: 210, fmtY: v => Math.round(v), label: "Heart rate", noun: "day", nav: H.hr.length ? H.hr : rest, layers: [
     {type: "band", data: H.hr.map(p => [p[0], p[2], p[3]]), color: C.hr},
     {type: "line", data: H.hr, color: C.hr, width: 1.4, opacity: .8, gap: 4},
     {type: "line", data: restT, color: C.rest, width: 2.2, gap: 10},
@@ -258,7 +297,7 @@ function renderHealth() {
         h ? tipRow(C.hr, `Average ${Math.round(h[1])} bpm${h[2] != null ? ` · range ${Math.round(h[2])}–${Math.round(h[3])}` : ""}`) : null]}; }});
   if (H.hrv.length) {
     const hv = el("div", {style: {marginTop: "10px"}}, el("h3", {class: "sub", text: "Heart rate variability (ms)"})); ht.append(hv);
-    hChart(hv, a, b, {h: 140, layers: [{type: "line", data: rolling(H.hrv, 7), color: C.rest, gap: 10}, {type: "dots", data: H.hrv, color: C.rest, opacity: .4}],
+    hChart(hv, a, b, {h: 140, label: "Heart rate variability", noun: "day", nav: H.hrv, layers: [{type: "line", data: rolling(H.hrv, 7), color: C.rest, gap: 10}, {type: "dots", data: H.hrv, color: C.rest, opacity: .4}],
       tip: t => { const p = nearest(H.hrv, t, .6); return p && {t: p[0], rows: [el("div", {class: "v", text: `${Math.round(p[1])} ms`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
   }
 }

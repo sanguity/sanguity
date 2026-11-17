@@ -675,6 +675,140 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             page.set_viewport_size({"width": 1400, "height": 900})
 
+            # ---- charts for everyone (#60): every chart has Chart | Table (a pick-one pair, #193) and its table has
+            # column headers and rows; the heatmap's table has a header per lab and per draw day; the Timeline's chart
+            # points to its list; a Labs chart and a Body and activity chart take focus and step through their points
+            # from the keyboard, with the hover's readout and tooltip, said to screen readers; out-of-range results are
+            # marked by shape or words as well as colour (Labs charts, heatmap cells and table, Overview tiles, the
+            # drawer's results); the tables fit 375 px in light and dark
+            js("window._was60 = [new Set(state.sel), state.preset, state.from, state.to]; state.tables.clear(); state.sel = new Set(['Hemoglobin']); applyPreset('all'); switchTab('labs', 'chart'); renderLabs()")
+            settle(400)
+            seg = js("""(() => { const s = document.querySelector('#charts .chart .hd .view-seg');
+                return s && [s.getAttribute('role'), s.getAttribute('aria-label'), [...s.children].map(b => [b.textContent, b.getAttribute('aria-pressed')])]; })()""")
+            check("charts (#60): a Labs chart has Chart | Table, a pick-one pair with Chart selected",
+                  seg == ["group", "Show Hemoglobin as", [["Chart", "true"], ["Table", "false"]]], seg)
+            flagged = js("SERIES.find(s => s.name === 'Hemoglobin').pts.filter(p => p.ts >= state.from && p.ts <= state.to && p[4]).map(p => p[4])")
+            marks = js("""[...document.querySelectorAll('#charts .chart svg .pt.abn')].map(m => [m.tagName, m.getAttribute('d') || ''])""")
+            check("…its out-of-range results are triangles, ▲ above the range and ▼ below, not only red dots",
+                  len(flagged) > 0 and len(marks) == len(flagged) and all(t == "path" and d.count("L") == 2 for t, d in marks)
+                  and "▲▼" in page.inner_text("#labsChart .legend"), [len(flagged), len(marks), marks[:2]])
+            label = js("document.querySelector('#charts .chart svg').getAttribute('aria-label')")
+            check("…the chart takes focus, as a chart summed up in words",
+                  js("(s => [s.getAttribute('tabindex'), s.getAttribute('role'), s.getAttribute('aria-roledescription')])(document.querySelector('#charts .chart svg'))") == ["0", "application", "chart"]
+                  and re.match(r"Hemoglobin: \d+ results from .+ to .+, latest .+ g/dL, \d+ outside reference range\. Left and right arrow keys", label or ""), label)
+            page.focus("#charts .chart svg")
+            page.keyboard.press("End")
+            settle(150)
+            last = js("(s => { const p = s.pts.filter(p => p.ts <= state.to).at(-1); return [p[5] || fmtNum(p[1]), fmtDT(p.ts)]; })(SERIES.find(s => s.name === 'Hemoglobin'))")
+            tipped = js("[getComputedStyle(tip).display, tip.innerText, document.querySelector('#charts .chart .read').textContent]")
+            check("…End shows the last result, its tooltip and readout as when hovering", tipped[0] == "block" and last[0] in tipped[1]
+                  and last[1] in tipped[1] and last[1] in tipped[2] and not tipped[2].startswith("Latest"), tipped)
+            page.keyboard.press("ArrowLeft")
+            settle(200)
+            before = js("tip.innerText")
+            check("…← the one before it, said to screen readers",
+                  before != tipped[1] and before.split("\n")[0] in js("document.getElementById('sgStatus').textContent"), [before, js("document.getElementById('sgStatus').textContent")])
+            page.keyboard.press("Home")
+            settle(150)
+            first = js("(s => fmtDT(s.pts.filter(p => p.ts >= state.from)[0].ts))(SERIES.find(s => s.name === 'Hemoglobin'))")
+            check("…Home the first", first in js("tip.innerText"), js("tip.innerText"))
+            page.keyboard.press("Escape")
+            settle(100)
+            check("…and Escape lets go: no tooltip, the readout back to the latest, focus kept",
+                  js("getComputedStyle(tip).display") == "none" and js("document.querySelector('#charts .chart .read').textContent").startswith("Latest")
+                  and js("document.activeElement === document.querySelector('#charts .chart svg')"))
+            ring = js("(s => [getComputedStyle(s).outlineStyle, s.matches(':focus-visible')])(document.querySelector('#charts .chart svg'))")
+            check("…a ring shows the focus", ring == ["solid", True], ring)
+            page.click("#charts .chart .view-seg button:text-is('Table')")
+            settle(200)
+            t = js("""(() => { const t = document.querySelector('#charts .chart table.data');
+                return t && {heads: [...t.querySelectorAll('thead th')].map(h => [h.getAttribute('scope'), h.textContent]), rows: t.querySelectorAll('tbody tr').length,
+                  abn: [...t.querySelectorAll('tbody td.abn:last-child')].map(td => td.textContent), focus: document.activeElement.textContent + ':' + document.activeElement.getAttribute('aria-pressed')}; })()""")
+            check("…Table shows its table instead, headed, a row per result, each out-of-range one saying ▲ High or ▼ Low; focus stays on Table",
+                  t and t["heads"] == [["col", "Date"], ["col", "Value"], ["col", "Ref range"], ["col", "Flag"]] and t["rows"] > len(flagged) - 1
+                  and len(t["abn"]) == len(flagged) and all(a in ("▲ High", "▼ Low") for a in t["abn"]) and t["focus"] == "Table:true"
+                  and not js("document.querySelector('#charts .chart svg')"), t)
+            # the heatmap: a mark on every out-of-range cell, and a table with a header per lab and per draw day
+            js("state.tables.clear(); switchTab('labs', 'heatmap')")
+            settle(400)
+            cells = js("[document.querySelectorAll('#hm rect.cell[style*=\"--div-hi\"], #hm rect.cell[style*=\"--div-lo\"]').length, document.querySelectorAll('#hm .hm-mark').length]")
+            check("heatmap (#60): every out-of-range cell is marked ▲ or ▼ as well as coloured, and the legend says so",
+                  cells[0] > 0 and cells[0] == cells[1] and "▲ above the range" in page.inner_text("#hmLegend"), cells)
+            nrows, ncols = js("document.querySelectorAll('#hm text.row').length"), js("new Set([...document.querySelectorAll('#hm rect.cell')].map(c => c.dataset.k)).size")
+            page.click("#hmHd .view-seg button:text-is('Table')")
+            settle(300)
+            ht = js("""(() => { const t = document.querySelector('#hmTable table');
+                return t && [document.getElementById('hmWrap').hidden, document.getElementById('hmTable').hidden, t.querySelectorAll('tbody th[scope=row]').length,
+                  t.querySelectorAll('thead th[scope=col]').length, [...t.querySelectorAll('td.abn .vh')].map(v => v.textContent.trim()),
+                  t.querySelectorAll('tbody th[scope=rowgroup]').length]; })()""")
+            check("…Table: a real table, a header for each lab and each draw day, out-of-range results said high or low",
+                  ht and ht[0] and not ht[1] and ht[2] == nrows and ht[3] == ncols + 1 and len(ht[4]) == cells[0]
+                  and set(ht[4]) <= {"high", "low"} and ht[5] > 0, ht and ht[:4] + [len(ht[4]), ht[5]] + [nrows, ncols])
+            # Body and activity: each card's charts, or one table; a chart steps from the keyboard
+            js("state.tables.clear(); switchTab('health')")
+            settle(500)
+            check("Body and activity (#60): every card with charts has Chart | Table",
+                  js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-sleep", "#h-activity", "#h-heart"])
+            page.focus("#h-body svg")
+            page.keyboard.press("Home")
+            settle(150)
+            hk = js("[document.querySelector('#h-body svg').getAttribute('aria-label'), getComputedStyle(tip).display, tip.innerText, document.querySelector('#h-body svg .cross').getAttribute('visibility')]")
+            check("…its charts step from the keyboard too, with the hover's crosshair and tooltip", re.match(r"Weight: \d+ readings from", hk[0] or "")
+                  and hk[1] == "block" and " lb" in hk[2] and hk[3] == "visible", hk)
+            page.keyboard.press("Escape")
+            for k in ("#h-body", "#h-sleep", "#h-activity", "#h-heart"):
+                page.click(f"{k} .view-seg button:text-is('Table')")
+                settle(200)
+            ht = js("['#h-body', '#h-sleep', '#h-activity', '#h-heart'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
+            check("…Table shows each card's values as a table, a row per day or week", all(n > 0 for n in ht), ht)
+            # Costs: both charts
+            js("state.tables.clear(); switchTab('costs')")
+            settle(500)
+            for key in ("#costBars", "#paidCum"):
+                page.click(f"#view-costs .view-seg[data-key='{key}'] button:text-is('Table')")
+                settle(200)
+            ct = js("['#costBars', '#paidCum'].map(k => document.querySelector(`.view-seg[data-key='${k}']`).closest('.card').querySelectorAll('.chart-table tbody tr').length)")
+            check("Costs (#60): the claims by month and the running totals each have a table", all(n > 0 for n in ct), ct)
+            # the Timeline: its list is the table
+            js("switchTab('timeline')")
+            settle(300)
+            check("Timeline (#60): the chart says its events are listed below, and they are",
+                  "listed under Events, below" in js("document.getElementById('tl').getAttribute('aria-label')") and js("document.querySelectorAll('#list .row').length") > 0)
+            # not by colour alone, elsewhere: the Overview's tiles and the drawer's results
+            js("switchTab('overview')")
+            settle(300)
+            ov = js("""[...document.querySelectorAll('#view-overview .tile')].filter(t => t.querySelector('.st.hi, .st.lo'))
+                .map(t => [t.querySelector('.st').textContent, !!t.querySelector('svg .spark-abn'), !t.querySelector('svg circle')])""")
+            check("Overview (#60): an out-of-range tile says High or Low, and its sparkline ends in ▲ or ▼, not a red dot",
+                  ov and all(s in ("▲ High", "▼ Low") and m and c for s, m, c in ov), ov)
+            js("openEvent(EV.find(e => e.k === 'lab' && e.abn))")
+            settle(300)
+            dr = js("""[...document.querySelectorAll('#dbody table.data tbody tr')].filter(r => r.querySelector('td.abn')).map(r => r.lastElementChild.textContent)""")
+            check("drawer (#60): every out-of-range result says ▲ High or ▼ Low beside its colour, and the count says what it counts",
+                  dr and all(x in ("▲ High", "▼ Low") for x in dr) and "outside reference range" in js("document.querySelector('#dbody .badge.abn')?.textContent || ''"), dr)
+            page.keyboard.press("Escape")
+            # the tables and the Chart | Table pairs at 375 px, light and dark
+            theme_before = js("document.documentElement.dataset.theme || null")
+            page.set_viewport_size({"width": 375, "height": 800})
+            bad = []
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for tab, keys in (("labs", ["Hemoglobin"]), ("heatmap", ["#hm"]), ("health", ["#h-body", "#h-sleep", "#h-activity", "#h-heart"]), ("costs", ["#costBars", "#paidCum"])):
+                    for table in (False, True):
+                        js("([keys, on]) => { state.tables.clear(); if (on) keys.forEach(k => state.tables.add(k)); }", [keys, table])
+                        js("t => t === 'heatmap' ? switchTab('labs', 'heatmap') : t === 'labs' ? switchTab('labs', 'chart') : switchTab(t)", tab)
+                        settle(400)
+                        bad += phone_fits(page, f"{tab} {'table' if table else 'chart'} ({theme})")
+                        if table:
+                            look = js("""(() => { const td = document.querySelector('.chart-table td, .hm-table td'); const bg = getComputedStyle(document.body).backgroundColor;
+                                return td && [getComputedStyle(td).color, bg]; })()""")
+                            if not look or look[0] == look[1]:
+                                bad.append(f"{tab} table ({theme}): unreadable {look}")
+            check("charts (#60): the tables and Chart | Table fit 375 px and read, in light and dark", not bad, bad[:8])
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            js("state.tables.clear(); [state.sel, state.preset, state.from, state.to] = window._was60; state.labsView = 'chart'; save()")
+            page.set_viewport_size({"width": 1400, "height": 900})
+
             # ---- detail drawer for every kind of event
             for k in js("[...new Set(EV.filter(e => !e.hidden).map(e => e.k))].sort()"):
                 js("k => openEvent(EV.find(e => e.k === k && !e.hidden))", k)
@@ -3263,7 +3397,7 @@ def main():
             check("Trends: the chart says where the range came from, and colours the results outside it",
                   "range from settings" in js(f"{card}.querySelector('.unit').textContent") and js(f"{card}.querySelectorAll('.pt.abn').length") > 0
                   and js(f"!!{card}.querySelector('.refband')"), js(f"{card}.querySelector('.unit').textContent"))
-            js(f"{card}.querySelector('.hd button:not(.rename-btn)').click()")   # its table (the ✎ beside the name renames, #38)
+            js(f"{card}.querySelector('.hd .view-seg button:last-child').click()")   # its table: Chart | Table (#60)
             settle(200)
             table = js("document.querySelector('#charts .tablewrap').textContent")
             check("…its table labels each such range, and keeps the report's own", "(range from settings)" in table and "30 – 400" in table, table[:200])

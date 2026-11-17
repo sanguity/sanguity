@@ -99,6 +99,70 @@ function msMarks(g, x, a, b, y0, y1, R, labelY) {
       el("svg:title", {text: items.map(([m, t]) => `${m.label} · ${fmtD(t)}`).join("\n")})));
   }
 }
+/* ---- chart accessibility (#60): every chart has a table to show instead, out-of-range results are marked by shape
+   as well as colour, and a chart takes focus, its points stepped through from the keyboard.
+   flagWord(f): a result's flag in words, with its mark: "▲ High", "▼ Low", or "◆ Flagged" for any other flag;
+   flagNodes(f): the same, the mark hidden from screen readers (they say the word). */
+const FLAG_OF = f => !f ? null : /^h/i.test(f) ? ["▲", "High"] : /^l/i.test(f) ? ["▼", "Low"] : ["◆", "Flagged"];
+const flagWord = f => (FLAG_OF(f) || []).join(" ");
+const flagNodes = f => { const w = FLAG_OF(f); return w ? [el("span", {"aria-hidden": "true", text: w[0] + " "}), w[1]] : []; };
+/* an out-of-range result's mark on a chart: a triangle pointing up (above its range) or down (below), a diamond for
+   any other flag; s is its half-width */
+function abnMark(cx, cy, f, s = 4.5, cls = "pt abn") {
+  const p = (dx, dy) => `${(cx + dx).toFixed(1)},${(cy + dy).toFixed(1)}`;
+  const d = /^h/i.test(f) ? `M${p(0, -s * 1.1)}L${p(s, s * .7)}L${p(-s, s * .7)}Z` : /^l/i.test(f) ? `M${p(0, s * 1.1)}L${p(s, -s * .7)}L${p(-s, -s * .7)}Z`
+    : `M${p(0, -s)}L${p(s, 0)}L${p(0, s)}L${p(-s, 0)}Z`;
+  return el("svg:path", {class: cls, d});
+}
+/* Chart | Table in a chart's header: a pick-one pair (#193). key: what state.tables remembers it by (a lab's name,
+   or "#…" for the other charts); what: the chart, for its label ("Show Hemoglobin as"); redraw() draws it again;
+   graphic: the word for the picture ("Heatmap"). Focus stays on the choice once it's redrawn. */
+function viewSeg(key, what, redraw, graphic = "Chart") {
+  const table = state.tables.has(key);
+  const pick = want => {
+    if (want === table) return;
+    if (want) state.tables.add(key); else state.tables.delete(key);
+    hideTip(); redraw();
+    [...document.querySelectorAll(".view-seg")].find(s => s.dataset.key === key)?.querySelector("[aria-pressed=true]")?.focus();
+  };
+  const seg = el("div", {class: "seg view-seg", role: "group", "aria-label": `Show ${what} as`},
+    el("button", {type: "button", "aria-pressed": !table, text: graphic, onclick: () => pick(false)}),
+    el("button", {type: "button", "aria-pressed": table, text: "Table", onclick: () => pick(true)}));
+  seg.dataset.key = key;
+  return seg;
+}
+/* a table of a chart's values: heads, then rows of cells (a string, or [text, flag] for a value outside its range,
+   shown with flagWord's mark and in the out-of-range colour) */
+function chartTable(heads, rows, cls = "") {
+  const td = c => Array.isArray(c) ? el("td", {class: c[1] ? "abn" : null}, c[0], c[1] ? " " : null, ...flagNodes(c[1])) : el("td", {text: c ?? ""});
+  return el("div", {class: "tablewrap chart-table"}, el("table", {class: "data " + cls},
+    el("thead", {}, el("tr", {}, heads.map(h => el("th", {scope: "col", text: h})))),
+    el("tbody", {}, rows.map(r => el("tr", {}, r.map(td))))));
+}
+/* the keyboard on a chart: it takes focus (role application, said as a chart, label summing it up); ← and → step
+   between its points, Home and End go to the first and last, Escape lets go. times() -> the points' times shown now,
+   in order; show(t) shows that point's readout (the hover's) and returns its words, said to screen readers; clear()
+   hides it. Set again on every redraw. */
+function chartKeys(svg, label, times, show, clear) {
+  svg.setAttribute("tabindex", "0"); svg.setAttribute("role", "application");
+  svg.setAttribute("aria-roledescription", "chart"); svg.setAttribute("aria-label", label);
+  svg.onkeydown = ev => {
+    const ts = times(), n = ts.length, k = ev.key;
+    if (k === "Escape") { if (svg._kt == null) return; svg._kt = null; clear(); ev.preventDefault(); ev.stopPropagation(); return; }
+    if (!n || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(k)) return;
+    ev.preventDefault();
+    let i = svg._kt == null ? -1 : ts.indexOf(svg._kt);
+    if (i < 0 && svg._kt != null) i = ts.reduce((b, t, j) => Math.abs(t - svg._kt) < Math.abs(ts[b] - svg._kt) ? j : b, 0);   // moved: the nearest
+    i = k === "Home" ? 0 : k === "End" ? n - 1 : i < 0 ? (k === "ArrowLeft" ? n - 1 : 0) : Math.max(0, Math.min(n - 1, i + (k === "ArrowLeft" ? -1 : 1)));
+    svg._kt = ts[i];
+    const words = show(ts[i]);
+    if (words) announce(words.replace(/[▲▼◆]\s*/g, ""));
+  };
+  svg.onblur = () => { if (svg._kt == null) return; svg._kt = null; clear(); };
+}
+/* where a point of a chart is on the screen, for its tooltip: x, y in the svg's own units */
+const svgPoint = (svg, x, y) => { const r = svg.getBoundingClientRect(), k = r.width / svg._geom.w; return {clientX: r.left + x * k, clientY: r.top + y * k}; };
+const tipWords = nodes => nodes.filter(Boolean).map(n => n.textContent.trim()).filter(Boolean).join(". ");
 function median(a) { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
 function niceTicks(lo, hi, n) { const span = hi - lo, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0))), step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= n) || 10 * mag; const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10)); return out; }
 /* the Labs tab (#172): the chosen labs as charts (each with its table), or every lab with ranges as a heatmap */
