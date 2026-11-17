@@ -98,7 +98,8 @@ Be clear about the limits: they are why the checklist below matters.
   can still narrow down who you are.
 - **The records themselves.** A rare diagnosis, an unusual treatment, exact times of day, or the values in a long
   series of results can identify someone together with other facts. Keep the sample small, and use `--jitter`.
-- **Web addresses** are kept: a link can name your clinic's portal or carry an id in it.
+- **Web addresses** are kept: a link can name your clinic's portal or carry an id in it. (The one exception is the
+  server address of each Health Records entry in an Apple Health export, which is replaced with its health system's name.)
 - **PDFs and scans** aren't cleaned, only replaced. An export that is only PDFs (a lab report, say) is refused:
   describe it in the issue instead (the lab, the layout, the column headings), or type a few made-up rows in the
   same layout.
