@@ -35,6 +35,21 @@ weekly) to pick up new hospitals. This is the only part that downloads anything,
 `server/directory/providers.json` is the bundled file. Maintainers regenerate it with
 `python3 tools/build_directory.py --bundled`, which uses no network; `tests/test_directory.py` checks it matches.
 
+## Known to work, from people's reports
+
+This is where health systems and plans that someone has connected with their own install's app go (#165), so the
+next person knows what to expect before registering one. There are no reports yet: the project has registered no
+app with any vendor, and the tests use the fake FHIR server.
+
+| Health system or plan | Vendor | Sandbox or production | Reported | What it took |
+|---|---|---|---|---|
+| *(none yet)* | | | | |
+
+To add one, open an issue (or a pull request to this table) saying which health system or plan, its vendor, whether
+it was the sandbox or real records, roughly when, and what the registration and any review involved. Never include
+records, client IDs, secrets or your install's address. The directory's data has no field for this yet; once there
+are reports, they can be carried into `server/directory/providers.json` beside each entry.
+
 ## What the app does and doesn't do
 
 - **No lookups.** Searching reads the files above; the server contacts no one. Logos and portal addresses a list

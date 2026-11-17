@@ -7,7 +7,9 @@ app with each vendor, and the vendor sends the sign-in straight back to the inst
   Vendor settings (smart_clients, schema version 18), one row per FHIR server an admin has set up: its issuer,
   client ID, client secret where the vendor issued one (encrypted), how it authenticates (public, confidential, or
   Epic's dynamic registration) and the scopes to ask for. "Test this connection" reads its discovery and keeps it,
-  with the hosts it names: the server contacts no other host for that source.
+  with the hosts it names: the server contacts no other host for that source. An admin can mark one as waiting for
+  the vendor's review (#165, schema version 29: smart_clients.waiting): its client ID may then be missing, nobody can
+  connect it, and Portals and health plans says it's coming and to upload the portal's export meanwhile.
 
   The return address is return_address(): today the install's own /connect/return at its PUBLIC_ORIGINS address.
   Option 2's relay would replace that one function; nothing else depends on which it is.
@@ -186,59 +188,105 @@ def granted(scopes, rtype):
     return any(t in (rtype, "*") and (op in ("read", "*") or op != "write" and "s" in op) for t, op in found)
 
 
-# what the setup screen says per vendor. Facts from docs/connected-sources-oauth.md (read November 2026); the
-# unverified ones are marked so
+# what the setup screen says per vendor: a walk-through (#165) of what to do on the vendor's developer site, each step
+# with the values to paste ("paste": return_address, scopes, types (the resource types the scopes read), sandbox),
+# after which the page adds the form for what the vendor gave and "Test this connection". Facts from
+# docs/connected-sources-oauth.md (read November 2026); the unverified ones are marked so. Vendors' sites change their
+# menus and wording, so the steps say what to look for, not which button to press. "reviewer" names who reviews an
+# app, in plain words, for the "waiting for the vendor's review" note people see on Portals and health plans.
 GUIDES = {
     "epic": {
         "label": "Epic (MyChart)",
+        "reviewer": "Epic",
         "register": "https://fhir.epic.com/Developer/Apps",
         "sandbox": "https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4",
+        "sandbox_name": "Epic sandbox",
         "steps": [
-            "Sign in at Epic on FHIR (fhir.epic.com) with a developer account, and choose Build Apps → Create.",
-            "Application audience: Patients. Add the FHIR R4 read APIs this install pulls (listed under Scopes below); "
-            "apps that use only qualifying patient APIs are made available to Epic hospitals automatically.",
-            "Add the return address below as a redirect URI, exactly as shown.",
-            "For long-lived access without a client secret, turn on dynamic client registration and pick "
-            "\"Epic dynamic registration\" here: the install makes its own key and Epic never sees a secret. "
-            "Otherwise a confidential client (with a secret) is what Epic needs for refresh tokens.",
-            "Copy the non-production client ID into Sanguity to use Epic's sandbox (the FHIR base above) with Epic's "
-            "published test patients; the production client ID works with real hospitals once Epic has "
-            "distributed it to them, which reportedly takes hours (unverified).",
+            {"title": "Make a developer account at Epic on FHIR",
+             "text": "Sign up at fhir.epic.com, Epic's site for registering apps. It asks about you and the app; what it "
+                     "asks, and where, changes from time to time.", "link": True},
+            {"title": "Create an app for patients",
+             "text": "Start a new app and say that patients use it: it signs in as the patient, on its own (a "
+                     "standalone launch), not from inside a clinic's system. The form's wording varies; look for "
+                     "who the app's users are."},
+            {"title": "Give it this return address",
+             "text": "Add it as the app's redirect URI (it may be called a redirect URL or callback), exactly as shown, "
+                     "with nothing added at the end.", "paste": ["return_address"]},
+            {"title": "Choose what it may read",
+             "text": "Pick the R4 read and search APIs of each of these types. Apps that use only Epic's qualifying "
+                     "patient APIs are made available to Epic hospitals automatically.", "paste": ["types"]},
+            {"title": "Choose how it keeps access",
+             "text": "If the app can use dynamic client registration, turn it on and pick \"Epic dynamic registration\" "
+                     "below: this server makes its own key and Epic never issues a secret. Otherwise a confidential "
+                     "client (with a client secret) is what Epic needs for refresh tokens."},
+            {"title": "Copy the client ID",
+             "text": "Epic gives two. The non-production one works at once with Epic's sandbox and its published test "
+                     "patients (the FHIR base below). The production one works with real hospitals only once Epic has "
+                     "reviewed the app and passed it on to them, which reportedly takes hours or longer (unverified). "
+                     "While it waits, add the hospital below and tick Waiting for the vendor's review.",
+             "paste": ["sandbox"]},
         ],
         "notes": ["Whether Epic accepts an app registered by one person for production, or a tailnet name such as "
                   "*.ts.net as its redirect URI, is unverified."],
     },
     "oracle": {
         "label": "Oracle Health (Cerner)",
+        "reviewer": "Oracle Health",
         "register": "https://code-console.cerner.com",
         "sandbox": None,
         "steps": [
-            "Register a patient app in Oracle Health's code console, with the return address below as its redirect URI.",
-            "Oracle Health wants a valid TLS certificate and a DNS TXT record (cerner-client-id=…) on the redirect "
-            "host's domain, which a home install usually can't provide; without the record, people see \"Unknown "
-            "Application\".",
+            {"title": "Make an account in Oracle Health's code console",
+             "text": "Sign up at code-console.cerner.com, where Oracle Health registers apps. Its pages and questions "
+                     "change from time to time.", "link": True},
+            {"title": "Register an app for patients",
+             "text": "Say that patients use it, launched on its own (standalone). If it offers a confidential app, that "
+                     "works here: the secret stays encrypted on this server."},
+            {"title": "Give it this return address",
+             "text": "Add it as the app's redirect URI exactly as shown: Oracle Health compares it strictly, a slash at "
+                     "the end included.", "paste": ["return_address"]},
+            {"title": "Ask for these scopes",
+             "text": "Or fewer: each sync says which kinds of records it could and couldn't pull.", "paste": ["scopes"]},
+            {"title": "Check this server's address can be named",
+             "text": "Oracle Health wants a valid TLS certificate and a DNS TXT record (cerner-client-id=…) on the "
+                     "redirect host's domain, which a home install usually can't provide; without the record, people "
+                     "see \"Unknown Application\"."},
+            {"title": "Copy the client ID", "text": "And the client secret, if it gave you one."},
         ],
         "notes": ["Effectively out of reach for home installs under option 1 (docs/connected-sources-oauth.md)."],
     },
     "insurer": {
         "label": "Insurer (patient-access API)",
+        "reviewer": "the health plan",
         "register": None,
         "sandbox": "https://sandbox.bluebutton.cms.gov/v2/fhir/",
         "sandbox_name": "Medicare Blue Button sandbox",
         "scopes": "launch/patient offline_access patient/Patient.read patient/ExplanationOfBenefit.read patient/Coverage.read",
+        "about": "Since 2021 US health plans must offer a Patient Access API (CMS-9115-F): claims as CARIN Blue Button "
+                 "ExplanationOfBenefit resources, with Coverage and Patient. Sanguity pulls those three and shows the "
+                 "claims on the Costs tab.",
         "steps": [
-            "Since 2021 US health plans must offer a Patient Access API (CMS-9115-F): claims as CARIN Blue Button "
-            "ExplanationOfBenefit resources, with Coverage and Patient. Sanguity pulls those three and shows the "
-            "claims on the Costs tab.",
-            "Find your plan's developer portal (each runs its own, with its own terms and review) and register a "
-            "patient-facing app with the return address below as its redirect URI, exactly as shown.",
-            "Ask for the CARIN Blue Button scopes below (patient/ExplanationOfBenefit.read, patient/Coverage.read, "
-            "patient/Patient.read, or the .rs forms on SMART v2), plus launch/patient and offline_access.",
-            "If the plan issues a client secret, pick \"Confidential client\" and paste it: this install keeps it "
-            "encrypted on its own server, which is why option 1 can work with confidential-only payers.",
-            "Medicare Blue Button 2.0: create an account at sandbox.bluebutton.cms.gov, register an app (client "
-            "type confidential, authorization code with PKCE, the return address as its callback URL), copy the "
-            "client ID and secret, and use the sandbox FHIR base above with Blue Button's synthetic beneficiaries.",
+            {"title": "Find your plan's developer site",
+             "text": "Each plan runs its own, with its own terms and review; the ones known so far are listed here. "
+                     "Look for its patient access API, sometimes under interoperability or third-party apps.",
+             "portals": True},
+            {"title": "Register an app for patients",
+             "text": "A patient-facing (consumer) app, with this return address as its redirect URI or callback URL, "
+                     "exactly as shown.", "paste": ["return_address"]},
+            {"title": "Ask for these scopes",
+             "text": "The CARIN Blue Button ones (or their .rs forms on SMART v2), with launch/patient and "
+                     "offline_access.", "paste": ["scopes"]},
+            {"title": "Copy the client ID and secret",
+             "text": "If the plan issues a client secret, pick \"Confidential client\" below and paste it: this server "
+                     "keeps it encrypted, which is why plans that only accept confidential clients can work."},
+            {"title": "Try Medicare's sandbox first, if you like",
+             "text": "Medicare Blue Button 2.0: create an account at sandbox.bluebutton.cms.gov, register an app "
+                     "(client type confidential, authorization code with PKCE, the return address as its callback "
+                     "URL), copy the client ID and secret, and use this sandbox FHIR base with Blue Button's synthetic "
+                     "beneficiaries.", "paste": ["sandbox"]},
+            {"title": "Wait for the plan's review, if it has one",
+             "text": "Many plans approve an app before it works with real members, and some take only organisations. "
+                     "Meanwhile, add the plan below with Waiting for the vendor's review ticked, so people know it's "
+                     "coming and upload their plan's export instead."},
         ],
         "portals": [
             {"name": "Medicare Blue Button 2.0 (CMS)", "url": "https://bluebutton.cms.gov/developers/",
@@ -269,13 +317,20 @@ GUIDES = {
     },
     "other": {
         "label": "Another SMART on FHIR server",
+        "reviewer": "the vendor",
         "register": None,
         "sandbox": None,
         "steps": [
-            "Register a patient-facing (standalone launch) app on the vendor's developer site, with the return "
-            "address below as its redirect URI, exactly as shown.",
-            "Paste the client ID it gives you, and the client secret if it issued one (a confidential client).",
-            "Ask for the scopes below, or fewer: each sync says which kinds of records it could and couldn't pull.",
+            {"title": "Find the vendor's developer site",
+             "text": "US providers' portals must offer a patient access API; its developer site is often linked from "
+                     "the portal's help pages, or found by searching for the portal's name with \"FHIR API\"."},
+            {"title": "Register an app for patients",
+             "text": "A patient-facing (standalone launch) app, with this return address as its redirect URI, exactly "
+                     "as shown.", "paste": ["return_address"]},
+            {"title": "Ask for these scopes",
+             "text": "Or fewer: each sync says which kinds of records it could and couldn't pull.", "paste": ["scopes"]},
+            {"title": "Copy the client ID",
+             "text": "And the client secret if it issued one (then pick \"Confidential client\" below)."},
         ],
         "notes": [],
     },
@@ -368,7 +423,7 @@ def describe_client(r, n=None):
     conf = _discovery(r)
     return {"id": r["id"], "name": r["name"], "vendor": r["vendor"], "issuer": r["issuer"], "client_id": r["client_id"],
             "has_secret": bool(r["secret"]), "auth": r["auth"], "scopes": r["scopes"], "tested": r["tested"],
-            "hosts": sorted(hosts_for(r)),
+            "waiting": r["waiting"], "hosts": sorted(hosts_for(r)),
             "endpoints": {k: conf.get(k) for k in ("authorization_endpoint", "token_endpoint", "revocation_endpoint",
                                                    "registration_endpoint")} if conf else None,
             "capabilities": (conf or {}).get("capabilities") or [],
@@ -386,10 +441,18 @@ def setup(db):
 
 def choices(db):
     """For owners and editors: the sources they can connect a profile to (set up and tested by an admin), each with
-    the kinds of records its scopes allow (#99)."""
+    the kinds of records its scopes allow (#99), and those waiting for the vendor's review (#165: waiting true, with
+    who reviews it in plain words), which can't be connected yet."""
     return [{"id": r["id"], "name": r["name"], "vendor": r["vendor"], "issuer": r["issuer"], "host": smart.host_of(r["issuer"]),
-             "kinds": offered(r["scopes"])}
-            for r in db.execute("SELECT * FROM smart_clients WHERE tested IS NOT NULL ORDER BY name, id")]
+             "kinds": offered(r["scopes"]), "waiting": bool(r["waiting"]),
+             "note": waiting_note(r["name"], GUIDES.get(r["vendor"], GUIDES["other"])["reviewer"]) if r["waiting"] else None}
+            for r in db.execute("SELECT * FROM smart_clients WHERE tested IS NOT NULL OR waiting IS NOT NULL ORDER BY name, id")]
+
+
+def waiting_note(name, reviewer):
+    """What people are told about a source waiting for its vendor's review: plain words, no setup terms."""
+    return (f"{name} isn't ready to connect yet: it's waiting for {reviewer}'s review. Meanwhile, download your records "
+            "from its website or app and upload them under Sources → Upload files.")
 
 
 def _clean(data, old=None):
@@ -403,22 +466,29 @@ def _clean(data, old=None):
         issuer = smart.base_url(data.get("issuer") or (old and old["issuer"]) or "", "FHIR base address")
     except smart.SmartError as e:
         raise Problem(str(e), 400) from None
+    waiting = data.get("waiting") if data.get("waiting") is not None else bool(old and old["waiting"])
+    if not isinstance(waiting, bool):
+        raise Problem("Waiting for the vendor's review is true or false.", 400)
     cid = (data.get("client_id") if data.get("client_id") is not None else (old and old["client_id"]) or "").strip()
-    if not cid or len(cid) > 200 or not cid.isprintable():
-        raise Problem("Paste the client ID the vendor gave you.", 400)
+    if len(cid) > 200 or not cid.isprintable() or not cid and not waiting:   # while the vendor reviews, it can wait (#165)
+        raise Problem("Paste the client ID the vendor gave you." + ("" if cid else " If the vendor hasn't given one yet, "
+                      "tick Waiting for the vendor's review."), 400)
     auth = data.get("auth") or (old and old["auth"]) or "public"
     if auth not in AUTHS:
         raise Problem("How the app signs in must be public, confidential or dynamic.", 400)
     scopes = " ".join((data.get("scopes") if data.get("scopes") is not None else (old and old["scopes"]) or default_scopes(vendor=vendor)).split())
     if not scopes or len(scopes) > 2000 or not re.fullmatch(r"[\x21\x23-\x5b\x5d-\x7e ]+", scopes):
         raise Problem("The scopes must be space-separated, like launch/patient offline_access patient/*.read.", 400)
-    return name, vendor, issuer, cid, auth, scopes
+    return name, vendor, issuer, cid, auth, scopes, waiting
 
 
 def save_client(db, who, data, cid=None, ip=None):
-    """Add (cid None) or change a vendor setting. secret: a new one; "" removes it; None or missing keeps it."""
+    """Add (cid None) or change a vendor setting. secret: a new one; "" removes it; None or missing keeps it.
+    waiting (#165): True while the vendor reviews the app (kept with when it was first said), False once it's done;
+    None or missing keeps it."""
     old = _client(db, cid) if cid else None
-    name, vendor, issuer, client_id, auth, scopes = _clean(data, old)
+    name, vendor, issuer, client_id, auth, scopes, waiting = _clean(data, old)
+    waiting = ((old and old["waiting"]) or dbm.now()) if waiting else None
     secret = data.get("secret")
     secret = old["secret"] if secret is None and old else (crypto.enc(secret.strip()) if secret and secret.strip() else None)
     if secret and len(crypto.dec(secret)) > 2000:
@@ -433,12 +503,15 @@ def save_client(db, who, data, cid=None, ip=None):
     if old:
         moved = issuer != old["issuer"]
         db.execute("""UPDATE smart_clients SET name=?, vendor=?, issuer=?, client_id=?, secret=?, auth=?, scopes=?, changed=?,
-                      discovery=CASE WHEN ? THEN NULL ELSE discovery END, tested=CASE WHEN ? THEN NULL ELSE tested END WHERE id=?""",
-                   (name, vendor, issuer, client_id, secret, auth, scopes, now, moved, moved, cid))
+                      discovery=CASE WHEN ? THEN NULL ELSE discovery END, tested=CASE WHEN ? THEN NULL ELSE tested END,
+                      waiting=? WHERE id=?""",
+                   (name, vendor, issuer, client_id, secret, auth, scopes, now, moved, moved, waiting, cid))
     else:
-        cid = db.execute("""INSERT INTO smart_clients(name, vendor, issuer, client_id, secret, auth, scopes, created, created_by)
-                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)""", (name, vendor, issuer, client_id, secret, auth, scopes, now, who["id"])).lastrowid
-    activity.log(db, "connect.source", who, None, {"name": name, "issuer": issuer, "change": "edit" if old else "add"}, ip)
+        cid = db.execute("""INSERT INTO smart_clients(name, vendor, issuer, client_id, secret, auth, scopes, created, created_by, waiting)
+                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                         (name, vendor, issuer, client_id, secret, auth, scopes, now, who["id"], waiting)).lastrowid
+    activity.log(db, "connect.source", who, None, {"name": name, "issuer": issuer, "change": "edit" if old else "add",
+                                                   **({"waiting": bool(waiting)} if not old or bool(waiting) != bool(old["waiting"]) else {})}, ip)
     return describe_client(_client(db, cid), counts(db).get(cid))
 
 
@@ -521,6 +594,8 @@ def start(db, s, pid, vendor=None, issuer=None, connection_id=None, ip=None, kin
     kinds and since (#99): what to pull, None for everything; only the scopes those kinds need are asked for. A
     reconnect keeps the connection's choice unless told otherwise."""
     r = _resolve(db, vendor, issuer)
+    if r["waiting"]:
+        raise Problem(waiting_note(r["name"], GUIDES.get(r["vendor"], GUIDES["other"])["reviewer"]), 409)
     if not r["tested"]:
         raise Problem("An admin needs to test this source's setup first (Test this connection).", 409)
     uri = return_address()

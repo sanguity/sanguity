@@ -60,7 +60,11 @@ remain the main way records come in; live connections are an extra for those who
   - Epic's dynamic client registration where available, so long-lived access uses a key the install generates.
 - **A guided setup screen per vendor:** where to register, the exact return address to paste (from
   `PUBLIC_ORIGINS`), the scopes to request, and a "test this connection" button that works against Epic's sandbox.
-  It warns when the install's address is unlikely to be accepted (LAN, plain HTTP).
+  It warns when the install's address is unlikely to be accepted (LAN, plain HTTP). Built as a numbered
+  walk-through per vendor (#165): what to look for on the vendor's developer site (described, not exact button
+  names, since those sites change), the values to paste with Copy buttons, the form, and the test as the last step.
+  An admin can mark a source as waiting for the vendor's review; people then see it's coming, and are told to upload
+  the portal's export meanwhile, in place of a connect button.
 - **Connections and sync** (#91), as the issue describes: a connection per profile and source, tokens and secrets
   encrypted with `crypto.enc`, a reconnect prompt when access ends, and disconnecting revokes and deletes them.
 - **Choosing what a connection pulls** (#99): kinds of records and a start date, chosen before signing in. The

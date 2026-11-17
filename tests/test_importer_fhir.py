@@ -172,8 +172,10 @@ class Bundle(Shape, unittest.TestCase):
 
     def test_warnings_name_what_was_skipped(self):
         w = " ".join(self.out["warnings"])
-        self.assertIn("Immunization", w)
+        self.assertIn("Observation (social-history)", w)
+        self.assertNotIn("Immunization", w)   # imported since #165, as a procedure
         self.assertIn("inline", w)
+        self.assertEqual([e["title"] for e in by_kind(self.data, "procedure")], ["Immunization: Influenza vaccine"])
 
 
 class Ndjson(Shape, unittest.TestCase):
@@ -228,6 +230,20 @@ class AppleHealthFolder(Shape, unittest.TestCase):
         self.assertEqual(self.data["problems"][0]["status"], "Active")
         (s,) = by_kind(self.data, "stay")   # DSTU2 class "inpatient", no discharge time
         self.assertEqual(s["end"], "2024-02-03T23:59:00")
+
+    def test_allergies_immunizations_and_procedures(self):   # #165: every kind Apple's Health Records hold
+        out = fhir.parse(upload(os.path.join(FIX, "apple-health")))
+        self.assertFalse(any("doesn't import yet" in w for w in out["warnings"]), out["warnings"])
+        allergy = next(p for p in self.data["problems"] if p["type"] == "Allergy")
+        self.assertEqual((allergy["name"], allergy["date"], allergy["status"]), ("Allergy: Penicillin (Hives, Itching)", "2024-05-20", "Active"))
+        procs = {e["title"]: e for e in by_kind(self.data, "procedure")}
+        self.assertEqual(sorted(procs), ["Immunization: Influenza, seasonal, injectable", "Removal of skin lesion"])   # not the one not given
+        flu = self.data["details"][procs["Immunization: Influenza, seasonal, injectable"]["id"]]
+        self.assertEqual((flu["type"], flu["provider"], flu["report"]), ("result", "Avery Lin, RN", [["Body site", "Left arm", 0], ["Lot", "FICT-0042", 0]]))
+        cut = procs["Removal of skin lesion"]
+        self.assertEqual((cut["t"], cut["sub"]), ("2024-06-14T10:30:00+00:00", "Dr. Jamie Patel · Harbor View Hospital"))
+        self.assertEqual(self.data["details"][cut["id"]]["report"], [["Body site", "Left forearm", 0], ["Notes", "Healed well", 0]])
+        self.assertEqual(cut["key"], "fhir:Procedure/N5P6")
 
 
 def keys(data):

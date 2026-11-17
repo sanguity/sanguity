@@ -1,0 +1,10 @@
+{
+  "resourceType": "Immunization",
+  "id": "fict-imm-6",
+  "status": "completed",
+  "vaccineCode": {"text": "COVID-19 vaccine, updated formula"},
+  "occurrenceDateTime": "2024-10-08T14:00:00-07:00",
+  "lotNumber": "FICT-LOT-7781",
+  "doseQuantity": {"value": 0.5, "unit": "mL"},
+  "performer": [{"actor": {"display": "Lakeside Community Pharmacy"}}]
+}

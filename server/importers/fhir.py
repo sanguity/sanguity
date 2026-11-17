@@ -15,6 +15,9 @@ What becomes what:
     DiagnosticReport               groups its lab Observations; without lab results it is a `study`/`imaging` event
                                    with its conclusion; presentedForm attachments become documents
     Condition                      `problems`
+    AllergyIntolerance             `problems`, type "Allergy", with its reactions (#165, as the C-CDA importer does)
+    Immunization, Procedure        a `procedure` event ("Immunization: <vaccine>"), with reason, site, dose, lot,
+                                   outcome and notes where given (#165: Apple's Health Records hold all three)
     MedicationRequest/Statement    `med` events (DSTU2 MedicationOrder too)
     Encounter                      `visit`; inpatient classes become a `stay` with `end`; planned ones go to `upcoming`
     DocumentReference              `document` events pointing at the attached file inside the upload
@@ -43,7 +46,7 @@ SOURCE = "FHIR"   # source tag on lab points when the performing organisation is
 SUPPORTING = {"Patient", "Practitioner", "PractitionerRole", "Organization", "Location", "Medication", "Specimen",
               "Provenance", "RelatedPerson", "Coverage"}
 IMPORTED = {"Observation", "DiagnosticReport", "Condition", "MedicationRequest", "MedicationStatement", "MedicationOrder",
-            "Encounter", "DocumentReference", "ExplanationOfBenefit"}
+            "Encounter", "DocumentReference", "ExplanationOfBenefit", "AllergyIntolerance", "Immunization", "Procedure"}
 KNOWN = SUPPORTING | IMPORTED | {
     "Bundle", "AllergyIntolerance", "Immunization", "Procedure", "CarePlan", "CareTeam", "Goal", "Device", "Claim",
     "ExplanationOfBenefit", "Coverage", "ImagingStudy", "MedicationAdministration", "MedicationDispense", "ServiceRequest",
@@ -681,6 +684,50 @@ def parse(files):
                              "date": (iso(onset) or "")[:10] or None,
                              "status": status_of(r.get("clinicalStatus")) or ("Resolved" if r.get("abatementDateTime") else ""),
                              "src": org_of(r) or who_of(r), "key": rkey(r)})
+        elif rt == "AllergyIntolerance":   # #165: Apple's Health Records hold these (DSTU2 and R4)
+            vs = status_of(r.get("verificationStatus")).lower()
+            if vs in ("entered in error", "refuted") or (r.get("status") or "") in ("entered-in-error", "refuted"):
+                continue
+            name = text_of(r.get("code")) or text_of(r.get("substance")) or "Allergy"
+            reactions = list(dict.fromkeys(text_of(m) for x in r.get("reaction") or [] if isinstance(x, dict)
+                                           for m in x.get("manifestation") or [] if text_of(m)))
+            onset = r.get("onsetDateTime") or r.get("onset") or r.get("recordedDate") or r.get("assertedDate")
+            problems.append({"name": f"Allergy: {name}" + (f" ({', '.join(reactions)})" if reactions else ""),
+                             "type": "Allergy", "date": (iso(onset) or "")[:10] or None,
+                             "status": status_of(r.get("clinicalStatus")) or cap(r.get("status") or ""),
+                             "src": org_of(r) or who_of(r), "key": rkey(r)})
+        elif rt in ("Immunization", "Procedure"):   # #165: a procedure event with what the record says
+            if r.get("status") in ("entered-in-error", "not-done") or r.get("wasNotGiven") or r.get("notPerformed"):
+                continue
+            imm = rt == "Immunization"
+            per = r.get("performedPeriod") or {}
+            t = iso((r.get("occurrenceDateTime") or r.get("date")) if imm else (r.get("performedDateTime") or per.get("start")))
+            if not t:
+                continue
+            name = text_of(r.get("vaccineCode" if imm else "code")) or ("Vaccine" if imm else "Procedure")
+            title = f"Immunization: {name}" if imm else name
+            who = who_of(r) or next((x.get("display") for p in (r.get("performer") if isinstance(r.get("performer"), list)
+                                                               else [r.get("performer")])   # DSTU2: a display only
+                                     for x in [(p or {}).get("actor") or p] if isinstance(x, dict) and x.get("display")
+                                     and not x.get("reference")), "")
+            org = org_of(r) or (idx.name(r.get("location"), r) if r.get("location") else "")
+            dose = r.get("doseQuantity") if isinstance(r.get("doseQuantity"), dict) else {}
+            report = [[k, v, 0] for k, v in (
+                ("Reason", "; ".join(text_of(c) for c in r.get("reasonCode") or r.get("reason") or [] if text_of(c))),
+                ("Body site", text_of(r.get("site") if imm else r.get("bodySite"))),
+                ("Dose", " ".join(str(x) for x in [fmt(num(dose.get("value"))) if num(dose.get("value")) is not None else "",
+                                                   dose.get("unit") or ""] if x)),
+                ("Lot", r.get("lotNumber") if isinstance(r.get("lotNumber"), str) else ""),
+                ("Outcome", text_of(r.get("outcome"))),
+                ("Notes", "; ".join(n.get("text") for n in r.get("note") or r.get("notes") or []   # DSTU2: notes
+                                   if isinstance(n, dict) and n.get("text"))))
+                if v]
+            end = iso(per.get("end")) if not imm else None
+            b.add(t, "procedure", title, " · ".join(x for x in [who, org] if x),
+                  {"type": "result", "order": title, "name": title, "collected": t[:16].replace("T", " "),
+                   "resulted": t[:10], "provider": who or None, "status": cap(r.get("status") or ""), "lab": org or None,
+                   "dx": [], "rows": [], "report": report, "comments": []},
+                  end=end if end and end > t else None, key=rkey(r))
         elif rt in ("MedicationRequest", "MedicationStatement", "MedicationOrder"):
             if r.get("status") in ("entered-in-error",):
                 continue

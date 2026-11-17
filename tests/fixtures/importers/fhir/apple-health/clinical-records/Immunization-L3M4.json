@@ -1,0 +1,12 @@
+{
+  "resourceType": "Immunization",
+  "id": "L3M4",
+  "status": "completed",
+  "date": "2024-10-01",
+  "wasNotGiven": false,
+  "reported": false,
+  "vaccineCode": {"text": "Influenza, seasonal, injectable"},
+  "lotNumber": "FICT-0042",
+  "site": {"text": "Left arm"},
+  "performer": {"display": "Avery Lin, RN"}
+}

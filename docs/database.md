@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 28**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 29**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -395,6 +395,9 @@ in [connected-sources-oauth.md](connected-sources-oauth.md): each install regist
 - **sync_changes**: what a sync changed in place (an event, or an entry of an import's profile-wide lists), with what
   it was before, so undoing that sync puts it back. A later sync that changed the same record again inherits the
   "before".
+- **smart_clients.waiting** (schema version 29, #165): when an admin marked the source as waiting for the vendor's
+  review, NULL otherwise. While it is set nobody can connect the source, its client ID may still be empty, and
+  Portals and health plans tells people to upload the portal's export meanwhile.
 
 Beside the rows, each connection keeps every FHIR resource it has read, the newest version of each, sealed in
 `profiles/<id>/connections/<connection id>` (a lab day is rebuilt from all of them); it is deleted on disconnect.

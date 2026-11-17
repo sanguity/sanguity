@@ -110,7 +110,10 @@
   /* the Admin page's vendor for a directory vendor, to open its setup with this entry filled in */
   const ADMIN_VENDOR = {epic: "epic", oracle: "oracle", "cms-bluebutton": "insurer"};
   function connecting(e, v) {
-    const here = setUp(e);
+    const all = setUp(e), here = all.filter(s => !s.waiting);
+    if (all.length && !here.length) return [   // waiting for the vendor's review (#165): upload the portal's export meanwhile
+      ...all.map(s => el("p", {}, el("b", {text: "Not ready yet. "}), s.note)),
+      SgConnect.canConnect ? el("div", {class: "row"}, el("a", {class: "btn small", href: "#upload", text: "Upload files"})) : null];
     if (here.length && SgConnect.canConnect) return [
       el("p", {}, el("b", {text: "Set up on this server. "}), "Sign in to it to connect this profile."),
       el("div", {class: "row"}, ...here.map(s => el("button", {class: "btn primary", type: "button", text: `Connect ${s.name}…`,

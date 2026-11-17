@@ -106,18 +106,24 @@
     <h3 class="sub" id="formTitle">Add a source</h3>
     <form id="srcForm" class="form">
       <label>Vendor <select id="fVendor"><option value="epic">Epic (MyChart)</option><option value="oracle">Oracle Health (Cerner)</option><option value="insurer">Insurer (patient-access API, Blue Button)</option><option value="other">Another SMART on FHIR server</option></select></label>
+      <!-- the walk-through (#165, admin-sources.js): the vendor's steps, then these fields as a step, then the test -->
       <div class="conn-guide" id="guide"></div>
-      <label>Name people see <input id="fName" maxlength="80" required placeholder="Epic sandbox, My health plan"></label>
-      <label>FHIR base address (the issuer) <input id="fIssuer" required inputmode="url" placeholder="https://fhir.example.org/api/FHIR/R4"></label>
-      <label>Client ID <input id="fClient" required autocomplete="off"></label>
-      <label>How the app signs in <select id="fAuth">
-        <option value="public">Public client (no secret)</option>
-        <option value="confidential">Confidential client (with a client secret)</option>
-        <option value="dynamic">Epic dynamic registration (the install makes its own key)</option></select></label>
-      <label id="fSecretWrap" hidden>Client secret <input id="fSecret" type="password" autocomplete="off"></label>
-      <label>Scopes to ask for <input id="fScopes"></label>
-      <div class="row"><button class="btn primary" type="submit" id="fSave">Save</button>
-        <button class="btn" type="button" id="fCancel" hidden>Cancel</button><span class="msg" id="fMsg" role="status"></span></div>
+      <div class="walk-fields" id="srcFields">
+        <label>Name people see <input id="fName" maxlength="80" required placeholder="Epic sandbox, My health plan"></label>
+        <label>FHIR base address (the issuer) <input id="fIssuer" required inputmode="url" placeholder="https://fhir.example.org/api/FHIR/R4"></label>
+        <label>Client ID <input id="fClient" autocomplete="off"></label>
+        <label>How the app signs in <select id="fAuth">
+          <option value="public">Public client (no secret)</option>
+          <option value="confidential">Confidential client (with a client secret)</option>
+          <option value="dynamic">Epic dynamic registration (the install makes its own key)</option></select></label>
+        <label id="fSecretWrap" hidden>Client secret <input id="fSecret" type="password" autocomplete="off"></label>
+        <label>Scopes to ask for <input id="fScopes"></label>
+        <label class="toggle walk-wait"><input type="checkbox" id="fWaiting" aria-describedby="fWaitingHint"> Waiting for the vendor's review</label>
+        <p class="hint" id="fWaitingHint">While the vendor reviews the app, people see that this source is coming and are told
+          to upload their portal's export meanwhile. The client ID can wait until the vendor gives it.</p>
+        <div class="row"><button class="btn primary" type="submit" id="fSave">Save</button>
+          <button class="btn" type="button" id="fCancel" hidden>Cancel</button><span class="msg" id="fMsg" role="status"></span></div>
+      </div>
     </form>
   </section>
   <section class="card" id="sec-sync" hidden><h2>Sync defaults</h2></section>

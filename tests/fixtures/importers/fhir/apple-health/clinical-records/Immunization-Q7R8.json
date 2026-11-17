@@ -1,0 +1,9 @@
+{
+  "resourceType": "Immunization",
+  "id": "Q7R8",
+  "status": "completed",
+  "date": "2024-11-05",
+  "wasNotGiven": true,
+  "vaccineCode": {"text": "Tetanus and diphtheria toxoids"},
+  "explanation": {"reasonNotGiven": [{"text": "Patient declined"}]}
+}
