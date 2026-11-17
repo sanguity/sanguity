@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-"""Receiver for Life Dashboard Companion (Health Connect) webhooks.
+"""Receiver for the phone apps' uploads, on one address: Life Dashboard Companion (Health Connect, Android) webhooks,
+and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
 
-- Verifies X-Signature (HMAC-SHA256 of the raw body) with one profile's secret (below), which says whose upload it is.
+- Verifies X-Signature (HMAC-SHA256 of the raw body; Life Dashboard), or the secret itself sent as
+  "Authorization: Bearer <secret>" (Health Auto Export, which can add a header but not sign), with one profile's
+  secret (below), which says whose upload it is.
 - Archives every payload, gzipped, under <slot>/raw/YYYY/MM/DD/ (the source of truth).
 - Folds records into an SQLite database following docs/webhook.md:
   dedupe on uuid / sequence, bucket replace-vs-combine, deletions.
+- Health Auto Export's JSON ({"data": {"metrics": [...], "workouts": [...]}}) is kept reading by reading, keyed by
+  metric, source and time (a whole sleep night by source and day, a workout by start, end and type), so repeated and
+  overlapping uploads count once; days are each reading's own local date. The day's figures are made with the Apple
+  Health importer's own mapping and aggregation (server/importers/apple_health.py), so an iPhone gives the same
+  Health tab as an uploaded export.xml, HRV as SDNN. On a day both apps sent one metric, Health Connect's value wins.
 - Writes per-day summaries for Sanguity: $DATA/public/daily.json, or public/profiles/<slot>/daily.json.
 
 One secret per profile (#46). The app makes each profile's secret on its Settings page and writes them all, sealed,
@@ -35,6 +43,7 @@ for _d in (HERE, os.path.dirname(HERE)):   # /app in the container, the reposito
         break
 os.environ.setdefault("SANGUITY_KEY_FILE", "/run/secrets/sanguity/data_key")
 from server import crypto   # noqa: E402  (the app's own encryption and key file)
+from server.importers import apple_health as ah   # noqa: E402  (Apple Health's mapping, for Health Auto Export)
 
 DATA = os.environ.get("DATA", "/data")
 SECRET_FILE = os.environ.get("SECRET_FILE", "/run/secret/watch_secret")
@@ -61,6 +70,27 @@ SAMPLE_TYPES = {  # payload key -> value field(s)
 }
 LB = 2.20462
 ASLEEP = {"sleeping", "light", "deep", "rem"}
+
+# Health Auto Export metric name -> the HealthKit type it reads, then mapped as the Apple Health importer maps it
+HAE_QUANTITY = {
+    "step_count": "HKQuantityTypeIdentifierStepCount",
+    "walking_running_distance": "HKQuantityTypeIdentifierDistanceWalkingRunning",
+    "active_energy": "HKQuantityTypeIdentifierActiveEnergyBurned",
+    "heart_rate": "HKQuantityTypeIdentifierHeartRate",
+    "resting_heart_rate": "HKQuantityTypeIdentifierRestingHeartRate",
+    "heart_rate_variability": "HKQuantityTypeIdentifierHeartRateVariabilitySDNN",
+    "heart_rate_variability_sdnn": "HKQuantityTypeIdentifierHeartRateVariabilitySDNN",
+    "blood_oxygen_saturation": "HKQuantityTypeIdentifierOxygenSaturation",
+    "respiratory_rate": "HKQuantityTypeIdentifierRespiratoryRate",
+    "weight_body_mass": "HKQuantityTypeIdentifierBodyMass",
+    "body_mass": "HKQuantityTypeIdentifierBodyMass",
+    "body_fat_percentage": "HKQuantityTypeIdentifierBodyFatPercentage",
+    "lean_body_mass": "HKQuantityTypeIdentifierLeanBodyMass",
+}
+HAE_UNITS = {"rate": {"bpm": 1, "breaths/min": 1}, "count": {"steps": 1}}   # spellings besides HealthKit's own
+HAE_STAGE = {   # a sleep segment's "value" -> the receiver's stage; in bed overlaps the others and isn't sleep
+    "core": "light", "deep": "deep", "rem": "rem", "awake": "awake", "asleep": "sleeping", "unspecified": "sleeping",
+    "in bed": None, "inbed": None}
 
 
 def log(*a):
@@ -212,6 +242,10 @@ class Store:
         CREATE TABLE IF NOT EXISTS totals(day TEXT PRIMARY KEY, seq INTEGER, steps REAL, distance REAL,
             active_cal REAL, total_cal REAL);
         CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+        CREATE TABLE IF NOT EXISTS hae_points(key TEXT, src TEXT, t INTEGER, day TEXT, v REAL, mn REAL, mx REAL,
+            PRIMARY KEY(key, src, t));
+        CREATE TABLE IF NOT EXISTS hae_sleep(src TEXT, start TEXT, end_ TEXT, stage TEXT, night TEXT,
+            PRIMARY KEY(src, start, stage));
         """)
 
     def meta(self, k, v=None):
@@ -245,10 +279,13 @@ class Store:
         return n
 
     def ingest(self, p, digest):
-        if p.get("test") or p.get("source") not in ("health_connect", None):
+        hae = is_hae(p)
+        if not hae and (p.get("test") or p.get("source") not in ("health_connect", None)):
             return "skipped"
         if self.db.execute("SELECT 1 FROM processed WHERE digest=?", (digest,)).fetchone():
             return "duplicate"
+        if hae:
+            return self._ingest_hae(p["data"], digest)
         tz = zone(p.get("timezone") or self.meta("tz") or DEFAULT_TZ)
         if p.get("timezone"):
             self.meta("tz", p["timezone"])
@@ -324,6 +361,113 @@ class Store:
                   (key, k[1], int(e.timestamp()), day(s), n, avg, mn, mx, tot))
         return 1
 
+    # ------------------------------------------------------------ Health Auto Export (iPhone, #148)
+    def _ingest_hae(self, d, digest):
+        c = self.db.cursor()
+        n = 0
+        for m in d.get("metrics") or []:
+            if not isinstance(m, dict):
+                continue
+            name, rows = str(m.get("name") or "").lower(), [r for r in m.get("data") or [] if isinstance(r, dict)]
+            if name == "sleep_analysis":
+                n += sum(self._hae_sleep(c, r) for r in rows)
+                continue
+            hk = HAE_QUANTITY.get(name)
+            if not hk:
+                continue
+            key, kind = ah.QUANTITY[hk]
+            unit = m.get("units")
+            f = 1 if kind == "percent" else ah.UNITS[kind].get(unit, HAE_UNITS.get(kind, {}).get(unit))
+            if f is None:
+                log("skipped Health Auto Export's", name, "in a unit it can't convert:", repr(unit))
+                continue
+            for r in rows:
+                t = hae_when(r.get("date"))
+                raw = [r.get("qty"), None, None] if r.get("qty") is not None else [r.get("Avg"), r.get("Min"), r.get("Max")]
+                try:
+                    v, mn, mx = (float(x) * f if x is not None else None for x in raw)
+                except (TypeError, ValueError):
+                    continue
+                if t is None or v is None:
+                    continue
+                if kind == "percent":   # HealthKit keeps a fraction (0.97); the app may send that or a percentage
+                    v, mn, mx = (x * 100 if x is not None and x <= 1 else x for x in (v, mn, mx))
+                c.execute("INSERT OR REPLACE INTO hae_points VALUES(?,?,?,?,?,?,?)",
+                          (key, str(r.get("source") or ""), int(t.timestamp()), t.date().isoformat(), v, mn, mx))
+                n += 1
+        for w in d.get("workouts") or []:
+            n += self._hae_workout(c, w) if isinstance(w, dict) else 0
+        c.execute("INSERT INTO processed VALUES(?,?,?)", (0, digest, datetime.now(timezone.utc).isoformat()))
+        self.meta("last_payload", datetime.now(timezone.utc).isoformat(timespec="seconds"))
+        self.db.commit()
+        return f"{n} records"
+
+    def _hae_sleep(self, c, r):
+        src = str(r.get("source") or r.get("sleepSource") or "")
+        if "startDate" in r:   # one segment ("Aggregate sleep data" off)
+            s, e = hae_when(r.get("startDate")), hae_when(r.get("endDate"))
+            stage = HAE_STAGE.get(str(r.get("value") or "").strip().lower(), "?")
+            if s is None or e is None or e <= s or stage in (None, "?"):
+                return 0
+            c.execute("INSERT OR REPLACE INTO hae_sleep VALUES(?,?,?,?,NULL)", (src, s.isoformat(), e.isoformat(), stage))
+            return 1
+        # a whole night: hours per stage, without their order, laid end to end up to when sleep ended. A later
+        # upload of the same night (it grew, or came again) replaces it.
+        end = hae_when(r.get("sleepEnd")) or hae_when(r.get("inBedEnd"))
+        if end is None:
+            return 0
+        try:
+            h = {k: max(0.0, float(r.get(k) or 0)) for k in ("deep", "rem", "core", "asleep", "awake", "totalSleep")}
+        except (TypeError, ValueError):
+            return 0
+        parts = [("deep", h["deep"]), ("rem", h["rem"]), ("light", h["core"]), ("sleeping", h["asleep"]), ("awake", h["awake"])]
+        if not any(x for _, x in parts[:4]):
+            parts[3] = ("sleeping", h["totalSleep"])
+        night = f"{src}|{(hae_when(r.get('date')) or end).date().isoformat()}"
+        c.execute("DELETE FROM hae_sleep WHERE night=?", (night,))
+        t = end
+        for stage, hours in reversed(parts):
+            if hours:
+                s = t - timedelta(hours=hours)
+                c.execute("INSERT OR REPLACE INTO hae_sleep VALUES(?,?,?,?,?)", (src, s.isoformat(), t.isoformat(), stage, night))
+                t = s
+        return 1
+
+    def _hae_workout(self, c, w):
+        s, e = hae_when(w.get("start")), hae_when(w.get("end"))
+        if s is None or e is None:
+            return 0
+        name = " ".join(str(w.get("name") or "Workout").split())
+        words = name.lower().split()
+        dur = w.get("duration")
+        try:   # seconds, or {"qty", "units"}
+            sec = float(dur["qty"]) * ah.DURATION.get(dur.get("units") or "s", 1) if isinstance(dur, dict) else float(dur)
+        except (TypeError, ValueError, KeyError):
+            sec = (e - s).total_seconds()
+        key = ah.workout_key(s, e, ah.WORKOUT_PREFIX + name.replace(" ", ""))   # as an export.xml's same workout
+        c.execute("INSERT OR REPLACE INTO exercise VALUES(?,?,?,?,?,?,?,?,?)",
+                  (key, int(s.timestamp()), int(e.timestamp()), s.date().isoformat(), None, "_".join(words),
+                   " ".join(words).capitalize(), round(sec), "health_auto_export"))
+        return 1
+
+    def _hae_summary(self):
+        """{key: {day: value}} from Health Auto Export's uploads, made as the Apple Health importer makes an export's:
+        cumulative metrics from the fullest source of the day, the rest averaged, sleep by night and best source."""
+        agg = ah._Aggregates()
+        for key, src, day, v, mn, mx in self.db.execute("SELECT key, src, day, v, mn, mx FROM hae_points"):
+            if key in ah.CUMULATIVE:
+                agg.cum[(key, day, src)] = agg.cum.get((key, day, src), 0.0) + v
+                continue
+            lo, hi = (v if mn is None else mn), (v if mx is None else mx)
+            a = agg.avg.get((key, day))
+            if a is None:
+                agg.avg[(key, day)] = [v, 1, lo, hi]
+            else:
+                a[0] += v; a[1] += 1; a[2] = min(a[2], lo); a[3] = max(a[3], hi)
+        for src, s, e, stage in self.db.execute("SELECT src, start, end_, stage FROM hae_sleep"):
+            agg.sleep.append((src, datetime.fromisoformat(s), datetime.fromisoformat(e), stage))
+        return {m["key"]: dict(m["pts"]) for m in agg.summary()["metrics"]}
+
     # ------------------------------------------------------------ daily summary
     def summary(self):
         q = self.db.execute
@@ -385,7 +529,12 @@ class Store:
             for k in ("deep", "rem", "light", "awake"):
                 if a[k]:
                     put(f"sleep_{k}_min", d, a[k] / 60)
-        exercises = [{"start": datetime.fromtimestamp(s, timezone.utc).isoformat(), "end": datetime.fromtimestamp(e, timezone.utc).isoformat(),
+        rmssd = "hrv" in out   # Health Connect's HRV; Apple's (SDNN) measures something else, so not on its line
+        for k, days in self._hae_summary().items():
+            k = "hrv_sdnn" if k == "hrv" and rmssd else k
+            for d, v in days.items():
+                out.setdefault(k, {}).setdefault(d, v)   # a day Health Connect gave this metric for keeps its value
+        exercises =[{"start": datetime.fromtimestamp(s, timezone.utc).isoformat(), "end": datetime.fromtimestamp(e, timezone.utc).isoformat(),
                       "name": (title or name or f"type {typ}"), "kind": name or typ, "minutes": round((dur or (e - s)) / 60)}
                      for s, e, typ, name, title, dur in q("SELECT start_t, end_t, type, name, title, duration FROM exercise ORDER BY start_t")]
         META = {
@@ -393,7 +542,7 @@ class Store:
             "active_cal": ("Active calories", "kcal", "Activity"),
             "hr_rest": ("Resting heart rate", "bpm", "Heart"), "hr_avg": ("Heart rate, daily average", "bpm", "Heart"),
             "hr_min": ("Heart rate, daily low", "bpm", "Heart"), "hr_max": ("Heart rate, daily high", "bpm", "Heart"),
-            "hrv": ("HRV (RMSSD)", "ms", "Heart"),
+            "hrv": ("HRV (RMSSD)" if rmssd else "HRV (SDNN)", "ms", "Heart"), "hrv_sdnn": ("HRV (SDNN)", "ms", "Heart"),
             "spo2_avg": ("SpO2, daily average", "%", "Oxygen & breathing"), "spo2_min": ("SpO2, daily low", "%", "Oxygen & breathing"),
             "resp": ("Respiratory rate", "breaths/min", "Oxygen & breathing"),
             "sleep_h": ("Sleep", "hours", "Sleep"), "sleep_deep_min": ("Deep sleep", "min", "Sleep"),
@@ -413,6 +562,32 @@ class Store:
         path = summary_file(self.slot)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         crypto.write_file(path, json.dumps(self.summary(), separators=(",", ":")).encode())
+
+
+def is_hae(p):
+    """A Health Auto Export upload: {"data": {"metrics": [...], "workouts": [...]}}."""
+    d = p.get("data") if isinstance(p, dict) else None
+    return isinstance(d, dict) and ("metrics" in d or "workouts" in d)
+
+
+def hae_when(s):
+    """Health Auto Export's dates, "2024-03-09 08:00:00 -0500" (or on a 12-hour clock, "8:00:00 AM -0500", maybe with
+    a narrow space) -> an aware datetime in that offset, whose local date is the reading's day."""
+    if not isinstance(s, str):
+        return None
+    s = " ".join(s.replace(" ", " ").split())
+    if (t := ah._when(s)) is not None:
+        return t
+    for fmt in ("%Y-%m-%d %I:%M:%S %p %z", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            pass
+    try:
+        t = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return t if t.tzinfo else None
+    except ValueError:
+        return None
 
 
 def archive(body, slot=""):
@@ -477,9 +652,13 @@ class H(BaseHTTPRequestHandler):
             return self._send(413 if n > MAX_BODY else 400)
         body = self.rfile.read(n)
         given, slot = (self.headers.get("X-Signature") or "").encode(), None
+        auth = (self.headers.get("Authorization") or "").strip()   # Health Auto Export's header: "Bearer <secret>"
+        token = (auth[7:].strip() if auth[:7].lower() == "bearer " else "").encode()
         for s, key in keys():   # every one compared, so the time taken doesn't say which matched
             expected = ("sha256=" + hmac.new(key, body, hashlib.sha256).hexdigest()).encode()
-            if hmac.compare_digest(expected, given) and slot is None:
+            signed = hmac.compare_digest(expected, given)
+            bearer = hmac.compare_digest(key, token) if token else False
+            if (signed or bearer) and slot is None:
                 slot = s
         if slot is None:
             log("rejected: bad signature from", self.client_address[0])

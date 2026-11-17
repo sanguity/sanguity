@@ -185,6 +185,7 @@ different; the file stays beside them as `data-before-v10.json`, and can be dele
 | Insurance claims exports (`uhc`, `bcbs` formats) | Claims, billed / paid / your share, denials |
 | Payments export (`payments.json`) | Out-of-pocket payments and premiums |
 | Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition |
+| Apple Health on iPhone, via the Health Auto Export app (or an uploaded `export.xml`) | The same, with HRV as Apple's SDNN |
 | Typed in by hand on the import page (**Type them in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
 
 Standard formats (FHIR, C-CDA labs, Apple Health, CSV) and an import tool in the app are planned; if your
@@ -199,6 +200,22 @@ profile's owners and editors see **Watch and scale**: the upload address to give
 **Make a secret**. The secret is shown once, to copy into the app; **Make a new secret** replaces it (the old one
 stops working). An install from before kept working: `auth/watch_secret` stays the first profile's secret until that
 profile makes one here. The app hands the secrets to the receiver, encrypted, in `WATCH_DIR/keys/`.
+
+Two phone apps upload to that address:
+
+- **Android: Life Dashboard Companion** reads Health Connect. Give it the upload address and the secret; it signs
+  each upload with the secret.
+- **iPhone: Health Auto Export** reads Apple Health (its REST API automations need the app's Premium subscription or
+  trial). Add a REST API automation with the upload address as its URL, a header `Authorization` with the value
+  `Bearer <the secret>`, data type Health Metrics in JSON (steps, distance, active energy, heart rate, resting heart
+  rate, HRV, blood oxygen, respiratory rate, weight, body fat, lean mass, sleep), time grouping by hours, and a
+  schedule (hourly or daily, since the last sync); then a second one for Workouts. The steps are on the
+  **Watch and scale** card too. Repeated and overlapping uploads count once, and the days are made the same way as
+  for an uploaded Apple Health export, so both phones give the same Health tab.
+
+Garmin Connect, Fitbit, Withings and most other watches and scales reach Sanguity this way, with no integration of
+their own: turn on their app's sync to Health Connect (Android) or Apple Health (iPhone), and the phone app above
+passes the readings on.
 
 ### Uploading records in the app
 
@@ -557,7 +574,7 @@ docker/dev-stack.sh A test copy from any branch beside a real install (see above
 build.py            Builds a profile's data.json from the exports listed in sources.json (standard-library Python 3)
 lab-aliases.json    Canonical lab names, LOINC codes and other spellings that map onto them
 nginx.conf          Web server: the app's pages and security headers; passes /api/ to the app
-watch/receiver.py   Health Connect webhook receiver: archives payloads, folds them into SQLite, writes public/daily.json
+watch/receiver.py   phone uploads (Life Dashboard / Health Connect, Health Auto Export / Apple Health): archives, folds into SQLite, writes public/daily.json
 www/                index.html (markup), css/app.css, js/*.js (one plain script per tab, loaded in order),
                     login.html, setup.html (first account), account.html (password, devices, profiles, accounts),
                     import.html (uploading a portal's export); manifest.webmanifest, icons/ and sw.js (install as a
