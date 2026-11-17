@@ -377,6 +377,17 @@ Everything on `main` so far; it becomes the first tagged release.
   to its average, each beside the readings taken at visits from the records, told apart, with their list,
   Chart | Table and the keyboard. Temperatures are shown in °F or °C as chosen under Settings → Units (or as the
   records give them), the visits' converted exactly. The temperature and SpO2 charts on Labs link to them.
+- **Menstrual cycle tracking, opt-in** (#183): periods, flow, ovulation tests, cervical mucus and spotting from
+  Health Connect (Life Dashboard Companion) or Apple Health (Health Auto Export). Off for every profile until one of
+  its owners turns it on under Sources → Phone and watch; until then the watch receiver takes these records out of
+  each upload before archiving it, so nothing of them is kept, not even in `raw/`. Sexual activity is never kept, on
+  or off. On, they're kept in the receiver's sealed store and its own `cycle.json` (never in `daily.json`) and shown
+  to owners and editors, not viewers: a Timeline lane of their own (periods as bars, the rest as marks), the drawer,
+  and a row under the Labs charts when "Cycle tracking" is ticked under Show on charts. Never in a share link; in
+  Export everything and the visit summary only when ticked, each time. "Delete all cycle data", and turning it off,
+  delete the receiver's copy and rewrite every archived upload without them; the card says what deleting can't reach
+  (backups made before, files already downloaded, uploaded Apple Health exports, the phone). The words describe what
+  was recorded; nothing predicts a period or a fertile window.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
@@ -409,6 +420,11 @@ From an install whose phone already sent blood glucose (before #181):
 - Nothing to do: on its first start after updating, the receiver reads the glucose in the uploads it has archived in
   `raw/`, once, and writes the summary again. For a CGM in Health Auto Export, add an automation with blood glucose
   alone and no time grouping (Sources → Phone and watch); readings grouped into hours are left out.
+
+From an install whose phone may have sent cycle records (before #183):
+- Nothing to do: on its first start after updating, the receiver rewrites each upload archived in `raw/` without any
+  menstrual cycle record, sexual activity or basal body temperature it holds, once, as cycle tracking starts off for
+  every profile.
 
 Moving an install from a git checkout to the published image: see [Upgrading to a release](README.md#upgrading-to-a-release).
 

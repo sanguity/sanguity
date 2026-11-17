@@ -18,6 +18,10 @@ and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
 - Home blood pressure (#180) and body temperature (#184) are kept reading by reading from both apps, a reading sent
   again (or by both) counted once, and summed up by day; the summary lists the readings too.
 - Writes per-day summaries for Sanguity: $DATA/public/daily.json, or public/profiles/<slot>/daily.json.
+- Menstrual cycle records (#183, server/cycle.py) only for a profile whose owner turned cycle tracking on ("cycle" in
+  $KEYS_FILE): for any other they are taken out of the upload before it is archived, so they are never kept at all.
+  Sexual activity is taken out of every upload. A profile's cycle records are in public/.../cycle.json, never in
+  daily.json; turning tracking off, or asking for them to be deleted, deletes them here and in every archived upload.
 
 One secret per profile (#46). The app makes each profile's secret on its Settings page and writes them all, sealed,
 to $KEYS_FILE (server/watch_keys.py); an upload goes to the profile whose secret signed it. Each profile has a slot:
@@ -49,6 +53,7 @@ os.environ.setdefault("SANGUITY_KEY_FILE", "/run/secrets/sanguity/data_key")
 from server import crypto   # noqa: E402  (the app's own encryption and key file)
 from server.importers import apple_health as ah   # noqa: E402  (Apple Health's mapping, for Health Auto Export)
 from server import glucose   # noqa: E402  (blood glucose, meters and CGMs, #181)
+from server import cycle   # noqa: E402  (menstrual cycle tracking, opt-in, #183)
 
 DATA = os.environ.get("DATA", "/data")
 SECRET_FILE = os.environ.get("SECRET_FILE", "/run/secret/watch_secret")
@@ -295,6 +300,7 @@ class Store:
         """)
         self._glucose_init()   # blood glucose (#181), below
         self._vitals_tables()   # home blood pressure and body temperature (#180, #184)
+        self.db.executescript(cycle.TABLE)   # menstrual cycle records, kept only while tracking is on (#183)
 
     def meta(self, k, v=None):
         if v is None:
@@ -370,6 +376,7 @@ class Store:
                        r.get("type"), r.get("name"), r.get("title"), r.get("duration_seconds"), r.get("source")))
             n += 1
         n += self._glucose_hc(c, p, tz)   # blood glucose (#181)
+        n += self._cycle_in(lambda: cycle.from_health_connect(c, p, tz)) if cycle.has_any(p) else 0   # (#183)
         for t in p.get("daily_totals") or []:
             old = c.execute("SELECT seq FROM totals WHERE day=?", (t["date"],)).fetchone()
             if old is None or seq >= (old[0] or 0):
@@ -423,6 +430,9 @@ class Store:
                 continue
             if name == "blood_glucose":   # (#181)
                 n += self._glucose_hae(c, m)
+                continue
+            if cycle.hae_name(name) in cycle.HAE:   # menstrual cycle records, only while tracking is on (#183)
+                n += self._cycle_in(lambda: cycle.from_hae(c, m, hae_when))
                 continue
             if name in HAE_VITALS:   # home blood pressure and body temperature (#180, #184)
                 n += self._hae_vitals(c, name, m.get("units"), rows)
@@ -648,6 +658,56 @@ class Store:
                                     for t, _, c, _, _, src, app in temp]
         return {"days": days, **out}
 
+    # ------------------------------------------------------------ menstrual cycle tracking, opt-in (#183, server/cycle.py)
+    def _cycle_in(self, fold):
+        """Fold an upload's cycle records in, only while this profile has tracking on (an upload archived before it
+        was turned off, read again, keeps nothing)."""
+        if not cycle_on(self.slot):
+            return 0
+        self.meta("cycle_clean", 0)   # there's something to delete when it's turned off
+        return fold()
+
+    def cycle_purge(self, token=None):
+        """Delete every cycle record this profile's slot keeps: the database's (vacuumed, so nothing is left in its
+        free pages) and each archived upload's, rewritten without them. token: the deletion the app asked for, said
+        back in cycle.json. Returns how many archived uploads were rewritten."""
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.db.execute("DELETE FROM cycle")
+        n = 0
+        for _, path in raw_files(self.slot):
+            try:
+                body = read_raw(path)
+                kept = cycle.keep(body, False)
+            except Exception as e:   # unreadable: it was never folded in either
+                log("skip", path, type(e).__name__)
+                continue
+            if kept is not body:
+                crypto.write_file(path, gzip.compress(kept))
+                self.db.execute("INSERT OR IGNORE INTO processed VALUES(?,?,?)", (0, hashlib.sha256(kept).hexdigest(), now))
+                n += 1
+        self.meta("cycle_clean", 1)
+        if token:
+            self.meta("cycle_purged", token)
+            self.meta("cycle_purged_at", now)
+        self.db.commit()
+        self.db.execute("VACUUM")
+        self.save()
+        self.write_summary()
+        log(f"deleted the cycle records of {self.slot or 'the first profile'} ({n} archived uploads rewritten)")
+        return n
+
+    def _cycle_write(self):
+        """cycle.json: while tracking is on, every record kept; after a deletion, which one was done (the app shows
+        it); otherwise no file."""
+        path, on, token = cycle_file(self.slot), cycle_on(self.slot), self.meta("cycle_purged")
+        if on or token:
+            doc = {"on": on, "purged": token, "purged_at": self.meta("cycle_purged_at"),
+                   "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "records": cycle.records(self.db) if on else []}
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            crypto.write_file(path, json.dumps(doc, separators=(",", ":")).encode())
+        elif os.path.exists(path):
+            os.remove(path)
+
     # ------------------------------------------------------------ daily summary
     def summary(self):
         q = self.db.execute
@@ -746,6 +806,55 @@ class Store:
         path = summary_file(self.slot)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         crypto.write_file(path, json.dumps(self.summary(), separators=(",", ":")).encode())
+        self._cycle_write()   # (#183)
+
+
+# ---- menstrual cycle tracking, opt-in (#183): which profiles turned it on, and the deletions they asked for
+def cycle_state():
+    """({slots with cycle tracking on}, {slot: the latest deletion asked for}) from $KEYS_FILE, or None while it
+    exists but couldn't be read yet: then nothing is kept, and nothing is deleted."""
+    keys()   # reads the file again when it changed
+    doc = _keys["doc"]
+    if not isinstance(doc, dict):
+        return (set(), {}) if _keys["sig"] is None else None   # no file: no profile has turned it on
+    on = {s for s in doc.get("cycle") or [] if isinstance(s, str)}
+    purge = doc.get("cycle_purge")
+    return on, {str(k): str(v) for k, v in purge.items() if v} if isinstance(purge, dict) else {}
+
+
+def cycle_on(slot):
+    st = cycle_state()
+    return st is not None and slot in st[0]
+
+
+def cycle_file(slot):
+    return os.path.join(os.path.dirname(summary_file(slot)), "cycle.json")
+
+
+def cycle_sweep(stores):
+    """Carry out what the app asked: a profile that turned tracking off keeps nothing (its records and every archived
+    upload's go, once), and a deletion asked for is done once, and said back in cycle.json."""
+    st = cycle_state()
+    if st is None:
+        return
+    on, purge = st
+    for slot in sorted(set(stores) | set(purge)):
+        store, token = stores.get(slot), purge.get(slot)
+        if store is not None:
+            if token and token != store.meta("cycle_purged"):
+                store.cycle_purge(token)
+            elif slot not in on and store.meta("cycle_clean") != "1":
+                store.cycle_purge()
+        elif token:   # nothing ever received for it: nothing to delete, but say it's done
+            path = cycle_file(slot)
+            try:
+                done = os.path.isfile(path) and json.loads(crypto.read_file(path)).get("purged") == token
+            except Exception:
+                done = False
+            if not done:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                crypto.write_file(path, json.dumps({"on": slot in on, "purged": token, "records": [],
+                                                    "purged_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}).encode())
 
 
 def is_hae(p):
@@ -794,6 +903,10 @@ def worker(stores):
         try:
             item = work.get(timeout=5)
         except queue.Empty:
+            try:
+                cycle_sweep(stores)   # (#183)
+            except Exception:
+                traceback.print_exc()
             for slot in sorted(dirty):
                 try:
                     stores[slot].save(); stores[slot].write_summary(); log("summary written:", slot or "first profile")
@@ -847,8 +960,8 @@ class H(BaseHTTPRequestHandler):
         if slot is None:
             log("rejected: bad signature from", self.client_address[0])
             return self._send(401)
-        try:
-            json.loads(body)
+        try:   # cycle records left out unless this profile turned tracking on, before anything is kept (#183)
+            body = cycle.keep(body, cycle_on(slot))
         except ValueError:
             return self._send(400)
         digest = archive(body, slot)
@@ -862,10 +975,14 @@ class H(BaseHTTPRequestHandler):
 def reprocess():
     for slot in slots_on_disk():
         db = os.path.join(slot_dir(slot), "watch.db")
+        old = Store(slot)   # the deletions it has done (#183), kept across the rebuild
+        done = {k: v for k in ("cycle_purged", "cycle_purged_at") if (v := old.meta(k))}
         for ext in ("", "-wal", "-shm"):
             if os.path.exists(db + ext):
                 os.remove(db + ext)
         store = Store(slot)
+        for k, v in done.items():
+            store.meta(k, v)
         n = store.catch_up()   # a new database: every upload in raw/
         store.save()
         store.write_summary()
@@ -896,6 +1013,7 @@ if __name__ == "__main__":
             store.save(); store.write_summary()
         elif not os.path.exists(summary_file(slot)):
             store.write_summary()
+    cycle_sweep(stores)   # cycle records of profiles that haven't turned tracking on: none kept, not even archived (#183)
     log(f"taking uploads signed with {len(keys())} secret(s)")
     threading.Thread(target=worker, args=(stores,), daemon=True).start()
     log(f"listening on :{PORT}")

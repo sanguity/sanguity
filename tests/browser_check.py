@@ -315,6 +315,60 @@ def add_vitals_records(build, watch_dir):
         json.dump(data, f)
 
 
+CYCLE_RX = {}   # the receiver that folded the cycle fixture in, kept to carry out the deletion the page asks for (#183)
+
+
+def add_cycle_watch(watch_dir):
+    """Menstrual cycle records (#183), folded by the receiver itself from fictional uploads of both phone apps, with
+    cycle tracking on for its slot: Health Auto Export's flow and ovulation tests from January to April 2026, then
+    Life Dashboard Companion's periods (logged as periods), flow, ovulation tests, cervical mucus and one spotting, and
+    sexual activity, which is never kept. It writes cycle.json beside the demo's daily.json, as the receiver does; the
+    app shows none of it until the profile's owner turns cycle tracking on (the demo has it off)."""
+    import hashlib, tempfile as tf
+    from datetime import date, datetime, timedelta, timezone
+    rx = receiver()
+    rx.DATA = tf.mkdtemp(prefix="rx-cycle-", dir=TMP)
+    rx.KEYS_FILE = os.path.join(rx.DATA, "keys.json")
+    from server import crypto
+    crypto.write_file(rx.KEYS_FILE, json.dumps({"profiles": [], "cycle": [""]}).encode())
+    rx.cycle_file = lambda slot: os.path.join(watch_dir, "cycle.json")
+    store = rx.Store("")
+
+    def send(p):
+        b = rx.cycle.keep(json.dumps(p).encode(), True)
+        store.ingest(json.loads(b), hashlib.sha256(b).hexdigest())
+    starts = [date(2026, 1, 4) + timedelta(days=sum(28 + (k % 3 == 1) for k in range(i))) for i in range(12)]   # every 28 or 29 days
+    flow = ("Light", "Medium", "Heavy", "Medium", "Light")
+    off = "-0500"
+    send({"data": {"metrics": [
+        {"name": "menstrual_flow", "units": "", "data": [{"date": f"{s + timedelta(days=d)} 08:00:00 {off}", "value": v, "source": "Fictional Phone"}
+                                                         for s in starts[:4] for d, v in enumerate(flow)]},
+        {"name": "ovulation_test_result", "units": "", "data": [{"date": f"{s + timedelta(days=d)} 07:30:00 {off}", "value": v, "source": "Fictional Phone"}
+                                                                for s in starts[:4] for d, v in ((12, "Negative"), (14, "LH surge"))]},
+        {"name": "sexual_activity", "units": "", "data": [{"date": f"{starts[1] + timedelta(days=9)} 22:00:00 {off}", "qty": 1}]}]}})
+    utc = lambda d, h: (datetime.fromisoformat(f"{d}T{h:02d}:00:00") + timedelta(hours=5)).replace(tzinfo=timezone.utc).isoformat()
+    hc = starts[4:]
+    send({"source": "health_connect", "timezone": "America/New_York", "sequence": 1, "timestamp": "2026-11-15T12:00:00Z",
+          "menstruation_period": [{"uuid": f"fictional-period-{s}", "start_time": utc(s, 6), "end_time": utc(s + timedelta(days=4), 20), "source": "Fictional Cycle App"} for s in hc],
+          "menstruation_flow": [{"uuid": f"fictional-flow-{s}-{d}", "time": utc(s + timedelta(days=d), 9), "flow": [1, 2, 3, 2, 1][d], "source": "Fictional Cycle App"}
+                                for s in hc for d in range(5)],
+          "ovulation_test": [{"uuid": f"fictional-ovu-{s}", "time": utc(s + timedelta(days=14), 7), "result": 1, "source": "Fictional Cycle App"} for s in hc],
+          "cervical_mucus": [{"uuid": f"fictional-mucus-{s}", "time": utc(s + timedelta(days=13), 7), "appearance": 5, "sensation": 2, "source": "Fictional Cycle App"} for s in hc],
+          "intermenstrual_bleeding": [{"uuid": "fictional-spot-1", "time": utc(hc[3] + timedelta(days=19), 18), "source": "Fictional Cycle App"}],
+          "sexual_activity": [{"uuid": "fictional-sa-1", "time": utc(hc[2] + timedelta(days=10), 22)}]})
+    store.save()
+    store.write_summary()
+    CYCLE_RX.update(rx=rx, store=store)
+
+
+def cycle_receiver_sweep():
+    """The receiver's worker between uploads (#183): read the app's secrets file and carry out what it asks."""
+    rx, store = CYCLE_RX["rx"], CYCLE_RX["store"]
+    rx.KEYS_FILE = os.environ["SANGUITY_WATCH_KEYS"]
+    rx._keys.update(sig=False, doc=None)
+    rx.cycle_sweep({"": store})
+
+
 def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
@@ -336,6 +390,7 @@ def start_app():
     db = dbm.connect()
     atrest.check_key(db)   # as the app does at start-up: the key, then the pepper passwords are hashed with
     atrest.load_pepper(db)
+    add_cycle_watch(os.path.join(TMP, "watch"))   # #183 (sealed with the key just made): shown only once turned on
     profiles.bootstrap(db)
     uid = db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, ?, 1, 0)", (USER, security.hash_password(PW))).lastrowid
     db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'owner')", (uid,))
@@ -1534,6 +1589,166 @@ def main():
             check("…and axe-core finds nothing serious on them at 1400 and 375 px, in light and dark (#202)", not axe_bad, axe_bad[:6])
             open_tab("overview")
             settle(200)
+
+            # ---- menstrual cycle tracking, opt-in (#183): off, the receiver's cycle.json (the fixture, both phone apps')
+            # shows nowhere; an owner turns it on under Sources → Phone and watch, asked first with who sees it and where
+            # it never goes; then a Timeline lane of its own (periods as bars, the rest as marks), its chip, the drawer,
+            # and a row under the Labs charts when ticked; never on the Overview; a viewer's page doesn't ask for it;
+            # Export everything and the visit summary offer it unticked; deleting hides it at once, the receiver deletes
+            # it and the card says what deleting can't reach; turning it off deletes too. At 1400 and 375 px, light and
+            # dark, the lane is 3:1 against the page, everything fits and axe finds nothing serious.
+            from server import crypto as _crypto
+            keys_doc = lambda: json.loads(_crypto.read_file(os.environ["SANGUITY_WATCH_KEYS"]))
+            cy_axe, cy_bad, theme_before = [], [], js("document.documentElement.dataset.theme || null")
+            check("cycle tracking (#183): off by default, the receiver's file for this profile shows nowhere",
+                  os.path.isfile(os.path.join(TMP, "watch", "cycle.json")) and not js("CYCLE.length || EV.some(e => e.k === 'cycle') || CATS.filter(hasLane).some(c => c.k === 'cycle')")
+                  and not js("!!document.getElementById('optCycle')"))
+            page.goto(base + "/sources.html?profile=1#phone")
+            page.wait_for_selector("#cycle h2", timeout=10000)
+            check("…Sources → Phone and watch has a Cycle tracking card saying it's off and nothing is kept",
+                  page.inner_text("#cycleState").startswith("Off.") and "left out of every upload before anything is kept" in page.inner_text("#cycleState")
+                  and "Not reached: backups" in page.inner_text("#cycle"), page.inner_text("#cycle")[:200])
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    settle(200)
+                    cy_axe += axe_check(page, f"Sources cycle card off, {theme} {width}")[0]
+                    if width == 375:
+                        cy_bad += phone_fits(page, f"Sources cycle card off, {theme}")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#cycleOn")
+            asked = answer_ask(page, yes=True)
+            page.wait_for_function("document.getElementById('cycleState') && document.getElementById('cycleState').textContent.startsWith('On since')", timeout=10000)
+            check("…turning it on asks first, saying who sees it, where it never goes and that sexual activity is never kept",
+                  asked[0] == "Turn on cycle tracking?" and all(w in asked[1] for w in ("Viewers don't", "never in a share link", "Sexual activity is never kept", "delete all of it")), asked)
+            check("…then the receiver is told (its secrets file lists this profile's slot)", keys_doc().get("cycle") == [""], keys_doc().get("cycle"))
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    settle(200)
+                    cy_axe += axe_check(page, f"Sources cycle card on, {theme} {width}")[0]
+                    if width == 375:
+                        cy_bad += phone_fits(page, f"Sources cycle card on, {theme}")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            open_tab("timeline")
+            js("applyPreset('all'); state.cats.add('cycle'); renderAll()")
+            settle(300)
+            lane = js("""(() => { const chip = document.querySelector('#chips .toggle[data-k=cycle]');
+              const bars = [...document.querySelectorAll('#tl rect.cymark')], marks = [...document.querySelectorAll('#tl .cymark:not(rect)')];
+              return {chip: chip && chip.getAttribute('aria-label'), label: [...document.querySelectorAll('#tl .lane-label')].map(t => t.textContent).includes('Cycle tracking'),
+                      bars: bars.length, marks: marks.length, spans: CYCLE.filter(e => e.cy.kind === 'span').map(e => [e.cy.from, e.cy.to, e.cy.logged, e.title]),
+                      fill: bars[0] && getComputedStyle(bars[0]).fill, key: chip && getComputedStyle(chip.querySelector('.key')).backgroundColor,
+                      rows: [...document.querySelectorAll('#list .row')].filter(r => r.textContent.includes('Cycle tracking')).length}; })()""")
+            check("…on: a Cycle tracking lane on the Timeline, both apps' periods as bars and the other records as marks, in its colour, with a chip",
+                  lane["label"] and lane["chip"] == "Cycle tracking, 37, shown" and lane["bars"] == 12 and lane["marks"] == 25 and lane["fill"] == lane["key"]
+                  and lane["spans"][0] == ["2026-01-04", "2026-01-08", False, "Flow recorded on 5 days"] and lane["spans"][-1][2:] == [True, "Period, 5 days"]
+                  and lane["rows"] > 0, {k: lane[k] for k in ("label", "chip", "bars", "marks", "fill", "key", "rows")} | {"first": lane["spans"][:1], "last": lane["spans"][-1:]})
+            page.locator("#tl rect.cymark").last.click()
+            settle(300)
+            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
+            check("…a bar opens the drawer: the period as logged, its flow day by day, said as recorded and not advice",
+                  js("document.getElementById('dtitle').textContent") == "Period, 5 days" and js("document.getElementById('dsub').textContent").startswith("Cycle tracking · ")
+                  and kv.get("Recorded as") == "A period, logged as one" and kv.get("From the app") == "Health Connect"
+                  and js("[...document.querySelectorAll('#dbody table tbody tr')].map(r => r.cells[1].textContent)") == ["light", "medium", "heavy", "medium", "light"]
+                  and "doesn't predict periods or fertile days" in page.inner_text("#dbody"), kv)
+            cy_axe += axe_check(page, "cycle drawer, light")[0]
+            page.keyboard.press("Escape")
+            said_words = js("CYCLE.map(e => e.title + ' ' + e.sub).join(' | ')")
+            check("…every record in words that describe, none that predict or judge",
+                  not re.search(r"(?i)predict|fertil|expected|next period|likely|window|irregular|normal|should", said_words), said_words[:300])
+            open_tab("overview")
+            settle(200)
+            check("…never on the Overview's recent list", "Cycle tracking" not in page.inner_text("#view-overview") and not re.search(r"Period, \d|Flow recorded|Ovulation test", page.inner_text("#view-overview")))
+            open_tab("labs")
+            settle(300)
+            check("…Labs offers “Cycle tracking” under Show on charts, unticked", js("!!document.getElementById('optCycle') && !document.getElementById('optCycle').checked")
+                  and not js("document.querySelectorAll('#charts .cymark').length"))
+            page.check("#optCycle")
+            settle(400)
+            n_marks = js("document.querySelectorAll('#charts .chart svg .cymark').length")
+            check("…ticked, each chart gets a row of them, with a legend", n_marks > 0 and js("!document.getElementById('cycleLegend').hidden"), n_marks)
+            page.focus("#charts .chart svg .cymark")
+            page.keyboard.press("Enter")
+            settle(300)
+            check("…a mark there takes focus and Enter opens it in the drawer", js("document.getElementById('drawer').classList.contains('open') && document.getElementById('dsub').textContent.startsWith('Cycle tracking')"))
+            page.keyboard.press("Escape")
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    open_tab("labs")
+                    settle(300)
+                    if width == 375:
+                        cy_bad += phone_fits(page, f"Labs with cycle tracking, {theme}")
+                    cy_axe += axe_check(page, f"Labs with cycle tracking {theme} {width}")[0]
+                    open_tab("timeline")
+                    settle(300)
+                    c = js("""(() => { const m = document.querySelector('#tl rect.cymark');
+                      return [getComputedStyle(m).fill, getComputedStyle(document.querySelector('.card') || document.body).backgroundColor, getComputedStyle(document.body).backgroundColor]; })()""")
+                    if min(contrast(c[0], c[1]), contrast(c[0], c[2])) < 3:
+                        cy_bad.append(f"{theme} {width}: the lane's colour {c[0]} is {min(contrast(c[0], c[1]), contrast(c[0], c[2]))}:1 against the page")
+                    if width == 375:
+                        cy_bad += phone_fits(page, f"timeline with cycle tracking, {theme}")
+                    cy_axe += axe_check(page, f"timeline with cycle tracking {theme} {width}")[0]
+                    js("openEvent(CYCLE.find(e => e.cy.kind === 'mucus'))")
+                    settle(300)
+                    if width == 375:
+                        cy_bad += phone_fits(page, f"cycle drawer, {theme}")
+                    cy_axe += axe_check(page, f"cycle drawer {theme} {width}")[0]
+                    page.keyboard.press("Escape")
+                    settle(150)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            open_tab("labs")
+            page.uncheck("#optCycle")
+            check("…a viewer's page doesn't ask for it", js("""(async () => { const was = PROFILE.role, seen = []; const f = window.fetch;
+              window.fetch = (u, o) => { seen.push(String(u)); return f(u, o); }; PROFILE.role = 'viewer';
+              const before = CYCLE.length; await cycleLoad(); const n = CYCLE.length; PROFILE.role = was; window.fetch = f;
+              await cycleLoad(); return before > 0 && n === 0 && !seen.some(u => u.includes('/cycle')); })()"""))
+            page.goto(base + "/sharing.html?profile=1#export")
+            page.wait_for_selector("#exportCycleWrap:not([hidden])", timeout=10000)
+            href = lambda: js("document.getElementById('exportLink').getAttribute('href')")
+            plain = href()
+            page.check("#exportCycle")
+            check("…Export everything offers the cycle records unticked, ticked for that export only",
+                  plain == "api/profiles/1/export" and href() == "api/profiles/1/export?cycle=1", [plain, href()])
+            page.uncheck("#exportCycle")
+            cy_axe += axe_check(page, "Sharing export with the cycle tick")[0]
+            page.goto(base + "/sharing.html?profile=1#summary")
+            page.wait_for_selector("#sections input[value=cycle]", state="attached", timeout=10000)
+            check("…the visit summary offers it too, unticked each time while the other sections are ticked",
+                  js("!document.querySelector('#sections input[value=cycle]').checked && [...document.querySelectorAll('#sections input')].filter(i => i.value !== 'cycle').every(i => i.checked)"))
+            page.goto(base + "/sources.html?profile=1#phone")
+            page.wait_for_selector("#cycleDelete", timeout=10000)
+            page.click("#cycleDelete")
+            asked = answer_ask(page, yes=True)
+            page.wait_for_selector("#cycleDeleted", timeout=10000)
+            check("…Delete all cycle data asks, saying what it can't reach; then nothing is shown until the receiver has done it",
+                  asked[0] == "Delete all cycle data?" and "can't reach them" in asked[1] and "Deleting what was kept" in page.inner_text("#cycleState")
+                  and js("fetch('api/profiles/1/cycle').then(r => r.json()).then(c => c.spans.length + c.marks.length)") == 0
+                  and keys_doc().get("cycle_purge", {}).get(""), [asked, page.inner_text("#cycleState")])
+            cycle_receiver_sweep()   # the receiver's worker, between uploads
+            rx_store = CYCLE_RX["store"]
+            page.reload()
+            page.wait_for_selector("#cycleDeleted", timeout=10000)
+            check("…the receiver deletes its copy and every archived upload's, and the card says when",
+                  rx_store.db.execute("SELECT COUNT(*) FROM cycle").fetchone()[0] == 0 and page.inner_text("#cycleDeleted").startswith("Last deleted")
+                  and page.inner_text("#cycleState").endswith("Nothing received yet."), page.inner_text("#cycle")[:300])
+            page.click("#cycleOff")
+            asked = answer_ask(page, yes=True)
+            page.wait_for_function("document.getElementById('cycleState').textContent.startsWith('Off.')", timeout=10000)
+            check("…turning it off asks, deletes too and tells the receiver", asked[1].startswith("Turning it off deletes everything kept") and keys_doc().get("cycle") == [],
+                  [asked, keys_doc().get("cycle")])
+            cycle_receiver_sweep()
+            check("…the cycle pages fit 375 px and the lane is 3:1 against the page, in light and dark", not cy_bad, cy_bad[:6])
+            check("…and axe-core finds nothing serious on them at 1400 and 375 px, in light and dark (#202)", not cy_axe, cy_axe[:6])
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            settle(300)
 
             # ---- renaming where a name is shown (#38): a lab from its Trends chart shows the new name on every tab and in
             # the drawer, the name in the records on hover; back to it from the heatmap; an import from the drawer's

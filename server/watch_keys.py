@@ -83,7 +83,8 @@ def publish(db):
         row = _row(db, r["pid"])
         if row:
             profiles.append({"profile": r["pid"], "slot": row["slot"], "secret": row["secret"]})
-    doc = {"version": 1, "legacy": legacy_in_use(db), "profiles": profiles}
+    from . import cycle_tracking   # which profiles turned cycle tracking on, and deletions asked for (#183)
+    doc = {"version": 1, "legacy": legacy_in_use(db), "profiles": profiles, **cycle_tracking.keys_doc(db)}
     folder = os.path.dirname(config.WATCH_KEYS)
     if not os.path.isdir(folder):
         if profiles:

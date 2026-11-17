@@ -1236,3 +1236,16 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .vital-list .muted{color:var(--ink2)}
 .vital-list .abn{color:var(--crit);font-weight:600}
 .vital-link{margin:6px 0 0}
+
+/* ---- menstrual cycle tracking, opt-in (#183, cycle.js and sources-cycle.js): its own colour (over 5:1 against the
+   page in both themes), the lane's and charts' marks, and the Sources card's lists */
+:root{--c-cycle:#b2305f}
+@media (prefers-color-scheme:dark){ :root:where(:not([data-theme="light"])){--c-cycle:#f290b4} }
+:root[data-theme="dark"]{--c-cycle:#f290b4}
+.cymark{cursor:pointer}
+.cymark:hover,.cymark:focus-visible,.cymark.sel{stroke:var(--ink);stroke-width:2;outline:none}
+.cy-list{margin:4px 0 10px;padding-left:20px;font-size:13px;color:var(--ink2)}
+.cy-list li{margin:3px 0}
+.cy-reach{margin-top:10px}
+#exportCycleWrap{margin:4px 0 8px}
+@media (forced-colors:active){ .cymark{forced-color-adjust:none} }

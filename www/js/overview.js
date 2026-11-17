@@ -192,7 +192,7 @@ function renderOverview() {
   }
   // recent events
   const rc = el("div", {class: "card"}, el("h2", {text: "Recent"}));
-  const recent = EV.filter(e => !e.hidden && e.k !== "auto_msg").sort((a, b) => b.ts - a.ts).slice(0, 10);
+  const recent = EV.filter(e => !e.hidden && e.k !== "auto_msg" && e.k !== "cycle").sort((a, b) => b.ts - a.ts).slice(0, 10);   // cycle records: their lane only (#183)
   for (const e of recent) rc.append(el("div", {class: "ov-row", ...pressable(() => openEvent(e))},
     el("span", {class: "n"}, el("span", {class: "key", style: {display: "inline-block", width: "12px", height: "3px", borderRadius: "2px", background: CAT_OF[e.k].color, marginRight: "8px", verticalAlign: "middle"}}), e.title),
     el("span", {class: "r", text: fmtD(e.ts)}), el("span", {}),

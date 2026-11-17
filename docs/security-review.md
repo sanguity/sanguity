@@ -69,6 +69,8 @@ check changes without updating the list, and it exercises this table against a l
 | Connected sources: see a profile's | Yes | Yes | Yes | No | No | No |
 | Connected sources: connect, sync now, choose what's pulled, fetch an attachment, disconnect | No | Yes | Yes | No | No | No |
 | Phone and watch: the upload secret and setup | No | Yes (a new secret replaces the old) | Yes | No | No | No |
+| Cycle tracking (#183): see its records and setting | No (403; not told it exists) | Yes | Yes | No | Never | No |
+| Cycle tracking: turn on or off, delete all of it | No | No | Yes | No | No | No |
 | A SMART Health Link pasted on Sources | No | Yes (after confirming) | Yes | No | No | No |
 | The visit summary PDF and its questions draft | Yes | Yes | Yes | No | No | No |
 | Settings: read; their own settings | Yes | Yes | Yes | Their own only | No | No |
@@ -560,6 +562,24 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   only as its last four characters; kept sealed in the settings table and in the receiver's sealed secrets file.
   Health Connect signs each upload with it; Health Auto Export sends it as a bearer token (A1). Every profile's
   secret is compared in constant time; an upload lands only in the profile whose secret matched.
+
+### Menstrual cycle tracking, opt-in (#183)
+- Off for every profile until one of its owners turns it on (`PUT /api/profiles/{pid}/cycle`, owners only; reading it
+  is owners' and editors', viewers get 403 and their page never asks). While off, the receiver takes every cycle
+  record out of an upload before archiving it (`cycle.keep`), so none reaches `raw/`, its database or any summary;
+  sexual activity is taken out of every upload, on or off, and never kept. A secrets file it can't read counts as
+  off for keeping and deletes nothing (`receiver.cycle_state`). At its first start after this change it rewrites
+  the uploads it archived before without them, once.
+- Kept, they're in the receiver's sealed database and a sealed `cycle.json` apart from `daily.json`, so nothing that
+  reads the watch summary (share links, the export's `watch/daily.json`, the visit summary) carries them by accident.
+  `sanguity.db` holds only the sealed setting, never a record; the offline copy (#56) and `localStorage` never hold
+  them. Never in a share link; in Export everything (`?cycle=1`) and the visit summary only when ticked each time, and
+  the activity log says so (never a record).
+- Delete all cycle data and turning it off hide them at once and ask the receiver, through the secrets file, to empty
+  its table (then `VACUUM`, so no free page keeps them) and rewrite every archived upload without them; `cycle.json`
+  says which deletion was done. What can't be reached is said on the card: backups made before (they can't be
+  rewritten), files already downloaded, an uploaded Apple Health export (kept as uploaded; Sanguity doesn't read cycle
+  records from it), and the phone. Tests: `tests/test_cycle.py`.
 
 ### Offline records and installing the app (#56)
 - The service worker keeps only the app's own pages, styles, scripts and icons, never `/api/`, documents or the

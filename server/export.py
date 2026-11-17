@@ -9,19 +9,22 @@ The zip:
   watch/daily.json    the watch and scale summary shown with the profile (if any)
   uploads/<id>/...    the files uploaded on the import page, as they were (zips unpacked), one folder per upload
   activity.json       the profile's activity log
+  cycle/cycle.json    menstrual cycle records (#183), only when the person exporting ticked them in, each time
+                      (cycle_tracking.for_export); loading an export leaves them out, as cycle tracking is per install
 It's written as it's sent, a piece at a time, so a large profile never sits in memory or on disk.
 """
 import datetime, json, os, re, shutil, urllib.parse, zipfile
 
-from . import crypto, profiles as prof, records, settings, uploads, watch_store
+from . import crypto, cycle_tracking, profiles as prof, records, settings, uploads, watch_store
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
 REF = re.compile(r"""(?:src|href)\s*=\s*["']([^"'#?]+)""", re.I)
 STORED = ("pdf", "jpg", "jpeg", "png", "gif", "webp", "zip", "gz")   # already compressed
 
 
-def plan(db, pid):
-    """Everything the export needs, gathered now: the stream runs after the request's database connection closes."""
+def plan(db, pid, cycle=False):
+    """Everything the export needs, gathered now: the stream runs after the request's database connection closes.
+    cycle: the cycle records too, ticked in for this export (#183)."""
     p = db.execute("SELECT name, watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
     docs = {r["id"]: (crypto.dec(r["path"]), r["ext"]) for r in db.execute("SELECT id, path, ext FROM documents WHERE profile_id=?", (pid,))}
     log = [dict(r) for r in db.execute("SELECT at, actor, action, detail, ip FROM activity WHERE profile_id=? ORDER BY id", (pid,))]
@@ -31,7 +34,8 @@ def plan(db, pid):
     return {"pid": pid, "name": p["name"], "docs": docs, "activity": log,
             "data": records.assemble(db, pid), "uploads": uploads.stored_files(db, pid),
             "settings": settings.to_file(db, pid),
-            "watch": watch_store.load(db, pid)}   # the merged summary (receiver + imports), or None
+            "watch": watch_store.load(db, pid),   # the merged summary (receiver + imports), or None
+            "cycle": cycle_tracking.for_export(db, pid) if cycle else None}
 
 
 def filename(name, now=None):
@@ -133,6 +137,8 @@ def stream(p, exported_by, now=None):
                                     not rel.lower().endswith(STORED))
     if p["watch"]:
         yield add_bytes("watch/daily.json", json.dumps(p["watch"], separators=(",", ":")).encode())
+    if p.get("cycle"):   # ticked in for this export (#183)
+        yield add_bytes("cycle/cycle.json", json.dumps(p["cycle"], indent=1, ensure_ascii=False).encode())
     for upload_id, rel, path in p["uploads"]:
         if os.path.isfile(path):
             yield from add_file(f"uploads/{upload_id}/{rel}", path, not rel.lower().endswith(STORED))
@@ -147,7 +153,7 @@ no longer need.
   settings.json      the profile's settings{'' if len(p['settings']) > 1 else ' (none set: all at their defaults)'}
   documents/         the documents, one folder each
   watch/daily.json   watch and scale summary{'' if p['watch'] else ' (none)'}
-  uploads/           the files uploaded to import, as they were sent (zips unpacked): {len({u for u, _, _ in p['uploads']})} upload(s)
+{"  cycle/cycle.json   menstrual cycle records from the phone apps, ticked in for this export" + chr(10) if p.get('cycle') else ''}  uploads/           the files uploaded to import, as they were sent (zips unpacked): {len({u for u, _, _ in p['uploads']})} upload(s)
   activity.json      who opened, shared or changed this profile, and when
 {f'''
 {len(missing)} document link(s) pointed at files that are no longer on the server and are left out.
@@ -163,7 +169,8 @@ To load it into a Sanguity install (into an empty profile, or replacing one's re
 
 # ---------------------------------------------------------------- loading an export
 
-ALLOWED = re.compile(r"^(data\.json|settings\.json|README\.txt|activity\.json|watch/daily\.json|documents/[^/]+/.+|uploads/\d+/.+)$")
+ALLOWED = re.compile(r"^(data\.json|settings\.json|README\.txt|activity\.json|watch/daily\.json|cycle/cycle\.json|documents/[^/]+/.+|uploads/\d+/.+)$")
+LEFT_OUT = {"cycle/cycle.json"}   # cycle records (#183): not loaded into the profile, nor kept in its folder
 UPLOAD = re.compile(r"^uploads/(\d+)/(.+)$")
 # a zip that unpacks to more than this is refused before anything is written (a damaged or hostile archive could
 # otherwise fill the disk); far above any real profile's records
@@ -191,6 +198,8 @@ def import_archive(db, pid, archive):
                 raise ValueError(f"unexpected entry in the zip: {i.filename}")
             if (m := UPLOAD.match(i.filename)):
                 sent.setdefault(int(m.group(1)), []).append((m.group(2), i))
+                continue
+            if i.filename in LEFT_OUT:
                 continue
             target = os.path.join(new, *parts)
             os.makedirs(os.path.dirname(target), exist_ok=True)

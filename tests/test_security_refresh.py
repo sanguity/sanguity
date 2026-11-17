@@ -112,6 +112,7 @@ ROUTES = {
     ("PUT", "/api/profiles/{pid}/person"): (USER, "editor"), ("POST", "/api/profiles/{pid}/person/heights"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/person/heights/{day}"): (USER, "editor"),
     ("GET", "/api/profiles/{pid}/watch/receiver"): (USER, "editor"),
+    ("GET", "/api/profiles/{pid}/cycle"): (USER, "editor"),           # cycle tracking, opt-in (#183): not viewers
     ("POST", "/api/profiles/{pid}/watch/receiver/rotate"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/shl/inspect"): (USER, "editor"), ("POST", "/api/profiles/{pid}/shl/import"): (USER, "editor"),
     ("GET", "/api/profiles/{pid}/connect/start"): (USER, "editor"), ("POST", "/api/profiles/{pid}/connect/start"): (USER, "editor"),
@@ -126,6 +127,7 @@ ROUTES = {
     ("PUT", "/api/profiles/{pid}/members"): (USER, "owner"), ("GET", "/api/profiles/{pid}/activity"): (USER, "owner"),
     ("GET", "/api/profiles/{pid}/links"): (USER, "owner"), ("POST", "/api/profiles/{pid}/links"): (USER, "owner"),
     ("DELETE", "/api/profiles/{pid}/links/{lid}"): (USER, "owner"),
+    ("PUT", "/api/profiles/{pid}/cycle"): (USER, "owner"), ("POST", "/api/profiles/{pid}/cycle/delete"): (USER, "owner"),   # (#183)
     # admins: accounts and the install, never a profile's records
     ("GET", "/api/users"): (ADMIN, None), ("POST", "/api/users"): (ADMIN, None), ("PATCH", "/api/users/{uid}"): (ADMIN, None),
     ("DELETE", "/api/users/{uid}"): (ADMIN, None), ("GET", "/api/activity"): (ADMIN, None),
@@ -258,7 +260,7 @@ class Reach(unittest.TestCase):
         table = [
             (V, [p + "/data", p + "/watch", p + "/members", p + "/imports", p + "/settings", p + "/settings/sections",
                 p + "/connections", p + "/connections/warnings", p + "/calendar", p + "/journal", p + "/summary", p + "/person"]),
-            (E, [p + "/export", p + "/jobs", p + "/edits", p + "/watch/receiver"]),
+            (E, [p + "/export", p + "/jobs", p + "/edits", p + "/watch/receiver", p + "/cycle"]),
             (O, [p + "/activity", p + "/links"]),
             (A, ["/api/users", "/api/activity", "/api/ownerless", "/api/security/notice", "/api/settings", "/api/settings/install",
                 "/api/labmaps", "/api/connect/sources", "/api/backups"]),
