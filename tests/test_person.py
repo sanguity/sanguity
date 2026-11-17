@@ -257,6 +257,29 @@ class Api(unittest.TestCase):
         self.assertEqual((out["person"]["birthDate"], out["person"]["sex"], len(out["person"]["heights"])), ("1990-03-01", "female", 1))
         self.assertNotIn("birthDate", out.get("ranges", {}))
 
+    def test_6_heights_from_the_phone_are_offered(self):
+        """#223: the heights an uploaded Apple Health export brought (the watch summary's "heights") are shown with a
+        clinic's, marked as from the phone, never in the history until someone adds one."""
+        from server import watch_store
+        db = dbm.connect()
+        try:
+            with dbm.transaction(db):
+                watch_store.save_import(db, self.pid, {"metrics": [], "exercise": [], "heights": [
+                    [day(-10), 169.5, "Fictional Phone", "cm"], [day(-60), 168.9, None, "ftin"], ["not a day", 170, None, "cm"],
+                    [day(-5), 400, None, "cm"]]})
+        finally:
+            db.close()
+        before = self.c["kim"].get(self.url()).json()
+        phone = [h for h in before["recorded"] if h.get("phone")]
+        self.assertEqual([(h["date"], h["cm"], h["unit"], h["source"], h["inHistory"]) for h in phone], [
+            (day(-10), 169.5, "cm", "Apple Health on the phone (Fictional Phone)", False),
+            (day(-60), 168.9, "ftin", "Apple Health on the phone", True)])   # that day is in the history already
+        self.assertEqual([h["date"] for h in before["recorded"]], [day(-10), day(-60), day(-60), day(-400)], "newest first, a clinic's first on a day")
+        self.assertEqual(len(before["heights"]), 1, "none added by itself")
+        r = self.c["lee"].post(self.url("/heights"), json={"date": day(-10), "unit": "cm", "cm": 169.5}, headers=H)   # "Add to the history"
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(next(h for h in r.json()["recorded"] if h["date"] == day(-10))["inHistory"])
+
 
 class Move(unittest.TestCase):
     """#44's ranges.birthDate and ranges.sex move to About this person, once, for every profile (schema step 30)."""

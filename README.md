@@ -247,7 +247,7 @@ different; the file stays beside them as `data-before-v10.json`, and can be dele
 | Payments export (`payments.json`) | Out-of-pocket payments and premiums |
 | Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition, blood pressure (each reading, with its pulse when the cuff gives one), body temperature, blood oxygen, respiratory rate, cardio fitness (VO2 max), blood glucose (meter and CGM) |
 | Apple Health on iPhone, via the Health Auto Export app (or an uploaded `export.xml`) | The same, with HRV as Apple's SDNN; and a watch's ECG recordings and irregular rhythm notifications (#182) |
-| Apple Health's whole export zip (Export All Health Data) | The above (ECGs from its `electrocardiograms/` folder), and the Health app's Health Records from hospitals and clinics (FHIR files in `clinical-records/`): visits, labs, medications, problems, allergies, immunizations, procedures |
+| Apple Health's whole export zip (Export All Health Data) | The above, read the same way (#223: home blood pressure, body temperature and glucose too; heights offered for About this person; cycle records only while cycle tracking is on), ECGs from its `electrocardiograms/` folder, and the Health app's Health Records from hospitals and clinics (FHIR files in `clinical-records/`): visits, labs, medications, problems, allergies, immunizations, procedures |
 | Typed in by hand (**Sources → Type records in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, immunizations, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home weight and steps, workouts, letters and documents with a PDF or picture |
 
 If your portal's export doesn't import, please open an issue with an anonymised sample (`tools/anonymise.py` makes
@@ -290,7 +290,8 @@ as fewer), and the share of readings below 54, below 70, 70–180 and above 180 
 Connect's specimen, interstitial fluid) or when its source sends readings minutes apart (`server/glucose.py`). The
 receiver keeps every reading, encrypted, so a reading sent twice counts once: a CGM adds about 10 MB a year to its
 `watch.db` and 3 MB to `raw/` in `WATCH_DIR` (copied as under [Backup and restore](#backup-and-restore), not in the
-app's own backups), and only the days reach the page. An uploaded Apple Health `export.xml` doesn't bring glucose in yet.
+app's own backups), and only the days reach the page. An uploaded Apple Health `export.xml` brings its glucose in too
+(#223), read by the same rules, so a reading both brought counts once.
 
 Menstrual cycle tracking (#183) is off for every profile until one of its owners turns it on under **Sources → Phone
 and watch → Cycle tracking**: periods, flow, ovulation tests, cervical mucus and spotting from either phone app. Off,
@@ -298,8 +299,9 @@ the receiver takes them out of each upload before keeping anything, so they're n
 sexual activity is never kept, on or off. On, owners and editors (not viewers) see them as a Timeline lane and, when
 ticked, under the Labs charts; they're never in a share link, and in an export or the visit summary only when ticked
 each time. **Delete all cycle data** (or turning it off) deletes the receiver's copy and every archived upload's; the
-card says what it can't reach (backups made before, files already downloaded, the phone). Nothing predicts periods or
-fertile days.
+card says what it can't reach (backups made before, files already downloaded, the phone). An uploaded Apple Health
+export's cycle records (#223) are read only while it's on, kept as that import's own (undoing the import removes
+them) and deleted with the rest; the uploaded file itself is kept as it came. Nothing predicts periods or fertile days.
 ECG recordings and irregular rhythm notifications (#182) from an Apple Watch come through Health Auto Export, or in
 an uploaded Apple Health export (its `electrocardiograms/` folder and `export.xml`); Health Connect has no ECG type,
 so Android watches' ECGs don't reach it. Each is an event on the Timeline ("ECG & rhythm"), and the same recording

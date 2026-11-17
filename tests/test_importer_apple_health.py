@@ -29,6 +29,31 @@ def pts(watch, key):
     return dict(next((m["pts"] for m in watch["metrics"] if m["key"] == key), []))
 
 
+# #223: the fixture's home readings, as instants: blood pressure (time, systolic, diastolic, pulse, source), body
+# temperature (time, °C) and glucose (time, value, unit, source), for the phone apps' payloads that match it
+BP = [("2024-03-10T12:00:00Z", 124, 82, 64, "Test Cuff"), ("2024-03-11T00:30:00Z", 133, 87, None, "Test Cuff"),
+      ("2024-03-11T11:30:00Z", 119, 78, None, "Other Cuff App")]
+TEMPS = [("2024-03-09T12:05:00Z", 36.8), ("2024-03-11T11:10:00Z", 37.5)]
+GLUCOSE = [("2024-03-09T12:30:00Z", 96, "mg/dL", "Test Meter"), ("2024-03-09T17:45:00Z", 7.1, "mmol/L", "Test Meter")] + [
+    (f"2024-03-11T12:{5 * i:02d}:00Z", v, "mmol/L", "Test Sensor")
+    for i, v in enumerate((2.9, 3.6, 3.9, 5.0, 6.1, 7.4, 8.8, 10.0, 10.6, 9.2, 7.0, 6.2))]
+NEW = ("bp_", "body_temp", "glucose_")   # the metrics #223 brought to an export
+
+
+def local(t, off):
+    """An instant as Health Auto Export writes it, in that UTC offset ("-0400")."""
+    from datetime import datetime
+    z = timezone(timedelta(hours=int(off[:3]), minutes=int(off[0] + off[3:])))
+    return datetime.fromisoformat(t.replace("Z", "+00:00")).astimezone(z).strftime("%Y-%m-%d %H:%M:%S %z")
+
+
+def receiver():
+    spec = importlib.util.spec_from_file_location("watch_receiver", os.path.join(ROOT, "watch", "receiver.py"))
+    rx = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(rx)
+    return rx
+
+
 class Tmp(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="sanguity-ah-")
@@ -158,7 +183,13 @@ class MatchesReceiver(unittest.TestCase):
                       "exercise": [{"uuid": "e1", "start_time": "2024-03-10T07:00:00-04:00", "end_time": "2024-03-10T07:32:00-04:00",
                                     "name": "running", "duration_seconds": 1896},
                                    {"uuid": "e2", "start_time": "2024-03-12T18:00:00-07:00", "end_time": "2024-03-12T18:45:00-07:00",
-                                    "name": "traditional_strength_training", "duration_seconds": 2700}]}, "d1")
+                                    "name": "traditional_strength_training", "duration_seconds": 2700}],
+                      # #223: home blood pressure, body temperature and glucose, as Health Connect sends them
+                      "blood_pressure": [{"uuid": f"bp{i}", "time": t, "systolic": s, "diastolic": d, "source": src, **({"pulse": p} if p else {})}
+                                         for i, (t, s, d, p, src) in enumerate(BP)],
+                      "body_temperature": [{"uuid": f"t{i}", "time": t, "celsius": c, "source": "Test Thermometer"} for i, (t, c) in enumerate(TEMPS)],
+                      "blood_glucose": [{"uuid": f"g{i}", "time": t, "millimoles_per_liter": v / ah.glucose.MGDL_PER_MMOL if u == "mg/dL" else v,
+                                         "source": src} for i, (t, v, u, src) in enumerate(GLUCOSE)]}, "d1")
         want = store.summary()
         got = ah.parse(FILES)["data"]["watch"]
         self.assertEqual([m["key"] for m in got["metrics"]], [m["key"] for m in want["metrics"]])
@@ -171,6 +202,113 @@ class MatchesReceiver(unittest.TestCase):
                 self.assertAlmostEqual(a, b, delta=0.011, msg=g["key"])
         self.assertEqual([(x["start"], x["end"], x["kind"], x["minutes"]) for x in got["exercise"]],
                          [(x["start"], x["end"], x["kind"], x["minutes"]) for x in want["exercise"]])
+        self.assertEqual([r[:4] for r in got["bp_readings"]], [r[:4] for r in want["bp_readings"]])   # (#223)
+        self.assertEqual([r[:2] for r in got["temp_readings"]], [r[:2] for r in want["temp_readings"]])
+
+
+# ---- the phone apps' newer measures (#223)
+class NewMeasures(unittest.TestCase):
+    """Home blood pressure, body temperature, glucose, heights and (only when asked) cycle records from export.xml."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.w = ah.parse(FILES)["data"]["watch"]
+        cls.on = ah.parse(FILES, cycle=True)["data"]["watch"]
+
+    def test_blood_pressure(self):
+        # 10 March: two correlations (the half one on 9 March, systolic only, isn't a reading); 11 March: a pair
+        # written without a correlation. The correlations' records at the top level aren't read twice.
+        self.assertEqual(pts(self.w, "bp_sys"), {"2024-03-10": 128.5, "2024-03-11": 119})
+        self.assertEqual(pts(self.w, "bp_dia_max"), {"2024-03-10": 87, "2024-03-11": 78})
+        self.assertEqual(pts(self.w, "bp_n"), {"2024-03-10": 2, "2024-03-11": 1})
+        self.assertEqual(self.w["bp_readings"], [
+            ["2024-03-10T12:00:00+00:00", 124, 82, 64, "Test Cuff", "Apple Health"],   # the cuff's pulse, from the correlation
+            ["2024-03-11T00:30:00+00:00", 133, 87, None, "Test Cuff", "Apple Health"],  # 20:30 on 10 March, local
+            ["2024-03-11T11:30:00+00:00", 119, 78, None, "Other Cuff App", "Apple Health"]])
+        self.assertEqual(pts(self.w, "hr_avg"), {"2024-03-09": 80}, "a correlation's heart rate isn't a top-level reading")
+
+    def test_temperature_glucose_and_units(self):
+        self.assertEqual(pts(self.w, "body_temp"), {"2024-03-09": 36.8, "2024-03-11": 37.5})   # 99.5 °F
+        self.assertEqual([r[:3] for r in self.w["temp_readings"]], [["2024-03-09T12:05:00+00:00", 36.8, "Test Thermometer"],
+                                                                     ["2024-03-11T11:10:00+00:00", 37.5, "Test Thermometer"]])
+        self.assertEqual(pts(self.w, "glucose_meter"), {"2024-03-09T07:30": 96, "2024-03-09T12:45": 127.91})   # 7.1 mmol/L
+        self.assertEqual(pts(self.w, "glucose_n"), {"2024-03-11": 12}, "the sensor's readings, every five minutes: a CGM")
+        self.assertEqual((pts(self.w, "glucose_lt54"), pts(self.w, "glucose_in"), pts(self.w, "glucose_gt180")),
+                         ({"2024-03-11": 8.3}, {"2024-03-11": 75}, {"2024-03-11": 8.3}))
+
+    def test_heights_offered_not_metrics(self):
+        self.assertEqual(self.w["heights"], [["2024-03-09", 178, "Test Phone", "cm"],
+                                             ["2024-03-12", 177.8, "Test Phone", "ftin"]])   # the day's later one, 70 in
+        self.assertFalse([m for m in self.w["metrics"] if "height" in m["key"]])
+
+    def test_cycle_only_when_asked(self):
+        self.assertNotIn("cycle", self.w, "cycle tracking off: not read at all")
+        self.assertEqual([(r["kind"], r["day"], r.get("value"), r.get("detail")) for r in self.on["cycle"]], [
+            ("flow", "2024-03-09", "medium", "start"), ("flow", "2024-03-10", "light", None),
+            ("mucus", "2024-03-11", "egg white", None), ("ovulation", "2024-03-11", "positive", None),
+            ("spotting", "2024-03-12", None, None)])
+        text = repr(self.on)
+        for never in ("SexualActivity", "sexual", "36.4"):   # never read, on or off; nor basal body temperature
+            self.assertNotIn(never, text)
+        self.assertEqual({t.lower() for t in ah.CYCLE}, {t for t in ah.cycles.HAE if t.startswith("hk")},
+                         "every HealthKit cycle type cycle.py knows, and only those")
+        self.assertEqual({k: v for k, v in self.on.items() if k not in ("cycle", "updated")},
+                         {k: v for k, v in self.w.items() if k != "updated"}, "the rest the same, on or off")
+
+
+class MatchesHealthAutoExport(unittest.TestCase):
+    """The fixture's newer measures sent by Health Auto Export to watch/receiver.py give the same readings, and an
+    upload laid over the app's summary (watch_store.merge) counts each reading once (#223)."""
+
+    def test_same_readings(self):
+        try:
+            rx = receiver()
+            from server import watch_store
+        except ImportError as e:   # the receiver needs the app's crypto dependency
+            self.skipTest(f"receiver not importable: {e}")
+        tmp = tempfile.mkdtemp(prefix="sanguity-rx-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        rx.DATA = tmp
+        rx.cycle_on = lambda slot: True   # this profile turned cycle tracking on
+        store = rx.Store()
+        ny, west = "-0400", "-0700"
+        metric = lambda name, units, rows: {"data": {"metrics": [{"name": name, "units": units, "data": rows}]}}
+        uploads = [
+            metric("blood_pressure", "mmHg", [{"date": local(t, ny), "systolic": s, "diastolic": d, "source": src,
+                                               **({"pulse": p} if p else {})} for t, s, d, p, src in BP]),
+            metric("body_temperature", "degC", [{"date": local(TEMPS[0][0], "-0500"), "qty": 36.8, "source": "Test Thermometer"}]),
+            metric("body_temperature", "degF", [{"date": local(TEMPS[1][0], ny), "qty": 99.5, "source": "Test Thermometer"}]),
+            metric("blood_glucose", "mg/dL", [{"date": local(t, "-0500"), "qty": v, "source": src} for t, v, u, src in GLUCOSE if u == "mg/dL"]),
+            metric("blood_glucose", "mmol<180.1558800000541>/L",
+                   [{"date": local(t, "-0500" if t < "2024-03-10" else ny), "qty": v, "source": src} for t, v, u, src in GLUCOSE if u != "mg/dL"]),
+            {"data": {"metrics": [
+                {"name": "menstrual_flow", "units": "", "data": [
+                    {"date": "2024-03-09 00:00:00 -0500", "value": "Medium", "isCycleStart": True, "source": "Test Phone"},
+                    {"date": "2024-03-10 00:00:00 -0500", "value": "Light", "source": "Test Phone"}]},
+                {"name": "ovulation_test_result", "units": "", "data": [{"date": "2024-03-11 07:00:00 -0400", "value": "LH surge", "source": "Test Phone"}]},
+                {"name": "cervical_mucus_quality", "units": "", "data": [{"date": "2024-03-11 07:00:00 -0400", "value": "Egg white", "source": "Test Phone"}]},
+                {"name": "intermenstrual_bleeding", "units": "", "data": [{"date": f"2024-03-12 18:00:00 {west}", "source": "Test Phone"}]}]}}]
+        for i, p in enumerate(uploads + uploads[:2]):   # the first two sent again: once
+            store.ingest(p, f"hae{i}")
+        app = store.summary()
+        got = ah.parse(FILES, cycle=True)["data"]["watch"]
+        new = lambda w: {m["key"]: [list(x) for x in m["pts"]] for m in w["metrics"] if m["key"].startswith(NEW)}
+        self.assertEqual(list(new(got)), list(new(app)))
+        for k, want in new(app).items():
+            self.assertEqual([d for d, _ in new(got)[k]], [d for d, _ in want], k)
+            for (_, a), (_, b) in zip(new(got)[k], want):
+                self.assertAlmostEqual(a, b, delta=0.011, msg=k)
+        self.assertEqual(got["bp_readings"], app["bp_readings"])
+        self.assertEqual(got["temp_readings"], app["temp_readings"])
+        self.assertEqual(got["cycle"], ah.cycles.records(store.db), "the same cycle records, by the same rules")
+        self.assertEqual(ah.cycles.view(got["cycle"] + ah.cycles.records(store.db)), ah.cycles.view(got["cycle"]),
+                         "an upload's and the app's together: each shown once")
+        # an upload and the app overlapping: each reading once, whichever is laid over the other
+        for low, high in ((got, app), (app, got), (got, got)):
+            both = watch_store.merge(low, high)
+            self.assertEqual(both["bp_readings"], app["bp_readings"])
+            self.assertEqual(both["temp_readings"], app["temp_readings"])
+            self.assertEqual(new(both), new(high))
 
 
 class Detect(Tmp):

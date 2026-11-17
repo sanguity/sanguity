@@ -3855,6 +3855,23 @@ def main():
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
             check("the job is done, read by the Epic MyChart importer", job is not None and tuple(job) == ("done", "epic-mychart"),
                   job and tuple(job))
+            # ---- an Apple Health export's newer measures (#223): the preview counts them; cycle records aren't read
+            # for a profile without cycle tracking (this one), so it doesn't; cancelled, so nothing is saved
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                z.write(os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml"), "apple_health_export/export.xml")
+            page.set_input_files("#pickZip", files=[{"name": "export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
+            cards = js("document.querySelectorAll('.import-job').length")
+            page.click("#go")
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
+                                   f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card = js(f"{last_card}.innerText")
+            check("an uploaded Apple Health export's preview counts its blood pressure, temperature, glucose and heights (#223)",
+                  card.startswith("Ready to import.") and all(w in card for w in ("3 blood pressure readings", "2 body temperature readings",
+                  "2 glucose meter readings", "1 day of CGM readings", "2 heights, offered for About this person")) and "cycle" not in card.lower(), card)
+            js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            page.wait_for_function(f"!/^Ready to import/.test({last_card}.textContent)", timeout=10000)
             js("window.__hook = []; window.sanguityImport = {uploaded: a => window.__hook.push(a)}")
             page.click("#tab-files")
             page.set_input_files("#pickFiles", files=[{"name": n, "mimeType": "text/csv", "buffer": b"date,test,value\n2026-02-01,WBC,6.1\n"}
@@ -5398,6 +5415,22 @@ def main():
             page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 2", timeout=10000)
             check("…a height removed after asking", said[0] == "Remove this height?" and "134.6 cm" in said[1]
                   and js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")["heights"][-1]["date"] == "2026-04-06", said)
+            # ---- heights from the phone (#223): an uploaded Apple Health export's, beside the history like a clinic's,
+            # marked as from the phone, added only on request
+            from server import watch_store as ws_r
+            db = dbm.connect()
+            with dbm.transaction(db):
+                ws_r.save_import(db, apid, {"metrics": [], "exercise": [], "heights": [["2026-10-01", 140.2, "Fictional Phone", "cm"]]})
+            db.close()
+            page.reload()
+            about(apid)
+            rec_rows = rows_of("#about .about-recorded tbody tr")
+            check("…the heights an uploaded Apple Health export brought, beside them, marked as from the phone and offered, not added (#223)",
+                  len(rec_rows) == 3 and "Apple Health on the phone (Fictional Phone)" in rec_rows[0] and "140.2 cm" in rec_rows[0]
+                  and "Add to the history" in rec_rows[0] and "in the phone's Health app" in page.inner_text("#about") and len(rows_of(hist)) == 2, rec_rows)
+            page.click("#about .about-recorded tbody tr:first-child button")
+            page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 3", timeout=10000)
+            check("…one added on request, like a clinic's", "In the history" in rows_of("#about .about-recorded tbody tr")[0] and "140.2 cm" in rows_of(hist)[0])
             # wave B's helpers (person.js) on the records page, as server/person.py works them out
             page.goto(base + f"/?profile={apid}")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.name === 'About (fictional)'", timeout=20000)

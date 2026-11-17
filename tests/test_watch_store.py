@@ -83,7 +83,7 @@ class Store(unittest.TestCase):
         got = watch_store.load(self.db, pid)
         self.assertEqual(got["metrics"], imported["metrics"])
         self.assertEqual(got["exercise"], imported["exercise"])
-        self.assertEqual((stored["days"], stored["workouts"]), (4, 2))
+        self.assertEqual((stored["days"], stored["workouts"]), (5, 2))   # 9, 10, 11 (home readings, #223), 12 and 13 March
 
     def test_file_on_disk_is_encrypted(self):
         pid = self.profile()

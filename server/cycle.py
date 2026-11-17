@@ -47,9 +47,9 @@ types for us, so the field names below are assumptions, and anything unexpected 
 HealthKit has no period record: a period is the days with flow, as Health Connect's flow records are when no period
 was logged. Each record's day is its own local date (Health Connect's in the upload's time zone, Health Auto Export's
 in the offset written with it). A flow of "none" is a day logged as no flow, and isn't shown. Symptoms (cramps and
-the like) aren't read. An uploaded Apple Health export.xml isn't read for any of these either (its upload is kept as
-it came); an importer that reads them later (#223) should do so only for a profile with tracking on
-(cycle_tracking.is_on), and keep them out of the profile's records as the receiver does.
+the like) aren't read. An uploaded Apple Health export.xml's are read (#223, server/importers/apple_health.py, with
+from_hae) only for a profile with tracking on (cycle_tracking.is_on), and kept apart from its records and its watch
+summary (cycle_tracking.save_imported); its upload is kept as it came.
 
 What the page gets (view()): spans, each a period as logged in Health Connect, or a run of consecutive days with flow
 recorded outside any logged period, with each day's flow; and marks: ovulation tests, cervical mucus and spotting,

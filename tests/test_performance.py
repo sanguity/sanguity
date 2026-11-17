@@ -48,7 +48,7 @@ BUDGETS = {
     "build_load_s": 5,                  # the big build loaded into a profile (the first start, `setup rebuild`)
     "export_s": 6,                      # "Export everything" of the big profile, a zip with its 1,000 documents
     "import_s": 10,                     # that zip imported into an empty profile: uploaded, previewed and saved
-    "apple_health_s": 10,               # a ten-year Apple Health export.xml (15 MB) imported the same way
+    "apple_health_s": 10,               # a ten-year Apple Health export.xml (17 MB) imported the same way
     "sync_s": 15,                       # a connected source's first pull of a big patient, its preview saved
     "page_ready_ms": 1500,              # the records page ready, loaded on each tab
     "tab_draw_ms": 1000,                # a tab's first draw with the period "All", the page loaded on another tab
@@ -177,7 +177,8 @@ def count(pid, table):
 
 def apple_health_xml(days=3652, seed=201):
     """export.xml with what a watch and a scale record each day for ten years: steps and heart rate through the day,
-    resting heart rate, HRV, a night's sleep in stages, a weight every few days and a workout every few days."""
+    resting heart rate, HRV, a night's sleep in stages, a weight every few days and a workout every few days; and
+    (#223) a glucose meter's reading a day, home blood pressure every other day and a temperature once a week."""
     rnd, end = random.Random(seed), date.fromisoformat(END)
     out = ['<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE HealthData [\n<!ELEMENT HealthData (ExportDate,Me,(Record|Workout)*)>\n]>\n'
            '<HealthData locale="en_US">\n <ExportDate value="2026-11-15 09:00:00 -0500"/>\n <Me HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexNotSet"/>\n']
@@ -199,6 +200,16 @@ def apple_health_xml(days=3652, seed=201):
             out.append(f' <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Example Watch" creationDate="{e}" '
                        f'startDate="{s}" endDate="{e}" value="HKCategoryValueSleepAnalysis{stage}"/>\n')
             night += timedelta(minutes=mins)
+        rec("BloodGlucose", "mg/dL", rnd.randint(80, 140), d + timedelta(hours=7, minutes=20))   # a meter's, daily (#223)
+        if n % 2 == 0:   # home blood pressure every other day, as Apple writes it: the records, and the correlation (#223)
+            s = (d + timedelta(hours=7, minutes=30)).strftime("%Y-%m-%d %H:%M:%S -0500")
+            sys_, dia = rnd.randint(110, 135), rnd.randint(70, 88)
+            parts = [f'<Record type="HKQuantityTypeIdentifierBloodPressure{k}" sourceName="Example Cuff" unit="mmHg" startDate="{s}" endDate="{s}" value="{v}"/>'
+                     for k, v in (("Systolic", sys_), ("Diastolic", dia))]
+            out.append("".join(f" {p}\n" for p in parts) + f' <Correlation type="HKCorrelationTypeIdentifierBloodPressure" sourceName="Example Cuff" '
+                       f'startDate="{s}" endDate="{s}">\n' + "".join(f"  {p}\n" for p in parts) + " </Correlation>\n")
+        if n % 7 == 0:
+            rec("BodyTemperature", "degF", round(97.8 + rnd.uniform(0, 1.2), 1), d + timedelta(hours=7, minutes=40))   # (#223)
         if n % 3 == 0:
             rec("BodyMass", "lb", round(178 + rnd.uniform(-2, 2), 1), d + timedelta(hours=7, minutes=10))
             s, e = (d + timedelta(hours=18)).strftime("%Y-%m-%d %H:%M:%S -0500"), (d + timedelta(hours=18, minutes=40)).strftime("%Y-%m-%d %H:%M:%S -0500")

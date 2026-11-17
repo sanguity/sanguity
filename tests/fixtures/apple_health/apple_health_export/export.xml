@@ -80,6 +80,60 @@
   <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="Test Cuff" unit="count/min" startDate="2024-03-09 09:00:00 -0500" endDate="2024-03-09 09:00:00 -0500" value="200"/>
  </Correlation>
 
+ <!-- #223: home blood pressure, two whole correlations on 10 March (the morning's with the cuff's pulse), their records
+      at the top level too as Apple writes them; and a pair another app wrote without a correlation, on 11 March -->
+ <Record type="HKQuantityTypeIdentifierBloodPressureSystolic" sourceName="Test Cuff" unit="mmHg" startDate="2024-03-10 08:00:00 -0400" endDate="2024-03-10 08:00:00 -0400" value="124"/>
+ <Record type="HKQuantityTypeIdentifierBloodPressureDiastolic" sourceName="Test Cuff" unit="mmHg" startDate="2024-03-10 08:00:00 -0400" endDate="2024-03-10 08:00:00 -0400" value="82"/>
+ <Correlation type="HKCorrelationTypeIdentifierBloodPressure" sourceName="Test Cuff" startDate="2024-03-10 08:00:00 -0400" endDate="2024-03-10 08:00:00 -0400">
+  <Record type="HKQuantityTypeIdentifierBloodPressureSystolic" sourceName="Test Cuff" unit="mmHg" startDate="2024-03-10 08:00:00 -0400" endDate="2024-03-10 08:00:00 -0400" value="124"/>
+  <Record type="HKQuantityTypeIdentifierBloodPressureDiastolic" sourceName="Test Cuff" unit="mmHg" startDate="2024-03-10 08:00:00 -0400" endDate="2024-03-10 08:00:00 -0400" value="82"/>
+  <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="Test Cuff" unit="count/min" startDate="2024-03-10 08:00:00 -0400" endDate="2024-03-10 08:00:00 -0400" value="64"/>
+ </Correlation>
+ <Correlation type="HKCorrelationTypeIdentifierBloodPressure" sourceName="Test Cuff" startDate="2024-03-10 20:30:00 -0400" endDate="2024-03-10 20:30:00 -0400">
+  <Record type="HKQuantityTypeIdentifierBloodPressureDiastolic" sourceName="Test Cuff" unit="mmHg" startDate="2024-03-10 20:30:00 -0400" endDate="2024-03-10 20:30:00 -0400" value="87"/>
+  <Record type="HKQuantityTypeIdentifierBloodPressureSystolic" sourceName="Test Cuff" unit="mmHg" startDate="2024-03-10 20:30:00 -0400" endDate="2024-03-10 20:30:00 -0400" value="133"/>
+ </Correlation>
+ <Record type="HKQuantityTypeIdentifierBloodPressureSystolic" sourceName="Other Cuff App" unit="mmHg" startDate="2024-03-11 07:30:00 -0400" endDate="2024-03-11 07:30:00 -0400" value="119"/>
+ <Record type="HKQuantityTypeIdentifierBloodPressureDiastolic" sourceName="Other Cuff App" unit="mmHg" startDate="2024-03-11 07:30:00 -0400" endDate="2024-03-11 07:30:00 -0400" value="78"/>
+
+ <!-- #223: body temperature, in °C and in °F -->
+ <Record type="HKQuantityTypeIdentifierBodyTemperature" sourceName="Test Thermometer" unit="degC" startDate="2024-03-09 07:05:00 -0500" endDate="2024-03-09 07:05:00 -0500" value="36.8"/>
+ <Record type="HKQuantityTypeIdentifierBodyTemperature" sourceName="Test Thermometer" unit="degF" startDate="2024-03-11 07:10:00 -0400" endDate="2024-03-11 07:10:00 -0400" value="99.5"/>
+ <!-- #223: blood glucose, a meter's finger-sticks in mg/dL and mmol/L, and a sensor's (CGM) every five minutes for an hour -->
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Meter" unit="mg/dL" startDate="2024-03-09 07:30:00 -0500" endDate="2024-03-09 07:30:00 -0500" value="96">
+  <MetadataEntry key="HKBloodGlucoseMealTime" value="1"/>
+ </Record>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Meter" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-09 12:45:00 -0500" endDate="2024-03-09 12:45:00 -0500" value="7.1"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:00:00 -0400" endDate="2024-03-11 08:00:00 -0400" value="2.9"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:05:00 -0400" endDate="2024-03-11 08:05:00 -0400" value="3.6"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:10:00 -0400" endDate="2024-03-11 08:10:00 -0400" value="3.9"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:15:00 -0400" endDate="2024-03-11 08:15:00 -0400" value="5.0"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:20:00 -0400" endDate="2024-03-11 08:20:00 -0400" value="6.1"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:25:00 -0400" endDate="2024-03-11 08:25:00 -0400" value="7.4"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:30:00 -0400" endDate="2024-03-11 08:30:00 -0400" value="8.8"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:35:00 -0400" endDate="2024-03-11 08:35:00 -0400" value="10.0"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:40:00 -0400" endDate="2024-03-11 08:40:00 -0400" value="10.6"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:45:00 -0400" endDate="2024-03-11 08:45:00 -0400" value="9.2"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:50:00 -0400" endDate="2024-03-11 08:50:00 -0400" value="7.0"/>
+ <Record type="HKQuantityTypeIdentifierBloodGlucose" sourceName="Test Sensor" unit="mmol&lt;180.1558800000541&gt;/L" startDate="2024-03-11 08:55:00 -0400" endDate="2024-03-11 08:55:00 -0400" value="6.2"/>
+ <!-- #223: height, from the phone: one in cm, one typed in inches (and an earlier one that day, replaced) -->
+ <Record type="HKQuantityTypeIdentifierHeight" sourceName="Test Phone" unit="cm" startDate="2024-03-09 08:00:00 -0500" endDate="2024-03-09 08:00:00 -0500" value="178"/>
+ <Record type="HKQuantityTypeIdentifierHeight" sourceName="Test Phone" unit="in" startDate="2024-03-12 09:00:00 -0700" endDate="2024-03-12 09:00:00 -0700" value="69"/>
+ <Record type="HKQuantityTypeIdentifierHeight" sourceName="Test Phone" unit="in" startDate="2024-03-12 10:00:00 -0700" endDate="2024-03-12 10:00:00 -0700" value="70"/>
+ <!-- #223: cycle records (read only for a profile with cycle tracking on), sexual activity and basal body temperature
+      (never read) -->
+ <Record type="HKCategoryTypeIdentifierMenstrualFlow" sourceName="Test Phone" startDate="2024-03-09 00:00:00 -0500" endDate="2024-03-09 00:00:00 -0500" value="HKCategoryValueMenstrualFlowMedium">
+  <MetadataEntry key="HKMenstrualCycleStart" value="1"/>
+ </Record>
+ <Record type="HKCategoryTypeIdentifierMenstrualFlow" sourceName="Test Phone" startDate="2024-03-10 00:00:00 -0500" endDate="2024-03-10 00:00:00 -0500" value="HKCategoryValueMenstrualFlowLight">
+  <MetadataEntry key="HKMenstrualCycleStart" value="0"/>
+ </Record>
+ <Record type="HKCategoryTypeIdentifierOvulationTestResult" sourceName="Test Phone" startDate="2024-03-11 07:00:00 -0400" endDate="2024-03-11 07:00:00 -0400" value="HKCategoryValueOvulationTestResultLuteinizingHormoneSurge"/>
+ <Record type="HKCategoryTypeIdentifierCervicalMucusQuality" sourceName="Test Phone" startDate="2024-03-11 07:00:00 -0400" endDate="2024-03-11 07:00:00 -0400" value="HKCategoryValueCervicalMucusQualityEggWhite"/>
+ <Record type="HKCategoryTypeIdentifierIntermenstrualBleeding" sourceName="Test Phone" startDate="2024-03-12 18:00:00 -0700" endDate="2024-03-12 18:00:00 -0700" value="HKCategoryValueNotApplicable"/>
+ <Record type="HKCategoryTypeIdentifierSexualActivity" sourceName="Test Phone" startDate="2024-03-11 22:00:00 -0400" endDate="2024-03-11 22:00:00 -0400" value="HKCategoryValueNotApplicable"/>
+ <Record type="HKQuantityTypeIdentifierBasalBodyTemperature" sourceName="Test Phone" unit="degC" startDate="2024-03-11 06:00:00 -0400" endDate="2024-03-11 06:00:00 -0400" value="36.4"/>
+
  <!-- sleep, the night of 8 to 9 March: the watch's stages, the phone's time in bed, and another app's unstaged estimate -->
  <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Test Phone" startDate="2024-03-08 22:30:00 -0500" endDate="2024-03-09 06:30:00 -0500" value="HKCategoryValueSleepAnalysisInBed"/>
  <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Sleep App" startDate="2024-03-08 23:00:00 -0500" endDate="2024-03-09 06:00:00 -0500" value="HKCategoryValueSleepAnalysisAsleep"/>

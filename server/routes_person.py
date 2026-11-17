@@ -1,6 +1,7 @@
 """About this person (person.py, #194): a profile's birth date, sex used for reference ranges, and height history; and
 a measured maximum heart rate, for heart rate zones on workouts (#197, hrzones.py).
-Viewers read them (and the heights a clinic recorded in the records, shown beside the history); owners and editors
+Viewers read them (and the heights a clinic recorded in the records, or the phone in an uploaded Apple Health export
+(#223), shown beside the history); owners and editors
 change them. They are profile settings (person.*; the due date since #196), so every change is checked by the setting's own check and
 logged in the profile's activity like any setting (which one, never its value); main.guard's CSRF check covers the
 PUT, POST and DELETE like every other change."""
@@ -10,7 +11,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from . import activity, db as dbm, hrzones, person, records, settings
+from . import activity, db as dbm, hrzones, person, records, settings, watch_store
 from .main import _client_ip, get_db, need, user
 
 router = APIRouter()
@@ -29,7 +30,9 @@ def view(db, pid, role):
     v = _values(db, pid)
     body = records.served(db, pid)
     mine = {h["date"] for h in v["heights"]}
-    recorded = [{**h, "inHistory": h["date"] in mine} for h in person.recorded(json.loads(body) if body else {})]
+    heights = person.recorded(json.loads(body) if body else {})
+    heights = sorted(heights + person.from_phone(watch_store.load(db, pid)), key=lambda h: h["date"], reverse=True)   # (#223)
+    recorded = [{**h, "inHistory": h["date"] in mine} for h in heights]
     return {**v, "recorded": recorded, "sexes": person.SEXES, "can_change": role in ("owner", "editor")}
 
 

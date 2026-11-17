@@ -370,6 +370,94 @@ class App(unittest.TestCase):
         self.assertTrue(row["sealed"].startswith(crypto.FIELD), "the setting is sealed")
         self.assertNotIn("_cycle", json.dumps(self.c["robin"].get(f"/api/profiles/{self.pid}/settings").json()))
 
+    # ---- uploaded Apple Health exports (#223): read only while tracking is on, kept apart, deleted with the rest
+    def import_export(self, pid, confirm=True):
+        """Upload the fictional export.zip (tests/fixtures/apple_health) as the Sources page does and import it: the
+        job, once it's waiting in its preview (or done, confirmed)."""
+        import time
+        with open(os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml"), "rb") as f:
+            xml = f.read()
+        c = self.c["robin"]
+        up = c.post(f"/api/profiles/{pid}/uploads", headers=H).json()["id"]
+        self.assertEqual(c.put(f"/api/profiles/{pid}/uploads/{up}/files", params={"path": "apple_health_export/export.xml"}, content=xml,
+                               headers={**H, "Content-Type": "application/octet-stream"}).status_code, 200)
+        self.assertEqual(c.post(f"/api/profiles/{pid}/uploads/{up}/finish", headers=H).status_code, 200)
+        jid = c.post(f"/api/profiles/{pid}/uploads/{up}/import", headers=H).json()["id"]
+        end, seen = time.time() + 20, None
+        while time.time() < end:
+            j = c.get(f"/api/profiles/{pid}/jobs/{jid}").json()
+            if j["state"] == "preview" and confirm and seen is None:
+                seen = j
+                self.assertEqual(c.post(f"/api/profiles/{pid}/jobs/{jid}/confirm", headers=H).status_code, 202)
+            elif j["state"] == "preview" and not confirm or j["state"] in ("done", "failed"):
+                return (seen or j), j
+            time.sleep(0.05)
+        self.fail(f"job {jid} didn't finish")
+
+    def test_7_an_uploaded_export_only_while_on(self):
+        db = dbm.connect()
+        try:
+            pid = prof.create_profile(db, "Sam (fictional)", owner_id=self.uid["robin"])
+            db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (self.uid["kim"], pid))
+        finally:
+            db.close()
+        url = f"/api/profiles/{pid}/cycle"
+        cycle_dir = cycle_tracking.imported_dir(pid)
+
+        def on_disk():
+            """Everything the profile's folder holds, as bytes, decrypted where sealed, but the uploaded files
+            themselves (kept as they came, as the page says)."""
+            out = b""
+            for p in glob.glob(os.path.join(prof.profile_dir(pid), "**", "*"), recursive=True):
+                if os.path.isfile(p) and f"{os.sep}uploads{os.sep}" not in p:
+                    out += crypto.read_file(p) if crypto.file_is_encrypted(p) else open(p, "rb").read()
+            return out
+        # off: an export's cycle records are never read; nothing kept, not even in the preview, and not counted
+        preview, done = self.import_export(pid)
+        self.assertEqual(done["state"], "done", done)
+        self.assertNotIn("cycle", preview["counts"])
+        self.assertEqual(preview["counts"]["bp_readings"], 3, "the new kinds are counted")
+        self.assertEqual((preview["counts"]["cgm_days"], preview["counts"]["heights"]), (1, 2))
+        self.assertFalse(os.path.exists(cycle_dir))
+        for w in (b"menstru", b"ovulation", b"egg white", b"spotting", b'"flow"'):
+            self.assertNotIn(w, on_disk().lower())
+        self.assertEqual(self.c["robin"].get(url).json()["spans"], [])
+        watch = self.c["robin"].get(f"/api/profiles/{pid}/watch").json()
+        self.assertEqual(len(watch["bp_readings"]), 3)
+        # on: the next upload's are kept, apart from the watch summary, and shown
+        self.assertEqual(self.c["robin"].put(url, json={"on": True}, headers=H).status_code, 200)
+        preview, done = self.import_export(pid)
+        self.assertEqual(preview["counts"]["cycle"], 5, "the preview counts them")
+        self.assertNotIn("cycle", done["counts"], "the import's own counts never say")
+        st = self.c["robin"].get(url).json()
+        self.assertEqual(([(s["from"], s["to"], s["app"]) for s in st["spans"]], st["count"]),
+                         ([("2024-03-09", "2024-03-10", "Apple Health")], 5))
+        self.assertEqual([m["title"] for m in st["marks"]], ["Cervical mucus: egg white", "Ovulation test: positive", "Spotting"])
+        self.assertTrue(crypto.file_is_encrypted(cycle_tracking.imported_path(pid, done["import_id"])))
+        own = crypto.read_file(watch_store_own(pid))
+        self.assertNotIn(b"ovulation", own, "never in the watch summary")
+        self.assertEqual(len(self.c["robin"].get(f"/api/profiles/{pid}/watch").json()["bp_readings"]), 3, "the same readings, once")
+        self.assertEqual(self.c["kim"].get(url).status_code, 403)
+        # undoing the import takes its records away
+        self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/imports/{done['import_id']}/undo", headers=H).status_code, 200)
+        self.assertEqual(self.c["robin"].get(url).json()["count"], 0)
+        self.assertFalse(os.path.exists(cycle_tracking.imported_path(pid, done["import_id"])))
+        # turning it off deletes what uploads brought, and a waiting preview's too
+        _, done = self.import_export(pid)
+        waiting, _ = self.import_export(pid, confirm=False)
+        self.assertEqual(waiting["counts"]["cycle"], 5)
+        self.assertEqual(self.c["robin"].put(url, json={"on": False}, headers=H).status_code, 200)
+        self.assertFalse(os.path.exists(cycle_dir))
+        self.assertNotIn("cycle", self.c["robin"].get(f"/api/profiles/{pid}/jobs/{waiting['id']}").json()["counts"])
+        for w in (b"menstru", b"ovulation", b"egg white", b'"spotting"'):
+            self.assertNotIn(w, on_disk().lower(), "nothing left anywhere in the profile's folder")
+        self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/jobs/{waiting['id']}/confirm", headers=H).status_code, 202)
+
+
+def watch_store_own(pid):
+    from server import watch_store
+    return watch_store.own_path(pid)
+
 
 class Receiver(unittest.TestCase):
     """The receiver on its own: what it does before it knows, and uploads archived before this feature."""

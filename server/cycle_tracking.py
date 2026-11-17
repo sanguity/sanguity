@@ -15,8 +15,16 @@ asks (read()). watch_keys.publish() tells the receiver, in its secrets file, whi
 off asks for a deletion too. The receiver deletes the records from its database and rewrites every archived upload
 without them, then says which deletion it did in cycle.json ("purged"), which status() shows. Until then nothing is
 shown: a deletion asked for hides the records at once, whatever the receiver has done.
+
+Uploaded Apple Health exports (#223): an export's cycle records are read only for a profile with tracking on
+(jobs.py asks the importer for them then, and only then), and kept as the import's own, sealed, apart from its watch
+summary: <profile_dir>/watch/cycle/<import id>.json, a list of records in cycle.json's shape (from Health Auto Export,
+app "Apple Health", so a record both sent is shown once). They are never in daily.json. The page gets them with the
+receiver's (status()); undoing the import takes them away (watch_store.forget_import); turning tracking off, or
+asking for everything to be deleted, deletes them all at once, here in the app (drop_imported). The uploaded export
+itself is kept as it came, like any upload: deleting can't reach it, as the page says.
 """
-import json, os, secrets
+import json, os, secrets, shutil
 
 from . import crypto, cycle, db as dbm
 
@@ -57,6 +65,7 @@ def turn(db, pid, on, by):
     else:
         v.pop("since", None)
         v.update(purge=secrets.token_hex(12), purge_at=dbm.now())
+        drop_imported(db, pid)   # what uploaded exports brought (#223)
     _store(db, pid, v, by)
     return True
 
@@ -65,6 +74,7 @@ def delete_all(db, pid, by):
     """Ask for everything kept to be deleted, leaving tracking as it is (inside the caller's transaction)."""
     v = setting(db, pid)
     v.update(purge=secrets.token_hex(12), purge_at=dbm.now())
+    drop_imported(db, pid)   # what uploaded exports brought (#223)
     _store(db, pid, v, by)
 
 
@@ -108,12 +118,72 @@ def status(db, pid, role):
     out = {"on": on, "can_change": role == "owner", "since": v.get("since") if on else None, "ready": watch_keys.ready(),
            "deletion": {"asked": v.get("purge_at"), "done": None if pending else doc.get("purged_at")} if token else None,
            "spans": [], "marks": [], "count": 0, "updated": None}
-    if on and not pending and doc.get("on"):
-        recs = doc.get("records") if isinstance(doc.get("records"), list) else []
+    recs = (doc.get("records") if doc.get("on") and isinstance(doc.get("records"), list) else []) + imported(db, pid)   # (#223)
+    if on and not pending and recs:
         v = cycle.view(recs)
         out.update(spans=[{**s, **dict(zip(("title", "text"), cycle.words(s)))} for s in v["spans"]],
                    marks=[{**m, "title": cycle.mark_words(m)} for m in v["marks"]], count=len(recs), updated=doc.get("updated"))
     return out
+
+
+# ---- cycle records an uploaded Apple Health export brought (#223)
+def imported_dir(pid):
+    from . import profiles as prof
+    return os.path.join(prof.profile_dir(pid), "watch", "cycle")
+
+
+def imported_path(pid, import_id):
+    return os.path.join(imported_dir(pid), f"{int(import_id)}.json")
+
+
+def save_imported(db, pid, import_id, recs):
+    """Keep an import's cycle records as its own (inside the import's transaction), only while tracking is on and
+    only for an import that can be undone. Returns how many were kept."""
+    recs = [r for r in recs or [] if isinstance(r, dict) and r.get("kind") in cycle.LABEL]
+    if import_id is not None and os.path.isfile(imported_path(pid, import_id)):   # left by a save that rolled back
+        os.remove(imported_path(pid, import_id))
+    if not recs or import_id is None or not is_on(db, pid):
+        return 0
+    os.makedirs(imported_dir(pid), exist_ok=True)
+    crypto.write_file(imported_path(pid, import_id), json.dumps(recs, separators=(",", ":")).encode())
+    return len(recs)
+
+
+def imported(db, pid):
+    """The cycle records of the profile's imports that still exist, oldest import first; [] while tracking is off."""
+    d = imported_dir(pid)
+    ids = sorted(int(n[:-5]) for n in os.listdir(d) if n.endswith(".json") and n[:-5].isdigit()) if os.path.isdir(d) else []
+    if not ids or not is_on(db, pid):
+        return []
+    live = {r[0] for r in db.execute("SELECT id FROM imports WHERE profile_id=? AND id IN (SELECT value FROM json_each(?))",
+                                     (pid, json.dumps(ids)))}
+    out = []
+    for i in ids:
+        if i in live:
+            try:
+                v = json.loads(crypto.read_file(imported_path(pid, i)))
+            except (OSError, ValueError, crypto.KeyError_):
+                continue
+            out += [r for r in v if isinstance(r, dict)] if isinstance(v, list) else []
+    return out
+
+
+def drop_imported(db, pid):
+    """Delete every cycle record uploaded exports brought this profile: the imports' own, and those in an import's
+    preview still waiting to be confirmed (its sealed file is written again without them)."""
+    from . import jobs
+    shutil.rmtree(imported_dir(pid), ignore_errors=True)
+    for r in db.execute("SELECT id, summary FROM jobs WHERE profile_id=? AND state='preview'", (pid,)).fetchall():
+        path = jobs.preview_path(pid, r["id"])
+        try:
+            held = json.loads(crypto.read_file(path))
+            report = json.loads(crypto.dec(r["summary"])) if r["summary"] else None
+        except (OSError, ValueError, crypto.KeyError_):
+            continue
+        if isinstance(held.get("watch"), dict) and held["watch"].pop("cycle", None) is not None:
+            crypto.write_file(path, json.dumps(held, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+            if isinstance(report, dict) and (report.get("counts") or {}).pop("cycle", None) is not None:   # nor counted
+                db.execute("UPDATE jobs SET summary=? WHERE id=?", (crypto.enc(json.dumps(report)), r["id"]))
 
 
 def summary_rows(db, pid, data, since, now):

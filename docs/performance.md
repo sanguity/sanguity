@@ -33,8 +33,8 @@ what a year of them costs there is in [docs/database.md](database.md#the-watch-r
 
 The test loads it as the setup build into a temporary data folder of its own and serves it with the real backend,
 as `tests/browser_check.py` does with the demo. It also makes two more large inputs: a ten-year Apple Health
-`export.xml` (15 MB, about 65,000 records) and a patient on the fake SMART on FHIR server
-([`tests/fakefhir`](../tests/fakefhir/README.md)) with 5,000 lab results on 500 days, 500 visits, 1,000 claims and
+`export.xml` (17 MB, about 75,000 records, home blood pressure, glucose and temperature among them since #223) and a
+patient on the fake SMART on FHIR server ([`tests/fakefhir`](../tests/fakefhir/README.md)) with 5,000 lab results on 500 days, 500 visits, 1,000 claims and
 100 documents.
 
 ## The budgets
@@ -57,7 +57,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `build_load_s` | The big build loaded into a profile (the first start, `setup rebuild`) | 0.19 s | 5 s |
 | `export_s` | **Export everything** of the big profile: a 1.4 MB zip with its 1,000 documents | 0.55 s | 6 s |
 | `import_s` | That zip imported into an empty profile through the background job: uploaded, previewed, saved | 0.86 s | 10 s |
-| `apple_health_s` | The ten-year Apple Health `export.xml` imported the same way | 0.48 s | 10 s |
+| `apple_health_s` | The ten-year Apple Health `export.xml` imported the same way | 0.67 s | 10 s |
 | `sync_s` | A connected source's first pull of the big FHIR patient (186 requests), its preview saved | 1.7 s | 15 s |
 | `page_ready_ms` | The records page, loaded on each tab, from the request to its `sanguity:ready` mark (`www/js/app.js`) | 132 ms (Body and activity) | 1,500 ms |
 | `tab_draw_ms` | A tab's first draw with the period **All**, the page loaded on another tab, to the next frame | 110 ms (Body and activity) | 1,000 ms |

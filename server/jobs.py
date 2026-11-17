@@ -172,7 +172,7 @@ def _import(db, j):
             files = stack.enter_context(uploads.open_plain(db, pid, upload_id))
         except uploads.UploadError as e:   # not finished, or discarded since
             raise Failed(str(e)) from None
-        mod, data, warnings = _read(db, jid, j["importer"], files)
+        mod, data, warnings = _read(db, jid, j["importer"], files, pid)
         names = sorted(files)
 
     for d in data["details"].values():   # stored under a random name, so the type comes from the path in the upload
@@ -203,9 +203,11 @@ def _import(db, j):
 
 
 def _watch_counts(watch):
-    days = {str(p[0]) for m in watch.get("metrics") or [] if isinstance(m, dict)
+    days = {str(p[0])[:10] for m in watch.get("metrics") or [] if isinstance(m, dict)
             for p in m.get("pts") or [] if isinstance(p, list) and p}
-    return {"watch_days": len(days), "workouts": len(watch.get("exercise") or []), **watch_store.ecg.counts(watch)}   # ECGs (#182)
+    return {"watch_days": len(days), "workouts": len(watch.get("exercise") or []), **watch_store.ecg.counts(watch),   # ECGs (#182)
+            **watch_store.measure_counts(watch),   # home readings, glucose, heights (#223); cycle records: the preview's only,
+            **({"cycle": len(watch["cycle"])} if watch.get("cycle") else {})}   # read only while tracking is on (#223)
 
 
 def _save(db, j):
@@ -258,7 +260,8 @@ def _save(db, j):
         if watch:   # last, so a failure before it leaves no file behind
             saved = watch_store.save_import(db, pid, watch, import_id=iid)
             summary["counts"].update(watch_days=saved["days"], workouts=saved["workouts"],
-                                     **{k: saved[k] for k in ("ecgs", "rhythm") if saved.get(k)})   # ECGs (#182)
+                                     **{k: saved[k] for k in ("ecgs", "rhythm", "bp_readings", "temp_readings", "glucose_readings",
+                                                              "cgm_days", "heights") if saved.get(k)})   # ECGs (#182), #223
         for x in same if iid else ():
             crossmatch.decide(db, pid, who["id"] if who else None, x["other_key"], x["key"], True,
                               [x["other"], {k: x[k] for k in ("name", "t", "value", "unit")}])
@@ -339,8 +342,10 @@ def _refuse_not_preview(db, pid, jid):
                    "failed": "This import failed; start it again."}.get(r["state"], "This import can't be changed now."))
 
 
-def _read(db, jid, name, files):
-    """Pick the importer (or take the one asked for), parse and check: (module, data, warnings)."""
+def _read(db, jid, name, files, pid=None):
+    """Pick the importer (or take the one asked for), parse and check: (module, data, warnings). An importer that
+    can read menstrual cycle records (READS_CYCLE: Apple Health's, #223) is asked to only for a profile with cycle
+    tracking on; otherwise it never reads them."""
     if not files:
         raise Failed("The upload is empty.")
     tied = []
@@ -354,7 +359,8 @@ def _read(db, jid, name, files):
         if not mod:
             raise Failed(no_match_message())
     _stage(db, jid, "parsing", mod.NAME)
-    out = mod.parse(files)
+    from . import cycle_tracking
+    out = mod.parse(files, cycle=True) if getattr(mod, "READS_CYCLE", False) and pid and cycle_tracking.is_on(db, pid) else mod.parse(files)
     problems = registry.check(out, files)
     if problems:
         raise Failed(f"The {mod.LABEL} importer returned records Sanguity can't load: " + "; ".join(problems[:5]) + ".")
