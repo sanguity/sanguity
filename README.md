@@ -137,7 +137,7 @@ hour or more on the Pi itself (a Pi with 1 GB of memory may need swap). Later bu
 
 Open `http://<this machine>:8730` and enter the setup code to create the first account. It becomes the admin
 and owns the records already on the server; until you add your own, that is the fictional demo. Add accounts for
-other people under **Account**, then share profiles with them there.
+other people under **Admin** (in your menu, for admins), then share profiles with them under **Account**.
 
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy
 `sources.example.json` to `sources.json` and describe them, then `docker compose run --rm setup rebuild`; the first profile picks up the rebuild automatically.
@@ -155,7 +155,7 @@ and aren't read from the file after that (see `corrections.example.json`).
 | `docker compose run --rm setup rebuild` | Rebuild the data after adding or updating exports |
 | `docker compose exec app python -m server.manage reset-password NAME` | One-time password for a locked-out account |
 | `docker compose exec app python -m server.manage list` | Accounts, profiles and who has which role |
-| `docker compose exec app python -m server.manage remove-user NAME --hand-to OTHER` | Delete an account for good (also under **Account**); profiles only it owned go to OTHER |
+| `docker compose exec app python -m server.manage remove-user NAME --hand-to OTHER` | Delete an account for good (also under **Admin**); profiles only it owned go to OTHER |
 | `docker compose exec app python -m server.manage disable-2fa NAME` | Turn off two-factor sign-in for someone who lost their phone and recovery codes |
 | `git pull && docker compose pull --ignore-buildable && docker compose build --pull && docker compose up -d` | Update a checkout install, and the images it runs on |
 
@@ -284,7 +284,8 @@ removed when the app next starts. While an import reads an upload, a decrypted c
 
 Instead of downloading exports, a profile can be connected to a patient portal's FHIR API (SMART on FHIR, Epic's
 first) under **Connected sources** (`connect.html`, linked from the import page). Each install registers its own app
-with each vendor ([why](docs/connected-sources-oauth.md)), so an admin sets each source up once:
+with each vendor ([why](docs/connected-sources-oauth.md)), so an admin sets each source up once, under **Admin →
+Connected-source apps**:
 
 1. Set `PUBLIC_ORIGINS` in `.env` to the address you open Sanguity at; the return address is that plus
    `/connect/return`. The setup screen shows it, and warns when it's plain HTTP or only on your own network, which
@@ -307,11 +308,11 @@ When connecting, you choose what to pull: lab results, vital signs, visits and s
 documents, and claims where the source offers them, and how far back. Sanguity asks the vendor only for the scopes
 that choice needs. **What it pulls…** on a connection changes the choice for future pulls; a kind turned off keeps
 what it brought unless you remove it, which is an entry in the import history that undoing puts back. Attachments
-(visit notes, scans, reports) follow rules set for the whole server on the Settings page (fetched automatically or
+(visit notes, scans, reports) follow rules set for the whole server under Admin → Connected-source apps (fetched automatically or
 only when asked, which kinds of file, the largest, and a total per connection), which each connection can change;
 the ones left out are listed with **Fetch anyway**. When a connection stops syncing (several failures in a row,
 access ended, or no successful sync for `Warn when a connection hasn't synced` days, 3 by default), the profile's
-main page says so with a link, the profile's activity log notes it once, and admins see it on the Account page.
+main page says so with a link, the profile's activity log notes it once, and admins see it on the Admin page.
 Nothing is sent anywhere: no email or push.
 
 ### Typing records in
@@ -354,7 +355,8 @@ start time and title. Like the records, they are encrypted at rest. Milestones a
 **Find your hospital or insurer** (linked from the import page) searches a directory of FHIR endpoints by name,
 location, city or state, and shows the FHIR base URL and what connecting needs: the app you register with that vendor
 yourself, and the return address and scopes to paste. Signing in comes with #32. Epic's and Oracle Health's lists
-can't be shipped with Sanguity, so an admin adds them once: `python3 tools/build_directory.py` (about 1 MB; see
+can't be shipped with Sanguity, so an admin adds them once (**Admin → Provider directory** shows what's there):
+`python3 tools/build_directory.py` (about 1 MB; see
 [docs/provider-directory.md](docs/provider-directory.md)). The app never looks anything up itself.
 
 ### Calendar reminders
@@ -388,10 +390,10 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   Outside contact happens only when you ask for it: importing a pasted SMART Health Link fetches it from its host
   (and, for a Health Card, the issuer's public keys) after you confirm, HTTPS only; and once you connect a source
   ([Connected sources](#connected-sources)), the server talks to that vendor only, through an app your install
-  registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)). **Settings →
-  [Outside connections](www/settings.html)** (`settings.html#outside` on your install) lists every host the install
-  may contact, grouped by purpose, with the scopes asked for and granted and when each was last contacted; admins
-  see the whole install, owners and editors their profiles. Every outbound request goes through one gateway
+  registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)). **Admin →
+  [Outside connections](www/admin.html)** (`admin.html#outside` on your install) lists every host the install
+  may contact, grouped by purpose, with the scopes asked for and granted and when each was last contacted, for
+  the whole install. Every outbound request goes through one gateway
   (`server/net.py`) that refuses any host not listed there, and disconnecting a source stops all contact with it.
   Each host contacted is also in the profile's activity log.
 - **Accounts with Argon2id-hashed passwords** (at least 15 characters, per NIST SP 800-63B; passwords found in
@@ -409,7 +411,7 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   only through that check, read-only, with scripts blocked; no folder of health data is served directly.
 - **Admins manage accounts, not records:** being an admin doesn't show anyone's records.
 - **Admins need a second factor:** once the server has more than one account, an admin needs an authenticator app
-  or a passkey on their own account to use any admin action under **Account**; until then the page says to set one
+  or a passkey on their own account to use any admin action under **Admin**; until then the page says to set one
   up. A one-person install (one admin, no other accounts) is exempt. Resetting someone's password, turning off their
   two-factor sign-in or making someone an admin also asks the admin to confirm it's them (password, code or passkey)
   unless they did so, or signed in, within the last 5 minutes (`REAUTH_MINUTES` in `.env`). The command line
@@ -445,14 +447,14 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
 - **Delete profile:** an owner can delete a profile and everything in it under **Account**, after typing its name;
   the original exports and older backups are left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
-  changed it, and when (**Account > Activity**); admins see account changes. Entries are kept for a year
+  changed it, and when (**Account > Activity**); admins see account changes (**Admin > Install activity**). Entries are kept for a year
   (`ACTIVITY_DAYS` in `.env`).
 - **Encrypted at rest** (AES-256-GCM): records, documents, settings and the sensitive database fields are
   unreadable without the key in `auth/data_key`, so a copied data folder or backup gives nothing away. See
   [Encryption at rest](#encryption-at-rest).
 - **Secrets are generated on first start** (encryption key, watch-receiver key, a one-time setup code).
 - Records, built data, watch data, logins and secrets are never committed (see `.gitignore`).
-- **Failed sign-ins:** they're throttled and logged, and admins see a notice under **Account** when one address or
+- **Failed sign-ins:** they're throttled and logged, and admins see a notice under **Admin** when one address or
   account fails 10 times in a day, or 30 failures pile up in all. Nothing is sent outside the server.
 - **Put Sanguity behind HTTPS** (a reverse proxy, Tailscale or similar) before using it outside your home network;
   Sanguity itself serves plain HTTP on `WEB_PORT`, and the sign-in and Account pages warn when they're opened that

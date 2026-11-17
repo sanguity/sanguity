@@ -511,7 +511,7 @@ Every request Sanguity's server makes to another host goes through `server/net.p
 `server/outside.py` (#97, #59): a connected source's hosts (as its admin-tested discovery names them), or the host of
 a SMART Health Link someone confirmed. Each contact is recorded before anything is sent: in the activity log, and in
 **outside_contacts** (schema 20), one row per profile, purpose and host with the first and last contact and a count,
-for the outside-connections view on the Settings page. Only the host is kept, encrypted (a Health Link's host can say
+for the outside-connections view on the Admin page. Only the host is kept, encrypted (a Health Link's host can say
 where someone is treated); never a path, query, token or key. `profile_id` is `NULL` for a contact with no profile
 involved (an admin's "Test this connection"); a profile's rows go with it.
 

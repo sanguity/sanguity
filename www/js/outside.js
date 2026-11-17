@@ -1,9 +1,9 @@
-/* Sanguity · Settings page, "Outside connections" (#59, #97): every host this install may contact, grouped by
-   purpose, with the scopes asked for and granted and when each was last contacted (GET /api/outside, outside.py).
-   Admins see the whole install; owners and editors their profiles' entries. Read only: connecting and
-   disconnecting are on the Connected sources page. */
+/* Sanguity · Admin page, "Outside connections" (#59, #97; there since #167): every host this install may contact,
+   grouped by purpose, with the scopes asked for and granted and when each was last contacted (GET /api/outside,
+   outside.py). Admins see the whole install. Read only: connecting and disconnecting are on the Connected sources
+   page. admin.js calls SgOutside.load() once it knows the person is an admin. */
 "use strict";   // $ and el come from util.js
-(() => {
+const SgOutside = (() => {
   const when = t => t ? fmtDT(t * 1000) : "never";   // this person's time zone and format (dates.js)
   const code = t => el("code", {text: t});
   const sub = text => el("h3", {class: "sub", text});
@@ -45,7 +45,7 @@
     let v;
     try {
       const r = await api("outside");
-      if (r.status === 401) return;   // settings.js sends the page to sign-in
+      if (r.status === 401) return;   // admin.js sends the page to sign-in
       if (!r.ok) throw new Error(r.status + " " + r.statusText);
       v = await r.json();
     } catch (e) {
@@ -70,7 +70,6 @@
       sub("Health Card issuers' keys"),
       contacts(v.card_keys, "None yet."),
       ...(v.earlier.length ? [sub("Earlier contacts, no longer allowed"), contacts(v.earlier, "")] : []));
-    if (location.hash === "#outside") $("#outside").scrollIntoView();
   }
-  load();
+  return {load};
 })();

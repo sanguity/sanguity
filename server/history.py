@@ -34,8 +34,8 @@ NOTES = {
     "dataset": "This import replaced the profile's records when it was loaded (server.manage import). Undoing it "
                "removes the records it brought; what it replaced can't be brought back.",
     "build": "These records come from the setup build, which this profile is kept in step with: undone, they would "
-             "come back at the next rebuild. To leave records out, take their export out of the build (sources.json) "
-             "and rebuild.",
+             "come back at the next rebuild. To leave records out, their export has to be taken out of the build, which "
+             "an admin does on the server.",
 }
 BY = {"build": activity.SETUP_BUILD, "dataset": activity.COMMAND_LINE, "sync": activity.SCHEDULED_SYNC}
 

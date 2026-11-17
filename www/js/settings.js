@@ -105,21 +105,6 @@ function jsonEditor(value, changed, ro) {
   ta.value = JSON.stringify(value, null, 1);
   return {node: ta, get: () => { try { return JSON.parse(ta.value); } catch (e) { return ta.value; } }};
 }
-/* a whole number, on or off, some of a few choices (the install's sync.* settings, #101) */
-function numberEditor(value, changed, ro) {
-  const input = el("input", {type: "number", step: 1, min: 1, value, disabled: ro, oninput: changed, class: "set-num", "aria-label": "Value"});
-  return {node: input, get: () => input.value === "" ? null : +input.value};
-}
-function toggleEditor(value, changed, ro) {
-  const input = el("input", {type: "checkbox", checked: value ? "" : null, disabled: ro, onchange: changed});
-  return {node: el("label", {class: "check"}, input, "On"), get: () => input.checked};
-}
-function choicesEditor(value, changed, ro, setting) {
-  const boxes = Object.entries(setting.choices || {}).map(([id, label]) => el("label", {class: "check"},
-    el("input", {type: "checkbox", value: id, checked: value.includes(id) ? "" : null, disabled: ro, onchange: changed}), label));
-  return {node: el("div", {class: "row set-choices"}, ...boxes),
-    get: () => boxes.map(b => b.querySelector("input")).filter(i => i.checked).map(i => i.value)};
-}
 
 /* ---------------------------------------------------------------- #36, #40, #45: key-lab tiles, tabs, theme */
 
@@ -266,7 +251,6 @@ function themeEditor(value, changed, ro) {
   return {node: el("div", {}, box, note.childNodes.length ? note : null), get: () => box.querySelector("input:checked")?.value || value};
 }
 const EDITORS = {labs: labsEditor, tiles: tilesEditor, names: namesEditor, rules: rulesEditor, tabs: tabsEditor, theme: themeEditor,
-  number: numberEditor, toggle: toggleEditor, choices: choicesEditor,
   milestones: milestonesEditor};
 
 /* ---------------------------------------------------------------- dates and times (#42): each person's own time
@@ -432,6 +416,7 @@ async function load(note) {
   try { d = await call(`profiles/${PID}/settings/sections`); }
   catch (e) { sayIn($("#loadMsg"), e.message, true); box.replaceChildren(); return; }
   sayIn($("#loadMsg"), "");
+  d.sections = d.sections.filter(sec => sec.settings.some(st => st.scope !== "install"));   // the server's own: on the Admin page (#167)
   const all = d.sections.flatMap(sec => sec.settings);
   NICK = all.find(st => st.key === "labNicknames")?.value || {};
   for (const k of ["birthDate", "sex", "overrides"]) { const st = all.find(x => x.key === "ranges." + k); if (st) RANGE_CFG[k] = st.value; }   // #44
@@ -479,6 +464,9 @@ async function loadLabNames() {
 
 /* ---------------------------------------------------------------- start */
 (async () => {
+  // what moved to the Admin page (#167): its old addresses open it there
+  const moved = {"#outside": "admin.html#outside", "#sources": "admin.html#apps", "#sec-sync": "admin.html#sec-sync"}[location.hash];
+  if (moved) { location.replace(moved); return; }
   try { ME = await call("me"); } catch (e) { return; }
   await datesReady();   // dates in this person's time zone and format (dates.js)
   if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
@@ -509,14 +497,16 @@ async function loadWatch() {
   try { drawWatch(await call(`profiles/${PID}/watch/receiver`)); }
   catch (e) { box.replaceChildren(el("h2", {text: "Watch and scale"}), el("p", {class: "msg bad", text: e.message})); box.hidden = false; }
 }
+/* what isn't set up on the server, in words (#167): admins are pointed to the setup guide, everyone else to them */
+const GUIDE = "the setup guide's “Connecting a phone” section says how";
 function drawWatch(st, secret) {
-  const box = $("#watch"), msg = el("span", {class: "msg", role: "status"});
-  const addrs = st.addresses.length ? st.addresses : ["(unknown: set PUBLIC_ORIGINS or WATCH_UPLOAD_URL on the server)"];
+  const box = $("#watch"), msg = el("span", {class: "msg", role: "status"}), admin = ME.user.is_admin;
+  const addrs = st.addresses.length ? st.addresses : [admin ? `(not known yet: ${GUIDE} to set this server's address)` : "(not known yet: ask your admin)"];
   const secretNode = secret
     ? el("div", {}, el("code", {class: "w-secret", id: "watchSecret", text: secret}), " ", copyBtn(secret, "Copy the secret"),
         el("p", {class: "hint", text: "Shown only now: put it in the phone app. Afterwards it's kept hidden; make a new one if it's lost."}))
     : st.has_secret ? el("code", {class: "w-secret", text: st.masked})
-    : st.legacy ? el("span", {text: "The server's original receiver secret (auth/watch_secret). Make one for this profile to replace it."})
+    : st.legacy ? el("span", {text: "The server's original receiver secret, from before each profile had its own. Make one for this profile to replace it."})
     : el("span", {class: "muted", text: "None yet"});
   const has = st.has_secret || st.legacy;
   const go = el("button", {class: "btn small" + (has ? "" : " primary"), type: "button", id: "watchRotate", text: has ? "Make a new secret…" : "Make a secret",
@@ -526,7 +516,7 @@ function drawWatch(st, secret) {
       try { const r = await call(`profiles/${PID}/watch/receiver/rotate`, "POST", {}); drawWatch(r, r.secret); }
       catch (e) { sayIn(msg, e.message, true); go.disabled = false; }
     }});
-  box.replaceChildren(
+  box.replaceChildren(...[   // without the parts left out: replaceChildren would write a null out as text (#175)
     el("h2", {text: "Watch and scale"}),
     el("p", {class: "hint", text: "A phone app sends watch, sleep and smart-scale readings to this profile: Life Dashboard Companion on Android (from Health Connect), or Health Auto Export on iPhone (from Apple Health). Garmin, Fitbit, Withings and other apps come through them, by writing to Health Connect or Apple Health. In the app, set:"}),
     el("dl", {class: "kv w-kv"},
@@ -534,8 +524,10 @@ function drawWatch(st, secret) {
       el("dt", {text: "Secret"}), el("dd", {}, secretNode)),
     el("p", {class: "hint", text: "Each profile has its own secret, so each person's phone uploads to their own profile. Readings are split into days in the phone's own time zone."}),
     hae(addrs[0], secret),
-    st.ready ? null : el("p", {class: "msg bad", text: "The receiver can't be given this profile's secret: the server has no folder for it (WATCH_DIR/keys, in its compose file). Uploads with a secret made here won't be taken until it does."}),
-    el("div", {class: "row"}, go, msg));
+    st.ready ? null : el("p", {class: "msg bad", text: "The watch receiver isn't ready for this profile's own secret yet: " +
+      (admin ? `it needs a folder for the receiver's secrets on the server (${GUIDE}).` : "ask your admin to finish setting it up.") +
+      " Uploads with a secret made here won't be taken until then."}),
+    el("div", {class: "row"}, go, msg)].filter(Boolean));
   box.hidden = false;
 }
 /* Health Auto Export's setup (#148): a REST API automation per data type, with the secret in a header. */

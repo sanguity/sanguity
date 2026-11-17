@@ -153,6 +153,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - Trends and Lab heatmap are one **Labs** tab, with a Chart / Heatmap switch, and Health is **Body and activity**
   (#172). Saved views, names, units and ranges are unchanged; links to `#trends` and `#heatmap` open Labs as charts
   or as a heatmap, and a saved tab layout puts Labs where the first of the two was, hidden only if both were.
+- An **Admin** page for admins, in your menu, with a sidebar (#167): accounts and requiring two-factor sign-in,
+  connected-source apps and their sync defaults, the provider directory, lab name matches, outside connections and
+  the install's activity. They left Account, Settings, Connected sources and Find your provider, and their old
+  addresses open them there; those pages now say what you can do, or to ask your admin, instead of naming server
+  settings and commands. The Watch and scale card no longer shows a stray "null" (#175).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

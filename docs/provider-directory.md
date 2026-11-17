@@ -17,7 +17,7 @@ vendor). The **Connect** button stays disabled until sign-in arrives with #32.
 
 CMS publishes no single list of payers' patient-access endpoints; each payer publishes its own (#92).
 
-So a fresh install finds only the sandboxes and Medicare. To add Epic's and Oracle Health's lists, an admin runs,
+So a fresh install finds only the sandboxes and Medicare (**Admin → Provider directory** shows which lists a server has). To add Epic's and Oracle Health's lists, an admin runs,
 from the Sanguity folder on the host (Python 3.9 or later, nothing to install):
 
 ```bash

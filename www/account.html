@@ -20,14 +20,11 @@
 </header>
 <main class="acct">
   <div class="card warn" id="insecure" role="alert" hidden></div>
-  <div class="card warn" id="secNotice" hidden></div>
-  <div class="card warn" id="syncNotice" hidden></div>
   <div class="card warn" id="mustChange" hidden>Choose your own password to continue. The one you signed in with was for one use only.</div>
 
   <div class="tabs acct-tabs" role="tablist" aria-label="Account settings" id="acctTabs" hidden>
     <button role="tab" id="tab-security" aria-controls="panel-security" aria-selected="true">Sign-in &amp; security</button>
     <button role="tab" id="tab-profiles" aria-controls="panel-profiles" aria-selected="false" tabindex="-1">Profiles</button>
-    <button role="tab" id="tab-admin" aria-controls="panel-admin" aria-selected="false" tabindex="-1" hidden>Admin</button>
   </div>
 
   <div role="tabpanel" id="panel-security" aria-labelledby="tab-security">
@@ -83,45 +80,13 @@
     </form>
   </section>
   </div>
-
-  <div role="tabpanel" id="panel-admin" aria-labelledby="tab-admin" hidden>
-  <section class="card" id="users" hidden>
-    <h2>Accounts <span class="tag">admin</span></h2>
-    <p class="hint">Create an account for each person who signs in. They get a one-time password and choose their own at first sign-in.
-      Being an admin lets someone manage accounts; it doesn't show them anyone's records.</p>
-    <p class="warn" id="adminTf" hidden>To manage accounts, turn on two-factor sign-in (the authenticator app) or add a
-      passkey for your own account, under <a href="#security">Sign-in &amp; security</a>. Admins need one as soon as the server has more than one account.</p>
-    <div id="reauth" class="reauth" hidden></div>
-    <div id="adminTools">
-      <label class="check"><input type="checkbox" id="reqTf"> Require two-factor sign-in for everyone</label>
-      <div id="userList"></div>
-      <div id="ownerless"></div>
-      <div id="acctLog"></div>
-      <form id="userNew" class="form inline">
-        <label>Username <input id="userName" autocapitalize="none" spellcheck="false" required></label>
-        <label class="check"><input type="checkbox" id="userAdmin"> Admin</label>
-        <button class="btn" type="submit">Create account</button>
-      </form>
-    </div>
-    <span class="msg" id="userMsg" role="status"></span>
-  </section>
-  <section class="card" id="labmaps" hidden>
-    <h2>Lab name matches <span class="tag">admin</span></h2>
-    <p class="hint">When an import has a lab test spelled in a way Sanguity doesn't know, the person importing it picks the
-      series it belongs to (or keeps it separate), and that choice is used for later imports from the same source.
-      These matches apply to every profile on this server, so only admins can change or remove them. They name tests,
-      never anyone's results or profiles. A change applies to later imports; results already saved keep their series.</p>
-    <div id="labmapList"></div>
-    <datalist id="labmapNames"></datalist>
-    <span class="msg" id="labmapMsg" role="status"></span>
-  </section>
-  </div>
 </main>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
 <script src="js/nav.js"></script>
 <script src="js/dates.js"></script>
 <script src="js/share-links.js"></script>
+<script src="js/activity.js"></script>
 <script src="js/account.js"></script>
 </body>
 </html>

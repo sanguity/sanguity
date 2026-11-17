@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from . import accounts, activity, db as dbm, settings
-from .main import _client_ip, get_db, need, user
+from .main import _client_ip, admin, get_db, need, user
 
 router = APIRouter()
 
@@ -150,6 +150,58 @@ def change_user_value(key: str, body: Value, request: Request, s=Depends(user), 
     except settings.SettingError as e:
         raise HTTPException(400, str(e))
     return _user_values(db, s["id"])
+
+
+# ---------------------------------------------------------------- the install's own settings, without a profile (#167)
+# The Admin page shows these (connected sources' sync defaults): an admin may have no profile at all. Admins only,
+# with their own second factor once the server has more than one account (main.admin).
+
+def _install_sections(db):
+    have = settings.stored(db, "install")
+    out = []
+    for sid, title, help in settings.SECTIONS:
+        items = [{**d.public(), "value": have.get(k, d.default), "from": "install" if k in have else "default", "can_change": True}
+                 for k, d in settings.SETTINGS.items() if d.section == sid and d.scope == "install"]
+        if items:
+            out.append({"id": sid, "title": title, "help": help, "settings": items})
+    return {"sections": out}
+
+
+@router.get("/api/settings/install")
+def install_values(s=Depends(admin), db=Depends(get_db)):
+    """The install-wide settings in their sections, each with its value and whether it's the default."""
+    return _install_sections(db)
+
+
+@router.put("/api/settings/install/{key}")
+def change_install_value(key: str, body: Value, request: Request, s=Depends(admin), db=Depends(get_db)):
+    try:
+        d = settings.get_def(key)
+    except settings.SettingError as e:
+        raise HTTPException(404, str(e))
+    if d.scope != "install":
+        raise HTTPException(404, "That setting isn't one of the server's.")
+    try:
+        with dbm.transaction(db):
+            settings.put(db, key, body.value, by=s["id"])
+            _log(db, s, None, "install", {"setting": key, "label": d.label}, request)
+    except settings.SettingError as e:
+        raise HTTPException(400, str(e))
+    return _install_sections(db)
+
+
+@router.post("/api/settings/install/reset")
+def reset_install_section(body: Section, request: Request, s=Depends(admin), db=Depends(get_db)):
+    """Back to the defaults: every install-wide setting of the section."""
+    titles = {sid: title for sid, title, _ in settings.SECTIONS}
+    keys = [k for k, d in settings.SETTINGS.items() if d.section == body.section and d.scope == "install"]
+    if not keys:
+        raise HTTPException(404, "There's no such section.")
+    with dbm.transaction(db):
+        gone = settings.clear(db, keys, "install")
+        if gone:
+            _log(db, s, None, "install", {"section": body.section, "label": titles[body.section], "settings": gone, "reset": True}, request)
+    return {"reset": gone, **_install_sections(db)}
 
 
 class Rename(BaseModel):

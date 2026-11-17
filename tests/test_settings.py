@@ -323,6 +323,38 @@ class Settings(unittest.TestCase):
             self.c[who].delete(f"/api/profiles/1/settings/{key}", headers=H)
         self.c["robin"].delete("/api/profiles/1/settings/sources", headers=H)
 
+    def test_install_settings_without_a_profile(self):
+        """#167: the Admin page reads and changes the install's own settings (the sync defaults) without naming a
+        profile: an admin may have none"""
+        ada = self.c["ada"]
+        got = ada.get("/api/settings/install").json()["sections"]
+        sync = next(s for s in got if s["id"] == "sync")
+        self.assertEqual(sync["title"], "Sync defaults")
+        self.assertTrue(all(st["scope"] == "install" and st["can_change"] for sec in got for st in sec["settings"]), got)
+        self.assertEqual({st["key"]: st["from"] for st in sync["settings"]}["sync.staleDays"], "default")
+        self.assertNotIn("names", {s["id"] for s in got})   # only the install's: no profile's or person's settings
+        # only admins, and changes pass the CSRF check
+        for who in ("robin", "kim"):
+            self.assertEqual(self.c[who].get("/api/settings/install").status_code, 403)
+            self.assertEqual(self.c[who].put("/api/settings/install/sync.staleDays", json={"value": 9}, headers=H).status_code, 403)
+        self.assertEqual(ada.put("/api/settings/install/sync.staleDays", json={"value": 9}).status_code, 403)   # no X-Sanguity
+        # changed, checked, refused for a setting of another scope, and logged as the server's
+        r = ada.put("/api/settings/install/sync.staleDays", json={"value": 9}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        st = {s["key"]: s for s in next(x for x in r.json()["sections"] if x["id"] == "sync")["settings"]}["sync.staleDays"]
+        self.assertEqual((st["value"], st["from"]), (9, "install"))
+        self.assertEqual(self.merged(1, "robin")["sync"]["staleDays"], 9)   # every profile sees it
+        self.assertEqual(ada.put("/api/settings/install/sync.staleDays", json={"value": 0}, headers=H).status_code, 400)
+        self.assertEqual(ada.put("/api/settings/install/labNicknames", json={"value": {}}, headers=H).status_code, 404)
+        self.assertEqual(ada.put("/api/settings/install/no.such", json={"value": 1}, headers=H).status_code, 404)
+        acct = [e for e in self.c["ada"].get("/api/activity").json() if e["action"] == "settings.install"]
+        self.assertEqual((acct[0]["actor"], acct[0]["detail"]), ("ada", {"setting": "sync.staleDays", "label": "Warn when a connection hasn't synced for (days)"}))
+        # Reset to defaults: the section's install values go
+        self.assertEqual(ada.post("/api/settings/install/reset", json={"section": "names"}, headers=H).status_code, 404)
+        r = ada.post("/api/settings/install/reset", json={"section": "sync"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["reset"]), (200, ["sync.staleDays"]), r.text)
+        self.assertEqual(self.merged(1, "robin")["sync"]["staleDays"], 3)
+
     def test_rename_one_name(self):
         """#38: one name of a name map changed where it's shown, the rest of the map kept"""
         pid = self.fresh_profile()

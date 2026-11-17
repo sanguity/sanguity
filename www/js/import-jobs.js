@@ -109,7 +109,7 @@
       node("p", {class: "hint", text: "Sanguity doesn't know these test names. Put each in the series it belongs to, so it's charted with the same test " +
         "from other labs, or keep it separate. Only the series changes: each result keeps the name the lab gave it. Your choice is used " +
         "for later imports from this source, on every profile of this server. A match made before can be changed here for this import; " +
-        "to change it for good, ask an admin (Account, Admin)."}),
+        "to change it for good, ask an admin (Admin, Lab name matches)."}),
       node("ul", {}, rows.map(r => r.li)));
     // sent, and remembered for later imports: a suggestion left chosen, or any choice changed by hand. A name matched
     // before is sent only when changed (for this import only); "keep it separate" left as it was isn't sent

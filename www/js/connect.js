@@ -1,6 +1,6 @@
 /* Sanguity · connected sources (#32, #91): a profile's connections (sign in to a source, its first pull previewed like
    an upload, then synced on a schedule; Sync now, Reconnect when access ended, Disconnect keeping or removing the
-   records), and for admins the guided setup of each source (option 1: this install's own app with each vendor).
+   records). Setting each source up (this server's own app with each vendor) is on the Admin page (admin-sources.js).
    What each connection pulls is chosen when connecting and changed later (#99: kinds of records, a start date,
    removing what a kind brought), with its attachment rules and the attachments left out (#101), and a warning when
    it stopped syncing (#102). window.sanguityImport.follow (import-jobs.js) shows the first pull's preview. */
@@ -20,7 +20,7 @@ const WHY = {ask: "fetched only when you ask", type: "a kind of file this connec
   size: "bigger than this connection's limit", budget: "over this connection's total for attachments"};
 const today = () => new Date().toISOString().slice(0, 10);
 const params = new URLSearchParams(location.search);
-let ME, PID = null, followed = new Set(), timer = null, SETUP = null, editing = null;
+let ME, PID = null, followed = new Set(), timer = null;
 
 $("#logout").onclick = async () => { try { await call("logout", "POST"); } catch (e) {} location.replace("login.html"); };
 if (params.get("problem")) { $("#problem").textContent = params.get("problem"); $("#problem").hidden = false; }
@@ -245,107 +245,14 @@ async function load(note) {
   if (live.some(c => c.phase === "first pull" || c.phase === "first pull saving")) timer = setTimeout(() => load(), 2000);
 }
 
-/* ---------------------------------------------------------------- setting sources up (admins) */
-function guide(vendor) {
-  const g = SETUP.guides[vendor], kids = [el("b", {text: g.label})];
-  if (g.register) kids.push(el("p", {}, "Register at ", el("a", {href: g.register, target: "_blank", rel: "noopener noreferrer", text: g.register})));
-  kids.push(el("ol", {}, ...g.steps.map(s => el("li", {text: s}))));
-  if (g.sandbox) kids.push(el("p", {}, "Sandbox FHIR base: ", el("code", {text: g.sandbox}), " ",
-    el("button", {class: "btn small", type: "button", text: "Use it", onclick: () => {
-      $("#fIssuer").value = g.sandbox; if (!$("#fName").value) $("#fName").value = g.sandbox_name || "Epic sandbox";
-      if (vendor === "insurer") { $("#fAuth").value = "confidential"; $("#fSecretWrap").hidden = false; } }})));
-  if (g.scopes) kids.push(el("p", {}, "Scopes: ", el("code", {text: g.scopes})));
-  if (g.portals) kids.push(el("p", {text: "Where individuals may be able to register (read November 2026; check each portal's terms):"}),
-    el("ul", {class: "conn-portals"}, ...g.portals.map(p => el("li", {}, el("a", {href: p.url, target: "_blank", rel: "noopener noreferrer", text: p.name}), ": " + p.note))));
-  for (const n of g.notes) kids.push(el("p", {class: "muted", text: n}));
-  $("#guide").replaceChildren(...kids);
-}
-
-function fill(s) {
-  editing = s ? s.id : null;
-  $("#formTitle").textContent = s ? `Change ${s.name}` : "Add a source";
-  $("#fVendor").value = s ? s.vendor : "epic";
-  $("#fName").value = s ? s.name : "";
-  $("#fIssuer").value = s ? s.issuer : "";
-  $("#fClient").value = s ? s.client_id : "";
-  $("#fAuth").value = s ? s.auth : "public";
-  $("#fSecret").value = "";
-  $("#fSecret").placeholder = s && s.has_secret ? "Kept; type a new one to replace it" : "";
-  $("#fScopes").value = s ? s.scopes : SETUP.default_scopes;
-  $("#fCancel").hidden = !s;
-  $("#fSecretWrap").hidden = $("#fAuth").value !== "confidential";
-  guide($("#fVendor").value);
-}
-
-function testResult(t) {
-  if (!t.ok) return el("p", {class: "msg bad", text: "Test failed: " + t.problem});
-  return el("div", {}, el("p", {class: "msg", text: "Discovery works. The server contacts only: " + t.hosts.join(", ")}),
-    el("p", {class: "muted", text: "Suggested scopes: " + t.suggested_scopes}),
-    ...t.notes.map(n => el("p", {class: "muted", text: n})));
-}
-
-function sourceRow(s) {
-  const n = s.connections, out = el("div", {class: "prof"});
-  const msg = el("div", {role: "status"});
-  out.append(el("b", {text: s.name}), el("span", {class: "tag", text: SETUP.guides[s.vendor].label}),
-    el("p", {class: "muted", text: `${s.issuer} · ${s.auth} client · ${s.tested ? "tested " + when(s.tested) : "not tested yet: people can't connect until it is"}`}),
-    el("p", {class: "muted", text: `On this install: ${plural(n.active, "active connection")}, ${n["needs reconnect"]} needing a reconnect, ${n.disconnected} disconnected. This count is never sent anywhere.`}),
-    el("div", {class: "row"},
-      el("button", {class: "btn small primary", type: "button", text: "Test this connection", onclick: async () => {
-        msg.replaceChildren(el("p", {class: "muted", text: "Reading its discovery…"}));
-        try { const t = await call(`connect/sources/${s.id}/test`, "POST"); msg.replaceChildren(testResult(t)); if (t.ok) loadSetup(); }
-        catch (e) { msg.replaceChildren(el("p", {class: "msg bad", text: e.message})); } }}),
-      el("button", {class: "btn small", type: "button", text: "Change", onclick: () => { fill(s); $("#fName").focus(); }}),
-      el("button", {class: "btn small", type: "button", text: "Remove", onclick: async () => {
-        try { await call(`connect/sources/${s.id}`, "DELETE"); loadSetup(); } catch (e) { msg.replaceChildren(el("p", {class: "msg bad", text: e.message})); } }})),
-    msg);
-  return out;
-}
-
-async function loadSetup() {
-  try { SETUP = await call("connect/sources"); }
-  catch (e) {
-    $("#admin").hidden = false;
-    $("#admin").replaceChildren(el("h2", {text: "Set up a source"}), el("p", {class: "msg bad",
-      text: e.message === "admin_two_factor_required" ? "Turn on two-factor sign-in for your account (Account page) to set up sources." : e.message}));
-    return;
-  }
-  $("#admin").hidden = false;
-  $("#returnAddr").textContent = SETUP.return_address || "(not set: see below)";
-  $("#copyReturn").hidden = !SETUP.return_address;
-  $("#addrWarn").replaceChildren(...SETUP.warnings.map(w => el("li", {text: w})));
-  $("#sourceList").replaceChildren(...SETUP.sources.map(sourceRow));
-  if (editing === null) fill(null);
-}
-
-$("#copyReturn").onclick = () => { try { navigator.clipboard.writeText(SETUP.return_address); } catch (e) {} };
-$("#fVendor").onchange = () => {
-  const v = $("#fVendor").value, sc = $("#fScopes");
-  // an untouched default follows the vendor: an insurer's API is claims, coverage and the patient (#92)
-  if ([SETUP.default_scopes, SETUP.insurer_scopes].includes(sc.value.trim())) sc.value = v === "insurer" ? SETUP.insurer_scopes : SETUP.default_scopes;
-  guide(v);
-};
-$("#fAuth").onchange = () => { $("#fSecretWrap").hidden = $("#fAuth").value !== "confidential"; };
-$("#fCancel").onclick = () => fill(null);
-$("#srcForm").onsubmit = async ev => {
-  ev.preventDefault();
-  const body = {vendor: $("#fVendor").value, name: $("#fName").value, issuer: $("#fIssuer").value, client_id: $("#fClient").value,
-    auth: $("#fAuth").value, scopes: $("#fScopes").value};
-  if ($("#fSecret").value) body.secret = $("#fSecret").value;
-  const m = $("#fMsg");
-  try {
-    const s = await call(editing ? `connect/sources/${editing}` : "connect/sources", editing ? "PATCH" : "POST", body);
-    m.classList.remove("bad"); m.textContent = `Saved ${s.name}. Now test it.`;
-    editing = null; loadSetup();
-  } catch (e) { m.classList.add("bad"); m.textContent = e.message; }
-};
-
 /* ---------------------------------------------------------------- start */
 (async function () {
+  if (location.hash === "#admin") { location.replace("admin.html#admin"); return; }   // its old address (#167)
   try { ME = await call("me"); } catch (e) { return; }
   await datesReady();   // dates in this person's time zone and format (dates.js)
   $("#who").textContent = ME.user.username;
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
+  if (ME.user.is_admin) { $("#noSources").textContent = "No source is set up on this server yet."; $("#adminNote").hidden = false; }
   if (ME.profiles.length) {
     const sel = $("#profile");
     sel.replaceChildren(...ME.profiles.map(p => el("option", {value: p.id, text: p.name})));
@@ -356,5 +263,4 @@ $("#srcForm").onsubmit = async ev => {
     $("#mine").hidden = false;
     load(params.has("connected") ? "Connected. The first pull starts now; its preview shows here when it's ready." : null);
   }
-  if (ME.user.is_admin) loadSetup();
 })();

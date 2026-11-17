@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sanguity admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cstyle%3E@media (prefers-color-scheme:dark){.d{fill:%23b4485e}}%3C/style%3E%3Cpath class='d' d='M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z' fill='%238a2438'/%3E%3Cpath d='M18 43.5h5.5l4.5-9 5.5 15 4-9h8' fill='none' stroke='%23fbf4f1' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sanguity">
+<link rel="stylesheet" href="css/app.css">
+<script src="js/theme.js"></script>
+</head>
+<body class="acct-page">
+<header class="topbar" data-title="Admin">
+  <h1><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</h1>
+</header>
+<main class="acct sets conn adm">
+  <div class="card warn" id="insecure" role="alert" hidden></div>
+
+  <section class="card" id="notAdmin" hidden>
+    <h2>Admin</h2>
+    <p>This page is for this server's admins: its accounts, the apps it uses to connect to patient portals and health
+      plans, its list of providers, and what it may contact. Your account isn't an admin, so there's nothing here for
+      you to change.</p>
+    <p class="hint">For an account for someone else, a portal or health plan set up, or anything else about the whole
+      server, ask your admin.</p>
+    <div class="row"><a class="btn" href="./">Back to your records</a></div>
+  </section>
+
+  <div class="card warn" id="secNotice" hidden></div>
+  <div class="card warn" id="syncNotice" hidden></div>
+
+  <!-- Accounts, and requiring two-factor sign-in (admin.js) -->
+  <section class="card" id="users" hidden>
+    <h2>Accounts</h2>
+    <p class="hint">Create an account for each person who signs in. They get a one-time password and choose their own at first sign-in.
+      Being an admin lets someone manage accounts; it doesn't show them anyone's records.</p>
+    <p class="warn" id="adminTf" hidden>To manage accounts, turn on two-factor sign-in (the authenticator app) or add a
+      passkey for your own account, under <a href="account.html#security">Account → Sign-in &amp; security</a>. Admins need one as soon as the server has more than one account.</p>
+    <div id="reauth" class="reauth" hidden></div>
+    <div id="adminTools">
+      <label class="check"><input type="checkbox" id="reqTf"> Require two-factor sign-in for everyone</label>
+      <div id="userList"></div>
+      <div id="ownerless"></div>
+      <form id="userNew" class="form inline">
+        <label>Username <input id="userName" autocapitalize="none" spellcheck="false" required></label>
+        <label class="check"><input type="checkbox" id="userAdmin"> Admin</label>
+        <button class="btn" type="submit">Create account</button>
+      </form>
+    </div>
+    <span class="msg" id="userMsg" role="status"></span>
+  </section>
+
+  <!-- Connected-source apps: each vendor's app for this server, and the defaults of every connection (admin-sources.js) -->
+  <section class="card" id="admin" hidden>
+    <h2>Set up a source</h2>
+    <p class="hint">Under the option this project chose (docs/connected-sources-oauth.md), this install registers its own app
+      with each vendor, and the vendor sends sign-ins straight back here. Nothing is shared with the Sanguity project:
+      the count of connections below stays on this server.</p>
+    <dl class="kv">
+      <dt>Return address</dt><dd><code id="returnAddr"></code> <button class="btn small" id="copyReturn" type="button">Copy</button></dd>
+    </dl>
+    <ul class="conn-warn" id="addrWarn"></ul>
+    <div id="sourceList"></div>
+    <h3 class="sub" id="formTitle">Add a source</h3>
+    <form id="srcForm" class="form">
+      <label>Vendor <select id="fVendor"><option value="epic">Epic (MyChart)</option><option value="oracle">Oracle Health (Cerner)</option><option value="insurer">Insurer (patient-access API, Blue Button)</option><option value="other">Another SMART on FHIR server</option></select></label>
+      <div class="conn-guide" id="guide"></div>
+      <label>Name people see <input id="fName" maxlength="80" required placeholder="Epic sandbox, My health plan"></label>
+      <label>FHIR base address (the issuer) <input id="fIssuer" required inputmode="url" placeholder="https://fhir.example.org/api/FHIR/R4"></label>
+      <label>Client ID <input id="fClient" required autocomplete="off"></label>
+      <label>How the app signs in <select id="fAuth">
+        <option value="public">Public client (no secret)</option>
+        <option value="confidential">Confidential client (with a client secret)</option>
+        <option value="dynamic">Epic dynamic registration (the install makes its own key)</option></select></label>
+      <label id="fSecretWrap" hidden>Client secret <input id="fSecret" type="password" autocomplete="off"></label>
+      <label>Scopes to ask for <input id="fScopes"></label>
+      <div class="row"><button class="btn primary" type="submit" id="fSave">Save</button>
+        <button class="btn" type="button" id="fCancel" hidden>Cancel</button><span class="msg" id="fMsg" role="status"></span></div>
+    </form>
+  </section>
+  <section class="card" id="sec-sync" hidden><h2>Sync defaults</h2></section>
+
+  <!-- Provider directory: what Find your provider has, and adding Epic's and Oracle Health's lists (admin-sources.js) -->
+  <section class="card dir" id="directory" hidden>
+    <h2>Provider directory</h2>
+    <p class="hint">Find your provider searches a list kept on this server: searching it contacts no one. Sanguity ships
+      with the vendors' test sandboxes and Medicare; Epic's and Oracle Health's published lists can't be shipped under
+      their terms, so each server adds its own copy.</p>
+    <div id="dirSources"></div>
+    <div id="dirAdd"></div>
+    <span class="msg" id="dirMsg" role="status"></span>
+  </section>
+
+  <section class="card" id="labmaps" hidden>
+    <h2>Lab name matches</h2>
+    <p class="hint">When an import has a lab test spelled in a way Sanguity doesn't know, the person importing it picks the
+      series it belongs to (or keeps it separate), and that choice is used for later imports from the same source.
+      These matches apply to every profile on this server, so only admins can change or remove them. They name tests,
+      never anyone's results or profiles. A change applies to later imports; results already saved keep their series.</p>
+    <div id="labmapList"></div>
+    <datalist id="labmapNames"></datalist>
+    <span class="msg" id="labmapMsg" role="status"></span>
+  </section>
+
+  <!-- Outside connections (outside.js) -->
+  <section class="card out" id="outside" aria-labelledby="outsideTitle" hidden>
+    <h2 id="outsideTitle">Outside connections</h2>
+    <p class="out-lead" id="outsideLead">Sanguity contacts only the hosts listed here.</p>
+    <p class="hint" id="outsideScope"></p>
+    <div id="outsideBody"></div>
+    <span class="msg" id="outsideMsg" role="status"></span>
+  </section>
+
+  <!-- Install activity: the account events (activity.js) -->
+  <section class="card" id="installLog" hidden>
+    <h2>Install activity</h2>
+    <p class="hint">What admins and people did to accounts and to the server: accounts created, disabled, reset or
+      removed, two-factor sign-in, connected-source apps, lab name matches and the server's settings. It never shows
+      anyone's records; each profile's own activity is on the Account page, under Profiles.</p>
+    <div id="acctLog"></div>
+  </section>
+</main>
+<script src="js/util.js"></script>
+<script src="js/pwa.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/dates.js"></script>
+<script src="js/activity.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/admin-sources.js"></script>
+<script src="js/outside.js"></script>
+</body>
+</html>

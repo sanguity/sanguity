@@ -2,9 +2,10 @@
 
    One row: the brand (back to the records), the page's title or, on the records page, its profile picker and tabs,
    then two menus. Add: import records, connect a source, type records in, a journal entry. The person's own menu:
-   visit summary, share links, settings, account, the light/dark toggle, log out. The items keep the ids the pages
-   already use (#importLink, #journalBtn, #summaryLink, #settingsLink, #theme, #logout, #who), so each page's script
-   sets them up as before; nav.js only builds the bar and opens and closes the menus.
+   visit summary, share links, settings, account, Admin (admins only: nav.js asks the API itself, #167), the
+   light/dark toggle, log out. The items keep the ids the pages already use (#importLink, #journalBtn, #summaryLink,
+   #settingsLink, #theme, #logout, #who), so each page's script sets them up as before; nav.js only builds the bar and
+   opens and closes the menus.
 
    <header class="topbar" data-title="Settings"> gets the bar; anything already inside it (the records page's
    profile picker, tabs and Install app button) stays where it is, between the brand and the menus. */
@@ -81,6 +82,7 @@ const SgNav = (() => {
     sep(),
     link("settings.html", "Settings", {id: "settingsLink"}),
     link("account.html", "Account"),
+    link("admin.html", "Admin", {id: "adminLink", hidden: ""}),
     action("theme", "Dark mode"),
     sep(),
     action("logout", "Log out"),
@@ -113,8 +115,16 @@ const SgNav = (() => {
   }
   new MutationObserver(sync).observe(add.list, {attributes: true, subtree: true, attributeFilter: ["hidden"]});
   sync();
+  /* Admin, for admins only (#167): once the page's own scripts have asked who's signed in */
+  let locked = false;
+  document.addEventListener("DOMContentLoaded", () => {
+    api("me").then(r => r.ok ? r.json() : null).then(me => {
+      if (me && me.user && me.user.is_admin && !locked) document.getElementById("adminLink").hidden = false;
+    }).catch(() => {});
+  });
   /* nothing to go to but Log out (a password to change or a second factor to set up first, account.js) */
   function lock() {
+    locked = true;
     add.wrap.hidden = true;
     for (const x of items(user)) if (x.id !== "logout" && x.id !== "theme") x.hidden = true;
     for (const s of user.list.querySelectorAll(".menu-sep")) s.hidden = true;
