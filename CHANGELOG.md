@@ -250,6 +250,13 @@ Everything on `main` so far; it becomes the first tagged release.
   points with the same readout and tooltip as hovering, said to screen readers, Home and End go to the first and
   last, Escape lets go. An out-of-range result is marked ▲ (above its range) or ▼ (below) on the Labs charts, the
   heatmap's cells, the Overview's sparklines and the visit summary's trends, as well as in red.
+- Filters say what they leave out (#190). Whenever a tab's filters narrow what it shows, one line says how ("Showing
+  9 of 11 kinds · matching “visit”") and ends in **Reset filters**, which puts that tab's filters back but not the
+  period: under the records bar on the Timeline (still shown on a phone with the panel closed, where the button reads
+  **Filters (2)**), under the Labs name filter, under each Costs list's filters and in the journal's card. The
+  Timeline's counts and the Costs lists' totals then say they're for what's shown. Reset filters replaces the
+  Timeline's **Show all** button and the Costs lists' **Clear filters** and **Show everything**; each kind's ⋯ menu
+  still has Show all.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

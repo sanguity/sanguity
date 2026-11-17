@@ -159,12 +159,19 @@ function jList(few) {
   const q = el("input", {type: "search", placeholder: "Search the journal…", "aria-label": "Search the journal"});
   const shown = el("label", {class: "jinrange toggle"}, el("input", {type: "checkbox", checked: jFilter.inRange || null}), " Only the dates shown");
   med.value = jFilter.med; q.value = jFilter.q;
-  const list = el("div", {class: "jlist", role: "list"}), count = el("p", {class: "hint", role: "status"});
+  const list = el("div", {class: "jlist", role: "list"}), count = el("p", {class: "hint", role: "status"}), sum = el("p", {class: "fsum", hidden: ""});
+  const reset = () => {   // Reset filters (#190, filters.js): every kind, any medication, no search, any date
+    jFilter.kinds = new Set(J_KINDS.map(([k]) => k)); med.value = ""; q.value = ""; shown.firstChild.checked = false;
+    for (const b of kind.children) b.setAttribute("aria-pressed", "true");
+    draw();
+  };
   const more = el("button", {class: "btn jmore", type: "button", hidden: "", onclick: () => { jFilter.all = !jFilter.all; draw(); }});
   const draw = () => {
     Object.assign(jFilter, {med: med.value, q: q.value.trim().toLowerCase(), inRange: shown.firstChild.checked});
     const v = JOURNAL.filter(jMatch).sort((a, b) => b.ts - a.ts), cut = few && !jFilter.all && v.length > J_FEW;
     const filtered = jFilter.kinds.size < J_KINDS.length || jFilter.med || jFilter.q || jFilter.inRange;
+    filterLine(filtered ? showingParts(jFilter.kinds.size < J_KINDS.length && kindsShown(J_KINDS.filter(([k]) => jFilter.kinds.has(k)).map(([, t]) => t + "s"), J_KINDS.length),
+      "entries", [jFilter.med && `for ${jFilter.med}`, jFilter.q && `matching “${q.value.trim()}”`, jFilter.inRange && "only on the dates shown"]) : [], reset, () => q, sum);
     count.textContent = !JOURNAL.length ? "" : cut ? `The newest ${J_FEW} of ${v.length}${filtered ? " that match" : ""}` : `${v.length} of ${JOURNAL.length} shown`;
     list.replaceChildren(...(cut ? v.slice(0, J_FEW) : v).map(jRow));
     if (!v.length) list.append(el("div", {class: "empty", text: JOURNAL.length ? "No entries match." : jCanWrite() ? "Add a note, a symptom or a side effect to start the journal." : "No one has written in this journal yet."}));
@@ -174,7 +181,7 @@ function jList(few) {
   med.onchange = draw;
   q.oninput = draw; shown.firstChild.onchange = draw;
   draw();
-  return {nodes: [JOURNAL.length ? el("div", {class: "jfilters"}, kind, med, q, shown) : null, count, list, more], draw};
+  return {nodes: [JOURNAL.length ? el("div", {class: "jfilters"}, kind, med, q, shown) : null, sum, count, list, more], draw};
 }
 /* the card on the Timeline tab: none for someone who can only read a journal no one has written in */
 let jHomeDraw = null;

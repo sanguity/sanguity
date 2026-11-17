@@ -40,6 +40,8 @@
   <div class="chips" id="chips" role="group" aria-label="Kinds of records shown"></div>
   <input class="search" id="q" type="search" placeholder="Search events…">
   <button class="iconbtn ftoggle" id="ftoggle" type="button" aria-expanded="false">Filters</button>
+  <!-- what the filters leave out, with Reset filters; still shown on a phone with the panel closed (#190, filters.js) -->
+  <p class="fsum" id="fsum" hidden></p>
 </div>
 <main>
   <section id="view-overview" hidden></section>
@@ -47,6 +49,7 @@
   <section id="view-health" hidden></section>
   <section id="view-timeline" hidden>
     <div class="stats" id="stats"></div>
+    <p class="hint stats-note" id="statsNote" hidden>These counts are for what's shown: in this period, with these filters.</p>
     <div class="card">
       <h2>Timeline</h2>
       <p class="hint">Click or tap any mark for details. Shaded columns are hospital stays.</p>
@@ -69,6 +72,7 @@
       <div class="card series-list" id="series">
         <div class="series-hd">
           <div class="lab-find"><input type="search" id="labQ" placeholder="Filter lab names…" aria-label="Filter lab names" aria-describedby="labQn" autocomplete="off" spellcheck="false"><span class="n" id="labQn"></span></div>
+          <p class="fsum" id="labSum" hidden></p>
           <div class="series-sel" id="seriesSel"></div>
           <div id="tvBox"></div>
         </div>
@@ -95,6 +99,7 @@
     <div class="card" id="labsHeatmap" hidden>
       <div class="list-hd" id="hmHd"><h2>Lab heatmap</h2>
         <div class="lab-find"><input type="search" id="hmQ" placeholder="Filter lab names…" aria-label="Filter lab names" aria-describedby="hmQn" autocomplete="off" spellcheck="false"><span class="n" id="hmQn"></span></div></div>
+      <p class="fsum" id="hmSum" hidden></p>
       <p class="hint">Each column is a blood draw, each row a lab value, colored by where it sat against its reference range.</p>
       <details class="more"><summary>More about this</summary><p>A gray strip is a hospital stay, and ◆ a procedure. Hover a cell for the value, and click to open that day. Drag sideways to move through time, scroll or pinch to zoom, and double-click to show everything.</p></details>
       <div class="hm-legend" id="hmLegend"></div>
@@ -117,6 +122,7 @@
 <script src="js/offline.js"></script>
 <script src="js/dates.js"></script>
 <script src="js/core.js"></script>
+<script src="js/filters.js"></script>
 <script src="js/ranges.js"></script>
 <script src="js/sources.js"></script>
 <script src="js/rename.js"></script>

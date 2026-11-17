@@ -198,7 +198,8 @@ function renderFilters() {
    Each kind with records is an on/off chip (#193, app.css .toggle) in the kind's colour, its name saying the state
    ("Visits, 31, shown"). Beside it a "⋯" menu button: "Show only Visits", and "Show all" while any kind is hidden.
    Right-click on a chip, or the keyboard's menu key, opens the same menu (and a long press, on phones that send one
-   as a right-click). A "Show all" button follows the chips while any is hidden. Shown kinds: state.cats, kept by save(). */
+   as a right-click). Shown kinds: state.cats, kept by save(). The "Show all" button that followed the chips while any
+   was hidden gave way to the filters' line under the records bar and its Reset filters (#190, filters.js). */
 let kindMenu = null;   // the open kind menu: {btn, list}
 function closeKindMenu(focus) {
   const m = kindMenu; if (!m) return;
@@ -250,8 +251,8 @@ function renderKinds() {
     };
     for (const x of [chip, btn]) x.style.setProperty("--tone", c.color);
     return el("span", {class: "kind"}, chip, btn, list);
-  }), hidden ? el("button", {type: "button", class: "kinds-all", text: "Show all", onclick: () => showKinds()}) : null);
-  // a chip or its menu had focus: the same one keeps it once redrawn; "Show all" hands it to the first chip as it goes
+  }));
+  // a chip or its menu had focus: the same one keeps it once redrawn (or the first chip, if its kind went)
   if (was) (box.querySelector(`${was.classList.contains("toggle") ? ".toggle" : ".kind-more"}[data-k="${was.dataset.k}"]`) || box.querySelector(".toggle"))?.focus();
 }
 $("#from").onchange = () => { const v = zParse($("#from").value + "T00:00"); if (!isNaN(v)) setRange(v, Math.max(state.to, v + DAY)); };

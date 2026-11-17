@@ -86,9 +86,13 @@ function renderCosts() {
   const sel = el("select", {class: "search", style: {minWidth: "0"}, onchange: e => { costState.cat = e.target.value; renderCosts(); }}, el("option", {value: "", text: "All types of care"}), ...cats.map(c => el("option", {value: c, text: c, selected: c === costState.cat || null})));
   const den = el("label", {style: {display: "inline-flex", gap: "6px", alignItems: "center", fontSize: "13px", color: "var(--ink2)"}},
     el("input", {type: "checkbox", checked: costState.deniedOnly || null, onchange: e => { costState.deniedOnly = e.target.checked; renderCosts(); }}), "Denied only");
-  const totals = `${list.length} claims · billed ${usd(sumOf(list, "billed"))} · insurance paid ${usd(sumOf(list, "paid"))} · your share ${usd(sumOf(list, "owe"))}`;
-  tc.append(el("h2", {text: "Claims"}), el("div", {class: "toolbar", style: {marginTop: "8px"}}, q, sel, den,
-    (costState.q || costState.cat || costState.deniedOnly) ? el("button", {class: "btn", style: {margin: 0}, text: "Clear filters", onclick: () => { Object.assign(costState, {q: "", cat: "", deniedOnly: false}); renderCosts(); }}) : null),
+  // with filters on: what they keep, with Reset filters, and the totals for the claims shown (#190, filters.js)
+  const on = !!(costState.q || costState.cat || costState.deniedOnly);
+  const totals = `${on ? "For the claims shown: billed" : `${list.length} claims · billed`} ${usd(sumOf(list, "billed"))} · insurance paid ${usd(sumOf(list, "paid"))} · your share ${usd(sumOf(list, "owe"))}`;
+  tc.append(el("h2", {text: "Claims"}), el("div", {class: "toolbar", style: {marginTop: "8px"}}, q, sel, den),
+    filterLine(on ? [`Showing ${list.length.toLocaleString()} of ${rows.length.toLocaleString()} claims`, costState.cat && `type of care: ${costState.cat}`,
+      costState.q && `matching “${costState.q.trim()}”`, costState.deniedOnly && "denied only"] : [],
+      () => { Object.assign(costState, {q: "", cat: "", deniedOnly: false}); renderCosts(); }, () => $("#costTable input.search")),
     el("p", {class: "hint", text: totals}));
   const cols = [["d", "Date"], ["title", "Service / drug"], ["prov", "Provider"], ["cat", "Type"], ["billed", "Billed"], ["paid", "Ins. paid"], ["owe", "Your share"], ["status", "Status"]];
   tc.append(el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data"},
@@ -286,12 +290,15 @@ function renderPaid(box, claimRows, periodLabel) {
   const fil = paidState.q;
   const list = rows.filter(r => !fil || r.group === fil || (r.who || "(no payee)") === fil || r.hsa === fil)
     .sort((a, b) => b.d.localeCompare(a.d) || a.type.localeCompare(b.type));
-  const tw = el("div", {id: "paidTable", style: {marginTop: "12px"}});
+  const tw = el("div", {id: "paidTable", tabindex: -1, style: {marginTop: "12px"}});
+  // filtered (HSA only, or a row above picked): what it keeps, with Reset filters, the total for those shown (#190)
+  const kept = fil === "HSA" || fil === "FSA" ? `paid with an ${fil}` : rows.some(r => r.group === fil) ? `for ${fil}` : `paid to ${fil}`;
   tw.append(el("div", {class: "toolbar", style: {margin: "0 0 6px"}},
-    el("span", {class: "hint", style: {margin: 0}, text: `${list.length} amount${list.length === 1 ? "" : "s"} · ${usd(sum(list))} counted${fil ? " · " + fil : ""}`}),
+    el("span", {class: "hint", style: {margin: 0}, text: fil ? `For the amounts shown: ${usd(sum(list))} counted` : `${list.length} amount${list.length === 1 ? "" : "s"} · ${usd(sum(list))} counted`}),
     ...["HSA", "FSA"].filter(t => all.some(r => r.hsa === t)).map(t => el("button", {class: "toggle", type: "button", "aria-pressed": fil === t, text: `${t} only`,   // on/off chips (#193)
-      onclick: () => { paidState.q = fil === t ? "" : t; renderCosts(); }})),
-    fil ? el("button", {class: "btn", style: {margin: 0}, text: "Show everything", onclick: () => { paidState.q = ""; renderCosts(); }}) : null));
+      onclick: () => { paidState.q = fil === t ? "" : t; renderCosts(); }}))),
+    filterLine(fil ? [`Showing ${list.length.toLocaleString()} of ${rows.length.toLocaleString()} amounts`, kept] : [],
+      () => { paidState.q = ""; renderCosts(); }, () => $("#paidTable .toggle") || $("#paidTable")));
   const toggle = r => { paidState.open = paidState.open === oopKey(r) ? null : oopKey(r); renderCosts(); const e = $("#oopEdit"); if (e) e.scrollIntoView({block: "nearest"}); };
   tw.append(el("div", {class: "tablewrap", style: {maxHeight: "420px"}}, el("table", {class: "data oop"},
     el("thead", {}, el("tr", {}, ["Date", "Paid to", "For", "Where the number came from", "HSA/FSA", "Amount"].map(h => el("th", {text: h})))),
