@@ -742,9 +742,14 @@ def main():
                   js("state.tab === 'timeline' && !drawer.classList.contains('open') && document.activeElement.id === 'journalHome'")
                   and page.inner_text("#journalHome h2") == "Journal (1)" and page.locator("#journalHome .jrow").count() == 1,
                   js("[state.tab, document.activeElement.id]"))
-            page.select_option("#journalHome .jfilters select", "note")
-            check("…filtered by kind", page.locator("#journalHome .jrow").count() == 0 and "No entries match" in page.inner_text("#journalHome .jlist"))
-            page.select_option("#journalHome .jfilters select", "symptom")
+            jtoggles = r"""[...document.querySelectorAll('#journalHome .jfilters .toggle')].map(t => [t.textContent.trim().replace(/ \d+$/, ''),
+              t.querySelector(':scope > input[type=checkbox]') ? String(t.querySelector('input').checked) : t.getAttribute('aria-pressed')])"""
+            check("the journal's kinds and “Only the dates shown” are on/off toggle chips that say true or false (#193)",
+                  js(jtoggles) == [["Notes", "true"], ["Symptoms", "true"], ["Side effects", "true"], ["Only the dates shown", "false"]], js(jtoggles))
+            page.click("#journalHome .jfilters .toggle[data-kind=symptom]")   # the kinds are on/off chips (#193)
+            check("…filtered by kind", page.locator("#journalHome .jrow").count() == 0 and "No entries match" in page.inner_text("#journalHome .jlist")
+                  and js("document.querySelector('#journalHome .toggle[data-kind=symptom]').getAttribute('aria-pressed')") == "false")
+            page.click("#journalHome .jfilters .toggle[data-kind=symptom]")
             page.fill("#journalHome .jfilters input[type=search]", "after lunch")
             check("…and by what they say", page.locator("#journalHome .jrow").count() == 1)
             page.check("#journalHome .jinrange input")
@@ -1064,15 +1069,17 @@ def main():
             settle(300)
             check("…are the Timeline's too", js("[document.getElementById('from').value, isoDay(state.from)]") == [start, start]
                   and js("document.querySelector('.dates').classList.contains('on')"), js("document.getElementById('from').value"))
-            # the kinds' chips say which are shown: aria-pressed "true" or "false" (never left out), and an off one fades
-            chips = r"[...document.querySelectorAll('#chips .chip')].map(b => [b.textContent.trim().split(/ \d/)[0], b.getAttribute('aria-pressed'), +getComputedStyle(b).opacity])"
-            check("Timeline: every kind's chip says whether it's shown, and a hidden kind fades (Insurance claims start hidden)",
-                  all(p in ("true", "false") for _, p, _ in js(chips)) and all((p == "false") == (o < 1) for _, p, o in js(chips))
+            # the kinds' chips say which are shown: aria-pressed "true" or "false" (never left out), and an off one has no
+            # tint (#193: on/off toggle chips, not faded)
+            chips = r"[...document.querySelectorAll('#chips .toggle')].map(b => [b.textContent.trim().split(/ \d/)[0], b.getAttribute('aria-pressed'), getComputedStyle(b).backgroundColor])"
+            clear = "rgba(0, 0, 0, 0)"
+            check("Timeline: every kind's chip says whether it's shown, and a hidden kind has no tint (Insurance claims start hidden)",
+                  all(p in ("true", "false") for _, p, _ in js(chips)) and all((p == "false") == (bg == clear) for _, p, bg in js(chips))
                   and any(n.startswith("Insurance claims") and p == "false" for n, p, _ in js(chips)), js(chips))
-            page.click("#chips .chip:nth-child(2)")
+            page.click("#chips .toggle:nth-child(2)")
             settle(200)
-            check("…and clicking one hides it, showing so", js(chips)[1][1] == "false" and js(chips)[1][2] < 1, js(chips)[1])
-            page.click("#chips .chip:nth-child(2)")
+            check("…and clicking one hides it, showing so", js(chips)[1][1] == "false" and js(chips)[1][2] == clear, js(chips)[1])
+            page.click("#chips .toggle:nth-child(2)")
             settle(200)
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
@@ -1087,6 +1094,94 @@ def main():
                       js("['presets', 'periodPick'].every(id => { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.right <= 375; })"), fits)
             page.set_viewport_size({"width": 1400, "height": 900})
             open_tab("labs")
+
+            # ---- pick one and on or off (#193): every pick-one group (.seg) on each records tab, and the journal form's
+            # kinds, has exactly one selected; every toggle chip (.toggle) says "true" or "false"; each kind has one look in
+            # light, dark and forced colors, told apart by more than opacity; focus shows; the chips fit 375 px
+            controls = r"""(() => {
+              const vis = n => n.getClientRects().length > 0;
+              const on = b => b.getAttribute('aria-pressed') === 'true' || b.getAttribute('aria-checked') === 'true' || !!b.querySelector(':scope > input:checked');
+              const said = b => ['true', 'false'].includes(b.getAttribute('aria-pressed') || b.getAttribute('aria-checked')) || !!b.querySelector(':scope > input[type=radio]');
+              const groups = [...document.querySelectorAll('.seg')].filter(vis).map(g => {
+                let n = [...g.children].filter(on).length;   // the period: a preset, or (until #191) a milestone or year, or dates
+                if (g.id === 'presets') n += document.getElementById('periodPick').classList.contains('on') + document.querySelector('.dates').classList.contains('on');
+                return [g.id || g.getAttribute('aria-label'), n, [...g.children].every(said)];
+              });
+              const toggles = [...document.querySelectorAll('.toggle')].filter(vis).map(t => {
+                const box = t.querySelector(':scope > input[type=checkbox]');
+                return [t.textContent.trim(), box ? String(box.checked) : t.getAttribute('aria-pressed')];
+              });
+              return {groups, toggles};
+            })()"""
+            want_groups = {"timeline": {"presets", "sortSeg"}, "labs": {"presets", "labsView"}, "heatmap": {"presets", "labsView"}, "costs": {"presets", "costBy"}}
+            want_toggles = {"timeline": "Visits", "labs": "Procedures & imaging", "heatmap": None, "costs": None}
+            for t in ("timeline", "labs", "heatmap", "costs"):
+                open_tab(t)
+                settle(300)
+                c = js(controls)
+                names = {g[0] for g in c["groups"]}
+                check(f"pick one ({t}): every group has exactly one selected, each choice saying so (#193)",
+                      want_groups[t] <= names and all(n == 1 and said for _, n, said in c["groups"]), c["groups"])
+                check(f"on or off ({t}): every toggle says true or false (#193)", all(s in ("true", "false") for _, s in c["toggles"])
+                      and (want_toggles[t] is None or any(n.startswith(want_toggles[t]) for n, _ in c["toggles"])), c["toggles"])
+            open_tab("labs")
+            check("…the chart overlays are toggle chips: Procedures & imaging, Medications, Journal",
+                  js("['optMarks', 'optMeds', 'optJournal'].every(id => document.getElementById(id).parentElement.classList.contains('toggle'))"))
+            js("journalNew()")
+            settle(200)
+            c = js(controls)
+            check("pick one: the journal form's kinds have exactly one checked", [g[1:] for g in c["groups"] if g[0] == "Kind of entry"] == [[1, True]], c["groups"])
+            js("closeDrawer()")
+            open_tab("timeline")
+            look = r"""(() => {
+              const cs = (n, p) => getComputedStyle(n, p || null), lab = [...document.querySelectorAll('#chips .toggle')].find(b => b.textContent.startsWith('Labs'));
+              const vis = [...document.querySelectorAll('#chips .toggle')].find(b => b.textContent.startsWith('Visits'));
+              const s = [...document.querySelectorAll('#sortSeg button')], sel = s.find(b => b.getAttribute('aria-pressed') === 'true'), un = s.find(b => b !== sel);
+              const t = b => ({bg: cs(b).backgroundColor, color: cs(b).color, border: cs(b).borderColor + ' ' + cs(b).borderStyle, mark: cs(b, '::before').content,
+                               key: cs(b.querySelector('.key')).backgroundColor, opacity: +cs(b).opacity});
+              return {shown: t(vis), hidden: t(lab), sel: [cs(sel).backgroundColor, cs(sel).boxShadow, cs(sel).fontWeight, +cs(sel).opacity],
+                      un: [cs(un).backgroundColor, cs(un).boxShadow, cs(un).fontWeight, +cs(un).opacity]};
+            })()"""
+            theme_before = js("document.documentElement.dataset.theme || null")
+            js("state.cats.delete('lab'); state.cats.add('visit'); renderAll()")
+            for mode in ("light", "dark", "forced colors"):
+                if mode == "forced colors":
+                    page.emulate_media(forced_colors="active")
+                else:
+                    js("t => { document.documentElement.dataset.theme = t; }", mode)
+                settle(200)
+                lk = js(look)
+                sh, hd = lk["shown"], lk["hidden"]
+                check(f"on or off ({mode}): shown has a fill, a ✓ and its colour key; hidden is outlined only, no ✓, a grey key; not by opacity",
+                      sh["bg"] != hd["bg"] and (mode == "forced colors" or hd["bg"] == "rgba(0, 0, 0, 0)")
+                      and "✓" in sh["mark"] and hd["mark"] in ("none", "normal") and sh["key"] != hd["key"] and sh["border"] != hd["border"]
+                      and sh["opacity"] == hd["opacity"] == 1, lk)
+                check(f"pick one ({mode}): the selected choice has its own fill, and a bar or the system highlight; not by opacity",
+                      lk["sel"][0] != lk["un"][0] and lk["sel"][3] == lk["un"][3] == 1
+                      and (mode == "forced colors" or ("inset" in lk["sel"][1] and lk["un"][1] == "none" and int(lk["sel"][2]) > int(lk["un"][2]))), lk)
+            page.emulate_media(forced_colors="none")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            js("state.cats.add('lab'); renderAll()")
+            settle(200)
+            page.focus("#q")
+            page.keyboard.press("Shift+Tab")   # back from the search box: the last kind's chip
+            ring = "(e => [e.className, e.matches(':focus-visible'), getComputedStyle(e).outlineStyle, getComputedStyle(e).outlineWidth])(document.activeElement)"
+            check("focus shows on a toggle chip reached by keyboard", js(ring)[0] == "toggle" and js(ring)[1:3] == [True, "solid"], js(ring))
+            page.focus("#sortSeg [data-sort=desc]")
+            page.keyboard.press("Tab")
+            check("…and on a pick-one choice", js("document.activeElement.dataset.sort") == "asc" and js(ring)[1:3] == [True, "solid"], js(ring))
+            page.set_viewport_size({"width": 375, "height": 800})
+            open_tab("timeline")
+            page.click("#ftoggle")
+            settle(200)
+            # the page's width, then each shown control's right edge
+            fit = "sel => [document.documentElement.scrollWidth, ...[...document.querySelectorAll(sel)].filter(n => n.getClientRects().length).map(n => Math.round(n.getBoundingClientRect().right))]"
+            check("on or off at 375 px: the kinds' chips wrap inside the screen", max(js(fit, "#chips .toggle")) <= 375 and len(js(fit, "#chips .toggle")) > 3, js(fit, "#chips .toggle"))
+            page.click("#ftoggle")
+            open_tab("labs")
+            settle(300)
+            check("…and the chart overlays", max(js(fit, "#view-labs .toggle")) <= 375 and len(js(fit, "#view-labs .toggle")) == 1 + 3, js(fit, "#view-labs .toggle"))
+            page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- Timeline: event sort toggle
             page.click("#tab-timeline")
@@ -1968,6 +2063,16 @@ def main():
             page.wait_for_selector("#sec-units input[name=units-lab][value=si]", timeout=10000)
             page.check("#sec-units input[name=units-lab][value=si]")
             page.check("#sec-units input[name=units-weight][value=kg]")
+            # ---- pick one on Settings (#193): the theme, each part's units and the sex for reference ranges are segmented
+            # controls of radios, each with exactly one checked, and the radio picked (above, through its see-through box)
+            # is the one that looks selected
+            radios = r"""[...document.querySelectorAll('fieldset.set-radios > .seg')].map(g => [g.closest('[id^=sec-]').id + ' ' + (g.parentElement.dataset.part || ''),
+              g.querySelectorAll(':scope > label > input[type=radio]:checked').length, g.children.length,
+              [...g.children].filter(l => getComputedStyle(l).boxShadow.includes('inset')).map(l => l.querySelector('input').value).join()])"""
+            got = js(radios)
+            check("pick one on Settings: every group of radios is one control with exactly one checked (theme, units, sex for ranges)",
+                  len(got) == 5 and all(n == 1 and k > 1 for _, n, k, _ in got), got)
+            check("…and the one picked looks selected", [x[3] for x in got if x[0] in ("sec-units lab", "sec-units weight")] == ["si", "kg"], got)
             page.click("#sec-units .set-foot button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-units .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
             page.goto(base + "/")

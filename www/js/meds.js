@@ -106,7 +106,7 @@ CHART_LAYERS.push({
 });
 {
   const marks = $("#optMarks")?.closest("label");
-  if (marks) marks.after(el("label", {id: "optMedsLabel"}, el("input", {type: "checkbox", id: "optMeds", checked: medsOnTrends || null, onchange: ev => {
+  if (marks) marks.after(el("label", {id: "optMedsLabel", class: "toggle"}, el("input", {type: "checkbox", id: "optMeds", checked: medsOnTrends || null, onchange: ev => {
     medsOnTrends = ev.target.checked; try { localStorage.setItem("sg-meds-trends", medsOnTrends ? "1" : "0"); } catch (e) {} renderCharts(); }}), " Medications"));
 }
 

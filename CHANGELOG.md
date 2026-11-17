@@ -197,6 +197,14 @@ Everything on `main` so far; it becomes the first tagged release.
   page and still read by screen readers. What you need to decide safely stays in the lead: that undoing an import
   removes what it brought, that anyone holding a share link can open it, that an export holds everything, and the
   "not medical advice" notices.
+- One look for each kind of control (#193): choices where exactly one is picked (the period presets, Labs' Chart
+  or Heatmap, Costs by month or by year, the events' sort, the journal form's kind, and Settings' theme, units and
+  sex for reference ranges) are segmented controls, the chosen one tinted, underlined and bold. Things shown or
+  hidden one by one (the Timeline's kinds, Costs' HSA and FSA filters, the journal's kinds and "Only the dates
+  shown", and the Labs charts' Procedures and imaging, Medications and Journal) are toggle chips: shown is filled
+  with the kind's colour and has a check mark, hidden is only outlined with its key grey, rather than faded. The
+  journal's kind filter is now a chip per kind instead of a list. Both read clearly in dark and high-contrast modes,
+  with a visible focus ring.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

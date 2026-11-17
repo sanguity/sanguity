@@ -153,8 +153,13 @@ function renderFilters() {
   $("#from").value = isoDay(state.from); $("#to").value = isoDay(state.to);
   $(".dates").classList.toggle("on", state.preset === "custom");
   const counts = {}; EV.forEach(e => { const c = CAT_OF[e.k]; if (c && inRange(e)) counts[c.k] = (counts[c.k] || 0) + 1; });
-  $("#chips").replaceChildren(...CATS.filter(c => hasLane(c)).map(c => el("button", {class: "chip", "aria-pressed": state.cats.has(c.k), onclick: () => { state.cats.has(c.k) ? state.cats.delete(c.k) : state.cats.add(c.k); renderAll(); }},
-    el("span", {class: "key", style: {background: c.color}}), `${c.label} `, el("span", {style: {color: "var(--muted)"}, text: counts[c.k] || 0}))));
+  // the kinds as on/off toggle chips (#193, app.css .toggle): shown or hidden, in the kind's colour
+  $("#chips").replaceChildren(...CATS.filter(c => hasLane(c)).map(c => {
+    const b = el("button", {type: "button", class: "toggle", "aria-pressed": state.cats.has(c.k), onclick: () => { state.cats.has(c.k) ? state.cats.delete(c.k) : state.cats.add(c.k); renderAll(); }},
+      el("span", {class: "key"}), `${c.label} `, el("span", {class: "n", text: counts[c.k] || 0}));
+    b.style.setProperty("--tone", c.color);
+    return b;
+  }));
 }
 $("#periodPick").onchange = ev => { if (ev.target.value) applyPreset(ev.target.value); };
 $("#from").onchange = () => { const v = zParse($("#from").value + "T00:00"); if (!isNaN(v)) setRange(v, Math.max(state.to, v + DAY)); };

@@ -293,11 +293,13 @@ function tabsEditor(value, changed, ro) {
   return {node: ol.node, get: () => ({order: ol.get(), hidden: ol.get().filter(t => hidden.has(t))})};
 }
 
+/* a pick-one group of radios (#193): the labels, each with its radio, drawn as one segmented control (app.css .seg) */
+const radioSeg = labels => el("div", {class: "seg wrap"}, ...labels);
 /* #45 this user's default theme; the ◐ toggle on the records page overrides it for one browser */
 function themeEditor(value, changed, ro) {
   const opts = [["system", "Follow the system"], ["light", "Light"], ["dark", "Dark"]];
   const box = el("fieldset", {class: "set-radios"}, el("legend", {class: "set-sr", text: "Default theme"}),
-    ...opts.map(([v, l]) => el("label", {}, el("input", {type: "radio", name: "theme", value: v, checked: v === value, disabled: ro, onchange: changed}), " " + l)));
+    radioSeg(opts.map(([v, l]) => el("label", {}, el("input", {type: "radio", name: "theme", value: v, checked: v === value, disabled: ro, onchange: changed}), l))));
   let own = null; try { own = localStorage.getItem("ht-theme"); } catch (e) {}
   const note = el("p", {class: "hint", id: "themeOwn"});
   if (own === "light" || own === "dark")
@@ -366,8 +368,8 @@ EDITORS.views = viewsEditor;
 function unitsEditor(value, changed, ro, st) {
   const parts = [["lab", "Lab tests"], ["weight", "Weight"], ["temperature", "Temperature"]];
   const boxes = parts.map(([part, label]) => el("fieldset", {class: "set-radios", "data-part": part}, el("legend", {text: label}),
-    ...Object.entries((st.choices || {})[part] || {}).map(([v, l]) => el("label", {},
-      el("input", {type: "radio", name: "units-" + part, value: v, checked: v === (value[part] || "reported"), disabled: ro, onchange: changed}), " " + l))));
+    radioSeg(Object.entries((st.choices || {})[part] || {}).map(([v, l]) => el("label", {},
+      el("input", {type: "radio", name: "units-" + part, value: v, checked: v === (value[part] || "reported"), disabled: ro, onchange: changed}), l)))));
   return {node: el("div", {class: "set-units"}, ...boxes),
     get: () => Object.fromEntries(parts.map(([part], i) => [part, boxes[i].querySelector("input:checked")?.value || value[part] || "reported"]))};
 }
@@ -384,7 +386,7 @@ function birthdateEditor(value, changed, ro) {
 function rangesexEditor(value, changed, ro) {
   const opts = [["", "Not set"], ["female", "Female"], ["male", "Male"]];
   const box = el("fieldset", {class: "set-radios"}, el("legend", {class: "set-sr", text: "Sex for reference ranges"}),
-    ...opts.map(([v, l]) => el("label", {}, el("input", {type: "radio", name: "rangeSex", value: v, checked: v === (value || ""), disabled: ro, onchange: changed}), " " + l)));
+    radioSeg(opts.map(([v, l]) => el("label", {}, el("input", {type: "radio", name: "rangeSex", value: v, checked: v === (value || ""), disabled: ro, onchange: changed}), l))));
   return {node: box, get: () => box.querySelector("input:checked")?.value ?? ""};
 }
 /* the profile's lab series with numeric results whose report gives no range or flag: [{name, unit, pts}] */

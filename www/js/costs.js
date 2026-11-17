@@ -267,7 +267,7 @@ function renderPaid(box, claimRows, periodLabel) {
   const tw = el("div", {id: "paidTable", style: {marginTop: "12px"}});
   tw.append(el("div", {class: "toolbar", style: {margin: "0 0 6px"}},
     el("span", {class: "hint", style: {margin: 0}, text: `${list.length} amount${list.length === 1 ? "" : "s"} · ${usd(sum(list))} counted${fil ? " · " + fil : ""}`}),
-    ...["HSA", "FSA"].filter(t => all.some(r => r.hsa === t)).map(t => el("button", {class: "btn", style: {margin: 0}, "aria-pressed": fil === t, text: `${t} only`,
+    ...["HSA", "FSA"].filter(t => all.some(r => r.hsa === t)).map(t => el("button", {class: "toggle", type: "button", "aria-pressed": fil === t, text: `${t} only`,   // on/off chips (#193)
       onclick: () => { paidState.q = fil === t ? "" : t; renderCosts(); }})),
     fil ? el("button", {class: "btn", style: {margin: 0}, text: "Show everything", onclick: () => { paidState.q = ""; renderCosts(); }}) : null));
   const toggle = r => { paidState.open = paidState.open === oopKey(r) ? null : oopKey(r); renderCosts(); const e = $("#oopEdit"); if (e) e.scrollIntoView({block: "nearest"}); };
