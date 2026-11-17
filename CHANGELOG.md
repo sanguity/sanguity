@@ -222,6 +222,10 @@ Everything on `main` so far; it becomes the first tagged release.
   filters open, an event's details and the top bar's menus), every group of Sources, Sharing, Settings, Account and
   Admin, the sign-in page and a share link's page, in light and dark, and fails if the page scrolls sideways or a
   button, link or field is cut off at the screen's edge or overlaps another.
+- The Timeline's kinds (#189): each kind's chip has a **⋯** menu with **Show only** that kind and **Show all**, so
+  "just labs" is one choice; right-click on a chip, or the keyboard's menu key, opens it too. A **Show all** button
+  follows the chips while any kind is hidden. A screen reader hears each chip's kind, count and state ("Visits, 31,
+  shown"), and focus stays on the chip or menu used. Which kinds are shown is still kept per profile.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

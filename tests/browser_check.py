@@ -1308,10 +1308,10 @@ def main():
             check("Timeline: every kind's chip says whether it's shown, and a hidden kind has no tint (Insurance claims start hidden)",
                   all(p in ("true", "false") for _, p, _ in js(chips)) and all((p == "false") == (bg == clear) for _, p, bg in js(chips))
                   and any(n.startswith("Insurance claims") and p == "false" for n, p, _ in js(chips)), js(chips))
-            page.click("#chips .toggle:nth-child(2)")
+            page.click("#chips .kind:nth-child(2) .toggle")   # each chip with its ⋯ menu (#189)
             settle(200)
             check("…and clicking one hides it, showing so", js(chips)[1][1] == "false" and js(chips)[1][2] == clear, js(chips)[1])
-            page.click("#chips .toggle:nth-child(2)")
+            page.click("#chips .kind:nth-child(2) .toggle")   # each chip with its ⋯ menu (#189)
             settle(200)
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
@@ -1395,8 +1395,8 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             js("state.cats.add('lab'); renderAll()")
             settle(200)
-            page.focus("#q")
-            page.keyboard.press("Shift+Tab")   # back from the search box: the last kind's chip
+            page.focus("#chips .kind-more[data-k=watch]")
+            page.keyboard.press("Shift+Tab")   # back from its ⋯ menu button (#189): the Watch chip
             ring = "(e => [e.className, e.matches(':focus-visible'), getComputedStyle(e).outlineStyle, getComputedStyle(e).outlineWidth])(document.activeElement)"
             check("focus shows on a toggle chip reached by keyboard", js(ring)[0] == "toggle" and js(ring)[1:3] == [True, "solid"], js(ring))
             page.focus("#sortSeg [data-sort=desc]")
@@ -1413,6 +1413,104 @@ def main():
             open_tab("labs")
             settle(300)
             check("…and the chart overlays", max(js(fit, "#view-labs .toggle")) <= 375 and len(js(fit, "#view-labs .toggle")) == 1 + 3, js(fit, "#view-labs .toggle"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+
+            # ---- Timeline kinds: each chip's name says its state; Show all and Only this by mouse, keyboard and on a
+            # phone; a hidden kind's count muted and its ⋯ untinted in light, dark and forced colors; kept on a reload (#189)
+            open_tab("timeline")
+            settle(300)
+            kinds = r"""[...document.querySelectorAll('#chips .kind')].map(k => { const b = k.querySelector('.toggle');
+              return [b.dataset.k, b.getAttribute('aria-pressed'), b.getAttribute('aria-label'), b.querySelector('.n').textContent]; })"""
+            lanes = js("CATS.filter(hasLane).map(c => c.k)")
+            ks, names = js(kinds), js("Object.fromEntries(CATS.map(c => [c.k, c.label]))")
+            check("kinds (#189): each chip's name says its kind, count and whether it's shown, as its pressed state does",
+                  [k for k, *_ in ks] == lanes and all(lab == f"{names[k]}, {n}, {'shown' if p == 'true' else 'hidden'}" for k, p, lab, n in ks)
+                  and ["claim", "false", f"{names['claim']}, {ks[lanes.index('claim')][3]}, hidden"] == ks[lanes.index("claim")][:3], ks)
+            vis_n = names["visit"]
+            check("…found by that name (\"Visits, 31, shown\")", page.get_by_role("button", name=re.compile(rf"^{vis_n}, \d+, shown$")).count() == 1)
+            check("…and \"Show all\" is there while a kind is hidden (Insurance claims start hidden)", js("!!document.querySelector('#chips .kinds-all')"))
+            # Only this, by mouse: the ⋯ beside Visits, then "Show only Visits"
+            page.click("#chips .kind-more[data-k=visit]")
+            menu = "[...document.querySelectorAll('#chips .menu-list')].filter(m => !m.hidden).map(m => [m.id, ...[...m.querySelectorAll('[role=menuitem]')].map(i => i.textContent)])"
+            check("kinds: a chip's ⋯ opens its menu, Show only this and Show all", js(menu) == [["kindMenu-visit", f"Show only {vis_n}", "Show all"]]
+                  and js("document.querySelector('#chips .kind-more[data-k=visit]').getAttribute('aria-expanded')") == "true", js(menu))
+            js("document.getElementById('sgStatus').textContent = ''")
+            page.click("#kindMenu-visit [role=menuitem]:first-child")
+            settle(200)
+            only = lambda: [k for k, p, *_ in js(kinds) if p == "true"]
+            check("kinds: Show only Visits shows Visits alone, on the chips and the timeline, and says so",
+                  only() == ["visit"] and js(menu) == [] and said(page) == f"Showing only {vis_n}"
+                  and js("[...document.querySelectorAll('#list .row')].length > 0 && EV.filter(visible).every(e => CAT_OF[e.k].k === 'visit')"), only())
+            page.reload()
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
+            settle(300)
+            check("…kept on a reload", only() == ["visit"] and js("JSON.parse(localStorage.getItem(stateKey())).cats.filter(k => CATS.filter(hasLane).some(c => c.k === k))") == ["visit"], only())
+            # a hidden kind's look: the count muted, the key grey and its ⋯ untinted, in each theme (#193 checks the chip itself)
+            part = r"""k => { const w = document.querySelector(`#chips .toggle[data-k=${k}]`).parentElement, cs = n => getComputedStyle(n);
+              return {n: cs(w.querySelector('.n')).color, key: cs(w.querySelector('.key')).backgroundColor, more: cs(w.querySelector('.kind-more')).backgroundColor}; }"""
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for mode in ("light", "dark", "forced colors"):
+                if mode == "forced colors":
+                    page.emulate_media(forced_colors="active")
+                else:
+                    js("t => { document.documentElement.dataset.theme = t; }", mode)
+                settle(150)
+                sh, hd = js(part, "visit"), js(part, "lab")
+                check(f"kinds ({mode}): a hidden kind's count is muted, its key grey and its ⋯ untinted, unlike a shown one's",
+                      sh["n"] != hd["n"] and sh["key"] != hd["key"] and sh["more"] != hd["more"] if mode != "forced colors"
+                      else sh["key"] != hd["key"] and sh["more"] != hd["more"], [sh, hd])
+            page.emulate_media(forced_colors="none")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            # Show all, by keyboard from a chip's menu: Enter on the ⋯ opens it on its first item, arrow down, Enter
+            page.focus("#chips .kind-more[data-k=lab]")
+            page.keyboard.press("Enter")
+            check("kinds by keyboard: Enter on a ⋯ opens its menu, focus on its first item",
+                  js("[document.activeElement.textContent, document.activeElement.closest('[role=menu]')?.id]") == [f"Show only {names['lab']}", "kindMenu-lab"],
+                  js("document.activeElement.outerHTML"))
+            page.keyboard.press("Escape")
+            check("…Escape closes it, focus back on the ⋯", js("document.activeElement.matches('.kind-more[data-k=lab]')") and js(menu) == [])
+            page.keyboard.press("ArrowDown")
+            page.keyboard.press("ArrowDown")
+            js("document.getElementById('sgStatus').textContent = ''")
+            page.keyboard.press("Enter")
+            settle(200)
+            check("…Show all from it shows every kind, says so, focus kept on that ⋯, and \"Show all\" goes",
+                  only() == lanes and said(page) == "Showing every kind" and js("document.activeElement.matches('.kind-more[data-k=lab]')")
+                  and not js("!!document.querySelector('#chips .kinds-all')"), [only(), js("document.activeElement.outerHTML")])
+            # a chip toggled by keyboard keeps focus; right-click (or the menu key, or a long press) on a chip opens its menu
+            page.focus("#chips .toggle[data-k=imaging]")
+            page.keyboard.press("Space")
+            settle(150)
+            check("kinds by keyboard: Space hides a kind, focus kept on its chip, its name saying hidden",
+                  js("document.activeElement.matches('.toggle[data-k=imaging]') && document.activeElement.getAttribute('aria-label').endsWith(', hidden')"))
+            page.click("#chips .toggle[data-k=study]", button="right")
+            check("kinds: right-click on a chip opens its menu", js(menu)[:1] == [["kindMenu-study", f"Show only {names['study']}", "Show all"]], js(menu))
+            page.keyboard.press("Escape")
+            page.click("#chips .kinds-all")   # the visible "Show all", by mouse
+            settle(200)
+            check("kinds: the \"Show all\" button shows every kind, focus on the first chip", only() == lanes
+                  and js("document.activeElement === document.querySelector('#chips .toggle')"), only())
+            # 375 px, light and dark: the chips, a menu open on the last one, and "Show all" fit
+            page.set_viewport_size({"width": 375, "height": 800})
+            page.click("#ftoggle")
+            js("state.cats.delete('claim'); renderAll()")
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                last = lanes[-1]
+                page.click(f"#chips .kind-more[data-k={last}]")
+                settle(150)
+                box = js(f"(r => [r.left, r.right])(document.getElementById('kindMenu-{last}').getBoundingClientRect())")
+                check(f"kinds at 375 px ({theme}): chips, Show all and an open menu fit", phone_fits(page, "Timeline kinds") == [] and box[0] >= 0 and box[1] <= 375
+                      and js("!!document.querySelector('#chips .kinds-all')"), [phone_fits(page, "Timeline kinds"), box])
+                page.click(f"#chips .kind-more[data-k={last}]")
+            page.click("#chips .kind-more[data-k=visit]")
+            page.click("#kindMenu-visit [role=menuitem]:first-child")
+            settle(200)
+            check("kinds at 375 px: Show only this from the ⋯", only() == ["visit"] and phone_fits(page, "Timeline kinds") == [], only())
+            page.click("#chips .kinds-all")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            js("state.cats.delete('claim'); renderAll()")   # as the checks after this expect: Insurance claims hidden
+            page.click("#ftoggle")
             page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- Timeline: event sort toggle

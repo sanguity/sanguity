@@ -152,14 +152,67 @@ function renderFilters() {
   pick.value = on; pick.classList.toggle("on", !!on);
   $("#from").value = isoDay(state.from); $("#to").value = isoDay(state.to);
   $(".dates").classList.toggle("on", state.preset === "custom");
+  renderKinds();
+}
+/* ---------------------------------------------------------------- the Timeline's kinds (#189)
+   Each kind with records is an on/off chip (#193, app.css .toggle) in the kind's colour, its name saying the state
+   ("Visits, 31, shown"). Beside it a "⋯" menu button: "Show only Visits", and "Show all" while any kind is hidden.
+   Right-click on a chip, or the keyboard's menu key, opens the same menu (and a long press, on phones that send one
+   as a right-click). A "Show all" button follows the chips while any is hidden. Shown kinds: state.cats, kept by save(). */
+let kindMenu = null;   // the open kind menu: {btn, list}
+function closeKindMenu(focus) {
+  const m = kindMenu; if (!m) return;
+  m.list.hidden = true; m.btn.setAttribute("aria-expanded", "false"); kindMenu = null;
+  if (focus) m.btn.focus();
+}
+document.addEventListener("click", ev => { if (kindMenu && !kindMenu.btn.parentNode.contains(ev.target)) closeKindMenu(); });
+/* every kind with records shown (only == null), or only that one */
+function showKinds(only) {
+  if (kindMenu) closeKindMenu(kindMenu.list.contains(document.activeElement));   // focus back on its ⋯, kept there once redrawn
+  for (const c of CATS.filter(hasLane)) if (only == null || c.k === only) state.cats.add(c.k); else state.cats.delete(c.k);
+  renderAll();
+  announce(only == null ? "Showing every kind" : `Showing only ${CATS.find(c => c.k === only).label}`);
+}
+function renderKinds() {
+  const box = $("#chips"), was = box.contains(document.activeElement) ? document.activeElement : null;
   const counts = {}; EV.forEach(e => { const c = CAT_OF[e.k]; if (c && inRange(e)) counts[c.k] = (counts[c.k] || 0) + 1; });
-  // the kinds as on/off toggle chips (#193, app.css .toggle): shown or hidden, in the kind's colour
-  $("#chips").replaceChildren(...CATS.filter(c => hasLane(c)).map(c => {
-    const b = el("button", {type: "button", class: "toggle", "aria-pressed": state.cats.has(c.k), onclick: () => { state.cats.has(c.k) ? state.cats.delete(c.k) : state.cats.add(c.k); renderAll(); }},
-      el("span", {class: "key"}), `${c.label} `, el("span", {class: "n", text: counts[c.k] || 0}));
-    b.style.setProperty("--tone", c.color);
-    return b;
-  }));
+  const kinds = CATS.filter(hasLane), hidden = kinds.some(c => !state.cats.has(c.k));
+  const item = (k, text, run) => el("button", {type: "button", class: "menu-item", role: "menuitem", tabindex: "-1", "data-k": k, text, onclick: run});
+  closeKindMenu();
+  box.replaceChildren(...kinds.map(c => {
+    const on = state.cats.has(c.k), n = counts[c.k] || 0, id = "kindMenu-" + c.k;
+    const chip = el("button", {type: "button", class: "toggle", "data-k": c.k, "aria-pressed": on, "aria-label": `${c.label}, ${n}, ${on ? "shown" : "hidden"}`,
+      onclick: () => { on ? state.cats.delete(c.k) : state.cats.add(c.k); renderAll(); }},
+      el("span", {class: "key"}), `${c.label} `, el("span", {class: "n", text: n}));
+    const btn = el("button", {type: "button", class: "kind-more", "data-k": c.k, text: "⋯", "aria-label": `More for ${c.label}`,
+      title: `Show only ${c.label}${hidden ? ", or show all" : ""}`, "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id});
+    const items = [item(c.k, `Show only ${c.label}`, () => showKinds(c.k)), hidden ? item(c.k, "Show all", () => showKinds()) : null].filter(Boolean);
+    const list = el("div", {class: "menu-list", id, role: "menu", "aria-label": c.label, hidden: ""}, ...items);
+    const m = {btn, list};
+    const open = () => {
+      closeKindMenu(); list.hidden = false; btn.setAttribute("aria-expanded", "true"); kindMenu = m;
+      list.style.left = "0px";   // kept on the screen: moved left by as much as it would stick out on the right
+      const over = list.getBoundingClientRect().right - (document.documentElement.clientWidth - 8);
+      if (over > 0) list.style.left = -over + "px";
+    };
+    btn.onclick = () => { if (kindMenu === m) closeKindMenu(); else open(); };
+    btn.onkeydown = ev => {
+      if (ev.key === "ArrowDown" || ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); if (kindMenu !== m) open(); items[0].focus(); }
+      else if (ev.key === "Escape" && kindMenu === m) { ev.preventDefault(); closeKindMenu(); }
+    };
+    chip.oncontextmenu = ev => { ev.preventDefault(); open(); items[0].focus(); };
+    list.onkeydown = ev => {
+      const i = items.indexOf(document.activeElement);
+      const to = {ArrowDown: items[(i + 1) % items.length], ArrowUp: items[(i - 1 + items.length) % items.length], Home: items[0], End: items.at(-1)}[ev.key];
+      if (to) { ev.preventDefault(); to.focus(); }
+      else if (ev.key === "Escape") { ev.preventDefault(); closeKindMenu(true); }
+      else if (ev.key === "Tab") closeKindMenu();
+    };
+    for (const x of [chip, btn]) x.style.setProperty("--tone", c.color);
+    return el("span", {class: "kind"}, chip, btn, list);
+  }), hidden ? el("button", {type: "button", class: "kinds-all", text: "Show all", onclick: () => showKinds()}) : null);
+  // a chip or its menu had focus: the same one keeps it once redrawn; "Show all" hands it to the first chip as it goes
+  if (was) (box.querySelector(`${was.classList.contains("toggle") ? ".toggle" : ".kind-more"}[data-k="${was.dataset.k}"]`) || box.querySelector(".toggle"))?.focus();
 }
 $("#periodPick").onchange = ev => { if (ev.target.value) applyPreset(ev.target.value); };
 $("#from").onchange = () => { const v = zParse($("#from").value + "T00:00"); if (!isNaN(v)) setRange(v, Math.max(state.to, v + DAY)); };
