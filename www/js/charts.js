@@ -105,7 +105,7 @@ function msMarks(g, x, a, b, y0, y1, R, labelY) {
    flagNodes(f): the same, the mark hidden from screen readers (they say the word). */
 const FLAG_OF = f => !f ? null : /^h/i.test(f) ? ["▲", "High"] : /^l/i.test(f) ? ["▼", "Low"] : ["◆", "Flagged"];
 const flagWord = f => (FLAG_OF(f) || []).join(" ");
-const flagNodes = f => { const w = FLAG_OF(f); return w ? [el("span", {"aria-hidden": "true", text: w[0] + " "}), w[1]] : []; };
+const flagNodes = (f, words) => { const w = FLAG_OF(f); return w ? [el("span", {"aria-hidden": "true", text: w[0] + " "}), words || w[1]] : []; };   // words: another wording (#234)
 /* an out-of-range result's mark on a chart: a triangle pointing up (above its range) or down (below), a diamond for
    any other flag; s is its half-width */
 function abnMark(cx, cy, f, s = 4.5, cls = "pt abn") {
@@ -132,10 +132,11 @@ function viewSeg(key, what, redraw, graphic = "Chart") {
   return seg;
 }
 /* a table of a chart's values: heads, then rows of cells (a string, or [text, flag] for a value outside its range,
-   shown with flagWord's mark and in the out-of-range colour). It scrolls, so it takes focus to be scrolled by keyboard,
+   shown with flagWord's mark and in the out-of-range colour; [text, flag, words] says words instead, as "Above your
+   target", #234). It scrolls, so it takes focus to be scrolled by keyboard,
    named by its columns (#202) */
 function chartTable(heads, rows, cls = "") {
-  const td = c => Array.isArray(c) ? el("td", {class: c[1] ? "abn" : null}, c[0], c[1] ? " " : null, ...flagNodes(c[1])) : el("td", {text: c ?? ""});
+  const td = c => Array.isArray(c) ? el("td", {class: c[1] ? "abn" : null}, c[0], c[1] ? " " : null, ...flagNodes(c[1], c[2])) : el("td", {text: c ?? ""});
   return el("div", {class: "tablewrap chart-table", tabindex: 0, role: "region", "aria-label": `${heads.slice(1).join(", ")} by ${heads[0].toLowerCase()}`}, el("table", {class: "data " + cls},
     el("thead", {}, el("tr", {}, heads.map(h => el("th", {scope: "col", text: h})))),
     el("tbody", {}, rows.map(r => el("tr", {}, r.map(td))))));

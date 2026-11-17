@@ -517,6 +517,12 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   and sex (the WHO's to 2 years, the CDC's from 2 to 20), with each measurement's percentile; a due date, for a baby
   born early, gives the corrected age before 2. Where the tables come from and their licences:
   [docs/growth-charts.md](docs/growth-charts.md).
+- **Targets of your own (#234):** under **Sharing → About this person**, owners and editors can type in a target for
+  each reading taken at home (blood pressure, glucose meter readings, CGM time in range, body temperature, blood
+  oxygen, weight), as the person's care team gave it, with who set it and when. Body and activity draws it on the
+  measure's chart, marks readings at home outside it ▲ or ▼ with words, and says how many in the period were; CGM days
+  show the time in the person's own range beside the standard published one. A visit summary or share link includes
+  them only when ticked. Sanguity never suggests a target; with none entered nothing changes.
 - **Reference ranges from settings:** some results come without a range (typed in, a spreadsheet, some portals).
   Under **Settings → Reference ranges** you can give a lab, in a stated unit, a low and high of your own, for anyone
   or for female or male, and for an age band (by the birth date in About this person; the age on each result's day is used). They're used

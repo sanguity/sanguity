@@ -5307,6 +5307,168 @@ def main():
             undone = js("id => fetch('api/profiles/2/imports/' + id + '/undo', {method: 'POST', headers: {'X-Sanguity': '1'}}).then(r => r.status)", iid232)
             check("…undone, they're gone", undone == 200 and js("fetch('api/profiles/2/watch').then(r => r.status === 200 ? r.json() : {}).then(w => (w.glucose_readings || []).length + (w.spo2_readings || []).length)") == 0, undone)
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
+            # ---- targets of your own for home readings (#234): on profile 1, Sharing → About this person has a card of its
+            # own, every measure without a target at first and Body and activity drawing none; an editor's targets are
+            # typed in, changed and cleared per measure (one refused, in words), kept in one unit each; Body and activity
+            # then draws each as a band or line, labelled, marks readings at home outside it ▲ or ▼ with words in its
+            # table and list, says "N of M … above it" (counted as the page shows them), and shows CGM time in the
+            # person's own range beside the standard published one, each labelled; the Overview's home tiles say it in
+            # words; the visit summary and a share link offer it unticked; at 1400 and 375 px, light and dark, axe clean;
+            # cleared at the end, nothing is left drawn
+            was_profile = js("localStorage.getItem('ht-profile')")
+            no_marks = "document.querySelectorAll('#view-health .tgt-line, #view-health .tgt-band, #view-health .tgt-edge, #view-health .glu-own').length"
+            page.goto(base + "/?profile=1")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 1", timeout=20000)
+            js("state.tables.clear(); state.from = dayTs('2026-08-15'); state.to = dayTs('2026-11-15'); state.preset = 'custom'; switchTab('health')")
+            settle(500)
+            check("targets of your own (#234): with none entered, Body and activity draws none, and says nothing of any",
+                  js(no_marks) == 0 and "your target" not in js("document.getElementById('view-health').innerText").lower())
+            page.goto(base + "/sharing.html?profile=1#about")
+            page.wait_for_selector("#about[data-profile='1']", timeout=10000)
+            tcard = js("[!document.getElementById('targets').hidden && !document.getElementById('targets').classList.contains('grp-off'), "
+                       "document.getElementById('targets').innerText]")
+            check("…a card of its own beside About this person, worded as the care team's, every measure without one at first",
+                  tcard[0] and "Targets of your own" in tcard[1] and "as your care team gave it" in tcard[1] and tcard[1].count("No target entered.") == 6
+                  and all(n in tcard[1] for n in ("Blood pressure", "Blood glucose, meter readings", "CGM time in range", "Body temperature", "Blood oxygen", "Weight")),
+                  tcard[1][:300])
+            def t_save(k, vals, said_start):
+                for name, v in vals.items():
+                    page.fill(f"#tgt-{k}-save >> xpath=ancestor::form//input[@name='{name}']", v)
+                page.click(f"#tgt-{k}-save")
+                page.wait_for_function(f"document.getElementById('targetsMsg').textContent.startsWith({json.dumps(said_start)})", timeout=10000)
+                return js("document.getElementById('targetsMsg').textContent")
+            said = [t_save("bp", {"sysHigh": "130", "diaHigh": "80", "by": "Dr. Rowan Vale (fictional)", "on": "2026-06-02"}, "Saved the target for blood pressure"),
+                    t_save("glucose", {"low": "80", "high": "140"}, "Saved the target for blood glucose"),
+                    t_save("cgm", {"low": "70", "high": "140", "by": "Fictional diabetes clinic"}, "Saved the target for CGM"),
+                    t_save("temp", {"high": "37.5"}, "Saved the target for body temperature"),
+                    t_save("spo2", {"low": "95"}, "Saved the target for blood oxygen"),
+                    t_save("weight", {"high": "170"}, "Saved the target for weight")]
+            check("…typed in per measure by an owner or editor, each said back in words", said[0] == "Saved the target for blood pressure: up to 130/80 mmHg."
+                  and said[1] == "Saved the target for blood glucose, meter readings: 80–140 mg/dL." and said[5].endswith("up to 170 lb.")
+                  and js("document.activeElement.id") == "tgt-weight-save", said)
+            said_ch = t_save("bp", {"sysHigh": "125"}, "Changed the target for blood pressure")
+            n_problems = len(problems)
+            page.fill("#tgt-glucose-save >> xpath=ancestor::form//input[@name='low']", "150")
+            page.click("#tgt-glucose-save")
+            page.wait_for_function("document.getElementById('targetsMsg').textContent.includes('below the high end')", timeout=10000)
+            settle(200)
+            del problems[n_problems:]   # the refusal's 400 was asked for
+            page.click("#tgt-spo2-clear")
+            asked = answer_ask(page)
+            page.wait_for_function("document.getElementById('targetsMsg').textContent === 'Cleared the target for blood oxygen.'", timeout=10000)
+            stored = js("fetch('api/profiles/1/person').then(r => r.json())")["targets"]
+            check("…changed, refused in words (a low end above the high end), and cleared after asking; the others kept",
+                  said_ch == "Changed the target for blood pressure: up to 125/80 mmHg." and asked[0] == "Clear this target?" and "at least 95%" in asked[1]
+                  and sorted(stored) == ["bp", "cgm", "glucose", "temp", "weight"] and stored["glucose"]["low"] == 80
+                  and js("document.activeElement.id") == "tgt-spo2-hd", [said_ch, asked, sorted(stored)])
+            check("…kept in one unit each (weight in kg, as typed in lb), with who set it and when",
+                  stored["weight"]["high"] == 77.11 and stored["weight"]["unit"] == "lb" and stored["bp"]["by"] == "Dr. Rowan Vale (fictional)"
+                  and stored["bp"]["on"] == "2026-06-02" and stored["bp"]["sysHigh"] == 125, stored)
+            t234_bad, t234_axe = [], []
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    settle(200)
+                    page.locator("#targets").scroll_into_view_if_needed()
+                    if width == 375:
+                        t234_bad += phone_fits(page, f"About this person's targets ({theme})")
+                    if shots:
+                        page.locator("#targets").screenshot(path=os.path.join(shots, f"234-about-{width}-{theme}.png"))
+                    t234_axe += axe_check(page, f"About this person's targets, {width} px, {theme}")[0]
+            js("delete document.documentElement.dataset.theme")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + "/?profile=1")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 1", timeout=20000)
+            js("state.tables.clear(); state.from = dayTs('2026-08-15'); state.to = dayTs('2026-11-15'); state.preset = 'custom'; switchTab('health')")
+            settle(600)
+            bp = js("""(() => { const c = document.getElementById('h-bp'), [a, b] = hRange();
+              const home = H.vit.bp.home.filter(r => r.t >= a && r.t <= b), above = home.filter(r => r.v[0] > 125 || r.v[1] > 80).length;
+              return {line: c.querySelector('.tgt-line').textContent, edges: c.querySelectorAll('svg .tgt-edge').length,
+                labels: [...c.querySelectorAll('svg .tgt-label')].map(t => t.textContent), marks: c.querySelectorAll('svg path.abn').length,
+                above, n: home.length, list: c.querySelector('.vital-list').innerText, legend: c.querySelector('.legend').innerText}; })()""")
+            check("…Body and activity's blood pressure: the target as a line each, labelled, in the legend, with who set it and when",
+                  bp["edges"] == 2 and bp["labels"] == ["Your systolic target", "Your diastolic target"] and "Your target, as your care team gave it" in bp["legend"]
+                  and bp["line"].startswith("Your target, as your care team gave it: up to 125/80 mmHg (set by Dr. Rowan Vale (fictional), Jun 2, 2026)."), bp)
+            check("…“N of M readings at home in this period above it”, as the page counts them; those marked ▲ on the chart and said in words in the list",
+                  f"{bp['above']} of {bp['n']} readings at home in this period above it." in bp["line"] and bp["above"] > 0 and bp["marks"] >= bp["above"]
+                  and "above your target" in bp["list"], bp)
+            page.click("#h-bp .view-seg button:text-is('Table')")
+            settle(300)
+            bpt = js("[...document.querySelectorAll('#h-bp table.data tbody td.abn')].map(t => t.textContent)")
+            check("…its table says each one in words: “▲ Above your target”, a clinic's flag still its report's",
+                  any(t.endswith("▲ Above your target") for t in bpt) and any(t.endswith("▲ High") for t in bpt)
+                  and js("!!document.querySelector('#h-bp .tgt-line')"), bpt[:6])
+            js("state.tables.clear(); renderHealth()")
+            settle(400)
+            gl = js("""(() => { const c = document.getElementById('h-glucose');
+              return {std: c.querySelector('.glu-tir:not(.glu-own)').innerText.replace(/\\s+/g, ' '), own: (c.querySelector('.glu-own') || {innerText: ''}).innerText.replace(/\\s+/g, ' '),
+                line: c.querySelector('.tgt-line').textContent, marks: c.querySelectorAll('svg path.abn').length, edges: c.querySelectorAll('svg .tgt-edge').length,
+                dist: WATCH.metrics.some(m => m.key === 'glucose_dist'), days: WATCH.metrics.filter(m => m.key.startsWith('glucose_own_')).map(m => m.pts.length)}; })()""")
+            own = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)%", gl["own"])]
+            check("…glucose: CGM time in the person's own range beside the standard published one, each labelled, adding up",
+                  "standard published ranges" in gl["std"] and gl["own"].startswith("Time in your own range · 70–140 mg/dL, your target as your care team gave it (set by Fictional diabetes clinic)")
+                  and all(w in gl["own"] for w in ("Below it:", "In it:", "Above it:", "labelled as the publisher's")) and len(own) == 3 and abs(sum(own) - 100) < 1.5, gl)
+            check("…from each day's shares the server worked out: the CGM's counts by mg/dL never reach the page",
+                  not gl["dist"] and gl["days"] == [14, 14, 14], gl)
+            check("…the meter readings' own target as a band on the chart, readings above it marked", gl["edges"] == 2 and gl["marks"] > 0
+                  and re.search(r"80–140 mg/dL\. \d+ of \d+ meter readings in this period above it", gl["line"]), gl)
+            others = js("['h-body', 'h-temp'].map(id => document.querySelector('#' + id + ' .tgt-line')?.textContent || '')")
+            check("…weight and body temperature each with theirs, in the units each card shows (lb; the temperature's own)",
+                  others[0].startswith("Your target, as your care team gave it: up to 170 lb.") and "smart scale weights in this period" in others[0]
+                  and re.match(r"Your target, as your care team gave it: up to (37\.5 °C|99\.5 °F)\.", others[1]), others)
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    for table in (False, True):
+                        js("on => { for (const k of ['#h-bp', '#h-glucose']) { if (on) state.tables.add(k); else state.tables.delete(k); } renderHealth(); }", table)
+                        settle(400)
+                        for card in ("#h-bp", "#h-glucose"):
+                            page.locator(card).scroll_into_view_if_needed()
+                            if width == 375:
+                                t234_bad += phone_fits(page, f"{card} with targets, {'table' if table else 'chart'} ({theme})")
+                            if shots and not table:
+                                page.locator(card).screenshot(path=os.path.join(shots, f"234-{card[3:]}-{width}-{theme}.png"))
+                        t234_axe += axe_check(page, f"Body and activity with targets, {'table' if table else 'chart'}, {width} px, {theme}")[0]
+            js("delete document.documentElement.dataset.theme; state.tables.clear()")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("CFG.overview.homeTiles = ['bp', 'glucose', 'temp']; switchTab('overview')")
+            settle(400)
+            tiles234 = js("Object.fromEntries([...document.querySelectorAll('#view-overview .home-tile')].map(t => [t.dataset.home, t.querySelector('.delta').textContent]))")
+            check("…the Overview's home tiles say it in words: the latest reading at home above its target, the CGM day's time in the person's own range",
+                  tiles234.get("bp", "").endswith("· systolic ▲ above your target") and re.search(r"· \d+(\.\d)?% in your own range$", tiles234.get("glucose", "")), tiles234)
+            js("CFG.overview.homeTiles = []; switchTab('health')")
+            page.goto(base + "/sharing.html?profile=1#summary")
+            page.wait_for_function("document.getElementById('profile').value === '1' && OPTS && OPTS.profile.id === 1 && "
+                                   "!document.getElementById('build').hidden", timeout=10000)
+            got = dict(js("[...document.querySelectorAll('#sections input')].map(i => [i.value, i.checked])"))
+            js("document.getElementById('since').selectedIndex = document.getElementById('since').options.length - 1")   # the oldest visit: the CGM's days too
+            for k in got:
+                (page.check if k == "targets" else page.uncheck)(f"#sections input[value={k}]")
+            page.click("#previewBtn")
+            page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+            pv = js("document.getElementById('preview').innerText")
+            check("…the visit summary offers them unticked; ticked, each target with who set it and the period's readings against it",
+                  got.get("targets") is False and "Your targets for home readings since" in pv and "Sanguity doesn't suggest targets" in pv
+                  and "up to 125/80 mmHg" in pv and "Dr. Rowan Vale (fictional)" in pv and "CGM time in your own range (70–140 mg/dL, your target)" in pv
+                  and "standard published range" in pv, pv[:600])
+            page.goto(base + "/sharing.html?profile=1#links")
+            page.wait_for_selector("#links .share-links button:has-text('New share link')", timeout=10000)
+            page.locator("#links .share-links button", has_text="New share link").click()
+            page.locator("#links .share-form").wait_for(timeout=10000)
+            boxes = js("Object.fromEntries([...document.querySelectorAll('#links .share-form .share-sections input')].map(i => [i.value, i.checked]))")
+            check("…and a share link's form offers them, unticked", boxes.get("targets") is False, boxes)
+            check("…every view of them fits 375 px, and axe-core finds nothing serious, light and dark", not t234_bad and not t234_axe, (t234_bad + t234_axe)[:6])
+            cleared = js("fetch('api/profiles/1/person', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+                         "body: JSON.stringify({targets: {bp: null, glucose: null, cgm: null, temp: null, weight: null}})}).then(r => r.json()).then(a => a.targets)")
+            page.goto(base + "/?profile=1")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 1", timeout=20000)
+            js("state.from = dayTs('2026-08-15'); state.to = dayTs('2026-11-15'); state.preset = 'custom'; switchTab('health')")
+            settle(500)
+            check("…cleared, nothing of them is left drawn or said", cleared == {} and js(no_marks) == 0
+                  and not js("WATCH.metrics.some(m => m.key.startsWith('glucose_own_') || m.key === 'glucose_dist')"), cleared)
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- the profile picker in the top bar (#170): on every page about a profile, each profile by name and
             # your role; the page follows it and keeps its section; the address's ?profile= and this browser follow it
             was_profile = js("localStorage.getItem('ht-profile')")

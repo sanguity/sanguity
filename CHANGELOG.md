@@ -491,6 +491,18 @@ Everything on `main` so far; it becomes the first tagged release.
   vitals by LOINC's long names ("Intravascular systolic Arterial system Pres Pt Qn") now bring their blood pressure
   too. Vitals of the same value taken twice on one day are both kept, from every source (lab results still count
   the same value on the same day once). Re-import an Epic export, or rebuild the setup build, to get them.
+- **Targets of your own for home readings** (#234): Sharing → About this person has a "Targets of your own" card where
+  owners and editors type in a target for each home measure, as the person's care team gave it (blood pressure,
+  systolic and diastolic; glucose meter readings; CGM time in range; body temperature; blood oxygen; weight), each with
+  a low end, a high end or both, and optionally who set it and when; each is set, changed and cleared on its own, typed
+  in the person's units and kept in one unit (mg/dL, °C, kg), sealed with the profile's settings. Body and activity
+  then draws each on its card's chart as a band or line, labelled; marks readings at home outside it ▲ or ▼ with "above
+  your target" or "below your target" in its table, list and tooltip (readings taken at visits keep their own report's
+  flags); and says how many of the period's readings at home were above or below it. CGM days show the time in the
+  person's own range beside the standard published one, each labelled: the receiver's summary now also counts each CGM
+  day's readings by whole mg/dL (glucose_dist), which the server turns into the day's shares in that range and never
+  sends to the page. The Overview's home tiles say it in words. The visit summary and share links offer "Your targets
+  for home readings" when one is entered, unticked. Sanguity never suggests a target; with none entered nothing changes.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

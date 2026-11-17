@@ -541,7 +541,9 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   which setting changed, never its value. In exports and backups with the other settings. A share link shows them
   only when its owner ticks "About this person", which is unticked by default; nothing else reaches them. The due
   date for a baby born early (#196, `person.dueDate`) is one more such setting, changed with the birth date by the same
-  `PUT`, and not in share links. The growth charts' tables (`www/js/growth-lms.json`, #196) are published reference
+  `PUT`, and not in share links. So are targets of the person's own for home readings (#234, `person.targets`),
+  changed per measure by the same `PUT` (owners and editors); a visit summary or share link includes them only when its
+  "Your targets for home readings" section is ticked, unticked by default. The growth charts' tables (`www/js/growth-lms.json`, #196) are published reference
   data with no one's health in them, fetched from the app's own files like a script.
 
 ### The visit summary PDF (#48, #213)

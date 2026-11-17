@@ -611,6 +611,18 @@ define("person.maxHr", "person", "Maximum heart rate", 0, _max_hr_check, kind="m
 
 define("person.dueDate", "person", "Due date, if born early", "", _person_check(_person.check_due), kind="duedate", screen=False,
        help="For a baby born early, the day they were due: growth charts use the corrected age before 2 years (#196).")
+from . import targets as _targets   # #234: targets of your own for home readings, as the care team gave them
+
+
+def _targets_check(v):
+    try:
+        return _targets.check(v)
+    except _targets.TargetError as e:
+        raise SettingError(str(e)) from None
+
+
+define("person.targets", "person", "Targets of your own", {}, _targets_check, kind="targets", screen=False,
+       help="For readings taken at home: a target each, as your care team gave it, with who set it and when (#234).")
 LEGACY = {"ranges.birthDate": "person.birthDate", "ranges.sex": "person.sex"}   # old name in a settings.json -> now
 
 

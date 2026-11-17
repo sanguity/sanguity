@@ -165,6 +165,17 @@ class Ranges(unittest.TestCase):
         d = self.day([2.9, 3.0, 3.8, 3.9, 10.0, 10.1] * 2, "mmol/L")
         self.assertEqual((d["lt54"], d["lt70"], d["in"], d["gt180"]), (16.7, 50.0, 33.3, 16.7))
 
+    def test_counts_by_whole_mg_dl_for_a_range_of_ones_own(self):   # #234
+        from server import targets
+        d = self.day([53, 53.6, 54, 69, 69.4, 69.5, 70, 180, 180.4, 180.5, 181, 250])
+        self.assertEqual(d["dist"][:4], [53, 1, 2, 0], "from the lowest whole mg/dL: 53 once, 54 twice (53.6 rounds up)")
+        self.assertEqual((len(d["dist"]) - 1, sum(d["dist"][1:])), (250 - 53 + 1, 12), "a count for each mg/dL to the highest, every reading")
+        self.assertEqual(targets.own_shares(d["dist"], 54, 69), (8.3, 33.4, 58.3), "counted as the standard ranges are: 69.5 is 70, above 69")
+        self.assertEqual(targets.own_shares(d["dist"], 70, 180), (41.7, 33.3, 25.0), "the standard 70–180 the same way")
+        d = self.day([3.9, 7.8, 7.9, 10.0] * 3, "mmol/L")
+        self.assertEqual(targets.own_shares(d["dist"], *targets.cgm_bounds(targets.typed("cgm", {"low": 3.9, "high": 7.8, "unit": "mmol/L"}))),
+                         (0.0, 50.0, 50.0), "a range typed in mmol/L, compared in whole mg/dL: 7.9 is above 7.8")
+
     def test_a_gap_in_the_readings(self):
         con = sqlite3.connect(":memory:")
         con.executescript(glucose.TABLE)

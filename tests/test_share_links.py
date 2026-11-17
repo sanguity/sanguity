@@ -420,6 +420,25 @@ class ShareLinks(unittest.TestCase):
         token, _ = self.make(pid=pid, sections=["immunizations"])
         self.assertEqual(self.view(token).json()["immunizations"]["rows"], [[D(-200), "Hepatitis B vaccine FICTIONAL", "1 mL", ""]])
 
+    def test_targets_only_when_ticked(self):   # #234
+        pid = self.phone_profile()
+        offered = lambda: [s["id"] for s in self.c["robin"].get(f"/api/profiles/{pid}/links").json()["sections"]]
+        self.assertNotIn("targets", offered(), "none entered: not offered")
+        put = lambda t: self.c["robin"].put(f"/api/profiles/{pid}/person", json={"targets": t}, headers=H)
+        self.assertEqual(put({"bp": {"sysHigh": 130, "diaHigh": 80, "by": "Dr. Fictional Example"}}).status_code, 200)
+        try:
+            self.assertIn("targets", offered())
+            token, _ = self.make(pid=pid, sections=["home_bp"], **{"from": D(-20), "to": D(-3)})
+            text = self.view(token).text
+            self.assertNotIn("Dr. Fictional Example", text, "not ticked: not shown")
+            self.assertNotIn("targets", self.view(token).json())
+            token, _ = self.make(pid=pid, sections=["home_bp", "targets"], **{"from": D(-20), "to": D(-3)})
+            j = self.view(token).json()
+            self.assertEqual(j["targets"]["rows"], [["Blood pressure", "up to 130/80 mmHg", "Dr. Fictional Example", "", "1 of 1 reading above it"]])
+            self.assertIn("Sanguity doesn't suggest targets", j["targets"]["lead"][0])
+        finally:
+            put({"bp": None})
+
     def test_typed_glucose_and_oxygen_in_a_link(self):
         """#232: glucose and blood oxygen typed in at home are in a link's sections, in its dates and in the units of the
         owner who made it: glucose each with its time and meal note (one the phone sent too, once), oxygen one by one."""

@@ -34,7 +34,10 @@ The summary (summary(), metrics in daily.json's shape):
                          compared as a whole number of mg/dL, as sensors measure, so 3.9 mmol/L (70.3) is in range
                          and 10.0 mmol/L (180.2) is too, as the same ranges in mmol/L (3.9 to 10.0) say.
 A CGM day is one source's: the one with the most readings that day, so two apps passing on the same sensor, or two
-sensors worn across a change, don't count twice. On a day Health Connect sent any glucose, its readings are the day's
+sensors worn across a change, don't count twice.
+  glucose_dist           (#234) the same day's readings counted by whole mg/dL, compared as the ranges above are:
+                         [lowest, how many at it, at lowest + 1, ...], for time in a person's own range
+                         (server/targets.py). The server gives the page only the shares in that range, never this. On a day Health Connect sent any glucose, its readings are the day's
 and Health Auto Export's are left out, as for the other metrics. Not one five-minute reading reaches the page.
 
 Meal and insulin entries (Health Connect's meal type and relation to meal, HealthKit's insulin delivery and meal
@@ -74,6 +77,7 @@ META = {   # key: (name, unit, group), in the order the summary lists them
     "glucose_lt70": ("CGM readings below 70 mg/dL (below 54 included)", "%", "Glucose"),
     "glucose_in": ("CGM readings 70–180 mg/dL", "%", "Glucose"),
     "glucose_gt180": ("CGM readings above 180 mg/dL", "%", "Glucose"),
+    "glucose_dist": ("CGM readings by whole mg/dL", "readings", "Glucose"),   # #234, see below
 }
 IN_MGDL = ("glucose_meter", "glucose_avg", "glucose_min", "glucose_max")   # the ones shown in mmol/L when chosen (#41)
 
@@ -185,8 +189,16 @@ def summary(con):
             continue
         b = best.get(day)
         if b is None or n > b[0] or (n == b[0] and src < b[1]):
-            best[day] = (n, src, avg, mn, mx, lt54, lt70, gt180, slots)
-    for day, (n, _, avg, mn, mx, lt54, lt70, gt180, slots) in best.items():
+            best[day] = (n, src, avg, mn, mx, lt54, lt70, gt180, slots, app)
+    dist = {}   # (app, src, day) -> {whole mg/dL: readings} (#234)
+    for app, src, day, w, k in q(_KINDS + "SELECT app, src, day, CAST(ROUND(v) AS INTEGER), COUNT(*) FROM r WHERE kind = 'cgm' "
+                                           "GROUP BY app, src, day, CAST(ROUND(v) AS INTEGER)"):
+        dist.setdefault((app, src, day), {})[w] = k
+    for day, (n, src, avg, mn, mx, lt54, lt70, gt180, slots, app) in best.items():
+        c = dist.get((app, src, day)) or {}
+        if c:
+            lo = min(c)
+            out["glucose_dist"][day] = [lo] + [c.get(v, 0) for v in range(lo, max(c) + 1)]
         pct = lambda k: round(100 * k / n, 1)
         for key, v in (("glucose_avg", round(avg, 1)), ("glucose_min", round(mn, 2)), ("glucose_max", round(mx, 2)),
                        ("glucose_n", n), ("glucose_hours", slots * SLOT / 3600), ("glucose_lt54", pct(lt54)),
