@@ -15,8 +15,9 @@
 <script src="js/theme.js"></script>
 </head>
 <body>
-<header>
+<header class="topbar">
   <h1><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</h1>
+  <select class="iconbtn profile" id="profile" aria-label="Health profile" hidden></select>
   <div class="tabs" role="tablist" aria-label="Views">
     <button role="tab" id="tab-overview" aria-selected="true">Overview</button>
     <button role="tab" id="tab-health" aria-selected="false">Health</button>
@@ -25,17 +26,7 @@
     <button role="tab" id="tab-heatmap" aria-selected="false">Lab heatmap</button>
     <button role="tab" id="tab-costs" aria-selected="false">Costs</button>
   </div>
-  <span class="spacer"></span>
-  <span class="meta" id="meta"></span>
-  <select class="iconbtn profile" id="profile" aria-label="Health profile" hidden></select>
-  <button class="iconbtn" id="theme" title="Toggle light/dark">◐</button>
-  <button class="iconbtn acct" id="journalBtn" type="button" title="Notes, symptoms and side effects" hidden>Journal</button>
-  <a class="iconbtn acct" id="importLink" href="import.html" title="Upload records from a portal or app" hidden>Import</a>
   <button class="iconbtn acct" id="installBtn" type="button" title="Put Sanguity on this device's home screen" hidden>Install app</button>
-  <a class="iconbtn acct" id="summaryLink" href="summary.html" title="A printable summary to bring to an appointment">Visit summary</a>
-  <a class="iconbtn acct" id="settingsLink" href="settings.html" title="Dashboard settings for this profile">Settings</a>
-  <a class="iconbtn acct" href="account.html" title="Account, profiles and sharing"><span id="who">Account</span></a>
-  <button class="iconbtn acct" id="logout" type="button">Log out</button>
 </header>
 <p class="sync-warn" id="syncWarn" role="status" hidden></p>
 <div class="filters">
@@ -100,8 +91,10 @@
 </aside>
 <div class="tip" id="tip"></div>
 
+<footer class="pagefoot"><span class="meta" id="meta"></span></footer>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
+<script src="js/nav.js"></script>
 <script src="js/offline.js"></script>
 <script src="js/dates.js"></script>
 <script src="js/core.js"></script>

@@ -34,6 +34,9 @@ function showKind(name, focus = false) {
   if (focus) $("#tab-" + name).focus();
 }
 $("#kindTabs").addEventListener("click", ev => { const b = ev.target.closest("[role=tab]"); if (b) showKind(b.id.slice(4)); });
+// import.html#manual (the top bar's "Type records in"), #link, ...: that tab first
+{ const h = location.hash.slice(1); if (KINDS.includes(h)) showKind(h); }
+addEventListener("hashchange", () => { const h = location.hash.slice(1); if (KINDS.includes(h)) showKind(h); });
 $("#kindTabs").addEventListener("keydown", ev => {   // arrow keys move between tabs, as for any tab list
   const i = KINDS.indexOf(document.activeElement.id.slice(4));
   if (i < 0) return;

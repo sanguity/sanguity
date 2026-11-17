@@ -141,6 +141,15 @@ def start_app():
     return srv, f"http://127.0.0.1:{port}"
 
 
+USER_MENU = {"#logout", "#settingsLink", "#summaryLink", "#theme"}
+
+
+def menu_click(pg, item):
+    """Click an item of the top bar's menus (nav.js): open its menu first, as a person would."""
+    pg.click("#userMenuBtn" if item in USER_MENU else "#addMenuBtn")
+    pg.click(item)
+
+
 def main():
     srv, base = start_app()
     problems, passed = [], []
@@ -187,6 +196,7 @@ def main():
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
         check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 11)
+        strict.evaluate("location.hash = 'watch'")   # its group in the sidebar (settings-nav.js)
         strict.wait_for_selector("#watch h2", timeout=10000)
         check("under the CSP: the watch card shows the upload address", strict.evaluate("document.querySelector('#watch .w-addr').textContent").endswith(":8731/ingest"))
         strict.goto(base + "/summary.html")   # the visit summary page (#48)
@@ -271,9 +281,9 @@ def main():
         check("share links: a made-up link says it doesn't work", True)
         holder.close()
         strict.goto(base + "/account.html")
-        strict.wait_for_selector("#logout", state="visible")
+        strict.wait_for_selector("#userMenuBtn", state="visible")
         strict.wait_for_timeout(500)
-        strict.click("#logout")
+        menu_click(strict, "#logout")
         strict.wait_for_url("**/login.html", timeout=10000)
         check("under the CSP: no violations", not csp_problems, "; ".join(csp_problems)[:500])
         strict.evaluate("localStorage.clear()")
@@ -579,7 +589,7 @@ def main():
             settle(200)
             check("the Journal box on Trends hides the markers", js("document.querySelectorAll('#charts .jmark').length") == 0)
             page.check("#optJournal")
-            page.click("#journalBtn")
+            menu_click(page, "#journalBtn")
             settle(200)
             check("the Journal button lists the entries", js("document.getElementById('dtitle').textContent") == "Journal" and page.locator("#dbody .jrow").count() == 1)
             page.select_option("#dbody .jfilters select", "note")
@@ -787,7 +797,7 @@ def main():
             check("the saved-views bar, with its form open, fits 375 px",
                   js("document.documentElement.scrollWidth <= 375 && document.getElementById('series').scrollWidth <= document.getElementById('series').clientWidth"),
                   js("[document.documentElement.scrollWidth, document.getElementById('series').scrollWidth]"))
-            page.goto(base + "/settings.html?profile=1")
+            page.goto(base + "/settings.html?profile=1#sec-trends")
             page.wait_for_selector("[data-key='trends.views'] .set-view", timeout=10000)
             check("Settings lists the saved views, the default one ticked",
                   js("[...document.querySelectorAll(\"[data-key='trends.views'] .set-view\")].map(v => [v.querySelector('[data-k=name]').value, v.querySelector('[data-k=default]').checked])")
@@ -1372,13 +1382,41 @@ def main():
             settle(300)
             before = js(tiles)
             check("the header links to Settings for this profile", js("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1")
-            page.click("#settingsLink")
+            menu_click(page, "#settingsLink")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
                   ["Overview", "Trends", "Names", "Health", "Connected sources", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…with the server's attachment and sync defaults as a switch, numbers and choices (#101, #102)",
                   js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length]") == [5, 3],
                   js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
+            # ---- the Settings sidebar (settings-nav.js) and the top bar's menus (nav.js)
+            display = "id => getComputedStyle(document.getElementById(id)).display"
+            check("Settings: a sidebar of groups, one shown at a time",
+                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:4] == ["Dashboard", "Labs and ranges", "Milestones and activity", "Display"]
+                  and js(display, "sec-overview") != "none" and js(display, "sec-units") == "none", js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)"))
+            page.fill("#setFind", "time zone")
+            check("…Find a setting shows the settings that match, from every group",
+                  js(display, "sec-dates") != "none" and js(display, "sec-overview") == "none" and js(display, "sec-units") == "none")
+            page.fill("#setFind", "")
+            page.click(".set-nav-list a[data-group=display]")
+            check("…a group picked in the sidebar is the one shown, and the address says so",
+                  js(display, "sec-units") != "none" and js(display, "sec-overview") == "none" and js("location.hash") == "#display")
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("…Settings and its sidebar fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click(".set-nav-list a[data-group=dashboard]")
+            page.click("#userMenuBtn")
+            check("the top bar: your menu opens with its items", page.is_visible("#settingsLink") and page.is_visible("#logout")
+                  and js("document.getElementById('userMenuBtn').getAttribute('aria-expanded')") == "true")
+            page.keyboard.press("Escape")
+            check("…Escape closes it and puts the focus back on its button", page.is_hidden("#userMenuList") and js("document.activeElement.id") == "userMenuBtn")
+            page.focus("#addMenuBtn")
+            page.keyboard.press("ArrowDown")
+            check("…the Add menu opens from the keyboard, on its first item", js("document.activeElement.textContent") == "Import records", js("document.activeElement.textContent"))
+            page.keyboard.press("ArrowDown")
+            check("…and the arrow keys move through it", js("document.activeElement.textContent") == "Connect a source", js("document.activeElement.textContent"))
+            page.keyboard.press("Escape")
             first = before[0][0]
             page.click(f"#sec-overview button[aria-label='Move {first} down']")
             page.click("#sec-overview .set button:text-is('Save')")
@@ -1390,6 +1428,7 @@ def main():
             page.wait_for_function("document.querySelector('#sec-names > .msg').textContent.startsWith('Saved')", timeout=10000)
             # ---- calendar feed (#51): made on the Settings page, its address shown once with setup steps, and the
             # address works for a calendar app with no session
+            js("location.hash = 'calendar'")   # its group in the Settings sidebar
             page.wait_for_selector("#calendar:not([hidden]) #calNew:not([hidden])", timeout=10000)
             check("calendar feed: minimal details are the default", js("document.querySelector('input[name=calDetails]:checked').value") == "minimal")
             page.click("#calCreate")
@@ -1421,7 +1460,7 @@ def main():
             after = js(tiles)
             check("…the Overview tiles follow the new order and name",
                   [t for t, _ in after[:2]] == [before[1][0], first] and after[1][1] == "Renamed in Settings", after[:3])
-            page.goto(base + "/settings.html?profile=1")
+            page.goto(base + "/settings.html?profile=1#sec-overview")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             for sec in ("overview", "names"):
                 page.once("dialog", lambda d: d.accept())
@@ -1434,7 +1473,7 @@ def main():
             check("…and Reset to defaults brings them back", js(tiles) == before, js(tiles)[:3])
 
             # ---- #36 key-lab tiles: drag or keyboard-move them, with a live preview, and the Overview follows
-            page.goto(base + "/settings.html?profile=1")
+            page.goto(base + "/settings.html?profile=1#sec-overview")
             page.wait_for_selector("#sec-overview .set-preview .tile", timeout=10000)
             preview = "[...document.querySelectorAll('#sec-overview .set-preview .tile')].map(t => t.dataset.lab)"
             p0 = js(preview)
@@ -1471,7 +1510,7 @@ def main():
             # ---- #40 tabs: hide Costs and move Timeline up; gone from the bar and the arrow keys, a saved view or a
             # link to it opens the first shown tab, and one tab at least stays shown
             js("switchTab('costs')")   # the saved view now names Costs
-            page.goto(base + "/settings.html?profile=1")
+            page.goto(base + "/settings.html?profile=1#sec-tabs")
             page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
             page.uncheck("#sec-tabs input[data-tab=costs]")
             page.click("#sec-tabs button[aria-label='Move Timeline up']")
@@ -1495,7 +1534,7 @@ def main():
             page.goto(base + "/#timeline")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             check("…while a link to a shown tab opens it", js("state.tab") == "timeline", js("state.tab"))
-            page.goto(base + "/settings.html?profile=1")
+            page.goto(base + "/settings.html?profile=1#sec-tabs")
             page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
             for t in ("overview", "health", "labs", "heatmap"):
                 page.uncheck(f"#sec-tabs input[data-tab={t}]")
@@ -1514,7 +1553,7 @@ def main():
             # ---- #45 a default theme for the account: a fresh browser signed in as the same person uses it; the ◐
             # toggle still overrides it there; Reset to defaults follows the system again
             js("localStorage.removeItem('ht-theme')")
-            page.goto(base + "/settings.html?profile=1")
+            page.goto(base + "/settings.html?profile=1#sec-appearance")
             page.wait_for_selector("#sec-appearance input[value=dark]", timeout=10000)
             page.check("#sec-appearance input[value=dark]")
             page.click("#sec-appearance .set button:text-is('Save')")
@@ -1532,7 +1571,7 @@ def main():
             check("…and so does its next page, before it draws", fp.evaluate("document.documentElement.dataset.theme") == "dark")
             fp.goto(base + "/")
             fp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
-            fp.click("#theme")
+            menu_click(fp, "#theme")
             fp.reload()
             fp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
             check("…where the ◐ toggle still overrides it", fp.evaluate("document.documentElement.dataset.theme") == "light")
@@ -1545,7 +1584,7 @@ def main():
             # ---- #41 unit preferences: SI units and kg, picked on the Settings page, convert the demo's creatinine
             # (mg/dL to umol/L), magnesium and hemoglobin and the weights on Trends, the Overview tiles and the drawer, the
             # reported value beside each; bilirubin has no exact conversion and stays as reported; at 375 px too
-            page.goto(base + "/settings.html?profile=1")
+            page.goto(base + "/settings.html?profile=1#sec-units")
             page.wait_for_selector("#sec-units input[name=units-lab][value=si]", timeout=10000)
             page.check("#sec-units input[name=units-lab][value=si]")
             page.check("#sec-units input[name=units-weight][value=kg]")
@@ -1587,7 +1626,7 @@ def main():
                   js("document.getElementById('dbody').scrollWidth"))
             js("closeDrawer(); switchTab('overview')")
             check("…the Overview with converted tiles fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
-            page.goto(base + "/settings.html?profile=1")
+            page.goto(base + "/settings.html?profile=1#sec-units")
             page.wait_for_selector("#sec-units input[name=units-lab][value=si]", timeout=10000)
             check("the Settings page with the units fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
@@ -1653,7 +1692,7 @@ def main():
                        " return Object.entries(n).sort((a, b) => b[1] - a[1])[0][0]; })()")
             want = visit.split(" ")[0].lower()
             days = js(f"new Set(DATA.events.filter(e => e.k === 'visit' && e.ts < Date.now() && e.title.replace(/\\s+/g, ' ').trim().slice(0, 200).toLowerCase().includes({json.dumps(want)})).map(e => isoDay(e.ts))).size")
-            page.goto(base + "/settings.html?profile=1")
+            page.goto(base + "/settings.html?profile=1#sec-milestones")
             page.wait_for_selector("#sec-milestones [data-key=milestones] .set-row:not(.set-head)", timeout=10000)
             check("Settings shows the Milestones section", "Milestones" in js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             ms = "[data-key=milestones]"
@@ -1705,7 +1744,7 @@ def main():
             counted = js("H.ex.filter(x => x.pt && x.rule === 'Browser check rule').length")
             check("the Health tab counts visits matching the rule", counted == days and days > 0, f"{counted} of {days} days ({want})")
             check("…and says so", f"{days} browser check rule appointment" in js("document.getElementById('view-health').innerText"))
-            page.goto(base + "/settings.html?profile=1")
+            page.goto(base + "/settings.html?profile=1#sec-milestones")
             page.wait_for_selector("#sec-milestones", timeout=10000)
             for sec in ("milestones", "health"):
                 page.once("dialog", lambda d: d.accept())
@@ -1737,7 +1776,7 @@ def main():
             check("time zone and date format set from the browser on first sign-in",
                   mine(zb)["dates.timeZone"] == "America/Chicago" and mine(zb)["dates.format"] == "mdy", mine(zb))
             before = mine(za)   # the demo account's, put back afterwards for the checks below
-            za.goto(base + "/settings.html?profile=1")
+            za.goto(base + "/settings.html?profile=1#sec-dates")
             za.wait_for_selector("#sec-dates select", timeout=10000)
             za.select_option("[data-key='dates.timeZone'] select", "America/Los_Angeles")
             za.click("[data-key='dates.timeZone'] button:text-is('Save')")
@@ -1789,7 +1828,7 @@ def main():
             sdb.close()
 
             # ---- a watch receiver secret per profile (#46): made on the Settings page, shown once, then masked
-            page.goto(base + "/settings.html?profile=1")
+            page.goto(base + "/settings.html?profile=1#watch")
             page.wait_for_selector("#watch #watchRotate", timeout=10000)
             check("watch card: the server's original secret is still this profile's", "original receiver secret" in page.inner_text("#watch"),
                   page.inner_text("#watch")[:300])
@@ -1844,7 +1883,7 @@ def main():
                                                 {"name": "Ferritin", "unit": "ug/L", "panel": "Iron", "n": 2, "txt": [], "pts": ug}]},
                             "upload", fmt="csv")
             db.close()
-            page.goto(base + f"/settings.html?profile={rpid}")
+            page.goto(base + f"/settings.html?profile={rpid}#sec-ranges")
             page.wait_for_selector("#sec-ranges [data-key='ranges.overrides'] .set-sugg .chip", timeout=10000)
             chips = js("[...document.querySelectorAll('#sec-ranges .set-sugg .chip')].map(b => b.textContent)")
             check("ranges: Settings suggests the labs whose results have no range, by unit",
@@ -2372,7 +2411,7 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
             before = len(problems)
-            page.click("#logout")
+            menu_click(page, "#logout")
             page.wait_for_url("**/login.html", timeout=10000)
             check("log out ends the session", js("fetch('api/me').then(r => r.status)") == 401)
             # signing in again takes the password, then a code
@@ -2408,14 +2447,14 @@ def main():
             pk.locator("#pkBody").get_by_role("button", name="Add a passkey").click()
             pk.wait_for_selector("#pkList tbody tr", timeout=10000)
             check("a passkey is added and listed", "never" in pk.inner_text("#pkList"), pk.inner_text("#pkMsg"))
-            pk.click("#logout")
+            menu_click(pk, "#logout")
             pk.wait_for_url("**/login.html", timeout=10000)
             check("sign-in page offers a passkey", pk.is_visible("#pk") and pk.inner_text("#pk") == "Sign in with a passkey")
             pk.click("#pk")
             pk.wait_for_function(SIGNED_IN_OR_ERROR, timeout=20000)
             check("a passkey signs in on its own", pk.evaluate("fetch('api/me').then(r => r.json()).then(j => j.user && j.user.username)") == USER,
                   pk.evaluate("(document.getElementById('e') || {}).textContent"))
-            pk.click("#logout")
+            menu_click(pk, "#logout")
             pk.wait_for_url("**/login.html", timeout=10000)
             pk.fill("#u", USER)
             pk.fill("#p", PW)
@@ -2593,7 +2632,7 @@ def main():
             ph.goto(base + "/")
             until(LOADED, 20000)
             check("records on: kept again", bool(kept_copy()))
-            ph.click("#logout")
+            menu_click(ph, "#logout")
             ph.wait_for_url("**/login.html", timeout=10000)
             until(NO_COPY, 5000)
             check("sign-out: the kept copy and the choice are deleted, the app's own files stay",

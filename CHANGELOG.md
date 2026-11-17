@@ -137,6 +137,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - CI upgrades the previous release's data to the current code on every pull request.
 
 ### Changed
+- A new top bar on every page: the records' tabs, an **Add** menu (import records, connect a source, type records
+  in, a journal entry) and your own menu (visit summary, share links, settings, account, light or dark, log out),
+  in one row; the build and sync line moved to the page's foot. Settings is now a sidebar of groups (this
+  profile's dashboard, labs and ranges, milestones and activity; your display and calendar feed; watch and scale,
+  connected sources, outside connections), one group at a time, with **Find a setting** to search them all.
 - Records are stored in the database instead of a pre-built `data.json` per profile (#103), which the in-app
   import, undo and corrections need. The page shows the same thing as before.
 - The default ports are 8730 (web app) and 8731 (phone uploads) instead of 8080 and 8081.
