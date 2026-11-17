@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Outside connections (#97, #59; server/net.py, server/outside.py): every request to another host goes through one
-gateway, which refuses any host the install wasn't told to contact and records each one; the Settings page lists
+gateway, which refuses any host the install wasn't told to contact and records each one; the Admin page lists
 them, with scopes and last contact; disconnecting stops all contact. Run under a socket-level guard
 (tests/netguard.py), against the fake SMART on FHIR server and the local Health Link server. Fictional data only.
 
@@ -331,12 +331,13 @@ class View(unittest.TestCase):
 
     # ---------------------------------------------------------------- the page
 
-    def test_settings_page_has_the_section_without_inline_script(self):
-        r = self.robin.get("/settings.html")
+    def test_admin_page_has_the_section_without_inline_script(self):
+        r = self.robin.get("/admin.html")   # on the Admin page since #167
         self.assertEqual(r.status_code, 200)
         html = r.text
         self.assertIn('id="outside"', html)
         self.assertIn('src="js/outside.js"', html)
+        self.assertNotIn('id="outside"', self.robin.get("/settings.html").text)
         self.assertEqual(re.findall(r"<script(?![^>]*\bsrc=)[^>]*>", html), [], "no inline script")
         self.assertNotIn("unsafe-inline", r.headers.get("content-security-policy", "").split("script-src")[-1].split(";")[0])
         with open(os.path.join(ROOT, "www", "js", "outside.js"), encoding="utf-8") as fh:

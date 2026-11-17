@@ -22,7 +22,7 @@ Only the host is kept: never the path, query, token, key or passcode.
 
   record(db, pid, host, purpose, who=None, ip=None)
   recent(db, pid, limit=100) -> [{"at", "host", "purpose", "actor"}]   from the activity log
-  view(db, s) -> what the Settings page's "Outside connections" section shows (GET /api/outside)
+  view(db, s) -> what the Admin page's "Outside connections" section shows (GET /api/outside)
 """
 import json
 

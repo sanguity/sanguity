@@ -17,7 +17,7 @@ FHIR server (tests/fakefhir), connects a profile by signing in with a choice of 
 preview, sees the attachments the install's rules left out and fetches one anyway, syncs a new result, changes what
 the connection pulls, and is asked to reconnect when access ends, with a warning on the profile's main page, uploads a
 Blue Button export and connects a health plan's patient-access API (the fake again) and finds both sets of claims on
-Costs, sees the source's and the Health Link's hosts under Settings → Outside connections, changes settings on the
+Costs, sees the source's and the Health Link's hosts under Admin → Outside connections, changes settings on the
 Settings page and resets them (a milestone added there marked on Trends and a "since" period on Health; a
 workout rule, a catastrophic pattern refused first, counted on Health; drags and keyboard-moves the key-lab tiles, hides and
 reorders tabs, sets a default theme a fresh browser picks up, picks SI units and kg and sees them on Trends, the
@@ -26,8 +26,10 @@ report gives none and sees them used and labelled on Trends, the heatmap, the Ov
 builds a visit summary (sections, a lab, questions
 kept as a draft), previews it and downloads the PDF, reading it back, has two accounts in different time zones each see days split at their own midnight and
 dates in their own format, journal times and the visit summary page included (#42), makes the profile's watch receiver secret on the Settings page, shown once and then
-masked (#46), opens the account
-page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap, links the
+masked (#46), with no Settings card showing a stray "null" (#175), opens the account
+page and the Admin page (#167: accounts, the sync defaults, the provider directory, the lab name match listed, the
+install's activity; old addresses landing there; someone who isn't an admin told it isn't for them and shown no server
+setting or command on the everyday pages), sees each record's source in the drawer, on Trends and on the heatmap, links the
 same result from a file and the sync at the first pull's preview and sees it once on Trends and in the drawer (undone
 and linked again there)
 and follows its link to the import history, makes a share link on the account page and opens it with no session
@@ -195,16 +197,33 @@ def main():
         check("under the CSP: import.js runs", strict.evaluate("document.querySelectorAll('#profile option').length") == 2)
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 11)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 10)
         strict.evaluate("location.hash = 'watch'")   # its group in the sidebar (settings-nav.js)
         strict.wait_for_selector("#watch h2", timeout=10000)
         check("under the CSP: the watch card shows the upload address", strict.evaluate("document.querySelector('#watch .w-addr').textContent").endswith(":8731/ingest"))
+        strict.wait_for_selector("#calendar:not([hidden])", state="attached", timeout=10000)   # in its own group, so not visible
+        null_cards = "[...document.querySelectorAll('main .card')].filter(c => /\\bnull\\b/.test(c.textContent)).map(c => c.id || c.className)"
+        check("no Settings card shows a stray “null” (#175)", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
+        # the Admin page (#167): its sidebar of groups, each part drawn by its own script
+        strict.goto(base + "/admin.html")
+        for sel in ("#userList table", "#sec-sync .set", "#sourceList", "#dirSources ul", "#labmapList", "#outsideBody h3", "#acctLog tbody tr"):
+            strict.wait_for_selector(sel, state="attached", timeout=10000)
+        groups = strict.evaluate("[...document.querySelectorAll('#admNav a')].map(a => a.textContent)")
+        check("under the CSP: the Admin page's scripts run, with a sidebar of its groups", groups ==
+              ["Accounts", "Connected-source apps", "Provider directory", "Lab name matches", "Outside connections", "Install activity"], groups)
+        strict.wait_for_selector("#adminLink:not([hidden])", state="attached", timeout=10000)
+        check("…and the menu offers Admin to an admin", strict.evaluate("document.getElementById('adminLink').getAttribute('href')") == "admin.html")
+        check("no Admin card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         strict.goto(base + "/summary.html")   # the visit summary page (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
         check("under the CSP: summary.js runs", strict.evaluate("document.querySelectorAll('#sections input').length") == 5)
         strict.goto(base + "/providers.html?q=medicare")   # find your provider (#93): the bundled list, searched
         strict.wait_for_selector(".dir-hit", timeout=10000)
         check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
+        strict.wait_for_selector("#srcNote:not([hidden])", timeout=10000)
+        note = strict.evaluate("document.getElementById('srcNote').textContent")
+        check("…saying which lists aren't loaded, with no command: an admin gets a link to Admin (#167)", "build_directory" not in note and "python" not in note
+              and strict.evaluate("document.querySelector('#srcNote a').getAttribute('href')") == "admin.html#directory", note)
         # ---- share links (#47), under the CSP: an owner makes one on the Account page, saying what a holder sees; a
         # browser with no session opens it (at 1400 and 375 px) and sees only the chosen sections and lab, with no
         # cookie set; the view is in the profile's activity; once revoked, the link says it doesn't work
@@ -1461,10 +1480,9 @@ def main():
             menu_click(page, "#settingsLink")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Lab charts", "Names", "Body and activity", "Connected sources", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
-            check("…with the server's attachment and sync defaults as a switch, numbers and choices (#101, #102)",
-                  js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length]") == [5, 3],
-                  js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
+                  ["Overview", "Lab charts", "Names", "Body and activity", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+            check("…but not the server's sync defaults or outside connections: those are on the Admin page (#167)",
+                  js("!document.getElementById('sec-sync') && !document.getElementById('outside') && !document.querySelector('.set-nav-list a[data-group=sources], .set-nav-list a[data-group=outside]')"))
             # ---- the Settings sidebar (settings-nav.js) and the top bar's menus (nav.js)
             display = "id => getComputedStyle(document.getElementById(id)).display"
             check("Settings: a sidebar of groups, one shown at a time",
@@ -1483,8 +1501,8 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click(".set-nav-list a[data-group=dashboard]")
             page.click("#userMenuBtn")
-            check("the top bar: your menu opens with its items", page.is_visible("#settingsLink") and page.is_visible("#logout")
-                  and js("document.getElementById('userMenuBtn').getAttribute('aria-expanded')") == "true")
+            check("the top bar: your menu opens with its items, Admin among them for an admin", page.is_visible("#settingsLink") and page.is_visible("#logout")
+                  and page.is_visible("#adminLink") and js("document.getElementById('userMenuBtn').getAttribute('aria-expanded')") == "true")
             page.keyboard.press("Escape")
             check("…Escape closes it and puts the focus back on its button", page.is_hidden("#userMenuList") and js("document.activeElement.id") == "userMenuBtn")
             page.focus("#addMenuBtn")
@@ -1493,6 +1511,40 @@ def main():
             page.keyboard.press("ArrowDown")
             check("…and the arrow keys move through it", js("document.activeElement.textContent") == "Connect a source", js("document.activeElement.textContent"))
             page.keyboard.press("Escape")
+            # ---- the Admin page (#167): the server's sync defaults, from their old address on Settings
+            page.goto(base + "/settings.html#sources")
+            page.wait_for_url("**/admin.html#apps", timeout=10000)
+            page.wait_for_selector("#sec-sync .set", timeout=10000)
+            check("Admin: an old Settings address opens its new place, the sync defaults (#167)",
+                  js(display, "sec-sync") != "none" and js(display, "admin") != "none" and js(display, "users") == "none")
+            check("…as a switch, numbers and choices, with one Save for the section (#101, #102, #174)",
+                  js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length, "
+                     "document.querySelectorAll('#sec-sync button.primary').length]") == [5, 3, 1], js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
+            page.fill("#sec-sync [data-key='sync.staleDays'] input", "5")
+            page.click("#syncSave")
+            page.wait_for_function("document.querySelector('#sec-sync .msg').textContent.startsWith('Saved')", timeout=10000)
+            stale = "fetch('api/profiles/1/settings').then(r => r.json()).then(s => s.sync.staleDays)"
+            check("…saved for every connection on the server", js(stale) == 5 and "set for this server" in page.inner_text("#sec-sync [data-key='sync.staleDays']"), js(stale))
+            page.once("dialog", lambda d: d.accept())
+            page.click("#sec-sync .set-hd button")
+            page.wait_for_function("document.querySelector('#sec-sync .msg').textContent.includes('back to')", timeout=10000)
+            check("…and Reset to defaults puts them back", js(stale) == 3, js(stale))
+            page.click("#admNav a[data-group=directory]")
+            dir_text = page.inner_text("#directory")
+            check("Admin: a group picked in the sidebar is the one shown, and the address says so",
+                  js(display, "directory") != "none" and js(display, "sec-sync") == "none" and js("location.hash") == "#directory")
+            check("…the provider directory says what's loaded, and how to add Epic's and Oracle Health's lists",
+                  "Medicare" in dir_text and "not loaded" in dir_text and "python3 tools/build_directory.py" in dir_text, dir_text[:400])
+            for gid in ("accounts", "apps", "directory", "labs", "outside", "activity"):
+                page.click(f"#admNav a[data-group={gid}]")
+                page.set_viewport_size({"width": 375, "height": 800})
+                settle(150)
+                if js("document.documentElement.scrollWidth") > 375:
+                    check(f"Admin's {gid} group fits 375 px", False, js("document.documentElement.scrollWidth"))
+                page.set_viewport_size({"width": 1400, "height": 900})
+            check("…and each of its groups fits 375 px", True)
+            page.goto(base + "/settings.html?profile=1")   # back to Settings for the checks below
+            page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             first = before[0][0]
             page.click(f"#sec-overview button[aria-label='Move {first} down']")
             page.click("#sec-overview .set button:text-is('Save')")
@@ -1923,6 +1975,29 @@ def main():
             zb.wait_for_selector("#importer", state="attached", timeout=10000)
             check("…the import pages read them too", zb.evaluate("DATES.zone") == "Pacific/Auckland" and zb.evaluate("zToday()") == zb.evaluate(
                 "new Intl.DateTimeFormat('en-CA', {timeZone: 'Pacific/Auckland'}).format(new Date())"), zb.evaluate("DATES.zone"))
+            # someone who isn't an admin (#167): no Admin in their menu, the Admin page (and its old addresses) says it isn't
+            # for them, and the everyday pages name no server setting, file or command, only what they can do
+            sdb.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=1", (uid2,))   # sees the watch card
+            jargon = re.compile(r"PUBLIC_ORIGINS|WATCH_DIR|WATCH_UPLOAD_URL|watch_secret|build_directory|connected-sources-oauth|sources\.json|\.env\b|docker compose")
+            zb.goto(base + "/account.html#admin")
+            zb.wait_for_url("**/admin.html", timeout=10000)
+            zb.wait_for_selector("#notAdmin:not([hidden])", timeout=10000)
+            shown_parts = "[...document.querySelectorAll('main > *')].filter(c => !c.hidden).map(c => c.id).join()"
+            check("Admin: its old address opens it, and someone who isn't an admin gets only a page saying it isn't for them",
+                  zb.evaluate(shown_parts) == "notAdmin" and not zb.evaluate("!!document.getElementById('admNav')"), zb.evaluate(shown_parts))
+            zb.wait_for_load_state("networkidle")
+            check("…and their menu has no Admin item", zb.evaluate("document.getElementById('adminLink').hidden"))
+            said = {}
+            for path, ready in (("settings.html?profile=1#watch", "#watch #watchRotate"), ("connect.html", "#noSources:not([hidden])"),
+                                ("providers.html", "#srcNote:not([hidden])")):
+                zb.goto(base + "/" + path)
+                zb.wait_for_selector(ready, timeout=10000)
+                said[path] = zb.inner_text("main")
+            check("…the everyday pages name no server setting, file or command for them", not any(jargon.search(t) for t in said.values()),
+                  {k: jargon.findall(t) for k, t in said.items()})
+            check("…and say to ask their admin where something isn't set up",
+                  "ask them" in said["connect.html"] and "Ask your admin" in said["providers.html"] and "original receiver secret" in said["settings.html?profile=1#watch"],
+                  {k: t[:200] for k, t in said.items()})
             za.evaluate("""v => Promise.all(Object.entries(v).map(([k, x]) =>
                 api('settings/user/' + k, {method: 'PUT', body: JSON.stringify({value: x})})))""", before)
             for c in zctx.values():
@@ -1940,6 +2015,7 @@ def main():
             page.wait_for_selector("#watchSecret", timeout=10000)
             made = js("document.getElementById('watchSecret').textContent")
             check("…makes a secret and shows it once, with a copy button", len(made) >= 40 and js("!!document.querySelector('#watch button[aria-label=\"Copy the secret\"]')"), made)
+            check("…with no stray “null” in the card (#175)", not re.search(r"\bnull\b", page.inner_text("#watch")), page.inner_text("#watch")[:300])
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("…and the card fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
@@ -2098,7 +2174,8 @@ def main():
             fake.signin_patient = "pat-1"   # who "signs in" at the fake's authorize page
             fake.register_client("sanguity-browser-check", [base + "/connect/return"])
             allowed.add(origin(fake.fhir_base))   # its sign-in page, which the browser visits
-            page.goto(base + "/connect.html")
+            page.goto(base + "/connect.html#admin")   # its old address: the setup is on the Admin page now (#167)
+            page.wait_for_url("**/admin.html#admin", timeout=10000)
             page.wait_for_selector("#sourceList", state="attached")
             page.wait_for_function("document.getElementById('returnAddr').textContent.length > 5 && !document.getElementById('admin').hidden", timeout=10000)
             check("connected sources: the setup screen gives the exact return address to register",
@@ -2114,7 +2191,9 @@ def main():
             page.wait_for_function("document.getElementById('sourceList').textContent.includes('Fake Epic sandbox')", timeout=10000)
             page.locator("#sourceList .prof", has_text="Fake Epic sandbox").get_by_role("button", name="Test this connection").click()
             page.wait_for_function("document.getElementById('sourceList').textContent.includes('Discovery works') || document.getElementById('sourceList').textContent.includes('tested ')", timeout=10000)
-            page.reload()
+            page.goto(base + "/connect.html")
+            check("connected sources: no setup on the everyday page, and an admin is pointed to Admin (#167)",
+                  js("!document.getElementById('srcForm') && document.querySelector('#adminNote a').getAttribute('href')") == "admin.html#apps")
             page.select_option("#profile", label="Second person")
             page.wait_for_selector("#sourceButtons button", timeout=10000)
             conn_pid = js("+document.getElementById('profile').value")
@@ -2273,11 +2352,12 @@ def main():
             js(f"localStorage.setItem('ht-profile', {json.dumps(prev_profile)} || '')")
             check("only the source's own host was contacted", fake.hosts() == {f"127.0.0.1:{fake.port}"}, fake.hosts())
 
-            # ---- outside connections (#97, #59): Settings lists every host the install may contact, by purpose
-            page.goto(base + "/settings.html#outside")
+            # ---- outside connections (#97, #59): the Admin page lists every host the install may contact, by purpose
+            page.goto(base + "/settings.html#outside")   # its old address (#167)
+            page.wait_for_url("**/admin.html#outside", timeout=10000)
             page.wait_for_function("document.getElementById('outsideBody').textContent.includes('May contact now')", timeout=10000)
             out = page.inner_text("#outside")
-            check("Settings says plainly that nothing else is contacted", "Nothing else leaves this server" in out, out[:200])
+            check("Admin says plainly that nothing else is contacted", "Nothing else leaves this server" in out, out[:200])
             check("…lists the connected source with its host, scopes and last contact",
                   "Fake Epic sandbox" in out and f"127.0.0.1:{fake.port}" in out and "patient/Observation" in out
                   and "Second person" in out and "Last contact" in out, out[:600])
@@ -2322,7 +2402,7 @@ def main():
             allowed.add(origin(payer.fhir_base))   # its sign-in page too
             payer.signin_patient = "mem-1"
             payer.register_client("sanguity-payer-check", [base + "/connect/return"], secret="fictional-payer-secret")
-            page.goto(base + "/connect.html")
+            page.goto(base + "/admin.html#apps")
             page.wait_for_function("!document.getElementById('admin').hidden && document.getElementById('returnAddr').textContent.length > 5", timeout=10000)
             page.select_option("#fVendor", "insurer")
             guide_text = page.inner_text("#guide")
@@ -2342,7 +2422,7 @@ def main():
             page.locator("#sourceList .prof", has_text="Fake health plan").get_by_role("button", name="Test this connection").click()
             page.wait_for_function("[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake health plan') && "
                                    "(p.textContent.includes('Discovery works') || p.textContent.includes('tested ')))", timeout=10000)
-            page.reload()
+            page.goto(base + "/connect.html")
             page.select_option("#profile", label="Second person")
             page.wait_for_selector("#sourceButtons button:has-text('Fake health plan')", timeout=10000)
             page.click("#sourceButtons button:has-text('Fake health plan')")   # what to pull (#99), then sign in
@@ -2381,18 +2461,27 @@ def main():
             payer.stop()
             js(f"localStorage.setItem('ht-profile', {json.dumps(prev_profile or '')})" if prev_profile else "localStorage.removeItem('ht-profile')")
 
-            # ---- account page: password, devices, profiles with sharing, accounts (admin)
+            # ---- account page: password, devices, profiles with sharing; the Admin page: accounts (#167)
             page.goto(base + "/account.html")
-            page.wait_for_function("document.querySelectorAll('#sessList tbody tr').length > 0 && document.querySelectorAll('#profList .prof').length === 2 && !document.getElementById('users').hidden", timeout=10000)
-            check("account page lists devices, profiles and accounts", True)
+            page.wait_for_function("document.querySelectorAll('#sessList tbody tr').length > 0 && document.querySelectorAll('#profList .prof').length === 2", timeout=10000)
+            check("account page lists devices and profiles, and nothing of the server's (#167)",
+                  js("!document.getElementById('tab-admin') && !document.getElementById('users') && !document.getElementById('labmaps') && !document.getElementById('secNotice')"))
+            page.goto(base + "/account.html#users")   # the old Admin tab's addresses open the Admin page
+            page.wait_for_url("**/admin.html#users", timeout=10000)
+            page.wait_for_function("!document.getElementById('users').hidden && document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
+            check("the old Admin tab's address opens the Admin page, on Accounts", js(display, "users") != "none" and js(display, "labmaps") == "none")
+            page.goto(base + "/account.html#labmaps")
+            page.wait_for_url("**/admin.html#labmaps", timeout=10000)
             page.wait_for_function("document.querySelector('#labmapList tr[data-labmap]')", timeout=10000)
             lm = js("[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => tr.textContent)")
-            check("the admin tab lists the lab name match, who made it and from what, with Change and Remove (#23)",
+            check("Admin lists the lab name match, who made it and from what, with Change and Remove (#23)",
                   any("Hemoglobin Whole Bld" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "Change" in t and "Remove" in t for t in lm)
-                  and "only admins can change or remove" in page.inner_text("#labmaps"), lm)
-            # three tabs: Sign-in & security first; Admin only for admins; the address keeps the tab, old links still land
+                  and "only admins can change or remove" in page.inner_text("#labmaps") and js(display, "labmaps") != "none", lm)
+            # two tabs: Sign-in & security first; the address keeps the tab, old links still land
+            page.goto(base + "/account.html")
+            page.wait_for_function("document.querySelectorAll('#profList .prof').length === 2", timeout=10000)
             vis = lambda sel: js(f"!document.querySelector('{sel}').hidden")
-            check("account tabs: security shown first, Admin offered", vis("#panel-security") and not vis("#panel-profiles") and vis("#tab-admin"))
+            check("account tabs: security shown first, of two", vis("#panel-security") and not vis("#panel-profiles") and js("document.querySelectorAll('#acctTabs [role=tab]').length") == 2)
             page.click("#tab-profiles")
             check("a tab shows its panel and goes in the address", vis("#panel-profiles") and not vis("#panel-security") and js("location.hash") == "#profiles")
             page.reload()
@@ -2403,7 +2492,8 @@ def main():
             check("an old section link opens the tab that holds it", vis("#panel-security") and js("location.hash") == "#twofa")
             page.focus("#tab-security"); page.keyboard.press("ArrowRight")
             check("arrow keys move between tabs", vis("#panel-profiles") and js("document.activeElement.id") == "tab-profiles")
-            page.click("#tab-admin")
+            page.goto(base + "/admin.html#accounts")
+            page.wait_for_function("document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
             page.fill("#userName", "alex")
             page.click("#userNew button[type=submit]")
             page.wait_for_function("document.querySelector('#userMsg code')", timeout=10000)
@@ -2411,14 +2501,16 @@ def main():
             # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
             check("with a second account, the admin is asked for a second factor",
                   js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
+            check("…and every other part of Admin the server now refuses says so", js("['admin', 'sec-sync', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
             # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
             from server import twofactor
             import time as _time
             totp = lambda key, ahead=0: twofactor._code(key, int(_time.time() // twofactor.PERIOD) + ahead)
-            check("the admin's note links to the security tab", js("document.querySelector('#adminTf a').getAttribute('href')") == "#security")
+            check("the admin's note links to Account's security tab", js("document.querySelector('#adminTf a').getAttribute('href')") == "account.html#security")
             page.click("#adminTf a")
-            page.wait_for_function("!document.getElementById('panel-security').hidden", timeout=5000)
-            check("which opens it", vis("#panel-security") and not vis("#panel-admin"))
+            page.wait_for_url("**/account.html#security", timeout=10000)
+            page.wait_for_function("!document.getElementById('panel-security').hidden && document.getElementById('tfHint').textContent.length > 0", timeout=10000)
+            check("which opens it", vis("#panel-security") and not vis("#panel-profiles"))
             page.locator("#twofa").get_by_role("button", name="Turn on").click()
             page.wait_for_selector("#twofa .tf-key")
             key = js("document.querySelector('#twofa .tf-key').textContent").replace(" ", "")
@@ -2428,9 +2520,13 @@ def main():
             page.wait_for_selector("#twofa .tf-codes")
             check("2FA confirmed, 10 recovery codes shown", len(js("document.querySelector('#twofa .tf-codes').textContent").split()) == 10)
             page.locator("#twofa").get_by_role("button", name="I've saved them").click()
-            page.wait_for_function("document.getElementById('tfHint').textContent.startsWith('On.') && "
-                                   "!document.getElementById('adminTools').hidden && document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
-            check("with 2FA on, the account tools are back", js("document.getElementById('adminTf').hidden"))
+            page.wait_for_function("document.getElementById('tfHint').textContent.startsWith('On.') && document.querySelector('#tfMsg a[href=\"admin.html\"]')", timeout=10000)
+            check("with 2FA on, Account says Admin is open again", True)
+            page.click("#tfMsg a")
+            page.wait_for_function("!document.getElementById('adminTools').hidden && document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
+            check("with 2FA on, the account tools are back", js("document.getElementById('adminTf').hidden && !document.querySelector('.adm-gate')"))
+            page.goto(base + "/account.html#profiles")
+            page.wait_for_function("document.querySelectorAll('#profList .prof').length === 2", timeout=10000)
             # activity: the profile's log shows the records being opened (by this run), and filters by kind;
             # the admin's account log shows the account just created
             page.click("#tab-profiles")
@@ -2441,10 +2537,11 @@ def main():
             mine.locator(".activity select").nth(1).select_option("document")
             page.wait_for_function("[...document.querySelectorAll('#profList .activity tbody tr')].every(r => r.textContent.includes('opened') && !r.textContent.includes('opened the records'))", timeout=10000)
             check("activity filters by kind", js("document.querySelector('#profList .activity tbody').textContent.includes('demo-report.pdf') || document.querySelector('#profList .activity tbody').textContent.includes('Nothing yet')"))
-            page.click("#tab-admin")
-            page.locator("#acctLog").get_by_role("button", name="Account activity").click()
+            page.goto(base + "/admin.html#activity")
             page.wait_for_function("document.querySelector('#acctLog tbody') && document.querySelector('#acctLog tbody').textContent.includes('created the account alex')", timeout=10000)
-            check("admin sees account activity", True)
+            check("admin sees the install's activity, under Admin → Install activity", js(display, "installLog") != "none" and js(display, "users") == "none")
+            page.goto(base + "/account.html#profiles")
+            page.wait_for_function("document.querySelectorAll('#profList .prof').length === 2", timeout=10000)
             href = js("document.querySelector('#profList .prof a[download]').getAttribute('href')")
             head = js(f"fetch('{href}').then(r => r.arrayBuffer()).then(b => [...new Uint8Array(b.slice(0, 2))])")
             check("Export everything downloads a zip", head == [0x50, 0x4B], head)
@@ -2474,8 +2571,9 @@ def main():
             from server import db as dbm, profiles
             db = dbm.connect()
             db.execute("UPDATE sessions SET verified_at=0")
+            page.goto(base + "/admin.html#accounts")
+            page.wait_for_function("document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
             before = len(problems)
-            page.click("#tab-admin")
             page.locator("#userList tr", has_text="alex").get_by_role("button", name="Reset password").click()
             page.wait_for_selector("#reauth input", state="visible", timeout=10000)
             check("resetting a password asks to confirm it's you", "Confirm it's you" in page.inner_text("#reauth"))
@@ -2508,8 +2606,8 @@ def main():
             page.wait_for_function("!document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
             page.remove_listener("dialog", answer)
             problems[before_remove:] = [x for x in problems[before_remove:] if "409" not in x]   # the question's refusal
-            page.wait_for_function("[...document.querySelectorAll('#profList .prof')].some(p => p.textContent.includes(\"Alex's records\"))", timeout=10000)
-            check("removing a sole owner hands their profile to whoever is named", True)
+            mine_now = js("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => p.name))")
+            check("removing a sole owner hands their profile to whoever is named", "Alex's records" in mine_now, mine_now)
             # log out ends the session: the API now refuses
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)

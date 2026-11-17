@@ -95,7 +95,7 @@ remain the main way records come in; live connections are an extra for those who
 - **Disconnecting** revokes the token where the vendor supports revocation, deletes the token, secret and key, and
   stops all contact with that host. What happens to the records already pulled is the user's choice.
 - **Outside requests** stay opt-in: nothing contacts a vendor until the user connects it, and every connection is
-  listed with its host (#97, #59): Settings → Outside connections, enforced by `server/net.py`.
+  listed with its host (#97, #59): Admin → Outside connections, enforced by `server/net.py`.
 
 ## Summary of the proposal (before the decision)
 

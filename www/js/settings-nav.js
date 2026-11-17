@@ -1,10 +1,10 @@
-/* Sanguity · the Settings page's sidebar: its sections in groups, one group shown at a time (after settings.js,
-   outside.js and settings-calendar.js, which draw the sections).
+/* Sanguity · the Settings page's sidebar: its sections in groups, one group shown at a time (after settings.js and
+   settings-calendar.js, which draw the sections).
 
-   Each section (#sec-<id> from the server's list, and the page's own #calendar, #watch and #outside cards) belongs
-   to a group. The sidebar lists the groups that have something to show this person (the watch card only for owners
-   and editors, Connected sources only for admins); the address follows the group (settings.html#display), and an
-   address naming a section (settings.html#outside, #sec-units) opens that section's group and scrolls to it.
+   Each section (#sec-<id> from the server's list, and the page's own #calendar and #watch cards) belongs to a group.
+   The sidebar lists the groups that have something to show this person (the watch card only for owners and
+   editors); the address follows the group (settings.html#display), and an address naming a section
+   (settings.html#watch, #sec-units) opens that section's group and scrolls to it.
    "Find a setting" shows, across every group, only the settings whose name or help mentions what's typed. */
 "use strict";
 (() => {
@@ -23,14 +23,10 @@
      has: ["calendar"]},
     {id: "watch", title: "Watch and scale", part: "Devices and sources", hint: "Where this profile's phone uploads watch and scale data",
      has: ["watch"]},
-    {id: "sources", title: "Connected sources", part: "Devices and sources", hint: "Defaults for every connection on this server",
-     has: ["sec-sync"]},
-    {id: "outside", title: "Outside connections", part: "Devices and sources", hint: "Every host this server may contact",
-     has: ["outside"]},
   ];
   const OTHER = {id: "more", title: "More", part: "", hint: "", has: []};   // a section no group names yet
   const groupOf = id => GROUPS.find(g => g.has.includes(id)) || (id.startsWith("sec-") ? OTHER : null);
-  const parts = () => [...main.querySelectorAll("#sections > section, #calendar, #watch, #outside")];
+  const parts = () => [...main.querySelectorAll("#sections > section, #calendar, #watch")];
 
   const search = el("input", {type: "search", id: "setFind", placeholder: "Find a setting", "aria-label": "Find a setting", autocomplete: "off"});
   const list = el("ul", {class: "set-nav-list"});
@@ -91,7 +87,7 @@
     if (target) target.scrollIntoView({block: "start"});
     else if (push) window.scrollTo({top: 0});
   }
-  /* #display: a group; #outside or #sec-units: that section, in its group */
+  /* #display: a group; #watch or #sec-units: that section, in its group */
   function groupFromHash() {
     const h = decodeURIComponent(location.hash.slice(1));
     if (!h) return null;

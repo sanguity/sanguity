@@ -1,6 +1,6 @@
 """Outside connections (#59, #97; outside.py): every host this install may contact, and when it last did.
 
-  GET /api/outside   what the Settings page's "Outside connections" section shows: admins the whole install,
+  GET /api/outside   what the Admin page's "Outside connections" section shows: admins the whole install,
                      owners and editors their profiles' entries (viewers see an empty list)
 """
 from fastapi import APIRouter, Depends

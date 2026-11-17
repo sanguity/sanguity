@@ -33,39 +33,13 @@
     <div id="reconnect" class="conn-alert" role="alert" hidden></div>
     <div id="connList" aria-live="polite"></div>
     <h3 class="sub">Connect a source</h3>
-    <p class="hint" id="noSources" hidden>No source is set up on this install yet. Each install registers its own app with each
-      vendor, so an admin sets each one up first (below, for admins).</p>
+    <p class="hint" id="noSources" hidden>No source is set up on this server yet. Each server registers its own app with each
+      vendor, so your admin sets each one up first: ask them for the portal or health plan you use.</p>
+    <p class="hint" id="adminNote" hidden>As an admin, you set sources up (each vendor's app for this server) under
+      <a href="admin.html#apps">Admin → Connected-source apps</a>.</p>
     <p class="hint" id="viewerNote" hidden>You can view this profile's connections; its owners and editors can connect sources.</p>
     <div class="row" id="sourceButtons"></div>
     <section id="import-status"></section>
-  </section>
-
-  <section class="card" id="admin" hidden>
-    <h2>Set up a source <span class="tag">admins</span></h2>
-    <p class="hint">Under the option this project chose (docs/connected-sources-oauth.md), this install registers its own app
-      with each vendor, and the vendor sends sign-ins straight back here. Nothing is shared with the Sanguity project:
-      the count of connections below stays on this server.</p>
-    <dl class="kv">
-      <dt>Return address</dt><dd><code id="returnAddr"></code> <button class="btn small" id="copyReturn" type="button">Copy</button></dd>
-    </dl>
-    <ul class="conn-warn" id="addrWarn"></ul>
-    <div id="sourceList"></div>
-    <h3 class="sub" id="formTitle">Add a source</h3>
-    <form id="srcForm" class="form">
-      <label>Vendor <select id="fVendor"><option value="epic">Epic (MyChart)</option><option value="oracle">Oracle Health (Cerner)</option><option value="insurer">Insurer (patient-access API, Blue Button)</option><option value="other">Another SMART on FHIR server</option></select></label>
-      <div class="conn-guide" id="guide"></div>
-      <label>Name people see <input id="fName" maxlength="80" required placeholder="Epic sandbox, My health plan"></label>
-      <label>FHIR base address (the issuer) <input id="fIssuer" required inputmode="url" placeholder="https://fhir.example.org/api/FHIR/R4"></label>
-      <label>Client ID <input id="fClient" required autocomplete="off"></label>
-      <label>How the app signs in <select id="fAuth">
-        <option value="public">Public client (no secret)</option>
-        <option value="confidential">Confidential client (with a client secret)</option>
-        <option value="dynamic">Epic dynamic registration (the install makes its own key)</option></select></label>
-      <label id="fSecretWrap" hidden>Client secret <input id="fSecret" type="password" autocomplete="off"></label>
-      <label>Scopes to ask for <input id="fScopes"></label>
-      <div class="row"><button class="btn primary" type="submit" id="fSave">Save</button>
-        <button class="btn" type="button" id="fCancel" hidden>Cancel</button><span class="msg" id="fMsg" role="status"></span></div>
-    </form>
   </section>
 </main>
 <script src="js/util.js"></script>

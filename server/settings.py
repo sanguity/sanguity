@@ -282,7 +282,7 @@ define("sources", "names", "Result sources", {}, name_map(), kind="names", merge
 ATTACHMENT_TYPES = {"pdf": "PDF", "image": "Images", "text": "Text", "html": "Web pages (HTML)"}
 CEILING_MB = max(1, config.SYNC_MAX_ATTACHMENT // config.MB)   # SYNC_MAX_ATTACHMENT_MB: no setting goes above it
 
-section("sync", "Connected sources", "Defaults for every connection on this server (each connection can change its "
+section("sync", "Sync defaults", "Defaults for every connection on this server (each connection can change its "
         "own on the Connected sources page). Attachments are the files records point at: visit notes, scans, reports.")
 define("sync.attachAuto", "sync", "Fetch attachments automatically", True, yes_no("Fetching attachments automatically"),
        scope="install", private=False, kind="toggle",

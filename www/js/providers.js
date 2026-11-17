@@ -3,7 +3,7 @@
    you register your own app with the vendor, so the steps say where and what to paste. Sign-in itself is #32.
    Logos are shown only when the directory file carries them as data: URLs; nothing is fetched from vendors. */
 "use strict";   // $, el and api come from util.js
-let CTX = null, seq = 0, timer = 0, current = null;
+let CTX = null, seq = 0, timer = 0, current = null, ADMIN = false;
 
 async function call(path) {
   const r = await api(path);
@@ -35,16 +35,18 @@ function copyBox(value, label) {
 }
 
 /* ---------------------------------------------------------------- which lists this server has */
+/* what's missing, and who can add it: how is on the Admin page (admin-sources.js, #167) */
 function sources(list) {
   const missing = list.filter(s => !s.included);
   const box = $("#srcNote");
   box.hidden = !missing.length;
   if (!missing.length) return;
+  const names = missing.map(s => s.label.split(":")[0].replace(/ Millennium.*/, "")).join(" and ");
   box.replaceChildren(
     el("p", {}, el("b", {text: "This server has only the vendors' test sandboxes and Medicare so far. "}),
-      `${missing.map(s => s.label.split(":")[0].replace(/ Millennium.*/, "")).join(" and ")}'s published lists can't be shipped with Sanguity under their terms, so an admin adds them to this server once, from the Sanguity folder:`),
-    el("pre", {}, el("code", {text: "python3 tools/build_directory.py"})),
-    el("ul", {}, ...missing.map(s => el("li", {}, s.label + ": ", link(s.terms, "terms"), ". ", s.why.replace(/ Run tools.*$/, "")))));
+      `${names}'s hospitals and clinics aren't in its list yet: their lists can't be shipped with Sanguity, so each server adds its own copy. `,
+      ...(ADMIN ? ["As an admin, you can add them: ", el("a", {href: "admin.html#directory", text: "Admin → Provider directory"}), "."]
+        : ["Ask your admin to add them."])));
 }
 
 /* ---------------------------------------------------------------- searching */
@@ -134,7 +136,7 @@ function show({entry: e, vendors, return_addresses: back}) {
     el("h3", {class: "sub", text: "Return address to paste"}),
     ...back.map(b => el("div", {class: "dir-back"},
       copyBox(b.url, "Return address"),
-      el("p", {class: "muted"}, b.current ? "The address you opened this page at. " : "From PUBLIC_ORIGINS. ",
+      el("p", {class: "muted"}, b.current ? "The address you opened this page at. " : "The address this server is set up with. ",
         b.likely_accepted ? "" : el("span", {class: "bad", text: b.why})))),
     el("h3", {class: "sub", text: "Scopes"}),
     copyBox(v.scopes.join(" "), "Scopes"),
@@ -157,6 +159,7 @@ function show({entry: e, vendors, return_addresses: back}) {
   try {
     const me = await call("me");
     $("#who").textContent = me.user.username;
+    ADMIN = me.user.is_admin;
   } catch (e) { return; }
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   $("#finder").hidden = false;
