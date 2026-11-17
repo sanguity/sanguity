@@ -525,5 +525,20 @@ class Writer(unittest.TestCase):
         self.assertEqual(reader.metadata.title, "Test (fictional)")
 
 
+class TypedOnce(unittest.TestCase):
+    """A reading typed in (#224) that a phone sent too is listed once in the summary and share links (#225)."""
+
+    def test_typed_and_sent_counted_once(self):
+        rows = [["2026-11-02T07:10:00-05:00", 128, 82, 64, "Fictional Cuff", "Health Connect"],
+                ["2026-11-02T07:11:00-05:00", 128, 82, 64, None, "Typed in"],      # the same reading, typed a minute later
+                ["2026-11-03T07:00:00-05:00", 131, 84, None, None, "Typed in"]]   # typed only
+        kept = measures._once_typed(rows, (1, 2), 5)
+        self.assertEqual([r[0][:10] for r in kept], ["2026-11-02", "2026-11-03"])
+        self.assertEqual(kept[0][5], "Health Connect")
+        temps = [["2026-11-02T21:00:00Z", 37.1, "Fictional Thermometer", "Health Connect"],
+                 ["2026-11-02T21:00:30Z", 37.4, None, "Typed in"]]   # a different value: both stay
+        self.assertEqual(len(measures._once_typed(temps, (1,), 3)), 2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
