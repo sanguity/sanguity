@@ -291,6 +291,14 @@ Everything on `main` so far; it becomes the first tagged release.
   Overview and Import history, share links and the journal. The Overview no longer says everything is in range when
   there are no lab results, and the records page's footer no longer reads "undefined · built" for a profile of
   imports.
+- **Big records stay fast** (#201): performance budgets, written down in
+  [docs/performance.md](docs/performance.md) and checked in CI by `tests/test_performance.py` on ten years of
+  fictional records (`demo/generate.py --big`: 5,000 lab results, 2,000 claims, 1,000 documents, ten years of watch
+  data): the records data's size and time, an import of a large export and of a ten-year Apple Health export, a
+  connected source's first pull, and each tab's first draw, on a desktop and on a phone-speed CPU. Body and activity
+  draws ten years of watch data in a tenth of a second instead of two (eight on a phone); Costs lists 200 amounts at
+  a time under its out-of-pocket card, with **Show 200 more**, like its claims; and a big profile's own export
+  imports again (it was "not recognised" once its payments filled the first 64 KB).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -881,8 +881,9 @@ def _handler(fake: FakeFHIR):
                 offset = int(params.get("_offset", ["0"])[0])
             except ValueError:
                 return self._fhir(400, outcome("invalid", "_count and _offset must be integers"))
-            entries.sort(key=lambda r: (r["meta"]["lastUpdated"], r["resourceType"], r["id"]))
-            page = entries[offset:offset + count] if count > 0 else []
+            with fake._lock:   # only the page's resources are copied, so paging through thousands stays quick (#201)
+                entries.sort(key=lambda r: (r["meta"]["lastUpdated"], r["resourceType"], r["id"]))
+                page = [copy.deepcopy(r) for r in entries[offset:offset + count]] if count > 0 else []
             def link(off):
                 q = [(k, v) for k, vs in params.items() if k != "_offset" for v in vs] + [("_offset", str(off))]
                 return f"{fake.fhir_base}/{path}?{urllib.parse.urlencode(q)}"
@@ -904,7 +905,7 @@ def _handler(fake: FakeFHIR):
             if any(ref_id(a) != token.grant.patient for a in asked):
                 return self._forbidden("patient= must be the signed-in patient")
             with fake._lock:
-                found = [copy.deepcopy(r) for (t, i), r in fake._res.items()
+                found = [r for (t, i), r in fake._res.items()
                          if t == rtype and self._visible(token, t, i) and self._matches(r, params)]
             self._page(found, params, rtype)
 
@@ -916,7 +917,7 @@ def _handler(fake: FakeFHIR):
                 params["_lastUpdated"] = ["ge" + v for v in params.pop("_since")]
             types = {w for v in params.pop("_type", []) for w in v.split(",")}
             with fake._lock:
-                found = [copy.deepcopy(r) for (t, i), r in fake._res.items()
+                found = [r for (t, i), r in fake._res.items()
                          if fake._owner.get((t, i)) == pid and t != "Binary" and (not types or t in types)
                          and scope_allows(token.grant.scopes, t, "r") and self._matches(r, params)]
             self._page(found, self.query, f"Patient/{pid}/$everything")

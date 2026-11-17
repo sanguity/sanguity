@@ -34,6 +34,17 @@ function useDates(zone, format) {
   _zfmt = z ? new Intl.DateTimeFormat("en-US", {timeZone: z, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric"}) : null;
 }
 const _withZone = (o = {}) => DATES.zone && !o.timeZone ? {...o, timeZone: DATES.zone} : o;
+/* t in the browser's language with these options (which name the parts to show: year, month, hour...), in their
+   zone: what Date's toLocaleDateString, toLocaleTimeString and toLocaleString give, with each formatter made once
+   and kept, since making one is most of the time those take (a ten-year record shows thousands of dates, #201) */
+const _fmts = new Map();
+function _fmt(t, o) {
+  const key = JSON.stringify(o) + DATES.zone;
+  let f = _fmts.get(key);
+  if (!f) _fmts.set(key, f = new Intl.DateTimeFormat(undefined, _withZone(o)));
+  const d = new Date(t);
+  return isNaN(d) ? "Invalid Date" : f.format(d);   // as Date's own say it, where format() would throw
+}
 /* ms to add to an instant to get their wall-clock time as if it were UTC (offsets change only on a quarter hour) */
 function zOffset(t) {
   if (!_zfmt) return -new Date(t).getTimezoneOffset() * 6e4;
@@ -60,7 +71,7 @@ class ZDate {
   getDay() { return this.w.getUTCDay(); } getHours() { return this.w.getUTCHours(); } getMinutes() { return this.w.getUTCMinutes(); }
   setFullYear(...a) { return this._set("setUTCFullYear", a); } setMonth(...a) { return this._set("setUTCMonth", a); }
   setDate(...a) { return this._set("setUTCDate", a); } setHours(...a) { return this._set("setUTCHours", a); }
-  toLocaleDateString(loc, o) { return new Date(this.t).toLocaleDateString(loc, _withZone(o)); }
+  toLocaleDateString(loc, o) { return loc === undefined && o && (o.year || o.month || o.day || o.weekday) ? _fmt(this.t, o) : new Date(this.t).toLocaleDateString(loc, _withZone(o)); }
   toLocaleString(loc, o) { return new Date(this.t).toLocaleString(loc, _withZone(o)); }
   toLocaleTimeString(loc, o) { return new Date(this.t).toLocaleTimeString(loc, _withZone(o)); }
   iso() { return this.w.toISOString().slice(0, 10); }
@@ -85,25 +96,25 @@ const _ms = t => typeof t === "string" ? zParse(t) : +t;
 function _ymdParts(t) {
   const z = zdate(t);
   return {y: z.getFullYear(), m: z.getMonth(), d: z.getDate(),
-          mon: new Date(t).toLocaleDateString(undefined, _withZone({month: "short"}))};
+          mon: _fmt(t, {month: "short"})};
 }
 function fmtD(t) {
   t = _ms(t);
   if (!isFinite(t)) return "";
   const f = DATES.format;
-  if (!f) return new Date(t).toLocaleDateString(undefined, _withZone({year: "numeric", month: "short", day: "numeric"}));
+  if (!f) return _fmt(t, {year: "numeric", month: "short", day: "numeric"});
   const p = _ymdParts(t);
   if (f === "ymd") return `${p.y}-${String(p.m + 1).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
   return f === "dmy" ? `${p.d} ${p.mon} ${p.y}` : `${p.mon} ${p.d}, ${p.y}`;
 }
-const fmtTime = t => new Date(_ms(t)).toLocaleTimeString(undefined, _withZone({hour: "numeric", minute: "2-digit"}));
+const fmtTime = t => _fmt(_ms(t), {hour: "numeric", minute: "2-digit"});
 function fmtDT(t) {
   t = _ms(t);
   if (!isFinite(t)) return "";
-  if (!DATES.format) return new Date(t).toLocaleString(undefined, _withZone({year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}));
+  if (!DATES.format) return _fmt(t, {year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
   return `${fmtD(t)}${DATES.format === "ymd" ? " " : ", "}${fmtTime(t)}`;
 }
-const fmtMonth = t => new Date(_ms(t)).toLocaleDateString(undefined, _withZone({year: "numeric", month: "long"}));
+const fmtMonth = t => _fmt(_ms(t), {year: "numeric", month: "long"});
 /* seconds since 1970 (what the API sends for when things happened), as a date and time */
 const fmtWhen = s => s ? fmtDT(s * 1000) : "—";
 

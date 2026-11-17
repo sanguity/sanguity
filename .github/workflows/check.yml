@@ -53,7 +53,7 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tools/make_icons.py tools/screenshots.py .github/scripts/changes.py tests/test_ci_changes.py tests/test_medications.py tests/test_costs.py tests/test_backups.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tools/make_icons.py tools/screenshots.py .github/scripts/changes.py tests/test_ci_changes.py tests/test_medications.py tests/test_costs.py tests/test_backups.py tests/test_performance.py
 
       - name: Which jobs a pull request runs (docs only, templates only, tests only, CI itself)
         run: python tests/test_ci_changes.py
@@ -95,6 +95,10 @@ jobs:
           sha256sum /tmp/demo/data.json > /tmp/first
           python -I demo/generate.py /tmp/demo --end 2026-11-15
           sha256sum -c /tmp/first
+          python -I demo/generate.py /tmp/big --end 2026-11-15 --big   # the performance budgets' fixture (#201)
+          sha256sum /tmp/big/data.json /tmp/big/files/big/doc-1000.pdf > /tmp/first-big
+          python -I demo/generate.py /tmp/big --end 2026-11-15 --big
+          sha256sum -c /tmp/first-big
 
       - name: Install dependencies, Playwright and Chromium
         run: |
@@ -198,6 +202,9 @@ jobs:
 
       - name: Browser check (sign-in, every tab, drawer, pan/zoom, profiles, account page, every page at 375 px, no errors or NaN)
         run: python tests/browser_check.py
+
+      - name: Performance budgets on ten years of records (records data size and time, imports, a sync's pull, each tab's first draw; docs/performance.md)
+        run: python tests/test_performance.py
 
   # The install as the README describes it: build the images, start the stack, then set up and use it through nginx
   docker:

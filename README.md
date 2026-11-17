@@ -640,6 +640,7 @@ python3 tests/test_api.py                      # API tests: sign-in, sessions, r
 python3 tests/test_uploads.py                  # upload tests: roles, refused paths and zips, limits, encryption
 python3 -m unittest discover -s tests -p "test_importer*.py"   # importers and their fixtures, build.py output
 python3 tests/browser_check.py                 # the same browser check CI runs on every pull request
+python3 tests/test_performance.py              # performance budgets on ten years of records (docs/performance.md)
 docker compose up -d --build && python3 tests/docker_smoke.py --code <setup code from docker compose logs app>
                                                # the whole install through nginx, as CI does too
 ```
@@ -668,8 +669,9 @@ www/                index.html (markup), css/app.css, js/*.js (one plain script 
                     sources.html (records coming in: uploads, typing in, portals, the phone, the import history;
                     import.html, connect.html and providers.html open its sections); manifest.webmanifest, icons/ and sw.js (install as a
                     phone app; tools/make_icons.py draws the icons)
-demo/               Fictional demo dataset generator
-tests/              API and upload tests, a headless browser check and a smoke test of the Docker install (all run in CI)
+demo/               Fictional demo dataset generator (--big: ten years of records, for the performance budgets)
+tests/              API and upload tests, a headless browser check, the performance budgets (docs/performance.md)
+                    and a smoke test of the Docker install (all run in CI)
 *.example.json      Templates for sources.json and settings.json (a new build-linked profile's first settings;
                     settings are changed in the app); .env.example for .env. corrections.example.json only says
                     what became of corrections.json

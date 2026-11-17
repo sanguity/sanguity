@@ -19,7 +19,7 @@ function renderCosts() {
   }
   // a new period starts at the top of the lists, with no payment open
   const seen = [state.preset, state.from, state.to].join();
-  if (costState.seen !== seen) { costState.seen = seen; costState.limit = 200; paidState.q = ""; paidState.open = null; }
+  if (costState.seen !== seen) { costState.seen = seen; costState.limit = 200; paidState.q = ""; paidState.open = null; paidState.limit = 200; }
   const rows = costRows();
   const periodText = periodLabel(claims ? "all claims on file" : "everything on file");
   if (claims) box.append(el("div", {class: "toolbar"}, el("span", {class: "hint", style: {margin: 0}, text: insurerHint(DATA.costs)})));
@@ -109,7 +109,7 @@ function renderCosts() {
    Where each amount came from, the HSA/FSA tags and the payment-to-claim matches are worked out by the server
    (server/oop.py, DATA.oop); this counts each once: a payment that arrived twice once, a claim's share only until a
    payment is matched to it. */
-const paidState = {q: "", open: null};
+const paidState = {q: "", open: null, limit: 200};   // limit: the amounts listed, 200 more at a time like the claims (#201)
 const OOP_SRC = {typed: "Typed in", export: "Finance export"};
 const usd2 = v => (v || 0).toLocaleString(undefined, {style: "currency", currency: "USD"});
 function oopRows() {
@@ -300,9 +300,10 @@ function renderPaid(box, claimRows, periodLabel) {
     filterLine(fil ? [`Showing ${list.length.toLocaleString()} of ${rows.length.toLocaleString()} amounts`, kept] : [],
       () => { paidState.q = ""; renderCosts(); }, () => $("#paidTable .toggle") || $("#paidTable")));
   const toggle = r => { paidState.open = paidState.open === oopKey(r) ? null : oopKey(r); renderCosts(); const e = $("#oopEdit"); if (e) e.scrollIntoView({block: "nearest"}); };
+  const shown = Math.max(paidState.limit, list.findIndex(r => oopKey(r) === paidState.open) + 1);   // the open one too
   tw.append(el("div", {class: "tablewrap", style: {maxHeight: "420px"}}, el("table", {class: "data oop"},
     el("thead", {}, el("tr", {}, ["Date", "Paid to", "For", "Where the number came from", "HSA/FSA", "Amount"].map(h => el("th", {text: h})))),
-    el("tbody", {}, list.map(r => el("tr", {class: "link" + (r.dup != null ? " oop-dup" : ""), "data-oop": oopKey(r), tabindex: 0,
+    el("tbody", {}, list.slice(0, shown).map(r => el("tr", {class: "link" + (r.dup != null ? " oop-dup" : ""), "data-oop": oopKey(r), tabindex: 0,
       "aria-expanded": paidState.open === oopKey(r) ? "true" : "false",
       onclick: () => toggle(r), onkeydown: ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(r); } }},
       el("td", {style: {whiteSpace: "nowrap"}, text: fmtD(dayTs(r.d))}), el("td", {text: r.who || "—"}),
@@ -311,6 +312,8 @@ function renderPaid(box, claimRows, periodLabel) {
       el("td", {text: r.hsa || ""}),
       el("td", {style: {fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: r.amount < 0 ? "var(--good-text)" : null},
         text: (r.amount < 0 ? `${usd2(-r.amount)} refund` : usd2(r.amount)) + (r.dup != null ? " · counted once" : "")})))))));
+  if (list.length > shown) tw.append(el("button", {class: "btn", type: "button", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - shown)} more`,
+    onclick: () => { paidState.limit = shown + 200; renderCosts(); $(`#paidTable tbody tr:nth-child(${shown + 1})`)?.focus(); }}));   // the first one added
   const open = paidState.open && rows.find(r => oopKey(r) === paidState.open);
   if (open) tw.append(oopEditor(open));
   card.append(tw);

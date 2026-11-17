@@ -231,6 +231,7 @@ async function syncWarning(pid) {
   if (state.preset !== "custom" || !(state.to > state.from)) setPeriod(state.preset);
   switchTab(state.tab);
   booted = true;
+  try { performance.mark("sanguity:ready"); } catch (e) {}   // the records page is ready: what docs/performance.md times (#201)
   drawerResume();   // after an edit's reload (drawer.js)
   journalResume();  // after a journal entry was saved (journal.js)
 })();
