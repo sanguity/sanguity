@@ -18,7 +18,9 @@ function insurerHint(rows) {
 const seriesBy = n => SERIES.find(s => s.name === n);
 function statusOf(p) {
   if (!p) return null;
-  return p[4] === "H" ? {cls: "hi", text: "▲ High"} : p[4] === "L" ? {cls: "lo", text: "▼ Low"} : (p[2] != null || p[3] != null) ? {cls: "ok", text: "✓ In range"} : null;
+  const st = p[4] === "H" ? {cls: "hi", text: "▲ High"} : p[4] === "L" ? {cls: "lo", text: "▼ Low"} : (p[2] != null || p[3] != null) ? {cls: "ok", text: "✓ In range"} : null;
+  if (st && p.rs === "settings") st.title = "Against a " + RANGE_FROM_SETTINGS;   // #44
+  return st;
 }
 function spark(s, pts, {w = 200, h = 34, band = true} = {}) {
   const svg = el("svg:svg", {viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: "none", "aria-hidden": "true"});
@@ -55,13 +57,13 @@ function renderOverview() {
     const d = prev ? last[1] - prev[1] : null;
     const recent = s.pts.filter(p => p.ts >= last.ts - 182 * DAY);
     tiles.append(el("button", {class: "tile", onclick: () => goSeries(n)},
-      el("span", {class: "lbl"}, el("span", {text: nice(n), title: n}), st ? el("span", {class: "st " + st.cls, text: st.text}) : null),
+      el("span", {class: "lbl"}, el("span", {text: nice(n), title: n}), st ? el("span", {class: "st " + st.cls, text: st.text, title: st.title}) : null),
       el("span", {class: "val"}, last[5] || fmtNum(last[1]), el("small", {text: s.unit})),
       ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
       el("span", {class: "delta", text: (d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")} since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : "")}),
       spark(s, recent)));
   }
-  box.append(tiles, el("p", {class: "range-note", text: RANGE_NOTE}));
+  box.append(tiles, el("p", {class: "range-note", text: RANGE_NOTE + (RANGES_USED ? RANGE_NOTE_SETTINGS : "")}));
   const cols = el("div", {class: "ov-cols"}), left = el("div", {}), right = el("div", {});
   cols.append(left, right); box.append(cols);
   // out of range at latest draw, with how long
@@ -81,7 +83,7 @@ function renderOverview() {
     const st = statusOf(o.last);
     oc.append(el("div", {class: "ov-row", onclick: () => goSeries(o.s.name)},
       el("span", {class: "n", text: nice(o.s.name)}), el("span", {class: "v"}, `${o.last[5] || fmtNum(o.last[1])} ${o.s.unit} `, el("span", {class: "st " + st.cls, text: st.text}), ucOrig(o.s, o.last) ? el("span", {class: "orig", text: " reported " + ucOrig(o.s, o.last)}) : null),
-      el("span", {class: "r", text: `ref ${o.last[2] ?? ""}–${o.last[3] ?? ""}`}),
+      el("span", {class: "r", text: refText(o.last)}),
       el("span", {class: "s", text: o.streak > 1 ? `${st.cls === "hi" ? "High" : "Low"} on the last ${o.streak} draws, since ${fmtD(o.since)}` : `First out-of-range result, ${fmtD(o.last.ts)}`})));
   }
   if (out.length > 14) oc.append(el("p", {class: "hint", style: {marginTop: "8px"}, text: `${out.length - 14} more in Trends.`}));

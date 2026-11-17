@@ -333,6 +333,75 @@ function unitsEditor(value, changed, ro, st) {
 }
 EDITORS.units = unitsEditor;
 
+/* ---------------------------------------------------------------- #44 reference ranges from settings (ranges.js) */
+let RANGE_CFG = {birthDate: "", sex: "", overrides: []};   // the saved values, for the preview of what the rows colour
+function birthdateEditor(value, changed, ro) {
+  const input = el("input", {type: "date", value: value || "", min: "1900-01-01", max: new Date().toISOString().slice(0, 10), disabled: ro,
+    oninput: changed, "aria-label": "Birth date", class: "set-date"});
+  const clear = ro ? null : el("button", {class: "btn small", type: "button", text: "Clear", onclick: () => { input.value = ""; changed(); }});
+  return {node: el("div", {class: "row"}, input, clear), get: () => input.value || ""};
+}
+function rangesexEditor(value, changed, ro) {
+  const opts = [["", "Not set"], ["female", "Female"], ["male", "Male"]];
+  const box = el("fieldset", {class: "set-radios"}, el("legend", {class: "set-sr", text: "Sex for reference ranges"}),
+    ...opts.map(([v, l]) => el("label", {}, el("input", {type: "radio", name: "rangeSex", value: v, checked: v === (value || ""), disabled: ro, onchange: changed}), " " + l)));
+  return {node: box, get: () => box.querySelector("input:checked")?.value ?? ""};
+}
+/* the profile's lab series with numeric results whose report gives no range or flag: [{name, unit, pts}] */
+const unranged = () => LABS.filter(s => !s.watch).map(s => ({name: s.name, unit: s.unit || "",
+  pts: s.pts.filter(p => typeof p[1] === "number" && p[2] == null && p[3] == null && !String(p[4] || "").trim())})).filter(s => s.pts.length);
+function rangesEditor(value, changed, ro) {
+  const SEX = [["any", "Anyone"], ["female", "Female"], ["male", "Male"]];
+  const cols = [["lab", "Lab (name in the records)"], ["unit", "Unit"], ["sex", "Sex"], ["ageFrom", "Age from"], ["ageTo", "Age to"], ["low", "Low"], ["high", "High"]];
+  const body = el("div", {class: "set-rows rng"});
+  body.append(el("div", {class: "set-row set-head", "aria-hidden": "true"}, ...cols.map(([, l]) => el("span", {text: l})), el("span")));
+  const num = (k, v, attrs) => el("input", {"data-k": k, type: "number", value: v ?? "", disabled: ro, oninput: update, step: "any", ...attrs});
+  const make = r => {
+    const field = (k, l, input) => el("label", {}, el("span", {class: "set-lbl", text: l}), input);
+    const row = el("div", {class: "set-row"},
+      field("lab", cols[0][1], el("input", {"data-k": "lab", value: r.lab || "", list: "labNames", maxlength: 120, disabled: ro, oninput: update})),
+      field("unit", "Unit", el("input", {"data-k": "unit", value: r.unit || "", maxlength: 30, disabled: ro, oninput: update})),
+      field("sex", "Sex", el("select", {"data-k": "sex", disabled: ro, onchange: update}, ...SEX.map(([v, l]) => el("option", {value: v, text: l, selected: (r.sex || "any") === v ? "" : null})))),
+      field("ageFrom", "Age from", num("ageFrom", r.ageFrom, {min: 0, max: 130, step: 1, placeholder: "any"})),
+      field("ageTo", "Age to", num("ageTo", r.ageTo, {min: 0, max: 130, step: 1, placeholder: "any"})),
+      field("low", "Low", num("low", r.low)),
+      field("high", "High", num("high", r.high)));
+    row.append(ro ? el("span") : small("Remove", "Remove this range", () => { row.remove(); update(); }));
+    return row;
+  };
+  const read = () => [...body.querySelectorAll(".set-row:not(.set-head)")].map(row => {
+    const v = k => row.querySelector(`[data-k="${k}"]`).value, n = k => v(k) === "" ? null : +v(k);
+    return {lab: v("lab").trim(), unit: v("unit").trim(), sex: v("sex"), ageFrom: n("ageFrom"), ageTo: n("ageTo"), low: n("low"), high: n("high")};
+  }).filter(r => r.lab || r.unit || r.low != null || r.high != null);
+  const add = r => { const row = make(r); body.append(row); row.querySelector("input").focus(); update(); };
+  const sugg = el("div", {class: "set-sugg"}), preview = el("p", {class: "hint", id: "rangesPreview", role: "status"});
+  function update() {
+    const rows = read(), cfg = {...RANGE_CFG, overrides: rows}, without = unranged();
+    const total = without.reduce((a, s) => a + s.pts.length, 0);
+    let hit = 0, out = 0;
+    for (const s of without) for (const p of s.pts) { const r = rangeRowFor(cfg, s.name, s.unit, String(p[0]).slice(0, 10)); if (r) { hit++; if ((r.high != null && p[1] > r.high) || (r.low != null && p[1] < r.low)) out++; } }
+    preview.textContent = !total ? "Every lab result here has a range or flag from its report, so none of these would be used yet."
+      : `${total} result${total === 1 ? "" : "s"} here ha${total === 1 ? "s" : "ve"} no range on ${total === 1 ? "its" : "their"} report; these ranges fit ${hit}` +
+        (hit ? `, ${out} of them outside.` : ".") + " Saved birth date and sex are used.";
+    if (!ro) {
+      const have = new Set(rows.map(r => rNorm(r.lab) + "\u001f" + rUnit(r.unit)));
+      const left = without.filter(s => !have.has(rNorm(s.name) + "\u001f" + rUnit(s.unit))).sort((a, b) => b.pts.length - a.pts.length).slice(0, 8);
+      sugg.replaceChildren(...(left.length ? [el("span", {class: "muted", text: "Results without a range: "}),
+        ...left.map(s => el("button", {class: "chip", type: "button", "aria-label": `Add a range for ${s.name} in ${s.unit || "no unit"}`,
+          text: `+ ${nick(s.name)}${s.unit ? " (" + s.unit + ")" : ""} · ${s.pts.length}`, onclick: () => add({lab: s.name, unit: s.unit, sex: "any"})}))] : []));
+    }
+    changed();
+  }
+  body.append(...value.map(make));
+  const box = el("div", {}, body);
+  if (!ro) box.append(el("div", {class: "set-add"}, el("button", {class: "btn small", type: "button", text: "Add a range", onclick: () => add({sex: "any"})})), sugg);
+  box.append(preview);
+  const ed = {node: box, get: read};
+  queueMicrotask(update);
+  return ed;
+}
+Object.assign(EDITORS, {birthdate: birthdateEditor, rangesex: rangesexEditor, ranges: rangesEditor});
+
 /* ---------------------------------------------------------------- the sections */
 const FROM = {default: "default", install: "set for this server", profile: "set for this profile", user: "your own"};
 function settingNode(st, onSaved) {
@@ -365,6 +434,7 @@ async function load(note) {
   sayIn($("#loadMsg"), "");
   const all = d.sections.flatMap(sec => sec.settings);
   NICK = all.find(st => st.key === "labNicknames")?.value || {};
+  for (const k of ["birthDate", "sex", "overrides"]) { const st = all.find(x => x.key === "ranges." + k); if (st) RANGE_CFG[k] = st.value; }   // #44
   { const th = all.find(st => st.key === "theme"); if (th) applyTheme(th.value); }   // #45: the saved default, here too
   const editable = d.role === "owner" || d.role === "editor";
   $("#introHint").textContent = editable

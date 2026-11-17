@@ -8,7 +8,9 @@ library only). The PDF is made in memory for each request and streamed: it is ne
 Sections, each optional (SECTIONS):
   out_of_range   results since the "since" date that are out of range, each judged against the reference range
                  printed on its own report (the result's own low and high, or the lab's own flag): never one range
-                 across results or labs
+                 across results or labs. A result whose report gives no range and no flag is judged against the
+                 range the person set in Settings for that lab and unit (#44, server/ranges.py), if one fits; the
+                 range is then printed with "(settings)" after it, and the note under the table says what that is
   trends         the key labs (overview.keyLabs) and any the person picked: the last result on or before the
                  "since" date, the latest, the change, and a sparkline of the results between
   medications    current medications (status active, or no status and no end date)
@@ -28,14 +30,16 @@ notice on every page.
 """
 import datetime, json, re
 
-from . import crypto, db as dbm, pdfdoc, records, settings
+from . import crypto, db as dbm, pdfdoc, ranges, records, settings
 
 SECTIONS = [("out_of_range", "Out-of-range results"), ("trends", "Trends since the last visit"),
             ("medications", "Current medications"), ("appointments", "Upcoming appointments"),
             ("questions", "My questions")]
 NOTICE = ("Made by Sanguity from your own records. This isn't medical advice: it shows what the records say, and "
-          "out-of-range results are flagged against the reference range printed on each result's own report. "
+          "out-of-range results are flagged against the reference range printed on each result's own report "
+          "(or, for a result whose report gives none, a range set in Settings, marked as such). "
           "Your care team interprets them in context.")
+SETTINGS_NOTE = "(settings): a range from settings, set by you for results whose report gives none; not from the lab."
 QUESTIONS_KEY = "summary.questions"
 MAX_QUESTIONS, MAX_QUESTION_TEXT, MAX_PICKED = 30, 4000, 20
 MAX_PAGES = 2
@@ -146,7 +150,17 @@ def _pt(p):
     """A result point [time, value, low, high, flag, text, ...] as a dict."""
     p = list(p) + [None] * (7 - len(p)) if isinstance(p, (list, tuple)) else [None] * 7
     return {"t": p[0], "d": _day(p[0]), "v": _num(p[1]), "lo": _num(p[2]), "hi": _num(p[3]),
-            "flag": str(p[4] or "").strip(), "text": str(p[5] or "").strip()}
+            "flag": str(p[4] or "").strip(), "text": str(p[5] or "").strip(), "rs": "report"}
+
+
+def _from_settings(p, name, unit, rcfg):
+    """A result with no range and no flag on its report takes the range set in Settings that fits it (#44)."""
+    if p["v"] is None or ranges.has_own(p["lo"], p["hi"], p["flag"]):
+        return p
+    row = ranges.find(rcfg, name, unit, p["d"])
+    if row is None:
+        return p
+    return {**p, "lo": row["low"], "hi": row["high"], "flag": ranges.flag_for(p["v"], row), "rs": ranges.SOURCE}
 
 
 def out_of_range(p):
@@ -170,12 +184,13 @@ def out_of_range(p):
 
 def range_text(p):
     lo, hi = p["lo"], p["hi"]
+    mark = " (settings)" if p.get("rs") == ranges.SOURCE else ""
     if lo is not None and hi is not None:
-        return f"{fmt_num(lo)}–{fmt_num(hi)}"
+        return f"{fmt_num(lo)}–{fmt_num(hi)}{mark}"
     if hi is not None:
-        return f"≤ {fmt_num(hi)}"
+        return f"≤ {fmt_num(hi)}{mark}"
     if lo is not None:
-        return f"≥ {fmt_num(lo)}"
+        return f"≥ {fmt_num(lo)}{mark}"
     return ""
 
 
@@ -183,10 +198,10 @@ def value_text(p):
     return p["text"] or fmt_num(p["v"])
 
 
-def _series(data):
+def _series(data, rcfg=None):
     """{name: {"name", "unit", "pts": [point dict with its source]}}: every import's series of a name put together
     (the same test from two sources is one trend), each result keeping its own range. With two units, the unit of
-    the latest result is kept."""
+    the latest result is kept. rcfg: the "ranges" settings, for results whose report gives no range (#44)."""
     imports = data.get("imports") or {}
     by = {}
     for s in data.get("labs") or []:
@@ -196,6 +211,7 @@ def _series(data):
         for raw in s.get("pts") or []:
             p = _pt(raw)
             if p["d"]:
+                p = _from_settings(p, s["name"], s.get("unit") or "", rcfg)
                 by.setdefault(s["name"], []).append({**p, "unit": s.get("unit") or "", "src": src})
     out = {}
     for name, pts in by.items():
@@ -272,7 +288,7 @@ def build(db, pid, uid, profile_name, opts):
     data = records.assemble(db, pid) or {"events": [], "labs": []}
     cfg = settings.merged(db, pid, uid)
     nick = cfg.get("labNicknames") or {}
-    series = _series(data)
+    series = _series(data, cfg.get("ranges"))
     visits, upcoming = _visits(data, now), _upcoming(data, now)
     wanted = [s for s in (opts.get("sections") or []) if s in {x for x, _ in sections()}]
     if not wanted:
@@ -348,6 +364,9 @@ def build(db, pid, uid, profile_name, opts):
         if sid in wanted:
             extra.append({"id": sid, "label": lbl, "rows": list(fn(db, pid, data, since, now) or [])})
     out["extra"] = extra
+    shown = [r["range"] for r in out.get("out_of_range") or []] + [(r["now"] or {}).get("range") or "" for r in out.get("trends") or []]
+    if any(x.endswith("(settings)") for x in shown):
+        out["settings_note"] = SETTINGS_NOTE   # the page shows it under the tables, as the PDF does
     return out
 
 
@@ -481,12 +500,14 @@ def render(s):
                 if not rows:
                     lay.note("No results since then are outside the reference range on their own report.")
                     continue
-                lay.table(sid, [("TEST", 150), ("RESULT", 72), ("FLAG", 42), ("REPORT'S RANGE", 76), ("DATE", 66), ("SOURCE", None)],
+                lay.table(sid, [("TEST", 140), ("RESULT", 72), ("FLAG", 42), ("RANGE", 96), ("DATE", 66), ("SOURCE", None)],
                           rows, lambda r: [r["label"] + (f"  ({r['out']} of {r['of']})" if r["of"] > 1 else ""),
                                            f"{r['value']} {r['unit']}".strip(), (r["flag"],), r["range"] or "not given",
                                            _when(r["date"]), r["source"]])
                 lay.note("(2 of 3): how many of the results since then were out of range. Each is judged against the "
                          "range printed on its own report.", 7.5)
+                if any(r["range"].endswith("(settings)") for r in rows):
+                    lay.note(SETTINGS_NOTE, 7.5)
             elif sid == "trends":
                 rows = s["trends"]
                 lay.heading(f"Trends since {fmt_date(since['date'])}", len(rows))
@@ -503,6 +524,8 @@ def render(s):
                           _spark)
                 lay.note("Then: the last result on or before that day. Since: how many results since. Red: outside the "
                          "range on that result's own report.", 7.5)
+                if any(((r["now"] or {}).get("range") or "").endswith("(settings)") for r in rows):
+                    lay.note(SETTINGS_NOTE, 7.5)
             elif sid == "medications":
                 rows = s["medications"]
                 lay.heading("Current medications", len(rows))
