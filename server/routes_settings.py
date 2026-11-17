@@ -152,6 +152,34 @@ def change_user_value(key: str, body: Value, request: Request, s=Depends(user), 
     return _user_values(db, s["id"])
 
 
+@router.get("/api/settings/user/sections")
+def user_sections(s=Depends(user), db=Depends(get_db)):
+    """The Settings screen's sections of this person's own settings (Display: theme, dates, units), as
+    /api/profiles/{pid}/settings/sections gives them: for someone with no profile yet (#169)."""
+    eff = settings.effective(db, None, s["id"])
+    out = []
+    for sid, title, help in settings.SECTIONS:
+        items = [{**d.public(), "value": eff[k][0], "from": eff[k][1], "can_change": True}
+                 for k, d in settings.SETTINGS.items() if d.section == sid and d.scope == "user"]
+        if items:
+            out.append({"id": sid, "title": title, "help": help, "settings": items})
+    return {"role": None, "sections": out}
+
+
+@router.post("/api/settings/user/reset")
+def reset_user_section(body: Section, request: Request, s=Depends(user), db=Depends(get_db)):
+    """Back to the defaults: every one of this person's own settings in the section."""
+    titles = {sid: title for sid, title, _ in settings.SECTIONS}
+    keys = [k for k, d in settings.SETTINGS.items() if d.section == body.section and d.scope == "user"]
+    if not keys:
+        raise HTTPException(404, "There's no such section.")
+    with dbm.transaction(db):
+        gone = settings.clear(db, keys, "user", None, s["id"])
+        if gone:
+            _log(db, s, None, "user", {"section": body.section, "label": titles[body.section], "settings": gone, "reset": True}, request)
+    return {"reset": gone, "settings": _user_values(db, s["id"])}
+
+
 # ---------------------------------------------------------------- the install's own settings, without a profile (#167)
 # The Admin page shows these (connected sources' sync defaults): an admin may have no profile at all. Admins only,
 # with their own second factor once the server has more than one account (main.admin).

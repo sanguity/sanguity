@@ -864,3 +864,5 @@ main.src[data-role=viewer] .src-edit{display:none}
 .shr .shr-members td:first-child{overflow-wrap:anywhere}
 .shr .shr-share input{flex:1 1 140px;min-width:0}
 @media (max-width:760px){.shr .set-nav-list li.shr-apart{margin-left:4px;padding-left:10px;border-left:1px solid var(--ring)}}
+/* Account (#169): its cards' rows of buttons are not the timeline's rows (no divider, no hover) */
+#acctNav~section .row{border-bottom:0;padding:0;cursor:default}#acctNav~section .row:hover{background:none}

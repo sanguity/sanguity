@@ -69,6 +69,8 @@ on the **Settings** page, appear on every chart and as "since" periods.
 records in, paste a Health Link, a journal entry) and your menu (sources, sharing, settings, account, light or dark,
 log out). **Settings** is grouped in a sidebar (this profile's dashboard, labs and ranges, milestones; your display),
 one group at a time, with **Find a setting** to search them all.
+**Account** is you and this device: sign-in and security (password, two-factor sign-in, passkeys, where you're
+signed in), and this device (install as an app, offline records).
 **Sources** (in your menu) has everything about records coming in, in a sidebar the same way: an overview of every
 way records reach the profile and when each last brought something, upload, type in, paste a Health Link, portals
 and health plans, the phone and watch, and the import history.
@@ -496,11 +498,11 @@ Sanguity installs to a phone's home screen with its own icon: **Add to Home Scre
 iPhone, or **Install app** in Chrome's menu on Android. Like passkeys, this needs **HTTPS** (or `http://localhost`):
 browsers don't install from, or run the offline part at, a plain-HTTP address. The app offers it too: an
 **Install app** button in the header when the browser can install it (Chrome, Edge, Samsung Internet), and an
-**Install on this device** card under **Account** with the steps for iPhone and iPad, or a link to your HTTPS
+**Install on this device** card under **Account > This device** with the steps for iPhone and iPad, or a link to your HTTPS
 address (from `PUBLIC_ORIGINS`) when the page was opened over plain HTTP.
 
 Installed, it opens without a connection, but by default shows no records then: the app's pages are kept on the
-phone, its records aren't. **Account > Offline records on this device** keeps a copy of the last profile you opened,
+phone, its records aren't. **Account > This device > Offline records on this device** keeps a copy of the last profile you opened,
 read-only offline with the time it was loaded. That copy is outside Sanguity's encryption at rest, so anyone who can
 use the phone unlocked could read it. It never includes documents or other profiles, and it's deleted when you sign
 out, when your sign-in ends (even if the phone stays offline), and when you turn the option off. Leave it off on a
