@@ -322,6 +322,16 @@ function viewsEditor(value, changed, ro) {
     labs: it._labs.get(), default: it.querySelector("[data-k=default]").checked}))};
 }
 EDITORS.views = viewsEditor;
+/* #41 this user's units: one group of choices per part (lab tests, weights, temperatures), from the server's list */
+function unitsEditor(value, changed, ro, st) {
+  const parts = [["lab", "Lab tests"], ["weight", "Weight"], ["temperature", "Temperature"]];
+  const boxes = parts.map(([part, label]) => el("fieldset", {class: "set-radios", "data-part": part}, el("legend", {text: label}),
+    ...Object.entries((st.choices || {})[part] || {}).map(([v, l]) => el("label", {},
+      el("input", {type: "radio", name: "units-" + part, value: v, checked: v === (value[part] || "reported"), disabled: ro, onchange: changed}), " " + l))));
+  return {node: el("div", {class: "set-units"}, ...boxes),
+    get: () => Object.fromEntries(parts.map(([part], i) => [part, boxes[i].querySelector("input:checked")?.value || value[part] || "reported"]))};
+}
+EDITORS.units = unitsEditor;
 
 /* ---------------------------------------------------------------- the sections */
 const FROM = {default: "default", install: "set for this server", profile: "set for this profile", user: "your own"};

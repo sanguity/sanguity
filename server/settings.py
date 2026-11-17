@@ -15,8 +15,8 @@ use. Values are JSON; a setting that can hold health information (lab names, rul
 (crypto.enc) in the "sealed" column, others are plain in "value".
 
 Adding a setting (#36-#46): one define() call below, with its section (add one to SECTIONS if it's new), and an
-editor for its kind on the Settings screen (www/js/settings.js; "labs", "tiles", "names", "rules", "tabs" and
-"theme" exist).
+editor for its kind on the Settings screen (www/js/settings.js; "labs", "tiles", "names", "rules", "tabs",
+"theme" and "units" exist).
 
 settings.json, before schema version 18: each profile's copy (profiles/<id>/settings.json) is loaded into the
 table once at start-up (migrate_files) and kept beside it as settings-before-v18.json. A setup build's settings.json
@@ -480,6 +480,36 @@ def trend_views(most=30):
 define("trends.views", "trends", "Saved views", [], trend_views(), kind="views",
        help="Named sets of labs to pick from on Trends (save one there from what's charted). The default view is "
             "what Trends charts at first, instead of the labs above (#37).")
+
+
+# ---------------------------------------------------------------- unit preferences (#41)
+
+UNIT_CHOICES = {   # part -> {choice: label}; the conversions themselves are units.py's, exact ones only
+    "lab": {"reported": "As reported", "conventional": "mg/dL, g/dL (conventional)", "si": "mmol/L, g/L (SI)"},
+    "weight": {"reported": "As reported", "lb": "lb", "kg": "kg"},
+    "temperature": {"reported": "As reported", "F": "°F", "C": "°C"},
+}
+
+
+def unit_prefs(v):
+    """{"lab": ..., "weight": ..., "temperature": ...}, each one of UNIT_CHOICES; a part left out is "reported"."""
+    if not isinstance(v, dict) or set(v) - set(UNIT_CHOICES):
+        raise SettingError("This must say which units to show lab values, weights and temperatures in.")
+    out = {}
+    for part, choices in UNIT_CHOICES.items():
+        x = v.get(part, "reported")
+        if x not in choices:
+            raise SettingError(f"There's no {part} unit called “{str(x)[:20]}”.")
+        out[part] = x
+    return out
+
+
+section("units", "Units", "The units you see values in, on every profile. Only exact conversions are made; a test "
+        "without one stays in the unit its lab reported, and the reported value is always shown beside a converted one.")
+define("units", "units", "Units", {p: "reported" for p in UNIT_CHOICES}, unit_prefs, scope="user", kind="units",
+       private=False, help="Lab tests: glucose, creatinine, urea nitrogen (BUN), calcium and magnesium convert between "
+       "mg/dL and mmol/L (creatinine in µmol/L); hemoglobin, MCHC, albumin and total protein between g/dL and g/L.")
+CHOICES["units"] = UNIT_CHOICES
 
 
 # ---------------------------------------------------------------- storage

@@ -22,7 +22,7 @@ function renderSeriesList() {
       wrap.append(el("label", {class: "srow", for: id},
         el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); wrap.querySelector("b").textContent = `${state.sel.size} selected`; tvRefresh(); }}),
         el("span", {class: "nm", title: `${renamedTitle("lab", s.name)} · ${s.n} results`, text: nice(s.name)}),
-        el("span", {class: "lv" + (L && L[4] ? " abn" : ""), title: L ? `Latest ${fmtD(L[0])}` : "", text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : "text"})));
+        el("span", {class: "lv" + (L && L[4] ? " abn" : ""), title: L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "", text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : "text"})));
     }
   }
 }
@@ -67,7 +67,7 @@ function readText(s, p) {
   if (s.kind === "band") return [`${fmtNum(p[1])} ${u} avg`, p.lo != null ? `range ${fmtNum(p.lo)}–${fmtNum(p.hi)}` : ""];
   if (s.kind === "stack") { const pr = p.parts || {}; return [`${fmtNum(p[1])} h asleep`, ["deep", "rem", "light"].filter(k => pr[k]).map(k => `${k === "rem" ? "REM" : k} ${fmtNum(pr[k])} h`).join(" · ")]; }
   if (s.kind === "bars") return [`${Math.round(p[1]).toLocaleString()} ${u}`, ""];
-  return [`${p[5] || fmtNum(p[1])} ${u}`, ""];
+  return [`${p[5] || fmtNum(p[1])} ${u}`, ucOrig(s, p) ? "Reported as " + ucOrig(s, p) : ""];   // #41: as reported, beside a converted value
 }
 function chartCard(s) {
   const card = el("div", {class: "chart"});
@@ -79,12 +79,12 @@ function chartCard(s) {
   const legend = hasStages ? el("span", {class: "lg"}, ...[["Deep", "--seq1"], ["REM", "--seq2"], ["Light", "--seq3"]].map(([n, c]) => el("span", {}, el("i", {style: {background: `var(${c})`}}), n)))
     : s.kind === "band" ? el("span", {class: "lg"}, el("span", {}, el("i", {style: {background: "var(--c-lab)", height: "3px"}}), "Daily average"), el("span", {}, el("i", {style: {background: "var(--c-lab)", opacity: .2}}), "Low–high")) : null;
   card.append(el("div", {class: "hd"}, el("span", {class: "name", title: renamedTitle("lab", s.name), text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
-    el("span", {class: "unit", text: `${s.unit}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}`}), legend, read,
+    el("span", {class: "unit", text: `${s.unit}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}`}), legend, read,
     el("button", {text: showTable ? "Chart" : "Table", onclick: () => { showTable ? state.tables.delete(s.name) : state.tables.add(s.name); renderCharts(); }}),
     el("button", {text: "✕", title: "Remove", onclick: () => { state.sel.delete(s.name); renderLabs(); }})));
   if (showTable) {
     card.append(el("div", {class: "tablewrap"}, el("table", {class: "data"}, el("thead", {}, el("tr", {}, ["Date", "Value", s.watch ? "Detail" : "Ref range", ""].map(h => el("th", {text: h})))),
-      el("tbody", {}, [...pts].reverse().map(p => { const [a, b] = readText(s, p); return el("tr", {}, el("td", {text: s.watch ? fmtD(p.ts) : fmtDT(p.ts)}), el("td", {class: p[4] ? "abn" : "", text: a}),
+      el("tbody", {}, [...pts].reverse().map(p => { const [a, b] = readText(s, p); return el("tr", {}, el("td", {text: s.watch ? fmtD(p.ts) : fmtDT(p.ts)}), el("td", {class: p[4] ? "abn" : "", text: a + (!s.watch && b ? ` (reported ${ucOrig(s, p)})` : "")}),
         el("td", {text: (s.watch ? b : p[2] != null || p[3] != null ? `${p[2] ?? ""} – ${p[3] ?? ""}` : "") + (p[6] ? ` · ${p[6] === "Clinic" ? "clinic visit" + (p.org ? " (" + p.org + ")" : "") : srcName(p[6])}` : "") + (p.same ? " · same result from " + p.same.length + " more source" + (p.same.length > 1 ? "s" : "") : "")}), el("td", {class: p[4] ? "abn" : "", text: p[4] === "H" ? "▲ High" : p[4] === "L" ? "▼ Low" : ""})); })))));
     const src = seriesSource(s); if (src) card.append(src);
     { const t = tagLine(pts); if (t) card.append(t); }   // its results' source tags, renamed here (#38)

@@ -22,7 +22,7 @@ const FILES = [
   "js/heatmap.js", "js/import-history.js", "js/import-jobs.js", "js/import-manual.js", "js/import-records.js", "js/import-shl.js",
   "js/import.js", "js/journal.js", "js/login.js", "js/offline.js", "js/outside.js", "js/overview.js", "js/providers.js",
   "js/pwa.js", "js/rename.js", "js/same.js", "js/settings-calendar.js", "js/settings.js", "js/setup.js", "js/sources.js",
-  "js/summary.js", "js/theme.js", "js/timeline.js", "js/trends.js", "js/trends-views.js", "js/util.js",
+  "js/summary.js", "js/theme.js", "js/timeline.js", "js/trends.js", "js/trends-views.js", "js/units.js", "js/util.js",
 ];
 
 /* the part of a same-origin address after the app's own folder, if it's one of the app's own files: "" for the

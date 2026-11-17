@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, edits, export, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, uploads, watch_keys, watch_store
+from . import accounts, activity, alerts, atrest, backup, config, crypto, db as dbm, edits, export, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -1013,6 +1013,7 @@ def profile_watch(pid: int, s=Depends(user), db=Depends(get_db)):
     summary = watch_store.load(db, pid)   # the receiver's file, with any Apple Health import merged in
     if summary is None:
         return Response(status_code=204)
+    units.annotate_watch(summary)   # weights that can be shown in kg or lb (#41)
     return Response(json.dumps(summary, separators=(",", ":")).encode(), media_type="application/json")
 
 

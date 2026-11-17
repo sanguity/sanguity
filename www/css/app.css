@@ -675,3 +675,9 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 .rename-msg:empty{display:none}
 #hm text.row.renamable{cursor:pointer}
 #hm text.row.renamable:hover,#hm text.row.renamable:focus{fill:var(--ink);text-decoration:underline;outline:none}
+/* #41 unit preferences: the value as reported, beside a converted one */
+.tile .orig{font-size:11.5px;color:var(--muted)}
+.ov-row .orig{font-weight:400;font-size:12px;color:var(--muted)}
+.data td .orig{display:block;font-size:11.5px;color:var(--muted)}
+.sets .set-units legend{font-weight:600;font-size:13px;margin-bottom:2px;padding:0}
+.sets .set-units .set-radios{margin:4px 0 10px}

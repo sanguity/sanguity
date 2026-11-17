@@ -136,6 +136,7 @@ async function syncWarning(pid) {
   // let search hit lab-day events through their child results' names
   for (const e of DATA.events) if (e.k === "lab") { const d = DATA.details[e.id]; if (d) e._q += " " + d.ids.map(i => (byId.get(i)?.title || "")).join(" ").toLowerCase(); }
   for (const s of DATA.labs) for (const p of s.pts) p.ts = zParse(p[0]);
+  applyUnits(DATA.labs); applyUnitsToRows(DATA.labs, DATA.details);   // this person's units, exact conversions only (units.js, #41)
   SERIES = joinSeries(DATA.labs);   // one chart per test, whichever imports brought it (same.js)
   // optional: watch data from the Health Connect receiver
   try {
@@ -146,7 +147,7 @@ async function syncWarning(pid) {
     const M = Object.fromEntries((WATCH.metrics || []).map(m => [m.key, m]));
     const byDay = k => Object.fromEntries(M[k] ? M[k].pts : []);
     const mkPts = m => m.pts.map(([d, v]) => { const p = [d + "T12:00:00", v, null, null, "", ""]; p.ts = dayTs(d); p.day = d; return p; });
-    const add = (m, extra) => { const pts = mkPts(m); const s = {name: m.name, unit: m.unit, panel: m.group === "Body" ? "Body · smart scale" : "Watch · " + m.group, n: pts.length, pts, txt: [], watch: true, key: m.key, kind: "line", ...extra}; SERIES.push(s); return s; };
+    const add = (m, extra) => { const pts = mkPts(m); const s = {name: m.name, unit: m.unit, panel: m.group === "Body" ? "Body · smart scale" : "Watch · " + m.group, n: pts.length, pts, txt: [], watch: true, key: m.key, kind: "line", conv: m.conv, ...extra}; SERIES.push(s); return s; };
     if (M.hr_avg) {   // one chart: daily average inside a low–high band
       const lo = byDay("hr_min"), hi = byDay("hr_max");
       const s = add(M.hr_avg, {name: "Heart rate", key: "hr", kind: "band"});
@@ -160,7 +161,7 @@ async function syncWarning(pid) {
     if (M.steps) { add(M.steps, {kind: "bars"}); STEPS = mkPts(M.steps).map(p => [zParse(p.day + "T00:00:00"), p[1]]); }
     const cw = DATA.clinicWeights || [];
     if (M.weight || cw.length) {
-      const s = add(M.weight || {key: "weight", name: "Weight", unit: "lb", group: "Body", pts: []}, {name: "Body weight", key: "weight"});
+      const s = add(M.weight || {key: "weight", name: "Weight", unit: "lb", group: "Body", pts: [], conv: DATA.unitConv?.lb}, {name: "Body weight", key: "weight"});
       const have = new Set(s.pts.map(p => p.day));
       for (const [t, v, org] of cw) {
         const day = t.slice(0, 10); if (have.has(day)) continue; have.add(day);
@@ -177,6 +178,7 @@ async function syncWarning(pid) {
       DATA.events.push(ev); byId.set(ev.id, ev); DATA.details[ev.id] = {type: "exercise", kind: x.kind, minutes: x.minutes};
     }
     EV = DATA.events;
+    applyUnits(SERIES.filter(s => s.watch));   // after the clinic weights joined the scale's (#41)
   }
   journalLoad();   // the journal's entries join EV as events of kind "journal" (journal.js)
   const ts = DATA.events.map(e => e.ts).filter(isFinite); state.min = Math.min(...ts); state.max = Math.max(...ts);

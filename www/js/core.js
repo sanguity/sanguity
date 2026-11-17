@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS = {
   tabs: {order: ["overview", "health", "timeline", "labs", "heatmap", "costs"], hidden: []},   // #40, applied by app.js
   theme: "system",     // #45, this user's default: "light", "dark" or "system" (the ◐ toggle overrides it per browser)
   sources: {},         // short source tags on lab results -> display names, e.g. {"EXT": "Outside lab"}
+  units: {lab: "reported", weight: "reported", temperature: "reported"},   // #41, this user's (units.js)
   visitWorkouts: [],   // past visits whose title matches count as workouts on Health, e.g. {"match": "physical therapy", "regex": false, "name": "Physical therapy", "minutes": 45}
   milestones: [],      // named dates, e.g. {"date": "2026-03-01", "label": "Diagnosis", "primary": true} (#39)
 };
@@ -47,7 +48,8 @@ function applySettings(u) {
     visitWorkouts: list(u.visitWorkouts, DEFAULT_SETTINGS.visitWorkouts),
     milestones: list(u.milestones, DEFAULT_SETTINGS.milestones),
     tabs: obj(u.tabs) ? u.tabs : DEFAULT_SETTINGS.tabs,
-    theme: ["light", "dark", "system"].includes(u.theme) ? u.theme : DEFAULT_SETTINGS.theme};
+    theme: ["light", "dark", "system"].includes(u.theme) ? u.theme : DEFAULT_SETTINGS.theme,
+    units: {...DEFAULT_SETTINGS.units, ...(obj(u.units) ? u.units : {})}};
   CFG.overview.keyLabs = list(CFG.overview.keyLabs, DEFAULT_SETTINGS.overview.keyLabs);
   CFG.trends.defaultLabs = list(CFG.trends.defaultLabs, DEFAULT_SETTINGS.trends.defaultLabs);
   CFG.trends.views = list(CFG.trends.views, DEFAULT_SETTINGS.trends.views);

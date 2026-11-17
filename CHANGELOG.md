@@ -83,6 +83,10 @@ Everything on `main` so far; it becomes the first tagged release.
   new name shows on every tab for everyone the profile is shared with, the name in the records stays on hover and
   in the details, and "Use the original name" puts it back. Lab and tag names are the Names settings; an import's
   name is its own (encrypted, schema version 25) and shows in the import history too.
+- Unit preferences, per person (#41): lab tests in mg/dL or mmol/L, weights in lb or kg, temperatures in °F or °C,
+  on Trends, the Overview tiles, the heatmap and the drawer. Only exact conversions are made (a change of prefix, a
+  fixed molar mass for glucose, creatinine, BUN, calcium and magnesium, lb to kg by definition); any other test
+  stays in its reported unit, and the reported value is always shown beside a converted one.
 
 **Sharing and new features (Phase 4)**
 - Reminders as a calendar feed (#51): a private iCalendar address per person and profile, made on the Settings page,

@@ -349,6 +349,11 @@ from the internet; a phone on your home network or tailnet works without that.
   checked before it's saved and refused if it could make matching slow. Milestones are named dates, one of them
   primary (the one the Overview counts from); they are encrypted like the records. They live in the database (backed up and exported with the profile); a
   `settings.json` from before is moved in once at the upgrade and kept as `settings-before-v18.json`.
+- **Units:** each person picks, for themself, mg/dL or mmol/L for lab tests, lb or kg, and °F or °C (**Settings →
+  Units**). A value is converted only when the conversion is exact for that test (`server/units.py` lists them:
+  glucose, creatinine, BUN, calcium and magnesium by their molar mass; hemoglobin, MCHC, albumin and total protein by a
+  power of ten); every other test stays in the unit its lab reported. Reference ranges convert with the values, and
+  the value as reported is shown beside every converted one.
 - **Visit summary:** one or two printable pages to bring to an appointment (**Visit summary** in the header):
   results out of range since the last visit, each against the range on its own report, trends of the key labs and
   any others picked, current medications, upcoming appointments and your own questions (kept as a draft for the
