@@ -13,6 +13,11 @@ acknowledgement within a week. Please give a reasonable time to ship a fix befor
 ## Scope
 
 Sanguity is self-hosted: each install is run by its owner, and there is no hosted service. In scope are the
-code in this repository and its default Docker setup (login and sessions, document serving, the watch
+code in this repository and its default Docker setup (login and sessions, roles and document serving, uploads
+and imports, share links and calendar feeds, connected sources and every outside request, backups, the watch
 receiver, the build scripts). Weaknesses in a particular install's reverse proxy, network or host are not,
-but tell us if our defaults make a common setup unsafe.
+but tell us if our defaults make a common setup unsafe. `tools/anonymise.py` runs on your own computer, never on
+the server; a way it leaves something identifying in its copy is still worth reporting.
+
+What has been reviewed, and the deviations accepted on purpose, are in
+[docs/security-review.md](docs/security-review.md).

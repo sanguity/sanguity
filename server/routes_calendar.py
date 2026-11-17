@@ -135,11 +135,12 @@ def _bare(status, retry=None):
 def feed(pid: int, request: Request, token: str = "", db=Depends(get_db)):
     ip = _client_ip(request)
     bad = "bad:" + ip
-    wait = calendar.throttle.wait(bad)
-    if wait:
-        return _bare(429, wait)
+    # a working token is served even while this address is waiting for wrong ones (#203; as for share links)
     f = calendar.find(db, pid, token)
     if f is None:
+        wait = calendar.throttle.wait(bad)
+        if wait:
+            return _bare(429, wait)
         calendar.throttle.fail(bad)
         return _bare(404)
     key = "feed:" + f["token_hash"]

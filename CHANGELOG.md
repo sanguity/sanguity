@@ -307,6 +307,16 @@ Everything on `main` so far; it becomes the first tagged release.
   ranges, so the copy still imports. It says what it changed and which kept text to read before sharing, and
   refuses PDFs, unsafe zips and XML entities. [docs/anonymising-exports.md](docs/anonymising-exports.md) is honest
   about what it misses; CONTRIBUTING and the portal-export issue form point to it.
+- **The security review covers everything on `main`** (#203): [docs/security-review.md](docs/security-review.md)
+  now reviews uploads and imports, connected sources and outside connections, SMART Health Links, settings, the
+  journal, costs, the visit summary, calendar feeds, share links, phone uploads, offline records, the Admin page and
+  backups against the same ASVS chapters, with a table of what an owner, editor, viewer, admin and share-link holder
+  can reach. Fixed on the way: nginx keeps no access log (its request lines named uploaded files, provider searches
+  and a connected source's sign-in code); a working share link or calendar feed opens even while wrong tokens from
+  the same address are being slowed down (behind a reverse proxy everyone shares one address, so a stranger could
+  shut every holder out); and a failed import, pull or request is logged with where it happened but not the
+  exception's message, which can quote a file's name or a record. `tests/test_security_refresh.py` lists every
+  route with the role it needs and every database column as encrypted or plain on purpose.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

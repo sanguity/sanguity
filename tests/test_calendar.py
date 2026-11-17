@@ -401,7 +401,8 @@ class Calendar(unittest.TestCase):
                 self.fetch(path, 404)
             r = self.fetch(path, 429)
             self.assertTrue(int(r.headers["retry-after"]) > 0)
-            self.fetch(j["path"], 429)   # the right one too, from that address, until the wait is over
+            self.fetch(j["path"])   # the right one still works from that address (#203: it may be a shared proxy's)
+            self.fetch(path, 429)    # and a wrong one still waits
         finally:
             self.drop()
 

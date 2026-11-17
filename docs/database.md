@@ -660,7 +660,8 @@ erDiagram
 | `meta` | the pepper |
 
 The list the start-up check and key rotation use is `FIELDS` in [`server/atrest.py`](../server/atrest.py); keep the
-two in step. Files the rows point at (documents imported from an export, upload files, previews, imported watch
+two in step. Every other text column is listed in `PLAIN` in `tests/test_security_refresh.py` with why it holds no
+health information, so a new column fails that test until it is in one list or the other (#203). Files the rows point at (documents imported from an export, upload files, previews, imported watch
 summaries) are encrypted on disk too. Not encrypted: usernames and profile names (needed for sign-in and
 sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 

@@ -486,6 +486,11 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
 - Records, built data, watch data, logins and secrets are never committed (see `.gitignore`).
 - **Failed sign-ins:** they're throttled and logged, and admins see a notice under **Admin** when one address or
   account fails 10 times in a day, or 30 failures pile up in all. Nothing is sent outside the server.
+- **Logs hold no health data:** neither nginx nor the app keeps an access log, so the names of uploaded files,
+  searches and links aren't written anywhere; an error is logged with where it happened, not with what it was
+  reading. Sign-ins and refusals are in `docker compose logs app`, and who viewed what is in each profile's activity.
+- **Reviewed against OWASP ASVS** (Level 2): [docs/security-review.md](docs/security-review.md) has every
+  requirement, who can reach what, and the accepted deviations. Report a vulnerability privately ([SECURITY.md](SECURITY.md)).
 - **Put Sanguity behind HTTPS** (a reverse proxy, Tailscale or similar) before using it outside your home network;
   Sanguity itself serves plain HTTP on `WEB_PORT`, and the sign-in and Account pages warn when they're opened that
   way from outside the home network or a tailnet. Behind your proxy:
