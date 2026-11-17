@@ -163,3 +163,35 @@ const smoothly = () => matchMedia("(prefers-reduced-motion: reduce)").matches ? 
     if (main.getBoundingClientRect().top < 0) main.scrollIntoView();
   }}));
 })();
+
+/* ---- the app's own dialog (#210)
+   ask({title, message, action, danger, cancel, field}): asks before doing something, in a <dialog> opened with
+   showModal(), not the browser's own pop-up (which ignores dark mode, can't mark the risky button, and on some phones
+   is titled with the server's address). It shows the title, the message (words, a list of paragraphs, or nodes),
+   Cancel and a button named for the action ("Remove passkey", "Turn off"). danger: the action can't be
+   undone (it removes, revokes or turns something off): its button is red and focus starts on Cancel, so a stray
+   Enter or Space doesn't do it; otherwise focus starts on the action. field: an input inside the message, focused
+   first; Enter in it does the action. Escape or Cancel say no. Resolves true for the action, false otherwise, and
+   focus goes back to whatever had it (the button that opened it). Use: if (!await ask({...})) return;
+   A plain notice isn't asked: it goes in the page's message line beside what it's about (sayIn, above). */
+function ask({title, message = "", action = "OK", cancel = "Cancel", danger = false, field = null} = {}) {
+  const opener = document.activeElement, id = "sgAsk" + (ask.n = (ask.n || 0) + 1);
+  return new Promise(resolve => {
+    const no = el("button", {class: "btn", type: "button", text: cancel, onclick: () => box.close("")});
+    const yes = el("button", {class: "btn " + (danger ? "danger" : "primary"), type: "submit", value: "yes", text: action});
+    const box = el("dialog", {class: "sg-ask", role: danger ? "alertdialog" : null, "aria-labelledby": id + "t", "aria-describedby": id + "m"},
+      el("form", {method: "dialog"},
+        el("h2", {id: id + "t", text: title}),
+        el("div", {class: "sg-ask-msg", id: id + "m"}, ...[].concat(message).filter(m => m != null && m !== "")
+          .map(m => typeof m === "string" ? el("p", {text: m}) : m)),
+        el("div", {class: "sg-ask-acts"}, no, yes)));
+    box.addEventListener("close", () => {
+      box.remove();
+      if (opener && opener.isConnected && opener !== document.body) opener.focus();
+      resolve(box.returnValue === "yes");
+    });
+    document.body.append(box);
+    box.showModal();
+    (field || (danger ? no : yes)).focus();
+  });
+}

@@ -170,9 +170,14 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
           try { await call(`profiles/${p.id}/members`, "PUT", {username: m.username, role: ev.target.value}); await again(); sayIn($("#peopleMsg"), `${m.username} is now ${ev.target.value === "owner" ? "an" : "a"} ${ev.target.value}.`); }
           catch (e) { ev.target.value = m.role; fail(e); } }, `${m.username}'s role`) : m.role),
         el("td", {class: "acts"}, m.user_id === me ? el("button", {class: "btn small", type: "button", text: "Leave",
-          onclick: () => { if (confirm(`Stop having access to ${p.name}?` + (owner ? "" : " An owner can share it with you again."))) leave(p); }})
+          onclick: async () => {
+            if (!await ask({title: `Leave ${p.name}?`, message: "You'll stop having access to its records." + (owner ? "" : " An owner can share it with you again."),
+                            action: "Leave profile", danger: true})) return;
+            leave(p); }})
           : owner ? el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove ${m.username}`,
-            onclick: async () => { if (!confirm(`Remove ${m.username}'s access to ${p.name}?`)) return;
+            onclick: async () => {
+              if (!await ask({title: `Remove ${m.username}'s access?`, message: `They'll stop seeing ${p.name}'s records. You can share it with them again later.`,
+                              action: "Remove access", danger: true})) return;
               try { await call(`profiles/${p.id}/members/${m.user_id}`, "DELETE"); await again(); sayIn($("#peopleMsg"), `${m.username} no longer has access.`); } catch (e) { fail(e); } }})
           : null))))));
     if (!owner) {
@@ -187,7 +192,8 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       // sharing with someone who already has access would quietly change their role: say so first
       const name = who.value.trim(), had = MEMBERS.find(m => m.username.toLowerCase() === name.toLowerCase());
       if (had && had.role === role.value) { fail(new Error(`${had.username} already has access as ${had.role}.`)); return; }
-      if (had && !confirm(`${had.username} already has access as ${had.role}. Change them to ${role.value}?`)) return;
+      if (had && !await ask({title: `Change ${had.username} to ${role.value}?`, message: `${had.username} already has access to ${p.name} as ${had.role}.`,
+                             action: "Change role"})) return;
       try { await call(`profiles/${p.id}/members`, "PUT", {username: name, role: role.value}); await again(); sayIn($("#peopleMsg"), `Shared with ${name} as ${role.value}.`); }
       catch (e) { fail(e); } }},
       el("span", {class: "muted", text: "Share with"}), who, "as", role, el("button", {class: "btn small", type: "submit", text: "Share"})));

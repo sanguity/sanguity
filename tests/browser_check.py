@@ -250,6 +250,20 @@ def phone_fits(page, label="", ignore=()):
     return [f"{label}: {p}" if label else p for p in found]
 
 
+def answer_ask(page, yes=True, fill=None, timeout=10000):
+    """Answer the app's own dialog (ask() in util.js, #210) as a person would, after the click that opens it: wait for
+    it, type fill into its box if given, then click its action button (yes) or Cancel, and wait until it's gone.
+    Returns [title, message], for checks on what it asked. (The app asks nothing in the browser's own pop-ups: main()
+    counts any as a problem.)"""
+    box = page.wait_for_selector("dialog.sg-ask[open]", timeout=timeout)
+    said = box.evaluate("d => [d.querySelector('h2').textContent, d.querySelector('.sg-ask-msg').textContent]")
+    if fill is not None:
+        box.query_selector("input").fill(fill)
+    box.query_selector(".sg-ask-acts button" + (":last-child" if yes else ":first-child")).click()
+    box.wait_for_element_state("hidden", timeout=timeout)
+    return said
+
+
 def main():
     srv, base = start_app()
     problems, passed = [], []
@@ -259,6 +273,21 @@ def main():
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
+        # the app asks in its own dialog (#210): a browser pop-up (confirm, alert, prompt) on any page is a problem,
+        # dismissed, never quietly accepted. Every page made from here on watches for one.
+        def native_dialog(d):
+            problems.append(f"a browser {d.type}() pop-up (#210: use ask() or sayIn): {d.message[:120]}")
+            d.dismiss()
+        new_page, new_context = browser.new_page, browser.new_context
+        def watched_page(*a, **k):
+            pg = new_page(*a, **k)
+            pg.on("dialog", native_dialog)
+            return pg
+        def watched_context(*a, **k):
+            c = new_context(*a, **k)
+            c.on("page", lambda pg: pg.on("dialog", native_dialog))
+            return c
+        browser.new_page, browser.new_context = watched_page, watched_context
         # the pages under their real Content-Security-Policy (no inline or eval'd script): every page's own scripts
         # run, with no violation reported. Only page.evaluate here, which the CSP doesn't apply to.
         strict = browser.new_page(viewport={"width": 1400, "height": 900})
@@ -534,8 +563,8 @@ def main():
         check("share links: the view is in the profile's activity, as the share link", "share link" in row and share_url.split("#")[1] not in row, row)
         strict.click("#shrNav a[data-group=links]")
         strict.wait_for_selector("#links .share-links button:has-text('Revoke')", timeout=10000)
-        strict.once("dialog", lambda d: d.accept())
         mine.locator(".share-links button", has_text="Revoke").first.click()
+        answer_ask(strict)
         sl_until(strict, "document.querySelector('#links .share-links table').textContent.includes('revoked')")
         hp.reload()
         sl_until(hp, "document.querySelector('#shareHead h2').textContent === \"This link doesn't work\"")
@@ -1135,8 +1164,8 @@ def main():
             js("switchTab('labs')")
             settle(300)
             check("a view removed on Settings is gone from Trends", js("[...document.querySelectorAll('#viewPick option')].map(o => o.value)") == ["CBC (browser check)"])
-            page.once("dialog", lambda d: d.accept())
             page.click("#tvBox button:text-is('Delete')")
+            answer_ask(page)
             page.wait_for_function("CFG.trends.views.length === 0", timeout=10000)
             check("deleting the last view from Trends leaves none", js("document.getElementById('viewPick').disabled") is True)
             if kept is not None:
@@ -2367,8 +2396,8 @@ def main():
                   o0[0] not in js(order) and js("document.activeElement.getAttribute('aria-label')") == f"Move or remove {o0[2]}", js(order)[:3])
             leave = "(() => { const e = new Event('beforeunload', {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; })()"
             check("…leaving the page with it not saved asks first", js(leave))
-            page.once("dialog", lambda d: d.dismiss())
             page.select_option("#profile", label="Second person (owner)")
+            answer_ask(page, yes=False)
             check("…so does switching profiles, which stays put when told to",
                   js("PID") == 1 and js("document.getElementById('profile').value") == "1" and js("document.getElementById('sec-overview').hasAttribute('data-dirty')"))
             page.click("#sec-overview .set-foot button:text-is('Discard changes')")
@@ -2378,6 +2407,18 @@ def main():
                   and js("document.querySelector('#sec-overview .set-foot > .msg').textContent").startswith("Changes discarded"), js(order)[:3])
             settle(200)
             check("…and the key labs fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            # (#210) told yes in the app's dialog, switching profile with changes not saved goes on to the other profile
+            page.click("#sec-overview .set-order li:nth-child(1) .set-more-btn")
+            page.click("#sec-overview .set-order li:nth-child(1) .menu-item:text-is('Move down')")
+            page.select_option("#profile", label="Second person (owner)")
+            switch_asked = answer_ask(page)
+            page.wait_for_function("PID === 2 && !document.querySelector('#sections > [data-dirty]')", timeout=10000)
+            check("…and told yes in the app's dialog, it switches, the changes left behind (#210)",
+                  switch_asked[0] == "Switch profile and lose your changes?" and js("document.getElementById('profile').value") == "2", switch_asked)
+            page.select_option("#profile", "1")
+            page.wait_for_function("PID === 1", timeout=10000)
+            settle(400)
+            check("…and back on the first profile, its key labs are as saved", js(order) == o0, js(order)[:3])
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click(".set-nav-list a[data-group=dashboard]")
             page.click("#userMenuBtn")
@@ -2407,8 +2448,8 @@ def main():
             page.wait_for_function("document.querySelector('#sec-sync .msg').textContent.startsWith('Saved')", timeout=10000)
             stale = "fetch('api/profiles/1/settings').then(r => r.json()).then(s => s.sync.staleDays)"
             check("…saved for every connection on the server", js(stale) == 5 and "set for this server" in page.inner_text("#sec-sync [data-key='sync.staleDays']"), js(stale))
-            page.once("dialog", lambda d: d.accept())
             page.click("#sec-sync .set-hd button")
+            answer_ask(page)
             page.wait_for_function("document.querySelector('#sec-sync .msg').textContent.includes('back to')", timeout=10000)
             check("…and Reset to defaults puts them back", js(stale) == 3, js(stale))
             page.click("#admNav a[data-group=directory]")
@@ -2475,8 +2516,8 @@ def main():
             page.goto(base + "/settings.html?profile=1#sec-overview")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             for sec in ("overview", "names"):
-                page.once("dialog", lambda d: d.accept())
                 page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
+                answer_ask(page)
                 page.wait_for_function(f"document.querySelector('#sec-{sec} .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
@@ -2557,11 +2598,11 @@ def main():
             for t in ("overview", "health", "labs"):
                 page.uncheck(f"#sec-tabs input[data-tab={t}]")
             check("…and the last shown tab can't be hidden", js("document.querySelector('#sec-tabs input[data-tab=timeline]').disabled"))
-            page.once("dialog", lambda d: d.accept())
             page.click("#sec-tabs button:text-is('Reset to defaults')")
+            answer_ask(page)
             page.wait_for_function("document.querySelector('#sec-tabs .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
-            page.once("dialog", lambda d: d.accept())
             page.click("#sec-overview button:text-is('Reset to defaults')")
+            answer_ask(page)
             page.wait_for_function("document.querySelector('#sec-overview .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
@@ -2582,8 +2623,8 @@ def main():
             check("…and Settings lists the five tabs, Labs shown", js("[...document.querySelectorAll('#sec-tabs input[data-tab]')].map(i => [i.dataset.tab, i.checked])")
                   == [["overview", True], ["labs", True], ["health", True], ["timeline", True], ["costs", False]],
                   js("[...document.querySelectorAll('#sec-tabs input[data-tab]')].map(i => [i.dataset.tab, i.checked])"))
-            page.once("dialog", lambda d: d.accept())
             page.click("#sec-tabs button:text-is('Reset to defaults')")
+            answer_ask(page)
             page.wait_for_function("document.querySelector('#sec-tabs .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
@@ -2678,8 +2719,8 @@ def main():
             fp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
             check("…where the ◐ toggle still overrides it", fp.evaluate("document.documentElement.dataset.theme") == "light")
             fresh.close()
-            page.once("dialog", lambda d: d.accept())
             page.click("#sec-appearance button:text-is('Reset to defaults')")
+            answer_ask(page)
             page.wait_for_function("document.querySelector('#sec-appearance .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             check("…and Reset to defaults follows the system again",
                   js("document.documentElement.dataset.theme === undefined && localStorage.getItem('ht-theme-default') === null"))
@@ -2744,8 +2785,8 @@ def main():
             page.wait_for_selector("#sec-units input[name=units-lab][value=si]", timeout=10000)
             check("the Settings page with the units fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.once("dialog", lambda d: d.accept())
             page.click("#sec-units button:text-is('Reset to defaults')")
+            answer_ask(page)
             page.wait_for_function("document.querySelector('#sec-units .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             check("…Reset to defaults shows units as reported again", js("document.querySelector('#sec-units input[name=units-lab]:checked').value") == "reported")
             # ---- visit summary (#48): pick the visit and sections, add a lab, type questions (kept as a draft),
@@ -2927,8 +2968,8 @@ def main():
             page.goto(base + "/settings.html?profile=1#sec-milestones")
             page.wait_for_selector("#sec-milestones", timeout=10000)
             for sec in ("milestones", "health"):
-                page.once("dialog", lambda d: d.accept())
                 page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
+                answer_ask(page)
                 page.wait_for_function(f"document.querySelector('#sec-{sec} .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
@@ -3104,8 +3145,8 @@ def main():
             check("watch card: the server's original secret is still this profile's", "original receiver secret" in page.inner_text("#watch"),
                   page.inner_text("#watch")[:300])
             check("…saying when the phone last sent something", page.inner_text("#watchLast") != "", page.inner_text("#watchLast"))
-            page.once("dialog", lambda d: d.accept())
             page.click("#watchRotate")
+            answer_ask(page)
             page.wait_for_selector("#watchSecret", timeout=10000)
             made = js("document.getElementById('watchSecret').textContent")
             check("…makes a secret and shows it once, with a copy button", len(made) >= 40 and js("!!document.querySelector('#watch button[aria-label=\"Copy the secret\"]')"), made)
@@ -3731,15 +3772,61 @@ def main():
             page.wait_for_function("document.querySelector('#introHint').textContent.includes('Second person') && document.getElementById('people').dataset.profile === '2'", timeout=10000)
             check("picking another profile shows its people, and the address keeps the group", js("location.hash") == "#people"
                   and USER in page.inner_text("#memberList"))
-            asked_share = []
-            page.once("dialog", lambda d: (asked_share.append(d.message), d.dismiss()))
             form = page.locator("#shareWith form")
             form.locator("input").fill(USER)
             form.locator("select").select_option("viewer")
             form.get_by_role("button", name="Share").click()
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+            share_focus = js("document.activeElement.textContent")
+            asked_share = answer_ask(page, yes=False)
             settle(300)
-            check("sharing with an existing member asks first", asked_share and "already has access as owner" in asked_share[0], asked_share[:1])
+            check("sharing with an existing member asks first", "already has access to Second person as owner" in asked_share[1]
+                  and asked_share[0] == f"Change {USER} to viewer?", asked_share)
             check("declining keeps their role", js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m[0].role)") == "owner")
+
+            # ---- the app's own dialog (#210): asked in a <dialog> over the page, not the browser's pop-up (main() counts
+            # any of those as a problem). At 375 px, in each theme: it fits, has a title and Cancel beside a button named for
+            # the action, red for one that can't be undone with focus starting on Cancel; Escape cancels and focus goes back
+            # to the button that opened it. A change that can be undone starts on its action. Later, Remove alex is opened
+            # and confirmed by keyboard alone (Enter, Tab, Enter).
+            check("…its question starts on the action, a change that can be undone (#210)", share_focus == "Change role", share_focus)
+            theme_was_210 = js("localStorage.getItem('ht-theme')")
+            page.set_viewport_size({"width": 375, "height": 800})
+            dialog_js = """(() => { const d = document.querySelector('dialog.sg-ask[open]'), b = [...d.querySelectorAll('.sg-ask-acts button')];
+              const rgb = c => c.match(/[\\d.]+/g).slice(0, 3).map(Number), r = d.getBoundingClientRect();
+              return {modal: d.matches(':modal'), role: d.getAttribute('role'), title: d.querySelector('h2').textContent,
+                named: document.getElementById(d.getAttribute('aria-labelledby')).textContent, buttons: b.map(x => x.textContent),
+                onCancel: document.activeElement === b[0], bg: rgb(getComputedStyle(d).backgroundColor), ink: rgb(getComputedStyle(d).color),
+                action: rgb(getComputedStyle(b[1]).backgroundColor), inside: r.left >= 16 && r.right <= innerWidth - 16 && r.top >= 0 && r.bottom <= innerHeight}; })()"""
+            for theme in ("light", "dark"):
+                js(f"localStorage.setItem('ht-theme', '{theme}'); applyTheme()")
+                page.locator("#memberList button", has_text="Leave").click()
+                page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+                d = js(dialog_js)
+                fits = phone_fits(page, f"the dialog, {theme}")
+                dark_bg = sum(d["bg"]) < 200 and sum(d["ink"]) > 600
+                check(f"at 375 px, {theme}: Leave asks in the app's own dialog, titled, Cancel and a red Leave profile, focus on Cancel (#210)",
+                      d["modal"] and d["role"] == "alertdialog" and d["title"] == d["named"] == "Leave Second person?"
+                      and d["buttons"] == ["Cancel", "Leave profile"] and d["onCancel"] and d["action"] == [208, 59, 59]
+                      and d["inside"] and (dark_bg if theme == "dark" else sum(d["bg"]) > 700 and sum(d["ink"]) < 100) and not fits, fits or d)
+                page.keyboard.press("Escape")
+                page.wait_for_selector("dialog.sg-ask", state="detached", timeout=10000)
+                check(f"…{theme}: Escape cancels it, and focus is back on Leave",
+                      js("document.activeElement.textContent") == "Leave" and USER in page.inner_text("#memberList")
+                      and js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m.length)") == 1, js("document.activeElement.outerHTML"))
+            # the sign-in page's note after a recovery code: on the page with a Continue, not an alert (#210)
+            ctx = browser.new_context(viewport={"width": 375, "height": 800}, color_scheme="dark")   # no session: the sign-in page
+            lp = ctx.new_page()
+            lp.goto(base + "/login.html")
+            lp.wait_for_selector("#u", timeout=10000)
+            lp.evaluate("signedIn({recovery_codes_left: 7})")
+            lp.wait_for_timeout(300)   # (the real CSP: no wait_for_function) announce() says it after a moment
+            check("after a recovery code, the sign-in page says what it means, with Continue focused (#210)",
+                  "Signed in with a recovery code. You have 7 left" in lp.inner_text("#recoveryNote")
+                  and "You have 7 left" in lp.evaluate("document.getElementById('sgStatus').textContent")   # said, not shown twice:
+                  and lp.evaluate("document.getElementById('sgStatus').getBoundingClientRect().width") <= 1
+                  and lp.evaluate("document.activeElement.id") == "recoveryGo" and not phone_fits(lp, "sign-in note"), phone_fits(lp, "sign-in note"))
+            ctx.close()
             form.locator("input").fill("alex")
             form.locator("select").select_option("editor")
             form.get_by_role("button", name="Share").click()
@@ -3748,10 +3835,19 @@ def main():
             page.select_option("#memberList select[aria-label=\"alex's role\"]", "viewer")
             page.wait_for_function("document.getElementById('peopleMsg').textContent === 'alex is now a viewer.'", timeout=10000)
             check("changing a role in the table saves it", js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m.find(x => x.username === 'alex').role)") == "viewer")
-            page.once("dialog", lambda d: d.accept())
-            page.click("#memberList button[aria-label='Remove alex']")
+            page.focus("#memberList button[aria-label='Remove alex']")   # (#210: at 375 px, dark, by keyboard alone)
+            page.keyboard.press("Enter")
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+            on_cancel = js("document.activeElement.textContent")
+            page.keyboard.press("Tab")
+            on_action = js("document.activeElement.textContent")
+            page.keyboard.press("Enter")
             page.wait_for_function("document.querySelectorAll('#memberList tbody tr').length === 1", timeout=10000)
             check("Remove takes their access away", "alex" not in page.inner_text("#memberList"))
+            check("…confirmed by keyboard in the app's dialog: Enter opens it on Cancel, Tab reaches Remove access, Enter does it (#210)",
+                  on_cancel == "Cancel" and on_action == "Remove access" and not js("document.querySelector('dialog.sg-ask')"), (on_cancel, on_action))
+            js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was_210)}); applyTheme()" if theme_was_210 else "localStorage.removeItem('ht-theme'); applyTheme()")
+            page.set_viewport_size({"width": 1400, "height": 900})
             page.set_viewport_size({"width": 375, "height": 800})
             for g in ("people", "links", "calendar", "summary", "export", "activity", "profile"):
                 page.click(f"#shrNav a[data-group={g}]")
@@ -3807,24 +3903,22 @@ def main():
             alex = db.execute("SELECT id FROM users WHERE username='alex'").fetchone()[0]
             profiles.create_profile(db, "Alex's records", owner_id=alex)
             db.close()
-            asked, before = [], len(problems)
-            page.once("dialog", lambda d: (asked.append(d.message), d.accept()))
+            before = len(problems)
             page.locator("#userList tr", has_text="alex").get_by_role("button", name="Disable").click()
+            asked = answer_ask(page)
             page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.textContent.includes('disabled'))", timeout=10000)
             problems[before:] = [x for x in problems[before:] if "409" not in x]   # the refusal that prompts the question
-            check("disabling a profile's only owner asks first", asked and "only owner of Alex's records" in asked[0], asked[:1])
+            check("disabling a profile's only owner asks first", asked[0] == "Disable alex?" and "only owner of Alex's records" in asked[1], asked)
             page.wait_for_function("document.querySelector('#ownerless') && document.querySelector('#ownerless').textContent.includes(\"Alex's records\")", timeout=10000)
             check("an admin sees profiles left without an owner", True)
             # removing that account: confirmed, then asked who owns Alex's records instead (this admin)
-            answers = iter([True, USER])
-            def answer(d):
-                a = next(answers)
-                d.accept(a) if isinstance(a, str) else d.accept()
-            page.on("dialog", answer)
             before_remove = len(problems)
             page.locator("#userList tr", has_text="alex").get_by_role("button", name="Remove").click()
+            answer_ask(page)
+            owner_asked = answer_ask(page, fill=USER)   # (#210: the app's dialog with a box for the name, not prompt)
             page.wait_for_function("!document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
-            page.remove_listener("dialog", answer)
+            check("…asked who takes over, in the app's dialog with a box for the name", owner_asked[0] == "Who takes over from alex?"
+                  and "only owner of Alex's records" in owner_asked[1], owner_asked)
             problems[before_remove:] = [x for x in problems[before_remove:] if "409" not in x]   # the question's refusal
             mine_now = js("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => p.name))")
             check("removing a sole owner hands their profile to whoever is named", "Alex's records" in mine_now, mine_now)

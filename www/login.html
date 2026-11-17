@@ -33,6 +33,8 @@ button:disabled{opacity:.6;cursor:wait}
 button.alt{background:transparent;color:var(--accent);border:1px solid var(--ring);margin-top:10px}
 .or{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;margin-top:14px}
 .or::before,.or::after{content:"";flex:1;border-top:1px solid var(--ring)}
+/* the shared status line (announce() in util.js): said, not shown; the recovery-code note uses it (#210) */
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 </style>
 <script src="js/theme.js"></script>
 </head>

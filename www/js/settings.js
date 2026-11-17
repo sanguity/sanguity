@@ -529,7 +529,8 @@ function sectionCard(sec, opts = {}) {
   };
   const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", disabled: !changedHere, hidden: !anyEditable,
     onclick: async () => {
-      if (!confirm(`Put the ${sec.title} settings back to their defaults?`)) return;
+      if (!await ask({title: `Reset the ${sec.title} settings?`, message: "Each of them goes back to its default.",
+                      action: "Reset to defaults", danger: true})) return;
       reset.disabled = true;
       try { await call(`${base}/reset`, "POST", {section: sec.id}); await reload({section: sec.id, text: `${sec.title} settings are back to their defaults.`}, sec.id); }
       catch (e) { sayIn(msg, e.message, true); reset.disabled = false; }
@@ -544,14 +545,21 @@ function sectionCard(sec, opts = {}) {
 const unsavedSections = () => [...document.querySelectorAll("#sections > section[data-dirty]")];
 addEventListener("beforeunload", ev => { if (unsavedSections().length) { ev.preventDefault(); ev.returnValue = ""; } });
 /* another profile: changes not saved here would be lost. Asked before anything else follows the picker, so saying
-   no leaves the whole page on this profile. */
-document.addEventListener("change", ev => {
-  if (ev.target.id !== "profile" || PID == null) return;
+   no leaves the whole page on this profile: the change stops here and the picker shows this profile while the app's
+   dialog asks (#210); saying yes picks the other profile again, and that change goes on to everything else. */
+let switchAsked = false;
+document.addEventListener("change", async ev => {
+  if (ev.target.id !== "profile" || PID == null || switchAsked) return;
   const left = unsavedSections().map(c => c.querySelector("h2").textContent);
-  if (left.length && !confirm(`Your changes to ${quoted(left)} aren't saved. Switch to another profile and lose them?`)) {
-    ev.target.value = PID;
-    ev.stopImmediatePropagation();
-  }
+  if (!left.length) return;
+  const pick = ev.target, wanted = pick.value;
+  ev.stopImmediatePropagation();
+  pick.value = PID;
+  if (!await ask({title: "Switch profile and lose your changes?", message: `Your changes to ${quoted(left)} aren't saved.`,
+                  action: "Switch and lose changes", cancel: "Stay here", danger: true})) return;
+  pick.value = wanted;
+  switchAsked = true;
+  try { pick.dispatchEvent(new Event("change", {bubbles: true})); } finally { switchAsked = false; }
 }, true);
 
 /* the profile's sections (or, with no profile, the person's own), drawn again: one with changes not saved stays as

@@ -170,7 +170,8 @@ function drawSync(sec, note) {
   };
   const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", disabled: !sec.settings.some(st => st.from === "install"),
     onclick: async () => {
-      if (!confirm("Put the sync defaults back to Sanguity's own?")) return;
+      if (!await ask({title: "Reset the sync defaults?", message: "They go back to Sanguity's own, for every connection that doesn't set its own.",
+                      action: "Reset to defaults", danger: true})) return;
       reset.disabled = true;
       try { drawSync((await call("settings/install/reset", "POST", {section: "sync"})).sections.find(s => s.id === "sync"), "The sync defaults are back to Sanguity's own."); }
       catch (e) { sayIn(msg, e.message, true); reset.disabled = false; }

@@ -34,7 +34,8 @@ function shareLinksPanel(p, {open = false} = {}) {
         el("td", {text: l.views ? `${l.views} time${l.views === 1 ? "" : "s"}, last ${when(l.last_viewed)}` : "never"}),
         el("td", {}, l.state === "revoked" || l.state === "expired" ? null : el("button", {class: "btn small", type: "button", text: "Revoke",
           onclick: async () => {
-            if (!confirm(`Revoke ${l.label ? `“${l.label}”` : "this link"}? It stops working at once, for anyone who has it.`)) return;
+            if (!await ask({title: `Revoke ${l.label ? `“${l.label}”` : "this link"}?`, message: "It stops working at once, for anyone who has it.",
+                            action: "Revoke link", danger: true})) return;
             try { await call(`profiles/${p.id}/links/${l.id}`, "DELETE"); sayIn(msg, "Revoked."); await load(); } catch (e) { fail(e); }
           }}))))))));
   }

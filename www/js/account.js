@@ -77,7 +77,8 @@ async function loadTwoFactor() {
       code, el("button", {class: "btn small", type: "submit", text: "Make new recovery codes"})),
     st.required && !st.passkeys ? el("p", {class: "hint", text: "This server requires two-factor sign-in, so it can't be turned off. Add a passkey first to stop using the app."}) :
     el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
-      if (!confirm("Turn off two-factor sign-in? Every other device will be signed out.")) return;
+      if (!await ask({title: "Turn off two-factor sign-in?", message: "Every other device will be signed out. You can turn it on again later.",
+                      action: "Turn off", danger: true})) return;
       try {
         const r = await call("me/2fa/off", "POST", {password: pw.value});
         if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
@@ -148,7 +149,8 @@ async function loadPasskeys() {
             try { await call("me/passkeys/" + k.id, "PATCH", {name: name.value}); say("#pkMsg", "Renamed."); } catch (e) { say("#pkMsg", e.message, true); } }}),
           el("button", {class: "btn small", type: "button", text: "Remove", disabled: last || null,
             title: last ? "This server requires two-factor sign-in, and this is your only second step" : null, onclick: async () => {
-              if (!confirm(`Remove the passkey “${k.name}”? Remove it from the device too (in its passwords or passkeys settings).`)) return;
+              if (!await ask({title: `Remove the passkey “${k.name}”?`, message: "Remove it from the device too, in its passwords or passkeys settings.",
+                              action: "Remove passkey", danger: true})) return;
               try {
                 const r = await call("me/passkeys/" + k.id, "DELETE");
                 if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }

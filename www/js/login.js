@@ -28,10 +28,14 @@ function codeStep(on, methods = {code: true}) {
   if (on) (code ? document.getElementById("c") : pkBtn).focus();
 }
 function signedIn(j) {
-  if (j.recovery_codes_left != null)   // a recovery code was used: say what that means before going on
-    alert(`Signed in with a recovery code. You have ${j.recovery_codes_left} left, and every other device was signed out. ` +
-          "If you lost your phone, set up two-factor sign-in again under Account.");
-  location.replace(j.must_change_pw ? "account.html#password" : "./");
+  const next = () => location.replace(j.must_change_pw ? "account.html#password" : "./");
+  if (j.recovery_codes_left == null) { next(); return; }
+  // a recovery code was used: say what that means before going on, on the page with a Continue (#210: not a pop-up)
+  const note = el("p", {id: "recoveryNote"}), go = el("button", {type: "button", id: "recoveryGo", text: "Continue", onclick: next});
+  f.replaceChildren(f.querySelector(".logo"), note, go);
+  sayIn(note, `Signed in with a recovery code. You have ${j.recovery_codes_left} left, and every other device was signed out. ` +
+              "If you lost your phone, set up two-factor sign-in again under Account.");
+  go.focus();
 }
 pkBtn.addEventListener("click", async () => {
   pkBtn.disabled = btn.disabled = true; err.textContent = "";
