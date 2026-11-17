@@ -8,7 +8,7 @@
   const card = $("#calendar"), msg = $("#calMsg");
   const say = (text, bad = false) => { msg.textContent = text; msg.classList.toggle("bad", bad); };
   const zone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch (e) { return null; } };
-  const when = t => t ? new Date(t * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "not yet";
+  const when = t => t ? fmtDT(t * 1000) : "not yet";   // this person's time zone and format (dates.js)
   const SAYS = {minimal: "Minimal", full: "Full"};
 
   async function call(path, method = "GET", body) {
@@ -43,6 +43,7 @@
   }
 
   async function load() {
+    await datesReady();   // times below in this person's zone and format (dates.js; read once per page)
     if (!pid) return;
     let d;
     try { d = await call(`profiles/${pid}/calendar`); }

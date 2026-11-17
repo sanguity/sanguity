@@ -10,7 +10,7 @@
 const J_KINDS = [["note", "Note"], ["symptom", "Symptom"], ["side_effect", "Side effect"]];
 const J_LABEL = Object.fromEntries(J_KINDS);
 let JOURNAL = [];   // the entries as events: {id: -entry id, k: "journal", t, ts, te, title, sub, j: the entry}
-const jTime = t => Date.parse(/T/.test(t) ? t : t + "T12:00");   // a day without a time sits at midday
+const jTime = t => zParse(t);   // this person's wall-clock time (dates.js, #42); a day without a time sits at midday
 const jRated = j => j.kind !== "note" && Number.isInteger(j.severity);
 const jSev = j => jRated(j) ? `severity ${j.severity}/10` : "";
 const jWhen = j => /T/.test(j.t) ? fmtDT(jTime(j.t)) : fmtD(jTime(j.t));
@@ -237,7 +237,7 @@ function journalResume() {
 /* in the drawer of any event: write a journal note dated to it */
 function journalAddAction(e) {
   if (!jCanWrite() || !e || !isFinite(e.ts)) return el("span");
-  const t = /T\d{2}:\d{2}/.test(e.t || "") ? isoDay(e.ts) + "T" + new Date(e.ts).toTimeString().slice(0, 5) : isoDay(e.ts);
+  const t = /T\d{2}:\d{2}/.test(e.t || "") ? isoDay(e.ts) + "T" + (z => `${String(z.getHours()).padStart(2, "0")}:${String(z.getMinutes()).padStart(2, "0")}`)(zdate(e.ts)) : isoDay(e.ts);
   return el("div", {class: "jadd"}, el("button", {class: "btn", type: "button", text: "Add a journal note for this day",
     title: "A note, symptom or side effect, dated to this event", onclick: () => journalForm(null, {kind: "note", t}, () => openEvent(e))}));
 }

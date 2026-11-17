@@ -28,7 +28,7 @@ shows on the Settings screen or in a settings export; it goes with the profile w
 Sanguity shows what the records say. The summary doesn't interpret anything, and carries the "not medical advice"
 notice on every page.
 """
-import datetime, json, re
+import contextvars, datetime, json, re
 
 from . import crypto, db as dbm, pdfdoc, ranges, records, settings
 
@@ -65,8 +65,18 @@ class SummaryError(ValueError):
     pass
 
 
-def today():
-    return datetime.date.today()
+def today(db=None, uid=None):
+    """Today for the person making the summary: in their own time zone (#42), else the server's."""
+    return settings.local_now(db, uid).date() if db is not None and uid is not None else datetime.date.today()
+
+
+def date_format(db, uid):
+    """The person's date format (#42): "mdy", "dmy", "ymd", or "" (not chosen: written as "Nov 15, 2026")."""
+    return settings.effective(db, None, uid)["dates.format"][0] or ""
+
+
+# the date format and the prepared year of the summary being drawn (render sets them; each request has its own)
+_DATES = contextvars.ContextVar("summary_dates", default=("", None))
 
 
 # ---------------------------------------------------------------- the questions draft
@@ -129,7 +139,10 @@ def fmt_date(d):
         x = datetime.date.fromisoformat(d[:10])
     except ValueError:
         return str(d)
-    return f"{x.strftime('%b')} {x.day}, {x.year}"
+    f = _DATES.get()[0]
+    if f == "ymd":
+        return x.isoformat()
+    return f"{x.day} {x.strftime('%b')} {x.year}" if f == "dmy" else f"{x.strftime('%b')} {x.day}, {x.year}"
 
 
 def fmt_num(v):
@@ -267,7 +280,7 @@ def _medications(data, now):
 
 def options(db, pid, uid):
     """What the page offers before building: appointments, past visits, labs, the key labs and the draft."""
-    now = today().isoformat()
+    now = today(db, uid).isoformat()
     data = records.assemble(db, pid) or {"events": [], "labs": []}
     cfg = settings.merged(db, pid, uid)
     series = _series(data)
@@ -283,7 +296,7 @@ def build(db, pid, uid, profile_name, opts):
     """The summary as a plain object (what the page previews and render() prints). opts: appointment (index into the
     upcoming appointments, or None for none), since (a past day, YYYY-MM-DD, or None for the last visit), sections
     (ids), labs (more lab names for the trends), questions (text)."""
-    now_d = today()
+    now_d = today(db, uid)
     now = now_d.isoformat()
     data = records.assemble(db, pid) or {"events": [], "labs": []}
     cfg = settings.merged(db, pid, uid)
@@ -314,7 +327,7 @@ def build(db, pid, uid, profile_name, opts):
     key_labs = [n for n in (cfg.get("overview") or {}).get("keyLabs") or [] if n in series]
     trend_names = key_labs + [n for n in picked if isinstance(n, str) and n in series and n not in key_labs]
 
-    out = {"profile": profile_name, "prepared": now, "for": upcoming[appt] if appt is not None else None,
+    out = {"profile": profile_name, "prepared": now, "date_format": date_format(db, uid), "for": upcoming[appt] if appt is not None else None,
            "since": {"date": since, "label": label}, "sections": wanted, "notice": NOTICE}
     if "out_of_range" in wanted:
         rows = []
@@ -472,6 +485,14 @@ def _when(d):
 
 def render(s):
     """The summary object as a PDF: (bytes, {"pages", "fits", "left_out": {section: rows not shown}})."""
+    token = _DATES.set((s.get("date_format") or "", int(str(s.get("prepared") or "0")[:4] or 0) or None))
+    try:
+        return _render(s)
+    finally:
+        _DATES.reset(token)
+
+
+def _render(s):
     doc = pdfdoc.Document(title=f"Visit summary for {s['profile']}")
     lay = _Layout(doc, s)
     p, W = lay.page, pdfdoc.WIDTH
@@ -607,7 +628,10 @@ def _short(d):
     if not d:
         return ""
     x = datetime.date.fromisoformat(d)
-    return f"{x.strftime('%b')} {x.day}" + ("" if x.year == today().year else f", {x.year}")
+    f, year = _DATES.get()
+    if f == "ymd" or x.year != (year or today().year):
+        return fmt_date(d)
+    return f"{x.day} {x.strftime('%b')}" if f == "dmy" else f"{x.strftime('%b')} {x.day}"
 
 
 def filename(profile_name, day):
