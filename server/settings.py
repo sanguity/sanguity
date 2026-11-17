@@ -687,3 +687,22 @@ def from_build(db, pid, path):
             print(f"The setup build's settings.json differs from profile {pid}'s settings ({', '.join(differ)}) and "
                   "wasn't applied: settings are changed in the app now (Settings page). Remove settings.json from the "
                   "setup, or change them there.", flush=True)
+
+
+# ---------------------------------------------------------------- one name at a time (#38)
+
+def rename(db, key, name, to, pid=None, uid=None, by=None):
+    """Change one entry of a name map ("names" kind: labNicknames, sources) where the name is shown: name is shown as
+    to from now on, or as itself again when to is empty or the same. The rest of the map is kept as it is (whoever
+    changed another name meanwhile keeps theirs). Call inside a transaction. Returns the map stored."""
+    s = get_def(key)
+    if s.kind != "names":
+        raise SettingError(f"{s.label} isn't a list of names.")
+    name = _text(name, "The name")
+    to = " ".join(to.split()) if isinstance(to, str) else ""
+    have = dict(effective(db, pid, uid)[key][0])
+    if to and to != name:
+        have[name] = to
+    else:
+        have.pop(name, None)
+    return put(db, key, have, pid=pid, uid=uid, by=by)

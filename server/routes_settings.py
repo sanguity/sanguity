@@ -150,3 +150,27 @@ def change_user_value(key: str, body: Value, request: Request, s=Depends(user), 
     except settings.SettingError as e:
         raise HTTPException(400, str(e))
     return _user_values(db, s["id"])
+
+
+class Rename(BaseModel):
+    name: str
+    to: Any = None
+
+
+@router.put("/api/profiles/{pid}/settings/{key}/name")
+def rename(pid: int, key: str, body: Rename, request: Request, s=Depends(user), db=Depends(get_db)):
+    """One name of a name map, changed where it's shown (#38): {"name", "to"}; no "to" shows the name as it is again.
+    Returns the merged settings, like a change."""
+    role = need(db, s, pid, "viewer")
+    try:
+        d = settings.get_def(key)
+    except settings.SettingError as e:
+        raise HTTPException(404, str(e))
+    _check(db, s, pid, d, role)
+    try:
+        with dbm.transaction(db):
+            settings.rename(db, key, body.name, body.to, pid=pid, uid=s["id"], by=s["id"])
+            _log(db, s, pid, d.scope, {"setting": key, "label": d.label}, request)
+    except settings.SettingError as e:
+        raise HTTPException(400, str(e))
+    return settings.merged(db, pid, s["id"])

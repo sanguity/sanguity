@@ -17,7 +17,7 @@ function renderHeatmap() {
   $("#hmLegend").replaceChildren(...[-4, -3, -2, -1, 0, 1, 2, 3, 4].map(lv => el("i", {style: {background: hmFill(lv)}, title: lv})),
     el("span", {text: "← far below · below · in range · above · far above →"}), el("span", {style: {color: "var(--muted)"}, text: "(distance outside the range, as a share of the range's width)"}));
   const q = state.q;
-  const rows = SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null) && (!q || s.name.toLowerCase().includes(q) || s.panel.toLowerCase().includes(q)));
+  const rows = SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null) && (!q || s.name.toLowerCase().includes(q) || nice(s.name).toLowerCase().includes(q) || s.panel.toLowerCase().includes(q)));
   const panelOrder = ["CBC WITH DIFFERENTIAL", "COMPREHENSIVE METABOLIC PANEL"];
   const prank = p => { const i = panelOrder.indexOf(p); return i < 0 ? 9 : i; };
   rows.sort((a, b) => prank(a.panel) - prank(b.panel) || a.panel.localeCompare(b.panel) || b.n - a.n);
@@ -58,7 +58,11 @@ function renderHeatmap() {
   for (const [p, py] of groups) g.push(el("svg:text", {class: "grp", x: 0, y: py + 11, text: p.length > 30 ? p.slice(0, 29) + "…" : p}));
   for (const s of rows) {
     const ry = yOf.get(s.name);
-    g.push(el("svg:text", {class: "row", x: LW - 8, y: ry + rowH - 4, "text-anchor": "end", text: s.name.length > (LW < 150 ? 17 : 28) ? s.name.slice(0, LW < 150 ? 16 : 27) + "…" : s.name}));
+    const nm = nice(s.name), edit = canRename();   // an editor renames a row by its name (#38, rename.js)
+    g.push(el("svg:text", {class: "row" + (edit ? " renamable" : ""), x: LW - 8, y: ry + rowH - 4, "text-anchor": "end",
+      ...(edit ? {"data-rename": "lab", "data-key": s.name, tabindex: 0, role: "button", "aria-label": `Rename ${nm}`} : {})},
+      nm.length > (LW < 150 ? 17 : 28) ? nm.slice(0, LW < 150 ? 16 : 27) + "…" : nm,
+      el("svg:title", {text: renamedTitle("lab", s.name) + (edit ? " · click to rename" : "")})));
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(dayKey(p.ts), p);
     for (const [k, p] of byDay) {
       const lv = hmLevel(p[1], p[2], p[3]);
@@ -84,13 +88,15 @@ function renderHeatmap() {
     if (!d.s) { hideTip(); return; }
     const s = seriesBy(d.s), p = s.pts.filter(p => isoDay(p.ts) === d.k).pop(); if (!p) return;
     const st = statusOf(p);
-    showTip([el("div", {class: "v", text: `${p[5] || fmtNum(p[1])} ${s.unit}`}), el("div", {class: "s", text: s.name}), el("div", {class: "s", text: `${fmtDT(p.ts)} · ref ${p[2] ?? ""}–${p[3] ?? ""}`}),
+    showTip([el("div", {class: "v", text: `${p[5] || fmtNum(p[1])} ${s.unit}`}), el("div", {class: "s", text: nice(s.name) + (nice(s.name) !== s.name ? ` (${s.name})` : "")}), el("div", {class: "s", text: `${fmtDT(p.ts)} · ref ${p[2] ?? ""}–${p[3] ?? ""}`}),
       st ? el("div", {class: "s", style: {color: st.cls === "ok" ? "var(--good-text)" : "var(--crit)"}, text: st.text}) : null,
       pointSources(s, p) ? el("div", {class: "s", text: "From " + pointSources(s, p)}) : null], ev);   // with any linked as the same (#96)
   };
   svg.onpointerleave = hideTip;
+  svg.onkeydown = ev => { const d = ev.target.dataset || {}; if (d.rename && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); openRename(ev.target, "lab", d.key); } };
   svg.onclick = ev => {
-    const d = ev.target.dataset || {}; const k = d.k || (d.day && isoDay(+d.day)); if (!k) return;
+    const d = ev.target.dataset || {};
+    if (d.rename) { openRename(ev.target, "lab", d.key); return; } const k = d.k || (d.day && isoDay(+d.day)); if (!k) return;
     const e = EV.find(e => e.k === "lab" && isoDay(e.ts) === k) || EV.find(e => e.k === "procedure" && isoDay(e.ts) === k); if (e) openEvent(e);
   };
 }

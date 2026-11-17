@@ -343,7 +343,8 @@ from the internet; a phone on your home network or tailnet works without that.
   `import`.
 - **Settings:** each profile's dashboard preferences (key lab tiles, the labs Trends starts with, saved Trends views, lab and source
   nicknames, visits counted as workouts, milestones) are changed on the **Settings** page by its owners and
-  editors, with "Reset to defaults" per section. A workout rule says "visits titled X count as workouts of N
+  editors, with "Reset to defaults" per section. A lab, a result's source tag or an import can also be renamed right
+  where it's shown (the ✎ beside it on Trends, the heatmap and the details). A workout rule says "visits titled X count as workouts of N
   minutes": X is plain text found anywhere in the title, or, as an advanced option, a regular expression, which is
   checked before it's saved and refused if it could make matching slow. Milestones are named dates, one of them
   primary (the one the Overview counts from); they are encrypted like the records. They live in the database (backed up and exported with the profile); a

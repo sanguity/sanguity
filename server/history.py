@@ -90,7 +90,8 @@ def _entry(db, pid, imp):
         note = json.loads(crypto.dec(r["note"])) if r and r["note"] else None
     if note:
         summary = {**summary, "counts": note.get("counts")}
-    return {"id": iid, "at": imp["at"], "origin": origin, "format": imp["format"],
+    own = db.execute("SELECT name FROM imports WHERE id=?", (iid,)).fetchone()   # its own name (#38), if given
+    return {"id": iid, "name": crypto.dec(own["name"]) if own and own["name"] else None, "at": imp["at"], "origin": origin, "format": imp["format"],
             "label": (note or {}).get("label") or label(imp["format"], origin), "removal": bool(note and note.get("removed")),
             "by": by, "job": job["id"] if job else None, "upload": job["upload_id"] if job else None,
             "files": names[:FILES_SHOWN], "file_count": len(names),

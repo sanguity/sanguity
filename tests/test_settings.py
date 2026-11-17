@@ -323,6 +323,44 @@ class Settings(unittest.TestCase):
             self.c[who].delete(f"/api/profiles/1/settings/{key}", headers=H)
         self.c["robin"].delete("/api/profiles/1/settings/sources", headers=H)
 
+    def test_rename_one_name(self):
+        """#38: one name of a name map changed where it's shown, the rest of the map kept"""
+        pid = self.fresh_profile()
+        default = settings.SETTINGS["labNicknames"].default
+        rn = lambda key, body, who="robin": self.c[who].put(f"/api/profiles/{pid}/settings/{key}/name", json=body, headers=H)
+        r = rn("labNicknames", {"name": "Fictional Marker Q", "to": "  Marker   Q "})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["labNicknames"], {**default, "Fictional Marker Q": "Marker Q"})
+        # someone else renames another lab meanwhile: both names stay
+        self.assertEqual(rn("labNicknames", {"name": "Ferritin", "to": "Iron store"}, "lee").status_code, 200)
+        self.assertEqual(self.merged(pid)["labNicknames"], {**default, "Fictional Marker Q": "Marker Q", "Ferritin": "Iron store"})
+        # back to the name in the records: no "to", an empty one, or the same name; a default nickname goes too
+        rn("labNicknames", {"name": "Ferritin"})
+        rn("labNicknames", {"name": "Fictional Marker Q", "to": "Fictional Marker Q"})
+        first = next(iter(default))
+        rn("labNicknames", {"name": first, "to": ""})
+        self.assertEqual(self.merged(pid)["labNicknames"], {k: v for k, v in default.items() if k != first})
+        # a source tag, the same way
+        self.assertEqual(rn("sources", {"name": "EXT", "to": "Outside lab"}).json()["sources"], {"EXT": "Outside lab"})
+        # refused: a viewer, a stranger, without the CSRF header, a setting that isn't names, no such setting, bad text
+        self.assertEqual(rn("sources", {"name": "EXT", "to": "Viewer's"}, "kim").status_code, 404)   # not shared with kim
+        db = dbm.connect()
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (self.uid["kim"], pid))
+        db.close()
+        self.assertEqual(rn("sources", {"name": "EXT", "to": "Viewer's"}, "kim").status_code, 403)
+        self.assertEqual(rn("sources", {"name": "EXT", "to": "Stranger's"}, "zed").status_code, 404)
+        self.assertEqual(self.c["robin"].put(f"/api/profiles/{pid}/settings/sources/name", json={"name": "EXT", "to": "x"}).status_code, 403)
+        self.assertEqual(rn("visitWorkouts", {"name": "EXT", "to": "x"}).status_code, 400)
+        self.assertEqual(rn("nope", {"name": "EXT", "to": "x"}).status_code, 404)
+        self.assertEqual(rn("sources", {"name": " ", "to": "x"}).status_code, 400)
+        self.assertEqual(rn("sources", {"name": "EXT", "to": "x" * 121}).status_code, 400)
+        self.assertEqual(self.merged(pid)["sources"], {"EXT": "Outside lab"})
+        # logged like any change, without the names
+        log = self.c["robin"].get(f"/api/profiles/{pid}/activity?action=settings").json()
+        self.assertEqual((log[0]["actor"], log[0]["detail"]), ("robin", {"setting": "sources", "label": "Result sources"}))
+        self.assertNotIn("Outside lab", json.dumps(log))
+        self.assertNotIn("Iron store", json.dumps(log))
+
     def test_reset_section(self):
         pid = self.fresh_profile()
         self.put("labNicknames", {"Glucose": "Sugar"}, pid=pid)

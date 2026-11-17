@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 24**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 25**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -132,7 +132,9 @@ same as one from another (shown once, with both sources) or not (no longer flagg
 keys (`server/crossmatch.py`, #96).
 survive re-imports and undo. So do **journal** entries (#49, `server/journal.py`): notes, symptoms and side effects
 the people using the profile write themselves. They aren't records from anywhere, so no import owns them; the
-records the page loads list them as `journal`, and an export carries them in its `data.json`.
+records the page loads list them as `journal`, and an export carries them in its `data.json`. An import's
+**name** (schema version 25, #38) is what the person renamed it to, encrypted; the records call it by that wherever
+they say where a record came from, and NULL means the importer's label.
 
 ```mermaid
 erDiagram
@@ -164,6 +166,7 @@ erDiagram
         text format "the importer that read it"
         int synced "last sync of a live connection (#91), else NULL"
         text meta "🔒 JSON: source, built, problems, upcoming visits, payments..."
+        text name "🔒 what the person calls it (#38), else NULL"
     }
     events {
         int id PK "the id the page sees"
@@ -536,7 +539,7 @@ One row per profile and user (unique).
 |---|---|
 | `events` | `body`, `detail`, `cost` |
 | `series`, `results` | `body` |
-| `imports` | `meta`, `note` |
+| `imports` | `meta`, `note`, `name` |
 | `documents` | `path` |
 | `uploads` | `manifest` |
 | `upload_files` | `path` |
