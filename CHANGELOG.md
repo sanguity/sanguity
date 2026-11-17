@@ -72,7 +72,8 @@ Everything on `main` so far; it becomes the first tagged release.
   workouts are a rules list there: plain text by default, a regular expression as an option, checked for patterns
   that could make matching slow (#43).
 - Each person's own time zone and date format, set from the browser on first sign-in and changed in Settings: the
-  timeline, Health, Costs, the drawer and the import pages split days at that person's midnight (#42).
+  timeline, Health, Costs, the drawer, the import pages, the journal and the visit summary (its PDF too: "today"
+  and the date format are the person's) split days at that person's midnight (#42).
 - A watch receiver secret per profile, made and replaced on the Settings page with the upload address to give the
   phone app, so each person's phone uploads to their own profile (#46).
 - Saved Trends views (#37): named sets of labs ("CBC", "Liver") kept per profile. Owners and editors save what's

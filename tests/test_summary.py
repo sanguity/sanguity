@@ -171,6 +171,34 @@ class Summary(unittest.TestCase):
         self.assertIn("no new result", text)
         self.assertIn(f"Since: {summary.fmt_date(SINCE)} (Follow-up visit)", text)
 
+    def test_dates_are_the_persons_own(self):
+        """#42: "today" is the person's own day (here UTC+14, which is tomorrow for most of the world) and dates are
+        written in their format; the questions draft and sections are unchanged."""
+        import datetime, zoneinfo
+        c = self.c["lee"]
+        for k, v in (("dates.timeZone", "Pacific/Kiritimati"), ("dates.format", "ymd")):
+            r = c.put(f"/api/settings/user/{k}", json={"value": v}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+        try:
+            try:
+                day = datetime.datetime.now(zoneinfo.ZoneInfo("Pacific/Kiritimati")).date().isoformat()
+            except zoneinfo.ZoneInfoNotFoundError:   # no time zone database here (Windows): the server's day, as the app does
+                day = datetime.date.today().isoformat()
+            s = self.preview("lee")
+            self.assertEqual(s["prepared"], day)
+            self.assertEqual(s["date_format"], "ymd")
+            _, text = text_of(self.pdf("lee").content)
+            self.assertIn(f"Prepared {day}", text)
+            self.assertIn(f"Since: {SINCE}", text, "written as YYYY-MM-DD")
+            self.assertNotIn(summary.fmt_date(SINCE), text.replace(f"Since: {SINCE}", ""), "no other format left")
+            c.put("/api/settings/user/dates.format", json={"value": "dmy"}, headers=H)
+            _, text = text_of(self.pdf("lee").content)
+            x = datetime.date.fromisoformat(SINCE)
+            self.assertIn(f"Since: {x.day} {x.strftime('%b')} {x.year}", text)
+        finally:
+            for k in ("dates.timeZone", "dates.format"):
+                c.put(f"/api/settings/user/{k}", json={"value": ""}, headers=H)
+
     def test_ranges_are_each_reports_own(self):
         s = self.preview()
         rows = {r["name"]: r for r in s["out_of_range"]}

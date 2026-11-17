@@ -24,7 +24,7 @@ Overview tiles and the drawer with the reported values beside them, sets ranges 
 report gives none and sees them used and labelled on Trends, the heatmap, the Overview and the visit summary, #44),
 builds a visit summary (sections, a lab, questions
 kept as a draft), previews it and downloads the PDF, reading it back, has two accounts in different time zones each see days split at their own midnight and
-dates in their own format (#42), makes the profile's watch receiver secret on the Settings page, shown once and then
+dates in their own format, journal times and the visit summary page included (#42), makes the profile's watch receiver secret on the Settings page, shown once and then
 masked (#46), opens the account
 page (where the match is listed for admins), sees each record's source in the drawer, on Trends and on the heatmap, links the
 same result from a file and the sync at the first pull's preview and sees it once on Trends and in the drawer (undone
@@ -1533,6 +1533,13 @@ def main():
             shown = zb.evaluate("document.querySelector('#list .row .d').textContent")
             check("…the timeline's event list in that format", bool(__import__("re").fullmatch(r"\d{4}-\d{2}-\d{2}", shown)), shown)
             check("…and the header", " built 20" in zb.evaluate("document.getElementById('meta').textContent"), zb.evaluate("document.getElementById('meta').textContent"))
+            check("…a journal entry's time is theirs too: 11:30 pm in Auckland, not in this browser's Chicago",
+                  zb.evaluate("jTime('2026-03-10T23:30') === Date.parse('2026-03-10T10:30:00Z') && isoDay(jTime('2026-03-10')) === '2026-03-10'"),
+                  zb.evaluate("new Date(jTime('2026-03-10T23:30')).toISOString()"))
+            zb.goto(base + "/summary.html?profile=1")
+            zb.wait_for_selector("#build:not([hidden]) #since option", state="attached", timeout=10000)
+            since_opt = zb.evaluate("document.querySelector('#since option').textContent")
+            check("…the visit summary page writes dates in their format", bool(__import__("re").search(r"\(.*, \d{4}-\d{2}-\d{2}\)", since_opt)), since_opt)
             zb.goto(base + "/import.html")
             zb.wait_for_selector("#importer", state="attached", timeout=10000)
             check("…the import pages read them too", zb.evaluate("DATES.zone") == "Pacific/Auckland" and zb.evaluate("zToday()") == zb.evaluate(

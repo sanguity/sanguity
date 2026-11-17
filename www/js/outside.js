@@ -4,7 +4,7 @@
    disconnecting are on the Connected sources page. */
 "use strict";   // $ and el come from util.js
 (() => {
-  const when = t => t ? new Date(t * 1000).toLocaleString(undefined, {year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}) : "never";
+  const when = t => t ? fmtDT(t * 1000) : "never";   // this person's time zone and format (dates.js)
   const code = t => el("code", {text: t});
   const sub = text => el("h3", {class: "sub", text});
   const dl = rows => el("dl", {}, ...rows.filter(r => r).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {}, v)]));
@@ -40,6 +40,7 @@
   }
 
   async function load() {
+    await datesReady();   // times below in this person's zone and format (dates.js; read once per page)
     const msg = $("#outsideMsg");
     let v;
     try {

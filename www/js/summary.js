@@ -12,7 +12,7 @@ async function call(path, method = "GET", body) {
   return j;
 }
 const sayIn = (m, text, bad = false) => { m.textContent = text; m.classList.toggle("bad", bad); };
-const fmtDay = d => d ? new Date(d + "T12:00:00").toLocaleDateString(undefined, {year: "numeric", month: "short", day: "numeric"}) : "";
+const fmtDay = d => d ? fmtD(dayTs(d)) : "";   // a day, in this person's date format (dates.js, #42)
 $("#logout").onclick = async () => { try { await call("logout", "POST"); } catch (e) {} location.replace("login.html"); };
 
 /* ---------------------------------------------------------------- the choices */
@@ -87,7 +87,7 @@ function table(heads, rows) {
 function spark(pts) {
   const w = 70, h = 16, svg = el("svg:svg", {class: "spark", viewBox: `0 0 ${w} ${h}`, "aria-hidden": "true"});
   if (pts.length < 2) return svg;
-  const ts = pts.map(p => Date.parse(p[0])), vs = pts.map(p => p[1]);
+  const ts = pts.map(p => zParse(p[0])), vs = pts.map(p => p[1]);
   let lo = Math.min(...vs), hi = Math.max(...vs); if (lo === hi) { lo -= 1; hi += 1; }
   const t0 = Math.min(...ts), t1 = Math.max(...ts);
   const x = t => 3 + (t - t0) / ((t1 - t0) || 1) * (w - 6), y = v => h - 3 - (v - lo) / (hi - lo) * (h - 6);
@@ -169,6 +169,7 @@ $("#build").onsubmit = async ev => {
 /* ---------------------------------------------------------------- start */
 (async () => {
   try { ME = await call("me"); } catch (e) { return; }
+  await datesReady();   // dates in this person's time zone and format (dates.js)
   if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
   if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
   $("#who").textContent = ME.user.username;
