@@ -829,17 +829,41 @@ table.data.oop tr[aria-expanded=true] td{background:var(--hover)}
 .oop-form{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end}
 .oop-form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--ink2);min-width:0;max-width:100%}
 .oop-form select{max-width:100%}
-/* the records bar's one period (#171): presets, "Since <milestone>", a milestone or year picked, dates; the Labs tab's
-   Chart / Heatmap switch above its one range caption (#172) */
-.period-pick{border:1px solid var(--ring);background:var(--raised);border-radius:8px;padding:4px 6px;color:var(--ink2);max-width:16em;min-width:0}
+/* the records bar's one period (#171, its controls #191 below); the Labs tab's Chart / Heatmap switch above its one range
+   caption (#172) */
 /* opaque: an open select's list can't show a see-through background, and drew white under light text in dark mode */
-.period-pick.on{background:var(--raised);box-shadow:inset 0 0 0 100px var(--hover);color:var(--ink);font-weight:650}
 select option,select optgroup{background:var(--raised);color:var(--ink)}
-.dates.on input{border-color:var(--axis);color:var(--ink)}
 .filters.period-only .search,.filters.period-only .chips{display:none!important}
 .labs-head{gap:8px 16px}
 .labs-head .range-note{margin:0}
-@media (max-width:700px){.period-pick{max-width:12em;padding:5px 6px}}
+/* ---- the period's controls (#191): the presets (.seg), then More… looking like a choice of its own, chosen (the same
+   tint and bar) when it names what it picked; its menu is the top bar's (.menu-list, nav.js), long names wrapping
+   rather than cut off, the picked one ticked; the period in words; the date boxes only for custom dates */
+.period-more-btn{display:inline-flex;align-items:center;gap:6px;margin:0;border:1px solid var(--axis);border-radius:8px;background:var(--raised);
+  padding:5px 10px;color:var(--ink2);font-weight:500;line-height:1.45;white-space:nowrap;cursor:pointer}
+.period-more-btn:hover{color:var(--ink)}
+.period-more-btn[aria-expanded="true"]{background:var(--hover);color:var(--ink)}
+.period-more-btn.on{background:color-mix(in srgb,var(--accent) 15%,var(--raised));color:var(--ink);font-weight:650;box-shadow:inset 0 -2px 0 var(--accent)}
+.period-more-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.period-more .menu-list{left:0;right:auto;width:max-content;min-width:200px;max-width:min(320px,calc(100vw - 24px));max-height:min(60vh,440px);overflow-y:auto}
+.period-more .menu-item{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-left:28px;white-space:normal}
+.period-more .menu-item[aria-checked="true"]{background:color-mix(in srgb,var(--accent) 12%,var(--raised));font-weight:650}
+.period-more .menu-item[aria-checked="true"]::before{content:"✓";content:"✓"/"";position:absolute;left:10px;color:var(--accent);font-weight:700}
+.period-more .menu-item:hover,.period-more .menu-item:focus-visible{background:var(--hover)}
+.period-more .menu-head{padding:6px 10px 2px 28px;color:var(--ink2);font-size:12px;font-weight:600}
+.period-more .menu-note{flex:none;color:var(--ink2);font-size:12px;font-weight:400}
+.period-words{color:var(--ink2);font-size:13px}
+.period-words[hidden],.dates[hidden]{display:none}
+.dates input{color:var(--ink)}
+.dates .btn{margin:0 0 0 4px;padding:4px 10px}
+@media (max-width:700px){
+  .filters:not(.open) .dates:not([hidden]){display:flex}   /* custom dates show once chosen, not behind Filters */
+  .filters.period-only .ftoggle{display:none}               /* Body and activity, Costs: nothing else to open */
+  .period-words{flex:1 1 0;min-width:0}
+}
+@media (forced-colors:active){
+  .period-more-btn.on{forced-color-adjust:none;background:Highlight;color:HighlightText;box-shadow:none;border-color:Highlight}
+}
 /* the Admin page (#167, admin.html): Settings' sidebar (main.sets), with Account's and Connected sources' cards */
 .adm .adm-dir{margin:4px 0 8px;padding-left:18px;font-size:13px}
 .adm .adm-dir li{margin:3px 0;overflow-wrap:anywhere}

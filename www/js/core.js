@@ -97,12 +97,13 @@ const PRESETS = [["all","All"],["5y","5y"],["2y","2y"],["1y","1y"],["6m","6m"],[
 const PRESET_DAYS = {"5y": 1826, "2y": 730, "1y": 365, "6m": 182, "90d": 90, "30d": 30};
 const PRESET_TEXT = {"5y": "the last 5 years", "2y": "the last 2 years", "1y": "the last year", "6m": "the last 6 months", "90d": "the last 90 days", "30d": "the last 30 days"};
 const isYearKey = k => /^\d{4}$/.test(k || "");
+let lastPeriod = state.preset;   // the last period that wasn't custom dates: where "Clear dates" goes back to (#191)
 /* the period's dates in state, drawing nothing (the tab switched to next draws it) */
 function setPeriod(p) {
   if (p === "dx") p = msKey(primaryMs());   // the older saved key for the primary milestone ("all" if there's none)
   const end = state.max + DAY, m = msOf(p);
   if (!(p in PRESET_DAYS) && p !== "all" && !m && !isYearKey(p)) p = "all";   // e.g. a milestone since deleted
-  state.preset = p;
+  state.preset = lastPeriod = p;
   if (p === "all") { const pad = (state.max - state.min) * .02 + DAY; state.from = state.min - pad; state.to = state.max + pad; }
   else if (m) { state.to = end; state.from = Math.min(zParse(m.date + "T00:00:00"), end - 7 * DAY); }
   else if (isYearKey(p)) { state.from = zParse(p + "-01-01T00:00:00"); state.to = zParse((+p + 1) + "-01-01T00:00:00") - 1; }
@@ -139,19 +140,58 @@ function periodYears() {
   }
   return YEARS;
 }
-function renderFilters() {
-  const pm = primaryMs(), pk = pm ? msKey(pm) : null;   // the primary milestone has a button: "Since diagnosis"
+/* ---- the period's controls (#191): preset buttons (All, 5y ... 30d, and "Since <the primary milestone>"), one More…
+   menu (the other milestones, the calendar years, Custom dates…), the period in words beside them, and the date boxes
+   only for custom dates (typed in, or a chart dragged or zoomed), with "Clear dates" back to the period before. One
+   control shows as chosen: a preset button, or More… naming what it picked. */
+/* the period in words, beside the controls, saying what the chosen button doesn't: "Last 2 years", "Apr 14, 2025 –
+   today" (since a milestone), "Jan 1, 2025 – Dec 31, 2025" (a year) */
+function periodWords() {
+  const p = state.preset, m = msOf(p);
+  if (m) return `${fmtD(dayTs(m.date))} – today`;
+  if (p === "custom" || isYearKey(p)) return `${fmtD(state.from)} – ${isoDay(state.to) >= zToday() ? "today" : fmtD(state.to)}`;
+  return p === "all" ? "Everything on file" : (PRESET_TEXT[p] || "").replace(/^the l/, "L");
+}
+const moreBtn = $("#periodMoreBtn"), moreList = $("#periodMoreList");
+function renderPeriod() {
+  const p = state.preset, pm = primaryMs(), pk = pm ? msKey(pm) : null;   // the primary milestone has a button: "Since diagnosis"
   $("#presets").replaceChildren(...[...PRESETS, ...(pm ? [[pk, "Since " + lcLabel(pm.label)]] : [])].map(([k, l]) =>
-    el("button", {type: "button", "aria-pressed": state.preset === k, text: l, title: k === pk ? "Since " + fmtD(dayTs(pm.date)) : null, onclick: () => applyPreset(k)})));
+    el("button", {type: "button", "aria-pressed": p === k, text: l, title: k === pk ? "Since " + fmtD(dayTs(pm.date)) : null, onclick: () => applyPreset(k)})));
   { const pre = $("#presets"), b = pre.querySelector("[aria-pressed=true]");   // on a phone the buttons scroll: the chosen one in view
     if (b && pre.scrollWidth > pre.clientWidth) pre.scrollLeft = b.offsetLeft - pre.offsetLeft - (pre.clientWidth - b.offsetWidth) / 2; }
-  const pick = $("#periodPick"), on = isMsKey(state.preset) || isYearKey(state.preset) ? state.preset : "";
-  pick.replaceChildren(el("option", {value: "", text: MILESTONES.length ? "Milestone or year…" : "Year…"}),
-    MILESTONES.length ? el("optgroup", {label: "Since a milestone"}, ...MILESTONES.map((m, i) => el("option", {value: "m" + i, text: `Since ${lcLabel(m.label)} (${fmtD(dayTs(m.date))})`}))) : null,
-    el("optgroup", {label: "Calendar year"}, ...periodYears().map(y => el("option", {value: y, text: y}))));
-  pick.value = on; pick.classList.toggle("on", !!on);
+  const item = (k, text, note) => el("button", {type: "button", class: "menu-item", role: "menuitemradio", tabindex: "-1", "aria-checked": p === k, "data-period": k},
+    text, note ? el("span", {class: "menu-note", text: note}) : null);
+  const group = (label, items) => items.length ? el("div", {role: "group", "aria-label": label}, el("div", {class: "menu-head", "aria-hidden": "true", text: label}), ...items) : null;
+  moreList.replaceChildren(
+    group("Since a milestone", MILESTONES.filter(m => m !== pm).map(m => item(msKey(m), "Since " + lcLabel(m.label), fmtD(dayTs(m.date))))),
+    group("Calendar year", periodYears().map(y => item(y, y))),
+    el("div", {class: "menu-sep", role: "separator"}), item("custom", "Custom dates…"));
+  const m = p !== pk && msOf(p), picked = m ? "Since " + lcLabel(m.label) : isYearKey(p) ? p : p === "custom" ? "Custom dates" : "";
+  moreBtn.replaceChildren(picked || "More…", el("span", {class: "menu-caret", "aria-hidden": "true", text: "▾"}));
+  moreBtn.classList.toggle("on", !!picked);
+  moreBtn.setAttribute("aria-label", picked ? `Period: ${picked}. More periods` : "More periods");
+  $("#periodWords").textContent = periodWords();
+  $("#periodWords").hidden = p === "custom";   // the date boxes say it
+  $("#dates").hidden = p !== "custom";
   $("#from").value = isoDay(state.from); $("#to").value = isoDay(state.to);
-  $(".dates").classList.toggle("on", state.preset === "custom");
+  const lp = lastPeriod, lm = msOf(lp);
+  $("#datesClear").title = "Back to " + (lp === "all" ? "everything on file" : lm ? "since " + lcLabel(lm.label) : PRESET_TEXT[lp] || lp);
+}
+SgNav.menu({btn: moreBtn, list: moreList, wrap: $("#periodMore"), onOpen() {   // nav.js: arrow keys, Escape, a click outside
+  moreList.style.left = "";
+  const over = moreList.getBoundingClientRect().right - (document.documentElement.clientWidth - 8);
+  if (over > 0) moreList.style.left = -over + "px";   // kept on the screen
+  const on = moreList.querySelector("[aria-checked=true]");
+  if (on) moreList.scrollTop = on.offsetTop - moreList.clientHeight / 2;
+}});
+moreList.addEventListener("click", ev => {
+  const b = ev.target.closest("[data-period]"); if (!b) return;
+  if (b.dataset.period !== "custom") { applyPreset(b.dataset.period); moreBtn.focus(); return; }
+  state.preset = "custom"; renderAll(); $("#from").focus();   // the period's dates, to change
+});
+$("#datesClear").onclick = () => { applyPreset(lastPeriod); ($("#presets [aria-pressed=true]") || moreBtn).focus(); };
+function renderFilters() {
+  renderPeriod();
   renderKinds();
 }
 /* ---------------------------------------------------------------- the Timeline's kinds (#189)
@@ -214,7 +254,6 @@ function renderKinds() {
   // a chip or its menu had focus: the same one keeps it once redrawn; "Show all" hands it to the first chip as it goes
   if (was) (box.querySelector(`${was.classList.contains("toggle") ? ".toggle" : ".kind-more"}[data-k="${was.dataset.k}"]`) || box.querySelector(".toggle"))?.focus();
 }
-$("#periodPick").onchange = ev => { if (ev.target.value) applyPreset(ev.target.value); };
 $("#from").onchange = () => { const v = zParse($("#from").value + "T00:00"); if (!isNaN(v)) setRange(v, Math.max(state.to, v + DAY)); };
 $("#to").onchange = () => { const v = zParse($("#to").value + "T23:59"); if (!isNaN(v)) setRange(Math.min(state.from, v - DAY), v); };
 let qT; $("#q").oninput = () => { clearTimeout(qT); qT = setTimeout(() => { state.q = $("#q").value.trim().toLowerCase(); renderAll(); }, 150); };

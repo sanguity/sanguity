@@ -13,7 +13,7 @@
 "use strict";
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
-  if (!header) return {sync() {}, lock() {}, profiles() { return null; }};
+  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, menu() {}};
   const svgLogo = header.querySelector("h1");
   const onRecords = !!document.getElementById("tab-overview");
 
@@ -82,17 +82,23 @@ const SgNav = (() => {
     if (focusBtn) m.btn.focus();
     if (openMenu === m) openMenu = null;
   }
-  const items = m => [...m.list.querySelectorAll("[role=menuitem]")].filter(x => !x.hidden);
+  const items = m => [...m.list.querySelectorAll("[role^=menuitem]")].filter(x => !x.hidden);   // menuitem, menuitemradio (#191)
   function menu(id, label, icon, entries) {
     const btn = el("button", {class: "iconbtn menu-btn", type: "button", id: id + "Btn", "aria-haspopup": "menu", "aria-expanded": "false",
       "aria-controls": id + "List"}, el("span", {class: "menu-ico", "aria-hidden": "true", text: icon}), label);
     const list = el("div", {class: "menu-list", id: id + "List", role: "menu", "aria-labelledby": id + "Btn", hidden: ""}, ...entries);
-    const m = {btn, list, wrap: el("div", {class: "menu", id}, btn, list)};
     for (const x of entries) if (x.getAttribute && x.getAttribute("role") === "menuitem") x.tabIndex = -1;
+    return wire({btn, list, wrap: el("div", {class: "menu", id}, btn, list)});
+  }
+  /* a menu's behaviour, for one built above or in a page's own markup (the records bar's More… periods, #191): m is
+     {btn, list, wrap, onOpen?}; its items are the list's [role^=menuitem] (tabindex -1), replaceable while it's closed */
+  function wire(m) {
+    const {btn, list} = m;
     btn.onclick = () => {
       if (openMenu === m) return close(m);
       close(openMenu);
       list.hidden = false; btn.setAttribute("aria-expanded", "true"); openMenu = m;
+      m.onOpen?.();
     };
     btn.onkeydown = ev => {
       if (ev.key === "ArrowDown" || ev.key === "Enter" || ev.key === " ") {
@@ -108,7 +114,7 @@ const SgNav = (() => {
       else if (ev.key === "Escape") { ev.preventDefault(); close(m, true); }
       else if (ev.key === "Tab") close(m);
     };
-    list.addEventListener("click", ev => { if (ev.target.closest("[role=menuitem]")) setTimeout(() => close(m)); });
+    list.addEventListener("click", ev => { if (ev.target.closest("[role^=menuitem]")) setTimeout(() => close(m)); });
     return m;
   }
   document.addEventListener("click", ev => { if (openMenu && !openMenu.wrap.contains(ev.target)) close(openMenu); });
@@ -184,5 +190,5 @@ const SgNav = (() => {
     const b = header.querySelector(".brand-link");
     if (b) { b.removeAttribute("href"); b.removeAttribute("title"); }
   }
-  return {sync, lock, profiles};
+  return {sync, lock, profiles, menu: wire};
 })();

@@ -30,8 +30,13 @@
 <p class="sync-warn" id="syncWarn" role="status" hidden></p>
 <div class="filters">
   <div class="seg" id="presets" role="group" aria-label="Period"></div>
-  <select class="period-pick" id="periodPick" aria-label="Period: since a milestone, or a calendar year"></select>
-  <div class="dates"><input type="date" id="from" aria-label="From"> – <input type="date" id="to" aria-label="To"></div>
+  <div class="menu period-more" id="periodMore">
+    <button class="period-more-btn" id="periodMoreBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="periodMoreList">More…</button>
+    <div class="menu-list" id="periodMoreList" role="menu" aria-label="More periods" hidden></div>
+  </div>
+  <span class="period-words" id="periodWords"></span>
+  <div class="dates" id="dates" role="group" aria-label="Custom dates" hidden><input type="date" id="from" aria-label="From"> – <input type="date" id="to" aria-label="To">
+    <button class="btn" id="datesClear" type="button">Clear dates</button></div>
   <div class="chips" id="chips" role="group" aria-label="Kinds of records shown"></div>
   <input class="search" id="q" type="search" placeholder="Search events…">
   <button class="iconbtn ftoggle" id="ftoggle" type="button" aria-expanded="false">Filters</button>
