@@ -1003,6 +1003,12 @@ Everything on `main` so far; it becomes the first tagged release.
   from 855 px down to the top). Focus still goes to the heading, for the Undo to give it back to, but the page stays
   put. Settings → Display's "Use this device's", which hides itself once pressed, leaves focus on the zone's field,
   and Labs' "Make default" / "Default ✓", drawn again when pressed, on itself; both dropped it to the page.
+- **Undoing a setting of your own after switching profile** (#377): Appearance, Dates and Units are yours, the same on
+  every profile, but since #367 their Undo pressed on another profile put the server back and left the page as it was:
+  the Theme still ticked Dark, the page still dark until a reload, and a toast naming the first profile. It's drawn
+  and said on the page shown now, the theme with it, naming no profile. On Sharing → About this person, a change whose
+  request was still on its way when you switched profile (a target's Clear, a height's Remove, a Save) was done with
+  no word and no Undo; a toast naming its profile says it now, with the Undo, which puts it back on that profile.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

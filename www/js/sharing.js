@@ -336,16 +336,18 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       return el("span", {}, heightText(h.cm, u), el("span", {class: "muted", text: ` (${heightText(h.cm, u === "cm" ? "ftin" : "cm")})`})); };
     /* a change: the server answers with everything again; drawn afresh, focus back on the control that had it (or
        focus, an id); said in msg (the targets' card has its own, #234) */
-    /* quiet: the words shown in the message line, said by a toast instead (#263); true once it's done */
+    /* quiet: the words shown in the message line, said by a toast instead (#263). Gives back, once it's done, the
+       words to say, false if it isn't. Done after another profile was picked (#377): that page stays as it is, and
+       the words name p (a toast says them here, unless quiet: the caller's toast, with its Undo, does). */
     async function send(path, method, payload, said, focus, msg = $("#aboutMsg"), quiet = false) {
       const had = document.activeElement && document.activeElement.id;
       try {
-        const got = await call(path, method, payload);
-        if (P !== p) return false;
+        const got = await call(path, method, payload), text = typeof said === "function" ? said(got) : said;
+        if (P !== p) { const named = `${p.name}: ${text}`; if (!quiet) toast(named); return named; }
         showAbout(p, got);
-        for (const m of [$("#aboutMsg"), $("#targetsMsg")]) sayIn(m, m === msg ? (typeof said === "function" ? said(got) : said) : "", false, {say: !quiet});
+        for (const m of [$("#aboutMsg"), $("#targetsMsg")]) sayIn(m, m === msg ? text : "", false, {say: !quiet});
         (focus && document.getElementById(focus) || had && document.getElementById(had) || $("#aboutHeightHd")).focus();
-        return true;
+        return text;
       } catch (e) { fail(e, msg); return false; }
     }
     /* an Undo (#367): what a change took away put back, on p's own profile, only if what's there now is still what the
@@ -428,8 +430,9 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
         el("td", {class: "acts"}, edit ? el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove the height on ${aboutDay(h.date)}`,
           onclick: async () => {   // at once, with an Undo that adds it back as it was (#263; it asked first before), if none was since (#367)
             const said = `Removed the height on ${aboutDay(h.date)}: ${heightText(h.cm, heightUnit(HEIGHT_PREF, h.unit))}.`;
-            if (await send(`profiles/${p.id}/person/heights/${h.date}`, "DELETE", undefined, said, null, $("#aboutMsg"), true))
-              toast(said, {action: "Undo", onAction: () => undo(got => !got.heights.some(x => x.date === h.date),   // none written down on that day since
+            const done = await send(`profiles/${p.id}/person/heights/${h.date}`, "DELETE", undefined, said, null, $("#aboutMsg"), true);
+            if (done)
+              toast(done, {action: "Undo", onAction: () => undo(got => !got.heights.some(x => x.date === h.date),   // none written down on that day since
                 `profiles/${p.id}/person/heights`, "POST", {date: h.date, unit: h.unit, cm: h.cm}, `Undone: the height on ${aboutDay(h.date)} is back.`,
                 `A height on ${aboutDay(h.date)} was written down since: it's left as it is.`)}); }}) : null)))))
       : el("p", {class: "muted", id: "aboutNoHeight", text: "No height written down yet."}));
