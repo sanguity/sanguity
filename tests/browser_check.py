@@ -766,6 +766,10 @@ def axe_check(page, label):
         return [f"{label}: axe-core isn't installed (pip install --require-hashes -r requirements-dev.txt)"], []
     if not page.evaluate("typeof axe === 'object' && typeof axe.run === 'function'"):
         page.evaluate(AXE_JS)
+    # colours as they settle (#343): a control under the pointer eases into its hover look (#256), so a theme just
+    # switched would otherwise be measured half way; finite transitions and animations only, at most a second
+    page.evaluate("""() => Promise.race([new Promise(r => setTimeout(r, 1000)), Promise.all(document.getAnimations()
+        .filter(a => a.effect && a.effect.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => null)))])""")
     serious, other = [], []
     for v in page.evaluate(AXE_RUN, AXE_TAGS):
         (serious if v["impact"] in ("serious", "critical") else other).append(
