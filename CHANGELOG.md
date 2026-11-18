@@ -691,6 +691,12 @@ Everything on `main` so far; it becomes the first tagged release.
   stayed on the first row and your menu dropped onto a second row by itself. The two are one group now, side by side on
   the first row when there's room, else together on the next. Under 500 px tall, where the page scrolls, a phone's menus
   are as tall as their items: at 320×180 (1280×720 zoomed to 400%) each had been a box about one item tall.
+- **Tables on a phone say what each value is** (#320): at 640 px and narrower the tables on Account, Admin, Sharing,
+  the visit summary's preview and a share link's page hide their column headings, which left values such as "off" and
+  "10" (Admin → Accounts) or a device's two dates on their own. Each value now has its column's name above it, set from
+  the headings for every such table at once; a row's buttons and empty cells have none, and the tables that keep their
+  headings on a phone (a backup's counts, the phone's and watch's measures) are unchanged. A screen reader hears the
+  name once: the hidden headings are hidden from it too.
 - **Sign-in and setup get the app's focus ring** (#310): Sign in, Sign in with a passkey and Create account had the
   browser's thin black or white ring. The reset and the one focus ring moved from `app.css` to a small
   `www/css/base.css` that every page loads after the tokens, sign-in and setup too, so their buttons and fields are
