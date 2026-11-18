@@ -653,6 +653,10 @@ Everything on `main` so far; it becomes the first tagged release.
   was a shade darker (`--ring` .12 there, .10 in the app). `app.css` is in cascade layers (reset, tokens, base,
   components, pages, utilities), and one rule rings whatever has keyboard focus in the accent, replacing ten that
   repeated it; elements that had the browser's own ring have the accent one now. Nothing else looks different.
+- **A check that keeps the styles on the tokens** (#252): `tests/test_css_tokens.py`, run in CI, fails when a
+  stylesheet or a page's own styles gain a colour written out instead of a token, or a new px font size, corner radius
+  or shadow, or when a script sets one more inline style; today's counts are the most allowed, and it asks for a lower
+  number when one goes down.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

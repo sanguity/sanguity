@@ -27,7 +27,8 @@ class Changes(unittest.TestCase):
         self.assertTrue(run("tests/docker_smoke.py")["image"], "the image jobs run it")
 
     def test_app_code_runs_tests_and_image(self):
-        for p in ("server/db.py", "www/js/app.js", "watch/receiver.py", "requirements.txt", "nginx.conf", "build.py"):
+        for p in ("server/db.py", "www/js/app.js", "www/css/tokens.css", "www/login.html",   # styles and pages: test_css_tokens.py (#252)
+                  "watch/receiver.py", "requirements.txt", "nginx.conf", "build.py"):
             self.assertEqual(run(p, "README.md"), {"app": True, "image": True, "templates": False}, p)
 
     def test_compose_and_docker_run_everything(self):
