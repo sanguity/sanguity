@@ -69,9 +69,9 @@ function testStep() {
       out.replaceChildren(el("p", {class: "muted", text: "Reading its discovery…"}));
       try {
         const t = await call(`connect/sources/${s.id}/test`, "POST");
-        out.replaceChildren(testResult(t), t.ok && s.waiting ? el("p", {class: "msg", text: "It's still marked as waiting for the " +
+        out.replaceChildren(...present(testResult(t), t.ok && s.waiting ? el("p", {class: "msg", text: "It's still marked as waiting for the " +
           "vendor's review, so nobody can connect it yet. Once the review is done, untick that above and save."}) : null,
-          t.ok && !s.waiting ? el("p", {class: "msg", text: "Done: people can now connect it under Sources → Portals and health plans."}) : null);
+          t.ok && !s.waiting ? el("p", {class: "msg", text: "Done: people can now connect it under Sources → Portals and health plans."}) : null));
         if (t.ok) loadSetup();
       } catch (e) { out.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); }
     }});
@@ -112,7 +112,7 @@ function sourceRow(s) {
   const msg = el("div", {role: "status"});
   const state = s.waiting ? `waiting for the vendor's review since ${when(s.waiting)}: people are told to upload their portal's export meanwhile`
     : s.tested ? "tested " + when(s.tested) : "not tested yet: people can't connect until it is";
-  out.append(el("b", {text: s.name}), el("span", {class: "tag", text: SETUP.guides[s.vendor].label}),
+  out.append(...present(el("b", {text: s.name}), el("span", {class: "tag", text: SETUP.guides[s.vendor].label}),
     s.waiting ? el("span", {class: "tag walk-tag", text: "Waiting for review"}) : null,
     el("p", {class: "muted", text: `${s.issuer} · ${s.auth} client · ${state}`}),
     el("p", {class: "muted", text: `On this install: ${plural(n.active, "active connection")}, ${n["needs reconnect"]} needing a reconnect, ${n.disconnected} disconnected. This count is never sent anywhere.`}),
@@ -131,7 +131,7 @@ function sourceRow(s) {
           catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }}),
       el("button", {class: "btn small", type: "button", text: "Remove", onclick: async () => {
         try { await call(`connect/sources/${s.id}`, "DELETE"); loadSetup(); } catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }})),
-    msg);
+    msg));
   return out;
 }
 
@@ -264,11 +264,11 @@ function drawSync(sec, note) {
       catch (e) { sayIn(msg, e.message, true); reset.disabled = false; }
     }});
   if (note) sayIn(msg, note);
-  $("#sec-sync").replaceChildren(
+  $("#sec-sync").replaceChildren(...present(
     el("div", {class: "set-hd"}, el("h2", {text: sec.title}), reset),
     sec.help ? el("p", {class: "hint", text: sec.help}) : null,
     ...rows,
-    el("div", {class: "row"}, save, msg));
+    el("div", {class: "row"}, save, msg)));
 }
 
 /* ---------------------------------------------------------------- the provider directory (#93) */

@@ -175,7 +175,7 @@ function drawResult(run) {
   const counts = res.counts || {}, now = res.now || {}, w = res.watch;
   const rows = BK_TABLES.filter(([t]) => t in counts);
   const words = rows.map(([t, w]) => `${counts[t].backup.toLocaleString()} ${w}${counts[t].backup === 1 ? "" : "s"}`).join(", ");
-  box.replaceChildren(
+  box.replaceChildren(...present(
     run.ok ? el("p", {class: "bk-state good"}, el("b", {text: "✓ Good. "}),
       `The backup from ${bkWhen(run.file)} restored into a temporary folder: its ${plural(res.files, "file")} match their checksums, ` +
       `this install's key opens it, and its database is intact with the rows it had when it was made (${words}). The copy was deleted.`)
@@ -197,7 +197,7 @@ function drawResult(run) {
         el("th", {scope: "row", text: label + "s"}),
         el("td", {text: w.counts[k].backup.toLocaleString()}),
         el("td", {text: w.counts[k].expected == null ? "not recorded" : w.counts[k].expected.toLocaleString()}),
-        el("td", {text: w.now && k in w.now ? w.now[k].toLocaleString() : "—"})))))) : null);
+        el("td", {text: w.now && k in w.now ? w.now[k].toLocaleString() : "—"})))))) : null));
 }
 /* the watch receiver's data in a good backup (#227): when the receiver had last saved it, and what came after */
 function bkWatchChecked(w) {

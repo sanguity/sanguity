@@ -94,7 +94,7 @@ function openEvent(e) {
     else if (d.ext === "pdf") { body.classList.add("fill"); body.append(el("iframe", {class: "doc", src: d.url + (d.url.includes("#") ? "" : "#view=FitH"), title: e.title})); }
     else if (d.ext === "tif" || d.ext === "tiff") body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "Scanned TIFF document — browsers can't preview TIFF; use Download and open it in Photos or a PDF viewer."}));
   } else if (d.type === "stay") {
-    body.append(d.discharge
+    body.append(...present(d.discharge
       ? el("dl", {class: "kv"}, el("dt", {text: "Admitted"}), el("dd", {text: fmtDT(e.ts)}), el("dt", {text: "Discharged"}), el("dd", {text: fmtDT(e.te)}),
           d.where ? el("dt", {text: "Where"}) : null, d.where ? el("dd", {text: d.where}) : null,
           d.transfer_from ? el("dt", {text: "Transferred from"}) : null, d.transfer_from ? el("dd", {text: d.transfer_from}) : null,
@@ -105,11 +105,11 @@ function openEvent(e) {
       d.note ? el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}) : null,
       d.discharge ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "Estimated: no admission record was available, so the end date is the last inpatient lab result."}),
       el("button", {class: "btn", text: "Zoom timeline to this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); closeDrawer(); }}),
-      el("button", {class: "btn", text: "Lab trends during this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); pickTab("labs"); closeDrawer(); }}));
+      el("button", {class: "btn", text: "Lab trends during this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); pickTab("labs"); closeDrawer(); }})));
   } else if (d.type === "exercise") {
-    body.append(el("dl", {class: "kv"}, ...[["Activity", d.kind], ["Started", fmtDT(e.ts)], ["Ended", fmtDT(e.te)], ["Duration", d.minutes + " min"], ["Source", "Watch via Health Connect"]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
+    body.append(...present(el("dl", {class: "kv"}, ...[["Activity", d.kind], ["Started", fmtDT(e.ts)], ["Ended", fmtDT(e.te)], ["Duration", d.minutes + " min"], ["Source", "Watch via Health Connect"]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
       d.hr ? el("div", {class: "sect", text: "Heart rate"}) : null, workoutZones(d.hr),   // and its zones (#197, health.js)
-      el("button", {class: "btn", text: "Body and activity around this day", onclick: () => openHealth(e.ts - 14*DAY, e.ts + 14*DAY)}));
+      el("button", {class: "btn", text: "Body and activity around this day", onclick: () => openHealth(e.ts - 14*DAY, e.ts + 14*DAY)})));
   } else if (d.type === "ecg") body.append(...ecgBody(e, d));   // a watch's ECG or irregular rhythm notification (ecg.js, #182)
   else if (d.type === "visit") {
     body.append(el("dl", {class: "kv"}, ...[["Provider", d.who], ["Location", d.where], ["Diagnosis", d.dx], ["Billed as", d.billed], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
@@ -139,9 +139,9 @@ function openEvent(e) {
       ["Status", d.status], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
   } else if (d.type === "med") {
     const typed = d.src === "Typed in";   // hand entry (import page): the dates are the ones typed
-    body.append(el("dl", {class: "kv"}, ...[["Instructions", d.instructions], ["Status", d.status], [typed ? "Started" : "Listed since", fmtD(e.ts)],
+    body.append(...present(el("dl", {class: "kv"}, ...[["Instructions", d.instructions], ["Status", d.status], [typed ? "Started" : "Listed since", fmtD(e.ts)],
       ["Stopped", d.end ? fmtD(d.end) : ""], ["Prescribed by", d.prescriber], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
-      typed ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "From the clinic's medication list. The date is when it was recorded there, not necessarily when you started it."}));
+      typed ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "From the clinic's medication list. The date is when it was recorded there, not necessarily when you started it."})));
   }
   { const mh = medHistoryAction(e); if (mh) body.append(mh); }   // a medication's whole history (meds.js, #50)
   const src = eventSource(e); if (src) body.append(src);   // where it came from (sources.js)

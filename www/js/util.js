@@ -17,6 +17,10 @@ const el = (tag, attrs = {}, ...kids) => {
   for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(c));
   return e;
 };
+/* the parts given that are there: Element.append, .prepend and .replaceChildren write a null out as the text "null"
+   (#245), so a part that may be left out (x ? el(…) : null) goes in through this, as el() leaves out its own children:
+   box.append(...present(a, b ? el(…) : null)) */
+const present = (...kids) => kids.flat().filter(k => k != null);
 /* a row that opens something when clicked, a button to the keyboard and screen readers too (#202): el("div", {class:
    "ov-row", ...pressable(() => openEvent(e))}, …). Its words are its name. A table's row gets a .cell-btn in a cell. */
 const pressable = fn => ({role: "button", tabindex: 0, onclick: fn,

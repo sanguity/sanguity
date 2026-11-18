@@ -362,7 +362,7 @@ function viewsEditor(value, changed, ro) {
   };
   list.append(...value.map(make));
   const none = el("p", {class: "hint", text: "No saved views yet. Pick labs on Labs and press Save view…"});
-  box.append(list, value.length ? null : none);
+  box.append(...present(list, value.length ? null : none));
   if (!ro) box.append(el("div", {class: "set-add"},
     small("Add a view", "Add a view", () => { none.remove(); const it = make({name: "", labs: [], default: false}); list.append(it); it.querySelector("input").focus(); changed(); }),
     small("No default", "No default view", () => { list.querySelectorAll("[data-k=default]").forEach(r => { r.checked = false; }); changed(); })));
@@ -474,9 +474,9 @@ function settingNode(st, changed, mixed) {
   ed = make(st.value);
   item.put = v => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); mark(); changed(); };   // #186
   SET_ITEMS[st.key] = item;
-  node.append(el("h3", {class: "sub"}, st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
+  node.append(...present(el("h3", {class: "sub"}, st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
     st.help ? el("p", {class: "hint", text: st.help}) : null,
-    ed.node, msg);
+    ed.node, msg));
   return item;
 }
 
