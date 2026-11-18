@@ -3918,6 +3918,22 @@ def main():
             check("milestones and cursors (#334): no chart mark, label, milestone or cursor on the Timeline, Labs or Body and activity is in the accent, in light and dark",
                   not accented and all(r > 0 and l > 0 for r, l, _ in seen.values()) and seen["labs"][2] > 0 and seen["health"][2] > 0,
                   accented[:8] or seen)
+            # …and in forced colours with the app's theme the opposite of the system's, milestones and cursors are in system
+            # colours (#341): forced colours don't reach SVG strokes and fills, so the tokens would show, faint
+            theme341 = js("document.documentElement.dataset.theme || null")
+            js("document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark'; switchTab('labs', 'chart')")
+            page.emulate_media(forced_colors="active")
+            settle(400)
+            fc = js("""(() => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c;
+                  document.body.append(s); const v = getComputedStyle(s).color; s.remove(); return v; };
+                const uniq = (q, p) => [...new Set([...document.querySelectorAll(q)].map(m => getComputedStyle(m)[p]))];
+                return {text: probe('CanvasText'), hi: probe('Highlight'), rules: uniq('#charts .msmark', 'stroke'),
+                        labels: uniq('#charts .mslabel', 'fill'), cursors: uniq('#charts .cross', 'stroke')}; })()""")
+            page.emulate_media(forced_colors="none")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme341)
+            settle(200)
+            check("…and in forced colours, against a contrast theme opposite to the app's, milestones are CanvasText and cursors Highlight (#341)",
+                  fc["rules"] == [fc["text"]] and fc["labels"] == [fc["text"]] and fc["cursors"] == [fc["hi"]], fc)
             # their labels (#312): at 1400, 375 and 320 px each one on the Timeline, every Labs chart (procedures shown)
             # and every Body and activity chart is inside its plot with no mark on it; one shortened to fit ends in "…"
             # and keeps the full names in its title; a Labs chart's and a Body and activity chart's aria-label names them
