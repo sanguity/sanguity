@@ -17,16 +17,16 @@
   const main = document.querySelector("main.sets");
   if (!main) return;
   const GROUPS = [
-    {id: "dashboard", title: "Dashboard", part: "This profile", hint: "How this profile's tabs look, for everyone it's shared with",
+    {id: "dashboard", title: "Dashboard", icon: "layout-grid", part: "This profile", hint: "How this profile's tabs look, for everyone it's shared with",
      has: ["sec-overview", "sec-tabs", "sec-trends", "sec-names", "sec-summary"]},   // sec-summary: #186
-    {id: "labs", title: "Labs and ranges", part: "This profile", hint: "Ranges of your own for results that come without one",
+    {id: "labs", title: "Labs and ranges", icon: "test-tube-diagonal", part: "This profile", hint: "Ranges of your own for results that come without one",
      has: ["sec-ranges"]},
-    {id: "activity", title: "Milestones and activity", part: "This profile", hint: "Named dates on every chart, and visits counted as workouts",
+    {id: "activity", title: "Milestones and activity", icon: "flag", part: "This profile", hint: "Named dates on every chart, and visits counted as workouts",
      has: ["sec-milestones", "sec-health"]},
-    {id: "display", title: "Display", part: "You", hint: "Theme, dates and units, on every profile you see",
+    {id: "display", title: "Display", icon: "sun-moon", part: "You", hint: "Theme, dates and units, on every profile you see",
      has: ["sec-appearance", "sec-dates", "sec-units"]},
   ];
-  const OTHER = {id: "more", title: "More", part: "", hint: "", has: []};   // a section no group names yet
+  const OTHER = {id: "more", title: "More", icon: "ellipsis", part: "", hint: "", has: []};   // a section no group names yet
   /* whose settings each group holds: the registry's sections say it by their settings' scope (data-scope); a group
      missing here goes by that */
   const WHO = {dashboard: "profile", labs: "profile", activity: "profile", display: "you"};
@@ -76,7 +76,7 @@
       if (g.part && g.part !== lastPart) { rows.push(el("li", {class: "set-nav-part", "aria-hidden": "true", text: g.part})); lastPart = g.part; }
       const dirty = partsOf(g).some(p => p.hasAttribute("data-dirty"));
       rows.push(el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id, "aria-current": g === current ? "page" : null,
-        onclick: ev => { ev.preventDefault(); show(g, {push: true, by: true}); }}, g.title,
+        onclick: ev => { ev.preventDefault(); show(g, {push: true, by: true}); }}, icon(g.icon), g.title,
         dirty ? el("span", {class: "set-nav-dirty", "data-tip": "Changes not saved"}, el("span", {class: "set-sr", text: ", changes not saved"})) : null)));
     }
     list.replaceChildren(...rows);

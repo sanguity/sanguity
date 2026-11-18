@@ -181,9 +181,9 @@ async function loadPasskeys() {
    and the old Admin tab's (#admin, #users, #labmaps) the Admin page (#167). */
 const MOVED = {"#profiles": "sharing.html#people", "#admin": "admin.html", "#users": "admin.html#users", "#labmaps": "admin.html#labmaps"};
 const GROUPS = [
-  {id: "security", title: "Sign-in and security", hint: "How you sign in, and where you're signed in now.",
+  {id: "security", title: "Sign-in and security", icon: "lock", hint: "How you sign in, and where you're signed in now.",
    has: ["password", "twofa", "passkeys", "sessions"]},
-  {id: "device", title: "This device", hint: "Sanguity on the device you're using now: as an app, and offline.",
+  {id: "device", title: "This device", icon: "smartphone", hint: "Sanguity on the device you're using now: as an app, and offline.",
    has: ["installApp", "offlineRecords"]},
 ];
 const ALIAS = {install: "installApp", offline: "offlineRecords"};
@@ -210,8 +210,8 @@ const AcctNav = (() => {
     return of && !(locked && of !== GROUPS[0]) ? {g: of, el: t} : {g: GROUPS[0]};
   }
   const follow = () => { if (MOVED[location.hash]) { location.replace(MOVED[location.hash]); return; } const r = fromHash(); show(r.g, {scrollTo: r.el}); };
-  list.replaceChildren(...GROUPS.map(g => el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id, text: g.title,
-    onclick: ev => { ev.preventDefault(); show(g, {push: true}); }}))));
+  list.replaceChildren(...GROUPS.map(g => el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id,
+    onclick: ev => { ev.preventDefault(); show(g, {push: true}); }}, icon(g.icon), g.title))));   // its icon beside its name (#354)
   main.prepend(nav);
   main.classList.add("with-nav");
   addEventListener("hashchange", follow);

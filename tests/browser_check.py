@@ -2785,7 +2785,7 @@ def main():
             lane = js("""(() => { const c = CATS.find(c => c.k === 'immunization'), chip = document.querySelector('#chips .toggle[data-k=immunization]');
               const marks = [...document.querySelectorAll('#tl circle.ev')].filter(m => byId.get(+m.dataset.id)?.k === 'immunization');
               return {chip: chip && chip.getAttribute('aria-label'), label: [...document.querySelectorAll('#tl .lane-label')].map(t => t.textContent).includes('Immunizations'),
-                      marks: marks.length, fill: marks[0] && getComputedStyle(marks[0]).fill, key: chip && getComputedStyle(chip.querySelector('.key')).backgroundColor}; })()""")
+                      marks: marks.length, fill: marks[0] && getComputedStyle(marks[0]).fill, key: chip && getComputedStyle(chip.querySelector('.key')).color}; })()""")
             check("…the Timeline has an Immunizations lane, its marks in the kind's colour, and a chip saying how many",
                   lane["chip"] == "Immunizations, 3, shown" and lane["label"] and lane["marks"] == 3 and lane["fill"] == lane["key"], lane)
             theme_before, bad, axe_bad = js("document.documentElement.dataset.theme || null"), [], list(imm_axe[0])
@@ -2877,7 +2877,7 @@ def main():
               const bars = [...document.querySelectorAll('#tl rect.cymark')], marks = [...document.querySelectorAll('#tl .cymark:not(rect)')];
               return {chip: chip && chip.getAttribute('aria-label'), label: [...document.querySelectorAll('#tl .lane-label')].map(t => t.textContent).includes('Cycle tracking'),
                       bars: bars.length, marks: marks.length, spans: CYCLE.filter(e => e.cy.kind === 'span').map(e => [e.cy.from, e.cy.to, e.cy.logged, e.title]),
-                      fill: bars[0] && getComputedStyle(bars[0]).fill, key: chip && getComputedStyle(chip.querySelector('.key')).backgroundColor,
+                      fill: bars[0] && getComputedStyle(bars[0]).fill, key: chip && getComputedStyle(chip.querySelector('.key')).color,
                       rows: [...document.querySelectorAll('#list .tl-row')].filter(r => r.textContent.includes('Cycle tracking')).length}; })()""")
             check("…on: a Cycle tracking lane on the Timeline, both apps' periods as bars and the other records as marks, in its colour, with a chip",
                   lane["label"] and lane["chip"] == "Cycle tracking, 37, shown" and lane["bars"] == 12 and lane["marks"] == 25 and lane["fill"] == lane["key"]
@@ -3046,7 +3046,7 @@ def main():
               return {chip: chip && chip.getAttribute('aria-label'), label: [...document.querySelectorAll('#tl .lane-label')].map(t => t.textContent).includes('ECG & rhythm'),
                       filled: marks.filter(m => byId.get(+m.dataset.id).k === 'ecg').map(m => getComputedStyle(m).fill),
                       hollow: marks.filter(m => byId.get(+m.dataset.id).k === 'rhythm').map(m => getComputedStyle(m).stroke),
-                      key: chip && getComputedStyle(chip.querySelector('.key')).backgroundColor,
+                      key: chip && getComputedStyle(chip.querySelector('.key')).color,
                       samples: /"samples":\\[/.test(JSON.stringify(WATCH)), n: (WATCH.ecg || []).length}; })()""")
             check("ECG (#182): the Timeline has an ECG & rhythm lane, three recordings as dots and two notifications as rings in its colour, and a chip",
                   lane["chip"] == "ECG & rhythm, 5, shown" and lane["label"] and len(lane["filled"]) == 3 and len(lane["hollow"]) == 2
@@ -4838,7 +4838,7 @@ def main():
               const vis = [...document.querySelectorAll('#chips .toggle')].find(b => b.textContent.startsWith('Visits'));
               const s = [...document.querySelectorAll('#sortSeg button')], sel = s.find(b => b.getAttribute('aria-pressed') === 'true'), un = s.find(b => b !== sel);
               const t = b => ({bg: cs(b).backgroundColor, color: cs(b).color, border: cs(b).borderColor + ' ' + cs(b).borderStyle, mark: cs(b, '::before').content === 'none' ? 'none' : cs(b, '::before').maskImage.includes('svg+xml') ? '✓' : cs(b, '::before').content,   // the ✓ is a mask (#257)
-                               key: cs(b.querySelector('.key')).backgroundColor, opacity: +cs(b).opacity});
+                               key: cs(b.querySelector('.key')).color, opacity: +cs(b).opacity});
               return {shown: t(vis), hidden: t(lab), sel: [cs(sel).backgroundColor, cs(sel).boxShadow, cs(sel).fontWeight, +cs(sel).opacity],
                       un: [cs(un).backgroundColor, cs(un).boxShadow, cs(un).fontWeight, +cs(un).opacity]};
             })()"""
@@ -4917,7 +4917,7 @@ def main():
             check("…kept on a reload", only() == ["visit"] and js("JSON.parse(localStorage.getItem(stateKey())).cats.filter(k => CATS.filter(hasLane).some(c => c.k === k))") == ["visit"], only())
             # a hidden kind's look: the count muted, the key grey and its ⋯ untinted, in each theme (#193 checks the chip itself)
             part = r"""k => { const w = document.querySelector(`#chips .toggle[data-k=${k}]`).parentElement, cs = n => getComputedStyle(n);
-              return {n: cs(w.querySelector('.n')).color, key: cs(w.querySelector('.key')).backgroundColor, more: cs(w.querySelector('.kind-more')).backgroundColor}; }"""
+              return {n: cs(w.querySelector('.n')).color, key: cs(w.querySelector('.key')).color, more: cs(w.querySelector('.kind-more')).backgroundColor}; }"""
             theme_before = js("document.documentElement.dataset.theme || null")
             for mode in ("light", "dark", "forced colors"):
                 if mode == "forced colors":
@@ -9209,6 +9209,70 @@ def main():
             js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was)})" if theme_was else "localStorage.removeItem('ht-theme')")
             page.set_viewport_size({"width": 1400, "height": 900})
 
+            # ---- #354: an icon beside the words of every sidebar link, kind chip, Timeline row, Add item and item of your
+            # menu: exactly one svg.icon first in it, hidden from assistive technology (so its name is its words), its <use>
+            # naming a symbol the sprite has and drawn (not 0 by 0) where it's shown. A chip's icon is its kind's (KIND_ICON).
+            ICON_EACH = r"""async ([sels, open]) => {
+              const sprite = await (await fetch(ICON_SPRITE)).text(), ids = new Set([...sprite.matchAll(/<symbol id="([^"]+)"/g)].map(m => m[1]));
+              const out = {n: {}, bad: []};
+              for (const sel of sels) {
+                out.n[sel] = 0;
+                for (const x of document.querySelectorAll(sel)) {
+                  if (x.hidden) continue;
+                  out.n[sel]++;
+                  const icons = x.querySelectorAll('svg.icon'), s = icons[0], u = s && s.querySelector('use'), id = u && (u.getAttribute('href') || '').split('#')[1];
+                  const say = `${sel} “${x.textContent.trim().slice(0, 30)}”`;
+                  if (icons.length !== 1) { out.bad.push(`${say}: ${icons.length} icons`); continue; }
+                  if (s.getAttribute('aria-hidden') !== 'true' || s.textContent.trim()) out.bad.push(`${say}: its icon could be read`);
+                  if (!ids.has(id)) out.bad.push(`${say}: #${id} isn't in the sprite`);
+                  if ((open || x.checkVisibility()) && !(u.getBBox().width && s.getBoundingClientRect().width)) out.bad.push(`${say}: not drawn`);
+                  if (x.matches('#chips .toggle') && !s.classList.contains('i-' + KIND_ICON[x.dataset.k])) out.bad.push(`${say}: not its kind's icon`);
+                }
+              }
+              return out;
+            }"""
+            icons_bad, icons_n = [], {}
+            def icons_in(sels, open=False):
+                r = page.evaluate(ICON_EACH, [sels, open])
+                icons_n.update(r["n"]); icons_bad.extend(r["bad"])
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+            open_tab("timeline")
+            settle(300)
+            icons_in(["#chips .toggle", "#list .tl-row"])
+            for m in ("addMenu", "userMenu"):
+                page.click(f"#{m}Btn")
+                page.wait_for_selector(f"#{m}List:popover-open", timeout=5000)
+                icons_in([f"#{m}List [role=menuitem]"], open=True)
+                page.keyboard.press("Escape")
+            # Dark mode / Light mode: its words change, its icon stays (twice, so the theme is as it was)
+            item = "(t => [t.textContent.trim(), t.querySelectorAll('svg.icon').length, !!t.firstElementChild?.matches('svg.icon')])(document.getElementById('theme'))"
+            theme_item = [js(item)]
+            for _ in range(2):
+                if not js("!!document.querySelector('#userMenuList:popover-open')"):
+                    page.click("#userMenuBtn")
+                page.click("#theme")
+                theme_item.append(js(item))
+            if js("!!document.querySelector('#userMenuList:popover-open')"):
+                page.keyboard.press("Escape")
+            for path, nav in (("settings.html", "#setNav"), ("sources.html", "#srcNav"), ("sharing.html", "#shrNav"), ("account.html", "#acctNav"), ("admin.html", "#admNav")):
+                page.goto(base + "/" + path)
+                page.wait_for_selector(f"{nav} a[data-group]", timeout=10000)
+                settle(200)
+                icons_in([f"{nav} a[data-group]"])
+            want = {"#setNav a[data-group]": 4, "#srcNav a[data-group]": 7, "#shrNav a[data-group]": 8, "#acctNav a[data-group]": 2, "#admNav a[data-group]": 7,
+                    "#addMenuList [role=menuitem]": 5, "#userMenuList [role=menuitem]": 8}
+            check("icons (#354): one Lucide icon, hidden from screen readers and drawn from a symbol the sprite has, in each link of the "
+                  "five sidebars, each kind chip (its kind's), each Timeline row and each item of the Add menu and your menu",
+                  not icons_bad and all(icons_n.get(k, 0) >= v for k, v in want.items()) and icons_n["#chips .toggle"] >= 10 and icons_n["#list .tl-row"] > 50,
+                  icons_bad[:10] or icons_n)
+            check("…and the Dark mode item, turned Light mode and back, keeps its icon before its words",
+                  sorted(x[0] for x in theme_item[:2]) == ["Dark mode", "Light mode"] and theme_item[2] == theme_item[0]
+                  and all(x[1:] == [1, True] for x in theme_item), theme_item)
+            js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was)})" if theme_was else "localStorage.removeItem('ht-theme')")
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+
             # ---- WCAG 2.2 AA (#202, docs/accessibility.md): axe-core's WCAG 2.0, 2.1 and 2.2 A and AA rules (axe_check) on
             # every page and its main states, in light and dark: each records tab (Labs as charts and as a heatmap, each also
             # as its table), an event's drawer for several kinds, the app's own dialog (ask(), with a box to type in), the
@@ -10145,7 +10209,9 @@ def main():
             check("PWA: Chromium finds nothing stopping the install", not [e for e in errs if e["errorId"] != "in-incognito"], errs)
             # the worker keeps the app's own files, and nothing from the API
             kept = dict(ph.evaluate("caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys()).then(rs => [k, rs.map(r => r.url)]))))"))
-            shell = kept.get("sanguity-shell-v4", [])
+            with open(os.path.join(ROOT, "www", "sw.js"), encoding="utf-8") as f:   # its name as sw.js has it now (v5: #354)
+                shell_name = re.search(r'const SHELL = "([^"]+)"', f.read()).group(1)
+            shell = kept.get(shell_name, [])
             check("PWA: the app's pages, scripts, fonts and icons are kept",
                   any(u.endswith("/js/app.js") for u in shell) and any(u.endswith("/icons/icon-192.png") for u in shell)
                   and sum("/fonts/" in u and u.endswith(".woff2") for u in shell) == 4, len(shell))
@@ -10286,7 +10352,7 @@ def main():
             ph.wait_for_url("**/login.html", timeout=10000)
             until(NO_COPY, 5000)
             check("sign-out: the kept copy and the choice are deleted, the app's own files stay",
-                  ph.evaluate(NO_COPY) and ph.evaluate("localStorage.getItem('sg-offline-records')") is None and ph.evaluate("caches.has('sanguity-shell-v4')"))
+                  ph.evaluate(NO_COPY) and ph.evaluate("localStorage.getItem('sg-offline-records')") is None and ph.evaluate("n => caches.has(n)", shell_name))
             # offline, the browser reports each request it couldn't make; signing out ends in 401s
             problems[before:] = [x for x in problems[before:] if "ERR_INTERNET_DISCONNECTED" not in x and "401" not in x]
             ctx.close()

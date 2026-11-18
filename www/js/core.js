@@ -22,6 +22,20 @@ const CATS = [
 ];
 const CAT_OF = {}; CATS.forEach(c => c.kinds.forEach(k => CAT_OF[k] = c));
 const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",contact:"Chart activity",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim",journal:"Journal",mood:"Mood and energy",immunization:"Immunization",ecg:"ECG (watch)",rhythm:"Irregular rhythm notification (watch)",cycle:"Cycle tracking"};
+/* each kind's icon (#354, Lucide's, in icons/sprite.svg): one map, for the Timeline's chips and rows and for what
+   shows a kind next (the drawer, the charts). A category's chip takes its key's (CATS[].k): its first kind's, or the
+   watch's own. */
+const KIND_ICON = {stay: "bed", visit: "stethoscope", contact: "clipboard", lab: "test-tube-diagonal", labitem: "test-tube-diagonal",
+  imaging: "scan-line", procedure: "bandage", immunization: "syringe", study: "microscope", message: "message-square",
+  appt_msg: "message-square", auto_msg: "message-square", letter: "mail", document: "file-text", med: "pill", rx: "pill",
+  claim: "banknote", watch: "watch", exercise: "watch", ecg: "activity", rhythm: "activity", journal: "notebook", mood: "smile",
+  cycle: "droplet"};
+/* a kind's icon, hidden from assistive technology beside the kind's name (util.js icon()); cls: a class of its own */
+const kindIcon = (k, cls) => {
+  const i = icon(KIND_ICON[k] || KIND_ICON[CAT_OF[k]?.k] || "file-text");
+  if (cls) i.classList.add(cls);
+  return i;
+};
 const usd = v => (v || 0).toLocaleString(undefined, {style: "currency", currency: "USD", maximumFractionDigits: 0});
 /* The profile's settings (server/settings.py), changed on the Settings page. The server sends every one, with its
    defaults filled in; these are only what the page uses if that fails, and should match the server's defaults. */
@@ -221,7 +235,7 @@ function renderKinds() {
     const on = state.cats.has(c.k), n = counts[c.k] || 0, id = "kindMenu-" + c.k;
     const chip = el("button", {type: "button", class: "toggle", "data-k": c.k, "aria-pressed": on, "aria-label": `${c.label}, ${n}, ${on ? "shown" : "hidden"}`,
       onclick: () => { on ? state.cats.delete(c.k) : state.cats.add(c.k); renderAll(); }},
-      el("span", {class: "key"}), `${c.label} `, el("span", {class: "n", text: n}));
+      kindIcon(c.k, "key"), `${c.label} `, el("span", {class: "n", text: n}));   // its icon, in its colour: the chart's key (#354)
     const btn = el("button", {type: "button", class: "kind-more", "data-k": c.k, "aria-label": `More for ${c.label}`,
       "data-tip": `Show only ${c.label}${hidden ? ", or show all" : ""}`, "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id}, icon("ellipsis"));
     const items = [item(c.k, `Show only ${c.label}`, () => showKinds(c.k)), hidden ? item(c.k, "Show all", () => showKinds()) : null].filter(Boolean);

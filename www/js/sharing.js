@@ -32,14 +32,14 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
   /* ---------------------------------------------------------------- the sidebar: one group shown at a time */
   const RANK = {viewer: 0, editor: 1, owner: 2};
   const GROUPS = [
-    {id: "people", title: "People", has: ["people"]},
-    {id: "links", title: "Share links", has: ["links"], needs: "owner", why: "Share links are made by a profile's owners."},
-    {id: "calendar", title: "Calendar feed", has: ["calendar"]},
-    {id: "summary", title: "Visit summary", has: ["summaryIntro", "build", "preview"]},
-    {id: "export", title: "Export everything", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it."},
-    {id: "activity", title: "Activity", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners."},
-    {id: "about", title: "About this person", part: "Profiles", has: ["about", "targets"]},   // #194; targets of your own (#234)
-    {id: "profile", title: "Profile", part: "Profiles", has: ["profileCard", "newProfile"]},
+    {id: "people", title: "People", icon: "users", has: ["people"]},
+    {id: "links", title: "Share links", icon: "share-2", has: ["links"], needs: "owner", why: "Share links are made by a profile's owners."},
+    {id: "calendar", title: "Calendar feed", icon: "calendar", has: ["calendar"]},
+    {id: "summary", title: "Visit summary", icon: "file-text", has: ["summaryIntro", "build", "preview"]},
+    {id: "export", title: "Export everything", icon: "download", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it."},
+    {id: "activity", title: "Activity", icon: "history", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners."},
+    {id: "about", title: "About this person", icon: "user", part: "Profiles", has: ["about", "targets"]},   // #194; targets of your own (#234)
+    {id: "profile", title: "Profile", icon: "circle-user", part: "Profiles", has: ["profileCard", "newProfile"]},
   ];
   const ALIAS = {profiles: "people"};   // the old Account tab's name (account.html#profiles)
   const PROFILE = GROUPS.at(-1);
@@ -54,8 +54,8 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     for (const g of GROUPS.filter(allowed)) {
       const p = g.part || "Sharing";
       if (p !== part) { rows.push(el("li", {class: "set-nav-part", "aria-hidden": "true", text: p})); part = p; }
-      rows.push(el("li", {class: g.part ? "shr-apart" : null}, el("a", {href: "#" + g.id, "data-group": g.id, text: g.title,
-        onclick: ev => { ev.preventDefault(); show(g, {push: true}); }})));
+      rows.push(el("li", {class: g.part ? "shr-apart" : null}, el("a", {href: "#" + g.id, "data-group": g.id,
+        onclick: ev => { ev.preventDefault(); show(g, {push: true}); }}, icon(g.icon), g.title)));   // its icon beside its name (#354)
     }
     list.replaceChildren(...rows);
   }

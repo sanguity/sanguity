@@ -135,32 +135,33 @@ const SgNav = (() => {
     return menuWire({btn, list, wrap: el("div", {class: "menu", id}, btn, list)});
   }
 
-  const link = (href, text, attrs = {}) => el("a", {class: "menu-item acct", role: "menuitem", href, text, ...attrs});
-  const action = (id, text, attrs = {}) => el("button", {class: "menu-item", role: "menuitem", type: "button", id, text, ...attrs});
+  /* each item with its icon before its words (#354), hidden from assistive technology */
+  const link = (href, ico, text, attrs = {}) => el("a", {class: "menu-item acct", role: "menuitem", href, ...attrs}, icon(ico), text);
+  const action = (id, ico, text, attrs = {}) => el("button", {class: "menu-item", role: "menuitem", type: "button", id, ...attrs}, icon(ico), text);
   const sep = () => el("div", {class: "menu-sep", role: "separator"});
 
   /* Add: records in, each way opening its section of the Sources page (#166); a journal entry, whose form journal.js
      opens on the records page (from another page, the link takes you there and it opens, #173) */
   const add = menu("addMenu", "Add", "plus", [
-    link("sources.html#upload", "Upload files", {id: "importLink", "data-needs": "import"}),
-    link("sources.html#portals", "Connect a portal or plan", {"data-needs": "import"}),
-    link("sources.html#manual", "Type records in", {"data-needs": "import"}),
-    link("sources.html#link", "Paste a Health Link", {"data-needs": "import"}),
-    sep(), onRecords ? action("journalBtn", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "Journal entry", {id: "journalBtn"}),
+    link("sources.html#upload", "upload", "Upload files", {id: "importLink", "data-needs": "import"}),
+    link("sources.html#portals", "plug", "Connect a portal or plan", {"data-needs": "import"}),
+    link("sources.html#manual", "keyboard", "Type records in", {"data-needs": "import"}),
+    link("sources.html#link", "link", "Paste a Health Link", {"data-needs": "import"}),
+    sep(), onRecords ? action("journalBtn", "notebook", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "notebook", "Journal entry", {id: "journalBtn"}),
   ]);
   /* the person's own menu */
   const who = el("span", {id: "who", text: "Account"});
   const user = menu("userMenu", "", "", [
-    link("sharing.html", "Sharing", {id: "sharingLink"}),
+    link("sharing.html", "share-2", "Sharing", {id: "sharingLink"}),
     sep(),
-    link("sources.html", "Sources", {id: "sourcesLink"}),
-    link("settings.html", "Settings", {id: "settingsLink"}),
-    link("account.html", "Account"),
-    link("admin.html", "Admin", {id: "adminLink", hidden: ""}),
-    link("guide.html", "Getting started", {id: "guideLink"}),   // the first-run guide, any time (#199)
-    action("theme", "Dark mode"),
+    link("sources.html", "database", "Sources", {id: "sourcesLink"}),
+    link("settings.html", "settings", "Settings", {id: "settingsLink"}),
+    link("account.html", "circle-user", "Account"),
+    link("admin.html", "wrench", "Admin", {id: "adminLink", hidden: ""}),
+    link("guide.html", "compass", "Getting started", {id: "guideLink"}),   // the first-run guide, any time (#199)
+    action("theme", "sun-moon", "Dark mode"),
     sep(),
-    action("logout", "Log out"),
+    action("logout", "log-out", "Log out"),
   ]);
   user.btn.replaceChildren(who, el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
   add.btn.append(el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
@@ -175,7 +176,7 @@ const SgNav = (() => {
   /* light or dark: this browser's own choice over the account's default (applyTheme in util.js) */
   const isDark = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
   const themeBtn = document.getElementById("theme");
-  const themeLabel = () => { themeBtn.textContent = isDark() ? "Light mode" : "Dark mode"; };
+  const themeLabel = () => { themeBtn.lastChild.textContent = isDark() ? "Light mode" : "Dark mode"; };   // after its icon
   themeBtn.onclick = () => { try { localStorage.setItem("ht-theme", isDark() ? "light" : "dark"); } catch (e) {} applyTheme(); themeLabel(); };
   new MutationObserver(themeLabel).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
   themeLabel();
