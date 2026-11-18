@@ -61,18 +61,19 @@ function menuWire(m) {
   list.addEventListener("click", ev => { if (ev.target.closest("[role^=menuitem]")) setTimeout(m.close); });
   return m;
 }
-/* without CSS anchor positioning (app.css, @supports not (anchor-name: --a)): where a menu opens, worked out here from
-   where its button is now (#356): under it, or over it where there's no room under and there is over, never taller
-   than the larger of the two (6 px from the button, 8 px from the screen's edge: --menu-room), scrolling inside if it
-   must; 8 px inside the screen sideways, its right edge on the button's when that's on the right; and how far down the
-   page the bar ends, for a phone's short screen, where the bar scrolls away (#308, #319). Called as it's about to
-   open, before it's drawn (it's measured shown, unseen, for a moment), and while it's open as the page scrolls or the
-   window changes size. */
+/* where a menu opens (#356, #357), from where its button is now. Everywhere: how tall it may be, the larger of the room
+   under its button and over it (6 px from the button, 8 px from the screen's edge), so it fits on one side or the
+   other, scrolling inside if it must; app.css's anchor positioning (or the rest of this) puts it there. Without CSS
+   anchor positioning (app.css, @supports not (anchor-name: --a)) the rest is worked out here: under its button, or
+   over it where there's no room under and there is over; 8 px inside the screen sideways, its right edge on the
+   button's when that's on the right; and how far down the page the bar ends, for a phone's short screen, where the bar
+   scrolls away (#308, #319). Called as it's about to open, before it's drawn (measured shown, unseen, for a moment), and
+   while it's open as the page scrolls or the window changes size. */
 function menuPlace(m) {
-  if (CSS.supports("anchor-name: --a")) return;
   const {btn, list} = m, r = btn.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
   const below = Math.floor(vh - r.bottom - 14), above = Math.floor(r.top - 14);
   placeAt(list, {"--menu-room": Math.max(below, above, 40)});   // util.js; at least about one item
+  if (CSS.supports("anchor-name: --a")) return;
   list.classList.add("sg-measure");   // shown (unseen) to be measured, if it isn't yet
   const w = list.offsetWidth, h = list.offsetHeight;
   list.classList.remove("sg-measure");
