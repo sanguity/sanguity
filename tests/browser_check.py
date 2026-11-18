@@ -1006,6 +1006,42 @@ TILE_LINES_JS = r"""() => {
 }"""
 
 
+# the swap to the fonts (#329): the cards and tiles a page draws, by name, with their heights
+SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main .card, main .tile, main .stat, main .ov-mini, .sets .set')]
+  .filter(e => e.checkVisibility()).map((e, i) => [`${e.className.split(' ')[0]} ${i} ${(e.querySelector('h1,h2,h3,.lbl,.l')?.textContent || '').trim().slice(0, 40)}`,
+    Math.round(e.getBoundingClientRect().height * 10) / 10]))"""
+SWAP_FONTS_JS = "() => [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family).filter((f, i, a) => a.indexOf(f) === i).sort()"
+
+
+def font_swap(browser, state, url, width):
+    """A page loaded with www/fonts/ held back, so it's drawn in base.css's fallbacks, then the fonts let through (#329).
+    Returns {box: (height in the fallback, height in the font)} for each card or tile whose height changed, how many
+    boxes there were, the layout shift after the fonts were let through, and the font families loaded before and
+    after. No service worker, so the fonts come from the network."""
+    ctx = browser.new_context(storage_state=state, service_workers="block", viewport={"width": width, "height": 900})
+    held = []
+    ctx.route("**/fonts/**", lambda route: held.append(route))   # answered once the page is drawn
+    pg = ctx.new_page()
+    pg.goto(url, wait_until="domcontentloaded")   # not "load": that waits for the fonts
+    for _ in range(100):
+        if pg.evaluate("performance.getEntriesByName('sanguity:ready').length > 0 || !!document.querySelector('.sets .set')"):
+            break
+        pg.wait_for_timeout(100)
+    pg.wait_for_timeout(1000)
+    before, fonts_before = pg.evaluate(SWAP_BOXES_JS), pg.evaluate(SWAP_FONTS_JS)
+    pg.evaluate("""() => { window.__swapShift = 0; new PerformanceObserver(l => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__swapShift += e.value; })
+      .observe({type: 'layout-shift'}); }""")
+    for r in held:
+        r.continue_()
+    ctx.unroute("**/fonts/**")
+    pg.evaluate("document.fonts.ready.then(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))))")
+    pg.wait_for_timeout(500)
+    after, fonts_after, shift = pg.evaluate(SWAP_BOXES_JS), pg.evaluate(SWAP_FONTS_JS), pg.evaluate("window.__swapShift")
+    ctx.close()
+    changed = {k: (h, after[k]) for k, h in before.items() if k in after and abs(after[k] - h) > 0.5}
+    return changed, len(before), round(shift, 4), fonts_before, fonts_after
+
+
 def main():
     srv, base = start_app()
     problems, passed = [], []
@@ -1077,6 +1113,21 @@ def main():
         check("fonts (#253, #328): Inter and Source Serif load from the app itself under the CSP, nothing is preloaded, and the page's text is in Inter, in light and dark",
               all(f == [True, True, "Inter", theme] for theme, f in fonts.items()) and preload == []
               and fetched == ["/fonts/inter-v4.001-latin.woff2", "/fonts/source-serif-4-v4.004-wght-latin.woff2"], (fonts, preload, fetched))
+        # the swap moves nothing (#329): each page drawn with the fonts held back is drawn in the fallbacks (base.css),
+        # and when the fonts arrive the layout shift is under 0.005; at 1400 px no card or tile changes height, at 375 px
+        # none changes by more than a line: there a few lines end within a pixel or two of their box, where Inter's and
+        # Arial's widths for that text differ by under 1% either way, which no one size-adjust removes
+        state = strict.context.storage_state()
+        for name, path in (("Overview", "/#overview"), ("Settings", "/settings.html"), ("Costs", "/#costs"), ("Body and activity", "/#health")):
+            for width in (1400, 375):
+                changed, boxes, shift, fonts_before, fonts_after = font_swap(browser, state, base + path, width)
+                drawn = (boxes > 3 and "Inter fallback" in fonts_before and "Inter" not in fonts_before
+                         and "Source Serif 4" not in fonts_before and {"Inter", "Source Serif 4"} <= set(fonts_after))
+                worst = max((abs(b - a) for a, b in changed.values()), default=0)
+                check(f"fonts (#329): {name} at {width} px, drawn in the fallbacks and then the fonts, moves less than 0.005 and "
+                      + ("no card or tile changes height" if width > 640 else "no card or tile by more than a line"),
+                      drawn and shift < 0.005 and (not changed if width > 640 else worst <= 24),
+                      [boxes, shift, changed, fonts_before, fonts_after] if not drawn else [shift, changed])
         # the colours (#254): each token is one light-dark() pair, so the system's dark (no theme chosen) and a chosen
         # dark under a light system must give the same colours, likewise light; and the two themes differ
         with open(os.path.join(ROOT, "www", "css", "tokens.css"), encoding="utf-8") as f:
