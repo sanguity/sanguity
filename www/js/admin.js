@@ -167,14 +167,16 @@ async function loadUsers() {
     el("thead", {}, el("tr", {}, ...["Account", "Status", "2FA", "Devices", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...list.map(u => {
       const self = u.id === ME.user.id;
-      const act = (label, body, done) => el("button", {class: "btn small", type: "button", text: label, disabled: self || null,
+      // each change but Enable is asked first (#249), before any fresh check: Cancel sends nothing
+      const act = (label, body, {sure, done} = {}) => el("button", {class: "btn small", type: "button", text: label, disabled: self || null,
         onclick: async () => {
+          if (sure && !await ask(sure)) return;
           try {
             let r;
             try { r = await fresh(() => call("users/" + u.id, "PATCH", body)); }
-            catch (e) {   // disabling the only owner of a profile: ask first
+            catch (e) {   // disabling the only owner of a profile: the server says which, and it's asked once more
               if (!(e.detail && e.detail.sole_owner_of)) throw e;
-              if (!await ask({title: `Disable ${u.username}?`, message: e.message, action: "Disable anyway", danger: true})) throw new Error("Not disabled.");
+              if (!await ask({title: `Disable ${u.username} anyway?`, message: e.message, action: "Disable anyway", danger: true})) throw new Error("Not disabled.");
               r = await call("users/" + u.id, "PATCH", {...body, force: true});
             }
             done && done(r); loadUsers();
@@ -186,9 +188,21 @@ async function loadUsers() {
         el("td", {text: u.two_factor ? "on" : "off"}),
         el("td", {text: u.sessions}),
         el("td", {class: "acts"},
-          act(u.disabled ? "Enable" : "Disable", {disabled: !u.disabled}),
-          act(u.is_admin ? "Remove admin" : "Make admin", {is_admin: !u.is_admin}),
-          act("Reset password", {reset_password: true}, r => setTimeout(() => showTemp(u.username, r.temporary_password, r.temporary_days))),
+          act(u.disabled ? "Enable" : "Disable", {disabled: !u.disabled}, u.disabled ? {} : {sure: {title: `Disable ${u.username}?`,
+            message: ["They're signed out everywhere and can't sign in until an admin enables the account again.",
+                      "Their profiles and records stay as they are."], action: "Disable", danger: true}}),
+          act(u.is_admin ? "Remove admin" : "Make admin", {is_admin: !u.is_admin}, {sure: u.is_admin
+            ? {title: `Remove ${u.username}'s admin role?`, message: "They keep their account and the profiles shared with them, but can't use the Admin page any more.",
+               action: "Remove admin"}
+            : {title: `Make ${u.username} an admin?`, message: ["Admins look after every account on this server: they can add, disable and remove accounts, " +
+                 "reset passwords and turn off two-factor sign-in, and look after backups and sources.",
+                 "They don't see a profile's records unless it's shared with them. They'll need two-factor sign-in of their own to use the Admin page."],
+               action: "Make admin", danger: true}}),
+          act("Reset password", {reset_password: true}, {sure: {title: `Reset ${u.username}'s password?`,
+            message: ["Their password stops working at once, and they're signed out everywhere.",
+                      "You'll get a one-time password to give them; they choose a new one when they first sign in with it." +
+                      (u.two_factor ? " Their two-factor sign-in stays on." : "")], action: "Reset password", danger: true},
+            done: r => setTimeout(() => showTemp(u.username, r.temporary_password, r.temporary_days))}),
           self ? null : el("button", {class: "btn small", type: "button", text: "Remove", onclick: () => removeAccount(u)}),
           u.two_factor ? el("button", {class: "btn small", type: "button", text: "Turn off 2FA", disabled: self || null, onclick: async () => {
             if (!await ask({title: `Turn off two-factor sign-in for ${u.username}?`,

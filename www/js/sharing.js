@@ -102,7 +102,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
 
   async function refresh(want) {
     ME = await call("me");
-    fill(want);
+    await fill(want);
   }
   function fill(want) {
     const has = ME.profiles.length > 0;
@@ -118,7 +118,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       return;
     }
     SgNav.profiles(ME.profiles, want);   // the top bar's picker (nav.js, #170): want, else the address's or this browser's
-    pick();
+    return pick();   // refresh waits for it: what's asked next about a role reads the people it draws (#249)
   }
   async function pick() {
     const p = P = ME.profiles.find(x => x.id === +sel.value);
@@ -158,6 +158,27 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     const s = el("select", {"aria-label": label, onchange}, ...ROLES.map(r => el("option", {value: r, text: r})));
     s.value = value; return s;
   }
+  /* a role change that's hard to take back is asked first (#249): giving someone owner, taking it away, or changing
+     your own (only an owner can, so it's a step down, and only another owner can undo it). Another person's
+     editor/viewer change isn't: either of you can change it back (otherwise: what's asked then, if anything). m may be
+     someone not yet shared with ({username}). Resolves true to go ahead. */
+  const an = r => (r === "owner" || r === "editor" ? "an " : "a ") + r;
+  function sureOfRole(p, m, to, otherwise = null) {
+    if (m.user_id === ME.user.id) {
+      if (!MEMBERS.some(x => x.role === "owner" && x.user_id !== m.user_id)) return otherwise ? otherwise() : true;   // the last owner: the server says why not
+      return ask({title: `Make yourself ${an(to)} of ${p.name}?`, action: "Change my role", danger: true, message: [
+        to === "viewer" ? `You'll only be able to view ${p.name}: no longer change or export its records, share it, change who has access, ` +
+                          "make share links, see its activity, or rename or delete it."
+          : `You'll no longer be able to share ${p.name}, change who has access, make share links, see its activity, or rename or delete it. ` +
+            "You can still change its records and export them.",
+        "Only another owner can make you an owner again."]});
+    }
+    if (to === "owner") return ask({title: `Make ${m.username} an owner of ${p.name}?`, action: "Make owner", message:
+      `Owners choose who sees ${p.name}: ${m.username} could share it, change anyone's role (yours too), rename it and delete it.`});
+    if (m.role === "owner") return ask({title: `Make ${m.username} ${an(to)} of ${p.name}?`, action: "Change role", message:
+      `${m.username} will no longer be able to share it, change who has access, or rename or delete it.`});
+    return otherwise ? otherwise() : true;
+  }
   async function leave(p) {
     try { await call(`profiles/${p.id}/members/${ME.user.id}`, "DELETE"); await refresh(null); note(`You no longer have access to ${p.name}.`); }
     catch (e) { sayIn($("#peopleMsg"), e.message, true); }
@@ -171,7 +192,8 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       el("tbody", {}, ...MEMBERS.map(m => el("tr", {},
         el("td", {}, m.username, m.user_id === me ? el("span", {class: "muted", text: " (you)"}) : null),
         el("td", {}, owner ? roleSelect(m.role, async ev => {
-          try { await call(`profiles/${p.id}/members`, "PUT", {username: m.username, role: ev.target.value}); await again(); sayIn($("#peopleMsg"), `${m.username} is now ${ev.target.value === "owner" ? "an" : "a"} ${ev.target.value}.`); }
+          if (!await sureOfRole(p, m, ev.target.value)) { ev.target.value = m.role; return; }
+          try { await call(`profiles/${p.id}/members`, "PUT", {username: m.username, role: ev.target.value}); await again(); sayIn($("#peopleMsg"), `${m.username} is now ${an(ev.target.value)}.`); }
           catch (e) { ev.target.value = m.role; fail(e); } }, `${m.username}'s role`) : m.role),
         el("td", {class: "acts"}, m.user_id === me ? el("button", {class: "btn small", type: "button", text: "Leave",
           onclick: async () => {
@@ -193,11 +215,11 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     const who = el("input", {placeholder: "username", autocapitalize: "none", spellcheck: "false", "aria-label": "Share with username", required: true});
     const role = roleSelect("viewer", null, "Role to share as");
     $("#shareWith").replaceChildren(el("form", {class: "row shr-share", onsubmit: async ev => { ev.preventDefault();
-      // sharing with someone who already has access would quietly change their role: say so first
+      // sharing with someone who already has access would quietly change their role: say so first; owner is asked as above
       const name = who.value.trim(), had = MEMBERS.find(m => m.username.toLowerCase() === name.toLowerCase());
       if (had && had.role === role.value) { fail(new Error(`${had.username} already has access as ${had.role}.`)); return; }
-      if (had && !await ask({title: `Change ${had.username} to ${role.value}?`, message: `${had.username} already has access to ${p.name} as ${had.role}.`,
-                             action: "Change role"})) return;
+      if (!await sureOfRole(p, had || {username: name}, role.value, had && (() => ask({title: `Change ${had.username} to ${role.value}?`,
+                            message: `${had.username} already has access to ${p.name} as ${had.role}.`, action: "Change role"})))) return;
       try { await call(`profiles/${p.id}/members`, "PUT", {username: name, role: role.value}); await again(); sayIn($("#peopleMsg"), `Shared with ${name} as ${role.value}.`); }
       catch (e) { fail(e); } }},
       el("span", {class: "muted", text: "Share with"}), who, "as", role, el("button", {class: "btn small", type: "submit", text: "Share"})));
