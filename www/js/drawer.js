@@ -46,14 +46,6 @@ function resultTable(rows) {
 function rowOrig(row) {
   return row.orig ? [el("small", {class: "orig", text: `Reported ${`${row.orig[0] ?? ""} ${row.orig[1] || ""}`.trim()}${row.orig[2] ? ", ref " + row.orig[2] : ""}`})] : [];
 }
-/* a date a record gives as text, "2026-11-02" or "2026-11-02 08:10", in this person's date format (dates.js, #248);
-   a time without a zone is the wall clock the record says. Anything else (a portal's own wording) as the record has it */
-function recordDate(s) {
-  if (typeof s !== "string") return s;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return fmtD(dayTs(s));
-  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/.test(s)) return fmtDT(zParse(s.replace(" ", "T")));
-  return s;
-}
 function resultBody(d, eid) {
   const out = [];
   const kv = [["Order", d.order], ["Collected", recordDate(d.collected)], ["Resulted", recordDate(d.resulted)], ["Ordered by", d.provider], ["Status", d.status], ["Specimen", d.specimen], ["Lab", d.lab], ["Diagnosis", (d.dx || []).join("; ")]].filter(x => x[1]);

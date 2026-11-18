@@ -90,7 +90,7 @@
   function chosenLine(c) {
     const names = c.kinds.filter(k => c.chosen.includes(k.id)).map(k => k.label);
     return `Pulls ${c.all_kinds ? "everything it's allowed" : names.join(", ").toLowerCase() || "nothing"}` +
-      (c.all_kinds && names.length ? ` (${names.join(", ").toLowerCase()})` : "") + (c.since ? `, from ${c.since}` : "") +
+      (c.all_kinds && names.length ? ` (${names.join(", ").toLowerCase()})` : "") + (c.since ? `, from ${fmtD(c.since)}` : "") +
       `. Attachments: ${c.attach.auto ? `fetched automatically (${c.attach.types.map(t => ATT_TYPES[t]).join(", ") || "none"}, up to ${c.attach.max_mb} MB each)` : "only when you ask"}.`;
   }
 

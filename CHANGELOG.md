@@ -681,6 +681,10 @@ Everything on `main` so far; it becomes the first tagged release.
   `www/css/base.css` that every page loads after the tokens, sign-in and setup too, so their buttons and fields are
   ringed in the accent, 2 px out, like the app's; their own copies of the box-sizing reset and of a field's ring are
   gone. `tests/test_css_tokens.py` fails if a stylesheet or a page rings focus again for every element.
+- **The last dates written as stored** (#311): Admin → Provider directory's "read" date, the provider finder's, a
+  typed-in record's or lab result's check as you type, a connection's "from" date (on Sources and in the activity log)
+  and the time offline records were loaded (the offline banner and Account) are in the person's date format, not as
+  "2026-11-15".
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
