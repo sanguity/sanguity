@@ -883,6 +883,15 @@ def ring_walk(page, label, stops=12):
     return bad, seen
 
 
+# a table's wrapper that scrolls, sideways or down (#335): each drawn now (of those the selector given matches, every
+# .tablewrap by default), as [its name, tabindex, role, the id it's in]. One that scrolls
+# must take focus and have a name, so a keyboard can reach what's out of sight and a screen reader says what it is
+SCROLL_TABLES_JS = r"""sel => [...document.querySelectorAll(sel || '.tablewrap')]
+  .filter(w => w.checkVisibility() && (w.scrollWidth > w.clientWidth + 1 || w.scrollHeight > w.clientHeight + 1))
+  .map(w => [w.getAttribute('aria-label') || (w.getAttribute('aria-labelledby') && document.getElementById(w.getAttribute('aria-labelledby'))?.textContent) || '',
+             w.tabIndex, w.getAttribute('role'), (w.closest('[id]') || {}).id || ''])"""
+
+
 # a field's look (#332), in light and dark (the theme set on the page, then put back): its background, edge and corner.
 # Sign-in's and setup's fields are compared with one on Account
 FIELD_LOOK_JS = r"""sel => Object.fromEntries(['light', 'dark'].map(t => {
@@ -8577,10 +8586,32 @@ def main():
                 page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
                 if spaced:
                     page.add_style_tag(content=spacing)
+                if not spaced:   # #335: every record, so Costs has its HSA and FSA table
+                    js("window._was335 = [state.preset, state.from, state.to]; setPeriod('all')")
+                    axe335, wraps335 = [], []
                 for t in ("overview", "health", "timeline", "heatmap", "labs", "costs"):
                     open_tab(t)
                     settle(250)
                     rbad += phone_fits(page, t)
+                    if not spaced:   # #335: axe-core in light and dark, and the table wrappers that scroll
+                        for theme in ("light", "dark"):
+                            js("t => { document.documentElement.dataset.theme = t; }", theme)
+                            axe335 += axe_check(page, f"{t}, 320 px, {theme}")[0]
+                        js("delete document.documentElement.dataset.theme")
+                        wraps335 += [[t] + w for w in js(SCROLL_TABLES_JS)]
+                if not spaced:   # and the drawer's tables: a lab's results, a claim's services, a medication's listings and fills
+                    for k in ("lab", "claim", "med"):
+                        js("k => openEvent(EV.find(e => e.k === k && !e.hidden && (k !== 'claim' || (DATA.details[e.id] || {}).lines?.length)) || EV.find(e => e.k === k && !e.hidden))", k)
+                        settle(300)
+                        wraps335 += [[f"the drawer, {k}"] + w for w in js(SCROLL_TABLES_JS, "#drawer .tablewrap")]
+                        page.keyboard.press("Escape")
+                        settle(150)
+                    js("[state.preset, state.from, state.to] = window._was335; save()")
+                    check("at 320 px (#335): axe-core finds nothing serious on any records tab, every record shown, in light and dark",
+                          not axe335, axe335[:8])
+                    unreached = [w for w in wraps335 if w[2] != 0 or not w[1].strip() or w[3] != "region"]
+                    check("…and every table wrapper that scrolls takes focus and is named, a region (the tabs and the drawer)",
+                          any(w[0] == "costs" for w in wraps335) and not unreached, unreached[:8] or wraps335)
                 for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
                     page.goto(base + "/" + path)
                     page.wait_for_selector(".set-nav a[data-group]", timeout=10000)

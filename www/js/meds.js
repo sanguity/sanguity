@@ -132,7 +132,7 @@ function openMedication(m) {
     ["Dose changes", m.changes.length ? String(m.changes.length) : ""], ["Pharmacy fills", m.fills.length ? String(m.fills.length) : ""],
     ["RxNorm", (m.rxnorm || []).join(", ")]]));
   if (m.spans.length) {
-    body.append(el("div", {class: "sect", text: "What the records list"}), el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data medspans"},
+    body.append(el("div", {class: "sect", text: "What the records list"}), el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": "What the records list", style: {maxHeight: "none"}}, el("table", {class: "data medspans"},
       el("thead", {}, el("tr", {}, ["When", "Listed as", "Status", "Prescribed by", "Source"].map(h => el("th", {text: h})))),
       el("tbody", {}, m.spans.map(s => el("tr", {class: "link", title: "Open this listing", onclick: () => openEvent(byId.get(s.ids[0]))},
         el("td", {text: medSpanWhen(s)}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: medSpanSays(s)})), el("td", {text: s.status || ""}), el("td", {text: s.prescriber || ""}),
@@ -141,7 +141,7 @@ function openMedication(m) {
   if (m.changes.length) body.append(el("div", {class: "sect", text: "Changes"}), el("ul", {class: "medchanges"},
     ...m.changes.map(c => el("li", {}, el("b", {text: fmtD(dayTs(c.t))}), ` · ${c.from} → ${c.to}`))));
   if (m.fills.length) {
-    body.append(el("div", {class: "sect", text: "Pharmacy fills"}), el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data medfills"},
+    body.append(el("div", {class: "sect", text: "Pharmacy fills"}), el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": "Pharmacy fills", style: {maxHeight: "none"}}, el("table", {class: "data medfills"},
       el("thead", {}, el("tr", {}, ["Date", "Drug", "Pharmacy", "Supply"].map(h => el("th", {text: h})))),
       el("tbody", {}, m.fills.map(f => el("tr", {class: "link", title: "Open this fill", onclick: () => openEvent(byId.get(f.id))},
         el("td", {text: fmtD(f.ts)}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: f.title})), el("td", {text: f.pharmacy || ""}), el("td", {text: f.supply ? `${f.supply} days` : ""})))))));
