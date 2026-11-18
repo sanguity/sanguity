@@ -77,7 +77,7 @@
       const dirty = partsOf(g).some(p => p.hasAttribute("data-dirty"));
       rows.push(el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id, "aria-current": g === current ? "page" : null,
         onclick: ev => { ev.preventDefault(); show(g, {push: true, by: true}); }}, g.title,
-        dirty ? el("span", {class: "set-nav-dirty", title: "Changes not saved"}, el("span", {class: "set-sr", text: ", changes not saved"})) : null)));
+        dirty ? el("span", {class: "set-nav-dirty", "data-tip": "Changes not saved"}, el("span", {class: "set-sr", text: ", changes not saved"})) : null)));
     }
     list.replaceChildren(...rows);
     if (pending) {   // an address naming a section that has only just arrived

@@ -252,6 +252,81 @@ function ask({title, message = "", action = "OK", cancel = "Cancel", danger = fa
   });
 }
 
+/* ---- tooltips (#261): data-tip="words" on an element, for what a native title= would say that isn't said on the
+   screen otherwise: an icon button's name (✎, ✕, ⋯), a name cut short or written out under its nickname, a figure's
+   date or range. Unlike a title, it shows for the keyboard too (on focus, when focus is shown), stays while the
+   pointer moves onto it, never covers its element (above it, or below where there's no room: CSS anchor positioning,
+   or placed from here where the browser has none), and Escape puts it away without moving the pointer or focus
+   (WCAG 1.4.13); a press on its element puts it away too, and it has no timer. While shown it is the element's
+   description (aria-describedby), unless it says the same as the element's name. One shared popover="manual", so it
+   never closes an open menu. A title= stays where it's purely a hint beside a name that already says it all, on a
+   disabled control (which gets no focus or pointer events) and on an iframe, whose title is its name. Charts' own
+   readouts (#tip, core.js) are the chart kit's. */
+/* placeAt(node, {"--name": px}): where a browser without CSS anchor positioning shows a popover (a tooltip, a menu:
+   nav.js), measured by the script, as custom properties app.css's @supports not (anchor-name: --a) rules read */
+const placeAt = (node, at) => { for (const [k, v] of Object.entries(at)) node.style.setProperty(k, v + "px"); };
+(() => {
+  let box = null, on = null, by = null, wait = 0, gone = 0;
+  const words = t => (t.getAttribute("aria-label") || t.textContent || "").trim();
+  const describe = (t, add) => {
+    const ids = (t.getAttribute("aria-describedby") || "").split(" ").filter(x => x && x !== "sgTip");
+    if (add) ids.push("sgTip");
+    if (ids.length) t.setAttribute("aria-describedby", ids.join(" ")); else t.removeAttribute("aria-describedby");
+  };
+  function hide() {
+    clearTimeout(wait); clearTimeout(gone);
+    if (!on) return;
+    on.classList.remove("sg-tip-on"); describe(on, false);
+    on = by = null;
+    if (box.matches(":popover-open")) box.hidePopover();
+  }
+  function show(t, how) {
+    clearTimeout(wait); clearTimeout(gone);
+    const text = t.dataset.tip;
+    if (!text || !t.isConnected) return hide();
+    if (on !== t) hide();
+    if (!box) document.body.append(box = el("div", {class: "sg-tip", id: "sgTip", role: "tooltip", popover: "manual"}));
+    box.textContent = text;
+    on = t; by = how;
+    t.classList.add("sg-tip-on");   // the anchor app.css places it from
+    describe(t, text !== words(t));
+    if (!box.matches(":popover-open")) {
+      // focus given back while another popover opens (a menu closed by the next one): shown once that's done
+      try { box.showPopover(); } catch (e) { wait = setTimeout(() => { if (on === t) { on = null; show(t, how); } }); return; }
+    }
+    if (!CSS.supports("anchor-name: --a")) {   // above, or below where there's no room above; 8 px inside the screen
+      const r = t.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight, vw = document.documentElement.clientWidth;
+      placeAt(box, {"--tip-left": Math.max(8, Math.min(r.left + r.width / 2 - w / 2, vw - 8 - w)), "--tip-top": r.top - h - 6 >= 0 ? r.top - h - 6 : r.bottom + 6});
+    }
+  }
+  const later = (t, how) => { clearTimeout(wait); wait = setTimeout(() => show(t, how), on ? 0 : 400); };
+  document.addEventListener("pointerover", ev => {
+    if (ev.pointerType === "touch") return;
+    if (box && box.contains(ev.target)) { clearTimeout(gone); return; }   // onto the tooltip itself: it stays
+    const t = ev.target.closest && ev.target.closest("[data-tip]");
+    if (t === on) clearTimeout(gone);
+    else if (t) later(t, "hover");
+  }, true);
+  document.addEventListener("pointerout", ev => {
+    const to = ev.relatedTarget;
+    if (!(to && (on && on.contains(to) || box && box.contains(to)))) { clearTimeout(wait); if (on && by === "hover") gone = setTimeout(hide, 200); }
+  }, true);
+  document.addEventListener("focusin", ev => {
+    const t = ev.target;
+    if (t.matches && t.matches("[data-tip]:focus-visible")) show(t, "focus");
+    else if (on && by === "focus") hide();
+  });
+  document.addEventListener("focusout", ev => { if (ev.target === on && by === "focus") hide(); });
+  document.addEventListener("pointerdown", ev => { if (on && !box.contains(ev.target)) hide(); }, true);
+  // Escape: away it goes; one shown by hovering takes the key, so the panel or menu behind stays open
+  document.addEventListener("keydown", ev => {
+    if (ev.key !== "Escape" || !on) return;
+    const hovered = by === "hover";
+    hide();
+    if (hovered) ev.stopPropagation();
+  }, true);
+})();
+
 /* ---- a table's wrapper that may scroll (#335, #340)
    scrollBox(attrs, ...kids): el("div", attrs, ...kids), for a wrapper (.tablewrap, .share-scroll) whose table may be
    wider or taller than it. While it scrolls, sideways or down, it's a tab stop and a region, so a keyboard can reach

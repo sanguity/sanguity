@@ -217,6 +217,40 @@ button.tile{cursor:pointer}
   .tile .lbl{flex-wrap:wrap}
   .tile .lbl .st{margin-left:0}
 }
+
+/* ---- menus (#261, menuWire in nav.js): the list is a popover, in the top layer over everything (no z-index), placed
+   by CSS anchor positioning: under its button (the anchor, scoped to the menu's own box), its right edge on the
+   button's (the top bar's; the records bar's and the kinds' line up on the left, in pages), turned to the other side,
+   pulled 8 px in from the screen's right, or opened above where it wouldn't fit. It fades in as it opens
+   (@starting-style), never as it closes; the reduced-motion rule turns that off. A browser without anchor positioning
+   places it from where nav.js measured its button (menuPlace). */
+:is(.menu,.kind){anchor-scope:--menu}
+:is(.menu,.kind)>[aria-haspopup=menu]{anchor-name:--menu}
+.menu-list{position:fixed;position-anchor:--menu;inset:auto;top:calc(anchor(bottom) + 6px);right:anchor(right);margin:0;width:auto;height:auto;
+  position-try-fallbacks:flip-inline,--menu-edge,flip-block,flip-block flip-inline;
+  min-width:210px;max-width:min(280px,calc(100vw - 24px));background:var(--raised);color:var(--ink);border:1px solid var(--ring);
+  border-radius:var(--r-md);box-shadow:var(--shadow-2);padding:var(--sp-1);overflow:visible}
+@position-try --menu-edge{left:auto;right:8px}
+.menu-list:popover-open{display:flex;flex-direction:column;opacity:1;transition:opacity var(--dur-1) var(--ease-out)}
+@starting-style{ .menu-list:popover-open{opacity:0} }
+@supports not (anchor-name: --a){ .menu-list{top:var(--menu-top,auto);left:var(--menu-left,auto);right:auto} }
+.menu-item[hidden],.menu-sep[hidden]{display:none}
+.menu-item{display:block;text-align:left;width:100%;padding:var(--sp-2) var(--sp-3);border:0;background:none;border-radius:var(--r-sm);color:var(--ink);font:inherit;font-size:var(--fs-3);cursor:pointer;text-decoration:none;white-space:nowrap}
+.menu-item:hover,.menu-item:focus-visible{background:var(--hover);outline:none}
+.menu-sep{height:1px;background:var(--grid);margin:var(--sp-1) 2px}
+
+/* ---- tooltips (#261, data-tip, util.js): over its element, centred on it, or under it where there's no room above,
+   never on it; kept 8 px inside the screen; fading in as menus do. Words in the page's ink on its raised colour
+   with a ring, like a menu, so its contrast is the page's own in both themes and forced colours draw its edge. */
+.sg-tip-on{anchor-name:--sg-tip}
+:is(.menu,.kind)>[aria-haspopup=menu].sg-tip-on{anchor-name:--menu,--sg-tip}   /* a menu's button is its menu's anchor too */
+.sg-tip{position:fixed;position-anchor:--sg-tip;inset:auto;margin:0;position-area:top;margin-bottom:var(--sp-1);position-try-fallbacks:flip-block;
+  justify-self:anchor-center;width:max-content;max-width:min(320px,calc(100vw - 16px));
+  padding:var(--sp-1) var(--sp-2);background:var(--raised);color:var(--ink);border:1px solid var(--ring);border-radius:var(--r-sm);
+  box-shadow:var(--shadow-2);font-size:var(--fs-2);line-height:1.4;white-space:pre-line;overflow-wrap:anywhere;text-align:left}
+.sg-tip:popover-open{opacity:1;transition:opacity var(--dur-1) var(--ease-out)}
+@starting-style{ .sg-tip:popover-open{opacity:0} }
+@supports not (anchor-name: --a){ .sg-tip{top:var(--tip-top,auto);left:var(--tip-left,auto);margin:0} }
 }
 
 @layer pages {
@@ -269,11 +303,6 @@ header.topbar .tabs button{white-space:nowrap}
 .menu-btn[aria-expanded="true"]{background:var(--hover)}
 .menu-ico{font-weight:var(--fw-bold);font-size:var(--fs-4);line-height:1}
 .menu-caret{font-size:var(--fs-1);color:var(--muted)}
-.menu-list{position:absolute;right:0;top:calc(100% + 6px);min-width:210px;max-width:min(280px,calc(100vw - 24px));background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);box-shadow:var(--shadow-2);padding:var(--sp-1);z-index:40;display:flex;flex-direction:column}
-.menu-list[hidden],.menu-item[hidden],.menu-sep[hidden]{display:none}
-.menu-item{display:block;text-align:left;width:100%;padding:var(--sp-2) var(--sp-3);border:0;background:none;border-radius:var(--r-sm);color:var(--ink);font:inherit;font-size:var(--fs-3);cursor:pointer;text-decoration:none;white-space:nowrap}
-.menu-item:hover,.menu-item:focus-visible{background:var(--hover);outline:none}
-.menu-sep{height:1px;background:var(--grid);margin:var(--sp-1) 2px}
 .pagefoot{padding:var(--sp-2) var(--sp-5) var(--sp-5);text-align:center}
 .pagefoot .meta{color:var(--muted);font-size:var(--fs-2)}
 @media (max-width:700px){
@@ -287,7 +316,7 @@ header.topbar .tabs button{white-space:nowrap}
   .menu-btn{max-width:10em}
   /* the top bar's menus (Add, the person's own): the bar wraps, so a menu pinned to its button's right edge would open
      off the screen's left (#244); instead each is the screen's width under the bar (--bar-h, nav.js), 8 px in */
-  header.topbar .menu-list{position:fixed;left:8px;right:8px;top:calc(var(--bar-h,56px) + 6px);min-width:0;max-width:none;
+  header.topbar .menu-list{position:fixed;left:8px;right:8px;top:calc(var(--bar-h,56px) + 6px);min-width:0;max-width:none;position-try-fallbacks:none;
     max-height:calc(100vh - var(--bar-h,56px) - 14px);max-height:calc(100dvh - var(--bar-h,56px) - 14px);overflow-y:auto}
   header.topbar .menu-item{white-space:normal}
 }
@@ -1143,7 +1172,7 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 @media (max-width:640px),(pointer:coarse){ .period-more-btn{min-height:44px} }
 .period-more-btn[aria-expanded="true"]{background:var(--hover);color:var(--ink)}
 .period-more-btn.on{background:color-mix(in srgb,var(--accent) 15%,var(--raised));color:var(--ink);font-weight:var(--fw-semibold);box-shadow:inset 0 -2px 0 var(--accent)}
-.period-more .menu-list{left:0;right:auto;width:max-content;min-width:200px;max-width:min(320px,calc(100vw - 24px));max-height:min(60vh,440px);overflow-y:auto}
+.period-more .menu-list{left:anchor(left);right:auto;width:max-content;min-width:200px;max-width:min(320px,calc(100vw - 24px));max-height:min(60vh,440px);overflow-y:auto}
 .period-more .menu-item{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-3);padding-left:var(--sp-5);white-space:normal}
 .period-more .menu-item[aria-checked="true"]{background:color-mix(in srgb,var(--accent) 12%,var(--raised));font-weight:var(--fw-semibold)}
 .period-more .menu-item>.i-check{position:absolute;left:var(--sp-2);margin-top:.225em;color:var(--accent);stroke-width:2.5}   /* the picked one's ✓ (#257) */
@@ -1252,7 +1281,7 @@ details.more code{overflow-wrap:anywhere}
 .kind>.toggle[aria-pressed="true"]+.kind-more{background:color-mix(in srgb,var(--tone) 15%,var(--raised));border-color:color-mix(in srgb,var(--tone) 70%,var(--ink));color:var(--ink)}
 .kind>.toggle[aria-pressed="true"]+.kind-more:hover,.kind>.toggle[aria-pressed="true"]+.kind-more[aria-expanded="true"]{background:color-mix(in srgb,var(--tone) 28%,var(--raised))}
 .kind>.toggle:focus-visible,.kind-more:focus-visible{z-index:1}
-.kind>.menu-list{left:0;right:auto;min-width:170px}
+.kind>.menu-list{left:anchor(left);right:auto;min-width:170px}
 @media (max-width:700px){ .kind-more{padding:0 var(--sp-3) 0 var(--sp-3)} }
 @media (forced-colors:active){
   .kind-more{background:Canvas;color:CanvasText;border:1px dashed CanvasText}
@@ -1422,9 +1451,11 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
    what stuck under it sticks at the top instead (#308): the Timeline's month headings and Settings' sidebar */
 @media (max-height:500px){ header{position:relative} html{scroll-padding-top:8px} .month{top:0} main.sets.with-nav>.set-nav{top:8px} }
 /* and on a phone the bar's menus open under the bar where it is now, not where it would be stuck (--bar-h): placed
-   from the bar (positioned, above), the screen's width 8 px in as in #244, scrolling with it. The page scrolls, so a
-   menu is as tall as its items, not a box of one item under a tall bar at 320×180 (#319) */
-@media (max-height:500px) and (max-width:700px){ header.topbar .menu{position:static} header.topbar .menu-list{position:absolute;top:calc(100% + 6px);max-height:none} }
+   from the bar (its anchor, --bar; nav.js measures it where the browser has no anchor positioning), the screen's
+   width 8 px in as in #244, scrolling with it. The page scrolls, so a menu is as tall as its items, not a box of one
+   item under a tall bar at 320×180 (#319) */
+@media (max-height:500px) and (max-width:700px){ header.topbar{anchor-name:--bar} header.topbar .menu-list{position:absolute;top:calc(anchor(--bar bottom) + 6px);max-height:none} }
+@supports not (anchor-name: --a){ @media (max-height:500px) and (max-width:700px){ header.topbar .menu-list{top:calc(var(--menu-bar,0px) + 6px)} } }
 @media (forced-colors:active){
   .menu-item:focus-visible,.cell-btn:focus-visible{outline-color:Highlight}
 }
@@ -1593,8 +1624,6 @@ svg text.growth-pct{font-size:var(--fs-1)}
     transition:background-color var(--dur-1) var(--ease-out),border-color var(--dur-1) var(--ease-out),color var(--dur-1) var(--ease-out),
       filter var(--dur-1) var(--ease-out)}   /* a filled button's shade (#258) */
 }
-.menu-list:not([hidden]){animation:menu-in var(--dur-1) var(--ease-out)}
-@keyframes menu-in{from{opacity:0}}
 .sets .pre-def p{margin:2px 0;font-size:var(--fs-3)}
 }   /* end of @layer pages */
 

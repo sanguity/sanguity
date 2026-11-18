@@ -50,8 +50,8 @@ function renderSeriesList() {
       const L = latest(s); const id = "s_" + s.name.replace(/\W/g, "_"), tq = testLink(s.name, true);   // #163
       wrap.append(el("label", {class: "srow" + (tq ? " has-tq" : ""), for: id},
         el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; tvRefresh(); }}),
-        el("span", {class: "nm", title: `${renamedTitle("lab", s.name)} · ${s.n} results`, text: nice(s.name)}), tq,
-        el("span", {class: "lv" + (L && L[4] ? " abn" : ""), title: L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "", text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : "text"})));
+        el("span", {class: "nm", "data-tip": `${renamedTitle("lab", s.name)} · ${s.n} results`, text: nice(s.name)}), tq,
+        el("span", {class: "lv" + (L && L[4] ? " abn" : ""), "data-tip": L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "", text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : "text"})));
     }
   }
 }
@@ -90,7 +90,7 @@ function tagLine(pts) {
   const tags = [...new Set(pts.map(p => p[6]).filter(t => t && t !== "Clinic"))];
   if (!tags.length) return null;
   return el("p", {class: "source tags"}, el("b", {text: tags.length > 1 ? "Source tags " : "Source tag "}),
-    ...tags.flatMap((t, i) => [i ? "; " : null, el("span", {title: renamedTitle("tag", t), text: srcName(t)}),
+    ...tags.flatMap((t, i) => [i ? "; " : null, el("span", {text: srcName(t)}),
       srcName(t) !== t ? el("span", {class: "muted", text: ` (${t})`}) : null, renameButton("tag", t)]));
 }
 function markEvents() { return state.marks ? EV.filter(e => MARK_KINDS.has(e.k) && e.ts >= state.from && e.ts <= state.to) : []; }
@@ -128,10 +128,10 @@ function chartCard(s) {
   const hasStages = s.kind === "stack" && pts.some(p => p.parts && (p.parts.deep || p.parts.rem || p.parts.light));
   const legend = hasStages ? el("span", {class: "lg"}, ...[["Deep", "--seq1"], ["REM", "--seq2"], ["Light", "--seq3"]].map(([n, c]) => el("span", {}, el("i", {style: {background: `var(${c})`}}), n)))
     : s.kind === "band" ? el("span", {class: "lg"}, el("span", {}, el("i", {style: {background: "var(--c-lab)", height: "3px"}}), "Daily average"), el("span", {}, el("i", {style: {background: "var(--c-lab)", opacity: .2}}), "Low–high")) : null;
-  card.append(el("div", {class: "hd"}, el("span", {class: "name", title: renamedTitle("lab", s.name), text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
+  card.append(el("div", {class: "hd"}, el("span", {class: "name", "data-tip": renamedTitle("lab", s.name), text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
     el("span", {class: "unit", text: `${s.unit}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), testLink(s.name), legend, read,   // "What is this test?" (#163, test-pages.js)
     viewSeg(s.name, nice(s.name), renderCharts),   // Chart | Table (#60)
-    el("button", {title: "Remove", "aria-label": `Remove ${nice(s.name)}`, onclick: () => { state.sel.delete(s.name); renderLabs(); }}, icon("x")),
+    el("button", {"data-tip": `Remove ${nice(s.name)}`, "aria-label": `Remove ${nice(s.name)}`, onclick: () => { state.sel.delete(s.name); renderLabs(); }}, icon("x")),
     rangeNote(s, pts, showTable)));
   { const v = vitalLink(s); if (v) card.append(v); }   // a vital's readings at home, on Body and activity (#180, health.js)
   if (showTable) {

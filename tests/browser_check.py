@@ -3059,14 +3059,14 @@ def main():
             page.keyboard.press("Enter")
             page.wait_for_function("n => CFG.labNicknames[n] === 'Hgb (renamed)' && !document.querySelector('.rename-box')", arg=lab, timeout=10000)
             settle(300)
-            hd = js("n => { const b = document.querySelector(`#charts .chart .hd [data-key='${n}']`), h = b && b.parentElement; return h && [h.querySelector('.name').textContent, h.querySelector('.name').title]; }", lab)
+            hd = js("n => { const b = document.querySelector(`#charts .chart .hd [data-key='${n}']`), h = b && b.parentElement; return h && [h.querySelector('.name').textContent, h.querySelector('.name').dataset.tip]; }", lab)
             check("…the chart is called by the new name, the name in the records on hover", hd == ["Hgb (renamed)", f"In the records: {lab}"], hd)
             check("…and so is the list of labs", "Hgb (renamed)" in js("[...document.querySelectorAll('#series .nm')].map(x => x.textContent)"))
             check("…focus goes back to its ✎", js("document.activeElement && document.activeElement.dataset.rename") == "lab")
             check("…kept on the server", js("n => api('profiles/1/settings').then(r => r.json()).then(j => j.labNicknames[n])", lab) == "Hgb (renamed)")
             js("switchTab('overview')")
             settle(300)
-            check("…the Overview tile too", js("n => [...document.querySelectorAll('#view-overview .tile .lbl span[title]')].filter(s => s.title === n).map(s => s.textContent)", lab) == ["Hgb (renamed)"])
+            check("…the Overview tile too", js("n => [...document.querySelectorAll('#view-overview .tile .lbl span[data-tip]')].filter(s => s.dataset.tip === n).map(s => s.textContent)", lab) == ["Hgb (renamed)"])
             js("switchTab('heatmap')")
             settle(300)
             row = f"#hm text.row[data-key='{lab}']"
@@ -3075,7 +3075,7 @@ def main():
             rid = js("async n => { await loadDetails(DATA.events.map(e => e.id)); const e = EV.find(e => (DATA.details[e.id] || {}).type === 'result' && (DATA.details[e.id].rows || []).some(r => r[0] === n)); return e && e.id; }", lab)
             js("id => openEvent(byId.get(id))", rid)
             settle(200)
-            cell = js("n => { const td = [...document.querySelectorAll('#dbody table.data td')].find(td => td.title === 'In the records: ' + n); return td && td.textContent; }", lab)
+            cell = js("n => { const td = [...document.querySelectorAll('#dbody table.data td')].find(td => td.querySelector('small.muted')?.textContent === ` (${n})`); return td && td.textContent; }", lab)
             check("…and the drawer's results, with the name in the records beside it", cell and "Hgb (renamed)" in cell and f"({lab})" in cell, cell)
             page.keyboard.press("Escape")
             page.click(row)
@@ -4255,6 +4255,42 @@ def main():
             page.wait_for_selector("#drawer.open", timeout=5000)
             check("…at 1400 px it covers only part of the page, which stays usable", not js("document.querySelector('main').inert")
                   and ax_roles() == ["banner", "complementary", "main"], ax_roles())
+            # #261: a tooltip (data-tip, util.js) in place of a title=, here the drawer's ⇔: shown on hover after a moment
+            # and on keyboard focus, never over its button, kept while the pointer moves onto it, and put away by Escape
+            # with the pointer and focus left where they are (WCAG 1.4.13), the panel staying open
+            tip_at = """() => { const t = document.getElementById('sgTip'), on = document.querySelector('.sg-tip-on');
+                if (!t || !t.matches(':popover-open') || !on) return null;
+                const r = t.getBoundingClientRect(), a = on.getBoundingClientRect();
+                return {text: t.textContent, on: on.id, role: t.getAttribute('role'), described: on.getAttribute('aria-describedby'),
+                        covers: r.left < a.right && r.right > a.left && r.top < a.bottom && r.bottom > a.top,
+                        inside: r.left >= 0 && r.right <= document.documentElement.clientWidth && r.top >= 0 && r.bottom <= innerHeight,
+                        box: [r.left, r.top, r.right, r.bottom].map(Math.round)}; }"""
+            page.mouse.move(700, 600)
+            page.focus("#list .tl-row")   # (focus off the drawer's ✕, whose tip focus shows)
+            settle(100)
+            page.hover("#dwide")
+            settle(700)
+            hovered = js(tip_at)
+            box = hovered["box"] if hovered else [0, 0, 0, 0]
+            page.mouse.move((box[0] + box[2]) / 2, box[1] + 4, steps=4)   # onto the tooltip itself
+            settle(400)
+            kept = js(tip_at)
+            page.keyboard.press("Escape")
+            settle(100)
+            check("tooltips (#261): the drawer's ⇔ shows its tooltip on hover, a tooltip, its description, over the page and not over the button",
+                  hovered and hovered["text"] == "Wider panel" and hovered["role"] == "tooltip" and hovered["on"] == "dwide"
+                  and not hovered["covers"] and hovered["inside"] and not js("document.getElementById('dwide').hasAttribute('title')"), hovered)
+            check("…it stays while the pointer moves onto it, and Escape puts it away, the drawer still open (1.4.13)",
+                  kept and kept["on"] == "dwide" and js(tip_at) is None and js("document.getElementById('drawer').classList.contains('open')"), [kept, js(tip_at)])
+            page.mouse.move(700, 600)
+            page.focus("#dclose")
+            page.keyboard.press("Shift+Tab")
+            settle(100)
+            focused = js(tip_at)
+            page.keyboard.press("Tab")
+            settle(100)
+            check("…and on keyboard focus, gone when focus moves on, the next button's shown instead",
+                  focused and focused["on"] == "dwide" and js("document.activeElement.id") == "dclose" and (js(tip_at) or {}).get("text") == "Close (Esc)", [focused, js(tip_at)])
             page.keyboard.press("Escape")
             # the drawer's slide (--dur-2) and a tab's hover (--dur-1, #256), pointed at
             motion = "[getComputedStyle(document.getElementById('drawer')).transitionDuration, smoothly(), getComputedStyle(document.getElementById('tab-labs')).transitionDuration]"
@@ -4417,10 +4453,11 @@ def main():
                   and js("document.activeElement.id") == "periodMoreBtn", [js(period), js("document.activeElement.id")])
             js("applyPreset('2y')")
             settle(200)
-            menu_state = "[document.getElementById('periodMoreBtn').getAttribute('aria-expanded'), document.getElementById('periodMoreList').hidden, document.activeElement.id || document.activeElement.textContent]"
-            check("More… is a menu button: aria-haspopup, aria-expanded and a menu of radio items",
+            menu_state = "[document.getElementById('periodMoreBtn').getAttribute('aria-expanded'), !document.getElementById('periodMoreList').matches(':popover-open'), document.activeElement.id || document.activeElement.textContent]"
+            check("More… is a menu button: aria-haspopup, aria-expanded and a menu of radio items, a popover as the kinds' menus are (#261)",
                   js("(b => [b.getAttribute('aria-haspopup'), b.getAttribute('aria-expanded'), document.getElementById(b.getAttribute('aria-controls')).getAttribute('role')])(document.getElementById('periodMoreBtn'))")
-                  == ["menu", "false", "menu"] and js("[...document.querySelectorAll('#periodMoreList button')].every(i => i.getAttribute('role') === 'menuitemradio' && i.tabIndex === -1)"))
+                  == ["menu", "false", "menu"] and js("[...document.querySelectorAll('#periodMoreList button')].every(i => i.getAttribute('role') === 'menuitemradio' && i.tabIndex === -1)")
+                  and js("[...document.querySelectorAll('#periodMoreList, #chips [role=menu]')].every(m => m.popover === 'auto')"))
             page.focus("#periodMoreBtn")
             page.keyboard.press("Enter")
             first = js(menu_state)
@@ -4594,7 +4631,7 @@ def main():
                   not js("!!document.querySelector('#chips .kinds-all')") and page.is_hidden("#fsum"))
             # Only this, by mouse: the ⋯ beside Visits, then "Show only Visits"
             page.click("#chips .kind-more[data-k=visit]")
-            menu = "[...document.querySelectorAll('#chips .menu-list')].filter(m => !m.hidden).map(m => [m.id, ...[...m.querySelectorAll('[role=menuitem]')].map(i => i.textContent)])"
+            menu = "[...document.querySelectorAll('#chips .menu-list')].filter(m => m.matches(':popover-open')).map(m => [m.id, ...[...m.querySelectorAll('[role=menuitem]')].map(i => i.textContent)])"
             check("kinds: a chip's ⋯ opens its menu, Show only this and Show all", js(menu) == [["kindMenu-visit", f"Show only {vis_n}", "Show all"]]
                   and js("document.querySelector('#chips .kind-more[data-k=visit]').getAttribute('aria-expanded')") == "true", js(menu))
             js("document.getElementById('sgStatus').textContent = ''")
@@ -5009,7 +5046,7 @@ def main():
             js("state.tables.delete('#hm'); renderHeatmap()")
             open_tab("overview")
             settle(400)
-            ov_tp = js("""[...document.querySelectorAll('#view-overview .tiles .tile')].filter(t => t.querySelector('.lbl span[title]')).map(t => [t.querySelector('.lbl span[title]').title,
+            ov_tp = js("""[...document.querySelectorAll('#view-overview .tiles .tile')].filter(t => t.querySelector('.lbl > span')).map(t => [(s => s.dataset.tip || s.textContent)(t.querySelector('.lbl > span')),
               t.parentElement.classList.contains('tile-tq') ? t.parentElement.querySelector('a.test-page').getAttribute('href') : null])""")
             check("…each Overview lab tile with a page has a ? beside it, outside the tile's own button",
                   ov_tp and all((u is not None) == js("n => !!testPage(n)", n) for n, u in ov_tp) and any(u for _, u in ov_tp)
@@ -5835,7 +5872,7 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
 
             # ---- Settings (#35): change settings on the screen, and the dashboard follows; reset a section
-            tiles = "[...document.querySelectorAll('#view-overview .tiles .tile .lbl span[title]')].map(s => [s.title, s.textContent])"
+            tiles = "[...document.querySelectorAll('#view-overview .tiles .tile .lbl > span:first-child')].map(s => [s.dataset.tip || s.textContent, s.textContent])"   # its name in the records: its tooltip when nicknamed (#261)
             js("switchTab('overview')")
             settle(300)
             before = js(tiles)
@@ -5924,7 +5961,7 @@ def main():
                   first_act == "Move up" and js("document.activeElement.textContent") == "Move down", first_act)
             page.keyboard.press("Escape")
             check("…and Escape closes it, back on its button",
-                  js("document.activeElement.getAttribute('aria-label')") == f"Move or remove {o0[0]}" and js("document.querySelector('#sec-overview .set-order li:nth-child(2) .menu-list').hidden"))
+                  js("document.activeElement.getAttribute('aria-label')") == f"Move or remove {o0[0]}" and not js("document.querySelector('#sec-overview .set-order li:nth-child(2) .menu-list').matches(':popover-open')"))
             page.keyboard.press("Enter")
             page.keyboard.press("End")
             page.keyboard.press("Enter")
@@ -5962,6 +5999,23 @@ def main():
                   and page.is_visible("#adminLink") and js("document.getElementById('userMenuBtn').getAttribute('aria-expanded')") == "true")
             page.keyboard.press("Escape")
             check("…Escape closes it and puts the focus back on its button", page.is_hidden("#userMenuList") and js("document.activeElement.id") == "userMenuBtn")
+            # #261: every menu is a popover="auto" (the browser's light dismiss and Escape, no page's own), placed under
+            # its button by CSS anchor positioning, fading in (@starting-style), at once with less motion
+            menu_geo = """id => { const l = document.getElementById(id), b = document.getElementById(id.replace('List', 'Btn')), r = l.getBoundingClientRect(), a = b.getBoundingClientRect();
+                return {open: l.matches(':popover-open'), below: Math.round(r.top - a.bottom), right: Math.round(r.right - a.right), fade: getComputedStyle(l).transitionDuration}; }"""
+            page.click("#userMenuBtn")
+            settle(200)
+            geo = js(menu_geo, "userMenuList")
+            page.keyboard.press("Escape")
+            page.emulate_media(reduced_motion="reduce")
+            page.click("#addMenuBtn")
+            calm = js(menu_geo, "addMenuList")
+            page.keyboard.press("Escape")
+            page.emulate_media(reduced_motion="no-preference")
+            check("menus (#261): each is a popover, Settings' row menus too, under its button, its right edge on the button's, fading in, at once with less motion",
+                  js("[...document.querySelectorAll('[role=menu]')].every(m => m.popover === 'auto') && document.querySelectorAll('.set-more [role=menu]').length > 0")
+                  and geo["open"] and 0 <= geo["below"] <= 10 and abs(geo["right"]) <= 1 and geo["fade"] == "0.12s" and calm["open"] and calm["fade"] == "0s"
+                  and js("CSS.supports('anchor-name: --a') && getComputedStyle(document.getElementById('userMenuList')).positionAnchor") == "--menu", [geo, calm])
             page.focus("#addMenuBtn")
             page.keyboard.press("ArrowDown")
             check("…the Add menu opens from the keyboard, on its first item", js("document.activeElement.textContent") == "Upload files", js("document.activeElement.textContent"))
@@ -7809,10 +7863,10 @@ def main():
                 js("switchTab('overview')")
                 settle(300)
                 check(f"Overview ({width} px): the flag says it's against a range from settings, and fits",
-                      js("document.querySelector('#view-overview .tile .st')?.title") == "Against a range from settings"
+                      js("document.querySelector('#view-overview .tile .st')?.dataset.tip") == "Against a range from settings"
                       and "(range from settings)" in page.inner_text("#view-overview .ov-row .r")
                       and "range from settings" in page.inner_text("#view-overview .range-note") and js("document.documentElement.scrollWidth") <= width,
-                      js("document.querySelector('#view-overview .tile .st')?.title"))
+                      js("document.querySelector('#view-overview .tile .st')?.dataset.tip"))
                 js("switchTab('labs', 'chart')")
                 settle(300)
                 check(f"Labs as charts ({width} px) fits", js("document.documentElement.scrollWidth") <= width, js("document.documentElement.scrollWidth"))
@@ -8257,7 +8311,7 @@ def main():
             check("the drawer: the result once, saying the same result also came from the sync, with Undo link",
                   "the same result also came from" in page.inner_text("#dbody .same")
                   and page.locator("#dbody .same button", has_text="Undo link").count() == 1
-                  and js("[...document.querySelectorAll('#dbody td')].filter(td => td.title === 'Hemoglobin').length") == 1,
+                  and js("[...document.querySelectorAll('#dbody table.data td:first-child')].filter(td => td.firstChild?.textContent === 'Hemoglobin').length") == 1,
                   page.inner_text("#dbody")[:500])
             check("…and fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.click("#dbody .same button:has-text('Undo link')")

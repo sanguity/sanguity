@@ -112,39 +112,16 @@ function jsonEditor(value, changed, ro) {
 /* ---------------------------------------------------------------- #36, #40, #45: key-lab tiles, tabs, theme */
 
 /* a small menu of a row's actions: its ⋯ button opens it by touch, mouse or keyboard (Enter, Space or the down
-   arrow; then the arrow keys, and Escape to close it). entries: [{text, run}] */
-let openRowMenu = null;
-function closeRowMenu(focus) {
-  const m = openRowMenu;
-  if (!m) return;
-  m.list.hidden = true;
-  m.btn.setAttribute("aria-expanded", "false");
-  openRowMenu = null;
-  if (focus) m.btn.focus();
-}
-document.addEventListener("click", ev => { if (openRowMenu && !openRowMenu.wrap.contains(ev.target)) closeRowMenu(); });
+   arrow; then the arrow keys, and Escape to close it: the app's one menu, SgNav.menu in nav.js). entries: [{text, run}] */
 let rowMenus = 0;
 function rowMenu(label, entries, act) {
   const id = "rowMenu" + (++rowMenus);
   const btn = el("button", {class: "btn small set-more-btn", type: "button", "data-act": act, "aria-label": label,
     "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id}, icon("ellipsis"));
   const items = entries.map(e => el("button", {class: "menu-item", role: "menuitem", type: "button", tabindex: "-1", text: e.text,
-    onclick: () => { closeRowMenu(); e.run(); }}));
-  const list = el("div", {class: "menu-list", id, role: "menu", "aria-label": label, hidden: ""}, ...items);
-  const m = {btn, list, wrap: el("div", {class: "menu set-more"}, btn, list)};
-  const open = () => { closeRowMenu(); list.hidden = false; btn.setAttribute("aria-expanded", "true"); openRowMenu = m; };
-  btn.onclick = () => { if (openRowMenu === m) closeRowMenu(); else open(); };
-  btn.onkeydown = ev => {
-    if (ev.key === "ArrowDown" || ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); if (openRowMenu !== m) open(); items[0]?.focus(); }
-    else if (ev.key === "Escape" && openRowMenu === m) { ev.preventDefault(); closeRowMenu(); }
-  };
-  list.onkeydown = ev => {
-    const i = items.indexOf(document.activeElement);
-    const to = {ArrowDown: items[(i + 1) % items.length], ArrowUp: items[(i - 1 + items.length) % items.length], Home: items[0], End: items.at(-1)}[ev.key];
-    if (to) { ev.preventDefault(); to.focus(); }
-    else if (ev.key === "Escape") { ev.preventDefault(); closeRowMenu(true); }
-    else if (ev.key === "Tab") closeRowMenu();
-  };
+    onclick: () => { m.close(); e.run(); }}));
+  const list = el("div", {class: "menu-list", id, role: "menu", "aria-label": label}, ...items);
+  const m = SgNav.menu({btn, list, wrap: el("div", {class: "menu set-more"}, btn, list)});
   return m.wrap;
 }
 
@@ -242,7 +219,7 @@ function tilesEditor(value, changed, ro, setting) {
     preview.replaceChildren(...names.map(n => {
       const s = labInfo(n), last = s.pts[s.pts.length - 1];
       return el("div", {class: "tile", "data-lab": n},
-        el("span", {class: "lbl"}, el("span", {text: nick(n), title: n}),
+        el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}),
           last[4] === "H" ? el("span", {class: "st hi", text: "▲ High"}) : last[4] === "L" ? el("span", {class: "st lo", text: "▼ Low"}) : null),
         el("span", {class: "val"}, last[5] || String(last[1]), el("small", {text: s.unit || ""})));
     }));

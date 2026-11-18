@@ -6,15 +6,65 @@
    export: #168), settings, account, Admin (admins only: nav.js asks the API itself, #167), Getting started (the
    first-run guide, #199), the light/dark toggle, log out. The items keep the ids the pages already use (#importLink,
    #journalBtn, #settingsLink, #theme, #logout, #who), so each page's script sets them up as before; nav.js only
-   builds the bar and opens and closes the menus.
+   builds the bar and its menus (menuWire, above).
 
    <header class="topbar" data-title="Settings" data-profile> gets the bar, with the profile picker for data-profile;
    anything already inside it (the records page's profile picker, tabs and Install app button) stays where it is,
    between the brand and the menus. */
 "use strict";
+/* A menu (#191, #261): a button and its list of [role^=menuitem] items (tabindex -1, replaceable while it's closed),
+   for every menu in the app: the top bar's Add and your menu, the records bar's More… periods, the Timeline's kind
+   menus and Settings' row menus. The list is a popover="auto": the browser opens and closes it from its button, and
+   closes it on a click elsewhere, on Escape or when another menu opens, so no page writes that itself. app.css places
+   it under its button (CSS anchor positioning, where the browser has it; menuPlace() below where it doesn't), fading
+   in. This keeps the rest: the button's aria-expanded; Enter, Space or the down arrow on the button opens it on its
+   first item; the arrow keys, Home and End move through it; Tab leaves it, closed; and when it closes with focus
+   inside it (Escape, an item picked), focus goes back to the button, unless the item sent it somewhere else.
+   m is {btn, list, wrap?, onOpen?}; menuWire(m) gives it open() and close(), and returns it (SgNav.menu). */
+function menuWire(m) {
+  const {btn, list} = m, its = () => [...list.querySelectorAll("[role^=menuitem]")].filter(x => !x.hidden);
+  list.removeAttribute("hidden");
+  list.popover = "auto";
+  btn.popoverTargetElement = list;   // a click toggles it, and a click on its own button isn't one "elsewhere"
+  const isOpen = () => list.matches(":popover-open");
+  m.open = () => { if (!isOpen() && list.isConnected) list.showPopover({source: btn}); };
+  m.close = () => { if (isOpen()) list.hidePopover(); };
+  let leaving = false;
+  list.addEventListener("beforetoggle", ev => {
+    const on = ev.newState === "open";
+    btn.setAttribute("aria-expanded", String(on));
+    if (!on && !leaving && list.contains(document.activeElement)) btn.focus({preventScroll: true});
+    leaving = false;
+  });
+  list.addEventListener("toggle", ev => { if (ev.newState === "open") { menuPlace(m); m.onOpen?.(); } });
+  btn.addEventListener("keydown", ev => {
+    if (ev.key !== "ArrowDown" && ev.key !== "Enter" && ev.key !== " ") return;
+    ev.preventDefault();
+    m.open();
+    its()[0]?.focus();
+  });
+  list.addEventListener("keydown", ev => {
+    const all = its(), i = all.indexOf(document.activeElement);
+    const to = {ArrowDown: all[(i + 1) % all.length], ArrowUp: all[(i - 1 + all.length) % all.length], Home: all[0], End: all.at(-1)}[ev.key];
+    if (to) { ev.preventDefault(); to.focus(); }
+    else if (ev.key === "Tab") { leaving = true; m.close(); }   // on to what's next, not back to the button
+  });
+  list.addEventListener("click", ev => { if (ev.target.closest("[role^=menuitem]")) setTimeout(m.close); });
+  return m;
+}
+/* without CSS anchor positioning (app.css, @supports not (anchor-name: --a)): where the menu opens, worked out here:
+   under its button, 8 px inside the screen, its right edge on the button's when that's on the right; and how far
+   down the page the bar ends, for a phone's short screen, where the bar scrolls away (#308, #319) */
+function menuPlace(m) {
+  if (CSS.supports("anchor-name: --a")) return;
+  const r = m.btn.getBoundingClientRect(), vw = document.documentElement.clientWidth, w = m.list.offsetWidth;
+  const bar = document.querySelector("header.topbar"), right = r.left + r.width / 2 > vw / 2;
+  const left = Math.max(8, Math.min(right ? r.right - w : r.left, vw - 8 - w));
+  placeAt(m.list, {"--menu-top": r.bottom + 6, "--menu-left": left, "--menu-bar": bar ? bar.getBoundingClientRect().bottom + scrollY : 0});   // util.js
+}
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
-  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, menu() {}};
+  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, menu: menuWire};
   const svgLogo = header.querySelector(".brand-name");
   const onRecords = !!document.getElementById("tab-overview");
 
@@ -76,50 +126,14 @@ const SgNav = (() => {
     return p.id;
   }
 
-  let openMenu = null;
-  function close(m, focusBtn) {
-    if (!m) return;
-    m.list.hidden = true; m.btn.setAttribute("aria-expanded", "false");
-    if (focusBtn) m.btn.focus();
-    if (openMenu === m) openMenu = null;
-  }
   const items = m => [...m.list.querySelectorAll("[role^=menuitem]")].filter(x => !x.hidden);   // menuitem, menuitemradio (#191)
   function menu(id, label, ico, entries) {
     const btn = el("button", {class: "iconbtn menu-btn", type: "button", id: id + "Btn", "aria-haspopup": "menu", "aria-expanded": "false",
       "aria-controls": id + "List"}, ico ? el("span", {class: "menu-ico", "aria-hidden": "true"}, icon(ico)) : null, label);
-    const list = el("div", {class: "menu-list", id: id + "List", role: "menu", "aria-labelledby": id + "Btn", hidden: ""}, ...entries);
+    const list = el("div", {class: "menu-list", id: id + "List", role: "menu", "aria-labelledby": id + "Btn"}, ...entries);
     for (const x of entries) if (x.getAttribute && x.getAttribute("role") === "menuitem") x.tabIndex = -1;
-    return wire({btn, list, wrap: el("div", {class: "menu", id}, btn, list)});
+    return menuWire({btn, list, wrap: el("div", {class: "menu", id}, btn, list)});
   }
-  /* a menu's behaviour, for one built above or in a page's own markup (the records bar's More… periods, #191): m is
-     {btn, list, wrap, onOpen?}; its items are the list's [role^=menuitem] (tabindex -1), replaceable while it's closed */
-  function wire(m) {
-    const {btn, list} = m;
-    btn.onclick = () => {
-      if (openMenu === m) return close(m);
-      close(openMenu);
-      list.hidden = false; btn.setAttribute("aria-expanded", "true"); openMenu = m;
-      m.onOpen?.();
-    };
-    btn.onkeydown = ev => {
-      if (ev.key === "ArrowDown" || ev.key === "Enter" || ev.key === " ") {
-        ev.preventDefault();
-        if (openMenu !== m) btn.onclick();
-        items(m)[0]?.focus();
-      }
-    };
-    list.onkeydown = ev => {
-      const all = items(m), i = all.indexOf(document.activeElement);
-      const to = {ArrowDown: all[(i + 1) % all.length], ArrowUp: all[(i - 1 + all.length) % all.length], Home: all[0], End: all.at(-1)}[ev.key];
-      if (to) { ev.preventDefault(); to.focus(); }
-      else if (ev.key === "Escape") { ev.preventDefault(); close(m, true); }
-      else if (ev.key === "Tab") close(m);
-    };
-    list.addEventListener("click", ev => { if (ev.target.closest("[role^=menuitem]")) setTimeout(() => close(m)); });
-    return m;
-  }
-  document.addEventListener("click", ev => { if (openMenu && !openMenu.wrap.contains(ev.target)) close(openMenu); });
-  document.addEventListener("keydown", ev => { if (ev.key === "Escape" && openMenu) close(openMenu, true); });
 
   const link = (href, text, attrs = {}) => el("a", {class: "menu-item acct", role: "menuitem", href, text, ...attrs});
   const action = (id, text, attrs = {}) => el("button", {class: "menu-item", role: "menuitem", type: "button", id, text, ...attrs});
@@ -199,5 +213,5 @@ const SgNav = (() => {
   }
   /* the bar's height as --bar-h, so what gets focus is scrolled clear of it (scroll-padding in app.css, #202) */
   new ResizeObserver(() => document.documentElement.style.setProperty("--bar-h", header.offsetHeight + "px")).observe(header);
-  return {sync, lock, profiles, menu: wire};
+  return {sync, lock, profiles, menu: menuWire};
 })();

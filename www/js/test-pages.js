@@ -29,7 +29,7 @@ const testPageName = (name, p) => `What is this test? ${nice(name)}: “${p.titl
 function testLink(name, compact) {
   const p = testPage(name); if (!p) return null;
   const say = testPageName(name, p);
-  return el("a", {class: "test-page" + (compact ? " tq" : ""), href: p.url, target: "_blank", rel: "noopener noreferrer", "aria-label": say, title: say,
+  return el("a", {class: "test-page" + (compact ? " tq" : ""), href: p.url, target: "_blank", rel: "noopener noreferrer", "aria-label": say, title: compact ? null : say, "data-tip": compact ? say : null,
     onclick: ev => ev.stopPropagation()},   // a drawer row's or a list row's own click stays its own
     compact ? icon("circle-question-mark") : ["What is this test?", icon("external-link")]);
 }

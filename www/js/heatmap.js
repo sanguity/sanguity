@@ -37,7 +37,7 @@ function renderHeatmap() {
   // columns always fit the width (fractional widths are fine); zoom in to get wider cells
   const cw = Math.max(1, Math.min(22, (avail - LW - 8) / cols.length));
   // the colours, and the marks that say the same without them (#60): ▲ above the range, ▼ below, on cells wide enough
-  $("#hmLegend").replaceChildren(...[-4, -3, -2, -1, 0, 1, 2, 3, 4].map(lv => el("i", {style: {background: hmFill(lv)}, title: lv})),
+  $("#hmLegend").replaceChildren(...[-4, -3, -2, -1, 0, 1, 2, 3, 4].map(lv => el("i", {style: {background: hmFill(lv)}})),
     el("span", {text: "← far below · below · in range · above · far above →"}), el("span", {style: {color: "var(--muted)"}, text: "(distance outside the range, as a share of the range's width)"}),
     el("span", {class: "hm-key"}, el("b", {"aria-hidden": "true", text: "▲"}), " above the range, ", el("b", {"aria-hidden": "true", text: "▼"}), " below",
       cw < 3 ? el("span", {style: {color: "var(--muted)"}, text: " (zoom in to see them on each cell, or show the table)"}) : null));
@@ -134,11 +134,11 @@ function hmTable(rows, cols) {
       tb.append(el("tr", {class: "grp"}, el("th", {scope: "rowgroup", colspan: cols.length + 1, text: panel})));
     }
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(isoDay(p.ts), p);
-    tb.append(el("tr", {}, el("th", {scope: "row", title: renamedTitle("lab", s.name) + rowRanges(s)}, `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`, renameButton("lab", s.name), testLink(s.name, true)),   // #163
+    tb.append(el("tr", {}, el("th", {scope: "row", "data-tip": renamedTitle("lab", s.name) + rowRanges(s)}, `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`, renameButton("lab", s.name), testLink(s.name, true)),   // #163
       ...cols.map(([k]) => {
         const p = byDay.get(k); if (!p) return el("td", {});
         const lv = hmLevel(p[1], p[2], p[3]), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it
-        return el("td", {class: w ? "abn" : null, title: p[2] != null || p[3] != null ? refText(p) : null}, p[5] || fmtNum(p[1]),
+        return el("td", {class: w ? "abn" : null, "data-tip": p[2] != null || p[3] != null ? refText(p) : null}, p[5] || fmtNum(p[1]),
           w ? el("span", {"aria-hidden": "true", text: " " + w[0]}) : null, w ? el("span", {class: "vh", text: " " + w[1].toLowerCase()}) : null);
       })));
   }
