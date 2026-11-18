@@ -883,6 +883,16 @@ def ring_walk(page, label, stops=12):
     return bad, seen
 
 
+# a field's look (#332), in light and dark (the theme set on the page, then put back): its background, edge and corner.
+# Sign-in's and setup's fields are compared with one on Account
+FIELD_LOOK_JS = r"""sel => Object.fromEntries(['light', 'dark'].map(t => {
+  const r = document.documentElement, was = r.dataset.theme; r.dataset.theme = t;
+  const c = getComputedStyle(document.querySelector(sel));
+  const look = [c.backgroundColor, `${c.borderTopWidth} ${c.borderTopStyle} ${c.borderTopColor}`, c.borderTopLeftRadius];
+  if (was) r.dataset.theme = was; else delete r.dataset.theme;
+  return [t, look]; }))"""
+
+
 def focus_walk(page, label, back=False, stops=60):
     """Tab (or Shift+Tab from the page's end) through up to `stops` controls; the problems found, each "label: control …".
     A stop that shows no change when focused, or lies wholly under a sticky or fixed bar, is a problem."""
@@ -990,6 +1000,7 @@ TILE_LINES_JS = r"""() => {
 def main():
     srv, base = start_app()
     problems, passed = [], []
+    acct_field = {}   # #332: a field on Account, light and dark, for sign-in's and setup's to match
 
     def check(name, ok, detail=""):
         (passed if ok else problems).append(f"{name}{': ' + str(detail) if detail != '' else ''}")
@@ -9112,6 +9123,7 @@ def main():
             pk.locator("#pkBody").get_by_role("button", name="Add a passkey").click()
             pk.wait_for_selector("#pkList tbody tr", timeout=10000)
             check("a passkey is added and listed", "never" in pk.inner_text("#pkList"), pk.inner_text("#pkMsg"))
+            acct_field.update(pk.evaluate(FIELD_LOOK_JS, "#pkBody input[type=password]"))
             pk.set_viewport_size({"width": 375, "height": 800})
             pk.wait_for_timeout(200)
             cl_tables, cl_bad = cell_labels(pk, "Account → Passkeys")
@@ -9121,6 +9133,9 @@ def main():
             menu_click(pk, "#logout")
             pk.wait_for_url("**/login.html", timeout=10000)
             check("sign-in page offers a passkey", pk.is_visible("#pk") and pk.inner_text("#pk") == "Sign in with a passkey")
+            looks = {f: pk.evaluate(FIELD_LOOK_JS, f) for f in ("#u", "#p")}
+            check("sign-in's fields look like the app's (#332): the same background, edge and corner as a field on Account, in light and dark",
+                  acct_field and acct_field["light"] != acct_field["dark"] and all(v == acct_field for v in looks.values()), [acct_field, looks])
             ring_bad, ring_seen = ring_walk(pk, "sign-in")
             check("…and Tab through sign-in, light and dark, rings both fields, Sign in and Sign in with a passkey in the accent, 2 px (#310)",
                   not ring_bad and all(f"{t} {i}" in ring_seen for t in ("light", "dark") for i in ("u", "p", "b", "pk")), ring_bad[:6] or ring_seen)
@@ -9402,6 +9417,9 @@ def main():
             fp.emulate_media(color_scheme="no-preference")
             check("first run: setup has no serious or critical axe-core finding, in light and dark (WCAG 2.2 AA, #202)", not setup_axe[0],
                   (setup_axe[0] + setup_axe[1])[:8] or "")
+            looks = {f: fp.evaluate(FIELD_LOOK_JS, f) for f in ("#c", "#u", "#p", "#p2", "#n")}
+            check("first run: setup's fields look like the app's (#332): the same background, edge and corner as a field on Account, in light and dark",
+                  acct_field and all(v == acct_field for v in looks.values()), [acct_field, looks])
             ring_bad, ring_seen = ring_walk(fp, "setup")
             check("…and Tab through setup, light and dark, rings every field and Create account in the accent, 2 px (#310)",
                   not ring_bad and all(f"{t} {i}" in ring_seen for t in ("light", "dark") for i in ("c", "u", "p", "p2", "n", "b")), ring_bad[:6] or ring_seen)
