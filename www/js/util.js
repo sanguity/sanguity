@@ -242,13 +242,76 @@ function ask({title, message = "", action = "OK", cancel = "Cancel", danger = fa
           .map(m => typeof m === "string" ? el("p", {text: m}) : m)),
         el("div", {class: "sg-ask-acts"}, no, yes)));
     box.addEventListener("close", () => {
+      liveFollow();   // the status line back out first (below)
       box.remove();
       if (opener && opener.isConnected && opener !== document.body) opener.focus();
       resolve(box.returnValue === "yes");
     });
     document.body.append(box);
-    box.showModal();
+    openDialog(box);   // centred, modal (below)
     (field || (danger ? no : yes)).focus();
+  });
+}
+
+/* ---- dialogs, side panels and sheets (#262): the app's one <dialog>, shown one of three ways.
+   openDialog(d, {as, modal}): shows the <dialog> d (or changes how it's shown, if it's open already):
+     as "center"  a dialog over the middle of the page, ask()'s;
+        "side"    a panel down the right edge, sliding in (the records' drawer, drawer.js);
+        "sheet"   a sheet from the bottom of the screen, for phones (the drawer, at 700 px or narrower): a grab handle
+                  on top, and swiped down by it (or by anything in it marked data-grab, not a control) it closes. A
+                  sheet still needs a close button of its own: swiping is never the only way (WCAG 2.5.7).
+     modal (default true): the page behind is inert, so Tab and a screen reader stay in it, and a scrim covers the
+       page; shown with modal false, the page stays usable (the drawer beside the records).
+   Escape closes it (a modal one natively; one that isn't, while focus is in it), and focus goes back to what had it
+   before it opened. The browser keeps focus inside a modal one: no page writes a focus trap. d.close() closes it;
+   its "close" event says it closed, however that was. */
+function openDialog(d, {as = "center", modal = true} = {}) {
+  if (!d.sgWired) wireDialog(d);
+  d.classList.add("sg-dlg");
+  for (const k of ["center", "side", "sheet"]) d.classList.toggle("sg-dlg-" + k, k === as);
+  if (as === "sheet" && !d.querySelector(":scope > .sg-grab")) d.prepend(el("div", {class: "sg-grab", "aria-hidden": "true"}));
+  if (d.open && d.matches(":modal") === modal) return;
+  const was = document.activeElement;
+  if (d.open) d.close();   // shown the other way: closed and opened again at once (its "close" event sees it open)
+  else { d.sgBack = was; placeAt(d, {"--drag": 0}); }
+  if (modal) d.showModal(); else d.show();
+  if (d.contains(was) && was !== document.activeElement) was.focus({preventScroll: true});
+  liveFollow();
+}
+/* the shared status line (announce(), #sgStatus and #sgAlert) goes into the modal dialog on top while one is open, and
+   back to the page after: what's behind a modal dialog is inert, and a screen reader hears nothing said there */
+function liveFollow() {
+  const home = [...document.querySelectorAll("dialog:modal")].at(-1) || document.body;
+  for (const r of document.querySelectorAll(".sg-live")) if (r.parentElement !== home) home.append(r);
+}
+function wireDialog(d) {
+  d.sgWired = true;
+  d.addEventListener("close", () => {
+    liveFollow();
+    if (d.open) return;   // opened again the other way
+    const back = d.sgBack;
+    d.sgBack = null;
+    if (back && back.isConnected && back !== document.body && (d.contains(document.activeElement) || document.activeElement === document.body)) back.focus({preventScroll: true});
+  });
+  d.addEventListener("keydown", ev => { if (ev.key === "Escape" && !ev.defaultPrevented && d.open && !d.matches(":modal")) d.close(); });
+  // a sheet swiped down: by its grab handle, or what's marked data-grab, not a control in it; far enough (a quarter
+  // of its height, at most 120 px) or quick, it closes, else it springs back
+  d.addEventListener("pointerdown", ev => {
+    const g = ev.target.closest(".sg-grab, [data-grab]");
+    if (!d.classList.contains("sg-dlg-sheet") || !ev.isPrimary || ev.button !== 0 || !g || !d.contains(g) ||
+        ev.target.closest("button, a, input, select, textarea, label, [tabindex]")) return;
+    const y0 = ev.clientY, t0 = ev.timeStamp;
+    let dy = 0;
+    try { g.setPointerCapture(ev.pointerId); } catch (e) {}
+    d.classList.add("sg-dragging");
+    const move = e => { dy = Math.max(0, e.clientY - y0); placeAt(d, {"--drag": dy}); };
+    const up = e => {
+      for (const [k, f] of [["pointermove", move], ["pointerup", up], ["pointercancel", up]]) g.removeEventListener(k, f);
+      d.classList.remove("sg-dragging");
+      if (e.type === "pointerup" && (dy > Math.min(120, d.offsetHeight / 4) || dy > 24 && dy / Math.max(1, e.timeStamp - t0) > 0.6)) d.close();
+      else placeAt(d, {"--drag": 0});
+    };
+    g.addEventListener("pointermove", move); g.addEventListener("pointerup", up); g.addEventListener("pointercancel", up);
   });
 }
 

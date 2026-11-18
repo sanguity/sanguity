@@ -2,32 +2,35 @@
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---------------------------------------------------------------- detail drawer */
+/* The drawer is a <dialog> (#262), shown by openDialog (util.js) as a side panel beside the records, which stay usable
+   (another record clicked opens in it, which stays open: not modal); as a modal one when it covers the whole page
+   (wide on a screen 1200 px or narrower, or 640 px or narrower), so Tab and a screen reader stay in it (#209); and on
+   a phone (700 px or narrower) as a bottom sheet, modal, swiped down by its handle or its header to close. Escape
+   closes it wherever focus is, and focus goes back to what opened it. .open says it's open (or opening). */
 const drawer = $("#drawer");
 let drawerReturn = null;
 function closeDrawer() {
   const back = drawer.classList.contains("open") && drawer.contains(document.activeElement) && drawerReturn?.isConnected ? drawerReturn : null;
-  drawerReturn = null; drawer.classList.remove("open"); drawerCover();
+  drawerReturn = null; drawer.classList.remove("open");
+  if (drawer.open) { drawer.close(); liveFollow(); }
   if (back) back.focus({preventScroll: true});   // once the page behind isn't inert any more
   setTimeout(() => { if (!drawer.classList.contains("open")) $("#dbody").replaceChildren(); }, 250);   // unload any PDF / document once it has slid away
-  drawer.setAttribute("aria-hidden", "true"); state.selEv = null; renderTimeline(); document.querySelectorAll(".tl-row.sel").forEach(r => r.classList.remove("sel")); }
+  state.selEv = null; renderTimeline(); document.querySelectorAll(".tl-row.sel").forEach(r => r.classList.remove("sel")); }
 $("#dclose").onclick = closeDrawer;
-/* while the drawer covers the whole page (on a phone, or wide on a small screen), the page behind it is inert, so Tab
-   and a screen reader stay in the drawer; closed, the drawer itself is inert, out of Tab's way off-screen (#209) */
-let drawerBehind = [];
-function drawerCover() {
-  const open = drawer.classList.contains("open");
-  drawer.inert = !open;
-  for (const x of drawerBehind) x.inert = false;
-  drawerBehind = open && drawer.offsetWidth >= document.documentElement.clientWidth
-    ? [...document.body.children].filter(x => x !== drawer && !x.inert && !x.matches("script, .sg-live")) : [];
-  for (const x of drawerBehind) x.inert = true;
+drawer.addEventListener("close", () => { if (drawer.classList.contains("open") && !drawer.open) closeDrawer(); });   // swiped away
+const drawerPhone = matchMedia("(max-width: 700px)");
+function drawerFit() {
+  if (!drawer.classList.contains("open")) return;
+  const covers = drawerPhone.matches || document.documentElement.clientWidth <= (drawer.classList.contains("wide") ? 1200 : 640);   // app.css's widths
+  openDialog(drawer, {as: drawerPhone.matches ? "sheet" : "side", modal: covers});
 }
-drawerCover();
-addEventListener("resize", drawerCover);
-function setWide(on) { drawer.classList.toggle("wide", on); drawerCover(); $("#dwide").setAttribute("aria-pressed", on); $("#dwide").dataset.tip = on ? "Narrower panel" : "Wider panel"; try { localStorage.setItem("ht-wide", on ? "1" : ""); } catch (e) {} }
+addEventListener("resize", drawerFit);
+function setWide(on) { drawer.classList.toggle("wide", on); drawerFit(); $("#dwide").setAttribute("aria-pressed", on); $("#dwide").dataset.tip = on ? "Narrower panel" : "Wider panel"; try { localStorage.setItem("ht-wide", on ? "1" : ""); } catch (e) {} }
 $("#dwide").onclick = () => setWide(!drawer.classList.contains("wide"));
 try { if (localStorage.getItem("ht-wide")) setWide(true); } catch (e) {}
-addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+addEventListener("keydown", e => { if (e.key === "Escape" && !e.target.closest?.("dialog:not(#drawer)")) closeDrawer(); });   // not an ask() over it
+// modal, the browser would close it on any Escape: only that listener does, so a form in it (renaming) keeps its own
+drawer.addEventListener("cancel", e => e.preventDefault());
 function docFrame(html, h = 420, title = "The record as it was sent") {   // title: what a screen reader says of the frame (#202)
   const f = el("iframe", {class: "doc", sandbox: "allow-popups", title, style: {height: h + "px"}});
   f.srcdoc = `<!doctype html><meta charset=utf-8><base target=_blank><style>body{font:14px/1.45 system-ui,sans-serif;color:#111;margin:14px}table{border-collapse:collapse}td,th{padding:2px 6px}</style>${html}`;
@@ -152,7 +155,7 @@ function openEvent(e) {
 }
 function showDrawer() {
   if (!drawer.classList.contains("open")) drawerReturn = document.activeElement;
-  drawer.classList.add("open"); drawer.setAttribute("aria-hidden", "false"); drawerCover();
+  drawer.classList.add("open"); drawerFit();
   $("#dclose").focus({preventScroll: true});
 }
 
