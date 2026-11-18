@@ -51,7 +51,7 @@ function renderSeriesList() {
       wrap.append(el("label", {class: "srow" + (tq ? " has-tq" : ""), for: id},
         el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; tvRefresh(); }}),
         el("span", {class: "nm", "data-tip": `${renamedTitle("lab", s.name)} · ${s.n} results`, text: nice(s.name)}), tq,
-        el("span", {class: "lv" + (L && L[4] ? " abn" : ""), "data-tip": L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "", text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : "text"})));
+        el("span", {class: "lv" + (L && L[4] ? " abn" : ""), "data-tip": L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "", text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : ""})));
     }
   }
 }

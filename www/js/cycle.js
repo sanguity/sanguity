@@ -105,7 +105,7 @@ function cycleControls() {
     el("svg:svg", {viewBox: "0 0 44 12", width: 44, height: 12, "aria-hidden": "true"},
       el("svg:rect", {x: 1, y: 1, width: 14, height: 10, rx: 3, fill: "var(--c-cycle)", "fill-opacity": .85}),
       cycleShape({kind: "ovulation"}, 23, 6, {}), cycleShape({kind: "mucus"}, 33, 6, {}), cycleShape({kind: "spotting"}, 41, 6, {})),
-    "Cycle tracking: bar = period or flow recorded; ○ ovulation test, ◇ cervical mucus, • spotting"));
+    "Cycle tracking: bar = period or flow recorded; ○\u00a0ovulation test, ◇\u00a0cervical mucus, •\u00a0spotting"));   // each mark kept with its first word (#355)
 }
 
 /* ---------------------------------------------------------------- the drawer */

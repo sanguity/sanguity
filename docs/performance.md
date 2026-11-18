@@ -66,7 +66,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `tab_elements` | Elements in a tab with the period **All** | 16,185 (Body and activity) | 18,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
-| `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as on disk (#253, below) | 389.6 KB | 390 KB |
+| `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as on disk (#253, below) | 389.8 KB | 390 KB |
 
 Measured on a 20-thread desktop (Intel Core Ultra 7 265K), Chromium headless. Each tab's own numbers, and the size
 of each part of the records data, are printed at the end of the test's output; `PERF_REPORT=file.json` also writes
@@ -89,7 +89,7 @@ sprite and the app's icon); the install icons (PNG) are fetched only when the ap
 | Inter, Latin Extended | 85 KB | only a page with a character in its range (a name with ő or ł, say) |
 | Source Serif 4, Latin and Latin Extended | 51 KB and 42 KB | only a page with a title or a headline value on it, the second as above |
 | SVG icons: the sprite (#257, #354) and the app's icon | 10.5 KB (2.8 KB compressed) and 0.5 KB | the sprite: every page with an icon, once; the app's icon: none (the browser's tab) |
-| All | 389.6 KB | |
+| All | 389.8 KB | |
 
 The fonts are variable, so one file holds every weight: Inter's weight axis, and Source Serif 4's weight axis without
 its optical size axis (#328), which made its Latin file 122 KB for titles that are all 15.5 to 28 px. The browser keeps
@@ -98,7 +98,7 @@ a device. The budget, 390 KB, left 25 KB for Redesign 3's icon sprite (10 to 20 
 in the stylesheets. The sprite holds only the Lucide icons the app uses: 16 in place of glyphs (#257), and 41 for the
 kinds of record, the sidebars and the top bar's menus (#354), 10.5 KB, chosen small and shared where one meaning
 covers two places (Labs and Labs and ranges, the activity logs and Import history). With Redesign 3's stylesheets
-(152 KB, from 140), that leaves 0.4 KB, and no more: a second font, a heavier cut or more icons have to be argued for.
+(152 KB, from 140), that leaves 0.2 KB, and no more: a second font, a heavier cut or more icons have to be argued for.
 Each icon added to it is about 150 to 250 bytes (`tools/build_sprite.py`).
 
 ### A cold load on a slow connection (#328)
