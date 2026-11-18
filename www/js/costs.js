@@ -351,9 +351,11 @@ function drawPaidCum(svg, claimRows, payRows, settled) {
     for (const [t, v] of s) dp += `H${x(t)}V${y(v)}`;
     dp += `H${x(t1)}`;
     g.push(el("svg:path", {d: dp, fill: "none", stroke: color[i], "stroke-width": 2, "stroke-linejoin": "round"}));
-    g.push(narrow
-      ? el("svg:text", {x: L + i * 150, y: 14, style: `fill:${color[i]};font-weight:600`, text: `${label[i]} ${usd(acc[i])}`})
-      : el("svg:text", {x: R + 8, y: y(acc[i]) + 4 + (i && Math.abs(y(acc[0]) - y(acc[1])) < 14 ? 14 : 0), style: `fill:${color[i]};font-weight:600`, text: `${label[i]} ${usd(acc[i])}`}));
+    // its end label: the text in ink and a short line key in the series' colour before it, so the colour is on the
+    // mark, not the text (#250: orange and green text were under 4.5:1). Narrow, the two stack above the chart.
+    const lx = narrow ? 4 : R + 8, ly = narrow ? 11 + i * 14 : y(acc[i]) + 4 + (i && Math.abs(y(acc[0]) - y(acc[1])) < 14 ? 14 : 0);
+    g.push(el("svg:line", {class: "cum-key", x1: lx, x2: lx + 12, y1: ly - 4, y2: ly - 4, stroke: color[i], "stroke-width": 2.5, "stroke-linecap": "round"}),
+      el("svg:text", {class: "cum-end", x: lx + 17, y: ly, style: "fill:var(--ink);font-weight:600", text: `${label[i]} ${usd(acc[i])}`}));
   });
   const at = (s, t) => { let v = 0; for (const [tt, vv] of s) { if (tt <= t) v = vv; else break; } return v; };
   const hit = el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"});

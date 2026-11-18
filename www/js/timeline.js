@@ -64,7 +64,9 @@ function renderTimeline() {
       const hollow = e.k === "appt_msg" || e.k === "auto_msg" || e.k === "rhythm";   // #182: a notification, beside the recordings' dots
       const fill = hollow ? "var(--surface)" : c.color;
       g.push(el("svg:circle", {class: "ev" + (state.selEv === e.id ? " sel" : ""), cx: x, cy: y, r, fill, stroke: hollow ? c.color : "var(--surface)", "stroke-width": e.k === "rhythm" ? 2 : 1.5, "data-id": e.id}));
-      if (e.abn && e.k === "lab") g.push(el("svg:circle", {cx: x, cy: y - r - 4, r: 2, fill: "var(--crit)", "pointer-events": "none"}));
+      if (e.abn && e.k === "lab") {   // a ▲ above the day, known by its shape and not only its red (#250)
+        const m = abnMark(x, y - r - 4.4, "H", 3.4, "tl-abn"); m.setAttribute("fill", "var(--crit)"); m.setAttribute("pointer-events", "none"); g.push(m);
+      }
     }
   });
   if (!lanes.length) g.push(el("svg:text", {x: w/2, y: top + 20, "text-anchor": "middle", text: "No categories selected"}));

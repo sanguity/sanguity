@@ -1257,6 +1257,23 @@ def main():
             check("…its out-of-range results are triangles, ▲ above the range and ▼ below, not only red dots",
                   len(flagged) > 0 and len(marks) == len(flagged) and all(t == "path" and d.count("L") == 2 for t, d in marks)
                   and "▲▼" in page.inner_text("#labsChart .legend"), [len(flagged), len(marks), marks[:2]])
+            # procedures and imaging, shown (#250): a ● and a ■ at the top, never a triangle like ▲ or ▼ on the same chart;
+            # the legend shows both shapes while they're on, and not while they're off
+            js("window._marks250 = state.marks; state.marks = true; renderCharts()")
+            settle(300)
+            ev = js("""(() => { const svg = document.querySelector('#charts .chart svg'), want = markEvents();
+                const heads = [...svg.querySelectorAll('.evhead')];
+                const tri = [...svg.querySelectorAll('path')].filter(p => /var\\(--c-(procedure|imaging)\\)/.test(p.getAttribute('fill') || ''));
+                const keys = [...document.querySelectorAll('#labsChart .legend .marks-key')].filter(k => !k.hidden);
+                return {want: want.length, kinds: [...new Set(want.map(e => e.k))].sort(), heads: heads.map(h => [h.dataset.k, h.tagName]).filter((h, i, a) => a.findIndex(o => o + '' === h + '') === i),
+                  n: heads.length, tri: tri.length, legend: keys.map(k => [k.textContent, k.querySelector('svg .evhead')?.tagName])}; })()""")
+            js("state.marks = window._marks250; renderCharts()")
+            settle(200)
+            off = js("[...document.querySelectorAll('#labsChart .legend .marks-key')].every(k => k.hidden) === !state.marks")
+            check("Labs (#250): procedures are a ● and imaging a ■ on the charts, no triangle, and the legend shows both while they're on",
+                  ev["want"] > 0 and ev["n"] == ev["want"] and ev["kinds"] == ["imaging", "procedure"] and not ev["tri"]
+                  and sorted(ev["heads"]) == [["imaging", "rect"], ["procedure", "circle"]]
+                  and ev["legend"] == [["Procedure", "circle"], ["Imaging", "rect"]] and off, ev)
             label = js("document.querySelector('#charts .chart svg').getAttribute('aria-label')")
             check("…the chart takes focus, as a chart summed up in words",
                   js("(s => [s.getAttribute('tabindex'), s.getAttribute('role'), s.getAttribute('aria-roledescription')])(document.querySelector('#charts .chart svg'))") == ["0", "application", "chart"]
@@ -1334,6 +1351,23 @@ def main():
                 settle(200)
             ct = js("['#costBars', '#paidCum'].map(k => document.querySelector(`.view-seg[data-key='${k}']`).closest('.card').querySelectorAll('.chart-table tbody tr').length)")
             check("Costs (#60): the claims by month and the running totals each have a table", all(n > 0 for n in ct), ct)
+            # the running totals' end labels (#250): the text in an ink token, 4.5:1 against the card in both themes, the
+            # series' colour on a short line key before it, not on the text
+            js("state.tables.clear(); renderCosts()")
+            settle(400)
+            theme_before = js("document.documentElement.dataset.theme || null")
+            ends = []
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                settle(150)
+                ends += js("""t => { const tok = v => { const s = document.createElement('span'); s.style.color = `var(${v})`; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; };
+                  const ink = [tok('--ink'), tok('--ink2')], keys = [tok('--c-imaging'), tok('--c-procedure')];
+                  return [...document.querySelectorAll('#view-costs svg text.cum-end')].map((e, i) => { const k = e.previousElementSibling;
+                    return [t, e.textContent, getComputedStyle(e).fill, ink.includes(getComputedStyle(e).fill), getComputedStyle(e.closest('.card')).backgroundColor,
+                      !!k && k.matches('line.cum-key') && getComputedStyle(k).stroke === keys[i]]; }); }""", theme)
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            check("Costs (#250): the running totals' end labels are in ink, 4.5:1 against the card in light and dark, each after a line key in its colour",
+                  len(ends) == 4 and all(i and k and contrast(f, bg) >= 4.5 for _, _, f, i, bg, k in ends), [e + [contrast(e[2], e[4])] for e in ends])
             # the Timeline: its list is the table
             js("switchTab('timeline')")
             settle(300)
@@ -1356,6 +1390,14 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; scrollTo(0, 0); }", theme_before)
             check("…its month headings stick under the top bar as the list scrolls, readable, in light and dark (#247)",
                   all(v and v[1] and v[2] >= 4.5 for v in months.values()), months)
+            tl_abn = js("""(() => { const days = [...document.querySelectorAll('#tl circle.ev')].filter(m => { const e = byId.get(+m.dataset.id); return e?.k === 'lab' && e.abn; });
+                const tri = [...document.querySelectorAll('#tl path.tl-abn')];
+                return {days: days.length, badges: tri.length, shapes: tri.every(p => (p.getAttribute('d').match(/L/g) || []).length === 2 && getComputedStyle(p).pointerEvents === 'none'),
+                  above: days.every(m => tri.some(p => { const a = m.getBBox(), b = p.getBBox(); return Math.abs(b.x + b.width / 2 - (a.x + a.width / 2)) < .5 && b.y + b.height <= a.y; })),
+                  dots: document.querySelectorAll('#tl circle[fill="var(--crit)"]').length,
+                  said: [...document.querySelectorAll('#list .badge.abn')].every(b => / out of range$/.test(b.textContent)) && !!document.querySelector('#list .badge.abn')}; })()""")
+            check("Timeline (#250): a lab day with a result out of range has a ▲ over it (not a red dot), and the list says out of range in words",
+                  tl_abn["days"] > 0 and tl_abn["badges"] == tl_abn["days"] and tl_abn["shapes"] and tl_abn["above"] and not tl_abn["dots"] and tl_abn["said"], tl_abn)
             # not by colour alone, elsewhere: the Overview's tiles and the drawer's results
             js("switchTab('overview')")
             settle(300)
