@@ -832,6 +832,13 @@ Everything on `main` so far; it becomes the first tagged release.
   ("los angeles" finds America/Los Angeles); one that isn't on the list says so and isn't saved. Checkboxes and
   radios are in the accent everywhere. The segmented controls and chips (#193) are 32 px tall (Chart | Table 24),
   44 on a phone.
+- **One card and one summary tile for every tab** (#260): the Overview's key labs, home readings, Watch & scale and
+  insurance figures, Body and activity's figures, the Timeline's counts and Costs' figures are one tile now: its label,
+  then the value in the display serif with its unit, then its change line or note, and a sparkline at its foot. Costs'
+  and the Timeline's figures had their value above a grey label, and the Overview's insurance figures were a design of
+  their own. A tile inside a card is tinted, with no second edge; one on the page has the card's edge. The card and
+  the tile are each one rule set; their change lines still wrap evenly with dates kept whole (#330), and their text
+  keeps its height when the fonts arrive (#338).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

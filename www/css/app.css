@@ -160,6 +160,52 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
   .toggle .n,.toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:inherit}
   .seg>button:focus-visible,.seg>label:has(>input:focus-visible),.toggle:focus-visible,.toggle:has(>input:focus-visible){outline-color:CanvasText}
 }
+/* ---- a card and a summary tile (#260): one of each for every tab.
+   A card (.card): a surface with a hairline edge and the large corner; a records tab's sections, a settings group.
+   A tile (.tile): a figure to compare at a glance, its parts in this order, each optional but the value:
+     <button class="tile"> (it opens what it sums up) or <div class="tile"> (a figure to read):
+       <span class="lbl">Ferritin <span class="st hi">High</span></span>    the label, and a state at its end
+       <span class="val">212<small>ng/mL</small></span>                    the value in the display serif, its unit
+       <span class="delta">▲ +18 since Aug 18, 2026</span>                 the change line, balanced, a date kept whole
+       <svg>…</svg>                                                         a sparkline, at the tile's foot
+   in a grid of .tiles (.compact for narrower ones, .stats for a row of plain counts) or a row of .ov-minis. The
+   Overview's key labs and home readings, its Watch & scale and insurance figures, Body and activity's and Costs'
+   figures and the Timeline's counts are all this tile. A tile inside a card is tinted instead of bordered, so there's
+   never an edge inside an edge (forced colours still draw it). base.css lays a tile's text out at its exact size
+   (#338), so its rows keep their height when the web font arrives; a change line wraps evenly and the sparklines in a
+   row line up (#330). A tile with a "What is this test?" link beside it (.tile-tq, #163) is the tile's frame around
+   the tile's button and the link, so neither covers the other. */
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--sp-4);margin-bottom:var(--sp-5)}
+.tiles,.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:var(--sp-3);margin-bottom:var(--sp-5)}
+.tiles.compact{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+.stats{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.card :is(.tiles,.stats):last-child{margin-bottom:0}
+:is(.tile,.tile-tq){border:1px solid var(--ring);border-radius:var(--r-lg);background:var(--surface)}
+.tile{display:flex;flex-direction:column;gap:2px;min-width:0;padding:var(--sp-2) var(--sp-3);color:inherit;font:inherit;text-align:left}
+button.tile{cursor:pointer}
+:is(button.tile,.tile-tq):hover{border-color:var(--axis)}
+.tile .lbl{font-size:var(--fs-2);color:var(--ink2);display:flex;gap:var(--sp-2);align-items:center}
+.tile .lbl .st{margin-left:auto}
+.tile .val{font-size:var(--fs-7);font-weight:var(--fw-semibold);letter-spacing:-.01em}
+.tile .val small{font-size:var(--fs-2);font-weight:var(--fw-medium);color:var(--muted);margin-left:var(--sp-1)}
+.tile .orig{font-size:var(--fs-1);color:var(--muted)}   /* the value as reported, beside a converted one (#41) */
+.tile .delta{font-size:var(--fs-2);color:var(--ink2);text-wrap:balance}
+.nw{white-space:nowrap}   /* a date kept whole (keepDates, util.js, #330) */
+.tile svg{width:100%;height:34px;display:block;margin-top:var(--sp-1)}
+.tile>svg:last-child{margin-top:auto}
+.tile>:has(+svg:last-child){margin-bottom:var(--sp-1)}
+.tile-tq{display:grid;grid-template-columns:minmax(0,1fr) auto}
+.tile-tq>.tile{border:0;background:none;padding-right:2px}
+.tile-tq>.test-page{align-self:start;margin:var(--sp-2) var(--sp-2) 0 0}
+.card :is(.tile,.tile-tq){background:var(--hover);border-color:transparent}
+.card .tile-tq>.tile{background:none}
+@media (max-width:700px){ .card{padding:var(--sp-3);border-radius:var(--r-md);margin-bottom:var(--sp-4)} }
+@media (max-width:600px){
+  .tiles,.tiles.compact,.stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tile .val{font-size:var(--fs-6)}
+  .tile .lbl{flex-wrap:wrap}
+  .tile .lbl .st{margin-left:0}
+}
 }
 
 @layer pages {
@@ -241,16 +287,15 @@ main{padding:var(--sp-4) var(--sp-5) var(--sp-7);max-width:1500px;margin:0 auto}
 footer.notice{max-width:1500px;margin:0 auto;padding:var(--sp-3) var(--sp-5) var(--sp-5);border-top:1px solid var(--grid);color:var(--ink2);font-size:var(--fs-2);box-sizing:border-box}
 .range-note{color:var(--ink2);font-size:var(--fs-2);margin:var(--sp-2) 0 var(--sp-2)}
 .tiles + .range-note{margin:-8px 0 var(--sp-4)}
-.card{background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--sp-4);margin-bottom:var(--sp-5)}
 .card h2,.card>h1,.ov-cols .card>h3{font-size:var(--fs-4);margin:0 0 2px;font-weight:var(--fw-semibold)}
 .card .hint{color:var(--muted);font-size:var(--fs-3);margin:0 0 var(--sp-2)}
 /* the type scale (#255, tokens.css): Source Serif 4 for page and section titles and the headline values, Inter for the
    rest (a value's unit too); tabular figures wherever numbers are read against each other: values, tables, chart axes,
    the drawer's facts */
 .card h2,.card>h1,.ov-cols .card>h3,.ov-h h2,.sets .set-top h1,.guide-hd h1,.guide-step h2,.sg-ask h2,#drawer .dh h3,.dir .dir-hd h2,.src .dir-hd h3,
-  .tile .val,.stat .n,.ov-mini-v{font-family:var(--font-display,Georgia,serif)}
+  .tile .val{font-family:var(--font-display,Georgia,serif)}
 .tile .val small{font-family:var(--font-ui,system-ui,sans-serif)}
-.tile .val,.stat .n,.ov-mini-v,svg text,.tip,.kv dd,.acct .tbl,.zones-tbl,.ecg-sum,.bk .kv{font-variant-numeric:tabular-nums}
+.tile .val,svg text,.tip,.kv dd,.acct .tbl,.zones-tbl,.ecg-sum,.bk .kv{font-variant-numeric:tabular-nums}
 svg text{fill:var(--muted);font-size:var(--fs-1)}
 .lane-label{fill:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-medium)}
 .axis line,.axis path{stroke:var(--axis)}
@@ -263,12 +308,8 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .tip .v{font-weight:var(--fw-bold);font-size:var(--fs-3);color:var(--ink)}
 .tip .s{color:var(--ink2)}
 .tip .k{display:inline-block;width:12px;height:2px;border-radius:2px;vertical-align:middle;margin-right:var(--sp-2)}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:var(--sp-3);margin-bottom:var(--sp-5)}
-.stat{background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--sp-2) var(--sp-4)}
-.stat .n{font-size:var(--fs-6);font-weight:var(--fw-bold);letter-spacing:-.02em}
 .card h3.sub{font-size:var(--fs-3);font-weight:var(--fw-semibold);margin:0 0 var(--sp-1);color:var(--ink2)}
 .card h3.sub.next{margin-top:var(--sp-3)}   /* a part of a card after a chart or a list (health.js) */
-.stat .l{color:var(--muted);font-size:var(--fs-2)}
 .list{display:flex;flex-direction:column}
 .month{font-weight:var(--fw-semibold);font-size:var(--fs-3);color:var(--ink2);padding:var(--sp-4) 0 var(--sp-1);border-bottom:1px solid var(--grid);position:sticky;top:var(--bar-h,0px);background:var(--surface)}   /* under the top bar (--bar-h, nav.js), not behind it (#247) */
 #list .tl-row{scroll-margin-top:44px}   /* a row given focus is scrolled clear of the month heading stuck above it */
@@ -327,21 +368,6 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-h{display:flex;align-items:baseline;gap:var(--sp-2);margin:var(--sp-1) 0 var(--sp-3)}
 .ov-h h2{font-size:var(--fs-5);margin:0}
 .ov-h .hint{margin:0}
-.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:var(--sp-3);margin-bottom:var(--sp-5)}
-.tile{background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--sp-2) var(--sp-3) var(--sp-2);cursor:pointer;text-align:left;font:inherit;color:inherit;display:flex;flex-direction:column;gap:2px}
-.tile:hover{border-color:var(--axis)}
-.tile .lbl{font-size:var(--fs-2);color:var(--ink2);display:flex;gap:var(--sp-2);align-items:center}
-.tile .lbl .st{margin-left:auto}
-.tile .val{font-size:var(--fs-7);font-weight:var(--fw-semibold);letter-spacing:-.01em}
-.tile .val small{font-size:var(--fs-2);font-weight:var(--fw-medium);color:var(--muted);margin-left:var(--sp-1)}
-.tile .delta{font-size:var(--fs-2);color:var(--ink2)}
-/* a change line or a stat's note in even lines, a date never broken (keepDates, util.js), and the sparkline at the
-   tile's foot, so the sparklines in a row line up whatever wraps above them (#330) */
-.tile .delta,.stat .l{text-wrap:balance}
-.nw{white-space:nowrap}
-.tile svg{width:100%;height:34px;display:block;margin-top:var(--sp-1)}
-.tile>svg:last-child{margin-top:auto}
-.tile>:has(+svg:last-child){margin-bottom:var(--sp-1)}
 .st{display:inline-flex;align-items:center;gap:3px;font-size:var(--fs-1);font-weight:var(--fw-semibold);white-space:nowrap}
 .st.hi,.st.lo{color:var(--crit)}
 .st.ok{color:var(--good-text)}
@@ -353,10 +379,9 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-row .v{font-variant-numeric:tabular-nums;font-weight:var(--fw-semibold)}
 .ov-row .r{color:var(--muted);font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 .ov-row .s{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-2)}
-.ov-mini-v{font-size:var(--fs-6);font-weight:var(--fw-semibold)}   /* the Overview's insurance figures (overview.js) */
 .ov-minis{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);margin:var(--sp-2) 0 var(--sp-3)}   /* …three side by side (#333), wrapping
    when one is too wide for a third, as a figure in another currency's format can be at 320 px (#342) */
-.ov-minis>*{flex:1 1 0}
+.ov-minis>*{flex:1 1 0}   /* tiles (#260) */
 /* heatmap */
 /* overflow-x:clip (not auto) so the wrapper is not a scroll container and the month axis can stick to the window bottom */
 .hm-wrap{overflow-x:clip}
@@ -370,14 +395,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .hm-legend i{display:inline-block;width:22px;height:12px;border-radius:2px}
 .hm-legend span{margin:0 var(--sp-2) 0 var(--sp-1)}
 @media (max-width:900px){.ov-cols{grid-template-columns:minmax(0,1fr)}}
-@media (max-width:600px){
-  .tiles{grid-template-columns:repeat(2,minmax(0,1fr))!important}
-  .tile{padding:var(--sp-2) var(--sp-3)}
-  .tile .val{font-size:var(--fs-6)}
-  .tile .lbl{flex-wrap:wrap}
-  .tile .lbl .st{margin-left:0}
-  .ov-h{flex-wrap:wrap}
-}
+@media (max-width:600px){ .ov-h{flex-wrap:wrap} }
 .line{fill:none;stroke:var(--c-lab);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .refband{fill:var(--good);opacity:.09}
 .refedge{stroke:var(--good);stroke-opacity:.45;stroke-dasharray:3 3}
@@ -471,7 +489,6 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
   .tabs button{white-space:nowrap;padding:var(--sp-1) var(--sp-3);flex:none}
   header .spacer{display:none}
   main{padding:var(--sp-3) var(--sp-3) var(--sp-7)}
-  .card{padding:var(--sp-3);border-radius:var(--r-md);margin-bottom:var(--sp-4)}
   .filters{padding:var(--sp-2) var(--sp-3);gap:var(--sp-2);position:relative}
   .ftoggle{display:inline-block;margin-left:auto}
   .filters:not(.open) .dates,.filters:not(.open) .chips,.filters:not(.open) .search{display:none}
@@ -481,9 +498,6 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
   .dates input{flex:1;min-width:0}
   .toolbar{gap:var(--sp-2) var(--sp-3)}
   .ov-cols{grid-template-columns:minmax(0,1fr)!important}   /* the screen's width, its content wrapping: fits 320 px (#202) */
-  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .stat{padding:var(--sp-2) var(--sp-3)}
-  .stat .n{font-size:var(--fs-5)}
   .series-list{max-height:260px}
   table.data{font-size:var(--fs-2)}
   table.data td,table.data th{padding:var(--sp-1) var(--sp-2)}
@@ -724,7 +738,6 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-sugg{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;margin-top:var(--sp-2);max-width:720px}
 .sets .set-ph{margin:var(--sp-3) 0 var(--sp-2);font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2)}   /* an h4 under a setting's h3, at its weight (#331) */
 .sets .set-preview{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:var(--sp-2);max-width:720px}
-.sets .set-preview .tile{cursor:default}
 .sets .set-preview .set-wide,.sets .set-preview>p{grid-column:1 / -1;margin:0}
 .sets .set-radios{border:0;padding:0;margin:var(--sp-1) 0;display:flex;gap:var(--sp-4);flex-wrap:wrap}
 .sets .set-radios>label{display:flex;align-items:center;gap:var(--sp-1)}
@@ -1014,7 +1027,6 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 #hm text.row.renamable{cursor:pointer}
 #hm text.row.renamable:hover,#hm text.row.renamable:focus{fill:var(--ink);text-decoration:underline;outline:none}
 /* #41 unit preferences: the value as reported, beside a converted one */
-.tile .orig{font-size:var(--fs-1);color:var(--muted)}
 .ov-row .orig{font-weight:var(--fw-regular);font-size:var(--fs-2);color:var(--muted)}
 .data td .orig{display:block;font-size:var(--fs-1);color:var(--muted)}
 .sets .set-units legend{font-weight:var(--fw-semibold);font-size:var(--fs-3);margin-bottom:2px;padding:0}
@@ -1527,7 +1539,6 @@ svg text.growth-pct{font-size:var(--fs-1)}
 .sets .pre-src li{margin:3px 0}
 .sets .pre-mode{margin:var(--sp-3) 0 0}
 .sets .pre-tiles{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:var(--sp-2)}
-.sets .pre-tiles .tile{cursor:default}
 .sets .pre-tiles>p{grid-column:1 / -1;margin:0}
 .sets .pre-tiles .pre-new{margin-left:auto}
 .sets .pre-offer{margin:var(--sp-2) 0}
@@ -1541,11 +1552,6 @@ svg text.growth-pct{font-size:var(--fs-1)}
 .srow.has-tq{grid-template-columns:18px minmax(0,1fr) auto auto}
 .srow .test-page.tq{margin:-5px 0}   /* a 24 px target, the row as before */
 .cell-btn~.test-page.tq{margin:3px 0 -3px}   /* clear of the name's 24 px button above it when the name wraps (the drawer) */
-/* a tile with the link: the card around the tile's button and the link beside it, so neither covers the other */
-.tile-tq{display:grid;grid-template-columns:minmax(0,1fr) auto;background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg)}
-.tile-tq:hover{border-color:var(--axis)}
-.tile-tq>.tile{border:0;background:none;padding-right:2px;min-width:0}
-.tile-tq>.test-page{align-self:start;margin:var(--sp-2) var(--sp-2) 0 0}
 #hm .hm-tq{cursor:pointer}
 #hm .hm-tq circle{fill:var(--surface);stroke:var(--accent)}
 #hm .hm-tq text{fill:var(--accent);font-size:9px;   /* not the type scale (#255): the ? inside its 12 px circle */
@@ -1561,11 +1567,8 @@ svg text.growth-pct{font-size:var(--fs-1)}
 .sets .pre-def ol{margin:var(--sp-1) 0 2px;padding-left:var(--sp-5);columns:2 14rem;column-gap:var(--sp-5)}
 .sets .pre-def li{break-inside:avoid}
 
-/* ---- tiles inside a card (#256): the Overview's watch tiles, Costs' out-of-pocket figures, Settings' previews: a
-   tint, not a second border inside the card's own (forced colours still draw the edge) */
-.card :is(.tile,.tile-tq,.stat){background:var(--hover);border-color:transparent}
-.card .tile-tq>.tile{background:none}
-/* except Settings' previews of the Overview's tiles, which look like them (and a tint would take a "High" under 4.5:1) */
+/* ---- tiles inside a card are tinted (components, #256, #260), except Settings' previews of the Overview's tiles, which
+   look like them (and a tint would take a "High" under 4.5:1) */
 .sets :is(.set-preview,.pre-tiles) :is(.tile,.tile-tq){background:var(--surface);border-color:var(--ring)}
 
 /* ---- motion (#256, --dur-1 and --dur-2 in tokens.css): what's pointed at eases into its hover look (and back at

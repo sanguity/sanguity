@@ -69,8 +69,8 @@
    width (a fallback's size snapped to whole pixels too: 100% and 107% were the same at 12.5 px). geometricPrecision
    lays text out with fractional advances, as macOS always does, so the width is the same at any size and the
    fallback matches.
-   Only where a width decides how text wraps: a tile's and a stat's text, whose rows must not change height when the
-   web font arrives (#338). Everywhere else the default, which keeps small regular text crisp on Linux, where exact
+   Only where a width decides how text wraps: a tile's text (the one summary tile, #260: Costs' and the Timeline's
+   figures too), whose rows must not change height when the web font arrives (#338). Everywhere else the default, which keeps small regular text crisp on Linux, where exact
    layout softens it; chart labels have their own rule (app.css, #253). */
-:where(.tile,.stat){text-rendering:geometricPrecision}
+:where(.tile){text-rendering:geometricPrecision}
 }

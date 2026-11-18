@@ -125,10 +125,10 @@ addEventListener("resize", () => { if (innerWidth === lastW) return; lastW = inn
 function renderStats() {
   const v = EV.filter(visible); const c = k => v.filter(e => k.includes(e.k)).length;
   const abn = v.filter(e => e.k === "lab").reduce((a, e) => a + (e.abn || 0), 0);
-  const items = [[c(["lab"]), "lab draw days"], [v.filter(e => e.k === "lab").reduce((a, e) => a + (e.n || 0), 0), "lab results"], [abn, "out-of-range values"], [c(["imaging","procedure","study"]), "imaging, procedures & reports"], [c(["stay"]), "hospital stays"], [c(["message","appt_msg","auto_msg"]), "conversations"]];
-  if (EV.some(e => e.k === "visit")) items.push([c(["visit"]), "visits"]);
-  if (EV.some(e => e.k === "contact")) items.push([c(["contact"]), "chart activity"]);   // not visits (#236)
-  $("#stats").replaceChildren(...items.map(([n, l]) => el("div", {class: "stat"}, el("div", {class: "n", text: n.toLocaleString()}), el("div", {class: "l", text: l}))));
+  const items = [[c(["lab"]), "Lab draw days"], [v.filter(e => e.k === "lab").reduce((a, e) => a + (e.n || 0), 0), "Lab results"], [abn, "Out-of-range values"], [c(["imaging","procedure","study"]), "Imaging, procedures & reports"], [c(["stay"]), "Hospital stays"], [c(["message","appt_msg","auto_msg"]), "Conversations"]];
+  if (EV.some(e => e.k === "visit")) items.push([c(["visit"]), "Visits"]);
+  if (EV.some(e => e.k === "contact")) items.push([c(["contact"]), "Chart activity"]);   // not visits (#236)
+  $("#stats").replaceChildren(...items.map(([n, l]) => el("div", {class: "tile"}, el("span", {class: "lbl", text: l}), el("span", {class: "val", text: n.toLocaleString()}))));
 }
 $("#sortSeg").onclick = ev => { const b = ev.target.closest("button[data-sort]"); if (!b) return; state.asc = b.dataset.sort === "asc"; renderList(); save(); };
 function renderList() {

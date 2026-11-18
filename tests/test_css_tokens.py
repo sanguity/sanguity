@@ -117,18 +117,18 @@ ALLOWED = {
     "www/js/core.js": {"script styles": 11},
     # its spacing and weights are on lines #333 left alone: margins of 8 and 12 px (on the scale, written out) and the
     # running totals' end labels' and the bar lists' weights (600, 500)
-    "www/js/costs.js": {"script styles": 40, "px spacing": 2, "font weights": 3},
+    "www/js/costs.js": {"script styles": 38, "px spacing": 2, "font weights": 3},
     "www/js/cycle.js": {"script styles": 2},
     # the colour and the spacing are a record's own frame (srcdoc), which doesn't load the tokens: its text, its margin
     # and its table cells' padding
     "www/js/drawer.js": {"script styles": 17, "colours": 1, "px spacing": 2},
-    "www/js/health.js": {"script styles": 16},
+    "www/js/health.js": {"script styles": 15},
     "www/js/heatmap.js": {"script styles": 5},
     "www/js/journal.js": {"script styles": 3},
     "www/js/medlog.js": {"script styles": 1},
     "www/js/meds.js": {"script styles": 7},
     "www/js/nav.js": {"script styles": 1},
-    "www/js/overview.js": {"script styles": 9, "px spacing": 1},   # 8 px margins, on the scale but written out
+    "www/js/overview.js": {"script styles": 7, "px spacing": 1},   # 8 px margins, on the scale but written out
     "www/js/rename.js": {"script styles": 2},
     "www/js/timeline.js": {"script styles": 1},
     "www/js/trends.js": {"script styles": 8},

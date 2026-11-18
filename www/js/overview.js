@@ -145,7 +145,7 @@ function renderOverview() {
   if (ws.length) {
     const wc = el("div", {class: "card"}, el("h3", {text: "Watch & scale"}), el("p", {class: "hint", text: "The watch's last 7 days against the 4 weeks before, and the latest weight against your weight at diagnosis."}),
       moreAbout("Sparklines show the last 30 days for the watch, and the last year for weight."));
-    const grid = el("div", {class: "tiles", style: {gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", marginBottom: 0}});
+    const grid = el("div", {class: "tiles compact"});
     const now = Math.max(...ws.filter(s => s.key !== "weight").flatMap(s => s.pts.map(p => p.ts)));
     const avg = (s, a, b) => { const v = s.pts.filter(p => p.ts > a && p.ts <= b).map(p => p[1]); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; };
     for (const s of ws) {
@@ -188,9 +188,9 @@ function renderOverview() {
     const rows = DATA.costs, pm = primaryMs(), dx = pm ? rows.filter(r => r.d >= pm.date) : rows;
     const cc = el("div", {class: "card"}, el("h3", {text: pm ? `Insurance costs since ${lcLabel(pm.label)}` : "Insurance costs"}),
       dx.length ? el("p", {class: "hint", text: `Claims from ${fmtD(dayTs(dx.reduce((m, r) => r.d < m ? r.d : m, dx[0].d)))} on (${listOf(insurerSpans(dx).map(s => s[0]), ", then ")}).`}) : null);
-    const mini = (l, v) => el("div", {}, el("div", {class: "ov-mini-v", text: v}), el("div", {class: "hint", style: {margin: 0}, text: l}));
+    const mini = (l, v) => el("div", {class: "tile"}, el("span", {class: "lbl", text: l}), el("span", {class: "val", text: v}));   // the tile (#260)
     cc.append(el("div", {class: "ov-minis"},
-      mini("billed", usd(sumOf(dx, "billed"))), mini("paid by insurance", usd(sumOf(dx, "paid"))), mini("your share", usd(sumOf(dx, "owe")))),
+      mini("Billed", usd(sumOf(dx, "billed"))), mini("Paid by insurance", usd(sumOf(dx, "paid"))), mini("Your share", usd(sumOf(dx, "owe")))),
       el("button", {class: "btn", text: "Open Costs →", onclick: () => { if (pm) setPeriod(msKey(pm)); pickTab("costs"); }}));   // the same period
     right.append(cc);
   }

@@ -199,7 +199,7 @@ function renderHealth() {
   // tiles
   const prev = pts => inR(pts, a - len, a);
   const wAll = [...H.scale, ...H.clinic].sort((p, q) => p[0] - q[0]), wIn = inR(wAll, a, b);
-  const tiles = el("div", {class: "tiles", style: {gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))"}});
+  const tiles = el("div", {class: "tiles compact"});
   const tile = (label, val, unit, delta, href) => tiles.append(el("button", {class: "tile", onclick: () => $(href)?.scrollIntoView({behavior: smoothly(), block: "start"})},
     el("span", {class: "lbl", text: label}), el("span", {class: "val"}, val, el("small", {text: unit})), el("span", {class: "delta"}, keepDates(delta))));
   const chg = (cur, base, f, u = "") => cur != null && base != null ? `${cur >= base ? "▲ +" : "▼ −"}${f(Math.abs(cur - base))}${u}` : "";
