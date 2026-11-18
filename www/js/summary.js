@@ -16,8 +16,8 @@ function chosen() {
 
 function drawPicked() {
   $("#picked").replaceChildren(...PICKED.map((n, i) => el("li", {}, labelOf(n),
-    el("button", {class: "btn small", type: "button", text: "×", "aria-label": `Don't trend ${labelOf(n)}`,
-      onclick: () => { PICKED.splice(i, 1); drawPicked(); }}))));
+    el("button", {class: "btn small", type: "button", "aria-label": `Don't trend ${labelOf(n)}`,
+      onclick: () => { PICKED.splice(i, 1); drawPicked(); }}, icon("x")))));
 }
 const labelOf = n => (OPTS.labs.find(l => l.name === n) || {label: n}).label;
 function addLab() {

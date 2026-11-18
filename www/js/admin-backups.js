@@ -29,10 +29,10 @@ function drawBackups(st) {
   $("#bkKeyFile").replaceChildren("On this server the key file is ", el("code", {text: st.key_file}), ".");
   // the newest backup: when, how big, where; then whether it's late
   const n = st.newest;
-  const state = {ok: ["good", "✓ Up to date."], none: ["", "No backups yet: back up now, or turn on a schedule below."],
-    late: ["bad", "⚠ " + st.warning], failed: ["bad", "⚠ " + st.warning]}[st.state];
+  const state = {ok: ["good", "Up to date.", "check"], none: ["", "No backups yet: back up now, or turn on a schedule below."],
+    late: ["bad", st.warning, "triangle-alert"], failed: ["bad", st.warning, "triangle-alert"]}[st.state];
   $("#bkStatus").replaceChildren(
-    el("p", {class: "bk-state " + state[0], id: "bkState", text: state[1]}),
+    el("p", {class: "bk-state " + state[0], id: "bkState"}, state[2] ? [icon(state[2]), " "] : null, state[1]),
     el("dl", {class: "kv"},
       el("dt", {text: "Newest"}), el("dd", {text: n ? `${when(n.at)} (${bkAgo(now - n.at)})` : "none yet"}),
       el("dt", {text: "Size"}), el("dd", {text: n ? `${bkSize(n.size)}; ${plural(st.backups.length, "backup")} in the folder, ${bkSize(st.total_size)} in all` : "—"}),
@@ -151,7 +151,7 @@ function drawList(st) {
     el("tbody", {}, ...shown.map(b => el("tr", {"data-backup": b.name},
       el("td", {}, when(b.at), el("div", {class: "muted bk-name", text: b.name})),
       el("td", {class: "nowrap", text: bkSize(b.size)}),
-      el("td", {text: b.checked ? `${b.checked.ok ? "✓ good" : "✗ not good"}, ${when(b.checked.at)}` : "not yet"}),
+      el("td", {}, b.checked ? [icon(b.checked.ok ? "check" : "x"), ` ${b.checked.ok ? "good" : "not good"}, ${when(b.checked.at)}`] : "not yet"),
       el("td", {class: "acts"}, el("button", {class: "btn small", type: "button", text: "Check", disabled: !!st.running,
         "aria-label": `Check the backup from ${when(b.at)}`, onclick: () => checkBackup(b)})))))),
     st.backups.length > 5 ? el("button", {class: "btn small", type: "button", text: bkShowAll ? "Show fewer" : `Show all ${st.backups.length}`,
@@ -169,17 +169,17 @@ async function checkBackup(b) {
 function drawResult(run) {
   const box = $("#bkResult"), res = run.result || {};
   if (run.state !== "done") {
-    box.replaceChildren(el("p", {class: "bk-state bad", text: `✗ The check didn't finish: ${run.message}`}));
+    box.replaceChildren(el("p", {class: "bk-state bad"}, icon("x"), ` The check didn't finish: ${run.message}`));
     return;
   }
   const counts = res.counts || {}, now = res.now || {}, w = res.watch;
   const rows = BK_TABLES.filter(([t]) => t in counts);
   const words = rows.map(([t, w]) => `${counts[t].backup.toLocaleString()} ${w}${counts[t].backup === 1 ? "" : "s"}`).join(", ");
   box.replaceChildren(...present(
-    run.ok ? el("p", {class: "bk-state good"}, el("b", {text: "✓ Good. "}),
+    run.ok ? el("p", {class: "bk-state good"}, el("b", {}, icon("check"), " Good. "),
       `The backup from ${bkWhen(run.file)} restored into a temporary folder: its ${plural(res.files, "file")} match their checksums, ` +
       `this install's key opens it, and its database is intact with the rows it had when it was made (${words}). The copy was deleted.`)
-    : el("p", {class: "bk-state bad"}, el("b", {text: "✗ Not good. "}), `The backup from ${bkWhen(run.file)}: ${run.message} ` +
+    : el("p", {class: "bk-state bad"}, el("b", {}, icon("x"), " Not good. "), `The backup from ${bkWhen(run.file)}: ${run.message} ` +
       "Make a new backup, and don't rely on this one. The temporary copy was deleted."),
     rows.length ? el("div", {class: "tbl-wrap"}, el("table", {class: "tbl bk-counts"},
       el("caption", {text: "Rows in the backup, and in the live data now (it has changed since)"}),

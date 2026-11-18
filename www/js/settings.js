@@ -19,7 +19,7 @@ $("#logout").onclick = async () => { try { await call("logout", "POST"); } catch
 
 /* ---------------------------------------------------------------- editors: each builds its controls from a value
    and reads the value back (get), calling changed() on every edit */
-const small = (text, label, onclick) => el("button", {class: "btn small", type: "button", text, "aria-label": label, onclick});
+const small = (text, label, onclick) => el("button", {class: "btn small", type: "button", "aria-label": label, onclick}, text);   // text: words or an icon
 
 /* an ordered list of lab names: move up, down, remove, add (suggesting the profile's own labs) */
 function labsEditor(value, changed, ro) {
@@ -30,8 +30,8 @@ function labsEditor(value, changed, ro) {
     ol.replaceChildren(...list.map((n, i) => el("li", {},
       el("span", {class: "set-name", text: n}),
       ro ? null : el("span", {class: "set-acts"},
-        small("↑", `Move ${n} up`, () => { if (i) { [list[i - 1], list[i]] = [list[i], list[i - 1]]; draw(); changed(); ol.children[i - 1]?.querySelector("button")?.focus(); } }),
-        small("↓", `Move ${n} down`, () => { if (i < list.length - 1) { [list[i + 1], list[i]] = [list[i], list[i + 1]]; draw(); changed(); ol.children[i + 1]?.querySelectorAll("button")[1]?.focus(); } }),
+        small(icon("arrow-up"), `Move ${n} up`, () => { if (i) { [list[i - 1], list[i]] = [list[i], list[i - 1]]; draw(); changed(); ol.children[i - 1]?.querySelector("button")?.focus(); } }),
+        small(icon("arrow-down"), `Move ${n} down`, () => { if (i < list.length - 1) { [list[i + 1], list[i]] = [list[i], list[i + 1]]; draw(); changed(); ol.children[i + 1]?.querySelectorAll("button")[1]?.focus(); } }),
         small("Remove", `Remove ${n}`, () => { list.splice(i, 1); draw(); changed(); })))));
     if (!list.length) ol.append(el("li", {class: "muted", text: "None"}));
   }
@@ -126,8 +126,8 @@ document.addEventListener("click", ev => { if (openRowMenu && !openRowMenu.wrap.
 let rowMenus = 0;
 function rowMenu(label, entries, act) {
   const id = "rowMenu" + (++rowMenus);
-  const btn = el("button", {class: "btn small set-more-btn", type: "button", "data-act": act, text: "⋯", "aria-label": label,
-    "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id});
+  const btn = el("button", {class: "btn small set-more-btn", type: "button", "data-act": act, "aria-label": label,
+    "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id}, icon("ellipsis"));
   const items = entries.map(e => el("button", {class: "menu-item", role: "menuitem", type: "button", tabindex: "-1", text: e.text,
     onclick: () => { closeRowMenu(); e.run(); }}));
   const list = el("div", {class: "menu-list", id, role: "menu", "aria-label": label, hidden: ""}, ...items);
@@ -189,14 +189,14 @@ function orderList(items, opts) {
   function draw() {
     ol.replaceChildren(...list.map((it, i) => {
       const n = opts.name(it), li = el("li", {"data-i": i});
-      const grip = opts.ro ? null : el("button", {class: "set-grip", type: "button", "data-act": "grip", text: "⠿", title: "Drag to reorder",
+      const grip = opts.ro ? null : el("button", {class: "set-grip", type: "button", "data-act": "grip", title: "Drag to reorder",
         "aria-label": `Reorder ${n}, ${i + 1} of ${list.length}: drag, or press up or down`,
         onkeydown: ev => { const to = {ArrowUp: i - 1, ArrowDown: i + 1, Home: 0, End: list.length - 1}[ev.key]; if (to !== undefined) { ev.preventDefault(); move(i, to, "grip"); } },
-        onpointerdown: ev => drag(ev, li)});
+        onpointerdown: ev => drag(ev, li)}, icon("grip-vertical"));
       li.append(...[grip, ...opts.body(it, i)].filter(Boolean));
       if (!opts.ro) li.append(el("span", {class: "set-acts"},
-        el("button", {class: "btn small", type: "button", text: "↑", "data-act": "up", "aria-label": `Move ${n} up`, disabled: i === 0, onclick: () => move(i, i - 1, i > 1 ? "up" : "down")}),
-        el("button", {class: "btn small", type: "button", text: "↓", "data-act": "down", "aria-label": `Move ${n} down`, disabled: i === list.length - 1, onclick: () => move(i, i + 1, i + 2 < list.length ? "down" : "up")}),
+        el("button", {class: "btn small", type: "button", "data-act": "up", "aria-label": `Move ${n} up`, disabled: i === 0, onclick: () => move(i, i - 1, i > 1 ? "up" : "down")}, icon("arrow-up")),
+        el("button", {class: "btn small", type: "button", "data-act": "down", "aria-label": `Move ${n} down`, disabled: i === list.length - 1, onclick: () => move(i, i + 1, i + 2 < list.length ? "down" : "up")}, icon("arrow-down")),
         ...(opts.extra ? opts.extra(it, i) : [])));
       if (opts.more && !opts.ro) {
         const last = list.length - 1;
@@ -254,8 +254,8 @@ function tilesEditor(value, changed, ro, setting) {
     if (ro) return;
     const top = mostMeasured(LABS).filter(n => !ol.get().includes(n)).slice(0, 8);
     sugg.replaceChildren(...(top.length ? [el("span", {class: "muted", text: "Most measured here: "}),
-      ...top.map(n => el("button", {class: "chip", type: "button", "aria-label": `Add ${nick(n)}`, text: `+ ${nick(n)}`,
-        onclick: () => { ol.set([...ol.get(), n]); update(); }})),
+      ...top.map(n => el("button", {class: "chip", type: "button", "aria-label": `Add ${nick(n)}`,
+        onclick: () => { ol.set([...ol.get(), n]); update(); }}, icon("plus"), nick(n))),
       el("button", {class: "btn small", type: "button", text: "Use the most-measured labs",
         onclick: () => { ol.set(mostMeasured(LABS).slice(0, 12)); update(); sayIn(msg, "Now the 12 most-measured labs; Save to keep them."); }})] : []));
   }
@@ -296,7 +296,7 @@ function tabsEditor(value, changed, ro) {
 
 /* a pick-one group of radios (#193): the labels, each with its radio, drawn as one segmented control (app.css .seg) */
 const radioSeg = labels => el("div", {class: "seg wrap"}, ...labels);
-/* #45 this user's default theme; the ◐ toggle on the records page overrides it for one browser */
+/* #45 this user's default theme; Dark mode or Light mode in the top bar's menu overrides it for one browser */
 function themeEditor(value, changed, ro) {
   const opts = [["system", "Follow the system"], ["light", "Light"], ["dark", "Dark"]];
   const box = el("fieldset", {class: "set-radios"}, el("legend", {class: "set-sr", text: "Default theme"}),
@@ -304,7 +304,7 @@ function themeEditor(value, changed, ro) {
   let own = null; try { own = localStorage.getItem("ht-theme"); } catch (e) {}
   const note = el("p", {class: "hint", id: "themeOwn"});
   if (own === "light" || own === "dark")
-    note.append(`This browser uses its own choice, ${own}, set with ◐ on the records page. `,
+    note.append(`This browser uses its own choice, ${own}, set with Dark mode or Light mode in your menu. `,
       el("button", {class: "btn small", type: "button", text: "Use my default on this browser", onclick: () => {
         try { localStorage.removeItem("ht-theme"); } catch (e) {} applyTheme(); note.textContent = "This browser now uses your default."; }}));
   return {node: el("div", {}, box, note.childNodes.length ? note : null), get: () => box.querySelector("input:checked")?.value || value};
@@ -451,7 +451,7 @@ function rangesEditor(value, changed, ro) {
       const left = without.filter(s => !have.has(rNorm(s.name) + "\u001f" + rUnit(s.unit))).sort((a, b) => b.pts.length - a.pts.length).slice(0, 8);
       sugg.replaceChildren(...(left.length ? [el("span", {class: "muted", text: "Results without a range: "}),
         ...left.map(s => el("button", {class: "chip", type: "button", "aria-label": `Add a range for ${s.name} in ${s.unit || "no unit"}`,
-          text: `+ ${nick(s.name)}${s.unit ? " (" + s.unit + ")" : ""} · ${s.pts.length}`, onclick: () => add({lab: s.name, unit: s.unit, sex: "any"})}))] : []));
+          onclick: () => add({lab: s.name, unit: s.unit, sex: "any"})}, icon("plus"), `${nick(s.name)}${s.unit ? " (" + s.unit + ")" : ""} · ${s.pts.length}`))] : []));
     }
     changed();
   }

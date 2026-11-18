@@ -759,6 +759,14 @@ Everything on `main` so far; it becomes the first tagged release.
   swaps in (the Overview's tiles grew 18 px, a Settings card 37 px); on a phone, a line that ends within a pixel of
   its box can still wrap differently. Text is laid out at its exact size on Linux too
   (`text-rendering: geometricPrecision`), as on a Mac, which is what makes the sizes hold at 12.5 and 14 px.
+- **Icons instead of Unicode symbols** (#257): the ✕, ✓, ✎, ⋯, ⚠, ⇔, ↗, ⠿, carets, arrows, + and the "?" of "What is
+  this test?" are Lucide's icons now, drawn in the text's colour from one 2.4 KB SVG sprite (`www/icons/sprite.svg`, 16
+  icons, ISC licence beside it; `tools/build_sprite.py` rebuilds it from a list of names), instead of whichever font had
+  the character, at uneven sizes and heights. The drawer's ⇔ is two chevrons, apart for wider and together for
+  narrower. ▲ and ▼ stay text, the out-of-range marks, as do ◆, ●, ○ and ■ in charts and their legends, and arrows in
+  a sentence ("Sources → Upload"). Each icon is hidden from screen readers in a named button or link, or labelled (a
+  warning says "Warning:"); they follow the theme and forced colours. The service worker keeps the sprite
+  (`sanguity-shell-v4`), and `static_bytes` is 372 KB of 390 KB.
 - **Warm, calm colours, light and dark from one set** (#254): warm neutrals (a white card on a warm page in light,
   so cards stand off it; each step lighter in dark), a navy accent for controls, links and the focus ring only (the
   lab data's blue stays apart; an Overview sparkline's last point is in it now, not the accent), red for out of range

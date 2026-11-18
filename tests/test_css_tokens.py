@@ -91,8 +91,8 @@ TOKENS = "www/css/tokens.css"
 # file: {what: count}. Lower a number when a change brings it down; never raise one to let a new value in.
 ALLOWED = {
     # its two colours: a video's black letterbox (#000) and the sticky Save bar's shadow upward (rgba(0,0,0,.35))
-    # its two px font sizes are outside the type scale on purpose (#255): the journal's body figure, in its own units, and
-    # the heatmap's ? in its 12 px circle
+    # its two px font sizes are outside the type scale on purpose (#255): the journal's body figure, in its own units, 9 px
+    # for its sides and 7.5 px for a region's count (the heatmap's ? is an icon since #257)
     # its radius is a colour key's or swatch's 2 px (a data mark, not a component); its shadows are bars drawn inset
     # (a selected item's accent bar, a seg's underline), the sticky Save bar's shadow upward and the offline flash (#256)
     # its px spacing is four negative margins (#333): -4, -6 and -8 px tuck a note under what it's about (a chart's hint,

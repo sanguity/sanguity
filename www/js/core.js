@@ -34,7 +34,7 @@ const DEFAULT_SETTINGS = {
   labNicknames: {"Automated Abs Neutrophil Cnt": "Neutrophils (absolute)", "Lymphocytes Absolute": "Lymphocytes (absolute)", "Platelet Count": "Platelets",
     "Potassium, Blood": "Potassium", "Sodium, Blood": "Sodium", "Total Bilirubin": "Bilirubin, total"},
   tabs: {order: ["overview", "health", "timeline", "labs", "heatmap", "costs"], hidden: []},   // #40, applied by app.js
-  theme: "system",     // #45, this user's default: "light", "dark" or "system" (the ◐ toggle overrides it per browser)
+  theme: "system",     // #45, this user's default: "light", "dark" or "system" (the light/dark toggle overrides it per browser)
   sources: {},         // short source tags on lab results -> display names, e.g. {"EXT": "Outside lab"}
   units: {lab: "reported", weight: "reported", temperature: "reported", height: "reported"},   // #41, this user's (units.js)
   person: {birthDate: "", sex: "", heights: []},   // #194, About this person (person.js has the helpers)
@@ -168,14 +168,14 @@ function renderPeriod() {
   { const pre = $("#presets"), b = pre.querySelector("[aria-pressed=true]");   // on a phone the buttons scroll: the chosen one in view
     if (b && pre.scrollWidth > pre.clientWidth) pre.scrollLeft = b.offsetLeft - pre.offsetLeft - (pre.clientWidth - b.offsetWidth) / 2; }
   const item = (k, text, note) => el("button", {type: "button", class: "menu-item", role: "menuitemradio", tabindex: "-1", "aria-checked": p === k, "data-period": k},
-    text, note ? el("span", {class: "menu-note", text: note}) : null);
+    icon("check"), text, note ? el("span", {class: "menu-note", text: note}) : null);
   const group = (label, items) => items.length ? el("div", {role: "group", "aria-label": label}, el("div", {class: "menu-head", "aria-hidden": "true", text: label}), ...items) : null;
   moreList.replaceChildren(...present(   // a group with nothing in it is left out
     group("Since a milestone", MILESTONES.filter(m => m !== pm).map(m => item(msKey(m), "Since " + lcLabel(m.label), fmtD(dayTs(m.date))))),
     group("Calendar year", periodYears().map(y => item(y, y))),
     el("div", {class: "menu-sep", role: "separator"}), item("custom", "Custom dates…")));
   const m = p !== pk && msOf(p), picked = m ? "Since " + lcLabel(m.label) : isYearKey(p) ? p : p === "custom" ? "Custom dates" : "";
-  moreBtn.replaceChildren(picked || "More…", el("span", {class: "menu-caret", "aria-hidden": "true", text: "▾"}));
+  moreBtn.replaceChildren(picked || "More…", el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
   moreBtn.classList.toggle("on", !!picked);
   moreBtn.setAttribute("aria-label", picked ? `Period: ${picked}. More periods` : "More periods");
   $("#periodWords").textContent = periodWords();
@@ -233,8 +233,8 @@ function renderKinds() {
     const chip = el("button", {type: "button", class: "toggle", "data-k": c.k, "aria-pressed": on, "aria-label": `${c.label}, ${n}, ${on ? "shown" : "hidden"}`,
       onclick: () => { on ? state.cats.delete(c.k) : state.cats.add(c.k); renderAll(); }},
       el("span", {class: "key"}), `${c.label} `, el("span", {class: "n", text: n}));
-    const btn = el("button", {type: "button", class: "kind-more", "data-k": c.k, text: "⋯", "aria-label": `More for ${c.label}`,
-      title: `Show only ${c.label}${hidden ? ", or show all" : ""}`, "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id});
+    const btn = el("button", {type: "button", class: "kind-more", "data-k": c.k, "aria-label": `More for ${c.label}`,
+      title: `Show only ${c.label}${hidden ? ", or show all" : ""}`, "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id}, icon("ellipsis"));
     const items = [item(c.k, `Show only ${c.label}`, () => showKinds(c.k)), hidden ? item(c.k, "Show all", () => showKinds()) : null].filter(Boolean);
     const list = el("div", {class: "menu-list", id, role: "menu", "aria-label": c.label, hidden: ""}, ...items);
     const m = {btn, list};

@@ -18,7 +18,7 @@ function insurerHint(rows) {
 const seriesBy = n => SERIES.find(s => s.name === n);
 function statusOf(p) {
   if (!p) return null;
-  const st = p[4] === "H" ? {cls: "hi", text: "▲ High"} : p[4] === "L" ? {cls: "lo", text: "▼ Low"} : (p[2] != null || p[3] != null) ? {cls: "ok", text: "✓ In range"} : null;
+  const st = p[4] === "H" ? {cls: "hi", text: "▲ High"} : p[4] === "L" ? {cls: "lo", text: "▼ Low"} : (p[2] != null || p[3] != null) ? {cls: "ok", text: "In range", icon: "check"} : null;   // ▲ and ▼ are text, the marks for out of range; the ✓ an icon (#257)
   if (st && p.rs === "settings") st.title = "Against a " + RANGE_FROM_SETTINGS;   // #44
   return st;
 }
@@ -103,7 +103,7 @@ function renderOverview() {
     const d = prev ? last[1] - prev[1] : null;
     const recent = s.pts.filter(p => p.ts >= last.ts - 182 * DAY);
     const tile = el("button", {class: "tile", onclick: () => goSeries(n)},
-      el("span", {class: "lbl"}, el("span", {text: nice(n), title: n}), st ? el("span", {class: "st " + st.cls, text: st.text, title: st.title}) : null),
+      el("span", {class: "lbl"}, el("span", {text: nice(n), title: n}), st ? el("span", {class: "st " + st.cls, title: st.title}, st.icon ? [icon(st.icon), " "] : null, st.text) : null),
       el("span", {class: "val"}, last[5] || fmtNum(last[1]), el("small", {text: s.unit})),
       ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
       el("span", {class: "delta"}, keepDates((d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")} since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : ""))),
@@ -191,7 +191,7 @@ function renderOverview() {
     const mini = (l, v) => el("div", {class: "tile"}, el("span", {class: "lbl", text: l}), el("span", {class: "val", text: v}));   // the tile (#260)
     cc.append(el("div", {class: "ov-minis"},
       mini("Billed", usd(sumOf(dx, "billed"))), mini("Paid by insurance", usd(sumOf(dx, "paid"))), mini("Your share", usd(sumOf(dx, "owe")))),
-      el("button", {class: "btn", text: "Open Costs →", onclick: () => { if (pm) setPeriod(msKey(pm)); pickTab("costs"); }}));   // the same period
+      el("button", {class: "btn", onclick: () => { if (pm) setPeriod(msKey(pm)); pickTab("costs"); }}, "Open Costs ", icon("arrow-right")));   // the same period
     right.append(cc);
   }
   // problem list (allergies have a card of their own, under it: #179)
@@ -225,8 +225,8 @@ function renderOverview() {
         el("span", {class: "r", text: fmtD(e.ts)}), el("span", {}),
         el("span", {class: "s", text: [d.dose ? "Dose " + d.dose : "", d.where || d.performer].filter(Boolean).join(" · ")})));
     }
-    if (imms.length > 8) ic.append(el("button", {class: "btn", style: {marginTop: "8px"}, text: `All ${imms.length} on the Timeline →`, onclick: () => {
-      setPeriod("all"); state.cats = new Set(["immunization"]); pickTab("timeline"); }}));
+    if (imms.length > 8) ic.append(el("button", {class: "btn", style: {marginTop: "8px"}, onclick: () => {
+      setPeriod("all"); state.cats = new Set(["immunization"]); pickTab("timeline"); }}, `All ${imms.length} on the Timeline `, icon("arrow-right")));
     left.append(ic);
   }
   // recent events

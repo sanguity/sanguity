@@ -120,7 +120,7 @@
     const card = el("fieldset", {class: "man-item", "data-kind": kind, "data-seq": ++seq});
     card.append(...present(el("legend", {text: label}), HINTS[kind] ? el("p", {class: "hint rec-hint", text: HINTS[kind]}) : null,
       el("div", {class: "rec-grid"}, fields.map(x => field(card, x))),
-      el("button", {type: "button", class: "del", "aria-label": `Remove this ${label.toLowerCase()}`, title: "Remove", text: "✕"}),
+      el("button", {type: "button", class: "del", "aria-label": `Remove this ${label.toLowerCase()}`, title: "Remove"}, icon("x")),
       el("div", {class: "man-check", "aria-live": "polite"})));
     box.append(card);
     // the first date starts on the last record's, else today: records typed from one letter share it
@@ -172,7 +172,7 @@
       }
       ok++;
       if (x.duplicate) dup++;
-      out.replaceChildren("✓ ", el("b", {text: x.label}), " · " + (x.summary_parts || [x.summary || ""]).map((t, i) => i % 2 ? recordDate(t) : t).join(""),   // only its own dates, the rest as typed (#317)
+      out.replaceChildren(icon("check"), " ", el("b", {text: x.label}), " · " + (x.summary_parts || [x.summary || ""]).map((t, i) => i % 2 ? recordDate(t) : t).join(""),   // only its own dates, the rest as typed (#317)
         ...(x.duplicate ? [" · ", el("span", {class: "dup", text: "already in this profile: it won't be saved again"})] : []),
         ...(x.notes.length ? [` (${x.notes.join("; ")})`] : []));
     });

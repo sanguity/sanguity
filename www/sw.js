@@ -9,19 +9,20 @@
    Pages, styles and scripts hold no health data (each page asks the API who is signed in). They're fetched from the
    network first, so an update shows at once, and the kept copy is used only when the network can't be reached. */
 "use strict";
-// The kept copy's name. A new version when FILES changes (v2: the fonts, #253; v3: a smaller Source Serif, #328): the
-// worker installs a fresh copy under the new name, and activating deletes the old one, with any file no longer listed.
-const SHELL = "sanguity-shell-v3";
+// The kept copy's name. A new version when FILES changes (v2: the fonts, #253; v3: a smaller Source Serif, #328; v4:
+// the icons' sprite, #257): the worker installs a fresh copy under the new name, and activating deletes the old one,
+// with any file no longer listed.
+const SHELL = "sanguity-shell-v4";
 const SCOPE = new URL(self.registration.scope);
 // Every page, style, script, font and icon in www/ (tests/test_pwa.py checks this list against the folder). Not the
-// fonts' licence texts, and not connect-return.html: that's where a connected source's sign-in comes back, with a code
+// fonts' and icons' licence texts, and not connect-return.html: that's where a connected source's sign-in comes back, with a code
 // in the address.
 const FILES = [
   "", "index.html", "login.html", "setup.html", "account.html", "import.html", "settings.html", "providers.html", "connect.html",
   "summary.html", "share.html", "admin.html", "sharing.html",
   "manifest.webmanifest", "css/tokens.css", "css/base.css", "css/app.css", "css/summary.css",
   "fonts/inter-v4.001-latin.woff2", "fonts/inter-v4.001-latin-ext.woff2", "fonts/source-serif-4-v4.004-wght-latin.woff2", "fonts/source-serif-4-v4.004-wght-latin-ext.woff2",
-  "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png",
+  "icons/sprite.svg", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png",
   "js/account.js", "js/activity.js", "js/admin.js", "js/admin-sources.js", "js/app.js", "js/charts.js", "js/connect.js", "js/core.js", "js/costs.js", "js/dates.js", "js/drawer.js", "js/ecg.js", "js/filters.js", "js/health.js",
   "js/heatmap.js", "js/import-history.js", "js/import-jobs.js", "js/import-manual.js", "js/import-records.js", "js/import-shl.js",
   "js/import.js", "js/journal.js", "js/login.js", "js/meds.js", "js/nav.js", "js/offline.js", "js/outside.js", "js/overview.js", "js/providers.js",

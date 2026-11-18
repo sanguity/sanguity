@@ -24,11 +24,12 @@ function testPage(name) {
   return n == null ? null : TEST_PAGES.pages[n] || null;
 }
 const testPageName = (name, p) => `What is this test? ${nice(name)}: “${p.title}” on ${p.site}, opens in a new tab`;
-/* the link, or null. compact: a 24 px "?" (the list's rows, the tiles, the drawer), else the words */
+/* the link, or null. compact: a 24 px "?" in a circle (the list's rows, the tiles, the drawer), else the words and an
+   arrow out of a box, the link going to another site; both icons (#257), the link named by its aria-label */
 function testLink(name, compact) {
   const p = testPage(name); if (!p) return null;
   const say = testPageName(name, p);
   return el("a", {class: "test-page" + (compact ? " tq" : ""), href: p.url, target: "_blank", rel: "noopener noreferrer", "aria-label": say, title: say,
     onclick: ev => ev.stopPropagation()},   // a drawer row's or a list row's own click stays its own
-    compact ? el("span", {"aria-hidden": "true", text: "?"}) : ["What is this test?", el("span", {"aria-hidden": "true", class: "tp-ext", text: " ↗"})]);
+    compact ? icon("circle-question-mark") : ["What is this test?", icon("external-link")]);
 }

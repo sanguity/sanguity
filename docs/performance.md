@@ -66,7 +66,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `tab_elements` | Elements in a tab with the period **All** | 16,185 (Body and activity) | 18,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
-| `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as on disk (#253, below) | 365 KB | 390 KB |
+| `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as on disk (#253, below) | 372 KB | 390 KB |
 
 Measured on a 20-thread desktop (Intel Core Ultra 7 265K), Chromium headless. Each tab's own numbers, and the size
 of each part of the records data, are printed at the end of the test's output; `PERF_REPORT=file.json` also writes
@@ -80,22 +80,24 @@ python3 tests/test_performance.py    # about 30 seconds; needs Playwright's Chro
 
 `static_bytes` doesn't depend on the records: it is what the redesign adds to the app's own files, so a new font,
 stylesheet or icon set has to fit. It counts `www/css/*.css`, `www/fonts/*.woff2` and `www/icons/*.svg` (the icon
-sprite, once there is one, and the app's icon); the install icons (PNG) are fetched only when the app is installed.
+sprite and the app's icon); the install icons (PNG) are fetched only when the app is installed.
 
 | | Bytes | What a page fetches |
 |---|---:|---|
-| Stylesheets (tokens, base, app, summary) | 138 KB (42 KB as nginx sends them) | every page: tokens, base and app, or its own `<style>` |
+| Stylesheets (tokens, base, app, summary) | 140 KB (43 KB as nginx sends them) | every page: tokens, base and app, or its own `<style>` |
 | Inter, Latin | 48 KB | every page |
 | Inter, Latin Extended | 85 KB | only a page with a character in its range (a name with ő or ł, say) |
 | Source Serif 4, Latin and Latin Extended | 51 KB and 42 KB | only a page with a title or a headline value on it, the second as above |
-| SVG icons | 0.5 KB | |
-| All | 365 KB | |
+| SVG icons: the sprite (#257) and the app's icon | 2.4 KB (0.8 KB compressed) and 0.5 KB | the sprite: every page with an icon, once; the app's icon: none (the browser's tab) |
+| All | 372 KB | |
 
 The fonts are variable, so one file holds every weight: Inter's weight axis, and Source Serif 4's weight axis without
 its optical size axis (#328), which made its Latin file 122 KB for titles that are all 15.5 to 28 px. The browser keeps
 them for a year (`nginx.conf`, `/fonts/`) and the service worker keeps them for offline use, so they're fetched once
-a device. The budget, 390 KB, leaves 25 KB: room for Redesign 3's icon sprite (10 to 20 KB) and a little growth in the
-stylesheets, and no more, so a second font or a heavier cut has to be argued for.
+a device. The budget, 390 KB, left 25 KB for Redesign 3's icon sprite (10 to 20 KB, it was thought) and a little growth
+in the stylesheets. The sprite (#257) holds only the 16 Lucide icons the app uses, 2.4 KB, so 18 KB are left, and no
+more: a second font or a heavier cut has to be argued for. Each icon added to it is about 150 bytes
+(`tools/build_sprite.py`).
 
 ### A cold load on a slow connection (#328)
 

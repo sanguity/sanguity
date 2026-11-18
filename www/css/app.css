@@ -21,6 +21,16 @@ a{color:var(--accent)}   /* links in the accent, never the browser's blue or vis
 }
 
 @layer components {
+/* ---- icons (#257): Lucide's, a <symbol> each in icons/sprite.svg (tools/build_sprite.py), drawn as
+   <svg class="icon"><use href="icons/sprite.svg#i-NAME"/></svg> (util.js icon(), or the same markup in a page). 1em
+   square, so an icon takes the size of the text it's set in (--fs-1 to --fs-7), sitting on its baseline; the strokes
+   in the text's colour, so the theme, a hover, a selected state and forced colours all reach it. Hidden from screen
+   readers: what it's in has the name. --icon-check is the same ✓ for a stylesheet's own mark (a mask: a chip that's
+   on), where there's no element to hold an <svg>. */
+:root{--icon-check:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E")}
+svg.icon{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.125em;overflow:visible}
+.icon{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}   /* a <use class="icon"> in a chart too */
+
 /* ---- the button (#258): one component, everywhere. <button class="btn"> (or an <a>, or a <label> around a file
    input), in three sizes and four variants:
      sizes     .small 24 px, the default 32 px, .large 40 px; on a phone (640 px or less) or a touch screen every one is a
@@ -126,7 +136,8 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
   background:transparent;padding:0 var(--sp-3) 0 var(--sp-2);color:var(--ink2);font-size:var(--fs-3);font-weight:var(--fw-medium);line-height:1.45;white-space:nowrap;cursor:pointer}
 .toggle:hover{border-color:var(--ink2);color:var(--ink)}
 .toggle[aria-pressed="true"],.toggle:has(>input:checked){background:color-mix(in srgb,var(--tone) 15%,var(--raised));border-color:color-mix(in srgb,var(--tone) 70%,var(--ink));color:var(--ink)}
-.toggle::before{content:"✓";content:"✓"/"";font-size:var(--fs-2);font-weight:var(--fw-bold);line-height:1;color:color-mix(in srgb,var(--tone) 55%,var(--ink))}
+.toggle::before{content:"";flex:none;width:var(--fs-1);height:var(--fs-1);background:currentColor;mask:var(--icon-check) center/contain no-repeat;   /* the ✓, Lucide's (#257) */
+  color:color-mix(in srgb,var(--tone) 55%,var(--ink))}
 .toggle[aria-pressed="false"]::before,.toggle:has(>input:not(:checked))::before{content:none}
 .toggle .key{flex:none;width:14px;height:3px;border-radius:2px;background:var(--tone)}
 .toggle .n{color:var(--ink2);font-variant-numeric:tabular-nums}
@@ -191,8 +202,8 @@ button.tile{cursor:pointer}
 .tile .orig{font-size:var(--fs-1);color:var(--muted)}   /* the value as reported, beside a converted one (#41) */
 .tile .delta{font-size:var(--fs-2);color:var(--ink2);text-wrap:balance}
 .nw{white-space:nowrap}   /* a date kept whole (keepDates, util.js, #330) */
-.tile svg{width:100%;height:34px;display:block;margin-top:var(--sp-1)}
-.tile>svg:last-child{margin-top:auto}
+.tile svg:not(.icon){width:100%;height:34px;display:block;margin-top:var(--sp-1)}
+.tile>svg:not(.icon):last-child{margin-top:auto}
 .tile>:has(+svg:last-child){margin-bottom:var(--sp-1)}
 .tile-tq{display:grid;grid-template-columns:minmax(0,1fr) auto}
 .tile-tq>.tile{border:0;background:none;padding-right:2px}
@@ -346,7 +357,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .chart .hd>button{display:inline-flex;align-items:center;justify-content:center;min-width:24px;min-height:24px;border:0;border-radius:var(--r-sm);background:none;color:var(--muted);cursor:pointer;font-size:var(--fs-2);padding:0 var(--sp-1)}
 .chart .hd>button:hover{color:var(--ink);background:var(--hover)}
 @media (max-width:640px),(pointer:coarse){ .chart .hd>button{min-width:44px;min-height:44px} }   /* a chart's ✕: the quiet button's sizes (#258) */
-.chart svg{width:100%;display:block}
+.chart svg:not(.icon){width:100%;display:block}
 .pz{touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
 .dragging .pz,.dragging .pz *{cursor:grabbing!important}
 .chart-hint{margin:-4px 0 var(--sp-3)}
@@ -430,6 +441,8 @@ table.data tr.link:hover td{background:var(--hover)}
 #drawer .db.fill .btns{flex:none}
 #drawer .db.fill iframe.doc{flex:1 1 auto;min-height:320px}
 @media (max-width:700px){#dwide{display:none}}
+#dwide[aria-pressed="true"] .i-chevrons-left-right,#dwide:not([aria-pressed="true"]) .i-chevrons-right-left{display:none}   /* wider, or narrower once wide (#257) */
+#drawer .acts .icon{font-size:var(--fs-4)}   /* a little larger than the text (#257) */
 /* corrections in the event panel (drawer.js) */
 .edits{margin-top:var(--sp-4);border-top:1px solid var(--grid);padding-top:var(--sp-2);font-size:var(--fs-3)}
 .edits .edited{background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin-bottom:var(--sp-3)}
@@ -1133,7 +1146,8 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .period-more .menu-list{left:0;right:auto;width:max-content;min-width:200px;max-width:min(320px,calc(100vw - 24px));max-height:min(60vh,440px);overflow-y:auto}
 .period-more .menu-item{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-3);padding-left:var(--sp-5);white-space:normal}
 .period-more .menu-item[aria-checked="true"]{background:color-mix(in srgb,var(--accent) 12%,var(--raised));font-weight:var(--fw-semibold)}
-.period-more .menu-item[aria-checked="true"]::before{content:"✓";content:"✓"/"";position:absolute;left:10px;color:var(--accent);font-weight:var(--fw-bold)}
+.period-more .menu-item>.i-check{position:absolute;left:var(--sp-2);margin-top:.225em;color:var(--accent);stroke-width:2.5}   /* the picked one's ✓ (#257) */
+.period-more .menu-item:not([aria-checked="true"])>.i-check{display:none}
 .period-more .menu-item:hover,.period-more .menu-item:focus-visible{background:var(--hover)}
 .period-more .menu-head{padding:var(--sp-1) var(--sp-3) 2px var(--sp-5);color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-semibold)}
 .period-more .menu-note{flex:none;color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-regular)}
@@ -1376,7 +1390,7 @@ main.acct.guide{max-width:640px}
 .guide-way{display:grid;gap:2px;padding:var(--sp-3) var(--sp-4);border:1px solid var(--ring);border-radius:var(--r-md);background:var(--raised);color:var(--ink);text-decoration:none}
 .guide-way:hover{border-color:var(--accent);background:var(--hover)}
 .guide-way b{font-weight:var(--fw-semibold)}
-.guide-way b::after{content:" →";color:var(--accent)}
+.guide-way b .icon{color:var(--accent)}
 .guide-way span{font-size:var(--fs-3);color:var(--ink2)}
 .guide-have{margin:var(--sp-3) 0 0}
 .guide-tick{color:var(--good-text);font-weight:var(--fw-bold)}
@@ -1545,18 +1559,17 @@ svg text.growth-pct{font-size:var(--fs-1)}
 
 /* ---- "What is this test?" links (#163): beside a lab on Labs (its chart and the list), the heatmap, the Overview's
    tiles and the drawer's results; the words, or a 24 px "?" where space is short (2.5.8) */
-.test-page{color:var(--accent);font-size:var(--fs-2);display:inline-flex;align-items:center;min-height:24px;text-underline-offset:2px;white-space:nowrap}
+.test-page{color:var(--accent);font-size:var(--fs-2);display:inline-flex;align-items:center;gap:var(--sp-1);min-height:24px;text-underline-offset:2px;white-space:nowrap}
 .test-page:hover{color:var(--ink)}
 .test-page.tq{justify-content:center;min-width:24px;vertical-align:middle;text-decoration:none}
-.test-page.tq span{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:var(--r-pill);border:1px solid currentColor;font-size:var(--fs-1);font-weight:var(--fw-semibold);line-height:1}
+.test-page.tq .icon{font-size:var(--fs-5)}   /* Lucide's circle-question-mark: a 15 px circle, as the bordered "?" was (#257) */
 .srow.has-tq{grid-template-columns:18px minmax(0,1fr) auto auto}
 .srow .test-page.tq{margin:-5px 0}   /* a 24 px target, the row as before */
 .cell-btn~.test-page.tq{margin:3px 0 -3px}   /* clear of the name's 24 px button above it when the name wraps (the drawer) */
-#hm .hm-tq{cursor:pointer}
-#hm .hm-tq circle{fill:var(--surface);stroke:var(--accent)}
-#hm .hm-tq text{fill:var(--accent);font-size:9px;   /* not the type scale (#255): the ? inside its 12 px circle */
-  font-weight:var(--fw-semibold)}
-#hm .hm-tq:hover circle{fill:var(--hover);stroke:var(--ink)}
+#hm .hm-tq{cursor:pointer;color:var(--accent)}
+#hm .hm-tq circle{fill:var(--surface);stroke:none}   /* what's clicked, under the icon (#257) */
+#hm .hm-tq:hover{color:var(--ink)}
+#hm .hm-tq:hover circle{fill:var(--hover)}
 
 
 /* ---- A fuller list of conditions (#187, presets.js): which chosen conditions each previewed tile is from, and each

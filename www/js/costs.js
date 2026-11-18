@@ -104,9 +104,10 @@ function renderCosts() {
     // a column's sort is a button in its header, its order said by aria-sort; a claim opens from its name, a button, or
     // anywhere on its row by pointer (#202: by keyboard too, and said as what they are)
     el("thead", {}, el("tr", {}, cols.map(([key, h], i) => el("th", {scope: "col", style: {whiteSpace: "nowrap"}, "aria-sort": costState.sort === key ? (costState.dir > 0 ? "ascending" : "descending") : null},
-      el("button", {class: "cell-btn", type: "button", text: h + (costState.sort === key ? (costState.dir > 0 ? " ▲" : " ▼") : ""), onclick: () => {
+      el("button", {class: "cell-btn", type: "button", onclick: () => {
         costState.dir = costState.sort === key ? -costState.dir : (["d", "billed", "paid", "owe"].includes(key) ? -1 : 1); costState.sort = key; renderCosts();
-        $(`#costTable th:nth-child(${i + 1}) button`)?.focus(); }}))))),
+        $(`#costTable th:nth-child(${i + 1}) button`)?.focus(); }},   // the order an arrow (#257): ▲ and ▼ say out of range
+        h, costState.sort === key ? [" ", icon(costState.dir > 0 ? "arrow-up" : "arrow-down")] : null))))),
     el("tbody", {}, list.slice(0, costState.limit).map(r => el("tr", {class: "link", onclick: () => openEvent(byId.get(r.id))},
       el("td", {text: fmtD(dayTs(r.d))}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: r.title.length > 60 ? r.title.slice(0, 59) + "…" : r.title})),
       el("td", {text: r.prov}), el("td", {text: r.cat}),

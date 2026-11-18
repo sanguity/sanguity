@@ -22,11 +22,11 @@ const RENAME = {
 /* "Platelets", with "In the records: Platelet Count" on hover when it's been renamed */
 const renamedTitle = (kind, key) => { const r = RENAME[kind], o = r.original(key); return r.shown(key) !== o ? `In the records: ${o}` : o; };
 
-/* the ✎ beside a name (nothing for someone who can't rename) */
+/* the pencil (✎) beside a name (nothing for someone who can't rename) */
 function renameButton(kind, key) {
   if (!canRename()) return null;
-  const b = el("button", {class: "rename-btn", type: "button", text: "✎", "data-rename": kind, "data-key": String(key), title: `Rename this ${RENAME[kind].what}`,
-    "aria-label": `Rename ${RENAME[kind].shown(key)}`});
+  const b = el("button", {class: "rename-btn", type: "button", "data-rename": kind, "data-key": String(key), title: `Rename this ${RENAME[kind].what}`,
+    "aria-label": `Rename ${RENAME[kind].shown(key)}`}, icon("pencil"));
   b.addEventListener("click", ev => { ev.stopPropagation(); ev.preventDefault(); openRename(b, kind, key); });
   return b;
 }
