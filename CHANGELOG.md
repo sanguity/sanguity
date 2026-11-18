@@ -799,6 +799,8 @@ Everything on `main` so far; it becomes the first tagged release.
   height when the web font arrives; everywhere else the default rendering, which on Linux keeps small regular text sharp.
 - **Dates kept together, and only dates** (#339): in the year-month-day format a tile's change line no longer keeps
   "03 since 2026" together; "as of" is kept whole, with the line free to break before its date.
+- **Milestones and cursors in forced colours** (#341): against a contrast theme opposite to the app's, they're drawn in
+  the system's colours, not faintly in the app's.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
