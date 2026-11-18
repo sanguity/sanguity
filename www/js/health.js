@@ -222,7 +222,7 @@ function renderHealth() {
   box.append(tiles);
 
   const C = {w: "var(--c-lab)", clinic: "var(--muted)", fat: "var(--c-imaging)", lean: "var(--c-procedure)", deep: "var(--seq1)", rem: "var(--seq2)", light: "var(--seq3)", steps: "var(--c-lab)", hr: "var(--c-letter)", rest: "var(--c-message)"};
-  const legend = items => el("div", {class: "legend", style: {margin: "4px 0 6px"}}, ...items.map(([c, t, round]) => el("span", {}, el("i", {style: {background: c, borderRadius: round ? "50%" : null, width: round ? "9px" : null, height: round ? "9px" : null}}), t)));
+  const legend = items => el("div", {class: "legend mb-2"}, ...items.map(([c, t, round]) => el("span", {}, el("i", {style: {background: c, borderRadius: round ? "50%" : null, width: round ? "9px" : null, height: round ? "9px" : null}}), t)));
 
   /* Chart | Table on each card (#60): its charts, or one table of what they show, a row per day (or week) in the
      period, newest first. byDay([pts, …]) -> [{t, v: [the point from each on that day, or undefined]}] */
@@ -260,7 +260,7 @@ function renderHealth() {
         fat ? tipRow(C.fat, `Body fat ${fat[1].toFixed(1)}%`) : null, lean ? tipRow(C.lean, `Lean mass ${lean[1].toFixed(1)} lb`) : null]}; }});
   bmiChart(body, a, b, vx);   // BMI over time (#195, below)
   if ((H.fat.length || H.lean.length) && !state.tables.has("#h-body")) {
-    const two = el("div", {class: "ov-cols", style: {gridTemplateColumns: "1fr 1fr", marginTop: "10px"}});
+    const two = el("div", {class: "ov-cols mt-3", style: {gridTemplateColumns: "1fr 1fr"}});
     const c1 = el("div", {}, el("h3", {class: "sub", text: "Body fat (%)"})), c2 = el("div", {}, el("h3", {class: "sub", text: "Lean mass (lb)"}));
     two.append(c1, c2); body.append(two);
     hChart(c1, a, b, {h: 150, fmtY: v => v.toFixed(0), label: "Body fat", noun: "reading", layers: [{type: "line", data: H.fat, color: C.fat, gap: 45}, {type: "dots", data: H.fat, color: C.fat}],
@@ -305,7 +305,7 @@ function renderHealth() {
     {type: "line", data: rolling(H.steps, long ? 30 : 7), color: "var(--ink2)", width: 1.6, gap: 10}],
     tip: t => { const p = nearest(stBars, t, long ? 4 : .6); return p && {t: p[0], rows: [el("div", {class: "v", text: `${Math.round(p[1]).toLocaleString()} steps${long ? " / day avg" : ""}`}), el("div", {class: "s", text: long ? "Week of " + fmtD(p[0] - 3 * DAY) : fmtD(p[0])})]}; }});
   // workout calendar (in the table instead, with Table, #60)
-  const cal = el("div", {style: {marginTop: "12px"}}, el("h3", {class: "sub", text: `Workouts · ${exIn.length} in this period${exIn.some(x => x.pt) ? ` (${listOf([...new Set(exIn.filter(x => x.pt).map(x => x.rule))].map(r => { const xs = exIn.filter(x => x.pt && x.rule === r); return `${xs.length} ${r.toLowerCase()} appointment${xs.length === 1 ? "" : "s"}, counted as ${xs[0].min} min each`; }))})` : ""}`}));
+  const cal = el("div", {class: "mt-3"}, el("h3", {class: "sub", text: `Workouts · ${exIn.length} in this period${exIn.some(x => x.pt) ? ` (${listOf([...new Set(exIn.filter(x => x.pt).map(x => x.rule))].map(r => { const xs = exIn.filter(x => x.pt && x.rule === r); return `${xs.length} ${r.toLowerCase()} appointment${xs.length === 1 ? "" : "s"}, counted as ${xs[0].min} min each`; }))})` : ""}`}));
   if (!state.tables.has("#h-activity")) act.append(cal);
   if (!state.tables.has("#h-activity")) requestAnimationFrame(() => {
     const start = zdate(a); start.setHours(12, 0, 0, 0); start.setDate(start.getDate() - (start.getDay() + 6) % 7);
@@ -325,10 +325,10 @@ function renderHealth() {
       g.push(r);
     }
     svg.replaceChildren(...g); cal.append(svg,
-      el("div", {class: "legend", style: {marginTop: "4px"}}, el("span", {}, el("i", {style: {background: "var(--grid)"}}), "None"), el("span", {}, el("i", {style: {background: "var(--seq3)"}}), "Under 30 min"),
+      el("div", {class: "legend"}, el("span", {}, el("i", {style: {background: "var(--grid)"}}), "None"), el("span", {}, el("i", {style: {background: "var(--seq3)"}}), "Under 30 min"),
         el("span", {}, el("i", {style: {background: "var(--seq2)"}}), "30–60 min"), el("span", {}, el("i", {style: {background: "var(--seq1)"}}), "60+ min")));
     const kinds = new Map(); for (const x of exIn) { const k = x.name || "Workout"; const v = kinds.get(k) || {n: 0, min: 0}; v.n++; v.min += x.min; kinds.set(k, v); }
-    if (kinds.size) cal.append(el("p", {class: "hint", style: {marginTop: "6px"}, text: [...kinds.entries()].sort((p, q) => q[1].min - p[1].min).slice(0, 6).map(([k, v]) => `${k}: ${v.n}× · ${Math.round(v.min / 6) / 10} h`).join("   ·   ")}));
+    if (kinds.size) cal.append(el("p", {class: "hint mt-2", text: [...kinds.entries()].sort((p, q) => q[1].min - p[1].min).slice(0, 6).map(([k, v]) => `${k}: ${v.n}× · ${Math.round(v.min / 6) / 10} h`).join("   ·   ")}));
   });
 
   hZones(box, a, b, {long, legend, head, byDay});   // heart rate zones on workouts (#197, below)
@@ -353,7 +353,7 @@ function renderHealth() {
       return {t: p[0], rows: [el("div", {class: "v", text: fmtD(p[0])}), r ? tipRow(C.rest, `Resting ${Math.round(r[1])} bpm`) : null,
         h ? tipRow(C.hr, `Average ${Math.round(h[1])} bpm${h[2] != null ? ` · range ${Math.round(h[2])}–${Math.round(h[3])}` : ""}`) : null]}; }});
   if (H.hrv.length) {
-    const hv = el("div", {style: {marginTop: "10px"}}, el("h3", {class: "sub", text: "Heart rate variability (ms)"})); ht.append(hv);
+    const hv = el("div", {class: "mt-3"}, el("h3", {class: "sub", text: "Heart rate variability (ms)"})); ht.append(hv);
     hChart(hv, a, b, {h: 140, label: "Heart rate variability", noun: "day", nav: H.hrv, layers: [{type: "line", data: rolling(H.hrv, 7), color: C.rest, gap: 10}, {type: "dots", data: H.hrv, color: C.rest, opacity: .4}],
       tip: t => { const p = nearest(H.hrv, t, .6); return p && {t: p[0], rows: [el("div", {class: "v", text: `${Math.round(p[1])} ms`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
   }

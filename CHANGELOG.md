@@ -761,6 +761,12 @@ Everything on `main` so far; it becomes the first tagged release.
   (`--milestone`), darker than an event's dotted grey, and every chart's cursor, the Labs and Body and activity
   crosshair and the ECG's, is one grey (`--cursor`), lighter than the trace it crosses. Both are in the contrast table;
   `tokens.css` lists which colours are for controls and which for data.
+- **The style check watches spacing, weights and durations** (#333): `tests/test_css_tokens.py` also counts px
+  padding, margin and gap outside the spacing tokens (a nudge of 3 px or less is fine), numeric font weights, and
+  transition and animation times, in stylesheets, pages and the styles scripts set, so a 7 px margin, a
+  `font-weight: 550` or a `transition: .3s` fails it. The scripts' own off-scale spacing (Costs' legends, claims
+  toolbar and paid-amount buttons, the Overview's insurance figures, Body and activity's legends and sections) is on
+  the scale now, in classes; its hints name the type, radius, elevation, spacing and motion tokens.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

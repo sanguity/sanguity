@@ -12,7 +12,19 @@ www/, and every script under www/, subfolders included (#307), and counts per fi
   radii          the different border-radius values (a corner's too) with a size of their own: not 0, inherit or a
                  lone var()
   shadows        the different box-shadow values with a size of their own: not none or a lone var()
-                 (these three have no tokens yet, so reusing a value the file already has adds nothing; a new one does)
+  px spacing     the different px values in padding, margin and gap (row-gap, column-gap, grid-gap, a side's and a
+                 logical longhand too), outside var() (#333). 0 and a nudge of 1, 2 or 3 px (or -1 to -3) don't count:
+                 the redesign left nudges of that size on purpose (a 24 px target kept from growing its line, a hairline
+                 lined up). Positional offsets (top, left, right, bottom, inset) and scroll-margin/scroll-padding aren't
+                 counted: they place something (a menu under its button, a sticky sidebar under the bar) or clear a
+                 sticky bar, measured from what they place it against, not spacing between things.
+                 (These four have tokens, in tokens.css (#255, #256), and are counted by their different values: the
+                 off-scale ones a file still has are listed in ALLOWED, so reusing one adds nothing and a new one fails.)
+  font weights   each number given by font-weight or before the font shorthand's size ("600 12px/1.4 ..."); the
+                 keywords (bold, normal) aren't numbers, and an @font-face rule's weights say what a font file covers,
+                 not how text looks, so they aren't counted either
+  durations      each time other than 0 in transition, animation and their -duration and -delay longhands (.3s, 150ms)
+                 (the weights and durations have tokens too, so each one written out counts)
   style attributes  each style="..." on a page's elements
 and in every script, comments skipped:
   script styles  each style handed to el() (a `style:` or "style": key in an object literal, an object or a string),
@@ -41,12 +53,21 @@ and in every script, comments skipped:
                    "e.g. Red patch, 3 cm" isn't one.
                  To find the strings, a / where a value can start begins a regex, skipped; after a name, a ")" or
                  a ++ or -- it divides (a++ / 2).
+  px spacing, font weights, durations
+                 as in a stylesheet, wherever a script writes them (#333): in a declaration inside any string
+                 ("padding:4px 0", "font-weight:600", a srcdoc's <style>), and in a style it sets: each key of an object
+                 handed to el() or Object.assign(x.style, ...), a ternary's branches there too (marginTop: "10px",
+                 fontWeight: 500; a bare number in a spacing key is read as px, as el() would set it),
+                 x.style.marginTop = ... and x.style.setProperty("margin-top", ...).
 Known limits (#321): what the scanner can't see, so a review has to.
   - A colour put together as the page runs ("#" + hex, "r" + "ed", a template's ${c} with c from elsewhere) or kept in a
     variable first (const c = "red"; el("i", {fill: c})): only a hex or a colour function in the variable's string counts.
   - A ternary or default more than about 60 characters from its colour key, or one whose condition has a comma, a
     brace or a ":" (a call with two arguments), isn't followed back to the key.
   - A regex right after a ")" (if (x) /re/.test(s)) is taken for a division, so strings later on that line are missed.
+  - Spacing, a weight or a time kept in a variable first (const m = "6px"; el("p", {style: {margin: m}})), or set
+    through x.style[k] = ...: the value isn't followed back to the style. And "margin: 7px" in running text in a
+    string counts, as a declaration would.
   - A style reached another way: x["style"] = ..., x.attributes, a CSSStyleSheet (insertRule, adoptedStyleSheets), a
     <style> element built by a script (its text is read as strings, so a hex or a colour declaration in it still counts).
   - A hex in prose after a CSS word ("see the top #252") still counts, and one after a lowercase "word:" counts as a
@@ -69,11 +90,17 @@ TOKENS = "www/css/tokens.css"
 
 # file: {what: count}. Lower a number when a change brings it down; never raise one to let a new value in.
 ALLOWED = {
+    # its two colours: a video's black letterbox (#000) and the sticky Save bar's shadow upward (rgba(0,0,0,.35))
     # its two px font sizes are outside the type scale on purpose (#255): the journal's body figure, in its own units, and
     # the heatmap's ? in its 12 px circle
     # its radius is a colour key's or swatch's 2 px (a data mark, not a component); its shadows are bars drawn inset
     # (a selected item's accent bar, a seg's underline), the sticky Save bar's shadow upward and the offline flash (#256)
-    "www/css/app.css": {"colours": 2, "px font sizes": 2, "radii": 1, "shadows": 5},
+    # its px spacing is four negative margins (#333): -4, -6 and -8 px tuck a note under what it's about (a chart's hint,
+    # the tiles' range note, a stats note, More about this) or pull a phone's page title up under the brand; -5 and -6 px
+    # keep a 24 px target (the ✎, a test link, Reset filters on a phone) from making its line taller
+    # its durations: the offline banner's .6s flash, and the reduced-motion rule's 1ms, which stops animations but still
+    # lets them end (an animationend handler runs)
+    "www/css/app.css": {"colours": 2, "px font sizes": 2, "radii": 1, "shadows": 5, "px spacing": 4, "durations": 2},
     # a page's one colour (sign-in's and setup's too: their button's text is --on-accent now) is the brand mark's white
     # highlight, stroke="#fff"
     "www/account.html": {"colours": 1},
@@ -88,19 +115,23 @@ ALLOWED = {
     "www/sources.html": {"colours": 1},
     "www/js/app.js": {"script styles": 2},
     "www/js/core.js": {"script styles": 11},
-    "www/js/costs.js": {"script styles": 47},
+    # its spacing and weights are on lines #333 left alone: margins of 8 and 12 px (on the scale, written out) and the
+    # running totals' end labels' and the bar lists' weights (600, 500)
+    "www/js/costs.js": {"script styles": 40, "px spacing": 2, "font weights": 3},
     "www/js/cycle.js": {"script styles": 2},
-    "www/js/drawer.js": {"script styles": 18, "colours": 1},   # the colour: a record's text in its own frame (srcdoc)
-    "www/js/health.js": {"script styles": 21},
+    # the colour and the spacing are a record's own frame (srcdoc), which doesn't load the tokens: its text, its margin
+    # and its table cells' padding
+    "www/js/drawer.js": {"script styles": 17, "colours": 1, "px spacing": 2},
+    "www/js/health.js": {"script styles": 16},
     "www/js/heatmap.js": {"script styles": 5},
     "www/js/journal.js": {"script styles": 3},
     "www/js/medlog.js": {"script styles": 1},
     "www/js/meds.js": {"script styles": 7},
     "www/js/nav.js": {"script styles": 1},
-    "www/js/overview.js": {"script styles": 11},
+    "www/js/overview.js": {"script styles": 9, "px spacing": 1},   # 8 px margins, on the scale but written out
     "www/js/rename.js": {"script styles": 2},
     "www/js/timeline.js": {"script styles": 1},
-    "www/js/trends.js": {"script styles": 9},
+    "www/js/trends.js": {"script styles": 8},
     "www/js/util.js": {"script styles": 1},   # el() itself, where a style object is applied
 }
 
@@ -153,14 +184,28 @@ NOT_A_COLOUR = re.compile(r"""(?:(?:\$\$?|querySelector(?:All)?|closest|matches|
 TAG = re.compile(r"""<[a-zA-Z][\w:-]*(?:\s+[^\s"'>=/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*\s*/?>""")
 ATTR = re.compile(r"""\s([^\s"'>=/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))""")
 COLOUR_ATTR = ("fill", "stroke", "color", "bgcolor", "stop-color", "flood-color", "lighting-color")
-DISTINCT = ("px font sizes", "radii", "shadows")   # counted by their different values, not their uses
+# spacing, weights and motion (#333): the properties that take spacing (positional offsets and scroll-margin/-padding
+# aren't: they place a thing or clear a sticky bar, measured from what they clear), a px value in one (a nudge of 3 px
+# or less is fine), a bare number (a weight, or the font shorthand's before its size) and a time
+SPACING = re.compile(r"(?:padding|margin)(?:-(?:top|right|bottom|left|inline|block)(?:-(?:start|end))?)?"
+                     r"|(?:row-|column-|grid-|grid-row-|grid-column-)?gap")
+MOTION = re.compile(r"(?:transition|animation)(?:-duration|-delay)?")
+PX_SPACE = re.compile(r"(?<![\w.#-])-?(?:\d*\.)?\d+px\b")
+NUMBER = re.compile(r"(?<![\w.#/$-])-?(?:\d*\.)?\d+(?![\w.%/(-])")
+TIME = re.compile(r"(?<![\w.#-])(?:\d*\.)?\d+m?s\b")
+DISTINCT = ("px font sizes", "radii", "shadows", "px spacing")   # counted by their different values, not their uses
 
 FIX = {
     "colours": "use a colour token from www/css/tokens.css (var(--ink), var(--accent)...); if none fits, add one there, "
                "light and dark",
-    "px font sizes": "use a size the file already has, or em/rem (a type scale of tokens comes with the redesign)",
-    "radii": "use a radius the file already has (radius tokens come with the redesign)",
-    "shadows": "use a shadow the file already has (elevation tokens come with the redesign)",
+    "px font sizes": "use a size token from www/css/tokens.css, var(--fs-1) (11.5 px) to var(--fs-7) (28 px), or em",
+    "radii": "use a radius token: var(--r-sm), var(--r-md), var(--r-lg) or var(--r-pill)",
+    "shadows": "use an elevation token: var(--shadow-1) (raised a little) or var(--shadow-2) (floating: menus, dialogs)",
+    "px spacing": "use a spacing token, var(--sp-1) (4 px) to var(--sp-7) (48 px), or a nudge of 3 px or less; in a "
+                  "script, give the element a class and space it in www/css/app.css",
+    "font weights": "use a weight token: var(--fw-regular), var(--fw-medium), var(--fw-semibold) or var(--fw-bold)",
+    "durations": "use a motion token: var(--dur-1) (120 ms: hover, press, menus) or var(--dur-2) (200 ms: the drawer), "
+                 "with var(--ease-out)",
     "script styles": "give the element a class and style it in www/css/app.css with the tokens, instead of setting "
                      "its style from the script",
     "style attributes": "give the element a class and style it in www/css/app.css with the tokens, instead of a "
@@ -184,9 +229,24 @@ def declarations(css, first_line=1):
         yield first_line + css.count("\n", 0, m.start(1)), m.group(1).lower(), " ".join(m.group(2).split())
 
 
+def on_scale(prop, value):
+    """{what: [value, ...]} that one declaration writes out instead of a spacing, weight or motion token (#333): px
+    spacing past a 3 px nudge, a numeric weight, a time other than 0 (quoted text and var() already taken out)"""
+    out = {}
+    if SPACING.fullmatch(prop):
+        out["px spacing"] = [v for v in PX_SPACE.findall(value) if abs(float(v[:-2])) > 3]
+    if prop in ("font-weight", "font"):   # the shorthand's weight comes before its size: "600 12px/1.4 ..."
+        out["font weights"] = NUMBER.findall(value if prop == "font-weight" else value.split("/")[0])
+    if MOTION.fullmatch(prop):
+        out["durations"] = [t for t in TIME.findall(value) if float(t.rstrip("ms"))]
+    return out
+
+
 def css_found(css, first_line=1):
     """{what: [(line, value), ...]} for one stylesheet's text"""
-    out = {"colours": [], "px font sizes": [], "radii": [], "shadows": []}
+    out = {"colours": [], "px font sizes": [], "radii": [], "shadows": [], "px spacing": [], "font weights": [], "durations": []}
+    css = re.sub(r"@font-face\s*\{[^{}]*\}", lambda m: "\n" * m.group().count("\n"),   # a font's own weights, not a style's
+                 blank_comments(css, r"/\*.*?\*/"))
     for line, prop, value in declarations(css, first_line):
         bare = re.sub(r"\"[^\"]*\"|'[^']*'", '""', value).replace("!important", "").strip()   # content:"✓" and the like
         out["colours"] += [(line, c) for c in COLOUR.findall(re.sub(r"--[\w-]+", "", bare))]   # not var(--red)'s name
@@ -197,6 +257,8 @@ def css_found(css, first_line=1):
             out["radii"].append((line, bare))
         if prop == "box-shadow" and A_SIZE.search(own):
             out["shadows"].append((line, bare))
+        for what, values in on_scale(prop, own).items():
+            out[what] += [(line, v) for v in values]
     return out
 
 
@@ -301,11 +363,107 @@ def js_colours(js):
     return out
 
 
+def past_string(js, i):
+    """the index just past the string that starts at js[i] (a template's ${...} included)"""
+    q, j = js[i], i + 1
+    while j < len(js) and js[j] != q:
+        if js[j] == "\\":
+            j += 1
+        elif q == "`" and js.startswith("${", j):
+            j = scan(js, j + 2, "}")
+        j += 1
+    return j + 1
+
+
+def scan(js, i, stops):
+    """the index of the first of stops from i that isn't in a string or in brackets opened after i, or of a bracket
+    closing one opened before i, or the end"""
+    depth = 0
+    while i < len(js):
+        c = js[i]
+        if c in "\"'`":
+            i = past_string(js, i)
+            continue
+        if depth == 0 and c in stops:
+            return i
+        depth += (c in "([{") - (c in ")]}")
+        if depth < 0:
+            return i
+        i += 1
+    return i
+
+
+def kebab(name):
+    return re.sub(r"[A-Z]", lambda c: "-" + c.group().lower(), name).lower()   # marginTop: margin-top
+
+
+def style_values(expr):
+    """(offset, value) of what a script's expression can set a style to: each string in it, and each number outside
+    them as the style would read it (a weight's 500; a margin's 8, which is 8px to el())"""
+    bare = re.sub(r""""[^"\n]*"|'[^'\n]*'|`[^`]*`""", lambda m: " " * len(m.group()), expr)
+    return js_strings(expr) + [(m.start(), m.group()) for m in NUMBER.finditer(bare)]
+
+
+def js_objects(js, start, end):
+    """(offset, property, expression) for each key of the object literals between start and end: {marginTop: "4px"}"""
+    out, i = [], start
+    while i < end:
+        if js[i] in "\"'`":
+            i = past_string(js, i)
+        elif js[i] == "{":
+            close, k = scan(js, i + 1, "}"), i + 1
+            while k < close:
+                e = scan(js, k, ",}")
+                m = re.match(r"""\s*(?:["'`]([\w-]+)["'`]|([A-Za-z_$][\w$]*))\s*:""", js[k:e])
+                if m:
+                    out.append((k + m.end(), kebab(m.group(1) or m.group(2)), js[k + m.end():e]))
+                k = e + 1
+            i = close + 1
+        else:
+            i += 1
+    return out
+
+
+def js_scale(js):
+    """{what: [(line, value), ...]} for the spacing, weights and times a script writes out (comments already blanked):
+    in a declaration inside any string ("padding:4px 0", a srcdoc's <style>), and in a style it sets: an object handed
+    to el() or Object.assign(x.style, ...) ({gap: "6px", fontWeight: 500}, a ternary's branches there too),
+    x.style.marginTop = ... and x.style.setProperty("margin-top", ...)"""
+    out = {"px spacing": [], "font weights": [], "durations": []}
+    line = lambda at: js.count("\n", 0, at) + 1
+
+    def add(at, prop, values):
+        for off, v in values:
+            v = v + "px" if re.fullmatch(NUMBER.pattern, v) and SPACING.fullmatch(prop) else VAR.sub("", v)
+            for what, hits in on_scale(prop, v).items():
+                out[what] += [(line(at + off), h) for h in hits]
+
+    for at, s in js_strings(js):
+        if ":" in s:
+            for ln, prop, value in declarations("{" + s + "}", line(at)):
+                for what, hits in on_scale(prop, VAR.sub("", re.sub(r"\"[^\"]*\"|'[^']*'", '""', value))).items():
+                    out[what] += [(ln, h) for h in hits]
+    for m in SCRIPT_STYLE.finditer(js):
+        one = re.match(r"\.style\.([A-Za-z]+)\s*[-+]?=", m.group())
+        if one:   # x.style.marginTop = ...
+            add(m.end(), kebab(one.group(1)), style_values(js[m.end():scan(js, m.end(), ";\n,)}")]))
+        elif m.group().endswith("("):   # x.style.setProperty("margin-top", ...)
+            args = js[m.end():scan(js, m.end(), ")")]
+            names = js_strings(args)
+            if names:
+                add(m.end(), names[0][1].lower(), [(o, v) for o, v in style_values(args) if o > names[0][0] + len(names[0][1])])
+        elif not re.search(r"\[|=$|setAttribute", m.group()):   # style: {...} (or a ternary of them), Object.assign(x.style, {...})
+            end = scan(js, m.end(), ")" if m.group().startswith("Object") else ",)}")
+            for at, prop, expr in js_objects(js, m.end(), end):
+                add(at, prop, style_values(expr))
+    return {what: sorted(hits, key=lambda h: h[0]) for what, hits in out.items()}
+
+
 def js_found(js):
     """{what: [(line, value), ...]} for one script"""
     js = blank_comments(js, JS_COMMENTS)
     return {"script styles": [(js.count("\n", 0, m.start()) + 1, m.group()) for m in SCRIPT_STYLE.finditer(js)],
-            "colours": js_colours(js)}
+            "colours": js_colours(js), **js_scale(js)}
 
 
 def files(ext):
@@ -461,7 +619,8 @@ class CssTokens(unittest.TestCase):
 .c{border-radius:var(--r);border-radius:8px;box-shadow:none;box-shadow:0 1px 2px var(--ring);box-shadow:var(--lift)}
 @media (forced-colors:active){.d:hover{color:CanvasText;border-color:currentColor;fill:var(--ink)}}"""
         got = {w: count(w, h) for w, h in css_found(css).items()}
-        self.assertEqual(got, {"colours": 3, "px font sizes": 2, "radii": 1, "shadows": 1})
+        self.assertEqual(got, {"colours": 3, "px font sizes": 2, "radii": 1, "shadows": 1, "px spacing": 0, "font weights": 1,
+                               "durations": 0})
         js = 'el("p", {style: {color: "var(--ink2)"}}); x.style.left = "4px"; if (x.style.left == "") {}\n' \
              '// el("i", {style: {}})\nx.style.setProperty("--w", w); fetch("https://example.test/"); y.style.top = 0 /* .style.x = 1 */'
         self.assertEqual(len(SCRIPT_STYLE.findall(blank_comments(js, JS_COMMENTS))), 4)
@@ -515,6 +674,42 @@ class CssTokens(unittest.TestCase):
                    'el("i", {fill: on ? "var(--red)" : "none", title: on ? "Red" : "Blue"})', 'go("?color=red")',
                    """const m = '<p class="red" title="white">'""", 'n = a++ / 2 + b; s = "Issue #fab"']:
             self.assertEqual(js_found(js)["colours"], [], js)
+
+    def test_spacing_weights_and_durations(self):   # #333
+        found_in = lambda css: {w: [v for _, v in h] for w, h in css_found(css).items() if w in ("px spacing", "font weights", "durations") and h}
+        for css, want in {".a{margin:7px}": {"px spacing": ["7px"]}, ".a{font-weight:550}": {"font weights": ["550"]},
+                          ".a{transition:.3s}": {"durations": [".3s"]}, ".a{padding:var(--sp-2) 10px;gap:6px 0}": {"px spacing": ["10px", "6px"]},
+                          ".a{margin-top:-5px;row-gap:12px}": {"px spacing": ["-5px", "12px"]},
+                          ".a{font:600 12px/1.4 var(--font-ui)}": {"font weights": ["600"]},
+                          ".a{transition:opacity var(--dur-1) var(--ease-out),transform 150ms;animation-delay:2s}": {"durations": ["150ms", "2s"]}}.items():
+            self.assertEqual(found_in(css), want, css)
+        for css in [".a{margin:1px}", ".a{margin:var(--sp-2)}", ".a{padding:2px 3px 0;margin:-3px 0 -1px}", ".a{gap:calc(var(--sp-2) + 1px)}",
+                    ".a{top:7px;left:10px;inset:5px;scroll-padding-top:44px;scroll-margin-top:30px}", ".a{font-weight:var(--fw-bold)}",
+                    ".a{font-weight:bold;font:var(--fs-3)/1.45 var(--font-ui)}", ".a{transition-duration:0s;transition:none;animation:spin var(--dur-2) linear}",
+                    ".a{width:7px;border:5px solid;line-height:1.5;font-size:var(--fs-2)}",
+                    "@font-face{font-family:x;font-weight:100 900;src:url(x.woff2)}@font-face{font-family:y;font-weight:700}"]:
+            self.assertEqual(found_in(css), {}, css)
+        # pages: a <style> and a style attribute
+        got = html_found('<style>p{margin:7px}</style><p style="font-weight:550;transition:.3s;padding:1px">')
+        self.assertEqual([(w, [v for _, v in got[w]]) for w in ("px spacing", "font weights", "durations")],
+                         [("px spacing", ["7px"]), ("font weights", ["550"]), ("durations", [".3s"])])
+        # scripts: an object handed to el(), a style string, a declaration in any string, x.style.x =, setProperty
+        js_in = lambda js: {w: [v for _, v in h] for w, h in js_found(js).items() if w in ("px spacing", "font weights", "durations") and h}
+        for js, want in {'el("p", {style: {margin: "7px"}})': {"px spacing": ["7px"]},
+                         'el("p", {style: {marginTop: "4px", gap: on ? "10px" : "6px", fontWeight: 550}})': {"px spacing": ["4px", "10px", "6px"], "font weights": ["550"]},
+                         'el("p", {"style": {"padding-left": 18, transition: "opacity .3s"}})': {"px spacing": ["18px"], "durations": [".3s"]},
+                         "el('i', {style: 'fill:var(--ink);font-weight:600;margin:0 7px'})": {"px spacing": ["7px"], "font weights": ["600"]},
+                         'f.srcdoc = `<style>body{margin:14px}</style>${h}`': {"px spacing": ["14px"]},
+                         'x.style.marginLeft = 8 + "px"; y.style.transition = "all .3s"': {"px spacing": ["8px"], "durations": [".3s"]},
+                         'x.style.setProperty("margin-top", "7px")': {"px spacing": ["7px"]},
+                         'Object.assign(x.style, {padding: "5px 2px"})': {"px spacing": ["5px"]},
+                         'el("dd", {style: k ? {fontWeight: "700"} : null})': {"font weights": ["700"]}}.items():
+            self.assertEqual(js_in(js), want, js)
+        for js in ['el("p", {style: {margin: 0, marginTop: "1px", padding: "var(--sp-2) 3px", fontWeight: "var(--fw-bold)"}})',
+                   'el("p", {class: "mt-2", style: {left: x + "px", top: "7px", width: "7px"}})', 'x.style.scrollPaddingTop = h + 4 + "px"',
+                   '{type: "line", data: d, gap: 45, width: 2}', 'el("p", {text: "Leave 7px, a weight of 550 and .3s"})',
+                   'el("p", {style: {transition: "none", animationDuration: "0s"}})', 'x.style.setProperty("--w", "7px")']:
+            self.assertEqual(js_in(js), {}, js)
 
     def test_the_focus_ring_check_finds_what_it_should(self):   # #321
         for sel in ["*:focus", "a:focus-visible", ":where(:focus-visible)", ":is(button,input):focus-visible", "body :focus-visible",

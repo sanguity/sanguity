@@ -272,7 +272,7 @@ function drawChart(svg, s, pts, read) {
         !s.watch && pointSources(s, mine) ? el("div", {class: "s", text: "From " + pointSources(s, mine)}) : null,
         mine[4] ? el("div", {class: "s", style: {color: "var(--crit)"}, text: /^h/i.test(mine[4]) ? "▲ Above range" : /^l/i.test(mine[4]) ? "▼ Below range" : "◆ Flagged"}) : null);
     }
-    for (const e of near.slice(0, 3)) nodes.push(el("div", {class: "s", style: {marginTop: "4px"}}, el("span", {class: "k", style: {background: CAT_OF[e.k].color}}), `${e.title} · ${fmtD(e.ts)}`));
+    for (const e of near.slice(0, 3)) nodes.push(el("div", {class: "s mt-1"}, el("span", {class: "k", style: {background: CAT_OF[e.k].color}}), `${e.title} · ${fmtD(e.ts)}`));
     nodes.length ? showTip(nodes, ev) : hideTip();
     return tipWords(nodes);
   };

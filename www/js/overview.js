@@ -180,7 +180,7 @@ function renderOverview() {
     for (const u of up.slice(0, 6)) uc.append(el("div", {class: "ov-row", style: {cursor: "default"}},
       el("span", {class: "n", text: u.title}), el("span", {class: "r", text: fmtD(dayTs(u.t))}), el("span", {}),
       el("span", {class: "s", text: [u.who, u.where].filter(Boolean).join(" · ")})));
-    if (up.length > 6) uc.append(el("p", {class: "hint", style: {marginTop: "6px"}, text: `${up.length - 6} more scheduled through ${fmtD(dayTs(up[up.length - 1].t))}`}));
+    if (up.length > 6) uc.append(el("p", {class: "hint mt-2", text: `${up.length - 6} more scheduled through ${fmtD(dayTs(up[up.length - 1].t))}`}));
     right.append(uc);
   }
   // insurance cost summary
@@ -189,7 +189,7 @@ function renderOverview() {
     const cc = el("div", {class: "card"}, el("h2", {text: pm ? `Insurance costs since ${lcLabel(pm.label)}` : "Insurance costs"}),
       dx.length ? el("p", {class: "hint", text: `Claims from ${fmtD(dayTs(dx.reduce((m, r) => r.d < m ? r.d : m, dx[0].d)))} on (${listOf(insurerSpans(dx).map(s => s[0]), ", then ")}).`}) : null);
     const mini = (l, v) => el("div", {}, el("div", {class: "ov-mini-v", text: v}), el("div", {class: "hint", style: {margin: 0}, text: l}));
-    cc.append(el("div", {style: {display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "10px", margin: "6px 0 10px"}},
+    cc.append(el("div", {class: "ov-minis"},
       mini("billed", usd(sumOf(dx, "billed"))), mini("paid by insurance", usd(sumOf(dx, "paid"))), mini("your share", usd(sumOf(dx, "owe")))),
       el("button", {class: "btn", text: "Open Costs →", onclick: () => { if (pm) setPeriod(msKey(pm)); pickTab("costs"); }}));   // the same period
     right.append(cc);
