@@ -122,9 +122,11 @@ class Pwa(unittest.TestCase):
             self.assertIn('<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">', html, page)
             self.assertEqual(len(re.findall(r'<meta name="theme-color" content="#[0-9a-f]{6}" media="\(prefers-color-scheme: (light|dark)\)">', html)), 2, page)
             self.assertIn('<script src="js/util.js"></script>\n<script src="js/pwa.js"></script>', html, page)
-            # Inter's Latin file, the one every page draws its text in, asked for before the styles that use it (#253)
-            self.assertIn('<link rel="preload" href="fonts/inter-v4.001-latin.woff2" as="font" type="font/woff2" crossorigin>\n'
-                          '<link rel="stylesheet" href="css/tokens.css">', html, page)
+            # no font is preloaded (#328): on a slow connection Inter's preload shared the bandwidth with the stylesheets
+            # and held up the first paint by 0.15 to 0.3 s; the text shows at once in the metric-matched fallback instead
+            # (base.css), and the stylesheets come first
+            self.assertNotIn('rel="preload"', html, page)
+            self.assertIn('<link rel="stylesheet" href="css/tokens.css">\n<link rel="stylesheet" href="css/base.css">', html, page)
         with open(os.path.join(WWW, "index.html"), encoding="utf-8") as f:
             html = f.read()
         self.assertLess(html.index('src="js/offline.js"'), html.index('src="js/app.js"'), "before app.js asks the API anything")
