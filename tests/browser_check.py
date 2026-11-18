@@ -7675,6 +7675,36 @@ def main():
             page.wait_for_function("PID === 1 && !!document.querySelector('#sec-summary:not([data-was])')", timeout=10000)
             js(api_put, ["profiles/1/settings/summary.ticked", []])
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # #377: a setting of the person's own (Theme: the same on every profile) saved on one profile and undone on
+            # another: drawn and said there as without a switch, the theme put back on the page, no profile named
+            my_theme = lambda: js(api_get, "settings/user")["theme"]
+            th_msg = "document.querySelector('#sec-appearance .set-foot > .msg').textContent"
+            own_was = js("localStorage.getItem('ht-theme')")   # (this browser's own choice would keep the page as it is)
+            js("localStorage.removeItem('ht-theme')")
+            page.goto(base + "/settings.html?profile=1#display")
+            page.wait_for_function("PID === 1 && !!document.querySelector('#sec-appearance input[value=dark]')", timeout=10000)
+            th_before = my_theme()
+            th = [th_before]
+            page.locator("#sec-appearance label", has_text="Dark").click()
+            page.click("#sec-appearance .set-foot button:text-is('Save')")
+            page.wait_for_function(f"{th_msg}.startsWith('Saved')", timeout=10000)
+            th.append([my_theme(), js("document.documentElement.dataset.theme")])
+            js("document.getElementById('sec-appearance').dataset.was = 1")
+            page.select_option("#profile", "2")
+            page.wait_for_function("PID === 2 && !!document.querySelector('#sec-appearance:not([data-was]) input[value=dark]')", timeout=10000)
+            th.append(js("document.querySelector('#sec-appearance input:checked').value"))
+            page.click(undo_toast)
+            page.wait_for_function(f"{th_msg}.startsWith('Undone')", timeout=10000)
+            th.append([my_theme(), js("document.querySelector('#sec-appearance input:checked').value"), js("document.documentElement.dataset.theme || null"),
+                       js(th_msg), js("[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent)")])
+            check("…a setting of your own (Theme) saved on one profile and undone on another: the server and the page shown put back, "
+                  "the theme with them, said there naming no profile (#377)",
+                  th_before != "dark" and th[1] == ["dark", "dark"] and th[2] == "dark" and th[3][:2] == [th_before, th_before]
+                  and th[3][2] == (th_before if th_before in ("light", "dark") else None) and th[3][3] == "Undone: “Theme” is as before." and th[3][4] == [], th)
+            if own_was:
+                js("t => localStorage.setItem('ht-theme', t)", own_was)
+            page.goto(base + "/settings.html?profile=1#sec-overview")   # (as it was)
+            page.wait_for_function("PID === 1 && !!document.querySelector('#sec-summary')", timeout=10000)
             # #362: at 375 px, toasts with an Undo up at the foot of the screen, Tab through all of Settings: nothing that
             # takes focus is wholly under one (the page scrolls it clear, and its foot can scroll up above them)
             page.reload()
@@ -8461,6 +8491,28 @@ def main():
             check("…an Undo pressed after switching profile puts it back in its own profile only, the profile shown kept as it is, a toast saying it (#367)",
                   switched[0] == steps[2] and switched[1] and switched[2] == "2" and switched[3]
                   and switched[4] == ["My records: Undone: the target for blood oxygen is back."], switched)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            js("fetch('api/profiles/1/person', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({targets: {spo2: null}})})")
+            page.select_option("#profile", "1")
+            page.wait_for_selector("#about[data-profile='1']", timeout=10000)
+            # #377: a Clear whose request is held until another profile is shown is still done: a toast naming its
+            # profile says so, with the Undo, which puts it back there (the server read after each step)
+            t_save("spo2", {"low": "92", "high": "100"}, "Saved the target for blood oxygen")
+            held = [spo2_of(1)]
+            js("""() => { const f = window.fetch; window.sgGate = new Promise(r => { window.sgOpen = r; });
+                window.fetch = (u, o) => o && o.method === 'PUT' && String(u).endsWith('profiles/1/person') ? sgGate.then(() => { window.fetch = f; return f(u, o); }) : f(u, o); }""")
+            page.click("#tgt-spo2-clear")
+            page.select_option("#profile", "2")
+            page.wait_for_selector("#about[data-profile='2']", timeout=10000)
+            shown2 = js("document.getElementById('targetsBody').innerText")
+            js("sgOpen()")
+            page.wait_for_function("[...document.querySelectorAll('#sgToasts .sg-toast-text')].some(t => t.textContent.startsWith('My records: Cleared the target for blood oxygen.'))", timeout=10000)
+            held += [spo2_of(1), js("document.getElementById('targetsMsg').textContent")]
+            page.locator("#sgToasts .sg-toast", has_text="My records: Cleared the target for blood oxygen").locator("button:text-is('Undo')").click()
+            page.wait_for_function("[...document.querySelectorAll('#sgToasts .sg-toast-text')].some(t => t.textContent.startsWith('My records: Undone'))", timeout=10000)
+            held += [spo2_of(1), js("document.getElementById('about').dataset.profile"), js("document.getElementById('targetsBody').innerText") == shown2]
+            check("…a Clear done while another profile was picked says so in a toast naming its profile, with an Undo that puts it back there only (#377)",
+                  held[0] and held[0]["low"] == 92 and held[1] is None and held[2] == "" and held[3] == held[0] and held[4] == "2" and held[5], held)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             js("fetch('api/profiles/1/person', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({targets: {spo2: null}})})")
             page.select_option("#profile", "1")

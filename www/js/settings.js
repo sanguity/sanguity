@@ -488,7 +488,9 @@ async function stored(base) {
    again, where a profile's setting can be; otherwise the value it had), but only one that still holds what this save
    wrote: one changed again since is left, and said to be. The section is drawn again as saved, unless it has changes
    not saved: those are kept, its other settings shown as they are now. pid: the profile it saved (PID then): another
-   picked since keeps its page as it is, and a toast says what was undone in the first (#367). */
+   picked since keeps its page as it is, and a toast says what was undone in the first (#367), unless the section's
+   settings are the person's own (Appearance, Dates, Units: the same on every profile), drawn and said as without a
+   switch (#377). */
 async function undoSave(base, reload, sec, was, pid) {
   const now = await stored(base), back = [], since = [];
   for (const w of was) {
@@ -500,7 +502,7 @@ async function undoSave(base, reload, sec, was, pid) {
   }
   const text = [back.length ? `Undone: ${quoted(back.map(w => w.label))} ${back.length === 1 ? "is" : "are"} as before.` : "",
     since.length ? `${quoted(since)} ${since.length === 1 ? "was" : "were"} changed since, so ${since.length === 1 ? "it's" : "they're"} left as ${since.length === 1 ? "it is" : "they are"}.` : ""].join(" ").trim();
-  if (PID !== pid) { toast(`${ME.profiles.find(x => x.id === pid)?.name || "The other profile"}: ${text}`); return; }
+  if (PID !== pid && !sec.settings.every(st => st.scope === "user")) { toast(`${ME.profiles.find(x => x.id === pid)?.name || "The other profile"}: ${text}`); return; }
   const card = () => document.getElementById("sec-" + sec.id);
   if (!card()?.hasAttribute("data-dirty")) { await reload({section: sec.id, text}, sec.id); return; }
   // changes not saved in it: kept, each setting's saved value now the one put back (so one changed back to it is
