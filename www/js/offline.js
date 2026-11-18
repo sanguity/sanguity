@@ -123,7 +123,7 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
     const c = OFFLINE.copy;
     document.body.classList.add("offline");
     banner(el("strong", {text: "Offline · read-only. "}),
-      `${c.profile.name}, as loaded on ${new Date(c.loaded).toLocaleString(undefined, {dateStyle: "medium", timeStyle: "short"})}. `,
+      `${c.profile.name}, as loaded on ${fmtDT(c.loaded)}. `,   // in their date format (dates.js, loaded by the time a request fails)
       el("span", {class: "why", text: "Changes, documents, imports, settings and your account need the server; they come back when you're online."}));
     const why = "Needs the server: you're offline";
     const header = () => {

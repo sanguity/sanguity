@@ -172,7 +172,7 @@
       }
       ok++;
       if (x.duplicate) dup++;
-      out.replaceChildren("✓ ", el("b", {text: x.label}), ` · ${x.summary || ""}`,
+      out.replaceChildren("✓ ", el("b", {text: x.label}), ` · ${datesIn(x.summary || "")}`,
         ...(x.duplicate ? [" · ", el("span", {class: "dup", text: "already in this profile: it won't be saved again"})] : []),
         ...(x.notes.length ? [` (${x.notes.join("; ")})`] : []));
     });

@@ -84,7 +84,10 @@ if (/\/(login|setup)\.html$/.test(location.pathname)) { SgOffline.forget(); forg
     if (!SgOffline.works()) { msg.textContent = "Not available at this address: offline use needs HTTPS (or localhost)."; return; }
     if (!SgOffline.on()) { msg.textContent = "Off. Nothing is kept on this device."; return; }
     const c = await SgOffline.load();
-    msg.textContent = c ? `On. Kept: ${c.profile.name}'s records, loaded ${new Date(c.loaded).toLocaleString()}.`
+    // the time it was loaded in this person's format: dates.js comes after this file, so once the page's scripts have run
+    if (document.readyState === "loading") await new Promise(r => document.addEventListener("DOMContentLoaded", r, {once: true}));
+    await datesReady();
+    msg.textContent = c ? `On. Kept: ${c.profile.name}'s records, loaded ${fmtDT(c.loaded)}.`
       : "On. Open your records once and they'll be kept for offline viewing.";
   };
   input.checked = SgOffline.on();

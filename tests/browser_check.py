@@ -4856,6 +4856,8 @@ def main():
             first = js("document.querySelector('.man-row .man-check').textContent")
             check("a typed row is checked as you go: its canonical name, range and flag", "Hemoglobin" in first and "13.5 – 17.5" in first
                   and "Low" in first, first)
+            typed_at = js("recordDate('2026-11-02 08:10')")
+            check("…and its date and time in the person's format, not as typed (#311)", f" · {typed_at} · " in first and "2026-11-02" not in typed_at, first)
             page.click("#manAdd")
             check("a new row takes the last one's date and time", js(f"document.querySelector('{row(2, 'date')}').value") == "2026-11-02"
                   and js(f"document.querySelector('{row(2, 'time')}').value") == "08:10")
@@ -5094,9 +5096,10 @@ def main():
             page.select_option(card(3, "temp_unit"), "C")
             page.wait_for_function("document.getElementById('manMsg').textContent === '4 records ready to save.'", timeout=5000)
             said = js("[...document.querySelectorAll('.man-item .man-check')].map(c => c.textContent)")
-            check("…fixed, each says what it becomes", said == ["✓ Blood pressure at home · 2026-11-10 05:55 · 126/81 mmHg · pulse 66",
-                  "✓ Blood glucose at home · 2026-11-10 06:10 · glucose 104 mg/dL · before a meal", "✓ Temperature at home · 2026-11-10 06:20 · 37.4 °C",
-                  "✓ Blood oxygen at home · 2026-11-10 06:25 · SpO2 97%"], said)
+            at = lambda t: js(f"recordDate('2026-11-10 {t}')")   # noqa: E731 (in the person's date format, #311)
+            check("…fixed, each says what it becomes", said == [f"✓ Blood pressure at home · {at('05:55')} · 126/81 mmHg · pulse 66",
+                  f"✓ Blood glucose at home · {at('06:10')} · glucose 104 mg/dL · before a meal", f"✓ Temperature at home · {at('06:20')} · 37.4 °C",
+                  f"✓ Blood oxygen at home · {at('06:25')} · SpO2 97%"] and "2026-11-10" not in at("05:55"), said)
             wall = js("""fetch('api/profiles/1/watch').then(r => r.json()).then(w => { const r = w.bp_readings.filter(x => x[5] !== 'Typed in').at(-1);
                          const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {timeZone: w.tz, year: 'numeric', month: '2-digit', day: '2-digit',
                            hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).formatToParts(new Date(r[0])).map(x => [x.type, x.value]));
@@ -6831,6 +6834,43 @@ def main():
             check("…and the drawer's buttons say Labs, the tab's name, not Lab trends (#248)",
                   "Show this day in Labs" in lab_btns and "Labs during this stay" in stay_btns
                   and not any("trends" in b.lower() for b in lab_btns + stay_btns), (lab_btns, stay_btns))
+            # #311: the provider directory's and the provider finder's "read" dates in that format too, and no page,
+            # tab or group shows a date as it's stored ("2026-11-15"; the Date format choice's own example aside)
+            iso_js = r"""(() => { const out = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+              for (let n; (n = w.nextNode());) { const p = n.parentElement;
+                if (p && !p.closest('select, script, style') && p.checkVisibility() && /\b\d{4}-\d{2}-\d{2}\b/.test(n.data)) out.push(n.data.trim().slice(0, 120)); }
+              return out; })()"""
+            iso_seen = {}
+            def iso_scan(where):
+                za.wait_for_timeout(300)
+                if found := za.evaluate(iso_js):
+                    iso_seen[where] = found
+            for tab in za.evaluate("[...document.querySelectorAll('[role=tablist] [role=tab][id^=\"tab-\"]')].filter(t => !t.hidden).map(t => t.id.slice(4))"):
+                za.evaluate(f"switchTab('{tab}')")
+                iso_scan("records: " + tab)
+            for path, nav in (("sources.html?profile=1", "#srcNav"), ("sharing.html?profile=1", "#shrNav"), ("settings.html?profile=1", "#setNav"),
+                              ("account.html", "#acctNav"), ("admin.html", "#admNav"), ("guide.html?profile=1", None), ("providers.html?q=medicare", None)):
+                za.goto(base + "/" + path)
+                za.wait_for_load_state("networkidle")
+                if nav:
+                    za.wait_for_selector(f"{nav} a[data-group]", timeout=10000)
+                for g in za.evaluate(f"[...document.querySelectorAll('{nav} a[data-group]')].map(a => a.dataset.group)") if nav else [None]:
+                    if g:
+                        za.click(f"{nav} a[data-group='{g}']")
+                    iso_scan(path + (f"#{g}" if g else ""))
+            za.click(".dir-hit")   # the finder: a provider's details
+            za.wait_for_selector("#detail .dir-from", timeout=10000)
+            finder_read = za.inner_text("#detail .dir-from")
+            iso_scan("the provider finder's details")
+            za.goto(base + "/admin.html#directory")
+            za.wait_for_selector("#dirSources li", timeout=10000)
+            dir_read = [li for li in za.inner_text("#dirSources").splitlines() if ", read " in li]
+            check("…the provider directory and the provider finder's “read” dates too (#311)",
+                  dir_read and all(re.search(r", read " + dmy + r"\.", li) for li in dir_read) and re.search(r", read " + dmy + r"\.$", finder_read),
+                  (dir_read, finder_read))
+            check("…and no page, tab or group shows a date as it's stored (#311)", not iso_seen, iso_seen)
+            za.goto(base + "/")
+            za.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.id === 1", timeout=20000)
             za.evaluate("switchTab('overview')")
             # Health's daily charts and workout calendar, the drawer and Costs by month bin with the same days
             weekly_key = "new Date(weekly([[Date.parse('2026-03-08T20:00:00Z'), 1]])[0][0] - 3 * DAY).toISOString()"

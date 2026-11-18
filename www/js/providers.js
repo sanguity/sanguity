@@ -158,7 +158,7 @@
       e.aliases && e.aliases.length ? el("details", {class: "dir-aka"},
         el("summary", {text: `Its ${e.aliases_total || e.aliases.length} location${(e.aliases_total || e.aliases.length) === 1 ? "" : "s"} and other names`}),
         el("p", {class: "muted", text: e.aliases.join(" · ") + more(e.aliases, e.aliases_total || e.aliases.length)})) : null,
-      el("p", {class: "muted dir-from"}, `From ${e.source === "curated" ? "the vendor's documentation" : e.source === "epic-brands" ? "Epic's published list" : "Oracle Health's published list"}, read ${e.retrieved}.`),
+      el("p", {class: "muted dir-from"}, `From ${e.source === "curated" ? "the vendor's documentation" : e.source === "epic-brands" ? "Epic's published list" : "Oracle Health's published list"}${e.retrieved ? `, read ${fmtD(e.retrieved)}` : ""}.`),
     ].filter(Boolean));
     box.hidden = false;
   }

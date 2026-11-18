@@ -103,7 +103,7 @@
       if (x.duplicate) dup++;
       const range = x.low != null && x.high != null ? `${x.low} – ${x.high}` : x.high != null ? `under ${x.high}` : x.low != null ? `over ${x.low}` : "";
       const value = x.value != null ? `${x.value}${x.unit ? " " + x.unit : ""}` : `“${x.text}”`;
-      out.replaceChildren("✓ ", el("b", {text: x.name}), ` · ${x.date} · ${value}` + (range ? ` · range ${range}` : ""),
+      out.replaceChildren("✓ ", el("b", {text: x.name}), ` · ${recordDate(x.date)} · ${value}` + (range ? ` · range ${range}` : ""),
         ...(x.flag ? [" · ", el("span", {class: "abn", text: x.flag === "H" ? "▲ High" : "▼ Low"})] : []),
         ...(x.duplicate ? [" · ", el("span", {class: "dup", text: "already in this profile: it won't be saved again"})] : []),
         ...(x.notes.length ? [` (${x.notes.join("; ")})`] : []));

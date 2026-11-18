@@ -18,7 +18,7 @@ const WHAT = {
     : `imported records (${d.documents} documents)`,
   reload: () => "loaded the latest records",
   export: d => (d.format === "fhir" ? "exported as FHIR" : "exported everything") + (d.cycle ? ", with the cycle records" : ""),   // #183, #205
-  summary: d => `made a visit summary${d.for ? ` for the appointment on ${d.for}` : ""}${(d.sections || []).includes("cycle") ? ", with the cycle records" : ""}`,
+  summary: d => `made a visit summary${d.for ? ` for the appointment on ${recordDate(d.for)}` : ""}${(d.sections || []).includes("cycle") ? ", with the cycle records" : ""}`,
   cycle: d => ({on: "turned cycle tracking on", off: "turned cycle tracking off, deleting what was kept", delete: "deleted the cycle records kept"}[d.change] || "changed cycle tracking"),   // #183
   upload: d => d.source === "smart-health-link" ? `imported a SMART Health Link from ${d.host}` : `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
   outside: d => `had Sanguity contact ${d.host} (${d.purpose})`,
@@ -36,7 +36,7 @@ const WHAT = {
     + (d.to && !d.undone ? (d.action === "kind" ? ` to ${KIND_NAME[d.to] || d.to}` : ` to “${d.to}”`) : "")
     + (d.similar ? ` and ${d.similar} similar ${d.similar === 1 ? "entry" : "entries"}` : "") + (d.rule ? ", and for new imports" : "")
     + (d.with ? ` (and ${d.with} made with it)` : ""),   // #237
-  connect: d => d.change === "options" ? `changed what ${d.source} pulls` + (d.kinds ? ` (${d.kinds.join(", ")})` : d.kinds === null ? " (everything allowed)" : "") + (d.since ? ` from ${d.since}` : "")
+  connect: d => d.change === "options" ? `changed what ${d.source} pulls` + (d.kinds ? ` (${d.kinds.join(", ")})` : d.kinds === null ? " (everything allowed)" : "") + (d.since ? ` from ${fmtD(d.since)}` : "")
     : d.change === "warning" ? `noted that ${d.text.replace(/\.$/, "").replace(/^./, s => s.toLowerCase())}`
     : d.change === "remove" ? `removed the ${(d.label || d.kind).toLowerCase()} ${d.source} brought (undoable from the import history)`
     : d.change === "fetch" ? `fetched the attachment “${d.title}” from ${d.source}`
