@@ -4537,6 +4537,35 @@ def main():
             page.focus("#labQ")
             page.keyboard.press("Alt+n")
             check("…and Alt+N isn't taken while typing in a field (Option+N types ñ on a Mac)", js(focus_id) == ["INPUT", "labQ"], js(focus_id))
+            # #368: from the view picker, where a delete by keyboard leaves focus, Alt+N reaches the Undo (a <select>
+            # takes no typed text), and Enter brings the view back on the server, focus back on the picker
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            page.select_option("#viewPick", "Alpha")
+            page.focus("#tvBox button:text-is('Delete')")
+            page.keyboard.press("Enter")
+            page.wait_for_function("CFG.trends.views.length === 2", timeout=10000)
+            from_pick = [js(focus_id)]
+            page.keyboard.press("Alt+n")
+            from_pick.append(js("document.activeElement.closest('.sg-toast') ? document.activeElement.textContent : null"))
+            page.keyboard.press("Enter")
+            page.wait_for_function("CFG.trends.views.length === 3", timeout=10000)
+            settle(200)
+            from_pick += [js("api('profiles/1/settings').then(r => r.json()).then(j => j.trends.views.map(v => v.name))"), js(focus_id)]
+            check("…Alt+N from the view picker, after a delete by keyboard, reaches its Undo, and Enter brings the view back on the server (#368)",
+                  from_pick == [["SELECT", "viewPick"], "Undo", ["Alpha", "Beta", "Gamma"], ["SELECT", "viewPick"]], from_pick)
+            # a click on the drawer's text focuses the <dialog> itself: Alt+N and back gives focus to a control in it
+            page.focus("#tab-labs")
+            js("openEvent(EV.find(e => e.k === 'visit'))")
+            page.wait_for_selector("#drawer.open", timeout=5000)
+            js("toast('A toast for the browser check', {action: 'Undo', onAction: async () => {}})")
+            page.click("#dtitle")
+            in_dialog = [js(focus_id)]
+            page.keyboard.press("Alt+n")
+            page.keyboard.press("Escape")
+            in_dialog += [js(focus_id), js("document.getElementById('drawer').contains(document.activeElement)"), js("document.getElementById('drawer').classList.contains('open')")]
+            check("…from the drawer's text (focus on the <dialog>), Alt+N then Escape gives focus back to a control in the drawer, not the dialog (#368)",
+                  in_dialog[0] == ["DIALOG", "drawer"] and in_dialog[1][0] == "BUTTON" and in_dialog[2] and in_dialog[3], in_dialog)
+            js("closeDrawer()")
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             js("api('profiles/1/settings/trends.views', {method: 'PUT', body: JSON.stringify({value: []})})")
             if kept is not None:
@@ -7307,7 +7336,23 @@ def main():
             page.click(undo_toast)
             page.wait_for_function(f"{sum_msg}.includes('changed since')", timeout=10000)
             check("…and leaves a setting changed again since as it is, said so", ticked() == first and "left as it is" in js(sum_msg), [ticked(), js(sum_msg)])
+            # #368: Save by keyboard redraws the section: focus on its heading, not the page, and back there after the
+            # toast's Undo (Alt+N, Enter), which redraws it again
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            page.focus(box(1))
+            page.keyboard.press("Space")
+            page.focus("#sec-summary .set-foot button:text-is('Save')")
+            page.keyboard.press("Enter")
+            page.wait_for_function(f"{sum_msg}.startsWith('Saved')", timeout=10000)
+            settle(200)
+            kb_focus = [js("[document.activeElement.tagName, document.activeElement.id]")]
+            page.keyboard.press("Alt+n")
+            page.keyboard.press("Enter")
+            page.wait_for_function(f"{sum_msg}.startsWith('Undone')", timeout=10000)
+            settle(200)
+            kb_focus += [js("[document.activeElement.tagName, document.activeElement.id]"), ticked()]
+            check("Settings' Save by keyboard leaves focus on its section's heading, and its Undo by keyboard gives it back there (#368)",
+                  kb_focus == [["H2", "sec-summary-hd"], ["H2", "sec-summary-hd"], first], kb_focus)
             # #367: an Undo pressed after switching profile (Settings doesn't reload) puts back its own profile's setting
             # only; the other profile's section keeps its saved values and a change not saved yet, a toast saying it
             page.check(box(1))

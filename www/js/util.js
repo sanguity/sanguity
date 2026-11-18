@@ -481,8 +481,8 @@ function icon(name, {label} = {}) {
    make it longer), its time stopping while the pointer is on it or focus is in it. Its close button puts it away, as
    Escape does with focus in it. Alt+N takes focus to the newest toast's first button (not while typing in a field: on a Mac, Option+N types ñ,
    #361); no toast takes focus by itself. Focus that went into the toasts, however it got there, goes back where it
-   came from when its toast goes, however it goes (acted on, put away, or sent away by a fourth), and stays on a button
-   while its action runs. Up to three show at once, the newest at the foot; a fourth sends the oldest away.
+   came from when its toast goes, however it goes (acted on, put away, or sent away by a fourth; to a dialog's first
+   control if it came from the dialog itself, #368), and stays on a button while its action runs. Up to three show at once, the newest at the foot; a fourth sends the oldest away.
    They're one region named Notifications (a landmark a screen reader can go to), its list a polite live region, so
    each toast is said once as it appears: its words are said only there, not through announce() as well (a page's own
    line beside it shows them with sayIn's say: false). The region is a popover over the page, which scrolls what takes
@@ -507,7 +507,8 @@ const toast = (() => {
   // where focus came from into the toasts (Alt+N, Tab or a click), to go back to: not a question asked from a toast
   // (its answer gives focus back to the toast) and not nowhere
   const from = ev => { const r = ev.relatedTarget; if (r && !region.contains(r) && !r.closest("dialog.sg-ask")) back = r; };
-  const typing = e => !!e?.closest?.("textarea, select, [contenteditable]:not([contenteditable=false])") ||
+  // (a <select> takes no typed text: Alt+N works from one, #368)
+  const typing = e => !!e?.closest?.("textarea, [contenteditable]:not([contenteditable=false])") ||
     e?.tagName === "INPUT" && !/^(checkbox|radio|button|submit|reset|range|color|file|image)$/.test(e.type);
   document.addEventListener("keydown", ev => {
     if (!ev.altKey || ev.ctrlKey || ev.metaKey || ev.code !== "KeyN" || !list || !list.lastElementChild || typing(ev.target)) return;
@@ -529,7 +530,9 @@ const toast = (() => {
       t.remove();
       if (had) {
         // where focus was, or what took its place when the page was drawn again (the same id); else another toast
-        const to = !back || back === document.body ? null : back.isConnected ? back : back.id ? document.getElementById(back.id) : null;
+        let to = !back || back === document.body ? null : back.isConnected ? back : back.id ? document.getElementById(back.id) : null;
+        // a dialog itself (a click on its text focuses it): its first control, not the dialog (#368)
+        if (to?.tagName === "DIALOG") to = [...to.querySelectorAll("button, a[href], input, select, textarea")].find(c => !c.disabled && c.getClientRects().length) || to;
         if (to) { back = null; to.focus({preventScroll: true}); }
         else list.lastElementChild?.querySelector("button, a").focus();
       }

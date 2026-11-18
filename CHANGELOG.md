@@ -959,6 +959,11 @@ Everything on `main` so far; it becomes the first tagged release.
   changes its own profile only, the page shown keeping its own values, and a toast says what was undone where. A
   symptom group's Undo goes back next to its old neighbours, so two undone in reverse keep their order, and one made
   since under its name is left as it is, said so, as a Labs view's is.
+- **Focus after Save and delete** (#368): Settings' Save drew its section again and focus fell to the page, so its
+  Undo had nowhere to give it back to; it's on the section's heading now, and back there after the Undo. Alt+N works
+  from a list box, such as the view picker where deleting a Labs view leaves focus (it said "Alt+N goes to it" but
+  did nothing). After a click on the drawer's text, which focuses the drawer itself, a toast gives focus back to the
+  drawer's first control, not the drawer.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
