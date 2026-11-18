@@ -982,7 +982,7 @@ CHART_ACCENT_JS = r"""sel => {
 }"""
 
 
-# a tile's change line and a stat's note, as laid out (#330): each one that wraps, as its lines, when it ends in a short
+# a tile's change line (Costs' figures' notes too, #260), as laid out (#330): each one that wraps, as its lines, when it ends in a short
 # fragment (its last line under 40% of its longest, such as "▼ −0.03 since Aug 18," over "2026") or breaks a date; and
 # each row of tiles whose sparklines don't start at the same height ([the tiles' container, the tops])
 TILE_LINES_JS = r"""() => {
@@ -998,7 +998,7 @@ TILE_LINES_JS = r"""() => {
   };
   const date = /(\p{L}{2,}\.? \d{1,2},|\d{1,2}\.? \p{L}{2,}\.?|(?<!\p{L})\p{L}{2,}\.?)$/u, year = /^(\d{1,2},? )?\d{4}(?![-\d])/u;   // a month's short name, a year not a year-month-day date (#339, #345)
   const out = {n: 0, bad: [], uneven: []};
-  for (const e of document.querySelectorAll('.tile .delta, .stat .l + .l')) {
+  for (const e of document.querySelectorAll('.tile .delta')) {
     if (!e.checkVisibility() || !e.textContent.trim()) continue;
     out.n++;
     const ls = lines(e), w = ls.map(l => l.r - l.l);
@@ -1019,7 +1019,7 @@ TILE_LINES_JS = r"""() => {
 
 
 # the swap to the fonts (#329): the cards and tiles a page draws, by name, with their heights
-SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main .card, main .tile, main .stat, main .ov-mini, .sets .set')]
+SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main .card, main .tile, .sets .set')]
   .filter(e => e.checkVisibility()).map((e, i) => [`${e.className.split(' ')[0]} ${i} ${(e.querySelector('h1,h2,h3,.lbl,.l')?.textContent || '').trim().slice(0, 40)}`,
     Math.round(e.getBoundingClientRect().height * 10) / 10]))"""
 # the button's sizes (#258): each button shown (.btn, the top bar's and the drawer's, the tabs, the period's More…), and
@@ -1148,7 +1148,7 @@ def main():
                 drawn = (boxes > 3 and "Inter fallback" in fonts_before and "Inter" not in fonts_before
                          and "Source Serif 4" not in fonts_before and {"Inter", "Source Serif 4"} <= set(fonts_after))
                 worst = max((abs(b - a) for a, b in changed.values()), default=0)
-                tiles = [abs(b - a) for k, (a, b) in changed.items() if k.split(" ")[0] in ("tile", "stat", "ov-mini")]
+                tiles = [abs(b - a) for k, (a, b) in changed.items() if k.split(" ")[0] == "tile"]
                 check(f"fonts (#329, #338): {name} at {width} px, drawn in the fallbacks and then the fonts, moves less than 0.015, "
                       + ("no tile changes height" if width > 640 else "no tile by more than a line") + " and no card by more than two",
                       drawn and shift < 0.015 and (not tiles if width > 640 else max(tiles, default=0) <= 24) and worst <= 40,
@@ -1532,7 +1532,7 @@ def main():
                 "timeline": "document.querySelectorAll('#tl circle.ev').length + ',' + document.querySelectorAll('#list .tl-row').length",
                 "heatmap": "document.querySelectorAll('#hm rect.cell').length + ',' + +!document.getElementById('labsHeatmap').hidden + ',' + +document.getElementById('labsChart').hidden",
                 "labs": "[...document.querySelectorAll('#charts .chart svg')].filter(s => s.childNodes.length > 3).length + ',' + +!document.getElementById('labsChart').hidden",
-                "costs": "document.querySelectorAll('#view-costs .stat').length",
+                "costs": "document.querySelectorAll('#view-costs .tile').length",
             }
             for tab, probe in expect.items():
                 open_tab(tab)
@@ -1592,6 +1592,38 @@ def main():
                     check(f"{tab} ({width} px, #330): no tile's change line ends in a short fragment or breaks a date"
                           + (", and a row's sparklines line up" if tab == "overview" else ""),
                           got["n"] > 0 and not got["bad"] and not got["uneven"], got)
+            # ---- one tile for every tab (#260): the Overview's key labs, home readings, Watch & scale and insurance figures,
+            # Body and activity's, the Timeline's counts and Costs' figures are all .tile, with nothing else drawn as a
+            # tile (no .stat or .ov-mini left); its parts look the same on every tab (label, value, change line), a tile
+            # in a card is tinted with no edge and one on the page has the card's edge and surface
+            look260 = r"""() => { const s = (e, ...ps) => e ? ps.map(p => getComputedStyle(e)[p]).join(' ') : null, out = [];
+              for (const t of document.querySelectorAll('main .tile')) { if (!t.checkVisibility() || t.closest('.tile-tq, .sets')) continue;
+                const inCard = !!t.parentElement.closest('.card');
+                out.push([inCard, s(t, 'borderTopLeftRadius', 'paddingTop', 'paddingLeft', 'display', 'rowGap', 'textRendering'),
+                  s(t, 'backgroundColor', 'borderTopColor'), s(t.querySelector('.lbl'), 'fontSize', 'color', 'fontWeight'),
+                  s(t.querySelector('.val'), 'fontSize', 'fontFamily', 'fontWeight', 'fontVariantNumeric'), s(t.querySelector('.delta'), 'fontSize', 'color', 'textWrap')]); }
+              return {tiles: out, others: document.querySelectorAll('.stat, .ov-mini, .ov-mini-v').length}; }"""
+            seen260, odd260 = {}, []
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.mouse.move(1, 1)   # no tile under the pointer, in its hover look
+            for tab, preset in (("overview", None), ("health", "90d"), ("timeline", None), ("costs", "all")):
+                js("([t, p]) => { if (p) setPeriod(p); switchTab(t); }", [tab, preset])
+                settle(300)
+                got260 = js(look260)
+                seen260[tab] = len(got260["tiles"])
+                if got260["others"]:
+                    odd260.append(f"{tab}: {got260['others']} tiles of another kind")
+                for in_card, box, paint, lbl, val, delta in got260["tiles"]:
+                    for k, v in (("box", box), ("lbl", lbl), ("val", val), ("delta", delta), ("card" if in_card else "page", paint)):
+                        if v is not None and seen260.setdefault("look " + k, v) != v:
+                            odd260.append(f"{tab}: {k} {v} ≠ {seen260['look ' + k]}")
+            check("one tile on every tab (#260): the Overview's, Body and activity's, the Timeline's and Costs' figures are one "
+                  "component, alike in shape, label, value and change line; tinted in a card, the card's edge on the page",
+                  all(seen260.get(t, 0) > 0 for t in ("overview", "health", "timeline", "costs")) and not odd260
+                  and "rgba(0, 0, 0, 0)" in seen260.get("look card", "") and seen260.get("look card") != seen260.get("look page"),
+                  odd260[:8] or seen260)
+            js("[state.preset, state.from, state.to] = window._was330.slice(1); switchTab(window._was330[0]); renderAll()")
+            js("window._was330 = [state.tab, state.preset, state.from, state.to]")
             # #339: and in the other two date formats (keepDates keeps only the date together, "as of" with it), with no
             # date kept on one line sticking out of its tile
             fmt_was = js("DATES.format")
@@ -1603,8 +1635,8 @@ def main():
                         js("([t, p]) => { if (p) setPeriod(p); switchTab(t); }", [tab, preset])
                         settle(300)
                         got = js(TILE_LINES_JS)
-                        past = js("""[...document.querySelectorAll('.tile .nw, .stat .nw')].filter(s => s.offsetParent).filter(s => {
-                            const t = s.closest('.tile, .stat'), b = t.getBoundingClientRect(), r = s.getBoundingClientRect();
+                        past = js("""[...document.querySelectorAll('.tile .nw')].filter(s => s.offsetParent).filter(s => {
+                            const t = s.closest('.tile'), b = t.getBoundingClientRect(), r = s.getBoundingClientRect();
                             return r.right > b.right - parseFloat(getComputedStyle(t).paddingRight) + 0.5; }).map(s => s.textContent)""")
                         check(f"{tab} ({fmt}, {width} px, #339): no tile's change line ends in a short fragment or breaks a date, "
                               "and no date kept together sticks out of its tile",
@@ -8849,9 +8881,9 @@ def main():
             for w in (375, 320):
                 frp.set_viewport_size({"width": w, "height": 800})
                 frp.wait_for_timeout(250)
-                fr_seen += frp.evaluate("[...document.querySelectorAll('.ov-mini-v')].map(v => v.textContent)")
+                fr_seen += frp.evaluate("[...document.querySelectorAll('.ov-minis .val')].map(v => v.textContent)")
                 fr_bad += phone_fits(frp, f"Overview, fr-FR, {w} px") + [f"{w} px: “{t}” ends at {r} px, past its card's {c}" for t, r, c in frp.evaluate(
-                    "[...document.querySelectorAll('.ov-mini-v')].map(v => [v.textContent, Math.round(v.getBoundingClientRect().right), Math.round(v.closest('.card').getBoundingClientRect().right)])") if r > c]
+                    "[...document.querySelectorAll('.ov-minis .val')].map(v => [v.textContent, Math.round(v.getBoundingClientRect().right), Math.round(v.closest('.card').getBoundingClientRect().right)])") if r > c]
             fr_ctx.close()
             check("the Overview's insurance figures in a French browser fit 375 and 320 px (#342)",
                   not fr_bad and any("$US" in t for t in fr_seen), fr_bad[:6] or fr_seen)
