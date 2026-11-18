@@ -747,7 +747,15 @@ Everything on `main` so far; it becomes the first tagged release.
   nothing moves when the font arrives. Nothing is fetched from anyone else (the CSP is unchanged), the browser keeps
   the fonts for a year and the service worker keeps them for offline use (its copy is `sanguity-shell-v2` now). Code
   and addresses are in one monospace stack. `tests/test_performance.py` has a budget for the static files
-  (`static_bytes`: stylesheets, fonts and icons, 475 KB of 500 KB).
+  (`static_bytes`: stylesheets, fonts and icons, 476 KB of 500 KB).
+- **Warm, calm colours, light and dark from one set** (#254): warm neutrals (a white card on a warm page in light,
+  so cards stand off it; each step lighter in dark), a navy accent for controls, links and the focus ring only (the
+  lab data's blue stays apart; an Overview sparkline's last point is in it now, not the accent), red for out of range
+  or wrong and green for in range. Each colour token is declared once as a `light-dark()` pair, instead of the dark
+  theme written twice; a chosen theme still wins over the system's. Every text colour is 4.5:1 or more and a field's
+  edge and the focus ring 3:1 or more on every surface they're on, in both themes: `tools/contrast.py` measures them
+  and docs/accessibility.md has the table. The browser's bar and the home-screen icons follow the new page colour.
+  The kinds of record keep their colours.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -811,8 +811,9 @@ www/                index.html (markup), css/tokens.css (the font and colour tok
                     phone app; tools/make_icons.py draws the icons)
 demo/               Fictional demo dataset generator (--big: ten years of records, for the performance budgets)
 tools/              anonymise.py (an anonymised copy of an export, to share as a sample: docs/anonymising-exports.md),
-                    screenshots.py, make_icons.py, build_directory.py, fhir_schema_subset.py (the FHIR R4 schema
-                    the FHIR export is checked against: docs/fhir-export.md)
+                    screenshots.py, make_icons.py, contrast.py (the colour tokens' contrast: docs/accessibility.md),
+                    build_directory.py, fhir_schema_subset.py (the FHIR R4 schema the FHIR export is checked against:
+                    docs/fhir-export.md)
 tests/              API and upload tests, a headless browser check (with WCAG 2.2 AA checks: docs/accessibility.md),
                     the performance budgets (docs/performance.md) and a smoke test of the Docker install (all run in CI)
 *.example.json      Templates for sources.json and settings.json (a new build-linked profile's first settings;

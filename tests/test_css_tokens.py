@@ -73,16 +73,16 @@ ALLOWED = {
     # the heatmap's ? in its 12 px circle
     # its radius is a colour key's or swatch's 2 px (a data mark, not a component); its shadows are bars drawn inset
     # (a selected item's accent bar, a seg's underline), the sticky Save bar's shadow upward and the offline flash (#256)
-    "www/css/app.css": {"colours": 5, "px font sizes": 2, "radii": 1, "shadows": 5},
-    # a page's one colour (sign-in's and setup's second; the other is their button's white text) is the brand mark's
-    # white highlight, stroke="#fff"
+    "www/css/app.css": {"colours": 2, "px font sizes": 2, "radii": 1, "shadows": 5},
+    # a page's one colour (sign-in's and setup's too: their button's text is --on-accent now) is the brand mark's white
+    # highlight, stroke="#fff"
     "www/account.html": {"colours": 1},
     "www/admin.html": {"colours": 1},
     "www/guide.html": {"colours": 1},
     "www/index.html": {"colours": 1, "style attributes": 3},
-    "www/login.html": {"colours": 2, "style attributes": 1},
+    "www/login.html": {"colours": 1, "style attributes": 1},
     "www/settings.html": {"colours": 1},
-    "www/setup.html": {"colours": 2, "style attributes": 3},
+    "www/setup.html": {"colours": 1, "style attributes": 3},
     "www/share.html": {"colours": 1},
     "www/sharing.html": {"colours": 1},
     "www/sources.html": {"colours": 1},
@@ -392,7 +392,9 @@ def token_hint(value):
     """' (the light theme's var(--raised))' when a colour written out is exactly a token's light value"""
     with open(os.path.join(ROOT, TOKENS), encoding="utf-8") as f:
         light = re.search(r":root\s*\{(.*?)\}", blank_comments(f.read(), r"/\*.*?\*/"), re.S)
-    names = [p for p, v in re.findall(r"(--[\w-]+)\s*:\s*([^;]+)", light.group(1) if light else "") if hex6(v) == hex6(value)]
+    pairs = re.findall(r"(--[\w-]+)\s*:\s*([^;]+)", light.group(1) if light else "")
+    first = lambda v: re.sub(r"^light-dark\(\s*([^,]+),.*", r"\1", v.strip())   # a light-dark() pair's light value (#254)
+    names = [p for p, v in pairs if hex6(first(v)) == hex6(value)]
     return f" (the light theme's {' or '.join(f'var({p})' for p in names[:3])})" if names else ""
 
 

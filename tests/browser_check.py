@@ -971,6 +971,22 @@ def main():
         preload = strict.evaluate("[...document.querySelectorAll('link[rel=preload][as=font]')].map(l => [new URL(l.href).pathname, l.crossOrigin])")
         check("fonts (#253): Inter is preloaded and loaded from the app itself under the CSP, and the page's text is in it, in light and dark",
               all(f == [True, True, "Inter", theme] for theme, f in fonts.items()) and preload == [["/fonts/inter-v4.001-latin.woff2", "anonymous"]], (fonts, preload))
+        # the colours (#254): each token is one light-dark() pair, so the system's dark (no theme chosen) and a chosen
+        # dark under a light system must give the same colours, likewise light; and the two themes differ
+        with open(os.path.join(ROOT, "www", "css", "tokens.css"), encoding="utf-8") as f:
+            names = sorted(set(re.findall(r"(--(?!font-)[\w-]+)\s*:", re.sub(r"/\*.*?\*/", "", f.read(), flags=re.S))))
+        read_tokens = """names => Object.fromEntries(names.map(n => { const s = document.createElement('span'); s.style.color = `var(${n})`;
+          document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return [n, c]; }))"""
+        resolved = {}
+        for state, system, chosen in (("light", "light", None), ("dark", "dark", None), ("chosen light", "dark", "light"), ("chosen dark", "light", "dark")):
+            strict.emulate_media(color_scheme=system)
+            strict.evaluate("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", chosen)
+            resolved[state] = strict.evaluate(read_tokens, names)
+        strict.emulate_media(color_scheme="light")
+        differ = [n for a, b in (("light", "chosen light"), ("dark", "chosen dark")) for n in names if resolved[a][n] != resolved[b][n]]
+        check("colours (#254): every token is the same in the system's light or dark as in the chosen theme, and the themes differ",
+              not differ and len(names) > 40 and all(resolved["light"][n] != resolved["dark"][n] for n in ("--page", "--surface", "--ink", "--accent")),
+              differ[:8] or [resolved["light"]["--page"], resolved["dark"]["--page"]])
         strict.evaluate("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
         # the Sources page (#166): its old addresses open their sections, each part drawn by its own script
         strict.goto(base + "/import.html")
@@ -8648,7 +8664,7 @@ def main():
                 dark_bg = sum(d["bg"]) < 200 and sum(d["ink"]) > 600
                 check(f"at 375 px, {theme}: Leave asks in the app's own dialog, titled, Cancel and a red Leave profile, focus on Cancel (#210)",
                       d["modal"] and d["role"] == "alertdialog" and d["title"] == d["named"] == "Leave Second person?"
-                      and d["buttons"] == ["Cancel", "Leave profile"] and d["onCancel"] and d["action"] == ([208, 59, 59] if theme == "light" else [196, 52, 52])   # a deeper red in dark, for white text (#202)
+                      and d["buttons"] == ["Cancel", "Leave profile"] and d["onCancel"] and d["action"] == [179, 38, 30]   # --crit-fill, #b3261e in both themes: white text on it is 6.5:1 (#202, #254)
                       and d["inside"] and (dark_bg if theme == "dark" else sum(d["bg"]) > 700 and sum(d["ink"]) < 100) and not fits, fits or d)
                 page.keyboard.press("Escape")
                 page.wait_for_selector("dialog.sg-ask", state="detached", timeout=10000)
