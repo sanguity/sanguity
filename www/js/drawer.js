@@ -199,8 +199,10 @@ async function sendEdit(path, opts, msg, reopen) {
 }
 function undoButton(x, msg, reopen) {
   const n = batchOf(x);   // made at once to similar entries (#237): undone together
+  // what "all" is, in its name and its tip (a title was on no screen, #371); a lone Undo beside its edit says it all
+  const all = n > 1 ? `this edit and the ${n - 1} made with it` : null;
   return el("button", {class: "btn small", type: "button", text: n > 1 ? `Undo all ${n}` : "Undo", "data-edit": x.id,
-    title: n > 1 ? `Undo this edit and the ${n - 1} made with it` : "Undo this edit",
+    "aria-label": all && `Undo all ${n}: ${all}`, "data-tip": all && all[0].toUpperCase() + all.slice(1),
     onclick: () => sendEdit("/" + x.id, {method: "DELETE"}, msg, reopen)});
 }
 /* the entries that look like this one (the same source, kind and title), offered for the same change (#237):

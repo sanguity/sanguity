@@ -75,7 +75,7 @@ function viewsBar() {
   if (can && cur) {
     bar.append(
       el("button", {class: "btn", type: "button", "aria-pressed": cur.default ? "true" : "false",
-        title: cur.default ? "Labs starts with this view. Press to stop." : "Start Labs with this view",
+        "data-tip": cur.default ? "Labs starts with this view. Press to stop." : "Start Labs with this view",
         onclick: () => tvStore(views.map(v => ({...tvPlain(v), default: v === cur ? !cur.default : false})),
           cur.default ? `“${cur.name}” is no longer the default.` : `Labs now starts with “${cur.name}”.`)}, ...(cur.default ? ["Default ", icon("check")] : ["Make default"])),
       el("button", {class: "btn", type: "button", text: "Delete", "aria-label": `Delete the view ${cur.name}`,
@@ -88,7 +88,7 @@ function viewsBar() {
           } }}));
   }
   if (can && !tvFormOpen) bar.append(el("button", {class: "btn", type: "button", id: "viewSaveOpen", text: "Save view…", disabled: state.sel.size ? null : "",
-    title: state.sel.size ? "Save the labs charted now as a view" : "Pick some labs first",
+    "data-tip": state.sel.size ? "Save the labs charted now as a view" : "Pick some labs first",
     onclick: () => { tvFormOpen = true; renderSeriesList(); $("#viewName")?.focus(); }}));
   const out = el("div", {class: "tv"}, bar);
   if (can && tvFormOpen) {

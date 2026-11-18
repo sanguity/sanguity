@@ -161,7 +161,7 @@ function todayDoses() {
   for (const m of cur) {
     const mine = todays.filter(d => d.key === m.key);
     const slots = [...new Set(mrOf(m).filter(r => r.on && r.days.includes(dow) && r.from <= today && !(mrEnds(r, m) && mrEnds(r, m).day < today)).flatMap(r => r.times))].sort();
-    const open = () => el("button", {class: "cell-btn dose-med", type: "button", text: m.name, title: "Its details and log", onclick: () => openMedication(m)});
+    const open = () => el("button", {class: "cell-btn dose-med", type: "button", text: m.name, "data-tip": "Its details and log", onclick: () => openMedication(m)});
     for (const slot of slots) {
       const got = mine.filter(d => d.slot === slot);
       const what = `${m.name}, reminder at ${mrTime(slot)}`;

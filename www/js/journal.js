@@ -168,7 +168,7 @@ function openJournal(e) {
   if (j.note) body.append(el("div", {class: "sect", text: j.kind === "note" ? "Note" : "Notes"}), el("p", {class: "jnote", text: j.note}));
   if (j.photos?.length) body.append(el("div", {class: "sect", text: j.photos.length > 1 ? `Photos (${j.photos.length})` : "Photo"}),
     el("div", {class: "jpics"}, ...j.photos.map((p, i) => el("figure", {class: "jpic"},
-      el("a", {href: jPhotoUrl(p), target: "_blank", rel: "noopener", title: "Open it full size"},
+      el("a", {href: jPhotoUrl(p), target: "_blank", rel: "noopener", "data-tip": "Open it full size"},
         el("img", {src: jPhotoUrl(p), alt: p.alt || `Photo ${i + 1} of ${j.photos.length} for ${jTitle(j)}`, loading: "lazy"})),
       p.alt ? el("figcaption", {text: p.alt}) : null))));
   const msg = el("p", {class: "hint edit-msg", role: "status"});
@@ -620,5 +620,5 @@ function journalAddAction(e) {
   if (!jCanWrite() || !e || !isFinite(e.ts)) return el("span");
   const t = /T\d{2}:\d{2}/.test(e.t || "") ? isoDay(e.ts) + "T" + (z => `${String(z.getHours()).padStart(2, "0")}:${String(z.getMinutes()).padStart(2, "0")}`)(zdate(e.ts)) : isoDay(e.ts);
   return el("div", {class: "jadd"}, el("button", {class: "btn", type: "button", text: "Add a journal note for this day",
-    title: "A note, symptom or side effect, dated to this event", onclick: () => journalForm(null, {kind: "note", t}, () => openEvent(e))}));
+    "data-tip": "A note, symptom or side effect, dated to this event", onclick: () => journalForm(null, {kind: "note", t}, () => openEvent(e))}));
 }
