@@ -7,7 +7,15 @@
    app.css says what each layer holds.
 
    The colours (#254, Direction A of #243: warm neutrals, a navy accent for controls only, red only for what's out of
-   range or wrong) are each declared once, light and dark as a light-dark() pair, which follows color-scheme: the
+   range or wrong) keep controls and data apart (#334):
+     controls  --accent and --accent-fill: links, the focus ring, a selected or pressed control's text, tint and bar
+               (tabs, segments, chips, the period menu), a checkbox's and a progress bar's accent-color, the unsaved
+               mark, a walk-through's step numbers, the heatmap's "What is this test?" link;
+     data      what a chart or a list draws to show the records: each kind's --c-*, --crit and --good on a value,
+               --range, --stay, the zones, the diverging and sequential steps, a chart's --grid and --axis, a
+               milestone's rule and label (--milestone) and the cursor that follows the pointer or the arrow keys
+               (--cursor). Never the accent, so a chart's marks are never taken for something to press.
+   They are each declared once, light and dark as a light-dark() pair, which follows color-scheme: the
    system's (light dark) unless this browser chose a theme, when theme.js sets data-theme on <html> before the page
    draws and the two rules at the end pin color-scheme to it. A token is a pair until something uses it, so a script
    that wants a colour reads it from an element that uses the token (getComputedStyle), never the token itself.
@@ -33,6 +41,10 @@
   /* lines: a divider or a chart's grid, a card's or a button's edge, a chart's axis; a field's edge is 3:1 (#202) */
   --grid:light-dark(#e3e0d8,#2e2c28); --ring:light-dark(#e3e0d8,rgb(238 236 230 / .12)); --axis:light-dark(#c4c0b6,#3e3b36);
   --field-line:light-dark(#8a867c,#77736a);
+  /* on a chart (#334): a milestone's dashed rule and its label, darker than an event's dotted grey one, and the cursor
+     (a Labs or Body and activity chart's crosshair, an ECG trace's), lighter than the ECG trace it crosses. Neutrals:
+     every hue already names a kind of record */
+  --milestone:light-dark(#2e2b26,#dcd8ce); --cursor:light-dark(#6b675e,#9d998f);
   /* the accent, navy, for controls, links and the focus ring only (the data blue is --c-lab): text in --accent, a
      filled button in --accent-fill with --on-accent on it */
   --accent:light-dark(#1f4f8f,#8db4ee); --accent-fill:light-dark(#1f4f8f,#2f5fa3); --on-accent:#ffffff;

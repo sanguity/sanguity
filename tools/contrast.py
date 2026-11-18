@@ -33,6 +33,8 @@ PAIRS = TEXT + [
     ("--accent", "--surface", 3, "the focus ring"),
     ("--accent", "--raised", 3, "the focus ring"),
     ("--crit", "--raised", 3, "a field marked wrong"),
+    ("--milestone", "--surface", 4.5, "a milestone's label on a chart (its dashed rule needs 3)"),
+    ("--cursor", "--surface", 3, "a chart's cursor, a crosshair or an ECG trace's"),
     ("--surface", "--page", None, "a card against the page"),
     ("--ring", "--page", None, "a card's edge against the page"),
     ("--grid", "--surface", None, "a divider, a chart's grid"),

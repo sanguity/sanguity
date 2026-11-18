@@ -904,6 +904,27 @@ CHART_LABELS_JS = r"""sel => {
   return out;
 }"""
 
+# what a chart draws in the accent (#334): of each drawn chart matching the selector (an argument), every element whose
+# computed fill or stroke is the accent's colour (read from an element that uses --accent), and how many milestone rules,
+# milestone labels and cursors were looked at, so the check can't pass on charts with none. A cursor is hidden until a
+# point is hovered or picked by key, and styled all the same, so it's read hidden
+CHART_ACCENT_JS = r"""sel => {
+  const i = document.createElement('i'); i.style.color = 'var(--accent)'; document.body.append(i);
+  const accent = getComputedStyle(i).color; i.remove();
+  const out = {accent, bad: [], rules: 0, labels: 0, cursors: 0};
+  for (const svg of document.querySelectorAll(sel)) {
+    if (!svg.checkVisibility() || !svg.getBoundingClientRect().width) continue;
+    out.rules += svg.querySelectorAll('.msmark').length; out.labels += svg.querySelectorAll('.mslabel').length;
+    out.cursors += svg.querySelectorAll('.cross, .ecg-cursor').length;
+    for (const e of svg.querySelectorAll('*')) {
+      const c = getComputedStyle(e);
+      if (c.fill === accent || c.stroke === accent)
+        out.bad.push(`${(svg.getAttribute('aria-label') || svg.id || sel).split(/[:,]/)[0]}: <${e.tagName} class="${e.getAttribute('class') || ''}"> in the accent`);
+    }
+  }
+  return out;
+}"""
+
 
 def main():
     srv, base = start_app()
@@ -2713,6 +2734,9 @@ def main():
                       return [getComputedStyle(l).stroke, getComputedStyle(t).fill, bg, document.querySelector('#dbody .ecg-svg').getBoundingClientRect().right, document.getElementById('drawer').getBoundingClientRect().right]; })()""")
                     if contrast(ink[0], ink[2]) < 4.5 or contrast(ink[1], ink[2]) < 4.5:
                         bad.append(f"{theme} {width}: the trace {ink[0]} or its scale {ink[1]} is faint against {ink[2]}")
+                    cur = js(CHART_ACCENT_JS, "#dbody svg.ecg-svg")
+                    if cur["bad"] or not cur["cursors"]:   # #334: its cursor is --cursor, not the accent
+                        bad.append(f"{theme} {width}: the trace's cursor or marks are in the accent, or it has no cursor {cur}")
                     if ink[3] > ink[4] + 0.5:
                         bad.append(f"{theme} {width}: the trace sticks out of the drawer {ink[3:]}")
                     if width == 375:
@@ -2728,7 +2752,7 @@ def main():
                     ecg_axe += axe_check(page, f"timeline with ECGs {theme} {width}")[0]
             page.set_viewport_size({"width": 1400, "height": 900})
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
-            check("…the lane is 3:1 and the trace 4.5:1 against the page, and the Timeline and drawer fit 375 px, in light and dark", not bad, bad[:6])
+            check("…the lane is 3:1 and the trace 4.5:1 against the page, nothing on it in the accent (#334), and the Timeline and drawer fit 375 px, in light and dark", not bad, bad[:6])
             check("…and axe-core finds nothing serious on them at 1400 and 375 px, in light and dark (#202)", not ecg_axe, ecg_axe[:6])
             open_tab("overview")
             settle(200)
@@ -3690,6 +3714,26 @@ def main():
             js("applyPreset('all')")
             settle()
             check("milestones drawn on Trends", js("document.querySelectorAll('#charts .msmark').length") > 0)
+            # …in their own colour, not the accent's (#334): on the Timeline, every Labs chart and every Body and activity
+            # chart, in light and dark, no mark, label, milestone or cursor is filled or stroked in the accent, which is
+            # for controls (the ECG trace's cursor is checked with the ECGs, below)
+            js("window._was334 = [state.marks, document.documentElement.dataset.theme || null, scrollY]; state.marks = true")
+            accented, seen = [], {}
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for tab, sel in (("timeline", "#tl"), ("labs", "#charts .chart svg"), ("health", "#view-health svg.pz")):
+                    js("t => switchTab(t, t === 'labs' ? 'chart' : undefined)", tab)
+                    settle(400)
+                    got = js(CHART_ACCENT_JS, sel)
+                    accented += [f"{theme}, {tab}: {b}" for b in got["bad"]]
+                    seen[tab] = [got["rules"], got["labels"], got["cursors"]]
+            js("([m, t]) => { state.marks = m; if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; switchTab('labs', 'chart'); }",
+               js("window._was334.slice(0, 2)"))
+            settle(300)
+            js("scrollTo(0, window._was334[2])")
+            check("milestones and cursors (#334): no chart mark, label, milestone or cursor on the Timeline, Labs or Body and activity is in the accent, in light and dark",
+                  not accented and all(r > 0 and l > 0 for r, l, _ in seen.values()) and seen["labs"][2] > 0 and seen["health"][2] > 0,
+                  accented[:8] or seen)
             # their labels (#312): at 1400, 375 and 320 px each one on the Timeline, every Labs chart (procedures shown)
             # and every Body and activity chart is inside its plot with no mark on it; one shortened to fit ends in "…"
             # and keeps the full names in its title; a Labs chart's and a Body and activity chart's aria-label names them

@@ -179,8 +179,8 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .toolbar input{accent-color:var(--accent);margin:0}
 .evmark{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 3;opacity:.7}
 .evlabel{font-size:var(--fs-1);fill:var(--ink2)}
-.msmark{stroke:var(--accent);stroke-width:1.25;stroke-dasharray:5 3;opacity:.85;pointer-events:none}
-.mslabel{font-size:var(--fs-1);font-weight:var(--fw-semibold);fill:var(--accent)}
+.msmark{stroke:var(--milestone);stroke-width:1.25;stroke-dasharray:5 3;pointer-events:none}
+.mslabel{font-size:var(--fs-1);font-weight:var(--fw-semibold);fill:var(--milestone)}
 /* chart labels are placed by their width (labelW in charts.js, #312): laid out at their own size, not the screen's, so
    the width measured is the width drawn whatever the chart's scale (#253) */
 .mslabel,.evlabel{text-rendering:geometricPrecision}
@@ -236,7 +236,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .pt{fill:var(--c-lab);stroke:var(--surface);stroke-width:2}
 .pt.abn{fill:var(--crit)}
 .stayband{fill:var(--stay)}
-.cross{stroke:var(--ink2);stroke-width:1;pointer-events:none}
+.cross{stroke:var(--cursor);stroke-width:1;pointer-events:none}
 table.data{border-collapse:collapse;width:100%;font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 table.data th{text-align:left;color:var(--muted);font-weight:var(--fw-semibold);border-bottom:1px solid var(--axis);padding:var(--sp-1) var(--sp-2);position:sticky;top:0;background:var(--surface)}
 table.data td{border-bottom:1px solid var(--grid);padding:var(--sp-1) var(--sp-2);vertical-align:top}
@@ -1378,7 +1378,7 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .ecg-zero{stroke:var(--axis)}
 .ecg-tick{font-size:var(--fs-1);fill:var(--ink2);font-variant-numeric:tabular-nums}
 .ecg-line{fill:none;stroke:var(--ink);stroke-width:1;stroke-linejoin:round}
-.ecg-cursor{stroke:var(--accent);stroke-width:1.5}
+.ecg-cursor{stroke:var(--cursor);stroke-width:1.5}
 .ecg-readout{margin:2px 0 0;font-size:var(--fs-3);color:var(--ink2);font-variant-numeric:tabular-nums;min-height:1.4em}
 .ecg-sum{width:auto;margin:var(--sp-2) 0 var(--sp-3);font-size:var(--fs-3)}
 .ecg-sum th{text-align:left;font-weight:var(--fw-medium);color:var(--muted);padding-right:var(--sp-4)}
