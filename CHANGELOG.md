@@ -941,6 +941,9 @@ Everything on `main` so far; it becomes the first tagged release.
   leaves its body half of it, scrolling within themselves with the newest in view; the drawer itself no longer
   scrolls. A question (Undo this import?) no longer takes the toasts in under its buttons: they stay where they were,
   behind it, so Tab from its buttons doesn't reach them.
+- **A dialog no longer shifts the page sideways** (#370): with scrollbars that take room (Windows, Linux, a Mac set to
+  show them), opening a question or the drawer as a sheet hid the page's scrollbar, so everything behind moved 15 px
+  and back. The room it took is kept while the dialog is open.
 - **Menus in browsers without anchor positioning** (#356): where the browser can't place a menu itself (Firefox and
   Safari before their releases with CSS anchor positioning), a menu near the foot of the screen opened off it, stayed
   where it opened as the page scrolled, and was drawn at the screen's top left for a moment. It now opens over its

@@ -292,8 +292,11 @@ dialog.sg-dlg{margin:0;padding:0;border:1px solid var(--ring);background:var(--s
 dialog.sg-dlg::backdrop{background:var(--scrim)}
 /* while one is modal the page behind stays where it is: a wheel over the scrim, or over a sheet that doesn't scroll,
    would scroll it, and the focus given back after (without scrolling) could be off screen (#364). One that scrolls
-   inside itself doesn't hand its scroll on either. */
+   inside itself doesn't hand its scroll on either. The scrollbar it had, where one takes room (Windows, Linux, a Mac
+   set to show them; data-sg-bar, openDialog), leaves its room behind, so nothing on the page moves sideways (#370);
+   where scrollbars are drawn over the page, or there was none, there's nothing to keep. */
 html:has(dialog:modal){overflow:hidden}
+html[data-sg-bar]:has(dialog:modal){scrollbar-gutter:stable}
 dialog.sg-dlg{overscroll-behavior:contain}
 dialog.sg-dlg-center{margin:auto;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);overflow:auto;border-radius:var(--r-lg)}
 dialog:is(.sg-dlg-side,.sg-dlg-sheet){position:fixed;z-index:40;overflow:clip;   /* clip, not hidden: focus can't scroll it, hiding its top (#369) */
