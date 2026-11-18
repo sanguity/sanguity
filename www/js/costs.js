@@ -233,7 +233,7 @@ function renderPaid(box, claimRows, periodLabel) {
   const hsa = sum(counted.filter(r => r.hsa === "HSA")), fsa = sum(counted.filter(r => r.hsa === "FSA"));
   const dups = rows.filter(r => r.dup != null).length, matched = pays.filter(r => r.claim).length;
   const tiles = [tile("Total out of pocket", usd(sum(counted)), `${pays.length} payment${pays.length === 1 ? "" : "s"}${shares.length ? ` + ${shares.length} claim share${shares.length === 1 ? "" : "s"}` : ""}`, "oopTotal"),
-    tile("Payments", usd(sum(pays)), [typed && `${usd(typed)} typed in`, exp && `${usd(exp)} from an export`].filter(Boolean).join(" · ") || "none in this period")];
+    tile("Payments", usd(sum(pays)), [typed && `${usd(typed)} typed in`, exp && `${usd(exp)} from an export`].filter(Boolean).join("\u00a0· ") || "none in this period")];
   if (claims) tiles.push(tile("Claim shares with no payment", usd(sum(shares)), "per the insurers; counted until a payment matches"),
     tile("Payments matched to claims", matched.toLocaleString(), dups ? `${dups} that arrived twice, counted once` : "by amount, date and provider, or by hand"));
   else if (dups) tiles.push(tile("Counted once", dups.toLocaleString(), "payments that arrived twice"));
@@ -243,7 +243,7 @@ function renderPaid(box, claimRows, periodLabel) {
   if (claims && has("export")) {   // the finance export's view: what the insurers listed against the bills paid
     const gap = sumOf(claimRows, "owe") - sum(pays.filter(r => r.group === "Medical bills"));
     tiles.push(tile(gap >= 0 ? (settled ? "Reduced or forgiven" : "Share not yet paid") : "Paid beyond listed share", usd(Math.abs(gap)),
-      gap >= 0 ? (settled ? `negotiated down or written off · you owe $0 as of ${settled}` : "still owed, on a plan, or reduced") : "includes bills from earlier periods"));
+      gap >= 0 ? (settled ? `negotiated down or written off\u00a0· you owe $0 as of ${settled}` : "still owed, on a plan, or reduced") : "includes bills from earlier periods"));
   }
   card.append(el("div", {class: "stats mt-3"}, ...tiles));
   // HSA and FSA by year

@@ -162,7 +162,7 @@ function renderOverview() {
           el("span", {class: "lbl", text: "Weight"}),
           el("span", {class: "val"}, last ? last[1].toFixed(1) : "–", el("small", {text: s.unit})),
           ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
-          el("span", {class: "delta"}, keepDates(d != null ? `${d >= 0 ? "▲ +" : "▼ −"}${Math.abs(d).toFixed(1)} ${s.unit}\u00a0since ${lcLabel(pm.label)} · ${fmtD(last.ts)}` : last ? fmtD(last.ts) : "")),
+          el("span", {class: "delta"}, keepDates(d != null ? `${d >= 0 ? "▲ +" : "▼ −"}${Math.abs(d).toFixed(1)} ${s.unit}\u00a0since ${lcLabel(pm.label)}\u00a0· ${fmtD(last.ts)}` : last ? fmtD(last.ts) : "")),
           spark(s, s.pts.filter(p => p.ts > last.ts - 365 * DAY), {band: false})));
         continue;
       }
