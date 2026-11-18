@@ -7854,18 +7854,42 @@ def main():
                 if (f.checkVisibility() && getComputedStyle(f).fontWeight !== '400') out.push(`field ${name(f)}: weight ${getComputedStyle(f).fontWeight}`);
               return out;
             })()"""
-            bad, seen = [], []
-            for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
-                page.goto(base + "/" + path)
-                page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
-                settle(300)
-                for g in js("[...document.querySelectorAll('.set-nav a[data-group]')].map(a => a.dataset.group)"):
-                    page.click(f".set-nav a[data-group={g}]")
-                    settle(150)
-                    bad += [f"{path.split('.')[0]} #{g}: {x}" for x in js(rows_typed)]
-                    seen.append(g)
+            # #309: and taking .row's padding off left the rows of buttons with no space under them ("Back up now" sat on
+            # Admin → Backups' Schedule heading): each row is 8 px or more from what follows it, in its card, at 1400 and 320 px
+            rows_gap = r"""(() => {
+              const vis = e => e.checkVisibility() && e.getBoundingClientRect().height > 0, out = [];
+              const name = e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + ` "${(e.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 24)}"`;
+              for (const r of document.querySelectorAll('main .row')) {
+                if (!vis(r)) continue;
+                const bottom = r.getBoundingClientRect().bottom;
+                let n = r, next = null;
+                while (!next && n.parentElement && !n.matches('section, .card, main, details, li, td')) {
+                  for (let s = n.nextElementSibling; s && !next; s = s.nextElementSibling) if (vis(s) && s.getBoundingClientRect().top >= bottom - 2) next = s;
+                  n = n.parentElement;
+                }
+                const gap = next && next.getBoundingClientRect().top - bottom;
+                if (next && gap < 7.5) out.push(`row ${name(r)}: ${gap.toFixed(1)} px above ${name(next)}`);
+              }
+              return out;
+            })()"""
+            bad, seen, gaps = [], [], []
+            for width in (1400, 320):
+                page.set_viewport_size({"width": width, "height": 900})
+                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+                    page.goto(base + "/" + path)
+                    page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
+                    settle(300)
+                    for g in js("[...document.querySelectorAll('.set-nav a[data-group]')].map(a => a.dataset.group)"):
+                        page.click(f".set-nav a[data-group={g}]")
+                        settle(150)
+                        if width == 1400:
+                            bad += [f"{path.split('.')[0]} #{g}: {x}" for x in js(rows_typed)]
+                            seen.append(g)
+                        gaps += [f"{path.split('.')[0]} #{g} at {width} px: {x}" for x in js(rows_gap)]
+            page.set_viewport_size({"width": 1400, "height": 900})
             check("every group of Sources, Sharing, Settings, Account and Admin: rows of buttons have no divider or pointer, "
                   "and typed values are weight 400 (#246)", len(seen) >= 25 and not bad, bad[:8] or f"{len(seen)} groups")
+            check("…and each row of buttons is at least 8 px above what follows it, at 1400 and 320 px (#309)", not gaps, gaps[:8])
 
             # ---- every page at 375 px (#61): each records tab (Labs as charts and as a heatmap) with its filters open, an
             # event's drawer and the top bar's menus; every group of Sources (the profile with connected sources and
