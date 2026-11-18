@@ -659,6 +659,12 @@ Everything on `main` so far; it becomes the first tagged release.
   stylesheet or a page's own styles gain a colour written out instead of a token, or a new px font size, corner radius
   or shadow, or when a script sets one more inline style; today's counts are the most allowed, and it asks for a lower
   number when one goes down.
+- **The style check has no way round it** (#307): it reads stylesheets, pages and scripts in subfolders of `www/` too,
+  and counts a page's `style="..."` attributes and the colours in them and in its `fill`/`stroke` attributes, a colour
+  written in a script's string (`el("svg:rect", {fill: "#f00"})`; not an id or a fragment such as `$("#add")`),
+  `"style":`, `setAttribute("style", ...)`, `Object.assign(x.style, ...)` and `x.style[k] = ...`. A number format's
+  `{style: "currency"}` no longer counts as a style, so those files' allowances are one lower. A failure gives each
+  line and value, and the token a colour matches.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
