@@ -249,7 +249,8 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .cross{stroke:var(--cursor);stroke-width:1;pointer-events:none}
 /* Forced colours don't reach SVG strokes and fills: milestones and cursors in system colours there, so a contrast theme
    opposite to the app's own doesn't leave them faint (#341; the ECG maps its cursor the same way) */
-@media (forced-colors:active){.msmark{stroke:CanvasText}.mslabel{fill:CanvasText}.cross{stroke:Highlight}}
+@media (forced-colors:active){.msmark{stroke:CanvasText}.mslabel{fill:CanvasText}.cross{stroke:Highlight}
+  svg text:not([class]),.evlabel,.lane-label,svg text.medname{fill:CanvasText}}   /* a chart's own text too (#346) */
 table.data{border-collapse:collapse;width:100%;font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 table.data th{text-align:left;color:var(--muted);font-weight:var(--fw-semibold);border-bottom:1px solid var(--axis);padding:var(--sp-1) var(--sp-2);position:sticky;top:0;background:var(--surface)}
 table.data td{border-bottom:1px solid var(--grid);padding:var(--sp-1) var(--sp-2);vertical-align:top}

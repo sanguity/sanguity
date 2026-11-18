@@ -3950,12 +3950,15 @@ def main():
                   document.body.append(s); const v = getComputedStyle(s).color; s.remove(); return v; };
                 const uniq = (q, p) => [...new Set([...document.querySelectorAll(q)].map(m => getComputedStyle(m)[p]))];
                 return {text: probe('CanvasText'), hi: probe('Highlight'), rules: uniq('#charts .msmark', 'stroke'),
-                        labels: uniq('#charts .mslabel', 'fill'), cursors: uniq('#charts .cross', 'stroke')}; })()""")
+                        labels: uniq('#charts .mslabel', 'fill'), cursors: uniq('#charts .cross', 'stroke'),
+                        events: uniq('#charts .evlabel', 'fill'), axis: uniq('#charts svg text:not([class])', 'fill')}; })()""")
             page.emulate_media(forced_colors="none")
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme341)
             settle(200)
-            check("…and in forced colours, against a contrast theme opposite to the app's, milestones are CanvasText and cursors Highlight (#341)",
-                  fc["rules"] == [fc["text"]] and fc["labels"] == [fc["text"]] and fc["cursors"] == [fc["hi"]], fc)
+            check("…and in forced colours, against a contrast theme opposite to the app's, milestones are CanvasText and cursors Highlight (#341), "
+                  "and so are event labels and axis text (#346)",
+                  fc["rules"] == [fc["text"]] and fc["labels"] == [fc["text"]] and fc["cursors"] == [fc["hi"]]
+                  and fc["events"] in ([], [fc["text"]]) and fc["axis"] == [fc["text"]], fc)
             # their labels (#312): at 1400, 375 and 320 px each one on the Timeline, every Labs chart (procedures shown)
             # and every Body and activity chart is inside its plot with no mark on it; one shortened to fit ends in "…"
             # and keeps the full names in its title; a Labs chart's and a Body and activity chart's aria-label names them

@@ -813,6 +813,8 @@ Everything on `main` so far; it becomes the first tagged release.
   one is too wide for a third of the card, as "4 772 $US" is in a French browser at 320 px.
 - **Dates in more languages kept together** (#345): longer short month names (Finnish "marras", Hungarian "szept.",
   Catalan "ag.") and a point after the day ("18. Aug. 2026").
+- **Chart text in forced colours** (#346): event labels, lane labels, medication names and axis text are drawn in the
+  system's text colour, like milestones (#341).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
