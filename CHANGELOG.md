@@ -648,6 +648,8 @@ Everything on `main` so far; it becomes the first tagged release.
   short line in its colour (the orange and green text was under 4.5:1); a lab day on the Timeline with a result out
   of range has a red ▲ over it instead of a 2 px red dot; on the Labs charts a procedure is a ● and imaging a ■, no
   longer the ▼ that means below range, with both in the legend while they're shown.
+- **New share link opens on the first click** (#306): clicked before the share-links panel had loaded its list,
+  it did nothing (the form is built from the sections and labs that come with the list); it waits for them now.
 - **One copy of the colours, and the stylesheet in layers** (#251): the colour tokens, light and dark, are in
   `www/css/tokens.css`, which every page loads; sign-in and setup no longer keep copies of their own, whose card edge
   was a shade darker (`--ring` .12 there, .10 in the app). `app.css` is in cascade layers (reset, tokens, base,

@@ -108,11 +108,13 @@ function shareLinksPanel(p, {open = false} = {}) {
     return f;
   }
 
-  async function load() {
-    info = await call(`profiles/${p.id}/links`);
-    drawList();
+  let loading = null;   // the load under way, which New share link waits for (#306)
+  function load() {
+    return loading = (async () => { info = await call(`profiles/${p.id}/links`); drawList(); })();
   }
-  const add = el("button", {class: "btn small", type: "button", text: "New share link", onclick: () => {
+  const add = el("button", {class: "btn small", type: "button", text: "New share link", onclick: async () => {
+    // the form is built from the sections and labs that come with the links: before they have, wait for them (#306)
+    if (!info) { try { await (loading || load()); } catch (e) { fail(e); return; } }
     if (box.querySelector(".share-form")) return;
     made.replaceChildren(); sayIn(msg, "");
     add.after(form());

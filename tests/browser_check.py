@@ -1064,6 +1064,21 @@ def main():
                     return True
                 pg.wait_for_timeout(100)
             raise TimeoutError(expr)
+        # #306: New share link clicked while the panel's links are still on their way waits for them, then opens the form
+        # (the form is built from the sections and labs that come with them; it used to throw, and nothing opened)
+        held, links_api = [], "**/api/profiles/1/links"
+        strict.route(links_api, lambda route: held.append(route))
+        strict.goto(base + "/sharing.html?profile=1#links")
+        strict.wait_for_selector("#links .share-links button:has-text('New share link')", timeout=10000)
+        strict.locator("#links button", has_text="New share link").click()
+        strict.wait_for_timeout(300)
+        early = [len(held), strict.locator("#links .share-form").count()]
+        for r in held:
+            r.continue_()
+        strict.unroute(links_api)
+        strict.wait_for_selector("#links .share-form input[aria-label='Name for this link']", timeout=10000)
+        check("share links: New share link clicked before the panel has loaded opens the form once it has (#306)",
+              early == [1, 0] and strict.locator("#links .share-form").count() == 1, early)
         strict.goto(base + "/sharing.html?profile=1#links")
         strict.wait_for_selector("#links .share-links button:has-text('New share link')", timeout=10000)
         mine = strict.locator("#links")
