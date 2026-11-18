@@ -64,6 +64,7 @@ header.topbar .tabs button{white-space:nowrap}
 .page-title{font-weight:600;color:var(--ink2);font-size:15px;padding-left:12px;border-left:1px solid var(--ring);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .menu{position:relative;flex:none}
 .menu[hidden]{display:none}
+.bar-menus{display:flex;align-items:center;gap:inherit;flex:none}   /* Add and your menu (nav.js), wrapped as one (#319) */
 .menu-btn{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:inherit;max-width:16em}
 .menu-btn #who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .menu-btn[aria-expanded="true"]{background:var(--hover)}
@@ -1308,8 +1309,9 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
    what stuck under it sticks at the top instead (#308): the Timeline's month headings and Settings' sidebar */
 @media (max-height:500px){ header{position:relative} html{scroll-padding-top:8px} .month{top:0} main.sets.with-nav>.set-nav{top:8px} }
 /* and on a phone the bar's menus open under the bar where it is now, not where it would be stuck (--bar-h): placed
-   from the bar (positioned, above), the screen's width 8 px in as in #244, scrolling with it */
-@media (max-height:500px) and (max-width:700px){ header.topbar .menu{position:static} header.topbar .menu-list{position:absolute;top:calc(100% + 6px)} }
+   from the bar (positioned, above), the screen's width 8 px in as in #244, scrolling with it. The page scrolls, so a
+   menu is as tall as its items, not a box of one item under a tall bar at 320×180 (#319) */
+@media (max-height:500px) and (max-width:700px){ header.topbar .menu{position:static} header.topbar .menu-list{position:absolute;top:calc(100% + 6px);max-height:none} }
 @media (forced-colors:active){
   .btn.primary,.btn.danger,.empty-state .btn.empty-next{border:1px solid ButtonText}
   .menu-item:focus-visible,.cell-btn:focus-visible{outline-color:Highlight}

@@ -155,7 +155,8 @@ const SgNav = (() => {
   const inst = document.getElementById("installBtn");
   if (inst) inst.before(el("span", {class: "spacer"}));
   else header.append(el("span", {class: "spacer"}));
-  header.append(add.wrap, user.wrap);
+  // in one box, so where the bar wraps on a phone the two go to the next row together, never your menu alone (#319)
+  header.append(el("div", {class: "bar-menus"}, add.wrap, user.wrap));
 
   /* light or dark: this browser's own choice over the account's default (applyTheme in util.js) */
   const isDark = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
