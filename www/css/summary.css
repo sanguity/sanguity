@@ -7,8 +7,8 @@
 .sum-sections{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-4);margin:var(--sp-2) 0 var(--sp-3)}
 .sum-picked{list-style:none;margin:var(--sp-1) 0 var(--sp-2);padding:0;display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .sum-picked li{display:inline-flex;align-items:center;gap:var(--sp-2);background:var(--hover);border-radius:var(--r-pill);padding:2px var(--sp-1) 2px var(--sp-3);font-size:var(--fs-3)}
-.sum-picked li .btn{padding:0 var(--sp-2);line-height:18px}
-.sum-add{display:flex;gap:var(--sp-2);max-width:420px}
+.sum-picked li .btn{margin:0}
+.sum-add{display:flex;align-items:center;gap:var(--sp-2);max-width:420px}
 .sum-add input{flex:1 1 auto}
 .sum-notice{margin:var(--sp-3) 0 0}
 .sum-preview h3{font-size:var(--fs-3);font-weight:var(--fw-semibold);margin:var(--sp-4) 0 2px}

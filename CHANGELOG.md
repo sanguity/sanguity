@@ -816,6 +816,12 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Chart text in forced colours** (#346): event labels, lane labels, medication names and axis text are drawn in the
   system's text colour, like milestones (#341).
 - **A table box that doesn't scroll has no name** (#347): it's named only while it scrolls and is a region.
+- **One button** (#258): every button is one component in three sizes, 24, 32 and 40 px tall (44 px on a phone or a
+  touch screen), and four looks: the default, primary (filled in the accent), danger (filled in red) and quiet. It eases
+  into its hover look, darkens a little while pressed, shows the accent's tint and bar when it's a pressed toggle, and
+  fades when disabled. The seven copies of a primary button and the per-page sizes (buttons were 25 to 34 px tall)
+  are gone; a primary button is filled on every page now, the top bar's and the drawer's buttons are the same
+  button, and sign-in's and setup's are the large size.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

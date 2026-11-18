@@ -1022,6 +1022,17 @@ TILE_LINES_JS = r"""() => {
 SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main .card, main .tile, main .stat, main .ov-mini, .sets .set')]
   .filter(e => e.checkVisibility()).map((e, i) => [`${e.className.split(' ')[0]} ${i} ${(e.querySelector('h1,h2,h3,.lbl,.l')?.textContent || '').trim().slice(0, 40)}`,
     Math.round(e.getBoundingClientRect().height * 10) / 10]))"""
+# the button's sizes (#258): each button shown (.btn, the top bar's and the drawer's, the tabs, the period's More…) whose
+# height isn't one of the sizes, 24, 32 or 40 px, or 44 px on a phone; one whose words wrap onto more lines may be taller
+CONTROL_SIZES_JS = r"""phone => { const ok = phone ? [44] : [24, 32, 40], out = [];
+  for (const e of document.querySelectorAll('.btn, .iconbtn, .tabs button, .period-more-btn')) {
+    const h = Math.round(e.getBoundingClientRect().height * 10) / 10;
+    if (!h || !e.checkVisibility() || ok.some(v => Math.abs(h - v) < .5)) continue;
+    const r = document.createRange(); r.selectNodeContents(e);
+    if (h > Math.max(...ok) && new Set([...r.getClientRects()].filter(x => x.width > 1).map(x => Math.round(x.top))).size > 1) continue;
+    out.push(`${e.tagName.toLowerCase()}.${[...e.classList].join('.')} “${(e.getAttribute('aria-label') || e.textContent).trim().slice(0, 24)}” ${h}`);
+  }
+  return out; }"""
 SWAP_FONTS_JS = "() => [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family).filter((f, i, a) => a.indexOf(f) === i).sort()"
 
 
@@ -4180,7 +4191,7 @@ def main():
             less = js(motion)
             page.emulate_media(reduced_motion="no-preference")
             check("less motion when asked for: no transitions, no smooth scrolling (and both back when not)", less == ["0s", "auto", "0s"]
-                  and js(motion) == ["0.2s", "smooth", "0.12s, 0.12s, 0.12s"], [less, js(motion)])
+                  and js(motion) == ["0.2s", "smooth", "0.12s, 0.12s, 0.12s, 0.12s"], [less, js(motion)])   # a filled button's shade too (#258)
             page.reload()   # the saved views as the server has them again (none)
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
 
@@ -7070,11 +7081,12 @@ def main():
                         js("on => { for (const k of ['#h-bp', '#h-glucose']) { if (on) state.tables.add(k); else state.tables.delete(k); } renderHealth(); }", table)
                         settle(400)
                         for card in ("#h-bp", "#h-glucose"):
-                            page.locator(card).scroll_into_view_if_needed()
+                            js("c => document.querySelector(c).scrollIntoView({block: 'start'})", card)   # its head under the top bar, not behind it
                             if width == 375:
                                 t234_bad += phone_fits(page, f"{card} with targets, {'table' if table else 'chart'} ({theme})")
                             if shots and not table:
                                 page.locator(card).screenshot(path=os.path.join(shots, f"234-{card[3:]}-{width}-{theme}.png"))
+                        clear_of_bar(page)   # nothing left half under the bar, taller with 44 px targets on a phone (#258)
                         t234_axe += axe_check(page, f"Body and activity with targets, {'table' if table else 'chart'}, {width} px, {theme}")[0]
             js("delete document.documentElement.dataset.theme; state.tables.clear()")
             page.set_viewport_size({"width": 1400, "height": 900})
@@ -8606,6 +8618,7 @@ def main():
             t_axe, axe_bad, axe_other, axe_seen = time.time(), [], [], []
             ua_links, links_seen = [], [0]
             outlines, outline_bad = [], []   # #331: each page's heading outline (in light: it's the same in dark)
+            sizes_bad, sizes_seen = [], [0]   # #258: buttons whose height isn't one of the sizes
             # Chromium's own link colour, light and dark (a visited link's purple reads as this to scripts too)
             UA_LINKS = """(() => { const as = [...document.querySelectorAll('a[href]')].filter(a => a.checkVisibility());
               return [as.length, as.filter(a => ['rgb(0, 0, 238)', 'rgb(158, 158, 255)'].includes(getComputedStyle(a).color)).map(a => a.textContent.trim().slice(0, 40))]; })()"""
@@ -8617,6 +8630,9 @@ def main():
                     outlines.append(o); outline_bad.extend(ob)
                 n, blue = pg.evaluate(UA_LINKS)
                 links_seen[0] += n
+                if label.startswith("light "):
+                    sizes_seen[0] += 1
+                    sizes_bad.extend(f"{label[6:]}: {b}" for b in pg.evaluate(CONTROL_SIZES_JS, pg.viewport_size["width"] <= 640))
                 ua_links.extend(f"{label}: “{t}”" for t in blue)
             theme_was = js("localStorage.getItem('ht-theme')")
             for theme in ("light", "dark"):
@@ -8686,6 +8702,8 @@ def main():
             check(f"…and on each of the {len(outlines)} pages, exactly one h1 (the page's, not the brand), no heading level skipped and "
                   "axe-core's heading rules passing; each page's outline (#331)", len(outlines) >= 35 and not outline_bad,
                   outline_bad[:10] or " | ".join(outlines))
+            check(f"…and on the {sizes_seen[0]} in light, at 1400 px, every button is one of the three sizes, 24, 32 or 40 px tall (#258)",
+                  sizes_seen[0] >= 45 and not sizes_bad, sizes_bad[:12])
             # the keyboard at 375 px, where the top bar is tallest: Tab from the start and Shift+Tab from the end
             t_keys, kbad = time.time(), []
             page.set_viewport_size({"width": 375, "height": 800})
@@ -8705,6 +8723,7 @@ def main():
                   "and none hidden under the top bar or a sticky header (2.4.7, 2.4.11, #202)", not kbad, kbad[:8] or f"{time.time() - t_keys:.0f} s")
             # reflow at 320 px (1280 px at 400%), light; and WCAG's text spacing (1.4.12) at 375 px
             spacing = "* { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important } p { margin-bottom: 2em !important }"
+            sizes320 = []
             for width, spaced in ((320, False), (375, True)):
                 page.set_viewport_size({"width": width, "height": 640 if width == 320 else 800})
                 rbad = []
@@ -8719,6 +8738,8 @@ def main():
                     open_tab(t)
                     settle(250)
                     rbad += phone_fits(page, t)
+                    if not spaced:   # #258: every button a 44 px target on a phone
+                        sizes320 += [f"{t}: {b}" for b in js(CONTROL_SIZES_JS, True)]
                     if not spaced:   # #335: axe-core in light and dark, and the table wrappers that scroll
                         for theme in ("light", "dark"):
                             js("t => { document.documentElement.dataset.theme = t; }", theme)
@@ -8761,8 +8782,11 @@ def main():
                         page.click(f".set-nav a[data-group={g}]")
                         settle(100)
                         rbad += phone_fits(page, f"{path.split('.')[0]}#{g}")
+                        if not spaced:
+                            sizes320 += [f"{path.split('.')[0]}#{g}: {b}" for b in js(CONTROL_SIZES_JS, True)]
                 check(f"at {width} px{' with WCAG text spacing' if spaced else ' (400% zoom)'}: every records tab and every page's groups fit, "
                       "nothing scrolling sideways, no control cut off or overlapping (1.4.10, 1.4.12, #202)", not rbad, rbad[:8] or "")
+            check("at 320 px every button on every records tab and every page's groups is a 44 px target (#258)", not sizes320, sizes320[:12])
             # a French browser writes the Overview's insurance figures wider ("4 772 $US", unbreakable): at 375 and 320 px
             # they fit, wrapping to a second line if need be (#342)
             fr_ctx = browser.new_context(viewport={"width": 375, "height": 800}, bypass_csp=True, locale="fr-FR")

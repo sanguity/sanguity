@@ -33,7 +33,7 @@ const moreAbout = (...kids) => el("details", {class: "more"}, el("summary", {tex
    a button ({onclick, text}); none (null) for someone who can't take it. tag: "div" for a whole card's place, "li"
    inside a list. The records tabs, the Sources and Sharing lists and the journal use it. */
 const emptyState = (what, next, {tag = "div", cls = "card"} = {}) => el(tag, {class: `${cls} empty-state`.trim()}, el("p", {text: what}),
-  next ? el(next.href ? "a" : "button", {class: "btn primary empty-next", href: next.href, type: next.href ? null : "button", text: next.text, onclick: next.onclick}) : null);
+  next ? el(next.href ? "a" : "button", {class: `btn primary empty-next ${/\bcard\b/.test(cls) ? "large" : "small"}`, href: next.href, type: next.href ? null : "button", text: next.text, onclick: next.onclick}) : null);
 /* a line of text with each date in it kept on one line (#330), so a tile's "▼ −0.03 since Aug 18, 2026" never leaves
    its year alone below: the text as parts for el(), a date in a <span class="nw">, its textContent unchanged. The
    app's three date formats (dates.js): "Aug 18, 2026", "18 Aug 2026" and "2026-08-18", and "as of" kept as one too
