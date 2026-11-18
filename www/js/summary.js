@@ -74,7 +74,7 @@ async function load() {
 /* ---------------------------------------------------------------- preview */
 const cell = (text, cls) => el("td", {class: cls, text: text ?? ""});
 function table(heads, rows, cls = "") {   // a region that can be scrolled from the keyboard on a narrow screen (#225's wider tables)
-  return el("div", {class: "scroll", tabindex: 0, role: "region", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
+  return scrollBox({class: "scroll", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
     el("thead", {}, el("tr", {}, ...heads.map(h => el("th", {text: h})))), el("tbody", {}, ...rows)));
 }
 function spark(pts) {

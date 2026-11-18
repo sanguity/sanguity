@@ -883,13 +883,21 @@ def ring_walk(page, label, stops=12):
     return bad, seen
 
 
-# a table's wrapper that scrolls, sideways or down (#335): each drawn now (of those the selector given matches, every
-# .tablewrap by default), as [its name, tabindex, role, the id it's in]. One that scrolls
-# must take focus and have a name, so a keyboard can reach what's out of sight and a screen reader says what it is
+# a table's wrapper (#335, #340): each drawn now (of those the selector given matches, every .tablewrap by default),
+# as [whether it scrolls, sideways or down, its name, its tabIndex, its role, the id it's in]. One that scrolls must
+# take focus and have a name, a region, so a keyboard can reach what's out of sight and a screen reader says what it
+# is; one that doesn't must be neither, no tab stop and no landmark (scroll_table_faults)
 SCROLL_TABLES_JS = r"""sel => [...document.querySelectorAll(sel || '.tablewrap')]
-  .filter(w => w.checkVisibility() && (w.scrollWidth > w.clientWidth + 1 || w.scrollHeight > w.clientHeight + 1))
-  .map(w => [w.getAttribute('aria-label') || (w.getAttribute('aria-labelledby') && document.getElementById(w.getAttribute('aria-labelledby'))?.textContent) || '',
+  .filter(w => w.checkVisibility())
+  .map(w => [w.scrollWidth > w.clientWidth + 1 || w.scrollHeight > w.clientHeight + 1,
+             w.getAttribute('aria-label') || (w.getAttribute('aria-labelledby') && document.getElementById(w.getAttribute('aria-labelledby'))?.textContent) || '',
              w.tabIndex, w.getAttribute('role'), (w.closest('[id]') || {}).id || ''])"""
+
+
+def scroll_table_faults(wraps):
+    """SCROLL_TABLES_JS's rows (each with what it was on put first) that are wrong: scrolling but not a named region in
+    the Tab order, or not scrolling but a tab stop or a region (#340)"""
+    return [w for w in wraps if ((w[3] != 0 or not w[2].strip() or w[4] != "region") if w[1] else (w[3] >= 0 or w[4] == "region"))]
 
 
 # a field's look (#332), in light and dark (the theme set on the page, then put back): its background, edge and corner.
@@ -1408,9 +1416,13 @@ def main():
               "My records" in hp.inner_text("#shareHead") and "stops working on" in hp.inner_text("#shareHead") and "Not medical advice" in hp.inner_text("main"))
         check("share links: the token never appears in an API address, and only the view is asked for", api_paths == ["share/view"], api_paths)
         check("share links: no cookie is set for the holder", holder.cookies() == [], holder.cookies())
+        sh_wraps = [["share.html, 1400 px"] + w for w in hp.evaluate(SCROLL_TABLES_JS, ".share-scroll")]
         hp.set_viewport_size({"width": 375, "height": 800})
         hp.wait_for_timeout(200)
         check("share links: the shared page fits 375 px", hp.evaluate("document.documentElement.scrollWidth") <= 375, hp.evaluate("document.documentElement.scrollWidth"))
+        sh_wraps += [["share.html, 375 px"] + w for w in hp.evaluate(SCROLL_TABLES_JS, ".share-scroll")]
+        check("share links: …at 1400 and 375 px each table's wrapper is a named region in the Tab order while it scrolls, and neither "
+              "while it doesn't (#340)", sh_wraps and not scroll_table_faults(sh_wraps), scroll_table_faults(sh_wraps)[:6] or sh_wraps)
         cl_tables, cl_bad = cell_labels(hp, "share.html")   # #320: each table's values under their columns' names
         check("share links: …each table's cells labelled with their columns' names, its headings hidden (#320)",
               not cl_bad and any(t[1] and t[3] for t in cl_tables), cl_bad[:6] or cl_tables)
@@ -8699,20 +8711,33 @@ def main():
                             js("t => { document.documentElement.dataset.theme = t; }", theme)
                             axe335 += axe_check(page, f"{t}, 320 px, {theme}")[0]
                         js("delete document.documentElement.dataset.theme")
-                        wraps335 += [[t] + w for w in js(SCROLL_TABLES_JS)]
+                        wraps335 += [[f"{t}, 320 px"] + w for w in js(SCROLL_TABLES_JS)]
                 if not spaced:   # and the drawer's tables: a lab's results, a claim's services, a medication's listings and fills
-                    for k in ("lab", "claim", "med"):
-                        js("k => openEvent(EV.find(e => e.k === k && !e.hidden && (k !== 'claim' || (DATA.details[e.id] || {}).lines?.length)) || EV.find(e => e.k === k && !e.hidden))", k)
-                        settle(300)
-                        wraps335 += [[f"the drawer, {k}"] + w for w in js(SCROLL_TABLES_JS, "#drawer .tablewrap")]
-                        page.keyboard.press("Escape")
-                        settle(150)
+                    def drawer_wraps(px):
+                        out = []
+                        for k in ("lab", "claim", "med"):
+                            js("k => openEvent(EV.find(e => e.k === k && !e.hidden && (k !== 'claim' || (DATA.details[e.id] || {}).lines?.length)) || EV.find(e => e.k === k && !e.hidden))", k)
+                            settle(300)
+                            out += [[f"the drawer, {k}, {px} px"] + w for w in js(SCROLL_TABLES_JS, "#drawer .tablewrap")]
+                            page.keyboard.press("Escape")
+                            settle(150)
+                        return out
+                    wraps335 += drawer_wraps(320)
+                    page.set_viewport_size({"width": 1400, "height": 900})   # #340: and at 1400 px, where most don't scroll
+                    for t in ("overview", "health", "timeline", "heatmap", "labs", "costs"):
+                        open_tab(t)
+                        settle(250)
+                        wraps335 += [[f"{t}, 1400 px"] + w for w in js(SCROLL_TABLES_JS)]
+                    wraps335 += drawer_wraps(1400)
+                    page.set_viewport_size({"width": 320, "height": 640})
                     js("[state.preset, state.from, state.to] = window._was335; save()")
                     check("at 320 px (#335): axe-core finds nothing serious on any records tab, every record shown, in light and dark",
                           not axe335, axe335[:8])
-                    unreached = [w for w in wraps335 if w[2] != 0 or not w[1].strip() or w[3] != "region"]
-                    check("…and every table wrapper that scrolls takes focus and is named, a region (the tabs and the drawer)",
-                          any(w[0] == "costs" for w in wraps335) and not unreached, unreached[:8] or wraps335)
+                    unreached = scroll_table_faults(wraps335)
+                    check("…and at 320 and 1400 px every table wrapper that scrolls takes focus and is named, a region, and every "
+                          "one that doesn't is neither (the tabs and the drawer, #340)",
+                          any(w[0] == "costs, 320 px" and w[1] for w in wraps335) and any(w[0].endswith("1400 px") and not w[1] for w in wraps335)
+                          and not unreached, unreached[:8] or wraps335)
                 for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
                     page.goto(base + "/" + path)
                     page.wait_for_selector(".set-nav a[data-group]", timeout=10000)

@@ -122,7 +122,7 @@ function openCycle(e) {
     body.append(kv([["From", cycleDay(s.from)], ["To", cycleDay(s.to)], ["Recorded as", s.logged ? "A period, logged as one" : "Flow, day by day"],
       ["From the app", s.app], ["Source", s.source]]));
     if (s.flow && s.flow.length) body.append(el("div", {class: "sect", text: "Flow recorded"}),
-      el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": "Flow recorded, day by day", style: {maxHeight: "none"}}, el("table", {class: "data"},
+      scrollBox({class: "tablewrap", "aria-label": "Flow recorded, day by day", style: {maxHeight: "none"}}, el("table", {class: "data"},
         el("thead", {}, el("tr", {}, el("th", {scope: "col", text: "Day"}), el("th", {scope: "col", text: "Flow"}))),
         el("tbody", {}, s.flow.map(([d, v]) => el("tr", {}, el("td", {text: cycleDay(d)}), el("td", {text: v})))))));
   } else {

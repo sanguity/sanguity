@@ -250,3 +250,31 @@ function ask({title, message = "", action = "OK", cancel = "Cancel", danger = fa
     (field || (danger ? no : yes)).focus();
   });
 }
+
+/* ---- a table's wrapper that may scroll (#335, #340)
+   scrollBox(attrs, ...kids): el("div", attrs, ...kids), for a wrapper (.tablewrap, .share-scroll) whose table may be
+   wider or taller than it. While it scrolls, sideways or down, it's a tab stop and a region, so a keyboard can reach
+   what's out of sight and a screen reader says what it is; while all of it shows, it's neither, so it adds no stop
+   and no landmark. A ResizeObserver on it and on its table decides, as the window, the text or the rows change. Its
+   name stays on: give it an aria-label (or aria-labelledby to its heading); without one it takes the table's caption
+   or its column names. */
+function scrollBox(attrs, ...kids) {
+  const box = el("div", attrs, ...kids);
+  if (!box.hasAttribute("aria-label") && !box.hasAttribute("aria-labelledby")) {
+    const t = box.querySelector("table"), head = t && t.tHead && t.tHead.rows[0];
+    box.setAttribute("aria-label", (t && t.caption ? t.caption.textContent.trim() : "") ||
+      (head ? [...head.cells].map(c => c.textContent.trim()).filter(Boolean).join(", ") : "") || "Table");
+  }
+  const fit = () => {
+    const scrolls = box.scrollWidth > box.clientWidth + 1 || box.scrollHeight > box.clientHeight + 1;
+    if (scrolls && box.getAttribute("role") !== "region") { box.setAttribute("tabindex", "0"); box.setAttribute("role", "region"); }
+    else if (!scrolls && box.hasAttribute("role")) {
+      box.removeAttribute("role");
+      if (box === document.activeElement) box.setAttribute("tabindex", "-1");   // focus stays put, out of the Tab order
+      else box.removeAttribute("tabindex");
+    }
+  };
+  const watch = new ResizeObserver(fit);
+  for (const n of [box, ...box.children]) watch.observe(n);
+  return box;
+}

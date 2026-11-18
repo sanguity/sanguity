@@ -26,7 +26,7 @@ function shareLinksPanel(p, {open = false} = {}) {
       return;
     }
     const names = Object.fromEntries(info.sections.map(s => [s.id, s.label]));
-    list.replaceChildren(el("div", {class: "share-scroll"}, el("table", {class: "tbl"},
+    list.replaceChildren(scrollBox({class: "share-scroll", "aria-label": "Share links"}, el("table", {class: "tbl"},
       el("thead", {}, el("tr", {}, ...["Link", "Shows", "Ends", "Opened", ""].map(h => el("th", {text: h})))),
       el("tbody", {}, ...rows.map(l => el("tr", {class: l.state === "active" ? "" : "ended"},
         el("td", {}, el("b", {text: l.label || "Unnamed link"}), el("div", {class: "muted", text: `made by ${l.created_by}, ${when(l.created)}`})),
