@@ -629,6 +629,11 @@ Everything on `main` so far; it becomes the first tagged release.
   every page; the Timeline's month headings stick just under the top bar instead of behind it; links are in the
   accent colour everywhere, never the browser's blue or purple; and Find a setting with no match says so, with a
   button to clear the search.
+- **No more "null" where a part is left out** (#245): a workout without heart rate showed "nullnull" in its drawer, a
+  hospital stay and a medication typed in "null", and so did each form under Sources → Type records in without a hint,
+  Admin's connected-source rows and their test, a backup's check, the period menu without other milestones, the
+  journal's body map with no places, and on Settings a setting without help text and the saved views once there are
+  some. They're left out now.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

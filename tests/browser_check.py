@@ -2091,14 +2091,27 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             js("state.tables.clear(); [state.sel, state.preset, state.from, state.to] = window._was58; state.labsView = 'chart'; save()")
 
-            # ---- detail drawer for every kind of event
+            # ---- detail drawer for every kind of event; none writes "null" or "undefined" where a part is left out (#245),
+            # such as a workout without heart rate's zones or a hospital stay's note
+            said_null = []
+            nulls_js = "/\\b(null|undefined)\\b/.test(document.getElementById('drawer').innerText)"
             for k in js("[...new Set(EV.filter(e => !e.hidden).map(e => e.k))].sort()"):
                 js("k => openEvent(EV.find(e => e.k === k && !e.hidden))", k)
                 settle(200)
                 ok = js("document.getElementById('drawer').classList.contains('open') && document.getElementById('dtitle').textContent.length > 0")
                 check(f"drawer opens for {k}", ok)
+                if js(nulls_js):
+                    said_null.append(k)
                 page.keyboard.press("Escape")
             check("drawer closes on Escape", not js("document.getElementById('drawer').classList.contains('open')"))
+            for what, find in (("a workout without heart rate", "e => e.k === 'exercise' && !e.hidden && !DATA.details[e.id]?.hr"),
+                               ("a hospital stay", "e => e.k === 'stay' && !e.hidden")):
+                found = js(f"(() => {{ const e = EV.find({find}); if (!e) return false; return Promise.resolve(openEvent(e)).then(() => true); }})()")
+                settle(200)
+                if not found or js(nulls_js):
+                    said_null.append(what if found else f"{what}: none in the demo")
+                page.keyboard.press("Escape")
+            check("…and no drawer says “null” or “undefined” (#245): every kind, a workout without heart rate, a hospital stay", not said_null, said_null)
 
             # ---- immunizations and allergies (#179): the Overview lists the allergies with their reactions, severity and
             # criticality as recorded (not the resolved one, and not again in the problem list) and the immunizations newest
@@ -4800,6 +4813,15 @@ def main():
             def add_record(kind):
                 page.select_option("#manKind", kind)
                 page.click("#manAddKind")
+            # #245: a form of each kind, with a hint under its title or without, says no "null" or "undefined"; then removed
+            kinds = js("[...document.querySelectorAll('#manKind option')].map(o => o.value).filter(k => k !== 'labs')")
+            for kind in kinds:
+                add_record(kind)
+            said_null = js("[...document.querySelectorAll('.man-item')].filter(c => /\\b(null|undefined)\\b/.test(c.innerText)).map(c => c.dataset.kind)")
+            check("Type records in (#245): no record's form, of any kind, says “null” or “undefined”",
+                  not said_null and js("document.querySelectorAll('.man-item').length") == len(kinds) > 5, said_null)
+            while js("document.querySelectorAll('.man-item').length"):
+                page.click(".man-item .del")
             add_record("visit")
             check("a record's form opens with its date filled in and the next field focused",
                   js("document.querySelectorAll('.man-item').length === 1 && /^\\d{4}-\\d\\d-\\d\\d$/.test(document.querySelector('.man-item [data-f=date]').value)")

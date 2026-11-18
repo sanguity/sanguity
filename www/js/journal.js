@@ -257,7 +257,7 @@ function jWhereSection(showOnly) {
     }
     const table = state.tables.has("#journal-where");
     const rows = JB_ORDER.filter(id => counts[id]).sort((a, b) => counts[b].n - counts[a].n || JB_ORDER.indexOf(a) - JB_ORDER.indexOf(b));
-    box.replaceChildren(
+    box.replaceChildren(...present(
       el("div", {class: "list-hd"}, el("h3", {id: "jWhereTitle", text: "Where symptoms have been"}), el("span", {class: "spacer"}),
         rows.length ? viewSeg("#journal-where", "where symptoms have been", draw, "Body map") : null),
       el("p", {class: "hint", text: `${fmtD(state.from)} – ${fmtD(state.to)}, the dates the timeline shows: ` + (rows.length
@@ -265,7 +265,7 @@ function jWhereSection(showOnly) {
         : "no symptom or side effect with a place on the body. Change the dates above to look further back.")}),
       !rows.length ? null : table
         ? chartTable(["Where", "Entries", "Worst severity", "Latest"], rows.map(id => [jbLabel(id), String(counts[id].n), counts[id].worst == null ? "" : `${counts[id].worst}/10`, fmtD(counts[id].last)]))
-        : jBodyMap(counts, id => { showOnly(id); }));
+        : jBodyMap(counts, id => { showOnly(id); })));
   };
   draw();
   return {node: box, draw};

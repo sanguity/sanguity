@@ -118,10 +118,10 @@
     const [label, fields] = KINDS[kind];
     const last = cards().pop(), from = last ? last.querySelector("[data-f=date],[data-f=admit],[data-f=start]") : null;
     const card = el("fieldset", {class: "man-item", "data-kind": kind, "data-seq": ++seq});
-    card.append(el("legend", {text: label}), HINTS[kind] ? el("p", {class: "hint rec-hint", text: HINTS[kind]}) : null,
+    card.append(...present(el("legend", {text: label}), HINTS[kind] ? el("p", {class: "hint rec-hint", text: HINTS[kind]}) : null,
       el("div", {class: "rec-grid"}, fields.map(x => field(card, x))),
       el("button", {type: "button", class: "del", "aria-label": `Remove this ${label.toLowerCase()}`, title: "Remove", text: "✕"}),
-      el("div", {class: "man-check", "aria-live": "polite"}));
+      el("div", {class: "man-check", "aria-live": "polite"})));
     box.append(card);
     // the first date starts on the last record's, else today: records typed from one letter share it
     const first = card.querySelector("[data-f=date],[data-f=admit],[data-f=start]");

@@ -170,10 +170,10 @@ function renderPeriod() {
   const item = (k, text, note) => el("button", {type: "button", class: "menu-item", role: "menuitemradio", tabindex: "-1", "aria-checked": p === k, "data-period": k},
     text, note ? el("span", {class: "menu-note", text: note}) : null);
   const group = (label, items) => items.length ? el("div", {role: "group", "aria-label": label}, el("div", {class: "menu-head", "aria-hidden": "true", text: label}), ...items) : null;
-  moreList.replaceChildren(
+  moreList.replaceChildren(...present(   // a group with nothing in it is left out
     group("Since a milestone", MILESTONES.filter(m => m !== pm).map(m => item(msKey(m), "Since " + lcLabel(m.label), fmtD(dayTs(m.date))))),
     group("Calendar year", periodYears().map(y => item(y, y))),
-    el("div", {class: "menu-sep", role: "separator"}), item("custom", "Custom dates…"));
+    el("div", {class: "menu-sep", role: "separator"}), item("custom", "Custom dates…")));
   const m = p !== pk && msOf(p), picked = m ? "Since " + lcLabel(m.label) : isYearKey(p) ? p : p === "custom" ? "Custom dates" : "";
   moreBtn.replaceChildren(picked || "More…", el("span", {class: "menu-caret", "aria-hidden": "true", text: "▾"}));
   moreBtn.classList.toggle("on", !!picked);
