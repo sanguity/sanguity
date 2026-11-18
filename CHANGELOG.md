@@ -922,6 +922,11 @@ Everything on `main` so far; it becomes the first tagged release.
   tracking keep each mark with its words (● symptom, ◆ taken late, ○ ovulation test) where a phone wraps them. In the
   drawer's results the ? and ✎ beside a name sit on its line, the ? no longer 3 px low, and stay clear of the name
   above when it wraps. A lab in the Labs list with no latest value would have shown "text"; it shows nothing.
+- **The drawer over a question, a menu and the page** (#364): a phone turned while a question was open over the drawer
+  put the drawer, now a modal sheet, on top of it, hiding the question while it waited; the drawer now changes once
+  the question is answered. Escape in a menu opened over the drawer closes only the menu. While a dialog or the drawer
+  covers the page, the page behind no longer scrolls under the mouse wheel, so what focus goes back to is still on
+  screen. The sheet's grab handle shows in forced colours.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

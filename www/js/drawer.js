@@ -28,7 +28,11 @@ addEventListener("resize", drawerFit);
 function setWide(on) { drawer.classList.toggle("wide", on); drawerFit(); $("#dwide").setAttribute("aria-pressed", on); $("#dwide").dataset.tip = on ? "Narrower panel" : "Wider panel"; try { localStorage.setItem("ht-wide", on ? "1" : ""); } catch (e) {} }
 $("#dwide").onclick = () => setWide(!drawer.classList.contains("wide"));
 try { if (localStorage.getItem("ht-wide")) setWide(true); } catch (e) {}
-addEventListener("keydown", e => { if (e.key === "Escape" && !e.target.closest?.("dialog:not(#drawer)")) closeDrawer(); });   // not an ask() over it
+// not an ask() over it, nor a key something else took: a toast's, or a menu's or the rename box's (an open popover
+// that isn't the toasts or the tooltip; the browser closes it after this, #364)
+addEventListener("keydown", e => {
+  if (e.key === "Escape" && !e.defaultPrevented && !e.target.closest?.("dialog:not(#drawer)") && !document.querySelector(":popover-open:not([popover=manual])")) closeDrawer();
+});
 // modal, the browser would close it on any Escape: only that listener does, so a form in it (renaming) keeps its own
 drawer.addEventListener("cancel", e => e.preventDefault());
 function docFrame(html, h = 420, title = "The record as it was sent") {   // title: what a screen reader says of the frame (#202)
