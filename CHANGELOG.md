@@ -1013,6 +1013,11 @@ Everything on `main` so far; it becomes the first tagged release.
   empty row under whatever other record was being typed in. It's one kind among the others now: the page starts with
   its empty row, adding another kind before anything is typed into it puts it away, choosing Lab results brings it
   back, and removing its last row puts it away.
+- **Offline, a link that isn't followed says why, and only why** (#378): since #371 the panel's source links, a journal
+  photo's link and the "What is this test?" links kept their tip offline ("Open this import in the import history",
+  "Open it full size") beside a title saying they need the server: two tooltips that disagreed, on a link that did
+  nothing. Their tip and description are the reason now, with no title, and a test page link's name no longer says it
+  opens a new tab while it can't.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
