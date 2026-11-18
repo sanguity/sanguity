@@ -3701,6 +3701,41 @@ def main():
             check("…and its Undo puts it back on the server as it was, in the panel's list, the toast gone",
                   back_g[0] == '[{"name":"Migraine day (browser check)","symptoms":["Headache","Nausea","Light sensitivity"]}]' and "Headache, Nausea, Light sensitivity" in back_g[1]
                   and back_g[2] == 0, back_g)
+            # #367: put back next to its old neighbours, not at its old index: delete two, Undo them in reverse; and a
+            # group made since under its name is left as it is, said so, the toast gone
+            names_on_server = "api('profiles/1/settings').then(r => r.json()).then(j => ((j.journal || {}).groups || []).map(g => g.name))"
+            kept_groups = js("JSON.stringify(CFG.journal.groups)")
+            js("v => api('profiles/1/settings/journal.groups', {method: 'PUT', body: JSON.stringify({value: v})}).then(r => r.json()).then(applySettings)",
+               [{"name": n, "symptoms": ["Headache"]} for n in ("Alpha", "Beta", "Gamma")])
+            page.click("#dbody .btns button:text-is('Back')")
+            page.click("#journalHome .jgroup-btns button:text-matches('^Symptom groups')")
+            g_steps = []
+            for n in ("Alpha", "Beta"):
+                page.click(f"#dbody .jgroups button[aria-label='Delete {n}']")
+                page.wait_for_function(f"!CFG.journal.groups.some(g => g.name === '{n}')", timeout=10000)
+                g_steps.append(js(names_on_server))
+            for n in ("Beta", "Alpha"):
+                page.locator("#sgToasts .sg-toast", has_text=f"Deleted “{n}”").locator("button:text-is('Undo')").click()
+                page.wait_for_function(f"CFG.journal.groups.some(g => g.name === '{n}')", timeout=10000)
+                g_steps.append(js(names_on_server))
+            check("symptom groups (#367): two deleted, their Undos pressed in reverse: both back in their order, read from the server after each step",
+                  g_steps == [["Beta", "Gamma"], ["Gamma"], ["Beta", "Gamma"], ["Alpha", "Beta", "Gamma"]]
+                  and js("[...document.querySelectorAll('#dbody .jgroups b')].map(b => b.textContent)") == ["Alpha", "Beta", "Gamma"], g_steps)
+            page.click("#dbody .jgroups button[aria-label='Delete Beta']")
+            page.wait_for_function("!CFG.journal.groups.some(g => g.name === 'Beta')", timeout=10000)
+            page.click("#dbody .btns button:text-is('New group')")
+            page.fill("#dbody .jform input[type=text]", "beta")
+            page.fill("#dbody .jform textarea", "Nausea")
+            page.click("#dbody .jform button[type=submit]")
+            page.wait_for_function("CFG.journal.groups.some(g => g.name === 'beta') && !!document.querySelector('#dbody .jgroups-home')", timeout=10000)
+            page.locator("#sgToasts .sg-toast", has_text="Deleted “Beta”").locator("button:text-is('Undo')").click()
+            page.wait_for_function("document.querySelector('#dbody .edit-msg').textContent.includes('since')", timeout=10000)
+            check("…a group made since under its name is left as it is, said so, and the toast goes",
+                  js(names_on_server) == ["Alpha", "Gamma", "beta"] and js("document.querySelector('#dbody .edit-msg').textContent") == "A group called “Beta” was made since: it's left as it is."
+                  and not js("document.querySelector('#sgToasts .sg-toast')"), [js(names_on_server), js("document.querySelector('#dbody .edit-msg').textContent")])
+            js("v => api('profiles/1/settings/journal.groups', {method: 'PUT', body: JSON.stringify({value: v})}).then(r => r.json()).then(applySettings)", json.loads(kept_groups))
+            page.click("#dbody .btns button:text-is('Back')")
+            page.click("#journalHome .jgroup-btns button:text-matches('^Symptom groups')")
             page.click("#dbody .jgroups button:text-is('Log it')")
             settle(200)
             check("…logged in one go: one row a symptom, each with its own severity",
@@ -7272,6 +7307,32 @@ def main():
             page.click(undo_toast)
             page.wait_for_function(f"{sum_msg}.includes('changed since')", timeout=10000)
             check("…and leaves a setting changed again since as it is, said so", ticked() == first and "left as it is" in js(sum_msg), [ticked(), js(sum_msg)])
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # #367: an Undo pressed after switching profile (Settings doesn't reload) puts back its own profile's setting
+            # only; the other profile's section keeps its saved values and a change not saved yet, a toast saying it
+            page.check(box(1))
+            page.click("#sec-summary .set-foot button:text-is('Save')")
+            page.wait_for_function(f"{sum_msg}.startsWith('Saved')", timeout=10000)
+            mine = ticked()
+            ticked2 = lambda: js(api_get, "profiles/2/settings")["summary"]["ticked"]
+            other_had = ticked2()
+            js("document.getElementById('sec-summary').dataset.was = 1")   # (drawn again for the other profile: a new section)
+            page.select_option("#profile", "2")
+            page.wait_for_function("PID === 2 && !!document.querySelector(\"#sec-summary:not([data-was]) [data-key='summary.ticked'] input[type=checkbox]\")", timeout=10000)
+            page.check(box(2))
+            p2_edit = js("SET_ITEMS['summary.ticked'].value()")
+            page.click(undo_toast)
+            page.wait_for_function("[...document.querySelectorAll('#sgToasts .sg-toast-text')].some(t => t.textContent.startsWith('My records: Undone'))", timeout=10000)
+            p2_after = [ticked(), ticked2(), js("SET_ITEMS['summary.ticked'].value()") == p2_edit, js("JSON.stringify(SET_ITEMS['summary.ticked'].st.value)"),
+                        js("document.getElementById('sec-summary').hasAttribute('data-dirty')"), js(sum_msg)]
+            check("…an Undo pressed after switching profile puts back its own profile's setting only; the profile shown keeps its saved values "
+                  "and its change not saved yet, a toast saying what was undone where (#367)",
+                  len(mine) == 2 and p2_after[0] == first and p2_after[1] == other_had and p2_after[2] and p2_after[3] == json.dumps(other_had, separators=(",", ":"))
+                  and p2_after[4] and "Undone" not in p2_after[5], [mine, p2_after])
+            page.click("#sec-summary .set-foot button:text-is('Discard changes')")
+            js("document.getElementById('sec-summary').dataset.was = 1")
+            page.select_option("#profile", "1")
+            page.wait_for_function("PID === 1 && !!document.querySelector('#sec-summary:not([data-was])')", timeout=10000)
             js(api_put, ["profiles/1/settings/summary.ticked", []])
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             # #362: at 375 px, toasts with an Undo up at the foot of the screen, Tab through all of Settings: nothing that
@@ -8032,6 +8093,38 @@ def main():
             check("…kept in one unit each (weight in kg, as typed in lb), with who set it and when",
                   stored["weight"]["high"] == 77.11 and stored["weight"]["unit"] == "lb" and stored["bp"]["by"] == "Dr. Rowan Vale (fictional)"
                   and stored["bp"]["on"] == "2026-06-02" and stored["bp"]["sysHigh"] == 125, stored)
+            # #367: the Clear's Undo, pressed after a target was entered again, leaves the new one and says so (the
+            # server's read after each step); one pressed after switching profile changes only its own profile on the
+            # server, the page shown keeping its own values, a toast saying what was undone where
+            spo2_of = lambda pid_: js(f"fetch('api/profiles/{pid_}/person', {{cache: 'no-store'}}).then(r => r.json()).then(j => (j.targets || {{}}).spo2 || null)")
+            steps = [spo2_of(1)]
+            t_save("spo2", {"low": "93", "high": "99"}, "Saved the target for blood oxygen")
+            steps.append(spo2_of(1))
+            page.locator("#sgToasts .sg-toast", has_text="Cleared the target for blood oxygen").locator("button:text-is('Undo')").click()
+            page.wait_for_function("document.getElementById('targetsMsg').textContent.includes('since')", timeout=10000)
+            steps.append(spo2_of(1))
+            check("…a Clear's Undo after a target was entered again leaves the new one, said so, and the toast goes (#367)",
+                  steps[0] is None and steps[1] == steps[2] and steps[2]["low"] == 93 and steps[2]["high"] == 99
+                  and js("document.getElementById('targetsMsg').textContent") == "A target for blood oxygen was entered since: it's left as it is."
+                  and not js("document.querySelector('#sgToasts .sg-toast')"), [steps, js("document.getElementById('targetsMsg').textContent")])
+            page.click("#tgt-spo2-clear")
+            page.wait_for_function("document.getElementById('targetsMsg').textContent === 'Cleared the target for blood oxygen.'", timeout=10000)
+            other_before = js("fetch('api/profiles/2/person', {cache: 'no-store'}).then(r => r.json()).then(j => JSON.stringify(j.targets || {}))")
+            page.select_option("#profile", "2")
+            page.wait_for_selector("#about[data-profile='2']", timeout=10000)
+            shown2 = js("document.getElementById('targetsBody').innerText")
+            page.locator("#sgToasts .sg-toast", has_text="Cleared the target for blood oxygen").locator("button:text-is('Undo')").click()
+            page.wait_for_function("[...document.querySelectorAll('#sgToasts .sg-toast-text')].some(t => t.textContent.startsWith('My records: Undone'))", timeout=10000)
+            switched = [spo2_of(1), js("fetch('api/profiles/2/person', {cache: 'no-store'}).then(r => r.json()).then(j => JSON.stringify(j.targets || {}))") == other_before,
+                        js("document.getElementById('about').dataset.profile"), js("document.getElementById('targetsBody').innerText") == shown2,
+                        js("[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent)")]
+            check("…an Undo pressed after switching profile puts it back in its own profile only, the profile shown kept as it is, a toast saying it (#367)",
+                  switched[0] == steps[2] and switched[1] and switched[2] == "2" and switched[3]
+                  and switched[4] == ["My records: Undone: the target for blood oxygen is back."], switched)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            js("fetch('api/profiles/1/person', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({targets: {spo2: null}})})")
+            page.select_option("#profile", "1")
+            page.wait_for_selector("#about[data-profile='1']", timeout=10000)
             t234_bad, t234_axe = [], []
             for width in (1400, 375):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
@@ -8817,6 +8910,22 @@ def main():
             page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 3", timeout=10000)
             hs_back = js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")["heights"]
             check("…and its Undo adds it back as it was", hs_back == before_h, [hs_back, before_h])
+            # #367: a Remove's Undo, pressed after another height was written down on that day, leaves that one, said so
+            h_day = js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")["heights"][1]["date"]
+            page.click(f"{hist}:nth-child(2) button")
+            page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 2", timeout=10000)
+            page.fill("#heightDate", h_day)
+            page.check("#about input[name=heightUnit][value=cm]")
+            page.fill("#heightCm", "136")
+            page.click("#heightAdd")
+            page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 3", timeout=10000)
+            page.locator("#sgToasts .sg-toast", has_text="Removed the height").locator("button:text-is('Undo')").click()
+            page.wait_for_function("document.getElementById('aboutMsg').textContent.includes('since')", timeout=10000)
+            hs_since = js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")["heights"]
+            check("…a Remove's Undo after another height was written down that day leaves the new one, said so, and the toast goes (#367)",
+                  [h["cm"] for h in hs_since if h["date"] == h_day] == [136] and len(hs_since) == 3
+                  and page.inner_text("#aboutMsg").endswith("was written down since: it's left as it is.")
+                  and not js("document.querySelector('#sgToasts .sg-toast')"), [hs_since, page.inner_text("#aboutMsg")])
             page.click(f"{hist}:nth-child(2) button")
             page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 2", timeout=10000)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")

@@ -952,6 +952,13 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The static files' budget is 400 KB** (`tests/test_performance.py`, `docs/performance.md`): Redesign 3's icon sprite
   (10.5 KB, 57 icons) and its components took the stylesheets from 140 to 156 KB, 393.6 KB in all, past the 390 KB
   left for them in #328; 6.4 KB of room is left, and more has to be argued for.
+- **An Undo that stays puts back only what's still as its change left it** (#367): since #362 an Undo can come long
+  after its change. A target's Clear and a height's Remove wrote the old one back over one entered since; they leave
+  the new one now, and say so. On Sharing and Settings, which don't reload when you switch profile, an Undo from the
+  first profile did nothing (Sharing) or showed its value as saved in the other profile's section (Settings); it now
+  changes its own profile only, the page shown keeping its own values, and a toast says what was undone where. A
+  symptom group's Undo goes back next to its old neighbours, so two undone in reverse keep their order, and one made
+  since under its name is left as it is, said so, as a Labs view's is.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
