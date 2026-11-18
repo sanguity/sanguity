@@ -548,6 +548,12 @@ class Manual(unittest.TestCase):
         self.assertEqual(self.watch(pid)["bp_readings"], [["2026-06-01T21:10:00", 131, 82, None, None, "Typed in"]])   # once
         hist = self.robin.get(f"/api/profiles/{pid}/imports").json()["imports"]
         self.assertEqual([h["counts"].get("readings") for h in hist], [1, 1])   # the history says what each save brought
+        self.assertEqual([(h["origin"], h["by"]) for h in hist], [("manual", "robin")] * 2)   # who typed it in, not "command line" (#325)
+        db = dbm.connect()   # a typed-in import from before imports.created_by (or its account removed): no name, not "command line"
+        db.execute("UPDATE imports SET created_by=NULL WHERE id=?", (r1.json()["import_id"],))
+        db.close()
+        hist = {h["id"]: h for h in self.robin.get(f"/api/profiles/{pid}/imports").json()["imports"]}
+        self.assertEqual((hist[r1.json()["import_id"]]["by"], hist[r2.json()["import_id"]]["by"]), (None, "robin"))
         self.robin.post(f"/api/profiles/{pid}/imports/{r2.json()['import_id']}/undo", headers=H)
         self.assertEqual(self.watch(pid)["bp_readings"], [["2026-06-01T21:10:00", 141, 92, None, None, "Typed in"]])
         self.robin.post(f"/api/profiles/{pid}/imports/{r1.json()['import_id']}/undo", headers=H)

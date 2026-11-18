@@ -695,6 +695,12 @@ SCHEMA = [
     ALTER TABLE edits_34 RENAME TO edits;
     CREATE INDEX edits_target ON edits(profile_id, target);
     """,
+    # version 35: who typed an import's records in (#325; routes_manual.py), on the import itself. A typed-in save has
+    # no job, whose created_by names an upload's account; NULL for every other origin, for imports typed in before
+    # this, and once the account is removed.
+    """
+    ALTER TABLE imports ADD COLUMN created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    """,
 ]
 
 

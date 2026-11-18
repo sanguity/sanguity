@@ -324,7 +324,7 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
             counts["heights_set"] = len(heights)   # put in About this person; "heights" is an export's offered ones (#223)
         if preview.adds_anything(new) or watch:   # heights alone aren't an import: nothing for undo to take away
             keepdocs, counts["documents"] = prof.index_documents(db, pid, new["details"], lambda url: files.get(url))
-            iid = records.store(db, pid, new, NAME, fmt=NAME)
+            iid = records.store(db, pid, new, NAME, fmt=NAME, by=s["id"])   # who typed it in, for the history (#325)
             prof.link_documents(db, iid, keepdocs)
             if watch:   # last: its file is written once everything else is in the transaction
                 w = watch_store.save_import(db, pid, watch, import_id=iid)

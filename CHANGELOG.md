@@ -680,6 +680,8 @@ Everything on `main` so far; it becomes the first tagged release.
   right under the checkbox, not below the account form, where a phone on its side didn't show them.
 - **The visit summary preview fits a phone** (#324): its tables' cells wrap on a phone, so a date beside a long test
   name isn't cut at the card's edge.
+- **Import history names who typed records in** (#325): it said "command line"; the import now keeps the account that
+  typed it in, and one typed in before this shows no name. Schema version 35 (`imports.created_by`).
 - **Rows of buttons have room under them again** (#309): since #246, Admin → Backups' "Back up now" sat on the
   Schedule heading and its Save on "Check a backup", and Sharing's summary buttons and activity filters touched what
   followed. Every row of buttons on Sources, Sharing, Settings, Account and Admin is 8 px from what's above and below it.
