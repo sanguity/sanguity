@@ -479,6 +479,28 @@ async function jStoreGroups(groups, msg) {
     return true;
   } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return false; }
 }
+/* a deleted group's Undo (#367, as a Labs view's, #359): put back into the groups as they are now on the server, next
+   to its old neighbours (before the group that followed it, or after the one before it, of those still there); one
+   made since under its name is left as it is, said so. order: the groups' names it was among. */
+async function jPutBack(g, order, back) {
+  const r = await api(`profiles/${PROFILE.id}/settings`);
+  if (!r.ok) throw new Error(`the server answered ${r.status}`);
+  const j = await r.json(), now = Array.isArray(j.journal?.groups) ? j.journal.groups : [];
+  const shown = () => drawer.classList.contains("open") && $("#dbody .jgroups-home");   // the groups, if they're still what the panel shows
+  if (now.some(x => x.name.toLowerCase() === g.name.toLowerCase())) {
+    applySettings(j);   // drawn as they are
+    journalHomeCard();
+    const text = `A group called “${g.name}” was made since: it's left as it is.`;
+    if (shown()) journalGroups(back, text); else toast(text);
+    return;
+  }
+  const i = order.indexOf(g.name), at = n => now.findIndex(x => x.name === n);
+  const after = order.slice(i + 1).map(at).find(k => k >= 0), before = order.slice(0, i).reverse().map(at).find(k => k >= 0);
+  const next = [...now];
+  next.splice(after ?? (before == null ? next.length : before + 1), 0, g);
+  if (!await jStoreGroups(next, shown() ? $("#dbody .edit-msg") : null)) throw new Error("it couldn't be saved");
+  if (shown()) journalGroups(back, `Undone: “${g.name}” is back.`);
+}
 function journalGroups(back, said, quiet) {   // quiet: said in a toast, so only shown here (sayIn's say: false)
   state.selEv = null;
   const groups = jGroups(), w = jCanWrite();
@@ -491,18 +513,12 @@ function journalGroups(back, said, quiet) {   // quiet: said in a toast, so only
         el("button", {class: "btn primary", type: "button", text: "Log it", "aria-label": `Log ${g.name}`, onclick: () => journalGroupForm(g, () => journalGroups(back))}),
         el("button", {class: "btn", type: "button", text: "Edit", "aria-label": `Edit ${g.name}`, onclick: () => journalGroupEdit(i, () => journalGroups(back))}),
         el("button", {class: "btn", type: "button", text: "Delete", "aria-label": `Delete ${g.name}`, onclick: async () => {
-          // at once, with an Undo that puts it back where it was among the groups there are then (#363; it asked first
-          // before): the entries logged with it stay as they are either way
-          const said = `Deleted “${g.name}”. The entries logged with it stay.`;
+          // at once, with an Undo that puts it back next to its old neighbours among the groups there are then (#363,
+          // #367; it asked first before): the entries logged with it stay as they are either way
+          const said = `Deleted “${g.name}”. The entries logged with it stay.`, order = groups.map(x => x.name);
           if (!await jStoreGroups(groups.filter((_, k) => k !== i), msg)) return;
           journalGroups(back, said, true);
-          toast(said, {action: "Undo", onAction: async () => {
-            const now = jGroups().slice();
-            now.splice(Math.min(i, now.length), 0, g);
-            const shown = () => drawer.classList.contains("open") && $("#dbody .jgroups-home");   // the groups, if they're still what the panel shows
-            if (!await jStoreGroups(now, shown() ? $("#dbody .edit-msg") : null)) throw new Error("it couldn't be saved");
-            if (shown()) journalGroups(back, `Undone: “${g.name}” is back.`);
-          }});
+          toast(said, {action: "Undo", onAction: () => jPutBack(g, order, back)});
         }})) : null))) : el("p", {class: "empty", text: w ? "No groups yet." : "No one has made a symptom group for this profile."}),
     el("div", {class: "btns"}, w ? el("button", {class: "btn primary", type: "button", text: "New group", onclick: () => journalGroupEdit(-1, () => journalGroups(back))}) : null,
       el("button", {class: "btn", type: "button", text: "Back", onclick: () => back()})), msg);

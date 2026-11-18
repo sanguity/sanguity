@@ -131,8 +131,9 @@ const tgtKey = (label = "Your target, as your care team gave it") => el("span", 
 
 /* ---- Sharing → About this person: the editor (owners and editors), or the list (viewers) */
 /* p: the profile; a: GET person's answer; pref: this person's Units choices (settings/user units); send(path, method,
-   payload, said, focusId, quiet) as sharing.js's, true once done */
-function targetsCard(p, a, pref, send) {
+   payload, said, focusId, quiet) as sharing.js's, true once done; undo(left, path, method, payload, said, since,
+   focusId) sharing.js's, for an Undo (#367) */
+function targetsCard(p, a, pref, send, undo) {
   const T = a.targets || {}, edit = a.can_change, box = el("div", {class: "tgt-edit"});
   const unitFor = k => {   // the unit each is typed in: the person's Units choice, else as it was typed, else the first
     const u = pref || {}, typed = (T[k] || {}).unit;
@@ -168,12 +169,12 @@ function targetsCard(p, a, pref, send) {
       el("div", {class: "tgt-who"}, el("label", {class: "about-num"}, "Set by (optional)", by), el("label", {class: "about-num"}, "On (optional)", on)),
       el("div", {class: "about-row"}, el("button", {class: "btn", type: "submit", id: id + "-save", text: t ? "Save changes" : "Save target"}),
         t ? el("button", {class: "btn small", type: "button", id: id + "-clear", text: "Clear", "aria-label": `Clear the target for ${tgtLower(k)}`,
-          onclick: async () => {   // at once, with an Undo that enters it again as it was, in the unit it was typed in (#263)
+          onclick: async () => {   // at once, with an Undo that enters it again as it was, in the unit it was typed in (#263), if none was since (#367)
             const said = `Cleared the target for ${tgtLower(k)}.`, was = k === "bp" ? {...t} : {...t, low: tgtConv(k, t.low, t.unit), high: tgtConv(k, t.high, t.unit)};
             if (await send(`profiles/${p.id}/person`, "PUT", {targets: {[k]: null}}, said, id + "-hd", true))
-              toast(`${said} It was ${now}.`, {action: "Undo", onAction: async () => {
-                if (!await send(`profiles/${p.id}/person`, "PUT", {targets: {[k]: was}}, `Undone: the target for ${tgtLower(k)} is back.`, id + "-hd"))
-                  throw new Error("it couldn't be saved"); }}); }}) : null));
+              toast(`${said} It was ${now}.`, {action: "Undo", onAction: () => undo(got => !(got.targets || {})[k],   // none entered since
+                `profiles/${p.id}/person`, "PUT", {targets: {[k]: was}}, `Undone: the target for ${tgtLower(k)} is back.`,
+                `A target for ${tgtLower(k)} was entered since: it's left as it is.`, id + "-hd")}); }}) : null));
     box.append(el("section", {class: "tgt-one", "aria-labelledby": id + "-hd"}, head, said, form));
   }
   return el("div", {},

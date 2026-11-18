@@ -487,8 +487,9 @@ async function stored(base) {
 /* a save's Undo (#263, #359): each setting it saved goes back to what it was (the default it came from taken off
    again, where a profile's setting can be; otherwise the value it had), but only one that still holds what this save
    wrote: one changed again since is left, and said to be. The section is drawn again as saved, unless it has changes
-   not saved: those are kept, its other settings shown as they are now. */
-async function undoSave(base, reload, sec, was) {
+   not saved: those are kept, its other settings shown as they are now. pid: the profile it saved (PID then): another
+   picked since keeps its page as it is, and a toast says what was undone in the first (#367). */
+async function undoSave(base, reload, sec, was, pid) {
   const now = await stored(base), back = [], since = [];
   for (const w of was) {
     if (!w.wrote || !now[w.key] || !same(now[w.key].value, w.wrote.value)) { since.push(w.label); continue; }
@@ -499,6 +500,7 @@ async function undoSave(base, reload, sec, was) {
   }
   const text = [back.length ? `Undone: ${quoted(back.map(w => w.label))} ${back.length === 1 ? "is" : "are"} as before.` : "",
     since.length ? `${quoted(since)} ${since.length === 1 ? "was" : "were"} changed since, so ${since.length === 1 ? "it's" : "they're"} left as ${since.length === 1 ? "it is" : "they are"}.` : ""].join(" ").trim();
+  if (PID !== pid) { toast(`${ME.profiles.find(x => x.id === pid)?.name || "The other profile"}: ${text}`); return; }
   const card = () => document.getElementById("sec-" + sec.id);
   if (!card()?.hasAttribute("data-dirty")) { await reload({section: sec.id, text}, sec.id); return; }
   // changes not saved in it: kept, each setting's saved value now the one put back (so one changed back to it is
@@ -545,6 +547,7 @@ function sectionCard(sec, opts = {}) {
   save.onclick = async () => {
     const todo = items.filter(it => it.dirty());
     if (!todo.length) return;
+    const pid = PID;
     save.disabled = discard.disabled = true;
     sayIn(msg, "Saving…");
     const done = [], was = [];
@@ -569,7 +572,7 @@ function sectionCard(sec, opts = {}) {
     // what the server keeps now (as it stored it), for the Undo to tell whether a setting was changed again since
     const kept = await stored(base).catch(() => null);
     if (kept) for (const w of was) if (kept[w.key]) w.wrote = kept[w.key];
-    toast(said, {action: "Undo", onAction: () => undoSave(base, reload, sec, was)});
+    toast(said, {action: "Undo", onAction: () => undoSave(base, reload, sec, was, pid)});
   };
   discard.onclick = () => {
     const fresh = sectionCard(sec, {...opts, note: "Changes discarded: back as saved."});

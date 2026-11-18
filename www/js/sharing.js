@@ -348,6 +348,18 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
         return true;
       } catch (e) { fail(e, msg); return false; }
     }
+    /* an Undo (#367): what a change took away put back, on p's own profile, only if what's there now is still what the
+       change left (left(answer), on GET person's): otherwise it's left as it is, and since says so. Drawn and said as
+       send() does while p is the profile shown; with another shown, that page stays as it is and a toast says it.
+       Throws when the server refuses (the toast says so, and stays). */
+    async function undo(left, path, method, payload, said, since, focus, msg = $("#aboutMsg")) {
+      let got = await call(`profiles/${p.id}/person`), text = since;
+      if (left(got)) { got = await call(path, method, payload); text = said; }
+      if (P?.id !== p.id) { toast(`${p.name}: ${text}`); return; }
+      showAbout(P, got);
+      for (const m of [$("#aboutMsg"), $("#targetsMsg")]) sayIn(m, m === msg ? text : "");
+      (focus && document.getElementById(focus) || $("#aboutHeightHd")).focus();
+    }
     const parts = [];
     // the birth date and sex
     if (edit) {
@@ -414,12 +426,12 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       el("thead", {}, el("tr", {}, ...["Date", "Height", ""].map(h => el("th", {text: h})))),
       el("tbody", {}, ...mine.map(h => el("tr", {}, el("td", {text: aboutDay(h.date)}), el("td", {}, hText(h)),
         el("td", {class: "acts"}, edit ? el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove the height on ${aboutDay(h.date)}`,
-          onclick: async () => {   // at once, with an Undo that adds it back as it was (#263; it asked first before)
+          onclick: async () => {   // at once, with an Undo that adds it back as it was (#263; it asked first before), if none was since (#367)
             const said = `Removed the height on ${aboutDay(h.date)}: ${heightText(h.cm, heightUnit(HEIGHT_PREF, h.unit))}.`;
             if (await send(`profiles/${p.id}/person/heights/${h.date}`, "DELETE", undefined, said, null, $("#aboutMsg"), true))
-              toast(said, {action: "Undo", onAction: async () => {
-                if (!await send(`profiles/${p.id}/person/heights`, "POST", {date: h.date, unit: h.unit, cm: h.cm}, `Undone: the height on ${aboutDay(h.date)} is back.`))
-                  throw new Error("it couldn't be added back"); }}); }}) : null)))))
+              toast(said, {action: "Undo", onAction: () => undo(got => !got.heights.some(x => x.date === h.date),   // none written down on that day since
+                `profiles/${p.id}/person/heights`, "POST", {date: h.date, unit: h.unit, cm: h.cm}, `Undone: the height on ${aboutDay(h.date)} is back.`,
+                `A height on ${aboutDay(h.date)} was written down since: it's left as it is.`)}); }}) : null)))))
       : el("p", {class: "muted", id: "aboutNoHeight", text: "No height written down yet."}));
     // the heights a clinic recorded: beside the history, never in it until someone adds one
     if (a.recorded.length) {
@@ -439,7 +451,8 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
         all ? el("div", {class: "about-row"}, all) : null);
     }
     $("#aboutBody").replaceChildren(...parts.filter(Boolean));
-    $("#targetsBody").replaceChildren(targetsCard(p, a, UNITS_PREF, (path, method, payload, said, focus, quiet) => send(path, method, payload, said, focus, $("#targetsMsg"), quiet)));   // #234
+    $("#targetsBody").replaceChildren(targetsCard(p, a, UNITS_PREF, (path, method, payload, said, focus, quiet) => send(path, method, payload, said, focus, $("#targetsMsg"), quiet),
+      (left, path, method, payload, said, since, focus) => undo(left, path, method, payload, said, since, focus, $("#targetsMsg"))));   // #234
     $("#about").dataset.profile = p.id;   // whose details are drawn (the browser check waits for it)
   }
 
