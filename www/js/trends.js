@@ -135,7 +135,7 @@ function chartCard(s) {
     rangeNote(s, pts, showTable)));
   { const v = vitalLink(s); if (v) card.append(v); }   // a vital's readings at home, on Body and activity (#180, health.js)
   if (showTable) {
-    card.append(el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": `${nice(s.name)}, as a table`}, el("table", {class: "data"}, el("thead", {}, el("tr", {}, ["Date", "Value", s.watch ? "Detail" : "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
+    card.append(scrollBox({class: "tablewrap", "aria-label": `${nice(s.name)}, as a table`}, el("table", {class: "data"}, el("thead", {}, el("tr", {}, ["Date", "Value", s.watch ? "Detail" : "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
       el("tbody", {}, [...pts].reverse().map(p => { const [a, b] = readText(s, p); return el("tr", {}, el("td", {text: s.watch ? fmtD(p.ts) : fmtDT(p.ts)}), el("td", {class: p[4] ? "abn" : "", text: a + (!s.watch && b ? ` (reported ${ucOrig(s, p)})` : "")}),
         el("td", {text: (s.watch ? b : p[2] != null || p[3] != null ? `${p[2] ?? ""} – ${p[3] ?? ""}${p.rs === "settings" ? " (" + RANGE_FROM_SETTINGS + ")" : ""}` : "") + (p[6] ? ` · ${p[6] === "Clinic" ? "clinic visit" + (p.org ? " (" + p.org + ")" : "") : srcName(p[6])}` : "") + (p.same ? " · same result from " + p.same.length + " more source" + (p.same.length > 1 ? "s" : "") : "")}), el("td", {class: p[4] ? "abn" : ""}, ...flagNodes(p[4]))); })))));   // the mark and the word, not colour alone (#60)
     const src = seriesSource(s); if (src) card.append(src);

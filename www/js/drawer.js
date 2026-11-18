@@ -36,7 +36,7 @@ function docFrame(html, h = 420, title = "The record as it was sent") {   // tit
 }
 function resultTable(rows) {
   if (!rows || !rows.length) return null;
-  return el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": "Results", style: {maxHeight: "none"}}, el("table", {class: "data"},
+  return scrollBox({class: "tablewrap", "aria-label": "Results", style: {maxHeight: "none"}}, el("table", {class: "data"},
     el("thead", {}, el("tr", {}, ["Component", "Value", "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
     el("tbody", {}, rows.map(([n, v, u, rr, f], i) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", title: "Show trend", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
       el("td", {title: renamedTitle("lab", n)}, SERIES.some(s => s.name === n && s.n) ? el("button", {class: "cell-btn", type: "button", text: nice(n)}) : nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
@@ -122,7 +122,7 @@ function openEvent(e) {
     body.append(el("dl", {class: "kv"}, ...[["Insurer", d.insurer], ["Type", d.kind], ["Provider", d.provider], ["Drug", d.drug], ["Claim #", d.claimId], ["Status", st],
       ["Network", (d.network || "").replace(/_/g, " ").toLowerCase()], ["Billed", usd(d.billed)], ["Plan paid", usd(d.paid)], ["Your share", usd(d.owe)]]
       .filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v, style: k === "Status" && /denied/.test(st) ? {color: "var(--crit)", fontWeight: "var(--fw-semibold)"} : null})])));
-    if (d.lines && d.lines.length) body.append(el("div", {class: "sect", text: "Services billed"}), el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": "Services billed", style: {maxHeight: "none"}}, el("table", {class: "data"},
+    if (d.lines && d.lines.length) body.append(el("div", {class: "sect", text: "Services billed"}), scrollBox({class: "tablewrap", "aria-label": "Services billed", style: {maxHeight: "none"}}, el("table", {class: "data"},
       el("thead", {}, el("tr", {}, ["Date", "Service", "Code", "Billed"].map(h => el("th", {text: h})))),
       el("tbody", {}, d.lines.map(l => el("tr", {}, el("td", {text: recordDate(l.date) || ""}), el("td", {}, l.desc || "", ...(l.denied || []).map(x => el("div", {style: {color: "var(--crit)", fontSize: "var(--fs-2)"}, text: "Denied: " + x}))),
         el("td", {text: l.code || ""}), el("td", {text: l.billed ? usd(l.billed) : ""})))))));

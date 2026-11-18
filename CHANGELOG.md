@@ -801,6 +801,10 @@ Everything on `main` so far; it becomes the first tagged release.
   "03 since 2026" together; "as of" is kept whole, with the line free to break before its date.
 - **Milestones and cursors in forced colours** (#341): against a contrast theme opposite to the app's, they're drawn in
   the system's colours, not faintly in the app's.
+- **A table that doesn't scroll is no tab stop** (#340): since #335 every table's box was a tab stop and a region
+  landmark whether or not it scrolled, so at 1400 px Costs' HSA and FSA, Prescriptions and Claims were extra stops
+  with nothing hidden. A table's box is a named region in the Tab order only while it scrolls, sideways or down, and
+  changes as the window or its rows do; the shared page's tables and the share links' list work the same way.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

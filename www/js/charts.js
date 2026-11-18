@@ -174,7 +174,7 @@ function viewSeg(key, what, redraw, graphic = "Chart") {
    named by its columns (#202) */
 function chartTable(heads, rows, cls = "") {
   const td = c => Array.isArray(c) ? el("td", {class: c[1] ? "abn" : null}, c[0], c[1] ? " " : null, ...flagNodes(c[1], c[2])) : el("td", {text: c ?? ""});
-  return el("div", {class: "tablewrap chart-table", tabindex: 0, role: "region", "aria-label": `${heads.slice(1).join(", ")} by ${heads[0].toLowerCase()}`}, el("table", {class: "data " + cls},
+  return scrollBox({class: "tablewrap chart-table", "aria-label": `${heads.slice(1).join(", ")} by ${heads[0].toLowerCase()}`}, el("table", {class: "data " + cls},
     el("thead", {}, el("tr", {}, heads.map(h => el("th", {scope: "col", text: h})))),
     el("tbody", {}, rows.map(r => el("tr", {}, r.map(td))))));
 }

@@ -21,7 +21,7 @@ $("#theme").onclick = () => {
 /* a table that scrolls sideways inside its card on a narrow screen, never the page */
 function shTable(heads, rows, empty, cls = "") {   // cls "measures": stays a table on a phone (#225)
   if (!rows.length) return el("p", {class: "muted", text: empty});
-  return el("div", {class: "share-scroll", tabindex: 0, role: "region", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
+  return scrollBox({class: "share-scroll", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
     el("thead", {}, el("tr", {}, ...heads.map(h => el("th", {text: h})))),
     el("tbody", {}, ...rows.map(r => el("tr", {}, ...r.map(c => c && c.nodeType ? el("td", {}, c) : el("td", {text: c == null ? "" : String(c)})))))));
 }

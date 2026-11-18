@@ -63,7 +63,7 @@ function medLogSection(m) {
   if (ds.length) {
     out.push(el("p", {class: "dose-week", text: "This week: " + doseSaid(doseCounts(thisWeek(ds)))}));
     const weeks = doseWeeks(ds).slice(0, 8);
-    out.push(el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": "Doses logged, week by week", style: {maxHeight: "none"}},
+    out.push(scrollBox({class: "tablewrap", "aria-label": "Doses logged, week by week", style: {maxHeight: "none"}},
       el("table", {class: "data doseweeks"}, el("thead", {}, el("tr", {}, ["Week of", "Logged", "Taken", "Of them late", "Skipped"].map(h => el("th", {scope: "col", text: h})))),
         el("tbody", {}, weeks.map(w => el("tr", {}, el("td", {text: fmtD(dayTs(w.week))}), el("td", {text: w.logged}), el("td", {text: w.taken}),
           el("td", {text: w.late}), el("td", {text: w.skipped})))))));
