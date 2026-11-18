@@ -87,7 +87,7 @@ if (/\/(login|setup)\.html$/.test(location.pathname)) { SgOffline.forget(); forg
     // the time it was loaded in this person's format: dates.js comes after this file, so once the page's scripts have run
     if (document.readyState === "loading") await new Promise(r => document.addEventListener("DOMContentLoaded", r, {once: true}));
     await datesReady();
-    msg.textContent = c ? `On. Kept: ${c.profile.name}'s records, loaded ${fmtDT(c.loaded)}.`
+    msg.textContent = c ? `On. Kept: the records in ${c.profile.name}, loaded ${fmtDT(c.loaded)}.`
       : "On. Open your records once and they'll be kept for offline viewing.";
   };
   input.checked = SgOffline.on();

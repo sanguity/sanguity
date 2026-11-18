@@ -113,7 +113,7 @@
     have("recordsHave", done.records, `${P.name} has records now, from ${n} import${n === 1 ? "" : "s"}. Add more any time under Sources.`);
     have("phoneHave", done.phone, "A phone is set up for this profile. Its readings appear on Body and activity once it sends some.");
     $("#doneSays").textContent = done.records
-      ? `${P.name}'s records are in. The Overview shows the latest of each key lab, anything flagged outside its reference range, and what happened most recently.`
+      ? `${P.name} has records now. The Overview shows the latest of each key lab, anything flagged outside its reference range, and what happened most recently.`
       : `${P.name} has no records yet, so the Overview starts empty. It fills in as records come in: Add, in the top bar, brings them in any time.`;
     drawList();
   }

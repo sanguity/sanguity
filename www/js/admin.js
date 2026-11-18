@@ -229,7 +229,7 @@ async function loadOwnerless() {
         const who = (pick.value || other.value).trim();
         if (!who) return;
         if (who.toLowerCase() === ME.user.username.toLowerCase() &&
-            !await ask({title: `Own ${p.name} yourself?`, message: `This gives you access to ${p.name}'s records.`, action: "Make me owner"})) return;
+            !await ask({title: `Own ${p.name} yourself?`, message: `This gives you access to the records in ${p.name}.`, action: "Make me owner"})) return;
         try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); say("#userMsg", `${who} now owns ${p.name}.`); loadOwnerless(); }
         catch (e) { say("#userMsg", e.message, true); }
       }});
