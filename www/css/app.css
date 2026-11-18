@@ -1303,7 +1303,12 @@ html:has(.sets section[data-dirty]){scroll-padding-bottom:72px}
 .cell-btn:hover{text-decoration:underline}
 th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .rename-btn{min-width:24px;min-height:24px;margin-top:-5px;margin-bottom:-5px}   /* the ✎: a 24 px target, the line as before (2.5.8) */
-@media (max-height:500px){ header{position:static} html{scroll-padding-top:8px} }   /* zoomed in a long way, or a phone on its side: the page gets the room (1.4.10) */
+/* zoomed in a long way, or a phone on its side: the page gets the room (1.4.10). The bar scrolls with the page, so
+   what stuck under it sticks at the top instead (#308): the Timeline's month headings and Settings' sidebar */
+@media (max-height:500px){ header{position:relative} html{scroll-padding-top:8px} .month{top:0} main.sets.with-nav>.set-nav{top:8px} }
+/* and on a phone the bar's menus open under the bar where it is now, not where it would be stuck (--bar-h): placed
+   from the bar (positioned, above), the screen's width 8 px in as in #244, scrolling with it */
+@media (max-height:500px) and (max-width:700px){ header.topbar .menu{position:static} header.topbar .menu-list{position:absolute;top:calc(100% + 6px)} }
 @media (forced-colors:active){
   .btn.primary,.btn.danger,.empty-state .btn.empty-next{border:1px solid ButtonText}
   .menu-item:focus-visible,.cell-btn:focus-visible{outline-color:Highlight}

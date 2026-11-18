@@ -1405,6 +1405,21 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; scrollTo(0, 0); }", theme_before)
             check("…its month headings stick under the top bar as the list scrolls, readable, in light and dark (#247)",
                   all(v and v[1] and v[2] >= 4.5 for v in months.values()), months)
+            # #308: under 500 px tall the bar doesn't stick, and a heading stuck --bar-h down the screen (98 px at 667×375)
+            # with rows scrolling above it; there it sticks at the top
+            size_before = page.viewport_size
+            page.set_viewport_size({"width": 667, "height": 375})
+            settle(200)
+            js("(() => { const m = document.querySelectorAll('#list .month')[1]; scrollTo(0, m.getBoundingClientRect().top + scrollY + 200); })()")
+            settle(150)
+            short_month = js("""(() => { const m = [...document.querySelectorAll('#list .month')].filter(m => Math.abs(m.getBoundingClientRect().top) < 1.5).at(-1);
+              return m ? [m.textContent, document.elementFromPoint(m.getBoundingClientRect().left + 8, m.getBoundingClientRect().bottom - 4) === m]
+                : [...document.querySelectorAll('#list .month')].map(m => Math.round(m.getBoundingClientRect().top)).filter(t => t > -60 && t < 375); })()""")
+            js("scrollTo(0, 0)")
+            page.set_viewport_size(size_before)
+            settle(200)
+            check("…and on a short screen (667×375), where the bar scrolls away, a month heading sticks at the top of the screen (#308)",
+                  bool(short_month) and isinstance(short_month[0], str) and short_month[1] is True, short_month)
             tl_abn = js("""(() => { const days = [...document.querySelectorAll('#tl circle.ev')].filter(m => { const e = byId.get(+m.dataset.id); return e?.k === 'lab' && e.abn; });
                 const tri = [...document.querySelectorAll('#tl path.tl-abn')];
                 return {days: days.length, badges: tri.length, shapes: tri.every(p => (p.getAttribute('d').match(/L/g) || []).length === 2 && getComputedStyle(p).pointerEvents === 'none'),
@@ -5411,6 +5426,30 @@ def main():
                         bad += [f"{path} at {w} px, {m}: {x}" for x in js(menu_out, m + "List")]
                         page.keyboard.press("Escape")
             check("at 320, 375 and 390 px, the top bar's Add and your menu open under the bar with every item on the screen (#244)", not bad, bad[:6])
+            # #308: under 500 px tall the bar scrolls with the page, and the menus opened --bar-h down the screen, a gap under
+            # a bar that had scrolled up; opened with the bar scrolled up to the buttons, each sits right under the bar, on the screen
+            menu_short = """id => { const vw = document.documentElement.clientWidth, vh = innerHeight, bar = document.querySelector('header.topbar').getBoundingClientRect().bottom;
+                const r = document.getElementById(id).getBoundingClientRect();
+                return r.top - bar >= 0 && r.top - bar <= 8 && r.top >= 0 && r.bottom <= vh && r.left >= 0 && r.right <= vw ? null
+                  : [Math.round(bar), Math.round(r.top), Math.round(r.bottom), Math.round(r.left), Math.round(r.right), vw, vh]; }"""
+            page.set_viewport_size({"width": 667, "height": 375})
+            bad = []
+            for path in ("/", "/settings.html#display"):
+                page.goto(base + path)
+                page.wait_for_selector("#userMenuBtn", state="visible", timeout=10000)
+                settle(300)
+                for m in ("addMenu", "userMenu"):
+                    # scrolled to the button's top edge and tapped (a click from Playwright or the keyboard would scroll the bar back)
+                    js("id => { const b = document.getElementById(id); scrollTo(0, b.getBoundingClientRect().top + scrollY); }", m + "Btn")
+                    settle(100)
+                    scrolled = js("scrollY")
+                    js("id => document.getElementById(id).click()", m + "Btn")
+                    settle(100)
+                    where = js(menu_short, m + "List")
+                    if where or not scrolled:
+                        bad.append(f"{path} at 667×375 scrolled {scrolled} px, {m}: bar bottom, menu top, bottom, left, right, screen {where}")
+                    page.keyboard.press("Escape")
+            check("…and at 667×375, where the bar scrolls away, each opened after scrolling sits right under the bar, on the screen (#308)", not bad, bad[:6])
             page.set_viewport_size({"width": 1400, "height": 900})
             # ---- the Admin page (#167): the server's sync defaults, from their old address on Settings
             page.goto(base + "/settings.html#sources")
