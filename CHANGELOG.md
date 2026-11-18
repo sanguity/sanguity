@@ -892,6 +892,9 @@ Everything on `main` so far; it becomes the first tagged release.
   focus is scrolled clear of them and the page's foot can scroll up above them. Between 701 and about 1,076 px (and
   with the wider panel) they covered the drawer beside the page; they're in the drawer now. A toast with an Undo stays
   until it's used or put away: on a touch screen nothing could keep one before.
+- **A filled button held down keeps its colour** (#350): with Space held on a primary or danger button, or the mouse
+  pressed on one and dragged off it, it turned the default button's pale grey under its white label; it keeps its
+  accent or red now and only darkens.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
