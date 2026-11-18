@@ -157,6 +157,19 @@ def _display(t):
     return t[:10] if t.endswith("T12:00:00") else t[:16].replace("T", " ")
 
 
+# a summary's own dates are marked, so the page writes those in the person's format and the rest as it was typed (#317)
+_MARK = "\x00"
+
+
+def _d(t):
+    """A date in a summary, marked: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM"."""
+    return _MARK + t + _MARK
+
+
+def _dt(t):
+    return _d(_display(t))
+
+
 def _fmt(x):
     return str(int(x)) if float(x).is_integer() else str(x)
 
@@ -173,7 +186,7 @@ def clean(item):
         if isinstance(v, bool) or not isinstance(v, (str, int, float, type(None))):
             bad[f] = f"has a {CAPTION.get(f, f)} that isn't text"
             v = ""
-        v = "" if v is None else str(v)
+        v = "" if v is None else str(v).replace(_MARK, "")   # never in typed text: it marks a summary's dates
         v = v.replace("\r\n", "\n").strip() if f in LONG_FIELDS else " ".join(v.split())
         if len(v) > (LONG if f in LONG_FIELDS else SHORT):
             bad[f] = f"has a {CAPTION.get(f, f)} longer than {LONG if f in LONG_FIELDS else SHORT} characters"
@@ -256,8 +269,10 @@ class Reader:
 # ---------------------------------------------------------------- one record
 
 def read(n, item, order, guessed, uploads):
-    """One typed record read: {"n", "kind", "ok", "problems", "fields", "notes", "summary", "parts", "ident"}.
-    parts says what it adds (see build()); ident is what makes it the same as another typed in the same save.
+    """One typed record read: {"n", "kind", "ok", "problems", "fields", "notes", "summary", "summary_parts", "parts",
+    "ident"}. summary is one line of what it became; summary_parts is the same line split at its own dates, the dates
+    at the odd places ("2026-05-04" or "2026-05-04 07:30", as stored), for the page to write those in the person's
+    format and the rest as typed (#317). parts says what it adds (see build()); ident is what makes it the same as another typed in the same save.
     uploads(upload_id, file) -> (the stored file, None) or (None, why it can't be used)."""
     kind, values, bad = clean(item)
     if kind not in FIELDS:
@@ -268,7 +283,8 @@ def read(n, item, order, guessed, uploads):
     out = {"n": n, "kind": kind, "label": LABEL[kind], "ok": not problems, "problems": problems, "fields": r.fields,
            "notes": r.notes, "parts": parts if not problems else None, "ident": ident}
     if summary and not problems:
-        out["summary"] = summary
+        out["summary_parts"] = summary.split(_MARK)
+        out["summary"] = "".join(out["summary_parts"])
     return out
 
 
@@ -294,7 +310,7 @@ def _visit(r):
     title = v["title"] or "Visit"
     det = {"type": "visit", "who": v["who"], "where": v["where"], "dx": v["dx"], "note": v["note"], "procs": [], "src": SOURCE}
     key = _hkey("visit", t, title, v["where"], v["who"])
-    return {"events": [_event(t, "visit", title, _join(v["who"], v["where"]), det, key)]}, _join(_display(t), title, v["who"], v["where"]), key
+    return {"events": [_event(t, "visit", title, _join(v["who"], v["where"]), det, key)]}, _join(_dt(t), title, v["who"], v["where"]), key
 
 
 def _stay(r):
@@ -315,7 +331,7 @@ def _stay(r):
     key = _hkey("stay", a[:10], d[:10], v["where"])
     ev = _event(s["t"], "stay", s["title"], _join(s["sub"], v["how"]), det, key, end=s["end"])
     nights = s["sub"].rsplit(" · ", 1)[-1]
-    return {"events": [ev]}, _join(f"{a[:10]} to {d[:10]}", nights, v["where"], v["how"]), key
+    return {"events": [ev]}, _join(f"{_d(a[:10])} to {_d(d[:10])}", nights, v["where"], v["how"]), key
 
 
 def _study(r):
@@ -329,7 +345,7 @@ def _study(r):
            "report": [["Findings", v["text"], 0]] if v["text"] else [], "comments": [], "src": SOURCE}
     key = _hkey(r.kind, t, v["title"], v["where"])
     return ({"events": [_event(t, r.kind, v["title"], _join(v["who"], v["where"]), det, key)]},
-            _join(_display(t), v["title"], v["where"]), key)
+            _join(_dt(t), v["title"], v["where"]), key)
 
 
 _procedure = _imaging = _study   # three kinds, one form: "study" is a report
@@ -352,7 +368,7 @@ def _med(r):
         det["prescriber"] = v["prescriber"]
     key = _hkey("med", t[:10], v["name"], v["instructions"])
     ev = _event(t, "med", v["name"], _join(v["instructions"], status), det, key)
-    return {"events": [ev]}, _join(t[:10] + (f" to {end[:10]}" if end else ""), v["name"], v["instructions"], status), key
+    return {"events": [ev]}, _join(_d(t[:10]) + (f" to {_d(end[:10])}" if end else ""), v["name"], v["instructions"], status), key
 
 
 def _rx(r):
@@ -374,7 +390,7 @@ def _rx(r):
         cost = {"d": t[:10], "ins": v["insurer"], "billed": billed, "paid": paid, "owe": owe, "status": "", "kind": "pharmacy",
                 "cat": "Pharmacy", "prov": v["pharmacy"], "title": v["drug"]}
     return ({"events": [_event(t, "rx", v["drug"], sub, det, key, cost=cost)]},
-            _join(t[:10], v["drug"], v["pharmacy"], f"you paid ${owe:,.2f}" if cost else ""), key)
+            _join(_d(t[:10]), v["drug"], v["pharmacy"], f"you paid ${owe:,.2f}" if cost else ""), key)
 
 
 def _problem(r):
@@ -386,7 +402,7 @@ def _problem(r):
     key = _hkey("problem", v["name"], since[:10] if since else "")
     p = {"name": v["name"], "type": v["type"] or "Diagnosis", "date": since[:10] if since else None,
          "status": v["status"] or "Active", "src": SOURCE, "key": key}
-    return {"problems": [p]}, _join(v["name"], p["status"], f"since {p['date']}" if p["date"] else ""), key
+    return {"problems": [p]}, _join(v["name"], p["status"], f"since {_d(p['date'])}" if p["date"] else ""), key
 
 
 def _immunization(r):   # #179
@@ -399,7 +415,7 @@ def _immunization(r):   # #179
                                           performer=v["who"], where=v["where"])
     key = _hkey("immunization", t[:10], v["vaccine"], v["dose"])
     return ({"events": [_event(t, "immunization", title, sub, det, key)]},
-            _join(t[:10], v["vaccine"], f"dose {v['dose']}" if v["dose"] else "", v["where"]), key)
+            _join(_d(t[:10]), v["vaccine"], f"dose {v['dose']}" if v["dose"] else "", v["where"]), key)
 
 
 def _claim(r):
@@ -427,7 +443,7 @@ def _claim(r):
     key = _hkey("claim", t[:10], v["provider"], title, billed, v["claim"])
     sub = _join(v["provider"] if v["title"] else "", v["insurer"]) + (" · denied" if denied else "")
     ev = _event(t, "rx" if pharmacy else "claim", title, sub, det, key, cost=cost, abn=1 if denied else None)
-    return {"events": [ev]}, _join(t[:10], title, f"billed ${billed:,.2f}", f"you owe ${owe:,.2f}", cat), key
+    return {"events": [ev]}, _join(_d(t[:10]), title, f"billed ${billed:,.2f}", f"you owe ${owe:,.2f}", cat), key
 
 
 def _payment(r):
@@ -452,7 +468,7 @@ def _payment(r):
         p["receipt"] = _hkey("receipt", t[:10], v["payee"], amount, v["file"])
         parts.update(events=[_event(t, "document", f"Receipt: {v['payee']}", f"${amount:,.2f} · {SOURCE}", det, p["receipt"])],
                      files={det["url"]: stored})
-    return parts, _join(t[:10], v["payee"], f"${amount:,.2f}", p["group"], v["hsa"], "receipt " + v["file"] if stored else ""), key
+    return parts, _join(_d(t[:10]), v["payee"], f"${amount:,.2f}", p["group"], v["hsa"], "receipt " + v["file"] if stored else ""), key
 
 
 def _file(r):
@@ -476,7 +492,7 @@ def _upcoming(r):
     t = t[:10] if t.endswith("T12:00:00") and not v["time"] else t
     key = _hkey("upcoming", t, v["title"])
     u = {"t": t, "title": v["title"], "who": v["who"], "where": v["where"], "dx": "", "procs": [], "key": key}
-    return {"upcoming": [u]}, _join(_display(t if "T" in t else t + "T12:00:00"), v["title"], v["who"], v["where"]), key
+    return {"upcoming": [u]}, _join(_dt(t if "T" in t else t + "T12:00:00"), v["title"], v["who"], v["where"]), key
 
 
 def _vitals(r):
@@ -529,7 +545,7 @@ def _vitals(r):
              f"weight {_fmt(weight)} lb" if weight is not None else ""]
     if weight is not None:
         parts["weights"] = [[t, weight, v["where"]]]
-    return parts, _join(_display(t), *shown), ("vitals", t)
+    return parts, _join(_dt(t), *shown), ("vitals", t)
 
 
 def _home(r):
@@ -548,7 +564,7 @@ def _home(r):
         return None, None, None
     day = t[:10]
     pts = ([("weight", day, weight)] if weight is not None else []) + ([("steps", day, int(steps))] if steps is not None else [])
-    return ({"watch": pts}, _join(day, f"weight {_fmt(weight)} lb" if weight is not None else "",
+    return ({"watch": pts}, _join(_d(day), f"weight {_fmt(weight)} lb" if weight is not None else "",
                                   f"{int(steps):,} steps" if steps is not None else ""), ("home", day, weight is not None, steps is not None))
 
 
@@ -575,7 +591,7 @@ def _in_range(r, f, x, what, kind, unit, other):
 
 def _reading(r, t, row, shown):
     """What a reading read becomes: its row in its list (READINGS), at the local time it was typed for."""
-    return {"readings": [(READINGS[r.kind], [t, *row])]}, _join(_display(t), *shown), (r.kind, t[:16])
+    return {"readings": [(READINGS[r.kind], [t, *row])]}, _join(_dt(t), *shown), (r.kind, t[:16])
 
 
 def _home_bp(r):
@@ -666,7 +682,7 @@ def _height(r):
             r.bad("height", f"has a height that doesn't look right ({v['height']} {'in' if unit == 'in' else 'cm'}): {why}")
     if r.fields or not t or not entry:
         return None, None, None
-    shown = _join(t[:10], "height " + person.text(entry["cm"], entry["unit"]), "into About this person's height history")
+    shown = _join(_d(t[:10]), "height " + person.text(entry["cm"], entry["unit"]), "into About this person's height history")
     return {"heights": [entry]}, shown, ("height", t[:10])
 
 
@@ -684,7 +700,7 @@ def _workout(r):
     key = _hkey("workout", t, v["activity"], minutes)
     w = {"key": key, "start": start.isoformat(), "end": end.replace(microsecond=0).isoformat(), "name": v["activity"][:1].upper() + v["activity"][1:],
          "kind": "_".join(re.sub(r"[^\w]", "", x) for x in words) or "other", "minutes": round(float(minutes))}
-    return {"workouts": [w]}, _join(_display(t), w["name"], f"{w['minutes']} min"), key
+    return {"workouts": [w]}, _join(_dt(t), w["name"], f"{w['minutes']} min"), key
 
 
 def _document(r):
@@ -701,7 +717,7 @@ def _document(r):
     ext = os.path.splitext(v["file"])[1].lstrip(".").lower()
     det = {"type": "file", "url": f"{int(v['upload'])}/{v['file']}", "ext": ext, "src": SOURCE}
     return ({"events": [_event(t, k, v["title"], v["where"] or SOURCE, det, key)], "files": {det["url"]: stored}},
-            _join(_display(t), v["title"], v["file"]), key)
+            _join(_dt(t), v["title"], v["file"]), key)
 
 
 # ---------------------------------------------------------------- the records together

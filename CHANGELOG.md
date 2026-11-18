@@ -705,6 +705,10 @@ Everything on `main` so far; it becomes the first tagged release.
   in People (the members list gives owners whose account is disabled). What you'd lose now includes turning cycle
   tracking on or off and deleting what it kept. Admin → Accounts asks before requiring two-factor sign-in for
   everyone, saying how many accounts have no second factor yet; turning it off stays instant.
+- **Import history's dates, and only a typed record's own** (#317): an import's span of dates under Import history is
+  in the person's date format ("2 Jan 2024 to 3 Nov 2025"), as in the import preview. The line under a typed-in record
+  writes only the record's own dates that way, which the server now sends apart (`summary_parts`); a file's name or a
+  title with a date in it ("scan-2026-11-02.pdf") stays as typed.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -9,7 +9,7 @@ records the profile has already are flagged and left out. Fictional data only.
 
   python3 tests/test_manual.py
 """
-import os, sys, tempfile, time, unittest
+import os, re, sys, tempfile, time, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-manual-test-")
@@ -279,6 +279,17 @@ class Manual(unittest.TestCase):
         self.assertEqual(j["counts"]["typed"], {"claim": 1, "home": 1, "imaging": 1, "immunization": 1, "med": 1, "payment": 1, "problem": 1, "procedure": 1,
                                                 "rx": 1, "stay": 1, "study": 1, "upcoming": 1, "visit": 1, "vitals": 1, "workout": 1})
         self.assertEqual((j["counts"]["watch_days"], j["counts"]["workouts"]), (1, 1))
+        # #317: each summary split at its own dates (at the odd places, as stored), for the page to write those in the
+        # person's format and the rest as typed
+        for x in j["items"]:
+            self.assertEqual("".join(x["summary_parts"]), x["summary"], x)
+            self.assertTrue(all(re.fullmatch(r"\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?", d) for d in x["summary_parts"][1::2]), x)
+        parts = {x["kind"]: x["summary_parts"] for x in j["items"]}
+        self.assertEqual(parts["visit"][:3], ["", "2026-05-04 09:30", " · Follow-up visit · Dr. Ada Quill (fictional) · Lakeside Clinic (fictional)"])
+        self.assertEqual(parts["stay"], ["", "2026-05-10", " to ", "2026-05-13", " · 3 nights · Harbor Hospital (fictional) · Emergency"])
+        self.assertEqual(parts["problem"], ["Iron deficiency anemia · Active · since ", "2026-05-04", ""])
+        typed = self.items([{"kind": "visit", "date": "2026-05-04", "title": "Scan 2026-05-01\x00 follow-up"}], save=False, pid=pid).json()
+        self.assertEqual(typed["items"][0]["summary_parts"], ["", "2026-05-04", " · Scan 2026-05-01 follow-up"])   # a typed date isn't one
         data = self.data(pid)
         ev = {e["k"]: e for e in data["events"]}
         det = lambda k: data["details"][str(ev[k]["id"])]

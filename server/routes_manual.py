@@ -22,12 +22,13 @@ limits) and names the finished upload and the file in it ("upload", "file"). The
 it, sealed, and is indexed as a document of the import.
 
 The readback says, per row and per record: ok, its problems (records also "fields": {field: problem}, for the page to
-mark), notes, what it became, and "duplicate" when the profile has it already. Duplicates are found by the import
-preview's own check (preview.find over everything typed, as format "manual"), and for home measurements and
-workouts in the profile's watch summary. A row or record that can't be read, or that repeats another typed in the
-same save, is refused with its reason, and nothing is saved until everything reads. Duplicates are left out of a
-save, as the preview leaves them out of an upload, unless keep_duplicates; a save of nothing but duplicates is
-refused.
+mark), notes, what it became (a record's "summary", and "summary_parts": that line split at its own dates, the dates
+at the odd places, as stored, for the page to write in the person's format, #317), and "duplicate" when the profile
+has it already. Duplicates are found by the import preview's own check (preview.find over everything typed, as format
+"manual"), and for home measurements and workouts in the profile's watch summary. A row or record that can't be read,
+or that repeats another typed in the same save, is refused with its reason, and nothing is saved until everything
+reads. Duplicates are left out of a save, as the preview leaves them out of an upload, unless keep_duplicates; a save
+of nothing but duplicates is refused.
 
 A save is one import (records.store, origin "manual", format "manual"), run through importers.check() first, in a
 transaction with its documents and its activity log entry ("import", {"importer": "manual", "counts"}, with how many
@@ -224,7 +225,7 @@ def _duplicates(db, pid, data, lab, got, origin, have_watch):
 def _item(rec, dup=None):
     d = {"n": rec["n"], "kind": rec["kind"], "label": rec.get("label") or rec["kind"], "ok": rec["ok"],
          "problems": rec["problems"], "fields": rec.get("fields") or {}, "notes": list(rec.get("notes") or []),
-         "summary": rec.get("summary"), "duplicate": dup == "all"}
+         "summary": rec.get("summary"), "summary_parts": rec.get("summary_parts"), "duplicate": dup == "all"}
     if dup == "some":
         d["notes"].append("part of it is in this profile already, and that part won't be saved again")
     return d
