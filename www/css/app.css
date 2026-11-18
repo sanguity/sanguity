@@ -349,7 +349,7 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .acct :is(input,select,textarea){font-weight:400}   /* what's typed isn't the label's semibold, which font:inherit passed on (#246) */
 .acct label.check{display:flex;align-items:center;gap:6px;padding-bottom:7px}
 .acct input:not([type=checkbox]),.acct select{border:1px solid var(--ring);background:var(--raised);border-radius:8px;padding:6px 9px;min-width:0}
-.acct .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+.acct .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0}   /* 8 px above and below: a row of buttons never sits on the heading or text after it (#309) */
 .acct .btn{margin:0;padding:6px 12px;font-weight:550}
 .acct .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
 .acct .btn.small{padding:3px 9px;font-size:12px}

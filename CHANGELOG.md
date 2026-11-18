@@ -665,6 +665,9 @@ Everything on `main` so far; it becomes the first tagged release.
   `"style":`, `setAttribute("style", ...)`, `Object.assign(x.style, ...)` and `x.style[k] = ...`. A number format's
   `{style: "currency"}` no longer counts as a style, so those files' allowances are one lower. A failure gives each
   line and value, and the token a colour matches.
+- **Rows of buttons have room under them again** (#309): since #246, Admin → Backups' "Back up now" sat on the
+  Schedule heading and its Save on "Check a backup", and Sharing's summary buttons and activity filters touched what
+  followed. Every row of buttons on Sources, Sharing, Settings, Account and Admin is 8 px from what's above and below it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
