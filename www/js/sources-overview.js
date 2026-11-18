@@ -73,7 +73,7 @@
     const edit = conns.can_connect, imports = imps.imports || [];
     const warned = conns.connections.filter(c => c.state === "needs reconnect" || (c.warning && c.state !== "disconnected"));
     $("#srcWarn").replaceChildren(...warned.map(c => el("p", {class: "conn-alert src-alert", role: "alert"},
-      el("span", {text: "⚠ " + (c.warning ? c.warning.text : `${c.source}: access ended.`) + " "}),
+      el("span", {}, icon("triangle-alert", {label: "Warning:"}), " " + (c.warning ? c.warning.text : `${c.source}: access ended.`) + " "),
       el("a", {href: "#conn-" + c.id, text: edit ? "Fix it" : "Details"}))));
     const conn = connRows(conns.connections, imports), ups = uploadRows(imports), phone = phoneRows(watch);
     const total = imports.filter(e => e.state === "active").length;

@@ -65,10 +65,12 @@ function renderHeatmap() {
   for (const s of rows) {
     const ry = yOf.get(s.name);
     const nm = nice(s.name), edit = canRename();   // an editor renames a row by its name (#38, rename.js)
-    // "What is this test?" (#163, test-pages.js): a ? beside the name, clicked; by keyboard, the link in the table or a chart
+    // "What is this test?" (#163, test-pages.js): a ? in a circle beside the name, clicked (on the circle under the icon,
+    // which takes no clicks itself, #257); by keyboard, the link in the table or a chart
     const tp = testPage(s.name), cut = (LW < 150 ? 17 : 28) - (tp ? 3 : 0);
     if (tp) g.push(el("svg:g", {class: "hm-tq"}, el("svg:title", {text: testPageName(s.name, tp)}),
-      el("svg:circle", {cx: LW - 14, cy: ry + rowH / 2, r: 6, "data-tp": tp.url}), el("svg:text", {x: LW - 14, y: ry + rowH - 3.5, "text-anchor": "middle", "data-tp": tp.url}, "?")));
+      el("svg:circle", {cx: LW - 14, cy: ry + rowH / 2, r: 7, "data-tp": tp.url}),
+      el("svg:use", {class: "icon", href: `${ICON_SPRITE}#i-circle-question-mark`, x: LW - 21, y: ry + rowH / 2 - 7, width: 14, height: 14})));
     g.push(el("svg:text", {class: "row" + (edit ? " renamable" : ""), x: LW - (tp ? 24 : 8), y: ry + rowH - 4, "text-anchor": "end",
       ...(edit ? {"data-rename": "lab", "data-key": s.name} : {})},   // clicked; by keyboard, the ✎ in the heatmap's table or a chart (#202: the grid is one picture)
       nm.length > cut ? nm.slice(0, cut - 1) + "…" : nm,
@@ -101,7 +103,7 @@ function renderHeatmap() {
     const st = statusOf(p);
     showTip([el("div", {class: "v", text: `${p[5] || fmtNum(p[1])} ${s.unit}`}), el("div", {class: "s", text: nice(s.name) + (nice(s.name) !== s.name ? ` (${s.name})` : "")}), el("div", {class: "s", text: `${fmtDT(p.ts)} · ${refText(p)}`}),
       ucOrig(s, p) ? el("div", {class: "s", text: "Reported as " + ucOrig(s, p)}) : null,   // #41
-      st ? el("div", {class: "s", style: {color: st.cls === "ok" ? "var(--good-text)" : "var(--crit)"}, text: st.text}) : null,
+      st ? el("div", {class: "s", style: {color: st.cls === "ok" ? "var(--good-text)" : "var(--crit)"}}, st.icon ? [icon(st.icon), " "] : null, st.text) : null,
       pointSources(s, p) ? el("div", {class: "s", text: "From " + pointSources(s, p)}) : null], ev);   // with any linked as the same (#96)
   };
   svg.onpointerleave = hideTip;

@@ -808,10 +808,11 @@ www/                index.html (markup), css/tokens.css (the font and colour tok
                     account.html (password, devices), sharing.html (a profile's people and how it's shared),
                     sources.html (records coming in: uploads, typing in, portals, the phone, the import history;
                     import.html, connect.html and providers.html open its sections); manifest.webmanifest, icons/ and sw.js (install as a
-                    phone app; tools/make_icons.py draws the icons)
+                    phone app; tools/make_icons.py draws the icons), icons/sprite.svg (the interface's icons, from Lucide:
+                    tools/build_sprite.py)
 demo/               Fictional demo dataset generator (--big: ten years of records, for the performance budgets)
 tools/              anonymise.py (an anonymised copy of an export, to share as a sample: docs/anonymising-exports.md),
-                    screenshots.py, make_icons.py, contrast.py (the colour tokens' contrast: docs/accessibility.md),
+                    screenshots.py, make_icons.py, build_sprite.py, contrast.py (the colour tokens' contrast: docs/accessibility.md),
                     build_directory.py, fhir_schema_subset.py (the FHIR R4 schema the FHIR export is checked against:
                     docs/fhir-export.md)
 tests/              API and upload tests, a headless browser check (with WCAG 2.2 AA checks: docs/accessibility.md),
@@ -836,3 +837,8 @@ licence beside it: [Inter](https://rsms.me/inter/) © 2016 The Inter Project Aut
 They're the Latin and Latin Extended files of the variable fonts as [Fontsource](https://fontsource.org) publishes
 them (`@fontsource-variable/inter` 5.3.0, and `@fontsource-variable/source-serif-4` 5.3.1's files with the weight
 axis only, `wght`), unchanged.
+
+The interface's icons in `www/icons/sprite.svg` are [Lucide](https://lucide.dev)'s (`lucide-static` 1.67.0), unchanged,
+under the ISC License, © 2026 Lucide Icons and Contributors; some of them derive from
+[Feather](https://feathericons.com), under the MIT License, © 2013 Cole Bemis. Both licences are in
+`www/icons/lucide-LICENSE.txt`, beside the sprite.

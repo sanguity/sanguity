@@ -758,6 +758,45 @@ def clear_of_bar(page):
     return page.evaluate(CLEAR_OF_BAR_JS)
 
 
+# #257: the app's icons are Lucide's, from www/icons/sprite.svg, in place of Unicode glyphs. On the page as it is: a glyph
+# still standing for an icon in a button's or link's text (or drawn by its ::before or ::after), an arrow or + at either
+# end of one, or one that is only "?"; an icon not drawn (its <use> found no symbol: 0 by 0, waited for once, as the sprite
+# may still be loading); an svg.icon neither hidden from screen readers nor named; a button or link with only an icon in it
+# and no name. ▲ and ▼ stay text, the out-of-range marks (docs/accessibility.md), and so does an arrow inside a sentence.
+ICON_GLYPHS = "✓✔✕✖×⇔◐✎⋯⚠↗⠿▾✗↑↓⌘"
+ICON_AUDIT = r"""glyphs => {
+  const vis = n => n.checkVisibility(), out = {n: 0, glyph: [], hidden: [], unnamed: [], blank: []};
+  const name = n => (n.getAttribute('aria-label') || n.getAttribute('title') || '').trim() ||
+    (n.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent.trim()).join('');
+  for (const b of document.querySelectorAll('button, a[href], [role=button], [role^=menuitem], summary')) {
+    if (!vis(b)) continue;
+    const t = b.textContent.trim(), cs = p => getComputedStyle(b, p).content;
+    if ([...glyphs].some(g => t.includes(g) || cs('::before').includes(g) || cs('::after').includes(g)) || /^[→+?]|→$|^\?$/.test(t))
+      out.glyph.push(t.slice(0, 40) || b.id || b.className);
+    if (!t && b.querySelector('svg.icon') && !name(b)) out.unnamed.push(b.id || b.className);
+  }
+  for (const s of document.querySelectorAll('svg.icon, use.icon')) {
+    if (!vis(s)) continue;
+    out.n++;
+    const u = s.tagName === 'use' ? s : s.querySelector('use'), r = s.getBoundingClientRect(), bb = u && u.getBBox();
+    if (!u || !r.width || !r.height || !bb || !bb.width || !bb.height) out.blank.push(s.getAttribute('class') + ' in ' + (s.parentElement.id || s.parentElement.className.baseVal || s.parentElement.className));
+    if (s.tagName === 'svg' && s.getAttribute('aria-hidden') !== 'true' && !(s.getAttribute('role') === 'img' && name(s))) out.hidden.push(s.getAttribute('class'));
+  }
+  return out;
+}"""
+
+
+def icon_audit(page, label):
+    """(how many icons are shown, what's wrong with them) on the page as it is (#257)"""
+    a = page.evaluate(ICON_AUDIT, ICON_GLYPHS)
+    if a["blank"]:   # the sprite may still be on its way
+        page.wait_for_timeout(500)
+        a = page.evaluate(ICON_AUDIT, ICON_GLYPHS)
+    bad = [f"{label}: a glyph as an icon in “{t}”" for t in a["glyph"]] + [f"{label}: not drawn: {t}" for t in a["blank"]]
+    bad += [f"{label}: an icon neither hidden nor named: {t}" for t in a["hidden"]] + [f"{label}: only an icon, no name: {t}" for t in a["unnamed"]]
+    return a["n"], bad
+
+
 def axe_check(page, label):
     """axe-core's WCAG A and AA rules on the page as it is drawn now (open what is to be checked first: a tab, a menu, a
     dialog). Returns (serious, other): the serious and critical findings, which fail a check, and the moderate and minor
@@ -1009,7 +1048,7 @@ TILE_LINES_JS = r"""() => {
     if (!g.checkVisibility()) continue;
     const rows = {};
     for (const t of g.children) {
-      const s = t.querySelector('svg'); if (!s) continue;
+      const s = t.querySelector('svg:not(.icon)'); if (!s) continue;   // its sparkline, not an icon (#257)
       (rows[Math.round(t.getBoundingClientRect().top)] ||= []).push(Math.round(s.getBoundingClientRect().top));
     }
     for (const v of Object.values(rows)) if (Math.max(...v) - Math.min(...v) > 1) out.uneven.push([g.parentElement.id || g.parentElement.className, v]);
@@ -1531,7 +1570,7 @@ def main():
                 "health": "[...document.querySelectorAll('#view-health svg')].filter(s => s._draw && s.childNodes.length > 3).length",
                 "timeline": "document.querySelectorAll('#tl circle.ev').length + ',' + document.querySelectorAll('#list .tl-row').length",
                 "heatmap": "document.querySelectorAll('#hm rect.cell').length + ',' + +!document.getElementById('labsHeatmap').hidden + ',' + +document.getElementById('labsChart').hidden",
-                "labs": "[...document.querySelectorAll('#charts .chart svg')].filter(s => s.childNodes.length > 3).length + ',' + +!document.getElementById('labsChart').hidden",
+                "labs": "[...document.querySelectorAll('#charts .chart svg:not(.icon)')].filter(s => s.childNodes.length > 3).length + ',' + +!document.getElementById('labsChart').hidden",
                 "costs": "document.querySelectorAll('#view-costs .tile').length",
             }
             for tab, probe in expect.items():
@@ -1672,7 +1711,7 @@ def main():
             # the legend shows both shapes while they're on, and not while they're off
             js("window._marks250 = state.marks; state.marks = true; renderCharts()")
             settle(300)
-            ev = js("""(() => { const svg = document.querySelector('#charts .chart svg'), want = markEvents();
+            ev = js("""(() => { const svg = document.querySelector('#charts .chart svg:not(.icon)'), want = markEvents();
                 const heads = [...svg.querySelectorAll('.evhead')];
                 const tri = [...svg.querySelectorAll('path')].filter(p => /var\\(--c-(procedure|imaging)\\)/.test(p.getAttribute('fill') || ''));
                 const keys = [...document.querySelectorAll('#labsChart .legend .marks-key')].filter(k => !k.hidden);
@@ -1694,7 +1733,7 @@ def main():
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
                 js("renderCharts()")
                 settle(400)
-                got = js(CHART_LABELS_JS, "#charts .chart svg")
+                got = js(CHART_LABELS_JS, "#charts .chart svg:not(.icon)")
                 heads = js("[document.querySelectorAll('#charts .chart svg .evhead').length, markEvents().length]")
                 check(f"Labs ({width} px, #312): a procedure's name is inside its chart with no mark on it, and every mark is still drawn"
                       + (", and at least one is named" if width == 1400 else ""),
@@ -1703,11 +1742,11 @@ def main():
             js("state.marks = window._marks312; renderCharts()")
             page.set_viewport_size({"width": 1400, "height": 900})
             settle(300)
-            label = js("document.querySelector('#charts .chart svg').getAttribute('aria-label')")
+            label = js("document.querySelector('#charts .chart svg:not(.icon)').getAttribute('aria-label')")
             check("…the chart takes focus, as a chart summed up in words",
-                  js("(s => [s.getAttribute('tabindex'), s.getAttribute('role'), s.getAttribute('aria-roledescription')])(document.querySelector('#charts .chart svg'))") == ["0", "application", "chart"]
+                  js("(s => [s.getAttribute('tabindex'), s.getAttribute('role'), s.getAttribute('aria-roledescription')])(document.querySelector('#charts .chart svg:not(.icon)'))") == ["0", "application", "chart"]
                   and re.match(r"Hemoglobin: \d+ results from .+ to .+, latest .+ g/dL, \d+ outside reference range\. Left and right arrow keys", label or ""), label)
-            page.focus("#charts .chart svg")
+            page.focus("#charts .chart svg:not(.icon)")
             page.keyboard.press("End")
             settle(150)
             last = js("(s => { const p = s.pts.filter(p => p.ts <= state.to).at(-1); return [p[5] || fmtNum(p[1]), fmtDT(p.ts)]; })(SERIES.find(s => s.name === 'Hemoglobin'))")
@@ -1727,8 +1766,8 @@ def main():
             settle(100)
             check("…and Escape lets go: no tooltip, the readout back to the latest, focus kept",
                   js("getComputedStyle(tip).display") == "none" and js("document.querySelector('#charts .chart .read').textContent").startswith("Latest")
-                  and js("document.activeElement === document.querySelector('#charts .chart svg')"))
-            ring = js("(s => [getComputedStyle(s).outlineStyle, s.matches(':focus-visible')])(document.querySelector('#charts .chart svg'))")
+                  and js("document.activeElement === document.querySelector('#charts .chart svg:not(.icon)')"))
+            ring = js("(s => [getComputedStyle(s).outlineStyle, s.matches(':focus-visible')])(document.querySelector('#charts .chart svg:not(.icon)'))")
             check("…a ring shows the focus", ring == ["solid", True], ring)
             page.click("#charts .chart .view-seg button:text-is('Table')")
             settle(200)
@@ -1738,7 +1777,7 @@ def main():
             check("…Table shows its table instead, headed, a row per result, each out-of-range one saying ▲ High or ▼ Low; focus stays on Table",
                   t and t["heads"] == [["col", "Date"], ["col", "Value"], ["col", "Ref range"], ["col", "Flag"]] and t["rows"] > len(flagged) - 1
                   and len(t["abn"]) == len(flagged) and all(a in ("▲ High", "▼ Low") for a in t["abn"]) and t["focus"] == "Table:true"
-                  and not js("document.querySelector('#charts .chart svg')"), t)
+                  and not js("document.querySelector('#charts .chart svg:not(.icon)')"), t)
             # the heatmap: a mark on every out-of-range cell, and a table with a header per lab and per draw day
             js("state.tables.clear(); switchTab('labs', 'heatmap')")
             settle(400)
@@ -2523,7 +2562,7 @@ def main():
             check("own ranges (#58): a chart whose results' ranges differ says which, in its header",
                   note.startswith("Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL.") and "steps with each result's own range" in note, note)
             bands = js(f"""[...{cr_card}.querySelectorAll('svg .refband')].map(r => [+r.getAttribute('y'), +r.getAttribute('height'), +r.getAttribute('x'), +r.getAttribute('width')])""")
-            geo = js(f"{cr_card}.querySelector('svg')._geom")
+            geo = js(f"{cr_card}.querySelector('svg:not(.icon)')._geom")
             check("…its band steps with each result's own range: two ranges, five steps (clinic, outside, clinic, outside, clinic) across the chart",
                   len(bands) == 5 and len({(round(b[0], 1), round(b[1], 1)) for b in bands}) == 2
                   and abs(bands[0][2] - geo["L"]) < .5 and abs(sum(b[3] for b in bands) - (geo["R"] - geo["L"])) < 1, [bands, geo])
@@ -2533,7 +2572,7 @@ def main():
             check("…1.25 mg/dL is high by its own lab's range (0.6–1.2), though inside the clinic's, and is marked ▲",
                   ["2026-09-10T09:05:00", 1.25, 0.6, 1.2, "H"] in hi and js(f"{cr_card}.querySelectorAll('svg .pt.abn').length") == len(hi), hi)
             check("…the chart says so to screen readers",
-                  "Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL" in js(f"{cr_card}.querySelector('svg').getAttribute('aria-label')"))
+                  "Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL" in js(f"{cr_card}.querySelector('svg:not(.icon)').getAttribute('aria-label')"))
             check("…a chart whose results' ranges agree has one band and no note",
                   js(f"{hb_card}.querySelectorAll('svg .refband').length") == 1 and not js(f"!!{hb_card}.querySelector('.rdiff')"))
             js("state.tables.add('Creatinine'); renderCharts()")
@@ -3305,11 +3344,11 @@ def main():
             js("closeDrawer()")   # the entry's panel covers the tab bar's right end on narrower or wider fonts
             page.click("#tab-labs")
             settle()
-            if not js("document.querySelectorAll('#charts .chart svg').length"):
+            if not js("document.querySelectorAll('#charts .chart svg:not(.icon)').length"):
                 js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
                 settle()
             marks = js("[...document.querySelectorAll('#charts .jmark')].map(m => m.getAttribute('aria-label'))")
-            charts = js("document.querySelectorAll('#charts .chart svg').length")
+            charts = js("document.querySelectorAll('#charts .chart svg:not(.icon)').length")
             check("…and as a marker under every Trends chart, labelled with its severity", len(marks) == charts > 0 and all("severity 7/10" in m and "Headache" in m for m in marks), marks[:2])
             check("the Trends legend says what the marker sizes mean", "bigger = more severe" in page.inner_text("#view-labs .legend"))
             page.focus("#charts .jmark")
@@ -3475,11 +3514,11 @@ def main():
             check("…in its own Mood & energy lane on the timeline, a bar for the mood", lane["lane"] and lane["n"] == 1 and lane["bars"] == 2, lane)
             js("switchTab('labs')")
             settle()
-            if not js("document.querySelectorAll('#charts .chart svg').length"):
+            if not js("document.querySelectorAll('#charts .chart svg:not(.icon)').length"):
                 js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
                 settle()
             moods = js("[...document.querySelectorAll('#charts .jmood')].map(m => m.getAttribute('aria-label'))")
-            check("…and its own row under every Trends chart, labelled", len(moods) == js("document.querySelectorAll('#charts .chart svg').length") > 0
+            check("…and its own row under every Trends chart, labelled", len(moods) == js("document.querySelectorAll('#charts .chart svg:not(.icon)').length") > 0
                   and all(m.startswith("Mood 9/10, ") for m in moods), moods[:2])
             page.focus("#charts .jmood")
             page.keyboard.press("Enter")
@@ -3678,13 +3717,13 @@ def main():
                 settle(200)
                 page.click("#tab-labs")
                 settle()
-                if not js("document.querySelectorAll('#charts .chart svg').length"):
+                if not js("document.querySelectorAll('#charts .chart svg:not(.icon)').length"):
                     js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
                     settle()
                 check("Trends leaves the medications out until they're ticked", not page.is_checked("#optMeds") and js("document.querySelectorAll('#charts .medbar').length") == 0)
                 page.check("#optMeds")
                 settle()
-                rows = js(f"""[...document.querySelectorAll('#charts .chart svg')].map(s => s.querySelectorAll('.medbar[data-med="{med["i"]}"]').length)""")
+                rows = js(f"""[...document.querySelectorAll('#charts .chart svg:not(.icon)')].map(s => s.querySelectorAll('.medbar[data-med="{med["i"]}"]').length)""")
                 check("…then every chart has the medication's spans under its time axis", len(rows) > 0 and all(n == 2 for n in rows), rows)
                 page.locator(f'#charts .chart svg .medbar[data-med="{med["i"]}"] >> nth=0').click()
                 settle(200)
@@ -3873,14 +3912,14 @@ def main():
                 # Labs: a row of doses under each chart when ticked
                 page.click("#tab-labs")
                 settle()
-                if not js("document.querySelectorAll('#charts .chart svg').length"):
+                if not js("document.querySelectorAll('#charts .chart svg:not(.icon)').length"):
                     js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
                     settle()
                 check("Labs: \"Doses logged\" under Show on charts, off until ticked", page.locator("#optDoses").count() == 1 and not page.is_checked("#optDoses")
                       and js("document.querySelectorAll('#charts .dosemark').length") == 0)
                 page.check("#optDoses")
                 settle(300)
-                per = js("[...document.querySelectorAll('#charts .chart svg')].map(s => s.querySelectorAll('.dosemark').length)")
+                per = js("[...document.querySelectorAll('#charts .chart svg:not(.icon)')].map(s => s.querySelectorAll('.dosemark').length)")
                 check("…ticked, every chart has a row of the doses, and its legend says the shapes", per and all(n >= 2 for n in per)
                       and js("!document.getElementById('doseLegend').hidden") and "◆ taken late" in page.inner_text("#doseLegend"), per)
                 page.locator("#charts .chart svg .dosemark").first.focus()
@@ -3944,7 +3983,7 @@ def main():
             page.click("#tab-labs")
             js("applyPreset('1y')")
             settle()
-            box = page.locator("#charts .chart svg").first.bounding_box()
+            box = page.locator("#charts .chart svg:not(.icon)").first.bounding_box()
             before = js("[state.from, state.to]")
             page.mouse.move(box["x"] + box["width"] * 0.6, box["y"] + box["height"] * 0.5)
             page.mouse.down()
@@ -3971,7 +4010,7 @@ def main():
             accented, seen = [], {}
             for theme in ("light", "dark"):
                 js("t => { document.documentElement.dataset.theme = t; }", theme)
-                for tab, sel in (("timeline", "#tl"), ("labs", "#charts .chart svg"), ("health", "#view-health svg.pz")):
+                for tab, sel in (("timeline", "#tl"), ("labs", "#charts .chart svg:not(.icon)"), ("health", "#view-health svg.pz")):
                     js("t => switchTab(t, t === 'labs' ? 'chart' : undefined)", tab)
                     settle(400)
                     got = js(CHART_ACCENT_JS, sel)
@@ -4009,7 +4048,7 @@ def main():
             js("window._was312 = [state.marks, scrollY]; state.marks = true")
             for width in (1400, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                for tab, sel in (("timeline", "#tl"), ("labs", "#charts .chart svg"), ("health", "#view-health svg.pz")):
+                for tab, sel in (("timeline", "#tl"), ("labs", "#charts .chart svg:not(.icon)"), ("health", "#view-health svg.pz")):
                     js("t => switchTab(t, t === 'labs' ? 'chart' : undefined)", tab)
                     settle(500)
                     got = js(CHART_LABELS_JS, sel)
@@ -4027,7 +4066,7 @@ def main():
                           bool(names) and any(c["marked"] for c in got["charts"]) and not wrong, wrong or got)
             js("switchTab('labs', 'chart')")   # still 320 px, marks on: a procedure left unnamed still opens its drawer
             settle(500)
-            unnamed = js("""(() => { const svg = document.querySelector('#charts .chart svg'), g = svg._geom, xs = [...svg.querySelectorAll('.evlabel')].map(t => +t.getAttribute('x'));
+            unnamed = js("""(() => { const svg = document.querySelector('#charts .chart svg:not(.icon)'), g = svg._geom, xs = [...svg.querySelectorAll('.evlabel')].map(t => +t.getAttribute('x'));
                 const h = [...svg.querySelectorAll('.evhead[data-k=procedure]')].find(h => !xs.some(x => Math.abs(x - 6 - h.cx.baseVal.value) < .5)); if (!h) return null;
                 svg.scrollIntoView({block: 'center'}); const px = h.cx.baseVal.value, r = h.getBoundingClientRect(), xOf = t => g.L + (t - state.from) / (state.to - state.from) * (g.R - g.L);
                 return {x: r.x + r.width / 2, y: r.y + r.height / 2, titles: markEvents().filter(e => Math.abs(xOf(e.ts) - px) < 8).map(e => e.title)}; })()""")
@@ -4043,7 +4082,7 @@ def main():
             js("scrollTo(0, window._was312[1])")   # where it was before the click scrolled the chart into view
             settle(200)
             # hovering a point shows where it came from (#100)
-            box = page.locator("#charts .chart svg").first.bounding_box()
+            box = page.locator("#charts .chart svg:not(.icon)").first.bounding_box()
             tipped = ""
             for f in (0.5, 0.6, 0.4, 0.7, 0.3, 0.8, 0.2, 0.9):
                 page.mouse.move(box["x"] + box["width"] * f, box["y"] + box["height"] * 0.5)
@@ -4082,7 +4121,7 @@ def main():
             check("picking a view charts its labs", picked() == sorted(labs3[:2]) and sorted(charted) == sorted(shown), charted)
             page.click("#tvBox button:text-is('Make default')")
             page.wait_for_function("CFG.trends.views.some(v => v.default && v.name === 'CBC (browser check)')", timeout=10000)
-            check("…and making it the default marks it", js("document.querySelector('#tvBox [aria-pressed=true]').textContent") == "Default ✓"
+            check("…and making it the default marks it", js("(b => b.textContent.trim() + (b.querySelector('svg.i-check') ? ' ✓' : ''))(document.querySelector('#tvBox [aria-pressed=true]'))") == "Default ✓"
                   and "(default)" in js("document.getElementById('viewPick').selectedOptions[0].textContent"))
             page.select_option("#viewPick", "Kidney (browser check)")
             settle(200)
@@ -4241,7 +4280,7 @@ def main():
             check("Body and activity drag pans", js("hRange()[0]") < hbefore[0] and js("state.preset") == "custom")
             check("…its own range: the date boxes show it, and More… says Custom dates (#191)",
                   js("[!document.getElementById('dates').hidden, document.getElementById('from').value === isoDay(state.from), document.getElementById('periodMoreBtn').textContent]")
-                  == [True, True, "Custom dates▾"], js("[document.getElementById('dates').hidden, document.getElementById('periodMoreBtn').textContent]"))
+                  == [True, True, "Custom dates"], js("[document.getElementById('dates').hidden, document.getElementById('periodMoreBtn').textContent]"))
 
             # ---- one period for every tab with time (#171): picked on one tab, the same dates on the others (Labs in
             # both its views, #172); a calendar year, a milestone or dates typed in; kept on a reload; Costs by month or
@@ -4491,7 +4530,7 @@ def main():
               const cs = (n, p) => getComputedStyle(n, p || null), lab = [...document.querySelectorAll('#chips .toggle')].find(b => b.textContent.startsWith('Labs'));
               const vis = [...document.querySelectorAll('#chips .toggle')].find(b => b.textContent.startsWith('Visits'));
               const s = [...document.querySelectorAll('#sortSeg button')], sel = s.find(b => b.getAttribute('aria-pressed') === 'true'), un = s.find(b => b !== sel);
-              const t = b => ({bg: cs(b).backgroundColor, color: cs(b).color, border: cs(b).borderColor + ' ' + cs(b).borderStyle, mark: cs(b, '::before').content,
+              const t = b => ({bg: cs(b).backgroundColor, color: cs(b).color, border: cs(b).borderColor + ' ' + cs(b).borderStyle, mark: cs(b, '::before').content === 'none' ? 'none' : cs(b, '::before').maskImage.includes('svg+xml') ? '✓' : cs(b, '::before').content,   // the ✓ is a mask (#257)
                                key: cs(b.querySelector('.key')).backgroundColor, opacity: +cs(b).opacity});
               return {shown: t(vis), hidden: t(lab), sel: [cs(sel).backgroundColor, cs(sel).boxShadow, cs(sel).fontWeight, +cs(sel).opacity],
                       un: [cs(un).backgroundColor, cs(un).boxShadow, cs(un).fontWeight, +cs(un).opacity]};
@@ -4934,9 +4973,9 @@ def main():
                   sorted(rows_tp) == sorted(want_tp) and sum(1 for _, u in rows_tp if u) >= 11
                   and dict(rows_tp).get("s_Hemoglobin") == "https://medlineplus.gov/lab-tests/hemoglobin-test/"
                   and dict(rows_tp).get("s_Blood_pressure__systolic", "x") is None, [rows_tp, want_tp])
-            hd_tp = js("[...document.querySelectorAll('#charts .chart .hd')].map(h => [h.querySelector('.name').textContent, (h.querySelector('a.test-page') || {}).textContent || null])")
+            hd_tp = js("[...document.querySelectorAll('#charts .chart .hd')].map(h => [h.querySelector('.name').textContent, (h.querySelector('a.test-page') || {}).textContent || null])")   # its ↗ an icon (#257)
             check("…each chart's header says “What is this test?” where its lab has a page",
-                  hd_tp and all(t == "What is this test? ↗" for _, t in hd_tp if t) and sum(1 for _, t in hd_tp if t) == js(
+                  hd_tp and all(t == "What is this test?" for _, t in hd_tp if t) and sum(1 for _, t in hd_tp if t) == js(
                       "SERIES.filter(s => !s.watch && state.sel.has(s.name) && testPage(s.name)).length") > 0, hd_tp)
             tp_all = js(TP_LINKS, "#seriesRows a.test-page") + js(TP_LINKS, "#charts a.test-page")
             check("…each the page's own address, nothing of the result or the person, in a new tab with no referrer, named for where it goes",
@@ -4956,7 +4995,7 @@ def main():
             hm_tp = js("[...document.querySelectorAll('#hm g.hm-tq')].map(g => [g.querySelector('circle').dataset.tp, g.querySelector('title').textContent])")
             hm_want = js("SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null) && testPage(s.name)).length")
             js("window.__open = []; window.__realOpen = window.open; window.open = (...a) => { window.__open.push(a); return null; }; null")
-            js("document.querySelector('#hm g.hm-tq text').dispatchEvent(new MouseEvent('click', {bubbles: true}))")
+            js("document.querySelector('#hm g.hm-tq circle').dispatchEvent(new MouseEvent('click', {bubbles: true}))")   # under its icon (#257)
             opened = js("window.__open")
             js("window.open = window.__realOpen; null")
             check("…the heatmap's grid has a ? beside each such lab's name, opening its page alone in a new tab with no referrer",
@@ -5586,7 +5625,7 @@ def main():
             page.select_option(card(2, "meal"), "before")
             page.select_option(card(3, "temp_unit"), "C")
             page.wait_for_function("document.getElementById('manMsg').textContent === '4 records ready to save.'", timeout=5000)
-            said = js("[...document.querySelectorAll('.man-item .man-check')].map(c => c.textContent)")
+            said = js("[...document.querySelectorAll('.man-item .man-check')].map(c => (c.querySelector('svg.i-check') ? '✓' : '') + c.textContent)")   # the ✓ an icon (#257)
             at = lambda t: js(f"recordDate('2026-11-10 {t}')")   # noqa: E731 (in the person's date format, #311)
             check("…fixed, each says what it becomes", said == [f"✓ Blood pressure at home · {at('05:55')} · 126/81 mmHg · pulse 66",
                   f"✓ Blood glucose at home · {at('06:10')} · glucose 104 mg/dL · before a meal", f"✓ Temperature at home · {at('06:20')} · 37.4 °C",
@@ -5669,7 +5708,7 @@ def main():
             add_record("home_bp")
             for f, v in (("date", "2026-11-10"), ("time", "05:55"), ("sys", "124"), ("dia", "80")):
                 page.fill(card(1, f), v)
-            page.wait_for_function("document.querySelector('.man-item .man-check').textContent.startsWith('✓')", timeout=5000)
+            page.wait_for_function("!!document.querySelector('.man-item .man-check svg.i-check')", timeout=5000)
             check("…typed again for its date and time, a reading says it replaces the one before",
                   "replaces the reading typed in before for that time" in js("document.querySelector('.man-item .man-check').textContent"),
                   js("document.querySelector('.man-item .man-check').textContent"))
@@ -6093,14 +6132,14 @@ def main():
             made = sorted(n for n in os.listdir(bk_dir) if n.startswith("sanguity-backup-"))
             bk_text = page.inner_text("#bkStatus")
             check("…Back up now runs in the background, then says what it made: when, how big and where", len(made) == 1
-                  and made[0] in js("document.getElementById('bkNowMsg').textContent") and "✓ Up to date." in bk_text
+                  and made[0] in js("document.getElementById('bkNowMsg').textContent") and "Up to date." in bk_text and js("!!document.querySelector('#bkState svg.i-check')")
                   and bk_dir in bk_text and "1 backup in the folder" in bk_text and js("document.getElementById('bkProgress').hidden"), (made, bk_text[:300]))
             page.click("#bkList tbody button")
             page.wait_for_selector("#bkResult .bk-state", timeout=30000)
             res = page.inner_text("#bkResult")
             check("…Check a backup restores a copy, says it's good with the counts, and the copy is gone",
-                  res.startswith("✓ Good.") and "The copy was deleted" in res and js("document.querySelectorAll('#bkResult .bk-counts:not(.bk-watch-counts) tbody tr').length") == 6
-                  and sorted(os.listdir(bk_dir)) == made and "✓ good" in page.inner_text("#bkList tbody"), (res[:300], os.listdir(bk_dir)))
+                  res.lstrip().startswith("Good.") and js("!!document.querySelector('#bkResult .bk-state b svg.i-check')") and "The copy was deleted" in res and js("document.querySelectorAll('#bkResult .bk-counts:not(.bk-watch-counts) tbody tr').length") == 6
+                  and sorted(os.listdir(bk_dir)) == made and "good" in page.inner_text("#bkList tbody") and js("!!document.querySelector('#bkList tbody svg.i-check')"), (res[:300], os.listdir(bk_dir)))
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             cl_tables, cl_bad = cell_labels(page, "Admin → Backups")
@@ -6150,7 +6189,7 @@ def main():
                   and "10 days old" in notice and js("document.querySelector('#backupNotice a').getAttribute('href')") == "#backups", notice)
             check("…and beside Backups in the sidebar, in words", js("document.querySelector('#admNav a[data-group=backups] .bk-late')?.textContent") == "late")
             page.click("#userMenuBtn")
-            check("…and on the Admin menu item", js("document.querySelector('#adminLink .badge')?.textContent") == "⚠ backups late",
+            check("…and on the Admin menu item", js("(b => b && (b.querySelector('svg.i-triangle-alert') ? '⚠' : '') + b.textContent)(document.querySelector('#adminLink .badge'))") == "⚠ backups late",
                   js("document.getElementById('adminLink').textContent"))
             page.keyboard.press("Escape")
             page.click("#backupNotice a")
@@ -7687,7 +7726,7 @@ def main():
             page.wait_for_function("document.getElementById('aboutMsg').textContent === 'Saved.'", timeout=10000)
             page.goto(base + f"/settings.html?profile={rpid}#sec-ranges")
             page.wait_for_selector("#sec-ranges [data-key='ranges.overrides'] .set-sugg .chip", timeout=10000)
-            chips = js("[...document.querySelectorAll('#sec-ranges .set-sugg .chip')].map(b => b.textContent)")
+            chips = js("[...document.querySelectorAll('#sec-ranges .set-sugg .chip')].map(b => (b.querySelector('svg.i-plus') ? '+ ' : '') + b.textContent)")   # the + an icon (#257)
             check("ranges: Settings suggests the labs whose results have no range, by unit",
                   len(chips) == 2 and chips[0] == f"+ Ferritin (ng/mL) · {len(fe) - 2}", chips)
             uses = js("document.getElementById('rangesUses').textContent")
@@ -8705,9 +8744,12 @@ def main():
             # Chromium's own link colour, light and dark (a visited link's purple reads as this to scripts too)
             UA_LINKS = """(() => { const as = [...document.querySelectorAll('a[href]')].filter(a => a.checkVisibility());
               return [as.length, as.filter(a => ['rgb(0, 0, 238)', 'rgb(158, 158, 255)'].includes(getComputedStyle(a).color)).map(a => a.textContent.trim().slice(0, 40))]; })()"""
+            icon_bad, icons_seen = [], [0]   # #257: the icons on each of them
             def axe_at(pg, label, outline=False):
                 bad_, other_ = axe_check(pg, label)
                 axe_bad.extend(bad_); axe_other.extend(other_); axe_seen.append(label)
+                n, ib = icon_audit(pg, label)
+                icons_seen[0] += n; icon_bad.extend(ib)
                 if outline and label.startswith("light "):
                     o, ob = heading_outline(pg, label[6:])
                     outlines.append(o); outline_bad.extend(ob)
@@ -8782,6 +8824,10 @@ def main():
             check("…its moderate and minor findings, listed (none fail)", True, "; ".join(axe_other[:12]) or "none")
             check("…and no link in the browser's own blue or purple, on all of them in light and dark: links are in the accent (#247)",
                   links_seen[0] > 100 and not ua_links, ua_links[:8] or f"{links_seen[0]} links")
+            check("…and on all of them, light and dark, the icons (#257): no Unicode glyph left as one in a button's or link's text "
+                  "(▲ and ▼ stay, the out-of-range marks), each icon drawn (its sprite's symbol found, not 0 by 0) and hidden from screen "
+                  "readers or named, and each button or link that's only an icon named", icons_seen[0] > 500 and not icon_bad,
+                  icon_bad[:10] or f"{icons_seen[0]} icons")
             check(f"…and on each of the {len(outlines)} pages, exactly one h1 (the page's, not the brand), no heading level skipped and "
                   "axe-core's heading rules passing; each page's outline (#331)", len(outlines) >= 35 and not outline_bad,
                   outline_bad[:10] or " | ".join(outlines))
@@ -8899,8 +8945,31 @@ def main():
             page.goto(base + "/account.html")
             page.wait_for_selector(".btn.primary", timeout=10000)
             edges["account"] = js("[...document.querySelectorAll('.btn.primary, .btn.danger')].filter(b => b.checkVisibility()).every(b => { const c = getComputedStyle(b); return c.borderStyle !== 'none' && parseFloat(c.borderWidth) >= 1; })")
+            # …and the icons (#257) are drawn there in the system's colours: the records page with an event's drawer open, the More…
+            # period menu, and a page of Settings
+            fc_icons, fc_n = [], 0
+            for path, ready, then in (("/", "typeof booted !== 'undefined' && booted && EV.length > 0",
+                                       "switchTab('timeline'); openEvent(EV.find(e => e.k === 'lab' && !e.hidden))"),
+                                      ("/settings.html?profile=1#dashboard", "!!document.querySelector('.set-grip')", None)):
+                page.goto(base + path)
+                page.wait_for_function(ready, timeout=20000)
+                if then:
+                    js(then)
+                settle(300)
+                if path == "/":
+                    page.click("#periodMoreBtn")
+                    js("document.querySelector('#periodMoreList [data-period]').setAttribute('aria-checked', 'true')")   # a ✓ to see
+                n, ib = icon_audit(page, f"forced colours, {path}")
+                fc_n += n; fc_icons += ib
+                fc_icons += [f"{path}: {x}" for x in js("""[...document.querySelectorAll('svg.icon')].filter(s => s.checkVisibility())
+                    .filter(s => { const c = getComputedStyle(s); return c.stroke !== c.color; })
+                    .map(s => s.getAttribute('class') + ' stroke ' + getComputedStyle(s).stroke + ' colour ' + getComputedStyle(s).color)""")]
+                if path == "/":
+                    page.keyboard.press("Escape")
             page.emulate_media(forced_colors="none")
             check("in forced colours, the filled buttons keep an edge (#202)", all(edges.values()), edges)
+            check("…and the icons are drawn, in the colour of the text they're in, as the system sets it (#257)", fc_n > 20 and not fc_icons,
+                  fc_icons[:8] or f"{fc_n} icons")
             # accessible sign-in (3.3.8): a password manager can fill the fields, and pasting isn't stopped
             ctx = browser.new_context(viewport={"width": 1400, "height": 900})
             lp = ctx.new_page()
@@ -9547,7 +9616,7 @@ def main():
             check("PWA: Chromium finds nothing stopping the install", not [e for e in errs if e["errorId"] != "in-incognito"], errs)
             # the worker keeps the app's own files, and nothing from the API
             kept = dict(ph.evaluate("caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys()).then(rs => [k, rs.map(r => r.url)]))))"))
-            shell = kept.get("sanguity-shell-v3", [])
+            shell = kept.get("sanguity-shell-v4", [])
             check("PWA: the app's pages, scripts, fonts and icons are kept",
                   any(u.endswith("/js/app.js") for u in shell) and any(u.endswith("/icons/icon-192.png") for u in shell)
                   and sum("/fonts/" in u and u.endswith(".woff2") for u in shell) == 4, len(shell))
@@ -9688,7 +9757,7 @@ def main():
             ph.wait_for_url("**/login.html", timeout=10000)
             until(NO_COPY, 5000)
             check("sign-out: the kept copy and the choice are deleted, the app's own files stay",
-                  ph.evaluate(NO_COPY) and ph.evaluate("localStorage.getItem('sg-offline-records')") is None and ph.evaluate("caches.has('sanguity-shell-v3')"))
+                  ph.evaluate(NO_COPY) and ph.evaluate("localStorage.getItem('sg-offline-records')") is None and ph.evaluate("caches.has('sanguity-shell-v4')"))
             # offline, the browser reports each request it couldn't make; signing out ends in 401s
             problems[before:] = [x for x in problems[before:] if "ERR_INTERNET_DISCONNECTED" not in x and "401" not in x]
             ctx.close()
@@ -9759,7 +9828,7 @@ def main():
             fp.click("#b")
             fp.wait_for_url("**/guide.html?profile=1#name", timeout=15000)
             fp.wait_for_selector("#step-name:not([hidden])", timeout=10000)
-            steps_js = "[...document.querySelectorAll('#guideSteps li')].map(li => li.textContent.replace(/^[\\d✓]/, '').replace(' (done)', ''))"
+            steps_js = "[...document.querySelectorAll('#guideSteps li')].map(li => li.textContent.replace(/^\\d/, '').replace(' (done)', ''))"
             check("first run: setup signs in and the guide opens by itself on the new, empty profile, at whose records it holds",
                   fp.evaluate(steps_js) == ["Whose records", "First records", "Phone (optional)", "Overview"] and fp.input_value("#profName") == "robin"
                   and fp.is_visible("#step-name [data-skip]") and fp.is_visible("#skipGuide") and guide_is() == "", fp.evaluate(steps_js))
@@ -9790,7 +9859,7 @@ def main():
             fp.wait_for_selector("#recordsHave:not([hidden])", timeout=10000)
             check("…and back in the guide, the step says the records are in, with Continue in place of Skip",
                   "Robin Example has records now, from 1 import" in fp.inner_text("#recordsHave") and fp.is_visible("#step-records [data-next]")
-                  and fp.is_hidden("#step-records [data-skip]") and fp.evaluate("document.querySelector('#guideSteps li.done')?.textContent") == "✓First records (done)",
+                  and fp.is_hidden("#step-records [data-skip]") and fp.evaluate("(li => li && (li.querySelector('.guide-n svg.i-check') ? '✓' : '') + li.textContent)(document.querySelector('#guideSteps li.done'))") == "✓First records (done)",
                   fp.inner_text("#step-records")[:300])
             fp.click("#step-records [data-next]")
             fp.wait_for_selector("#step-phone:not([hidden])", timeout=10000)

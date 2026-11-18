@@ -84,9 +84,9 @@ const SgNav = (() => {
     if (openMenu === m) openMenu = null;
   }
   const items = m => [...m.list.querySelectorAll("[role^=menuitem]")].filter(x => !x.hidden);   // menuitem, menuitemradio (#191)
-  function menu(id, label, icon, entries) {
+  function menu(id, label, ico, entries) {
     const btn = el("button", {class: "iconbtn menu-btn", type: "button", id: id + "Btn", "aria-haspopup": "menu", "aria-expanded": "false",
-      "aria-controls": id + "List"}, el("span", {class: "menu-ico", "aria-hidden": "true", text: icon}), label);
+      "aria-controls": id + "List"}, ico ? el("span", {class: "menu-ico", "aria-hidden": "true"}, icon(ico)) : null, label);
     const list = el("div", {class: "menu-list", id: id + "List", role: "menu", "aria-labelledby": id + "Btn", hidden: ""}, ...entries);
     for (const x of entries) if (x.getAttribute && x.getAttribute("role") === "menuitem") x.tabIndex = -1;
     return wire({btn, list, wrap: el("div", {class: "menu", id}, btn, list)});
@@ -127,7 +127,7 @@ const SgNav = (() => {
 
   /* Add: records in, each way opening its section of the Sources page (#166); a journal entry, whose form journal.js
      opens on the records page (from another page, the link takes you there and it opens, #173) */
-  const add = menu("addMenu", "Add", "+", [
+  const add = menu("addMenu", "Add", "plus", [
     link("sources.html#upload", "Upload files", {id: "importLink", "data-needs": "import"}),
     link("sources.html#portals", "Connect a portal or plan", {"data-needs": "import"}),
     link("sources.html#manual", "Type records in", {"data-needs": "import"}),
@@ -148,8 +148,8 @@ const SgNav = (() => {
     sep(),
     action("logout", "Log out"),
   ]);
-  user.btn.replaceChildren(who, el("span", {class: "menu-caret", "aria-hidden": "true", text: "▾"}));
-  add.btn.append(el("span", {class: "menu-caret", "aria-hidden": "true", text: "▾"}));
+  user.btn.replaceChildren(who, el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
+  add.btn.append(el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
   user.btn.setAttribute("aria-label", "Your menu");
   // the spacer before the records page's Install app button, so it sits with the menus
   const inst = document.getElementById("installBtn");
@@ -184,7 +184,7 @@ const SgNav = (() => {
       if (me && me.user && me.user.is_admin && !locked) {
         const a = document.getElementById("adminLink");
         a.hidden = false;
-        if (me.backups_late) a.append(" ", el("span", {class: "badge bk-late", text: "⚠ backups late"}));   // #200: Admin → Backups says why
+        if (me.backups_late) a.append(" ", el("span", {class: "badge bk-late"}, icon("triangle-alert"), " backups late"));   // #200: Admin → Backups says why
       }
     }).catch(() => {});
   });

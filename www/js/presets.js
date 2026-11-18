@@ -129,8 +129,8 @@ function presetsBlock(sec) {
   }
   function drawChosen() {
     chosen.replaceChildren(...(picked.length ? [el("span", {class: "muted", text: "Chosen: "}),
-      ...picked.map(id => el("button", {class: "chip", type: "button", text: byId(id).name + " ×", "aria-label": `Remove ${byId(id).name}`,
-        onclick: () => { pick(id, false); (chosen.querySelector("button") || find).focus(); }}))]
+      ...picked.map(id => el("button", {class: "chip", type: "button", "aria-label": `Remove ${byId(id).name}`,
+        onclick: () => { pick(id, false); (chosen.querySelector("button") || find).focus(); }}, byId(id).name, icon("x")))]
       : [el("span", {class: "muted", text: "None chosen yet: tick one or more below."})]));
   }
 

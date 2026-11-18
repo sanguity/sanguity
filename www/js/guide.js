@@ -39,7 +39,7 @@
   function drawList() {
     $("#guideSteps").replaceChildren(...steps.map((s, i) => {
       const reach = !!P || s.id === "name";   // with no profile yet, only its first step
-      const kids = [el("span", {class: "guide-n", "aria-hidden": "true", text: done[s.id] ? "✓" : String(i + 1)}),
+      const kids = [el("span", {class: "guide-n", "aria-hidden": "true"}, done[s.id] ? icon("check") : String(i + 1)),
         el("span", {text: s.title}), done[s.id] ? el("span", {class: "vh", text: " (done)"}) : null];
       return el("li", {class: [s.id === current ? "cur" : "", done[s.id] ? "done" : ""].join(" ").trim() || null},
         reach && s.id !== current ? el("a", {href: "#" + s.id, onclick: ev => { ev.preventDefault(); show(s.id, true); }}, ...kids)
@@ -105,7 +105,7 @@
     const have = (id, yes, text) => {
       const p = $("#" + id);
       p.hidden = !yes;
-      p.replaceChildren(el("span", {class: "guide-tick", "aria-hidden": "true", text: "✓ "}), text);
+      p.replaceChildren(el("span", {class: "guide-tick", "aria-hidden": "true"}, icon("check"), " "), text);
       const sec = p.closest(".guide-step");
       sec.querySelector("[data-next]").hidden = !yes;
       sec.querySelector("[data-skip]").hidden = yes;

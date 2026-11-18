@@ -46,7 +46,7 @@
     if (rows().length >= MAX) { tell(`At most ${MAX} rows at a time: save these first.`, true); return null; }
     const last = after || rows().pop(), from = last ? valueOf(last) : {};
     const r = el("div", {class: "man-row", role: "group"}, FIELDS.map(field),
-      el("button", {type: "button", class: "del", title: "Remove this row", "aria-label": "Remove this row", text: "✕"}),
+      el("button", {type: "button", class: "del", title: "Remove this row", "aria-label": "Remove this row"}, icon("x")),
       el("div", {class: "man-check", "aria-live": "polite"}));
     // a new row starts on the last one's date, time and lab: a report's results share them
     for (const [f] of FIELDS) r.querySelector(`[data-f=${f}]`).value = v[f] ?? (["date", "time", "lab"].includes(f) ? from[f] || (f === "date" ? today() : "") : "");
@@ -103,7 +103,7 @@
       if (x.duplicate) dup++;
       const range = x.low != null && x.high != null ? `${x.low} – ${x.high}` : x.high != null ? `under ${x.high}` : x.low != null ? `over ${x.low}` : "";
       const value = x.value != null ? `${x.value}${x.unit ? " " + x.unit : ""}` : `“${x.text}”`;
-      out.replaceChildren("✓ ", el("b", {text: x.name}), ` · ${recordDate(x.date)} · ${value}` + (range ? ` · range ${range}` : ""),
+      out.replaceChildren(icon("check"), " ", el("b", {text: x.name}), ` · ${recordDate(x.date)} · ${value}` + (range ? ` · range ${range}` : ""),
         ...(x.flag ? [" · ", el("span", {class: "abn", text: x.flag === "H" ? "▲ High" : "▼ Low"})] : []),
         ...(x.duplicate ? [" · ", el("span", {class: "dup", text: "already in this profile: it won't be saved again"})] : []),
         ...(x.notes.length ? [` (${x.notes.join("; ")})`] : []));

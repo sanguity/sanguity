@@ -142,8 +142,10 @@ class Pwa(unittest.TestCase):
             sw = f.read()
         listed = set(json.loads("[" + re.search(r"const FILES = \[(.*?)\];", sw, re.S).group(1).strip().rstrip(",") + "]"))
         have = {p + ".html" for p in PAGES} | {"", "manifest.webmanifest"}
-        for sub in ("css", "js", "icons"):
+        for sub in ("css", "js"):
             have |= {f"{sub}/{n}" for n in os.listdir(os.path.join(WWW, sub))}
+        have |= {f"icons/{n}" for n in os.listdir(os.path.join(WWW, "icons")) if not n.endswith(".txt")}   # not Lucide's licence (#257)
+        self.assertIn("icons/sprite.svg", have)
         have |= {f"fonts/{n}" for n in os.listdir(os.path.join(WWW, "fonts")) if n.endswith(".woff2")}   # not the licences
         have.discard("js/connect-return.js")   # only for where a connected source's sign-in comes back, never offline
         self.assertEqual(listed, have, "sw.js FILES lists every page, style, script, font and icon in www/")

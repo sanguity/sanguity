@@ -105,9 +105,9 @@ async function syncWarning(pid) {
   const w = d.warnings, box = $("#syncWarn");
   if (!w.length) { box.hidden = true; return; }
   const more = w.length > 1 ? ` (and ${w.length - 1} more)` : "";
-  const link = el("a", {href: `sources.html?profile=${pid}#conn-${w[0].connection}`, text: d.can_fix ? "Portals and health plans →" : "Details →"});
+  const link = el("a", {href: `sources.html?profile=${pid}#conn-${w[0].connection}`}, d.can_fix ? "Portals and health plans " : "Details ", icon("arrow-right"));
   box.classList.toggle("quiet", !d.can_fix);
-  box.replaceChildren(d.can_fix ? el("span", {text: "⚠ " + w[0].text + more}) :
+  box.replaceChildren(d.can_fix ? el("span", {}, icon("triangle-alert", {label: "Warning:"}), " " + w[0].text + more) :
     el("span", {text: `Records from ${w[0].source} may be out of date: ${w[0].text.replace(/^[^:]*: /, "")}${more}`}), link);
   box.hidden = false;
 }
@@ -159,7 +159,7 @@ async function syncWarning(pid) {
       .map(m => ({...m, date: m.date.slice(0, 10), label: m.label || "Milestone"})).sort((a, b) => a.date.localeCompare(b.date));
   } catch (e) { emptyCard("Couldn't load the records: " + e.message); return; }
   applyTabs(CFG.tabs);
-  applyTheme(CFG.theme);   // this user's default theme (#45), unless this browser has its own (the ◐ toggle)
+  applyTheme(CFG.theme);   // this user's default theme (#45), unless this browser has its own (the light/dark toggle)
   await dates;   // before any time is read: one without an offset is this person's wall-clock time
   for (const e of DATA.events) {
     e.ts = zParse(e.t); e.te = e.end ? zParse(e.end) : e.ts;

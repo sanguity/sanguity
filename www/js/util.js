@@ -48,7 +48,7 @@ const keepDates = s => String(s).split(/((?<!\p{L})as of(?!\p{L})|(?:(?<![\d.])\
 const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,
   headers: {...(opts.method && opts.method !== "GET" ? {"X-Sanguity": "1", "Content-Type": "application/json"} : {}), ...opts.headers}});
 
-/* The theme (#45): this browser's own choice (the ◐ toggle) wins, then the account's default (light, dark or
+/* The theme (#45): this browser's own choice (the light/dark toggle) wins, then the account's default (light, dark or
    "system"), remembered here so theme.js can apply it before the next page draws, then the system's. */
 function applyTheme(accountDefault) {
   try {
@@ -279,4 +279,18 @@ function scrollBox(attrs, ...kids) {
   const watch = new ResizeObserver(fit);
   for (const n of [box, ...box.children]) watch.observe(n);
   return box;
+}
+
+/* ---- an icon (#257): one of Lucide's, from icons/sprite.svg (tools/build_sprite.py lists them), in place of the
+   Unicode glyphs the app drew from whichever font had them. icon("x") is
+   <svg class="icon i-x" aria-hidden="true" focusable="false"><use href="…/icons/sprite.svg#i-x"/></svg>: 1em square,
+   in the text's colour (app.css .icon), hidden from screen readers, as the button or link it's in is named by its
+   words, aria-label or title. icon(name, {label}) is an icon that says something itself, with nothing around it to
+   name it (a ✓ for "good"): the icon, then the label as visually hidden text, in a span. The sprite's address is
+   taken from this script's own, so a page in a subfolder (connect-return.html, at /connect/return) finds it too, as
+   its stylesheets do with ../. */
+const ICON_SPRITE = new URL("../icons/sprite.svg", document.currentScript ? document.currentScript.src : location.href).pathname;
+function icon(name, {label} = {}) {
+  const svg = el("svg:svg", {class: `icon i-${name}`, "aria-hidden": "true", focusable: "false"}, el("svg:use", {href: `${ICON_SPRITE}#i-${name}`}));
+  return label ? el("span", {class: "icon-l"}, svg, el("span", {class: "vh", text: label})) : svg;
 }
