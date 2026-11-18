@@ -900,8 +900,8 @@ SCROLL_TABLES_JS = r"""sel => [...document.querySelectorAll(sel || '.tablewrap')
 
 def scroll_table_faults(wraps):
     """SCROLL_TABLES_JS's rows (each with what it was on put first) that are wrong: scrolling but not a named region in
-    the Tab order, or not scrolling but a tab stop or a region (#340)"""
-    return [w for w in wraps if ((w[3] != 0 or not w[2].strip() or w[4] != "region") if w[1] else (w[3] >= 0 or w[4] == "region"))]
+    the Tab order, or not scrolling but a tab stop, a region or named (#340, #347)"""
+    return [w for w in wraps if ((w[3] != 0 or not w[2].strip() or w[4] != "region") if w[1] else (w[3] >= 0 or w[4] == "region" or w[2].strip()))]
 
 
 # a field's look (#332), in light and dark (the theme set on the page, then put back): its background, edge and corner.

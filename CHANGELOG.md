@@ -815,6 +815,7 @@ Everything on `main` so far; it becomes the first tagged release.
   Catalan "ag.") and a point after the day ("18. Aug. 2026").
 - **Chart text in forced colours** (#346): event labels, lane labels, medication names and axis text are drawn in the
   system's text colour, like milestones (#341).
+- **A table box that doesn't scroll has no name** (#347): it's named only while it scrolls and is a region.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
