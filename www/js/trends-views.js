@@ -38,6 +38,26 @@ function tvRefresh() {
   if (focus && box.querySelector("#" + focus)) $("#" + focus).focus();
 }
 const tvPlain = v => ({name: v.name, labs: v.labs, default: !!v.default});
+/* a deleted view's Undo (#359): the view put back into the views as they are now on the server, not the list as it
+   was when it was deleted (other views deleted, saved or made the default since stay as they are): back in its place
+   (before the view that followed it, or after the one before it, of those still there), the default again only if
+   no other view is now; a view saved under its name since is left as it is. order: the views' names it was among. */
+async function tvPutBack(gone, order) {
+  const r = await api(`profiles/${PROFILE.id}/settings`);
+  if (!r.ok) throw new Error(`the server answered ${r.status}`);
+  const j = await r.json(), now = (j.trends?.views || []).map(tvPlain);
+  if (now.some(v => v.name.toLowerCase() === gone.name.toLowerCase())) {
+    applySettings(j);   // drawn as they are
+    tvMsg = `A view called “${gone.name}” was saved since: it's left as it is.`;
+    renderSeriesList();
+    return;
+  }
+  const i = order.indexOf(gone.name), at = n => now.findIndex(v => v.name === n);
+  const after = order.slice(i + 1).map(at).find(k => k >= 0), before = order.slice(0, i).reverse().map(at).find(k => k >= 0);
+  const next = [...now];
+  next.splice(after ?? (before == null ? next.length : before + 1), 0, {...gone, default: gone.default && !now.some(v => v.default)});
+  if (!await tvStore(next, `Undone: “${gone.name}” is back.`)) throw new Error("it couldn't be saved");
+}
 /* the bar at the top of the lab list: pick a view; save, make default, delete */
 function viewsBar() {
   const views = CFG.trends.views, can = tvCanSave(), cur = tvCurrent();
@@ -59,10 +79,11 @@ function viewsBar() {
         onclick: () => tvStore(views.map(v => ({...tvPlain(v), default: v === cur ? !cur.default : false})),
           cur.default ? `“${cur.name}” is no longer the default.` : `Labs now starts with “${cur.name}”.`)}, ...(cur.default ? ["Default ", icon("check")] : ["Make default"])),
       el("button", {class: "btn", type: "button", text: "Delete", "aria-label": `Delete the view ${cur.name}`,
-        onclick: async () => {   // at once, with an Undo that saves the views as they were (#263; it asked first before)
-          const before = views.map(tvPlain), said = `Deleted “${cur.name}”.`;
-          if (await tvStore(views.filter(v => v !== cur).map(tvPlain), said, {quiet: true}))
-            toast(said, {action: "Undo", onAction: async () => { if (!await tvStore(before, `Undone: “${cur.name}” is back.`)) throw new Error("it couldn't be saved"); }}); }}));
+        onclick: async () => {   // at once, with an Undo that puts this view back (#263; it asked first before)
+          const gone = tvPlain(cur), order = views.map(v => v.name), said = `Deleted “${cur.name}”.`;
+          if (await tvStore(views.filter(v => v !== cur).map(tvPlain), said, {quiet: true})) {
+            toast(said, {action: "Undo", onAction: () => tvPutBack(gone, order)});
+          } }}));
   }
   if (can && !tvFormOpen) bar.append(el("button", {class: "btn", type: "button", id: "viewSaveOpen", text: "Save view…", disabled: state.sel.size ? null : "",
     title: state.sel.size ? "Save the labs charted now as a view" : "Pick some labs first",

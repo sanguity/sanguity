@@ -463,7 +463,8 @@ function settingNode(st, changed, mixed) {
   const item = {st, node, msg,
     dirty: () => !ro && !!ed && !same(ed.get(), st.value),
     value: () => ed.get(),
-    saved(value) { st.value = value; st.from = st.scope; from.textContent = FROM[st.from] || st.from; mark(); }};
+    saved(value) { st.value = value; st.from = st.scope; from.textContent = FROM[st.from] || st.from; mark(); },
+    back(value, was) { st.value = value; st.from = was; from.textContent = FROM[st.from] || st.from; mark(); changed(); }};   // put back by an Undo (#359)
   const mark = () => node.classList.toggle("set-changed", item.dirty());
   const make = v => (EDITORS[st.kind] || jsonEditor)(v, () => { sayIn(msg, ""); mark(); changed(); }, ro, st);
   ed = make(st.value);
@@ -473,6 +474,43 @@ function settingNode(st, changed, mixed) {
     st.help ? el("p", {class: "hint", text: st.help}) : null,
     ed.node, msg));
   return item;
+}
+
+/* the section's settings as the server has them now: {key: {value, from}} */
+async function stored(base) {
+  const d = await call(`${base}/sections`);
+  return Object.fromEntries(d.sections.flatMap(sec => sec.settings).map(st => [st.key, {value: st.value, from: st.from}]));
+}
+/* a save's Undo (#263, #359): each setting it saved goes back to what it was (the default it came from taken off
+   again, where a profile's setting can be; otherwise the value it had), but only one that still holds what this save
+   wrote: one changed again since is left, and said to be. The section is drawn again as saved, unless it has changes
+   not saved: those are kept, its other settings shown as they are now. */
+async function undoSave(base, reload, sec, was) {
+  const now = await stored(base), back = [], since = [];
+  for (const w of was) {
+    if (!w.wrote || !now[w.key] || !same(now[w.key].value, w.wrote.value)) { since.push(w.label); continue; }
+    const path = `${base}/${encodeURIComponent(w.key)}`;
+    if ((w.from === "default" || w.from === "install") && !base.startsWith("settings/")) await call(path, "DELETE");
+    else await call(path, "PUT", {value: w.value});
+    back.push(w);
+  }
+  const text = [back.length ? `Undone: ${quoted(back.map(w => w.label))} ${back.length === 1 ? "is" : "are"} as before.` : "",
+    since.length ? `${quoted(since)} ${since.length === 1 ? "was" : "were"} changed since, so ${since.length === 1 ? "it's" : "they're"} left as ${since.length === 1 ? "it is" : "they are"}.` : ""].join(" ").trim();
+  const card = () => document.getElementById("sec-" + sec.id);
+  if (!card()?.hasAttribute("data-dirty")) { await reload({section: sec.id, text}, sec.id); return; }
+  // changes not saved in it: kept, each setting's saved value now the one put back (so one changed back to it is
+  // no longer a change); a setting not changed here shows it
+  const after = await stored(base).catch(() => now);
+  for (const w of back) {
+    const it = SET_ITEMS[w.key];
+    if (!it || !card().contains(it.node) || !after[w.key]) continue;
+    const dirty = it.dirty();
+    it.back(after[w.key].value, after[w.key].from);
+    if (!dirty) it.put(after[w.key].value);
+  }
+  await reload();   // the other sections, as they are now: this one, still with changes, stays
+  if (card()?.hasAttribute("data-dirty")) sayIn(card().querySelector(".set-foot > .msg"), text + " Your changes not saved yet are kept.");
+  else await reload({section: sec.id, text}, sec.id);
 }
 
 /* “A”, “A” and “B”, “A”, “B” and “C” */
@@ -508,7 +546,7 @@ function sectionCard(sec, opts = {}) {
     sayIn(msg, "Saving…");
     const done = [], was = [];
     for (const it of todo) {
-      const value = it.value(), before = {key: it.st.key, value: it.st.value, from: it.st.from};
+      const value = it.value(), before = {key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from};
       try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value}); }
       catch (e) {
         // the ones before it are saved; this one and the rest stay as changed, to put right and save again
@@ -520,20 +558,15 @@ function sectionCard(sec, opts = {}) {
         return;
       }
       it.saved(value);
-      done.push(it.st.label); was.push(before);
+      done.push(it.st.label); was.push({...before, wrote: {value}});
     }
     changed();
     const said = `Saved ${quoted(done)}.`;
     await reload({section: sec.id, text: said, quiet: true});
-    toast(said, {action: "Undo", onAction: async () => {
-      // the default it came from: taken off again (a profile's setting can be); otherwise the value it had
-      for (const w of was) {
-        const path = `${base}/${encodeURIComponent(w.key)}`;
-        if ((w.from === "default" || w.from === "install") && !base.startsWith("settings/")) await call(path, "DELETE");
-        else await call(path, "PUT", {value: w.value});
-      }
-      await reload({section: sec.id, text: `Undone: ${quoted(done)} ${done.length === 1 ? "is" : "are"} as before.`}, sec.id);
-    }});
+    // what the server keeps now (as it stored it), for the Undo to tell whether a setting was changed again since
+    const kept = await stored(base).catch(() => null);
+    if (kept) for (const w of was) if (kept[w.key]) w.wrote = kept[w.key];
+    toast(said, {action: "Undo", onAction: () => undoSave(base, reload, sec, was)});
   };
   discard.onclick = () => {
     const fresh = sectionCard(sec, {...opts, note: "Changes discarded: back as saved."});

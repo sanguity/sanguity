@@ -872,6 +872,11 @@ Everything on `main` so far; it becomes the first tagged release.
   at least 10 seconds and waits while the pointer is on it or focus is in it; Alt+N goes to it, Escape or its ✕
   puts it away; up to three show at once. It's said once, in a live region named Notifications. What can't be undone
   or touches security (passkeys, sign-in, sharing, cycle data, a dose or reminder removed) still asks first.
+- **Undo puts back only what it took away** (#359): a Labs view's Undo saved the whole list as it was when the view
+  was deleted, so undoing two deletes in turn deleted the first again, and undoing one after making another view the
+  default took that default away. It now puts the one view back into the views as they are, in its place, keeping
+  today's default. Settings' Undo puts a setting back only if it still holds what that save wrote (one changed since is
+  left as it is, and said to be), and no longer redraws a section with changes not saved: they're kept.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
