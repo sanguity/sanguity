@@ -886,6 +886,12 @@ Everything on `main` so far; it becomes the first tagged release.
   toast now goes back where it came from however the toast goes, and stays on the button while it runs. Deleting a
   Labs view leaves focus on the view picker, not nowhere. Alt+N is no longer taken while typing in a field, where
   Option+N on a Mac types ñ, ã or õ.
+- **Toasts over nothing you're working on** (#362): toasts drew over an open dialog, so at 568×320 "Delete all cycle
+  data?"'s buttons were under one, and over the page's foot, so at 375 px Tab could put focus wholly under one. In a
+  dialog, or the drawer, they're now in its flow at its foot, under its buttons and content; over the page, what takes
+  focus is scrolled clear of them and the page's foot can scroll up above them. Between 701 and about 1,076 px (and
+  with the wider panel) they covered the drawer beside the page; they're in the drawer now. A toast with an Undo stays
+  until it's used or put away: on a touch screen nothing could keep one before.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
