@@ -6503,6 +6503,15 @@ def main():
                   "stays once typed in, and goes with its last row",
                   at_start[:2] == [True, 1] and after_visit[:2] == [False, 0] and back == [True, 1, "test"] and kept[:2] == [True, 1]
                   and gone == [False, 0, "manKind"], [at_start, after_visit, back, kept, gone])
+            # #384: a row is typed into once any field differs from what it was given: a lab row with only its date changed
+            # stays when a visit is added, with that date
+            add_record("labs")
+            page.fill(".man-row [data-f=date]", "2026-10-02")
+            add_record("visit")
+            date_kept = js(labs_now[:-1] + ", document.querySelector('.man-row [data-f=date]')?.value]")
+            check("…a lab row with only its date changed counts as typed into: it stays when a visit is added, with its date (#384)",
+                  date_kept[:2] == [True, 1] and date_kept[3] == "2026-10-02", date_kept)
+            page.click(".man-row .del")
             while js("document.querySelectorAll('.man-item').length"):
                 page.click(".man-item .del")
             # #245: a form of each kind, with a hint under its title or without, says no "null" or "undefined"; then removed
@@ -6594,18 +6603,29 @@ def main():
                   len(share) == 1 and share[0][0] == 50 and share[0][1].startswith("Claim: your share"), share)
             page.goto(base + "/import.html?profile=2#payment")
             page.wait_for_selector(".man-item[data-kind=payment]", timeout=10000)
-            check("the Costs tab's link opens a payment's form", js("document.querySelectorAll('.man-item').length") == 1)
+            settle(300)
+            arrived = js("[document.querySelectorAll('.man-item').length, document.getElementById('manLabs').hidden, document.querySelectorAll('.man-row').length, "
+                         "document.getElementById('manKind').value]")
+            check("the Costs tab's link opens a payment's form, only it: lab results put away, the picker on it (#384)",
+                  arrived == [1, True, 0, "payment"], arrived)
             page.fill(card(1, "date"), "2026-11-05")
             page.fill(card(1, "payee"), "Lakeside Clinic (fictional)")
-            page.fill(card(1, "amount"), "$50.00")
             page.select_option(card(1, "hsa"), "HSA")
             page.set_input_files(card(1, "file"), pdf_path)
+            page.fill(card(1, "amount"), "$50.00")   # last, so clicking Save changes it: a check scheduled as Save is clicked (#384)
             page.wait_for_function("document.querySelector('.man-item .man-file').textContent.includes('uploaded')", timeout=10000)
             page.wait_for_function("document.getElementById('manMsg').textContent === '1 record ready to save.' && !document.getElementById('manSave').disabled", timeout=5000)
             check("…which says it's paid with an HSA and has a receipt", "HSA" in js("document.querySelector('.man-check').textContent")
                   and "receipt" in js("document.querySelector('.man-check').textContent"), js("document.querySelector('.man-check').textContent"))
             page.click("#manSave")
             page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            # #384: the saved line and its link stay (a check scheduled before the save doesn't clear it), focus on the line
+            # rather than <body> (Save disables itself), and the form as on load: lab results with one row, the picker on it
+            page.wait_for_timeout(2000)
+            after_save = js("[document.getElementById('manMsg').textContent, document.querySelectorAll('#manMsg a').length, document.activeElement.id || document.activeElement.tagName, "
+                            "document.getElementById('manKind').value, document.getElementById('manLabs').hidden, document.querySelectorAll('.man-row').length]")
+            check("…2 s after Save, the saved line and its link are still there, focus on the line, and the picker reads Lab results over its row (#384)",
+                  after_save[0].startswith("Saved 1 record.") and after_save[1] == 1 and after_save[2] == "manMsg" and after_save[3:] == ["labs", False, 1], after_save)
             page.click("#manMsg a")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && DATA.oop", timeout=20000)
             js("switchTab('costs')")

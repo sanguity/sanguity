@@ -1028,6 +1028,11 @@ Everything on `main` so far; it becomes the first tagged release.
   fonts were fetched as soon as the records loaded, before the Overview's tiles had asked for Source Serif on a slow
   runner. It waits for the tiles and for Source Serif (up to 10 s) now: 20 runs in a row pass with the CPU slowed four
   times (the old read failed 16 of them), and it still fails when Source Serif is never asked for.
+- **Type records in: what #381 left** (#384): Costs' "Type in a payment" showed the payment's form above an empty lab
+  row again, the picker on Lab results; it shows only the payment's form now, the picker on it. A lab row whose date or
+  lab had been changed counted as nothing typed and went, without a word, when another kind was added; any change
+  keeps it now. After a save the picker reads Lab results again, as on load. And the saved line ("Saved 1 record. See
+  them on the timeline") no longer clears itself a moment after Save, and focus goes to it rather than to the page.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
