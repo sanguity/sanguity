@@ -795,6 +795,8 @@ Everything on `main` so far; it becomes the first tagged release.
   sideways but couldn't take focus, so its hidden columns couldn't be reached without a mouse. Every table's scrolling
   box (Costs' four, the heatmap's table, the drawer's results and services billed, a medication's listings and fills)
   takes focus now and is named, as the charts' tables already were.
+- **Small text stays crisp** (#338): exact text layout (#329) applies only to tiles and stats, whose rows must not change
+  height when the web font arrives; everywhere else the default rendering, which on Linux keeps small regular text sharp.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
