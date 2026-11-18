@@ -8501,15 +8501,26 @@ def main():
             # server would refuse it); it says at once to turn on your own first, with the way there, and stays off.
             # Requiring it with a second factor of your own is asked: the #314 check, below
             page.click("#reqTf")
-            page.wait_for_function("document.getElementById('userMsg').textContent.includes('your own account')", timeout=10000)
+            page.wait_for_function("document.getElementById('reqTfMsg').textContent.includes('your own account')", timeout=10000)
             settle(300)
-            tf_msg = js("[document.getElementById('userMsg').textContent, document.getElementById('userMsg').classList.contains('bad'), "
-                        "document.querySelector('#userMsg a')?.getAttribute('href')]")
+            tf_msg = js("[document.getElementById('reqTfMsg').textContent, document.getElementById('reqTfMsg').classList.contains('bad'), "
+                        "document.querySelector('#reqTfMsg a')?.getAttribute('href')]")
             check("with no second factor of your own, requiring two-factor for everyone isn't asked: it says to turn on yours first, "
                   "with a link to Account → Sign-in & security, and stays off (#318)",
                   not js("document.querySelector('dialog.sg-ask[open]')") and tf_msg[0].startswith("To require it for everyone, first turn on two-factor sign-in")
                   and tf_msg[1:] == [True, "account.html#security"] and not page.is_checked("#reqTf")
                   and js("fetch('api/settings').then(r => r.json()).then(s => s.require_2fa)") is False, tf_msg)
+            near = {}
+            for w, h in ((1400, 900), (375, 800), (667, 375)):
+                page.set_viewport_size({"width": w, "height": h})
+                js("document.getElementById('reqTf').scrollIntoView({block: 'center'})")
+                settle(150)
+                near[f"{w}x{h}"] = js("""(() => { const b = document.getElementById('reqTf').closest('label').getBoundingClientRect(),
+                    m = document.getElementById('reqTfMsg').getBoundingClientRect();
+                    return [Math.round(m.top - b.bottom), m.top >= 0 && m.bottom <= innerHeight, m.height > 0]; })()""")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…and the reason is right under the checkbox, on screen at 1400×900, 375×800 and 667×375 (#323)",
+                  all(0 <= gap <= 12 and seen and shown for gap, seen, shown in near.values()), near)
             page.fill("#userName", "alex")
             page.click("#userNew button[type=submit]")
             page.wait_for_function("document.querySelector('#userMsg code')", timeout=10000)
@@ -8826,10 +8837,10 @@ def main():
             check("…Cancel leaves it off", not page.is_checked("#reqTf") and required() is False)
             page.click("#reqTf")
             answer_ask(page)
-            page.wait_for_function("document.getElementById('userMsg').textContent === 'Everyone now needs two-factor sign-in.'", timeout=10000)
+            page.wait_for_function("document.getElementById('reqTfMsg').textContent === 'Everyone now needs two-factor sign-in.'", timeout=10000)
             check("…confirming turns it on", page.is_checked("#reqTf") and required() is True)
             page.click("#reqTf")
-            page.wait_for_function("document.getElementById('userMsg').textContent === 'Two-factor sign-in is now optional.'", timeout=10000)
+            page.wait_for_function("document.getElementById('reqTfMsg').textContent === 'Two-factor sign-in is now optional.'", timeout=10000)
             check("…and turning it off isn't asked", not js("document.querySelector('dialog.sg-ask')") and required() is False)
             # Disable asks first (#249); for the only owner of a profile, the server's refusal is asked once more, after it
             alex = db.execute("SELECT id FROM users WHERE username='alex'").fetchone()[0]

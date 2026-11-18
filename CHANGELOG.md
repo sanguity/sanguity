@@ -676,6 +676,8 @@ Everything on `main` so far; it becomes the first tagged release.
   check reads subfolders and catches `:is(button,input):focus-visible` and `body :focus-visible`. What it still can't
   see is listed in its docstring. The Labs procedure-name check in `tests/browser_check.py` now needs at least one name
   at 1400 px, so it fails if the names are gone. Every count is unchanged.
+- **Require two-factor says why right beside it** (#323): its replies (why it stays off, and that it's on or off) appear
+  right under the checkbox, not below the account form, where a phone on its side didn't show them.
 - **Rows of buttons have room under them again** (#309): since #246, Admin → Backups' "Back up now" sat on the
   Schedule heading and its Save on "Check a backup", and Sharing's summary buttons and activity filters touched what
   followed. Every row of buttons on Sources, Sharing, Settings, Account and Admin is 8 px from what's above and below it.
