@@ -8969,8 +8969,14 @@ def main():
             check("…Cancel keeps you an owner", js(f"document.querySelector({json.dumps(my_sel)}).value") == "owner" and role_of(USER) == "owner")
             page.select_option(my_sel, "editor")
             answer_ask(page)
-            page.wait_for_function("document.getElementById('introHint').textContent.startsWith(\"You're an editor\")", timeout=10000)
-            check("…confirming makes you an editor", role_of(USER) == "editor" and not js("document.querySelector('#memberList select')"))
+            # the intro line is set before the people are fetched and drawn again (sharing.js, pick): wait for the list too (#337)
+            try:
+                page.wait_for_function("document.getElementById('introHint').textContent.startsWith(\"You're an editor\") "
+                                       "&& !document.querySelector('#memberList select')", timeout=10000)
+            except Exception:
+                pass   # reported by the check below, with what it saw
+            check("…confirming makes you an editor", role_of(USER) == "editor" and not js("document.querySelector('#memberList select')"),
+                  [role_of(USER), js("document.getElementById('introHint').textContent"), js("document.querySelectorAll('#memberList select').length")])
             from server import db as dbm_249
             db_249 = dbm_249.connect()   # an owner again (only another owner could, in the app), for the steps below
             db_249.execute("UPDATE memberships SET role='owner' WHERE profile_id=2 AND user_id=(SELECT id FROM users WHERE username=?)", (USER,))
