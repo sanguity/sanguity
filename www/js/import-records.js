@@ -221,6 +221,8 @@
 
   /* ---------------------------------------------------------------- adding, removing */
   $("#manAddKind").onclick = () => {
+    // import-manual.js: lab results brought back with its first row (done), or its untouched rows put away
+    if (window.sanguityLabRows?.choose(picker.value)) return;
     if (picker.value === "labs") { $("#manAdd").click(); return; }
     add(picker.value);
   };

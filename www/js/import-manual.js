@@ -21,7 +21,7 @@
     low: /^(low|ref low|range low|lower limit|min|minimum|normal low)$/, high: /^(high|ref high|range high|upper limit|max|maximum|normal high)$/,
     flag: /^(flag|flags|abnormal flag|abnormal|interpretation|h l|hl)$/, lab: /^(lab|laboratory|performing lab|facility)$/};
   const box = $("#manRows"), msg = $("#manMsg"), saveBtn = $("#manSave"), recs = window.sanguityRecords;
-  const keepBox = $("#manKeep"), BODY_MAX = 60000;   // nginx refuses API bodies over 64 KB
+  const keepBox = $("#manKeep"), labs = $("#manLabs"), BODY_MAX = 60000;   // nginx refuses API bodies over 64 KB
   let timer = null, seq = 0, ok = 0, bad = 0, okRecs = 0, badRecs = 0, saving = false;
 
   const pid = () => +$("#profile").value;
@@ -159,11 +159,27 @@
     if (!del) return;
     const r = del.closest(".man-row"), next = r.nextElementSibling || r.previousElementSibling;
     r.remove();
-    if (!rows().length) addRow();
     label();
-    (next && next.isConnected ? next : rows()[0]).querySelector("input").focus();
+    // the last row removed puts lab results away, like any other record's form; Add brings it back
+    if (!rows().length) { labs.hidden = true; $("#manKind").focus(); }
+    else (next && next.isConnected ? next : rows()[0]).querySelector("input").focus();
     soon();
   });
+  /* Lab results is one kind of record among the others in "Add a record". The page starts with its empty row (the
+     first in the list), and adding another kind before anything is typed into its rows puts it away, so the form shows
+     only what's being typed in; choosing Lab results again brings it back (import-records.js calls this first) */
+  window.sanguityLabRows = {choose(kind) {
+    if (kind === "labs") {   // shown again with a row to type in: true, nothing more to do
+      if (!labs.hidden) return false;
+      labs.hidden = false;
+      const r = rows()[0] || addRow();
+      if (r) r.querySelector("[data-f=test]").focus();
+      soon();
+      return true;
+    }
+    if (!labs.hidden && rows().every(r => blank(valueOf(r)))) { box.replaceChildren(); labs.hidden = true; soon(); }
+    return false;
+  }};
   $("#manAdd").onclick = () => { const r = addRow(); if (r) r.querySelector("[data-f=test]").focus(); soon(); };
 
   /* the links below name the profile and the tab in the address (index.html?profile=2#labs, #208); Labs also charts
@@ -195,7 +211,7 @@
       // #224: readings taken at home are on Body and activity, a height in About this person; the rest on the timeline
       const HEALTH = ["home", "home_bp", "home_glucose", "home_temp", "home_spo2", "workout"];
       const onHealth = HEALTH.some(k => typed[k]), onTimeline = Object.keys(typed).some(k => k !== "labs" && k !== "height" && !HEALTH.includes(k));
-      box.replaceChildren(); addRow({date: rs.length ? valueOf(rs[rs.length - 1]).date : today()});
+      box.replaceChildren(); labs.hidden = false; addRow({date: rs.length ? valueOf(rs[rs.length - 1]).date : today()});
       recs.saved(); keepBox.checked = false; $("#manKeepWrap").hidden = true;
       saving = false; ok = bad = okRecs = badRecs = 0;
       const links = [names.length ? el("a", {href: recordsLink(p, "labs"), text: "See them on Labs", onclick: () => openTrends(p, names)}) : null,

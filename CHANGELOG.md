@@ -1009,6 +1009,10 @@ Everything on `main` so far; it becomes the first tagged release.
   and said on the page shown now, the theme with it, naming no profile. On Sharing → About this person, a change whose
   request was still on its way when you switched profile (a target's Clear, a height's Remove, a Save) was done with
   no word and no Undo; a toast naming its profile says it now, with the Undo, which puts it back on that profile.
+- **Type records in: lab results only when it's being typed in** (#381): its section was always on the page, an
+  empty row under whatever other record was being typed in. It's one kind among the others now: the page starts with
+  its empty row, adding another kind before anything is typed into it puts it away, choosing Lab results brings it
+  back, and removing its last row puts it away.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

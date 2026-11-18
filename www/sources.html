@@ -116,6 +116,7 @@
       </div>
       <div class="man-items" id="manItems" aria-label="Records to save"></div>
 
+      <div id="manLabs"><!-- shown while it has rows: put away when another kind is added before any is typed in -->
       <h3 class="man-h">Lab results</h3>
       <p class="hint">One per row: the date, the test, its value and unit, and the reference range printed beside it (like
         <i>13.5 - 17.5</i>, <i>&lt;200</i> or <i>&gt;60</i>). You can paste rows copied from a spreadsheet.</p>
@@ -123,6 +124,7 @@
       <datalist id="labNames"></datalist>
       <div class="row">
         <button class="btn" id="manAdd" type="button">Add a row</button>
+      </div>
       </div>
       <div class="row man-save">
         <label class="man-keep" id="manKeepWrap" hidden><input type="checkbox" id="manKeep"> Save again what's already there</label>

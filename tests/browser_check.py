@@ -1741,8 +1741,8 @@ def main():
                 strict.wait_for_timeout(300)
                 if path.startswith("sources") and g == "manual":
                     strict.evaluate("""() => { const s = document.getElementById('manKind'); s.value = [...s.options].find(o => /visit/i.test(o.text)).value;
-                        document.getElementById('manAddKind').click(); }""")
-                    strict.wait_for_selector("#manItems .man-item .del", timeout=5000)
+                        document.getElementById('manAddKind').click(); s.value = 'labs'; document.getElementById('manAddKind').click(); }""")
+                    strict.wait_for_selector("#manItems .man-item .del", timeout=5000)   # a visit, and lab results back (put away by the visit)
                 for w in (1400, 320):
                     strict.set_viewport_size({"width": w, "height": 900 if w > 400 else 640})
                     strict.wait_for_timeout(200)
@@ -6459,6 +6459,26 @@ def main():
             def add_record(kind):
                 page.select_option("#manKind", kind)
                 page.click("#manAddKind")
+            # #381: Lab results is one kind among the others: the page starts with its empty row; adding another kind before
+            # anything is typed into it puts it away, choosing Lab results brings it back with one row (focus in its test),
+            # rows typed into stay when another kind is added, and removing the last row puts it away, focus on the picker
+            labs_now = "[!document.getElementById('manLabs').hidden, document.querySelectorAll('.man-row').length, document.activeElement.dataset.f || document.activeElement.id]"
+            at_start = js(labs_now)
+            add_record("visit")
+            after_visit = js(labs_now)
+            add_record("labs")
+            back = js(labs_now)
+            page.fill(".man-row [data-f=test]", "Hemoglobin")
+            add_record("med")
+            kept = js(labs_now)
+            page.click(".man-row .del")
+            gone = js(labs_now)
+            check("Type records in (#381): lab results is put away when another kind is added before it's typed in, comes back when chosen, "
+                  "stays once typed in, and goes with its last row",
+                  at_start[:2] == [True, 1] and after_visit[:2] == [False, 0] and back == [True, 1, "test"] and kept[:2] == [True, 1]
+                  and gone == [False, 0, "manKind"], [at_start, after_visit, back, kept, gone])
+            while js("document.querySelectorAll('.man-item').length"):
+                page.click(".man-item .del")
             # #245: a form of each kind, with a hint under its title or without, says no "null" or "undefined"; then removed
             kinds = js("[...document.querySelectorAll('#manKind option')].map(o => o.value).filter(k => k !== 'labs')")
             for kind in kinds:
