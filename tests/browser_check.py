@@ -1008,6 +1008,16 @@ def main():
         check("on every page with the top bar, Tab's first stop is “Skip to content”, shown while focused, readable on the dark theme, at 1400 and 375 px (#209)",
               len(skips) == 7 and all(v[0] == "Skip to content" and v[1] and v[2] >= 4.5 for v in skips.values()), skips)
         check("…Enter moves focus to the page's main part, the address unchanged", all(v[3] and v[4] for v in skips.values()), skips)
+        # #247: hidden, it casts no shadow (its 16 px shadow showed at the top-left of every page in light mode); focused, it does
+        skip_look = "(() => { const s = document.querySelector('.skip-link'); return [s === document.activeElement, getComputedStyle(s).boxShadow, s.getBoundingClientRect().bottom]; })()"
+        shadows = {}
+        for theme in ("light", "dark"):
+            strict.evaluate(f"document.documentElement.dataset.theme = '{theme}'; document.activeElement && document.activeElement.blur(); scrollTo(0, 0)")
+            hidden = strict.evaluate(skip_look)
+            strict.focus(".skip-link")
+            shadows[theme] = [hidden, strict.evaluate(skip_look)]
+        check("…hidden, it casts no shadow on the page's top-left, and focused it has one, in light and dark (#247)",
+              all(h[1] == "none" and h[2] <= 0 and not h[0] and f[0] and f[1] != "none" for h, f in shadows.values()), shadows)
         check("…and the browser tab's title names what's shown: “Labs · My records · Sanguity”, “Settings: Dashboard · Sanguity”",
               all(a == b for a, b in titles.values()), titles)
         check("…every page has the one shared status line: role=status, and role=alert for errors", strict.evaluate(
@@ -1329,6 +1339,23 @@ def main():
             settle(300)
             check("Timeline (#60): the chart says its events are listed below, and they are",
                   "listed under Events, below" in js("document.getElementById('tl').getAttribute('aria-label')") and js("document.querySelectorAll('#list .tl-row').length") > 0)
+            # #247: scrolled into the list, the month heading sticks just under the top bar, on top and readable, in both themes
+            # (it stuck at the page's top, behind the bar, never seen)
+            stuck_month = """(() => { const bar = document.querySelector('header.topbar').getBoundingClientRect().bottom;
+              const m = [...document.querySelectorAll('#list .month')].filter(m => Math.abs(m.getBoundingClientRect().top - bar) < 1.5).at(-1);
+              if (!m) return null;
+              const r = m.getBoundingClientRect(), cs = getComputedStyle(m);
+              return [m.textContent, document.elementFromPoint(r.left + 8, (r.top + r.bottom) / 2) === m, cs.color, cs.backgroundColor]; })()"""
+            theme_before, months = js("document.documentElement.dataset.theme || null"), {}
+            for theme in ("light", "dark"):
+                js(f"document.documentElement.dataset.theme = '{theme}'")
+                js("(() => { const m = document.querySelectorAll('#list .month')[1]; scrollTo(0, m.getBoundingClientRect().top + scrollY + 200); })()")
+                settle(150)
+                months[theme] = js(stuck_month)
+                months[theme] = months[theme] and [*months[theme][:2], contrast(*months[theme][2:])]
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; scrollTo(0, 0); }", theme_before)
+            check("…its month headings stick under the top bar as the list scrolls, readable, in light and dark (#247)",
+                  all(v and v[1] and v[2] >= 4.5 for v in months.values()), months)
             # not by colour alone, elsewhere: the Overview's tiles and the drawer's results
             js("switchTab('overview')")
             settle(300)
@@ -5170,6 +5197,25 @@ def main():
             page.fill("#setFind", "time zone")
             check("…Find a setting shows the settings that match, from every group",
                   js(display, "sec-dates") != "none" and js(display, "sec-overview") == "none" and js(display, "sec-units") == "none")
+            # #247: a search that matches nothing said nothing, a blank page; it says so, readable in both themes, with a
+            # button that clears it
+            page.fill("#setFind", "no such setting zq")
+            settle(150)
+            none_look = """(() => { const b = document.getElementById('setNone'), p = b?.querySelector('p'), c = b?.querySelector('.empty-state'), btn = b?.querySelector('button');
+              if (!p || !c) return [null, null, 'rgb(0, 0, 0)', 'rgb(0, 0, 0)', -1];
+              return [b.checkVisibility() ? p.textContent : null, btn && btn.textContent, getComputedStyle(p).color, getComputedStyle(c).backgroundColor,
+                      [...document.querySelectorAll('#sections > section')].filter(s => s.checkVisibility()).length]; })()"""
+            theme_before, nones = js("document.documentElement.dataset.theme || null"), {}
+            for theme in ("light", "dark"):
+                js(f"document.documentElement.dataset.theme = '{theme}'")
+                v = js(none_look)
+                nones[theme] = [*v[:2], contrast(v[2], v[3]), v[4]]
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            check("…a search matching nothing says so, readable in light and dark, with a button to clear it (#247)",
+                  all(v[0] == "No setting matches “no such setting zq”." and v[1] == "Clear the search" and v[2] >= 4.5 and v[3] == 0 for v in nones.values()), nones)
+            page.click("#setNone button")
+            check("…which empties the search, back in the box, and shows the group again", js("document.getElementById('setFind').value") == ""
+                  and js("document.activeElement.id") == "setFind" and page.is_hidden("#setNone") and js(display, "sec-overview") != "none")
             page.fill("#setFind", "")
             page.click(".set-nav-list a[data-group=display]")
             check("…a group picked in the sidebar is the one shown, and the address says so",
@@ -7782,11 +7828,18 @@ def main():
             # install's empty tabs are checked where they're opened: share links and first run.) Then the keyboard: Tab and
             # Shift+Tab through each records tab and page at 375 px, every stop showing focus and none under a sticky bar;
             # every page at 320 px (400% zoom) and with WCAG's text spacing fitting; and in forced colours, the filled
-            # buttons keep an edge.
+            # buttons keep an edge. On each of them too, no link is in the browser's own blue (#247: links are in the accent).
             t_axe, axe_bad, axe_other, axe_seen = time.time(), [], [], []
+            ua_links, links_seen = [], [0]
+            # Chromium's own link colour, light and dark (a visited link's purple reads as this to scripts too)
+            UA_LINKS = """(() => { const as = [...document.querySelectorAll('a[href]')].filter(a => a.checkVisibility());
+              return [as.length, as.filter(a => ['rgb(0, 0, 238)', 'rgb(158, 158, 255)'].includes(getComputedStyle(a).color)).map(a => a.textContent.trim().slice(0, 40))]; })()"""
             def axe_at(pg, label):
                 bad_, other_ = axe_check(pg, label)
                 axe_bad.extend(bad_); axe_other.extend(other_); axe_seen.append(label)
+                n, blue = pg.evaluate(UA_LINKS)
+                links_seen[0] += n
+                ua_links.extend(f"{label}: “{t}”" for t in blue)
             theme_was = js("localStorage.getItem('ht-theme')")
             for theme in ("light", "dark"):
                 js(f"localStorage.setItem('ht-theme', '{theme}')")
@@ -7850,6 +7903,8 @@ def main():
             check(f"WCAG 2.2 AA, axe-core: no serious or critical finding on {len(axe_seen)} pages and states, in light and dark (#202)",
                   len(axe_seen) >= 90 and not axe_bad, axe_bad[:10] or f"{len(axe_seen)} checked in {time.time() - t_axe:.0f} s")
             check("…its moderate and minor findings, listed (none fail)", True, "; ".join(axe_other[:12]) or "none")
+            check("…and no link in the browser's own blue or purple, on all of them in light and dark: links are in the accent (#247)",
+                  links_seen[0] > 100 and not ua_links, ua_links[:8] or f"{links_seen[0]} links")
             # the keyboard at 375 px, where the top bar is tallest: Tab from the start and Shift+Tab from the end
             t_keys, kbad = time.time(), []
             page.set_viewport_size({"width": 375, "height": 800})

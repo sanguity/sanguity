@@ -625,6 +625,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The Timeline's row style stays on the Timeline** (#246): rows of buttons on Sources, Sharing, Settings, Account
   and Admin no longer have a line under them, an inset or a hover highlight borrowed from the Timeline's list, and
   what's typed into a field is no longer in its label's semibold.
+- **Small display fixes** (#247): the hidden "Skip to content" link no longer casts a shadow at the top-left of
+  every page; the Timeline's month headings stick just under the top bar instead of behind it; links are in the
+  accent colour everywhere, never the browser's blue or purple; and Find a setting with no match says so, with a
+  button to clear the search.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

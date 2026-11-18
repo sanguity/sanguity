@@ -6,7 +6,8 @@
    The sidebar lists the groups that have something to show this person; the address follows the group
    (settings.html#display), and an address naming a section (settings.html#sec-units) opens that section's group
    and scrolls to it.
-   "Find a setting" shows, across every group, only the settings whose name or help mentions what's typed.
+   "Find a setting" shows, across every group, only the settings whose name or help mentions what's typed, or says
+   that none does, with a button to clear the search (#247).
 
    Above the sections, the group's title and whose settings these are (WHO): this profile's, for everyone it's
    shared with (or shown as they are, to someone who can only view it), or just yours. A group with a
@@ -56,6 +57,10 @@
   const nav = el("nav", {class: "set-nav", id: "setNav", "aria-label": "Settings sections"}, search, list);
   main.prepend(nav);
   main.classList.add("with-nav");
+  /* a search that matches nothing says so, with the way back (#247) */
+  const none = el("div", {id: "setNone", hidden: ""});
+  document.getElementById("sections").after(none);
+  const clear = () => { search.value = ""; apply(); search.focus(); };
   let current = null, pending = !!location.hash, chosen = false;
 
   /* the groups with something to show: a section that's there and not hidden by its own script */
@@ -110,6 +115,13 @@
       const g = groupOf(p.id), w = g && SAY[whoOf(g)];
       if (g && !p.classList.contains("grp-off")) p.prepend(el("p", {class: "set-in", text: g.title + (w ? " · " + w[0] : "")}));
     }
+    const nothing = !!q && !parts().some(p => groupOf(p.id) && !p.hidden && !p.classList.contains("grp-off"));
+    if (nothing) {
+      const what = `No setting matches “${search.value.trim()}”.`;
+      if (none.hidden) announce(what);   // as it starts matching nothing, not at every letter after
+      none.replaceChildren(emptyState(what, {text: "Clear the search", onclick: clear}));
+    }
+    if (none.hidden === nothing) none.hidden = !nothing;   // only a real change: the observer below watches hidden
   }
   function show(g, {push = false, scrollTo = null, by = false} = {}) {
     current = g;
