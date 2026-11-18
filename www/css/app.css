@@ -149,13 +149,14 @@ svg text{fill:var(--muted);font-size:11px}
 .stat .l{color:var(--muted);font-size:12px}
 .list{display:flex;flex-direction:column}
 .month{font-weight:650;font-size:13px;color:var(--ink2);padding:14px 0 6px;border-bottom:1px solid var(--grid);position:sticky;top:0;background:var(--surface)}
-.row{display:grid;grid-template-columns:92px 16px 1fr auto;gap:10px;align-items:baseline;padding:7px 6px;border-bottom:1px solid var(--grid);cursor:pointer;border-radius:6px}
-.row:hover,.row.sel{background:var(--hover)}
-.row .d{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
-.row .key{width:12px;height:3px;border-radius:2px;align-self:center}
-.row .t{font-weight:550;overflow:hidden;text-overflow:ellipsis}
-.row .s{color:var(--ink2);font-size:12px;grid-column:3/4}
-.row .b{grid-row:1/3;grid-column:4;align-self:center}
+/* the Timeline list's row (timeline.js); its own class, so the pages' rows of buttons (.acct .row) aren't styled like it (#246) */
+.tl-row{display:grid;grid-template-columns:92px 16px 1fr auto;gap:10px;align-items:baseline;padding:7px 6px;border-bottom:1px solid var(--grid);cursor:pointer;border-radius:6px}
+.tl-row:hover,.tl-row.sel{background:var(--hover)}
+.tl-row .d{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.tl-row .key{width:12px;height:3px;border-radius:2px;align-self:center}
+.tl-row .t{font-weight:550;overflow:hidden;text-overflow:ellipsis}
+.tl-row .s{color:var(--ink2);font-size:12px;grid-column:3/4}
+.tl-row .b{grid-row:1/3;grid-column:4;align-self:center}
 .badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:650;border-radius:999px;padding:1px 8px;border:1px solid var(--ring);color:var(--ink2);white-space:nowrap}
 .badge.abn{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 40%,transparent)}
 .badge.abn::before{content:"▲";font-size:9px}
@@ -313,8 +314,8 @@ details.res > div{padding:0 12px 10px}
   .layout{grid-template-columns:1fr}
   .series-list{max-height:300px}
   header,.filters,main{padding-left:16px;padding-right:16px}
-  .row{grid-template-columns:62px 12px 1fr}
-  .row .b{display:none}
+  .tl-row{grid-template-columns:62px 12px 1fr}
+  .tl-row .b{display:none}
 }
 /* phones */
 .ftoggle{display:none}
@@ -350,7 +351,7 @@ details.res > div{padding:0 12px 10px}
   .kv{grid-template-columns:92px 1fr}
   .tip{max-width:calc(100vw - 24px)}
 }
-@media (forced-colors:active){.chip .key,.row .key{forced-color-adjust:none}}
+@media (forced-colors:active){.chip .key,.tl-row .key{forced-color-adjust:none}}
 /* ---- account page */
 main.acct{max-width:860px;margin:0 auto;padding:20px}
 .acct [role="tabpanel"]:focus{outline:none}
@@ -362,6 +363,7 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .acct .form{display:grid;gap:10px;max-width:420px}
 .acct .form.inline{display:flex;flex-wrap:wrap;align-items:flex-end;max-width:none;margin-top:12px}
 .acct label{display:grid;gap:4px;font-size:13px;color:var(--ink2);font-weight:550}
+.acct :is(input,select,textarea){font-weight:400}   /* what's typed isn't the label's semibold, which font:inherit passed on (#246) */
 .acct label.check{display:flex;align-items:center;gap:6px;padding-bottom:7px}
 .acct input:not([type=checkbox]),.acct select{border:1px solid var(--ring);background:var(--raised);border-radius:8px;padding:6px 9px;min-width:0}
 .acct .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
@@ -470,7 +472,7 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 .imp .man-item legend{font-size:13px;font-weight:650;padding:0 4px}
 .imp .rec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(9.5em,100%),1fr));gap:6px 8px;padding-right:1.6em}
 .imp .rec-f{display:flex;flex-direction:column;font-size:11px;gap:2px;min-width:0}
-.imp .rec-f input,.imp .rec-f select,.imp .rec-f textarea{width:100%;min-width:0;padding:5px 6px;font:inherit;font-size:13px;box-sizing:border-box}
+.imp .rec-f input,.imp .rec-f select,.imp .rec-f textarea{width:100%;min-width:0;padding:5px 6px;font:inherit;font-size:13px;font-weight:400;box-sizing:border-box}
 .imp .rec-f textarea{resize:vertical;min-height:2.4em}
 .imp .rec-long,.imp .rec-wide{grid-column:1 / -1}
 .imp .rec-f [aria-invalid="true"]{border-color:var(--crit)}
@@ -512,8 +514,7 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 }
 /* settings page (settings.js) */
 .sets .set{border-top:1px solid var(--grid);padding:12px 0 4px}
-.sets .set .row{border-bottom:0;padding:0;margin:8px 0 6px;cursor:default}
-.sets .set .row:hover{background:none}
+.sets .set .row{margin:8px 0 6px}
 .sets .btn.primary:disabled{color:var(--ink);border-color:var(--ring)}
 /* #174: the group shown and whose settings these are; one Save per section, kept in view while it has changes;
    a key lab's row on a phone: its handle, name and a menu (orderList's opts.more) */
@@ -1059,8 +1060,6 @@ main.src[data-role=viewer] .src-edit{display:none}
 .about-dl dd,.share-about dd{margin:0;overflow-wrap:anywhere}
 @media (max-width:640px){.about-dl,.share-about{grid-template-columns:1fr;gap:0}.about-dl dd,.share-about dd{margin-bottom:6px}
   .about .about-recorded tr{grid-template-columns:1fr 1fr}}
-/* Account (#169): its cards' rows of buttons are not the timeline's rows (no divider, no hover) */
-#acctNav~section .row{border-bottom:0;padding:0;cursor:default}#acctNav~section .row:hover{background:none}
 /* the profile picker in the top bar (#170, nav.js): a select, or a plain label when there's only one profile */
 .profile-pick{display:flex;align-items:center;min-width:0;flex:0 1 auto}
 .profile-pick .iconbtn.profile{min-width:0;max-width:18em;text-overflow:ellipsis}
@@ -1289,8 +1288,7 @@ main.acct.guide{max-width:640px}
 .guide-step h2:focus{outline:none}
 .guide-step .form{max-width:none;margin-top:12px}
 .guide-step .form input{width:100%;max-width:360px;font-weight:400}
-.guide .row{border-bottom:0;padding:0;margin-top:12px;cursor:default}
-.guide .row:hover{background:none}
+.guide .row{margin-top:12px}
 .guide-opt{font-weight:450;color:var(--ink2);font-size:14px}
 .guide-ways{list-style:none;margin:12px 0;padding:0;display:grid;gap:8px}
 .guide-way{display:grid;gap:2px;padding:11px 14px;border:1px solid var(--ring);border-radius:10px;background:var(--raised);color:var(--ink);text-decoration:none}

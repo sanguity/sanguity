@@ -737,6 +737,27 @@ AXE_RUN = """tags => axe.run(document, {runOnly: {type: 'tag', values: tags}, re
   why: (v.nodes[0].failureSummary || '').split('\\n').slice(1, 2).join('').trim().slice(0, 160)})))"""
 
 
+CLEAR_OF_BAR_JS = r"""(() => {
+  const bar = document.querySelector('header.topbar'); if (!bar) return 0;
+  const b = bar.getBoundingClientRect().bottom; let moved = 0;
+  for (let i = 0; i < 4 && scrollY > 0; i++) {
+    const cut = [...document.querySelectorAll('main :is(a[href], button, input, select, textarea, summary, [role=button])')].filter(e => e.checkVisibility())
+      .map(e => e.getBoundingClientRect()).filter(r => r.height > 0 && r.top < b && r.bottom > b);
+    if (!cut.length) break;
+    const d = Math.max(...cut.map(r => b - r.top)) + 4;
+    scrollBy(0, -d); moved += d;
+  }
+  return moved;
+})()"""
+
+
+def clear_of_bar(page):
+    """Scroll up just enough that no control lies half under the sticky top bar, before axe looks at a part scrolled
+    into view: axe counts a control the bar half covers as too small a target (2.5.8), so where the scroll happened to
+    stop would decide the check. Returns how far it scrolled."""
+    return page.evaluate(CLEAR_OF_BAR_JS)
+
+
 def axe_check(page, label):
     """axe-core's WCAG A and AA rules on the page as it is drawn now (open what is to be checked first: a tab, a menu, a
     dialog). Returns (serious, other): the serious and critical findings, which fail a check, and the moderate and minor
@@ -1159,7 +1180,7 @@ def main():
             expect = {
                 "overview": "document.querySelectorAll('#view-overview .tile').length",
                 "health": "[...document.querySelectorAll('#view-health svg')].filter(s => s._draw && s.childNodes.length > 3).length",
-                "timeline": "document.querySelectorAll('#tl circle.ev').length + ',' + document.querySelectorAll('#list .row').length",
+                "timeline": "document.querySelectorAll('#tl circle.ev').length + ',' + document.querySelectorAll('#list .tl-row').length",
                 "heatmap": "document.querySelectorAll('#hm rect.cell').length + ',' + +!document.getElementById('labsHeatmap').hidden + ',' + +document.getElementById('labsChart').hidden",
                 "labs": "[...document.querySelectorAll('#charts .chart svg')].filter(s => s.childNodes.length > 3).length + ',' + +!document.getElementById('labsChart').hidden",
                 "costs": "document.querySelectorAll('#view-costs .stat').length",
@@ -1307,7 +1328,7 @@ def main():
             js("switchTab('timeline')")
             settle(300)
             check("Timeline (#60): the chart says its events are listed below, and they are",
-                  "listed under Events, below" in js("document.getElementById('tl').getAttribute('aria-label')") and js("document.querySelectorAll('#list .row').length") > 0)
+                  "listed under Events, below" in js("document.getElementById('tl').getAttribute('aria-label')") and js("document.querySelectorAll('#list .tl-row').length") > 0)
             # not by colour alone, elsewhere: the Overview's tiles and the drawer's results
             js("switchTab('overview')")
             settle(300)
@@ -2185,7 +2206,7 @@ def main():
               return {chip: chip && chip.getAttribute('aria-label'), label: [...document.querySelectorAll('#tl .lane-label')].map(t => t.textContent).includes('Cycle tracking'),
                       bars: bars.length, marks: marks.length, spans: CYCLE.filter(e => e.cy.kind === 'span').map(e => [e.cy.from, e.cy.to, e.cy.logged, e.title]),
                       fill: bars[0] && getComputedStyle(bars[0]).fill, key: chip && getComputedStyle(chip.querySelector('.key')).backgroundColor,
-                      rows: [...document.querySelectorAll('#list .row')].filter(r => r.textContent.includes('Cycle tracking')).length}; })()""")
+                      rows: [...document.querySelectorAll('#list .tl-row')].filter(r => r.textContent.includes('Cycle tracking')).length}; })()""")
             check("…on: a Cycle tracking lane on the Timeline, both apps' periods as bars and the other records as marks, in its colour, with a chip",
                   lane["label"] and lane["chip"] == "Cycle tracking, 37, shown" and lane["bars"] == 12 and lane["marks"] == 25 and lane["fill"] == lane["key"]
                   and lane["spans"][0] == ["2026-01-04", "2026-01-08", False, "Flow recorded on 5 days"] and lane["spans"][-1][2:] == [True, "Period, 5 days"]
@@ -2588,7 +2609,7 @@ def main():
             pick = js("""(() => { const e = EV.find(e => !['exercise', 'labitem', 'lab'].includes(e.k) && EV.filter(x => x.title === e.title).length === 1);
                 return e && {id: e.id, t: e.t, title: e.title}; })()""")
             there = "t => EV.some(e => e.title === t.title && e.t === t.t)"
-            listed = "t => [...document.querySelectorAll('#list .row')].some(r => r.textContent.includes(t.title))"
+            listed = "t => [...document.querySelectorAll('#list .tl-row')].some(r => r.textContent.includes(t.title))"
             check("an event to correct is on the timeline", pick and js(f"({there})", pick) and js(f"({listed})", pick), pick)
             js("id => openEvent(byId.get(id))", pick["id"])
             settle(200)
@@ -3258,6 +3279,7 @@ def main():
                             settle(250)
                             if where:
                                 page.locator(where).first.scroll_into_view_if_needed()
+                                clear_of_bar(page)
                             if width < 400:
                                 bad235.extend(phone_fits(page, f"{label} ({theme})"))
                             axe235.extend(axe_check(page, f"{label}, {width} px, {theme}")[0])
@@ -3545,7 +3567,7 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             js("switchTab('timeline')")
             settle(300)
-            page.focus("#list .row")
+            page.focus("#list .tl-row")
             page.keyboard.press("Enter")
             page.wait_for_selector("#drawer.open", timeout=5000)
             settle(300)
@@ -3566,9 +3588,9 @@ def main():
             page.keyboard.press("Escape")
             settle(300)
             check("…Escape closes it, the page usable again and focus back on the event it came from",
-                  js("![...document.body.children].some(x => x.inert && x.id !== 'drawer') && document.getElementById('drawer').inert && document.activeElement.matches('#list .row')"))
+                  js("![...document.body.children].some(x => x.inert && x.id !== 'drawer') && document.getElementById('drawer').inert && document.activeElement.matches('#list .tl-row')"))
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.focus("#list .row")
+            page.focus("#list .tl-row")
             page.keyboard.press("Enter")
             page.wait_for_selector("#drawer.open", timeout=5000)
             check("…at 1400 px it covers only part of the page, which stays usable", not js("document.querySelector('main').inert")
@@ -3919,7 +3941,7 @@ def main():
             only = lambda: [k for k, p, *_ in js(kinds) if p == "true"]
             check("kinds: Show only Visits shows Visits alone, on the chips and the timeline, and says so",
                   only() == ["visit"] and js(menu) == [] and said(page) == f"Showing only {vis_n}"
-                  and js("[...document.querySelectorAll('#list .row')].length > 0 && EV.filter(visible).every(e => CAT_OF[e.k].k === 'visit')"), only())
+                  and js("[...document.querySelectorAll('#list .tl-row')].length > 0 && EV.filter(visible).every(e => CAT_OF[e.k].k === 'visit')"), only())
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
             settle(300)
@@ -4373,10 +4395,10 @@ def main():
             # ---- Timeline: event sort toggle
             page.click("#tab-timeline")
             settle()
-            first_new = js("document.querySelector('#list .row .d').textContent")
+            first_new = js("document.querySelector('#list .tl-row .d').textContent")
             page.click("#sortSeg [data-sort=asc]")
             settle(200)
-            first_old = js("document.querySelector('#list .row .d').textContent")
+            first_old = js("document.querySelector('#list .tl-row .d').textContent")
             check("event sort toggles", first_new != first_old, f"{first_new} -> {first_old}")
 
             nan = js("window.__nan")
@@ -6587,8 +6609,8 @@ def main():
                   (za.evaluate(weekly_key), zb.evaluate(weekly_key)) == ("2026-03-02T20:00:00.000Z", "2026-03-08T23:00:00.000Z"),
                   (za.evaluate(weekly_key), zb.evaluate(weekly_key)))
             zb.click("#tab-timeline")
-            zb.wait_for_selector("#list .row .d", timeout=10000)
-            shown = zb.evaluate("document.querySelector('#list .row .d').textContent")
+            zb.wait_for_selector("#list .tl-row .d", timeout=10000)
+            shown = zb.evaluate("document.querySelector('#list .tl-row .d').textContent")
             check("…the timeline's event list in that format", bool(__import__("re").fullmatch(r"\d{4}-\d{2}-\d{2}", shown)), shown)
             check("a viewer gets no Journal entry under Add, and no journal card while no one has written in it (#173)",
                   zb.evaluate("document.getElementById('journalBtn').hidden && !document.getElementById('journalHome')"))
@@ -7370,6 +7392,7 @@ def main():
                                       "'immunizations'].includes(l.querySelector('input').value)).map(l => [l.querySelector('input').checked, "
                                       "!l.querySelector('input').disabled, l.textContent.includes('Needs signing in again.')])")
                     page.locator(".conn-options").scroll_into_view_if_needed()
+                    clear_of_bar(page)
                     if width < 400:
                         bad += phone_fits(page, f"a connection's kinds ({theme})")
                     serious += axe_check(page, f"a connection's kinds at {width} px ({theme})")[0]
@@ -7669,6 +7692,31 @@ def main():
             page.reload()
             page.wait_for_function("typeof SETUP !== 'undefined' && SETUP && !SETUP.sources.some(s => s.name === 'Lakeside Health (fictional)')", timeout=10000)
 
+            # ---- #246: the Timeline list's row is .tl-row, so the pages' rows of buttons (.row) have no divider under them
+            # and no pointer, and what's typed into a field isn't its label's semibold; every group of each page
+            rows_typed = r"""(() => {
+              const name = e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + ` "${(e.textContent || e.value || '').replace(/\s+/g, ' ').trim().slice(0, 30)}"`, out = [];
+              for (const r of document.querySelectorAll('main .row')) {
+                const cs = getComputedStyle(r);
+                if (r.checkVisibility() && (parseFloat(cs.borderBottomWidth) > 0 || cs.cursor === 'pointer')) out.push(`row ${name(r)}: ${cs.borderBottomWidth} border, ${cs.cursor} cursor`);
+              }
+              for (const f of document.querySelectorAll('main :is(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=hidden],[type=color],[type=submit],[type=button]),select,textarea)'))
+                if (f.checkVisibility() && getComputedStyle(f).fontWeight !== '400') out.push(`field ${name(f)}: weight ${getComputedStyle(f).fontWeight}`);
+              return out;
+            })()"""
+            bad, seen = [], []
+            for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+                page.goto(base + "/" + path)
+                page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
+                settle(300)
+                for g in js("[...document.querySelectorAll('.set-nav a[data-group]')].map(a => a.dataset.group)"):
+                    page.click(f".set-nav a[data-group={g}]")
+                    settle(150)
+                    bad += [f"{path.split('.')[0]} #{g}: {x}" for x in js(rows_typed)]
+                    seen.append(g)
+            check("every group of Sources, Sharing, Settings, Account and Admin: rows of buttons have no divider or pointer, "
+                  "and typed values are weight 400 (#246)", len(seen) >= 25 and not bad, bad[:8] or f"{len(seen)} groups")
+
             # ---- every page at 375 px (#61): each records tab (Labs as charts and as a heatmap) with its filters open, an
             # event's drawer and the top bar's menus; every group of Sources (the profile with connected sources and
             # imports), Sharing, Settings, Account and Admin; and the sign-in page with no session; in light and dark:
@@ -7692,7 +7740,7 @@ def main():
                         bad += phone_fits(page, t + " with its filters open", phone_known)
                         page.click("#ftoggle")
                     if t == "timeline":
-                        page.click("#list .row >> nth=0")
+                        page.click("#list .tl-row >> nth=0")
                         page.wait_for_function("document.getElementById('drawer').classList.contains('open')", timeout=5000)
                         settle(250)
                         bad += phone_fits(page, "the drawer", phone_known)
@@ -8571,7 +8619,7 @@ def main():
                   r == 200 and got == want and fp.is_visible("#notice") and "Not medical advice" in fp.inner_text("#notice"), (r, got))
             fp.click("#tab-timeline")
             fp.click("#list .empty-next")
-            f_until("document.querySelectorAll('#list .row').length === 1 && state.q === '' && state.preset === 'all'", 5000)
+            f_until("document.querySelectorAll('#list .tl-row').length === 1 && state.q === '' && state.preset === 'all'", 5000)
             check("…the Timeline's Show everything clears the search and the period", fp.evaluate("document.activeElement.id") == "listTitle")
             fp.set_viewport_size({"width": 375, "height": 800})
             empty_axe = [[], []]
