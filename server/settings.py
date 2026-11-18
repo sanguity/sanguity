@@ -419,7 +419,7 @@ section("appearance", "Appearance", "How Sanguity looks for you, on every device
 define("tabs", "tabs", "Tabs", {"order": list(TABS), "hidden": []}, tab_layout, kind="tabs", private=False, reread=True,
        help="A hidden tab leaves the tab bar and the arrow keys; a saved view or link to it opens the first shown tab.")
 define("theme", "appearance", "Theme", "system", theme, scope="user", kind="theme", private=False,
-       help="Your default on every device. The ◐ button on the records page still picks light or dark for one browser.")
+       help="Your default on every device. Dark mode or Light mode in your menu still picks one for this browser.")
 
 
 # ---------------------------------------------------------------- the getting-started guide (#199): each person's own

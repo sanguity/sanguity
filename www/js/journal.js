@@ -130,7 +130,7 @@ CHART_LAYERS.push({
   if (legend) legend.append(el("span", {class: "jlegend"}, el("svg:svg", {viewBox: "0 0 30 12", width: 30, height: 12, "aria-hidden": "true"},
     jShape({kind: "symptom", severity: 2}, 5, 6, {fill: "var(--c-journal)", "fill-opacity": .4, stroke: "var(--c-journal)"}),
     jShape({kind: "symptom", severity: 8}, 20, 6, {fill: "var(--c-journal)", "fill-opacity": .8, stroke: "var(--c-journal)"})),
-    "Journal: bigger = more severe; ● symptom, ◆ side effect, ■ note"),
+    "Journal: bigger = more severe; ●\u00a0symptom, ◆\u00a0side\u00a0effect, ■\u00a0note"),   // each mark kept with its words (#355)
     el("span", {class: "jlegend"}, el("svg:svg", {viewBox: "0 0 14 14", width: 14, height: 14, "aria-hidden": "true"}, jMoodBars({mood: 8, energy: 5}, 7, 13.5, 11)),
       "Mood: filled bar mood, outlined bar energy; taller = higher"));
 }

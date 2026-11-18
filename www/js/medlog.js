@@ -226,5 +226,5 @@ function medLogControls() {
     $("#doseLegend").hidden = !dosesOnCharts; renderCharts(); }}), " Doses logged"));
   if (!key && legend) legend.append(key = el("span", {id: "doseLegend", class: "jlegend", hidden: !dosesOnCharts || null},
     el("svg:svg", {viewBox: "0 0 40 12", width: 40, height: 12, "aria-hidden": "true"}, doseShape("taken", 6, 6), doseShape("late", 20, 6), doseShape("skipped", 34, 6)),
-    "Doses logged: ● taken, ◆ taken late, ○ skipped"));
+    "Doses logged: ●\u00a0taken, ◆\u00a0taken\u00a0late, ○\u00a0skipped"));   // each mark kept with its words (#355)
 }

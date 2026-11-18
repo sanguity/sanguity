@@ -763,9 +763,25 @@ def clear_of_bar(page):
 # end of one, or one that is only "?"; an icon not drawn (its <use> found no symbol: 0 by 0, waited for once, as the sprite
 # may still be loading); an svg.icon neither hidden from screen readers nor named; a button or link with only an icon in it
 # and no name. ▲ and ▼ stay text, the out-of-range marks (docs/accessibility.md), and so does an arrow inside a sentence.
+# #355: and in any text shown (each text node, and each element's ::before and ::after), no symbol from the blocks icons
+# came from (arrows, technical, geometric shapes, symbols, dingbats, braille, ⋯, pictographs), but the marks that mean
+# something and are said in words beside them: ▲ ▼ (out of range), ◆ ● ■ ○ ◇ (legends and flags; • is punctuation),
+# ← → in a sentence and ⌘ in "⌘C". A help text naming "the ◐ button" fails here.
 ICON_GLYPHS = "✓✔✕✖×⇔◐✎⋯⚠↗⠿▾✗↑↓⌘"
-ICON_AUDIT = r"""glyphs => {
-  const vis = n => n.checkVisibility(), out = {n: 0, glyph: [], hidden: [], unnamed: [], blank: []};
+TEXT_MARKS = "▲▼◆●■○◇←→⌘"
+ICON_AUDIT = r"""([glyphs, marks]) => {
+  const vis = n => n.checkVisibility(), out = {n: 0, glyph: [], text: [], hidden: [], unnamed: [], blank: []};
+  const sym = /[\u2190-\u21FF\u22EF\u2300-\u23FF\u25A0-\u27BF\u2800-\u28FF\u2B00-\u2BFF\u{1F300}-\u{1FAFF}]/gu;
+  const odd = t => [...new Set(t.match(sym) || [])].filter(c => !marks.includes(c)).join('');
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let t; (t = w.nextNode());) {
+    const p = t.parentElement, o = odd(t.textContent);
+    if (o && p && !p.closest('script, style, template, noscript') && vis(p)) out.text.push(`${o} in “${t.textContent.trim().slice(0, 50)}”`);
+  }
+  for (const e of document.body.querySelectorAll('*')) for (const ps of ['::before', '::after']) {
+    const o = odd(getComputedStyle(e, ps).content);
+    if (o && vis(e)) out.text.push(`${o} in ${e.tagName.toLowerCase()}.${[...e.classList].join('.')}${ps}`);
+  }
   const name = n => (n.getAttribute('aria-label') || n.getAttribute('title') || '').trim() ||
     (n.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent.trim()).join('');
   for (const b of document.querySelectorAll('button, a[href], [role=button], [role^=menuitem], summary')) {
@@ -786,13 +802,40 @@ ICON_AUDIT = r"""glyphs => {
 }"""
 
 
+def legend_marks_apart(page, sel):
+    """#355: at 320 px, each mark (● ◆ ■ ○ ◇ • ▲ ▼) in the legend(s) at sel that a line break parts from the word after
+    it: [(the legend's first words, the mark)]. Each is joined to its word by a no-break space."""
+    size = page.viewport_size
+    page.set_viewport_size({"width": 320, "height": 800})
+    page.wait_for_timeout(250)
+    apart = page.evaluate(r"""sel => {
+      const out = [], line = r => r.getClientRects()[0];
+      for (const box of document.querySelectorAll(sel)) {
+        if (!box.checkVisibility()) continue;
+        const w = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+        for (let n; (n = w.nextNode());) for (const m of n.textContent.matchAll(/[▲▼◆●■○◇•]\s*(?=\S)/g)) {
+          const a = document.createRange(), b = document.createRange();
+          a.setStart(n, m.index); a.setEnd(n, m.index + 1);
+          b.setStart(n, m.index + m[0].length); b.setEnd(n, m.index + m[0].length + 1);
+          const ra = line(a), rb = line(b);
+          if (!m[0].includes('\u00a0') || !ra || !rb || Math.abs(ra.top - rb.top) > 2) out.push([box.textContent.trim().slice(0, 30), m[0][0]]);
+        }
+      }
+      return out;
+    }""", sel)
+    page.set_viewport_size(size)
+    page.wait_for_timeout(150)
+    return apart
+
+
 def icon_audit(page, label):
     """(how many icons are shown, what's wrong with them) on the page as it is (#257)"""
-    a = page.evaluate(ICON_AUDIT, ICON_GLYPHS)
+    a = page.evaluate(ICON_AUDIT, [ICON_GLYPHS, TEXT_MARKS])
     if a["blank"]:   # the sprite may still be on its way
         page.wait_for_timeout(500)
-        a = page.evaluate(ICON_AUDIT, ICON_GLYPHS)
+        a = page.evaluate(ICON_AUDIT, [ICON_GLYPHS, TEXT_MARKS])
     bad = [f"{label}: a glyph as an icon in “{t}”" for t in a["glyph"]] + [f"{label}: not drawn: {t}" for t in a["blank"]]
+    bad += [f"{label}: a symbol in the text, {t}" for t in a["text"]]   # #355
     bad += [f"{label}: an icon neither hidden nor named: {t}" for t in a["hidden"]] + [f"{label}: only an icon, no name: {t}" for t in a["unnamed"]]
     return a["n"], bad
 
@@ -2907,6 +2950,8 @@ def main():
             settle(400)
             n_marks = js("document.querySelectorAll('#charts .chart svg .cymark').length")
             check("…ticked, each chart gets a row of them, with a legend", n_marks > 0 and js("!document.getElementById('cycleLegend').hidden"), n_marks)
+            apart = legend_marks_apart(page, "#cycleLegend")
+            check("…at 320 px each of its marks (○ ovulation test, ◇ cervical mucus, • spotting) on the same line as its words (#355)", not apart, apart)
             page.focus("#charts .chart svg .cymark")
             page.keyboard.press("Enter")
             settle(300)
@@ -3458,6 +3503,8 @@ def main():
             charts = js("document.querySelectorAll('#charts .chart svg:not(.icon)').length")
             check("…and as a marker under every Trends chart, labelled with its severity", len(marks) == charts > 0 and all("severity 7/10" in m and "Headache" in m for m in marks), marks[:2])
             check("the Trends legend says what the marker sizes mean", "bigger = more severe" in page.inner_text("#view-labs .legend"))
+            apart = legend_marks_apart(page, "#view-labs .legend .jlegend")
+            check("…and at 320 px each of its marks (● symptom, ◆ side effect, ■ note) is on the same line as its words (#355)", not apart, apart)
             page.focus("#charts .jmark")
             page.keyboard.press("Enter")
             settle(200)
@@ -4028,7 +4075,9 @@ def main():
                 settle(300)
                 per = js("[...document.querySelectorAll('#charts .chart svg:not(.icon)')].map(s => s.querySelectorAll('.dosemark').length)")
                 check("…ticked, every chart has a row of the doses, and its legend says the shapes", per and all(n >= 2 for n in per)
-                      and js("!document.getElementById('doseLegend').hidden") and "◆ taken late" in page.inner_text("#doseLegend"), per)
+                      and js("!document.getElementById('doseLegend').hidden") and "◆ taken late" in page.inner_text("#doseLegend").replace("\xa0", " "), per)
+                apart = legend_marks_apart(page, "#doseLegend")
+                check("…and at 320 px each of its marks (● taken, ◆ taken late, ○ skipped) is on the same line as its words (#355)", not apart, apart)
                 page.locator("#charts .chart svg .dosemark").first.focus()
                 page.keyboard.press("Enter")
                 settle(200)
@@ -5331,6 +5380,33 @@ def main():
             went = js(follow, "#dbody table.data a.test-page")
             check("…following it leaves the drawer open where it was (the row's Show trend isn't made)",
                   went and js("document.getElementById('drawer').classList.contains('open')") and js("state.tab") == "overview")
+            # #355: each ? (and ✎) in the drawer's results sits on its line, its middle within 1 px of the middle of the text
+            # beside it, and, at 320 px where long names wrap, overlaps neither the name's button nor the ✎ (24 px targets)
+            TQ_LINE = r"""() => {
+              const mid = r => (r.top + r.bottom) / 2, ov = (a, b) => a.right > b.left && b.right > a.left && a.bottom > b.top && b.bottom > a.top, out = [];
+              for (const td of document.querySelectorAll('#dbody table.data tbody tr > td:first-child')) {
+                const rs = [], w = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
+                for (let n; (n = w.nextNode());) if (n.textContent.trim()) { const rg = document.createRange(); rg.selectNodeContents(n); rs.push(...rg.getClientRects()); }
+                const targets = [...td.querySelectorAll('.cell-btn, .rename-btn, .test-page')].map(t => t.getBoundingClientRect());
+                for (const t of td.querySelectorAll('.test-page.tq, .rename-btn')) {
+                  const i = t.querySelector('svg').getBoundingClientRect(), on = rs.filter(r => r.bottom > mid(i) && r.top < mid(i)), b = t.getBoundingClientRect();
+                  const dy = on.length ? Math.min(...on.map(r => Math.abs(mid(r) - mid(i)))) : null;
+                  out.push({name: td.textContent.trim().slice(0, 24), what: t.className, dy: dy == null ? null : +dy.toFixed(1),
+                            overlaps: targets.filter(r => r !== b && !(r.left === b.left && r.top === b.top) && ov(r, b)).length});
+                }
+              }
+              return out;
+            }"""
+            tq_at = {}
+            for width in (1400, 320):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                settle(300)
+                tq_at[width] = js(TQ_LINE)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            tq_bad = [f"{w} px: {x}" for w, xs in tq_at.items() for x in xs if (x["dy"] is not None and x["dy"] > 1) or x["overlaps"]]
+            check("…each ? and ✎ beside a result's name sits on its line (within 1 px of the text's middle), clear of the name's button "
+                  "when the name wraps, at 1400 and 320 px (#355)", tq_at[1400] and all(x["dy"] is not None for x in tq_at[1400])
+                  and any(x["what"].startswith("test-page") for x in tq_at[320]) and not tq_bad, tq_bad[:6] or tq_at[1400][:4])
             js("closeDrawer()")
             tp_seen, theme_before = [], js("document.documentElement.dataset.theme || null")
             for mode in ("light", "dark"):
@@ -9370,8 +9446,8 @@ def main():
             check("…its moderate and minor findings, listed (none fail)", True, "; ".join(axe_other[:12]) or "none")
             check("…and no link in the browser's own blue or purple, on all of them in light and dark: links are in the accent (#247)",
                   links_seen[0] > 100 and not ua_links, ua_links[:8] or f"{links_seen[0]} links")
-            check("…and on all of them, light and dark, the icons (#257): no Unicode glyph left as one in a button's or link's text "
-                  "(▲ and ▼ stay, the out-of-range marks), each icon drawn (its sprite's symbol found, not 0 by 0) and hidden from screen "
+            check("…and on all of them, light and dark, the icons (#257): no Unicode glyph left as one in a button's or link's text, "
+                  "nor any symbol in any text shown but ▲ ▼ ◆ ● ■ ○ ◇, ← → and ⌘ (#355), each icon drawn (its sprite's symbol found, not 0 by 0) and hidden from screen "
                   "readers or named, and each button or link that's only an icon named", icons_seen[0] > 500 and not icon_bad,
                   icon_bad[:10] or f"{icons_seen[0]} icons")
             check(f"…and on each of the {len(outlines)} pages, exactly one h1 (the page's, not the brand), no heading level skipped and "

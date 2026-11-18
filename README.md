@@ -62,7 +62,7 @@ on the **Settings** page, appear on every chart and as "since" periods.
 **Making it yours**
 
 - **Settings** per profile: the Overview's key-lab tiles, the tabs shown and their order, saved Labs views, lab
-  and source nicknames (rename anything with the ✎ where it's shown), milestones, visits counted as workouts, your
+  and source nicknames (rename anything with the pencil where it's shown), milestones, visits counted as workouts, your
   own reference ranges for results without one, and, per person, units (exact conversions only), time zone, date
   format and a light or dark theme.
 - A **journal** of symptoms, side effects and notes, on the timeline and the charts, listed on the Timeline tab:
@@ -515,7 +515,7 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
 - **Settings:** each profile's dashboard preferences (key lab tiles, the labs Labs starts with, saved Labs views, lab and source
   nicknames, visits counted as workouts, milestones) are changed on the **Settings** page by its owners and
   editors, with "Reset to defaults" per section. A lab, a result's source tag or an import can also be renamed right
-  where it's shown (the ✎ beside it on Labs' charts and heatmap and the details). A workout rule says "visits titled X count as workouts of N
+  where it's shown (the pencil beside it on Labs' charts and heatmap and the details). A workout rule says "visits titled X count as workouts of N
   minutes": X is plain text found anywhere in the title, or, as an advanced option, a regular expression, which is
   checked before it's saved and refused if it could make matching slow. Milestones are named dates, one of them
   primary (the one the Overview counts from); they are encrypted like the records. They live in the database (backed up and exported with the profile); a

@@ -371,7 +371,7 @@ header.topbar .tabs button{white-space:nowrap}
 .menu-btn{display:inline-flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-3);color:inherit;max-width:16em}
 .menu-btn #who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .menu-btn[aria-expanded="true"]{background:var(--hover)}
-.menu-ico{font-weight:var(--fw-bold);font-size:var(--fs-4);line-height:1}
+.menu-ico{font-size:var(--fs-4);line-height:1}
 .menu-caret{font-size:var(--fs-1);color:var(--muted)}
 .pagefoot{padding:var(--sp-2) var(--sp-5) var(--sp-5);text-align:center}
 .pagefoot .meta{color:var(--muted);font-size:var(--fs-2)}
@@ -1665,7 +1665,10 @@ svg text.growth-pct{font-size:var(--fs-1)}
 .test-page.tq .icon{font-size:var(--fs-5)}   /* Lucide's circle-question-mark: a 15 px circle, as the bordered "?" was (#257) */
 .srow.has-tq{grid-template-columns:18px minmax(0,1fr) auto auto}
 .srow .test-page.tq{margin:-5px 0}   /* a 24 px target, the row as before */
-.cell-btn~.test-page.tq{margin:3px 0 -3px}   /* clear of the name's 24 px button above it when the name wraps (the drawer) */
+/* the drawer's results (#355): 24 px lines, the ✎ and ? filling theirs, in line with the text and clear of the name above */
+td:has(>.cell-btn~.test-page.tq){line-height:24px}
+td:has(>.cell-btn~.test-page.tq)>.cell-btn{padding:0;margin:0}
+td:has(>.cell-btn~.test-page.tq)>:is(.rename-btn,.test-page.tq){vertical-align:top;margin-top:0;margin-bottom:0}
 #hm .hm-tq{cursor:pointer;color:var(--accent)}
 #hm .hm-tq circle{fill:var(--surface);stroke:none}   /* what's clicked, under the icon (#257) */
 #hm .hm-tq:hover{color:var(--ink)}
