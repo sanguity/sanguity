@@ -315,8 +315,8 @@ function zoneEditor(value, changed, ro) {
   const input = el("input", {class: "set-select set-zone", type: "text", list: id, "aria-label": "Time zone", "aria-describedby": msgId,
     autocomplete: "off", spellcheck: "false", disabled: ro, value: shown(cur)});
   const hint = el("span", {class: "hint", id: msgId});
-  const use = el("button", {class: "btn small", type: "button", text: "Use this device's", hidden: ro,
-    onclick: () => { input.value = shown(here); pick(); }});
+  const use = beside("Use this device's", "Use this device's time zone", () => { input.value = shown(here); pick(); });   // the field's height (#374)
+  use.hidden = ro;
   const zoneOf = t => zones.find(z => z === t.trim().replace(/ /g, "_")) || zones.find(z => shown(z).toLowerCase() === t.trim().toLowerCase());
   const note = () => { const same = cur === here; use.hidden = ro || same;
     hint.textContent = input.getAttribute("aria-invalid") === "true" ? "Pick a time zone from the list, such as America/New York."

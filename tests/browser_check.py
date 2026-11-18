@@ -1130,8 +1130,9 @@ CHART_ACCENT_JS = r"""sel => {
 
 
 # a tile's change line (Costs' figures' notes too, #260), as laid out (#330): each one that wraps, as its lines, when it ends in a short
-# fragment (its last line under 40% of its longest, such as "▼ −0.03 since Aug 18," over "2026") or breaks a date; and
-# each row of tiles whose sparklines don't start at the same height ([the tiles' container, the tops])
+# fragment (its last line under 40% of its longest, such as "▼ −0.03 since Aug 18," over "2026"), breaks a date, or has
+# only the change on its first line ("▼ −0.03" over "since Aug 18, 2026", #374); and each row of tiles whose sparklines
+# don't start at the same height ([the tiles' container, the tops])
 TILE_LINES_JS = r"""() => {
   const lines = e => {   // {text, left, right} per line the element's words are laid out on
     const out = [], walk = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
@@ -1149,7 +1150,8 @@ TILE_LINES_JS = r"""() => {
     if (!e.checkVisibility() || !e.textContent.trim()) continue;
     out.n++;
     const ls = lines(e), w = ls.map(l => l.r - l.l);
-    if (ls.length > 1 && (w.at(-1) < .4 * Math.max(...w) || ls.some((l, i) => i && year.test(l.text) && date.test(ls[i - 1].text))))
+    if (ls.length > 1 && (w.at(-1) < .4 * Math.max(...w) || ls.some((l, i) => i && year.test(l.text) && date.test(ls[i - 1].text))
+                          || / since /.test(e.textContent.replace(/\s+/g, " ")) && !/ since /.test(ls[0].text + " ")))
       out.bad.push(ls.map(l => l.text));
   }
   for (const g of document.querySelectorAll('.tiles')) {
@@ -1720,22 +1722,44 @@ def main():
         sl_until(hp, "document.querySelector('#shareHead h1').textContent === \"This link doesn't work\"")
         check("share links: a made-up link says it doesn't work", True)
         holder.close()
-        # #352: a button in a row of fields is the fields' height (the default button, not .small): Sharing's People
-        # (Share), Profile (Rename), About this person (Clear), Visit summary (Add) and Settings → Dashboard (Add, and a
-        # lab name's Remove), at 1400 and 320 px (with the share link's Copy, above)
-        for path, g, ready in (("sharing.html?profile=1", "people", "#memberList tbody tr"), ("sharing.html?profile=1", "profile", "#profileBody input"),
-                               ("sharing.html?profile=1", "about", "#aboutBirth"), ("sharing.html?profile=1", "summary", "#labIn"),
-                               ("settings.html?profile=1", "dashboard", ".set-add input")):
-            strict.goto(f"{base}/{path}#{g}")
-            strict.wait_for_selector(ready, state="attached", timeout=10000)
-            for w in (1400, 320):
-                strict.set_viewport_size({"width": w, "height": 900 if w > 400 else 640})
-                strict.wait_for_timeout(200)
-                rows352[f"{path.split('.')[0]}#{g} {w}"] = strict.evaluate(FIELD_ROWS_JS)
-        strict.set_viewport_size({"width": 1400, "height": 900})
-        check("a button beside a field is the field's height, on Sharing's People, Profile, About this person, Visit summary and "
-              "Share links and on Settings → Dashboard, at 1400 and 320 px (#352)",
-              len(rows352) == 12 and all((v["n"] > 0 or k.endswith(" 320")) and not v["bad"] for k, v in rows352.items()), rows352)   # at 320 px some wrap
+        # #352, #374: a button in a row of fields is the fields' height (the default button, not .small), on every group of
+        # Sharing, Settings, Sources, Account and Admin, at 1400 and 320 px (with the share link's Copy, above): those
+        # #352 named must have such a row at 1400 px (Sharing's People's Share, Profile's Rename, About this person's
+        # Clear, Visit summary's Add, Settings → Dashboard's Add and a lab name's Remove), and Sources → Type records in
+        # its result row's ✕, with a typed record's form open too, whose ✕ must be 44 px on a phone (Settings → Display's
+        # "Use this device's" shows only in another time zone: checked with the time zones, below)
+        ready352 = {"people": "#memberList tbody tr", "profile": "#profileBody input", "about": "#aboutBirth", "summary": "#labIn",
+                    "dashboard": ".set-add input", "manual": "#manKind option"}
+        del374 = []
+        for path in ("sharing.html?profile=1", "settings.html?profile=1", "sources.html?profile=1", "account.html", "admin.html"):
+            strict.goto(f"{base}/{path}")
+            strict.wait_for_selector(".set-nav a[data-group]", timeout=10000)
+            for g in strict.evaluate("[...document.querySelectorAll('.set-nav a[data-group]')].filter(a => a.checkVisibility()).map(a => a.dataset.group)"):
+                strict.click(f".set-nav a[data-group={g}]")
+                if g in ready352:
+                    strict.wait_for_selector(ready352[g], state="attached", timeout=10000)
+                strict.wait_for_timeout(300)
+                if path.startswith("sources") and g == "manual":
+                    strict.evaluate("""() => { const s = document.getElementById('manKind'); s.value = [...s.options].find(o => /visit/i.test(o.text)).value;
+                        document.getElementById('manAddKind').click(); }""")
+                    strict.wait_for_selector("#manItems .man-item .del", timeout=5000)
+                for w in (1400, 320):
+                    strict.set_viewport_size({"width": w, "height": 900 if w > 400 else 640})
+                    strict.wait_for_timeout(200)
+                    rows352[f"{path.split('.')[0]}#{g} {w}"] = strict.evaluate(FIELD_ROWS_JS)
+                    if path.startswith("sources") and g == "manual":
+                        del374 += [[w] + d for d in strict.evaluate("""() => [...document.querySelectorAll('.imp :is(.man-row, .man-item) > .del')].filter(b => b.checkVisibility())
+                            .map(b => [b.parentElement.classList[0], b.className, Math.round(b.getBoundingClientRect().width), Math.round(b.getBoundingClientRect().height)])""")]
+                strict.set_viewport_size({"width": 1400, "height": 900})
+            if path.startswith("sources"):
+                strict.evaluate("() => { for (const b of document.querySelectorAll('#manItems .man-item .del')) b.click(); }")   # the typed record's form, gone
+        need352 = ["sharing#people", "sharing#profile", "sharing#about", "sharing#summary", "settings#dashboard", "sources#manual"]
+        bad352 = [f"{k}: {b}" for k, v in rows352.items() for b in v["bad"]] + [f"{k} 1400: no field and button in a row" for k in need352 if not rows352.get(f"{k} 1400", {}).get("n")]
+        bad352 += [f"{w} px: {k}'s {c} {bw}×{bh}" for w, k, c, bw, bh in del374 if c != "del btn quiet" or w < 400 and (bw < 44 or bh < 44)]
+        check("a button beside a field is the field's height, on every group of Sharing, Settings, Sources, Account and Admin "
+              "and Share links, at 1400 and 320 px; Sources → Type records in's ✕ is the quiet button, 44 px on a phone (#352, #374)",
+              not bad352 and rows352["Share links 1400"]["n"] and len(rows352) > 30 and {x[1] for x in del374} == {"man-row", "man-item"},
+              bad352[:8] or [del374, {k: v for k, v in rows352.items() if v["n"]}])
         strict.goto(base + "/account.html")
         strict.wait_for_selector("#userMenuBtn", state="visible")
         strict.wait_for_timeout(500)
@@ -1839,8 +1863,8 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- tiles (#330): on the Overview (key labs, home readings, Watch & scale), Body and activity and Costs, at
-            # 1400, 1100, 375 and 320 px, no change line ends in a short fragment (a lone year) or breaks a date, and the
-            # sparklines in a row of tiles start at the same height
+            # 1400, 1100, 375 and 320 px, no change line ends in a short fragment (a lone year), breaks a date or has only the
+            # change on its first line (#374), and the sparklines in a row of tiles start at the same height
             js("window._was330 = [state.tab, state.preset, state.from, state.to]")
             for width in (1400, 1100, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
@@ -1848,7 +1872,7 @@ def main():
                     js("([t, p]) => { if (p) setPeriod(p); switchTab(t); }", [tab, preset])
                     settle(300)
                     got = js(TILE_LINES_JS)
-                    check(f"{tab} ({width} px, #330): no tile's change line ends in a short fragment or breaks a date"
+                    check(f"{tab} ({width} px, #330, #374): no tile's change line ends in a short fragment, breaks a date or has only the change on its first line"
                           + (", and a row's sparklines line up" if tab == "overview" else ""),
                           got["n"] > 0 and not got["bad"] and not got["uneven"], got)
             # ---- one tile for every tab (#260): the Overview's key labs, home readings, Watch & scale and insurance figures,
@@ -8684,6 +8708,17 @@ def main():
             za.wait_for_function("document.querySelector('#sec-dates .set-foot > .msg').textContent == 'Saved “Time zone” and “Date format”.'", timeout=10000)
             check("…changed on the Settings page, just for that person", mine(za)["dates.timeZone"] == "America/Los_Angeles"
                   and mine(zb)["dates.timeZone"] == "America/Chicago", (mine(za), mine(zb)))
+            # #374: in a time zone other than the one saved, Display → Time zone's "Use this device's" is beside the zone's
+            # field, as tall as it (the default button, not .small)
+            zone374 = {}
+            for w in (1400, 320):
+                za.set_viewport_size({"width": w, "height": 900 if w > 400 else 640})
+                za.wait_for_timeout(200)
+                zone374[w] = za.evaluate(FIELD_ROWS_JS)
+            za.set_viewport_size({"width": 1400, "height": 900})
+            check("…and in another time zone, “Use this device's” beside the field is the field's height, at 1400 and 320 px (#374)",
+                  za.evaluate("[...document.querySelectorAll('#sec-dates .set-add .btn')].filter(b => b.checkVisibility()).map(b => b.textContent).join()") == "Use this device's"
+                  and zone374[1400]["n"] and not zone374[1400]["bad"] and not zone374[320]["bad"], zone374)
             zb.goto(base + "/settings.html?profile=1#dashboard")   # #174: a viewer of the profile
             zb.wait_for_selector("#sec-dates .set-foot", state="attached", timeout=10000)
             check("a viewer's Settings: the profile's groups say they're shown as they are, with no Save, while their own settings have one",
