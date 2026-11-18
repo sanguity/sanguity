@@ -81,6 +81,10 @@ def _entry(db, pid, imp):
     summary = json.loads(crypto.dec(job["summary"])) if job and job["summary"] else {}
     if job and (job["username"] or origin != "sync"):
         by = job["username"] or "a removed account"
+    elif origin == "manual":   # typed in: no job; the import names its account (imports.created_by, #325). None for one
+        # typed in before that was kept, or once the account is removed: no name, never "command line"
+        a = db.execute("SELECT u.username FROM imports i JOIN users u ON u.id = i.created_by WHERE i.id=?", (iid,)).fetchone()
+        by = a["username"] if a else None
     else:
         by = BY.get(origin, activity.COMMAND_LINE)
     names = _names(db, pid, job["upload_id"]) if job else []

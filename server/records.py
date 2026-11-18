@@ -69,9 +69,9 @@ def _bump(db, pid):
     db.execute("UPDATE profiles SET records_rev=records_rev+1 WHERE id=?", (pid,))
 
 
-def store(db, pid, data, origin, fmt=FORMAT, now=None):
+def store(db, pid, data, origin, fmt=FORMAT, now=None, by=None):
     """Add data (the data.json shape, already checked to have an events list) to profile pid as one new import.
-    Call inside a transaction. Returns the import's id."""
+    by: the account that typed it in (imports.created_by, #325). Call inside a transaction. Returns the import's id."""
     from . import db as dbm
     assert db.in_transaction, "records.store must run inside a transaction"
     details = {str(k): v for k, v in (data.get("details") or {}).items()}
@@ -93,8 +93,8 @@ def store(db, pid, data, origin, fmt=FORMAT, now=None):
     if loose:
         meta["costs"] = loose
 
-    iid = db.execute("INSERT INTO imports(profile_id, at, origin, format, meta) VALUES(?, ?, ?, ?, ?)",
-                     (pid, now or dbm.now(), origin, fmt, _enc(meta))).lastrowid
+    iid = db.execute("INSERT INTO imports(profile_id, at, origin, format, meta, created_by) VALUES(?, ?, ?, ?, ?, ?)",
+                     (pid, now or dbm.now(), origin, fmt, _enc(meta), by)).lastrowid
     rows, secret = [], _key_secret(db)
     for n, e in enumerate(events, start=base + 1):
         key = str(e.get("id"))

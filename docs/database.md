@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 34**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 35**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -129,7 +129,8 @@ stays, lab draws, documents, claims…), lab **series** and their **results**, a
 it. **Edits** (corrections) belong to the profile instead, keyed by a hash of each event's source key, so they
 survive re-imports and undo. So do **same_results**: the person's decision that a lab result from one source is the
 same as one from another (shown once, with both sources) or not (no longer flagged), found by both results' point
-keys (`server/crossmatch.py`, #96).
+keys (`server/crossmatch.py`, #96). Records typed in have no job, so the import itself names the account that typed
+them in (`created_by`, schema version 35, #325), for the import history; it's NULL for every other origin.
 survive re-imports and undo. So do **journal** entries (#49, `server/journal.py`): notes, symptoms and side effects
 the people using the profile write themselves. They aren't records from anywhere, so no import owns them; the
 records the page loads list them as `journal`, and an export carries them in its `data.json`. Since #161 an entry
@@ -189,6 +190,7 @@ erDiagram
         int synced "last sync of a live connection (#91), else NULL"
         text meta "🔒 JSON: source, built, problems, upcoming visits, payments..."
         text name "🔒 what the person calls it (#38), else NULL"
+        int created_by FK "the account that typed it in (#325), else NULL"
     }
     events {
         int id PK "the id the page sees"

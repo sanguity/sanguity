@@ -55,7 +55,7 @@
   function uploadRows(imports) {
     return imports.filter(e => e.origin !== "sync" && e.state === "active").slice(0, RECENT).map(e =>
       row({name: e.name || e.label, tag: e.origin === "build" ? null : ORIGIN[e.origin] || e.origin, href: "#import-" + e.id, link: "In the history",
-        last: `${when(e.at)} · ${e.by}`}));
+        last: `${when(e.at)}` + (e.by ? ` · ${e.by}` : "")}));
   }
 
   async function load() {
