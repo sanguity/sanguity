@@ -63,6 +63,7 @@ python tests/test_backups.py           # backups in Admin: schedule, pruning, la
 python tests/test_security_refresh.py  # the security review's checks: each route's access, columns encrypted or plain
 python -m unittest discover -s tests -p "test_importer*.py" -v   # the registry and every importer's fixtures
 python tests/test_anonymise.py         # tools/anonymise.py: every fixture's copy imports the same, nothing of it left
+python tests/test_css_tokens.py        # no new raw colours, px font sizes, radii, shadows or script styles (#252)
 python tests/browser_check.py          # headless browser: every tab, the drawer, pan/zoom, every page at 375 px,
                                        # axe-core's WCAG 2.2 AA rules and a keyboard walk (docs/accessibility.md)
 python tests/test_performance.py       # the performance budgets on ten years of fictional records (docs/performance.md)
