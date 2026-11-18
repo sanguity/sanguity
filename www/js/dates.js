@@ -7,7 +7,6 @@
 
    fmtD / fmtDT / fmtMonth   an instant (ms) as a date, a date and time, a month
    recordDate(s)             a date or date and time a record gives as text, "2026-11-02 08:10", the same way
-   datesIn(s)                each such date in a line of text the server wrote, the same way
    isoDay(t)                 the instant's day, "YYYY-MM-DD", where this person's day begins at their midnight
    dayTs("YYYY-MM-DD")       noon of that day in their zone (a date without a time, as a point on a chart)
    zParse(s)                 an ISO time string to ms; one without an offset is read as their wall-clock time
@@ -127,9 +126,6 @@ function recordDate(s) {
   if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/.test(s)) return fmtDT(zParse(s.replace(" ", "T")));
   return s;
 }
-/* the dates in a line the server wrote with them as stored ("Blood pressure · 2026-11-10 05:55 · 126/81"), each as
-   recordDate writes it (#311) */
-const datesIn = s => typeof s === "string" ? s.replace(/\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?\b/g, recordDate) : s;
 
 /* ---------------------------------------------------------------- the settings */
 let _datesP = null;

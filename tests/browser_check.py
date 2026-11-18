@@ -5026,7 +5026,7 @@ def main():
             add_record("document")
             page.fill(card(4, "title"), "Typed referral letter")
             page.select_option(card(4, "doctype"), "letter")
-            pdf_path = os.path.join(TMP, "typed-letter.pdf")
+            pdf_path = os.path.join(TMP, "typed-letter-2026-11-02.pdf")   # a date in its name, kept as typed (#317)
             with open(pdf_path, "wb") as f:   # a one-page PDF with fictional text
                 body = b"BT /F1 12 Tf 72 720 Td (Fictional referral letter) Tj ET"
                 objs = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -5045,7 +5045,10 @@ def main():
             page.wait_for_function("document.getElementById('manMsg').textContent === '4 records ready to save.' && !document.getElementById('manSave').disabled", timeout=5000)
             checks = js("[...document.querySelectorAll('.man-item .man-check')].map(c => c.textContent)")
             check("each record says what it became", "Typed follow-up visit" in checks[0] and "Doctor visits" in checks[2]
-                  and "typed-letter.pdf" in checks[3], checks)
+                  and "typed-letter-2026-11-02.pdf" in checks[3], checks)
+            letter_on = js(f"recordDate(document.querySelector('{card(4, 'date')}').value)")
+            check("…its own date in the person's format, and a date in the file's name as typed (#317)",
+                  checks[3].endswith(" · Typed referral letter · typed-letter-2026-11-02.pdf") and f"Document · {letter_on}" in checks[3], [checks[3], letter_on])
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("the record forms fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
@@ -6950,6 +6953,13 @@ def main():
                   dir_read and all(re.search(r", read " + dmy + r"\.", li) for li in dir_read) and re.search(r", read " + dmy + r"\.$", finder_read),
                   (dir_read, finder_read))
             check("…and no page, tab or group shows a date as it's stored (#311)", not iso_seen, iso_seen)
+            # #317: nor Import history's span of an import's dates: the second profile's uploads (its FHIR export's, ...)
+            za.goto(base + "/sources.html?profile=2#history")
+            za.wait_for_selector("#history li[data-format='fhir'] .what", timeout=10000)
+            spans = za.evaluate("[...document.querySelectorAll('#history li[data-import] .what')].map(p => p.textContent)")
+            check("…nor Import history's span of an import's dates (#317)",
+                  any(re.search(r"\(" + dmy + " to " + dmy + r"\)$", t) for t in spans) and not any(re.search(r"\d{4}-\d{2}-\d{2}", t) for t in spans), spans)
+            za.evaluate("localStorage.setItem('ht-profile', '1')")   # the profile this browser opens next, as before
             za.goto(base + "/")
             za.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.id === 1", timeout=20000)
             za.evaluate("switchTab('overview')")
