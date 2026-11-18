@@ -932,6 +932,11 @@ Everything on `main` so far; it becomes the first tagged release.
   the question is answered. Escape in a menu opened over the drawer closes only the menu. While a dialog or the drawer
   covers the page, the page behind no longer scrolls under the mouse wheel, so what focus goes back to is still on
   screen. The sheet's grab handle shows in forced colours.
+- **Menus in browsers without anchor positioning** (#356): where the browser can't place a menu itself (Firefox and
+  Safari before their releases with CSS anchor positioning), a menu near the foot of the screen opened off it, stayed
+  where it opened as the page scrolled, and was drawn at the screen's top left for a moment. It now opens over its
+  button where there's no room under it, no taller than the room there is (scrolling inside if it must), placed
+  before it's drawn, and it and a tooltip follow their button as the page scrolls or the window changes size.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

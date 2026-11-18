@@ -382,11 +382,17 @@ const placeAt = (node, at) => { for (const [k, v] of Object.entries(at)) node.st
       // focus given back while another popover opens (a menu closed by the next one): shown once that's done
       try { box.showPopover(); } catch (e) { wait = setTimeout(() => { if (on === t) { on = null; show(t, how); } }); return; }
     }
-    if (!CSS.supports("anchor-name: --a")) {   // above, or below where there's no room above; 8 px inside the screen
-      const r = t.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight, vw = document.documentElement.clientWidth;
-      placeAt(box, {"--tip-left": Math.max(8, Math.min(r.left + r.width / 2 - w / 2, vw - 8 - w)), "--tip-top": r.top - h - 6 >= 0 ? r.top - h - 6 : r.bottom + 6});
-    }
+    place();
   }
+  // without CSS anchor positioning: above, or below where there's no room above; 8 px inside the screen. Again as the
+  // page scrolls or the window changes size, so it stays by its element (#356)
+  function place() {
+    if (!on || CSS.supports("anchor-name: --a")) return;
+    const r = on.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight, vw = document.documentElement.clientWidth;
+    placeAt(box, {"--tip-left": Math.max(8, Math.min(r.left + r.width / 2 - w / 2, vw - 8 - w)), "--tip-top": r.top - h - 6 >= 0 ? r.top - h - 6 : r.bottom + 6});
+  }
+  addEventListener("scroll", place, {capture: true, passive: true});
+  addEventListener("resize", place);
   const later = (t, how) => { clearTimeout(wait); wait = setTimeout(() => show(t, how), on ? 0 : 400); };
   document.addEventListener("pointerover", ev => {
     if (ev.pointerType === "touch") return;
