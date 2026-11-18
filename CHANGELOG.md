@@ -822,6 +822,16 @@ Everything on `main` so far; it becomes the first tagged release.
   fades when disabled. The seven copies of a primary button and the per-page sizes (buttons were 25 to 34 px tall)
   are gone; a primary button is filled on every page now, the top bar's and the drawer's buttons are the same
   button, and sign-in's and setup's are the large size.
+- **One field, a switch, and the pick-one and on/off controls in one place** (#259): text fields, selects and
+  textareas share one look on every page (the raised surface, the field's edge, the small corner, 32 px tall, 44 px on
+  a phone) instead of six, with radii of 8 or 9 px and heights from 30 to 41 px; sign-in's and setup's are the large
+  size. A setting that's simply on or off is a switch now (a checkbox a screen reader calls a switch, toggled with
+  Space): Settings' tabs, Require two-factor sign-in for everyone, Offline records, the calendar feed's lab draws and
+  medication reminders, a connection's Fetch automatically and the connection defaults on Admin. A milestone's
+  Primary is a radio button, one across the milestones. The time zone is a field you type into to search the zones
+  ("los angeles" finds America/Los Angeles); one that isn't on the list says so and isn't saved. Checkboxes and
+  radios are in the accent everywhere. The segmented controls and chips (#193) are 32 px tall (Chart | Table 24),
+  44 on a phone.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

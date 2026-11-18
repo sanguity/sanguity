@@ -55,6 +55,111 @@ a{color:var(--accent)}   /* links in the accent, never the browser's blue or vis
   .btn:is(.primary,.danger){border-color:ButtonText}   /* a filled button keeps its edge (#202) */
   :is(.btn,.iconbtn)[aria-pressed="true"]{forced-color-adjust:none;background:Highlight;color:HighlightText;border-color:Highlight;box-shadow:none}
 }
+/* ---- a field (#259): every text field, number, date, search box, select and textarea, the same look on every page:
+   the raised surface, the field's edge (3:1 against what it's on, #202; red while it's invalid), the small corner and
+   padding on the scale, 32 px tall like the default button beside it, 44 px on a phone or a touch screen. In :where(),
+   so a page's own rule for a field's width or a narrower padding wins without a fight. Sign-in and setup have the
+   same look at the large size in their own <style>. */
+:where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=hidden],[type=color],[type=submit],[type=button],[type=reset],[type=image]),select,textarea){
+  min-height:32px;max-width:100%;min-width:0;padding:var(--sp-1) var(--sp-2);border:1px solid var(--field-line);border-radius:var(--r-sm);
+  background:var(--raised);color:var(--ink);font:inherit;font-weight:var(--fw-regular)}
+:where(input,select,textarea)[aria-invalid="true"]{border-color:var(--crit)}
+:where(input:is([type=date],[type=time])):focus-within:not(:focus){outline:2px solid var(--accent);outline-offset:1px}   /* Shift+Tab reaches its calendar button, which shows no focus of its own (#202) */
+@media (max-width:640px),(pointer:coarse){ :where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=hidden],[type=color],[type=submit],[type=button],[type=reset],[type=image]),select){min-height:44px} }
+/* checkboxes and radios that stay the browser's own, in the accent (a switch below, a segment or a chip draw their own) */
+:where(input:is([type=checkbox],[type=radio],[type=range]),progress){accent-color:var(--accent)}
+/* ---- a switch (#259): a setting that's on or off by itself and takes effect (or is saved with its section) as it
+   is: <label class="switch"><input type="checkbox" role="switch"> Keep records for offline viewing</label>. Still a
+   checkbox, so forms, the keyboard (Space) and scripts treat it as one; role="switch" makes a screen reader say "on" or
+   "off". The track fills with the accent when it's on and its knob moves across; disabled, it fades. Forced colours:
+   an outlined track and knob, the system's highlight when on. A choice among others (a part of an export, a kind of
+   record) stays a checkbox, in the accent. */
+input[type=checkbox][role=switch]{appearance:none;flex:none;position:relative;width:40px;height:24px;margin:0;border:1px solid var(--field-line);
+  border-radius:var(--r-pill);background:var(--raised);vertical-align:middle;cursor:pointer}
+input[type=checkbox][role=switch]::before{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:var(--r-pill);
+  background:var(--field-line);transition:translate var(--dur-1) var(--ease-out)}
+input[type=checkbox][role=switch]:checked{border-color:var(--accent-fill);background:var(--accent-fill)}
+input[type=checkbox][role=switch]:checked::before{translate:16px 0;background:var(--on-accent)}
+input[type=checkbox][role=switch]:disabled{opacity:.45;cursor:default}
+label.switch{display:inline-flex;align-items:center;gap:var(--sp-3);cursor:pointer}
+label.switch:has(>input:disabled){cursor:default}
+@media (forced-colors:active){
+  input[type=checkbox][role=switch]{forced-color-adjust:none;border-color:CanvasText;background:Canvas}
+  input[type=checkbox][role=switch]::before{background:CanvasText}
+  input[type=checkbox][role=switch]:checked{border-color:Highlight;background:Highlight}
+  input[type=checkbox][role=switch]:checked::before{background:HighlightText}
+  input[type=checkbox][role=switch]:disabled{opacity:1;border-color:GrayText}
+  input[type=checkbox][role=switch]:disabled::before{background:GrayText}
+}
+/* ---- pick one, and on or off: one look for each kind of control, everywhere (#193; in components, #259)
+   PICK ONE, a segmented control (.seg): one choice of a few, exactly one selected at a time. Its parts sit directly in it:
+     <div class="seg" role="group" aria-label="Group the claims"><button type="button" aria-pressed="true">By month</button>
+       <button type="button" aria-pressed="false">By year</button></div>
+     or role="radiogroup" of <button type="button" role="radio" aria-checked="true|false"> (only the checked one in the tab
+     order, arrow keys move: the journal form's kinds), or <label><input type="radio" name="…">Light</label> each, in a
+     <fieldset> with its <legend> (the radio stays for the keyboard and forms, see-through over its label: Settings).
+     Add "wrap" where the choices may not fit a phone: they wrap instead of scrolling sideways.
+     Selected: an accent tint, a bar under it and bold text. Forced colors: the system's highlight.
+   ON OR OFF, a toggle chip (.toggle): each shows or hides something by itself, so several can be on.
+     <button type="button" class="toggle" aria-pressed="true|false"><span class="key"></span>Visits <span class="n">31</span></button>
+     or <label class="toggle"><input type="checkbox" id="…"> Journal</label> (the box see-through over its chip). The key
+     and the count are optional; the chip's colour is --tone, set with node.style.setProperty("--tone", "var(--c-visit)")
+     (the accent if none). Shown: a tint of that colour, a solid border, a ✓, the key in colour. Hidden: outlined only, no
+     tint and no ✓, the key grey and the text muted: told apart by more than opacity, in light, dark and forced colors.
+   Both: an ARIA state is always "true" or "false" (el() writes a boolean so), and focus shows as an accent outline.
+   Their heights are the button's (#258): a segment and a chip 32 px, Chart | Table's small one 24 px, all 44 px on a phone
+   or a touch screen.
+   AN ACTION CHIP (.chip): a pill that does one thing to a list, "+ Ferritin" to add a suggestion, "Iron ×" to take one
+   away; in a row of .chips. */
+.seg{display:inline-flex;gap:1px;max-width:100%;min-width:0;margin:0;padding:0;border:1px solid var(--axis);border-radius:var(--r-sm);overflow:hidden;background:var(--axis)}
+.seg>button,.seg>label{position:relative;flex:1 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:30px;margin:0;border:0;border-radius:0;
+  background:var(--raised);padding:var(--sp-1) var(--sp-3);color:var(--ink2);font-size:inherit;font-weight:var(--fw-medium);line-height:1.45;text-align:center;white-space:nowrap;cursor:pointer}
+.seg>button:hover,.seg>label:hover{color:var(--ink)}
+.seg>[aria-pressed="true"],.seg>[aria-checked="true"],.seg>label:has(>input:checked){background:color-mix(in srgb,var(--accent) 15%,var(--raised));
+  color:var(--ink);font-weight:var(--fw-semibold);box-shadow:inset 0 -2px 0 var(--accent)}
+.seg>label>input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:inherit}
+.seg>label:has(>input:disabled){cursor:default}
+.seg>button:focus-visible,.seg>label:has(>input:focus-visible){outline:2px solid var(--accent);outline-offset:-2px;z-index:1}
+.seg.wrap{flex-wrap:wrap}
+.seg.wrap>button,.seg.wrap>label{white-space:normal}
+button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline-flex;align-items:center;gap:var(--sp-2);min-height:32px;margin:0;border:1px solid var(--axis);border-radius:var(--r-pill);
+  background:transparent;padding:0 var(--sp-3) 0 var(--sp-2);color:var(--ink2);font-size:var(--fs-3);font-weight:var(--fw-medium);line-height:1.45;white-space:nowrap;cursor:pointer}
+.toggle:hover{border-color:var(--ink2);color:var(--ink)}
+.toggle[aria-pressed="true"],.toggle:has(>input:checked){background:color-mix(in srgb,var(--tone) 15%,var(--raised));border-color:color-mix(in srgb,var(--tone) 70%,var(--ink));color:var(--ink)}
+.toggle::before{content:"✓";content:"✓"/"";font-size:var(--fs-2);font-weight:var(--fw-bold);line-height:1;color:color-mix(in srgb,var(--tone) 55%,var(--ink))}
+.toggle[aria-pressed="false"]::before,.toggle:has(>input:not(:checked))::before{content:none}
+.toggle .key{flex:none;width:14px;height:3px;border-radius:2px;background:var(--tone)}
+.toggle .n{color:var(--ink2);font-variant-numeric:tabular-nums}
+.toggle[aria-pressed="false"] .key,.toggle:has(>input:not(:checked)) .key{background:var(--muted)}
+.toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:var(--muted)}
+.toggle>input{position:absolute;inset:0;width:100%;height:100%;margin:0;border-radius:inherit;opacity:0;cursor:pointer}
+.toggle:has(>input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}   /* the chip, when the box inside it has focus */
+.seg.view-seg{font-size:var(--fs-2)}
+.seg.view-seg>button{min-height:22px;padding:0 var(--sp-2)}   /* 24 px with the group's edge */
+.chips{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:var(--sp-2);min-height:32px;margin:0;border:1px solid var(--ring);border-radius:var(--r-pill);background:var(--raised);
+  padding:0 var(--sp-3);color:var(--ink2);font:inherit;font-size:var(--fs-3);font-weight:var(--fw-medium);cursor:pointer}
+.chip:hover{border-color:var(--ink2);color:var(--ink)}
+@media (max-width:700px){
+  .seg:not(.wrap){flex:none;overflow-x:auto;scrollbar-width:none}   /* the records bar's presets: they scroll, the chosen one kept in view */
+  .seg:not(.wrap)::-webkit-scrollbar{display:none}
+  .seg>button,.seg>label{flex:none}
+  .seg.wrap>button,.seg.wrap>label{flex:1 0 auto}
+  button.toggle,label.toggle{padding:0 var(--sp-3)}
+}
+@media (max-width:640px),(pointer:coarse){ .seg>button,.seg>label,.seg.view-seg>button{min-height:42px} button.toggle,label.toggle,.chip{min-height:44px} }
+@media (forced-colors:active){   /* selected or shown: the system's highlight, kept as is (no text backplate over it) */
+  .seg{background:CanvasText;border-color:CanvasText}
+  .seg>button,.seg>label{background:Canvas;color:CanvasText}
+  .seg>[aria-pressed="true"],.seg>[aria-checked="true"],.seg>label:has(>input:checked){forced-color-adjust:none;background:Highlight;color:HighlightText;box-shadow:none}
+  button.toggle,label.toggle{background:Canvas;color:CanvasText;border:1px dashed CanvasText}
+  .toggle[aria-pressed="true"],.toggle:has(>input:checked){forced-color-adjust:none;background:Highlight;color:HighlightText;border:1px solid Highlight}
+  .toggle::before{color:inherit}
+  .toggle .key{forced-color-adjust:none}
+  .toggle[aria-pressed="false"] .key,.toggle:has(>input:not(:checked)) .key{background:GrayText}
+  .toggle .n,.toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:inherit}
+  .seg>button:focus-visible,.seg>label:has(>input:focus-visible),.toggle:focus-visible,.toggle:has(>input:focus-visible){outline-color:CanvasText}
+}
 }
 
 @layer pages {
@@ -74,7 +179,7 @@ header .meta{color:var(--muted);font-size:var(--fs-2)}
 main.sets.with-nav{display:grid;grid-template-columns:220px minmax(0,1fr);column-gap:var(--sp-5);max-width:1120px;align-items:start}
 main.sets.with-nav>*{grid-column:2}
 main.sets.with-nav>.set-nav{grid-column:1;grid-row:1 / span 50;position:sticky;top:76px}
-.set-nav input[type=search]{width:100%;box-sizing:border-box;border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:var(--r-sm);padding:var(--sp-2) var(--sp-3);font:inherit;font-size:var(--fs-3);margin-bottom:var(--sp-3)}
+.set-nav input[type=search]{width:100%;margin-bottom:var(--sp-3)}
 .set-nav-list{list-style:none;margin:0;padding:0}
 .set-nav-part{font-size:var(--fs-1);color:var(--muted);text-transform:none;margin:var(--sp-3) var(--sp-2) var(--sp-1);font-weight:var(--fw-semibold)}
 .set-nav-list li:first-child.set-nav-part{margin-top:2px}
@@ -131,11 +236,7 @@ header.topbar .tabs button{white-space:nowrap}
 }
 .filters{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;padding:var(--sp-3) var(--sp-5);border-bottom:1px solid var(--grid);background:var(--surface)}
 .dates{display:flex;gap:var(--sp-2);align-items:center;color:var(--muted);font-size:var(--fs-3)}
-.dates input{border:1px solid var(--ring);background:var(--raised);border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2)}
-.chips{display:flex;gap:var(--sp-2);flex-wrap:wrap}
-.chip{display:inline-flex;align-items:center;gap:var(--sp-2);border:1px solid var(--ring);background:var(--raised);border-radius:var(--r-pill);padding:var(--sp-1) var(--sp-3) var(--sp-1) var(--sp-2);cursor:pointer;color:var(--ink2);font-size:var(--fs-3)}
-.chip .key{width:14px;height:3px;border-radius:2px}
-.search{border:1px solid var(--ring);background:var(--raised);border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-3);min-width:200px}
+.search{min-width:200px}
 main{padding:var(--sp-4) var(--sp-5) var(--sp-7);max-width:1500px;margin:0 auto}
 footer.notice{max-width:1500px;margin:0 auto;padding:var(--sp-3) var(--sp-5) var(--sp-5);border-top:1px solid var(--grid);color:var(--ink2);font-size:var(--fs-2);box-sizing:border-box}
 .range-note{color:var(--ink2);font-size:var(--fs-2);margin:var(--sp-2) 0 var(--sp-2)}
@@ -190,7 +291,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .srow .nm{font-size:var(--fs-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .srow .lv{font-size:var(--fs-2);color:var(--ink2);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .srow .lv.abn{color:var(--crit);font-weight:var(--fw-semibold)}
-.srow input{margin:0;accent-color:var(--accent)}
+.srow input{margin:0}
 .charts{display:flex;flex-direction:column;gap:var(--sp-4)}
 .chart{background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--sp-2) var(--sp-4) var(--sp-1)}
 .chart .hd{display:flex;align-items:baseline;gap:var(--sp-2);flex-wrap:wrap}
@@ -214,7 +315,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .chart .hd .lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:var(--sp-1);vertical-align:-1px}
 .toolbar{display:flex;gap:var(--sp-4);align-items:center;flex-wrap:wrap;margin:0 0 var(--sp-3)}
 .toolbar label{display:inline-flex;gap:var(--sp-2);align-items:center;font-size:var(--fs-3);color:var(--ink2);cursor:pointer}
-.toolbar input{accent-color:var(--accent);margin:0}
+.toolbar input{margin:0}
 .evmark{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 3;opacity:.7}
 .evlabel{font-size:var(--fs-1);fill:var(--ink2)}
 .msmark{stroke:var(--milestone);stroke-width:1.25;stroke-dasharray:5 3;pointer-events:none}
@@ -319,7 +420,6 @@ table.data tr.link:hover td{background:var(--hover)}
 .edits .edit-line .btn{margin:0}
 .edits .missing{color:var(--crit);font-style:normal}
 .edits .edit-form label{display:flex;flex-direction:column;gap:var(--sp-1);margin:var(--sp-2) 0 var(--sp-2);color:var(--ink2)}
-.edits .edit-form input,.edits .edit-form select{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);max-width:100%;min-width:0;font:inherit}
 .edits .edit-msg:empty{display:none}
 /* similar entries offered with a rename or a change of category (#237) */
 .edits .edit-form label.check{flex-direction:row;align-items:flex-start;gap:var(--sp-2);margin:var(--sp-1) 0;color:var(--ink)}
@@ -393,7 +493,7 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
   .kv{grid-template-columns:92px 1fr}
   .tip{max-width:calc(100vw - 24px)}
 }
-@media (forced-colors:active){.chip .key,.tl-row .key{forced-color-adjust:none}}
+@media (forced-colors:active){.tl-row .key{forced-color-adjust:none}}
 /* ---- account page */
 main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct [role="tabpanel"]:focus{outline:none}
@@ -406,9 +506,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .form select{max-width:100%}   /* one column, as wide as the form: a long option shrinks, not the page wider at 320 px (#256) */
 .acct .form.inline{display:flex;flex-wrap:wrap;align-items:flex-end;max-width:none;margin-top:var(--sp-3)}
 .acct label{display:grid;gap:var(--sp-1);font-size:var(--fs-3);color:var(--ink2);font-weight:var(--fw-medium)}
-.acct :is(input,select,textarea){font-weight:var(--fw-regular)}   /* what's typed isn't the label's semibold, which font:inherit passed on (#246) */
 .acct label.check{display:flex;align-items:center;gap:var(--sp-2);padding-bottom:var(--sp-2)}
-.acct input:not([type=checkbox]),.acct select{border:1px solid var(--ring);background:var(--raised);border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);min-width:0}
 .acct .row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin:var(--sp-2) 0}   /* 8 px above and below: a row of buttons never sits on the heading or text after it (#309) */
 .acct .btn{margin:0}
 .acct .msg{font-size:var(--fs-3);color:var(--good-text);border:0;padding:0;margin:0}
@@ -462,7 +560,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .imp-list{list-style:none;margin:var(--sp-2) 0 0;padding:0;max-height:340px;overflow-y:auto;font-size:var(--fs-3)}
 .imp .imp-list li{display:grid;grid-template-columns:minmax(0,1fr) auto 90px 46px;gap:var(--sp-1) var(--sp-2);align-items:center;border-top:1px solid var(--grid);padding:var(--sp-1) 0}
 .imp .imp-list .path{overflow-wrap:anywhere}
-.imp .imp-list progress{width:100%;height:8px;accent-color:var(--accent)}
+.imp .imp-list progress{width:100%;height:8px}
 .imp .imp-list li.muted{display:block}
 .import-job .imp-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin-top:var(--sp-3)}
 .import-job .imp-dups ul{list-style:none;margin:var(--sp-2) 0 0;padding:0;max-height:300px;overflow-y:auto;font-size:var(--fs-3)}
@@ -471,7 +569,6 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .import-job .imp-dups .d{color:var(--muted);font-variant-numeric:tabular-nums}
 .import-job .imp-labs ul{list-style:none;margin:var(--sp-2) 0 0;padding:0;font-size:var(--fs-3)}
 .import-job .imp-labs li{border-top:1px solid var(--grid);padding:var(--sp-1) 0;display:grid;gap:var(--sp-1);overflow-wrap:anywhere}
-.import-job .imp-labs select{max-width:100%;min-width:0;font:inherit;padding:var(--sp-1) var(--sp-2)}
 .import-job .imp-labs .why{color:var(--muted);font-size:var(--fs-2)}
 .import-job .imp-labs .before{font-size:var(--fs-2);font-weight:var(--fw-semibold)}
 .import-job .imp-same ul{list-style:none;margin:var(--sp-2) 0 0;padding:0;font-size:var(--fs-3)}
@@ -480,7 +577,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .off{display:none !important}
 /* a SMART Health Link pasted or scanned (import-shl.js) */
 .imp .shl-text{display:grid;gap:var(--sp-1);margin:var(--sp-2) 0}
-.imp .shl-text textarea{width:100%;box-sizing:border-box;font:var(--fs-3)/1.4 var(--font-mono);padding:var(--sp-1) var(--sp-2);overflow-wrap:anywhere}
+.imp .shl-text textarea{width:100%;font:var(--fs-3)/1.4 var(--font-mono);overflow-wrap:anywhere}
 .imp .shl-video{display:block;width:100%;max-width:420px;border-radius:var(--r-md);margin:var(--sp-2) 0;background:#000}
 .imp .shl-about{border-top:1px solid var(--grid);margin-top:var(--sp-3);padding-top:var(--sp-1)}
 .imp .shl-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-1) var(--sp-3);margin:var(--sp-2) 0;font-size:var(--fs-3)}
@@ -502,7 +599,6 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .man-check:empty{display:none}
 .imp .man-check.bad{color:var(--crit)}
 .imp .man-check .abn{color:var(--crit);font-weight:var(--fw-semibold)}
-.imp .man-row input[aria-invalid="true"]{border-color:var(--crit)}
 .imp .man-check .dup{color:var(--ink2);font-weight:var(--fw-semibold)}
 /* other records typed in (import-records.js): one form per record, its fields flowing into as many columns as fit */
 .imp .man-pick{margin:var(--sp-3) 0 var(--sp-1);flex-wrap:wrap;align-items:end}
@@ -513,10 +609,9 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .man-item legend{font-size:var(--fs-3);font-weight:var(--fw-semibold);padding:0 var(--sp-1)}
 .imp .rec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(9.5em,100%),1fr));gap:var(--sp-2) var(--sp-2);padding-right:1.6em}
 .imp .rec-f{display:flex;flex-direction:column;font-size:var(--fs-2);gap:2px;min-width:0}
-.imp .rec-f input,.imp .rec-f select,.imp .rec-f textarea{width:100%;min-width:0;padding:var(--sp-1) var(--sp-2);font:inherit;font-size:var(--fs-3);font-weight:var(--fw-regular);box-sizing:border-box}
+.imp .rec-f input,.imp .rec-f select,.imp .rec-f textarea{width:100%;font-size:var(--fs-3)}
 .imp .rec-f textarea{resize:vertical;min-height:2.4em}
 .imp .rec-long,.imp .rec-wide{grid-column:1 / -1}
-.imp .rec-f [aria-invalid="true"]{border-color:var(--crit)}
 .imp .man-err{color:var(--crit);font-size:var(--fs-2)}
 .imp .man-err:empty{display:none}
 .imp .man-file{color:var(--muted);font-size:var(--fs-2);overflow-wrap:anywhere}
@@ -612,7 +707,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
   .sets .ms .set-row,.sets .rules .set-row{grid-template-columns:1fr}
   .sets .set-row .set-tick{display:flex;flex-direction:row;align-items:center;gap:var(--sp-2)}
 }
-.sets .set-json{width:100%;max-width:560px;font:var(--fs-2) var(--font-mono);border:1px solid var(--ring);border-radius:var(--r-sm);background:var(--raised);color:var(--ink);padding:var(--sp-1)}
+.sets .set-json{width:100%;max-width:560px;font:var(--fs-2) var(--font-mono)}
 @media (max-width:600px){
   .sets .set-head{display:none}
   .sets .set-row,.sets .c3 .set-row{grid-template-columns:1fr;border-bottom:1px solid var(--grid);padding-bottom:var(--sp-2)}
@@ -744,7 +839,8 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .cal .cal-opts{border:0;padding:0;margin:var(--sp-2) 0;display:grid;gap:var(--sp-2);max-width:640px}
 .cal .cal-opts legend{font-size:var(--fs-3);font-weight:var(--fw-medium);color:var(--ink2);padding:0;margin-bottom:var(--sp-1)}
 .cal label.check{align-items:flex-start;font-weight:var(--fw-regular);padding-bottom:0}
-.cal label.check input{margin-top:3px;flex:none}
+.cal label.check:not(.switch) input{margin-top:3px;flex:none}
+.cal label.check.switch{align-items:center}
 .cal .cal-opts p{margin:0}
 .cal .cal-setup{margin-top:var(--sp-3);border-left:3px solid var(--accent);padding:var(--sp-1) 0 var(--sp-1) var(--sp-3)}
 .cal .cal-url{display:flex;gap:var(--sp-2);max-width:720px;flex-wrap:wrap}
@@ -766,7 +862,6 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .jrow-label{font-size:var(--fs-1);fill:var(--muted)}
 .jlegend svg{flex:none}
 .jfilters{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin:var(--sp-1) 0 var(--sp-2)}
-.jfilters select,.jfilters input[type=search]{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);min-width:0;max-width:100%}
 .jfilters input[type=search]{flex:1 1 160px}
 .jlist{display:flex;flex-direction:column;margin-bottom:var(--sp-3)}
 .jrow{display:grid;grid-template-columns:86px 18px 1fr auto;gap:var(--sp-2);align-items:center;text-align:left;border:0;border-bottom:1px solid var(--grid);background:none;padding:var(--sp-2) var(--sp-2);cursor:pointer;border-radius:var(--r-sm);width:100%}
@@ -780,7 +875,6 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .jsev-bar span{display:block;height:100%;background:var(--c-journal)}
 .jform{display:flex;flex-direction:column;gap:var(--sp-2);max-width:520px}
 .jfield{display:flex;flex-direction:column;gap:var(--sp-1);color:var(--ink2);font-size:var(--fs-3);min-width:0}
-.jfield input:not([type=range]),.jfield select,.jfield textarea{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);max-width:100%;min-width:0;font:inherit}
 .jfield textarea{resize:vertical}
 .jwhen{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .jwhen .jfield{flex:1 1 140px}
@@ -880,7 +974,7 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 .tv{padding:0 var(--sp-4) var(--sp-2)}
 .tv-bar,.tv-form{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
 .tv .btn{margin:0}
-.tv select,.tv input{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);min-width:0;max-width:100%;font-size:var(--fs-2)}   /* 12.5: the saved views' row fits the lab list's 320 px column */
+.tv select,.tv input{font-size:var(--fs-2)}   /* 12.5: the saved views' row fits the lab list's 320 px column */
 .tv select{flex:1 1 140px}
 .tv-form{margin-top:var(--sp-2)}
 .tv-form input{flex:1 1 140px}
@@ -894,7 +988,7 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 .series-sel{display:flex;gap:var(--sp-2);align-items:center}
 .series-sel .btn{margin:0}
 .lab-find{display:flex;gap:var(--sp-2);align-items:center;min-width:0}
-.lab-find input{flex:1 1 auto;min-width:0;width:100%;border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-3);font-size:var(--fs-3)}
+.lab-find input{flex:1 1 auto;width:100%}
 .lab-find .n{flex:none;font-size:var(--fs-2);color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
 #labsHeatmap .list-hd{margin-bottom:var(--sp-2)}
 #labsHeatmap .lab-find{flex:0 1 300px;margin-left:var(--sp-2)}
@@ -913,7 +1007,6 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 .rename-btn:hover,.rename-btn:focus-visible{color:var(--ink);background:var(--hover)}
 .rename-box{position:fixed;z-index:60;background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);box-shadow:var(--shadow-2);padding:var(--sp-3);width:320px;max-width:calc(100vw - 32px);box-sizing:border-box;display:flex;flex-direction:column;gap:var(--sp-2);font-size:var(--fs-3)}
 .rename-box label{display:flex;flex-direction:column;gap:var(--sp-1);color:var(--ink2);overflow-wrap:anywhere}
-.rename-box input{border:1px solid var(--ring);background:var(--surface);color:var(--ink);border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);font:inherit;min-width:0}
 .rename-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .rename-acts .btn{margin:0}
 .rename-box .hint{margin:0}
@@ -1123,65 +1216,6 @@ details.more>summary:focus-visible{outline:2px solid var(--accent);outline-offse
 details.more>:not(summary){margin:var(--sp-1) 0 0;max-width:72ch}
 details.more[open]{margin-bottom:var(--sp-3)}
 details.more code{overflow-wrap:anywhere}
-/* ---- pick one, and on or off: one look for each kind of control, everywhere (#193)
-   PICK ONE, a segmented control (.seg): one choice of a few, exactly one selected at a time. Its parts sit directly in it:
-     <div class="seg" role="group" aria-label="Group the claims"><button type="button" aria-pressed="true">By month</button>
-       <button type="button" aria-pressed="false">By year</button></div>
-     or role="radiogroup" of <button type="button" role="radio" aria-checked="true|false"> (only the checked one in the tab
-     order, arrow keys move: the journal form's kinds), or <label><input type="radio" name="…">Light</label> each, in a
-     <fieldset> with its <legend> (the radio stays for the keyboard and forms, see-through over its label: Settings).
-     Add "wrap" where the choices may not fit a phone: they wrap instead of scrolling sideways.
-     Selected: an accent tint, a bar under it and bold text. Forced colors: the system's highlight.
-   ON OR OFF, a toggle chip (.toggle): each shows or hides something by itself, so several can be on.
-     <button type="button" class="toggle" aria-pressed="true|false"><span class="key"></span>Visits <span class="n">31</span></button>
-     or <label class="toggle"><input type="checkbox" id="…"> Journal</label> (the box see-through over its chip). The key
-     and the count are optional; the chip's colour is --tone, set with node.style.setProperty("--tone", "var(--c-visit)")
-     (the accent if none). Shown: a tint of that colour, a solid border, a ✓, the key in colour. Hidden: outlined only, no
-     tint and no ✓, the key grey and the text muted: told apart by more than opacity, in light, dark and forced colors.
-   Both: an ARIA state is always "true" or "false" (el() writes a boolean so), and focus shows as an accent outline. */
-.seg{display:inline-flex;gap:1px;max-width:100%;min-width:0;margin:0;padding:0;border:1px solid var(--axis);border-radius:var(--r-sm);overflow:hidden;background:var(--axis)}
-.seg>button,.seg>label{position:relative;flex:1 0 auto;display:inline-flex;align-items:center;justify-content:center;margin:0;border:0;border-radius:0;
-  background:var(--raised);padding:var(--sp-1) var(--sp-3);color:var(--ink2);font-size:inherit;font-weight:var(--fw-medium);line-height:1.45;text-align:center;white-space:nowrap;cursor:pointer}
-.seg>button:hover,.seg>label:hover{color:var(--ink)}
-.seg>[aria-pressed="true"],.seg>[aria-checked="true"],.seg>label:has(>input:checked){background:color-mix(in srgb,var(--accent) 15%,var(--raised));
-  color:var(--ink);font-weight:var(--fw-semibold);box-shadow:inset 0 -2px 0 var(--accent)}
-.seg>label>input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:inherit}
-.seg>label:has(>input:disabled){cursor:default}
-.seg>button:focus-visible,.seg>label:has(>input:focus-visible){outline:2px solid var(--accent);outline-offset:-2px;z-index:1}
-.seg.wrap{flex-wrap:wrap}
-.seg.wrap>button,.seg.wrap>label{white-space:normal}
-button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline-flex;align-items:center;gap:var(--sp-2);margin:0;border:1px solid var(--axis);border-radius:var(--r-pill);
-  background:transparent;padding:3px var(--sp-3) 3px var(--sp-2);color:var(--ink2);font-size:var(--fs-3);font-weight:var(--fw-medium);line-height:1.45;white-space:nowrap;cursor:pointer}
-.toggle:hover{border-color:var(--ink2);color:var(--ink)}
-.toggle[aria-pressed="true"],.toggle:has(>input:checked){background:color-mix(in srgb,var(--tone) 15%,var(--raised));border-color:color-mix(in srgb,var(--tone) 70%,var(--ink));color:var(--ink)}
-.toggle::before{content:"✓";content:"✓"/"";font-size:var(--fs-2);font-weight:var(--fw-bold);line-height:1;color:color-mix(in srgb,var(--tone) 55%,var(--ink))}
-.toggle[aria-pressed="false"]::before,.toggle:has(>input:not(:checked))::before{content:none}
-.toggle .key{flex:none;width:14px;height:3px;border-radius:2px;background:var(--tone)}
-.toggle .n{color:var(--ink2);font-variant-numeric:tabular-nums}
-.toggle[aria-pressed="false"] .key,.toggle:has(>input:not(:checked)) .key{background:var(--muted)}
-.toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:var(--muted)}
-.toggle>input{position:absolute;inset:0;width:100%;height:100%;margin:0;border-radius:inherit;opacity:0;cursor:pointer}
-.toggle:has(>input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}   /* the chip, when the box inside it has focus */
-@media (max-width:700px){
-  .seg:not(.wrap){flex:none;overflow-x:auto;scrollbar-width:none}   /* the records bar's presets: they scroll, the chosen one kept in view */
-  .seg:not(.wrap)::-webkit-scrollbar{display:none}
-  .seg>button,.seg>label{flex:none;padding:var(--sp-1) var(--sp-3)}
-  .seg.wrap>button,.seg.wrap>label{flex:1 0 auto}
-  button.toggle,label.toggle{padding:var(--sp-1) var(--sp-3) var(--sp-1) var(--sp-3)}
-}
-@media (forced-colors:active){   /* selected or shown: the system's highlight, kept as is (no text backplate over it) */
-  .seg{background:CanvasText;border-color:CanvasText}
-  .seg>button,.seg>label{background:Canvas;color:CanvasText}
-  .seg>[aria-pressed="true"],.seg>[aria-checked="true"],.seg>label:has(>input:checked){forced-color-adjust:none;background:Highlight;color:HighlightText;box-shadow:none}
-  button.toggle,label.toggle{background:Canvas;color:CanvasText;border:1px dashed CanvasText}
-  .toggle[aria-pressed="true"],.toggle:has(>input:checked){forced-color-adjust:none;background:Highlight;color:HighlightText;border:1px solid Highlight}
-  .toggle::before{color:inherit}
-  .toggle .key{forced-color-adjust:none}
-  .toggle[aria-pressed="false"] .key,.toggle:has(>input:not(:checked)) .key{background:GrayText}
-  .toggle .n,.toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:inherit}
-  .seg>button:focus-visible,.seg>label:has(>input:focus-visible),.toggle:focus-visible,.toggle:has(>input:focus-visible){outline-color:CanvasText}
-}
-
 /* ---- the Timeline's kinds (#189): each kind's chip (.toggle, above) with its "⋯" menu button joined on as one pill,
    tinted with the chip while shown; its menu (Show only this, Show all) under it */
 .kind{position:relative;display:inline-flex;align-items:stretch}
@@ -1240,7 +1274,7 @@ dialog.sg-ask::backdrop{background:var(--scrim)}
 .sg-ask h2{margin:0 0 var(--sp-2);font-size:var(--fs-5);font-weight:var(--fw-semibold);line-height:1.3}
 .sg-ask-msg p{margin:0 0 var(--sp-2);color:var(--ink2)}
 .sg-ask-msg label{display:block;margin:var(--sp-3) 0 var(--sp-3);font-weight:var(--fw-medium);font-size:var(--fs-3);color:var(--ink2)}
-.sg-ask-msg input{display:block;width:100%;margin-top:var(--sp-1);border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:var(--r-sm);padding:var(--sp-2) var(--sp-3)}
+.sg-ask-msg input{display:block;width:100%;margin-top:var(--sp-1)}
 .sg-ask-acts{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-4)}
 .sg-ask .btn{margin:0}
 @media (forced-colors: active){
@@ -1250,8 +1284,7 @@ dialog.sg-ask::backdrop{background:var(--scrim)}
 /* ---- charts for everyone (#60): Chart | Table on every chart (a small pick-one .seg, #193), the tables in the
    existing look, a ring on a chart that has keyboard focus, and the marks that say "out of range" without colour:
    ▲ above the range, ▼ below, on the Labs charts, the heatmap's cells, the Overview's sparklines and their legends */
-.view-seg{font-size:var(--fs-2);flex:none}
-.view-seg>button{padding:2px var(--sp-2)}
+.view-seg{flex:none}   /* the small size (.seg.view-seg, components) */
 .chart .hd .view-seg{align-self:center}
 svg[role=application]:focus{outline:none}
 svg[role=application]:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:var(--r-sm)}
@@ -1269,7 +1302,6 @@ path.pt.abn{stroke-width:1.5}
 .hm-table tbody th[scope=row]{color:var(--ink);font-weight:var(--fw-medium);border-bottom:1px solid var(--grid)}
 .hm-table thead th:first-child{left:0;z-index:2}
 .hm-table tr.grp th{position:static;color:var(--muted);font-size:var(--fs-1);font-weight:var(--fw-semibold);letter-spacing:.05em;text-transform:uppercase;padding-top:var(--sp-2)}
-@media (max-width:700px){ .view-seg>button{padding:var(--sp-1) var(--sp-3)} }
 /* ---- each result against its own range (#58): under a chart's name, when its results' ranges differ, which ones;
    the band itself steps with each result's range (trends.js) */
 .chart .hd .rdiff{flex-basis:100%;margin:0;font-size:var(--fs-2);color:var(--ink2)}
@@ -1287,7 +1319,7 @@ path.pt.abn{stroke-width:1.5}
 .bk .bk-state.bad{border-left:3px solid var(--crit);padding-left:var(--sp-3)}
 .bk .kv{grid-template-columns:110px minmax(0,1fr)}
 .bk .bk-progress{display:grid;gap:var(--sp-1);margin:var(--sp-2) 0;font-size:var(--fs-3);color:var(--ink2);max-width:480px}
-.bk .bk-progress progress{width:100%;height:8px;accent-color:var(--accent)}
+.bk .bk-progress progress{width:100%;height:8px}
 .bk .bk-sched{display:grid;gap:var(--sp-2);margin:var(--sp-1) 0 0}
 .bk .bk-sched .hint{margin:0;max-width:70ch}
 .acct .bk label.bk-keep{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
@@ -1352,9 +1384,7 @@ main.acct.guide{max-width:640px}
    its red); a menu item and a date field with focus ringed (2.4.7); what has focus scrolled clear of the sticky top bar
    (--bar-h, its height, set by nav.js), a scrolling table's header row and a Settings group's sticky Save bar (2.4.11);
    a button in a table's cell that reads as the cell's text (.cell-btn) and the ✎, 24 px targets (2.5.8) */
-:root :is(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=hidden],[type=color]),select,textarea):not([aria-invalid="true"]){border-color:var(--field-line)}
 .menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-input:is([type=date],[type=time]):focus-within:not(:focus){outline:2px solid var(--accent);outline-offset:1px}   /* Shift+Tab reaches its calendar button, which shows no focus of its own */
 html{scroll-padding-top:calc(var(--bar-h,0px) + 8px)}
 html:has(.sets section[data-dirty]){scroll-padding-bottom:72px}
 .tablewrap{scroll-padding-top:34px}

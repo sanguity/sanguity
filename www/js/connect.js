@@ -99,7 +99,7 @@
     const kinds = kindPicker(c.kinds, c.chosen, "k-" + c.id, "Needs signing in again.");
     const since = sincePicker(c.since, "since-" + c.id);
     const own = c.attach_own || {}, a = c.attach;
-    const auto = el("input", {type: "checkbox", checked: a.auto ? "" : null});
+    const auto = el("input", {type: "checkbox", role: "switch", checked: a.auto ? "" : null});   // a switch (#259)
     const types = Object.entries(ATT_TYPES).map(([id, label]) => el("label", {class: "check"},
       el("input", {type: "checkbox", value: id, checked: a.types.includes(id) ? "" : null}), label));
     const num = (v, max, label) => el("input", {type: "number", min: 1, max, step: 1, value: v, "aria-label": label, class: "conn-num"});
@@ -140,7 +140,7 @@
     return el("div", {class: "conn-options"},
       kinds.node, since.node,
       el("fieldset", {class: "conn-att"}, el("legend", {text: "Attachments"}),
-        el("label", {class: "check"}, auto, "Fetch automatically (off: only when you ask, from the list below)"),
+        el("label", {class: "check switch"}, auto, "Fetch automatically (off: only when you ask, from the list below)"),
         el("div", {class: "row conn-types"}, ...types),
         el("label", {}, "Largest, in MB ", maxMb, el("span", {class: "muted", text: ` (this server allows up to ${a.ceiling_mb})`})),
         el("label", {}, "In all, for this connection, in MB ", budget, el("span", {class: "muted", text: ` (fetched so far: ${size(c.attach_bytes)})`})),

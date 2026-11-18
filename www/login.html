@@ -21,7 +21,9 @@ form{width:100%;max-width:340px;background:var(--surface);border:1px solid var(-
 .brand-drop{fill:var(--brand)}.brand-line{stroke:var(--brand-ink)}.brand-dot{fill:var(--brand-ink)}
 h1{font-size:var(--fs-5);margin:0;font-weight:var(--fw-semibold)}
 label{display:block;font-size:var(--fs-3);color:var(--ink2);margin:var(--sp-4) 0 var(--sp-1);font-weight:var(--fw-medium)}
-input{width:100%;font:inherit;color:inherit;background:var(--raised);border:1px solid var(--field-line);border-radius:var(--r-sm);padding:var(--sp-2) var(--sp-3)}   /* the app's field look (#332) */
+/* the app's field (#332, #259) at the large size: 40 px, 44 on a phone or a touch screen */
+input{width:100%;min-height:40px;font:inherit;line-height:1.25;color:inherit;background:var(--raised);border:1px solid var(--field-line);border-radius:var(--r-sm);padding:var(--sp-2) var(--sp-3)}
+@media (max-width:640px),(pointer:coarse){ input{min-height:44px} }
 /* the app's large primary button (app.css, #258): 40 px, 44 on a phone or a touch screen */
 button{width:100%;min-height:40px;margin-top:var(--sp-5);font:inherit;font-weight:var(--fw-semibold);line-height:1.25;color:var(--on-accent);background:var(--accent-fill);border:1px solid transparent;border-radius:var(--r-sm);padding:var(--sp-2) var(--sp-4);cursor:pointer}
 button:not(:disabled):hover{filter:brightness(.9)}
@@ -31,6 +33,7 @@ button:disabled{opacity:.6;cursor:wait}
 @media (forced-colors:active){ button{border:1px solid ButtonText} }   /* its edge, in high contrast too (#202) */
 .err{color:var(--crit);font-size:var(--fs-3);margin-top:var(--sp-3);min-height:1.2em}
 .note{color:var(--muted);font-size:var(--fs-3);margin-top:var(--sp-4)}   /* what to do next, at the size of the labels (#255) */
+.note.tight{margin-top:var(--sp-2)}   /* under the field it's about */
 .insecure{color:var(--crit);font-size:var(--fs-3);border:1px solid var(--crit);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:0 0 var(--sp-2)}
 button.alt{background:var(--raised);color:var(--ink);border-color:var(--ring);margin-top:var(--sp-3)}   /* the default button */
 button.alt:not(:disabled):hover{filter:none;background:var(--hover)}
@@ -58,7 +61,7 @@ button.alt:not(:disabled):hover{filter:none;background:var(--hover)}
     <div id="codeBox">
       <label for="c">Code from your authenticator app</label>
       <input id="c" name="code" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" placeholder="123 456">
-      <div class="note" style="margin-top:var(--sp-2)">Lost your phone? Enter one of your recovery codes instead.</div>
+      <div class="note tight">Lost your phone? Enter one of your recovery codes instead.</div>
     </div>
   </div>
   <button id="b" type="submit">Sign in</button>

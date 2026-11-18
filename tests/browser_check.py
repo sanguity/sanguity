@@ -1022,10 +1022,11 @@ TILE_LINES_JS = r"""() => {
 SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main .card, main .tile, main .stat, main .ov-mini, .sets .set')]
   .filter(e => e.checkVisibility()).map((e, i) => [`${e.className.split(' ')[0]} ${i} ${(e.querySelector('h1,h2,h3,.lbl,.l')?.textContent || '').trim().slice(0, 40)}`,
     Math.round(e.getBoundingClientRect().height * 10) / 10]))"""
-# the button's sizes (#258): each button shown (.btn, the top bar's and the drawer's, the tabs, the period's More…) whose
-# height isn't one of the sizes, 24, 32 or 40 px, or 44 px on a phone; one whose words wrap onto more lines may be taller
+# the button's sizes (#258): each button shown (.btn, the top bar's and the drawer's, the tabs, the period's More…), and
+# each segmented control, toggle chip and action chip (#259), whose height isn't one of the sizes, 24, 32 or 40 px, or
+# 44 px on a phone; one whose words wrap onto more lines may be taller
 CONTROL_SIZES_JS = r"""phone => { const ok = phone ? [44] : [24, 32, 40], out = [];
-  for (const e of document.querySelectorAll('.btn, .iconbtn, .tabs button, .period-more-btn')) {
+  for (const e of document.querySelectorAll('.btn, .iconbtn, .tabs button, .period-more-btn, .seg, .toggle, .chip')) {
     const h = Math.round(e.getBoundingClientRect().height * 10) / 10;
     if (!h || !e.checkVisibility() || ok.some(v => Math.abs(h - v) < .5)) continue;
     const r = document.createRange(); r.selectNodeContents(e);
@@ -6586,6 +6587,45 @@ def main():
             check("…and the one picked looks selected", [x[3] for x in got if x[0] in ("sec-units lab", "sec-units weight")] == ["si", "kg"], got)
             page.click("#sec-units .set-foot button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-units .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            # ---- on or off as a switch (#259): Settings' tabs are checkboxes with role="switch", each saying on or off
+            # (checked) to a screen reader; Space toggles one from the keyboard and marks the section unsaved; on and off
+            # look apart (the track's fill and the knob's place) in light, dark and forced colours
+            page.goto(base + "/settings.html?profile=1#dashboard")
+            page.wait_for_selector("[data-key=tabs] input[role=switch]", timeout=10000)
+            tabs_sw = page.locator("[data-key=tabs]")
+            sw_n = [tabs_sw.get_by_role("switch").count(), tabs_sw.get_by_role("switch", checked=True).count(), js("document.querySelectorAll('[data-key=tabs] input[type=checkbox]:not([role=switch])').length")]
+            page.focus("[data-key=tabs] input[data-tab=costs]")
+            page.keyboard.press("Space")
+            sw_off = [page.is_checked("[data-key=tabs] input[data-tab=costs]"), tabs_sw.get_by_role("switch", checked=False).count(),
+                      js("document.querySelector('[data-key=tabs]').closest('section').hasAttribute('data-dirty')")]
+            page.keyboard.press("Space")
+            sw_back = page.is_checked("[data-key=tabs] input[data-tab=costs]")
+            sw_look = r"""on => { const i = document.querySelector('[data-key=tabs] input[data-tab=costs]'); i.checked = on;
+              return new Promise(r => setTimeout(r, 400)).then(() => { const c = getComputedStyle(i), k = getComputedStyle(i, '::before');
+                return [c.backgroundColor, k.backgroundColor, k.translate]; }); }"""   # once the knob has moved (--dur-1)
+            sw_looks = {}
+            for mode in ("light", "dark", "forced colours"):
+                if mode == "forced colours":
+                    page.emulate_media(forced_colors="active")
+                else:
+                    js("t => { document.documentElement.dataset.theme = t; }", mode)
+                off_, on_ = js(sw_look, False), js(sw_look, True)
+                sw_looks[mode] = on_[0] != off_[0] and on_[1] != off_[1] and on_[2] != off_[2] or [on_, off_]
+            page.emulate_media(forced_colors="none")
+            js("delete document.documentElement.dataset.theme")
+            check("Settings' tabs are switches (#259): role=switch, each saying whether it's on; Space toggles one and marks the "
+                  "section unsaved; on and off look apart in light, dark and forced colours",
+                  sw_n[0] >= 5 and sw_n[0] == sw_n[1] and sw_n[2] == 0 and sw_off == [False, 1, True] and sw_back and all(v is True for v in sw_looks.values()),
+                  [sw_n, sw_off, sw_back, sw_looks])
+            # …and the other single on/off settings are switches too: Admin's two-factor rule and connection defaults,
+            # Account's offline records, the calendar feed's options (the ones a page shows when it opens)
+            sw_pages = {}
+            for path, sel in (("admin.html#accounts", "#reqTf"), ("account.html#devices", "#offlineOn"), ("sharing.html?profile=1#calendar", "#calLabs, #calLabsNow")):
+                page.goto(base + "/" + path)
+                page.wait_for_selector(sel, state="attached", timeout=10000)
+                sw_pages[path] = js("s => [...document.querySelectorAll(s)].every(i => i.getAttribute('role') === 'switch' && i.closest('label.switch'))", sel)
+            check("…as are the other single on/off settings: Require two-factor sign-in, Offline records, the calendar feed's options",
+                  all(sw_pages.values()), sw_pages)
             page.goto(base + "/")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             unit_of = "n => { const s = SERIES.find(s => s.name === n); const p = s && s.pts.at(-1); return s && {unit: s.unit, from: s.uc ? s.uc.from : null, v: p[1], orig: p.orig ? p.orig.v : null, lo: p[2]}; }"
@@ -7299,7 +7339,18 @@ def main():
             before = mine(za)   # the demo account's, put back afterwards for the checks below
             za.goto(base + "/settings.html?profile=1#sec-dates")
             za.wait_for_selector("#sec-dates select", timeout=10000)
-            za.select_option("[data-key='dates.timeZone'] select", "America/Los_Angeles")
+            # the time zone is a field that searches the IANA zones (#259): something not on the list says so, and isn't
+            # kept (the section has nothing to save); a zone typed as shown, in any case, is
+            tz = "[data-key='dates.timeZone'] input.set-zone"
+            za.fill(tz, "Atlantis/Lost City")
+            za.press(tz, "Tab")
+            bad_tz = za.evaluate(f"""(() => {{ const i = document.querySelector("{tz}"); return [i.getAttribute('aria-invalid'), i.list.options.length,
+                document.getElementById(i.getAttribute('aria-describedby')).textContent, !!document.querySelector('#sec-dates[data-dirty]')]; }})()""")
+            za.fill(tz, "america/los angeles")
+            za.press(tz, "Tab")
+            check("time zone (#259): a field searching a list of every IANA zone; one not on it is marked invalid, said and not kept, "
+                  "and one typed as shown is", bad_tz[0] == "true" and bad_tz[1] > 300 and "from the list" in bad_tz[2] and not bad_tz[3]
+                  and za.input_value(tz) == "America/Los Angeles" and za.get_attribute(tz, "aria-invalid") is None, [bad_tz, za.input_value(tz)])
             za.select_option("[data-key='dates.format'] select", "dmy")
             za.click("#sec-dates .set-foot button:text-is('Save')")   # one Save for the section's two changes (#174)
             za.wait_for_function("document.querySelector('#sec-dates .set-foot > .msg').textContent == 'Saved “Time zone” and “Date format”.'", timeout=10000)
