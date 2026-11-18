@@ -4472,6 +4472,18 @@ def main():
             page.wait_for_function("CFG.trends.views.some(v => v.default && v.name === 'CBC (browser check)')", timeout=10000)
             check("…and making it the default marks it", js("(b => b.textContent.trim() + (b.querySelector('svg.i-check') ? ' ✓' : ''))(document.querySelector('#tvBox [aria-pressed=true]'))") == "Default ✓"
                   and "(default)" in js("document.getElementById('viewPick').selectedOptions[0].textContent"))
+            # #376: the bar is drawn again; focus on its button again (Default ✓), not dropped to the page, and the same
+            # pressed again by keyboard (Make default), the server read after each
+            def_focus = [js("[document.activeElement.id, document.activeElement.getAttribute('aria-pressed')]")]
+            page.keyboard.press("Enter")
+            page.wait_for_function("!CFG.trends.views.some(v => v.default)", timeout=10000)
+            def_focus += [js("[document.activeElement.id, document.activeElement.getAttribute('aria-pressed')]"),
+                          [v.get("default") for v in js("fetch('api/profiles/1/settings', {cache: 'no-store'}).then(r => r.json()).then(j => j.trends.views)")]]
+            page.keyboard.press("Enter")
+            page.wait_for_function("CFG.trends.views.some(v => v.default && v.name === 'CBC (browser check)')", timeout=10000)
+            def_focus += [js("[document.activeElement.id, document.activeElement.getAttribute('aria-pressed')]")]
+            check("…the views bar drawn again, focus stays on its default button, by mouse and by keyboard, Enter taking the default off and on again (#376)",
+                  def_focus == [["viewDefault", "true"], ["viewDefault", "false"], [False, False], ["viewDefault", "true"]], def_focus)
             page.select_option("#viewPick", "Kidney (browser check)")
             settle(200)
             check("switching views charts the other's labs", picked() == labs3[2:3])
@@ -7595,6 +7607,47 @@ def main():
             kb_focus += [js("[document.activeElement.tagName, document.activeElement.id]"), ticked()]
             check("Settings' Save by keyboard leaves focus on its section's heading, and its Undo by keyboard gives it back there (#368)",
                   kb_focus == [["H2", "sec-summary-hd"], ["H2", "sec-summary-hd"], first], kb_focus)
+            # #376: Save at the foot of a long section (Overview's home readings), its heading off screen, by mouse and by
+            # keyboard at 1400 and 375 px: the page stays where it was (focus on the heading, not scrolled to), and the
+            # Undo (a click, or Alt+N and Enter) gives focus back there, the page still put; the server's read each step
+            home = lambda: js(api_get, "profiles/1/settings")["overview"]["homeTiles"]
+            ov_msg = "document.querySelector('#sec-overview .set-foot > .msg').textContent"
+            ov_save = "#sec-overview .set-foot button:text-is('Save')"
+            tile = "#sec-overview [data-key='overview.homeTiles'] input[type=checkbox] >> nth=0"
+            ov_where = "[scrollY, document.activeElement.id, document.getElementById('sec-overview-hd').getBoundingClientRect().bottom < 0]"
+            stays = {}
+            for w, h in ((1400, 900), (375, 740)):
+                page.set_viewport_size({"width": w, "height": h})
+                for how in ("mouse", "keyboard"):
+                    js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+                    was_home = home()
+                    if how == "mouse":
+                        page.click(tile)
+                        settle(200)
+                        y0 = js("scrollY")
+                        page.click(ov_save)
+                    else:
+                        page.focus(tile)
+                        page.keyboard.press("Space")
+                        page.focus(ov_save)
+                        settle(200)
+                        y0 = js("scrollY")
+                        page.keyboard.press("Enter")
+                    page.wait_for_function(f"{ov_msg}.startsWith('Saved')", timeout=10000)
+                    settle(200)
+                    saved_at, saved_home = js(ov_where), home()
+                    if how == "mouse":
+                        page.click(undo_toast)
+                    else:
+                        page.keyboard.press("Alt+n")
+                        page.keyboard.press("Enter")
+                    page.wait_for_function(f"{ov_msg}.startsWith('Undone')", timeout=10000)
+                    settle(200)
+                    stays[f"{how} {w}"] = [y0, saved_at, saved_home != was_home, js(ov_where)[:2], home() == was_home]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("Settings' Save with its section's heading off screen, by mouse and by keyboard at 1400 and 375 px, leaves the page where it was and "
+                  "focus on the heading, saved on the server, and the Undo puts it back there, the page still put and the server as before (#376)",
+                  all(v[1] == [v[0], "sec-overview-hd", True] and v[2] and v[3] == [v[0], "sec-overview-hd"] and v[4] for v in stays.values()), stays)
             # #367: an Undo pressed after switching profile (Settings doesn't reload) puts back its own profile's setting
             # only; the other profile's section keeps its saved values and a change not saved yet, a toast saying it
             page.check(box(1))
@@ -8719,6 +8772,13 @@ def main():
             check("…and in another time zone, “Use this device's” beside the field is the field's height, at 1400 and 320 px (#374)",
                   za.evaluate("[...document.querySelectorAll('#sec-dates .set-add .btn')].filter(b => b.checkVisibility()).map(b => b.textContent).join()") == "Use this device's"
                   and zone374[1400]["n"] and not zone374[1400]["bad"] and not zone374[320]["bad"], zone374)
+            # #376: "Use this device's" hides itself once the device's zone is picked: focus goes to the zone's field, not the page
+            za.click("#sec-dates .set-add .btn:text-is(\"Use this device's\")")
+            here376 = za.evaluate("[document.activeElement.matches(\"[data-key='dates.timeZone'] input.set-zone\"), document.activeElement.value, "
+                                  "!!document.querySelector('#sec-dates[data-dirty]'), [...document.querySelectorAll('#sec-dates .set-add .btn')].some(b => b.checkVisibility())]")
+            za.click("#sec-dates .set-foot button:text-is('Discard changes')")
+            check("…pressed, it goes from sight and focus is on the zone's field, which holds the device's zone (#376)",
+                  here376[0] and here376[1] == za.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone").replace("_", " ") and here376[2] and not here376[3], here376)
             zb.goto(base + "/settings.html?profile=1#dashboard")   # #174: a viewer of the profile
             zb.wait_for_selector("#sec-dates .set-foot", state="attached", timeout=10000)
             check("a viewer's Settings: the profile's groups say they're shown as they are, with no Save, while their own settings have one",

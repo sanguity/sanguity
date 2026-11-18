@@ -315,7 +315,7 @@ function zoneEditor(value, changed, ro) {
   const input = el("input", {class: "set-select set-zone", type: "text", list: id, "aria-label": "Time zone", "aria-describedby": msgId,
     autocomplete: "off", spellcheck: "false", disabled: ro, value: shown(cur)});
   const hint = el("span", {class: "hint", id: msgId});
-  const use = beside("Use this device's", "Use this device's time zone", () => { input.value = shown(here); pick(); });   // the field's height (#374)
+  const use = beside("Use this device's", "Use this device's time zone", () => { input.value = shown(here); pick(); input.focus(); });   // the field's height (#374); hidden now, focus on the field (#376)
   use.hidden = ro;
   const zoneOf = t => zones.find(z => z === t.trim().replace(/ /g, "_")) || zones.find(z => shown(z).toLowerCase() === t.trim().toLowerCase());
   const note = () => { const same = cur === here; use.hidden = ro || same;
@@ -570,8 +570,9 @@ function sectionCard(sec, opts = {}) {
     changed();
     const said = `Saved ${quoted(done)}.`;
     await reload({section: sec.id, text: said, quiet: true});
-    // drawn again, Save with it (and disabled now): focus on the section's heading, to come back to from the toast (#368)
-    if (had && !document.getElementById("sec-" + sec.id)?.contains(document.activeElement)) document.getElementById(`sec-${sec.id}-hd`)?.focus();
+    // drawn again, Save with it (and disabled now): focus on the section's heading, to come back to from the toast
+    // (#368), without scrolling the page up to it: what was saved stays in view (#376)
+    if (had && !document.getElementById("sec-" + sec.id)?.contains(document.activeElement)) document.getElementById(`sec-${sec.id}-hd`)?.focus({preventScroll: true});
     // what the server keeps now (as it stored it), for the Undo to tell whether a setting was changed again since
     const kept = await stored(base).catch(() => null);
     if (kept) for (const w of was) if (kept[w.key]) w.wrote = kept[w.key];
