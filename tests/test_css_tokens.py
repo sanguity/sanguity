@@ -17,7 +17,8 @@ www/, and every script under www/, subfolders included (#307), and counts per fi
 and in every script, comments skipped:
   script styles  each style handed to el() (a `style:` or "style": key in an object literal, an object or a string),
                  each write to an element's style (`.style.left = ...`, `.style[k] = ...`, `.style.setProperty(...)`,
-                 `.style.cssText = ...`, `Object.assign(x.style, ...)`) and each `setAttribute("style", ...)`.
+                 `.style.cssText = ...`, `.style = "..."`, `Object.assign(x.style, ...)`) and each
+                 `setAttribute("style", ...)`.
                  A value the page computes as it runs (a position, a bar's width) counts too: the number is what the
                  redesign brings down, not a ban. A `style:` whose value is a formatter's keyword ("currency",
                  "percent", "decimal", "unit", "long", "short", "narrow": Intl.NumberFormat, toLocaleString and the
@@ -27,12 +28,32 @@ and in every script, comments skipped:
                  - a hex colour of 3, 4, 6 or 8 digits standing alone: not part of a longer word or id ("#add-form",
                    "#fade2"), not after a letter, digit, &, / or # ("&#160;", "page.html#abc", "/#abc"), and not in a
                    string handed to $(), $$(), querySelector(), closest(), matches() or getElementById(), or given
-                   to an href or a hash: those are ids and fragments, not colours ("#list" isn't hex anyway);
+                   to an href or a hash: those are ids and fragments, not colours ("#list" isn't hex anyway); and
+                   not in running prose, after a plain word and a space ("Issue #252", "Room #101"), unless the word
+                   is one of CSS's that come before a colour ("1px solid #fff", "auto #000"), the hex is in a
+                   declaration ("color: #fff") or the string is given to a colour key (border: "x #fff");
                  - a colour function, rgb() to oklch(), anywhere in a string;
                  - a named colour only where a colour goes: in a declaration of a colour property inside the string
                    ("fill:red", "border:1px solid white"), or anywhere in a string given to a colour key or
-                   attribute (fill: "red", backgroundColor: "white", setAttribute("stroke", "black")). So the word
-                   in "e.g. Red patch, 3 cm" isn't one.
+                   attribute (fill: "red", backgroundColor: "white", setAttribute("stroke", "black")), the branches
+                   of a ternary or a default there too (fill: on ? "red" : "blue", x.style.color = c || "red"), or in
+                   a colour attribute of markup inside the string ('<rect fill="red"/>'). So the word in
+                   "e.g. Red patch, 3 cm" isn't one.
+                 To find the strings, a / where a value can start begins a regex, skipped; after a name, a ")" or
+                 a ++ or -- it divides (a++ / 2).
+Known limits (#321): what the scanner can't see, so a review has to.
+  - A colour put together as the page runs ("#" + hex, "r" + "ed", a template's ${c} with c from elsewhere) or kept in a
+    variable first (const c = "red"; el("i", {fill: c})): only a hex or a colour function in the variable's string counts.
+  - A ternary or default more than about 60 characters from its colour key, or one whose condition has a comma, a
+    brace or a ":" (a call with two arguments), isn't followed back to the key.
+  - A regex right after a ")" (if (x) /re/.test(s)) is taken for a division, so strings later on that line are missed.
+  - A style reached another way: x["style"] = ..., x.attributes, a CSSStyleSheet (insertRule, adoptedStyleSheets), a
+    <style> element built by a script (its text is read as strings, so a hex or a colour declaration in it still counts).
+  - A hex in prose after a CSS word ("see the top #252") still counts, and one after a lowercase "word:" counts as a
+    declaration's ("note: issue #252"). A named colour in markup counts only in a colour attribute (not title="red"),
+    and any " fill=red" in a string is taken for markup, prose or not.
+  - The focus ring: a rule ringing every element of a kind through an attribute ([type=checkbox]:focus) passes as a
+    component's own, as does one under a class (.app :focus-visible); :has(...) isn't opened up, only searched.
 
 Each count is held against ALLOWED below, today's numbers. A count that goes up fails, naming the file, where, and
 what to use instead; one that goes down fails too, asking for the lower number here, so it can't creep back. A file
@@ -101,6 +122,7 @@ JS_COMMENTS = r"/\*.*?\*/|(?<![:\"'`\\])//[^\n]*"   # not the // of "https://"
 FORMATTER = r"""\s*["'`](?:currency|percent|decimal|unit|long|short|narrow)["'`]"""   # {style: "currency"} isn't a style
 SCRIPT_STYLE = re.compile(r"""(?<![\w$.-])["']?style["']?\s*:(?!%s)""" % FORMATTER +   # style: and "style": (not font-style:)
                           r"|\.style\.(?:[A-Za-z]+\s*[-+]?=(?!=)|setProperty\s*\()|\.style\s*\[[^\]]*\]\s*[-+]?=(?!=)"
+                          r"|\.style\s*[-+]?=(?!=)"   # x.style = "left:0" sets the attribute
                           r"""|\bsetAttribute(?:NS\s*\([^,()]*,|\()\s*["'`]style["'`]|\bObject\.assign\(\s*[^,()]*\.style\s*,""")
 # colours in a script's strings (the rules are in the docstring)
 JS_HEX = re.compile(r"(?<![\w&/#])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![\w-])")
@@ -108,7 +130,19 @@ JS_FUNC = re.compile(r"\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(", re.I)
 NAME = re.compile(r"\b(?:" + "|".join(NAMED) + r")\b", re.I)
 COLOUR_PROP = r"(?:color|fill|stroke|background|border|outline|shadow|decoration|caret|accent|rule)"
 JS_DECL = re.compile(r"(?<![\w-])[a-z-]*" + COLOUR_PROP + r"[a-z-]*\s*:\s*([^;{}]*)")   # fill:red inside a string
-COLOUR_KEY = re.compile(COLOUR_PROP + r"""[\w-]*["']?\s*(?:[:,]|[!=]?==?)\s*$""", re.I)   # fill: "…", ("stroke", "…")
+# a ternary's or a default's branches, between a colour key and its string: fill: on ? "red" : "blue", c || "red"
+_ATOM = r"""(?:"[^"\n]*"|'[^'\n]*'|[^,;{}\n?:|&"'`])"""
+TERNARY = r"(?:%s*(?:\?\??|\|\||&&)\s*(?:%s*:\s*)?)*" % (_ATOM, _ATOM)
+COLOUR_KEY = re.compile(COLOUR_PROP + r"""[\w-]*["']?\s*(?:[:,]|[!=]?==?)\s*""" + TERNARY + "$", re.I)   # fill: "…", ("stroke", "…")
+# a colour attribute in markup written in a string: '<rect fill="red"/>', `<stop stop-color=${c}>`
+JS_MARKUP = re.compile(r"""(?<=\s)(?:stop-color|flood-color|lighting-color|fill|stroke|color|bgcolor)\s*=\s*\\?"""
+                       r"""(?:"([^"]*)"|'([^']*)'|([^\s"'>\\]+))""", re.I)
+# a hex after a plain word and a space is prose ("Issue #252", "Room #101"), not a colour: unless the word is one of CSS's
+# that come before a colour (1px solid #fff), or the hex is in a declaration (color: #fff) or a colour key's string
+PROSE = re.compile(r"(?<![\w-])([A-Za-z]+)\s+$")
+CSS_WORDS = set("""solid dashed dotted double groove ridge inset outset wavy underline overline thin medium thick none
+hidden auto center top bottom left right repeat cover contain fixed scroll local at to in""".split())
+IN_DECL = re.compile(r"""(?<![\w-])[a-z-]+\s*:[^;{}"'<>]*$""")
 NOT_A_COLOUR = re.compile(r"""(?:(?:\$\$?|querySelector(?:All)?|closest|matches|getElementById)\s*\(\s*"""
                           r"""|\b(?:href|hash)["']?\s*(?:[:=]|[!=]==?))\s*$""")   # an id or a fragment
 # a page's tags, its style="..." and the attributes that take a colour
@@ -223,6 +257,8 @@ def js_strings(js):
                     in_class = js[j] == "["
                 j += 1
             i, prev = j + 1, "a"
+        elif js.startswith(("++", "--"), i):   # a++ / 2 divides: no regex starts after ++ or --
+            i, prev = i + 2, ")"
         elif c.isalnum() or c in "_$":
             prev = re.match(r"[\w$]+", js[i:]).group()
             i += len(prev)
@@ -235,18 +271,28 @@ def js_strings(js):
     return out
 
 
+def prose(text):
+    """whether a hex after this text (a string's, up to the hex) is in running prose, as in "Issue #252" """
+    word = PROSE.search(text)
+    return bool(word) and word.group(1).lower() not in CSS_WORDS and not IN_DECL.search(text)
+
+
 def js_colours(js):
     """[(line, colour)] written in a script's strings (comments already blanked); the rules are in the docstring"""
     out = []
     for at, s in js_strings(js):
         before = js[max(0, at - 60):at].rstrip("\"'`")   # the code just before the string
-        hits = [] if NOT_A_COLOUR.search(before) else [(m.start(), m.group()) for m in JS_HEX.finditer(s)]
+        key = COLOUR_KEY.search(before)
+        hits = [] if NOT_A_COLOUR.search(before) else [(m.start(), m.group()) for m in JS_HEX.finditer(s)
+                                                       if key or not prose(s[:m.start()])]
         hits += [(m.start(), m.group()) for m in JS_FUNC.finditer(s)]
         bare = re.sub(r"--[\w-]+", lambda v: " " * len(v.group()), s)   # var(--red) and "--red" aren't red
-        if COLOUR_KEY.search(before):
+        if key:
             hits += [(m.start(), m.group()) for m in NAME.finditer(bare)]
         else:
             hits += [(d.start(1) + m.start(), m.group()) for d in JS_DECL.finditer(bare) for m in NAME.finditer(d.group(1))]
+            hits += [(a.start(g) + m.start(), m.group()) for a in JS_MARKUP.finditer(bare) for g in (1, 2, 3)
+                     if a.group(g) is not None for m in NAME.finditer(a.group(g))]
         out += [(js.count("\n", 0, at + o) + 1, v) for o, v in sorted(hits)]
     return out
 
@@ -276,6 +322,61 @@ def found():
         with open(path, encoding="utf-8") as f:
             out[rel(path)] = js_found(f.read())
     return {f: {w: h for w, h in c.items() if h} for f, c in out.items()}
+
+
+def selector_list(text):
+    """a selector list split at its own commas, not those inside :is(...) and the like"""
+    out, depth, start = [], 0, 0
+    for i, c in enumerate(text):
+        depth += (c in "([") - (c in ")]")
+        if c == "," and depth == 0:
+            out.append(text[start:i]); start = i + 1
+    return [s.strip() for s in out + [text[start:]]]
+
+
+def closing(text, i):
+    """the index just past the ) that closes the ( before i"""
+    depth = 1
+    while i < len(text) and depth:
+        depth += (text[i] == "(") - (text[i] == ")"); i += 1
+    return i
+
+
+def opened(selector):
+    """a selector's alternatives, its :is(...) and :where(...) lists opened up: ":is(a,b):focus" is a:focus and b:focus"""
+    m = re.search(r":(?:is|where|matches|-webkit-any|-moz-any)\(", selector)
+    if not m:
+        return [selector]
+    end = closing(selector, m.end())
+    return [o for alt in selector_list(selector[m.end():end - 1]) for o in opened(selector[:m.start()] + alt + selector[end:])][:64]
+
+
+def rings_every(selector):
+    """whether a selector reaches whatever has focus, or every element of a kind with it: no class, id or attribute
+    narrows it (a :not(...) doesn't), so "a:focus-visible", "body :focus-visible", ":is(button,input):focus" do, and
+    ".btn:focus-visible", "svg[role=application]:focus" (a component's) don't"""
+    for alt in opened(selector):
+        while (m := re.search(r":not\(", alt)):
+            alt = alt[:m.start()] + alt[closing(alt, m.end()):]
+        if re.search(r":focus(?:-visible)?(?![\w-])", alt) and not re.search(r"[.#\[]", alt):
+            return True
+    return False
+
+
+def focus_rings():
+    """["file: selector"] for every rule under www/ (stylesheets and pages' <style>, at any depth) that sets an outline
+    for every element or every element of a kind that has focus"""
+    def text(p):
+        with open(p, encoding="utf-8") as f:
+            return f.read()
+    sources = [(rel(p), text(p)) for p in files("css")]
+    sources += [(rel(p), "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", text(p), re.S | re.I))) for p in files("html")]
+    rings = []
+    for path, css in sources:
+        for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", blank_comments(css, r"/\*.*?\*/")):
+            if "outline" in m.group(2) and any(rings_every(s) for s in selector_list(m.group(1))):
+                rings.append(f"{path}: {' '.join(m.group(1).split())}")
+    return rings
 
 
 def hex6(c):
@@ -319,22 +420,12 @@ class CssTokens(unittest.TestCase):
 
     def test_one_focus_ring(self):
         """the ring for whatever has keyboard focus is one rule, in base.css, which every page loads (#310): no stylesheet
-        or page's <style> rings focus again for every element or every element of a kind (a component's own ring is fine)"""
-        rings = []
-        def text(p):
-            with open(p, encoding="utf-8") as f:
-                return f.read()
-        sources = [(rel(p), text(p)) for p in sorted(glob.glob(os.path.join(ROOT, "www", "css", "*.css")))]
-        sources += [(rel(p), "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", text(p), re.S | re.I)))
-                    for p in sorted(glob.glob(os.path.join(ROOT, "www", "*.html")))]
-        for path, css in sources:
-            for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", blank_comments(css, r"/\*.*?\*/")):
-                if "outline" in m.group(2) and any(re.fullmatch(r"(?:\*|[a-z]+)?(?::where\()?(?:\*|[a-z]+)?:focus(?:-visible)?\)?", s.strip())
-                                                   for s in m.group(1).split(",")):
-                    rings.append(f"{path}: {' '.join(m.group(1).split())}")
-        self.assertEqual(rings, ["www/css/base.css: :where(:focus-visible)"],
+        or page's <style>, in a subfolder too, rings focus again for every element or every element of a kind (a
+        component's own ring is fine), in a list (:is(button,input):focus-visible) or under another (body :focus-visible)
+        included (#321)"""
+        self.assertEqual(focus_rings(), ["www/css/base.css: :where(:focus-visible)"],
                          "one focus ring, in www/css/base.css; a page or component sets its own only to look different")
-        for path in sorted(glob.glob(os.path.join(ROOT, "www", "*.html"))):
+        for path in files("html"):
             with open(path, encoding="utf-8") as f:
                 links = re.findall(r'<link rel="stylesheet" href="(?:\.\./)?css/([\w.-]+)">', f.read())
             self.assertEqual(links[:2], ["tokens.css", "base.css"], f"{rel(path)} loads tokens.css, then base.css, first")
@@ -377,7 +468,7 @@ class CssTokens(unittest.TestCase):
             self.assertEqual(len(js_found(js)["script styles"]), 1, js)
         for js in ['n.toLocaleString(undefined, {style: "currency", currency: "USD"})', "new Intl.NumberFormat(u, {style: 'percent'})",
                    'new Intl.RelativeTimeFormat(u, {style: "narrow"})', '{unit: "kilogram", style: `unit`}', 'p.textContent = "font-style: italic"',
-                   'if (p.style[k] === v) {}', "el('p', {fontStyle: 1})"]:
+                   'if (p.style[k] === v) {}', "el('p', {fontStyle: 1})", "if (p.style == s) {}"]:
             self.assertEqual(js_found(js)["script styles"], [], js)
 
         colours = {'el("svg:rect", {fill: "#ff0000"})': ["#ff0000"], 'el("i", {stroke: "white"})': ["white"],
@@ -398,6 +489,48 @@ class CssTokens(unittest.TestCase):
             self.assertEqual(js_found(js)["colours"], [], js)
         self.assertEqual(js_found('a = 1;\nb = `x ${c ? `y` : "z"}`;\nel("i", {fill: "#f00"})')["colours"], [(3, "#f00")],
                          "a template inside a template keeps the strings in step, and the lines right")
+
+    def test_no_way_round_it_in_scripts_either(self):   # #321
+        for js in ['x.style = "left:0"', "x.style += ';top:0'", "x.style=s"]:
+            self.assertEqual(len(js_found(js)["script styles"]), 1, js)
+        colours = {'el("i", {fill: on ? "red" : "blue"})': ["red", "blue"],
+                   'x.style.color = on ? "red" : "blue"': ["red", "blue"],
+                   'r.setAttribute("stroke", k === "a" ? "White" : a && b ? "black" : "navy")': ["White", "black", "navy"],
+                   'el("i", {fill: c || "red", stroke: c ?? "#abc"})': ["red", "#abc"],
+                   """const m = '<svg><rect width="4" fill="red"/></svg>'""": ["red"],
+                   'f.srcdoc = `<stop stop-color=${c}><text x="0" fill=\'White\' stroke=navy>`': ["White", "navy"],
+                   'q = "<rect fill=\\"red\\">"': ["red"],
+                   'i++ / 2; el("i", {fill: "#f00"}); n-- / 2; el("i", {fill: "red"})': ["#f00", "red"],
+                   'el("i", {style: {border: "1px solid #fff"}}); x.style.outline = "auto #123"': ["#fff", "#123"],
+                   'const B = "1px dashed #abc", C = "color: see #def", D = "#999"': ["#abc", "#def", "#999"]}
+        for js, want in colours.items():
+            self.assertEqual([v for _, v in js_found(js)["colours"]], want, js)
+        for js in ['el("p", {text: "Issue #252"})', 'say(`Fixed in issue #252, Room #101 at ${t}`)', "p.textContent = 'Bed #12a'",
+                   'el("i", {fill: on ? "var(--red)" : "none", title: on ? "Red" : "Blue"})', 'go("?color=red")',
+                   """const m = '<p class="red" title="white">'""", 'n = a++ / 2 + b; s = "Issue #fab"']:
+            self.assertEqual(js_found(js)["colours"], [], js)
+
+    def test_the_focus_ring_check_finds_what_it_should(self):   # #321
+        for sel in ["*:focus", "a:focus-visible", ":where(:focus-visible)", ":is(button,input):focus-visible", "body :focus-visible",
+                    "main :where(a, .x):focus", "button:not(.plain):focus-visible", "label:has(>input:focus-visible)"]:
+            self.assertTrue(rings_every(sel), sel)
+        for sel in [".btn:focus-visible", "svg[role=application]:focus-visible", "#add:focus", ":is(.a, .b):focus",
+                    "form:focus-within", "input:not(:focus)", "a:hover"]:
+            self.assertFalse(rings_every(sel), sel)
+        self.assertEqual(selector_list(":is(button,input):focus-visible, .a , b"), [":is(button,input):focus-visible", ".a", "b"])
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            for path, text in {"www/css/base.css": ":where(:focus-visible){outline:2px solid}",
+                               "www/css/kit/x.css": ".a:focus{outline:0}:is(button,input):focus-visible{outline:1px solid}",
+                               "www/kit/p.html": "<style>body :focus-visible{outline:none}</style>"}.items():
+                os.makedirs(os.path.dirname(os.path.join(tmp, path)), exist_ok=True)
+                with open(os.path.join(tmp, path), "w", encoding="utf-8") as f:
+                    f.write(text)
+            with mock.patch.object(sys.modules[__name__], "ROOT", tmp):
+                self.assertEqual(focus_rings(), ["www/css/base.css: :where(:focus-visible)",
+                                                 "www/css/kit/x.css: :is(button,input):focus-visible",
+                                                 "www/kit/p.html: body :focus-visible"])
 
     def test_no_way_round_it_in_pages(self):   # #307
         html = """<!doctype html><meta name="theme-color" content="#f9f9f7"><style>p{color:#fff}</style>
