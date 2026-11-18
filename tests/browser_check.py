@@ -5538,9 +5538,10 @@ def main():
             check("at 320, 375 and 390 px, the top bar's Add and your menu open under the bar with every item on the screen (#244)", not bad, bad[:6])
             # #308: under 500 px tall the bar scrolls with the page, and the menus opened --bar-h down the screen, a gap under
             # a bar that had scrolled up; opened with the bar scrolled up to the buttons, each sits right under the bar, on the screen
+            # (its foot may run below the screen's: it's as tall as its items, and the page scrolls to it, #319)
             menu_short = """id => { const vw = document.documentElement.clientWidth, vh = innerHeight, bar = document.querySelector('header.topbar').getBoundingClientRect().bottom;
                 const r = document.getElementById(id).getBoundingClientRect();
-                return r.top - bar >= 0 && r.top - bar <= 8 && r.top >= 0 && r.bottom <= vh && r.left >= 0 && r.right <= vw ? null
+                return r.top - bar >= 0 && r.top - bar <= 8 && r.top >= 0 && r.bottom + scrollY <= document.documentElement.scrollHeight && r.left >= 0 && r.right <= vw ? null
                   : [Math.round(bar), Math.round(r.top), Math.round(r.bottom), Math.round(r.left), Math.round(r.right), vw, vh]; }"""
             page.set_viewport_size({"width": 667, "height": 375})
             bad = []
@@ -5560,6 +5561,49 @@ def main():
                         bad.append(f"{path} at 667×375 scrolled {scrolled} px, {m}: bar bottom, menu top, bottom, left, right, screen {where}")
                     page.keyboard.press("Escape")
             check("…and at 667×375, where the bar scrolls away, each opened after scrolling sits right under the bar, on the screen (#308)", not bad, bad[:6])
+            # #319: between 376 and 451 px the records bar had room for Add on its first row but not your menu, which dropped
+            # onto a row of its own; the two are one box now, side by side on one row at every width, on the screen. The
+            # records page is checked as it is (the picker a select on a row of its own) and with one profile (a label
+            # beside the brand, where it happened)
+            menus_row = """() => { const a = document.getElementById('addMenu').getBoundingClientRect(), u = document.getElementById('userMenu').getBoundingClientRect();
+                return Math.abs(a.top - u.top) < 1 && a.right <= u.left && a.left >= 0 && u.right <= document.documentElement.clientWidth ? null
+                  : [Math.round(a.top), Math.round(a.left), Math.round(a.right), Math.round(u.top), Math.round(u.left), Math.round(u.right)]; }"""
+            bad = []
+            for path, one in (("/", False), ("/", True), ("/settings.html#display", False)):
+                page.set_viewport_size({"width": 1400, "height": 800})
+                page.goto(base + path)
+                page.wait_for_selector("#userMenuBtn", state="visible", timeout=10000)
+                if one:
+                    page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                    js("SgNav.profiles([{id: PROFILE.id, name: PROFILE.name, role: 'owner'}], PROFILE.id)")
+                for w in (320, 375, 400, 451, 452):
+                    page.set_viewport_size({"width": w, "height": 800})
+                    settle(150)
+                    where = js(menus_row)
+                    if where:
+                        bad.append(f"{path}{' (one profile)' if one else ''} at {w} px: Add, your menu (top, left, right) {where}")
+            check("at 320, 375, 400, 451 and 452 px the top bar's Add and your menu sit side by side on one row, on the records page and a page with a title (#319)", not bad, bad[:6])
+            # #319: under 500 px tall the menus scroll with the page, and kept a height of the screen less the bar's: at
+            # 320×180 (1280×720 at 400%) a box of 37 px showing one item at a time. They're as tall as their items now
+            menu_whole = """id => { const l = document.getElementById(id), its = [...l.querySelectorAll('[role^=menuitem]')].filter(x => x.checkVisibility());
+                const foot = Math.round(l.getBoundingClientRect().bottom + scrollY), page = document.documentElement.scrollHeight;
+                return its.length && l.scrollHeight <= l.clientHeight + 1 && foot <= page ? null : [its.length, l.scrollHeight, l.clientHeight, foot, page]; }"""
+            page.set_viewport_size({"width": 320, "height": 180})
+            bad = []
+            for path in ("/", "/settings.html#display"):
+                page.goto(base + path)
+                page.wait_for_selector("#userMenuBtn", state="visible", timeout=10000)
+                settle(300)
+                if js(menus_row):
+                    bad.append(f"{path} at 320×180: Add, your menu {js(menus_row)}")
+                for m in ("addMenu", "userMenu"):
+                    js("id => document.getElementById(id).click()", m + "Btn")
+                    settle(100)
+                    where = js(menu_whole, m + "List")
+                    if where:
+                        bad.append(f"{path} at 320×180, {m}: items, scroll height, height, foot, page's height {where}")
+                    page.keyboard.press("Escape")
+            check("…and at 320×180 both share a row and each menu opens with all its items, no scrolling inside it, the page scrolling to its foot (#319)", not bad, bad[:6])
             page.set_viewport_size({"width": 1400, "height": 900})
             # ---- the Admin page (#167): the server's sync defaults, from their old address on Settings
             page.goto(base + "/settings.html#sources")

@@ -687,6 +687,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The page's title is readable on the narrowest phones** (#315): at 320 px the top bar's title had about 23 px
   beside the brand and the menus, so Settings read "S." and Getting started "G. / s.". At 400 px and narrower it's on
   the second row, under the brand, with the profile picker beside it where there is one.
+- **Add and your menu stay together in the top bar** (#319): on the records pages between 376 and 451 px wide, Add
+  stayed on the first row and your menu dropped onto a second row by itself. The two are one group now, side by side on
+  the first row when there's room, else together on the next. Under 500 px tall, where the page scrolls, a phone's menus
+  are as tall as their items: at 320×180 (1280×720 zoomed to 400%) each had been a box about one item tall.
 - **Sign-in and setup get the app's focus ring** (#310): Sign in, Sign in with a passkey and Create account had the
   browser's thin black or white ring. The reset and the one focus ring moved from `app.css` to a small
   `www/css/base.css` that every page loads after the tokens, sign-in and setup too, so their buttons and fields are
