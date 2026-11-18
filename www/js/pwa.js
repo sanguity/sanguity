@@ -79,7 +79,7 @@ if (/\/(login|setup)\.html$/.test(location.pathname)) { SgOffline.forget(); forg
   const box = document.getElementById("offlineRecords");
   if (!box) return;
   const msg = el("span", {class: "msg", role: "status"});
-  const input = el("input", {type: "checkbox", id: "offlineOn"});
+  const input = el("input", {type: "checkbox", role: "switch", id: "offlineOn"});   // a switch (#259)
   const status = async () => {
     if (!SgOffline.works()) { msg.textContent = "Not available at this address: offline use needs HTTPS (or localhost)."; return; }
     if (!SgOffline.on()) { msg.textContent = "Off. Nothing is kept on this device."; return; }
@@ -101,7 +101,7 @@ if (/\/(login|setup)\.html$/.test(location.pathname)) { SgOffline.forget(); forg
     el("p", {class: "hint", text: "That copy isn't encrypted the way records on the server are: anyone who can use this device while it's " +
       "unlocked could open it. It holds that one profile's records, settings and watch data, never documents or other profiles. " +
       "It's deleted when you sign out, when your sign-in ends, and when you turn this off. Leave it off on a shared device."}),
-    el("label", {class: "check"}, input, " Keep records for offline viewing on this device"),
+    el("label", {class: "check switch"}, input, " Keep records for offline viewing on this device"),
     el("div", {class: "row"}, msg));
   status();
 })();

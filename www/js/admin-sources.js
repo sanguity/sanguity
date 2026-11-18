@@ -206,9 +206,9 @@ function numberEditor(value, changed, ro) {
   const input = el("input", {type: "number", step: 1, min: 1, value, disabled: ro, oninput: changed, class: "set-num", "aria-label": "Value"});
   return {node: input, get: () => input.value === "" ? null : +input.value};
 }
-function toggleEditor(value, changed, ro) {
-  const input = el("input", {type: "checkbox", checked: value ? "" : null, disabled: ro, onchange: changed});
-  return {node: el("label", {class: "check"}, input, "On"), get: () => input.checked};
+function toggleEditor(value, changed, ro, setting) {   // a switch (#259), named by the setting's heading above it
+  const input = el("input", {type: "checkbox", role: "switch", "aria-label": setting.label, checked: value ? "" : null, disabled: ro, onchange: changed});
+  return {node: el("label", {class: "check switch"}, input), get: () => input.checked};
 }
 function choicesEditor(value, changed, ro, setting) {
   const boxes = Object.entries(setting.choices || {}).map(([id, label]) => el("label", {class: "check"},

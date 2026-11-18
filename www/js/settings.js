@@ -44,16 +44,18 @@ function labsEditor(value, changed, ro) {
 }
 
 /* rows of inputs (a table on wide screens, stacked on phones); cols: [{key, label, type, only, ...attrs}]. A
-   checkbox column with only: true is ticked in one row at most (ticking it in one row unticks the others). */
+   checkbox column with only: true is ticked in one row at most (ticking it in one row unticks the others); a radio
+   column is one choice across the rows (#259: a milestone's Primary), its radios one group. */
+let rowsEditors = 0;
 function rowsEditor(rows, cols, changed, ro, blank, cls = "") {
-  const body = el("div", {class: "set-rows c" + cols.length + (cls ? " " + cls : "")});
+  const body = el("div", {class: "set-rows c" + cols.length + (cls ? " " + cls : "")}), group = "rows" + (++rowsEditors) + "-";
   const head = el("div", {class: "set-row set-head", "aria-hidden": "true"}, ...cols.map(c => el("span", {text: c.label})), el("span"));
-  const tick = c => c.type === "checkbox";
+  const tick = c => c.type === "checkbox" || c.type === "radio";
   const only = (c, input) => { if (c.only && input.checked) for (const x of body.querySelectorAll(`[data-k="${c.key}"]`)) if (x !== input) x.checked = false; };
   const make = r => {
     const row = el("div", {class: "set-row"}, ...cols.map(c => el("label", {class: tick(c) ? "set-tick" : null},
       el("span", {class: "set-lbl", text: c.label}),
-      el("input", {"data-k": c.key, type: c.type || "text", value: tick(c) ? null : r[c.key] ?? "", checked: tick(c) ? !!r[c.key] : null,
+      el("input", {"data-k": c.key, type: c.type || "text", name: c.type === "radio" ? group + c.key : null, value: tick(c) ? null : r[c.key] ?? "", checked: tick(c) ? !!r[c.key] : null,
         disabled: ro, oninput: ev => { if (tick(c)) only(c, ev.target); changed(); }, ...(c.attrs || {})}))));
     row.append(ro ? el("span") : small("Remove", "Remove this row", () => { row.remove(); changed(); }));
     return row;
@@ -94,7 +96,7 @@ function rulesEditor(value, changed, ro) {
 function milestonesEditor(value, changed, ro) {
   const cols = [{key: "date", label: "Date", type: "date", attrs: {min: "1900-01-01", max: "2100-12-31", required: true}},
                 {key: "label", label: "Name", attrs: {maxlength: 60, placeholder: "Diagnosis"}},
-                {key: "primary", label: "Primary", type: "checkbox", only: true}];
+                {key: "primary", label: "Primary", type: "radio"}];
   const r = rowsEditor(value, cols, changed, ro, {date: "", label: "", primary: false}, "ms");
   return {node: r.node, get: () => r.read().filter(x => x.date || x.label)
     .map(x => ({date: x.date, label: x.label, ...(x.primary ? {primary: true} : {})}))};
@@ -284,8 +286,8 @@ function tabsEditor(value, changed, ro) {
     for (const cb of ol.node.querySelectorAll("input[type=checkbox]")) cb.disabled = ro || (cb.checked && shown === 1);
   };
   ol = orderList(value.order, {ro, name: t => TAB_LABEL[t] || t, changed, drawn: () => sync(),
-    body: t => [el("label", {class: "set-name set-check"},
-      el("input", {type: "checkbox", checked: !hidden.has(t), "data-tab": t, onchange: ev => { ev.target.checked ? hidden.delete(t) : hidden.add(t); sync(); changed(); }}),
+    body: t => [el("label", {class: "set-name set-check switch"},   // a switch each (#259)
+      el("input", {type: "checkbox", role: "switch", checked: !hidden.has(t), "data-tab": t, onchange: ev => { ev.target.checked ? hidden.delete(t) : hidden.add(t); sync(); changed(); }}),
       ` Show ${TAB_LABEL[t] || t}`,
       t === "costs" && !HAS_CLAIMS ? el("small", {class: "muted", text: " · no claims in this profile"}) : null)]});
   sync();
@@ -319,20 +321,36 @@ const EDITORS = {labs: labsEditor, tiles: tilesEditor, names: namesEditor, rules
 
 /* ---------------------------------------------------------------- dates and times (#42): each person's own time
    zone and date format (dates.js uses them on every page) */
+/* the zone is a field you type into to search the IANA zones (#259: a list of about 400 was long to scroll), shown
+   with spaces ("America/New York"); only a zone on the list is kept, anything else says so and isn't saved */
+let zoneLists = 0;
 function zoneEditor(value, changed, ro) {
   let zones = [];
   try { zones = Intl.supportedValuesOf("timeZone"); } catch (e) {}
-  const here = browserZone(), cur = value || here;
+  const here = browserZone(), shown = z => z.replace(/_/g, " ");
+  let cur = value || here;
   for (const z of [cur, here, "UTC"]) if (!zones.includes(z)) zones.unshift(z);
-  const sel = el("select", {class: "set-select", "aria-label": "Time zone", disabled: ro, onchange: () => { note(); changed(); }},
-    ...zones.map(z => el("option", {value: z, text: z.replace(/_/g, " ")})));
-  sel.value = cur;
-  const hint = el("span", {class: "hint"});
+  const id = "zones" + (++zoneLists), msgId = id + "-msg";
+  const list = el("datalist", {id}, ...zones.map(z => el("option", {value: shown(z)})));
+  const input = el("input", {class: "set-select set-zone", type: "text", list: id, "aria-label": "Time zone", "aria-describedby": msgId,
+    autocomplete: "off", spellcheck: "false", disabled: ro, value: shown(cur)});
+  const hint = el("span", {class: "hint", id: msgId});
   const use = el("button", {class: "btn small", type: "button", text: "Use this device's", hidden: ro,
-    onclick: () => { sel.value = here; note(); changed(); }});
-  const note = () => { const same = sel.value === here; hint.textContent = same ? "" : `This device is set to ${here.replace(/_/g, " ")}.`; use.hidden = ro || same; };
+    onclick: () => { input.value = shown(here); pick(); }});
+  const zoneOf = t => zones.find(z => z === t.trim().replace(/ /g, "_")) || zones.find(z => shown(z).toLowerCase() === t.trim().toLowerCase());
+  const note = () => { const same = cur === here; use.hidden = ro || same;
+    hint.textContent = input.getAttribute("aria-invalid") === "true" ? "Pick a time zone from the list, such as America/New York."
+      : same ? "" : `This device is set to ${shown(here)}.`; };
+  const pick = (final = false) => {   // a zone on the list is the value; what's typed so far only once it's left
+    const z = zoneOf(input.value);
+    if (z) { input.removeAttribute("aria-invalid"); if (final) input.value = shown(z); if (z !== cur) { cur = z; changed(); } }
+    else if (final) input.setAttribute("aria-invalid", "true");
+    note();
+  };
+  input.oninput = () => pick();
+  input.onchange = () => pick(true);
   note();
-  return {node: el("div", {class: "set-add"}, sel, use, hint), get: () => sel.value};
+  return {node: el("div", {class: "set-add"}, input, list, use, hint), get: () => cur};
 }
 function formatEditor(value, changed, ro) {
   const sel = el("select", {class: "set-select", "aria-label": "Date format", disabled: ro, onchange: changed},
