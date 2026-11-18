@@ -265,9 +265,22 @@ function ask({title, message = "", action = "OK", cancel = "Cancel", danger = fa
        page; shown with modal false, the page stays usable (the drawer beside the records).
    Escape closes it (a modal one natively; one that isn't, while focus is in it), and focus goes back to what had it
    before it opened. The browser keeps focus inside a modal one: no page writes a focus trap. d.close() closes it;
-   its "close" event says it closed, however that was. */
+   its "close" event says it closed, however that was. While a modal one is open the page behind doesn't scroll
+   (app.css). One that's open already changes between modal and not only while no other modal dialog is open: shown
+   again with showModal() it would go on top of an ask() waiting for an answer over it (a phone turned with the drawer
+   open, #364), hiding the question and leaving the page inert. It waits until that one closes, then is shown the way
+   it was last asked for. */
 function openDialog(d, {as = "center", modal = true} = {}) {
   if (!d.sgWired) wireDialog(d);
+  d.sgWant = {as, modal};
+  const over = d.open && d.matches(":modal") !== modal && [...document.querySelectorAll("dialog:modal")].filter(x => x !== d).at(-1);
+  if (over) {
+    if (d.sgWait !== over) {
+      d.sgWait = over;
+      over.addEventListener("close", () => { if (d.sgWait === over) d.sgWait = null; if (d.open) openDialog(d, d.sgWant); }, {once: true});
+    }
+    return;
+  }
   d.classList.add("sg-dlg");
   for (const k of ["center", "side", "sheet"]) d.classList.toggle("sg-dlg-" + k, k === as);
   if (as === "sheet" && !d.querySelector(":scope > .sg-grab")) d.prepend(el("div", {class: "sg-grab", "aria-hidden": "true"}));
