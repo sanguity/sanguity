@@ -644,6 +644,10 @@ Everything on `main` so far; it becomes the first tagged release.
   in the app's dialog; another person's editor/viewer change stays instant. On Admin → Accounts, Disable, Make admin,
   Remove admin and Reset password ask first, naming the account and saying what happens, before any fresh check;
   Enable doesn't. Cancel puts things back and sends nothing.
+- **Chart marks that aren't colour alone** (#250): the Costs running totals' end labels are in ink, each after a
+  short line in its colour (the orange and green text was under 4.5:1); a lab day on the Timeline with a result out
+  of range has a red ▲ over it instead of a 2 px red dot; on the Labs charts a procedure is a ● and imaging a ■, no
+  longer the ▼ that means below range, with both in the legend while they're shown.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

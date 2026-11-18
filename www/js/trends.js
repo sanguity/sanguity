@@ -61,11 +61,24 @@ let hoverT = null;
 const CHART_LAYERS = [];
 function renderCharts() {
   const box = $("#charts"); box.replaceChildren();
-  const sel = SERIES.filter(s => !s.watch && state.sel.has(s.name));
+  document.querySelectorAll(".marks-key").forEach(k => k.hidden = !state.marks);   // their legend, while they're shown (#250)
+  const sel =SERIES.filter(s => !s.watch && state.sel.has(s.name));
   if (!sel.length) { box.append(el("div", {class: "card empty", text: "Pick lab values on the left to chart them."})); return; }
   for (const s of sel) box.append(chartCard(s));
 }
 const MARK_KINDS = new Set(["procedure", "imaging"]);
+/* a procedure's or an imaging's mark at the top of a lab chart, in its kind's colour: a circle and a square, never ▲ or
+   ▼, which on the same chart say above or below range (#250). The legend under Show on charts draws the same. */
+function evHead(k, cx, cy) {
+  const a = {class: "evhead", "data-k": k, fill: CAT_OF[k].color};
+  return k === "imaging" ? el("svg:rect", {...a, x: cx - 3.3, y: cy - 3.3, width: 6.6, height: 6.6})
+    : el("svg:circle", {...a, cx, cy, r: 3.7});
+}
+{
+  const legend = document.querySelector("#view-labs .chart-legend");
+  const key = (k, words) => el("span", {class: "jlegend marks-key", hidden: true}, el("svg:svg", {viewBox: "0 0 10 10", width: 10, height: 10, "aria-hidden": "true"}, evHead(k, 5, 5)), words);
+  if (legend) legend.append(key("procedure", "Procedure"), key("imaging", "Imaging"));
+}
 function shortTitle(t) {
   let s = t.replace(/\s*\(.*?\)\s*/g, " ").split(/\s+(?:WITH|W\/?O?|WO|AND)\s+/i)[0].trim().toLowerCase();
   s = s.charAt(0).toUpperCase() + s.slice(1);
@@ -182,7 +195,7 @@ function drawChart(svg, s, pts, read) {
   for (const e of marks) {
     const mx = x(e.ts);
     g.push(el("svg:line", {class: "evmark", x1: mx, x2: mx, y1: T - 4, y2: B}));
-    g.push(el("svg:path", {d: `M${mx - 4},${T - 10} L${mx + 4},${T - 10} L${mx},${T - 4} Z`, fill: CAT_OF[e.k].color}));
+    g.push(evHead(e.k, mx, T - 7));
     if (e.k === "procedure" && mx - lastLabelX > 90 && mx + 60 < R) {
       g.push(el("svg:text", {class: "evlabel", x: mx + 6, y: T - 5, text: shortTitle(e.title)}));
       lastLabelX = mx;
