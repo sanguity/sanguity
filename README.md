@@ -626,7 +626,8 @@ address (from `PUBLIC_ORIGINS`) when the page was opened over plain HTTP.
 
 Installed, it opens without a connection, but by default shows no records then: the app's pages are kept on the
 phone, its records aren't. **Account > This device > Offline records on this device** keeps a copy of the last profile you opened,
-read-only offline with the time it was loaded. That copy is outside Sanguity's encryption at rest, so anyone who can
+read-only offline with the time it was loaded; a record's details (a result's values, a claim's lines) are in it once
+you've opened that record on the phone. That copy is outside Sanguity's encryption at rest, so anyone who can
 use the phone unlocked could read it. It never includes documents or other profiles, and it's deleted when you sign
 out, when your sign-in ends (even if the phone stays offline), and when you turn the option off. Leave it off on a
 shared phone.

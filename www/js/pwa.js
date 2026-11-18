@@ -2,8 +2,8 @@
    keeps this device's choice about offline records, and deletes the offline copy whenever the sign-in ends.
 
    Offline records are off unless the person turns them on, per device, under Account. When on, the records page
-   (js/offline.js) keeps one copy of the last profile it loaded: its records, settings and watch data, never
-   documents (PDFs, pictures) and never another profile's. That copy is outside the server's encryption at rest, so it's
+   (js/offline.js) keeps one copy of the last profile it loaded: its records (each record's details once it was opened
+   on this device, #217), settings and watch data, never documents (PDFs, pictures) and never another profile's. That copy is outside the server's encryption at rest, so it's
    deleted on sign-out, when the sign-in page is reached (a sign-in that ended), when the sign-in's own end time passes
    (even with no connection), and when the option is turned off. The lab names picked on Labs go on sign-out and on
    reaching the sign-in page too (#220).
@@ -93,7 +93,8 @@ if (/\/(login|setup)\.html$/.test(location.pathname)) { SgOffline.forget(); forg
   box.replaceChildren(
     el("h2", {text: "Offline records on this device"}),
     el("p", {class: "hint", text: "Sanguity opens from your home screen without a connection either way. With this on, this device also " +
-      "keeps a copy of the last profile you opened, so you can read its records offline (read-only, with the time they were loaded)."}),
+      "keeps a copy of the last profile you opened, so you can read its records offline (read-only, with the time they were loaded). " +
+      "A record's details, such as a result's values or a claim's lines, are kept once you've opened it on this device."}),
     el("p", {class: "hint", text: "That copy isn't encrypted the way records on the server are: anyone who can use this device while it's " +
       "unlocked could open it. It holds that one profile's records, settings and watch data, never documents or other profiles. " +
       "It's deleted when you sign out, when your sign-in ends, and when you turn this off. Leave it off on a shared device."}),

@@ -27,6 +27,7 @@ subprocess.run([sys.executable, "-I", os.path.join(ROOT, "demo", "generate.py"),
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, crypto, db as dbm, main, profiles as prof, records   # noqa: E402
+from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -92,9 +93,7 @@ class Sources(unittest.TestCase):
         shutil.rmtree(TMP, True)
 
     def data(self, pid=None):
-        r = self.c.get(f"/api/profiles/{pid or self.pid}/data")
-        self.assertEqual(r.status_code, 200, r.text)
-        return r.json()
+        return whole(self.c, pid or self.pid)
 
     def history(self, pid=None):
         r = self.c.get(f"/api/profiles/{pid or self.pid}/imports")

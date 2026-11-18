@@ -7,7 +7,9 @@ folder and served by the real backend. On it this measures, and fails when a bud
 
   - the records API (GET /api/profiles/{pid}/data): its size as sent and as nginx compresses it, and how long it takes
     when the records changed since the last request (put together from the database) and when they didn't (kept);
-    the watch data's size and time likewise
+    a lab day's details as the drawer opens it (#217: each record's details come when it's opened, so they aren't in
+    the records' size; what they were with them is printed as records_whole_bytes); the watch data's size and time
+    likewise
   - an import of a large export through the background job path: the profile's export zip uploaded into an empty
     profile, previewed and saved, and a ten-year Apple Health export.xml the same way
   - a connected source's first pull from the fake SMART on FHIR server (tests/fakefhir) serving a big patient, with
@@ -39,10 +41,11 @@ sys.path.insert(0, ROOT)
 # seconds (_s) or milliseconds (_ms), the median of RUNS runs, with room for CI's slower machines: about ten times
 # what a developer's machine measures (docs/performance.md has those numbers).
 BUDGETS = {
-    "records_bytes": 4_500_000,         # GET /api/profiles/{pid}/data, the JSON the records page reads
-    "records_gzip_bytes": 600_000,      # the same as nginx sends it (gzip at nginx's default level, 1)
+    "records_bytes": 2_600_000,         # GET /api/profiles/{pid}/data, the JSON the records page reads (details apart, #217)
+    "records_gzip_bytes": 350_000,      # the same as nginx sends it (gzip at nginx's default level, 1)
     "records_cold_s": 2.5,              # .../data right after the records changed: put together from the database
     "records_s": 0.25,                  # .../data again, nothing changed (kept, records.served)
+    "details_s": 0.25,                  # GET .../details?ids=: a lab day's results, as the drawer opens it (#217)
     "watch_bytes": 1_500_000,           # GET .../watch: ten years of daily watch data, and home readings (#180, #184)
     "watch_s": 0.5,
     "build_load_s": 5,                  # the big build loaded into a profile (the first start, `setup rebuild`)
@@ -294,6 +297,21 @@ class ServerBudgets(unittest.TestCase):
         self.assertGreaterEqual(sum(s["n"] for s in d["labs"]), 5000)
         self.assertEqual(len(d["costs"]), 2000)
         self.assertGreaterEqual(sum(e["k"] == "document" for e in d["events"]), 1000)
+        # #217: each record's details come when it's opened; what the page read before, with all of them
+        db = dbm.connect()
+        try:
+            whole = records.served(db, 1)
+        finally:
+            db.close()
+        measure("records_whole_bytes", len(whole))
+        measure("records_whole_gzip_bytes", len(gzip.compress(whole, 1)))
+        day = next(e for e in d["events"] if e["k"] == "lab" and len(d["details"].get(str(e["id"]), {}).get("ids", [])) > 5)
+        url = f"/api/profiles/1/details?ids={','.join(map(str, d['details'][str(day['id'])]['ids']))}"
+        got = CLIENT.get(url)
+        self.assertEqual(got.status_code, 200)
+        self.assertTrue(all(x["type"] == "result" and x["rows"] for x in got.json()["details"].values()))
+        self.assertBudget("details_s", median_time(lambda: CLIENT.get(url)))
+        measure("details_lab_day_bytes", len(got.content))
 
     def test_watch_api(self):
         body = CLIENT.get("/api/profiles/1/watch").content

@@ -106,7 +106,9 @@ The same object build.py and `demo/generate.py` write as data.json. Required key
 
 ### `details`: what opens when you click an event
 
-An object keyed by event id (as a string in JSON). Each has a `type`:
+An object keyed by event id (as a string in JSON). The records page loads an event's details when it's opened
+(#217), so what it should list, count or search without opening one belongs in the event (`title`, `sub`, `abn`); a
+lab day's `ids` are the exception, sent with the records. Each has a `type`:
 
 | `type` | Fields |
 |---|---|

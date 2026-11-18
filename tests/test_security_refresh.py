@@ -75,6 +75,7 @@ ROUTES = {
     ("POST", "/api/connect/return"): (USER, "editor"),                 # on the profile the sign-in was started for
     # a profile's: viewers
     ("GET", "/api/profiles/{pid}/data"): (USER, "viewer"), ("GET", "/api/profiles/{pid}/watch"): (USER, "viewer"),
+    ("GET", "/api/profiles/{pid}/details"): (USER, "viewer"),   # records' details, as the page opens them (#217)
     ("GET", "/api/profiles/{pid}/watch/ecg/{name}"): (USER, "viewer"),   # an ECG recording's samples (#182)
     ("GET", "/api/profiles/{pid}/documents/{doc}"): (USER, "viewer"),
     ("GET", "/api/profiles/{pid}/documents/{doc}/{part:path}"): (USER, "viewer"),
@@ -273,7 +274,7 @@ class Reach(unittest.TestCase):
         A = {"olive": (403,), "eddie": (403,), "vera": (403,), "stan": (403,), "ada": ok, None: (401,)}
         U = {"olive": ok, "eddie": ok, "vera": ok, "stan": ok, "ada": ok, None: (401,)}
         table = [
-            (V, [p + "/data", p + "/watch", p + "/members", p + "/imports", p + "/settings", p + "/settings/sections",
+            (V, [p + "/data", p + "/details?ids=1", p + "/watch", p + "/members", p + "/imports", p + "/settings", p + "/settings/sections",
                 p + "/connections", p + "/connections/warnings", p + "/calendar", p + "/journal", p + "/summary", p + "/person"]),
             (E, [p + "/export", p + "/jobs", p + "/edits", p + "/watch/receiver", p + "/cycle", p + "/condition-presets"]),
             (O, [p + "/activity", p + "/links"]),
@@ -305,7 +306,7 @@ class Reach(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(set(r.json()) - {"profile", "expires", "from", "to", "sections"}, {"visits"})
         self.assertNotIn("set-cookie", r.headers)
-        for path in (f"/api/profiles/{self.pid}/data", f"/api/profiles/{self.pid}/journal", "/api/me"):
+        for path in (f"/api/profiles/{self.pid}/data", f"/api/profiles/{self.pid}/details?ids=1", f"/api/profiles/{self.pid}/journal", "/api/me"):
             self.assertEqual(holder.get(path).status_code, 401)   # the link is no session
         self.assertEqual(holder.get(f"/api/profiles/{self.pid}/calendar.ics", params={"token": token}).status_code, 404)
         self.assertEqual(holder.post("/api/share/view", json={"token": feed}, headers=H).status_code, 404)

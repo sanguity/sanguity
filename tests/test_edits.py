@@ -23,6 +23,7 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, crypto, db as dbm, edits, main, profiles as prof, records   # noqa: E402
+from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -110,9 +111,7 @@ class Edits(unittest.TestCase):
         db.close()
 
     def data(self, c=None):
-        r = (c or self.robin).get(f"/api/profiles/{self.pid}/data")
-        self.assertEqual(r.status_code, 200, r.text)
-        return r.json()
+        return whole(c or self.robin, self.pid)
 
     def ev(self, title, data=None):
         hits = by_title(data or self.data(), title)

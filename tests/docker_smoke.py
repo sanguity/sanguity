@@ -80,7 +80,14 @@ def main():
         data = json.loads(body) if st == 200 else {}
         check("demo records load", st == 200 and len(data.get("events", [])) > 100, st)
         check("records aren't cached", "no-store" in (h.get("Cache-Control") or ""))
-        docs = [d["url"] for d in data.get("details", {}).values() if isinstance(d, dict) and d.get("type") == "file" and d.get("url")]
+        # each record's details come from .../details when it's opened (#217), at most 500 at a time: through nginx too
+        ids, details, det_ok = [e["id"] for e in data.get("events", [])], {}, True
+        for i in range(0, len(ids), 500):
+            st, _, body = req(f"/api/profiles/{pid}/details?ids=" + ",".join(str(x) for x in ids[i:i + 500]))
+            det_ok = det_ok and st == 200
+            details.update(json.loads(body).get("details", {}) if st == 200 else {})
+        check("records' details load when asked for, through nginx (#217)", det_ok and len(details) > 0, len(details))
+        docs = [d["url"] for d in details.values() if isinstance(d, dict) and d.get("type") == "file" and d.get("url")]
         check("document links point at the API", docs and all(u.startswith(f"api/profiles/{pid}/documents/") for u in docs), docs[:2])
         if docs:
             st, h, body = req("/" + docs[0].split("#")[0])

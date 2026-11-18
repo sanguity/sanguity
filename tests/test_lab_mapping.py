@@ -35,6 +35,7 @@ import logging   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, activity, crypto, db as dbm, labmap, main, profiles as prof, twofactor, uploads   # noqa: E402
+from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -114,7 +115,7 @@ class LabMapping(unittest.TestCase):
         return done
 
     def data(self, pid):
-        return self.robin.get(f"/api/profiles/{pid}/data").json()
+        return whole(self.robin, pid)
 
     def points(self, pid, name):
         return sorted((p[0][:10], p[1]) for s in self.data(pid)["labs"] if s["name"] == name for p in s["pts"])

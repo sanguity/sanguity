@@ -22,6 +22,7 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import db as dbm, main, security as sec   # noqa: E402
+from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)   # quiet here; assertLogs turns it on where it's checked
@@ -211,7 +212,7 @@ class Api(unittest.TestCase):
         self.assertEqual([(p["id"], p["name"], p["role"]) for p in me["profiles"]], [(1, "Ben", "owner")])
 
         # ---- the existing records came across, with documents behind the API
-        data = ben.get("/api/profiles/1/data").json()
+        data = whole(ben, 1)
         self.assertGreater(len(data["events"]), 100)
         urls = [d["url"] for d in data["details"].values() if isinstance(d, dict) and d.get("type") == "file"]
         self.assertTrue(urls and all(u.startswith("api/profiles/1/documents/") for u in urls), urls[:3])
@@ -380,7 +381,7 @@ class Api(unittest.TestCase):
         start = log(ben)[0]["id"] if log(ben) else 0
         newer = lambda entries: [e for e in entries if e["id"] > start]
         # viewing: once per session for the records, once per session for each document
-        data = ben.get("/api/profiles/1/data").json()
+        data = whole(ben, 1)
         ben.get("/api/profiles/1/data")
         doc = next(d["url"] for d in data["details"].values() if isinstance(d, dict) and d.get("type") == "file")
         ben.get("/" + doc)
@@ -567,7 +568,7 @@ class Api(unittest.TestCase):
         data = json.loads(z.read("data.json"))
         links = [d["url"] for d in data["details"].values() if isinstance(d, dict) and d.get("type") == "file" and d.get("url")]
         self.assertTrue(links and all(u.split("#")[0] in names for u in links), links)   # every link points into the zip
-        self.assertEqual(z.read(links[0].split("#")[0]), ben.get("/" + ben.get("/api/profiles/1/data").json()["details"][
+        self.assertEqual(z.read(links[0].split("#")[0]), ben.get("/" + whole(ben, 1)["details"][
             next(k for k, d in data["details"].items() if isinstance(d, dict) and d.get("url") == links[0])]["url"]).content)
         self.assertIn("health records", z.read("README.txt").decode())
         self.assertEqual(ben.get("/api/profiles/1/activity?action=export").json()[0]["actor"], "ben")
@@ -602,7 +603,7 @@ class Api(unittest.TestCase):
         manage.run(["create-profile", "Copy of Ben", "ben"])
         copy = db.execute("SELECT id FROM profiles WHERE name='Copy of Ben'").fetchone()[0]
         manage.run(["import", str(copy), archive])
-        original, copied = ben.get("/api/profiles/1/data").json(), ben.get(f"/api/profiles/{copy}/data").json()
+        original, copied = whole(ben, 1), whole(ben, copy)
         self.assertEqual(len(copied["events"]), len(original["events"]))
         self.assertEqual(ben.get(f"/api/profiles/{copy}/settings").json(), ben.get("/api/profiles/1/settings").json())
         self.assertEqual(ben.get(f"/api/profiles/{copy}/watch").status_code, 200)
@@ -1143,7 +1144,7 @@ class Api(unittest.TestCase):
         prof.import_dataset(db, pid, src)
         db.close()
         ben = self.login("ben")
-        data = ben.get(f"/api/profiles/{pid}/data").json()
+        data = whole(ben, pid)
         det = {e["title"]: data["details"][str(e["id"])] for e in data["events"]}   # ids are the database's own
         self.assertEqual(len(data["details"]), 3)   # a detail no event shows isn't kept, nor its document
         self.assertEqual(db_count("SELECT COUNT(*) FROM documents WHERE profile_id=?", pid), 3)
@@ -1485,7 +1486,7 @@ class Api(unittest.TestCase):
         for t in ("events", "series", "results", "documents"):   # every row belongs to the import that brought it
             self.assertEqual(db_count(f"SELECT COUNT(*) FROM {t} WHERE profile_id=? AND import_id IS NOT ?", pid, iid), 0, t)
         ben = self.login("ben")
-        got = ben.get(f"/api/profiles/{pid}/data").json()
+        got = whole(ben, pid)
         ids = [e["id"] for e in got["events"]]
         lab, claim, doc = ids[1], ids[2], ids[3]
         self.assertEqual(got["details"][str(lab)]["ids"], [ids[0]])
@@ -1501,6 +1502,17 @@ class Api(unittest.TestCase):
         expect["details"]["70"]["url"] = url
         expect["costs"][1]["id"] = None
         self.assertEqual(same_records(got), same_records(expect))
+        # #217: the page's data has a lab day's list of results, nothing else of details; the rest come when a record
+        # is opened, any of the ids asked for that have details, with the records' revision
+        page = ben.get(f"/api/profiles/{pid}/data")
+        self.assertEqual(page.json()["details"], {str(lab): {"type": "labday", "ids": [ids[0]]}})
+        r = ben.get(f"/api/profiles/{pid}/details", params={"ids": f"{ids[0]},{claim},{claim},{doc},999999"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["details"], {k: got["details"][k] for k in (str(ids[0]), str(claim), str(doc))})
+        self.assertEqual(r.headers["x-records-rev"], page.headers["x-records-rev"])
+        for bad in ("", "1,x", ",".join(map(str, range(rec.DETAILS_MAX + 1)))):
+            self.assertEqual(ben.get(f"/api/profiles/{pid}/details", params={"ids": bad}).status_code, 400, bad[:20])
+        self.assertEqual(ben.get(f"/api/profiles/{pid + 1000}/details", params={"ids": "1"}).status_code, 404)
         # replacing the records (server.manage import) leaves nothing of the old import behind
         data["events"], data["details"], data["costs"], data["labs"] = data["events"][:1], {}, [], []
         with open(os.path.join(src, "data.json"), "w", encoding="utf-8") as f:
@@ -1509,6 +1521,8 @@ class Api(unittest.TestCase):
         counts = {t: db_count(f"SELECT COUNT(*) FROM {t} WHERE profile_id=?", pid) for t in ("imports", "events", "series", "results", "documents")}
         self.assertEqual(counts, {"imports": 1, "events": 1, "series": 0, "results": 0, "documents": 0})
         self.assertEqual(len(ben.get(f"/api/profiles/{pid}/data").json()["events"]), 1)   # not the cached copy
+        self.assertNotEqual(ben.get(f"/api/profiles/{pid}/data").headers["x-records-rev"], page.headers["x-records-rev"])   # #217
+        self.assertEqual(ben.get(f"/api/profiles/{pid}/details", params={"ids": str(claim)}).json(), {"details": {}})   # gone with them
         # several imports: lists are joined, events interleaved by time, single values from the newest
         with dbm.transaction(db):
             rec.store(db, pid, {"source": "second", "events": [{"id": 1, "t": "2025-01-01T00:00:00", "k": "visit", "title": "Earlier"}],
@@ -1531,7 +1545,7 @@ class Api(unittest.TestCase):
         db = dbm.connect()   # closed, not left to the garbage collector: an open one keeps sanguity.db locked on Windows
         prof.sync_build(db)
         db.close()
-        got = ben.get("/api/profiles/1/data").json()
+        got = whole(ben, 1)
         built = json.loads(crypto.read_file(os.path.join(TMP, "build", "data.json")))
         for d in (got, built):
             for v in d["details"].values():
@@ -1566,7 +1580,7 @@ class Api(unittest.TestCase):
         self.assertEqual(db.execute("SELECT origin FROM imports WHERE profile_id=?", (pid,)).fetchone()[0], "dataset")
         self.assertIsNotNone(db.execute("SELECT import_id FROM documents WHERE id='olddoc'").fetchone()[0])
         ben = self.login("ben")
-        got = ben.get(f"/api/profiles/{pid}/data").json()
+        got = whole(ben, pid)
         self.assertEqual(same_records(got), same_records(old))
         self.assertEqual(ben.get("/" + url).content, b"%PDF-1.4 old")
         self.assertEqual(prof.migrate_files(db), 0)   # once

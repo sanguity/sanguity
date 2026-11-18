@@ -23,6 +23,7 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, crypto, db as dbm, main, oop, records   # noqa: E402
+from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -81,9 +82,7 @@ class Costs(unittest.TestCase):
         return c
 
     def data(self):
-        r = self.robin.get(f"/api/profiles/{self.pid}/data")
-        self.assertEqual(r.status_code, 200, r.text)
-        return r.json()
+        return whole(self.robin, self.pid)
 
     def oop(self):
         d = self.data()

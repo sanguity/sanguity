@@ -4,7 +4,8 @@ The page reads one object per profile (GET /api/profiles/{pid}/data), in the sha
 to data.json, and each part of it has its place:
 
   events     [{id, t, k, title, sub, end, abn, hidden...}]   one row each in events (body)
-  details    {event id: {...}}                               events.detail
+  details    {event id: {...}}                               events.detail; the page's data has only some (page(),
+                                                             #217): the rest come when a record is opened (details())
   costs      [{id: event id, d, billed, paid, owe...}]       events.cost, the claim's own row
   labs       [{name, unit, panel, loinc, n, txt, pts}]       series, with each point of pts a row in results
   the rest   built, source, upcoming, problems, outOfPocket, milestones, clinicWeights...   imports.meta
@@ -341,12 +342,37 @@ def _assemble(db, pid):
 
 
 # the page asks for a profile's records on every load; putting them together decrypts every row, so the result
-# is kept for a few profiles until their records change (profiles.records_rev)
+# is kept for a few profiles until their records change (profiles.records_rev): whole, as the server's own readers
+# parse it, as the records page reads it (page(): without most of each record's details, #217), and each record's
+# details on their own (details())
 _cache, _cache_lock, CACHED_PROFILES = {}, threading.Lock(), 4
 
+# ---- a record's details when it's opened (#217)
+# The records page reads a record's details (a result's rows, a claim's lines, a message, a letter) when it's opened,
+# GET .../details?ids=, not with every record: with ten years of records they were 40% of its data, mostly for records
+# nobody opens. What the page reads of details without opening anything stays in its data: a lab day's list of
+# results (how many, search, the drawer's list) whole, and of an immunization what the Overview lists. One cut short
+# says so ("partial": true), so the page loads the rest when it's opened. The server's own readers (the visit summary,
+# share links, the exports, medications) read served() or assemble(), with every record's details.
+LISTED = {"labday": None, "immunization": ("dose", "where", "performer")}   # type: the fields kept (None: all)
+DETAILS_MAX = 500   # ids in one request: a lab day lists a few dozen at most
 
-def served(db, pid):
-    """assemble() as the JSON bytes the API sends, or None."""
+
+def _listed(d):
+    """What the page's data keeps of one record's details, or None."""
+    if not isinstance(d, dict) or d.get("type") not in LISTED:
+        return None
+    keep = LISTED[d["type"]]
+    return d if keep is None else {"type": d["type"], **{k: d[k] for k in keep if k in d}, "partial": True}
+
+
+def _dumps(obj):
+    return json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def _entry(db, pid):
+    """What's kept for the profile: {key, rev, body, page, details: {event id: its details as JSON}}, or None when
+    there's no such profile; body and page are None when nothing was ever imported into it."""
     with _snapshot(db):
         r = db.execute("SELECT records_rev, created FROM profiles WHERE id=?", (pid,)).fetchone()
         if not r:
@@ -354,17 +380,46 @@ def served(db, pid):
         key = (r["records_rev"], r["created"])   # created: a new profile may be given a deleted one's id
         with _cache_lock:
             hit = _cache.get(pid)
-            if hit and hit[0] == key:
+            if hit and hit["key"] == key:
                 _cache[pid] = _cache.pop(pid)   # most recently used last
-                return hit[1]
+                return hit
         data = _assemble(db, pid)
-    body = None if data is None else json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    entry = {"key": key, "rev": f"{key[0]}.{key[1]}", "body": None, "page": None, "details": {}}
+    if data is not None:
+        entry["body"] = _dumps(data)
+        details = data.get("details") or {}
+        entry["page"] = _dumps({**data, "details": {k: x for k, v in details.items() if (x := _listed(v)) is not None}})
+        entry["details"] = {str(k): _dumps(v) for k, v in details.items() if v is not None}
     with _cache_lock:
         _cache.pop(pid, None)
-        _cache[pid] = (key, body)
+        _cache[pid] = entry
         while len(_cache) > CACHED_PROFILES:
             _cache.pop(next(iter(_cache)))
-    return body
+    return entry
+
+
+def served(db, pid):
+    """assemble() as JSON bytes, every record's details with it (what the server's own readers parse), or None."""
+    e = _entry(db, pid)
+    return e and e["body"]
+
+
+def page(db, pid):
+    """(the records page's data as the API sends it: assemble() with only the details in LISTED, the records'
+    revision, which changes whenever they do), or None when the profile has no records (#217)."""
+    e = _entry(db, pid)
+    return None if not e or e["page"] is None else (e["page"], e["rev"])
+
+
+def details(db, pid, ids):
+    """({"details": {event id: its details}} as JSON bytes, for those of the ids that have details; the records'
+    revision), or None when the profile has no records (#217)."""
+    e = _entry(db, pid)
+    if not e or e["page"] is None:
+        return None
+    have = e["details"]
+    parts = [b'"' + k.encode() + b'":' + have[k] for k in dict.fromkeys(str(i) for i in ids) if k in have]
+    return b'{"details":{' + b",".join(parts) + b"}}", e["rev"]
 
 
 def forget(pid=None):

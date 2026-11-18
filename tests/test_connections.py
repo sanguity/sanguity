@@ -22,6 +22,7 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, connections as conns, crypto, db as dbm, main, net, profiles as prof, smart, sync   # noqa: E402
+from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 from tests import netguard   # noqa: E402
 from tests.fakefhir import PAYER_FIXTURES, FakeFHIR   # noqa: E402
 import logging   # noqa: E402
@@ -170,7 +171,7 @@ class Connections(unittest.TestCase):
             db.close()
 
     def data(self):
-        return self.robin.get(f"/api/profiles/{self.pid}/data").json()
+        return whole(self.robin, self.pid)
 
     # ---------------------------------------------------------------- sign-in (#32)
 

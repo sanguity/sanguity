@@ -26,6 +26,7 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, config, crossmatch as cm, crypto, db as dbm, main, profiles as prof, records, smart, sync, uploads   # noqa: E402
+from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 from tests.fakefhir import FakeFHIR   # noqa: E402
 import logging   # noqa: E402
 
@@ -219,9 +220,7 @@ class CrossSource(unittest.TestCase):
         return csv_job["import_id"], self.until(j["id"], ("done",))["import_id"], j
 
     def data(self, c=None):
-        r = (c or self.robin).get(f"/api/profiles/{self.pid}/data")
-        self.assertEqual(r.status_code, 200, r.text)
-        return r.json()
+        return whole(c or self.robin, self.pid)
 
     @staticmethod
     def points(d, name):
