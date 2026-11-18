@@ -1,6 +1,7 @@
 """Records typed in on the import page (issue #27, hand entry): lab results and every other kind Sanguity imports.
 
   GET  /api/lab-names                   lab-aliases.json's canonical test names, for the test field's suggestions
+  GET  /api/lab-test-pages              "What is this test?" pages by LOINC code and lab name (lab_pages.py, #163)
   POST /api/profiles/{pid}/manual       {"rows": [...], "items": [...], "save": false}: read them, say what each became
                                         {"rows": [...], "items": [...], "save": true}: the same, then save them as one import
                                         "keep_duplicates": true also saves what the profile has already
@@ -49,6 +50,7 @@ from pydantic import BaseModel, Field
 
 from . import (activity, db as dbm, importers as registry, jobs, labmap, manual_items, person, preview, profiles as prof,
                records, routes_person, uploads, watch_store)
+from . import lab_pages   # "What is this test?" pages (#163)
 from .importers import common, csv_labs
 from .main import _client_ip, get_db, need, user
 
@@ -88,6 +90,12 @@ class Rows(BaseModel):
 def lab_names(s=Depends(user)):
     """The canonical names results are charted under (no personal data: the app's own list)."""
     return sorted(common.lab_defs(), key=str.lower)
+
+
+@router.get("/api/lab-test-pages")
+def lab_test_pages(s=Depends(user)):
+    """"What is this test?" links (#163): the bundled pages, by code and name (no personal data: the app's own table)."""
+    return lab_pages.index()
 
 
 def _display(t):

@@ -27,7 +27,7 @@ ARG VERSION=dev
 # its time zones without the host's /usr/share/zoneinfo
 RUN apk add --no-cache nginx tzdata \
  && rm -rf /etc/nginx/http.d /var/lib/nginx/html
-COPY build.py lab-aliases.json condition-presets.json sources.example.json corrections.example.json settings.example.json /app/
+COPY build.py lab-aliases.json condition-presets.json lab-test-pages.json sources.example.json corrections.example.json settings.example.json /app/
 COPY demo/generate.py /app/demo/generate.py
 COPY docker/setup.py docker/allinone.py /app/docker/
 COPY watch/receiver.py /app/receiver.py

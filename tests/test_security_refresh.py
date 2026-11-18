@@ -68,6 +68,7 @@ ROUTES = {
     ("POST", "/api/me/reauth/passkey"): (USER, None),
     # anyone signed in: nothing of anyone's records
     ("POST", "/api/profiles"): (USER, None), ("GET", "/api/uploads/limits"): (USER, None), ("GET", "/api/lab-names"): (USER, None),
+    ("GET", "/api/lab-test-pages"): (USER, None),                     # "What is this test?" pages: the app's own table (#163)
     ("GET", "/api/settings/user"): (USER, None), ("PUT", "/api/settings/user/{key}"): (USER, None),
     ("GET", "/api/settings/user/sections"): (USER, None), ("POST", "/api/settings/user/reset"): (USER, None),
     ("GET", "/api/directory"): (USER, None), ("GET", "/api/directory/entry"): (USER, None),
@@ -280,7 +281,7 @@ class Reach(unittest.TestCase):
             (O, [p + "/activity", p + "/links"]),
             (A, ["/api/users", "/api/activity", "/api/ownerless", "/api/security/notice", "/api/settings", "/api/settings/install",
                 "/api/labmaps", "/api/connect/sources", "/api/backups"]),
-            (U, ["/api/me", "/api/outside", "/api/directory", "/api/lab-names", "/api/uploads/limits", "/api/settings/user"]),
+            (U, ["/api/me", "/api/outside", "/api/directory", "/api/lab-names", "/api/lab-test-pages", "/api/uploads/limits", "/api/settings/user"]),
         ]
         for rule, paths in table:
             for path in paths:

@@ -4195,6 +4195,117 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             page.set_viewport_size({"width": 1400, "height": 900})
 
+            # ---- "What is this test?" (#163): beside a lab on Labs (its chart's header and the list), the heatmap (a ? in
+            # the grid, clicked; a link in its table), the Overview's tiles and the drawer's results, a link to the lab's
+            # plain-language page from lab-test-pages.json, and none where it has no page (the vital signs). Each is the
+            # page's own address and nothing else, opens a new tab with no referrer and says so, and following one changes
+            # nothing on the page; nothing is fetched from that host (main() fails on a request to another one)
+            with open(os.path.join(ROOT, "lab-test-pages.json"), encoding="utf-8") as f:
+                tp_urls = {p["url"] for p in json.load(f)["pages"]}
+            TP_LINKS = """sel => [...document.querySelectorAll(sel)].map(a => ({href: a.getAttribute('href'), target: a.getAttribute('target'),
+              rel: a.getAttribute('rel'), name: a.getAttribute('aria-label'), text: a.textContent}))"""
+
+            def tp_bad(links, where):
+                bad = []
+                for a in links:
+                    if a["href"] not in tp_urls or not a["href"].startswith("https://medlineplus.gov/") or any(c in a["href"] for c in "?#"):
+                        bad.append(f"{where}: {a['href']} isn't a page of the table alone")
+                    if a["target"] != "_blank" or sorted((a["rel"] or "").split()) != ["noopener", "noreferrer"]:
+                        bad.append(f"{where}: {a['href']} opens with {a['target']} {a['rel']}")
+                    if not (a["name"] or "").startswith("What is this test? ") or not a["name"].endswith("on MedlinePlus, opens in a new tab"):
+                        bad.append(f"{where}: named {a['name']!r}")
+                return bad
+            open_tab("labs")
+            js("clearLabFilter()")
+            settle(300)
+            rows_tp = js("""[...document.querySelectorAll('#seriesRows .srow')].map(r => [r.querySelector('input').id,
+              (r.querySelector('a.test-page') || {}).href || null])""")
+            want_tp = js("SERIES.filter(s => !s.watch && s.n >= 2).map(s => ['s_' + s.name.replace(/\\W/g, '_'), (testPage(s.name) || {}).url || null])")
+            check("What is this test? (#163): the Labs list has a ? beside each lab with a page, none beside the rest",
+                  sorted(rows_tp) == sorted(want_tp) and sum(1 for _, u in rows_tp if u) >= 11
+                  and dict(rows_tp).get("s_Hemoglobin") == "https://medlineplus.gov/lab-tests/hemoglobin-test/"
+                  and dict(rows_tp).get("s_Blood_pressure__systolic", "x") is None, [rows_tp, want_tp])
+            hd_tp = js("[...document.querySelectorAll('#charts .chart .hd')].map(h => [h.querySelector('.name').textContent, (h.querySelector('a.test-page') || {}).textContent || null])")
+            check("…each chart's header says “What is this test?” where its lab has a page",
+                  hd_tp and all(t == "What is this test? ↗" for _, t in hd_tp if t) and sum(1 for _, t in hd_tp if t) == js(
+                      "SERIES.filter(s => !s.watch && state.sel.has(s.name) && testPage(s.name)).length") > 0, hd_tp)
+            tp_all = js(TP_LINKS, "#seriesRows a.test-page") + js(TP_LINKS, "#charts a.test-page")
+            check("…each the page's own address, nothing of the result or the person, in a new tab with no referrer, named for where it goes",
+                  tp_all and not tp_bad(tp_all, "Labs"), tp_bad(tp_all, "Labs")[:4] or tp_all[:2])
+            check("…the words say what it's about and where, as “What is this test? <lab>: “<page>” on MedlinePlus, opens in a new tab”",
+                  js("document.querySelector('#seriesRows label[for=s_Hemoglobin] a.test-page').getAttribute('aria-label')")
+                  == "What is this test? Hemoglobin: “Hemoglobin Test” on MedlinePlus, opens in a new tab")
+            # following one (its default action stopped here, so nothing leaves the machine) neither ticks the row's lab nor
+            # opens the drawer row's trend
+            follow = """sel => { const a = document.querySelector(sel); let went = null; a.addEventListener('click', e => { went = a.href; e.preventDefault(); }, {once: true});
+              a.click(); return went; }"""
+            was = js("document.getElementById('s_Hemoglobin').checked")
+            went = js(follow, "#seriesRows label[for=s_Hemoglobin] a.test-page")
+            check("…following the list's ? leaves its lab ticked or not as it was", went and js("document.getElementById('s_Hemoglobin').checked") == was, [went, was])
+            open_tab("heatmap")
+            settle(400)
+            hm_tp = js("[...document.querySelectorAll('#hm g.hm-tq')].map(g => [g.querySelector('circle').dataset.tp, g.querySelector('title').textContent])")
+            hm_want = js("SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null) && testPage(s.name)).length")
+            js("window.__open = []; window.__realOpen = window.open; window.open = (...a) => { window.__open.push(a); return null; }; null")
+            js("document.querySelector('#hm g.hm-tq text').dispatchEvent(new MouseEvent('click', {bubbles: true}))")
+            opened = js("window.__open")
+            js("window.open = window.__realOpen; null")
+            check("…the heatmap's grid has a ? beside each such lab's name, opening its page alone in a new tab with no referrer",
+                  hm_tp and len(hm_tp) == hm_want and all(u in tp_urls and n.startswith("What is this test? ") for u, n in hm_tp)
+                  and opened == [[hm_tp[0][0], "_blank", "noopener,noreferrer"]] and js("state.tab") == "labs", [hm_tp[:2], hm_want, opened])
+            js("state.tables.add('#hm'); renderHeatmap()")
+            settle(300)
+            hmt = js(TP_LINKS, "#hmTable th a.test-page")
+            check("…its table has the links themselves, for the keyboard (the grid is one picture)", len(hmt) == hm_want and not tp_bad(hmt, "heatmap table"),
+                  [len(hmt), hm_want, tp_bad(hmt, "heatmap table")[:3]])
+            js("state.tables.delete('#hm'); renderHeatmap()")
+            open_tab("overview")
+            settle(400)
+            ov_tp = js("""[...document.querySelectorAll('#view-overview .tiles .tile')].filter(t => t.querySelector('.lbl span[title]')).map(t => [t.querySelector('.lbl span[title]').title,
+              t.parentElement.classList.contains('tile-tq') ? t.parentElement.querySelector('a.test-page').getAttribute('href') : null])""")
+            check("…each Overview lab tile with a page has a ? beside it, outside the tile's own button",
+                  ov_tp and all((u is not None) == js("n => !!testPage(n)", n) for n, u in ov_tp) and any(u for _, u in ov_tp)
+                  and not js("document.querySelector('#view-overview .tile a, #view-overview button a')")
+                  and not tp_bad(js(TP_LINKS, "#view-overview a.test-page"), "Overview"), ov_tp)
+            went = js(follow, "#view-overview .tile-tq a.test-page")
+            check("…following it stays on the Overview (the tile's own click isn't made)", went and js("state.tab") == "overview", [went, js("state.tab")])
+            js("openEvent(EV.filter(e => e.k === 'lab' && DATA.details[e.id]).pop())")
+            settle(400)
+            dr = js(TP_LINKS, "#dbody table.data a.test-page")
+            check("…the drawer's results have a ? beside each component with a page", dr and not tp_bad(dr, "drawer"), tp_bad(dr, "drawer")[:3] or dr)
+            went = js(follow, "#dbody table.data a.test-page")
+            check("…following it leaves the drawer open where it was (the row's Show trend isn't made)",
+                  went and js("document.getElementById('drawer').classList.contains('open')") and js("state.tab") == "overview")
+            js("closeDrawer()")
+            tp_seen, theme_before = [], js("document.documentElement.dataset.theme || null")
+            for mode in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", mode)
+                for width in (1400, 375):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    for view in ("labs", "heatmap", "overview"):
+                        open_tab(view)
+                        settle(400)
+                        if view == "heatmap":
+                            js("state.tables.add('#hm'); renderHeatmap()")
+                            settle(300)
+                        tp_seen += axe_check(page, f"What is this test? on {view}, {width} px, {mode}")[0]
+                        if width < 400:
+                            tp_seen += phone_fits(page, f"What is this test? on {view} ({mode})")
+                        if view == "heatmap":
+                            js("state.tables.delete('#hm'); renderHeatmap()")
+                    js("openEvent(EV.filter(e => e.k === 'lab' && DATA.details[e.id]).pop())")
+                    settle(400)
+                    tp_seen += axe_check(page, f"What is this test? in the drawer, {width} px, {mode}")[0]
+                    if width < 400:
+                        tp_seen += phone_fits(page, f"What is this test? in the drawer ({mode})")
+                    js("closeDrawer()")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…on Labs, the heatmap's table, the Overview and the drawer at 1400 and 375 px, light and dark: axe-core finds nothing serious and it all fits",
+                  not tp_seen, tp_seen[:6])
+            open_tab("labs")
+            settle(300)
+
             # ---- Timeline: event sort toggle
             page.click("#tab-timeline")
             settle()
@@ -5642,7 +5753,7 @@ def main():
             ev = js("(async () => { await loadDetails(DATA.events.map(e => e.id)); return EV.find(e => e.k === 'lab' && (DATA.details[e.id]?.ids || []).some(i => (DATA.details[i]?.rows || []).some(r => r[0] === 'Creatinine')))?.id; })()")
             js("id => openEvent(byId.get(id))", ev)
             page.wait_for_selector("#drawer.open #dbody td small.orig", timeout=10000)
-            row = js("[...document.querySelectorAll('#dbody tr')].map(r => [...r.cells].map(c => c.textContent)).find(c => c[0].replace('✎', '').trim() === 'Creatinine')")
+            row = js("[...document.querySelectorAll('#dbody tr')].map(r => [...r.cells].map(c => c.textContent)).find(c => c[0].replace(/[✎?]/g, '').trim() === 'Creatinine')")   # the ✎ and "What is this test?" (#163) beside the name
             check("drawer: the result in µmol/L, its range converted, the reported value and range under it",
                   row and re.match(r"[\d.]+ µmol/LReported [\d.]+ mg/dL, ref 0\.7", row[1]) and re.match(r"61\.9–115", row[2]), row)
             page.set_viewport_size({"width": 375, "height": 800})

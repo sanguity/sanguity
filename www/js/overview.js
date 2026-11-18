@@ -102,12 +102,15 @@ function renderOverview() {
     const st = statusOf(last);
     const d = prev ? last[1] - prev[1] : null;
     const recent = s.pts.filter(p => p.ts >= last.ts - 182 * DAY);
-    tiles.append(el("button", {class: "tile", onclick: () => goSeries(n)},
+    const tile = el("button", {class: "tile", onclick: () => goSeries(n)},
       el("span", {class: "lbl"}, el("span", {text: nice(n), title: n}), st ? el("span", {class: "st " + st.cls, text: st.text, title: st.title}) : null),
       el("span", {class: "val"}, last[5] || fmtNum(last[1]), el("small", {text: s.unit})),
       ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
       el("span", {class: "delta", text: (d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")} since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : "")}),
-      spark(s, recent)));
+      spark(s, recent));
+    // "What is this test?" (#163, test-pages.js): a link can't be inside the tile's button, so beside it in one card
+    const tq = testLink(n, true);
+    tiles.append(tq ? el("div", {class: "tile-tq"}, tile, tq) : tile);
   }
   const home = homeTiles();   // readings taken at home, when chosen in Settings (#225)
   if (!noLabs) { tiles.append(...home); box.append(tiles, el("p", {class: "range-note", text: RANGE_NOTE + (RANGES_USED ? RANGE_NOTE_SETTINGS : "")})); }

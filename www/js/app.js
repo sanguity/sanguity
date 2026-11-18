@@ -130,6 +130,7 @@ async function syncWarning(pid) {
     hLoad();
     renderProfileMenu();
     syncWarning(PROFILE.id);
+    testPagesLoad();   // "What is this test?" links (test-pages.js, #163), alongside the records
     $("#settingsLink").href = `settings.html?profile=${PROFILE.id}`;
     const r = await api(`profiles/${PROFILE.id}/data`);
     if (r.status === 401) { location.replace("login.html"); return; }
@@ -232,6 +233,7 @@ async function syncWarning(pid) {
   { const t = tabOfHash(); if (t) { state.tab = t[0]; if (t[1]) state.labsView = t[1]; } }
   if (!state.sel.size) state.sel = startLabs();   // the default saved view, else trends.defaultLabs (trends.js)
   if (state.preset !== "custom" || !(state.to > state.from)) setPeriod(state.preset);
+  await testPagesLoad();   // before the first draw, so the links are there (#163)
   switchTab(state.tab);
   booted = true;
   try { performance.mark("sanguity:ready"); } catch (e) {}   // the records page is ready: what docs/performance.md times (#201)

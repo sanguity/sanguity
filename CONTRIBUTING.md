@@ -58,6 +58,7 @@ python tests/test_fhir_export.py       # Export as FHIR: read back into the same
 python tests/test_med_log.py           # the medication log: doses logged, counted, kept, shared only when ticked (#235)
 python tests/test_growth.py            # BMI (#195), and the growth charts' tables against published percentiles (#196)
 python tests/test_condition_presets.py # dashboard presets by condition: the definitions file, matching, children (#186)
+python tests/test_lab_test_pages.py    # "What is this test?" links: the table's addresses and hosts, coverage, the route (#163)
 python tests/test_backups.py           # backups in Admin: schedule, pruning, late warning, restore check
 python tests/test_security_refresh.py  # the security review's checks: each route's access, columns encrypted or plain
 python -m unittest discover -s tests -p "test_importer*.py" -v   # the registry and every importer's fixtures
@@ -115,6 +116,26 @@ has the details):
 - Leave `"reviewed": false`: a clinician's review of each definition before it ships is recommended.
 - Run `python tests/test_condition_presets.py`: codes and check digits, no lab twice, a source each.
 - Word it as what's "commonly followed for" the condition, never as a test anyone should have.
+
+### Adding a "What is this test?" page
+
+The link beside a lab on Labs, the heatmap, the Overview's tiles and the drawer comes from
+[`lab-test-pages.json`](lab-test-pages.json) (#163): reviewed pages, each with the labs it's about. To add a page or a
+lab to one:
+
+- Find the test's page on [MedlinePlus](https://medlineplus.gov/lab-tests/) first: its lab test pages
+  (`https://medlineplus.gov/lab-tests/<slug>/`), else its Medical Encyclopedia's article about that test
+  (`https://medlineplus.gov/ency/article/<number>.htm`). Open it and read it: copy the address exactly as the site
+  gives it (never guess a slug), check it's about the test itself (what it measures and why it's done), not about
+  what a result means or a condition, and give its title as the page shows it. Another site needs a reason good
+  enough to add its host to `HOSTS` in `server/lab_pages.py` and to the file's `sites`.
+- List the labs by LOINC code (`"718-7"`), which brings in the names and spellings `lab-aliases.json` and
+  `condition-presets.json`'s `labs` give it; a lab `lab-aliases.json` names without a code goes in by that name
+  (`"D-Dimer"`). For a test neither file names, add the spellings labs print in the page's `aka`. A lab or spelling
+  goes on one page only; a lab with no page simply has no link.
+- The address is the page's alone: https, no query string or fragment, nothing else added to it.
+- Run `python tests/test_lab_test_pages.py`: addresses and hosts, codes and check digits, each lab once, and that the
+  demo's and the starter conditions' labs each have a page.
 
 ## Rules this project keeps
 

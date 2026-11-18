@@ -1460,3 +1460,22 @@ svg text.growth-pct{font-size:10px}
 .sets .pre-tiles>p{grid-column:1 / -1;margin:0}
 .sets .pre-tiles .pre-new{margin-left:auto}
 .sets .pre-offer{margin:6px 0}
+
+/* ---- "What is this test?" links (#163): beside a lab on Labs (its chart and the list), the heatmap, the Overview's
+   tiles and the drawer's results; the words, or a 24 px "?" where space is short (2.5.8) */
+.test-page{color:var(--accent);font-size:12px;display:inline-flex;align-items:center;min-height:24px;text-underline-offset:2px;white-space:nowrap}
+.test-page:hover{color:var(--ink)}
+.test-page.tq{justify-content:center;min-width:24px;vertical-align:middle;text-decoration:none}
+.test-page.tq span{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;border:1px solid currentColor;font-size:10.5px;font-weight:650;line-height:1}
+.srow.has-tq{grid-template-columns:18px minmax(0,1fr) auto auto}
+.srow .test-page.tq{margin:-5px 0}   /* a 24 px target, the row as before */
+.cell-btn~.test-page.tq{margin:3px 0 -3px}   /* clear of the name's 24 px button above it when the name wraps (the drawer) */
+/* a tile with the link: the card around the tile's button and the link beside it, so neither covers the other */
+.tile-tq{display:grid;grid-template-columns:minmax(0,1fr) auto;background:var(--surface);border:1px solid var(--ring);border-radius:12px}
+.tile-tq:hover{border-color:var(--axis)}
+.tile-tq>.tile{border:0;background:none;padding-right:2px;min-width:0}
+.tile-tq>.test-page{align-self:start;margin:6px 6px 0 0}
+#hm .hm-tq{cursor:pointer}
+#hm .hm-tq circle{fill:var(--surface);stroke:var(--accent)}
+#hm .hm-tq text{fill:var(--accent);font-size:9px;font-weight:650}
+#hm .hm-tq:hover circle{fill:var(--hover);stroke:var(--ink)}

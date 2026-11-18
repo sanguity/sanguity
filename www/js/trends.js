@@ -47,10 +47,10 @@ function renderSeriesList() {
   for (const g of order) {
     wrap.append(el("div", {class: "grp", text: g}));
     for (const s of g.startsWith("Watch") ? groups.get(g) : groups.get(g).sort((a, b) => b.n - a.n)) {
-      const L = latest(s); const id = "s_" + s.name.replace(/\W/g, "_");
-      wrap.append(el("label", {class: "srow", for: id},
+      const L = latest(s); const id = "s_" + s.name.replace(/\W/g, "_"), tq = testLink(s.name, true);   // #163
+      wrap.append(el("label", {class: "srow" + (tq ? " has-tq" : ""), for: id},
         el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; tvRefresh(); }}),
-        el("span", {class: "nm", title: `${renamedTitle("lab", s.name)} · ${s.n} results`, text: nice(s.name)}),
+        el("span", {class: "nm", title: `${renamedTitle("lab", s.name)} · ${s.n} results`, text: nice(s.name)}), tq,
         el("span", {class: "lv" + (L && L[4] ? " abn" : ""), title: L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "", text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : "text"})));
     }
   }
@@ -116,7 +116,7 @@ function chartCard(s) {
   const legend = hasStages ? el("span", {class: "lg"}, ...[["Deep", "--seq1"], ["REM", "--seq2"], ["Light", "--seq3"]].map(([n, c]) => el("span", {}, el("i", {style: {background: `var(${c})`}}), n)))
     : s.kind === "band" ? el("span", {class: "lg"}, el("span", {}, el("i", {style: {background: "var(--c-lab)", height: "3px"}}), "Daily average"), el("span", {}, el("i", {style: {background: "var(--c-lab)", opacity: .2}}), "Low–high")) : null;
   card.append(el("div", {class: "hd"}, el("span", {class: "name", title: renamedTitle("lab", s.name), text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
-    el("span", {class: "unit", text: `${s.unit}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), legend, read,
+    el("span", {class: "unit", text: `${s.unit}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), testLink(s.name), legend, read,   // "What is this test?" (#163, test-pages.js)
     viewSeg(s.name, nice(s.name), renderCharts),   // Chart | Table (#60)
     el("button", {text: "✕", title: "Remove", "aria-label": `Remove ${nice(s.name)}`, onclick: () => { state.sel.delete(s.name); renderLabs(); }}),
     rangeNote(s, pts, showTable)));
