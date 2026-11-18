@@ -3333,6 +3333,18 @@ def main():
             check("rename: an import from the drawer, its label kept beside it", js("document.getElementById('drawer').classList.contains('open')")
                   and src and "Fictional clinic portal" in src and f"({label})" in src, src)
             check("…in the import history too", js("i => api('profiles/1/imports').then(r => r.json()).then(j => j.imports.find(e => e.id === i).name)", imp) == "Fictional clinic portal")
+            # #366: beside the page the drawer isn't modal, and its own Escape (wireDialog) closed it with the form
+            esc366 = []
+            for pen in ("#dbody > .source [data-rename=import]", "#dbody table.data [data-rename=lab]"):
+                page.locator(pen).first.focus()
+                page.keyboard.press("Enter")
+                page.wait_for_selector(".rename-box input", timeout=5000)
+                page.keyboard.press("Escape")
+                settle(100)
+                esc366.append([js("!document.querySelector('.rename-box')"), js("(() => { const d = document.getElementById('drawer'); return d.open && d.classList.contains('open') && !d.matches(':modal'); })()"),
+                               js("p => document.activeElement === document.querySelector(p)", pen)])
+            check("…at 1400 px, beside the page, Escape in the form from a ✎ in the drawer (an import's, a result's lab) closes the form, not the drawer, focus back on its ✎ (#366)",
+                  esc366 == [[True, True, True]] * 2, esc366)
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             page.click("#dbody > .source [data-rename=import]")
