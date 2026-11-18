@@ -932,6 +932,9 @@ Everything on `main` so far; it becomes the first tagged release.
   the question is answered. Escape in a menu opened over the drawer closes only the menu. While a dialog or the drawer
   covers the page, the page behind no longer scrolls under the mouse wheel, so what focus goes back to is still on
   screen. The sheet's grab handle shows in forced colours.
+- **Escape in the rename form leaves the drawer open** (#366): at 800 px and wider, where the drawer sits beside the
+  page, Escape in the form from a ✎ in it (a result's lab, the Source line's import) closed the drawer too, and focus
+  was lost. It closes only the form now, focus back on its ✎, as on a phone.
 - **Menus in browsers without anchor positioning** (#356): where the browser can't place a menu itself (Firefox and
   Safari before their releases with CSS anchor positioning), a menu near the foot of the screen opened off it, stayed
   where it opened as the page scrolled, and was drawn at the screen's top left for a moment. It now opens over its

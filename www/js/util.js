@@ -318,7 +318,11 @@ function wireDialog(d) {
     d.sgBack = null;
     if (back && back.isConnected && back !== document.body && (d.contains(document.activeElement) || document.activeElement === document.body)) back.focus({preventScroll: true});
   });
-  d.addEventListener("keydown", ev => { if (ev.key === "Escape" && !ev.defaultPrevented && d.open && !d.matches(":modal")) d.close(); });
+  // not while a menu or the rename box is open (a popover that isn't the toasts or the tooltip): the browser closes
+  // that after this, and only that (#366, as drawer.js's own Escape does)
+  d.addEventListener("keydown", ev => {
+    if (ev.key === "Escape" && !ev.defaultPrevented && d.open && !d.matches(":modal") && !document.querySelector(":popover-open:not([popover=manual])")) d.close();
+  });
   // a sheet swiped down: by its grab handle, or what's marked data-grab, not a control in it; far enough (a quarter
   // of its height, at most 120 px) or quick, it closes, else it springs back
   d.addEventListener("pointerdown", ev => {
