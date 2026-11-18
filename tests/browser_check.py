@@ -996,7 +996,7 @@ TILE_LINES_JS = r"""() => {
     }
     return out;
   };
-  const date = /(\p{L}{3,4}\.? \d{1,2},|\d{1,2} \p{L}{3,4}\.?|(?<!\p{L})\p{L}{3,4}\.?)$/u, year = /^(\d{1,2},? )?\d{4}(?![-\d])/u;   // a month's short name, a year not a year-month-day date (#339)
+  const date = /(\p{L}{2,}\.? \d{1,2},|\d{1,2}\.? \p{L}{2,}\.?|(?<!\p{L})\p{L}{2,}\.?)$/u, year = /^(\d{1,2},? )?\d{4}(?![-\d])/u;   // a month's short name, a year not a year-month-day date (#339, #345)
   const out = {n: 0, bad: [], uneven: []};
   for (const e of document.querySelectorAll('.tile .delta, .stat .l + .l')) {
     if (!e.checkVisibility() || !e.textContent.trim()) continue;
@@ -1598,6 +1598,12 @@ def main():
                               "and no date kept together sticks out of its tile",
                               got["n"] > 0 and not got["bad"] and not got["uneven"] and not past, [got, past])
             js("f => useDates(DATES.zone, f)", fmt_was)
+            # #345: other languages' short month names (Finnish, Hungarian, German, Catalan) are kept together too, and a
+            # year-month-day date alone
+            kept = js("""() => ['▼ −4.3 lb since diagnosis · 12 marras 2026', 'since 18 szept. 2026', 'since 18. Aug. 2026', 'since 18 ag. 2026',
+                '▼ −0.03 since 2026-08-18'].map(s => keepDates(s).filter(p => typeof p !== 'string').map(p => p.textContent))""")
+            check("…dates in other languages' month names are kept together too, and only the date (#345)",
+                  kept == [["12 marras 2026"], ["18 szept. 2026"], ["18. Aug. 2026"], ["18 ag. 2026"], ["2026-08-18"]], kept)
             js("[state.preset, state.from, state.to] = window._was330.slice(1); switchTab(window._was330[0]); renderAll()")
             page.set_viewport_size({"width": 1400, "height": 900})
 
