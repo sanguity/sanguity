@@ -6,9 +6,12 @@
    specificity; styles outside any layer (a page's own <style>, an element's style attribute) win over all of them.
    app.css says what each layer holds.
 
-   Each theme is written out twice, on purpose: once for the system's dark mode (unless this browser chose light) and
-   once for a chosen dark theme (theme.js sets data-theme on <html> before the page draws). Scripts read some tokens'
-   values, so they stay plain colours rather than light-dark() pairs. */
+   The colours (#254, Direction A of #243: warm neutrals, a navy accent for controls only, red only for what's out of
+   range or wrong) are each declared once, light and dark as a light-dark() pair, which follows color-scheme: the
+   system's (light dark) unless this browser chose a theme, when theme.js sets data-theme on <html> before the page
+   draws and the two rules at the end pin color-scheme to it. A token is a pair until something uses it, so a script
+   that wants a colour reads it from an element that uses the token (getComputedStyle), never the token itself.
+   docs/accessibility.md has the contrast of each pair that's text or an edge, measured by tools/contrast.py. */
 @layer reset, tokens, base, components, pages, utilities;
 
 @layer tokens {
@@ -17,54 +20,38 @@
   --font-ui:"Inter","Inter fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --font-display:"Source Serif 4","Source Serif fallback",Georgia,"Times New Roman",serif;
   --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
-  color-scheme:light;
-  --page:#f9f9f7; --surface:#fcfcfb; --raised:#ffffff;
-  --ink:#0b0b0b; --ink2:#52514e; --muted:#6a6964;
-  --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10); --hover:rgba(11,11,11,.04);
-  --c-lab:#2a78d6; --c-imaging:#eb6834; --c-procedure:#1baf7a; --c-study:#eda100;
-  --c-letter:#e87ba4; --c-visit:#008300; --c-contact:#5c7a62; --c-message:#6250d6; --c-journal:#0d7f86; --c-immunization:#a3479c; --c-ecg:#94602a;
-  --stay:rgba(11,11,11,.07); --stay-line:#898781;
-  --range:rgba(42,120,214,.10);
-  --crit:#d03b3b; --good:#0ca30c;
-  --accent:#2470cc; --good-text:#006300;
-  --accent-fill:#2470cc; --on-accent:#fff; --crit-fill:#d03b3b; --field-line:#8f8e89;   /* #202: text 4.5:1, a field's edge 3:1 */
-  --brand:#8a2438; --brand-ink:#fbf4f1;
-  --div-lo:#2a78d6; --div-mid:#f0efec; --div-hi:#e34948;
-  --seq1:#184f95; --seq2:#3987e5; --seq3:#86b6ef;
-  --c-cycle:#b2305f;   /* menstrual cycle tracking (#183): over 5:1 against the page in both themes */
-  --zone1:#86b6ef; --zone2:#5598e7; --zone3:#2f78d4; --zone4:#1d58a8; --zone5:#123a70;   /* heart rate zones (#197): one hue, light to dark */
-}
-@media (prefers-color-scheme:dark){
-  :root:where(:not([data-theme="light"])){
-    color-scheme:dark;
-    --page:#0d0d0d; --surface:#1a1a19; --raised:#222220;
-    --ink:#f0efec; --ink2:#c3c2b7; --muted:#9c9a94;
-    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
-    --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
-    --c-letter:#d55181; --c-visit:#008300; --c-contact:#8fae95; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4; --c-ecg:#c8955a;
-    --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#4a93ec;
-    --accent-fill:#2a6cc4; --on-accent:#fff; --crit:#e66767; --crit-fill:#c43434; --field-line:#74736e;
-    --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
-    --seq1:#9ec5f4; --seq2:#5598e7; --seq3:#1c5cab;
-    --brand:#b4485e; --brand-ink:#1c1a19;
-    --c-cycle:#f290b4;
-    --zone1:#1d4f91; --zone2:#2d6fc4; --zone3:#4b8fe6; --zone4:#7fb1f0; --zone5:#b5d3f8;   /* dark to light */
-  }
-}
-:root[data-theme="dark"]{
-  color-scheme:dark;
-  --page:#0d0d0d; --surface:#1a1a19; --raised:#222220;
-  --ink:#f0efec; --ink2:#c3c2b7; --muted:#9c9a94;
-  --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
-  --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
-  --c-letter:#d55181; --c-visit:#008300; --c-contact:#8fae95; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4; --c-ecg:#c8955a;
-  --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#4a93ec;
-  --accent-fill:#2a6cc4; --on-accent:#fff; --crit:#e66767; --crit-fill:#c43434; --field-line:#74736e;
-  --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
-  --seq1:#9ec5f4; --seq2:#5598e7; --seq3:#1c5cab;
-  --brand:#b4485e; --brand-ink:#1c1a19;
-  --c-cycle:#f290b4;
-  --zone1:#1d4f91; --zone2:#2d6fc4; --zone3:#4b8fe6; --zone4:#7fb1f0; --zone5:#b5d3f8;
+
+  color-scheme:light dark;
+  /* surfaces: the page, a card (and the top bar), and what sits on a card (a field, a button, a menu); in light a
+     card is white on the warm page, in dark each step is lighter. --hover tints a row or a control under the pointer
+     and is the track behind the tabs; --paper stays white in both (a document's frame, a QR code); --scrim is behind
+     a dialog */
+  --page:light-dark(#f6f5f1,#121110); --surface:light-dark(#ffffff,#1a1917); --raised:light-dark(#ffffff,#22211e);
+  --hover:light-dark(#eeece6,rgb(238 236 230 / .07)); --paper:#ffffff; --scrim:rgb(0 0 0 / .45);
+  /* text: ink, secondary, muted (4.5:1 or more on each surface above) */
+  --ink:light-dark(#1a1915,#eeece6); --ink2:light-dark(#4a4740,#c4c0b6); --muted:light-dark(#6b675e,#9d998f);
+  /* lines: a divider or a chart's grid, a card's or a button's edge, a chart's axis; a field's edge is 3:1 (#202) */
+  --grid:light-dark(#e3e0d8,#2e2c28); --ring:light-dark(#e3e0d8,rgb(238 236 230 / .12)); --axis:light-dark(#c4c0b6,#3e3b36);
+  --field-line:light-dark(#8a867c,#77736a);
+  /* the accent, navy, for controls, links and the focus ring only (the data blue is --c-lab): text in --accent, a
+     filled button in --accent-fill with --on-accent on it */
+  --accent:light-dark(#1f4f8f,#8db4ee); --accent-fill:light-dark(#1f4f8f,#2f5fa3); --on-accent:#ffffff;
+  /* out of range, or something wrong; in range, or done */
+  --crit:light-dark(#b3261e,#f2877c); --crit-fill:#b3261e; --good:light-dark(#1e6b34,#6bc08a); --good-text:light-dark(#1e6b34,#6bc08a);
+  --brand:light-dark(#8a2438,#b4485e); --brand-ink:light-dark(#fbf4f1,#1c1a19);
+  /* the data: each kind of record in its own colour everywhere (unchanged; Redesign 7 revisits them) */
+  --c-lab:light-dark(#2a78d6,#3987e5); --c-imaging:light-dark(#eb6834,#d95926); --c-procedure:light-dark(#1baf7a,#199e70);
+  --c-study:light-dark(#eda100,#c98500); --c-letter:light-dark(#e87ba4,#d55181); --c-visit:#008300;
+  --c-contact:light-dark(#5c7a62,#8fae95); --c-message:light-dark(#6250d6,#9085e9); --c-journal:light-dark(#0d7f86,#3bb8bf);
+  --c-immunization:light-dark(#a3479c,#d07fc4); --c-ecg:light-dark(#94602a,#c8955a);
+  --stay:light-dark(rgb(26 25 21 / .07),rgb(238 236 230 / .07)); --stay-line:light-dark(#8a867c,#77736a);
+  --range:light-dark(rgba(42,120,214,.10),rgba(57,135,229,.16));
+  --div-lo:light-dark(#2a78d6,#3987e5); --div-mid:light-dark(#f0efec,#383835); --div-hi:light-dark(#e34948,#e66767);
+  --seq1:light-dark(#184f95,#9ec5f4); --seq2:light-dark(#3987e5,#5598e7); --seq3:light-dark(#86b6ef,#1c5cab);
+  --c-cycle:light-dark(#b2305f,#f290b4);   /* menstrual cycle tracking (#183): over 5:1 against the page in both themes */
+  /* heart rate zones (#197): one hue, light to dark in light, dark to light in dark */
+  --zone1:light-dark(#86b6ef,#1d4f91); --zone2:light-dark(#5598e7,#2d6fc4); --zone3:light-dark(#2f78d4,#4b8fe6);
+  --zone4:light-dark(#1d58a8,#7fb1f0); --zone5:light-dark(#123a70,#b5d3f8);
 }
 /* type (#255): seven sizes and four weights; every font-size and font-weight in the stylesheets is one of them. 14 px
    (--fs-3) is the body and anything people read to act on; 11.5 the smallest, for badges and chart labels; 22 and 28 for
@@ -84,4 +71,6 @@
   /* motion: hover, press and menus; the drawer. The reduced-motion rule (app.css) turns both off */
   --dur-1:120ms; --dur-2:200ms; --ease-out:cubic-bezier(.2,.8,.2,1);
 }
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
 }

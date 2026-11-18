@@ -40,7 +40,7 @@ function spark(s, pts, {w = 200, h = 34, band = true} = {}) {
   }
   g.push(el("svg:path", {d: pts.map((p, i) => (i ? "L" : "M") + x(p.ts).toFixed(1) + "," + y(p[1]).toFixed(1)).join(""), fill: "none", stroke: "var(--muted)", "stroke-width": 1.5, "vector-effect": "non-scaling-stroke"}));
   g.push(last[4] ? abnMark(x(last.ts), y(last[1]), last[4], 3.4, "spark-abn")   // ▲ or ▼ when it's out of range, not only red (#60)
-    : el("svg:circle", {cx: x(last.ts), cy: y(last[1]), r: 3, fill: "var(--accent)"}));
+    : el("svg:circle", {cx: x(last.ts), cy: y(last[1]), r: 3, fill: "var(--c-lab)"}));
   svg.replaceChildren(...g);
   return svg;
 }

@@ -18,7 +18,7 @@ from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MARK = os.path.join(ROOT, "docs", "logo", "sanguity-mark.svg")
 OUT = os.path.join(ROOT, "www", "icons")
-PAGE = "#f9f9f7"   # --page in www/css/tokens.css (light), also the manifest's background_color
+PAGE = "#f6f5f1"   # --page in www/css/tokens.css (light), also the manifest's background_color
 
 # name, size in px, background (None = transparent), share of the side the drop's 64-unit box takes
 ICONS = [("icon-192.png", 192, None, 1.0), ("icon-512.png", 512, None, 1.0),
