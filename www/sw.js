@@ -33,6 +33,7 @@ const FILES = [
 
   "js/medlog.js",
   "js/details.js",
+  "js/test-pages.js",
 ];
 
 /* the part of a same-origin address after the app's own folder, if it's one of the app's own files: "" for the

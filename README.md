@@ -29,7 +29,7 @@ person's records appear in this repository.
 | Overview | Key labs with sparklines, watch and scale summaries, active problems, allergies, immunizations, upcoming visits, costs since a milestone |
 | Body and activity | Watch, sleep and smart-scale data: weight and body composition, sleep stages, steps and workouts (with heart rate zones from the age or a measured maximum), heart rate and HRV; blood pressure, body temperature, blood oxygen and respiratory rate taken at home beside the readings taken at visits; cardio fitness (VO2 max) as the watch estimates it; blood glucose from a meter or a continuous glucose monitor (CGM), with time in the standard ranges; BMI over time; a child's growth charts (WHO and CDC percentiles) |
 | Timeline | Every visit, stay, lab draw, report, immunization, message, document and claim on one zoomable timeline, with a searchable list; each medication as spans from its start through dose changes to its stop, with pharmacy fills marked |
-| Labs | Lab results against reference ranges, as charts over time (each with a table of its values), with procedures, imaging and your milestones marked, and saved views of the labs you chart together; or as a heatmap of every draw, one row per lab; a name filter beside the list of labs narrows either |
+| Labs | Lab results against reference ranges, as charts over time (each with a table of its values), with procedures, imaging and your milestones marked, and saved views of the labs you chart together; or as a heatmap of every draw, one row per lab; a name filter beside the list of labs narrows either; "What is this test?" beside a lab links to a plain-language page about the test (MedlinePlus) |
 | Costs | Insurance claims by month or year, type of care and provider, and what you actually paid out of pocket: typed in, exported or from claims, matched to claims, counted once, with HSA and FSA totals |
 
 ![Labs: blood counts dipping through treatment cycles, with milestone markers](docs/screenshots/trends.png)
@@ -476,6 +476,8 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
 ## Privacy and security
 
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.
+  (A "What is this test?" link beside a lab is opened by your browser, in a new tab, only when you follow it, and is
+  the page's own address alone: nothing about the result or the person goes with it.)
   Outside contact happens only when you ask for it: importing a pasted SMART Health Link fetches it from its host
   (and, for a Health Card, the issuer's public keys) after you confirm, HTTPS only; and once you connect a source
   ([Connected sources](#connected-sources)), the server talks to that vendor only, through an app your install
@@ -783,6 +785,8 @@ docker/allinone.py  The published image's default command: every service in one 
 docker/dev-stack.sh A test copy from any branch beside a real install (see above)
 build.py            Builds a profile's data.json from the exports listed in sources.json (standard-library Python 3)
 lab-aliases.json    Canonical lab names, LOINC codes and other spellings that map onto them
+lab-test-pages.json "What is this test?": a plain-language page about each lab, by LOINC code or name (CONTRIBUTING.md
+                    says how to add one)
 condition-presets.json  Settings → Dashboard's presets by condition: labs by LOINC code, home readings, a guideline
                     each (docs/condition-presets.md says how to add one)
 nginx.conf          Web server: the app's pages and security headers; passes /api/ to the app

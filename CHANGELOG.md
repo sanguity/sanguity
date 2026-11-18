@@ -581,6 +581,15 @@ Everything on `main` so far; it becomes the first tagged release.
   lowered to match. The visit summary, share links and both exports read every record's details on the server, as
   before. The offline copy keeps the details of the records opened on that device, as long as the records stay the
   same; one not opened before says so offline.
+- **"What is this test?"** (#163): beside a lab on Labs (its chart's header and the list of labs), the heatmap (its
+  table, and a ? beside each name in the grid), the Overview's lab tiles and the drawer's results, a link to a
+  plain-language page about the test itself: what it measures and why it's done, never what a result means. The pages
+  are a small bundled table, `lab-test-pages.json` (MedlinePlus's lab test pages first, each address checked by
+  hand), chosen by the series' LOINC code, else its name; a lab with no page has no link. A link is the page's own
+  address and nothing else (no value, date or anything about the person), opens a new tab with no referrer and says
+  so; the server contacts nothing, so Outside connections are unchanged. `tests/test_lab_test_pages.py` checks the
+  table (https on an allowed host, each lab once, the demo's and the starter conditions' labs covered); CONTRIBUTING.md
+  says how to add a page.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

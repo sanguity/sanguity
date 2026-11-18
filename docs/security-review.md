@@ -91,6 +91,7 @@ check changes without updating the list, and it exercises this table against a l
 | Accounts, require two-factor, sign-in notices, account activity | No | No | No | Yes (with their own second factor) | No | No |
 | Connected-source apps (vendor setup), lab-name matches, install settings, backups | No | No | No | Yes (with their own second factor; the most powerful changes also need a fresh check) | No | No |
 | The provider directory | Yes | Yes | Yes | Yes | No | No |
+| "What is this test?" pages (#163, `GET /api/lab-test-pages`): the app's own table of links, nothing of anyone's | Yes | Yes | Yes | Yes | No | No |
 
 Someone signed in to an account a profile isn't shared with gets 404 on every route of that profile. A share link
 or a feed address opens nothing but itself: with it and no session, every other route answers 401, and a feed's

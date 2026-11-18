@@ -40,7 +40,7 @@ function resultTable(rows) {
     el("thead", {}, el("tr", {}, ["Component", "Value", "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
     el("tbody", {}, rows.map(([n, v, u, rr, f], i) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", title: "Show trend", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
       el("td", {title: renamedTitle("lab", n)}, SERIES.some(s => s.name === n && s.n) ? el("button", {class: "cell-btn", type: "button", text: nice(n)}) : nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
-        SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}, ...rowOrig(rows[i])), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : ""}, ...flagNodes(f)))))));   // the mark and the word (#60)
+        SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null, testLink(n, true)), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}, ...rowOrig(rows[i])), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : ""}, ...flagNodes(f)))))));   // the mark and the word (#60); "What is this test?" (#163)
 }
 /* #41: a converted row's value and range as reported (units.js), on its own line under the value */
 function rowOrig(row) {

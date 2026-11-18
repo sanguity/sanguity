@@ -65,9 +65,13 @@ function renderHeatmap() {
   for (const s of rows) {
     const ry = yOf.get(s.name);
     const nm = nice(s.name), edit = canRename();   // an editor renames a row by its name (#38, rename.js)
-    g.push(el("svg:text", {class: "row" + (edit ? " renamable" : ""), x: LW - 8, y: ry + rowH - 4, "text-anchor": "end",
+    // "What is this test?" (#163, test-pages.js): a ? beside the name, clicked; by keyboard, the link in the table or a chart
+    const tp = testPage(s.name), cut = (LW < 150 ? 17 : 28) - (tp ? 3 : 0);
+    if (tp) g.push(el("svg:g", {class: "hm-tq"}, el("svg:title", {text: testPageName(s.name, tp)}),
+      el("svg:circle", {cx: LW - 14, cy: ry + rowH / 2, r: 6, "data-tp": tp.url}), el("svg:text", {x: LW - 14, y: ry + rowH - 3.5, "text-anchor": "middle", "data-tp": tp.url}, "?")));
+    g.push(el("svg:text", {class: "row" + (edit ? " renamable" : ""), x: LW - (tp ? 24 : 8), y: ry + rowH - 4, "text-anchor": "end",
       ...(edit ? {"data-rename": "lab", "data-key": s.name} : {})},   // clicked; by keyboard, the ✎ in the heatmap's table or a chart (#202: the grid is one picture)
-      nm.length > (LW < 150 ? 17 : 28) ? nm.slice(0, LW < 150 ? 16 : 27) + "…" : nm,
+      nm.length > cut ? nm.slice(0, cut - 1) + "…" : nm,
       el("svg:title", {text: renamedTitle("lab", s.name) + (edit ? " · click to rename" : "") + rowRanges(s)})));
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(dayKey(p.ts), p);
     for (const [k, p] of byDay) {
@@ -103,7 +107,9 @@ function renderHeatmap() {
   svg.onpointerleave = hideTip;
   svg.onclick = ev => {
     const d = ev.target.dataset || {};
-    if (d.rename) { openRename(ev.target, "lab", d.key); return; } const k = d.k || (d.day && isoDay(+d.day)); if (!k) return;
+    if (d.rename) { openRename(ev.target, "lab", d.key); return; }
+    if (d.tp) { window.open(d.tp, "_blank", "noopener,noreferrer"); return; }   // the page's address alone (#163)
+    const k = d.k || (d.day && isoDay(+d.day)); if (!k) return;
     const e = EV.find(e => e.k === "lab" && isoDay(e.ts) === k) || EV.find(e => e.k === "procedure" && isoDay(e.ts) === k); if (e) openEvent(e);
   };
 }
@@ -126,7 +132,7 @@ function hmTable(rows, cols) {
       tb.append(el("tr", {class: "grp"}, el("th", {scope: "rowgroup", colspan: cols.length + 1, text: panel})));
     }
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(isoDay(p.ts), p);
-    tb.append(el("tr", {}, el("th", {scope: "row", title: renamedTitle("lab", s.name) + rowRanges(s)}, `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`, renameButton("lab", s.name)),
+    tb.append(el("tr", {}, el("th", {scope: "row", title: renamedTitle("lab", s.name) + rowRanges(s)}, `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`, renameButton("lab", s.name), testLink(s.name, true)),   // #163
       ...cols.map(([k]) => {
         const p = byDay.get(k); if (!p) return el("td", {});
         const lv = hmLevel(p[1], p[2], p[3]), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it
