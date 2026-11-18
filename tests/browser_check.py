@@ -8750,6 +8750,23 @@ def main():
                         rbad += phone_fits(page, f"{path.split('.')[0]}#{g}")
                 check(f"at {width} px{' with WCAG text spacing' if spaced else ' (400% zoom)'}: every records tab and every page's groups fit, "
                       "nothing scrolling sideways, no control cut off or overlapping (1.4.10, 1.4.12, #202)", not rbad, rbad[:8] or "")
+            # a French browser writes the Overview's insurance figures wider ("4 772 $US", unbreakable): at 375 and 320 px
+            # they fit, wrapping to a second line if need be (#342)
+            fr_ctx = browser.new_context(viewport={"width": 375, "height": 800}, bypass_csp=True, locale="fr-FR")
+            fr_ctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            frp = fr_ctx.new_page()
+            frp.goto(base + "/?profile=1#overview")
+            frp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted && document.querySelector('.ov-minis')", timeout=20000)
+            fr_bad, fr_seen = [], []
+            for w in (375, 320):
+                frp.set_viewport_size({"width": w, "height": 800})
+                frp.wait_for_timeout(250)
+                fr_seen += frp.evaluate("[...document.querySelectorAll('.ov-mini-v')].map(v => v.textContent)")
+                fr_bad += phone_fits(frp, f"Overview, fr-FR, {w} px") + [f"{w} px: “{t}” ends at {r} px, past its card's {c}" for t, r, c in frp.evaluate(
+                    "[...document.querySelectorAll('.ov-mini-v')].map(v => [v.textContent, Math.round(v.getBoundingClientRect().right), Math.round(v.closest('.card').getBoundingClientRect().right)])") if r > c]
+            fr_ctx.close()
+            check("the Overview's insurance figures in a French browser fit 375 and 320 px (#342)",
+                  not fr_bad and any("$US" in t for t in fr_seen), fr_bad[:6] or fr_seen)
             page.set_viewport_size({"width": 1400, "height": 900})
             # forced colours (Windows' high contrast): a filled button (Save, Sign in, a dialog's action) keeps an edge
             ctx = browser.new_context(viewport={"width": 1400, "height": 900}, forced_colors="active")
@@ -8905,13 +8922,41 @@ def main():
             page.wait_for_function("!document.getElementById('adminTools').hidden && document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
             check("with 2FA on, the account tools are back", js("document.getElementById('adminTf').hidden && !document.querySelector('.adm-gate')"))
             # activity: the profile's log (Sharing → Activity, #168) shows the records being opened (by this run), and
-            # filters by kind; the admin's account log shows the account just created
+            # filters by kind, a document opened named by its record's title, not its stored file's name (#342); the
+            # admin's account log shows the account just created
+            page.goto(base + "/?profile=1")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+            doc342 = js("""(async () => { const e = EV.find(e => e.k === 'document' && !e.hidden); await loadDetails([e.id]);
+                await fetch(DATA.details[e.id].url.split('#')[0]); return e.title; })()""")
             page.goto(base + "/sharing.html?profile=1#activity")
             page.wait_for_function("[...document.querySelectorAll('#actBody .activity tbody tr')].some(r => r.textContent.includes('opened the records'))", timeout=10000)
             check("profile activity shows the records being opened", js(display, "activity") != "none" and js(display, "people") == "none")
             page.locator("#actBody .activity select").nth(1).select_option("document")
             page.wait_for_function("[...document.querySelectorAll('#actBody .activity tbody tr')].every(r => r.textContent.includes('opened') && !r.textContent.includes('opened the records'))", timeout=10000)
-            check("activity filters by kind", js("document.querySelector('#actBody .activity tbody').textContent.includes('demo-report.pdf') || document.querySelector('#actBody .activity tbody').textContent.includes('Nothing yet')"))
+            opened342 = js("[...document.querySelectorAll('#actBody .activity tbody tr td:nth-child(3)')].map(td => td.textContent)")
+            check("activity filters by kind, and names a document opened by its record's title (#342)", f"opened the document “{doc342}”" in opened342, [doc342, opened342[:4]])
+            # …and on a phone an entry's long words wrap inside its card (#342): an older entry's hex file name and a
+            # long IPv6 address, put in the log directly. Shown as documents opened: the newest 50 of everything may not
+            # reach a document this session opened long ago (logged once a session)
+            from server import activity as act342, db as dbm342
+            adb = dbm342.connect()
+            act342.log(adb, "document", dict(adb.execute("SELECT id, username FROM users WHERE username=?", (USER,)).fetchone()), 1,
+                       {"name": "2bb451be3c5320f3cf287c23c3462596.pdf"}, "2001:0db8:85a3:0000:0000:8a2e:0370:7334")
+            adb.close()
+            fit342 = []
+            for w in (375, 320):
+                page.set_viewport_size({"width": w, "height": 800})
+                page.goto("about:blank")   # the same address again would only move to its #, not load the log afresh
+                page.goto(base + "/sharing.html?profile=1#activity")
+                page.wait_for_function("document.querySelectorAll('#actBody .activity tbody tr').length > 0", timeout=10000)
+                page.locator("#actBody .activity select").nth(1).select_option("document")
+                page.wait_for_function("[...document.querySelectorAll('#actBody .activity tbody tr')].some(r => r.textContent.includes('8a2e:0370')) && "
+                                       "[...document.querySelectorAll('#actBody .activity tbody tr')].some(r => r.textContent.includes('opened the document'))", timeout=10000)
+                settle(150)
+                fit342 += phone_fits(page, f"Sharing → Activity, {w} px") + [f"{w} px: the activity table is {r} px wide in its {c} px card" for r, c in
+                    [js("[document.querySelector('#actBody .activity table').getBoundingClientRect().right, document.querySelector('#actBody').getBoundingClientRect().right].map(Math.round)")] if r > c]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…at 375 and 320 px, with a document opened and a long IPv6 address, Sharing → Activity fits (#342)", not fit342, fit342[:6])
             page.goto(base + "/admin.html#activity")
             page.wait_for_function("document.querySelector('#acctLog tbody') && document.querySelector('#acctLog tbody').textContent.includes('created the account alex')", timeout=10000)
             check("admin sees the install's activity, under Admin → Install activity", js(display, "installLog") != "none" and js(display, "users") == "none")

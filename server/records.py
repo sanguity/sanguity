@@ -47,7 +47,7 @@ is key_hash (schema version 13) on events and series: a keyed hash of the source
 itself stays inside the encrypted body), so an import preview finds records it has seen before without decrypting
 every row. '' means the record has no key; NULL, not worked out yet (backfill_key_hashes, at start-up).
 """
-import hashlib, hmac, json, threading
+import hashlib, hmac, json, re, threading
 from contextlib import contextmanager
 
 from . import crossmatch, crypto, edits, encounters, journal, medications, oop, units
@@ -388,18 +388,40 @@ def _entry(db, pid):
                 _cache[pid] = _cache.pop(pid)   # most recently used last
                 return hit
         data = _assemble(db, pid)
-    entry = {"key": key, "rev": f"{key[0]}.{key[1]}", "body": None, "page": None, "details": {}}
+    entry = {"key": key, "rev": f"{key[0]}.{key[1]}", "body": None, "page": None, "details": {}, "docs": {}}
     if data is not None:
         entry["body"] = _dumps(data)
         details = data.get("details") or {}
         entry["page"] = _dumps({**data, "details": {k: x for k, v in details.items() if (x := _listed(v)) is not None}})
         entry["details"] = {str(k): _dumps(v) for k, v in details.items() if v is not None}
+        entry["docs"] = _document_titles(data)
     with _cache_lock:
         _cache.pop(pid, None)
         _cache[pid] = entry
         while len(_cache) > CACHED_PROFILES:
             _cache.pop(next(iter(_cache)))
     return entry
+
+
+_DOC_URL = re.compile(r"/documents/([^/#?]+)")
+
+
+def _document_titles(data):
+    """{document id: the title of the record that links to it, as the page shows it (its edits applied)}"""
+    titles = {str(e.get("id")): e.get("title") for e in data.get("events") or [] if isinstance(e, dict)}
+    out = {}
+    for k, d in (data.get("details") or {}).items():
+        if isinstance(d, dict) and d.get("type") == "file" and isinstance(d.get("url"), str) and isinstance(titles.get(str(k)), str):
+            if (m := _DOC_URL.search(d["url"])) and titles[str(k)].strip():
+                out.setdefault(m.group(1), titles[str(k)].strip())
+    return out
+
+
+def document_title(db, pid, doc):
+    """The title of the record a document of profile pid belongs to, as the page shows it, or None (#342): what the
+    activity log says was opened, rather than the stored file's name"""
+    e = _entry(db, pid)
+    return e["docs"].get(doc) if e else None
 
 
 def served(db, pid):

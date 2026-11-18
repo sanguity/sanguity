@@ -216,7 +216,9 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-row .r{color:var(--muted);font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 .ov-row .s{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-2)}
 .ov-mini-v{font-size:var(--fs-6);font-weight:var(--fw-semibold)}   /* the Overview's insurance figures (overview.js) */
-.ov-minis{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-3);margin:var(--sp-2) 0 var(--sp-3)}   /* …three side by side (#333) */
+.ov-minis{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);margin:var(--sp-2) 0 var(--sp-3)}   /* …three side by side (#333), wrapping
+   when one is too wide for a third, as a figure in another currency's format can be at 320 px (#342) */
+.ov-minis>*{flex:1 1 0}
 /* heatmap */
 /* overflow-x:clip (not auto) so the wrapper is not a scroll container and the month axis can stick to the window bottom */
 .hm-wrap{overflow-x:clip}
@@ -389,6 +391,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .tbl th{text-align:left;color:var(--muted);font-weight:var(--fw-medium);font-size:var(--fs-2);padding:var(--sp-1) var(--sp-2) var(--sp-1) 0}
 .acct .tbl td{border-top:1px solid var(--grid);padding:var(--sp-1) var(--sp-2) var(--sp-1) 0;vertical-align:middle}
 .acct .tbl td.acts{display:flex;flex-wrap:wrap;gap:var(--sp-1)}
+.acct .activity .tbl td:nth-child(n+3){overflow-wrap:anywhere}   /* an activity log's what and address: a long word (a file's name, an IPv6 address) wraps (#342) */
 .acct .lm-edit{display:flex;flex-wrap:wrap;gap:var(--sp-1);align-items:center}
 .acct .lm-edit input{flex:1 1 140px}
 .acct .prof{border-top:1px solid var(--grid);padding:var(--sp-3) 0}
@@ -414,9 +417,10 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
   main.acct{padding:var(--sp-3) var(--sp-4)}
   .acct .tbl thead{display:none}
   .acct .tbl tr{display:grid;grid-template-columns:1fr auto;gap:2px var(--sp-2);border-top:1px solid var(--grid);padding:var(--sp-1) 0}
-  .acct .tbl td{border:0;padding:0}
+  .acct .tbl td{border:0;padding:0;overflow-wrap:anywhere}   /* a long word wraps, not the page (#342) */
   /* the hidden headings' names, on the cells (labelCells, util.js, #320): read once, as the headings are gone too */
-  .acct .tbl td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:var(--fs-2);font-weight:var(--fw-medium)}
+  .acct .tbl td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:var(--fs-2);font-weight:var(--fw-medium);overflow-wrap:normal}
+  .acct .activity .tbl td:nth-child(n+3){grid-column:1/-1}   /* …and an activity log's what and address take the row's width */
 }
 /* import page (import.html) */
 .imp .imp-tabs{margin:var(--sp-4) 0 var(--sp-1)}
