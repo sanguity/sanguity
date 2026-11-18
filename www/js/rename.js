@@ -65,8 +65,8 @@ function openRename(anchor, kind, key) {
     el("p", {class: "hint", text: kind === "import" ? "Shown wherever a record says where it came from." : "Shown on every tab, for everyone this profile is shared with."}),
     msg);
   box.addEventListener("submit", ev => { ev.preventDefault(); save(input.value.trim()); });
-  box.addEventListener("keydown", ev => { if (ev.key === "Escape") { ev.stopPropagation(); closeRename(); } });   // not the drawer's Escape
-  document.body.append(box);
+  box.addEventListener("keydown", ev => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeRename(); } });   // not the drawer's Escape (nor a modal one's, #262)
+  (anchor.closest("dialog") || document.body).append(box);   // in the drawer while it's a modal dialog (#262): the page behind is inert
   renameBox = {box, anchor, kind, key};
   placeRename();
   document.addEventListener("pointerdown", renameOutside, true);

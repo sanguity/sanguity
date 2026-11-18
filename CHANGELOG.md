@@ -857,6 +857,13 @@ Everything on `main` so far; it becomes the first tagged release.
   pointer is on them, and put away by Escape (WCAG 1.4.13). A `title` stays only for a hint beside a name that says
   it all, on disabled controls and on frames; the drawer's wider-panel button and the shared page's light/dark
   button have names of their own.
+- **One dialog, three ways: centred, a side panel and a sheet** (#262): the app's dialog (`ask()`) and the records'
+  drawer are one `<dialog>` component (`openDialog` in `util.js`). The drawer is a side panel beside the records as
+  before, other records opening in it while it stays open; where it covers the whole page it's a modal dialog, so the
+  browser keeps Tab and a screen reader in it instead of the drawer's own code. On a phone it's a bottom sheet with a
+  grab handle: swiped down by the handle or its title, it closes (its close button and Escape still do). Escape in a dialog asked
+  from the drawer no longer closes the drawer too, and what the app says (the status line) is heard while a dialog
+  is open.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

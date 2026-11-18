@@ -251,6 +251,29 @@ button.tile{cursor:pointer}
 .sg-tip:popover-open{opacity:1;transition:opacity var(--dur-1) var(--ease-out)}
 @starting-style{ .sg-tip:popover-open{opacity:0} }
 @supports not (anchor-name: --a){ .sg-tip{top:var(--tip-top,auto);left:var(--tip-left,auto);margin:0} }
+
+/* ---- dialogs, side panels and sheets (#262, openDialog in util.js): one <dialog> on the page's surface with the
+   higher elevation and a scrim behind it when modal, shown three ways. Centred (ask()): in the middle, the large
+   corner, scrolling inside itself if it's taller than the screen. Side: down the right edge, 640 px or the screen's
+   width, sliding in and out (the records' drawer); beside the page it isn't modal and sits over it (z-index), as
+   the drawer always did. Sheet: from the screen's foot, the full width, its top corners rounded, a grab handle on
+   top; it follows a finger down (--drag, set by the script) and slides back or away. A side panel's and a sheet's
+   slide out keeps it in place (display, overlay) until it's gone; the reduced-motion rule turns all of it off. */
+dialog.sg-dlg{margin:0;padding:0;border:1px solid var(--ring);background:var(--surface);color:var(--ink);box-shadow:var(--shadow-2);max-width:none;max-height:none}
+dialog.sg-dlg::backdrop{background:var(--scrim)}
+dialog.sg-dlg-center{margin:auto;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);overflow:auto;border-radius:var(--r-lg)}
+dialog:is(.sg-dlg-side,.sg-dlg-sheet){position:fixed;z-index:40;overflow:hidden;
+  transition:transform var(--dur-2) var(--ease-out),translate var(--dur-1) var(--ease-out),display var(--dur-2) allow-discrete,overlay var(--dur-2) allow-discrete}
+dialog.sg-dlg-side{inset:0 0 0 auto;width:min(640px,100%);height:100%;border-width:0 0 0 1px;transform:translateX(105%)}
+dialog.sg-dlg-sheet{inset:auto 0 0 0;width:100%;max-height:calc(100dvh - var(--sp-4));border-width:1px 0 0;border-radius:var(--r-lg) var(--r-lg) 0 0;
+  transform:translateY(105%)}
+dialog:is(.sg-dlg-side,.sg-dlg-sheet)[open]{transform:none}
+@starting-style{ dialog.sg-dlg-side[open]{transform:translateX(105%)} dialog.sg-dlg-sheet[open]{transform:translateY(105%)} }
+dialog.sg-dlg.sg-dragging{transition:none;translate:0 var(--drag,0px)}   /* only while dragged: a translate would hold what's fixed inside it (the rename box) */
+.sg-grab{flex:none;height:var(--sp-5);touch-action:none;cursor:grab;display:flex;align-items:center;justify-content:center}
+.sg-grab::before{content:"";width:36px;height:4px;border-radius:var(--r-pill);background:var(--axis)}
+dialog.sg-dlg:not(.sg-dlg-sheet)>.sg-grab{display:none}
+dialog.sg-dlg-sheet [data-grab]{touch-action:none}
 }
 
 @layer pages {
@@ -457,8 +480,8 @@ table.data tr.link:hover td{background:var(--hover)}
 .empty{color:var(--muted);padding:var(--sp-6);text-align:center}
 .empty.slim{padding:var(--sp-4)}   /* inside a card with other rows (overview.js) */
 /* detail drawer */
-#drawer{position:fixed;top:0;right:0;bottom:0;width:min(640px,100%);background:var(--surface);border-left:1px solid var(--ring);box-shadow:var(--shadow-2);transform:translateX(105%);transition:transform var(--dur-2) var(--ease-out);z-index:40;display:flex;flex-direction:column}
-#drawer.open{transform:none}
+#drawer[open]{display:flex;flex-direction:column}   /* a side panel or, on a phone, a sheet (components, #262) */
+#drawer.sg-dlg-sheet{height:calc(100dvh - var(--sp-4))}   /* as tall as it can be: a document fills it */
 #drawer .dh{display:flex;gap:var(--sp-2);align-items:flex-start;padding:var(--sp-4) var(--sp-4);border-bottom:1px solid var(--grid)}
 #drawer .dh h3{margin:0;font-size:var(--fs-5);line-height:1.3}
 #drawer .dh .sub{color:var(--ink2);font-size:var(--fs-2);margin-top:3px}
@@ -1324,8 +1347,7 @@ main[tabindex="-1"]:focus{outline:none}
 
 /* ---- the app's own dialog (#210): ask() in util.js, a <dialog> over the page in place of the browser's own pop-up;
    the action button is blue, or red for one that can't be undone */
-dialog.sg-ask{width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;margin:auto;padding:var(--sp-4) var(--sp-5) var(--sp-4);border:1px solid var(--ring);border-radius:var(--r-lg);background:var(--surface);color:var(--ink);box-shadow:var(--shadow-2)}
-dialog.sg-ask::backdrop{background:var(--scrim)}
+dialog.sg-ask{width:min(440px,calc(100vw - 32px));padding:var(--sp-4) var(--sp-5) var(--sp-4)}
 .sg-ask h2{margin:0 0 var(--sp-2);font-size:var(--fs-5);font-weight:var(--fw-semibold);line-height:1.3}
 .sg-ask-msg p{margin:0 0 var(--sp-2);color:var(--ink2)}
 .sg-ask-msg label{display:block;margin:var(--sp-3) 0 var(--sp-3);font-weight:var(--fw-medium);font-size:var(--fs-3);color:var(--ink2)}

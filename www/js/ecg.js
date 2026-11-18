@@ -124,7 +124,7 @@ function ecgRecording(e, d, w, width) {
     const blob = new Blob([lines.join("\r\n") + "\r\n"], {type: "text/csv;charset=utf-8"});
     const z = zdate(e.ts), two = n => String(n).padStart(2, "0"), name = `ecg-${isoDay(e.ts)}-${two(z.getHours())}${two(z.getMinutes())}.csv`;
     const url = URL.createObjectURL(blob), a = el("a", {href: url, download: name, hidden: true});
-    document.body.append(a); a.click(); a.remove();
+    dl.after(a); a.click(); a.remove();   // beside the button: in the drawer, which may be a modal dialog (#262)
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     sayIn(say, `Downloaded ${name}: ${S.length.toLocaleString()} samples.`);
   }});

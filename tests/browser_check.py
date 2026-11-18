@@ -4231,7 +4231,8 @@ def main():
             page.keyboard.press("Enter")
             page.wait_for_selector("#drawer.open", timeout=5000)
             settle(300)
-            behind = js("[...document.body.children].filter(x => x.inert).map(x => x.id || x.tagName.toLowerCase())")
+            # a modal <dialog> now (#262): the browser keeps the page behind inert, not a script
+            behind = js("[document.getElementById('drawer').matches(':modal'), document.getElementById('drawer').classList.contains('sg-dlg-sheet'), [...document.querySelectorAll('[inert]')].length]")
             stops = []
             for _ in range(30):
                 page.keyboard.press("Tab")
@@ -4240,21 +4241,48 @@ def main():
                 cdp = page.context.new_cdp_session(page)
                 tree = cdp.send("Accessibility.getFullAXTree")["nodes"]
                 cdp.detach()
-                return sorted({n["role"]["value"] for n in tree if not n.get("ignored") and n.get("role", {}).get("value") in ("main", "banner", "complementary")})
+                return sorted({n["role"]["value"] for n in tree if not n.get("ignored") and n.get("role", {}).get("value") in ("main", "banner", "complementary", "dialog")})
             exposed = ax_roles()
-            check("at 375 px the drawer covers the page: Tab stays inside it, the page behind inert (#209)",
-                  "content" in behind and "drawer" not in behind and set(stops) <= {"drawer", "body"} and stops.count("drawer") > 20, [behind, stops])
-            check("…and out of Chromium's accessibility tree: only the drawer is there", "main" not in exposed and "banner" not in exposed and "complementary" in exposed, exposed)
+            check("at 375 px the drawer covers the page, a modal sheet (#262): Tab stays inside it, the page behind inert (#209) with no script's inert",
+                  behind == [True, True, 0] and set(stops) <= {"drawer", "body"} and stops.count("drawer") > 20, [behind, stops])
+            check("…and out of Chromium's accessibility tree: only the drawer is there, a dialog", "main" not in exposed and "banner" not in exposed and "dialog" in exposed, exposed)
             page.keyboard.press("Escape")
             settle(300)
             check("…Escape closes it, the page usable again and focus back on the event it came from",
-                  js("![...document.body.children].some(x => x.inert && x.id !== 'drawer') && document.getElementById('drawer').inert && document.activeElement.matches('#list .tl-row')"))
+                  js("!document.getElementById('drawer').open && !document.querySelector('[inert], dialog:modal') && document.activeElement.matches('#list .tl-row')"))
+            # #262: on a phone the drawer is a bottom sheet with a grab handle: dragged a little it springs back, swiped
+            # down by the handle or its header it closes, focus back on the event; ✕ and Escape still close it (2.5.7)
+            page.keyboard.press("Enter")
+            page.wait_for_selector("#drawer.open", timeout=5000)
+            settle(300)
+            grab = page.locator("#drawer > .sg-grab").bounding_box()
+            top0 = js("document.getElementById('drawer').getBoundingClientRect().top")
+            x0, y0 = grab["x"] + grab["width"] / 2, grab["y"] + grab["height"] / 2
+            page.mouse.move(x0, y0)
+            page.mouse.down()
+            for dy in range(10, 51, 10):   # slowly: a quick flick closes it
+                page.mouse.move(x0, y0 + dy)
+                settle(60)
+            dragged = js("document.getElementById('drawer').getBoundingClientRect().top") - top0
+            page.mouse.up()
+            settle(300)
+            back = js("t => [document.getElementById('drawer').open, Math.round(document.getElementById('drawer').getBoundingClientRect().top - t)]", top0)
+            head = page.locator("#drawer .dh h3").bounding_box()
+            page.mouse.move(head["x"] + 5, head["y"] + 5)
+            page.mouse.down()
+            page.mouse.move(head["x"] + 5, head["y"] + 400, steps=8)
+            page.mouse.up()
+            settle(400)
+            check("…a sheet on a phone (#262): its grab handle follows a drag and springs back, and swiped down by its header it closes, focus back on the event",
+                  48 <= dragged <= 52 and back == [True, 0] and grab["width"] > 300 and grab["height"] >= 24
+                  and js("!document.getElementById('drawer').open && !document.getElementById('drawer').classList.contains('open') && document.activeElement.matches('#list .tl-row')"),
+                  [dragged, back, grab, js("document.activeElement.className")])
             page.set_viewport_size({"width": 1400, "height": 900})
             page.focus("#list .tl-row")
             page.keyboard.press("Enter")
             page.wait_for_selector("#drawer.open", timeout=5000)
             check("…at 1400 px it covers only part of the page, which stays usable", not js("document.querySelector('main').inert")
-                  and ax_roles() == ["banner", "complementary", "main"], ax_roles())
+                  and not js("document.getElementById('drawer').matches(':modal')") and ax_roles() == ["banner", "dialog", "main"], ax_roles())
             # #261: a tooltip (data-tip, util.js) in place of a title=, here the drawer's ⇔: shown on hover after a moment
             # and on keyboard focus, never over its button, kept while the pointer moves onto it, and put away by Escape
             # with the pointer and focus left where they are (WCAG 1.4.13), the panel staying open
@@ -4292,14 +4320,15 @@ def main():
             check("…and on keyboard focus, gone when focus moves on, the next button's shown instead",
                   focused and focused["on"] == "dwide" and js("document.activeElement.id") == "dclose" and (js(tip_at) or {}).get("text") == "Close (Esc)", [focused, js(tip_at)])
             page.keyboard.press("Escape")
-            # the drawer's slide (--dur-2) and a tab's hover (--dur-1, #256), pointed at
+            # the drawer's slide (--dur-2, its display and top layer kept as long, a sheet's spring back --dur-1, #262)
+            # and a tab's hover (--dur-1, #256), pointed at
             motion = "[getComputedStyle(document.getElementById('drawer')).transitionDuration, smoothly(), getComputedStyle(document.getElementById('tab-labs')).transitionDuration]"
             page.hover("#tab-labs")
             page.emulate_media(reduced_motion="reduce")
             less = js(motion)
             page.emulate_media(reduced_motion="no-preference")
             check("less motion when asked for: no transitions, no smooth scrolling (and both back when not)", less == ["0s", "auto", "0s"]
-                  and js(motion) == ["0.2s", "smooth", "0.12s, 0.12s, 0.12s, 0.12s"], [less, js(motion)])   # a filled button's shade too (#258)
+                  and js(motion) == ["0.2s, 0.12s, 0.2s, 0.2s", "smooth", "0.12s, 0.12s, 0.12s, 0.12s"], [less, js(motion)])   # a filled button's shade too (#258)
             page.reload()   # the saved views as the server has them again (none)
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
 
@@ -9240,7 +9269,8 @@ def main():
               return {modal: d.matches(':modal'), role: d.getAttribute('role'), title: d.querySelector('h2').textContent,
                 named: document.getElementById(d.getAttribute('aria-labelledby')).textContent, buttons: b.map(x => x.textContent),
                 onCancel: document.activeElement === b[0], bg: rgb(getComputedStyle(d).backgroundColor), ink: rgb(getComputedStyle(d).color),
-                action: rgb(getComputedStyle(b[1]).backgroundColor), inside: r.left >= 16 && r.right <= innerWidth - 16 && r.top >= 0 && r.bottom <= innerHeight}; })()"""
+                action: rgb(getComputedStyle(b[1]).backgroundColor), inside: r.left >= 16 && r.right <= innerWidth - 16 && r.top >= 0 && r.bottom <= innerHeight,
+                centred: d.classList.contains('sg-dlg-center'), live: d.contains(document.getElementById('sgStatus')) && d.contains(document.getElementById('sgAlert'))}; })()"""
             for theme in ("light", "dark"):
                 js(f"localStorage.setItem('ht-theme', '{theme}'); applyTheme()")
                 page.locator("#memberList button", has_text="Leave").click()
@@ -9257,6 +9287,9 @@ def main():
                 check(f"…{theme}: Escape cancels it, and focus is back on Leave",
                       js("document.activeElement.textContent") == "Leave" and USER in page.inner_text("#memberList")
                       and js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m.length)") == 1, js("document.activeElement.outerHTML"))
+                check(f"…{theme}: it's the shared dialog's centred way (#262), the status line inside it while it's open (what's behind a modal dialog isn't heard) and back after",
+                      d["centred"] and d["live"] and js("document.getElementById('sgStatus').parentElement === document.body && document.getElementById('sgAlert').parentElement === document.body"),
+                      [d["centred"], d["live"]])
             # the sign-in page's note after a recovery code: on the page with a Continue, not an alert (#210)
             ctx = browser.new_context(viewport={"width": 375, "height": 800}, color_scheme="dark")   # no session: the sign-in page
             lp = ctx.new_page()
