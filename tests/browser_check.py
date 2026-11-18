@@ -4176,15 +4176,14 @@ def main():
             page.click("#tvBox button:text-is('Delete')")
             page.wait_for_function("CFG.trends.views.length === 0", timeout=10000)
             page.mouse.move(700, 500)
-            settle(9500)
+            settle(10500)
             still = len(js(toasts)["toasts"])
             page.focus("#tab-labs")   # (the view picker is disabled with no view left)
             page.keyboard.press("Alt+n")
             reached = js("document.activeElement.closest('.sg-toast') ? document.activeElement.textContent : null")
-            settle(1500)   # past 10 s, with focus in it: it waits
             waited = len(js(toasts)["toasts"])
             page.keyboard.press("Escape")
-            check("…a toast stays at least 10 s, Alt+N takes focus to its Undo, it waits while focus is in it, and Escape puts it away with focus back",
+            check("…a toast with an Undo is still there past 10 s (#362), Alt+N takes focus to its Undo, and Escape puts it away with focus back",
                   still == 1 and reached == "Undo" and waited == 1 and not js(toasts)["toasts"] and js("document.activeElement.id") == "tab-labs"
                   and js("CFG.trends.views.length") == 0, [still, reached, waited, js("document.activeElement.id")])
             check("deleting the last view from Trends leaves none", js("document.getElementById('viewPick').disabled") is True)
@@ -4377,6 +4376,41 @@ def main():
                   48 <= dragged <= 52 and back == [True, 0] and grab["width"] > 300 and grab["height"] >= 24
                   and js("!document.getElementById('drawer').open && !document.getElementById('drawer').classList.contains('open') && document.activeElement.matches('#list .tl-row')"),
                   [dragged, back, grab, js("document.activeElement.className")])
+            # #362: toasts over nothing being worked on. At 568×320 (a phone on its side) a dialog's buttons aren't under a
+            # toast, scrolled either way: the toasts are in the dialog's flow, under its buttons. At 800 px, the drawer open
+            # beside the page, they're in the drawer, at its foot under its content, not over it
+            js("for (const n of [1, 2]) toast('A toast with an Undo, for the browser check ' + n + '.', {action: 'Undo', onAction: async () => {}})")
+            page.set_viewport_size({"width": 568, "height": 320})
+            js("""window.sgAsked = ask({title: 'Delete all cycle data?', action: 'Delete all', danger: true, message: [
+                  'Everything kept for this profile is deleted: the receiver\\'s database, every upload it archived, and what imported Apple Health exports brought.',
+                  'Backups made before now, downloaded exports and summaries and your phone keep their own copies: deleting can\\'t reach them.']}); 0""")
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=5000)
+            under = """() => { const d = document.querySelector('dialog.sg-ask'), ts = [...document.querySelectorAll('.sg-toast')].map(t => t.getBoundingClientRect());
+                return [...d.querySelectorAll('.sg-ask-acts button')].filter(b => { const r = b.getBoundingClientRect();
+                  return ts.some(t => r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top); }).map(b => b.textContent); }"""
+            covered = [js(under)]
+            js("document.querySelector('dialog.sg-ask').scrollTop = 1e6")
+            covered.append(js(under))
+            in_dialog = js("[document.getElementById('sgToasts').parentElement.matches('dialog.sg-ask'), document.querySelectorAll('dialog.sg-ask .sg-toast').length]")
+            page.click("dialog.sg-ask .sg-ask-acts button:first-child")
+            page.wait_for_function("!document.querySelector('dialog.sg-ask')", timeout=5000)
+            check("toasts placed (#362): at 568×320 a dialog's buttons are under no toast, scrolled either way, the toasts in its flow",
+                  covered == [[], []] and in_dialog == [True, 2] and js("document.getElementById('sgToasts').matches(':popover-open')"), [covered, in_dialog])
+            page.set_viewport_size({"width": 800, "height": 900})
+            page.focus("#list .tl-row")
+            page.keyboard.press("Enter")
+            page.wait_for_selector("#drawer.open", timeout=5000)
+            settle(300)
+            placed = js("""(() => { const d = document.getElementById('drawer'), dr = d.getBoundingClientRect(), body = d.querySelector('.db').getBoundingClientRect();
+                return {modal: d.matches(':modal'), inDrawer: document.getElementById('sgToasts').parentElement === d,
+                        over: [...document.querySelectorAll('.sg-toast')].filter(t => { const r = t.getBoundingClientRect();
+                          return r.left < dr.left || r.right > dr.right + 1 || r.top < body.bottom - 1 || r.bottom > dr.bottom + 1; }).length}; })()""")
+            check("…at 800 px with the drawer open beside the page, the toasts are in the drawer, under its content, over none of it",
+                  placed == {"modal": False, "inDrawer": True, "over": 0}, placed)
+            page.keyboard.press("Escape")
+            settle(300)
+            check("…and over the page again once it's closed", js("document.getElementById('sgToasts').parentElement === document.body && document.getElementById('sgToasts').matches(':popover-open')"))
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             page.set_viewport_size({"width": 1400, "height": 900})
             page.focus("#list .tl-row")
             page.keyboard.press("Enter")
@@ -6706,6 +6740,28 @@ def main():
             check("…and leaves a setting changed again since as it is, said so", ticked() == first and "left as it is" in js(sum_msg), [ticked(), js(sum_msg)])
             js(api_put, ["profiles/1/settings/summary.ticked", []])
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # #362: at 375 px, toasts with an Undo up at the foot of the screen, Tab through all of Settings: nothing that
+            # takes focus is wholly under one (the page scrolls it clear, and its foot can scroll up above them)
+            page.reload()
+            page.wait_for_selector("#sec-summary [data-key='summary.ticked'] input[type=checkbox]", timeout=10000)
+            page.set_viewport_size({"width": 375, "height": 740})
+            js("for (const n of [1, 2]) toast('Saved “Measures ticked at first”, for the browser check ' + n + '.', {action: 'Undo', onAction: async () => {}})")
+            js("document.activeElement.blur(); scrollTo(0, 0)")
+            hidden_by_toast = []
+            for _ in range(400):
+                page.keyboard.press("Tab")
+                r = js("""(() => { const a = document.activeElement; if (a === document.body || a.closest('.sg-toasts')) return null;
+                    const r = a.getBoundingClientRect(), ts = [...document.querySelectorAll('.sg-toast')].map(t => t.getBoundingClientRect());
+                    return ts.some(t => r.top >= t.top - 1 && r.bottom <= t.bottom + 1 && r.left >= t.left - 1 && r.right <= t.right + 1)
+                      ? (a.getAttribute('aria-label') || a.textContent || a.type).trim().slice(0, 40) : null; })()""")
+                if r:
+                    hidden_by_toast.append(r)
+                if js("document.activeElement.closest('.sg-toasts') !== null"):
+                    break   # past the end of the page: into the toasts
+            check("toasts placed (#362): at 375 px nothing on Settings that takes focus is wholly under a toast",
+                  not hidden_by_toast and js("document.querySelectorAll('#sgToasts .sg-toast').length") == 2, hidden_by_toast)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/")   # back on the records page, as the checks below expect
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
 
@@ -9855,6 +9911,15 @@ def main():
             until(LOADED, 20000)
             until("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000)
             check("PWA: the service worker controls the page", ph.evaluate("navigator.serviceWorker.controller.scriptURL").endswith("/sw.js"))
+            # #362: on a touch screen (where a tap is pointerenter then pointerleave at once) a toast with an Undo is still
+            # there after its time; one that only says something goes
+            ph.evaluate("toast('Deleted “Touch” (browser check).', {action: 'Undo', onAction: async () => {}}); toast('Only saying (browser check).')")
+            ph.tap("#sgToasts .sg-toast .sg-toast-text")
+            ph.wait_for_timeout(10800)
+            kept_t = ph.evaluate("[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent)")
+            check("toasts on a touch screen (#362): one with an Undo is still there after 10 s, tapped or not; one that only says goes",
+                  kept_t == ["Deleted “Touch” (browser check)."], kept_t)
+            ph.evaluate("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             man = ph.evaluate("fetch(document.querySelector('link[rel=manifest]').href).then(async r => ({type: r.headers.get('content-type'), j: await r.json()}))")
             check("PWA: the manifest is served as a manifest, with its icons",
                   man["type"].startswith("application/manifest+json") and man["j"]["display"] == "standalone"

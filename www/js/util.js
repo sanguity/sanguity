@@ -281,14 +281,20 @@ function openDialog(d, {as = "center", modal = true} = {}) {
 }
 /* what every page shares (.sg-follow: the status line of announce(), #sgStatus and #sgAlert, the toasts and the
    tooltip) goes into the modal dialog on top while one is open, and back to the page after: what's behind a modal
-   dialog is inert, so a screen reader would hear nothing said there, and a toast's Undo couldn't be pressed. A
-   popover among them is shown again once moved (a move hides it), over the dialog. */
+   dialog is inert, so a screen reader would hear nothing said there, and a toast's Undo couldn't be pressed. The
+   toasts (#362) go into a dialog's flow, at its foot, so they're never over what's in it (its buttons, what has
+   focus): the modal one on top, or else the drawer open beside the page, which they'd cover; out of one they're a
+   popover over the page again. */
 function liveFollow() {
-  const home = [...document.querySelectorAll("dialog:modal")].at(-1) || document.body;
-  for (const r of document.querySelectorAll(".sg-follow")) if (r.parentElement !== home) {
-    home.append(r);
-    if (r.matches("#sgToasts") && !r.matches(":popover-open")) r.showPopover();
-  }
+  const modal = [...document.querySelectorAll("dialog:modal")].at(-1), home = modal || document.body;
+  for (const r of document.querySelectorAll(".sg-follow:not(#sgToasts)")) if (r.parentElement !== home) home.append(r);
+  const t = document.getElementById("sgToasts"), to = modal || document.querySelector("dialog:is(.sg-dlg-side,.sg-dlg-sheet)[open]") || document.body;
+  if (!t || t.parentElement === to) return;
+  const had = t.contains(document.activeElement) ? document.activeElement : null;
+  to.append(t);
+  if (to !== document.body) t.removeAttribute("popover");
+  else if (!t.matches(":popover-open")) { t.setAttribute("popover", "manual"); t.showPopover(); }
+  if (had) had.focus({preventScroll: true});   // (a move takes focus away)
 }
 function wireDialog(d) {
   d.sgWired = true;
@@ -443,16 +449,19 @@ function icon(name, {label} = {}) {
    can be done about it, at the foot of the screen on every page: "Saved “Key labs”. · Undo", "Imported 6 lab results ·
    Open Labs · Undo". action and onAction are a button and what it does (an Undo); actions more of them, each
    {text, onClick} or a link {text, href, onClick} (onClick, if any, before the link is followed). An onClick that
-   gives back false wasn't done (a question it asked was answered No): the toast stays. A toast stays at least 10 seconds (timeout, in ms, can only make it longer),
-   and its time stops while the pointer is on it or focus is in it; its close button puts it away, as Escape does with focus in
-   it. Alt+N takes focus to the newest toast's first button (not while typing in a field: on a Mac, Option+N types ñ,
+   gives back false wasn't done (a question it asked was answered No): the toast stays. A toast with something to do
+   (an Undo) stays until it's done, put away or sent away by a fourth (#362: on a touch screen nothing else could keep
+   it, and an Undo may be the only way back); one that only says stays at least 10 seconds (timeout, in ms, can only
+   make it longer), its time stopping while the pointer is on it or focus is in it. Its close button puts it away, as
+   Escape does with focus in it. Alt+N takes focus to the newest toast's first button (not while typing in a field: on a Mac, Option+N types ñ,
    #361); no toast takes focus by itself. Focus that went into the toasts, however it got there, goes back where it
    came from when its toast goes, however it goes (acted on, put away, or sent away by a fourth), and stays on a button
    while its action runs. Up to three show at once, the newest at the foot; a fourth sends the oldest away.
    They're one region named Notifications (a landmark a screen reader can go to), its list a polite live region, so
    each toast is said once as it appears: its words are said only there, not through announce() as well (a page's own
-   line beside it shows them with sayIn's say: false). The region is a popover over everything, and goes into a modal
-   dialog while one is open (liveFollow, above), so its buttons work there. An action that fails says so in the toast,
+   line beside it shows them with sayIn's say: false). The region is a popover over the page, which scrolls what takes
+   focus clear of it (--toasts-h, app.css); while a modal dialog or the drawer is open it's in that dialog's flow, at
+   its foot, over nothing in it (liveFollow, above), and its buttons work there. An action that fails says so in the toast,
    which stays. What can't be undone, or touches security, still asks first (ask()). */
 const toast = (() => {
   let region = null, list = null, back = null;
@@ -461,8 +470,11 @@ const toast = (() => {
     if (region || !document.body || !document.querySelector('link[rel=stylesheet][href$="app.css"]')) return;
     list = el("div", {class: "sg-toast-list", "aria-live": "polite", "aria-relevant": "additions"});
     region = el("section", {class: "sg-toasts sg-follow", id: "sgToasts", "aria-label": "Notifications", popover: "manual"}, list);
-    (document.querySelector("dialog:modal") || document.body).append(region);
+    document.body.append(region);
     region.showPopover();
+    liveFollow();   // into a dialog, if one is open
+    // while toasts show over the page, what takes focus is scrolled clear of them (scroll-padding, app.css, #362)
+    new ResizeObserver(() => placeAt(document.documentElement, {"--toasts-h": list.offsetHeight})).observe(list);
   };
   make();   // there from the start, as announce()'s lines are: a live region is followed only if it was there first
   if (!region) document.addEventListener("DOMContentLoaded", make);
@@ -496,7 +508,7 @@ const toast = (() => {
         else list.lastElementChild?.querySelector("button, a").focus();
       }
     };
-    const run = () => { clearTimeout(timer); start = Date.now(); timer = setTimeout(gone, left); };
+    const run = () => { clearTimeout(timer); if (!acts.length) { start = Date.now(); timer = setTimeout(gone, left); } };   // (one to act on stays)
     const pause = () => { if (timer) { clearTimeout(timer); timer = 0; left = Math.max(2000, left - (Date.now() - start)); } };
     const resume = () => { if (!over && !t.contains(document.activeElement)) run(); };
     t = el("div", {class: "sg-toast", role: "group", "aria-label": "Notification"},
