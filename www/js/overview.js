@@ -62,7 +62,7 @@ function homeTiles() {
   const mine = (r, names) => r && r.home && r.tf ? r.tf.map((f, i) => f ? `${names[i]} ${tgtWord(f)}`.trim() : "").filter(Boolean).map(t => " · " + t).join("") : "";
   const tile = (label, val, unit, sub, id) => el("button", {class: "tile home-tile", "data-home": id.slice(3), onclick: () => openVital(id)},
     el("span", {class: "lbl"}, el("span", {text: label})), el("span", {class: "val"}, val, el("small", {text: unit})),
-    el("span", {class: "delta", text: sub}));
+    el("span", {class: "delta"}, keepDates(sub)));   // a date kept on one line (#330)
   for (const k of want) {
     if (k === "bp") {
       const r = latest([...V.bp.home, ...V.bp.clinic]);
@@ -106,7 +106,7 @@ function renderOverview() {
       el("span", {class: "lbl"}, el("span", {text: nice(n), title: n}), st ? el("span", {class: "st " + st.cls, text: st.text, title: st.title}) : null),
       el("span", {class: "val"}, last[5] || fmtNum(last[1]), el("small", {text: s.unit})),
       ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
-      el("span", {class: "delta", text: (d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")} since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : "")}),
+      el("span", {class: "delta"}, keepDates((d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")} since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : ""))),
       spark(s, recent));
     // "What is this test?" (#163, test-pages.js): a link can't be inside the tile's button, so beside it in one card
     const tq = testLink(n, true);
@@ -157,7 +157,7 @@ function renderOverview() {
           el("span", {class: "lbl", text: "Weight"}),
           el("span", {class: "val"}, last ? last[1].toFixed(1) : "–", el("small", {text: s.unit})),
           ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
-          el("span", {class: "delta", text: d != null ? `${d >= 0 ? "▲ +" : "▼ −"}${Math.abs(d).toFixed(1)} ${s.unit} since ${lcLabel(pm.label)} · ${fmtD(last.ts)}` : last ? fmtD(last.ts) : ""}),
+          el("span", {class: "delta"}, keepDates(d != null ? `${d >= 0 ? "▲ +" : "▼ −"}${Math.abs(d).toFixed(1)} ${s.unit} since ${lcLabel(pm.label)} · ${fmtD(last.ts)}` : last ? fmtD(last.ts) : "")),
           spark(s, s.pts.filter(p => p.ts > last.ts - 365 * DAY), {band: false})));
         continue;
       }

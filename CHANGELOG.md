@@ -767,6 +767,10 @@ Everything on `main` so far; it becomes the first tagged release.
   `font-weight: 550` or a `transition: .3s` fails it. The scripts' own off-scale spacing (Costs' legends, claims
   toolbar and paid-amount buttons, the Overview's insurance figures, Body and activity's legends and sections) is on
   the scale now, in classes; its hints name the type, radius, elevation, spacing and motion tokens.
+- **Tiles' change lines wrap evenly, and their sparklines line up** (#330): in Inter at the new sizes a tile's change
+  line wrapped to leave "2026" or "period" alone on a line, and the tiles that wrapped grew, so a row's sparklines
+  were at different heights. A date stays on one line, the lines are balanced (on the Overview, Body and activity and
+  Costs), and a tile's sparkline sits at its foot, so every sparkline in a row starts at the same height.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
