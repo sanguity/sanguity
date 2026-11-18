@@ -1252,6 +1252,21 @@ CONTROL_SIZES_JS = r"""phone => { const ok = phone ? [44] : [24, 32, 40], out = 
     out.push(`${e.tagName.toLowerCase()}.${[...e.classList].join('.')} “${(e.getAttribute('aria-label') || e.textContent).trim().slice(0, 24)}” ${h}`);
   }
   return out; }"""
+# #371 (#358's rule): a title on something that takes focus, whose words are on no screen: a title shows for neither the
+# keyboard nor touch, and screen readers don't reliably read it. Each control shown that the keyboard reaches (an
+# iframe's title is its name, so not those), with a title any of whose words (but the little ones: "to", "of") is in
+# neither its text as drawn nor its name (aria-labelledby, aria-label, its label, its text, an image's alt in it), each
+# as “its title” on what it's on. A hint beside a name that says it all stays a title (a row's grip: “Drag to reorder”)
+TITLES_JS = r"""() => { const out = [], words = s => ((s || '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(w => w.length > 2 || /\d/.test(w));
+  const of = ids => (ids || '').split(' ').map(x => document.getElementById(x)?.textContent || '').join(' ');
+  for (const e of document.querySelectorAll('[title]:is(a[href], button, input, select, textarea, summary, [tabindex])')) {
+    if (e.tabIndex < 0 || e.disabled || e.closest('[inert]') || !e.checkVisibility()) continue;
+    const name = [of(e.getAttribute('aria-labelledby')), e.getAttribute('aria-label'), [...(e.labels || [])].map(l => l.textContent).join(' '),
+      e.textContent, [...e.querySelectorAll('img[alt]')].map(i => i.alt).join(' '), e.value, e.placeholder, e.innerText].join(' ');
+    const have = new Set(words(name));
+    if (!words(e.title).every(w => have.has(w))) out.push(`“${e.title.slice(0, 60)}” on ${e.tagName.toLowerCase()} “${(e.getAttribute('aria-label') || e.textContent).trim().slice(0, 30)}”`);
+  }
+  return out; }"""
 SWAP_FONTS_JS = "() => [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family).filter((f, i, a) => a.indexOf(f) === i).sort()"
 
 
@@ -3504,6 +3519,11 @@ def main():
                   [n_pt, before_pt, js("EV.filter(e => e.k === 'visit' && e.title === 'PT session').length")])
             check("…with one Undo for all of them", page.inner_text("#dbody .edited button[data-edit]") == f"Undo all {n_pt}",
                   page.inner_text("#dbody .edited"))
+            undo_said = ax_said(page, "#dbody .edited button[data-edit]")
+            undo_attrs = js("(b => [b.title, b.dataset.tip])(document.querySelector('#dbody .edited button[data-edit]'))")
+            check("…its name saying what “all” is, this edit and the others made with it, and its tip too, not a title on no screen; no such title in the drawer (#371)",
+                  undo_said and undo_said[0] == f"Undo all {n_pt}: this edit and the {n_pt - 1} made with it" and not undo_said[1]
+                  and undo_attrs == ["", f"This edit and the {n_pt - 1} made with it"] and not js(TITLES_JS), [undo_said, undo_attrs, js(TITLES_JS)])
             page.click("#dbody .edited button[data-edit]")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && (DATA.edits || []).length === 0 && booted", timeout=20000)
             check("…which brings every title back", js("EV.filter(e => e.k === 'visit' && e.title === 'Physical therapy session').length") == before_pt)
@@ -9904,6 +9924,7 @@ def main():
             ua_links, links_seen = [], [0]
             outlines, outline_bad = [], []   # #331: each page's heading outline (in light: it's the same in dark)
             sizes_bad, sizes_seen = [], [0]   # #258: buttons whose height isn't one of the sizes
+            titles_bad = []   # #371: titles on controls that say what's on no screen
             # Chromium's own link colour, light and dark (a visited link's purple reads as this to scripts too)
             UA_LINKS = """(() => { const as = [...document.querySelectorAll('a[href]')].filter(a => a.checkVisibility());
               return [as.length, as.filter(a => ['rgb(0, 0, 238)', 'rgb(158, 158, 255)'].includes(getComputedStyle(a).color)).map(a => a.textContent.trim().slice(0, 40))]; })()"""
@@ -9921,6 +9942,7 @@ def main():
                 if label.startswith("light "):
                     sizes_seen[0] += 1
                     sizes_bad.extend(f"{label[6:]}: {b}" for b in pg.evaluate(CONTROL_SIZES_JS, pg.viewport_size["width"] <= 640))
+                    titles_bad.extend(f"{label[6:]}: {t}" for t in pg.evaluate(TITLES_JS))
                 ua_links.extend(f"{label}: “{t}”" for t in blue)
             theme_was = js("localStorage.getItem('ht-theme')")
             for theme in ("light", "dark"):
@@ -9996,6 +10018,9 @@ def main():
                   outline_bad[:10] or " | ".join(outlines))
             check(f"…and on the {sizes_seen[0]} in light, at 1400 px, every button is one of the three sizes, 24, 32 or 40 px tall (#258)",
                   sizes_seen[0] >= 45 and not sizes_bad, sizes_bad[:12])
+            check(f"…and on the same {sizes_seen[0]}, no control that takes focus has a title saying what's in neither its text on the screen nor its "
+                  "name: a title shows for neither the keyboard nor touch, and screen readers don't reliably read it; a tip (data-tip) says it (#371)",
+                  sizes_seen[0] >= 45 and not titles_bad, titles_bad[:12])
             # the keyboard at 375 px, where the top bar is tallest: Tab from the start and Shift+Tab from the end
             t_keys, kbad = time.time(), []
             page.set_viewport_size({"width": 375, "height": 800})

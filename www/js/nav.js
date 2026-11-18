@@ -90,7 +90,7 @@ const SgNav = (() => {
 
   /* the brand: a link back to the records, except on the records page itself */
   if (svgLogo && !onRecords) {
-    const a = el("a", {class: "brand-link", href: "./", title: "Back to your records"});
+    const a = el("a", {class: "brand-link", href: "./", "data-tip": "Back to your records"});
     a.append(...svgLogo.childNodes);
     svgLogo.append(a);
   }

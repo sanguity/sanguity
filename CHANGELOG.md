@@ -949,6 +949,12 @@ Everything on `main` so far; it becomes the first tagged release.
   ✎'s and ?'s description. Titles that said what's on no screen (the Body and activity tab, the milestone preset,
   Clear dates, Connect, Undo link, Same result, Not the same, Hide, a payment's memo) are tips, and a description
   the name already says (the ✎'s "Rename this lab", a test page link's title) is left out.
+- **The last titles on no screen** (#371): nine titles still said what no screen shows (a title shows for neither
+  the keyboard nor touch, and screen readers don't reliably read it): the brand link's "Back to your records",
+  Overview's medication buttons, Save view… and Make default, the drawer's source links, Add a journal note, a journal
+  photo's link and Install app. They're tips now, and the edit history's Undo all N says what it undoes in its name
+  ("this edit and the N−1 made with it") and its tip. A browser check walks every page, records tab and drawer for a
+  title on a control that says what's in neither its text nor its name.
 - **A tooltip on something half out of a strip** (#372): at 375 px the milestone preset, half past the right of the
   period's presets, had its tip run off the screen ("Since Ap…"): a tip over an element half out of the screen wasn't
   brought back inside. Tips are placed from the screen's width now, 8 px inside it whatever their element, and an

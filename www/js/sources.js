@@ -17,7 +17,7 @@ function sourceText(imp) {
 function sourceNodes(imp, note) {
   const s = sourceOf(imp); if (!s) return [];
   return [el("a", {href: importHref(imp), class: "src-link", "data-import": imp, text: importName(imp),
-      title: (s.name ? `In the records: ${s.label}. ` : "") + "Open this import in the import history"}),
+      "data-tip": (s.name ? `In the records: ${s.label}. ` : "") + "Open this import in the import history"}),
     s.name ? el("span", {class: "muted", text: ` (${s.label})`}) : null, renameButton("import", imp),
     ` · imported ${fmtD(s.at * 1000)}`, s.synced ? ` · last synced ${fmtDT(s.synced * 1000)}` : null, note ? ` (${note})` : null];
 }
