@@ -445,8 +445,10 @@ function icon(name, {label} = {}) {
    {text, onClick} or a link {text, href, onClick} (onClick, if any, before the link is followed). An onClick that
    gives back false wasn't done (a question it asked was answered No): the toast stays. A toast stays at least 10 seconds (timeout, in ms, can only make it longer),
    and its time stops while the pointer is on it or focus is in it; its close button puts it away, as Escape does with focus in
-   it. Alt+N takes focus to the newest toast's first button, and focus goes back where it was when that toast goes:
-   no toast takes focus by itself. Up to three show at once, the newest at the foot; a fourth sends the oldest away.
+   it. Alt+N takes focus to the newest toast's first button (not while typing in a field: on a Mac, Option+N types ñ,
+   #361); no toast takes focus by itself. Focus that went into the toasts, however it got there, goes back where it
+   came from when its toast goes, however it goes (acted on, put away, or sent away by a fourth), and stays on a button
+   while its action runs. Up to three show at once, the newest at the foot; a fourth sends the oldest away.
    They're one region named Notifications (a landmark a screen reader can go to), its list a polite live region, so
    each toast is said once as it appears: its words are said only there, not through announce() as well (a page's own
    line beside it shows them with sayIn's say: false). The region is a popover over everything, and goes into a modal
@@ -464,11 +466,16 @@ const toast = (() => {
   };
   make();   // there from the start, as announce()'s lines are: a live region is followed only if it was there first
   if (!region) document.addEventListener("DOMContentLoaded", make);
+  // where focus came from into the toasts (Alt+N, Tab or a click), to go back to: not a question asked from a toast
+  // (its answer gives focus back to the toast) and not nowhere
+  const from = ev => { const r = ev.relatedTarget; if (r && !region.contains(r) && !r.closest("dialog.sg-ask")) back = r; };
+  const typing = e => !!e?.closest?.("textarea, select, [contenteditable]:not([contenteditable=false])") ||
+    e?.tagName === "INPUT" && !/^(checkbox|radio|button|submit|reset|range|color|file|image)$/.test(e.type);
   document.addEventListener("keydown", ev => {
-    if (!ev.altKey || ev.ctrlKey || ev.metaKey || ev.code !== "KeyN" || !list || !list.lastElementChild) return;
+    if (!ev.altKey || ev.ctrlKey || ev.metaKey || ev.code !== "KeyN" || !list || !list.lastElementChild || typing(ev.target)) return;
     ev.preventDefault();
     const t = list.lastElementChild;
-    if (!t.contains(document.activeElement)) back = document.activeElement;
+    if (!region.contains(document.activeElement)) back = document.activeElement;
     t.querySelector("button, a").focus();
   });
   return (text, {action, onAction, actions = [], timeout = 10000} = {}) => {
@@ -483,10 +490,10 @@ const toast = (() => {
       const had = t.contains(document.activeElement);
       t.remove();
       if (had) {
-        // where focus was, or what took its place when the page was drawn again (the same id)
+        // where focus was, or what took its place when the page was drawn again (the same id); else another toast
         const to = !back || back === document.body ? null : back.isConnected ? back : back.id ? document.getElementById(back.id) : null;
-        back = null;
-        if (to) to.focus({preventScroll: true});
+        if (to) { back = null; to.focus({preventScroll: true}); }
+        else list.lastElementChild?.querySelector("button, a").focus();
       }
     };
     const run = () => { clearTimeout(timer); start = Date.now(); timer = setTimeout(gone, left); };
@@ -496,19 +503,22 @@ const toast = (() => {
       words,
       acts.length ? el("div", {class: "sg-toast-acts"}, ...acts.map(a => a.href ? el("a", {class: "btn small", href: a.href, text: a.text, onclick: a.onClick})
         : el("button", {class: "btn small", type: "button", text: a.text, onclick: async ev => {
+          // not disabled while it runs (aria-disabled): focus stays on it, to go back from when the toast goes
           const b = ev.currentTarget;
-          b.disabled = true;
-          try { if (await a.onClick() === false) b.disabled = false; else gone(); }   // false: not done (a question answered No)
-          catch (e) { b.disabled = false; words.textContent = `${text} ${a.text} didn't work: ${e.message}`; }
+          if (b.getAttribute("aria-disabled") === "true") return;
+          b.setAttribute("aria-disabled", "true");
+          try { if (await a.onClick() === false) b.removeAttribute("aria-disabled"); else gone(); }   // false: not done (a question answered No)
+          catch (e) { b.removeAttribute("aria-disabled"); words.textContent = `${text} ${a.text} didn't work: ${e.message}`; }
         }}))) : null,
       el("button", {class: "btn quiet sg-toast-x", type: "button", "aria-label": "Dismiss", onclick: gone}, icon("x")),
       acts.length ? el("span", {class: "vh", text: " Alt+N goes to it."}) : null);
     t.addEventListener("pointerenter", () => { over = true; pause(); });
     t.addEventListener("pointerleave", () => { over = false; resume(); });
-    t.addEventListener("focusin", pause);
+    t.addEventListener("focusin", ev => { from(ev); pause(); });
     t.addEventListener("focusout", ev => { if (!t.contains(ev.relatedTarget)) resume(); });
     t.addEventListener("keydown", ev => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); gone(); } });
-    while (list.children.length >= 3) list.firstElementChild.remove();
+    while (list.children.length >= 3) list.firstElementChild.sgGone();   // focus in it goes back too
+    t.sgGone = gone;
     list.append(t);
     run();
     return {close: gone, node: t};

@@ -4222,6 +4222,34 @@ def main():
             check("…delete one, make another the default, Undo the delete: it's back, the other still the default",
                   on_server() == [["Alpha", False], ["Beta", True], ["Gamma", False]], on_server())
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # #361: deleting a view by keyboard leaves focus on what stays; an Undo by keyboard gives focus back where it
+            # was; a fourth toast sending away a focused one gives focus back too; Alt+N isn't taken while typing in a field
+            focus_id = "[document.activeElement.tagName, document.activeElement.id]"
+            page.select_option("#viewPick", "Alpha")
+            page.focus("#tvBox button:text-is('Delete')")
+            page.keyboard.press("Enter")
+            page.wait_for_function("CFG.trends.views.length === 2", timeout=10000)
+            after_delete = js(focus_id)
+            page.focus("#tab-labs")
+            page.keyboard.press("Alt+n")
+            page.keyboard.press("Enter")
+            page.wait_for_function("CFG.trends.views.length === 3", timeout=10000)
+            settle(200)
+            after_undo = js(focus_id)
+            check("toast focus (#361): deleting a view by keyboard leaves focus on the view picker; Alt+N, Enter on Undo, and focus is back on the tab",
+                  after_delete == ["SELECT", "viewPick"] and after_undo == ["BUTTON", "tab-labs"] and not js("document.querySelector('#sgToasts .sg-toast')"),
+                  [after_delete, after_undo])
+            js("for (const n of [1, 2, 3]) toast('Toast ' + n, {action: 'Undo', onAction: async () => {}})")
+            page.focus("#tab-labs")
+            js("document.querySelector('#sgToasts .sg-toast button').focus()")   # the oldest, as Tab or a click would
+            js("toast('Toast 4', {action: 'Undo', onAction: async () => {}})")
+            check("…a fourth toast sends away the focused oldest one, and focus goes back where it was",
+                  js(focus_id) == ["BUTTON", "tab-labs"] and js("[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent)") == ["Toast 2", "Toast 3", "Toast 4"],
+                  js(focus_id))
+            page.focus("#labQ")
+            page.keyboard.press("Alt+n")
+            check("…and Alt+N isn't taken while typing in a field (Option+N types ñ on a Mac)", js(focus_id) == ["INPUT", "labQ"], js(focus_id))
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             js("api('profiles/1/settings/trends.views', {method: 'PUT', body: JSON.stringify({value: []})})")
             if kept is not None:
                 js(f"localStorage.setItem(stateKey(), {json.dumps(kept)})")
@@ -4309,6 +4337,15 @@ def main():
             check("at 375 px the drawer covers the page, a modal sheet (#262): Tab stays inside it, the page behind inert (#209) with no script's inert",
                   behind == [True, True, 0] and set(stops) <= {"drawer", "body"} and stops.count("drawer") > 20, [behind, stops])
             check("…and out of Chromium's accessibility tree: only the drawer is there, a dialog", "main" not in exposed and "banner" not in exposed and "dialog" in exposed, exposed)
+            page.focus("#dclose")
+            js("toast('Saved in the drawer (browser check).', {action: 'Undo', onAction: async () => {}})")
+            page.keyboard.press("Alt+n")
+            in_toast = js("document.activeElement.textContent")
+            page.keyboard.press("Enter")
+            settle(200)
+            check("…a toast's Undo by keyboard in the drawer gives focus back where it was (#361), not to the page",
+                  in_toast == "Undo" and js("document.activeElement.id") == "dclose" and not js("document.querySelector('#sgToasts .sg-toast')"),
+                  [in_toast, js("[document.activeElement.tagName, document.activeElement.id]")])
             page.keyboard.press("Escape")
             settle(300)
             check("…Escape closes it, the page usable again and focus back on the event it came from",

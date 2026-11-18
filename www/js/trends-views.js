@@ -82,6 +82,8 @@ function viewsBar() {
         onclick: async () => {   // at once, with an Undo that puts this view back (#263; it asked first before)
           const gone = tvPlain(cur), order = views.map(v => v.name), said = `Deleted “${cur.name}”.`;
           if (await tvStore(views.filter(v => v !== cur).map(tvPlain), said, {quiet: true})) {
+            // the Delete button is drawn away: focus on what stays, to come back to from the toast (#361)
+            ($("#viewPick:not(:disabled)") || $("#viewSaveOpen:not(:disabled)") || $("#tab-labs"))?.focus();
             toast(said, {action: "Undo", onAction: () => tvPutBack(gone, order)});
           } }}));
   }
