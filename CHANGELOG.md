@@ -729,6 +729,11 @@ Everything on `main` so far; it becomes the first tagged release.
   server refused it. It isn't asked now: it says at once to turn on two-factor sign-in or add a passkey for your own
   account, with a link to Account → Sign-in & security, and the box stays unticked. With a second factor of your own,
   the question names how many other accounts have none.
+- **A type scale** (#255): seven sizes (11.5 to 28 px) and four weights, in `tokens.css`, are every size and weight in
+  the app's stylesheets and on sign-in and setup, which had 19 sizes and 7 weights. Text that was 13 px is 14, as is
+  the line under a card's title that says what to do (12 px grey before); the tiles' values are 28 px. Page and
+  section titles and the headline values are in the display serif; values, tables, chart labels and the drawer's facts
+  have tabular figures. Each records tab has a heading of its own (hidden: the tab names it) over its sections.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

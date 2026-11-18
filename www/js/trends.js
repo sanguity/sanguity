@@ -247,7 +247,7 @@ function drawChart(svg, s, pts, read) {
   const setRead = p => {
     read.replaceChildren();
     if (!p) { if (lastP) read.append("Latest ", el("b", {text: readText(s, lastP)[0].replace(` ${s.unit}`, "")}), ` · ${fmtD(lastP.ts)}`); return; }
-    read.append(el("b", {text: readText(s, p)[0]}), p[4] ? el("span", {style: {color: "var(--crit)", fontWeight: 650}, text: " " + flagWord(p[4])}) : "", ` · ${s.watch ? fmtD(p.ts) : fmtDT(p.ts)}`);
+    read.append(el("b", {text: readText(s, p)[0]}), p[4] ? el("span", {style: {color: "var(--crit)", fontWeight: "var(--fw-semibold)"}, text: " " + flagWord(p[4])}) : "", ` · ${s.watch ? fmtD(p.ts) : fmtDT(p.ts)}`);
   };
   setRead(null);
   svg._hover = t => {

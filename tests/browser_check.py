@@ -3812,6 +3812,20 @@ def main():
             check("the tab's title is the tab and the profile; picked in the tab bar, nothing more is said",
                   in_bar == ["Labs · My records · Sanguity", ""], in_bar)
             check("…opened from a button elsewhere, the tab is said through the status line", elsewhere_said == ["Costs · My records · Sanguity", "Costs"], elsewhere_said)
+            # #255: a heading outline on every records tab: one h1 in <main>, the tab's name (visually hidden: the tab bar
+            # shows it), over its sections' h2s and their parts' h3s, no level skipped (axe's heading-order and empty-heading)
+            if AXE_JS and not js("typeof axe === 'object' && typeof axe.run === 'function'"):
+                js(AXE_JS)
+            outline = []
+            for t in ("overview", "health", "timeline", "labs", "costs"):
+                js(f"switchTab('{t}')")
+                settle(300)
+                outline.append([t, js("[...document.querySelectorAll('main h1')].filter(h => !h.closest('[hidden]')).map(h => h.textContent)"),
+                                js("document.getElementById('tab-' + state.tab).textContent"),
+                                js("() => axe.run(document, {runOnly: {type: 'rule', values: ['heading-order', 'empty-heading']}})"
+                                   ".then(r => r.violations.map(v => v.id + ': ' + v.nodes.map(n => n.target.join(' ')).join(', ')))") if AXE_JS else ["no axe-core"]])
+            check("every records tab has one h1 in its <main>, the tab's name, and its headings skip no level (#255)",
+                  all(len(h1) == 1 and h1[0] == name and not bad for _, h1, name, bad in outline), outline)
             js("switchTab('labs')")
             settle(300)
             js(f"state.sel = new Set({json.dumps(labs3[:1])}); renderLabs()")

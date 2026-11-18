@@ -84,7 +84,7 @@ function renderCosts() {
   const q = el("input", {class: "search", type: "search", placeholder: "Search service, provider, drug…", "aria-label": "Search claims", value: costState.q});
   q.oninput = () => { clearTimeout(window._cq); window._cq = setTimeout(() => { costState.q = q.value; renderCosts(); const n = $("#costTable input.search"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
   const sel = el("select", {class: "search", "aria-label": "Type of care", style: {minWidth: "0"}, onchange: e => { costState.cat = e.target.value; renderCosts(); }}, el("option", {value: "", text: "All types of care"}), ...cats.map(c => el("option", {value: c, text: c, selected: c === costState.cat || null})));
-  const den = el("label", {style: {display: "inline-flex", gap: "6px", alignItems: "center", fontSize: "13px", color: "var(--ink2)"}},
+  const den = el("label", {style: {display: "inline-flex", gap: "6px", alignItems: "center", fontSize: "var(--fs-3)", color: "var(--ink2)"}},
     el("input", {type: "checkbox", checked: costState.deniedOnly || null, onchange: e => { costState.deniedOnly = e.target.checked; renderCosts(); }}), "Denied only");
   // with filters on: what they keep, with Reset filters, and the totals for the claims shown (#190, filters.js)
   const on = !!(costState.q || costState.cat || costState.deniedOnly);

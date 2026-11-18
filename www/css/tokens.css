@@ -62,4 +62,11 @@
   --c-cycle:#f290b4;
   --zone1:#1d4f91; --zone2:#2d6fc4; --zone3:#4b8fe6; --zone4:#7fb1f0; --zone5:#b5d3f8;
 }
+/* type (#255): seven sizes and four weights; every font-size and font-weight in the stylesheets is one of them. 14 px
+   (--fs-3) is the body and anything people read to act on; 11.5 the smallest, for badges and chart labels; 22 and 28 for
+   headline values. Kept in their own :root, apart from the colours: the same in both themes. */
+:root{
+  --fs-1:11.5px; --fs-2:12.5px; --fs-3:14px; --fs-4:15.5px; --fs-5:18px; --fs-6:22px; --fs-7:28px;
+  --fw-regular:400; --fw-medium:500; --fw-semibold:600; --fw-bold:700;
+}
 }

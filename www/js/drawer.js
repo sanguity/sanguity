@@ -73,7 +73,7 @@ function openEvent(e) {
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
       const abn = (r.rows || []).filter(x => x[4]).length;
-      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {style: {color: "var(--muted)", fontSize: "12px", fontWeight: 400}, text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", title: `${abn} outside reference range`, text: abn}, el("span", {class: "vh", text: " outside reference range"})) : null), el("div", {}, ...resultBody(r, id), eventSource(ev2)));
+      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {style: {color: "var(--muted)", fontSize: "var(--fs-2)", fontWeight: "var(--fw-regular)"}, text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", title: `${abn} outside reference range`, text: abn}, el("span", {class: "vh", text: " outside reference range"})) : null), el("div", {}, ...resultBody(r, id), eventSource(ev2)));
       body.append(det);
     }
   } else if (d.type === "conversation") {
@@ -121,10 +121,10 @@ function openEvent(e) {
     const st = (d.status || "").replace(/_/g, " ").toLowerCase();
     body.append(el("dl", {class: "kv"}, ...[["Insurer", d.insurer], ["Type", d.kind], ["Provider", d.provider], ["Drug", d.drug], ["Claim #", d.claimId], ["Status", st],
       ["Network", (d.network || "").replace(/_/g, " ").toLowerCase()], ["Billed", usd(d.billed)], ["Plan paid", usd(d.paid)], ["Your share", usd(d.owe)]]
-      .filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v, style: k === "Status" && /denied/.test(st) ? {color: "var(--crit)", fontWeight: 650} : null})])));
+      .filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v, style: k === "Status" && /denied/.test(st) ? {color: "var(--crit)", fontWeight: "var(--fw-semibold)"} : null})])));
     if (d.lines && d.lines.length) body.append(el("div", {class: "sect", text: "Services billed"}), el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data"},
       el("thead", {}, el("tr", {}, ["Date", "Service", "Code", "Billed"].map(h => el("th", {text: h})))),
-      el("tbody", {}, d.lines.map(l => el("tr", {}, el("td", {text: recordDate(l.date) || ""}), el("td", {}, l.desc || "", ...(l.denied || []).map(x => el("div", {style: {color: "var(--crit)", fontSize: "12px"}, text: "Denied: " + x}))),
+      el("tbody", {}, d.lines.map(l => el("tr", {}, el("td", {text: recordDate(l.date) || ""}), el("td", {}, l.desc || "", ...(l.denied || []).map(x => el("div", {style: {color: "var(--crit)", fontSize: "var(--fs-2)"}, text: "Denied: " + x}))),
         el("td", {text: l.code || ""}), el("td", {text: l.billed ? usd(l.billed) : ""})))))));
     if (/denied/.test(st)) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "\"Provider denied\" usually means the provider must correct or resubmit the claim and you aren't billed for it; \"denied\" can mean you are. The EOB on your insurer's site has the exact reason."}));
   } else if (d.type === "immunization") {   // #179: what the record says of a vaccine given, as recorded

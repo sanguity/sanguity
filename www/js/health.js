@@ -313,12 +313,12 @@ function renderHealth() {
     const cs = Math.max(3, Math.min(20, Math.floor((w - L) / weeks) - 2)), gap = cs > 6 ? 2 : 1, hh = 7 * (cs + gap) + 16;
     const byDay = new Map(); for (const x of exIn) { const k = isoDay(x.t); const v = byDay.get(k) || {min: 0, list: []}; v.min += x.min; v.list.push(x); byDay.set(k, v); }
     const svg = el("svg:svg", {viewBox: `0 0 ${w} ${hh}`, height: hh, style: "width:100%"}), g = [];
-    ["Mon", "", "Wed", "", "Fri", "", ""].forEach((d, i) => d && cs >= 8 && g.push(el("svg:text", {x: 0, y: 14 + i * (cs + gap) + cs - 2, text: d, style: "font-size:10px"})));
+    ["Mon", "", "Wed", "", "Fri", "", ""].forEach((d, i) => d && cs >= 8 && g.push(el("svg:text", {x: 0, y: 14 + i * (cs + gap) + cs - 2, text: d})));
     let lastM = -1;
     for (let wk = 0; wk < weeks; wk++) for (let dd = 0; dd < 7; dd++) {
       const t = start.getTime() + (wk * 7 + dd) * DAY; if (t < a - DAY || t > b) continue;
       const k = isoDay(t), v = byDay.get(k), cx = L + wk * (cs + gap), cy = 14 + dd * (cs + gap);
-      const m = zdate(t).getMonth(); if (dd === 0 && m !== lastM && (weeks < 60 || m % 3 === 0)) { lastM = m; g.push(el("svg:text", {x: cx, y: 10, text: zdate(t).toLocaleDateString(undefined, weeks > 60 ? {month: "short", year: "2-digit"} : {month: "short"}), style: "font-size:10px"})); }
+      const m = zdate(t).getMonth(); if (dd === 0 && m !== lastM && (weeks < 60 || m % 3 === 0)) { lastM = m; g.push(el("svg:text", {x: cx, y: 10, text: zdate(t).toLocaleDateString(undefined, weeks > 60 ? {month: "short", year: "2-digit"} : {month: "short"})})); }
       const fill = !v ? "var(--grid)" : v.min >= 60 ? "var(--seq1)" : v.min >= 30 ? "var(--seq2)" : "var(--seq3)";
       const r = el("svg:rect", {x: cx, y: cy, width: cs, height: cs, rx: cs > 6 ? 2 : 0, fill});
       if (v) { r.style.cursor = "default"; r.addEventListener("pointermove", ev => showTip([el("div", {class: "v", text: fmtD(t)}), ...v.list.map(x => el("div", {class: "s", text: x.pt ? `${x.rule} appointment${x.who ? " with " + x.who : ""} · counted as ${x.min} min` : `${x.name} · ${x.min} min`}))], ev)); r.addEventListener("pointerleave", hideTip); }
