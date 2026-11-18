@@ -639,6 +639,11 @@ Everything on `main` so far; it becomes the first tagged release.
   "Labs during this stay"), and sharing with an account that doesn't exist says an admin creates it under Admin →
   Accounts. A lab result's Collected and Resulted dates, a claim's services and the Costs claims table are written in
   the person's date format, not as "2026-11-02".
+- **Role and account changes that are hard to take back ask first** (#249): on Sharing → People, making someone an
+  owner, taking owner away from someone, and changing your own role (saying what you'd no longer be able to do) ask
+  in the app's dialog; another person's editor/viewer change stays instant. On Admin → Accounts, Disable, Make admin,
+  Remove admin and Reset password ask first, naming the account and saying what happens, before any fresh check;
+  Enable doesn't. Cancel puts things back and sends nothing.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -8186,7 +8186,52 @@ def main():
             check("sharing adds them, as the role chosen", js("document.querySelector(\"#memberList select[aria-label=\\\"alex's role\\\"]\").value") == "editor")
             page.select_option("#memberList select[aria-label=\"alex's role\"]", "viewer")
             page.wait_for_function("document.getElementById('peopleMsg').textContent === 'alex is now a viewer.'", timeout=10000)
-            check("changing a role in the table saves it", js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m.find(x => x.username === 'alex').role)") == "viewer")
+            role_of = lambda who: js(f"fetch('api/profiles/2/members').then(r => r.json()).then(m => m.find(x => x.username === {json.dumps(who)}).role)")  # noqa: E731
+            check("changing a role in the table saves it", role_of("alex") == "viewer")
+            check("…someone else's editor/viewer change isn't asked (#249)", not js("document.querySelector('dialog.sg-ask')"))
+            # ---- role changes that are hard to take back ask first (#249): Cancel puts the select back and sends nothing
+            alex_sel, my_sel = "#memberList select[aria-label=\"alex's role\"]", f"#memberList select[aria-label=\"{USER}'s role\"]"
+            focus_js = "(() => { const d = document.querySelector('dialog.sg-ask[open]'); return [d.getAttribute('role'), document.activeElement.textContent]; })()"
+            page.select_option(alex_sel, "owner")
+            asked = answer_ask(page, yes=False)
+            settle(300)
+            check("giving someone owner asks first, saying what an owner can do (#249)", asked[0] == "Make alex an owner of Second person?"
+                  and "change anyone's role (yours too)" in asked[1], asked)
+            check("…Cancel puts the select back and changes nothing", js(f"document.querySelector({json.dumps(alex_sel)}).value") == "viewer"
+                  and role_of("alex") == "viewer")
+            page.select_option(alex_sel, "owner")
+            answer_ask(page)
+            page.wait_for_function("document.getElementById('peopleMsg').textContent === 'alex is now an owner.'", timeout=10000)
+            check("…confirming makes them an owner", role_of("alex") == "owner")
+            page.select_option(my_sel, "editor")
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+            mine_focus = js(focus_js)
+            asked = answer_ask(page, yes=False)
+            settle(300)
+            check("changing your own role asks first, in red with focus on Cancel, saying what you'd lose (#249)",
+                  asked[0] == "Make yourself an editor of Second person?" and "no longer be able to share Second person" in asked[1]
+                  and "rename or delete it" in asked[1] and mine_focus == ["alertdialog", "Cancel"], [asked, mine_focus])
+            check("…Cancel keeps you an owner", js(f"document.querySelector({json.dumps(my_sel)}).value") == "owner" and role_of(USER) == "owner")
+            page.select_option(my_sel, "editor")
+            answer_ask(page)
+            page.wait_for_function("document.getElementById('introHint').textContent.startsWith(\"You're an editor\")", timeout=10000)
+            check("…confirming makes you an editor", role_of(USER) == "editor" and not js("document.querySelector('#memberList select')"))
+            from server import db as dbm_249
+            db_249 = dbm_249.connect()   # an owner again (only another owner could, in the app), for the steps below
+            db_249.execute("UPDATE memberships SET role='owner' WHERE profile_id=2 AND user_id=(SELECT id FROM users WHERE username=?)", (USER,))
+            db_249.close()
+            page.reload()   # (not goto: the same address with a #hash wouldn't load the page again)
+            page.wait_for_function(f"document.getElementById('people').dataset.profile === '2' && document.querySelector({json.dumps(alex_sel)})", timeout=10000)
+            page.select_option(alex_sel, "viewer")
+            asked = answer_ask(page, yes=False)
+            settle(300)
+            check("taking owner away from someone asks first (#249)", asked[0] == "Make alex a viewer of Second person?"
+                  and "no longer be able to share it" in asked[1], asked)
+            check("…Cancel keeps them an owner", js(f"document.querySelector({json.dumps(alex_sel)}).value") == "owner" and role_of("alex") == "owner")
+            page.select_option(alex_sel, "viewer")
+            answer_ask(page)
+            page.wait_for_function("document.getElementById('peopleMsg').textContent === 'alex is now a viewer.'", timeout=10000)
+            check("…confirming makes them a viewer", role_of("alex") == "viewer")
             page.focus("#memberList button[aria-label='Remove alex']")   # (#210: at 375 px, dark, by keyboard alone)
             page.keyboard.press("Enter")
             page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
@@ -8242,7 +8287,21 @@ def main():
             page.goto(base + "/admin.html#accounts")
             page.wait_for_function("document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
             before = len(problems)
-            page.locator("#userList tr", has_text="alex").get_by_role("button", name="Reset password").click()
+            alex_row = lambda: page.locator("#userList tr", has_text="alex")  # noqa: E731
+            alex_is = lambda: js("fetch('api/users').then(r => r.json()).then(l => l.find(u => u.username === 'alex'))")  # noqa: E731
+            focus_js = "(() => { const d = document.querySelector('dialog.sg-ask[open]'); return [d.getAttribute('role'), document.activeElement.textContent]; })()"
+            pw_was = db.execute("SELECT pw_hash FROM users WHERE username='alex'").fetchone()[0]
+            alex_row().get_by_role("button", name="Reset password").click()   # asked first (#249), before the fresh check
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+            reset_focus = js(focus_js)
+            asked = answer_ask(page, yes=False)
+            settle(300)
+            check("Reset password asks first, naming the account, in red with focus on Cancel (#249)", asked[0] == "Reset alex's password?"
+                  and "one-time password" in asked[1] and reset_focus == ["alertdialog", "Cancel"], [asked, reset_focus])
+            check("…Cancel resets nothing, and asks for no fresh check", js("document.getElementById('reauth').hidden")
+                  and db.execute("SELECT pw_hash FROM users WHERE username='alex'").fetchone()[0] == pw_was and not js("document.querySelector('#userMsg code')"))
+            alex_row().get_by_role("button", name="Reset password").click()
+            answer_ask(page)
             page.wait_for_selector("#reauth input", state="visible", timeout=10000)
             check("resetting a password asks to confirm it's you", "Confirm it's you" in page.inner_text("#reauth"))
             page.fill("#reauth input", PW)
@@ -8251,16 +8310,46 @@ def main():
                                    "document.getElementById('userMsg').textContent.includes('alex')", timeout=10000)
             check("after the password, the reset goes ahead", True)
             problems[before:] = [x for x in problems[before:] if "403" not in x]   # the refusal that asks
-            # disabling the only owner of a profile asks first; accepting disables the account
+            # Make admin and Remove admin ask first, naming the account (#249); Cancel leaves the flag as it was
+            alex_row().get_by_role("button", name="Make admin").click()
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+            admin_focus = js(focus_js)
+            asked = answer_ask(page, yes=False)
+            settle(300)
+            check("Make admin asks first, in red with focus on Cancel, saying what an admin can do (#249)", asked[0] == "Make alex an admin?"
+                  and "reset passwords" in asked[1] and admin_focus == ["alertdialog", "Cancel"], [asked, admin_focus])
+            check("…Cancel leaves them not an admin", not alex_is()["is_admin"])
+            alex_row().get_by_role("button", name="Make admin").click()
+            answer_ask(page)
+            page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.querySelector('.tag'))", timeout=10000)
+            check("…confirming makes them an admin", alex_is()["is_admin"])
+            alex_row().get_by_role("button", name="Remove admin").click()
+            asked = answer_ask(page, yes=False)
+            settle(300)
+            check("Remove admin asks first (#249)", asked[0] == "Remove alex's admin role?" and "Admin page" in asked[1] and alex_is()["is_admin"], asked)
+            alex_row().get_by_role("button", name="Remove admin").click()
+            answer_ask(page)
+            page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && !r.querySelector('.tag') && r.textContent.includes('Make admin'))", timeout=10000)
+            check("…confirming removes it", not alex_is()["is_admin"])
+            # Disable asks first (#249); for the only owner of a profile, the server's refusal is asked once more, after it
             alex = db.execute("SELECT id FROM users WHERE username='alex'").fetchone()[0]
             profiles.create_profile(db, "Alex's records", owner_id=alex)
             db.close()
+            alex_row().get_by_role("button", name="Disable").click()
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+            off_focus = js(focus_js)
+            asked = answer_ask(page, yes=False)
+            settle(300)
+            check("Disable asks first, in red with focus on Cancel, saying they're signed out (#249)", asked[0] == "Disable alex?"
+                  and "signed out everywhere" in asked[1] and off_focus == ["alertdialog", "Cancel"], [asked, off_focus])
+            check("…Cancel leaves the account active", not alex_is()["disabled"] and "Disable" in alex_row().inner_text())
             before = len(problems)
-            page.locator("#userList tr", has_text="alex").get_by_role("button", name="Disable").click()
+            alex_row().get_by_role("button", name="Disable").click()
+            answer_ask(page)
             asked = answer_ask(page)
             page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.textContent.includes('disabled'))", timeout=10000)
             problems[before:] = [x for x in problems[before:] if "409" not in x]   # the refusal that prompts the question
-            check("disabling a profile's only owner asks first", asked[0] == "Disable alex?" and "only owner of Alex's records" in asked[1], asked)
+            check("disabling a profile's only owner then asks about that", asked[0] == "Disable alex anyway?" and "only owner of Alex's records" in asked[1], asked)
             page.wait_for_function("document.querySelector('#ownerless') && document.querySelector('#ownerless').textContent.includes(\"Alex's records\")", timeout=10000)
             check("an admin sees profiles left without an owner", True)
             # removing that account: confirmed, then asked who owns Alex's records instead (this admin)
