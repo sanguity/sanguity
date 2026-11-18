@@ -125,7 +125,7 @@ function sourceRow(s) {
         catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }}),
       el("button", {class: "btn small", type: "button", text: "Change", onclick: () => { saved = null; fill(s); $("#fName").focus(); }}),
       el("button", {class: "btn small", type: "button", text: s.waiting ? "Review done" : "Waiting for review",
-        title: s.waiting ? "The vendor has approved the app: people can connect it once it's tested" : "Say the vendor is still reviewing the app",
+        "data-tip": s.waiting ? "The vendor has approved the app: people can connect it once it's tested" : "Say the vendor is still reviewing the app",
         onclick: async () => {
           try { await call(`connect/sources/${s.id}`, "PATCH", {waiting: !s.waiting}); loadSetup(); }
           catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }}),

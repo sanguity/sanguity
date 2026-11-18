@@ -24,7 +24,7 @@ function drawerCover() {
 }
 drawerCover();
 addEventListener("resize", drawerCover);
-function setWide(on) { drawer.classList.toggle("wide", on); drawerCover(); $("#dwide").setAttribute("aria-pressed", on); $("#dwide").title = on ? "Narrower panel" : "Wider panel"; try { localStorage.setItem("ht-wide", on ? "1" : ""); } catch (e) {} }
+function setWide(on) { drawer.classList.toggle("wide", on); drawerCover(); $("#dwide").setAttribute("aria-pressed", on); $("#dwide").dataset.tip = on ? "Narrower panel" : "Wider panel"; try { localStorage.setItem("ht-wide", on ? "1" : ""); } catch (e) {} }
 $("#dwide").onclick = () => setWide(!drawer.classList.contains("wide"));
 try { if (localStorage.getItem("ht-wide")) setWide(true); } catch (e) {}
 addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
@@ -38,8 +38,8 @@ function resultTable(rows) {
   if (!rows || !rows.length) return null;
   return scrollBox({class: "tablewrap", "aria-label": "Results", style: {maxHeight: "none"}}, el("table", {class: "data"},
     el("thead", {}, el("tr", {}, ["Component", "Value", "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
-    el("tbody", {}, rows.map(([n, v, u, rr, f], i) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", title: "Show trend", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
-      el("td", {title: renamedTitle("lab", n)}, SERIES.some(s => s.name === n && s.n) ? el("button", {class: "cell-btn", type: "button", text: nice(n)}) : nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
+    el("tbody", {}, rows.map(([n, v, u, rr, f], i) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
+      el("td", {}, SERIES.some(s => s.name === n && s.n) ? el("button", {class: "cell-btn", type: "button", text: nice(n)}) : nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
         SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null, testLink(n, true)), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}, ...rowOrig(rows[i])), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : ""}, ...flagNodes(f)))))));   // the mark and the word (#60); "What is this test?" (#163)
 }
 /* #41: a converted row's value and range as reported (units.js), on its own line under the value */
@@ -73,7 +73,7 @@ function openEvent(e) {
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
       const abn = (r.rows || []).filter(x => x[4]).length;
-      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {style: {color: "var(--muted)", fontSize: "var(--fs-2)", fontWeight: "var(--fw-regular)"}, text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", title: `${abn} outside reference range`, text: abn}, el("span", {class: "vh", text: " outside reference range"})) : null), el("div", {}, ...resultBody(r, id), eventSource(ev2)));
+      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {style: {color: "var(--muted)", fontSize: "var(--fs-2)", fontWeight: "var(--fw-regular)"}, text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", "data-tip": `${abn} outside reference range`, text: abn}, el("span", {class: "vh", text: " outside reference range"})) : null), el("div", {}, ...resultBody(r, id), eventSource(ev2)));
       body.append(det);
     }
   } else if (d.type === "conversation") {

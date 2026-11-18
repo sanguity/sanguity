@@ -76,6 +76,6 @@ function describeSame(x) {
 function sameLines(msg) {
   return (DATA.same || []).map(x => el("div", {class: "edit-line"},
     el("span", {}, describeSame(x), x.by ? ` · by ${x.by}` : "", x.found ? null : el("em", {class: "missing", text: " · not found in the current records"})),
-    canEdit() ? el("button", {class: "btn small", type: "button", text: "Undo", title: "Undo this", "data-link": x.id,
+    canEdit() ? el("button", {class: "btn small", type: "button", text: "Undo", "data-link": x.id,
       onclick: () => sendSame("/" + x.id, {method: "DELETE"}, msg, {edits: true})}) : null));
 }

@@ -391,7 +391,7 @@ function barList(card, groups, onPick, active) {
     const w1 = g.paid / max * 100, w2 = g.owe / max * 100;
     card.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto", background: active === g.key ? "var(--hover)" : null}, ...pressable(() => onPick(g.key)),
       "aria-pressed": active === undefined ? null : active === g.key,   // a type of care picked filters the claims (#202)
-      title: `${g.key}: ${g.n} claims · billed ${usd(g.billed)} · insurance paid ${usd(g.paid)} · your share ${usd(g.owe)}`},
+      "data-tip": `${g.key}: ${g.n} claims · billed ${usd(g.billed)} · insurance paid ${usd(g.paid)} · your share ${usd(g.owe)}`},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}),
       el("span", {class: "v", text: usd(g.paid + g.owe)}),
       el("span", {class: "s", style: {display: "flex", gap: "2px", alignItems: "center"}},

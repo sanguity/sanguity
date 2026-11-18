@@ -103,7 +103,7 @@ function renderOverview() {
     const d = prev ? last[1] - prev[1] : null;
     const recent = s.pts.filter(p => p.ts >= last.ts - 182 * DAY);
     const tile = el("button", {class: "tile", onclick: () => goSeries(n)},
-      el("span", {class: "lbl"}, el("span", {text: nice(n), title: n}), st ? el("span", {class: "st " + st.cls, title: st.title}, st.icon ? [icon(st.icon), " "] : null, st.text) : null),
+      el("span", {class: "lbl"}, el("span", {text: nice(n), "data-tip": nice(n) !== n ? n : null}), st ? el("span", {class: "st " + st.cls, "data-tip": st.title}, st.icon ? [icon(st.icon), " "] : null, st.text) : null),
       el("span", {class: "val"}, last[5] || fmtNum(last[1]), el("small", {text: s.unit})),
       ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
       el("span", {class: "delta"}, keepDates((d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")} since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : ""))),

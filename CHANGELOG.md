@@ -847,6 +847,16 @@ Everything on `main` so far; it becomes the first tagged release.
   their own. A tile inside a card is tinted, with no second edge; one on the page has the card's edge. The card and
   the tile are each one rule set; their change lines still wrap evenly with dates kept whole (#330), and their text
   keeps its height when the fonts arrive (#338).
+- **Menus and tooltips on the browser's popovers** (#261): the top bar's Add and your menu, the records bar's More…
+  periods, the Timeline's kind menus and Settings' row menus are one menu (`SgNav.menu`), a `popover` the browser
+  opens over the page and closes on a click elsewhere or on Escape, instead of four copies of that code. Each opens
+  under its button by CSS anchor positioning, turning to the other side or upwards where it wouldn't fit, and fades
+  in; the keys, focus and phone layouts are as before. Tooltips that carry meaning (an icon button's name, a lab's
+  name in the records or cut short, a value's range or date, a claim type's figures) are the app's own instead of a
+  `title`: shown on hover and on keyboard focus, above or below what they're about, never over it, kept while the
+  pointer is on them, and put away by Escape (WCAG 1.4.13). A `title` stays only for a hint beside a name that says
+  it all, on disabled controls and on frames; the drawer's wider-panel button and the shared page's light/dark
+  button have names of their own.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

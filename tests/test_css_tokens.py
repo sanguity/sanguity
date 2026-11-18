@@ -114,7 +114,7 @@ ALLOWED = {
     "www/sharing.html": {"colours": 1},
     "www/sources.html": {"colours": 1},
     "www/js/app.js": {"script styles": 2},
-    "www/js/core.js": {"script styles": 11},
+    "www/js/core.js": {"script styles": 7},
     # its spacing and weights are on lines #333 left alone: margins of 8 and 12 px (on the scale, written out) and the
     # running totals' end labels' and the bar lists' weights (600, 500)
     "www/js/costs.js": {"script styles": 38, "px spacing": 2, "font weights": 3},
@@ -132,7 +132,7 @@ ALLOWED = {
     "www/js/rename.js": {"script styles": 2},
     "www/js/timeline.js": {"script styles": 1},
     "www/js/trends.js": {"script styles": 8},
-    "www/js/util.js": {"script styles": 1},   # el() itself, where a style object is applied
+    "www/js/util.js": {"script styles": 2},   # el() itself, where a style object is applied; placeAt(), a popover placed without anchor positioning (#261)
 }
 
 NAMED = """aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood
