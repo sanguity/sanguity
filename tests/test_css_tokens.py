@@ -321,8 +321,11 @@ class CssTokens(unittest.TestCase):
         """the ring for whatever has keyboard focus is one rule, in base.css, which every page loads (#310): no stylesheet
         or page's <style> rings focus again for every element or every element of a kind (a component's own ring is fine)"""
         rings = []
-        sources = [(rel(p), open(p, encoding="utf-8").read()) for p in sorted(glob.glob(os.path.join(ROOT, "www", "css", "*.css")))]
-        sources += [(rel(p), "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", open(p, encoding="utf-8").read(), re.S | re.I)))
+        def text(p):
+            with open(p, encoding="utf-8") as f:
+                return f.read()
+        sources = [(rel(p), text(p)) for p in sorted(glob.glob(os.path.join(ROOT, "www", "css", "*.css")))]
+        sources += [(rel(p), "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", text(p), re.S | re.I)))
                     for p in sorted(glob.glob(os.path.join(ROOT, "www", "*.html")))]
         for path, css in sources:
             for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", blank_comments(css, r"/\*.*?\*/")):
