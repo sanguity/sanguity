@@ -622,6 +622,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The top bar's menus fit a phone** (#244): on a screen 700 px wide or narrower, Add and your own menu open across
   the screen under the top bar, 8 px in from each side, instead of from their buttons' right edge, which put them
   partly off the screen at 390 px and narrower (Settings and Log out cut off on the records page).
+- **The Timeline's row style stays on the Timeline** (#246): rows of buttons on Sources, Sharing, Settings, Account
+  and Admin no longer have a line under them, an inset or a hover highlight borrowed from the Timeline's list, and
+  what's typed into a field is no longer in its label's semibold.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

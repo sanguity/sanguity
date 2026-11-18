@@ -9,7 +9,7 @@ function closeDrawer() {
   drawerReturn = null; drawer.classList.remove("open"); drawerCover();
   if (back) back.focus({preventScroll: true});   // once the page behind isn't inert any more
   setTimeout(() => { if (!drawer.classList.contains("open")) $("#dbody").replaceChildren(); }, 250);   // unload any PDF / document once it has slid away
-  drawer.setAttribute("aria-hidden", "true"); state.selEv = null; renderTimeline(); document.querySelectorAll(".row.sel").forEach(r => r.classList.remove("sel")); }
+  drawer.setAttribute("aria-hidden", "true"); state.selEv = null; renderTimeline(); document.querySelectorAll(".tl-row.sel").forEach(r => r.classList.remove("sel")); }
 $("#dclose").onclick = closeDrawer;
 /* while the drawer covers the whole page (on a phone, or wide on a small screen), the page behind it is inert, so Tab
    and a screen reader stay in the drawer; closed, the drawer itself is inert, out of Tab's way off-screen (#209) */
@@ -148,7 +148,7 @@ function openEvent(e) {
   body.append(journalAddAction(e));   // "Add a journal note" for this day (journal.js)
   if (!WATCH_KINDS.has(e.k)) body.append(editPanel(e));   // the watch's own aren't records, so can't be edited
   showDrawer();
-  renderTimeline(); document.querySelectorAll(".row").forEach(r => r.classList.remove("sel"));
+  renderTimeline(); document.querySelectorAll(".tl-row").forEach(r => r.classList.remove("sel"));
 }
 function showDrawer() {
   if (!drawer.classList.contains("open")) drawerReturn = document.activeElement;
