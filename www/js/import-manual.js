@@ -46,7 +46,7 @@
     if (rows().length >= MAX) { tell(`At most ${MAX} rows at a time: save these first.`, true); return null; }
     const last = after || rows().pop(), from = last ? valueOf(last) : {};
     const r = el("div", {class: "man-row", role: "group"}, FIELDS.map(field),
-      el("button", {type: "button", class: "del", "data-tip": "Remove this row", "aria-label": "Remove this row"}, icon("x")),
+      el("button", {type: "button", class: "del btn quiet", "data-tip": "Remove this row", "aria-label": "Remove this row"}, icon("x")),
       el("div", {class: "man-check", "aria-live": "polite"}));
     // a new row starts on the last one's date, time and lab: a report's results share them
     for (const [f] of FIELDS) r.querySelector(`[data-f=${f}]`).value = v[f] ?? (["date", "time", "lab"].includes(f) ? from[f] || (f === "date" ? today() : "") : "");

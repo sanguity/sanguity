@@ -992,6 +992,12 @@ Everything on `main` so far; it becomes the first tagged release.
   13 px below the lab's name. The ✎ is 24 px again, in its line, and its 44 px target is drawn around the line instead;
   the name's button and the ? beside it keep all of theirs. In the drawer the ✎ and ? follow the name's last word,
   taking it down with them when they don't fit, never on a line of their own.
+- **Two more controls on the components, and a key lab's change line kept together** (#374): Settings → Display's
+  "Use this device's" (shown when the browser is in another time zone than the one saved) was the small 24 px button
+  beside the 32 px zone field; it's the default size, the field's height. Sources → Type records in's ✕ beside a typed
+  result and on a typed record's form were their own 28 × 30 px buttons, 30 px tall beside 44 px fields on a phone;
+  they're the quiet button, the fields' height and 44 px on a phone. An Overview key lab's change line no longer puts
+  the change alone on its first line ("▼ −0.03" over "since Aug 18, 2026"): the change keeps its "since" with it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

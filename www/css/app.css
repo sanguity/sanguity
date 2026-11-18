@@ -729,13 +729,12 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .shl-card .bad{color:var(--crit)}
 /* results typed in (import-manual.js): one grid row per result, captions on the first row only, all on a phone */
 .imp .man-rows{display:grid;gap:2px;margin:var(--sp-3) 0 var(--sp-1)}
-.imp .man-row{display:grid;grid-template-columns:7.6em 4.6em minmax(8em,1.6fr) 5.4em 5em 7em 4.8em minmax(5em,1fr) 2em;gap:var(--sp-1) var(--sp-2);align-items:end;padding:var(--sp-1) 0;border-top:1px solid var(--grid)}
+.imp .man-row{display:grid;grid-template-columns:7.6em 4.6em minmax(8em,1.6fr) 5.4em 5em 7em 4.8em minmax(5em,1fr) auto;gap:var(--sp-1) var(--sp-2);align-items:end;padding:var(--sp-1) 0;border-top:1px solid var(--grid)}
 .imp .man-row:first-child{border-top:0}
 .imp .man-row label{font-size:var(--fs-2);gap:2px;min-width:0}
 .imp .man-row input,.imp .man-row select{width:100%;padding:var(--sp-1);font-size:var(--fs-3)}   /* 4 px in: "optional" fits the 4.6em Time box */
 .imp .man-row:not(:first-child) .cap{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.imp .man-row .del{border:0;background:none;cursor:pointer;color:var(--muted);font-size:var(--fs-4);padding:var(--sp-1) 0;border-radius:var(--r-sm)}
-.imp .man-row .del:hover{color:var(--crit);background:var(--hover)}
+.imp .man-row .del{margin:0}   /* its ✕: the quiet button, the fields' height (#374) */
 .imp .man-check{grid-column:1 / -1;font-size:var(--fs-2);color:var(--muted);min-height:0}
 .imp .man-check:empty{display:none}
 .imp .man-check.bad{color:var(--crit)}
@@ -748,7 +747,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .man-items:empty{display:none}
 .imp .man-item{position:relative;border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3) var(--sp-2);margin:0;min-width:0}
 .imp .man-item legend{font-size:var(--fs-3);font-weight:var(--fw-semibold);padding:0 var(--sp-1)}
-.imp .rec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(9.5em,100%),1fr));gap:var(--sp-2) var(--sp-2);padding-right:1.6em}
+.imp .rec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(9.5em,100%),1fr));gap:var(--sp-2) var(--sp-2);padding-right:var(--sp-5)}   /* room for the ✕ */
 .imp .rec-f{display:flex;flex-direction:column;font-size:var(--fs-2);gap:2px;min-width:0}
 .imp .rec-f input,.imp .rec-f select,.imp .rec-f textarea{width:100%;font-size:var(--fs-3)}
 .imp .rec-f textarea{resize:vertical;min-height:2.4em}
@@ -758,8 +757,8 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .rec-f>.btn.pick{align-self:flex-start;margin:0}   /* a file: the button, as Sources' upload (#353) */
 .imp .man-file{color:var(--muted);font-size:var(--fs-2);overflow-wrap:anywhere}
 .imp .man-file:empty{display:none}
-.imp .man-item .del{position:absolute;top:6px;right:6px;border:0;background:none;cursor:pointer;color:var(--muted);font-size:var(--fs-4);padding:var(--sp-1) var(--sp-2);border-radius:var(--r-sm)}
-.imp .man-item .del:hover{color:var(--crit);background:var(--hover)}
+.imp .man-item .del{position:absolute;top:var(--sp-1);right:var(--sp-1);margin:0}   /* its ✕: the quiet button (#374), clear of the fields */
+@media (max-width:640px),(pointer:coarse){ .imp .rec-grid{padding-right:calc(var(--sp-6) + var(--sp-1))} }   /* 44 px there */
 .imp .man-item .man-check{margin-top:var(--sp-2);overflow-wrap:anywhere}
 .imp .man-h{font-size:var(--fs-3);margin:var(--sp-4) 0 2px}
 .imp .man-save{flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);margin-top:var(--sp-3)}
@@ -781,7 +780,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .hist>li:focus{outline:2px solid var(--accent);outline-offset:2px}
 .imp .hist li.undone .hd b,.imp .hist li.undone .what{color:var(--muted)}
 @media (max-width:760px){
-  .imp .man-row{grid-template-columns:repeat(6,minmax(0,1fr));padding:var(--sp-2) 0}
+  .imp .man-row{grid-template-columns:repeat(5,minmax(0,1fr)) auto;padding:var(--sp-2) 0}   /* the ✕ its own width, 44 px on a phone */
   .imp .man-row:not(:first-child) .cap{position:static;width:auto;height:auto;overflow:visible;clip:auto}
   .imp .man-row .f-date,.imp .man-row .f-time,.imp .man-row .f-lab{grid-column:span 3}
   .imp .man-row .f-test{grid-column:1 / -1}
