@@ -900,6 +900,10 @@ Everything on `main` so far; it becomes the first tagged release.
   that wraps (the Timeline's "Imaging, procedures & reports", Costs' "Claim shares with no payment", a key lab's long
   name) no longer pushes its own value below the others: the tiles in a row share their rows, so the values sit on
   one line.
+- **A button beside a field is as tall as the field** (#352): Share on Sharing → People, Rename, Clear in About this
+  person, the visit summary's Add, a new share link's Copy, and Settings → Dashboard's Add and a lab name's Remove were
+  the small 24 px button beside a 32 px field; they're the default size now. The small size stays for buttons in
+  dense rows of text.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

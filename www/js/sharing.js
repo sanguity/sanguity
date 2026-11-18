@@ -225,7 +225,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
                             message: `${had.username} already has access to ${p.name} as ${had.role}.`, action: "Change role"})))) return;
       try { await call(`profiles/${p.id}/members`, "PUT", {username: name, role: role.value}); await again(); sayIn($("#peopleMsg"), `Shared with ${name} as ${role.value}.`); }
       catch (e) { fail(e); } }},
-      el("span", {class: "muted", text: "Share with"}), who, "as", role, el("button", {class: "btn small", type: "submit", text: "Share"})));
+      el("span", {class: "muted", text: "Share with"}), who, "as", role, el("button", {class: "btn", type: "submit", text: "Share"})));
   }
 
   /* ---------------------------------------------------------------- Profile: rename, delete (owners), new */
@@ -240,7 +240,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     $("#profileBody").replaceChildren(
       el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
         try { await call("profiles/" + p.id, "PATCH", {name: name.value}); await refresh(p.id); sayIn($("#profileMsg"), "Renamed."); } catch (e) { fail(e); } }},
-        name, el("button", {class: "btn small", type: "submit", text: "Rename"})),
+        name, el("button", {class: "btn", type: "submit", text: "Rename"})),
       deletePanel(p, fail));
   }
   function deletePanel(p, fail) {
@@ -363,11 +363,11 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
         send(`profiles/${p.id}/person`, "PUT", {birthDate: birth.value || "", sex: sexes.querySelector("input:checked")?.value ?? "",
           maxHr: maxHr.value === "" ? 0 : +maxHr.value, dueDate: due.value || ""}, "Saved."); }},
         el("div", {class: "about-field"}, el("label", {for: "aboutBirth", text: "Birth date"}),
-          el("div", {class: "about-row"}, birth, el("button", {class: "btn small", type: "button", text: "Clear", "aria-label": "Clear the birth date",
+          el("div", {class: "about-row"}, birth, el("button", {class: "btn", type: "button", text: "Clear", "aria-label": "Clear the birth date",
             onclick: () => { birth.value = ""; birth.focus(); }}), age != null ? el("span", {class: "muted", text: `aged ${age} today`}) : null),
           el("p", {class: "muted", text: "For the age on each result's day: ranges of your own by age band, and what depends on age."})),
         el("div", {class: "about-field"}, el("label", {for: "aboutDue", text: "Due date, if born early"}),   // #196
-          el("div", {class: "about-row"}, due, el("button", {class: "btn small", type: "button", text: "Clear", "aria-label": "Clear the due date",
+          el("div", {class: "about-row"}, due, el("button", {class: "btn", type: "button", text: "Clear", "aria-label": "Clear the due date",
             onclick: () => { due.value = ""; due.focus(); }})),
           el("p", {class: "muted", text: "Optional, for a baby born early: until 2 years, growth charts use the age counted from it (the corrected age)."})),
         sexes,

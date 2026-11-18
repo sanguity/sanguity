@@ -1096,6 +1096,23 @@ TILE_FIT_JS = r"""() => {
   return out;
 }"""
 
+# a button beside a field (#352): each button shown on one line with a field of its row (the button's parent holds the
+# field, or the label around it, and their middles are within a few px), as {pairs found, those whose heights differ}
+FIELD_ROWS_JS = r"""() => { const out = {n: 0, bad: []};
+  const field = 'input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=hidden],[type=color]), select';
+  for (const b of document.querySelectorAll('main .btn')) {
+    if (!b.checkVisibility()) continue;
+    const rb = b.getBoundingClientRect();
+    for (const f of b.parentElement.querySelectorAll(field)) {
+      if (!f.checkVisibility()) continue;
+      const rf = f.getBoundingClientRect(), mid = r => (r.top + r.bottom) / 2;
+      if (Math.abs(mid(rb) - mid(rf)) > 4 || rf.right > rb.left + 1 && rb.right > rf.left + 1) continue;   // not on its line, or not beside it
+      out.n++;
+      if (Math.abs(rb.height - rf.height) > .5) out.bad.push(`“${b.textContent.trim()}” ${Math.round(rb.height)} px beside ${f.tagName.toLowerCase()} “${f.getAttribute('aria-label') || f.placeholder || f.name || f.value.slice(0, 20)}” ${Math.round(rf.height)} px`);
+    }
+  }
+  return out; }"""
+
 # the swap to the fonts (#329): the cards and tiles a page draws, by name, with their heights
 SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main .card, main .tile, .sets .set')]
   .filter(e => e.checkVisibility()).map((e, i) => [`${e.className.split(' ')[0]} ${i} ${(e.querySelector('h1,h2,h3,.lbl,.l')?.textContent || '').trim().slice(0, 40)}`,
@@ -1490,6 +1507,12 @@ def main():
         strict.wait_for_selector(".share-made .share-url", timeout=10000)
         share_url = strict.input_value(".share-made .share-url")
         check("share links: the link is shown once, with its token after the #", re.fullmatch(re.escape(base) + r"/share\.html#[\w-]{43}", share_url), share_url)
+        rows352 = {}   # #352: Copy beside the link, the field's height, at 1400 and 320 px
+        for w in (1400, 320):
+            strict.set_viewport_size({"width": w, "height": 900 if w > 400 else 640})
+            strict.wait_for_timeout(150)
+            rows352[f"Share links {w}"] = strict.evaluate(FIELD_ROWS_JS)
+        strict.set_viewport_size({"width": 1400, "height": 900})
         check("share links: the list names it, not yet opened", "Dr. Fictional" in mine.locator(".share-links table").inner_text()
               and "never" in mine.locator(".share-links table").inner_text())
         holder = browser.new_context(viewport={"width": 1400, "height": 900})   # the real CSP, no cookies, no session
@@ -1555,6 +1578,22 @@ def main():
         sl_until(hp, "document.querySelector('#shareHead h1').textContent === \"This link doesn't work\"")
         check("share links: a made-up link says it doesn't work", True)
         holder.close()
+        # #352: a button in a row of fields is the fields' height (the default button, not .small): Sharing's People
+        # (Share), Profile (Rename), About this person (Clear), Visit summary (Add) and Settings → Dashboard (Add, and a
+        # lab name's Remove), at 1400 and 320 px (with the share link's Copy, above)
+        for path, g, ready in (("sharing.html?profile=1", "people", "#memberList tbody tr"), ("sharing.html?profile=1", "profile", "#profileBody input"),
+                               ("sharing.html?profile=1", "about", "#aboutBirth"), ("sharing.html?profile=1", "summary", "#labIn"),
+                               ("settings.html?profile=1", "dashboard", ".set-add input")):
+            strict.goto(f"{base}/{path}#{g}")
+            strict.wait_for_selector(ready, state="attached", timeout=10000)
+            for w in (1400, 320):
+                strict.set_viewport_size({"width": w, "height": 900 if w > 400 else 640})
+                strict.wait_for_timeout(200)
+                rows352[f"{path.split('.')[0]}#{g} {w}"] = strict.evaluate(FIELD_ROWS_JS)
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        check("a button beside a field is the field's height, on Sharing's People, Profile, About this person, Visit summary and "
+              "Share links and on Settings → Dashboard, at 1400 and 320 px (#352)",
+              len(rows352) == 12 and all((v["n"] > 0 or k.endswith(" 320")) and not v["bad"] for k, v in rows352.items()), rows352)   # at 320 px some wrap
         strict.goto(base + "/account.html")
         strict.wait_for_selector("#userMenuBtn", state="visible")
         strict.wait_for_timeout(500)
