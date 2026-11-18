@@ -1057,6 +1057,45 @@ TILE_LINES_JS = r"""() => {
 }"""
 
 
+# the tiles as laid out (#351): each one's label or value whose words run past its tile's edge (the text, not its box,
+# which a grid or flex item keeps inside); each pair of tiles in one row or grid that overlap; and each row of tiles
+# (a container's tiles with the same top) whose values don't end at the same height, so don't share one baseline
+TILE_FIT_JS = r"""() => {
+  const out = {n: 0, rows: 0, wide: [], overlap: [], baseline: []};
+  const ext = e => { const r = document.createRange(); r.selectNodeContents(e); const rs = [...r.getClientRects()].filter(x => x.width > 0);
+    return rs.length ? {l: Math.min(...rs.map(x => x.left)), r: Math.max(...rs.map(x => x.right))} : null; };
+  const name = t => (t.querySelector('.lbl')?.textContent || '').trim().slice(0, 30);
+  const groups = new Map();
+  for (const t of document.querySelectorAll('.tile')) {
+    if (!t.checkVisibility()) continue;
+    const box = t.parentElement.classList.contains('tile-tq') ? t.parentElement : t, b = box.getBoundingClientRect();
+    if (!b.width) continue;
+    out.n++;
+    for (const p of t.querySelectorAll(':scope > .lbl, :scope > .val')) {
+      const x = ext(p); if (!x) continue;
+      if (x.r > b.right + .5 || x.l < b.left - .5) out.wide.push(`${name(t)}: its ${p.className} “${p.textContent.trim().slice(0, 24)}” ${Math.round(x.l)}–${Math.round(x.r)} in a tile ${Math.round(b.left)}–${Math.round(b.right)}`);
+    }
+    const g = box.parentElement; if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push([t, b]);
+  }
+  for (const [g, ts] of groups) {
+    for (let i = 0; i < ts.length; i++) for (let j = i + 1; j < ts.length; j++) {
+      const a = ts[i][1], c = ts[j][1];
+      if (Math.min(a.right, c.right) - Math.max(a.left, c.left) > .5 && Math.min(a.bottom, c.bottom) - Math.max(a.top, c.top) > .5)
+        out.overlap.push(`${name(ts[i][0])} and ${name(ts[j][0])}`);
+    }
+    const rows = {};
+    for (const [t, b] of ts) { const v = t.querySelector(':scope > .val'); if (v) (rows[Math.round(b.top)] ||= []).push([name(t), Math.round(v.getBoundingClientRect().bottom * 10) / 10]); }
+    for (const r of Object.values(rows)) {
+      if (r.length < 2) continue;
+      out.rows++;
+      const bs = r.map(x => x[1]);
+      if (Math.max(...bs) - Math.min(...bs) > 1) out.baseline.push(`${g.id || g.className}: ${r.map(x => x.join(' ')).join(', ')}`);
+    }
+  }
+  return out;
+}"""
+
 # the swap to the fonts (#329): the cards and tiles a page draws, by name, with their heights
 SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main .card, main .tile, .sets .set')]
   .filter(e => e.checkVisibility()).map((e, i) => [`${e.className.split(' ')[0]} ${i} ${(e.querySelector('h1,h2,h3,.lbl,.l')?.textContent || '').trim().slice(0, 40)}`,
@@ -1638,7 +1677,7 @@ def main():
             look260 = r"""() => { const s = (e, ...ps) => e ? ps.map(p => getComputedStyle(e)[p]).join(' ') : null, out = [];
               for (const t of document.querySelectorAll('main .tile')) { if (!t.checkVisibility() || t.closest('.tile-tq, .sets')) continue;
                 const inCard = !!t.parentElement.closest('.card');
-                out.push([inCard, s(t, 'borderTopLeftRadius', 'paddingTop', 'paddingLeft', 'display', 'rowGap', 'textRendering'),
+                out.push([inCard, s(t, 'borderTopLeftRadius', 'paddingTop', 'paddingLeft', 'textRendering'),   // a grid's tiles lay their parts out in its rows (#351)
                   s(t, 'backgroundColor', 'borderTopColor'), s(t.querySelector('.lbl'), 'fontSize', 'color', 'fontWeight'),
                   s(t.querySelector('.val'), 'fontSize', 'fontFamily', 'fontWeight', 'fontVariantNumeric'), s(t.querySelector('.delta'), 'fontSize', 'color', 'textWrap')]); }
               return {tiles: out, others: document.querySelectorAll('.stat, .ov-mini, .ov-mini-v').length}; }"""
@@ -1661,6 +1700,22 @@ def main():
                   all(seen260.get(t, 0) > 0 for t in ("overview", "health", "timeline", "costs")) and not odd260
                   and "rgba(0, 0, 0, 0)" in seen260.get("look card", "") and seen260.get("look card") != seen260.get("look page"),
                   odd260[:8] or seen260)
+            # #351: at 1400, 375 and 320 px no tile's value or label runs past its tile (the Overview's insurance figures
+            # wrap to another row instead), no tile overlaps another, and the values in each row of tiles share one
+            # baseline, however many lines their labels take (the Timeline's "Imaging, procedures & reports", Costs'
+            # "Claim shares with no payment" and "Discounts & not covered", the key labs' names beside their state)
+            fit351, rows351 = [], {}
+            for width in (1400, 375, 320):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for tab, preset in (("overview", None), ("health", "90d"), ("timeline", "all"), ("costs", "all")):
+                    js("([t, p]) => { if (p) setPeriod(p); switchTab(t); }", [tab, preset])
+                    settle(300)
+                    got = js(TILE_FIT_JS)
+                    rows351[f"{tab} {width}"] = [got["n"], got["rows"]]
+                    fit351 += [f"{tab} {width} px, {k}: {x}" for k in ("wide", "overlap", "baseline") for x in got[k]]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("tiles at 1400, 375 and 320 px (#351): no value or label wider than its tile, none overlapping another, and the "
+                  "values in each row of tiles on one baseline", not fit351 and all(n > 0 and r > 0 for n, r in rows351.values()), fit351[:8] or rows351)
             js("[state.preset, state.from, state.to] = window._was330.slice(1); switchTab(window._was330[0]); renderAll()")
             js("window._was330 = [state.tab, state.preset, state.from, state.to]")
             # #339: and in the other two date formats (keepDates keeps only the date together, "as of" with it), with no

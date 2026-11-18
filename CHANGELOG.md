@@ -895,6 +895,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A filled button held down keeps its colour** (#350): with Space held on a primary or danger button, or the mouse
   pressed on one and dragged off it, it turned the default button's pale grey under its white label; it keeps its
   accent or red now and only darkens.
+- **Tiles keep their figures inside and in line** (#351): on a phone the Overview's insurance figures could run under
+  the next tile ("$159,764" at 320 and 375 px); the row wraps instead, as before #260. And in a row of tiles a label
+  that wraps (the Timeline's "Imaging, procedures & reports", Costs' "Claim shares with no payment", a key lab's long
+  name) no longer pushes its own value below the others: the tiles in a row share their rows, so the values sit on
+  one line.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
