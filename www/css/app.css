@@ -186,12 +186,16 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
    never an edge inside an edge (forced colours still draw it). base.css lays a tile's text out at its exact size
    (#338), so its rows keep their height when the web font arrives; a change line wraps evenly and the sparklines in a
    row line up (#330). A tile with a "What is this test?" link beside it (.tile-tq, #163) is the tile's frame around
-   the tile's button and the link, so neither covers the other. */
+   the tile's button and the link, so neither covers the other.
+   In a grid, the tiles in a row share its rows (subgrid, #351): the labels', the values', the values as reported, the
+   change lines' and the sparklines', so a label that wraps moves every value in its row down with it and the values
+   sit on one line, the sparklines at the foot. The space between rows of tiles is each tile's margin, not the grid's
+   gap, which would come between a tile's own rows too. */
 .card{background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--sp-4);margin-bottom:var(--sp-5)}
-.tiles,.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:var(--sp-3);margin-bottom:var(--sp-5)}
+.tiles,.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:0 var(--sp-3);margin-bottom:var(--sp-3)}   /* and each tile's margin (below) */
 .tiles.compact{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
 .stats{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
-.card :is(.tiles,.stats):last-child{margin-bottom:0}
+.card :is(.tiles,.stats):last-child{margin-bottom:calc(-1 * var(--sp-3))}   /* the last row's margin is the card's padding */
 :is(.tile,.tile-tq){border:1px solid var(--ring);border-radius:var(--r-lg);background:var(--surface)}
 .tile{display:flex;flex-direction:column;gap:2px;min-width:0;padding:var(--sp-2) var(--sp-3);color:inherit;font:inherit;text-align:left}
 button.tile{cursor:pointer}
@@ -209,6 +213,15 @@ button.tile{cursor:pointer}
 .tile-tq{display:grid;grid-template-columns:minmax(0,1fr) auto}
 .tile-tq>.tile{border:0;background:none;padding-right:2px}
 .tile-tq>.test-page{align-self:start;margin:var(--sp-2) var(--sp-2) 0 0}
+:is(.tiles,.stats)>:is(.tile,.tile-tq){grid-row:span 5;display:grid;grid-template-rows:subgrid;row-gap:0;margin-bottom:var(--sp-3)}
+:is(.tiles,.stats) .tile-tq>.tile{grid-area:1 / 1 / -1;display:grid;grid-template-rows:subgrid;row-gap:0}
+:is(.tiles,.stats) .tile-tq>.test-page{grid-area:1 / 2}
+:is(.tiles,.stats) .tile>.lbl{grid-row:1}
+:is(.tiles,.stats) .tile>.val{grid-row:2}
+:is(.tiles,.stats) .tile>.orig{grid-row:3}
+:is(.tiles,.stats) .tile>:is(.delta,.pre-from){grid-row:4}
+:is(.tiles,.stats) .tile>svg:not(.icon){grid-row:5}
+:is(.tiles,.stats) .tile>:not(:first-child){margin-top:2px}   /* the flex tile's gap, kept off its empty rows */
 .card :is(.tile,.tile-tq){background:var(--hover);border-color:transparent}
 .card .tile-tq>.tile{background:none}
 @media (max-width:700px){ .card{padding:var(--sp-3);border-radius:var(--r-md);margin-bottom:var(--sp-4)} }
@@ -469,7 +482,8 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-row .s{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-2)}
 .ov-minis{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);margin:var(--sp-2) 0 var(--sp-3)}   /* …three side by side (#333), wrapping
    when one is too wide for a third, as a figure in another currency's format can be at 320 px (#342) */
-.ov-minis>*{flex:1 1 0}   /* tiles (#260) */
+.ov-minis>*{flex:1 1 0;min-width:min-content;justify-content:flex-end}   /* tiles (#260), never narrower than a figure: the row wraps
+   instead (#351); a label that wraps grows up from its value, so a row's values stay on one line */
 /* heatmap */
 /* overflow-x:clip (not auto) so the wrapper is not a scroll container and the month axis can stick to the window bottom */
 .hm-wrap{overflow-x:clip}
@@ -827,8 +841,8 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-check{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 .sets .set-sugg{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;margin-top:var(--sp-2);max-width:720px}
 .sets .set-ph{margin:var(--sp-3) 0 var(--sp-2);font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2)}   /* an h4 under a setting's h3, at its weight (#331) */
-.sets .set-preview{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:var(--sp-2);max-width:720px}
-.sets .set-preview .set-wide,.sets .set-preview>p{grid-column:1 / -1;margin:0}
+.sets .set-preview{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:calc(var(--sp-2) - var(--sp-3));max-width:720px}   /* 8 px under the tiles' own (#351) */
+.sets .set-preview .set-wide,.sets .set-preview>p{grid-column:1 / -1;margin:0 0 var(--sp-3)}
 .sets .set-radios{border:0;padding:0;margin:var(--sp-1) 0;display:flex;gap:var(--sp-4);flex-wrap:wrap}
 .sets .set-radios>label{display:flex;align-items:center;gap:var(--sp-1)}
 /* Settings: dates and times (#42), watch and scale (#46) */
@@ -1635,8 +1649,8 @@ svg text.growth-pct{font-size:var(--fs-1)}
 .sets .pre-src{margin:0;padding-left:var(--sp-4);font-size:var(--fs-3);line-height:1.45}
 .sets .pre-src li{margin:3px 0}
 .sets .pre-mode{margin:var(--sp-3) 0 0}
-.sets .pre-tiles{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:var(--sp-2)}
-.sets .pre-tiles>p{grid-column:1 / -1;margin:0}
+.sets .pre-tiles{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:calc(var(--sp-2) - var(--sp-3))}   /* as the preview's, above */
+.sets .pre-tiles>p{grid-column:1 / -1;margin:0 0 var(--sp-3)}
 .sets .pre-tiles .pre-new{margin-left:auto}
 .sets .pre-offer{margin:var(--sp-2) 0}
 
