@@ -1,13 +1,18 @@
 {
- "_about": "Dashboard presets by condition (#186): for each condition, the labs commonly followed for it, most important first, and the readings taken at home that go with it, from a published guideline. Settings → Dashboard → Start from a condition offers them; applying one fills in the Overview's tiles once, and the person changes them as usual after. A preset only chooses what's shown: it doesn't judge results or suggest tests. docs/condition-presets.md says how to add a condition; tests/test_condition_presets.py checks this file.",
+ "_about": "Dashboard presets by condition (#186, #187): for each condition, the labs commonly followed for it, most important first, and the readings taken at home that go with it, from a published guideline. Settings → Dashboard → Start from a condition offers them; applying one fills in the Overview's tiles once, and the person changes them as usual after. A preset only chooses what's shown: it doesn't judge results or suggest tests, and a medicine's entry names what's commonly monitored while taking it, never a dose. docs/condition-presets.md says how to add a condition and which were left out, and why; tests/test_condition_presets.py checks this file.",
  "_review": "Every definition here awaits a clinician's review: each was drawn up from its cited guideline by a contributor, and \"reviewed\" turns true only once a clinician has checked it.",
  "systems": [
-  {"id": "endocrine", "name": "Diabetes, thyroid and hormones"},
+  {"id": "endocrine", "name": "Diabetes, thyroid, hormones and metabolism"},
   {"id": "heart", "name": "Heart and blood vessels"},
   {"id": "kidney", "name": "Kidneys and urinary tract"},
   {"id": "liver", "name": "Liver and digestion"},
   {"id": "blood", "name": "Blood"},
-  {"id": "cancer", "name": "Cancer"}
+  {"id": "cancer", "name": "Cancer"},
+  {"id": "immune", "name": "Joints, lupus and vasculitis"},
+  {"id": "infection", "name": "Infections"},
+  {"id": "mind", "name": "Brain, nerves and mental health"},
+  {"id": "pregnancy", "name": "Pregnancy, reproduction and hormone therapy"},
+  {"id": "medicines", "name": "Medicines with regular blood tests"}
  ],
  "labs": {
   "_about": "Labs lab-aliases.json doesn't know, by LOINC code: the name a tile gets and other spellings to match a series by when it has no code. A code lab-aliases.json knows is listed here only to mark it adult: true (left out for a child's profile), with its name there.",
@@ -33,7 +38,82 @@
   "2502-3": {"name": "Transferrin Saturation", "aka": ["Iron Saturation", "TSAT", "% Saturation", "Iron % Saturation"]},
   "2132-9": {"name": "Vitamin B12", "aka": ["B12", "Cobalamin"]},
   "2284-8": {"name": "Folate", "aka": ["Folic Acid", "Folate, Serum"]},
-  "17849-1": {"name": "Reticulocytes %", "aka": ["Reticulocyte Count", "RETIC %", "Retic"]}
+  "17849-1": {"name": "Reticulocytes %", "aka": ["Reticulocyte Count", "RETIC %", "Retic"]},
+  "1558-6": {"name": "Fasting Glucose", "aka": ["Glucose, Fasting", "Fasting Blood Glucose", "Fasting Plasma Glucose", "FPG"]},
+  "1518-0": {"name": "Glucose, 2 Hours After 75 g", "aka": ["2-Hour Glucose", "Glucose, 2 Hour Post 75 g", "OGTT 2 Hour Glucose", "Glucose Tolerance, 2 Hour"]},
+  "1504-0": {"name": "Glucose, 1 Hour After 50 g", "aka": ["Glucose Challenge, 1 Hour", "1-Hour Glucose Challenge", "Glucose Screen, 1 Hour", "Glucose Challenge Test"]},
+  "3053-6": {"name": "Total T3", "aka": ["T3, Total", "Triiodothyronine, Total", "Total Triiodothyronine"]},
+  "8099-4": {"name": "TPO Antibodies", "aka": ["Thyroid Peroxidase Antibodies", "Thyroid Peroxidase Ab", "Anti-TPO", "TPO Ab", "Thyroperoxidase Ab"]},
+  "5385-0": {"name": "TSH Receptor Antibodies", "aka": ["TRAb", "TSH Receptor Ab", "Thyrotropin Receptor Ab", "TBII"]},
+  "30567-2": {"name": "Thyroid Stimulating Immunoglobulin", "aka": ["TSI", "Thyroid Stimulating Immunoglobulins"]},
+  "2915-7": {"name": "Renin Activity", "aka": ["Plasma Renin Activity", "PRA", "Renin"]},
+  "2147-7": {"name": "Free Cortisol, 24-Hour Urine", "aka": ["Urine Free Cortisol", "UFC", "Cortisol, Free, 24 Hr Urine", "24-Hour Urinary Free Cortisol"]},
+  "2142-8": {"name": "Salivary Cortisol", "aka": ["Cortisol, Saliva", "Cortisol, Salivary", "Late-Night Salivary Cortisol"]},
+  "2986-8": {"name": "Testosterone, Total", "aka": ["Total Testosterone", "Testosterone", "Testosterone, Serum"]},
+  "13967-5": {"name": "SHBG", "aka": ["Sex Hormone Binding Globulin"]},
+  "62292-8": {"name": "Vitamin D, 25-Hydroxy", "aka": ["25-OH Vitamin D", "25-Hydroxyvitamin D", "Vitamin D 25-OH", "25(OH)D", "Vitamin D, 25-OH, Total", "Vitamin D 25 Hydroxy"]},
+  "3084-1": {"name": "Uric Acid", "aka": ["Urate", "Uric Acid, Serum"]},
+  "2157-6": {"name": "CK", "aka": ["Creatine Kinase", "CPK", "Creatine Kinase, Total", "CK, Total"]},
+  "2890-2": {"name": "Urine Protein/Creatinine Ratio", "aka": ["UPCR", "Protein/Creatinine Ratio, Urine", "Urine Protein/Creat Ratio", "Protein/Creatinine Ratio"]},
+  "2889-4": {"name": "Protein, 24-Hour Urine", "aka": ["24-Hour Urine Protein", "Urine Protein, 24 Hr"]},
+  "11253-2": {"name": "Tacrolimus", "aka": ["Tacrolimus Level", "Tacrolimus, Blood", "Tacrolimus Trough", "FK506"]},
+  "3520-4": {"name": "Cyclosporine", "aka": ["Ciclosporin", "Cyclosporine Level", "Cyclosporine A"]},
+  "29247-4": {"name": "Sirolimus", "aka": ["Sirolimus Level", "Rapamycin"]},
+  "23905-3": {"name": "Mycophenolic Acid", "aka": ["Mycophenolic Acid Level", "Mycophenolate Level"]},
+  "32284-2": {"name": "BK Virus DNA", "aka": ["BK Virus PCR", "BK Virus DNA, Quantitative", "BK Viral Load", "BKV DNA"]},
+  "3167-4": {"name": "Urine Volume, 24-Hour", "aka": ["24-Hour Urine Volume", "Volume, 24 Hr Urine"]},
+  "6874-2": {"name": "Calcium, 24-Hour Urine", "aka": ["24-Hour Urine Calcium", "Urine Calcium, 24 Hr"]},
+  "2701-1": {"name": "Oxalate, 24-Hour Urine", "aka": ["24-Hour Urine Oxalate", "Urine Oxalate, 24 Hr"]},
+  "6687-8": {"name": "Citrate, 24-Hour Urine", "aka": ["24-Hour Urine Citrate", "Urine Citrate, 24 Hr"]},
+  "3087-4": {"name": "Uric Acid, 24-Hour Urine", "aka": ["24-Hour Urine Uric Acid", "Urine Uric Acid, 24 Hr"]},
+  "2956-1": {"name": "Sodium, 24-Hour Urine", "aka": ["24-Hour Urine Sodium", "Urine Sodium, 24 Hr"]},
+  "2162-6": {"name": "Creatinine, 24-Hour Urine", "aka": ["24-Hour Urine Creatinine", "Urine Creatinine, 24 Hr"]},
+  "42595-9": {"name": "Hepatitis B Virus DNA", "aka": ["HBV DNA", "HBV Viral Load", "Hepatitis B DNA, Quantitative", "HBV DNA, Quantitative PCR"]},
+  "13954-3": {"name": "Hepatitis B e Antigen", "aka": ["HBeAg", "Hep B e Ag"]},
+  "5196-1": {"name": "Hepatitis B Surface Antigen", "aka": ["HBsAg", "Hep B Surface Ag", "Hepatitis B Surface Ag"]},
+  "11011-4": {"name": "Hepatitis C Virus RNA", "aka": ["HCV RNA", "HCV Viral Load", "Hepatitis C RNA, Quantitative", "HCV RNA, Quantitative PCR"]},
+  "1834-1": {"name": "AFP", "aka": ["Alpha-Fetoprotein", "Alpha Fetoprotein", "AFP, Tumor Marker", "Alpha-1-Fetoprotein"]},
+  "38445-3": {"name": "Fecal Calprotectin", "aka": ["Calprotectin", "Calprotectin, Stool", "Faecal Calprotectin"]},
+  "31017-7": {"name": "tTG-IgA", "aka": ["Tissue Transglutaminase IgA", "tTG IgA", "Transglutaminase IgA Ab", "TTG Ab, IgA"]},
+  "2458-8": {"name": "IgA", "aka": ["Immunoglobulin A", "IgA, Serum"]},
+  "2465-3": {"name": "IgG", "aka": ["Immunoglobulin G", "IgG, Serum"]},
+  "13964-2": {"name": "Methylmalonic Acid", "aka": ["MMA", "Methylmalonic Acid, Serum"]},
+  "13965-9": {"name": "Homocysteine", "aka": ["Homocysteine, Total", "Total Homocysteine"]},
+  "4576-5": {"name": "Hemoglobin F", "aka": ["HbF", "Hgb F", "Fetal Hemoglobin", "Hemoglobin F %"]},
+  "4625-0": {"name": "Hemoglobin S", "aka": ["HbS", "Hgb S", "Hemoglobin S %"]},
+  "33358-3": {"name": "M-Protein", "aka": ["M-Spike", "M Spike", "Monoclonal Protein", "Monoclonal Protein, Serum"]},
+  "36916-5": {"name": "Free Kappa Light Chains", "aka": ["Kappa Free Light Chains", "Free Kappa", "Kappa, Free", "Kappa Light Chains, Free"]},
+  "33944-0": {"name": "Free Lambda Light Chains", "aka": ["Lambda Free Light Chains", "Free Lambda", "Lambda, Free", "Lambda Light Chains, Free"]},
+  "48378-4": {"name": "Kappa/Lambda Ratio", "aka": ["Free Kappa/Lambda Ratio", "Kappa/Lambda Free Light Chain Ratio", "K/L Ratio"]},
+  "1952-1": {"name": "Beta-2 Microglobulin", "aka": ["B2M", "Beta 2 Microglobulin", "Beta-2-Microglobulin"]},
+  "69380-4": {"name": "BCR-ABL1 (IS)", "aka": ["BCR-ABL1 International Scale", "BCR-ABL IS", "BCR-ABL1, Quantitative", "BCR-ABL1 Transcript, IS"]},
+  "2857-1": {"name": "PSA", "aka": ["Prostate Specific Antigen", "PSA, Total", "Prostate-Specific Ag"], "adult": true},
+  "2039-6": {"name": "CEA", "aka": ["Carcinoembryonic Antigen", "Carcinoembryonic Ag"]},
+  "10334-1": {"name": "CA-125", "aka": ["CA 125", "CA125", "Cancer Antigen 125"]},
+  "21198-7": {"name": "Beta-hCG", "aka": ["hCG, Beta Subunit", "Beta hCG, Quantitative", "hCG Beta, Tumor Marker"]},
+  "3013-0": {"name": "Thyroglobulin", "aka": ["Thyroglobulin, Serum", "Thyroglobulin, Tumor Marker"]},
+  "8098-6": {"name": "Thyroglobulin Antibodies", "aka": ["TgAb", "Thyroglobulin Ab", "Anti-Thyroglobulin", "Anti-Tg Antibodies"]},
+  "4485-9": {"name": "Complement C3", "aka": ["C3", "C3 Complement"]},
+  "4498-2": {"name": "Complement C4", "aka": ["C4", "C4 Complement"]},
+  "5130-0": {"name": "Anti-dsDNA", "aka": ["dsDNA Antibodies", "dsDNA Ab", "Anti-Double Stranded DNA", "DNA Double-Stranded Ab"]},
+  "30341-2": {"name": "ESR", "aka": ["Sed Rate", "Sedimentation Rate", "Erythrocyte Sedimentation Rate", "ESR, Westergren", "Sed Rate by Modified Westergren"]},
+  "6968-2": {"name": "PR3 Antibodies", "aka": ["Proteinase 3 Ab", "PR3-ANCA", "Anti-PR3"]},
+  "6969-0": {"name": "MPO Antibodies", "aka": ["Myeloperoxidase Ab", "MPO-ANCA", "Anti-MPO"]},
+  "20447-9": {"name": "HIV-1 Viral Load", "aka": ["HIV-1 RNA", "HIV RNA, Quantitative", "HIV-1 RNA, Quantitative PCR", "HIV Viral Load"]},
+  "24467-3": {"name": "CD4 Count", "aka": ["CD4", "CD4 Absolute", "Absolute CD4", "CD4+ T Cells", "CD4 T-Helper Cells, Absolute"]},
+  "8123-2": {"name": "CD4 %", "aka": ["CD4 Percent", "% CD4", "CD4+ %"]},
+  "56888-1": {"name": "HIV Antigen/Antibody", "aka": ["HIV-1/2 Ag/Ab", "HIV 1/2 Antigen and Antibody", "HIV Ag/Ab Combo", "HIV-1/HIV-2 Antibody and p24 Antigen"]},
+  "20507-0": {"name": "RPR", "aka": ["Rapid Plasma Reagin", "Syphilis RPR", "RPR (Syphilis)"]},
+  "4086-5": {"name": "Valproic Acid", "aka": ["Valproate", "Valproic Acid Level", "Valproate Level"]},
+  "3432-2": {"name": "Carbamazepine", "aka": ["Carbamazepine Level"]},
+  "3968-5": {"name": "Phenytoin", "aka": ["Phenytoin Level", "Phenytoin, Total"]},
+  "3948-7": {"name": "Phenobarbital", "aka": ["Phenobarbital Level"]},
+  "6948-4": {"name": "Lamotrigine", "aka": ["Lamotrigine Level"]},
+  "14334-7": {"name": "Lithium", "aka": ["Lithium Level", "Lithium, Serum"]},
+  "2243-4": {"name": "Estradiol", "aka": ["E2", "Estradiol, Serum", "Oestradiol"]},
+  "2842-3": {"name": "Prolactin", "aka": ["PRL", "Prolactin, Serum"]},
+  "74661-0": {"name": "Phosphatidylethanol", "aka": ["PEth", "PEth, Blood"]},
+  "48495-6": {"name": "CDT", "aka": ["%CDT", "Carbohydrate-Deficient Transferrin", "Carbohydrate Deficient Transferrin"]}
  },
  "home": {
   "_about": "Readings taken at home a condition can choose: bp, glucose, temp, oxygen, weight (server/presets.py says which Overview tile and visit summary section each is)."
@@ -53,16 +133,166 @@
    "reviewed": false
   },
   {
-   "id": "chronic-kidney-disease",
-   "name": "Chronic kidney disease",
-   "system": "kidney",
-   "synonyms": ["CKD", "chronic renal disease", "chronic renal failure", "chronic renal insufficiency", "chronic kidney failure"],
+   "id": "type-1-diabetes",
+   "name": "Type 1 diabetes",
+   "system": "endocrine",
+   "synonyms": ["type 1 diabetes mellitus", "diabetes mellitus type 1", "type I diabetes", "T1D", "T1DM", "juvenile diabetes", "insulin-dependent diabetes", "IDDM", "LADA", "latent autoimmune diabetes in adults"],
    "sources": [
-    {"publisher": "KDIGO (Kidney Disease: Improving Global Outcomes)", "title": "KDIGO 2024 Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease", "year": 2024,
-     "url": "https://doi.org/10.1016/j.kint.2023.10.018"}
+    {"publisher": "American Diabetes Association", "title": "Standards of Care in Diabetes—2026", "year": 2026,
+     "url": "https://diabetesjournals.org/care/issue/49/Supplement_1"}
    ],
-   "labs": ["98979-8", "2160-0", "9318-7", "2823-3", "2028-9", "2951-2", "3094-0", "718-7", "17861-6", "2777-1", "2731-8", "1751-7"],
-   "home": ["bp"],
+   "labs": ["4548-4", "2345-7", "9318-7", "98979-8", "2160-0", "13457-7", "2093-3", "2085-9", "2571-8", "3016-3", "31017-7"],
+   "home": ["glucose", "bp"],
+   "reviewed": false
+  },
+  {
+   "id": "prediabetes",
+   "name": "Prediabetes",
+   "system": "endocrine",
+   "synonyms": ["pre-diabetes", "impaired fasting glucose", "impaired glucose tolerance", "IFG", "IGT", "borderline diabetes"],
+   "sources": [
+    {"publisher": "American Diabetes Association", "title": "3. Prevention or Delay of Diabetes and Associated Comorbidities: Standards of Care in Diabetes—2026", "year": 2026,
+     "url": "https://doi.org/10.2337/dc26-S003"}
+   ],
+   "labs": ["4548-4", "1558-6", "2345-7", "1518-0", "13457-7", "2085-9", "2571-8", "2093-3"],
+   "home": ["weight", "bp"],
+   "reviewed": false
+  },
+  {
+   "id": "obesity",
+   "name": "Obesity",
+   "system": "endocrine",
+   "synonyms": ["obese", "severe obesity", "morbid obesity", "class 3 obesity", "childhood obesity"],
+   "sources": [
+    {"publisher": "Obesity Canada and the Canadian Association of Bariatric Physicians and Surgeons", "title": "Obesity in adults: a clinical practice guideline", "year": 2020,
+     "url": "https://doi.org/10.1503/cmaj.191707"},
+    {"publisher": "American Academy of Pediatrics", "title": "Clinical Practice Guideline for the Evaluation and Treatment of Children and Adolescents With Obesity", "year": 2023,
+     "url": "https://doi.org/10.1542/peds.2022-060640"}
+   ],
+   "labs": ["4548-4", "2345-7", "13457-7", "2085-9", "2571-8", "2093-3", "1742-6", "2160-0", "98979-8"],
+   "home": ["weight", "bp"],
+   "reviewed": false
+  },
+  {
+   "id": "metabolic-syndrome",
+   "name": "Metabolic syndrome",
+   "system": "endocrine",
+   "synonyms": ["syndrome X", "metabolic syndrome X", "insulin resistance syndrome", "dysmetabolic syndrome"],
+   "sources": [
+    {"publisher": "International Diabetes Federation, National Heart, Lung, and Blood Institute, American Heart Association, World Heart Federation, International Atherosclerosis Society and International Association for the Study of Obesity", "title": "Harmonizing the Metabolic Syndrome", "year": 2009,
+     "url": "https://doi.org/10.1161/CIRCULATIONAHA.109.192644"}
+   ],
+   "labs": ["2571-8", "2085-9", "1558-6", "2345-7", "4548-4", "13457-7", "2093-3"],
+   "home": ["bp", "weight"],
+   "reviewed": false
+  },
+  {
+   "id": "thyroid-disease",
+   "name": "Thyroid disease (underactive or overactive)",
+   "system": "endocrine",
+   "synonyms": ["thyroid disease", "thyroid disorder", "thyroid dysfunction", "thyroiditis", "goiter", "goitre"],
+   "except": ["Hashimoto", "autoimmune thyroiditis", "lymphocytic thyroiditis", "toxic"],
+   "sources": [
+    {"publisher": "American Thyroid Association", "title": "Guidelines for the Treatment of Hypothyroidism", "year": 2014,
+     "url": "https://doi.org/10.1089/thy.2014.0028"},
+    {"publisher": "American Thyroid Association", "title": "2016 American Thyroid Association Guidelines for Diagnosis and Management of Hyperthyroidism and Other Causes of Thyrotoxicosis", "year": 2016,
+     "url": "https://doi.org/10.1089/thy.2016.0229"}
+   ],
+   "labs": ["3016-3", "3024-7", "3051-0"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "hypothyroidism",
+   "name": "Hypothyroidism (underactive thyroid)",
+   "system": "endocrine",
+   "synonyms": ["hypothyroidism", "underactive thyroid", "hypothyroid", "Hashimoto's thyroiditis", "Hashimoto", "autoimmune thyroiditis", "chronic lymphocytic thyroiditis"],
+   "sources": [
+    {"publisher": "American Thyroid Association", "title": "Guidelines for the Treatment of Hypothyroidism", "year": 2014,
+     "url": "https://doi.org/10.1089/thy.2014.0028"}
+   ],
+   "labs": ["3016-3", "3024-7", "8099-4"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "hyperthyroidism",
+   "name": "Hyperthyroidism (overactive thyroid)",
+   "system": "endocrine",
+   "synonyms": ["hyperthyroidism", "overactive thyroid", "thyrotoxicosis", "Graves' disease", "Graves disease", "Graves", "toxic multinodular goiter", "toxic nodular goiter", "toxic adenoma"],
+   "sources": [
+    {"publisher": "American Thyroid Association", "title": "2016 American Thyroid Association Guidelines for Diagnosis and Management of Hyperthyroidism and Other Causes of Thyrotoxicosis", "year": 2016,
+     "url": "https://doi.org/10.1089/thy.2016.0229"}
+   ],
+   "labs": ["3016-3", "3024-7", "3051-0", "3053-6", "5385-0", "30567-2", "6690-2", "751-8", "1742-6"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "adrenal-insufficiency",
+   "name": "Adrenal insufficiency (Addison's disease)",
+   "system": "endocrine",
+   "synonyms": ["adrenal insufficiency", "Addison's disease", "Addison disease", "Addison's", "primary adrenal insufficiency", "adrenal failure", "hypoadrenalism", "adrenocortical insufficiency"],
+   "sources": [
+    {"publisher": "Endocrine Society", "title": "Diagnosis and Treatment of Primary Adrenal Insufficiency: An Endocrine Society Clinical Practice Guideline", "year": 2016,
+     "url": "https://doi.org/10.1210/jc.2015-1710"}
+   ],
+   "labs": ["2951-2", "2823-3", "2915-7", "2345-7", "2160-0"],
+   "home": ["bp", "weight"],
+   "reviewed": false
+  },
+  {
+   "id": "cushings-syndrome",
+   "name": "Cushing's syndrome",
+   "system": "endocrine",
+   "synonyms": ["Cushing syndrome", "Cushing's disease", "Cushing disease", "Cushing", "hypercortisolism"],
+   "sources": [
+    {"publisher": "Endocrine Society", "title": "Treatment of Cushing's Syndrome: An Endocrine Society Clinical Practice Guideline", "year": 2015,
+     "url": "https://doi.org/10.1210/jc.2015-1818"},
+    {"publisher": "Pituitary Society", "title": "Consensus on diagnosis and management of Cushing's disease: a guideline update", "year": 2021,
+     "url": "https://doi.org/10.1016/S2213-8587(21)00235-7"}
+   ],
+   "labs": ["2147-7", "2142-8", "2823-3", "2345-7", "4548-4"],
+   "home": ["bp", "weight", "glucose"],
+   "reviewed": false
+  },
+  {
+   "id": "pcos",
+   "name": "Polycystic ovary syndrome (PCOS)",
+   "system": "endocrine",
+   "synonyms": ["PCOS", "polycystic ovary syndrome", "polycystic ovarian syndrome", "polycystic ovary disease", "PCOD", "Stein-Leventhal syndrome"],
+   "sources": [
+    {"publisher": "Monash University, for the International PCOS Network", "title": "Recommendations From the 2023 International Evidence-based Guideline for the Assessment and Management of Polycystic Ovary Syndrome", "year": 2023,
+     "url": "https://doi.org/10.1210/clinem/dgad463"}
+   ],
+   "labs": ["4548-4", "1518-0", "2345-7", "2986-8", "13967-5", "13457-7", "2085-9", "2571-8", "2093-3"],
+   "home": ["weight", "bp"],
+   "reviewed": false
+  },
+  {
+   "id": "vitamin-d-deficiency",
+   "name": "Vitamin D deficiency",
+   "system": "endocrine",
+   "synonyms": ["vitamin D insufficiency", "low vitamin D", "hypovitaminosis D", "vitamin D deficient"],
+   "sources": [
+    {"publisher": "Endocrine Society", "title": "Evaluation, Treatment, and Prevention of Vitamin D Deficiency: an Endocrine Society Clinical Practice Guideline", "year": 2011,
+     "url": "https://doi.org/10.1210/jc.2011-0385"}
+   ],
+   "labs": ["62292-8", "17861-6", "2731-8", "6768-6", "2777-1"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "gout",
+   "name": "Gout",
+   "system": "endocrine",
+   "synonyms": ["gouty arthritis", "tophaceous gout", "podagra", "hyperuricemia", "hyperuricaemia"],
+   "sources": [
+    {"publisher": "American College of Rheumatology", "title": "2020 American College of Rheumatology Guideline for the Management of Gout", "year": 2020,
+     "url": "https://doi.org/10.1002/acr.24180"}
+   ],
+   "labs": ["3084-1", "2160-0", "98979-8"],
+   "home": [],
    "reviewed": false
   },
   {
@@ -70,7 +300,7 @@
    "name": "High blood pressure",
    "system": "heart",
    "synonyms": ["hypertension", "HTN", "essential hypertension", "primary hypertension"],
-   "except": ["pulmonary hypertension", "portal hypertension", "intracranial hypertension", "ocular hypertension"],
+   "except": ["pulmonary hypertension", "portal hypertension", "intracranial hypertension", "ocular hypertension", "gestational hypertension", "pregnancy-induced hypertension"],
    "sources": [
     {"publisher": "American Heart Association and American College of Cardiology, with other societies", "title": "2025 AHA/ACC Guideline for the Prevention, Detection, Evaluation and Management of High Blood Pressure in Adults", "year": 2025,
      "url": "https://doi.org/10.1161/HYP.0000000000000249"}
@@ -93,25 +323,11 @@
    "reviewed": false
   },
   {
-   "id": "thyroid-disease",
-   "name": "Thyroid disease (underactive or overactive)",
-   "system": "endocrine",
-   "synonyms": ["hypothyroidism", "hyperthyroidism", "underactive thyroid", "overactive thyroid", "Hashimoto", "Graves", "thyroiditis", "thyrotoxicosis", "goiter", "goitre"],
-   "sources": [
-    {"publisher": "American Thyroid Association", "title": "Guidelines for the Treatment of Hypothyroidism", "year": 2014,
-     "url": "https://doi.org/10.1089/thy.2014.0028"},
-    {"publisher": "American Thyroid Association", "title": "2016 American Thyroid Association Guidelines for Diagnosis and Management of Hyperthyroidism and Other Causes of Thyrotoxicosis", "year": 2016,
-     "url": "https://doi.org/10.1089/thy.2016.0229"}
-   ],
-   "labs": ["3016-3", "3024-7", "3051-0"],
-   "home": [],
-   "reviewed": false
-  },
-  {
    "id": "high-cholesterol",
    "name": "High cholesterol",
    "system": "heart",
-   "synonyms": ["hypercholesterolemia", "hypercholesterolaemia", "hyperlipidemia", "hyperlipidaemia", "dyslipidemia", "dyslipidaemia", "familial hypercholesterolemia", "mixed hyperlipidemia", "hypertriglyceridemia", "high LDL"],
+   "synonyms": ["hypercholesterolemia", "hypercholesterolaemia", "hyperlipidemia", "hyperlipidaemia", "dyslipidemia", "dyslipidaemia", "mixed hyperlipidemia", "high LDL"],
+   "except": ["familial hypercholesterolemia", "familial hypercholesterolaemia"],
    "sources": [
     {"publisher": "American College of Cardiology and American Heart Association, with other societies", "title": "2026 ACC/AHA/AACVPR/ABC/ACPM/ADA/AGS/APhA/ASPC/NLA/PCNA Guideline on the Management of Dyslipidemia", "year": 2026,
      "url": "https://doi.org/10.1016/j.jacc.2025.11.016"}
@@ -121,15 +337,285 @@
    "reviewed": false
   },
   {
+   "id": "coronary-artery-disease",
+   "name": "Coronary artery disease",
+   "system": "heart",
+   "synonyms": ["CAD", "coronary heart disease", "chronic coronary disease", "ischemic heart disease", "ischaemic heart disease", "IHD", "angina pectoris", "stable angina", "myocardial infarction", "heart attack", "coronary atherosclerosis"],
+   "sources": [
+    {"publisher": "American Heart Association and American College of Cardiology, with other societies", "title": "2023 AHA/ACC/ACCP/ASPC/NLA/PCNA Guideline for the Management of Patients With Chronic Coronary Disease", "year": 2023,
+     "url": "https://doi.org/10.1161/CIR.0000000000001168"}
+   ],
+   "labs": ["13457-7", "43396-1", "2093-3", "2085-9", "2571-8", "1884-6", "10835-7", "4548-4", "2345-7", "2160-0", "98979-8", "1742-6"],
+   "home": ["bp", "weight"],
+   "reviewed": false
+  },
+  {
+   "id": "atrial-fibrillation",
+   "name": "Atrial fibrillation",
+   "system": "heart",
+   "synonyms": ["AF", "AFib", "A-fib", "auricular fibrillation"],
+   "sources": [
+    {"publisher": "American College of Cardiology, American Heart Association, American College of Clinical Pharmacy and Heart Rhythm Society", "title": "2023 ACC/AHA/ACCP/HRS Guideline for the Diagnosis and Management of Atrial Fibrillation", "year": 2024,
+     "url": "https://doi.org/10.1161/CIR.0000000000001193"},
+    {"publisher": "European Heart Rhythm Association", "title": "2021 European Heart Rhythm Association Practical Guide on the Use of Non-Vitamin K Antagonist Oral Anticoagulants in Patients with Atrial Fibrillation", "year": 2021,
+     "url": "https://doi.org/10.1093/europace/euab065"}
+   ],
+   "labs": ["2160-0", "98979-8", "718-7", "777-3", "2823-3", "1742-6", "1920-8", "3016-3", "6301-6"],
+   "home": ["bp"],
+   "reviewed": false
+  },
+  {
+   "id": "peripheral-artery-disease",
+   "name": "Peripheral artery disease",
+   "system": "heart",
+   "synonyms": ["PAD", "peripheral arterial disease", "peripheral vascular disease", "intermittent claudication", "claudication", "lower extremity arterial disease"],
+   "sources": [
+    {"publisher": "American College of Cardiology and American Heart Association, with other societies", "title": "2024 ACC/AHA/AACVPR/APMA/ABC/SCAI/SVM/SVN/SVS/SIR/VESS Guideline for the Management of Lower Extremity Peripheral Artery Disease", "year": 2024,
+     "url": "https://doi.org/10.1161/CIR.0000000000001251"}
+   ],
+   "labs": ["13457-7", "43396-1", "2093-3", "2085-9", "2571-8", "4548-4", "2345-7", "2160-0", "98979-8"],
+   "home": ["bp"],
+   "reviewed": false
+  },
+  {
+   "id": "familial-hypercholesterolemia",
+   "name": "Familial hypercholesterolemia (FH)",
+   "system": "heart",
+   "synonyms": ["familial hypercholesterolemia", "familial hypercholesterolaemia", "heterozygous familial hypercholesterolemia", "homozygous familial hypercholesterolemia", "HeFH", "HoFH"],
+   "sources": [
+    {"publisher": "National Institute for Health and Care Excellence (NICE)", "title": "Familial hypercholesterolaemia: identification and management (CG71)", "year": 2019,
+     "url": "https://www.nice.org.uk/guidance/cg71"},
+    {"publisher": "European Atherosclerosis Society", "title": "Familial hypercholesterolaemia is underdiagnosed and undertreated in the general population: guidance for clinicians to prevent coronary heart disease", "year": 2013,
+     "url": "https://doi.org/10.1093/eurheartj/eht273"},
+    {"publisher": "European Atherosclerosis Society", "title": "Familial hypercholesterolaemia in children and adolescents: gaining decades of life by optimizing detection and treatment", "year": 2015,
+     "url": "https://doi.org/10.1093/eurheartj/ehv157"}
+   ],
+   "labs": ["13457-7", "43396-1", "1884-6", "10835-7", "2093-3", "2085-9", "2571-8", "1742-6", "2157-6"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "high-triglycerides",
+   "name": "High triglycerides",
+   "system": "heart",
+   "synonyms": ["hypertriglyceridemia", "hypertriglyceridaemia", "elevated triglycerides", "raised triglycerides"],
+   "sources": [
+    {"publisher": "Endocrine Society", "title": "Evaluation and Treatment of Hypertriglyceridemia: An Endocrine Society Clinical Practice Guideline", "year": 2012,
+     "url": "https://doi.org/10.1210/jc.2011-3213"},
+    {"publisher": "American College of Cardiology and American Heart Association, with other societies", "title": "2026 ACC/AHA/AACVPR/ABC/ACPM/ADA/AGS/APhA/ASPC/NLA/PCNA Guideline on the Management of Dyslipidemia", "year": 2026,
+     "url": "https://doi.org/10.1016/j.jacc.2025.11.016"}
+   ],
+   "labs": ["2571-8", "43396-1", "2085-9", "2093-3", "13457-7", "1884-6", "4548-4", "2345-7", "3016-3", "1742-6", "2160-0"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "pulmonary-hypertension",
+   "name": "Pulmonary hypertension",
+   "system": "heart",
+   "synonyms": ["pulmonary arterial hypertension", "PAH", "chronic thromboembolic pulmonary hypertension", "CTEPH"],
+   "sources": [
+    {"publisher": "European Society of Cardiology and European Respiratory Society", "title": "2022 ESC/ERS Guidelines for the diagnosis and treatment of pulmonary hypertension", "year": 2022,
+     "url": "https://doi.org/10.1093/eurheartj/ehac237"}
+   ],
+   "labs": ["33762-6", "30934-4", "718-7", "2276-4", "2502-3", "2160-0", "98979-8", "2951-2", "1742-6", "1920-8"],
+   "home": ["oxygen", "weight"],
+   "reviewed": false
+  },
+  {
+   "id": "chronic-kidney-disease",
+   "name": "Chronic kidney disease",
+   "system": "kidney",
+   "synonyms": ["CKD", "chronic renal disease", "chronic renal failure", "chronic renal insufficiency", "chronic kidney failure"],
+   "sources": [
+    {"publisher": "KDIGO (Kidney Disease: Improving Global Outcomes)", "title": "KDIGO 2024 Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease", "year": 2024,
+     "url": "https://doi.org/10.1016/j.kint.2023.10.018"}
+   ],
+   "labs": ["98979-8", "2160-0", "9318-7", "2823-3", "2028-9", "2951-2", "3094-0", "718-7", "17861-6", "2777-1", "2731-8", "1751-7"],
+   "home": ["bp"],
+   "reviewed": false
+  },
+  {
+   "id": "dialysis",
+   "name": "Kidney failure on dialysis",
+   "system": "kidney",
+   "synonyms": ["dialysis", "renal dialysis", "hemodialysis", "haemodialysis", "peritoneal dialysis", "end-stage kidney disease", "end-stage renal disease", "ESKD", "ESRD"],
+   "sources": [
+    {"publisher": "KDIGO (Kidney Disease: Improving Global Outcomes)", "title": "KDIGO 2017 Clinical Practice Guideline Update for the Diagnosis, Evaluation, Prevention, and Treatment of Chronic Kidney Disease–Mineral and Bone Disorder (CKD-MBD)", "year": 2017,
+     "url": "https://doi.org/10.1016/j.kisu.2017.04.001"},
+    {"publisher": "KDIGO (Kidney Disease: Improving Global Outcomes)", "title": "KDIGO 2026 Clinical Practice Guideline for the Management of Anemia in Chronic Kidney Disease (CKD)", "year": 2026,
+     "url": "https://doi.org/10.1016/j.kint.2025.06.006"}
+   ],
+   "labs": ["2823-3", "2777-1", "17861-6", "2731-8", "718-7", "2276-4", "2502-3", "1751-7", "2028-9", "2951-2", "3094-0", "6768-6"],
+   "home": ["bp", "weight"],
+   "reviewed": false
+  },
+  {
+   "id": "kidney-transplant",
+   "name": "Kidney transplant",
+   "system": "kidney",
+   "synonyms": ["renal transplant", "kidney transplant recipient", "renal transplant recipient", "kidney transplantation", "renal transplantation"],
+   "sources": [
+    {"publisher": "KDIGO (Kidney Disease: Improving Global Outcomes)", "title": "KDIGO Clinical Practice Guideline for the Care of Kidney Transplant Recipients", "year": 2009,
+     "url": "https://doi.org/10.1111/j.1600-6143.2009.02834.x"}
+   ],
+   "labs": ["2160-0", "98979-8", "11253-2", "3520-4", "29247-4", "2890-2", "2823-3", "718-7", "6690-2", "777-3", "32284-2", "2345-7", "4548-4", "13457-7", "19123-9", "2777-1", "17861-6", "23905-3"],
+   "home": ["bp"],
+   "reviewed": false
+  },
+  {
+   "id": "kidney-stones",
+   "name": "Kidney stones",
+   "system": "kidney",
+   "synonyms": ["kidney stone", "nephrolithiasis", "urolithiasis", "renal calculi", "renal calculus", "renal stones", "calculus of kidney"],
+   "sources": [
+    {"publisher": "American Urological Association", "title": "Medical Management of Kidney Stones: AUA Guideline", "year": 2014,
+     "url": "https://doi.org/10.1016/j.juro.2014.05.006"}
+   ],
+   "labs": ["2160-0", "17861-6", "3084-1", "2823-3", "2028-9", "2731-8", "3167-4", "6874-2", "2701-1", "6687-8", "3087-4", "2956-1", "2162-6"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "nephrotic-syndrome",
+   "name": "Nephrotic syndrome",
+   "system": "kidney",
+   "synonyms": ["nephrotic", "nephrosis", "minimal change disease", "membranous nephropathy", "focal segmental glomerulosclerosis", "FSGS"],
+   "sources": [
+    {"publisher": "KDIGO (Kidney Disease: Improving Global Outcomes)", "title": "KDIGO 2021 Clinical Practice Guideline for the Management of Glomerular Diseases", "year": 2021,
+     "url": "https://doi.org/10.1016/j.kint.2021.05.021"}
+   ],
+   "labs": ["2890-2", "9318-7", "2889-4", "1751-7", "2160-0", "98979-8", "2093-3", "13457-7", "2885-2", "2951-2", "2823-3"],
+   "home": ["bp", "weight"],
+   "reviewed": false
+  },
+  {
    "id": "liver-disease",
-   "name": "Liver disease (fatty liver, cirrhosis)",
+   "name": "Fatty liver disease (MASLD)",
    "system": "liver",
-   "synonyms": ["chronic liver disease", "fatty liver", "fatty liver disease", "steatotic liver disease", "MASLD", "MASH", "NAFLD", "NASH", "steatohepatitis", "cirrhosis", "liver fibrosis"],
+   "synonyms": ["chronic liver disease", "fatty liver", "fatty liver disease", "steatotic liver disease", "metabolic dysfunction-associated steatotic liver disease", "MASLD", "MASH", "NAFLD", "NASH", "steatohepatitis", "hepatic steatosis", "liver fibrosis"],
    "sources": [
     {"publisher": "American Association for the Study of Liver Diseases (AASLD)", "title": "AASLD Practice Guidance on the clinical assessment and management of nonalcoholic fatty liver disease", "year": 2023,
      "url": "https://doi.org/10.1097/HEP.0000000000000323"}
    ],
-   "labs": ["1742-6", "1920-8", "777-3", "2324-2", "6768-6", "1975-2", "1751-7", "6301-6", "2951-2", "2160-0"],
+   "labs": ["1742-6", "1920-8", "777-3", "2324-2", "6768-6", "1975-2", "1751-7", "6301-6", "2951-2", "2160-0", "4548-4", "2571-8"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "cirrhosis",
+   "name": "Cirrhosis of the liver",
+   "system": "liver",
+   "synonyms": ["cirrhosis", "liver cirrhosis", "hepatic cirrhosis", "decompensated cirrhosis", "end-stage liver disease", "ESLD"],
+   "except": ["primary biliary cirrhosis"],
+   "sources": [
+    {"publisher": "American Association for the Study of Liver Diseases (AASLD)", "title": "Diagnosis, Evaluation, and Management of Ascites, Spontaneous Bacterial Peritonitis and Hepatorenal Syndrome: 2021 Practice Guidance by the American Association for the Study of Liver Diseases", "year": 2021,
+     "url": "https://doi.org/10.1002/hep.31884"},
+    {"publisher": "European Association for the Study of the Liver (EASL)", "title": "EASL Clinical Practice Guidelines for the management of patients with decompensated cirrhosis", "year": 2018,
+     "url": "https://doi.org/10.1016/j.jhep.2018.03.024"},
+    {"publisher": "American Association for the Study of Liver Diseases (AASLD)", "title": "AASLD Practice Guidance on prevention, diagnosis, and treatment of hepatocellular carcinoma", "year": 2023,
+     "url": "https://doi.org/10.1097/HEP.0000000000000466"}
+   ],
+   "labs": ["1975-2", "6301-6", "2160-0", "2951-2", "1751-7", "777-3", "1834-1", "1742-6", "1920-8", "718-7", "2823-3"],
+   "home": ["weight"],
+   "reviewed": false
+  },
+  {
+   "id": "hepatitis-b",
+   "name": "Hepatitis B",
+   "system": "liver",
+   "synonyms": ["chronic hepatitis B", "hepatitis B infection", "HBV infection", "HBV", "hep B"],
+   "except": ["hepatitis B vaccine", "hepatitis B vaccination", "hepatitis B immunization", "hepatitis B immunisation", "immune to hepatitis B", "hepatitis B screening", "HBV vaccine"],
+   "sources": [
+    {"publisher": "American Association for the Study of Liver Diseases (AASLD)", "title": "Update on prevention, diagnosis, and treatment of chronic hepatitis B: AASLD 2018 hepatitis B guidance", "year": 2018,
+     "url": "https://doi.org/10.1002/hep.29800"},
+    {"publisher": "World Health Organization", "title": "Guidelines for the prevention, diagnosis, care and treatment for people with chronic hepatitis B infection", "year": 2024,
+     "url": "https://www.who.int/publications/i/item/9789240090903"}
+   ],
+   "labs": ["42595-9", "1742-6", "13954-3", "5196-1", "1834-1", "777-3", "1920-8", "1751-7", "1975-2", "6301-6", "2160-0"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "hepatitis-c",
+   "name": "Hepatitis C",
+   "system": "liver",
+   "synonyms": ["chronic hepatitis C", "hepatitis C infection", "HCV infection", "HCV", "hep C"],
+   "except": ["hepatitis C screening", "HCV screening"],
+   "sources": [
+    {"publisher": "American Association for the Study of Liver Diseases and Infectious Diseases Society of America", "title": "Hepatitis C Guidance 2023 Update: American Association for the Study of Liver Diseases–Infectious Diseases Society of America Recommendations for Testing, Managing, and Treating Hepatitis C Virus Infection", "year": 2023,
+     "url": "https://doi.org/10.1093/cid/ciad319"}
+   ],
+   "labs": ["11011-4", "1742-6", "1920-8", "777-3", "1751-7", "1975-2", "6301-6", "2160-0", "98979-8", "5196-1"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "autoimmune-hepatitis",
+   "name": "Autoimmune hepatitis",
+   "system": "liver",
+   "synonyms": ["AIH", "lupoid hepatitis", "autoimmune chronic hepatitis"],
+   "sources": [
+    {"publisher": "American Association for the Study of Liver Diseases (AASLD)", "title": "Diagnosis and Management of Autoimmune Hepatitis in Adults and Children: 2019 Practice Guidance and Guidelines From the American Association for the Study of Liver Diseases", "year": 2020,
+     "url": "https://doi.org/10.1002/hep.31065"}
+   ],
+   "labs": ["1742-6", "1920-8", "2465-3", "1975-2", "1751-7", "6301-6", "777-3", "6690-2", "6768-6", "2324-2"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "primary-biliary-cholangitis",
+   "name": "Primary biliary cholangitis (PBC)",
+   "system": "liver",
+   "synonyms": ["primary biliary cholangitis", "primary biliary cirrhosis", "PBC"],
+   "sources": [
+    {"publisher": "American Association for the Study of Liver Diseases (AASLD)", "title": "Primary Biliary Cholangitis: 2018 Practice Guidance from the American Association for the Study of Liver Diseases", "year": 2019,
+     "url": "https://doi.org/10.1002/hep.30145"}
+   ],
+   "labs": ["6768-6", "1975-2", "2324-2", "1742-6", "1920-8", "1751-7", "777-3", "6301-6", "3016-3"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "celiac-disease",
+   "name": "Celiac disease",
+   "system": "liver",
+   "synonyms": ["coeliac disease", "coeliac", "celiac", "celiac sprue", "coeliac sprue", "gluten-sensitive enteropathy", "gluten enteropathy"],
+   "sources": [
+    {"publisher": "American College of Gastroenterology", "title": "American College of Gastroenterology Guidelines Update: Diagnosis and Management of Celiac Disease", "year": 2023,
+     "url": "https://doi.org/10.14309/ajg.0000000000002075"}
+   ],
+   "labs": ["31017-7", "2458-8", "718-7", "2276-4", "2284-8", "2132-9", "62292-8", "1742-6", "1920-8"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "crohns-disease",
+   "name": "Crohn's disease",
+   "system": "liver",
+   "synonyms": ["Crohn disease", "Crohns disease", "Crohn's", "Crohns", "Crohn's colitis", "Crohn's ileitis", "regional enteritis"],
+   "sources": [
+    {"publisher": "American Gastroenterological Association", "title": "AGA Clinical Practice Guideline on the Role of Biomarkers for the Management of Crohn's Disease", "year": 2023,
+     "url": "https://doi.org/10.1053/j.gastro.2023.09.029"},
+    {"publisher": "American College of Gastroenterology", "title": "ACG Clinical Guideline: Management of Crohn's Disease in Adults", "year": 2025,
+     "url": "https://doi.org/10.14309/ajg.0000000000003465"}
+   ],
+   "labs": ["38445-3", "1988-5", "718-7", "1751-7", "2276-4", "777-3", "6690-2", "2132-9", "62292-8", "1742-6", "2160-0"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "ulcerative-colitis",
+   "name": "Ulcerative colitis",
+   "system": "liver",
+   "synonyms": ["UC", "ulcerative proctitis", "ulcerative pancolitis", "colitis ulcerosa"],
+   "sources": [
+    {"publisher": "American Gastroenterological Association", "title": "AGA Clinical Practice Guideline on the Role of Biomarkers for the Management of Ulcerative Colitis", "year": 2023,
+     "url": "https://doi.org/10.1053/j.gastro.2022.12.007"},
+    {"publisher": "American College of Gastroenterology", "title": "ACG Clinical Guideline Update: Ulcerative Colitis in Adults", "year": 2025,
+     "url": "https://doi.org/10.14309/ajg.0000000000003463"}
+   ],
+   "labs": ["38445-3", "1988-5", "718-7", "1751-7", "2276-4", "777-3", "6690-2", "1742-6", "2160-0"],
    "home": [],
    "reviewed": false
   },
@@ -138,6 +624,7 @@
    "name": "Anemia",
    "system": "blood",
    "synonyms": ["anaemia", "iron deficiency", "iron deficiency anemia", "iron deficiency anaemia", "low hemoglobin", "low haemoglobin"],
+   "except": ["pernicious", "megaloblastic", "sickle cell", "aplastic", "thalassemia", "thalassaemia", "Cooley's"],
    "sources": [
     {"publisher": "World Health Organization", "title": "Guideline on haemoglobin cutoffs to define anaemia in individuals and populations", "year": 2024,
      "url": "https://www.who.int/publications/i/item/9789240088542"},
@@ -151,10 +638,107 @@
    "reviewed": false
   },
   {
+   "id": "b12-folate-deficiency",
+   "name": "Vitamin B12 or folate deficiency",
+   "system": "blood",
+   "synonyms": ["vitamin B12 deficiency", "B12 deficiency", "cobalamin deficiency", "folate deficiency", "folic acid deficiency", "pernicious anemia", "pernicious anaemia", "megaloblastic anemia", "megaloblastic anaemia"],
+   "sources": [
+    {"publisher": "British Society for Haematology", "title": "Guidelines for the diagnosis and treatment of cobalamin and folate disorders", "year": 2014,
+     "url": "https://doi.org/10.1111/bjh.12959"},
+    {"publisher": "National Institute for Health and Care Excellence (NICE)", "title": "Vitamin B12 deficiency in over 16s: diagnosis and management (NG239)", "year": 2024,
+     "url": "https://www.nice.org.uk/guidance/ng239"}
+   ],
+   "labs": ["2132-9", "2284-8", "718-7", "787-2", "13964-2", "13965-9", "4544-3"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "sickle-cell-disease",
+   "name": "Sickle cell disease",
+   "system": "blood",
+   "synonyms": ["sickle cell anemia", "sickle cell anaemia", "sickle-cell disease", "sickle cell disorder", "SCD", "HbSS", "HbSC disease", "sickle beta thalassemia", "sickle beta thalassaemia"],
+   "except": ["sickle cell trait"],
+   "sources": [
+    {"publisher": "National Heart, Lung, and Blood Institute (NIH)", "title": "Evidence-Based Management of Sickle Cell Disease: Expert Panel Report, 2014", "year": 2014,
+     "url": "https://www.nhlbi.nih.gov/health-topics/evidence-based-management-sickle-cell-disease"}
+   ],
+   "labs": ["718-7", "17849-1", "6690-2", "777-3", "4576-5", "4625-0", "2160-0", "9318-7", "1742-6", "1975-2", "2532-0", "2276-4"],
+   "home": ["temp"],
+   "reviewed": false
+  },
+  {
+   "id": "thalassemia",
+   "name": "Thalassemia",
+   "system": "blood",
+   "synonyms": ["thalassaemia", "beta thalassemia", "beta thalassaemia", "thalassemia major", "thalassaemia major", "transfusion-dependent thalassemia", "transfusion-dependent thalassaemia", "TDT", "Cooley's anemia"],
+   "except": ["thalassemia trait", "thalassaemia trait", "thalassemia minor", "thalassaemia minor", "sickle"],
+   "sources": [
+    {"publisher": "Thalassaemia International Federation", "title": "TIF Guidelines for the Management of Transfusion-Dependent β-Thalassemia", "year": 2025,
+     "url": "https://doi.org/10.1002/hem3.70095"}
+   ],
+   "labs": ["718-7", "2276-4", "2502-3", "1742-6", "1920-8", "2160-0", "2345-7", "3016-3", "17861-6", "62292-8"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "hemochromatosis",
+   "name": "Hemochromatosis",
+   "system": "blood",
+   "synonyms": ["haemochromatosis", "hereditary hemochromatosis", "hereditary haemochromatosis", "HFE hemochromatosis", "HFE haemochromatosis"],
+   "sources": [
+    {"publisher": "American College of Gastroenterology", "title": "ACG Clinical Guideline: Hereditary Hemochromatosis", "year": 2019,
+     "url": "https://doi.org/10.14309/ajg.0000000000000315"},
+    {"publisher": "European Association for the Study of the Liver (EASL)", "title": "EASL Clinical Practice Guidelines on haemochromatosis", "year": 2022,
+     "url": "https://doi.org/10.1016/j.jhep.2022.03.033"}
+   ],
+   "labs": ["2276-4", "2502-3", "718-7", "4544-3", "1742-6", "1920-8", "2498-4", "2345-7"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "immune-thrombocytopenia",
+   "name": "Immune thrombocytopenia (ITP)",
+   "system": "blood",
+   "synonyms": ["ITP", "immune thrombocytopenic purpura", "idiopathic thrombocytopenic purpura", "autoimmune thrombocytopenia", "thrombocytopenia", "low platelets", "low platelet count"],
+   "sources": [
+    {"publisher": "American Society of Hematology", "title": "American Society of Hematology 2019 guidelines for immune thrombocytopenia", "year": 2019,
+     "url": "https://doi.org/10.1182/bloodadvances.2019000966"}
+   ],
+   "labs": ["777-3", "718-7", "6690-2"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "polycythemia-vera",
+   "name": "Polycythemia vera",
+   "system": "blood",
+   "synonyms": ["polycythaemia vera", "polycythemia rubra vera", "polycythaemia rubra vera", "primary polycythemia"],
+   "sources": [
+    {"publisher": "European LeukemiaNet", "title": "Philadelphia chromosome-negative classical myeloproliferative neoplasms: revised management recommendations from European LeukemiaNet", "year": 2018,
+     "url": "https://doi.org/10.1038/s41375-018-0077-1"}
+   ],
+   "labs": ["4544-3", "718-7", "6690-2", "777-3", "2532-0", "3084-1"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "mgus",
+   "name": "Monoclonal gammopathy (MGUS)",
+   "system": "blood",
+   "synonyms": ["MGUS", "monoclonal gammopathy of undetermined significance", "smoldering myeloma", "smouldering myeloma", "smoldering multiple myeloma", "paraproteinemia", "paraproteinaemia"],
+   "sources": [
+    {"publisher": "International Myeloma Working Group", "title": "Monoclonal gammopathy of undetermined significance (MGUS) and smoldering (asymptomatic) multiple myeloma: IMWG consensus perspectives risk factors for progression and guidelines for monitoring and management", "year": 2010,
+     "url": "https://doi.org/10.1038/leu.2010.60"}
+   ],
+   "labs": ["33358-3", "36916-5", "33944-0", "48378-4", "718-7", "17861-6", "2160-0", "2465-3", "2458-8"],
+   "home": [],
+   "reviewed": false
+  },
+  {
    "id": "cancer-treatment",
    "name": "Cancer, during treatment",
    "system": "cancer",
-   "synonyms": ["cancer", "chemotherapy", "lymphoma", "leukemia", "leukaemia", "myeloma", "carcinoma", "sarcoma", "malignancy", "malignant neoplasm"],
+   "synonyms": ["cancer", "chemotherapy", "lymphoma", "leukemia", "leukaemia", "carcinoma", "sarcoma", "malignancy", "malignant neoplasm"],
    "sources": [
     {"publisher": "American Society of Clinical Oncology and Oncology Nursing Society", "title": "Antineoplastic Therapy Administration Safety Standards for Adult and Pediatric Oncology: ASCO-ONS Standards", "year": 2024,
      "url": "https://doi.org/10.1200/OP.24.00216"},
@@ -163,6 +747,485 @@
    ],
    "labs": ["6690-2", "751-8", "718-7", "777-3", "731-0", "2160-0", "1742-6", "1920-8", "1975-2", "6768-6", "2823-3", "2951-2", "19123-9", "17861-6", "1751-7"],
    "home": ["temp", "weight"],
+   "reviewed": false
+  },
+  {
+   "id": "multiple-myeloma",
+   "name": "Multiple myeloma",
+   "system": "cancer",
+   "synonyms": ["myeloma", "plasma cell myeloma", "myelomatosis"],
+   "except": ["smoldering", "smouldering"],
+   "sources": [
+    {"publisher": "International Myeloma Working Group", "title": "International Myeloma Working Group consensus criteria for response and minimal residual disease assessment in multiple myeloma", "year": 2016,
+     "url": "https://doi.org/10.1016/S1470-2045(16)30206-6"},
+    {"publisher": "International Myeloma Working Group", "title": "International Myeloma Working Group updated criteria for the diagnosis of multiple myeloma", "year": 2014,
+     "url": "https://doi.org/10.1016/S1470-2045(14)70442-5"}
+   ],
+   "labs": ["33358-3", "36916-5", "33944-0", "48378-4", "718-7", "17861-6", "2160-0", "98979-8", "1751-7", "1952-1", "2532-0", "2465-3", "2458-8"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "chronic-lymphocytic-leukemia",
+   "name": "Chronic lymphocytic leukemia (CLL)",
+   "system": "cancer",
+   "synonyms": ["CLL", "chronic lymphocytic leukemia", "chronic lymphocytic leukaemia", "small lymphocytic lymphoma", "SLL"],
+   "sources": [
+    {"publisher": "International Workshop on Chronic Lymphocytic Leukemia (iwCLL)", "title": "iwCLL guidelines for diagnosis, indications for treatment, response assessment, and supportive management of CLL", "year": 2018,
+     "url": "https://doi.org/10.1182/blood-2017-09-806398"}
+   ],
+   "labs": ["731-0", "6690-2", "718-7", "777-3", "751-8", "2532-0", "1952-1", "2465-3"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "chronic-myeloid-leukemia",
+   "name": "Chronic myeloid leukemia (CML)",
+   "system": "cancer",
+   "synonyms": ["CML", "chronic myeloid leukemia", "chronic myeloid leukaemia", "chronic myelogenous leukemia", "chronic myelogenous leukaemia"],
+   "sources": [
+    {"publisher": "European LeukemiaNet", "title": "European LeukemiaNet 2020 recommendations for treating chronic myeloid leukemia", "year": 2020,
+     "url": "https://doi.org/10.1038/s41375-020-0776-2"}
+   ],
+   "labs": ["69380-4", "6690-2", "718-7", "777-3", "751-8", "1742-6", "2160-0"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "prostate-cancer",
+   "name": "Prostate cancer",
+   "system": "cancer",
+   "synonyms": ["prostate carcinoma", "prostatic adenocarcinoma", "adenocarcinoma of prostate", "carcinoma of prostate", "malignant neoplasm of prostate", "cancer of the prostate", "prostatic cancer"],
+   "sources": [
+    {"publisher": "American Society of Clinical Oncology", "title": "Prostate Cancer Survivorship Care Guideline: American Society of Clinical Oncology Clinical Practice Guideline Endorsement", "year": 2015,
+     "url": "https://doi.org/10.1200/JCO.2014.60.2557"},
+    {"publisher": "American Urological Association and American Society for Radiation Oncology", "title": "Clinically Localized Prostate Cancer: AUA/ASTRO Guideline, Part I: Introduction, Risk Assessment, Staging, and Risk-Based Management", "year": 2022,
+     "url": "https://doi.org/10.1097/JU.0000000000002757"}
+   ],
+   "labs": ["2857-1", "2986-8", "718-7", "6768-6", "2160-0", "4548-4", "2345-7", "13457-7"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "colorectal-cancer",
+   "name": "Colorectal cancer",
+   "system": "cancer",
+   "synonyms": ["colon cancer", "rectal cancer", "bowel cancer", "CRC", "colorectal carcinoma", "colon carcinoma", "rectal carcinoma", "colorectal adenocarcinoma", "malignant neoplasm of colon", "malignant neoplasm of rectum"],
+   "sources": [
+    {"publisher": "American Society of Clinical Oncology", "title": "Follow-Up Care, Surveillance Protocol, and Secondary Prevention Measures for Survivors of Colorectal Cancer: American Society of Clinical Oncology Clinical Practice Guideline Endorsement", "year": 2013,
+     "url": "https://doi.org/10.1200/JCO.2013.50.7442"},
+    {"publisher": "European Society for Medical Oncology (ESMO)", "title": "Localised colon cancer: ESMO Clinical Practice Guidelines for diagnosis, treatment and follow-up", "year": 2020,
+     "url": "https://doi.org/10.1016/j.annonc.2020.06.022"}
+   ],
+   "labs": ["2039-6"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "ovarian-cancer",
+   "name": "Ovarian cancer",
+   "system": "cancer",
+   "synonyms": ["ovarian carcinoma", "epithelial ovarian cancer", "fallopian tube cancer", "primary peritoneal cancer", "cancer of the ovary", "malignant neoplasm of ovary"],
+   "sources": [
+    {"publisher": "Society of Gynecologic Oncology", "title": "An update on post-treatment surveillance and diagnosis of recurrence in women with gynecologic malignancies: Society of Gynecologic Oncology (SGO) recommendations", "year": 2017,
+     "url": "https://doi.org/10.1016/j.ygyno.2017.03.022"}
+   ],
+   "labs": ["10334-1"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "liver-cancer",
+   "name": "Liver cancer (hepatocellular carcinoma)",
+   "system": "cancer",
+   "synonyms": ["hepatocellular carcinoma", "HCC", "hepatoma", "primary liver cancer", "liver cell carcinoma"],
+   "sources": [
+    {"publisher": "American Association for the Study of Liver Diseases (AASLD)", "title": "AASLD Practice Guidance on prevention, diagnosis, and treatment of hepatocellular carcinoma", "year": 2023,
+     "url": "https://doi.org/10.1097/HEP.0000000000000466"}
+   ],
+   "labs": ["1834-1", "1742-6", "1920-8", "1975-2", "1751-7", "6301-6", "777-3", "2160-0"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "testicular-cancer",
+   "name": "Testicular cancer",
+   "system": "cancer",
+   "synonyms": ["testicular germ cell tumor", "testicular germ cell tumour", "germ cell tumor of testis", "seminoma", "nonseminoma", "non-seminomatous germ cell tumor", "NSGCT", "testis cancer", "malignant neoplasm of testis"],
+   "sources": [
+    {"publisher": "American Urological Association", "title": "Diagnosis and Treatment of Early Stage Testicular Cancer: AUA Guideline", "year": 2019,
+     "url": "https://doi.org/10.1097/JU.0000000000000318"}
+   ],
+   "labs": ["1834-1", "21198-7", "2532-0"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "thyroid-cancer",
+   "name": "Thyroid cancer (differentiated)",
+   "system": "cancer",
+   "synonyms": ["thyroid cancer", "differentiated thyroid cancer", "papillary thyroid cancer", "papillary thyroid carcinoma", "follicular thyroid cancer", "follicular thyroid carcinoma", "thyroid carcinoma"],
+   "except": ["medullary", "anaplastic"],
+   "sources": [
+    {"publisher": "American Thyroid Association", "title": "2025 American Thyroid Association Management Guidelines for Adult Patients with Differentiated Thyroid Cancer", "year": 2025,
+     "url": "https://doi.org/10.1177/10507256251363120"}
+   ],
+   "labs": ["3013-0", "8098-6", "3016-3", "3024-7", "17861-6", "2731-8"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "rheumatoid-arthritis",
+   "name": "Rheumatoid arthritis",
+   "system": "immune",
+   "synonyms": ["RA", "rheumatoid disease", "seropositive arthritis"],
+   "sources": [
+    {"publisher": "British Society for Rheumatology and British Health Professionals in Rheumatology", "title": "BSR and BHPR guideline for the prescription and monitoring of non-biologic disease-modifying anti-rheumatic drugs", "year": 2017,
+     "url": "https://doi.org/10.1093/rheumatology/kew479"},
+    {"publisher": "American College of Rheumatology", "title": "American College of Rheumatology 2008 recommendations for the use of nonbiologic and biologic disease-modifying antirheumatic drugs in rheumatoid arthritis", "year": 2008,
+     "url": "https://doi.org/10.1002/art.23721"}
+   ],
+   "labs": ["1988-5", "30341-2", "6690-2", "751-8", "777-3", "718-7", "1742-6", "1920-8", "1751-7", "2160-0", "98979-8"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "lupus",
+   "name": "Lupus (systemic lupus erythematosus)",
+   "system": "immune",
+   "synonyms": ["lupus", "SLE", "systemic lupus erythematosus", "systemic lupus", "lupus nephritis"],
+   "except": ["discoid lupus", "cutaneous lupus", "lupus anticoagulant", "lupus pernio", "drug-induced lupus"],
+   "sources": [
+    {"publisher": "European League Against Rheumatism (EULAR)", "title": "European League Against Rheumatism recommendations for monitoring patients with systemic lupus erythematosus in clinical practice and in observational studies", "year": 2010,
+     "url": "https://doi.org/10.1136/ard.2009.117200"},
+    {"publisher": "European League Against Rheumatism (EULAR)", "title": "EULAR recommendations for the management of systemic lupus erythematosus: 2023 update", "year": 2024,
+     "url": "https://doi.org/10.1136/ard-2023-224762"}
+   ],
+   "labs": ["4485-9", "4498-2", "5130-0", "2890-2", "2160-0", "98979-8", "718-7", "6690-2", "777-3", "1751-7", "30341-2", "1988-5"],
+   "home": ["bp"],
+   "reviewed": false
+  },
+  {
+   "id": "anca-vasculitis",
+   "name": "ANCA vasculitis (GPA, MPA, EGPA)",
+   "system": "immune",
+   "synonyms": ["ANCA-associated vasculitis", "AAV", "granulomatosis with polyangiitis", "Wegener's granulomatosis", "Wegener granulomatosis", "microscopic polyangiitis", "eosinophilic granulomatosis with polyangiitis", "Churg-Strauss syndrome"],
+   "sources": [
+    {"publisher": "American College of Rheumatology and Vasculitis Foundation", "title": "2021 American College of Rheumatology/Vasculitis Foundation Guideline for the Management of Antineutrophil Cytoplasmic Antibody–Associated Vasculitis", "year": 2021,
+     "url": "https://doi.org/10.1002/acr.24634"},
+    {"publisher": "European League Against Rheumatism (EULAR)", "title": "EULAR recommendations for the management of ANCA-associated vasculitis: 2022 update", "year": 2024,
+     "url": "https://doi.org/10.1136/ard-2022-223764"}
+   ],
+   "labs": ["2160-0", "98979-8", "2890-2", "9318-7", "1988-5", "30341-2", "718-7", "6690-2", "777-3", "711-2", "6968-2", "6969-0"],
+   "home": ["bp"],
+   "reviewed": false
+  },
+  {
+   "id": "giant-cell-arteritis",
+   "name": "Giant cell arteritis",
+   "system": "immune",
+   "synonyms": ["GCA", "temporal arteritis", "cranial arteritis"],
+   "sources": [
+    {"publisher": "American College of Rheumatology and Vasculitis Foundation", "title": "2021 American College of Rheumatology/Vasculitis Foundation Guideline for the Management of Giant Cell Arteritis and Takayasu Arteritis", "year": 2021,
+     "url": "https://doi.org/10.1002/acr.24632"},
+    {"publisher": "British Society for Rheumatology", "title": "British Society for Rheumatology guideline on diagnosis and treatment of giant cell arteritis", "year": 2020,
+     "url": "https://doi.org/10.1093/rheumatology/kez672"}
+   ],
+   "labs": ["30341-2", "1988-5", "718-7", "777-3", "2345-7", "2160-0"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "polymyalgia-rheumatica",
+   "name": "Polymyalgia rheumatica",
+   "system": "immune",
+   "synonyms": ["PMR", "polymyalgia"],
+   "sources": [
+    {"publisher": "European League Against Rheumatism (EULAR) and American College of Rheumatology", "title": "2015 Recommendations for the management of polymyalgia rheumatica: a European League Against Rheumatism/American College of Rheumatology collaborative initiative", "year": 2015,
+     "url": "https://doi.org/10.1136/annrheumdis-2015-207492"}
+   ],
+   "labs": ["30341-2", "1988-5", "2345-7", "718-7"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "hiv",
+   "name": "HIV infection",
+   "system": "infection",
+   "synonyms": ["HIV", "HIV disease", "HIV-1 infection", "human immunodeficiency virus", "acquired immunodeficiency syndrome"],
+   "except": ["HIV screening", "HIV test", "HIV testing", "HIV negative", "HIV exposure", "exposure to HIV", "risk of HIV", "high risk for HIV", "pre-exposure prophylaxis", "preexposure prophylaxis", "post-exposure prophylaxis", "PrEP"],
+   "sources": [
+    {"publisher": "International Antiviral Society–USA (IAS–USA)", "title": "Antiretroviral Drugs for Treatment and Prevention of HIV in Adults: 2024 Recommendations of the International Antiviral Society–USA Panel", "year": 2025,
+     "url": "https://doi.org/10.1001/jama.2024.24543"}
+   ],
+   "labs": ["20447-9", "24467-3", "8123-2", "2160-0", "98979-8", "1742-6", "1920-8", "718-7", "6690-2", "4548-4", "2345-7", "13457-7", "2093-3", "2571-8", "2890-2", "5196-1"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "tuberculosis-treatment",
+   "name": "Tuberculosis, during treatment",
+   "system": "infection",
+   "synonyms": ["tuberculosis", "TB", "active tuberculosis", "pulmonary tuberculosis", "tuberculosis treatment", "TB treatment"],
+   "except": ["latent tuberculosis", "latent TB", "LTBI", "TB screening", "tuberculosis screening", "TB exposure", "exposure to tuberculosis", "history of tuberculosis"],
+   "sources": [
+    {"publisher": "American Thoracic Society, Centers for Disease Control and Prevention and Infectious Diseases Society of America", "title": "Official American Thoracic Society/Centers for Disease Control and Prevention/Infectious Diseases Society of America Clinical Practice Guidelines: Treatment of Drug-Susceptible Tuberculosis", "year": 2016,
+     "url": "https://doi.org/10.1093/cid/ciw376"}
+   ],
+   "labs": ["1742-6", "1920-8", "1975-2", "6768-6", "777-3", "6690-2", "2160-0"],
+   "home": ["weight"],
+   "reviewed": false
+  },
+  {
+   "id": "epilepsy-drug-levels",
+   "name": "Epilepsy, with medicine levels checked",
+   "system": "mind",
+   "synonyms": ["epilepsy", "seizure disorder", "epileptic seizures", "anti-seizure medicine levels", "antiepileptic drug levels"],
+   "sources": [
+    {"publisher": "International League Against Epilepsy (ILAE)", "title": "Antiepileptic drugs—best practice guidelines for therapeutic drug monitoring: A position paper by the subcommission on therapeutic drug monitoring, ILAE Commission on Therapeutic Strategies", "year": 2008,
+     "url": "https://doi.org/10.1111/j.1528-1167.2008.01561.x"}
+   ],
+   "labs": ["4086-5", "3432-2", "3968-5", "3948-7", "6948-4"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "eating-disorders",
+   "name": "Eating disorders (anorexia, bulimia, ARFID)",
+   "system": "mind",
+   "synonyms": ["eating disorder", "anorexia nervosa", "bulimia nervosa", "ARFID", "avoidant/restrictive food intake disorder", "restrictive eating disorder"],
+   "sources": [
+    {"publisher": "American Psychiatric Association", "title": "The American Psychiatric Association Practice Guideline for the Treatment of Patients With Eating Disorders", "year": 2023,
+     "url": "https://doi.org/10.1176/appi.ajp.23180001"},
+    {"publisher": "Society for Adolescent Health and Medicine", "title": "Medical Management of Restrictive Eating Disorders in Adolescents and Young Adults", "year": 2022,
+     "url": "https://doi.org/10.1016/j.jadohealth.2022.08.006"}
+   ],
+   "labs": ["2823-3", "2777-1", "19123-9", "2951-2", "2345-7", "718-7", "6690-2", "2160-0", "3094-0", "1742-6", "2028-9"],
+   "home": ["weight", "bp"],
+   "reviewed": false
+  },
+  {
+   "id": "alcohol-use-disorder",
+   "name": "Alcohol use disorder",
+   "system": "mind",
+   "synonyms": ["AUD", "alcohol dependence", "alcoholism", "alcohol abuse", "harmful drinking"],
+   "sources": [
+    {"publisher": "American Psychiatric Association", "title": "The American Psychiatric Association Practice Guideline for the Pharmacological Treatment of Patients With Alcohol Use Disorder", "year": 2018,
+     "url": "https://doi.org/10.1176/appi.ajp.2017.1750101"}
+   ],
+   "labs": ["2324-2", "1920-8", "1742-6", "787-2", "74661-0", "48495-6", "777-3", "1975-2", "1751-7"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "pregnancy",
+   "name": "Pregnancy",
+   "system": "pregnancy",
+   "synonyms": ["pregnant", "prenatal care", "antenatal care", "supervision of normal pregnancy", "intrauterine pregnancy"],
+   "except": ["ectopic pregnancy", "pregnancy test", "not pregnant"],
+   "sources": [
+    {"publisher": "National Institute for Health and Care Excellence (NICE)", "title": "Antenatal care (NG201)", "year": 2021,
+     "url": "https://www.nice.org.uk/guidance/ng201"},
+    {"publisher": "World Health Organization", "title": "WHO recommendations on antenatal care for a positive pregnancy experience", "year": 2016,
+     "url": "https://www.who.int/publications/i/item/9789241549912"}
+   ],
+   "labs": ["718-7", "4544-3", "777-3", "1504-0", "1518-0"],
+   "home": ["bp", "weight"],
+   "reviewed": false
+  },
+  {
+   "id": "gestational-diabetes",
+   "name": "Gestational diabetes",
+   "system": "pregnancy",
+   "synonyms": ["gestational diabetes mellitus", "GDM"],
+   "sources": [
+    {"publisher": "American Diabetes Association", "title": "15. Management of Diabetes in Pregnancy: Standards of Care in Diabetes—2026", "year": 2026,
+     "url": "https://doi.org/10.2337/dc26-S015"},
+    {"publisher": "American College of Obstetricians and Gynecologists", "title": "ACOG Practice Bulletin No. 190: Gestational Diabetes Mellitus", "year": 2018,
+     "url": "https://doi.org/10.1097/AOG.0000000000002501"}
+   ],
+   "labs": ["2345-7", "1558-6", "1518-0", "1504-0", "4548-4"],
+   "home": ["glucose", "bp", "weight"],
+   "reviewed": false
+  },
+  {
+   "id": "preeclampsia",
+   "name": "High blood pressure in pregnancy (preeclampsia)",
+   "system": "pregnancy",
+   "synonyms": ["preeclampsia", "pre-eclampsia", "gestational hypertension", "pregnancy-induced hypertension", "PIH", "HELLP syndrome", "toxemia of pregnancy"],
+   "sources": [
+    {"publisher": "American College of Obstetricians and Gynecologists", "title": "Gestational Hypertension and Preeclampsia", "year": 2020,
+     "url": "https://doi.org/10.1097/AOG.0000000000003891"}
+   ],
+   "labs": ["777-3", "2160-0", "1742-6", "1920-8", "2890-2", "718-7", "2532-0"],
+   "home": ["bp"],
+   "reviewed": false
+  },
+  {
+   "id": "testosterone-therapy",
+   "name": "Testosterone therapy",
+   "system": "pregnancy",
+   "synonyms": ["testosterone replacement therapy", "TRT", "male hypogonadism", "low testosterone", "testosterone deficiency", "masculinizing hormone therapy", "masculinising hormone therapy", "gender-affirming testosterone"],
+   "sources": [
+    {"publisher": "Endocrine Society", "title": "Testosterone Therapy in Men With Hypogonadism: An Endocrine Society Clinical Practice Guideline", "year": 2018,
+     "url": "https://doi.org/10.1210/jc.2018-00229"},
+    {"publisher": "Endocrine Society", "title": "Endocrine Treatment of Gender-Dysphoric/Gender-Incongruent Persons: An Endocrine Society Clinical Practice Guideline", "year": 2017,
+     "url": "https://doi.org/10.1210/jc.2017-01658"}
+   ],
+   "labs": ["2986-8", "4544-3", "718-7", "2857-1", "13457-7", "2085-9"],
+   "home": ["bp", "weight"],
+   "reviewed": false
+  },
+  {
+   "id": "feminizing-hormone-therapy",
+   "name": "Feminizing hormone therapy (estrogen)",
+   "system": "pregnancy",
+   "synonyms": ["feminizing hormone therapy", "feminising hormone therapy", "gender-affirming estrogen", "gender-affirming oestrogen"],
+   "sources": [
+    {"publisher": "Endocrine Society", "title": "Endocrine Treatment of Gender-Dysphoric/Gender-Incongruent Persons: An Endocrine Society Clinical Practice Guideline", "year": 2017,
+     "url": "https://doi.org/10.1210/jc.2017-01658"},
+    {"publisher": "World Professional Association for Transgender Health (WPATH)", "title": "Standards of Care for the Health of Transgender and Gender Diverse People, Version 8", "year": 2022,
+     "url": "https://doi.org/10.1080/26895269.2022.2100644"}
+   ],
+   "labs": ["2243-4", "2986-8", "2823-3", "2842-3"],
+   "home": ["bp", "weight"],
+   "reviewed": false
+  },
+  {
+   "id": "warfarin",
+   "name": "On warfarin (a vitamin K antagonist)",
+   "system": "medicines",
+   "synonyms": ["warfarin", "Coumadin", "Jantoven", "vitamin K antagonist", "VKA", "acenocoumarol", "phenprocoumon", "anticoagulation monitoring", "INR monitoring"],
+   "sources": [
+    {"publisher": "American College of Chest Physicians", "title": "Evidence-Based Management of Anticoagulant Therapy: Antithrombotic Therapy and Prevention of Thrombosis, 9th ed: American College of Chest Physicians Evidence-Based Clinical Practice Guidelines", "year": 2012,
+     "url": "https://doi.org/10.1378/chest.11-2295"}
+   ],
+   "labs": ["6301-6"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "doac",
+   "name": "On a direct oral anticoagulant (DOAC)",
+   "system": "medicines",
+   "synonyms": ["DOAC", "NOAC", "direct oral anticoagulant", "apixaban", "rivaroxaban", "dabigatran", "edoxaban", "Eliquis", "Xarelto", "Pradaxa", "Savaysa", "Lixiana"],
+   "sources": [
+    {"publisher": "European Heart Rhythm Association", "title": "2021 European Heart Rhythm Association Practical Guide on the Use of Non-Vitamin K Antagonist Oral Anticoagulants in Patients with Atrial Fibrillation", "year": 2021,
+     "url": "https://doi.org/10.1093/europace/euab065"}
+   ],
+   "labs": ["2160-0", "98979-8", "718-7", "777-3", "1742-6", "1920-8"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "lithium",
+   "name": "On lithium",
+   "system": "medicines",
+   "synonyms": ["lithium", "lithium therapy", "lithium carbonate", "lithium citrate", "Priadel", "Lithobid", "Camcolit"],
+   "sources": [
+    {"publisher": "National Institute for Health and Care Excellence (NICE)", "title": "Bipolar disorder: assessment and management (CG185)", "year": 2025,
+     "url": "https://www.nice.org.uk/guidance/cg185"}
+   ],
+   "labs": ["14334-7", "2160-0", "98979-8", "3016-3", "17861-6", "2951-2", "2823-3", "3094-0"],
+   "home": ["weight"],
+   "reviewed": false
+  },
+  {
+   "id": "clozapine",
+   "name": "On clozapine",
+   "system": "medicines",
+   "synonyms": ["clozapine", "Clozaril", "Versacloz", "FazaClo", "Denzapine", "Zaponex"],
+   "sources": [
+    {"publisher": "U.S. Food and Drug Administration", "title": "FDA removes risk evaluation and mitigation strategy (REMS) program for the antipsychotic drug clozapine", "year": 2025,
+     "url": "https://www.fda.gov/drugs/drug-safety-communications/fda-removes-risk-evaluation-and-mitigation-strategy-rems-program-antipsychotic-drug-clozapine"},
+    {"publisher": "American Diabetes Association, American Psychiatric Association, American Association of Clinical Endocrinologists and North American Association for the Study of Obesity", "title": "Consensus Development Conference on Antipsychotic Drugs and Obesity and Diabetes", "year": 2004,
+     "url": "https://doi.org/10.2337/diacare.27.2.596"}
+   ],
+   "labs": ["751-8", "6690-2", "2345-7", "4548-4", "13457-7", "2571-8", "2093-3", "2085-9"],
+   "home": ["weight", "bp"],
+   "reviewed": false
+  },
+  {
+   "id": "antipsychotic",
+   "name": "On an antipsychotic medicine",
+   "system": "medicines",
+   "synonyms": ["antipsychotic", "antipsychotics", "neuroleptic", "olanzapine", "risperidone", "quetiapine", "aripiprazole", "paliperidone"],
+   "sources": [
+    {"publisher": "American Diabetes Association, American Psychiatric Association, American Association of Clinical Endocrinologists and North American Association for the Study of Obesity", "title": "Consensus Development Conference on Antipsychotic Drugs and Obesity and Diabetes", "year": 2004,
+     "url": "https://doi.org/10.2337/diacare.27.2.596"},
+    {"publisher": "National Institute for Health and Care Excellence (NICE)", "title": "Bipolar disorder: assessment and management (CG185)", "year": 2025,
+     "url": "https://www.nice.org.uk/guidance/cg185"}
+   ],
+   "labs": ["2345-7", "4548-4", "13457-7", "2571-8", "2093-3", "2085-9", "2842-3"],
+   "home": ["weight", "bp"],
+   "reviewed": false
+  },
+  {
+   "id": "amiodarone",
+   "name": "On amiodarone",
+   "system": "medicines",
+   "synonyms": ["amiodarone", "Cordarone", "Pacerone", "Nexterone"],
+   "sources": [
+    {"publisher": "Heart Rhythm Society", "title": "A Practical Guide for Clinicians Who Treat Patients with Amiodarone: 2007", "year": 2007,
+     "url": "https://doi.org/10.1016/j.hrthm.2007.07.020"}
+   ],
+   "labs": ["3016-3", "3024-7", "1742-6", "1920-8"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "statin",
+   "name": "On a statin",
+   "system": "medicines",
+   "synonyms": ["statin", "statins", "statin therapy", "atorvastatin", "rosuvastatin", "simvastatin", "pravastatin"],
+   "except": ["statin intolerance"],
+   "sources": [
+    {"publisher": "National Institute for Health and Care Excellence (NICE)", "title": "Cardiovascular disease: risk assessment and reduction, including lipid modification (NG238)", "year": 2023,
+     "url": "https://www.nice.org.uk/guidance/ng238"}
+   ],
+   "labs": ["13457-7", "43396-1", "2093-3", "2085-9", "2571-8", "1742-6", "2157-6"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "isotretinoin",
+   "name": "On isotretinoin",
+   "system": "medicines",
+   "synonyms": ["isotretinoin", "Accutane", "Absorica", "Claravis", "Roaccutane"],
+   "sources": [
+    {"publisher": "American Academy of Dermatology", "title": "Guidelines of care for the management of acne vulgaris", "year": 2024,
+     "url": "https://doi.org/10.1016/j.jaad.2023.12.017"}
+   ],
+   "labs": ["2571-8", "2093-3", "13457-7", "1742-6", "1920-8"],
+   "home": [],
+   "reviewed": false
+  },
+  {
+   "id": "dmard-monitoring",
+   "name": "On methotrexate or another DMARD with blood tests",
+   "system": "medicines",
+   "synonyms": ["methotrexate", "leflunomide", "sulfasalazine", "sulphasalazine", "azathioprine", "mycophenolate", "mycophenolate mofetil", "DMARD", "DMARDs", "disease-modifying antirheumatic drug"],
+   "sources": [
+    {"publisher": "British Society for Rheumatology and British Health Professionals in Rheumatology", "title": "BSR and BHPR guideline for the prescription and monitoring of non-biologic disease-modifying anti-rheumatic drugs", "year": 2017,
+     "url": "https://doi.org/10.1093/rheumatology/kew479"},
+    {"publisher": "American College of Rheumatology", "title": "American College of Rheumatology 2008 recommendations for the use of nonbiologic and biologic disease-modifying antirheumatic drugs in rheumatoid arthritis", "year": 2008,
+     "url": "https://doi.org/10.1002/art.23721"}
+   ],
+   "labs": ["6690-2", "751-8", "777-3", "718-7", "1742-6", "1920-8", "1751-7", "2160-0", "98979-8"],
+   "home": ["bp"],
+   "reviewed": false
+  },
+  {
+   "id": "hiv-prep",
+   "name": "Taking HIV PrEP",
+   "system": "medicines",
+   "synonyms": ["PrEP", "HIV PrEP", "pre-exposure prophylaxis", "preexposure prophylaxis", "HIV pre-exposure prophylaxis"],
+   "sources": [
+    {"publisher": "Centers for Disease Control and Prevention and U.S. Public Health Service", "title": "Preexposure Prophylaxis for the Prevention of HIV Infection in the United States – 2021 Update: A Clinical Practice Guideline", "year": 2021,
+     "url": "https://stacks.cdc.gov/view/cdc/159891"}
+   ],
+   "labs": ["56888-1", "20447-9", "2160-0", "20507-0", "2571-8", "2093-3"],
+   "home": ["weight"],
    "reviewed": false
   }
  ]
