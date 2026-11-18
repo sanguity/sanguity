@@ -5245,6 +5245,25 @@ def main():
             check("…each way in opening its section of Sources (#166)", js("[...document.querySelectorAll('#addMenuList a[data-needs=import]')].map(a => a.getAttribute('href'))")
                   == ["sources.html#upload", "sources.html#portals", "sources.html#manual", "sources.html#link"])
             page.keyboard.press("Escape")
+            # #244: on a phone the bar wraps, and a menu pinned to its button's right edge opened off the screen's left;
+            # each now opens the screen's width under the bar, so every item is on the screen
+            menu_out = """id => { const vw = document.documentElement.clientWidth, vh = innerHeight, bar = document.querySelector('header.topbar').getBoundingClientRect().bottom;
+                const its = [...document.querySelectorAll(`#${id} [role^=menuitem]`)].filter(x => x.checkVisibility());
+                return its.length ? its.filter(x => { const r = x.getBoundingClientRect(); return r.left < 0 || r.right > vw || r.top < bar || r.bottom > vh; })
+                  .map(x => x.textContent.trim()) : ['nothing shown']; }"""
+            bad = []
+            for path in ("/", "/settings.html#display"):
+                for w in (320, 375, 390):
+                    page.set_viewport_size({"width": w, "height": 800})
+                    page.goto(base + path)
+                    page.wait_for_selector("#userMenuBtn", state="visible", timeout=10000)
+                    settle(300)
+                    for m in ("addMenu", "userMenu"):
+                        page.click(f"#{m}Btn")
+                        bad += [f"{path} at {w} px, {m}: {x}" for x in js(menu_out, m + "List")]
+                        page.keyboard.press("Escape")
+            check("at 320, 375 and 390 px, the top bar's Add and your menu open under the bar with every item on the screen (#244)", not bad, bad[:6])
+            page.set_viewport_size({"width": 1400, "height": 900})
             # ---- the Admin page (#167): the server's sync defaults, from their old address on Settings
             page.goto(base + "/settings.html#sources")
             page.wait_for_url("**/admin.html#apps", timeout=10000)

@@ -110,6 +110,11 @@ header.topbar .tabs button{white-space:nowrap}
   header.topbar .page-title + .spacer{display:none}   /* the title has the row's room, not half of it */
   .page-title{white-space:normal;line-height:1.2;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}   /* two lines before it's cut */
   .menu-btn{max-width:10em}
+  /* the top bar's menus (Add, the person's own): the bar wraps, so a menu pinned to its button's right edge would open
+     off the screen's left (#244); instead each is the screen's width under the bar (--bar-h, nav.js), 8 px in */
+  header.topbar .menu-list{position:fixed;left:8px;right:8px;top:calc(var(--bar-h,56px) + 6px);min-width:0;max-width:none;
+    max-height:calc(100vh - var(--bar-h,56px) - 14px);max-height:calc(100dvh - var(--bar-h,56px) - 14px);overflow-y:auto}
+  header.topbar .menu-item{white-space:normal}
 }
 .filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--grid);background:var(--surface)}
 .dates{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:13px}
