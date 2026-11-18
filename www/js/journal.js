@@ -175,11 +175,10 @@ function openJournal(e) {
   const acts = el("div", {class: "btns"});
   if (jCanWrite()) {
     acts.append(el("button", {class: "btn", type: "button", text: "Edit", onclick: () => journalForm(j, {}, () => openEvent(e))}),
-      el("button", {class: "btn", type: "button", text: "Delete", onclick: () => {
-        acts.replaceChildren(el("span", {class: "hint", text: "Delete this entry" + (j.photos?.length ? " and its photos" : "") + "? This can't be undone. "}),
-          el("button", {class: "btn primary", type: "button", text: "Delete", onclick: () => jSend(`/${j.id}`, {method: "DELETE"}, msg, {list: true})}),
-          el("button", {class: "btn", type: "button", text: "Keep it", onclick: () => openEvent(e)}));
-        acts.querySelector(".btn.primary").focus();
+      el("button", {class: "btn", type: "button", text: "Delete", onclick: async () => {   // ask()ed: it can't be put back, photos and all (#363)
+        if (!await ask({title: `Delete “${jTitle(j)}”?`, message: (j.photos?.length ? `The entry and its ${j.photos.length > 1 ? j.photos.length + " photos" : "photo"} go.` : "The entry goes.") + " This can't be undone.",
+          action: "Delete", cancel: "Keep it", danger: true})) return;
+        jSend(`/${j.id}`, {method: "DELETE"}, msg, {list: true});
       }}));
   }
   acts.append(el("button", {class: "btn", type: "button", text: "Day on the timeline", onclick: () => { setRange(e.ts - 15 * DAY, e.ts + 15 * DAY); pickTab("timeline"); }}),
@@ -480,25 +479,35 @@ async function jStoreGroups(groups, msg) {
     return true;
   } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return false; }
 }
-function journalGroups(back, said) {
+function journalGroups(back, said, quiet) {   // quiet: said in a toast, so only shown here (sayIn's say: false)
   state.selEv = null;
   const groups = jGroups(), w = jCanWrite();
   const body = jDrawer("Symptom groups", groups.length ? `${groups.length} group${groups.length > 1 ? "s" : ""} for this profile` : "None yet");
   const msg = el("p", {class: "hint edit-msg", role: "status"});
-  body.append(el("p", {class: "hint", text: "Your own sets of symptoms you often have together, such as “Migraine day”: headache, nausea, light sensitivity. Logging a group adds each symptom with its own severity, in one go."}),
+  body.append(el("p", {class: "hint jgroups-home", text: "Your own sets of symptoms you often have together, such as “Migraine day”: headache, nausea, light sensitivity. Logging a group adds each symptom with its own severity, in one go."}),
     groups.length ? el("ul", {class: "jgroups"}, ...groups.map((g, i) => el("li", {},
       el("div", {class: "t"}, el("b", {text: g.name}), el("span", {class: "s", text: g.symptoms.join(", ")})),
       w ? el("div", {class: "btns"},
         el("button", {class: "btn primary", type: "button", text: "Log it", "aria-label": `Log ${g.name}`, onclick: () => journalGroupForm(g, () => journalGroups(back))}),
         el("button", {class: "btn", type: "button", text: "Edit", "aria-label": `Edit ${g.name}`, onclick: () => journalGroupEdit(i, () => journalGroups(back))}),
         el("button", {class: "btn", type: "button", text: "Delete", "aria-label": `Delete ${g.name}`, onclick: async () => {
-          if (!await ask({title: `Delete “${g.name}”?`, message: "The entries logged with it stay as they are.", action: "Delete", danger: true})) return;
-          if (await jStoreGroups(groups.filter((_, k) => k !== i), msg)) journalGroups(back, `“${g.name}” deleted.`);
+          // at once, with an Undo that puts it back where it was among the groups there are then (#363; it asked first
+          // before): the entries logged with it stay as they are either way
+          const said = `Deleted “${g.name}”. The entries logged with it stay.`;
+          if (!await jStoreGroups(groups.filter((_, k) => k !== i), msg)) return;
+          journalGroups(back, said, true);
+          toast(said, {action: "Undo", onAction: async () => {
+            const now = jGroups().slice();
+            now.splice(Math.min(i, now.length), 0, g);
+            const shown = () => drawer.classList.contains("open") && $("#dbody .jgroups-home");   // the groups, if they're still what the panel shows
+            if (!await jStoreGroups(now, shown() ? $("#dbody .edit-msg") : null)) throw new Error("it couldn't be saved");
+            if (shown()) journalGroups(back, `Undone: “${g.name}” is back.`);
+          }});
         }})) : null))) : el("p", {class: "empty", text: w ? "No groups yet." : "No one has made a symptom group for this profile."}),
     el("div", {class: "btns"}, w ? el("button", {class: "btn primary", type: "button", text: "New group", onclick: () => journalGroupEdit(-1, () => journalGroups(back))}) : null,
       el("button", {class: "btn", type: "button", text: "Back", onclick: () => back()})), msg);
   showDrawer();
-  if (said) sayIn(msg, said);
+  if (said) sayIn(msg, said, false, {say: !quiet});
 }
 /* make (i -1) or change group i: a name and its symptoms, one a line */
 function journalGroupEdit(i, back) {

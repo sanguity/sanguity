@@ -3258,7 +3258,18 @@ def main():
             box = js("(() => { const r = document.querySelector('.rename-box').getBoundingClientRect(); return [r.left, r.right, document.documentElement.scrollWidth]; })()")
             check("…the rename form fits 375 px", box[0] >= 0 and box[1] <= 375 and box[2] <= 375, box)
             page.keyboard.press("Escape")
-            check("…Escape closes the form, not the drawer", js("!document.querySelector('.rename-box') && document.getElementById('drawer').classList.contains('open')"))
+            settle(100)
+            check("…Escape closes the form, not the drawer, focus back on its ✎ (#363)", js("!document.querySelector('.rename-box') && document.getElementById('drawer').classList.contains('open')")
+                  and js("document.activeElement.matches('#dbody > .source [data-rename=import]')"))
+            page.click("#dbody > .source [data-rename=import]")
+            page.wait_for_selector(".rename-box", timeout=5000)
+            pop = js("document.querySelector('.rename-box').matches(':popover-open')")
+            page.click("#dtitle")   # outside it, on words
+            settle(100)
+            own = js("fetch('js/rename.js').then(r => r.text()).then(t => /keydown|pointerdown|mousedown|Escape/.test(t.replace(/\\/\\*[\\s\\S]*?\\*\\/|\\/\\/.*/g, '')))")
+            check("…a popover (#363): a click outside closes it, the drawer staying, focus back on its ✎; rename.js has no Escape or outside-click handler of its own",
+                  pop and js("!document.querySelector('.rename-box') && document.getElementById('drawer').classList.contains('open')")
+                  and js("document.activeElement.matches('#dbody > .source [data-rename=import]')") and own is False, [pop, own, js("document.activeElement.outerHTML.slice(0, 80)")])
             page.set_viewport_size({"width": 1400, "height": 900})
             settle(200)
             page.click("#dbody > .source [data-rename=import]")
@@ -3572,7 +3583,11 @@ def main():
             page.click("#journalHome .jrow")
             settle(200)
             page.click("#dbody .btns button:text-is('Delete')")
-            page.click("#dbody .btns button.primary:text-is('Delete')")
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=5000)
+            asked = js("(d => d && [d.getAttribute('role'), d.querySelector('h2').textContent, d.querySelector('.sg-ask-msg').textContent, document.activeElement.textContent, d.querySelector('.btn.danger')?.textContent])(document.querySelector('dialog.sg-ask[open]'))")
+            check("…its Delete asks in the app's dialog (#363): an alert dialog saying it can't be undone, a red Delete, focus on Keep it",
+                  asked and asked[0] == "alertdialog" and asked[1].startswith("Delete “") and "can't be undone" in asked[2] and asked[3] == "Keep it" and asked[4] == "Delete", asked)
+            page.click("dialog.sg-ask .btn.danger")
             page.wait_for_function("typeof JOURNAL !== 'undefined' && EV.length > 0 && JOURNAL.length === 0 && booted && document.activeElement.id === 'journalHome'", timeout=20000)
             check("deleting the entry takes it off the timeline and Trends, back to the journal's home",
                   js("document.querySelectorAll('#charts .jmark, #tl .jmark').length") == 0 and page.inner_text("#journalHome h2") == "Journal")
@@ -3603,6 +3618,22 @@ def main():
             check("a symptom group is made from the journal's card, kept as the profile's setting (#161)",
                   js("JSON.stringify(CFG.journal.groups)") == '[{"name":"Migraine day (browser check)","symptoms":["Headache","Nausea","Light sensitivity"]}]'
                   and "Headache, Nausea, Light sensitivity" in page.inner_text("#dbody .jgroups"), js("JSON.stringify(CFG.journal.groups)"))
+            # #363: deleted at once, as a Labs view is (#263), a toast's Undo putting it back on the server
+            stored_groups = "api('profiles/1/settings').then(r => r.json()).then(j => JSON.stringify((j.journal || {}).groups || []))"
+            page.click("#dbody .jgroups button:text-is('Delete')")
+            page.wait_for_function("(CFG.journal?.groups || []).length === 0", timeout=10000)
+            settle(200)
+            gone = [js("!!document.querySelector('dialog.sg-ask')"), js(stored_groups), js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text')?.textContent"),
+                    js("document.querySelector('#dbody .edit-msg').textContent")]
+            check("…a group's Delete asks nothing (#363): it's gone from the server, a toast saying so with an Undo, the panel's line too",
+                  gone == [False, "[]", "Deleted “Migraine day (browser check)”. The entries logged with it stay.", "Deleted “Migraine day (browser check)”. The entries logged with it stay."], gone)
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+            page.wait_for_function("(CFG.journal?.groups || []).length === 1", timeout=10000)
+            settle(200)
+            back_g = [js(stored_groups), page.inner_text("#dbody .jgroups"), js("document.querySelectorAll('#sgToasts .sg-toast').length")]
+            check("…and its Undo puts it back on the server as it was, in the panel's list, the toast gone",
+                  back_g[0] == '[{"name":"Migraine day (browser check)","symptoms":["Headache","Nausea","Light sensitivity"]}]' and "Headache, Nausea, Light sensitivity" in back_g[1]
+                  and back_g[2] == 0, back_g)
             page.click("#dbody .jgroups button:text-is('Log it')")
             settle(200)
             check("…logged in one go: one row a symptom, each with its own severity",
@@ -5805,7 +5836,17 @@ def main():
                   hist == ["epic-mychart", "carespace", "claims-csv", "bcbs", "uhc", "fhir", "ccda"], hist)
             check("…with the uploaded files", "fhir-export/" in page.inner_text("#history li[data-format='fhir'] .files"))
             page.click("#history li[data-format='fhir'] button.undo")
-            page.click("#history li[data-format='fhir'] .confirm button.danger")
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=5000)
+            asked = js("(d => d && [d.getAttribute('role'), d.querySelector('h2').textContent, d.querySelector('.sg-ask-msg').textContent, document.activeElement.textContent, d.querySelector('.btn.danger')?.textContent])(document.querySelector('dialog.sg-ask[open]'))")
+            check("…its Undo asks in the app's dialog (#363), not a box of its own: an alert dialog, a red Undo import, focus on Keep it",
+                  asked and asked[0] == "alertdialog" and asked[1] == "Undo this import?" and asked[2].startswith("Everything this FHIR records") and "can't be reversed" in asked[2] and asked[3] == "Keep it"
+                  and asked[4] == "Undo import" and not js("!!document.querySelector('#history .confirm')"), asked)
+            page.keyboard.press("Escape")
+            settle(200)
+            check("…Escape says no, focus back on its Undo", js("document.activeElement.matches(\"#history li[data-format='fhir'] button.undo\")")
+                  and not js("document.querySelector(\"#history li[data-format='fhir']\").classList.contains('undone')"))
+            page.click("#history li[data-format='fhir'] button.undo")
+            answer_ask(page)
             page.wait_for_selector("#history li.undone[data-format='fhir']", timeout=10000)
             check("…undoing the FHIR one marks it undone, the C-CDA one still there",
                   js("!document.querySelector(\"#history li[data-format='ccda']\").classList.contains('undone')") and
@@ -6193,7 +6234,7 @@ def main():
                   len(what) == 2 and what[0].startswith("1 reading taken at home") and what[1].startswith("4 readings taken at home"), what)
             for _ in range(2):
                 page.click("#history li[data-format='manual']:not(.undone) button.undo")
-                page.click("#history li[data-format='manual']:not(.undone) .confirm button.danger")
+                answer_ask(page)
                 page.wait_for_function("document.getElementById('historyMsg').textContent.startsWith('Undone')", timeout=10000)
                 js("document.getElementById('historyMsg').textContent = ''")
             left = js("fetch('api/profiles/1/watch').then(r => r.json()).then(w => [['bp_readings', 'temp_readings', 'spo2_readings', 'glucose_readings']"

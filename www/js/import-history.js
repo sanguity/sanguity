@@ -82,38 +82,31 @@
       !undone && e.note ? el("p", {class: "hint note", text: e.note}) : null);
     if (!undone && canUndo && e.can_undo) {
       const go = el("button", {class: "btn small undo", type: "button", text: "Undo this import…"});
-      go.onclick = () => confirmUndo(li, e, go);
+      go.onclick = () => confirmUndo(e, go);
       li.append(el("div", {class: "row"}, go));
     }
     return li;
   }
 
-  function confirmUndo(li, e, opener) {
-    if (li.querySelector(".confirm")) return;
+  // asked first, in the app's dialog (ask(), util.js; #363), the red button its action and focus on Keep it
+  async function confirmUndo(e, opener) {
+    if (!await ask({title: e.removal ? "Put back what this took out?" : "Undo this import?",
+      message: e.removal ? `What comes back: ${counts(e).toLowerCase()}.` :
+        `Everything this ${e.label} import brought is removed: ${counts(e).toLowerCase()}` + (e.upload != null ? ", and the files uploaded for it" : "") +
+        ". This can't be reversed; you can import the files again." + (e.origin === "dataset" ? " What it replaced when it was loaded won't come back." : ""),
+      action: e.removal ? "Put them back" : "Undo import", cancel: "Keep it", danger: true})) return;
     opener.disabled = true;
-    const yes = el("button", {class: "btn small danger", type: "button", text: "Undo import"});
-    const no = el("button", {class: "btn small", type: "button", text: "Keep it"});
-    const box = el("div", {class: "confirm", role: "group", "aria-label": "Confirm undo"},
-      el("p", {text: e.removal ? `Put back what this took out: ${counts(e).toLowerCase()}.` :
-        `Remove everything this ${e.label} import brought: ${counts(e).toLowerCase()}` +
-        (e.upload != null ? ", and the files uploaded for it" : "") + ". This can't be reversed; you can import the files again." +
-        (e.origin === "dataset" ? " What it replaced when it was loaded won't come back." : "")}),
-      el("div", {class: "row"}, yes, no));
-    no.onclick = () => { box.remove(); opener.disabled = false; opener.focus(); };
-    yes.onclick = async () => {
-      yes.disabled = no.disabled = true;
-      say("Undoing…");
-      try {
-        await call(`profiles/${PID}/imports/${e.id}/undo`, "POST");
-        say(e.removal ? "Undone: the records it took out are back." : `Undone: the ${e.label} import's records are gone from the profile.`);
-        await load();
-      } catch (err) {
-        say("Couldn't undo it: " + err.message, true);
-        box.remove(); opener.disabled = false;
-      }
-    };
-    li.append(box);
-    yes.focus();
+    say("Undoing…");
+    try {
+      await call(`profiles/${PID}/imports/${e.id}/undo`, "POST");
+      say(e.removal ? "Undone: the records it took out are back." : `Undone: the ${e.label} import's records are gone from the profile.`);
+      await load();
+      const li = document.getElementById("import-" + e.id);   // drawn again, marked undone: focus on it, not lost with the button
+      if (li && opener && !opener.isConnected) li.focus();
+    } catch (err) {
+      say("Couldn't undo it: " + err.message, true);
+      opener.disabled = false;
+    }
   }
 
   async function load() {

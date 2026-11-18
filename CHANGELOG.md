@@ -922,6 +922,11 @@ Everything on `main` so far; it becomes the first tagged release.
   tracking keep each mark with its words (● symptom, ◆ taken late, ○ ovulation test) where a phone wraps them. In the
   drawer's results the ? and ✎ beside a name sit on its line, the ? no longer 3 px low, and stay clear of the name
   above when it wraps. A lab in the Labs list with no latest value would have shown "text"; it shows nothing.
+- **The last removals asked by hand** (#363): a symptom group is deleted at once, a toast's Undo putting it back
+  where it was (the entries logged with it stay either way), as a saved Labs view is. Deleting a journal entry, which
+  can't be undone, and Import history's Undo ask in the app's dialog, with a red button and focus on Keep it, instead
+  of a confirmation in the page with a blue Delete. The rename form beside a ✎ is a popover: Escape or a click outside
+  closes it, focus back on its ✎, as a menu's does.
 - **The drawer over a question, a menu and the page** (#364): a phone turned while a question was open over the drawer
   put the drawer, now a modal sheet, on top of it, hiding the question while it waited; the drawer now changes once
   the question is answered. Escape in a menu opened over the drawer closes only the menu. While a dialog or the drawer
