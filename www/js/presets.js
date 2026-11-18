@@ -1,6 +1,9 @@
 /* Sanguity · Settings → Dashboard → "Start from a condition" (#186): pick one or more conditions (searchable, grouped
    by body system, so a list of a hundred stays usable), see what they'd fill in, then fill it in. The definitions are
    condition-presets.json's (server/presets.py), each lab already matched to this profile's own series by the server.
+   With the fuller list (#187) the search ignores accents and apostrophes and also matches a group's name ("cancer",
+   "kidney"), and the preview says which chosen conditions each tile and each lab with no results is from, with each
+   condition's own list behind "Its list".
 
    Filling in only changes the editors below (and, if ticked, Saved views and the visit summary's ticks, each in its
    own section): the person saves them as any other change, or Discard changes puts them back; Reset to defaults
@@ -13,19 +16,30 @@ const PRESET_TILES = 12;   // a preset's tiles at most (the default list's lengt
 let PRESETS = null;        // {pid, data}: the server's offer for this profile, fetched once per profile
 
 const presetText = list => list.length < 2 ? list.join("") : list.slice(0, -1).join(", ") + " and " + list.at(-1);
+/* a condition's name without its "(…)" (where a tile says which conditions it's from, #187) */
+const presetShort = name => name.replace(/\s*\(.*\)$/, "");
+/* search text: case, accents and apostrophes aside, so "crohns" finds Crohn's and "addisons" Addison's (#187) */
+const presetFold = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/['’`]/g, "").toLowerCase();
 
 /* the conditions' labs, interleaved so each one's most important come first, without repeats: {have: labs with a
-   series here (the tiles), missing: labs this profile has no results for} */
+   series here (the tiles), missing: labs this profile has no results for, from: Map(series name or code → the
+   names of the chosen conditions that list it, #187)} */
 function presetLabs(conds) {
-  const have = [], missing = [], seen = new Set(), series = new Set();
+  const have = [], missing = [], seen = new Set(), series = new Set(), from = new Map();
   const most = Math.max(0, ...conds.map(c => c.labs.length));
   for (let r = 0; r < most; r++) for (const c of conds) {
     const x = c.labs[r];
-    if (!x || seen.has(x.code) || (x.series && series.has(x.series))) continue;
+    if (!x) continue;
+    const key = x.series || x.code;
+    if (!from.has(key)) from.set(key, []);
+    if (!from.get(key).includes(c.name)) from.get(key).push(c.name);
+    if (seen.has(x.code) || (x.series && series.has(x.series))) continue;
     seen.add(x.code);
     if (x.series) { series.add(x.series); have.push(x); } else missing.push(x);
   }
-  return {have, missing};
+  const order = conds.map(c => c.name);
+  for (const names of from.values()) names.sort((a, b) => order.indexOf(a) - order.indexOf(b));   // in the order chosen
+  return {have, missing, from};
 }
 
 /* what filling in would set, from the editors' values now: {keyLabs, homeTiles, ticked, views} (ticked and views
@@ -79,7 +93,7 @@ function presetsBlock(sec) {
   };
 
   let data = null;
-  const byId = id => data.conditions.find(c => c.id === id);
+  const byId = id => data.conditions.find(c => c.id === id), sysName = {}, openDefs = new Set();   // (#187)
   function pick(id, on) {
     const i = picked.indexOf(id);
     if (on && i < 0) picked.push(id); else if (!on && i >= 0) picked.splice(i, 1);
@@ -98,11 +112,13 @@ function presetsBlock(sec) {
     filter(true);
   }
   function filter(quiet) {
-    const q = find.value.trim().toLowerCase();
+    const q = presetFold(find.value.trim());
     let n = 0;
     for (const lab of list.querySelectorAll("label[data-id]")) {
-      const c = byId(lab.dataset.id), syn = q && !c.name.toLowerCase().includes(q) ? c.synonyms.find(s => s.toLowerCase().includes(q)) : null;
-      const hit = !q || c.name.toLowerCase().includes(q) || !!syn;
+      const c = byId(lab.dataset.id), named = presetFold(c.name).includes(q);
+      const syn = q && !named ? c.synonyms.find(s => presetFold(s).includes(q)) : null;
+      const group = q && !named && !syn && presetFold(sysName[c.system] || "").includes(q);   // "cancer", "kidney": the whole group (#187)
+      const hit = !q || named || !!syn || group;
       lab.hidden = !hit; n += hit;
       lab.querySelector(".pre-also").textContent = syn ? ` · also called ${syn}` : "";
     }
@@ -132,13 +148,24 @@ function presetsBlock(sec) {
     out.hidden = !conds.length;
     if (!conds.length) { sayIn(msg, ""); return; }
     const plan = presetPlan(conds, replace(), viewsBox.checked, sumBox.checked);
-    const {missing} = presetLabs(conds), before = SET_ITEMS["overview.keyLabs"].value();
+    const {missing, from} = presetLabs(conds), before = SET_ITEMS["overview.keyLabs"].value();
+    const several = conds.length > 1;   // which conditions a lab is from, said once there's more than one (#187)
+    const fromText = names => "From " + presetText(names.map(presetShort));
     const tiles = keyLabTiles(plan.keyLabs, LABS, false).map(n => {
       const s = LABS.find(x => x.name === n), last = s.pts[s.pts.length - 1];
       return el("div", {class: "tile", "data-lab": n},
         el("span", {class: "lbl"}, el("span", {text: nick(n), title: n}), before.includes(n) ? null : el("span", {class: "tag pre-new", text: "new"})),
-        el("span", {class: "val"}, last[5] || String(last[1]), el("small", {text: s.unit || ""})));
+        el("span", {class: "val"}, last[5] || String(last[1]), el("small", {text: s.unit || ""})),
+        several && from.has(n) ? el("span", {class: "pre-from", text: fromText(from.get(n))}) : null);
     });
+    /* each condition's own list, most important first, for reading where a tile came from (#187) */
+    const own = c => el("details", {class: "pre-def", "data-id": c.id, open: openDefs.has(c.id) ? "" : null,
+      ontoggle: ev => ev.target.open ? openDefs.add(c.id) : openDefs.delete(c.id)}, el("summary", {text: `Its list: ${c.labs.length} lab${c.labs.length === 1 ? "" : "s"}` +
+        (c.home.length ? `, ${c.home.length} home reading${c.home.length === 1 ? "" : "s"}` : "")}),
+      el("ol", {}, ...c.labs.map(x => el("li", {}, nick(x.series || x.name),
+        x.series ? null : el("span", {class: "muted", text: " · no results here"})))),
+      c.home.length ? el("p", {class: "muted", text: `At home: ${presetText(c.home.map(h => h.label))}.`}) : null,
+      c.adultOnly.length ? el("p", {class: "muted", text: `Left out for a child's profile: ${presetText(c.adultOnly)}.`}) : null);
     const home = [...new Set(conds.flatMap(c => c.home.map(h => h.label)))];
     const left = [...new Set(conds.flatMap(c => c.adultOnly))];
     const tick = SET_ITEMS["summary.ticked"], secs = [...new Set(conds.flatMap(c => c.home.map(h => (tick?.st.choices || {})[h.section] || h.label)))];
@@ -148,13 +175,13 @@ function presetsBlock(sec) {
         el("strong", {text: c.name}), ": commonly followed for it according to ",
         ...c.sources.flatMap((s, i) => [i ? (i === c.sources.length - 1 ? " and " : ", ") : "",
           `${s.publisher}, `, el("a", {href: s.url, target: "_blank", rel: "noopener noreferrer", text: s.title}), ` (${s.year})`]),
-        ". ", el("span", {class: "muted", text: c.reviewed ? "Reviewed by a clinician." : "Not reviewed by a clinician yet."})))),
+        ". ", el("span", {class: "muted", text: c.reviewed ? "Reviewed by a clinician." : "Not reviewed by a clinician yet."}), own(c)))),
       mode,
       el("h4", {class: "set-ph", text: replace() ? "Key lab tiles, instead of yours" : "Key lab tiles, after yours"}),
       el("div", {class: "tiles pre-tiles", role: "group", "aria-label": "Preview of the key lab tiles"},
         ...(tiles.length ? tiles : [el("p", {class: "hint", text: "None of these labs has results in this profile yet, so they'd add no tiles."})])),
       missing.length ? el("p", {class: "hint", id: "preMissing", text: `No results in this profile's records, so no tile: ` +
-        missing.map(x => nick(x.name)).join("; ") + "."}) : null,   // (semicolons: some names have commas)
+        missing.map(x => nick(x.name) + (several ? ` (${presetText(from.get(x.code).map(presetShort))})` : "")).join("; ") + "."}) : null,   // (semicolons: some names have commas)
       left.length ? el("p", {class: "hint", id: "preChild", text: `Left out for a child's profile (About this person's birth date): ` +
         `${presetText(left)}, ${left.length === 1 ? "a measure" : "measures"} for adults.`}) : null,
       el("p", {class: "hint", id: "preHome"}, home.length ? `Home readings: ${presetText(home)}. ` +
@@ -184,6 +211,7 @@ function presetsBlock(sec) {
   }
 
   data = PRESETS.data;
+  for (const s of data.systems) sysName[s.id] = s.name;
   {
     if (data.child) panel.prepend(el("p", {class: "hint", id: "preKid", text: "This is a child's profile (About this person), so labs meant for adults are left out."}));
     sugg.replaceChildren(...data.suggest.map(s => el("p", {class: "pre-offer"},

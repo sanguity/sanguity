@@ -5443,6 +5443,8 @@ def main():
                 page.wait_for_selector("#presets .pre-offer button", timeout=10000)
                 page.wait_for_load_state("networkidle")
                 settle(200)
+            with open(os.path.join(ROOT, "condition-presets.json"), encoding="utf-8") as f:
+                n_presets = len(json.load(f)["conditions"])   # the fuller list (#187)
             presets_open()
             offer = page.inner_text("#presets .pre-suggest")
             check("presets (#186): the problem list's condition is offered, never applied by itself",
@@ -5451,12 +5453,12 @@ def main():
             page.click("#presets .pre-offer button")
             check("…choosing it opens the picker with it ticked, grouped by body system",
                   js("document.querySelector('label[data-id=cancer-treatment] input').checked") and js("[...document.querySelectorAll('#preList legend')].map(l => l.textContent)")[:2]
-                  == ["Diabetes, thyroid and hormones", "Heart and blood vessels"], js("[...document.querySelectorAll('#preList legend')].map(l => l.textContent)"))
+                  == ["Diabetes, thyroid, hormones and metabolism", "Heart and blood vessels"], js("[...document.querySelectorAll('#preList legend')].map(l => l.textContent)"))
             page.fill("#preFind", "CKD")
             settle(100)
             check("…the search finds a condition by a synonym, and says how many match",
                   js("[...document.querySelectorAll('#preList label[data-id]')].filter(l => !l.hidden).map(l => l.textContent)") == ["Chronic kidney disease · also called CKD"]
-                  and page.inner_text("#preCount") == "1 of 9 match", page.inner_text("#preCount"))
+                  and page.inner_text("#preCount") == f"1 of {n_presets} match", page.inner_text("#preCount"))
             page.check("label[data-id='chronic-kidney-disease'] input")
             page.fill("#preFind", "")
             src = page.inner_text("#preOut .pre-src")
@@ -5469,6 +5471,55 @@ def main():
             check("…Replace my tiles: both conditions' labs with results here, interleaved, most important first, at most 12",
                   js(pre_tiles) == ["WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "Hemoglobin", "Platelet Count", "Potassium, Blood",
                                     "Lymphocytes Absolute", "Sodium, Blood", "ALT", "AST", "Total Bilirubin", "Magnesium"], js(pre_tiles))
+            # ---- A fuller list of conditions (#187): the long list is searched by synonym, accents and apostrophes aside,
+            # and by a group's name; with two conditions chosen, each previewed tile and each lab with no results says
+            # which it's from, and each condition's own list is behind "Its list" (kept open as the preview redraws).
+            # Axe at 1400 and 375 px, light and dark, with the two chosen and a list open.
+            check("fuller list (#187): the picker lists every condition in the file, in its groups",
+                  js("document.querySelectorAll('#preList label[data-id]').length") == n_presets and n_presets >= 60
+                  and js("document.querySelectorAll('#preList fieldset').length") == 11, js("document.querySelectorAll('#preList label[data-id]').length"))
+            shown = "[...document.querySelectorAll('#preList label[data-id]')].filter(l => !l.hidden).map(l => l.dataset.id)"
+            page.fill("#preFind", "crohns")
+            settle(100)
+            check("…the search ignores apostrophes: “crohns” finds Crohn's disease", js(shown) == ["crohns-disease"], js(shown))
+            page.fill("#preFind", "hashimoto")
+            settle(100)
+            check("…and finds a merged name as a synonym of the condition it's part of",
+                  js(shown) == ["hypothyroidism"] and "also called Hashimoto" in page.inner_text("label[data-id=hypothyroidism]"), page.inner_text("#preList"))
+            page.fill("#preFind", "cancer")
+            settle(100)
+            check("…a group's name shows the whole group: Cancer includes multiple myeloma and CLL",
+                  {"multiple-myeloma", "chronic-lymphocytic-leukemia", "cancer-treatment"} <= set(js(shown))
+                  and js("[...document.querySelectorAll('#preList fieldset')].filter(f => !f.hidden).map(f => f.dataset.system)") == ["cancer"], js(shown))
+            page.fill("#preFind", "")
+            settle(100)
+            froms = js("Object.fromEntries([...document.querySelectorAll('#preOut .tile')].map(t => [t.dataset.lab, t.querySelector('.pre-from')?.textContent || null]))")
+            check("…each previewed tile says which chosen conditions it's from",
+                  froms.get("Creatinine") == "From Cancer, during treatment and Chronic kidney disease" and froms.get("WBC") == "From Cancer, during treatment"
+                  and froms.get("Sodium, Blood") == "From Cancer, during treatment and Chronic kidney disease", froms)
+            check("…and so does each lab with no results here", "CKD-EPI eGFR (Chronic kidney disease)" in page.inner_text("#preMissing"), page.inner_text("#preMissing"))
+            page.click("#preOut .pre-def[data-id=chronic-kidney-disease] summary")
+            own = js("[...document.querySelectorAll('#preOut .pre-def[data-id=chronic-kidney-disease] li')].map(l => l.textContent)")
+            check("…“Its list” shows the condition's own labs, most important first, those with no results said so",
+                  own[:2] == ["CKD-EPI eGFR · no results here", "Creatinine"] and len(own) == 12
+                  and "At home: Blood pressure at home." in page.inner_text("#preOut .pre-def[data-id=chronic-kidney-disease]"), own[:4])
+            page.click("#prePanel input[value='add']")
+            check("…and stays open as the preview is drawn again", js("document.querySelector('#preOut .pre-def[data-id=chronic-kidney-disease]').open"))
+            page.click("#prePanel input[value='replace']")
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 375 else 800})
+                for theme in ("light", "dark"):
+                    page.emulate_media(color_scheme=theme)
+                    settle(150)
+                    serious, other = axe_check(page, f"Settings fuller condition list {width} {theme}")
+                    check(f"…two conditions previewed, a list open, at {width} px, {theme}: axe finds nothing serious", not serious, "; ".join(serious + other)[:600])
+                    if width == 375:
+                        fit = phone_fits(page, f"presets 187 {theme}")
+                        check(f"…and it fits 375 px ({theme})", not fit, "; ".join(fit)[:400])
+                    if os.environ.get("SANGUITY_SHOTS"):
+                        page.locator("#presets").screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"187-preview-{width}-{theme}.png"))
+            page.emulate_media(color_scheme=None)
+            page.set_viewport_size({"width": 1400, "height": 900})
             page.click("#preChosen button[aria-label='Remove Cancer, during treatment']")
             missing = page.inner_text("#preMissing")
             check("…one taken away: its tiles go, and the labs with no results here are named, suggesting no test",

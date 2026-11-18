@@ -590,6 +590,18 @@ Everything on `main` so far; it becomes the first tagged release.
   so; the server contacts nothing, so Outside connections are unchanged. `tests/test_lab_test_pages.py` checks the
   table (https on an allowed host, each lab once, the demo's and the starter conditions' labs covered); CONTRIBUTING.md
   says how to add a page.
+- **A fuller list of conditions** (#187): Start from a condition now offers 79, in 11 groups (diabetes, thyroid,
+  hormones and metabolism; heart; kidneys; liver and digestion; blood; cancer; joints, lupus and vasculitis;
+  infections; brain and mental health; pregnancy and hormone therapy; medicines with regular blood tests), among them
+  type 1 diabetes, gestational diabetes, atrial fibrillation, dialysis, kidney transplant, hepatitis B and C, Crohn's,
+  sickle cell disease, myeloma, PSA, CEA and CA-125 follow-up, lupus, HIV, pregnancy, and lithium, clozapine,
+  warfarin and methotrexate monitoring (what's commonly monitored, never a dose). Each cites its own published source,
+  with its labs by LOINC code and synonyms for the search; a child's profile also leaves PSA out. The search ignores
+  accents and apostrophes and matches a group's name; with two or more conditions chosen, each previewed tile and
+  each lab with no results says which it's from, and each condition's own list is behind "Its list". Thyroid disease
+  gains hypothyroidism and hyperthyroidism of their own, and liver disease is now named fatty liver disease (MASLD)
+  for its source. `docs/condition-presets.md` lists the conditions left out (osteoporosis, breast cancer follow-up,
+  COPD and asthma, long COVID, menopause and others) and why.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

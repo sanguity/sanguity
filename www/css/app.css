@@ -1479,3 +1479,13 @@ svg text.growth-pct{font-size:10px}
 #hm .hm-tq circle{fill:var(--surface);stroke:var(--accent)}
 #hm .hm-tq text{fill:var(--accent);font-size:9px;font-weight:650}
 #hm .hm-tq:hover circle{fill:var(--hover);stroke:var(--ink)}
+
+
+/* ---- A fuller list of conditions (#187, presets.js): which chosen conditions each previewed tile is from, and each
+   condition's own list behind "Its list" */
+.sets .pre-tiles .pre-from{font-size:12px;line-height:1.35;color:var(--ink2);margin-top:2px}
+.sets .pre-def{margin:2px 0 6px}
+.sets .pre-def summary{cursor:pointer;color:var(--ink2);font-size:13px;width:max-content;max-width:100%}
+.sets .pre-def ol{margin:4px 0 2px;padding-left:22px;columns:2 14rem;column-gap:24px}
+.sets .pre-def li{break-inside:avoid}
+.sets .pre-def p{margin:2px 0;font-size:13px}

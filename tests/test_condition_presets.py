@@ -8,7 +8,7 @@ from an allergy or a resolved problem; adult-only labs left out for a child), wh
 
   python3 tests/test_condition_presets.py
 """
-import copy, datetime, json, os, sys, tempfile, unittest
+import copy, datetime, json, os, re, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-presets-test-")
@@ -85,6 +85,60 @@ class Definitions(unittest.TestCase):
                 self.assertTrue(presets.loinc_ok(code), f"{c['id']}: {code}")
                 self.assertTrue(code in common._by_loinc() or code in DOC["labs"], f"{c['id']}: {code} is named somewhere")
             self.assertEqual(len(set(c["labs"])), len(c["labs"]), f"{c['id']}: no lab twice")
+
+    def test_the_fuller_list(self):
+        """#187: the issue's groups each have conditions; every code in the file's own labs table is used, and every
+        code in every definition is known (form, check digit, named by lab-aliases.json or the table)."""
+        ids = {c["id"] for c in DOC["conditions"]}
+        for want in ("type-1-diabetes", "prediabetes", "gestational-diabetes", "hypothyroidism", "hyperthyroidism", "gout",
+                     "atrial-fibrillation", "coronary-artery-disease", "familial-hypercholesterolemia", "dialysis", "kidney-transplant",
+                     "hepatitis-b", "hepatitis-c", "cirrhosis", "celiac-disease", "crohns-disease", "ulcerative-colitis",
+                     "sickle-cell-disease", "hemochromatosis", "multiple-myeloma", "prostate-cancer", "colorectal-cancer",
+                     "rheumatoid-arthritis", "lupus", "hiv", "pulmonary-hypertension", "epilepsy-drug-levels", "pregnancy",
+                     "testosterone-therapy", "eating-disorders", "alcohol-use-disorder", "warfarin", "lithium", "clozapine",
+                     "dmard-monitoring", "isotretinoin", "amiodarone", "statin"):
+            self.assertIn(want, ids)
+        used = {code for c in DOC["conditions"] for code in c["labs"]}
+        for sys_ in DOC["systems"]:
+            self.assertTrue(any(c["system"] == sys_["id"] for c in DOC["conditions"]), f"{sys_['id']} has a condition")
+        for code in DOC["labs"]:
+            if code != "_about":
+                self.assertTrue(presets.loinc_ok(code), code)
+                self.assertIn(code, used, f"labs: {code} is listed but no condition uses it")
+        for code in used:
+            self.assertTrue(presets.loinc_ok(code) and presets.lab(DOC, code), f"{code} is a known LOINC code")
+        self.assertTrue(presets.lab(DOC, "2857-1")["adult"], "PSA: an adult's measure")
+
+    def test_wording_names_no_dose_or_advice(self):
+        """Medicine entries name what's commonly monitored, never a dose; nothing tells anyone what to do."""
+        dose = re.compile(r"\b\d+(\.\d+)?\s*(mg|mcg|µg|g|ml|units?|iu|mmol)\b", re.I)
+        advice = re.compile(r"\b(should|must|recommend|you need|get tested)\b", re.I)
+        for c in DOC["conditions"]:
+            text = " ".join([c["name"], *c["synonyms"]])
+            self.assertFalse(dose.search(text), f"{c['id']}: no dose")
+            self.assertFalse(advice.search(text), f"{c['id']}: no advice")
+        self.assertIn("never a dose", DOC["_about"])
+
+    def test_suggestions_for_the_fuller_list(self):
+        """Look-alike problems don't suggest the wrong preset (the "except" words, #187)."""
+        def ids(name, **kw):
+            return [x["id"] for x in presets.suggestions(DOC, [{"name": name, "type": "Diagnosis", **kw}])]
+        self.assertEqual(ids("Hashimoto's thyroiditis"), ["hypothyroidism"])
+        self.assertEqual(ids("Toxic multinodular goiter"), ["hyperthyroidism"])
+        self.assertEqual(ids("Sickle cell trait"), [])
+        self.assertEqual(ids("Sickle beta thalassemia"), ["sickle-cell-disease"])
+        self.assertEqual(ids("Lupus anticoagulant positive"), [])
+        self.assertEqual(ids("Hearing aids"), [])
+        self.assertEqual(ids("Hepatitis B vaccination"), [])
+        self.assertEqual(ids("Gestational hypertension"), ["preeclampsia"])
+        self.assertEqual(ids("Medullary thyroid cancer"), ["cancer-treatment"])
+        self.assertEqual(ids("Smoldering multiple myeloma"), ["mgus"])
+        self.assertEqual(ids("Primary biliary cirrhosis"), ["primary-biliary-cholangitis"])
+        self.assertEqual(ids("Statin intolerance"), [])
+        self.assertEqual(ids("Latent tuberculosis"), [])
+        self.assertEqual(ids("HIV pre-exposure prophylaxis (PrEP)"), ["hiv-prep"])
+        self.assertEqual(ids("Familial hypercholesterolemia"), ["familial-hypercholesterolemia"])
+        self.assertEqual(ids("End stage renal disease (ESRD)"), ["dialysis"])
 
     def test_home_readings_and_summary_ticks_exist(self):
         for h, (label, tile, sec) in presets.HOME.items():
@@ -170,8 +224,9 @@ class Offer(unittest.TestCase):
 
     def test_3_suggested_from_problems_only(self):
         o = self.offer()
-        self.assertEqual(o["suggest"], [{"id": "type-2-diabetes", "problem": "Type 2 diabetes mellitus without complications"}],
-                         "not from the allergy (CKD), the resolved anemia, or pulmonary hypertension (an exception)")
+        self.assertEqual(o["suggest"], [{"id": "type-2-diabetes", "problem": "Type 2 diabetes mellitus without complications"},
+                                        {"id": "pulmonary-hypertension", "problem": "Pulmonary hypertension"}],
+                         "not from the allergy (CKD) or the resolved anemia; pulmonary hypertension its own preset (#187), not high blood pressure's")
         s = presets.suggestions(DOC, [{"name": "Essential hypertension (HTN)", "status": "active"},
                                       {"name": "Hodgkin lymphoma, in remission", "type": "Diagnosis"},
                                       {"name": "Lymphomatoid papulosis", "type": "Diagnosis"}])
