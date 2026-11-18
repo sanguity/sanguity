@@ -127,7 +127,9 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
       el("span", {class: "why", text: "Changes, documents, imports, settings and your account need the server; they come back when you're online."}));
     const why = "Needs the server: you're offline";
     const header = () => {
-      for (const a of document.querySelectorAll("header a.acct")) { a.setAttribute("aria-disabled", "true"); a.tabIndex = -1; a.title = why; }
+      // the menus' links to the other pages: still reached with the arrow keys, so the reason is their tip and
+      // description (#261), shown on focus too, not a title only a pointer finds (#385)
+      for (const a of document.querySelectorAll("header a.acct")) { a.setAttribute("aria-disabled", "true"); a.tabIndex = -1; a.dataset.tip = why; a.removeAttribute("title"); }
       const sel = document.getElementById("profile"); if (sel) { sel.disabled = true; sel.title = why; }
     };
     header(); setTimeout(header);   // and again once app.js has set up the header
