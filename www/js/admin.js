@@ -322,6 +322,18 @@ async function loadRequireTf() {
   const req = $("#reqTf");
   req.checked = (await call("settings")).require_2fa;
   req.onchange = async () => {
+    // turning it on is asked first while some accounts have no second factor (#314): each is then refused on every
+    // request until it sets one up (server/main.py, user). Turning it off isn't: it takes nothing away
+    if (req.checked) {
+      let list;
+      try { list = await call("users"); } catch (e) { req.checked = false; say("#userMsg", e.message, true); return; }
+      const without = list.filter(u => !u.disabled && !u.two_factor), n = without.length, mine = without.some(u => u.id === ME.user.id);
+      const who = n === 1 ? (mine ? "Your account doesn't" : "1 account doesn't") : `${n} accounts${mine ? ", yours included," : ""} don't`;
+      if (n && !await ask({title: "Require two-factor sign-in for everyone?", danger: true, action: "Require it", message: [
+          `${who} have a second factor yet (an authenticator app or a passkey).`,
+          "An account without one can't open any records until it has one: Sanguity asks it to set one up first. " +
+          "You can turn this off again at any time."]})) { req.checked = false; return; }
+    }
     try { await call("settings", "PATCH", {require_2fa: req.checked}); say("#userMsg", req.checked ? "Everyone now needs two-factor sign-in." : "Two-factor sign-in is now optional."); }
     catch (e) { req.checked = !req.checked; say("#userMsg", e.message, true); }
   };

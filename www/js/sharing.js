@@ -161,19 +161,21 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
   /* a role change that's hard to take back is asked first (#249): giving someone owner, taking it away, or changing
      your own (only an owner can, so it's a step down, and only another owner can undo it). Another person's
      editor/viewer change isn't: either of you can change it back (otherwise: what's asked then, if anything). m may be
-     someone not yet shared with ({username}). Resolves true to go ahead. */
+     someone not yet shared with ({username}). Resolves true to go ahead. Owner is a grant as serious as Admin's
+     Make admin, so its question starts on Cancel too (#314). */
   const an = r => (r === "owner" || r === "editor" ? "an " : "a ") + r;
   function sureOfRole(p, m, to, otherwise = null) {
     if (m.user_id === ME.user.id) {
-      if (!MEMBERS.some(x => x.role === "owner" && x.user_id !== m.user_id)) return otherwise ? otherwise() : true;   // the last owner: the server says why not
+      // the last owner whose account is enabled, as the server counts them (dbm.active_owners, #314): it says why not
+      if (!MEMBERS.some(x => x.role === "owner" && x.user_id !== m.user_id && !x.disabled)) return otherwise ? otherwise() : true;
       return ask({title: `Make yourself ${an(to)} of ${p.name}?`, action: "Change my role", danger: true, message: [
-        to === "viewer" ? `You'll only be able to view ${p.name}: no longer change or export its records, share it, change who has access, ` +
-                          "make share links, see its activity, or rename or delete it."
-          : `You'll no longer be able to share ${p.name}, change who has access, make share links, see its activity, or rename or delete it. ` +
-            "You can still change its records and export them.",
+        to === "viewer" ? `You'll only be able to view ${p.name}: no longer change or export its records, see or change its ` +
+                          "cycle tracking, share it, change who has access, make share links, see its activity, or rename or delete it."
+          : `You'll no longer be able to share ${p.name}, change who has access, make share links, see its activity, turn cycle ` +
+            "tracking on or off or delete what it kept, or rename or delete it. You can still change its records and export them.",
         "Only another owner can make you an owner again."]});
     }
-    if (to === "owner") return ask({title: `Make ${m.username} an owner of ${p.name}?`, action: "Make owner", message:
+    if (to === "owner") return ask({title: `Make ${m.username} an owner of ${p.name}?`, action: "Make owner", danger: true, message:
       `Owners choose who sees ${p.name}: ${m.username} could share it, change anyone's role (yours too), rename it and delete it.`});
     if (m.role === "owner") return ask({title: `Make ${m.username} ${an(to)} of ${p.name}?`, action: "Change role", message:
       `${m.username} will no longer be able to share it, change who has access, or rename or delete it.`});
@@ -190,7 +192,8 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     $("#memberList").replaceChildren(el("table", {class: "tbl shr-members"},
       el("thead", {}, el("tr", {}, ...["Person", "Role", ""].map(h => el("th", {text: h})))),
       el("tbody", {}, ...MEMBERS.map(m => el("tr", {},
-        el("td", {}, m.username, m.user_id === me ? el("span", {class: "muted", text: " (you)"}) : null),
+        el("td", {}, m.username, m.user_id === me ? el("span", {class: "muted", text: " (you)"}) : null,
+          m.disabled ? el("span", {class: "muted", text: " (account disabled)"}) : null),   // owners are told (#314)
         el("td", {}, owner ? roleSelect(m.role, async ev => {
           if (!await sureOfRole(p, m, ev.target.value)) { ev.target.value = m.role; return; }
           try { await call(`profiles/${p.id}/members`, "PUT", {username: m.username, role: ev.target.value}); await again(); sayIn($("#peopleMsg"), `${m.username} is now ${an(ev.target.value)}.`); }
