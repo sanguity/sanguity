@@ -60,8 +60,8 @@ BUDGETS = {
     "tab_elements": 18_000,             # elements in a tab with the period "All"
     "phone_page_ready_ms": 5000,        # the same at 375 px with the CPU four times slower, like a phone's
     "phone_tab_draw_ms": 3000,
-    "static_bytes": 390_000,            # www/'s stylesheets, fonts and SVG icons as on disk, whatever the records (#253):
-                                        # room for an icon sprite (10 to 20 KB) and a little more CSS, no more (#328)
+    "static_bytes": 400_000,            # www/'s stylesheets, fonts and SVG icons as on disk, whatever the records (#253):
+                                        # Redesign 3's sprite and components took the room #328 left; 6 KB more, no more
 }
 RUNS = 3
 
