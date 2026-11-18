@@ -5367,8 +5367,16 @@ def main():
                   card.startswith("Imported.") and "CareSpace" in card and "lab result" in card, card)
             done_toast = js("(t => t && [t.querySelector('.sg-toast-text').textContent, ...[...t.querySelectorAll('a, button')].map(b => b.getAttribute('aria-label') || b.textContent), t.querySelector('a')?.getAttribute('href')])(document.querySelector('#sgToasts .sg-toast:last-child'))")
             check("…and a toast says what came in (#263), with Open Labs and Undo, the card no longer a live region of its own",
-                  done_toast and done_toast[0].startswith("Imported ") and "lab " in done_toast[0] and done_toast[1:4] == ["Open Labs", "Undo", "Dismiss"]
+                  done_toast and done_toast[0].startswith("Imported ") and "lab " in done_toast[0] and done_toast[1:4] == ["Open Labs", "Undo…", "Dismiss"]
                   and done_toast[4] == "index.html?profile=2#labs" and not js(f"{last_card}.hasAttribute('aria-live')"), done_toast)
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            asked = answer_ask(page, yes=False)
+            kept_imp = js("fetch('api/profiles/2/imports', {cache: 'no-store'}).then(r => r.json()).then(j => j.imports[0])")
+            check("…its Undo… asks first, in Import history's words (#360), and Keep it leaves the import, and the toast, there",
+                  asked[0] == "Undo this import?" and asked[1].startswith("Remove everything this CareSpace / OncoEMR portal export import brought: ") and "can't be reversed" in asked[1]
+                  and not kept_imp.get("undone_at") and js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == done_toast[0],
+                  [asked, kept_imp.get("undone_at")])
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
             check("the job is done, read by the CareSpace importer", job is not None and tuple(job) == ("done", "carespace"), job and tuple(job))
@@ -5550,7 +5558,17 @@ def main():
             imp = db.execute("SELECT origin, format FROM imports WHERE profile_id=2 ORDER BY id DESC").fetchone()
             db.close()
             check("…as one import of their own", imp is not None and tuple(imp) == ("manual", "manual"), imp and tuple(imp))
-            page.click("#manMsg a")   # "See them on Trends"
+            # #360: the toast's Undo… asks first (the form is cleared: what was typed is gone), Keep it leaving the import
+            # there; its Open Labs charts the labs just typed, as the line's link does
+            man_toast = "#sgToasts .sg-toast:last-child"
+            page.click(f"{man_toast} button:text-is('Undo…')")
+            asked = answer_ask(page, yes=False)
+            kept_imp = js("fetch('api/profiles/2/imports', {cache: 'no-store'}).then(r => r.json()).then(j => j.imports[0])")
+            check("typed records' toast (#360): Undo… asks first, as Import history does, and Keep it leaves the import and the toast there",
+                  asked[0] == "Undo what was saved?" and "2 results" in asked[1] and "can't be reversed" in asked[1] and not kept_imp.get("undone_at")
+                  and js(f"document.querySelector('{man_toast} .sg-toast-text').textContent").startswith("Saved 2 results"), [asked, kept_imp.get("undone_at")])
+            js("localStorage.removeItem('ht-state:2')")   # nothing chosen on Labs in this browser: what's charted is what Open Labs picks
+            page.click(f"{man_toast} a:text-is('Open Labs')")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && "
                                    "!document.getElementById('view-labs').hidden && document.querySelectorAll('#charts .chart').length > 0", timeout=20000)
             typed = js("""SERIES.filter(s => ['Hemoglobin', 'Ferritin'].includes(s.name))

@@ -202,12 +202,17 @@
         onTimeline ? el("a", {href: recordsLink(p, "timeline"), text: "See them on the timeline"}) : null,
         onHealth ? el("a", {href: recordsLink(p, "health"), text: "See them on Body and activity"}) : null,
         typed.height ? el("a", {href: `sharing.html?profile=${p}#about`, text: "See the height history"}) : null].filter(Boolean);
-      const said = `Saved ${[n ? plural(n, "result", "results") : "", others ? plural(others, "record", "records") : ""].filter(Boolean).join(" and ") || "nothing new"}.`
+      const what = [n ? plural(n, "result", "results") : "", others ? plural(others, "record", "records") : ""].filter(Boolean).join(" and ");
+      const said = `Saved ${what || "nothing new"}.`
         + (j.skipped ? ` ${plural(j.skipped, "was", "were")} in this profile already and left out.` : "");
-      // shown here with its links, said by a toast (#263) with the first of them and an Undo (Import history's)
+      // shown here with its links, said by a toast (#263) with the first of them (Open Labs charting what was typed,
+      // as its link does, #360) and an Undo, which asks first in Import history's words: the form is cleared already
       sayIn(msg, [said, ...links.flatMap(a => [" ", a])], false, {say: false});
-      toast(said, {actions: [...links.slice(0, 1).map(a => ({text: a.textContent.replace(/^See them on /, "Open "), href: a.href})),
-        ...(j.import_id != null && (n || others) ? [{text: "Undo", onClick: async () => {
+      toast(said, {actions: [...links.slice(0, 1).map(a => ({text: a.textContent.replace(/^See them on /, "Open "), href: a.href,
+          onClick: names.length ? () => openTrends(p, names) : null})),   // (the first link is Labs', when there are labs)
+        ...(j.import_id != null && (n || others) ? [{text: "Undo…", onClick: async () => {
+          if (!await ask({title: "Undo what was saved?", danger: true, action: "Undo import", cancel: "Keep it",
+                          message: `Remove everything this typed-in import brought: ${what}. This can't be reversed; you can type them in again.`})) return false;
           const u = await api(`profiles/${encodeURIComponent(p)}/imports/${j.import_id}/undo`, {method: "POST"});
           if (!u.ok) { const e = await u.json().catch(() => ({})); throw new Error(typeof e.detail === "string" ? e.detail : `the server answered ${u.status}`); }
           sayIn(msg, "Undone: what was saved is gone from the profile.", false, {say: false});

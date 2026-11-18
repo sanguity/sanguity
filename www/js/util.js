@@ -442,7 +442,8 @@ function icon(name, {label} = {}) {
 /* ---- toasts (#263): toast(text, {action, onAction, actions, timeout}) says that something has happened, with what
    can be done about it, at the foot of the screen on every page: "Saved “Key labs”. · Undo", "Imported 6 lab results ·
    Open Labs · Undo". action and onAction are a button and what it does (an Undo); actions more of them, each
-   {text, onClick} or a link {text, href}. A toast stays at least 10 seconds (timeout, in ms, can only make it longer),
+   {text, onClick} or a link {text, href, onClick} (onClick, if any, before the link is followed). An onClick that
+   gives back false wasn't done (a question it asked was answered No): the toast stays. A toast stays at least 10 seconds (timeout, in ms, can only make it longer),
    and its time stops while the pointer is on it or focus is in it; its close button puts it away, as Escape does with focus in
    it. Alt+N takes focus to the newest toast's first button, and focus goes back where it was when that toast goes:
    no toast takes focus by itself. Up to three show at once, the newest at the foot; a fourth sends the oldest away.
@@ -493,11 +494,11 @@ const toast = (() => {
     const resume = () => { if (!over && !t.contains(document.activeElement)) run(); };
     t = el("div", {class: "sg-toast", role: "group", "aria-label": "Notification"},
       words,
-      acts.length ? el("div", {class: "sg-toast-acts"}, ...acts.map(a => a.href ? el("a", {class: "btn small", href: a.href, text: a.text})
+      acts.length ? el("div", {class: "sg-toast-acts"}, ...acts.map(a => a.href ? el("a", {class: "btn small", href: a.href, text: a.text, onclick: a.onClick})
         : el("button", {class: "btn small", type: "button", text: a.text, onclick: async ev => {
           const b = ev.currentTarget;
           b.disabled = true;
-          try { await a.onClick(); gone(); }
+          try { if (await a.onClick() === false) b.disabled = false; else gone(); }   // false: not done (a question answered No)
           catch (e) { b.disabled = false; words.textContent = `${text} ${a.text} didn't work: ${e.message}`; }
         }}))) : null,
       el("button", {class: "btn quiet sg-toast-x", type: "button", "aria-label": "Dismiss", onclick: gone}, icon("x")),
