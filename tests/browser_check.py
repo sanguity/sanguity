@@ -837,6 +837,30 @@ def focus_walk(page, label, back=False, stops=60):
     return out
 
 
+# the labels on a time chart (#312): of each chart matching the selector (an argument) that is drawn, its aria-label,
+# whether it has milestones, and its milestone labels ([text, the full names and dates in its title]); how many
+# procedures are named; and what's wrong: a label running past its plot's left or right edge, or a procedure's or
+# imaging's mark (● ■) on a label's text
+CHART_LABELS_JS = r"""sel => {
+  const out = {charts: [], ev: 0, problems: []};
+  for (const svg of document.querySelectorAll(sel)) {
+    const g = svg._geom || (svg.id === 'tl' ? tlScale(svg.viewBox.baseVal.width) : null);
+    if (!g || !svg.checkVisibility() || !svg.getBoundingClientRect().width) continue;
+    const said = svg.getAttribute('aria-label') || '', name = said.split(/[:,]/)[0], heads = [...svg.querySelectorAll('.evhead')].map(h => h.getBBox());
+    const c = {said, marked: !!svg.querySelector('.msmark'), ms: []}; out.charts.push(c);
+    for (const t of svg.querySelectorAll('.mslabel, .evlabel')) {
+      const b = t.getBBox(), text = t.firstChild.textContent;
+      if (t.classList.contains('mslabel')) c.ms.push([text, t.querySelector('title')?.textContent || '']); else out.ev++;
+      if (b.x < g.L - .5 || b.x + b.width > g.R + .5)
+        out.problems.push(`${name}: "${text}" runs past the plot (${Math.round(b.x)} to ${Math.round(b.x + b.width)}, plot ${Math.round(g.L)} to ${Math.round(g.R)})`);
+      if (heads.some(h => h.x < b.x + b.width && h.x + h.width > b.x && h.y < b.y + b.height && h.y + h.height > b.y))
+        out.problems.push(`${name}: a mark lies on "${text}"`);
+    }
+  }
+  return out;
+}"""
+
+
 def main():
     srv, base = start_app()
     problems, passed = [], []
@@ -1312,6 +1336,21 @@ def main():
                   ev["want"] > 0 and ev["n"] == ev["want"] and ev["kinds"] == ["imaging", "procedure"] and not ev["tri"]
                   and sorted(ev["heads"]) == [["imaging", "rect"], ["procedure", "circle"]]
                   and ev["legend"] == [["Procedure", "circle"], ["Imaging", "rect"]] and off, ev)
+            # …and their names (#312): at 1400, 375 and 320 px a procedure is named only inside the chart and where no
+            # other mark falls on its name, and every mark is still drawn (one left unnamed opens its drawer: below, with
+            # the milestone labels, after the #217 check of what details the records come with)
+            js("window._marks312 = state.marks; state.marks = true; renderCharts()")
+            for width in (1400, 375, 320):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                js("renderCharts()")
+                settle(400)
+                got = js(CHART_LABELS_JS, "#charts .chart svg")
+                heads = js("[document.querySelectorAll('#charts .chart svg .evhead').length, markEvents().length]")
+                check(f"Labs ({width} px, #312): a procedure's name is inside its chart with no mark on it, and every mark is still drawn",
+                      got["charts"] and not got["problems"] and heads[1] > 0 and heads[0] == heads[1] * len(got["charts"]), [got["problems"], got["ev"], heads])
+            js("state.marks = window._marks312; renderCharts()")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
             label = js("document.querySelector('#charts .chart svg').getAttribute('aria-label')")
             check("…the chart takes focus, as a chart summed up in words",
                   js("(s => [s.getAttribute('tabindex'), s.getAttribute('role'), s.getAttribute('aria-roledescription')])(document.querySelector('#charts .chart svg'))") == ["0", "application", "chart"]
@@ -3570,6 +3609,45 @@ def main():
             js("applyPreset('all')")
             settle()
             check("milestones drawn on Trends", js("document.querySelectorAll('#charts .msmark').length") > 0)
+            # their labels (#312): at 1400, 375 and 320 px each one on the Timeline, every Labs chart (procedures shown)
+            # and every Body and activity chart is inside its plot with no mark on it; one shortened to fit ends in "…"
+            # and keeps the full names in its title; a Labs chart's and a Body and activity chart's aria-label names them
+            js("window._was312 = [state.marks, scrollY]; state.marks = true")
+            for width in (1400, 375, 320):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for tab, sel in (("timeline", "#tl"), ("labs", "#charts .chart svg"), ("health", "#view-health svg.pz")):
+                    js("t => switchTab(t, t === 'labs' ? 'chart' : undefined)", tab)
+                    settle(500)
+                    got = js(CHART_LABELS_JS, sel)
+                    names = sorted(js("(([a, b]) => MILESTONES.filter(m => dayTs(m.date) >= a && dayTs(m.date) <= b).map(m => m.label))(state.tab === 'health' ? hRange() : [state.from, state.to])"))
+                    wrong = list(got["problems"])
+                    for c in (c for c in got["charts"] if c["marked"]):
+                        full = [" · ".join(n.rsplit(" · ", 1)[0] for n in title.split("\n")) for _, title in c["ms"]]
+                        wrong += [f"{c['said'][:30]}: \"{t}\" is neither \"{f}\" nor its start" for (t, _), f in zip(c["ms"], full)
+                                  if t != f and not (t.endswith("…") and f.startswith(t[:-1].rstrip()))]
+                        if sorted(n for f in full for n in f.split(" · ")) != names:
+                            wrong.append(f"{c['said'][:30]}: labelled {full}, not {names}")
+                        if tab != "timeline" and not all(n in c["said"] for n in names):
+                            wrong.append(f"{c['said'][:30]}: its aria-label doesn't name every milestone")
+                    check(f"{tab} ({width} px, #312): milestone labels inside every chart, no mark on them, their full names kept",
+                          bool(names) and any(c["marked"] for c in got["charts"]) and not wrong, wrong or got)
+            js("switchTab('labs', 'chart')")   # still 320 px, marks on: a procedure left unnamed still opens its drawer
+            settle(500)
+            unnamed = js("""(() => { const svg = document.querySelector('#charts .chart svg'), g = svg._geom, xs = [...svg.querySelectorAll('.evlabel')].map(t => +t.getAttribute('x'));
+                const h = [...svg.querySelectorAll('.evhead[data-k=procedure]')].find(h => !xs.some(x => Math.abs(x - 6 - h.cx.baseVal.value) < .5)); if (!h) return null;
+                svg.scrollIntoView({block: 'center'}); const px = h.cx.baseVal.value, r = h.getBoundingClientRect(), xOf = t => g.L + (t - state.from) / (state.to - state.from) * (g.R - g.L);
+                return {x: r.x + r.width / 2, y: r.y + r.height / 2, titles: markEvents().filter(e => Math.abs(xOf(e.ts) - px) < 8).map(e => e.title)}; })()""")
+            if unnamed:
+                page.mouse.click(unnamed["x"], unnamed["y"])
+                page.wait_for_selector("#drawer.open", timeout=5000)
+            check("…a procedure left unnamed at 320 px still opens its drawer when its mark is clicked",
+                  unnamed is not None and js("document.getElementById('dtitle').textContent") in unnamed["titles"], unnamed)
+            js("closeDrawer()")
+            js("state.marks = window._was312[0]; switchTab('labs', 'chart')")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle()
+            js("scrollTo(0, window._was312[1])")   # where it was before the click scrolled the chart into view
+            settle(200)
             # hovering a point shows where it came from (#100)
             box = page.locator("#charts .chart svg").first.bounding_box()
             tipped = ""
