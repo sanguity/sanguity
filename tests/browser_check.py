@@ -791,6 +791,29 @@ FOCUS_STOP_JS = r"""(() => {
 })()"""
 
 
+def ring_walk(page, label, stops=12):
+    """#310: Tab through a page from its start in light and dark; each stop's outline should be the app's one ring, the
+    accent at 2 px (sign-in and setup had the browser's own on their buttons). The problems, and the stops seen."""
+    bad, seen = [], []
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        # from the page's start: a focused stand-in there, gone (a blur alone leaves Tab going on from what had focus)
+        page.evaluate("(() => { const s = document.createElement('span'); s.tabIndex = -1; document.body.prepend(s); s.focus(); s.remove(); scrollTo(0, 0); })()")
+        for _ in range(stops):
+            page.keyboard.press("Tab")
+            stop = page.evaluate("""(() => { const a = document.activeElement; if (!a || a === document.body) return null;
+              const i = document.createElement('i'); i.style.color = 'var(--accent)'; document.body.append(i);
+              const accent = getComputedStyle(i).color, c = getComputedStyle(a); i.remove();
+              return [a.id || a.tagName.toLowerCase(), c.outlineStyle, c.outlineWidth, c.outlineColor, accent]; })()""")
+            if not stop or f"{theme} {stop[0]}" in seen:
+                break
+            seen.append(f"{theme} {stop[0]}")
+            if stop[1:4] != ["solid", "2px", stop[4]]:
+                bad.append(f"{label}, {theme}: #{stop[0]} {stop[1]} {stop[2]} {stop[3]} (the accent is {stop[4]})")
+    page.emulate_media(color_scheme="no-preference")
+    return bad, seen
+
+
 def focus_walk(page, label, back=False, stops=60):
     """Tab (or Shift+Tab from the page's end) through up to `stops` controls; the problems found, each "label: control …".
     A stop that shows no change when focused, or lies wholly under a sticky or fixed bar, is a problem."""
@@ -8557,6 +8580,9 @@ def main():
             menu_click(pk, "#logout")
             pk.wait_for_url("**/login.html", timeout=10000)
             check("sign-in page offers a passkey", pk.is_visible("#pk") and pk.inner_text("#pk") == "Sign in with a passkey")
+            ring_bad, ring_seen = ring_walk(pk, "sign-in")
+            check("…and Tab through sign-in, light and dark, rings both fields, Sign in and Sign in with a passkey in the accent, 2 px (#310)",
+                  not ring_bad and all(f"{t} {i}" in ring_seen for t in ("light", "dark") for i in ("u", "p", "b", "pk")), ring_bad[:6] or ring_seen)
             pk.click("#pk")
             pk.wait_for_function(SIGNED_IN_OR_ERROR, timeout=20000)
             check("a passkey signs in on its own", pk.evaluate("fetch('api/me').then(r => r.json()).then(j => j.user && j.user.username)") == USER,
@@ -8832,6 +8858,9 @@ def main():
             fp.emulate_media(color_scheme="no-preference")
             check("first run: setup has no serious or critical axe-core finding, in light and dark (WCAG 2.2 AA, #202)", not setup_axe[0],
                   (setup_axe[0] + setup_axe[1])[:8] or "")
+            ring_bad, ring_seen = ring_walk(fp, "setup")
+            check("…and Tab through setup, light and dark, rings every field and Create account in the accent, 2 px (#310)",
+                  not ring_bad and all(f"{t} {i}" in ring_seen for t in ("light", "dark") for i in ("c", "u", "p", "p2", "n", "b")), ring_bad[:6] or ring_seen)
             with open(code_file, encoding="utf-8") as f:
                 fp.fill("#c", f.read().strip())
             fp.fill("#u", "robin")

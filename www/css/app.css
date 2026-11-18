@@ -1,9 +1,11 @@
-/* Sanguity · the app's styles. Colours and the other design tokens are in tokens.css, which every page loads first.
+/* Sanguity · the app's styles. Colours and the other design tokens are in tokens.css, which every page loads first;
+   the reset and the one focus ring are in base.css, which every page loads next, sign-in and setup too (#310).
 
    In cascade layers (#251), declared in tokens.css and repeated here so this file keeps the same order on its own:
-     reset       box-sizing, and [hidden] always hiding
+     reset       base.css: box-sizing, and [hidden] always hiding
      tokens      tokens.css: the colour tokens, light and dark
-     base        the elements' defaults: the page's type and colours, form controls, links, and one focus ring
+     base        the elements' defaults: the page's type and colours, form controls, links; and base.css's one focus
+                 ring
      components  (empty for now) shared components, as they're gathered from the pages layer
      pages       everything else, in the order it was written: a later rule still wins over an earlier one of the same
                  specificity, as before the layers
@@ -12,19 +14,10 @@
    gets weaker, and into a later one, stronger. summary.css adds to the pages layer. */
 @layer reset, tokens, base, components, pages, utilities;
 
-@layer reset {
-*{box-sizing:border-box}
-[hidden]{display:none!important}
-}
-
 @layer base {
 body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 button,input,select{font:inherit;color:inherit}
 a{color:var(--accent)}   /* links in the accent, never the browser's blue or visited purple (#247); a button or menu item that is a link sets its own */
-/* focus (2.4.7, docs/accessibility.md): one ring for everything that takes focus by keyboard, the accent's 3:1 in both
-   themes. A component sets its own only to do something different: inset in a row of buttons or a menu, closer or
-   further, an SVG mark that thickens its stroke instead; forced colours keep theirs. */
-:where(:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
 }
 
 @layer pages {

@@ -676,6 +676,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The page's title is readable on the narrowest phones** (#315): at 320 px the top bar's title had about 23 px
   beside the brand and the menus, so Settings read "S." and Getting started "G. / s.". At 400 px and narrower it's on
   the second row, under the brand, with the profile picker beside it where there is one.
+- **Sign-in and setup get the app's focus ring** (#310): Sign in, Sign in with a passkey and Create account had the
+  browser's thin black or white ring. The reset and the one focus ring moved from `app.css` to a small
+  `www/css/base.css` that every page loads after the tokens, sign-in and setup too, so their buttons and fields are
+  ringed in the accent, 2 px out, like the app's; their own copies of the box-sizing reset and of a field's ring are
+  gone. `tests/test_css_tokens.py` fails if a stylesheet or a page rings focus again for every element.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

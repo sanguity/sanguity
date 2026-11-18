@@ -317,6 +317,25 @@ class CssTokens(unittest.TestCase):
         self.assertRegex(css, r"^(?:\s|/\*(?s:.*?)\*/)*@layer reset, tokens, base, components, pages, utilities;",
                          "tokens.css declares the layers' order first (every page loads it first)")
 
+    def test_one_focus_ring(self):
+        """the ring for whatever has keyboard focus is one rule, in base.css, which every page loads (#310): no stylesheet
+        or page's <style> rings focus again for every element or every element of a kind (a component's own ring is fine)"""
+        rings = []
+        sources = [(rel(p), open(p, encoding="utf-8").read()) for p in sorted(glob.glob(os.path.join(ROOT, "www", "css", "*.css")))]
+        sources += [(rel(p), "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", open(p, encoding="utf-8").read(), re.S | re.I)))
+                    for p in sorted(glob.glob(os.path.join(ROOT, "www", "*.html")))]
+        for path, css in sources:
+            for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", blank_comments(css, r"/\*.*?\*/")):
+                if "outline" in m.group(2) and any(re.fullmatch(r"(?:\*|[a-z]+)?(?::where\()?(?:\*|[a-z]+)?:focus(?:-visible)?\)?", s.strip())
+                                                   for s in m.group(1).split(",")):
+                    rings.append(f"{path}: {' '.join(m.group(1).split())}")
+        self.assertEqual(rings, ["www/css/base.css: :where(:focus-visible)"],
+                         "one focus ring, in www/css/base.css; a page or component sets its own only to look different")
+        for path in sorted(glob.glob(os.path.join(ROOT, "www", "*.html"))):
+            with open(path, encoding="utf-8") as f:
+                links = re.findall(r'<link rel="stylesheet" href="(?:\.\./)?css/([\w.-]+)">', f.read())
+            self.assertEqual(links[:2], ["tokens.css", "base.css"], f"{rel(path)} loads tokens.css, then base.css, first")
+
     def test_no_more_raw_values_than_allowed(self):
         now, problems = found(), []
         for path in sorted(set(now) | set(ALLOWED)):

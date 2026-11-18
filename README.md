@@ -801,6 +801,7 @@ condition-presets.json  Settings → Dashboard's presets by condition: labs by L
 nginx.conf          Web server: the app's pages and security headers; passes /api/ to the app
 watch/receiver.py   phone uploads (Life Dashboard / Health Connect, Health Auto Export / Apple Health): archives, folds into SQLite, writes public/daily.json
 www/                index.html (markup), css/tokens.css (the colour tokens, light and dark, loaded by every page),
+                    css/base.css (the reset and the one focus ring, loaded by every page next),
                     css/app.css (in cascade layers, its head says which), js/*.js (one plain script per tab, loaded in order),
                     login.html, setup.html (first account), guide.html (getting started: a new profile's first records),
                     account.html (password, devices), sharing.html (a profile's people and how it's shared),
