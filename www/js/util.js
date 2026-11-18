@@ -34,6 +34,11 @@ const moreAbout = (...kids) => el("details", {class: "more"}, el("summary", {tex
    inside a list. The records tabs, the Sources and Sharing lists and the journal use it. */
 const emptyState = (what, next, {tag = "div", cls = "card"} = {}) => el(tag, {class: `${cls} empty-state`.trim()}, el("p", {text: what}),
   next ? el(next.href ? "a" : "button", {class: "btn primary empty-next", href: next.href, type: next.href ? null : "button", text: next.text, onclick: next.onclick}) : null);
+/* a line of text with each date in it kept on one line (#330), so a tile's "▼ −0.03 since Aug 18, 2026" never leaves
+   its year alone below: the text as parts for el(), a date in a <span class="nw">, its textContent unchanged. The
+   app's three date formats (dates.js): "Aug 18, 2026", "18 Aug 2026" and "2026-08-18" */
+const keepDates = s => String(s).split(/(\d{4}-\d{2}-\d{2}|\d{1,2} \p{L}{3,}\.? \d{4}|\p{L}{3,}\.? \d{1,2}, \d{4})/u)
+  .map((t, i) => i % 2 ? el("span", {class: "nw", text: t}) : t).filter(t => t !== "");
 /* every backend call: same-origin cookie, never cached, and the X-Sanguity header the API requires on changes */
 const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,
   headers: {...(opts.method && opts.method !== "GET" ? {"X-Sanguity": "1", "Content-Type": "application/json"} : {}), ...opts.headers}});

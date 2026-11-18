@@ -926,6 +926,42 @@ CHART_ACCENT_JS = r"""sel => {
 }"""
 
 
+# a tile's change line and a stat's note, as laid out (#330): each one that wraps, as its lines, when it ends in a short
+# fragment (its last line under 40% of its longest, such as "▼ −0.03 since Aug 18," over "2026") or breaks a date; and
+# each row of tiles whose sparklines don't start at the same height ([the tiles' container, the tops])
+TILE_LINES_JS = r"""() => {
+  const lines = e => {   // {text, left, right} per line the element's words are laid out on
+    const out = [], walk = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walk.nextNode());) for (const m of n.data.matchAll(/\S+/g)) {
+      const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+      const rs = [...r.getClientRects()], last = out.at(-1); if (!rs.length) continue;
+      if (last && Math.abs(last.top - rs[0].top) < 4) { last.text += " " + m[0]; last.r = rs.at(-1).right; }
+      else out.push({top: rs[0].top, text: m[0], l: rs[0].left, r: rs.at(-1).right});
+    }
+    return out;
+  };
+  const date = /(\p{L}{3,}\.? \d{1,2},|\d{1,2} \p{L}{3,}\.?|\p{L}{3,}\.?)$/u, year = /^(\d{1,2},? )?\d{4}\b/;
+  const out = {n: 0, bad: [], uneven: []};
+  for (const e of document.querySelectorAll('.tile .delta, .stat .l + .l')) {
+    if (!e.checkVisibility() || !e.textContent.trim()) continue;
+    out.n++;
+    const ls = lines(e), w = ls.map(l => l.r - l.l);
+    if (ls.length > 1 && (w.at(-1) < .4 * Math.max(...w) || ls.some((l, i) => i && year.test(l.text) && date.test(ls[i - 1].text))))
+      out.bad.push(ls.map(l => l.text));
+  }
+  for (const g of document.querySelectorAll('.tiles')) {
+    if (!g.checkVisibility()) continue;
+    const rows = {};
+    for (const t of g.children) {
+      const s = t.querySelector('svg'); if (!s) continue;
+      (rows[Math.round(t.getBoundingClientRect().top)] ||= []).push(Math.round(s.getBoundingClientRect().top));
+    }
+    for (const v of Object.values(rows)) if (Math.max(...v) - Math.min(...v) > 1) out.uneven.push([g.parentElement.id || g.parentElement.className, v]);
+  }
+  return out;
+}"""
+
+
 def main():
     srv, base = start_app()
     problems, passed = [], []
@@ -1399,6 +1435,22 @@ def main():
                         check(f"{tab} ({theme}, {width} px): caption and footer readable, page fits",
                               legible and js("document.documentElement.scrollWidth") <= width, js("document.documentElement.scrollWidth"))
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
+
+            # ---- tiles (#330): on the Overview (key labs, home readings, Watch & scale), Body and activity and Costs, at
+            # 1400, 1100, 375 and 320 px, no change line ends in a short fragment (a lone year) or breaks a date, and the
+            # sparklines in a row of tiles start at the same height
+            js("window._was330 = [state.tab, state.preset, state.from, state.to]")
+            for width in (1400, 1100, 375, 320):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all")):
+                    js("([t, p]) => { if (p) setPeriod(p); switchTab(t); }", [tab, preset])
+                    settle(300)
+                    got = js(TILE_LINES_JS)
+                    check(f"{tab} ({width} px, #330): no tile's change line ends in a short fragment or breaks a date"
+                          + (", and a row's sparklines line up" if tab == "overview" else ""),
+                          got["n"] > 0 and not got["bad"] and not got["uneven"], got)
+            js("[state.preset, state.from, state.to] = window._was330.slice(1); switchTab(window._was330[0]); renderAll()")
             page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- charts for everyone (#60): every chart has Chart | Table (a pick-one pair, #193) and its table has

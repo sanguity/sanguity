@@ -201,7 +201,7 @@ function renderHealth() {
   const wAll = [...H.scale, ...H.clinic].sort((p, q) => p[0] - q[0]), wIn = inR(wAll, a, b);
   const tiles = el("div", {class: "tiles", style: {gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))"}});
   const tile = (label, val, unit, delta, href) => tiles.append(el("button", {class: "tile", onclick: () => $(href)?.scrollIntoView({behavior: smoothly(), block: "start"})},
-    el("span", {class: "lbl", text: label}), el("span", {class: "val"}, val, el("small", {text: unit})), el("span", {class: "delta", text: delta})));
+    el("span", {class: "lbl", text: label}), el("span", {class: "val"}, val, el("small", {text: unit})), el("span", {class: "delta"}, keepDates(delta))));
   const chg = (cur, base, f, u = "") => cur != null && base != null ? `${cur >= base ? "▲ +" : "▼ −"}${f(Math.abs(cur - base))}${u}` : "";
   const latestW = wIn.length ? wIn[wIn.length - 1] : wAll[wAll.length - 1];
   tile("Weight", latestW ? latestW[1].toFixed(1) : "–", "lb", wIn.length > 1 ? `${chg(wIn[wIn.length - 1][1], wIn[0][1], v => v.toFixed(1), " lb")} over this period` : latestW ? `last ${fmtD(latestW[0])}` : "", "#h-body");

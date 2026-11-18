@@ -196,7 +196,13 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .tile .val{font-size:var(--fs-7);font-weight:var(--fw-semibold);letter-spacing:-.01em}
 .tile .val small{font-size:var(--fs-2);font-weight:var(--fw-medium);color:var(--muted);margin-left:var(--sp-1)}
 .tile .delta{font-size:var(--fs-2);color:var(--ink2)}
+/* a change line or a stat's note in even lines, a date never broken (keepDates, util.js), and the sparkline at the
+   tile's foot, so the sparklines in a row line up whatever wraps above them (#330) */
+.tile .delta,.stat .l{text-wrap:balance}
+.nw{white-space:nowrap}
 .tile svg{width:100%;height:34px;display:block;margin-top:var(--sp-1)}
+.tile>svg:last-child{margin-top:auto}
+.tile>:has(+svg:last-child){margin-bottom:var(--sp-1)}
 .st{display:inline-flex;align-items:center;gap:3px;font-size:var(--fs-1);font-weight:var(--fw-semibold);white-space:nowrap}
 .st.hi,.st.lo{color:var(--crit)}
 .st.ok{color:var(--good-text)}

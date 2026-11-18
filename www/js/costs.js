@@ -27,7 +27,7 @@ function renderCosts() {
   // stat tiles
   const billed = sumOf(rows, "billed"), paid = sumOf(rows, "paid"), owe = sumOf(rows, "owe");
   const denied = rows.filter(isDenied).length;
-  const tile = (label, value, sub) => el("div", {class: "stat"}, el("div", {class: "n", text: value}), el("div", {class: "l", text: label}), sub ? el("div", {class: "l", style: {marginTop: "2px"}, text: sub}) : null);
+  const tile = (label, value, sub) => el("div", {class: "stat"}, el("div", {class: "n", text: value}), el("div", {class: "l", text: label}), sub ? el("div", {class: "l", style: {marginTop: "2px"}}, keepDates(sub)) : null);
   box.append(el("div", {class: "stats"},
     tile("Billed by providers", usd(billed), "list prices, before insurance"),
     tile("Paid by insurance", usd(paid), billed ? `${Math.round(paid / billed * 100)}% of billed` : ""),
@@ -222,7 +222,7 @@ function renderPaid(box, claimRows, periodLabel) {
   card.append(el("p", {class: "hint", text: `From ${ways.join(", ")}. Each amount is counted once.${meta.excluded ? " Not counted: " + meta.excluded + "." : ""}`}),
     moreAbout("A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from."));
   const tile = (label, value, sub, id) => el("div", {class: "stat", id: id || null},
-    el("div", {class: "n", text: value}), el("div", {class: "l", text: label}), sub ? el("div", {class: "l", style: {marginTop: "2px"}, text: sub}) : null);
+    el("div", {class: "n", text: value}), el("div", {class: "l", text: label}), sub ? el("div", {class: "l", style: {marginTop: "2px"}}, keepDates(sub)) : null);
   const typed = sum(pays.filter(r => r.src === "typed")), exp = sum(pays.filter(r => r.src === "export"));
   const prem = sum(counted.filter(r => /premium/i.test(r.group)));
   const hsa = sum(counted.filter(r => r.hsa === "HSA")), fsa = sum(counted.filter(r => r.hsa === "FSA"));
