@@ -1113,10 +1113,10 @@ def main():
         check("fonts (#253, #328): Inter and Source Serif load from the app itself under the CSP, nothing is preloaded, and the page's text is in Inter, in light and dark",
               all(f == [True, True, "Inter", theme] for theme, f in fonts.items()) and preload == []
               and fetched == ["/fonts/inter-v4.001-latin.woff2", "/fonts/source-serif-4-v4.004-wght-latin.woff2"], (fonts, preload, fetched))
-        # the swap moves nothing (#329): each page drawn with the fonts held back is drawn in the fallbacks (base.css),
-        # and when the fonts arrive the layout shift is under 0.005; at 1400 px no card or tile changes height, at 375 px
-        # none changes by more than a line: there a few lines end within a pixel or two of their box, where Inter's and
-        # Arial's widths for that text differ by under 1% either way, which no one size-adjust removes
+        # the swap barely moves anything (#329): each page drawn with the fonts held back is drawn in the fallbacks
+        # (base.css), and when the fonts arrive the layout shift is under 0.015 (Web Vitals call under 0.1 good). Tiles and
+        # stats, laid out at exact sizes (#338), don't change height at 1400 px or by more than a line at 375 px; cards and
+        # settings rows use the default rendering, which keeps small text crisp on Linux, and may move by a line or two
         state = strict.context.storage_state()
         for name, path in (("Overview", "/#overview"), ("Settings", "/settings.html"), ("Costs", "/#costs"), ("Body and activity", "/#health")):
             for width in (1400, 375):
@@ -1124,10 +1124,22 @@ def main():
                 drawn = (boxes > 3 and "Inter fallback" in fonts_before and "Inter" not in fonts_before
                          and "Source Serif 4" not in fonts_before and {"Inter", "Source Serif 4"} <= set(fonts_after))
                 worst = max((abs(b - a) for a, b in changed.values()), default=0)
-                check(f"fonts (#329): {name} at {width} px, drawn in the fallbacks and then the fonts, moves less than 0.005 and "
-                      + ("no card or tile changes height" if width > 640 else "no card or tile by more than a line"),
-                      drawn and shift < 0.005 and (not changed if width > 640 else worst <= 24),
+                tiles = [abs(b - a) for k, (a, b) in changed.items() if k.split(" ")[0] in ("tile", "stat", "ov-mini")]
+                check(f"fonts (#329, #338): {name} at {width} px, drawn in the fallbacks and then the fonts, moves less than 0.015, "
+                      + ("no tile changes height" if width > 640 else "no tile by more than a line") + " and no card by more than two",
+                      drawn and shift < 0.015 and (not tiles if width > 640 else max(tiles, default=0) <= 24) and worst <= 40,
                       [boxes, shift, changed, fonts_before, fonts_after] if not drawn else [shift, changed])
+        # exact layout only where a width decides wrapping (#338): the tiles and stats; the page's text and its controls
+        # keep the default, which keeps small regular text crisp on Linux
+        strict.goto(base + "/#overview")
+        for _ in range(100):   # the CSP forbids wait_for_function's string; evaluate isn't
+            if strict.evaluate("document.querySelector('.tile .delta') !== null"):
+                break
+            strict.wait_for_timeout(100)
+        tr = strict.evaluate("""(() => { const r = q => { const e = document.querySelector(q); return e && getComputedStyle(e).textRendering; };
+            return {body: r('body'), button: r('header button, .btn'), input: r('input, select'), tile: r('.tile .delta'), card: r('.card p')}; })()""")
+        check("exact text layout only in tiles and stats (#338): the page's text and controls render as usual",
+              tr["tile"] == "geometricprecision" and all(tr[k] in ("auto", None) for k in ("body", "button", "input", "card")), tr)
         # the colours (#254): each token is one light-dark() pair, so the system's dark (no theme chosen) and a chosen
         # dark under a light system must give the same colours, likewise light; and the two themes differ
         with open(os.path.join(ROOT, "www", "css", "tokens.css"), encoding="utf-8") as f:
