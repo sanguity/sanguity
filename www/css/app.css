@@ -46,6 +46,7 @@
 [hidden]{display:none!important}
 body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 button,input,select{font:inherit;color:inherit}
+a{color:var(--accent)}   /* links in the accent, never the browser's blue or visited purple (#247); a button or menu item that is a link sets its own */
 header{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid var(--grid);background:var(--surface);position:sticky;top:0;z-index:20;flex-wrap:wrap}
 header h1{font-size:17px;margin:0;font-weight:650;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
 header h1 .brand{width:19px;height:23px;flex:none}
@@ -148,7 +149,8 @@ svg text{fill:var(--muted);font-size:11px}
 .card h3.sub{font-size:13px;font-weight:650;margin:0 0 4px;color:var(--ink2)}
 .stat .l{color:var(--muted);font-size:12px}
 .list{display:flex;flex-direction:column}
-.month{font-weight:650;font-size:13px;color:var(--ink2);padding:14px 0 6px;border-bottom:1px solid var(--grid);position:sticky;top:0;background:var(--surface)}
+.month{font-weight:650;font-size:13px;color:var(--ink2);padding:14px 0 6px;border-bottom:1px solid var(--grid);position:sticky;top:var(--bar-h,0px);background:var(--surface)}   /* under the top bar (--bar-h, nav.js), not behind it (#247) */
+#list .tl-row{scroll-margin-top:44px}   /* a row given focus is scrolled clear of the month heading stuck above it */
 /* the Timeline list's row (timeline.js); its own class, so the pages' rows of buttons (.acct .row) aren't styled like it (#246) */
 .tl-row{display:grid;grid-template-columns:92px 16px 1fr auto;gap:10px;align-items:baseline;padding:7px 6px;border-bottom:1px solid var(--grid);cursor:pointer;border-radius:6px}
 .tl-row:hover,.tl-row.sel{background:var(--hover)}
@@ -1186,8 +1188,8 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
 /* ---- keyboard and screen-reader basics (#209): "Skip to content" (util.js), shown while it has focus; the <main>
    it moves focus to has no ring of its own; less motion when the person asks for it (a script's smooth scrolls go
    through smoothly(), util.js) */
-.skip-link{position:fixed;left:12px;top:8px;z-index:100;padding:8px 14px;border-radius:8px;background:var(--raised);color:var(--ink);border:2px solid var(--accent);font-weight:600;font-size:14px;text-decoration:none;box-shadow:0 4px 16px rgba(0,0,0,.18);transform:translateY(calc(-100% - 16px))}
-.skip-link:focus{transform:none;outline:none}
+.skip-link{position:fixed;left:12px;top:8px;z-index:100;padding:8px 14px;border-radius:8px;background:var(--raised);color:var(--ink);border:2px solid var(--accent);font-weight:600;font-size:14px;text-decoration:none;transform:translateY(calc(-100% - 16px))}
+.skip-link:focus{transform:none;outline:none;box-shadow:0 4px 16px rgba(0,0,0,.18)}   /* its shadow only when it's shown: hidden, it reached the screen's top (#247) */
 main[tabindex="-1"]:focus{outline:none}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important;animation-duration:1ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}
