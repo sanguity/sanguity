@@ -36,8 +36,12 @@ const emptyState = (what, next, {tag = "div", cls = "card"} = {}) => el(tag, {cl
   next ? el(next.href ? "a" : "button", {class: "btn primary empty-next", href: next.href, type: next.href ? null : "button", text: next.text, onclick: next.onclick}) : null);
 /* a line of text with each date in it kept on one line (#330), so a tile's "▼ −0.03 since Aug 18, 2026" never leaves
    its year alone below: the text as parts for el(), a date in a <span class="nw">, its textContent unchanged. The
-   app's three date formats (dates.js): "Aug 18, 2026", "18 Aug 2026" and "2026-08-18" */
-const keepDates = s => String(s).split(/(\d{4}-\d{2}-\d{2}|\d{1,2} \p{L}{3,}\.? \d{4}|\p{L}{3,}\.? \d{1,2}, \d{4})/u)
+   app's three date formats (dates.js): "Aug 18, 2026", "18 Aug 2026" and "2026-08-18", and "as of" kept as one too
+   (#339; the line may break before the date, never between "as" and "of": with it, a date was wider than a narrow
+   tile). Each date is anchored: no digit or point before its day, nothing more of a date after its year, and a
+   month's short name (3 or 4 letters, "Aug", "sept.", "févr.") a word of its own, so "0.03 since 2026-08-18" keeps
+   only the date together, never "03 since 2026" */
+const keepDates = s => String(s).split(/((?<!\p{L})as of(?!\p{L})|(?:(?<![\d.])\d{4}-\d{2}-\d{2}(?![-\d])|(?<![\d.])\d{1,2} \p{L}{3,4}\.? \d{4}(?![-\d])|(?<!\p{L})\p{L}{3,4}\.? \d{1,2}, \d{4}(?![-\d])))/u)
   .map((t, i) => i % 2 ? el("span", {class: "nw", text: t}) : t).filter(t => t !== "");
 /* every backend call: same-origin cookie, never cached, and the X-Sanguity header the API requires on changes */
 const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,
