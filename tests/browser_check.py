@@ -758,6 +758,40 @@ def clear_of_bar(page):
     return page.evaluate(CLEAR_OF_BAR_JS)
 
 
+# #356: a browser without CSS anchor positioning (Firefox and Safari before their releases with it; Chromium can't turn
+# it off): CSS.supports() answers false for it, and app.css comes with every anchor-positioning declaration and
+# @position-try rule dropped, as a parser that doesn't know them would, and its @supports not (anchor-name: --a) blocks
+# unwrapped, so menus and the tooltip are placed by nav.js's menuPlace and util.js's tooltip as such a browser would
+NO_ANCHOR_INIT = """(() => { const o = CSS.supports.bind(CSS); CSS.supports = function (a, b) { const s = String(a) + ' ' + String(b ?? '');
+  if (/anchor|position-area|position-try/.test(s)) return false; return b === undefined ? o(a) : o(a, b); }; })();"""
+
+
+def no_anchor_css(css):
+    out, i, key = [], 0, "@supports not (anchor-name: --a){"
+    while (j := css.find(key, i)) >= 0:
+        out.append(css[i:j])
+        k = m = j + len(key)
+        depth = 1
+        while depth:
+            depth += {"{": 1, "}": -1}.get(css[m], 0)
+            m += 1
+        out.append(css[k:m - 1])
+        i = m
+    css = "".join(out) + css[i:]
+    css = re.sub(r"@position-try\s+--[\w-]+\s*\{[^}]*\}", "", css)
+    css = re.sub(r"(?<=[{;])\s*(anchor-name|anchor-scope|position-anchor|position-try-fallbacks|position-try-order|position-try|position-area|position-visibility)\s*:[^;{}]*;?", "", css)
+    return re.sub(r"(?<=[{;])\s*[a-z-]+\s*:[^;{}]*(anchor\(|anchor-center|anchor-size\()[^;{}]*;?", "", css)
+
+
+def without_anchor_positioning(ctx):
+    """The context's pages as in a browser without CSS anchor positioning (#356)."""
+    ctx.add_init_script(NO_ANCHOR_INIT)
+    def css(route):
+        r = route.fetch()
+        route.fulfill(response=r, body=no_anchor_css(r.text()))
+    ctx.route(re.compile(r".*/css/app\.css(\?.*)?$"), css)
+
+
 # #257: the app's icons are Lucide's, from www/icons/sprite.svg, in place of Unicode glyphs. On the page as it is: a glyph
 # still standing for an icon in a button's or link's text (or drawn by its ::before or ::after), an arrow or + at either
 # end of one, or one that is only "?"; an icon not drawn (its <use> found no symbol: 0 by 0, waited for once, as the sprite
@@ -6582,6 +6616,59 @@ def main():
                         bad.append(f"{path} at 320×180, {m}: items, scroll height, height, foot, page's height {where}")
                     page.keyboard.press("Escape")
             check("…and at 320×180 both share a row and each menu opens with all its items, no scrolling inside it, the page scrolling to its foot (#319)", not bad, bad[:6])
+            # #356: in a browser without CSS anchor positioning (without_anchor_positioning, above main) nav.js places a
+            # menu: before it's drawn (with less motion it was drawn at the screen's top left for a frame), over its button
+            # where there's no room under it (a row menu at the screen's foot opened off the screen), and again as the
+            # page scrolls (it stayed where it opened). The frames are where the menu is in each of the first animation
+            # frames after it opens
+            nctx = browser.new_context(viewport={"width": 375, "height": 700}, bypass_csp=True, service_workers="block", reduced_motion="reduce")
+            nctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            without_anchor_positioning(nctx)
+            npg = nctx.new_page()
+            npg.on("pageerror", lambda e: problems.append(f"script error (without anchor positioning): {e}"))
+            npg.goto(base + "/settings.html#dashboard")
+            npg.wait_for_selector("#sec-overview .set-order .set-more-btn", state="visible", timeout=10000)
+            npg.wait_for_timeout(300)
+            na_geo = """b => { const l = b.parentElement.querySelector('[role=menu]'), r = l.getBoundingClientRect(), a = b.getBoundingClientRect();
+                return {open: l.matches(':popover-open'), menu: [r.left, r.top, r.right, r.bottom].map(Math.round), btn: [a.left, a.top, a.right, a.bottom].map(Math.round),
+                        screen: [document.documentElement.clientWidth, innerHeight], frames: window.sgFrames || null}; }"""
+            na_frames = """b => { const l = b.parentElement.querySelector('[role=menu]'); window.sgFrames = [];
+                l.addEventListener('beforetoggle', () => { let n = 0; const f = () => { const r = l.getBoundingClientRect();
+                  window.sgFrames.push([Math.round(r.left), Math.round(r.top)]); if (++n < 3) requestAnimationFrame(f); }; requestAnimationFrame(f); }, {once: true}); }"""
+            row_btn = npg.locator("#sec-overview .set-order .set-more-btn").nth(2)
+            row_btn.evaluate("b => { b.scrollIntoView({block: 'end'}); scrollBy(0, -8); }")
+            npg.wait_for_timeout(150)
+            row_btn.evaluate(na_frames)
+            row_btn.click()
+            npg.wait_for_timeout(200)
+            foot = row_btn.evaluate(na_geo)
+            fm, fb, (fw, fh) = foot["menu"], foot["btn"], foot["screen"]
+            check("without anchor positioning (#356): a row menu at the screen's foot opens over its button, all of it on the screen, placed before it's drawn (less motion)",
+                  foot["open"] and fb[3] > fh - 60 and fm[0] >= 0 and fm[1] >= 0 and fm[2] <= fw and fm[3] <= fh and 0 <= fb[1] - fm[3] <= 10
+                  and foot["frames"] and all(f == fm[:2] for f in foot["frames"]), foot)
+            npg.evaluate("scrollBy(0, 150)")
+            npg.wait_for_timeout(200)
+            moved = row_btn.evaluate(na_geo)
+            mm, mb = moved["menu"], moved["btn"]
+            check("…and as the page scrolls it stays by its button",
+                  moved["open"] and mb[1] < fb[1] - 100 and (0 <= mb[1] - mm[3] <= 10 or 0 <= mm[1] - mb[3] <= 10) and mm[1] >= 0 and mm[3] <= fh, [foot, moved])
+            npg.keyboard.press("Escape")
+            npg.set_viewport_size({"width": 640, "height": 360})
+            npg.goto(base + "/#timeline")
+            npg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
+            npg.wait_for_timeout(300)
+            bad = []
+            for where in ("start", "end"):
+                npg.evaluate("w => { scrollTo(0, 0); document.getElementById('periodMoreBtn').scrollIntoView({block: w}); }", where)
+                npg.wait_for_timeout(100)
+                npg.evaluate("document.getElementById('periodMoreBtn').click()")
+                npg.wait_for_timeout(200)
+                g = npg.evaluate(na_geo.replace("b.parentElement.querySelector('[role=menu]')", "document.getElementById('periodMoreList')"), npg.query_selector("#periodMoreBtn"))
+                if not (g["open"] and g["menu"][0] >= 0 and g["menu"][1] >= 0 and g["menu"][2] <= 640 and g["menu"][3] <= 360):
+                    bad.append([where, g])
+                npg.keyboard.press("Escape")
+            check("…and at 640×360 the period menu opens on the screen, scrolling inside where it's taller than the room", not bad, bad)
+            nctx.close()
             page.set_viewport_size({"width": 1400, "height": 900})
             # ---- the Admin page (#167): the server's sync defaults, from their old address on Settings
             page.goto(base + "/settings.html#sources")

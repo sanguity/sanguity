@@ -30,13 +30,22 @@ function menuWire(m) {
   m.open = () => { if (!isOpen() && list.isConnected) list.showPopover({source: btn}); };
   m.close = () => { if (isOpen()) list.hidePopover(); };
   let leaving = false;
+  const follow = () => menuPlace(m);   // placed before it's drawn, and again while open as the page scrolls or resizes (#356)
   list.addEventListener("beforetoggle", ev => {
     const on = ev.newState === "open";
     btn.setAttribute("aria-expanded", String(on));
+    if (on) {
+      menuPlace(m);
+      addEventListener("scroll", follow, {capture: true, passive: true});
+      addEventListener("resize", follow);
+    } else {
+      removeEventListener("scroll", follow, {capture: true});
+      removeEventListener("resize", follow);
+    }
     if (!on && !leaving && list.contains(document.activeElement)) btn.focus({preventScroll: true});
     leaving = false;
   });
-  list.addEventListener("toggle", ev => { if (ev.newState === "open") { menuPlace(m); m.onOpen?.(); } });
+  list.addEventListener("toggle", ev => { if (ev.newState === "open") m.onOpen?.(); });
   btn.addEventListener("keydown", ev => {
     if (ev.key !== "ArrowDown" && ev.key !== "Enter" && ev.key !== " ") return;
     ev.preventDefault();
@@ -52,15 +61,25 @@ function menuWire(m) {
   list.addEventListener("click", ev => { if (ev.target.closest("[role^=menuitem]")) setTimeout(m.close); });
   return m;
 }
-/* without CSS anchor positioning (app.css, @supports not (anchor-name: --a)): where the menu opens, worked out here:
-   under its button, 8 px inside the screen, its right edge on the button's when that's on the right; and how far
-   down the page the bar ends, for a phone's short screen, where the bar scrolls away (#308, #319) */
+/* without CSS anchor positioning (app.css, @supports not (anchor-name: --a)): where a menu opens, worked out here from
+   where its button is now (#356): under it, or over it where there's no room under and there is over, never taller
+   than the larger of the two (6 px from the button, 8 px from the screen's edge: --menu-room), scrolling inside if it
+   must; 8 px inside the screen sideways, its right edge on the button's when that's on the right; and how far down the
+   page the bar ends, for a phone's short screen, where the bar scrolls away (#308, #319). Called as it's about to
+   open, before it's drawn (it's measured shown, unseen, for a moment), and while it's open as the page scrolls or the
+   window changes size. */
 function menuPlace(m) {
   if (CSS.supports("anchor-name: --a")) return;
-  const r = m.btn.getBoundingClientRect(), vw = document.documentElement.clientWidth, w = m.list.offsetWidth;
+  const {btn, list} = m, r = btn.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+  const below = Math.floor(vh - r.bottom - 14), above = Math.floor(r.top - 14);
+  placeAt(list, {"--menu-room": Math.max(below, above, 40)});   // util.js; at least about one item
+  list.classList.add("sg-measure");   // shown (unseen) to be measured, if it isn't yet
+  const w = list.offsetWidth, h = list.offsetHeight;
+  list.classList.remove("sg-measure");
   const bar = document.querySelector("header.topbar"), right = r.left + r.width / 2 > vw / 2;
   const left = Math.max(8, Math.min(right ? r.right - w : r.left, vw - 8 - w));
-  placeAt(m.list, {"--menu-top": r.bottom + 6, "--menu-left": left, "--menu-bar": bar ? bar.getBoundingClientRect().bottom + scrollY : 0});   // util.js
+  const top = h <= below || below >= above ? r.bottom + 6 : r.top - 6 - h;
+  placeAt(list, {"--menu-top": top, "--menu-left": left, "--menu-bar": bar ? bar.getBoundingClientRect().bottom + scrollY : 0});
 }
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
