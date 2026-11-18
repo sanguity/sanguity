@@ -25,6 +25,8 @@ How each action changes the records:
   date      a new start time; an end moves with it, so the event lasts as long as before
   not_stay  a "stay" becomes a "visit" with no end (so it no longer shades the charts as a hospital stay); its detail
             reads as a visit's
+  kind      the event moves to another category (#237): only between the kinds in MOVABLE, whose details are
+            free-form; its detail stays as it is
   merge     two events become one. The first (the target) keeps everything it has: kind, title, time, its own detail.
             The second's detail fills in only the fields the first lacks, its cost row and its place in a lab day
             move to the first, an abnormal flag on either marks the result, and the drawer lists what was merged
@@ -34,13 +36,25 @@ How each action changes the records:
 Edits apply in the order they were made, merges last, so a merged event's own corrections are made first. One edit
 may match several events (two keyless events with the same kind, minute and title): it applies to each, except a
 merge, which takes the first of each side.
+
+Similar entries (#237): a rename or a change of category can be made to the open event and, at once, to others that
+look the same (similar(): the same source, kind and title as the page shows them). Each gets its own edit, all with
+one "batch" id in their value, and undoing any of them undoes the batch. A change of category can also be kept for
+new imports: a rule (action "kind_rule", its key "rule:" + a hash of the source, kind and title) moves every entry
+from that source with that kind and title as the page shows them, now and in later imports, except one moved on its
+own. A source is an import's origin and format ("connection:3|fhir", "upload|epic-mychart"): the same portal synced
+again, or the next export uploaded, is the same source.
 """
-import hashlib, json, os, re
+import hashlib, json, os, re, secrets
 from datetime import datetime, timedelta
 
 from . import config, crypto, db as dbm, security as sec
 
-ACTIONS = ("hide", "rename", "date", "not_stay", "merge")
+ACTIONS = ("hide", "rename", "date", "not_stay", "merge", "kind")
+RULE = "kind_rule"   # not made with add(): add_batch()
+# the kinds an entry can move between (#237): their details are free-form, so any of them reads as any other
+MOVABLE = ("visit", "contact", "procedure", "imaging", "study", "message", "appt_msg", "auto_msg", "letter", "document")
+SIMILAR_MAX = 2000
 CONTENT, DAY = "build:h:", "build:d:"
 MIGRATED = "corrections_migrated"     # meta: when corrections.json was loaded into edits
 TITLE_MAX = 300
@@ -63,11 +77,14 @@ def day_key(kind, day, title):
 
 
 def keys_of(e):
-    """The keys an event answers to, as it was imported (before any edit): its source key, or its content keys."""
+    """The keys an event answers to, as it was imported (before any edit): its source key, or its content keys. Its
+    kind and title as imported, before encounters.tidy() changed them ("orig")."""
     k = e.get("key")
     if isinstance(k, str) and k.strip():
         return [k]
-    return [content_key(e.get("k"), e.get("t"), e.get("title")), day_key(e.get("k"), e.get("t"), e.get("title"))]
+    o = e.get("orig") if isinstance(e.get("orig"), dict) else {}
+    kind, title = o.get("k", e.get("k")), o.get("title", e.get("title"))
+    return [content_key(kind, e.get("t"), title), day_key(kind, e.get("t"), title)]
 
 
 def key_of(e):
@@ -117,6 +134,11 @@ def _was(e):
     return {"k": e.get("k"), "t": e.get("t"), "title": e.get("title")}
 
 
+def source_of(imp):
+    """The source an import came from, for similar entries and rules: its origin and format."""
+    return f"{imp.get('origin') or ''}|{imp.get('format') or ''}"
+
+
 def apply(db, pid, data):
     """Apply the profile's edits to its assembled records (the page's shape, see records.py) and list them under
     data["edits"]: [{id, action, found, ids (events it changed), value, was, by, at}]. Returns data, unchanged (no
@@ -138,8 +160,12 @@ def apply(db, pid, data):
         return {"id": r["id"], "action": r["action"], "found": found, "ids": [e["id"] for e in hits], "value": v,
                 "was": (value or {}).get("was") or (_was(hits[0]) if hits else None), "by": r["username"], "at": r["at"]}
 
+    kind_set, rules = set(), []   # kind_set: events moved on their own, which a rule leaves alone
     for r in sorted(rows, key=lambda r: (r["action"] == "merge", r["id"])):
         value = _dec(r["value"]) or {}
+        if r["action"] == RULE:
+            rules.append((r, value))
+            continue
         hits = [e for e in index.get(crypto.dec(r["target_key"]), []) if e["id"] not in hidden and e["id"] not in folded]
         a = r["action"]
         if a == "merge":
@@ -160,6 +186,9 @@ def apply(db, pid, data):
             elif a == "date" and value.get("t"):
                 _moved(e, value["t"])
                 moved = True
+            elif a == "kind" and e.get("k") in MOVABLE and value.get("k") in MOVABLE:
+                e["k"] = value["k"]
+                kind_set.add(e["id"])
             elif a == "not_stay" and e.get("k") == "stay":
                 e["k"] = "visit"
                 e.pop("end", None)
@@ -169,6 +198,16 @@ def apply(db, pid, data):
                 if value.get("title"):
                     e["title"] = value["title"]
         listed.append(entry(r, value, hits, bool(hits)))
+
+    sources = {str(i): source_of(x) for i, x in (data.get("imports") or {}).items() if isinstance(x, dict)}
+    for r, value in rules:   # after the entries' own edits, so they match what the page shows
+        title = str(value.get("title") or "").strip().casefold()
+        hits = [e for e in events if e["id"] not in hidden and e["id"] not in folded and e["id"] not in kind_set
+                and e.get("k") == value.get("from") and str(e.get("title") or "").strip().casefold() == title
+                and sources.get(str(e.get("imp"))) == value.get("source") and value.get("k") in MOVABLE]
+        for e in hits:
+            e["k"] = value["k"]
+        listed.append({**entry(r, value, hits, bool(hits)), "was": {"k": value.get("from"), "title": value.get("title")}})
 
     gone = hidden | set(folded)
     if gone:
@@ -265,14 +304,23 @@ def follow_rebuild(db, pid, before, after):
     return moved
 
 
-def add(db, pid, uid, action, event_id, title=None, t=None, other_id=None):
+def add(db, pid, uid, action, event_id, title=None, t=None, other_id=None, k=None, batch=None):
     """Record an edit of the event with this id (as the page has it now). A second edit of the same kind to the same
-    event replaces the first. Call inside a transaction. Returns (edit id, the event as imported)."""
+    event replaces the first. `batch`: the id shared by the edits made at once to similar entries. Call inside a
+    transaction. Returns (edit id, the event as imported)."""
     if action not in ACTIONS:
         raise EditError("Unknown kind of edit.")
     e = _event(db, pid, event_id)
     key, value, other = key_of(e), {"was": _was(e)}, None
-    if action == "rename":
+    if batch:
+        value["batch"] = batch
+    if action == "kind":
+        if k not in MOVABLE:
+            raise EditError("Choose one of the categories an entry can move to.")
+        if e.get("k") not in MOVABLE:
+            raise EditError("This kind of entry can't move to another category.")
+        value["k"] = k
+    elif action == "rename":
         title = (title or "").strip()
         if not title or len(title) > TITLE_MAX:
             raise EditError(f"Give a title of 1 to {TITLE_MAX} characters.")
@@ -299,14 +347,69 @@ def add(db, pid, uid, action, event_id, title=None, t=None, other_id=None):
     return eid, e
 
 
+def add_batch(db, pid, uid, action, event_id, also=(), title=None, k=None, rule=False):
+    """A rename or a change of category made to the open event and, at once, to the similar entries chosen (`also`,
+    ids from similar()), and, for a change of category with `rule`, kept for new imports from that source. One undo
+    takes them all back. Call inside a transaction. Returns (edit ids, the open event as imported, the rule's id)."""
+    if action not in ("rename", "kind"):
+        raise EditError("Only a rename or a change of category can be made to similar entries.")
+    if rule and action != "kind":
+        raise EditError("Only a change of category can be kept for new imports.")
+    also = [i for i in dict.fromkeys(int(i) for i in also or ()) if i != int(event_id)]
+    if len(also) > SIMILAR_MAX:
+        raise EditError(f"At most {SIMILAR_MAX} similar entries can be changed at once.")
+    look = similar(db, pid, event_id)
+    allowed = {x["id"] for x in look["items"]}
+    if any(i not in allowed for i in also):
+        raise EditError("Some of those entries aren't like this one any more; open it again to see them.")
+    batch = secrets.token_hex(8) if (also or rule) else None
+    first, e = add(db, pid, uid, action, event_id, title=title, k=k, batch=batch)
+    ids = [first] + [add(db, pid, uid, action, i, title=title, k=k, batch=batch)[0] for i in also]
+    rule_id = None
+    if rule:
+        shown = look["event"]
+        rk = "rule:" + _h(look["source"], shown["k"], shown["title"])
+        db.executemany("DELETE FROM edits WHERE id=?", [(r[0],) for r in db.execute(
+            "SELECT id FROM edits WHERE profile_id=? AND target=? AND action=?", (pid, target_hash(rk), RULE)).fetchall()])
+        rule_id = _insert(db, pid, uid, RULE, rk, {"k": k, "from": shown["k"], "title": shown["title"],
+                                                   "source": look["source"], "label": look["label"], "batch": batch})
+    return ids, e, rule_id
+
+
+def similar(db, pid, event_id):
+    """The entries that look like this one, as the page shows it: the same source, kind and title (letter case and
+    spaces aside), not hidden. {"event": {k, title}, "source", "label", "items": [{id, t, title}]}."""
+    from . import records
+    data = records.assemble(db, pid) or {}
+    events = data.get("events") or []
+    e = next((x for x in events if x.get("id") == int(event_id)), None)
+    if e is None:
+        raise EditError("There's no such event in this profile's records.")
+    imps = data.get("imports") or {}
+    imp = imps.get(str(e.get("imp"))) or {}
+    src, title = source_of(imp), str(e.get("title") or "").strip().casefold()
+    items = [{"id": x["id"], "t": x.get("t"), "title": x.get("title")} for x in events
+             if x is not e and x.get("k") == e.get("k") and str(x.get("title") or "").strip().casefold() == title
+             and source_of(imps.get(str(x.get("imp"))) or {}) == src]
+    return {"event": {"k": e.get("k"), "title": e.get("title")}, "source": src,
+            "label": imp.get("name") or imp.get("label") or "", "items": items}
+
+
 def remove(db, pid, edit_id):
-    """Remove an edit (undo it). Returns what it was, {"action", "was"}, or None if there's no such edit."""
+    """Remove an edit (undo it), with the rest of its batch (the similar entries changed with it, and a rule made
+    then). Returns what it was, {"action", "was", "n"} (n: edits removed), or None if there's no such edit."""
     r = db.execute("SELECT action, value FROM edits WHERE id=? AND profile_id=?", (edit_id, pid)).fetchone()
     if not r:
         return None
-    db.execute("DELETE FROM edits WHERE id=?", (edit_id,))
+    value = _dec(r["value"]) or {}
+    gone = [edit_id]
+    if value.get("batch"):
+        gone += [x["id"] for x in db.execute("SELECT id, value FROM edits WHERE profile_id=? AND id<>?", (pid, edit_id))
+                 if (_dec(x["value"]) or {}).get("batch") == value["batch"]]
+    db.executemany("DELETE FROM edits WHERE id=?", [(i,) for i in gone])
     _bump(db, pid)
-    return {"action": r["action"], "was": (_dec(r["value"]) or {}).get("was")}
+    was = value.get("was") or ({"k": value.get("from"), "title": value.get("title")} if r["action"] == RULE else None)
+    return {"action": r["action"], "was": was, "n": len(gone)}
 
 
 def listing(db, pid):

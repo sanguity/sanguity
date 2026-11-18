@@ -307,6 +307,17 @@ add(at(TX_END + timedelta(days=25), 15), "letter", "End of treatment letter", CA
                                "<p><i>This letter is fictional demo content.</i></p>"})
 add(at(TX_END + timedelta(days=21), 16), "document", "PET/CT end of treatment (PDF)", HOSPITAL,
     {"type": "file", "ext": "pdf", "url": "files/demo-report.pdf"})
+# encounters that weren't visits, and a visit titled by its billing code, as portals send them (#236): the app shows
+# the first two as chart activity and gives the third a plain name. Last, and without drawing from R, so nothing else
+# in the demo moves.
+add(at(TX + timedelta(days=CYCLE_DAYS + 2), 11, 5), "visit", "Chart review", f"{ONC} · {CANCER}",
+    {"type": "visit", "who": ONC, "where": CANCER, "dx": "", "src": "Demo data", "procs": [],
+     "note": "Lab results reviewed before the next cycle; no visit took place."})
+add(at(stay_start, 18, 10), "visit", "Telephone", f"Nurse line · {CANCER}",
+    {"type": "visit", "who": "Nurse line", "where": CANCER, "dx": "Fever", "src": "Demo data", "procs": [],
+     "note": "Called about a fever of 101.8 °F; advised to go to the emergency department."})
+add(at(END - timedelta(days=100), 9, 30), "visit", "PR OFFICE/OUTPATIENT ESTABLISHED MOD MDM 30 MIN", f"{PCP} · {CLINIC}",
+    {"type": "visit", "who": PCP, "where": CLINIC, "dx": "Follow-up", "src": "Demo data", "procs": [], "note": ""})
 
 # ------------------------------------------------------------------ --big: eight more years before the story (#201)
 # A record the size of a long-kept one, for the performance budgets: routine care every couple of weeks, with more

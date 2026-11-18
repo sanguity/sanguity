@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 33**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 34**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -272,7 +272,7 @@ erDiagram
         int profile_id FK
         text target "HMAC of the event's key"
         text target_key "🔒 the key"
-        text action "hide | rename | date | not_stay | merge"
+        text action "hide | rename | date | not_stay | merge | kind | kind_rule"
         text other "merge: the other event's HMAC"
         text other_key "🔒"
         text value "🔒 JSON"
@@ -433,6 +433,11 @@ with the rest of the summary; `GET …/watch` turns it into the day's shares (`g
 `ranges.birthDate` and `ranges.sex` to `person.birthDate` and `person.sex` for every profile, once, by renaming the rows
 (the sealed values are unchanged); a `settings.json` from before (an export, the setup build's) is read with the old
 names as the new ones.
+
+Edits (#33) gained two actions in **schema version 34** (#237), which made the table again with a wider `CHECK` and
+copied every row: `kind` moves an entry to another category, and `kind_rule` keeps doing it for a source's new
+imports; a rule's `target` is the HMAC of `"rule:"` and a hash of the source, kind and title, not of an event's key.
+Edits made at once to similar entries share a `batch` id in their sealed `value`, and are undone together.
 
 Until schema version 31 one key outside the registry lived here too: `summary.questions`, a profile's draft of
 questions for the visit summary (#48), shared by everyone the profile was shared with. Each person now keeps their own,

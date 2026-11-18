@@ -2626,6 +2626,70 @@ def main():
             check("…and undoing it restores the title", js(f"({there})", pick))
             page.keyboard.press("Escape")
 
+            # ---- chart activity (#236): the demo's chart review and phone call aren't visits; a billing-code title is a plain one
+            got = js("""(async () => { await loadDetails(EV.filter(e => e.k === 'visit').map(e => e.id));   // loaded when opened (#217)
+                const billed = EV.find(e => e.k === 'visit' && (DATA.details[e.id] || {}).billed);
+                return {contact: EV.filter(e => e.k === 'contact').map(e => e.title).sort(), cat: CATS.some(c => c.k === 'contact'),
+                        billed: billed && [billed.title, DATA.details[billed.id].billed], pr: EV.some(e => /^PR /.test(e.title))}; })()""")
+            check("chart reviews and calls are Chart activity, and a billing-code visit has a plain name (#236)",
+                  got["contact"] == ["Chart review", "Telephone"] and got["cat"] and not got["pr"]
+                  and got["billed"] == ["Office visit", "PR OFFICE/OUTPATIENT ESTABLISHED MOD MDM 30 MIN"], got)
+            # ---- change category (#237): the chart review back to a visit from its drawer, then undone
+            js("openEvent(EV.find(e => e.title === 'Chart review'))")
+            try:   # its details load as it opens (#217)
+                page.wait_for_function("/no visit took place|wasn't a visit/.test(document.getElementById('dbody').textContent)", timeout=10000)
+            except Exception:
+                pass
+            check("…its drawer says it wasn't a visit", "wasn't a visit" in page.inner_text("#dbody") or "no visit took place" in page.inner_text("#dbody"),
+                  page.inner_text("#dbody")[:200])
+            page.click("#dbody .edit-acts button:text-is('Change category')")
+            page.wait_for_function("document.querySelector('#dbody .similar') && !document.querySelector('#dbody .similar .hint')", timeout=10000)
+            check("Change category offers the other categories and a rule for new imports",
+                  js("[...document.querySelectorAll('#dbody .edit-form select option')].map(o => o.value).includes('visit') && "
+                     "![...document.querySelectorAll('#dbody .edit-form select option')].some(o => o.value === 'contact')")
+                  and page.locator("#dbody input[data-similar=rule]").count() == 1)
+            page.select_option("#dbody .edit-form select", "visit")
+            page.click("#dbody .edit-form button:text-is('Save')")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted && (DATA.edits || []).some(x => x.action === 'kind')", timeout=20000)
+            settle()
+            check("…moves it to Visits, marked Edited", js("EV.find(e => e.title === 'Chart review').k === 'visit'")
+                  and "moved to Visit" in page.inner_text("#dbody .edited"), page.inner_text("#dbody")[:300])
+            page.click("#dbody .edited button[data-edit]")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && (DATA.edits || []).length === 0 && booted", timeout=20000)
+            check("…and Undo puts it back in Chart activity", js("EV.find(e => e.title === 'Chart review').k === 'contact'"))
+            # ---- similar entries (#237): one rename for every physical therapy visit from the same source (not the claims of that name), undone at once
+            before_pt = js("EV.filter(e => e.k === 'visit' && e.title === 'Physical therapy session').length")
+            js("openEvent(EV.find(e => e.k === 'visit' && e.title === 'Physical therapy session'))")
+            settle(200)
+            page.click("#dbody .edit-acts button:text-is('Rename')")
+            page.wait_for_function("document.querySelector('#dbody .similar input[data-similar=all]')", timeout=10000)
+            offer = re.search(r"Also the (\d+) other entries titled “Physical therapy session” from (.+)", page.inner_text("#dbody .similar"))
+            n_pt = int(offer.group(1)) + 1 if offer else 0
+            same_src = js("""(() => { const e = EV.find(e => e.k === 'visit' && e.title === 'Physical therapy session'), imps = DATA.imports || {};
+                const src = x => { const i = imps[x.imp] || {}; return `${i.origin}|${i.format}`; };
+                const raw = new Map(DATA.events.map(x => [x.id, x]));   // the records as loaded carry their import
+                return EV.filter(x => x.k === e.k && x.title === e.title && src(raw.get(x.id) || {}) === src(raw.get(e.id) || {})).length; })()""")
+            check("Rename offers the other entries with the same title from the same source", offer and n_pt == same_src > 1,
+                  [page.inner_text("#dbody .similar"), same_src])
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("…and the form fits 375 px", js("document.documentElement.scrollWidth <= 375 && document.getElementById('dbody').scrollWidth <= document.getElementById('dbody').clientWidth"),
+                  js("[document.documentElement.scrollWidth, document.getElementById('dbody').scrollWidth]"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.fill("#dbody .edit-form input[type=text]", "PT session")
+            page.click("#dbody .edit-form button:text-is('Save')")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted && (DATA.edits || []).length > 0", timeout=20000)
+            settle()
+            check("…renaming them all at once, and only them", js("EV.filter(e => e.k === 'visit' && e.title === 'PT session').length") == n_pt
+                  and js("EV.filter(e => e.k === 'visit' && e.title === 'Physical therapy session').length") == before_pt - n_pt,
+                  [n_pt, before_pt, js("EV.filter(e => e.k === 'visit' && e.title === 'PT session').length")])
+            check("…with one Undo for all of them", page.inner_text("#dbody .edited button[data-edit]") == f"Undo all {n_pt}",
+                  page.inner_text("#dbody .edited"))
+            page.click("#dbody .edited button[data-edit]")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && (DATA.edits || []).length === 0 && booted", timeout=20000)
+            check("…which brings every title back", js("EV.filter(e => e.k === 'visit' && e.title === 'Physical therapy session').length") == before_pt)
+            page.keyboard.press("Escape")
+
             # ---- the journal (#49): a symptom added from an event's drawer, pre-dated to it, shown in the Journal lane
             # and as a marker on Trends sized by its severity; its home on the Timeline tab with the filters (#173); deleted
             # again at the end

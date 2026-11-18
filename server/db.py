@@ -674,6 +674,27 @@ SCHEMA = [
         changed INTEGER);
     CREATE INDEX med_doses_profile ON med_doses(profile_id);
     """,
+    # version 34: an entry moved to another category, and rules that keep doing it for a source's new imports (#237;
+    # edits.py). SQLite can't change a CHECK, so the edits table is made again with the two new actions, every edit
+    # copied as it is.
+    """
+    CREATE TABLE edits_34(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        target TEXT NOT NULL,                      -- keyed hash (security.pepper_mac) of the event's key (a rule's key)
+        target_key TEXT NOT NULL,                  -- the key, encrypted
+        action TEXT NOT NULL CHECK(action IN ('hide', 'rename', 'date', 'not_stay', 'merge', 'kind', 'kind_rule')),
+        other TEXT,                                -- merge: the keyed hash of the event folded into the target
+        other_key TEXT,                            -- merge: its key, encrypted
+        value TEXT,                                -- JSON, encrypted: the new title, time or kind, and what it was
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,   -- NULL: the corrections.json migration
+        at INTEGER NOT NULL);
+    INSERT INTO edits_34(id, profile_id, target, target_key, action, other, other_key, value, created_by, at)
+        SELECT id, profile_id, target, target_key, action, other, other_key, value, created_by, at FROM edits;
+    DROP TABLE edits;
+    ALTER TABLE edits_34 RENAME TO edits;
+    CREATE INDEX edits_target ON edits(profile_id, target);
+    """,
 ]
 
 

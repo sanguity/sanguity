@@ -69,7 +69,7 @@ check changes without updating the list, and it exercises this table against a l
 | The phone's and watch's measures in a visit summary or a share link (#225): home blood pressure, glucose, temperature, blood oxygen, respiratory rate, VO2 max, immunizations, BMI and growth | Read (summary) | Read (summary) | Read (summary; ticks them for a link) | No | Only the measures its owner ticked (each unticked by default), in the link's dates; cycle tracking never | No |
 | About this person: birth date, sex used for reference ranges, height history (#194) | Read | Change; add and remove heights | Change; add and remove heights | No | Only if its owner ticks About this person (unticked by default) | No |
 | Import history | Read | Undo, rename | Undo, rename | No | No | No |
-| Upload files, import (preview, save, discard), type in records, corrections, "same result", cost marks | No (403) | Yes | Yes | No | No | No |
+| Upload files, import (preview, save, discard), type in records, corrections (with similar entries and category rules, #237), "same result", cost marks | No (403) | Yes | Yes | No | No | No |
 | Export everything (zip) | No | Yes | Yes | No | No | No |
 | Connected sources: see a profile's | Yes | Yes | Yes | No | No | No |
 | Connected sources: connect, sync now, choose what's pulled, fetch an attachment, disconnect | No | Yes | Yes | No | No | No |
@@ -500,6 +500,10 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 ### Typed-in records, corrections, "same result" and lab-name matches (#27, #33, #96, #23)
 - Owners and editors; each change is in the activity log and encrypted. Lab-name matches are install-wide, so only
   admins change or remove one, and they show no result or profile (A2).
+- The entries offered with a rename or a change of category (`GET .../edits/similar`, #237) are owners' and editors'
+  only, like the corrections themselves: the profile's own entries, by id, as its records already show them. A batch
+  is checked against that list when it's saved, so it can only reach the profile's entries that look the same, at
+  most 2,000 at once; a category rule moves only entries between the free-form kinds (`edits.MOVABLE`).
 
 ### Settings (#35, #36-#45)
 - A setting's scope says who changes it: a profile's, its owners and editors; a person's own, that person; the

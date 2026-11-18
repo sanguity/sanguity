@@ -133,7 +133,7 @@ CONDITION_STATUS = {"active": "active", "recurrence": "recurrence", "relapse": "
 ALLERGY_STATUS = {"active": "active", "inactive": "inactive", "resolved": "resolved"}
 MODALITY = {"CT": "CT", "MRI": "MR", "X-ray": "DX", "Ultrasound": "US", "Mammogram": "MG", "Nuclear medicine": "NM", "PET": "PT",
             "Angiography": "XA", "Fluoroscopy": "RF", "Bone density": "BMD"}   # the importer's plain words -> DICOM's codes
-DOC_KINDS = {"document", "letter", "imaging", "study", "procedure", "visit", "message"}   # kinds a file may be shown under
+DOC_KINDS = {"document", "letter", "imaging", "study", "procedure", "visit", "contact", "message"}   # kinds a file may be shown under
 MSG_KINDS = {"message", "appt_msg", "auto_msg"}
 CTYPE = {"pdf": "application/pdf", "txt": "text/plain", "html": "text/html", "htm": "text/html", "jpg": "image/jpeg",
          "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp", "tif": "image/tiff",
@@ -541,7 +541,7 @@ def _encounters(b, data):
     for e in data.get("events") or []:
         d = details.get(str(e.get("id"))) or {}
         t = b.t(e.get("t"))
-        if not t or e.get("k") not in ("visit", "stay"):
+        if not t or e.get("k") not in ("visit", "contact", "stay"):   # chart activity (#236) was an Encounter at its source
             continue
         end = b.t(e.get("end")) if e.get("end") else None
         if e["k"] == "stay":

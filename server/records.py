@@ -50,7 +50,7 @@ every row. '' means the record has no key; NULL, not worked out yet (backfill_ke
 import hashlib, hmac, json, threading
 from contextlib import contextmanager
 
-from . import crossmatch, crypto, edits, journal, medications, oop, units
+from . import crossmatch, crypto, edits, encounters, journal, medications, oop, units
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
@@ -326,7 +326,11 @@ def _assemble(db, pid):
         pts.setdefault(r["series_id"], []).append(_dec(r["body"]))
     labs = [{**_dec(r["body"]), "imp": r["import_id"], "pts": pts.get(r["id"], [])}
             for r in db.execute("SELECT id, import_id, body FROM series WHERE profile_id=? ORDER BY id", (pid,))]
-    out = crossmatch.apply(db, pid, edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs}))
+    encounters.tidy(events, details)   # chart activity, plain visit titles, reminders (#236); corrections have the last word
+    out = edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
+    for e in out.get("events") or []:
+        e.pop("orig", None)            # what tidy() changed, kept only for the corrections to find their events
+    out = crossmatch.apply(db, pid, out)
     out = oop.annotate(db, pid, out, pay_imps)   # out-of-pocket: sources, HSA/FSA, matched to claims, counted once (#55)
     if (entries := journal.listing(db, pid)):   # only when there are some, like edits
         out["journal"] = entries

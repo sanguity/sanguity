@@ -4,7 +4,7 @@
   --ink:#0b0b0b; --ink2:#52514e; --muted:#6a6964;
   --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10); --hover:rgba(11,11,11,.04);
   --c-lab:#2a78d6; --c-imaging:#eb6834; --c-procedure:#1baf7a; --c-study:#eda100;
-  --c-letter:#e87ba4; --c-visit:#008300; --c-message:#6250d6; --c-journal:#0d7f86; --c-immunization:#a3479c; --c-ecg:#94602a;
+  --c-letter:#e87ba4; --c-visit:#008300; --c-contact:#5c7a62; --c-message:#6250d6; --c-journal:#0d7f86; --c-immunization:#a3479c; --c-ecg:#94602a;
   --stay:rgba(11,11,11,.07); --stay-line:#898781;
   --range:rgba(42,120,214,.10);
   --crit:#d03b3b; --good:#0ca30c;
@@ -21,7 +21,7 @@
     --ink:#f0efec; --ink2:#c3c2b7; --muted:#9c9a94;
     --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
     --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
-    --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4; --c-ecg:#c8955a;
+    --c-letter:#d55181; --c-visit:#008300; --c-contact:#8fae95; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4; --c-ecg:#c8955a;
     --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#4a93ec;
     --accent-fill:#2a6cc4; --on-accent:#fff; --crit:#e66767; --crit-fill:#c43434; --field-line:#74736e;
     --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
@@ -35,7 +35,7 @@
   --ink:#f0efec; --ink2:#c3c2b7; --muted:#9c9a94;
   --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
   --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
-  --c-letter:#d55181; --c-visit:#008300; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4; --c-ecg:#c8955a;
+  --c-letter:#d55181; --c-visit:#008300; --c-contact:#8fae95; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4; --c-ecg:#c8955a;
   --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#4a93ec;
   --accent-fill:#2a6cc4; --on-accent:#fff; --crit:#e66767; --crit-fill:#c43434; --field-line:#74736e;
   --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
@@ -271,6 +271,13 @@ table.data tr.link:hover td{background:var(--hover)}
 .edits .edit-form label{display:flex;flex-direction:column;gap:4px;margin:6px 0 8px;color:var(--ink2)}
 .edits .edit-form input,.edits .edit-form select{border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:6px 9px;max-width:100%;min-width:0;font:inherit}
 .edits .edit-msg:empty{display:none}
+/* similar entries offered with a rename or a change of category (#237) */
+.edits .edit-form label.check{flex-direction:row;align-items:flex-start;gap:7px;margin:4px 0;color:var(--ink)}
+.edits .edit-form label.check input{margin-top:3px;flex:none}
+.edits .similar details{margin:2px 0 6px 24px}
+.edits .similar summary{cursor:pointer;color:var(--ink2)}
+.edits .similar-list{list-style:none;margin:4px 0 0;padding:0;max-height:180px;overflow:auto}
+.edits .similar-list label.check{margin:2px 0}
 .edits.same{margin-top:10px}
 .edits.same .possible>span{color:var(--ink)}
 /* where a record came from (sources.js) */

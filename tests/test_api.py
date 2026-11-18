@@ -1547,6 +1547,10 @@ class Api(unittest.TestCase):
         db.close()
         got = whole(ben, 1)
         built = json.loads(crypto.read_file(os.path.join(TMP, "build", "data.json")))
+        from server import encounters   # as the records load: chart activity, plain visit titles, reminders (#236)
+        self.assertEqual(encounters.tidy(built["events"], built["details"]), 3)   # the demo's chart review, call and billed visit
+        for e in built["events"]:
+            e.pop("orig", None)
         for d in (got, built):
             for v in d["details"].values():
                 if v.get("type") == "file":
