@@ -619,6 +619,9 @@ Everything on `main` so far; it becomes the first tagged release.
   at once, and one Undo takes them all back. **Keep doing this for new imports** saves a rule, listed under Sources →
   Import history with how many entries it moves, so the next sync or upload from that source arrives sorted; an
   entry moved on its own stays where it was put. Schema version 34 (the corrections table made again to take them).
+- **The top bar's menus fit a phone** (#244): on a screen 700 px wide or narrower, Add and your own menu open across
+  the screen under the top bar, 8 px in from each side, instead of from their buttons' right edge, which put them
+  partly off the screen at 390 px and narrower (Settings and Log out cut off on the records page).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
