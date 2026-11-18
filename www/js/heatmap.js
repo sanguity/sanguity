@@ -141,7 +141,7 @@ function hmTable(rows, cols) {
       })));
   }
   box.replaceChildren(el("p", {class: "hint", text: `${rows.length} lab${rows.length === 1 ? "" : "s"} on ${cols.length} draw day${cols.length === 1 ? "" : "s"}. ▲ above its reference range, ▼ below.`}),
-    el("div", {class: "tablewrap hm-table"}, el("table", {class: "data"},
+    el("div", {class: "tablewrap hm-table", tabindex: 0, role: "region", "aria-label": "Lab results by draw day"}, el("table", {class: "data"},
       el("thead", {}, el("tr", {}, el("th", {scope: "col", text: "Lab"}), ...cols.map(([, ts]) => el("th", {scope: "col", text: fmtD(ts)})))), ...bodies)));
 }
 

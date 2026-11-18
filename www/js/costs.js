@@ -67,7 +67,7 @@ function renderCosts() {
   if (rx.length) {
     const g = groupCosts(rx, r => r.title.replace(/\s+\d.*$/, ""));
     const pc = el("div", {class: "card"}, el("h2", {text: `Prescriptions (${rx.length} fills)`}));
-    pc.append(el("div", {class: "tablewrap", style: {maxHeight: "360px"}}, el("table", {class: "data"},
+    pc.append(el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": "Prescriptions, by drug", style: {maxHeight: "360px"}}, el("table", {class: "data"},
       el("thead", {}, el("tr", {}, ["Drug", "Fills", "First", "Last", "Insurance paid", "Your share"].map(h => el("th", {text: h})))),
       el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; renderCosts(); $("#costTable").scrollIntoView({behavior: smoothly()}); }},
         el("td", {}, el("button", {class: "cell-btn", type: "button", text: x.key})), el("td", {text: x.n}), el("td", {text: fmtD(dayTs(x.first))}), el("td", {text: fmtD(dayTs(x.last))}),
@@ -95,7 +95,7 @@ function renderCosts() {
       () => { Object.assign(costState, {q: "", cat: "", deniedOnly: false}); renderCosts(); }, () => $("#costTable input.search")),
     el("p", {class: "hint", text: totals}));
   const cols = [["d", "Date"], ["title", "Service / drug"], ["prov", "Provider"], ["cat", "Type"], ["billed", "Billed"], ["paid", "Ins. paid"], ["owe", "Your share"], ["status", "Status"]];
-  tc.append(el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data"},
+  tc.append(el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": "Claims", style: {maxHeight: "none"}}, el("table", {class: "data"},
     // a column's sort is a button in its header, its order said by aria-sort; a claim opens from its name, a button, or
     // anywhere on its row by pointer (#202: by keyboard too, and said as what they are)
     el("thead", {}, el("tr", {}, cols.map(([key, h], i) => el("th", {scope: "col", style: {whiteSpace: "nowrap"}, "aria-sort": costState.sort === key ? (costState.dir > 0 ? "ascending" : "descending") : null},
@@ -249,7 +249,7 @@ function renderPaid(box, claimRows, periodLabel) {
     years.set(r.d.slice(0, 4), y);
   }
   if (years.size) card.append(el("div", {id: "oopTax"}, el("h3", {class: "sub", text: "HSA and FSA, by year"}),
-    el("div", {class: "tablewrap"}, el("table", {class: "data"},
+    el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": "HSA and FSA, by year"}, el("table", {class: "data"},   // its columns scroll on a phone: reachable by keyboard (#335)
       el("thead", {}, el("tr", {}, ["Year", "HSA", "FSA", "Amounts", "With a receipt"].map(h => el("th", {text: h})))),
       el("tbody", {}, [...years.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([y, v]) => el("tr", {},
         el("td", {text: y}), el("td", {text: usd2(v.HSA)}), el("td", {text: usd2(v.FSA)}), el("td", {text: v.n}), el("td", {text: v.rc}))))))));
@@ -306,7 +306,7 @@ function renderPaid(box, claimRows, periodLabel) {
       () => { paidState.q = ""; renderCosts(); }, () => $("#paidTable .toggle") || $("#paidTable")));
   const toggle = r => { paidState.open = paidState.open === oopKey(r) ? null : oopKey(r); renderCosts(); const e = $("#oopEdit"); if (e) e.scrollIntoView({block: "nearest"}); };
   const shown = Math.max(paidState.limit, list.findIndex(r => oopKey(r) === paidState.open) + 1);   // the open one too
-  tw.append(el("div", {class: "tablewrap", style: {maxHeight: "420px"}}, el("table", {class: "data oop"},
+  tw.append(el("div", {class: "tablewrap", tabindex: 0, role: "region", "aria-label": "Every amount out of pocket", style: {maxHeight: "420px"}}, el("table", {class: "data oop"},
     el("thead", {}, el("tr", {}, ["Date", "Paid to", "For", "Where the number came from", "HSA/FSA", "Amount"].map(h => el("th", {text: h})))),
     // a row opens its editor under the table, from anywhere on it by pointer; its date is the button that says whether
     // it's open (#202: a table's row can't be expanded itself)

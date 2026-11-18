@@ -780,6 +780,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Sign-in and setup fields look like the app's** (#332): on the warm page colour they read as grey, nearly disabled
   boxes on a white card. They have the app's field look now: the raised surface, the small corner and the field edge,
   the same as a field on Account in light and dark.
+- **Every table that scrolls can be reached by keyboard** (#335): at 320 px Costs' HSA and FSA by year table scrolled
+  sideways but couldn't take focus, so its hidden columns couldn't be reached without a mouse. Every table's scrolling
+  box (Costs' four, the heatmap's table, the drawer's results and services billed, a medication's listings and fills)
+  takes focus now and is named, as the charts' tables already were.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
