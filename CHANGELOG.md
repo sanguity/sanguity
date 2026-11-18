@@ -881,6 +881,11 @@ Everything on `main` so far; it becomes the first tagged release.
   one tap, though it can't be reversed (and typed records' form is cleared by then). It's "Undo…" now and asks in
   Import history's words; Keep it leaves the import and the toast. The typed records' Open Labs charts the labs just
   typed, as the line's link does, instead of opening Labs without them.
+- **Focus comes back from a toast** (#361): pressing a toast's Undo disabled it while it ran, so focus fell to the page
+  (also inside the drawer), and a fourth toast sending away a focused one dropped focus too. Focus that went into a
+  toast now goes back where it came from however the toast goes, and stays on the button while it runs. Deleting a
+  Labs view leaves focus on the view picker, not nowhere. Alt+N is no longer taken while typing in a field, where
+  Option+N on a Mac types ñ, ã or õ.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
