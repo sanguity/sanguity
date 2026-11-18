@@ -7281,7 +7281,7 @@ def main():
             about(vpid)
             vt = page.inner_text("#about")
             check("…a viewer sees them as text, with nothing to change", js("fmtD(zParse('1958-11-02'))") in vt and "Not set" in vt and "165 cm" in vt
-                  and "owners and editors can change these" in vt and not js("!!document.querySelector('#about input, #about select, #aboutBody button')"), vt[:300])
+                  and "Only the owners and editors of " in vt and "can change these" in vt and not js("!!document.querySelector('#about input, #about select, #aboutBody button')"), vt[:300])
             # a share link leaves it unticked
             page.goto(base + f"/sharing.html?profile={apid}#links")
             page.wait_for_selector("#links .share-links button:has-text('New share link')", timeout=10000)
@@ -8443,6 +8443,20 @@ def main():
             check("Remove takes their access away", "alex" not in page.inner_text("#memberList"))
             check("…confirmed by keyboard in the app's dialog: Enter opens it on Cancel, Tab reaches Remove access, Enter does it (#210)",
                   on_cancel == "Cancel" and on_action == "Remove access" and not js("document.querySelector('dialog.sg-ask')"), (on_cancel, on_action))
+            # #313: no possessive made from a profile's name ("They'll stop seeing My records's records"): the default profile
+            db_313 = dbm_249.connect()
+            alex_id = db_313.execute("SELECT id FROM users WHERE username='alex'").fetchone()[0]
+            db_313.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'viewer')", (alex_id,))
+            page.goto(base + "/sharing.html?profile=1#people")
+            page.wait_for_function("document.getElementById('people').dataset.profile === '1' && !!document.querySelector(\"#memberList button[aria-label='Remove alex']\")", timeout=10000)
+            page.click("#memberList button[aria-label='Remove alex']")
+            asked = answer_ask(page, yes=False)
+            check("…Remove on the default profile says “the records in My records”, with no possessive made from its name (#313)",
+                  asked == ["Remove alex's access?", "They'll stop seeing the records in My records. You can share it with them again later."], asked)
+            db_313.execute("DELETE FROM memberships WHERE user_id=? AND profile_id=1", (alex_id,))
+            db_313.close()
+            page.goto(base + "/sharing.html?profile=2#people")
+            page.wait_for_function("document.getElementById('people').dataset.profile === '2'", timeout=10000)
             js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was_210)}); applyTheme()" if theme_was_210 else "localStorage.removeItem('ht-theme'); applyTheme()")
             page.set_viewport_size({"width": 1400, "height": 900})
             page.set_viewport_size({"width": 375, "height": 800})
@@ -8816,7 +8830,7 @@ def main():
             # turned off: the copy goes
             ph.goto(base + "/account.html#offline")
             ph.wait_for_selector("#offlineOn")
-            until("document.querySelector('#offlineRecords .msg').textContent.includes('records, loaded')", 5000)
+            until("document.querySelector('#offlineRecords .msg').textContent.includes('Kept: the records in ')", 5000)
             ph.uncheck("#offlineOn")
             until(NO_COPY, 5000)
             check("records off: the kept copy is deleted", ph.evaluate(NO_COPY))
@@ -8950,7 +8964,7 @@ def main():
             fp.wait_for_selector("#step-done:not([hidden])", timeout=10000)
             f_until("document.getElementById('doneSays').textContent.length > 0", 5000)
             check("…skipped, to the end: the Overview, with nothing left to skip, the guide not yet marked done",
-                  "records are in" in fp.inner_text("#doneSays") and fp.is_hidden("#guideSkip") and guide_is() == "", fp.inner_text("#step-done"))
+                  "Robin Example has records now. The Overview" in fp.inner_text("#doneSays") and fp.is_hidden("#guideSkip") and guide_is() == "", fp.inner_text("#step-done"))
             # every step, and Sources with the way back, at 375 px in light and dark
             fp.set_viewport_size({"width": 375, "height": 800})
             bad = []

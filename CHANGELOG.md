@@ -685,6 +685,9 @@ Everything on `main` so far; it becomes the first tagged release.
   typed-in record's or lab result's check as you type, a connection's "from" date (on Sources and in the activity log)
   and the time offline records were loaded (the offline banner and Account) are in the person's date format, not as
   "2026-11-15".
+- **No more "My records's records"** (#313): messages that put "'s" after a profile's name say it another way: "They'll
+  stop seeing the records in My records" (Sharing → People → Remove), "Only the owners of …" on Sharing, "This gives you
+  access to the records in …" (Admin), "Kept: the records in …" (Account) and "… has records now" (the guide).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

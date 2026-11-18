@@ -202,7 +202,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
             leave(p); }})
           : owner ? el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove ${m.username}`,
             onclick: async () => {
-              if (!await ask({title: `Remove ${m.username}'s access?`, message: `They'll stop seeing ${p.name}'s records. You can share it with them again later.`,
+              if (!await ask({title: `Remove ${m.username}'s access?`, message: `They'll stop seeing the records in ${p.name}. You can share it with them again later.`,
                               action: "Remove access", danger: true})) return;
               try { await call(`profiles/${p.id}/members/${m.user_id}`, "DELETE"); await again(); sayIn($("#peopleMsg"), `${m.username} no longer has access.`); } catch (e) { fail(e); } }})
           : null))))));
@@ -230,7 +230,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     const msg = $("#profileMsg"), fail = e => sayIn(msg, e.message, true);
     sayIn(msg, "");
     if (p.role !== "owner") {
-      $("#profileBody").replaceChildren(el("p", {class: "hint", text: `Only ${p.name}'s owners can rename or delete it.`}));
+      $("#profileBody").replaceChildren(el("p", {class: "hint", text: `Only the owners of ${p.name} can rename or delete it.`}));
       return;
     }
     const name = el("input", {value: p.name, maxlength: 80, "aria-label": "Profile name"});
@@ -377,7 +377,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
         el("dt", {text: "Sex used for reference ranges"}), el("dd", {text: a.sexes[a.sex] || "Not set"}),
         el("dt", {text: "Maximum heart rate, measured"}), el("dd", {text: a.maxHr ? `${a.maxHr} bpm` : "Not set (heart rate zones use 220 minus the age)"}),   // #197
         ...(a.dueDate ? [el("dt", {text: "Due date, if born early"}), el("dd", {text: aboutDay(a.dueDate)})] : [])),   // #196
-        el("p", {class: "hint", text: `Only ${p.name}'s owners and editors can change these.`}));
+        el("p", {class: "hint", text: `Only the owners and editors of ${p.name} can change these.`}));
     }
     // the height history, newest first
     parts.push(el("h3", {class: "sub", id: "aboutHeightHd", tabindex: -1, text: "Height"}),
