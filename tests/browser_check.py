@@ -4735,17 +4735,17 @@ def main():
                   'Everything kept for this profile is deleted: the receiver\\'s database, every upload it archived, and what imported Apple Health exports brought.',
                   'Backups made before now, downloaded exports and summaries and your phone keep their own copies: deleting can\\'t reach them.']}); 0""")
             page.wait_for_selector("dialog.sg-ask[open]", timeout=5000)
-            under = """() => { const d = document.querySelector('dialog.sg-ask'), ts = [...document.querySelectorAll('.sg-toast')].map(t => t.getBoundingClientRect());
-                return [...d.querySelectorAll('.sg-ask-acts button')].filter(b => { const r = b.getBoundingClientRect();
-                  return ts.some(t => r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top); }).map(b => b.textContent); }"""
+            under = """() => [...document.querySelectorAll('dialog.sg-ask .sg-ask-acts button')].filter(b => { const r = b.getBoundingClientRect();
+                return [[r.left + 2, r.top + 2], [r.right - 2, r.bottom - 2], [(r.left + r.right) / 2, (r.top + r.bottom) / 2]]
+                  .some(([x, y]) => document.elementFromPoint(x, y)?.closest('.sg-toast')); }).map(b => b.textContent)"""
             covered = [js(under)]
             js("document.querySelector('dialog.sg-ask').scrollTop = 1e6")
             covered.append(js(under))
             in_dialog = js("[document.getElementById('sgToasts').parentElement.matches('dialog.sg-ask'), document.querySelectorAll('dialog.sg-ask .sg-toast').length]")
             page.click("dialog.sg-ask .sg-ask-acts button:first-child")
             page.wait_for_function("!document.querySelector('dialog.sg-ask')", timeout=5000)
-            check("toasts placed (#362): at 568×320 a dialog's buttons are under no toast, scrolled either way, the toasts in its flow",
-                  covered == [[], []] and in_dialog == [True, 2] and js("document.getElementById('sgToasts').matches(':popover-open')"), [covered, in_dialog])
+            check("toasts placed (#362): at 568×320 a dialog's buttons are under no toast, scrolled either way; a question (ask()) leaves them over the page behind it, inert (#369)",
+                  covered == [[], []] and in_dialog == [False, 0] and js("document.getElementById('sgToasts').matches(':popover-open')"), [covered, in_dialog])
             page.set_viewport_size({"width": 800, "height": 900})
             page.focus("#list .tl-row")
             page.keyboard.press("Enter")
@@ -4760,6 +4760,57 @@ def main():
             page.keyboard.press("Escape")
             settle(300)
             check("…and over the page again once it's closed", js("document.getElementById('sgToasts').parentElement === document.body && document.getElementById('sgToasts').matches(':popover-open')"))
+            # #369: a question asked from a toast's Undo ("Undo this import?", #360) holds no toast under its buttons, and
+            # Tab from them reaches none (the toast that asked it among them); answered No, focus is back on that Undo
+            js("toast('Imported 6 lab results (browser check).', {action: 'Undo…', onAction: async () => (await ask({title: 'Undo this import?', action: 'Undo import', danger: true, message: 'The records it brought are removed.'})) || false})")
+            page.keyboard.press("Alt+n")
+            page.keyboard.press("Enter")
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=5000)
+            settle(200)
+            held = js("document.querySelectorAll('dialog.sg-ask .sg-toast').length")
+            tabbed = []
+            for _ in range(5):
+                page.keyboard.press("Tab")
+                tabbed.append(js("(a => a.closest('.sg-toast') ? 'toast' : a.closest('dialog.sg-ask') ? a.textContent : a.tagName)(document.activeElement)"))
+            page.keyboard.press("Escape")
+            settle(200)
+            check("…a question asked from a toast's Undo holds no toast and Tab from its buttons reaches none (#369); No gives focus back to the Undo",
+                  held == 0 and "toast" not in tabbed and "Undo import" in tabbed and js("document.activeElement.textContent") == "Undo…"
+                  and js("document.querySelectorAll('.sg-toast').length") == 3, [held, tabbed, js("document.activeElement.textContent")])
+            # #369: at 568×320 (a phone on its side) the drawer is a modal sheet 304 px high: three toasts with an Undo
+            # take at most what leaves its body half of it, scrolling within themselves, the newest in view; each is
+            # reached by Tab and shown as it is; Alt+N doesn't scroll the sheet, its handle and title staying on screen
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            js("for (const n of [1, 2, 3]) toast('Saved “Measures ticked at first” and “Key labs” ' + n + ' (browser check).', {action: 'Undo', onAction: async () => {}})")
+            page.set_viewport_size({"width": 568, "height": 320})
+            page.focus("#list .tl-row")
+            page.keyboard.press("Enter")
+            page.wait_for_selector("#drawer.open", timeout=5000)
+            settle(400)
+            short = js("""(() => { const d = document.getElementById('drawer'), t = document.getElementById('sgToasts'), h = e => e.getBoundingClientRect().height,
+                last = [...t.querySelectorAll('.sg-toast')].at(-1).getBoundingClientRect(), r = t.getBoundingClientRect();
+                return {modal: d.matches(':modal'), half: h(d.querySelector('.db')) >= h(d) / 2 - 0.5, inDrawer: t.parentElement === d, toasts: t.querySelectorAll('.sg-toast').length,
+                        scrolls: t.scrollHeight > t.clientHeight, newest: last.bottom <= r.bottom + 1 && last.bottom > r.top, fits: d.getBoundingClientRect().bottom <= innerHeight + 0.5}; })()""")
+            page.keyboard.press("Alt+n")
+            settle(200)
+            head = js("""(() => { const d = document.getElementById('drawer'), a = document.activeElement, r = a.getBoundingClientRect();
+                return [a.textContent, d.scrollTop, d.querySelector('.sg-grab').getBoundingClientRect().top >= d.getBoundingClientRect().top,
+                        d.querySelector('.dh h3').getBoundingClientRect().top >= 0, r.top >= 0 && r.bottom <= innerHeight]; })()""")
+            reached = set()
+            for i in range(7):   # from the newest's Undo (Alt+N) back up through the others
+                if i:
+                    page.keyboard.press("Shift+Tab")
+                at = js("""(a => { const t = a.closest('.sg-toast'), s = document.getElementById('sgToasts').getBoundingClientRect(), r = a.getBoundingClientRect();
+                    return t && [[...document.querySelectorAll('.sg-toast')].indexOf(t), r.top >= s.top - 1 && r.bottom <= s.bottom + 1 && r.bottom <= innerHeight]; })(document.activeElement)""")
+                if at:
+                    reached.add(tuple(at))
+            check("…at 568×320 three Undo toasts leave the drawer's body half the sheet or more, scrolling within themselves, the newest in view (#369)",
+                  short == {"modal": True, "half": True, "inDrawer": True, "toasts": 3, "scrolls": True, "newest": True, "fits": True}, short)
+            check("…each of them reached by Tab and shown when it's reached, and Alt+N leaves the sheet where it was, its handle and title on screen (#369)",
+                  reached == {(0, True), (1, True), (2, True)} and head == ["Undo", 0, True, True, True], [sorted(reached), head])
+            page.focus("#dclose")
+            page.keyboard.press("Escape")
+            settle(300)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             page.set_viewport_size({"width": 375, "height": 800})
             settle(300)

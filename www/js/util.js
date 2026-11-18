@@ -297,12 +297,13 @@ function openDialog(d, {as = "center", modal = true} = {}) {
    dialog is inert, so a screen reader would hear nothing said there, and a toast's Undo couldn't be pressed. The
    toasts (#362) go into a dialog's flow, at its foot, so they're never over what's in it (its buttons, what has
    focus): the modal one on top, or else the drawer open beside the page, which they'd cover; out of one they're a
-   popover over the page again. */
+   popover over the page again. A question (ask()) leaves them where they were, inert behind it (#369): asked from a
+   toast's Undo, it would show that toast under its own buttons, and Tab from them would land on it. */
 function liveFollow() {
   const modal = [...document.querySelectorAll("dialog:modal")].at(-1), home = modal || document.body;
   for (const r of document.querySelectorAll(".sg-follow:not(#sgToasts)")) if (r.parentElement !== home) home.append(r);
   const t = document.getElementById("sgToasts"), to = modal || document.querySelector("dialog:is(.sg-dlg-side,.sg-dlg-sheet)[open]") || document.body;
-  if (!t || t.parentElement === to) return;
+  if (!t || t.parentElement === to || modal?.matches(".sg-ask")) return;
   const had = t.contains(document.activeElement) ? document.activeElement : null;
   to.append(t);
   if (to !== document.body) t.removeAttribute("popover");
@@ -491,7 +492,7 @@ function icon(name, {label} = {}) {
    They're one region named Notifications (a landmark a screen reader can go to), its list a polite live region, so
    each toast is said once as it appears: its words are said only there, not through announce() as well (a page's own
    line beside it shows them with sayIn's say: false). The region is a popover over the page, which scrolls what takes
-   focus clear of it (--toasts-h, app.css); while a modal dialog or the drawer is open it's in that dialog's flow, at
+   focus clear of it (--toasts-h, app.css); while a modal dialog (not a question) or the drawer is open it's in that dialog's flow, at
    its foot, over nothing in it (liveFollow, above), and its buttons work there. An action that fails says so in the toast,
    which stays. What can't be undone, or touches security, still asks first (ask()). */
 const toast = (() => {
