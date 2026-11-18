@@ -53,7 +53,7 @@ What can't be done here is a pass with a real screen reader: see [Still open](#s
 | 2.1.1 Keyboard | Tab through every page; read every click handler | **Fixed.** The Overview's out-of-range and recent rows, the Costs bar lists, the Timeline's events, claims, paid amounts, prescriptions, a medication's listings and fills, a result's components and the Costs column headers opened or sorted by mouse only, or took focus without saying what they were. Each is a button now (`pressable()` in `util.js` for a row, `.cell-btn` in a table's cell). |
 | 2.1.2 No keyboard trap | Tab and Shift+Tab walks; the drawer, dialog, menus and rename box | Nothing found: Escape closes each, and focus goes back. Since #262 the dialog and the drawer are one `<dialog>` (`openDialog`, `util.js`): modal where it covers the page (the browser keeps focus in it and the page inert, no script of ours), beside the page otherwise; the shared status line moves into a modal dialog while it's open, so what's said is heard. |
 | 2.1.4 Character key shortcuts | read the code | None: every shortcut is on a focused control (arrows, Home, End, Escape). |
-| 2.2.1 Timing adjustable | read the code | Nothing timed while someone works; a sign-in lasts 12 hours, or 30 days with a second factor. |
+| 2.2.1 Timing adjustable | read the code | Nothing timed while someone works; a sign-in lasts 12 hours, or 30 days with a second factor. A toast (#263) stays at least 10 seconds, waits while the pointer is on it or focus is in it, and has a ✕; what it offers (an Undo) is never only there for long: Import history undoes an import, and a setting can be set again. |
 | 2.2.2 Pause, stop, hide; 2.3.1 Three flashes | read the code | Nothing moves by itself; less motion when asked (#209). |
 | 2.4.1 Bypass blocks, 2.4.2 Page titled | #209 | Nothing new. |
 | 2.4.3 Focus order | Tab walks | Nothing found. |
@@ -75,7 +75,7 @@ What can't be done here is a pass with a real screen reader: see [Still open](#s
 | 3.3.7 Redundant entry | read the forms | Nothing asked twice, except a new password, typed again to confirm it (allowed for security). |
 | 3.3.8 Accessible authentication (minimum) | automated (above) | Nothing to fix: password managers can fill the sign-in, paste works in every field, and passkeys need no typing at all. The setup code can be pasted. |
 | 4.1.2 Name, role, value | axe; read the code | **Fixed.** Rows that opened something on click are buttons (2.1.1). A paid amount's row said `aria-expanded` on a table row, which a row can't have; its date is the button that says it. The heatmap's row names were focusable inside a picture, so screen readers couldn't reach them; they're clicked there, and renamed by keyboard from the ✎ in the heatmap's table (or a chart). A chart's table that scrolls takes focus, named by its columns, so it can be scrolled by keyboard. |
-| 4.1.3 Status messages | #209 | Nothing new. |
+| 4.1.3 Status messages | #209 | **Since #263** a save, an import or a removal that can be undone is said by a toast, in one polite live region inside a landmark named Notifications on every page with app.css, said once (the page's own line beside the control shows it without saying it again). Alt+N takes focus to the newest toast and Escape gives it back; no toast takes focus by itself. While a modal dialog is open, the toasts and the status line are inside it, so they're heard and can be used. |
 
 ## The colours
 

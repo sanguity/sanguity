@@ -480,12 +480,14 @@ const quoted = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.lengt
 
 /* a section: its title, Reset to defaults, its settings and one Save for them all. opts.base is where its settings
    are changed (the API's profiles/<id>/settings unless given); opts.reload(note, force) draws the sections again
-   after a save or a reset (note: {section, text} to say in this one; force: this section's id, to draw it again
-   even with changes not saved); opts.note is said in it once drawn. */
+   after a save or a reset (note: {section, text, quiet} to say in this one, or only show with quiet, a toast saying
+   it; force: this section's id, to draw it again even with changes not saved); opts.note is said in it once drawn
+   (shown only, with opts.quiet). A save is said by a toast (#263) with an Undo, which puts back what each setting
+   saved was: its value, or the default it came from (taken off again, where the setting can be). */
 function sectionCard(sec, opts = {}) {
   const base = opts.base || (PID == null ? "settings/user" : `profiles/${PID}/settings`);
   const reload = opts.reload || load;
-  const msg = el("span", {class: "msg"}); sayIn(msg, opts.note || "");   // said too (util.js, #209)
+  const msg = el("span", {class: "msg"}); sayIn(msg, opts.note || "", false, {say: !opts.quiet});   // said too (util.js, #209), or by a toast
   const anyEditable = sec.settings.some(st => st.can_change);
   const changedHere = sec.settings.some(st => st.can_change && st.from !== "default" && st.from !== "install");
   const mixed = new Set(sec.settings.map(st => st.scope)).size > 1;
@@ -504,9 +506,9 @@ function sectionCard(sec, opts = {}) {
     if (!todo.length) return;
     save.disabled = discard.disabled = true;
     sayIn(msg, "Saving…");
-    const done = [];
+    const done = [], was = [];
     for (const it of todo) {
-      const value = it.value();
+      const value = it.value(), before = {key: it.st.key, value: it.st.value, from: it.st.from};
       try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value}); }
       catch (e) {
         // the ones before it are saved; this one and the rest stay as changed, to put right and save again
@@ -518,10 +520,20 @@ function sectionCard(sec, opts = {}) {
         return;
       }
       it.saved(value);
-      done.push(it.st.label);
+      done.push(it.st.label); was.push(before);
     }
     changed();
-    await reload({section: sec.id, text: `Saved ${quoted(done)}.`});
+    const said = `Saved ${quoted(done)}.`;
+    await reload({section: sec.id, text: said, quiet: true});
+    toast(said, {action: "Undo", onAction: async () => {
+      // the default it came from: taken off again (a profile's setting can be); otherwise the value it had
+      for (const w of was) {
+        const path = `${base}/${encodeURIComponent(w.key)}`;
+        if ((w.from === "default" || w.from === "install") && !base.startsWith("settings/")) await call(path, "DELETE");
+        else await call(path, "PUT", {value: w.value});
+      }
+      await reload({section: sec.id, text: `Undone: ${quoted(done)} ${done.length === 1 ? "is" : "are"} as before.`}, sec.id);
+    }});
   };
   discard.onclick = () => {
     const fresh = sectionCard(sec, {...opts, note: "Changes discarded: back as saved."});
@@ -589,7 +601,7 @@ async function load(note, force, all = false) {
   const cards = d.sections.map(sec => {
     const old = document.getElementById("sec-" + sec.id);
     if (!all && old && old.parentNode === box && old.hasAttribute("data-dirty") && sec.id !== force) return old;
-    return sectionCard(sec, {note: note && note.section === sec.id ? note.text : ""});
+    return sectionCard(sec, {note: note && note.section === sec.id ? note.text : "", quiet: !!(note && note.quiet)});
   });
   const inPlace = !all && box.children.length === cards.length && d.sections.every((sec, i) => box.children[i].id === "sec-" + sec.id);
   if (inPlace) cards.forEach((c, i) => { if (box.children[i] !== c) box.children[i].replaceWith(c); });

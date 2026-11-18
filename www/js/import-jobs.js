@@ -200,6 +200,21 @@
       j.linked ? node("p", {class: "hint", text: `${plural(j.linked, ["result", "results"])} shown once, as the same result from another source.`}) : null,
       notes(j),
       node("p", {}, node("a", {href: `index.html?profile=${pid}#timeline`, text: "See them on the timeline"})));   // its profile and tab (#208)
+    // said by a toast (#263), with the way to what came in and an Undo (Import history's, at once): the card stays
+    // as it is, no longer said itself
+    card.removeAttribute("role"); card.removeAttribute("aria-live");
+    const what = items.map(li => li.textContent);
+    const labs = c.results > 0, where = labs ? "labs" : "timeline";
+    toast(what.length ? `Imported ${what.slice(0, 2).join(", ")}${what.length > 2 ? " and more" : ""}.` : "Imported: nothing new.", {
+      actions: [{text: labs ? "Open Labs" : "Open the timeline", href: `index.html?profile=${pid}#${where}`},
+        ...(j.import_id != null && what.length ? [{text: "Undo", onClick: () => undoImport(card, pid, j.import_id)}] : [])]});
+  }
+  /* the Undo of a toast: Import history's, the card then saying it's undone */
+  async function undoImport(card, pid, id) {
+    const r = await api(`profiles/${encodeURIComponent(pid)}/imports/${id}/undo`, {method: "POST"});
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(typeof e.detail === "string" ? e.detail : `the server answered ${r.status}`); }
+    card.replaceChildren(node("p", {}, node("b", {text: "Undone."}), " The import's records are gone from the profile; Import history lists it as undone."));
+    toast("Undone: the import's records are gone from the profile.");
   }
 
   function showFailed(card, text) {

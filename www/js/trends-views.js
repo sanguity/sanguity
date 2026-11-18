@@ -15,18 +15,19 @@ function tvCurrent() {
   const sel = [...state.sel].filter(n => SERIES.some(s => !s.watch && s.name === n));
   return CFG.trends.views.find(v => { const l = tvLabs(v); return l.length === sel.length && l.every(n => state.sel.has(n)); }) || null;
 }
-let tvMsg = "", tvBad = false, tvFormOpen = false;
-async function tvStore(views, said) {
+let tvMsg = "", tvBad = false, tvFormOpen = false, tvQuiet = false;
+async function tvStore(views, said, {quiet = false} = {}) {   // quiet: shown beside the views, said by a toast instead (#263)
+  let ok = false;
   try {
     const r = await api(`profiles/${PROFILE.id}/settings/trends.views`, {method: "PUT", body: JSON.stringify({value: views})});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { tvMsg = typeof j.detail === "string" ? j.detail : `Couldn't save the views (${r.status}).`; tvBad = true; renderSeriesList(); return false; }
     applySettings(j);
-    tvMsg = said;
+    tvMsg = said; tvQuiet = quiet; ok = true;
   } catch (e) { tvMsg = "Couldn't reach the server: " + e.message; tvBad = true; }
   tvFormOpen = false;
   renderSeriesList();
-  return true;
+  return ok;
 }
 /* after a lab is ticked or unticked in the list: the bar again (the current view, Save's count), keeping a typed name */
 function tvRefresh() {
@@ -41,7 +42,7 @@ const tvPlain = v => ({name: v.name, labs: v.labs, default: !!v.default});
 function viewsBar() {
   const views = CFG.trends.views, can = tvCanSave(), cur = tvCurrent();
   if (!views.length && !can) return null;
-  const msg = el("p", {class: "hint tv-msg"}); sayIn(msg, tvMsg, tvBad); tvMsg = ""; tvBad = false;   // shown and said (#209)
+  const msg = el("p", {class: "hint tv-msg"}); sayIn(msg, tvMsg, tvBad, {say: !tvQuiet}); tvMsg = ""; tvBad = tvQuiet = false;   // shown and said (#209)
   const pick = el("select", {id: "viewPick", "aria-label": "Saved view", disabled: views.length ? null : "",
     onchange: () => { const v = views.find(x => x.name === pick.value); if (!v) return;
       const have = tvLabs(v); state.sel = new Set(have);
@@ -58,10 +59,10 @@ function viewsBar() {
         onclick: () => tvStore(views.map(v => ({...tvPlain(v), default: v === cur ? !cur.default : false})),
           cur.default ? `“${cur.name}” is no longer the default.` : `Labs now starts with “${cur.name}”.`)}, ...(cur.default ? ["Default ", icon("check")] : ["Make default"])),
       el("button", {class: "btn", type: "button", text: "Delete", "aria-label": `Delete the view ${cur.name}`,
-        onclick: async () => {
-          if (!await ask({title: `Delete the view “${cur.name}”?`, message: "The labs it shows stay charted; only the saved view goes.",
-                          action: "Delete view", danger: true})) return;
-          tvStore(views.filter(v => v !== cur).map(tvPlain), `Deleted “${cur.name}”.`); }}));
+        onclick: async () => {   // at once, with an Undo that saves the views as they were (#263; it asked first before)
+          const before = views.map(tvPlain), said = `Deleted “${cur.name}”.`;
+          if (await tvStore(views.filter(v => v !== cur).map(tvPlain), said, {quiet: true}))
+            toast(said, {action: "Undo", onAction: async () => { if (!await tvStore(before, `Undone: “${cur.name}” is back.`)) throw new Error("it couldn't be saved"); }}); }}));
   }
   if (can && !tvFormOpen) bar.append(el("button", {class: "btn", type: "button", id: "viewSaveOpen", text: "Save view…", disabled: state.sel.size ? null : "",
     title: state.sel.size ? "Save the labs charted now as a view" : "Pick some labs first",
