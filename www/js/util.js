@@ -261,16 +261,17 @@ function ask({title, message = "", action = "OK", cancel = "Cancel", danger = fa
    or its column names. */
 function scrollBox(attrs, ...kids) {
   const box = el("div", attrs, ...kids);
-  if (!box.hasAttribute("aria-label") && !box.hasAttribute("aria-labelledby")) {
+  // its name, kept aside: a region is named, a plain box isn't (ARIA names no plain div, #347)
+  const name = box.hasAttribute("aria-labelledby") ? ["aria-labelledby", box.getAttribute("aria-labelledby")] : ["aria-label", box.getAttribute("aria-label") || (() => {
     const t = box.querySelector("table"), head = t && t.tHead && t.tHead.rows[0];
-    box.setAttribute("aria-label", (t && t.caption ? t.caption.textContent.trim() : "") ||
-      (head ? [...head.cells].map(c => c.textContent.trim()).filter(Boolean).join(", ") : "") || "Table");
-  }
+    return (t && t.caption ? t.caption.textContent.trim() : "") ||
+      (head ? [...head.cells].map(c => c.textContent.trim()).filter(Boolean).join(", ") : "") || "Table"; })()];
+  box.removeAttribute("aria-label"); box.removeAttribute("aria-labelledby");
   const fit = () => {
     const scrolls = box.scrollWidth > box.clientWidth + 1 || box.scrollHeight > box.clientHeight + 1;
-    if (scrolls && box.getAttribute("role") !== "region") { box.setAttribute("tabindex", "0"); box.setAttribute("role", "region"); }
+    if (scrolls && box.getAttribute("role") !== "region") { box.setAttribute("tabindex", "0"); box.setAttribute("role", "region"); box.setAttribute(...name); }
     else if (!scrolls && box.hasAttribute("role")) {
-      box.removeAttribute("role");
+      box.removeAttribute("role"); box.removeAttribute(name[0]);
       if (box === document.activeElement) box.setAttribute("tabindex", "-1");   // focus stays put, out of the Tab order
       else box.removeAttribute("tabindex");
     }
