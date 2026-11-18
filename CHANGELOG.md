@@ -797,6 +797,8 @@ Everything on `main` so far; it becomes the first tagged release.
   takes focus now and is named, as the charts' tables already were.
 - **Small text stays crisp** (#338): exact text layout (#329) applies only to tiles and stats, whose rows must not change
   height when the web font arrives; everywhere else the default rendering, which on Linux keeps small regular text sharp.
+- **Dates kept together, and only dates** (#339): in the year-month-day format a tile's change line no longer keeps
+  "03 since 2026" together; "as of" is kept whole, with the line free to break before its date.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

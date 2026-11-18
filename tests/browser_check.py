@@ -984,7 +984,7 @@ TILE_LINES_JS = r"""() => {
     }
     return out;
   };
-  const date = /(\p{L}{3,}\.? \d{1,2},|\d{1,2} \p{L}{3,}\.?|\p{L}{3,}\.?)$/u, year = /^(\d{1,2},? )?\d{4}\b/;
+  const date = /(\p{L}{3,4}\.? \d{1,2},|\d{1,2} \p{L}{3,4}\.?|(?<!\p{L})\p{L}{3,4}\.?)$/u, year = /^(\d{1,2},? )?\d{4}(?![-\d])/u;   // a month's short name, a year not a year-month-day date (#339)
   const out = {n: 0, bad: [], uneven: []};
   for (const e of document.querySelectorAll('.tile .delta, .stat .l + .l')) {
     if (!e.checkVisibility() || !e.textContent.trim()) continue;
@@ -1564,6 +1564,24 @@ def main():
                     check(f"{tab} ({width} px, #330): no tile's change line ends in a short fragment or breaks a date"
                           + (", and a row's sparklines line up" if tab == "overview" else ""),
                           got["n"] > 0 and not got["bad"] and not got["uneven"], got)
+            # #339: and in the other two date formats (keepDates keeps only the date together, "as of" with it), with no
+            # date kept on one line sticking out of its tile
+            fmt_was = js("DATES.format")
+            for fmt in ("dmy", "ymd"):
+                js("f => useDates(DATES.zone, f)", fmt)
+                for width in (1400, 320):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all")):
+                        js("([t, p]) => { if (p) setPeriod(p); switchTab(t); }", [tab, preset])
+                        settle(300)
+                        got = js(TILE_LINES_JS)
+                        past = js("""[...document.querySelectorAll('.tile .nw, .stat .nw')].filter(s => s.offsetParent).filter(s => {
+                            const t = s.closest('.tile, .stat'), b = t.getBoundingClientRect(), r = s.getBoundingClientRect();
+                            return r.right > b.right - parseFloat(getComputedStyle(t).paddingRight) + 0.5; }).map(s => s.textContent)""")
+                        check(f"{tab} ({fmt}, {width} px, #339): no tile's change line ends in a short fragment or breaks a date, "
+                              "and no date kept together sticks out of its tile",
+                              got["n"] > 0 and not got["bad"] and not got["uneven"] and not past, [got, past])
+            js("f => useDates(DATES.zone, f)", fmt_was)
             js("[state.preset, state.from, state.to] = window._was330.slice(1); switchTab(window._was330[0]); renderAll()")
             page.set_viewport_size({"width": 1400, "height": 900})
 
