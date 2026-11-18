@@ -634,6 +634,11 @@ Everything on `main` so far; it becomes the first tagged release.
   Admin's connected-source rows and their test, a backup's check, the period menu without other milestones, the
   journal's body map with no places, and on Settings a setting without help text and the saved views once there are
   some. They're left out now.
+- **Wording and dates** (#248): "Reading the records…" no longer shows a garbled character, and a test fails on any
+  file of the app that isn't UTF-8. The drawer's buttons name the Labs tab by its name ("Show this day in Labs",
+  "Labs during this stay"), and sharing with an account that doesn't exist says an admin creates it under Admin →
+  Accounts. A lab result's Collected and Resulted dates, a claim's services and the Costs claims table are written in
+  the person's date format, not as "2026-11-02".
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -4694,7 +4694,8 @@ def main():
             js("applyPreset('all')")
             settle(200)
             rows = js("[...document.querySelectorAll('#costTable tbody tr')].map(tr => [...tr.cells].map(td => td.textContent))")
-            by = {(r[0], r[2]): r for r in rows}
+            day = {js("d => fmtD(dayTs(d))", d): d for d in ("2026-10-07", "2026-06-24", "2026-02-03")}   # in their date format (#248)
+            by = {(day.get(r[0], r[0]), r[2]): r for r in rows}
             check("Costs tab lists every imported claim (6 UHC, 5 BCBS, 5 from the spreadsheet)", len(rows) == 16, len(rows))
             check("…a UHC claim with its category and your share",
                   by.get(("2026-10-07", "Riverbend Infusion Clinic"), [None] * 8)[3] == "Chemo, infusions & drugs", by.get(("2026-10-07", "Riverbend Infusion Clinic")))
@@ -6671,6 +6672,30 @@ def main():
             check("two people in different time zones each see days split at their own midnight",
                   got[USER][:2] == ("2026-03-10", "2026-03-10T07:00:00.000Z") and got[USER2][:2] == ("2026-03-11", "2026-03-10T11:00:00.000Z"), got)
             check("…and dates in their own format", got[USER][2] == "10 Mar 2026" and got[USER2][2] == "2026-03-11", got)
+            # #248: a result's Collected and Resulted, a claim's services and the Costs claims table in that format too,
+            # not as the record's ISO text; and the drawer's buttons name the Labs tab by its name
+            dmy = r"\d{1,2} [A-Z][a-z]{2} \d{4}"
+            kv_js = "Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))"
+            btns_js = "[...document.querySelectorAll('#dbody button.btn')].map(b => b.textContent)"
+            za.evaluate("Promise.resolve(openEvent(EV.find(e => e.k === 'lab' && !e.hidden && DATA.details[e.id]?.type === 'labday')))")
+            za.wait_for_selector("#dbody details.res dl.kv", timeout=5000)
+            lab_kv, lab_btns = za.evaluate(kv_js), za.evaluate(btns_js)
+            za.evaluate("closeDrawer(); Promise.resolve(openEvent(EV.find(e => e.k === 'claim' && !e.hidden)))")
+            za.wait_for_selector("#dbody table.data tbody td", timeout=5000)
+            line_day = za.evaluate("document.querySelector('#dbody table.data tbody td').textContent")
+            za.evaluate("closeDrawer(); Promise.resolve(openEvent(EV.find(e => e.k === 'stay' && !e.hidden)))")
+            za.wait_for_selector("#dbody dl.kv", timeout=5000)
+            stay_btns = za.evaluate(btns_js)
+            za.evaluate("closeDrawer(); applyPreset('all'); switchTab('costs')")
+            za.wait_for_selector("#costTable tbody tr td", timeout=10000)
+            claim_days = za.evaluate("[...document.querySelectorAll('#costTable tbody tr')].slice(0, 5).map(r => r.cells[0].textContent)")
+            check("…a result's Collected and Resulted, a claim's services and the Costs claims table too (#248)",
+                  re.fullmatch(dmy + r", \d{1,2}:\d{2}.*", lab_kv.get("Collected", "")) and re.fullmatch(dmy, lab_kv.get("Resulted", ""))
+                  and re.fullmatch(dmy, line_day) and claim_days and all(re.fullmatch(dmy, d) for d in claim_days), (lab_kv, line_day, claim_days))
+            check("…and the drawer's buttons say Labs, the tab's name, not Lab trends (#248)",
+                  "Show this day in Labs" in lab_btns and "Labs during this stay" in stay_btns
+                  and not any("trends" in b.lower() for b in lab_btns + stay_btns), (lab_btns, stay_btns))
+            za.evaluate("switchTab('overview')")
             # Health's daily charts and workout calendar, the drawer and Costs by month bin with the same days
             weekly_key = "new Date(weekly([[Date.parse('2026-03-08T20:00:00Z'), 1]])[0][0] - 3 * DAY).toISOString()"
             check("…Health's weekly bins start at their own Monday",

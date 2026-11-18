@@ -291,7 +291,7 @@
 
   // an import someone else started (a connected source's first pull, connect.js): its progress and preview here
   function follow(opts) {
-    const card = box(opts && opts.container), status = node("p", {text: "Reading the records…"});
+    const card = box(opts && opts.container), status = node("p", {text: "Reading the recordsâ€¦"});
     card.replaceChildren(status);
     return poll(card, opts.profileId, opts.jobId, status);
   }

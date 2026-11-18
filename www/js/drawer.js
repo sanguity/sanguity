@@ -46,9 +46,17 @@ function resultTable(rows) {
 function rowOrig(row) {
   return row.orig ? [el("small", {class: "orig", text: `Reported ${`${row.orig[0] ?? ""} ${row.orig[1] || ""}`.trim()}${row.orig[2] ? ", ref " + row.orig[2] : ""}`})] : [];
 }
+/* a date a record gives as text, "2026-11-02" or "2026-11-02 08:10", in this person's date format (dates.js, #248);
+   a time without a zone is the wall clock the record says. Anything else (a portal's own wording) as the record has it */
+function recordDate(s) {
+  if (typeof s !== "string") return s;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return fmtD(dayTs(s));
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/.test(s)) return fmtDT(zParse(s.replace(" ", "T")));
+  return s;
+}
 function resultBody(d, eid) {
   const out = [];
-  const kv = [["Order", d.order], ["Collected", d.collected], ["Resulted", d.resulted], ["Ordered by", d.provider], ["Status", d.status], ["Specimen", d.specimen], ["Lab", d.lab], ["Diagnosis", (d.dx || []).join("; ")]].filter(x => x[1]);
+  const kv = [["Order", d.order], ["Collected", recordDate(d.collected)], ["Resulted", recordDate(d.resulted)], ["Ordered by", d.provider], ["Status", d.status], ["Specimen", d.specimen], ["Lab", d.lab], ["Diagnosis", (d.dx || []).join("; ")]].filter(x => x[1]);
   out.push(el("dl", {class: "kv"}, kv.flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
   const t = resultTable(d.rows); if (t) out.push(el("div", {class: "sect", text: "Results"}), t);
   const same = sameNotes(eid, d); if (same) out.push(same);   // the same result from another source (same.js)
@@ -69,7 +77,7 @@ function openEvent(e) {
   { const wait = detailsWait(e, body); if (wait) { showDrawer(); return wait; } }   // its details, loaded when it's opened (details.js, #217)
   if (d.type === "result") body.append(...resultBody(d, e.id));
   else if (d.type === "labday") {
-    body.append(el("div", {}, el("button", {class: "btn", text: "Show this day in Lab trends", onclick: () => { setRange(e.ts - 45*DAY, e.ts + 45*DAY); pickTab("labs"); }})));
+    body.append(el("div", {}, el("button", {class: "btn", text: "Show this day in Labs", onclick: () => { setRange(e.ts - 45*DAY, e.ts + 45*DAY); pickTab("labs"); }})));
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
       const abn = (r.rows || []).filter(x => x[4]).length;
@@ -105,7 +113,7 @@ function openEvent(e) {
       d.note ? el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}) : null,
       d.discharge ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "Estimated: no admission record was available, so the end date is the last inpatient lab result."}),
       el("button", {class: "btn", text: "Zoom timeline to this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); closeDrawer(); }}),
-      el("button", {class: "btn", text: "Lab trends during this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); pickTab("labs"); closeDrawer(); }})));
+      el("button", {class: "btn", text: "Labs during this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); pickTab("labs"); closeDrawer(); }})));
   } else if (d.type === "exercise") {
     body.append(...present(el("dl", {class: "kv"}, ...[["Activity", d.kind], ["Started", fmtDT(e.ts)], ["Ended", fmtDT(e.te)], ["Duration", d.minutes + " min"], ["Source", "Watch via Health Connect"]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
       d.hr ? el("div", {class: "sect", text: "Heart rate"}) : null, workoutZones(d.hr),   // and its zones (#197, health.js)
@@ -124,7 +132,7 @@ function openEvent(e) {
       .filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v, style: k === "Status" && /denied/.test(st) ? {color: "var(--crit)", fontWeight: 650} : null})])));
     if (d.lines && d.lines.length) body.append(el("div", {class: "sect", text: "Services billed"}), el("div", {class: "tablewrap", style: {maxHeight: "none"}}, el("table", {class: "data"},
       el("thead", {}, el("tr", {}, ["Date", "Service", "Code", "Billed"].map(h => el("th", {text: h})))),
-      el("tbody", {}, d.lines.map(l => el("tr", {}, el("td", {text: l.date || ""}), el("td", {}, l.desc || "", ...(l.denied || []).map(x => el("div", {style: {color: "var(--crit)", fontSize: "12px"}, text: "Denied: " + x}))),
+      el("tbody", {}, d.lines.map(l => el("tr", {}, el("td", {text: recordDate(l.date) || ""}), el("td", {}, l.desc || "", ...(l.denied || []).map(x => el("div", {style: {color: "var(--crit)", fontSize: "12px"}, text: "Denied: " + x}))),
         el("td", {text: l.code || ""}), el("td", {text: l.billed ? usd(l.billed) : ""})))))));
     if (/denied/.test(st)) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "\"Provider denied\" usually means the provider must correct or resubmit the claim and you aren't billed for it; \"denied\" can mean you are. The EOB on your insurer's site has the exact reason."}));
   } else if (d.type === "immunization") {   // #179: what the record says of a vaccine given, as recorded
