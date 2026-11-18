@@ -1,5 +1,5 @@
 /* Sanguity · the design tokens (#251): every page loads this first, sign-in, setup and the share page included, so
-   there is one copy of each value. Colours only for now; type, spacing, radius, elevation and motion join them later.
+   there is one copy of each value: the fonts and the colours; type, spacing, radius, elevation and motion join them.
 
    The order of the cascade layers is declared here, once, because this is the first stylesheet every page loads:
    reset, tokens, base, components, pages, utilities. A later layer wins over an earlier one whatever the selectors'
@@ -13,6 +13,10 @@
 
 @layer tokens {
 :root{
+  /* the fonts (#253): their @font-face rules and metric-matched fallbacks are at the top of base.css */
+  --font-ui:"Inter","Inter fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-display:"Source Serif 4","Source Serif fallback",Georgia,"Times New Roman",serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
   color-scheme:light;
   --page:#f9f9f7; --surface:#fcfcfb; --raised:#ffffff;
   --ink:#0b0b0b; --ink2:#52514e; --muted:#6a6964;

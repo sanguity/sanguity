@@ -740,6 +740,14 @@ Everything on `main` so far; it becomes the first tagged release.
   15 shadows. Tiles inside a card are tinted instead of bordered. What you point at eases into its hover look and a
   menu fades in (120 ms), the drawer slides in 200 ms; none of it moves when the system asks for less motion. On
   Admin → Connected sources the vendor list no longer makes the page wider than a 320 px screen.
+- **The app's own fonts** (#253): Inter for the interface and Source Serif 4 for titles (#255), both variable, served from
+  `www/fonts/` with their licences (SIL OFL 1.1) instead of whatever `system-ui` is (DejaVu Sans on Linux, where the
+  app's 550 and 650 weights fell to 400 or 700). Latin and Latin Extended only; Inter's Latin file is preloaded by every
+  page and the rest load when a page needs them. Text shows at once in Arial or Times New Roman resized to match, so
+  nothing moves when the font arrives. Nothing is fetched from anyone else (the CSP is unchanged), the browser keeps
+  the fonts for a year and the service worker keeps them for offline use (its copy is `sanguity-shell-v2` now). Code
+  and addresses are in one monospace stack. `tests/test_performance.py` has a budget for the static files
+  (`static_bytes`: stylesheets, fonts and icons, 475 KB of 500 KB).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -26,7 +26,7 @@ db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES('pwa'
 db.close()
 c = TestClient(main.app)
 out = {}
-for path in ("/manifest.webmanifest", "/sw.js", "/js/pwa.js", "/js/offline.js", "/icons/icon-192.png", "/index.html"):
+for path in ("/manifest.webmanifest", "/sw.js", "/js/pwa.js", "/js/offline.js", "/icons/icon-192.png", "/fonts/inter-v4.001-latin.woff2", "/index.html"):
     r = c.get(path)
     out[path] = {"status": r.status_code, "type": r.headers.get("content-type", ""), "cache": r.headers.get("cache-control"),
                  "csp": r.headers.get("content-security-policy")}
@@ -65,7 +65,8 @@ class Pwa(unittest.TestCase):
     def test_dev_server_sends_the_types_and_page_headers(self):
         from_nginx = re.search(r'add_header Content-Security-Policy "([^"]+)" always;', self.nginx).group(1)
         want = {"/manifest.webmanifest": "application/manifest+json", "/sw.js": "text/javascript",
-                "/js/pwa.js": "javascript", "/js/offline.js": "javascript", "/icons/icon-192.png": "image/png"}
+                "/js/pwa.js": "javascript", "/js/offline.js": "javascript", "/icons/icon-192.png": "image/png",
+                "/fonts/inter-v4.001-latin.woff2": "font/woff2"}
         for path, kind in want.items():
             got = self.served[path]
             self.assertEqual(got["status"], 200, path)
@@ -81,6 +82,14 @@ class Pwa(unittest.TestCase):
         # none of them sets its own headers, which in nginx would drop the server's no-store, CSP and the rest
         for loc in re.findall(r"location (?:= )?/(?:manifest\.webmanifest|sw\.js|icons/) \{[^\n]*\}", self.nginx):
             self.assertNotIn("add_header", loc)
+        # the fonts (#253): a long cache, as woff2, and the headers a font needs, since their own add_header replaces the
+        # server's set (no CSP needed: the pages' default-src 'self' covers font-src)
+        fonts = re.search(r"location /fonts/ \{(.*?)\n    \}", self.nginx, re.S).group(1)
+        self.assertIn("font/woff2 woff2;", fonts)
+        self.assertIn('add_header Cache-Control "public, max-age=31536000, immutable" always;', fonts)
+        self.assertIn('add_header X-Content-Type-Options "nosniff" always;', fonts)
+        self.assertTrue(all(re.fullmatch(r"[\w-]+-v\d[\d.]*-[\w-]+\.woff2|[\w-]+-OFL\.txt", n) for n in os.listdir(os.path.join(WWW, "fonts"))),
+                        "each font's file name has its version (so the long cache never serves an old one), beside its licence")
         # the CSP's default-src 'self' covers the worker and the manifest; nothing wider was added for them
         csp = re.search(r'add_header Content-Security-Policy "([^"]+)" always;', self.nginx).group(1)
         self.assertIn("default-src 'self'", csp)
@@ -113,6 +122,9 @@ class Pwa(unittest.TestCase):
             self.assertIn('<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">', html, page)
             self.assertEqual(len(re.findall(r'<meta name="theme-color" content="#[0-9a-f]{6}" media="\(prefers-color-scheme: (light|dark)\)">', html)), 2, page)
             self.assertIn('<script src="js/util.js"></script>\n<script src="js/pwa.js"></script>', html, page)
+            # Inter's Latin file, the one every page draws its text in, asked for before the styles that use it (#253)
+            self.assertIn('<link rel="preload" href="fonts/inter-v4.001-latin.woff2" as="font" type="font/woff2" crossorigin>\n'
+                          '<link rel="stylesheet" href="css/tokens.css">', html, page)
         with open(os.path.join(WWW, "index.html"), encoding="utf-8") as f:
             html = f.read()
         self.assertLess(html.index('src="js/offline.js"'), html.index('src="js/app.js"'), "before app.js asks the API anything")
@@ -130,8 +142,9 @@ class Pwa(unittest.TestCase):
         have = {p + ".html" for p in PAGES} | {"", "manifest.webmanifest"}
         for sub in ("css", "js", "icons"):
             have |= {f"{sub}/{n}" for n in os.listdir(os.path.join(WWW, sub))}
+        have |= {f"fonts/{n}" for n in os.listdir(os.path.join(WWW, "fonts")) if n.endswith(".woff2")}   # not the licences
         have.discard("js/connect-return.js")   # only for where a connected source's sign-in comes back, never offline
-        self.assertEqual(listed, have, "sw.js FILES lists every page, style, script and icon in www/")
+        self.assertEqual(listed, have, "sw.js FILES lists every page, style, script, font and icon in www/")
         self.assertFalse(any(f.startswith("api/") or "connect-return" in f for f in listed))
         # requests it answers are only the app's own files: never /api/, documents or connect/return
         self.assertIn("if (path == null) return;", sw)
@@ -141,11 +154,11 @@ class Pwa(unittest.TestCase):
 
     def test_every_app_file_is_utf8(self):
         # #248: the pages say they're UTF-8 and are sent as such, so a byte of another encoding (a Windows-1252 "…",
-        # 0x85) shows as a garbled character. Every file under www/ but the images decodes.
+        # 0x85) shows as a garbled character. Every file under www/ but the images and fonts decodes.
         bad = []
         for root, _, files in os.walk(WWW):
             for n in files:
-                if n.endswith((".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp")):
+                if n.endswith((".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".woff2")):
                     continue
                 path = os.path.join(root, n)
                 with open(path, "rb") as f:

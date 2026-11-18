@@ -800,8 +800,9 @@ condition-presets.json  Settings → Dashboard's presets by condition: labs by L
                     each (docs/condition-presets.md says how to add one)
 nginx.conf          Web server: the app's pages and security headers; passes /api/ to the app
 watch/receiver.py   phone uploads (Life Dashboard / Health Connect, Health Auto Export / Apple Health): archives, folds into SQLite, writes public/daily.json
-www/                index.html (markup), css/tokens.css (the colour tokens, light and dark, loaded by every page),
-                    css/base.css (the reset and the one focus ring, loaded by every page next),
+www/                index.html (markup), css/tokens.css (the font and colour tokens, light and dark, loaded by every page),
+                    css/base.css (the fonts, the reset and the one focus ring, loaded by every page next),
+                    fonts/ (Inter and Source Serif 4, with their licences),
                     css/app.css (in cascade layers, its head says which), js/*.js (one plain script per tab, loaded in order),
                     login.html, setup.html (first account), guide.html (getting started: a new profile's first records),
                     account.html (password, devices), sharing.html (a profile's people and how it's shared),
@@ -827,3 +828,9 @@ version for other people, for example as a hosted service, you must offer them i
 The growth charts' tables bundled in `www/js/growth-lms.json` are not Sanguity's own: the CDC's are public domain,
 and the WHO's come from the WHO's `anthro` package under the GNU General Public License v3, © World Health
 Organization ([docs/growth-charts.md](docs/growth-charts.md)).
+
+The fonts in `www/fonts/` are not Sanguity's own either, and are under the SIL Open Font License 1.1, each with its
+licence beside it: [Inter](https://rsms.me/inter/) © 2016 The Inter Project Authors, and
+[Source Serif 4](https://github.com/adobe-fonts/source-serif) © 2014–2021 Adobe, with Reserved Font Name "Source".
+They're the Latin and Latin Extended files of the variable fonts as [Fontsource](https://fontsource.org) publishes
+them (`@fontsource-variable/inter` 5.3.0 and `@fontsource-variable/source-serif-4` 5.3.1), unchanged.

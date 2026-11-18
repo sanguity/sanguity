@@ -16,6 +16,7 @@ folder and served by the real backend. On it this measures, and fails when a bud
     its preview saved
   - in a headless browser: the records page ready on each tab (from the page's request to the app's
     "sanguity:ready" mark, app.js), each tab's first draw with the period "All", and how many elements each tab has
+  - the app's static files (#253): its stylesheets, fonts and SVG icons, in bytes
 
 Times are the median of several runs and their budgets leave room for CI's slower machines; sizes and element counts
 are exact, so those budgets are tight. docs/performance.md says what each budget is for and what was measured.
@@ -59,6 +60,7 @@ BUDGETS = {
     "tab_elements": 18_000,             # elements in a tab with the period "All"
     "phone_page_ready_ms": 5000,        # the same at 375 px with the CPU four times slower, like a phone's
     "phone_tab_draw_ms": 3000,
+    "static_bytes": 500_000,            # www/'s stylesheets, fonts and SVG icons as on disk, whatever the records (#253)
 }
 RUNS = 3
 
@@ -377,6 +379,29 @@ class ServerBudgets(unittest.TestCase):
             self.assertEqual(j["state"], "done", j)
             measure("sync_requests", len(fake.requests))
         self.assertGreaterEqual(count(4, "results"), 5000)
+
+
+# ---------------------------------------------------------------- the static files' budget (#253)
+
+class StaticBudgets(unittest.TestCase):
+    def test_static_bytes(self):
+        """the stylesheets, fonts and SVG icons in www/, as on disk: what the redesign adds to the app's own files. A
+        page fetches its stylesheets and Inter's Latin file; the other fonts only when a page has a character or a
+        title in them, and the service worker keeps them all"""
+        def sizes(sub, ext):
+            folder = os.path.join(ROOT, "www", sub)
+            return {n: os.path.getsize(os.path.join(folder, n)) for n in sorted(os.listdir(folder)) if n.endswith(ext)}
+        parts = {"css": sizes("css", ".css"), "fonts": sizes("fonts", ".woff2"), "icons": sizes("icons", ".svg")}
+        self.assertTrue(parts["css"] and parts["fonts"], parts)
+        measure("static_parts_bytes", {k: sum(v.values()) for k, v in parts.items()})
+        css = b""
+        for n in parts["css"]:
+            with open(os.path.join(ROOT, "www", "css", n), "rb") as f:
+                css += f.read()
+        measure("static_css_gzip_bytes", len(gzip.compress(css, 1)))   # the stylesheets as nginx sends them
+        total = measure("static_bytes", sum(sum(v.values()) for v in parts.values()))
+        self.assertLessEqual(total, BUDGETS["static_bytes"],
+                             f"static_bytes is over its budget (docs/performance.md): {total:,} > {BUDGETS['static_bytes']:,} {parts}")
 
 
 # ---------------------------------------------------------------- the page's budgets, in a headless browser

@@ -66,6 +66,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `tab_elements` | Elements in a tab with the period **All** | 16,185 (Body and activity) | 18,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
+| `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as on disk (#253, below) | 475 KB | 500 KB |
 
 Measured on a 20-thread desktop (Intel Core Ultra 7 265K), Chromium headless. Each tab's own numbers, and the size
 of each part of the records data, are printed at the end of the test's output; `PERF_REPORT=file.json` also writes
@@ -74,6 +75,24 @@ them to a file.
 ```sh
 python3 tests/test_performance.py    # about 30 seconds; needs Playwright's Chromium, like the browser check
 ```
+
+## The static files (#253)
+
+`static_bytes` doesn't depend on the records: it is what the redesign adds to the app's own files, so a new font,
+stylesheet or icon set has to fit. It counts `www/css/*.css`, `www/fonts/*.woff2` and `www/icons/*.svg` (the icon
+sprite, once there is one, and the app's icon); the install icons (PNG) are fetched only when the app is installed.
+
+| | Bytes | What a page fetches |
+|---|---:|---|
+| Stylesheets (tokens, base, app, summary) | 118 KB (37 KB as nginx sends them) | every page: tokens, base and app, or its own `<style>` |
+| Inter, Latin | 48 KB | every page, preloaded |
+| Inter, Latin Extended | 85 KB | only a page with a character in its range (a name with ő or ł, say) |
+| Source Serif 4, Latin and Latin Extended | 122 KB and 101 KB | only a page with text in it (titles and headline values), the second as above |
+| SVG icons | 0.5 KB | |
+| All | 475 KB | |
+
+The fonts are variable, so one file holds every weight. The browser keeps them for a year (`nginx.conf`, `/fonts/`)
+and the service worker keeps them for offline use, so they're fetched once a device.
 
 ## What the budgets found, and what changed (#201)
 

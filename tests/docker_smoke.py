@@ -51,6 +51,10 @@ def main():
             st, h, _ = req(path, signed_in=False)
             check(f"{path} is served as {kind}, not stored", st == 200 and kind in (h.get("Content-Type") or "")
                   and h.get("Cache-Control") == "no-store" and "default-src 'self'" in (h.get("Content-Security-Policy") or ""), (st, h.get("Content-Type")))
+        # the fonts (#253): as woff2, kept by the browser for a year (each file's name has its version)
+        st, h, body = req("/fonts/inter-v4.001-latin.woff2", signed_in=False)
+        check("a font is served as woff2 with a long cache", st == 200 and body[:4] == b"wOF2" and h.get("Content-Type") == "font/woff2"
+              and "max-age=31536000" in (h.get("Cache-Control") or "") and h.get("X-Content-Type-Options") == "nosniff", (st, h.get("Content-Type"), h.get("Cache-Control")))
         for old in ("/data.json", "/settings.json", "/files/demo-report.pdf", "/records/", "/watch/daily.json"):
             check(f"{old} is not served", req(old, signed_in=False)[0] == 404)
 

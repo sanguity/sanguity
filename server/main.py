@@ -1409,7 +1409,7 @@ app.include_router(__import__("server.routes_meds", fromlist=["router"]).router)
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here
     from fastapi.staticfiles import StaticFiles
 
-    for sub in ("css", "js", "icons"):
+    for sub in ("css", "js", "fonts", "icons"):
         app.mount(f"/{sub}", StaticFiles(directory=os.path.join(WWW, sub)), name=sub)
 
     # install as a phone app (#56): as nginx.conf sends them
