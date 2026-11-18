@@ -414,7 +414,8 @@ const placeAt = (node, at) => { for (const [k, v] of Object.entries(at)) node.st
   }, true);
   document.addEventListener("focusin", ev => {
     const t = ev.target;
-    if (t.matches && t.matches("[data-tip]:focus-visible")) show(t, "focus");
+    // brought wholly into view first, in a strip or table that scrolls sideways: focus leaves one half out (#372)
+    if (t.matches && t.matches("[data-tip]:focus-visible")) { t.scrollIntoView({block: "nearest", inline: "nearest"}); show(t, "focus"); }
     else if (on && by === "focus") hide();
   });
   document.addEventListener("focusout", ev => { if (ev.target === on && by === "focus") hide(); });
