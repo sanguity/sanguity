@@ -319,19 +319,19 @@ async function loadLabmaps() {
 
 /* ---------------------------------------------------------------- requiring two-factor sign-in, install activity */
 async function loadRequireTf() {
-  const req = $("#reqTf");
+  const req = $("#reqTf");   // its replies in #reqTfMsg, right under it (#323): #userMsg is below the account form
   req.checked = (await call("settings")).require_2fa;
   req.onchange = async () => {
     // turning it on is asked first while some accounts have no second factor (#314): each is then refused on every
     // request until it sets one up (server/main.py, user). Turning it off isn't: it takes nothing away
     if (req.checked) {
       let list;
-      try { list = await call("users"); } catch (e) { req.checked = false; say("#userMsg", e.message, true); return; }
+      try { list = await call("users"); } catch (e) { req.checked = false; say("#reqTfMsg", e.message, true); return; }
       const without = list.filter(u => !u.disabled && !u.two_factor), n = without.length;
       // without one of your own the server refuses it (main.py, change_server_settings): said at once, not asked (#318)
       if (without.some(u => u.id === ME.user.id)) {
         req.checked = false;
-        say("#userMsg", ["To require it for everyone, first turn on two-factor sign-in (the authenticator app) or add a passkey " +
+        say("#reqTfMsg", ["To require it for everyone, first turn on two-factor sign-in (the authenticator app) or add a passkey " +
           "for your own account, under ", el("a", {href: "account.html#security", text: "Account → Sign-in & security"}), "."], true);
         return;
       }
@@ -340,8 +340,8 @@ async function loadRequireTf() {
           "An account without one can't open any records until it has one: Sanguity asks it to set one up first. " +
           "You can turn this off again at any time."]})) { req.checked = false; return; }
     }
-    try { await call("settings", "PATCH", {require_2fa: req.checked}); say("#userMsg", req.checked ? "Everyone now needs two-factor sign-in." : "Two-factor sign-in is now optional."); }
-    catch (e) { req.checked = !req.checked; say("#userMsg", e.message, true); }
+    try { await call("settings", "PATCH", {require_2fa: req.checked}); say("#reqTfMsg", req.checked ? "Everyone now needs two-factor sign-in." : "Two-factor sign-in is now optional."); }
+    catch (e) { req.checked = !req.checked; say("#reqTfMsg", e.message, true); }
   };
 }
 /* account events only: who created, disabled or reset which account, and the server's own changes (no records) */
