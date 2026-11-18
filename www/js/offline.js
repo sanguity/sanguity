@@ -145,7 +145,13 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
         if (/^(data|blob):/.test(f.getAttribute("src"))) continue;
         f.replaceWith(el("p", {class: "hint offline-note", text: "Documents aren't kept on this device. Open this one when you're back online."}));
       }
-      for (const a of body.querySelectorAll("a[href]:not([aria-disabled])")) if (!a.getAttribute("href").startsWith("#")) { a.setAttribute("aria-disabled", "true"); a.title = why; }
+      // a link not followed: its tip (#261) is why, in place of what it would do, and its name no longer says it
+      // opens a new tab (#378); no title, which would be a second tooltip
+      for (const a of body.querySelectorAll("a[href]:not([aria-disabled])")) if (!a.getAttribute("href").startsWith("#")) {
+        a.setAttribute("aria-disabled", "true"); a.dataset.tip = why;
+        const name = a.getAttribute("aria-label");
+        if (name) a.setAttribute("aria-label", name.replace(/,? opens in a new tab$/, ""));
+      }
       for (const box of body.querySelectorAll(".edits:not([data-offline])")) {
         box.dataset.offline = "1";
         for (const c of box.querySelectorAll("button, input, select, textarea")) { c.disabled = true; c.title = why; }

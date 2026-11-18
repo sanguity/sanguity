@@ -11269,6 +11269,7 @@ def main():
             check("offline records (#217): the copy keeps the details of the records opened here, with their records' revision, after a reload too",
                   look["files"] == len(docs) and look["claims"] == 0 and look["listed"] and bool(look["rev"]), look)
             # offline: that profile, read-only, with when it was loaded
+            test_pages = ph.evaluate("TEST_PAGES")   # (#378, below)
             ctx.set_offline(True)
             ph.reload()
             until(LOADED, 20000)
@@ -11298,8 +11299,58 @@ def main():
             miss = ph.evaluate("document.querySelector('#dbody .details-missed')?.textContent || ''")
             check("offline (#217): a record not opened before says its details weren't kept, and still shows its title and source",
                   "weren't kept on this device" in miss and ph.evaluate("document.getElementById('dtitle').textContent.length > 0 && !!document.querySelector('#dbody p.source')"), miss)
-            ph.evaluate("closeDrawer()")
+            # (#378) the panel's links that need the server (a result's source, its "What is this test?" link, a journal
+            # entry's photo): not followed, their tip and description the reason, with no title (a second tooltip) and no
+            # name that says it opens a new tab. The test pages aren't kept offline (GET lab-test-pages needs the server)
+            # and no journal entry has a photo by now, so both are given to the page here as if they were
+            LINKS378 = """() => [...document.querySelectorAll('#dbody a[href]:not([href^="#"])')].map(a => ({
+                kind: a.matches('.src-link') ? 'source' : a.matches('.test-page') ? 'test page' : a.closest('.jpic') ? 'photo' : a.textContent.trim().slice(0, 30),
+                tip: a.dataset.tip || null, title: a.getAttribute('title'), off: a.getAttribute('aria-disabled'), name: a.getAttribute('aria-label')}))"""
+            WHY378 = "Needs the server: you're offline"
+            ph.evaluate("t => { TEST_PAGES = t; }", test_pages)
+            ph.evaluate("id => openEvent(byId.get(id))", day[0])
+            until("document.querySelector('#dbody a.test-page[aria-disabled]') !== null", 5000)
+            links = ph.evaluate(LINKS378)
+            # the pointer out of the way, in the screen's corner (over the backdrop, or the sheet's corner): left where an
+            # earlier step put it, it could be over another tip's element, the ✕ (seen once), whose hover tip replaces the
+            # focus one. Each link's tip read once it has focus and its tip is shown, or after 2 s
+            ph.mouse.move(0, 0)
+            ph.keyboard.press("Shift")   # focus from the keyboard shows the tip (:focus-visible)
+            TIP378 = "sel => [(t => t && t.matches(':popover-open') && t.textContent)(document.getElementById('sgTip')), document.activeElement === document.querySelector(sel)]"
+            def tip378(sel):
+                ph.focus(sel)
+                for _ in range(20):
+                    tip = ph.evaluate(TIP378, sel)
+                    if tip[0] and tip[1]:
+                        break
+                    ph.wait_for_timeout(100)
+                return [tip[0] if tip[1] else ["focus elsewhere", ph.evaluate("document.activeElement.outerHTML.slice(0, 120)")], ax_said(ph, sel)]
+            shown = {}
+            for kind, sel in (("source", "#dbody a.src-link"), ("test page", "#dbody a.test-page")):
+                shown[kind] = tip378(sel)
+            ph.evaluate("""() => { DATA.journal = [{id: 9378, kind: 'symptom', t: '2026-11-01T09:00', title: 'Rash (browser check)', by: 'demo', at: Date.now() / 1000,
+                photos: [{id: 9378, alt: 'Red patch, fictional'}]}]; journalLoad(); return openEvent(JOURNAL[0]); }""")
+            until("document.querySelector('#dbody .jpic a[aria-disabled]') !== null", 5000)
+            links += ph.evaluate(LINKS378)
+            shown["photo"] = tip378("#dbody .jpic a")
+            check("offline (#378): the panel's source, test page and photo links say why they aren't followed as their tip and description, "
+                  "with no title and no name that says they open a new tab",
+                  {"source", "test page", "photo"} <= {x["kind"] for x in links}
+                  and all(x["tip"] == WHY378 and x["title"] is None and x["off"] == "true" and "new tab" not in (x["name"] or "") for x in links)
+                  and all(tip == WHY378 and said and said[1] == WHY378 and "new tab" not in said[0] for tip, said in shown.values()), [links, shown])
+            ph.evaluate("DATA.journal = []; journalLoad(); closeDrawer()")
             ctx.set_offline(False)
+            # online again: the links are followed, with their own tips and names
+            ph.reload()
+            until(LOADED + " && booted", 20000)
+            ph.evaluate("id => openEvent(byId.get(id))", day[0])
+            until("document.querySelector('#dbody a.test-page') !== null", 5000)
+            links = ph.evaluate(LINKS378)
+            check("…online again, the links have their own tips back, followed, a test page's name saying it opens a new tab",
+                  {"source", "test page"} <= {x["kind"] for x in links}
+                  and all(x["off"] is None and x["title"] is None and x["tip"] and x["tip"] != WHY378 for x in links if x["kind"] in ("source", "test page"))
+                  and all(x["name"].endswith("opens in a new tab") for x in links if x["kind"] == "test page"), links)
+            ph.evaluate("closeDrawer()")
 
             # turned off: the copy goes
             ph.goto(base + "/account.html#offline")
