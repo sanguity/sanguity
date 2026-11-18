@@ -916,7 +916,7 @@ Everything on `main` so far; it becomes the first tagged release.
   and each kind of record have a Lucide icon before their words, hidden from screen readers. A kind's icon is its key
   on the Timeline, in its lane's colour: on its chip (grey while it's hidden) and on each of its rows in the list, in
   place of the coloured dash; one map in `core.js` (`KIND_ICON`) gives every kind its icon. The sprite holds 57 icons,
-  10.5 KB; `static_bytes` is 389.8 KB of 390 KB, and the service worker keeps the new sprite (`sanguity-shell-v5`).
+  10.5 KB, and the service worker keeps the new sprite (`sanguity-shell-v5`).
 - **Icons' leftovers** (#355): Settings → Display's theme help names Dark mode and Light mode in your menu, not a "◐
   button" that's gone, and the README says "the pencil" for rename. The Labs legends for the journal, doses and cycle
   tracking keep each mark with its words (● symptom, ◆ taken late, ○ ovulation test) where a phone wraps them. In the
@@ -949,6 +949,9 @@ Everything on `main` so far; it becomes the first tagged release.
   ✎'s and ?'s description. Titles that said what's on no screen (the Body and activity tab, the milestone preset,
   Clear dates, Connect, Undo link, Same result, Not the same, Hide, a payment's memo) are tips, and a description
   the name already says (the ✎'s "Rename this lab", a test page link's title) is left out.
+- **The static files' budget is 400 KB** (`tests/test_performance.py`, `docs/performance.md`): Redesign 3's icon sprite
+  (10.5 KB, 57 icons) and its components took the stylesheets from 140 to 156 KB, 393.6 KB in all, past the 390 KB
+  left for them in #328; 6.4 KB of room is left, and more has to be argued for.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
