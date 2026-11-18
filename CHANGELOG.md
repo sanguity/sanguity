@@ -709,6 +709,10 @@ Everything on `main` so far; it becomes the first tagged release.
   in the person's date format ("2 Jan 2024 to 3 Nov 2025"), as in the import preview. The line under a typed-in record
   writes only the record's own dates that way, which the server now sends apart (`summary_parts`); a file's name or a
   title with a date in it ("scan-2026-11-02.pdf") stays as typed.
+- **Requiring two-factor sign-in when you have none yourself** (#318): Admin → Accounts asked first and then the
+  server refused it. It isn't asked now: it says at once to turn on two-factor sign-in or add a passkey for your own
+  account, with a link to Account → Sign-in & security, and the box stays unticked. With a second factor of your own,
+  the question names how many other accounts have none.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

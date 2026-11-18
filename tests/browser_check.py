@@ -8361,6 +8361,19 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/admin.html#accounts")
             page.wait_for_function("document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
+            # #318: the only account, with no second factor of its own: requiring two-factor for everyone isn't asked (the
+            # server would refuse it); it says at once to turn on your own first, with the way there, and stays off.
+            # Requiring it with a second factor of your own is asked: the #314 check, below
+            page.click("#reqTf")
+            page.wait_for_function("document.getElementById('userMsg').textContent.includes('your own account')", timeout=10000)
+            settle(300)
+            tf_msg = js("[document.getElementById('userMsg').textContent, document.getElementById('userMsg').classList.contains('bad'), "
+                        "document.querySelector('#userMsg a')?.getAttribute('href')]")
+            check("with no second factor of your own, requiring two-factor for everyone isn't asked: it says to turn on yours first, "
+                  "with a link to Account → Sign-in & security, and stays off (#318)",
+                  not js("document.querySelector('dialog.sg-ask[open]')") and tf_msg[0].startswith("To require it for everyone, first turn on two-factor sign-in")
+                  and tf_msg[1:] == [True, "account.html#security"] and not page.is_checked("#reqTf")
+                  and js("fetch('api/settings').then(r => r.json()).then(s => s.require_2fa)") is False, tf_msg)
             page.fill("#userName", "alex")
             page.click("#userNew button[type=submit]")
             page.wait_for_function("document.querySelector('#userMsg code')", timeout=10000)
@@ -8660,9 +8673,11 @@ def main():
             page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && !r.querySelector('.tag') && r.textContent.includes('Make admin'))", timeout=10000)
             check("…confirming removes it", not alex_is()["is_admin"])
             # #314: requiring two-factor sign-in for everyone asks first, saying how many accounts have no second factor;
-            # Cancel changes nothing. Turning it off again isn't asked
+            # Cancel changes nothing. Turning it off again isn't asked. The admin has a second factor now, so the count
+            # is of other accounts (without one, it isn't asked at all: #318, above)
             required = lambda: js("fetch('api/settings').then(r => r.json()).then(s => s.require_2fa)")  # noqa: E731
             lacking = js("fetch('api/users').then(r => r.json()).then(l => l.filter(u => !u.disabled && !u.two_factor).length)")
+            mine_has = js("fetch('api/users').then(r => r.json()).then(l => l.find(u => u.id === ME.user.id).two_factor)")
             page.click("#reqTf")
             page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
             tf_focus = js(focus_js)
@@ -8671,7 +8686,7 @@ def main():
             check("Require two-factor sign-in for everyone asks first, in red with focus on Cancel, saying how many accounts have no second factor (#314)",
                   asked[0] == "Require two-factor sign-in for everyone?" and lacking >= 1
                   and asked[1].startswith("1 account doesn't" if lacking == 1 else f"{lacking} accounts don't")
-                  and tf_focus == ["alertdialog", "Cancel"], [asked, tf_focus, lacking])
+                  and mine_has and "yours" not in asked[1].lower() and tf_focus == ["alertdialog", "Cancel"], [asked, tf_focus, lacking, mine_has])
             check("…Cancel leaves it off", not page.is_checked("#reqTf") and required() is False)
             page.click("#reqTf")
             answer_ask(page)

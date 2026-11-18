@@ -327,10 +327,16 @@ async function loadRequireTf() {
     if (req.checked) {
       let list;
       try { list = await call("users"); } catch (e) { req.checked = false; say("#userMsg", e.message, true); return; }
-      const without = list.filter(u => !u.disabled && !u.two_factor), n = without.length, mine = without.some(u => u.id === ME.user.id);
-      const who = n === 1 ? (mine ? "Your account doesn't" : "1 account doesn't") : `${n} accounts${mine ? ", yours included," : ""} don't`;
+      const without = list.filter(u => !u.disabled && !u.two_factor), n = without.length;
+      // without one of your own the server refuses it (main.py, change_server_settings): said at once, not asked (#318)
+      if (without.some(u => u.id === ME.user.id)) {
+        req.checked = false;
+        say("#userMsg", ["To require it for everyone, first turn on two-factor sign-in (the authenticator app) or add a passkey " +
+          "for your own account, under ", el("a", {href: "account.html#security", text: "Account → Sign-in & security"}), "."], true);
+        return;
+      }
       if (n && !await ask({title: "Require two-factor sign-in for everyone?", danger: true, action: "Require it", message: [
-          `${who} have a second factor yet (an authenticator app or a passkey).`,
+          `${n === 1 ? "1 account doesn't" : `${n} accounts don't`} have a second factor yet (an authenticator app or a passkey).`,
           "An account without one can't open any records until it has one: Sanguity asks it to set one up first. " +
           "You can turn this off again at any time."]})) { req.checked = false; return; }
     }
