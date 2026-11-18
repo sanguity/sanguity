@@ -773,6 +773,50 @@ def axe_check(page, label):
     return serious, other
 
 
+# #320: on a phone an account page's table (.acct .tbl) hides its header row, and each cell shows its column's name
+# before its value instead (labelCells in util.js, td::before in app.css). Of each such table drawn: where it is, whether
+# its headings are hidden, its rows shown, and its cells labelled; and what's wrong: a cell with a value (text or a
+# control) under a named column that isn't labelled with that name, or a label where there should be none (the headings
+# shown, an empty heading over a row's buttons, a cell spanning columns or an empty one)
+CELL_LABELS_JS = r"""() => {
+  const out = {tables: [], problems: []};
+  for (const t of document.querySelectorAll('main.acct table.tbl')) {
+    if (!t.checkVisibility() || !t.tHead) continue;
+    const where = ((t.closest('[id]') || {}).id || '') + ' table.' + t.className.trim().split(/\s+/).join('.');
+    const hidden = getComputedStyle(t.tHead).display === 'none', heads = [...t.tHead.rows[0].cells].map(h => h.textContent.trim());
+    let rows = 0, cells = 0;
+    for (const r of [...t.tBodies].flatMap(b => [...b.rows]).filter(r => r.checkVisibility())) {
+      rows++;
+      let col = 0;
+      for (const c of r.cells) {
+        const head = c.colSpan === 1 && c.tagName === 'TD' ? heads[col] : '';
+        col += c.colSpan;
+        const value = c.textContent.trim() || (c.querySelector('input, select, textarea, button, img, svg') ? '(a control)' : '');
+        const shows = getComputedStyle(c, '::before').content, want = hidden && head && value ? JSON.stringify(head) : 'none';
+        if (shows === want || (want === 'none' && shows === 'normal')) { if (want !== 'none') cells++; }
+        else out.problems.push(`${where}: "${value.slice(0, 30)}" under "${head}" shows ${shows}, not ${want}`);
+      }
+    }
+    out.tables.push([where, hidden, rows, cells]);
+  }
+  return out;
+}"""
+
+
+def cell_labels(page, where):
+    """#320: the account page's tables drawn now, each [where, headings hidden, rows, cells labelled], and what's wrong
+    (CELL_LABELS_JS), with any table whose headings are hidden but still given to screen readers as column headers:
+    there the label drawn before each value is the one a screen reader reads, so it isn't heard twice."""
+    got = page.evaluate(CELL_LABELS_JS)
+    bad = [f"{where}: {p}" for p in got["problems"]]
+    tables = page.locator("main.acct table.tbl")
+    for i in range(tables.count()):
+        t = tables.nth(i)
+        if t.is_visible() and t.evaluate("t => !!t.tHead && getComputedStyle(t.tHead).display === 'none'") and "columnheader" in t.aria_snapshot():
+            bad.append(f"{where}: table.{t.get_attribute('class')} gives its hidden headings to screen readers too")
+    return got["tables"], bad
+
+
 # a stop of Tab (#202): what has focus, whether it looks any different from when it hasn't (2.4.7), and whether all of
 # it is under a fixed or sticky bar (2.4.11). Focus is taken away and given back to compare, which keeps :focus-visible.
 FOCUS_STOP_JS = r"""(() => {
@@ -1170,6 +1214,9 @@ def main():
         hp.set_viewport_size({"width": 375, "height": 800})
         hp.wait_for_timeout(200)
         check("share links: the shared page fits 375 px", hp.evaluate("document.documentElement.scrollWidth") <= 375, hp.evaluate("document.documentElement.scrollWidth"))
+        cl_tables, cl_bad = cell_labels(hp, "share.html")   # #320: each table's values under their columns' names
+        check("share links: …each table's cells labelled with their columns' names, its headings hidden (#320)",
+              not cl_bad and any(t[1] and t[3] for t in cl_tables), cl_bad[:6] or cl_tables)
         shared_bad = phone_fits(hp, "light")   # #61: and no control cut off or overlapping, in light and dark
         shared_axe = axe_check(hp, "share.html, light")   # #202: and axe-core's WCAG A and AA rules, under the real CSP
         hp.emulate_media(color_scheme="dark")
@@ -1183,6 +1230,9 @@ def main():
         strict.set_viewport_size({"width": 375, "height": 800})
         strict.wait_for_timeout(200)
         check("share links: the owner's panel fits 375 px", strict.evaluate("document.documentElement.scrollWidth") <= 375, strict.evaluate("document.documentElement.scrollWidth"))
+        cl_tables, cl_bad = cell_labels(strict, "Sharing → Share links")
+        check("share links: …the list's cells labelled with their columns' names: Link, Shows, Ends, Opened (#320)",
+              not cl_bad and any(t[1] and t[3] >= 4 for t in cl_tables), cl_bad[:6] or cl_tables)
         strict.set_viewport_size({"width": 1400, "height": 900})
         strict.goto(base + "/sharing.html?profile=1#activity")   # the same page: Activity is read afresh when it's opened
         sl_until(strict, "[...document.querySelectorAll('#actBody .activity tbody tr')].some(r => r.textContent.includes('opened the share link “Dr. Fictional”'))")
@@ -5299,6 +5349,12 @@ def main():
             page.click("#manMsg a:text-is('See the height history')")
             page.wait_for_selector("#about .about-heights", timeout=10000)
             check("…and is there, as typed", "5 ft 7 in" in page.inner_text("#about .about-heights"), page.inner_text("#about .about-heights")[:200])
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            cl_tables, cl_bad = cell_labels(page, "Sharing → About this person")
+            check("…at 375 px with its date and height under their columns' names (#320)",
+                  not cl_bad and any("about-heights" in t[0] and t[1] and t[3] >= 2 for t in cl_tables), cl_bad[:6] or cl_tables)
+            page.set_viewport_size({"width": 1400, "height": 900})
             js("fetch('api/profiles/2/person/heights/2026-11-02', {method: 'DELETE', headers: {'X-Sanguity': '1'}})")
             js("localStorage.setItem('ht-profile', '1')")
             page.goto(base + "/")
@@ -5688,6 +5744,13 @@ def main():
             check("…Check a backup restores a copy, says it's good with the counts, and the copy is gone",
                   res.startswith("✓ Good.") and "The copy was deleted" in res and js("document.querySelectorAll('#bkResult .bk-counts:not(.bk-watch-counts) tbody tr').length") == 6
                   and sorted(os.listdir(bk_dir)) == made and "✓ good" in page.inner_text("#bkList tbody"), (res[:300], os.listdir(bk_dir)))
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            cl_tables, cl_bad = cell_labels(page, "Admin → Backups")
+            check("…at 375 px the backups' cells are labelled with their columns' names, the counts a table with its headings and no labels (#320)",
+                  not cl_bad and any("bk-list" in t[0] and t[1] and t[3] >= 3 for t in cl_tables)
+                  and any("bk-counts" in t[0] and not t[1] and not t[3] for t in cl_tables), cl_bad[:6] or cl_tables)
+            page.set_viewport_size({"width": 1400, "height": 900})
             bk_watch = js("document.getElementById('bkWatch').textContent")   # (#227)
             check("…(#227) the receiver's data is in it: for how many profiles, when it was last saved, the upload that came after",
                   bk_watch.startswith("In the backups: the receiver's data for 1 profile, as the receiver last saved it,") and "every upload it archived" in bk_watch
@@ -5795,6 +5858,9 @@ def main():
             check("…and the address isn't kept on the page once done", js("document.getElementById('calUrl').value") == "")
             settle(200)
             check("the Sharing page's calendar feed fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            cl_tables, cl_bad = cell_labels(page, "Sharing → Calendar feed")
+            check("…its feeds' cells labelled with their columns' names: Person, Says, Last fetched (#320)",
+                  not cl_bad and any(t[0].startswith("calOthers") and t[1] and t[3] >= 3 for t in cl_tables), cl_bad[:6] or cl_tables)
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
@@ -6277,6 +6343,9 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("the visit summary and its preview fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            cl_tables, cl_bad = cell_labels(page, "Sharing → Visit summary")
+            check("…its preview's tables with each cell under its column's name (#320)",
+                  not cl_bad and sum(1 for t in cl_tables if t[0].startswith("preview") and t[1] and t[3]) >= 2, cl_bad[:6] or cl_tables)
             page.set_viewport_size({"width": 1400, "height": 900})
             with page.expect_download(timeout=20000) as dl:
                 page.click("#download")
@@ -8362,6 +8431,29 @@ def main():
             check("account page lists devices, and nothing of the server's (#167) or of profiles (#168)",
                   js("!document.getElementById('tab-admin') && !document.getElementById('users') && !document.getElementById('labmaps') && !document.getElementById('secNotice')")
                   and js("!document.getElementById('acctTabs') && !document.getElementById('profiles') && !document.getElementById('profList')"))
+            # #320: on a phone the account pages' tables hid their headings and left the values on their own (Admin's "off" and
+            # "10", two dates per device): each cell is labelled with its column's name now, the one name a screen reader
+            # hears as the hidden headings are hidden from it too; axe-core clean, light and dark
+            page.set_viewport_size({"width": 375, "height": 800})
+            cl_seen, cl_bad, cl_axe = {}, [], []
+            for path, ready in (("/account.html#sessions", "#sessList tbody tr"), ("/admin.html#users", "#userList tbody tr"),
+                                ("/admin.html#labmaps", "#labmapList tbody tr"), ("/admin.html#installLog", "#acctLog tbody tr"),
+                                ("/sharing.html?profile=1#people", "#memberList tbody tr"), ("/sharing.html?profile=1#activity", "#actBody tbody tr")):
+                page.goto(base + path)
+                page.wait_for_selector(ready, timeout=10000)
+                settle(200)
+                tables, bad = cell_labels(page, path)
+                cl_seen[path] = [t for t in tables if t[1] and t[3]]
+                cl_bad += bad
+                for theme in ("light", "dark"):
+                    page.emulate_media(color_scheme=theme)
+                    cl_axe += axe_check(page, f"{path} at 375 px, {theme}")[0]
+                page.emulate_media(color_scheme=None)
+            check("at 375 px every account page's table labels each cell with its column's name: Account (sessions), Admin (accounts, lab "
+                  "names, activity), Sharing (people, activity), its headings hidden from screen readers too (#320)",
+                  not cl_bad and all(cl_seen.values()), cl_bad[:6] or cl_seen)
+            check("…and axe-core finds nothing serious or critical there, light and dark (#320)", not cl_axe, cl_axe[:6])
+            page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/account.html#users")   # the old Admin tab's addresses open the Admin page
             page.wait_for_url("**/admin.html#users", timeout=10000)
             page.wait_for_function("!document.getElementById('users').hidden && document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
@@ -8825,6 +8917,12 @@ def main():
             pk.locator("#pkBody").get_by_role("button", name="Add a passkey").click()
             pk.wait_for_selector("#pkList tbody tr", timeout=10000)
             check("a passkey is added and listed", "never" in pk.inner_text("#pkList"), pk.inner_text("#pkMsg"))
+            pk.set_viewport_size({"width": 375, "height": 800})
+            pk.wait_for_timeout(200)
+            cl_tables, cl_bad = cell_labels(pk, "Account → Passkeys")
+            check("…at 375 px with its name, added and last used under their columns' names, the buttons unlabelled (#320)",
+                  not cl_bad and any(t[0].startswith("pkList") and t[1] and t[3] == 3 * t[2] for t in cl_tables), cl_bad[:6] or cl_tables)
+            pk.set_viewport_size({"width": 1400, "height": 900})
             menu_click(pk, "#logout")
             pk.wait_for_url("**/login.html", timeout=10000)
             check("sign-in page offers a passkey", pk.is_visible("#pk") and pk.inner_text("#pk") == "Sign in with a passkey")

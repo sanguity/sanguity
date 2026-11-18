@@ -384,6 +384,8 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
   .acct .tbl thead{display:none}
   .acct .tbl tr{display:grid;grid-template-columns:1fr auto;gap:2px 8px;border-top:1px solid var(--grid);padding:6px 0}
   .acct .tbl td{border:0;padding:0}
+  /* the hidden headings' names, on the cells (labelCells, util.js, #320): read once, as the headings are gone too */
+  .acct .tbl td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:12px;font-weight:550}
 }
 /* import page (import.html) */
 .imp .imp-tabs{margin:14px 0 4px}
@@ -1248,6 +1250,7 @@ main[data-group=backups] #backupNotice{display:none}   /* the Backups group says
   .acct .tbl.bk-counts thead{display:table-header-group}
   .acct .tbl.bk-counts tr{display:table-row}
   .acct .tbl.bk-counts td{border-top:1px solid var(--grid);padding:6px 8px 6px 0}
+  .acct .tbl.bk-counts td[data-label]::before{content:none}   /* its headings are shown */
 }
 
 
@@ -1395,6 +1398,7 @@ svg text.growth-pct{font-size:10px}
   .acct .tbl.measures thead{display:table-header-group}
   .acct .tbl.measures tr{display:table-row}
   .acct .tbl.measures td{border-top:1px solid var(--grid);padding:6px 8px 6px 0}
+  .acct .tbl.measures td[data-label]::before{content:none}   /* its headings are shown */
 }
 .acct .tbl.measures th,.acct .tbl.measures td{white-space:nowrap}
 

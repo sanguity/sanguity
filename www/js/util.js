@@ -176,6 +176,39 @@ const smoothly = () => matchMedia("(prefers-reduced-motion: reduce)").matches ? 
     if (main.getBoundingClientRect().top < 0) main.scrollIntoView();
   }}));
 })();
+/* A table's column names on its cells (#320): on a phone an .acct .tbl hides its header row and each row is a little
+   card (app.css), so each cell shows its column's name before its value instead, from data-label (td::before).
+   labelCells(table) copies the names; a cell under an empty heading (a row's buttons), spanning columns or with
+   nothing in it gets none.
+   It's run here for every table.tbl on the account pages as it's drawn or redrawn, so no page labels its own. */
+function labelCells(table) {
+  const heads = table.tHead && table.tHead.rows[0] ? [...table.tHead.rows[0].cells].flatMap(th => Array(th.colSpan).fill(th.colSpan > 1 ? "" : th.textContent.trim())) : [];
+  for (const body of table.tBodies) for (const row of body.rows) {
+    let col = 0;
+    for (const c of row.cells) {
+      const name = c.colSpan === 1 && c.tagName === "TD" && (c.textContent.trim() || c.querySelector("input, select, textarea, button, img, svg"))
+        ? heads[col] || "" : "";
+      col += c.colSpan;
+      if (name && c.dataset.label !== name) c.dataset.label = name;
+      else if (!name && c.hasAttribute("data-label")) c.removeAttribute("data-label");
+    }
+  }
+}
+(() => {
+  const main = document.querySelector("main.acct");
+  if (!main) return;
+  const all = root => root.querySelectorAll ? [...(root.matches("table.tbl") ? [root] : []), ...root.querySelectorAll("table.tbl")] : [];
+  all(main).forEach(labelCells);
+  new MutationObserver(recs => {
+    const seen = new Set();
+    for (const r of recs) {
+      const t = r.target.closest && r.target.closest("table.tbl");
+      if (t) seen.add(t);
+      for (const n of r.addedNodes) for (const x of all(n)) seen.add(x);
+    }
+    seen.forEach(labelCells);
+  }).observe(main, {childList: true, subtree: true});
+})();
 
 /* ---- the app's own dialog (#210)
    ask({title, message, action, danger, cancel, field}): asks before doing something, in a <dialog> opened with
