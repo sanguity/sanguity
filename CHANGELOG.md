@@ -877,6 +877,10 @@ Everything on `main` so far; it becomes the first tagged release.
   default took that default away. It now puts the one view back into the views as they are, in its place, keeping
   today's default. Settings' Undo puts a setting back only if it still holds what that save wrote (one changed since is
   left as it is, and said to be), and no longer redraws a section with changes not saved: they're kept.
+- **An import's Undo asks first** (#360): the Undo on an import's toast, and on records typed in, removed the import at
+  one tap, though it can't be reversed (and typed records' form is cleared by then). It's "Undo…" now and asks in
+  Import history's words; Keep it leaves the import and the toast. The typed records' Open Labs charts the labs just
+  typed, as the line's link does, instead of opening Labs without them.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

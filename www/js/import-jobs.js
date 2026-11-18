@@ -200,17 +200,20 @@
       j.linked ? node("p", {class: "hint", text: `${plural(j.linked, ["result", "results"])} shown once, as the same result from another source.`}) : null,
       notes(j),
       node("p", {}, node("a", {href: `index.html?profile=${pid}#timeline`, text: "See them on the timeline"})));   // its profile and tab (#208)
-    // said by a toast (#263), with the way to what came in and an Undo (Import history's, at once): the card stays
-    // as it is, no longer said itself
+    // said by a toast (#263), with the way to what came in and an Undo, which asks first in Import history's words
+    // (#360: it can't be reversed): the card stays as it is, no longer said itself
     card.removeAttribute("role"); card.removeAttribute("aria-live");
     const what = items.map(li => li.textContent);
     const labs = c.results > 0, where = labs ? "labs" : "timeline";
     toast(what.length ? `Imported ${what.slice(0, 2).join(", ")}${what.length > 2 ? " and more" : ""}.` : "Imported: nothing new.", {
       actions: [{text: labs ? "Open Labs" : "Open the timeline", href: `index.html?profile=${pid}#${where}`},
-        ...(j.import_id != null && what.length ? [{text: "Undo", onClick: () => undoImport(card, pid, j.import_id)}] : [])]});
+        ...(j.import_id != null && what.length ? [{text: "Undo…", onClick: () => undoImport(card, pid, j, what)}] : [])]});
   }
-  /* the Undo of a toast: Import history's, the card then saying it's undone */
-  async function undoImport(card, pid, id) {
+  /* the Undo of a toast: Import history's, asked first as it asks (false: kept), the card then saying it's undone */
+  async function undoImport(card, pid, j, what) {
+    if (!await ask({title: "Undo this import?", danger: true, action: "Undo import", cancel: "Keep it",
+                    message: `Remove everything this ${j.label || j.importer} import brought: ${what.join(", ").toLowerCase()}, and the files uploaded for it. This can't be reversed; you can import the files again.`})) return false;
+    const id = j.import_id;
     const r = await api(`profiles/${encodeURIComponent(pid)}/imports/${id}/undo`, {method: "POST"});
     if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(typeof e.detail === "string" ? e.detail : `the server answered ${r.status}`); }
     card.replaceChildren(node("p", {}, node("b", {text: "Undone."}), " The import's records are gone from the profile; Import history lists it as undone."));
