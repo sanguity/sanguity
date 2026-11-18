@@ -30,6 +30,8 @@ Everything on `main` so far; it becomes the first tagged release.
 - An account page in three tabs (#88).
 - A security review against OWASP ASVS (`docs/security-review.md`) with its accepted deviations (#79, #81).
 - `docker/dev-stack.sh`: a test copy of any branch beside a real install, also as a TrueNAS custom app (#14).
+  `--compose FILE` keeps the app definition out of the branch's hands; it fetches only a branch or tag of that
+  name and refuses links in the code that point outside it.
 - Installs on 32-bit ARM, checked weekly in CI (#80), and weekly dependency updates by Dependabot; the update
   command pulls patched base images (#82).
 

@@ -28,6 +28,8 @@
 #   --tz ZONE              time zone (default: this machine's)
 #   --public-origin URL    an HTTPS address in front of it (e.g. tailscale serve), for passkeys and the CSRF check
 #   --truenas-app          deploy as a TrueNAS custom app even when Docker is reachable
+#   --compose FILE         use this compose.yaml (kept outside --dir/src) instead of the branch's own, so a branch
+#                          supplies only code: it can't add mounts, ports, privileges or services
 #   --down                 stop the test copy (its data stays in --dir)
 #   --logs                 follow its logs (compose project only; for an app use the Apps page)
 #   --reset                stop it and delete its database, profiles and secrets (src/ and config/ stay)
@@ -35,7 +37,7 @@
 set -euo pipefail
 
 REPO=https://github.com/sanguity/sanguity
-DIR="" BRANCH=main NAME=sanguity-dev PORT=8740 RECORDS="" WATCH_PUBLIC="" WATCH_KEY="" PUID=568 PGID=568 ACTION=up MODE="" ORIGIN=""
+DIR="" BRANCH=main NAME=sanguity-dev PORT=8740 RECORDS="" WATCH_PUBLIC="" WATCH_KEY="" PUID=568 PGID=568 ACTION=up MODE="" ORIGIN="" COMPOSE=""
 TZONE=$(cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -55,7 +57,8 @@ while [ $# -gt 0 ]; do
     --logs) ACTION=logs ;;
     --reset) ACTION=reset ;;
     --remove) ACTION=remove ;;
-    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
+    --compose) COMPOSE=$2; shift ;;
+    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
   shift
@@ -66,6 +69,11 @@ for p in "$RECORDS" "$WATCH_PUBLIC"; do
   [ -z "$p" ] || [ -d "$p" ] || { echo "No such folder: $p" >&2; exit 2; }
   case "$p" in "$DIR"/*) echo "Keep $p outside --dir." >&2; exit 2 ;; esac
 done
+if [ -n "$COMPOSE" ]; then
+  [ -f "$COMPOSE" ] || { echo "No such file: $COMPOSE" >&2; exit 2; }
+  COMPOSE=$(realpath "$COMPOSE")
+  case "$COMPOSE" in "$DIR"/src/*) echo "Keep --compose outside $DIR/src (a branch replaces src/)." >&2; exit 2 ;; esac
+fi
 [ -z "$WATCH_KEY" ] || [ -r "$WATCH_KEY" ] || { echo "Can't read $WATCH_KEY (run as root, or as its owner)." >&2; exit 2; }
 if [ -z "$MODE" ]; then
   if docker info >/dev/null 2>&1; then MODE=compose
@@ -114,7 +122,9 @@ fi
 # ---- code: the branch's latest commit (git if this machine has it, otherwise GitHub's archive)
 if command -v git >/dev/null; then
   if [ -d "$DIR/src/.git" ]; then
-    git -C "$DIR/src" fetch --quiet --depth 1 origin "$BRANCH"
+    # a branch first, then a tag; never other refs (refs/pull/N/head would run anyone's pull request)
+    git -C "$DIR/src" fetch --quiet --depth 1 origin "refs/heads/$BRANCH" 2>/dev/null ||
+      git -C "$DIR/src" fetch --quiet --depth 1 origin "refs/tags/$BRANCH"
     git -C "$DIR/src" checkout --quiet --force -B "$BRANCH" FETCH_HEAD
     git -C "$DIR/src" clean --quiet -fdx -e auth   # drop files from older runs (config is copied in again below)
   else
@@ -129,6 +139,20 @@ else
   COMMIT="$BRANCH (downloaded $(date '+%F %R'))"
 fi
 rm -rf "$DIR/src/auth" && ln -s "$DIR/auth" "$DIR/src/auth"   # secrets survive code updates
+
+# ---- no symlink in the code may point outside it: Docker follows them when it bind-mounts src/ paths
+# (www -> / would hand the host's files to the web server)
+bad=$(cd "$DIR/src" && find . -path ./.git -prune -o -path ./auth -prune -o -type l -print | while read -r l; do
+  t=$(realpath -m "$l"); case "$t" in "$DIR/src"|"$DIR/src"/*) ;; *) echo "  $l -> $t" ;; esac; done)
+[ -z "$bad" ] || { echo "Refused: these links in the code point outside it:" >&2; echo "$bad" >&2; exit 2; }
+
+# ---- the app definition: from --compose when given, so only code comes from the branch
+rm -f "$DIR/src/compose.override.yaml"   # only this script writes one (below)
+if [ -n "$COMPOSE" ]; then
+  cp "$COMPOSE" "$DIR/src/compose.yaml"
+  cmp -s "$COMPOSE" <(git -C "$DIR/src" show HEAD:compose.yaml 2>/dev/null) ||
+    echo "Note: the branch's compose.yaml differs from $COMPOSE, which is used; update that file if the change is wanted." >&2
+fi
 
 # ---- your configuration for this copy (only what exists in config/)
 for f in sources.json corrections.json settings.json; do
