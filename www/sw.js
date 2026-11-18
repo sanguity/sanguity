@@ -16,7 +16,7 @@ const SCOPE = new URL(self.registration.scope);
 const FILES = [
   "", "index.html", "login.html", "setup.html", "account.html", "import.html", "settings.html", "providers.html", "connect.html",
   "summary.html", "share.html", "admin.html", "sharing.html",
-  "manifest.webmanifest", "css/app.css", "css/summary.css",
+  "manifest.webmanifest", "css/tokens.css", "css/app.css", "css/summary.css",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png",
   "js/account.js", "js/activity.js", "js/admin.js", "js/admin-sources.js", "js/app.js", "js/charts.js", "js/connect.js", "js/core.js", "js/costs.js", "js/dates.js", "js/drawer.js", "js/ecg.js", "js/filters.js", "js/health.js",
   "js/heatmap.js", "js/import-history.js", "js/import-jobs.js", "js/import-manual.js", "js/import-records.js", "js/import-shl.js",

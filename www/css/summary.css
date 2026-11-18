@@ -1,4 +1,6 @@
 /* Sanguity · the visit summary page (summary.html, #48) */
+/* in app.css's pages layer, after app.css's own rules (#251): it wins over them as it did before the layers */
+@layer pages {
 .sum textarea{width:100%;box-sizing:border-box;border:1px solid var(--ring);background:var(--raised);color:var(--ink);border-radius:8px;padding:8px 10px;font:inherit;font-size:14px;resize:vertical}
 .sum .form.inline select{max-width:100%}
 .sum .form.inline label{min-width:0;max-width:100%}
@@ -19,3 +21,4 @@
 .sum-preview ol{margin:4px 0;padding-left:22px;font-size:13px}
 .sum-preview .spark{width:70px;height:16px;vertical-align:middle}
 .sum-preview .fitwarn{color:var(--crit);font-size:13px;font-weight:550;margin:8px 0 0}
+}
