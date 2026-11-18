@@ -188,7 +188,7 @@ function renderOverview() {
     const rows = DATA.costs, pm = primaryMs(), dx = pm ? rows.filter(r => r.d >= pm.date) : rows;
     const cc = el("div", {class: "card"}, el("h2", {text: pm ? `Insurance costs since ${lcLabel(pm.label)}` : "Insurance costs"}),
       dx.length ? el("p", {class: "hint", text: `Claims from ${fmtD(dayTs(dx.reduce((m, r) => r.d < m ? r.d : m, dx[0].d)))} on (${listOf(insurerSpans(dx).map(s => s[0]), ", then ")}).`}) : null);
-    const mini = (l, v) => el("div", {}, el("div", {style: {fontSize: "20px", fontWeight: 650}, text: v}), el("div", {class: "hint", style: {margin: 0}, text: l}));
+    const mini = (l, v) => el("div", {}, el("div", {class: "ov-mini-v", text: v}), el("div", {class: "hint", style: {margin: 0}, text: l}));
     cc.append(el("div", {style: {display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "10px", margin: "6px 0 10px"}},
       mini("billed", usd(sumOf(dx, "billed"))), mini("paid by insurance", usd(sumOf(dx, "paid"))), mini("your share", usd(sumOf(dx, "owe")))),
       el("button", {class: "btn", text: "Open Costs →", onclick: () => { if (pm) setPeriod(msKey(pm)); pickTab("costs"); }}));   // the same period
@@ -198,7 +198,7 @@ function renderOverview() {
   const probs =(DATA.problems || []).filter(p => (p.status || "").toLowerCase() === "active" && p.type !== "Allergy");
   if (probs.length) {
     const pc = el("div", {class: "card"}, el("h2", {text: `Active problem list (${probs.length})`}), listOf(probs.map(p => p.src)) ? el("p", {class: "hint", text: "As recorded by " + listOf(probs.map(p => p.src))}) : null);
-    for (const p of probs) pc.append(el("div", {class: "ov-row", style: {cursor: "default"}}, el("span", {class: "n", style: {fontWeight: 450}, text: p.name}), el("span", {class: "r", text: p.date ? fmtD(dayTs(p.date)) : ""}), el("span", {})));
+    for (const p of probs) pc.append(el("div", {class: "ov-row", style: {cursor: "default"}}, el("span", {class: "n plain", text: p.name}), el("span", {class: "r", text: p.date ? fmtD(dayTs(p.date)) : ""}), el("span", {})));
     left.append(pc);
   }
   // ---- allergies and immunizations (#179): as the records say them, from C-CDA, FHIR, a Health Card or typed in
@@ -208,7 +208,7 @@ function renderOverview() {
     const ac = el("div", {class: "card", id: "ovAllergies"}, el("h2", {text: `Allergies and intolerances (${allergies.length})`}),
       listOf(allergies.map(p => p.src)) ? el("p", {class: "hint", text: "As recorded by " + listOf(allergies.map(p => p.src))}) : null);
     for (const p of allergies) ac.append(el("div", {class: "ov-row", style: {cursor: "default"}},
-      el("span", {class: "n", style: {fontWeight: 450}, text: p.substance || p.name.replace(/^Allergy: /, "")}),
+      el("span", {class: "n plain", text: p.substance || p.name.replace(/^Allergy: /, "")}),
       el("span", {class: "r", text: p.date ? fmtD(dayTs(p.date)) : ""}), el("span", {}),
       el("span", {class: "s", text: [(p.reactions || []).length ? "Reaction: " + p.reactions.join(", ") : "", p.severity ? "Severity: " + p.severity : "",
         p.criticality ? "Criticality: " + p.criticality : "", p.status && p.status !== "Active" ? p.status : ""].filter(Boolean).join(" · ")})));

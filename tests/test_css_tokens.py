@@ -69,16 +69,18 @@ TOKENS = "www/css/tokens.css"
 
 # file: {what: count}. Lower a number when a change brings it down; never raise one to let a new value in.
 ALLOWED = {
-    "www/css/app.css": {"colours": 11, "px font sizes": 18, "radii": 17, "shadows": 12},
-    "www/css/summary.css": {"px font sizes": 2, "radii": 2},
+    # its two px font sizes are outside the type scale on purpose (#255): the journal's body figure, in its own units, and
+    # the heatmap's ? in its 12 px circle
+    "www/css/app.css": {"colours": 11, "px font sizes": 2, "radii": 17, "shadows": 12},
+    "www/css/summary.css": {"radii": 2},
     # a page's one colour (sign-in's and setup's third) is the brand mark's white highlight, stroke="#fff"
     "www/account.html": {"colours": 1},
     "www/admin.html": {"colours": 1},
     "www/guide.html": {"colours": 1},
     "www/index.html": {"colours": 1, "style attributes": 3},
-    "www/login.html": {"colours": 3, "px font sizes": 4, "radii": 2, "shadows": 1, "style attributes": 1},
+    "www/login.html": {"colours": 3, "radii": 2, "shadows": 1, "style attributes": 1},
     "www/settings.html": {"colours": 1},
-    "www/setup.html": {"colours": 3, "px font sizes": 4, "radii": 2, "shadows": 1, "style attributes": 3},
+    "www/setup.html": {"colours": 3, "radii": 2, "shadows": 1, "style attributes": 3},
     "www/share.html": {"colours": 1},
     "www/sharing.html": {"colours": 1},
     "www/sources.html": {"colours": 1},
@@ -87,13 +89,13 @@ ALLOWED = {
     "www/js/costs.js": {"script styles": 47},
     "www/js/cycle.js": {"script styles": 2},
     "www/js/drawer.js": {"script styles": 18, "colours": 1},   # the colour: a record's text in its own frame (srcdoc)
-    "www/js/health.js": {"script styles": 26},
-    "www/js/heatmap.js": {"script styles": 6},
+    "www/js/health.js": {"script styles": 24},
+    "www/js/heatmap.js": {"script styles": 5},
     "www/js/journal.js": {"script styles": 3},
     "www/js/medlog.js": {"script styles": 1},
     "www/js/meds.js": {"script styles": 7},
     "www/js/nav.js": {"script styles": 1},
-    "www/js/overview.js": {"script styles": 15},
+    "www/js/overview.js": {"script styles": 12},
     "www/js/rename.js": {"script styles": 2},
     "www/js/timeline.js": {"script styles": 1},
     "www/js/trends.js": {"script styles": 9},
