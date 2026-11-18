@@ -112,7 +112,7 @@ function openEvent(e) {
       el("button", {class: "btn", text: "Body and activity around this day", onclick: () => openHealth(e.ts - 14*DAY, e.ts + 14*DAY)}));
   } else if (d.type === "ecg") body.append(...ecgBody(e, d));   // a watch's ECG or irregular rhythm notification (ecg.js, #182)
   else if (d.type === "visit") {
-    body.append(el("dl", {class: "kv"}, ...[["Provider", d.who], ["Location", d.where], ["Diagnosis", d.dx], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
+    body.append(el("dl", {class: "kv"}, ...[["Provider", d.who], ["Location", d.where], ["Diagnosis", d.dx], ["Billed as", d.billed], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
     if (d.note) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}));
     if (d.procs && d.procs.length) body.append(el("div", {class: "sect", text: "Recorded that day"}), el("ul", {style: {margin: 0, paddingLeft: "18px"}}, ...d.procs.map(p => el("li", {text: p}))));
     const sameDay = EV.filter(x => x.k === "document" && isoDay(x.ts) === isoDay(e.ts));
@@ -163,6 +163,9 @@ const WATCH_KINDS = new Set(["exercise", "ecg", "rhythm"]);   // events made fro
 const canEdit = () =>!!PROFILE && (PROFILE.role === "owner" || PROFILE.role === "editor");
 const editsOf = e => (DATA.edits || []).filter(x => x.ids.includes(e.id));
 const quoted = t => `“${t || "an event"}”`;
+// the kinds an entry can move between (#237; server/edits.py MOVABLE), in the order the choice lists them
+const MOVABLE = ["visit", "contact", "procedure", "imaging", "study", "message", "appt_msg", "auto_msg", "letter", "document"];
+const batchOf = x => (x.value || {}).batch ? (DATA.edits || []).filter(y => (y.value || {}).batch === x.value.batch).length : 1;
 function describeEdit(x) {
   const was = x.was || {}, v = x.value || {};
   if (x.action === "hide") return `Hidden: ${quoted(was.title)}`;
@@ -170,6 +173,9 @@ function describeEdit(x) {
   if (x.action === "date") return `Date of ${quoted(was.title)} changed${was.t ? " from " + fmtDT(was.t) : ""} to ${fmtDT(v.t)}`;
   if (x.action === "not_stay") return `${quoted(was.title)} marked as not a hospital stay`;
   if (x.action === "merge") return `${quoted((x.other || v.other || {}).title)} merged into ${quoted(was.title)}`;
+  if (x.action === "kind") return `${quoted(was.title)} moved to ${KIND_LABEL[v.k] || v.k}`;
+  if (x.action === "kind_rule") return `Rule: entries titled ${quoted(v.title)}${v.label ? " from " + v.label : ""} go to ${KIND_LABEL[v.k] || v.k}`
+    + ` (${x.ids.length} now)`;
   return "Edited";
 }
 function afterEdit(reopen) {
@@ -185,8 +191,39 @@ async function sendEdit(path, opts, msg, reopen) {
   } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
 }
 function undoButton(x, msg, reopen) {
-  return el("button", {class: "btn small", type: "button", text: "Undo", "data-edit": x.id, title: "Undo this edit",
+  const n = batchOf(x);   // made at once to similar entries (#237): undone together
+  return el("button", {class: "btn small", type: "button", text: n > 1 ? `Undo all ${n}` : "Undo", "data-edit": x.id,
+    title: n > 1 ? `Undo this edit and the ${n - 1} made with it` : "Undo this edit",
     onclick: () => sendEdit("/" + x.id, {method: "DELETE"}, msg, reopen)});
+}
+/* the entries that look like this one (the same source, kind and title), offered for the same change (#237):
+   [the node, {ids(), rule()}]; with `rule`, also "keep doing this for new imports" */
+function similarChoice(e, rule) {
+  const box = el("div", {class: "similar", "aria-live": "polite"}, el("p", {class: "hint", text: "Looking for similar entries…"}));
+  const got = {ids: () => [], rule: () => false};
+  api(`profiles/${PROFILE.id}/edits/similar?event=${e.id}`).then(r => r.ok ? r.json() : null).then(j => {
+    if (!j) { box.replaceChildren(); return; }
+    const from = j.label ? ` from ${j.label}` : "", kids = [];
+    if (j.items.length) {
+      const checks = j.items.map(x => el("input", {type: "checkbox", value: x.id, "aria-label": `${fmtDT(x.t)} · ${x.title}`}));
+      const all = el("input", {type: "checkbox", "data-similar": "all"});
+      [all, ...checks].forEach(c => c.checked = true);
+      all.onchange = () => checks.forEach(c => c.checked = all.checked);
+      checks.forEach(c => c.onchange = () => { all.checked = checks.every(x => x.checked); all.indeterminate = !all.checked && checks.some(x => x.checked); });
+      const n = j.items.length;
+      kids.push(el("label", {class: "check"}, all, el("span", {text: `Also the ${n} other ${n === 1 ? "entry" : "entries"} titled ${quoted(e.title)}${from}`})),
+        el("details", {}, el("summary", {text: `See ${n === 1 ? "it" : "them"}`}),
+          el("ul", {class: "similar-list"}, ...j.items.map((x, i) => el("li", {}, el("label", {class: "check"}, checks[i], el("span", {text: fmtDT(x.t)})))))));
+      got.ids = () => checks.filter(c => c.checked).map(c => +c.value);
+    }
+    if (rule) {
+      const r = el("input", {type: "checkbox", "data-similar": "rule"});
+      kids.push(el("label", {class: "check"}, r, el("span", {text: `Keep doing this for new imports${from}`})));
+      got.rule = () => r.checked;
+    }
+    box.replaceChildren(...kids);
+  }).catch(() => box.replaceChildren());
+  return [box, got];
 }
 function editPanel(e) {
   const box = el("div", {class: "edits"}), msg = el("p", {class: "hint edit-msg", role: "status"});
@@ -197,8 +234,8 @@ function editPanel(e) {
   if (!canEdit()) return mine.length ? box : el("span");
   const forms = el("div", {class: "edit-form"});
   const post = (body, reopen = {event: e.id}) => sendEdit("", {method: "POST", body: JSON.stringify({event: e.id, ...body})}, msg, reopen);
-  const form = (label, input, onsave) => {
-    forms.replaceChildren(el("label", {}, el("span", {text: label}), input),
+  const form = (label, input, onsave, ...extra) => {
+    forms.replaceChildren(el("label", {}, el("span", {text: label}), input), ...extra,
       el("div", {}, el("button", {class: "btn primary", type: "button", text: "Save", onclick: onsave}),
         el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => forms.replaceChildren()})));
     input.focus();
@@ -207,8 +244,17 @@ function editPanel(e) {
     el("button", {class: "btn", type: "button", text: "Hide", title: "Leave this event out of the records", onclick: () => post({action: "hide"}, {edits: true})}),
     el("button", {class: "btn", type: "button", text: "Rename", onclick: () => {
       const i = el("input", {type: "text", maxlength: 300, "aria-label": "New title"}); i.value = e.title;
-      form("New title", i, () => post({action: "rename", title: i.value}));
+      const [box, got] = similarChoice(e, false);
+      form("New title", i, () => post({action: "rename", title: i.value, ...(got.ids().length ? {also: got.ids()} : {})}), box);
     }}),
+    MOVABLE.includes(e.k) ? el("button", {class: "btn", type: "button", text: "Change category", onclick: () => {
+      const sel = el("select", {"aria-label": "Category"}, ...MOVABLE.filter(k => k !== e.k).map(k => el("option", {value: k, text: KIND_LABEL[k] || k})));
+      const [box, got] = similarChoice(e, true);
+      form(`Move this ${(KIND_LABEL[e.k] || "entry").toLowerCase()} to`, sel, () => {
+        const also = got.ids(), rule = got.rule();
+        post({action: "kind", k: sel.value, ...(also.length ? {also} : {}), ...(rule ? {rule} : {})});
+      }, box);
+    }}) : null,
     el("button", {class: "btn", type: "button", text: "Fix date", onclick: () => {
       const i = el("input", {type: "datetime-local", "aria-label": "New date and time"}); i.value = String(e.t || "").slice(0, 16);
       form("Starts", i, () => post({action: "date", t: i.value}));

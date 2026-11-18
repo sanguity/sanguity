@@ -4,6 +4,7 @@
 const CATS = [
   {k:"stay",      label:"Hospital stays",   color:"var(--stay-line)", kinds:["stay"]},
   {k:"visit",     label:"Visits",           color:"var(--c-visit)",   kinds:["visit"]},
+  {k:"contact",   label:"Chart activity",   color:"var(--c-contact)", kinds:["contact"]},   // chart reviews, calls, faxes (#236)
   {k:"lab",       label:"Labs",             color:"var(--c-lab)",     kinds:["lab"]},
   {k:"imaging",   label:"Imaging",          color:"var(--c-imaging)", kinds:["imaging"]},
   {k:"procedure", label:"Procedures",       color:"var(--c-procedure)",kinds:["procedure"]},
@@ -20,7 +21,7 @@ const CATS = [
   {k:"cycle",     label:"Cycle tracking",   color:"var(--c-cycle)",   kinds:["cycle"]},     // #183: only when its owner turned it on (cycle.js)
 ];
 const CAT_OF = {}; CATS.forEach(c => c.kinds.forEach(k => CAT_OF[k] = c));
-const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim",journal:"Journal",mood:"Mood and energy",immunization:"Immunization",ecg:"ECG (watch)",rhythm:"Irregular rhythm notification (watch)",cycle:"Cycle tracking"};
+const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",contact:"Chart activity",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim",journal:"Journal",mood:"Mood and energy",immunization:"Immunization",ecg:"ECG (watch)",rhythm:"Irregular rhythm notification (watch)",cycle:"Cycle tracking"};
 const usd = v => (v || 0).toLocaleString(undefined, {style: "currency", currency: "USD", maximumFractionDigits: 0});
 /* The profile's settings (server/settings.py), changed on the Settings page. The server sends every one, with its
    defaults filled in; these are only what the page uses if that fails, and should match the server's defaults. */

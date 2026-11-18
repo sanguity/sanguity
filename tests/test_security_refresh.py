@@ -112,7 +112,7 @@ ROUTES = {
     ("POST", "/api/profiles/{pid}/jobs/{jid}/confirm"): (USER, "editor"), ("POST", "/api/profiles/{pid}/jobs/{jid}/discard"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/imports/{iid}/undo"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/imports/{iid}/name"): (USER, "editor"),
     ("GET", "/api/profiles/{pid}/edits"): (USER, "editor"), ("POST", "/api/profiles/{pid}/edits"): (USER, "editor"),
-    ("DELETE", "/api/profiles/{pid}/edits/{edit_id}"): (USER, "editor"),
+    ("DELETE", "/api/profiles/{pid}/edits/{edit_id}"): (USER, "editor"), ("GET", "/api/profiles/{pid}/edits/similar"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/same"): (USER, "editor"), ("DELETE", "/api/profiles/{pid}/same/{rid}"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/manual"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/costs/mark"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/journal"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/journal/{jid}"): (USER, "editor"),

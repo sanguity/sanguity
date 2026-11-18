@@ -92,8 +92,8 @@ def project(data, watch=None):
                             tuple((r[0], str(r[1]), r[2] or "", r[3] or "", r[4] or "") for r in x.get("rows") or [])))
         elif k == "lab":
             add("labday", (t19(e["t"])[:10], e["title"]))
-        elif k == "visit":
-            add(k, (t19(e["t"]), e["title"], x.get("who") or "", x.get("where") or "", x.get("dx") or "", x.get("note") or "",
+        elif k in ("visit", "contact"):   # chart activity (#236) goes out as an Encounter and comes back as a visit
+            add("visit", (t19(e["t"]), e["title"], x.get("who") or "", x.get("where") or "", x.get("dx") or "", x.get("note") or "",
                     tuple(x.get("procs") or [])))
         elif k == "stay":
             add(k, (t19(e["t"]), t19(e.get("end")), e["title"]))

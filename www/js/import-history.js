@@ -25,7 +25,14 @@
       "files and watch data it brought, and nothing else."}),
     el("div", {class: "form inline", id: "historyPick", hidden: true}, el("label", {}, "Profile ", el("select", {id: "historyProfile"}))),
     el("div", {class: "row"}, el("span", {class: "msg", id: "historyMsg", role: "status"})),
-    el("ul", {class: "hist", id: "historyList", "aria-label": "Imports"}));
+    el("ul", {class: "hist", id: "historyList", "aria-label": "Imports"}),
+    // rules that move a source's entries to another category, now and in its later imports (#237; the drawer makes them)
+    el("div", {id: "kindRules", hidden: true}, el("h3", {text: "Category rules"}),
+      el("p", {class: "hint", text: "Entries from a source that always go to another category, in every import from it, made with " +
+        "Change category on an entry. An entry moved on its own stays where it was put."}),
+      el("ul", {class: "hist", id: "kindRuleList", "aria-label": "Category rules"})));
+  const CATEGORY = {visit: "Visits", contact: "Chart activity", procedure: "Procedures", imaging: "Imaging", study: "Reports & studies",
+                    message: "Messages", appt_msg: "Appointment messages", auto_msg: "Automated messages", letter: "Letters", document: "Documents"};
   ($("main") || document.body).append(section);
   const say = (text, bad = false) => sayIn($("#historyMsg"), text, bad);   // shown and said (util.js, #209)
 
@@ -122,6 +129,28 @@
       : [emptyState("Nothing has been imported into this profile yet: each upload, record typed in and portal pull is listed here, with a way to undo it.",
           r.can_undo ? {href: "#upload", text: "Upload files"} : null, {tag: "li", cls: ""})]));   // #199
     highlight(true);
+    rules(pid, mine, r.can_undo);
+  }
+
+  async function rules(pid, mine, canEdit) {
+    const box = $("#kindRules");
+    if (!canEdit) { box.hidden = true; return; }   // edits are listed to owners and editors
+    let r;
+    try { r = await call(`profiles/${pid}/edits`); } catch (err) { box.hidden = true; return; }
+    if (mine !== seq) return;
+    const list = (r.edits || []).filter(x => x.action === "kind_rule");
+    box.hidden = !list.length;
+    $("#kindRuleList").replaceChildren(...list.map(x => {
+      const v = x.value || {}, n = x.ids.length;
+      const del = el("button", {class: "btn small", type: "button", text: "Remove", "data-rule": x.id, onclick: async () => {
+        del.disabled = true;
+        try { await call(`profiles/${pid}/edits/${x.id}`, "DELETE"); say("Rule removed, with the changes made with it."); load(); }
+        catch (err) { del.disabled = false; say("Couldn't remove the rule: " + err.message, true); }
+      }});
+      return el("li", {}, el("span", {},
+        `${CATEGORY[v.from] || v.from} titled “${v.title}”${v.label ? " from " + v.label : ""} go to ${CATEGORY[v.k] || v.k}`,
+        el("small", {class: "muted", text: ` · ${n ? `moves ${n.toLocaleString()} now` : "nothing to move now"}`})), " ", del);
+    }));
   }
 
   // the import a record's Source link names (#import-<id>): scrolled to, highlighted and focused, once per link followed

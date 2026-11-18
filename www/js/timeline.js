@@ -125,6 +125,7 @@ function renderStats() {
   const abn = v.filter(e => e.k === "lab").reduce((a, e) => a + (e.abn || 0), 0);
   const items = [[c(["lab"]), "lab draw days"], [v.filter(e => e.k === "lab").reduce((a, e) => a + (e.n || 0), 0), "lab results"], [abn, "out-of-range values"], [c(["imaging","procedure","study"]), "imaging, procedures & reports"], [c(["stay"]), "hospital stays"], [c(["message","appt_msg","auto_msg"]), "conversations"]];
   if (EV.some(e => e.k === "visit")) items.push([c(["visit"]), "visits"]);
+  if (EV.some(e => e.k === "contact")) items.push([c(["contact"]), "chart activity"]);   // not visits (#236)
   $("#stats").replaceChildren(...items.map(([n, l]) => el("div", {class: "stat"}, el("div", {class: "n", text: n.toLocaleString()}), el("div", {class: "l", text: l}))));
 }
 $("#sortSeg").onclick = ev => { const b = ev.target.closest("button[data-sort]"); if (!b) return; state.asc = b.dataset.sort === "asc"; renderList(); save(); };

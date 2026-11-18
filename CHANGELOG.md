@@ -602,6 +602,21 @@ Everything on `main` so far; it becomes the first tagged release.
   gains hypothyroidism and hyperthyroidism of their own, and liver disease is now named fatty liver disease (MASLD)
   for its source. `docs/condition-presets.md` lists the conditions left out (osteoporosis, breast cancer follow-up,
   COPD and asthma, long COVID, menopause and others) and why.
+- **Chart activity isn't a visit** (#236): encounters a portal lists that weren't appointments (chart reviews and
+  result checks, phone calls, care management, faxes, refills, documentation, orders-only encounters) are their own
+  Timeline category, Chart activity, and no longer counted as visits on the Overview, the visit summary or share
+  links; the drawer says the portal recorded them as encounters. A visit titled by its billing code's description
+  ("PR OFFICE/OUTPATIENT ESTABLISHED HIGH MDM 40 MIN") gets a plain name ("Office visit", "Video visit", "Hospital
+  visit"...), with the description kept in its details as "Billed as". Appointment reminders are always appointment
+  messages, without the message's own date in the title. This happens as the records load, so records imported
+  before are fixed without a re-import, and corrections made before still apply.
+- **Change category, and similar entries** (#237): an entry's drawer has **Change category**, moving it between
+  visits, chart activity, procedures, imaging, reports, messages, letters and documents (not lab results, claims,
+  medications or hospital stays); like the other corrections it's kept through re-imports and can be undone. A change
+  of category or a rename offers the other entries from the same source with the same title, all ticked, to change
+  at once, and one Undo takes them all back. **Keep doing this for new imports** saves a rule, listed under Sources →
+  Import history with how many entries it moves, so the next sync or upload from that source arrives sorted; an
+  entry moved on its own stays where it was put. Schema version 34 (the corrections table made again to take them).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

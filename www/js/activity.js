@@ -2,6 +2,8 @@
    (GET profiles/<id>/activity) on the Sharing page, under Activity (#168); the install's account events (GET activity)
    on the Admin page. Uses the page's own call() and when() (sharing.js, admin.js). */
 "use strict";
+const KIND_NAME = {visit: "Visits", contact: "Chart activity", procedure: "Procedures", imaging: "Imaging", study: "Reports & studies",
+  message: "Messages", appt_msg: "Appointment messages", auto_msg: "Automated messages", letter: "Letters", document: "Documents"};   // #237
 const WHAT = {
   view: () => "opened the records",
   document: d => `opened ${d.name || "a document"}`,
@@ -30,7 +32,10 @@ const WHAT = {
     : d.action === "same" ? `linked two results of “${d.title || "a test"}” from different sources as the same result`
     : `marked two results of “${d.title || "a test"}” from different sources as not the same`) :
     (d.undone ? "undid an edit of" : ({hide: "hid", rename: "renamed", date: "changed the date of", not_stay: "marked as not a hospital stay",
-    merge: "merged another event into"}[d.action] || "edited")) + ` “${d.title || "an event"}”` + (d.to && !d.undone ? ` to “${d.to}”` : ""),
+    merge: "merged another event into", kind: "moved", kind_rule: "stopped a rule for"}[d.action] || "edited")) + ` “${d.title || "an event"}”`
+    + (d.to && !d.undone ? (d.action === "kind" ? ` to ${KIND_NAME[d.to] || d.to}` : ` to “${d.to}”`) : "")
+    + (d.similar ? ` and ${d.similar} similar ${d.similar === 1 ? "entry" : "entries"}` : "") + (d.rule ? ", and for new imports" : "")
+    + (d.with ? ` (and ${d.with} made with it)` : ""),   // #237
   connect: d => d.change === "options" ? `changed what ${d.source} pulls` + (d.kinds ? ` (${d.kinds.join(", ")})` : d.kinds === null ? " (everything allowed)" : "") + (d.since ? ` from ${d.since}` : "")
     : d.change === "warning" ? `noted that ${d.text.replace(/\.$/, "").replace(/^./, s => s.toLowerCase())}`
     : d.change === "remove" ? `removed the ${(d.label || d.kind).toLowerCase()} ${d.source} brought (undoable from the import history)`
