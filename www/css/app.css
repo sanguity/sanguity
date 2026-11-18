@@ -296,7 +296,7 @@ dialog.sg-dlg::backdrop{background:var(--scrim)}
 html:has(dialog:modal){overflow:hidden}
 dialog.sg-dlg{overscroll-behavior:contain}
 dialog.sg-dlg-center{margin:auto;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);overflow:auto;border-radius:var(--r-lg)}
-dialog:is(.sg-dlg-side,.sg-dlg-sheet){position:fixed;z-index:40;overflow:hidden;
+dialog:is(.sg-dlg-side,.sg-dlg-sheet){position:fixed;z-index:40;overflow:clip;   /* clip, not hidden: focus can't scroll it, hiding its top (#369) */
   transition:transform var(--dur-2) var(--ease-out),translate var(--dur-1) var(--ease-out),display var(--dur-2) allow-discrete,overlay var(--dur-2) allow-discrete}
 dialog.sg-dlg-side{inset:0 0 0 auto;width:min(640px,100%);height:100%;border-width:0 0 0 1px;transform:translateX(105%)}
 dialog.sg-dlg-sheet{inset:auto 0 0 0;width:100%;max-height:calc(100dvh - var(--sp-4));border-width:1px 0 0;border-radius:var(--r-lg) var(--r-lg) 0 0;
@@ -312,7 +312,7 @@ dialog.sg-dlg-sheet [data-grab]{touch-action:none}
 
 /* ---- toasts (#263, toast() in util.js): at the foot of the screen, on the left (the screen's width on a phone), and
    above Settings' sticky Save bar while it's there; over the page (a popover) but only a toast itself takes the
-   pointer. With a dialog or the drawer open, in its flow instead (below, #362). A menu's look: the raised surface, a ring and the higher elevation, its
+   pointer. With the drawer open, in its flow instead (below, #362); a question (ask()) leaves them behind it (#369). A menu's look: the raised surface, a ring and the higher elevation, its
    words in the ink; rising into place as it appears. */
 .sg-toasts{position:fixed;inset:auto auto var(--sp-4) var(--sp-4);margin:0;padding:0;border:0;background:none;overflow:visible;
   width:min(420px,calc(100vw - 32px));pointer-events:none;color:var(--ink)}
@@ -333,6 +333,10 @@ dialog>.sg-toasts{position:static;width:auto;pointer-events:auto;flex:none}
 dialog>.sg-toasts:has(.sg-toast){margin-top:var(--sp-3)}
 dialog>.sg-toasts .sg-toast-text{flex-basis:8em}   /* a narrow dialog's: its ✕ still beside its words or its buttons */
 dialog:is(.sg-dlg-side,.sg-dlg-sheet)>.sg-toasts:has(.sg-toast){margin:0;padding:var(--sp-2) var(--sp-3) var(--sp-3);border-top:1px solid var(--grid)}
+/* in the drawer the stack takes at most a third of its height, and less where its body would have under half (a
+   phone on its side: #drawer .db), scrolling within itself with the newest, at the foot, in view (#369) */
+dialog:is(.sg-dlg-side,.sg-dlg-sheet)>.sg-toasts{display:flex;flex-direction:column-reverse;flex:0 1 auto;min-height:0;max-height:calc(100% / 3);
+  overflow:auto;overscroll-behavior:contain}
 }
 
 @layer pages {
@@ -545,7 +549,7 @@ table.data tr.link:hover td{background:var(--hover)}
 #drawer .dh h3{margin:0;font-size:var(--fs-5);line-height:1.3}
 #drawer .dh .sub{color:var(--ink2);font-size:var(--fs-2);margin-top:3px}
 #drawer .dh .key{width:14px;height:3px;border-radius:2px;margin-top:var(--sp-2);flex:none}
-#drawer .db{padding:var(--sp-4) var(--sp-4) var(--sp-6);overflow:auto;flex:1;min-height:0;overscroll-behavior:contain}
+#drawer .db{padding:var(--sp-4) var(--sp-4) var(--sp-6);overflow:auto;flex:1;min-height:50%;overscroll-behavior:contain}   /* half of it at least, with toasts under it (#369) */
 #drawer .acts{margin-left:auto;flex:none;display:flex;gap:var(--sp-2)}
 #drawer.wide{width:min(1200px,100%)}
 #drawer .db.fill{display:flex;flex-direction:column;padding-bottom:var(--sp-4)}

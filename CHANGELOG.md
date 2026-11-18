@@ -935,6 +935,12 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Escape in the rename form leaves the drawer open** (#366): at 800 px and wider, where the drawer sits beside the
   page, Escape in the form from a ✎ in it (a result's lab, the Source line's import) closed the drawer too, and focus
   was lost. It closes only the form now, focus back on its ✎, as on a phone.
+- **Toasts in a short drawer, and a question asked from a toast** (#369): on a phone on its side (568×320), three
+  toasts with an Undo filled the drawer, its body 44 px high, the third toast off the screen, and Alt+N scrolled the
+  sheet's handle and title away. In the drawer the toasts now take at most a third of its height, and no more than
+  leaves its body half of it, scrolling within themselves with the newest in view; the drawer itself no longer
+  scrolls. A question (Undo this import?) no longer takes the toasts in under its buttons: they stay where they were,
+  behind it, so Tab from its buttons doesn't reach them.
 - **Menus in browsers without anchor positioning** (#356): where the browser can't place a menu itself (Firefox and
   Safari before their releases with CSS anchor positioning), a menu near the foot of the screen opened off it, stayed
   where it opened as the page scrolled, and was drawn at the screen's top left for a moment. It now opens over its
