@@ -960,6 +960,18 @@ def main():
                 break
             strict.wait_for_timeout(200)
         check("under the CSP: login.js signs in and the app starts", strict.evaluate("typeof EV !== 'undefined' && EV.length > 0"))
+        # the fonts (#253): Inter loads from www/fonts/ under the real CSP (default-src 'self' covers font-src; a
+        # violation would be in csp_problems), preloaded, and the page's text is in it, in light and dark
+        fonts, theme_before = {}, strict.evaluate("document.documentElement.dataset.theme || null")
+        for theme in ("light", "dark"):
+            strict.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
+            fonts[theme] = strict.evaluate("""document.fonts.ready.then(() => [[...document.fonts].some(f => f.family === 'Inter' && f.status === 'loaded'),
+              document.fonts.check('14px Inter'), getComputedStyle(document.body).fontFamily.split(',')[0].trim(),
+              getComputedStyle(document.documentElement).colorScheme])""")
+        preload = strict.evaluate("[...document.querySelectorAll('link[rel=preload][as=font]')].map(l => [new URL(l.href).pathname, l.crossOrigin])")
+        check("fonts (#253): Inter is preloaded and loaded from the app itself under the CSP, and the page's text is in it, in light and dark",
+              all(f == [True, True, "Inter", theme] for theme, f in fonts.items()) and preload == [["/fonts/inter-v4.001-latin.woff2", "anonymous"]], (fonts, preload))
+        strict.evaluate("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
         # the Sources page (#166): its old addresses open their sections, each part drawn by its own script
         strict.goto(base + "/import.html")
         strict.wait_for_url("**/sources.html#upload", timeout=10000)
@@ -9046,9 +9058,10 @@ def main():
             check("PWA: Chromium finds nothing stopping the install", not [e for e in errs if e["errorId"] != "in-incognito"], errs)
             # the worker keeps the app's own files, and nothing from the API
             kept = dict(ph.evaluate("caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys()).then(rs => [k, rs.map(r => r.url)]))))"))
-            shell = kept.get("sanguity-shell-v1", [])
-            check("PWA: the app's pages, scripts and icons are kept",
-                  any(u.endswith("/js/app.js") for u in shell) and any(u.endswith("/icons/icon-192.png") for u in shell), len(shell))
+            shell = kept.get("sanguity-shell-v2", [])
+            check("PWA: the app's pages, scripts, fonts and icons are kept",
+                  any(u.endswith("/js/app.js") for u in shell) and any(u.endswith("/icons/icon-192.png") for u in shell)
+                  and sum("/fonts/" in u and u.endswith(".woff2") for u in shell) == 4, len(shell))
             check("PWA: nothing from /api/ is kept, and no records until they're turned on",
                   not any("/api/" in u for u in shell) and "sanguity-offline" not in kept, list(kept))
 
@@ -9059,6 +9072,8 @@ def main():
             text = ph.inner_text("#offlineBanner")
             check("offline, records off: the app opens and says records aren't available offline",
                   "Records aren't available offline" in text and ph.is_visible("header h1") and ph.evaluate("typeof EV === 'undefined' || !EV.length"), text)
+            offline_font = ph.evaluate("document.fonts.ready.then(() => [[...document.fonts].some(f => f.family === 'Inter' && f.status === 'loaded'), getComputedStyle(document.body).fontFamily.split(',')[0]])")
+            check("offline (#253): the page is still in Inter", offline_font == [True, "Inter"], offline_font)
             ctx.set_offline(False)
 
             # installing (#56): without the browser's install prompt, the Account page says where to look; with it (a
@@ -9184,7 +9199,7 @@ def main():
             ph.wait_for_url("**/login.html", timeout=10000)
             until(NO_COPY, 5000)
             check("sign-out: the kept copy and the choice are deleted, the app's own files stay",
-                  ph.evaluate(NO_COPY) and ph.evaluate("localStorage.getItem('sg-offline-records')") is None and ph.evaluate("caches.has('sanguity-shell-v1')"))
+                  ph.evaluate(NO_COPY) and ph.evaluate("localStorage.getItem('sg-offline-records')") is None and ph.evaluate("caches.has('sanguity-shell-v2')"))
             # offline, the browser reports each request it couldn't make; signing out ends in 401s
             problems[before:] = [x for x in problems[before:] if "ERR_INTERNET_DISCONNECTED" not in x and "401" not in x]
             ctx.close()

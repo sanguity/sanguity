@@ -15,7 +15,7 @@
 @layer reset, tokens, base, components, pages, utilities;
 
 @layer base {
-body{margin:0;background:var(--page);color:var(--ink);font:var(--fs-3)/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{margin:0;background:var(--page);color:var(--ink);font:var(--fs-3)/1.45 var(--font-ui)}
 button,input,select{font:inherit;color:inherit}
 a{color:var(--accent)}   /* links in the accent, never the browser's blue or visited purple (#247); a button or menu item that is a link sets its own */
 }
@@ -161,6 +161,9 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .chart .hd .unit{color:var(--muted);font-size:var(--fs-2)}
 .chart .hd .read{margin-left:auto;font-variant-numeric:tabular-nums;font-size:var(--fs-3);color:var(--ink2)}
 .chart .hd .read b{color:var(--ink);font-size:var(--fs-3)}
+/* on a phone the readout has a row of its own, one line long, so hovering a point (a longer readout: its unit, time and
+   flag) never moves the header onto another line, and the chart from under the pointer (#253: Inter wraps it elsewhere) */
+@media (max-width:640px){.chart .hd .read{flex-basis:100%;margin-left:0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .chart .hd>button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:var(--fs-2);padding:2px var(--sp-1)}
 .chart .hd>button:hover{color:var(--ink)}
 .chart svg{width:100%;display:block}
@@ -178,6 +181,9 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .evlabel{font-size:var(--fs-1);fill:var(--ink2)}
 .msmark{stroke:var(--accent);stroke-width:1.25;stroke-dasharray:5 3;opacity:.85;pointer-events:none}
 .mslabel{font-size:var(--fs-1);font-weight:var(--fw-semibold);fill:var(--accent)}
+/* chart labels are placed by their width (labelW in charts.js, #312): laid out at their own size, not the screen's, so
+   the width measured is the width drawn whatever the chart's scale (#253) */
+.mslabel,.evlabel{text-rendering:geometricPrecision}
 /* overview */
 .ov-h{display:flex;align-items:baseline;gap:var(--sp-2);margin:var(--sp-1) 0 var(--sp-3)}
 .ov-h h2{font-size:var(--fs-5);margin:0}
@@ -288,7 +294,7 @@ table.data tr.link:hover td{background:var(--hover)}
 .msg .mh{font-size:var(--fs-2);color:var(--muted);margin-bottom:var(--sp-1)}
 .msg .mh b{color:var(--ink)}
 .msg pre{white-space:pre-wrap;font:inherit;margin:0}
-pre.report{white-space:pre-wrap;font:var(--fs-2)/1.5 ui-monospace,Consolas,monospace;background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:0;overflow-x:auto}
+pre.report{white-space:pre-wrap;font:var(--fs-2)/1.5 var(--font-mono);background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:0;overflow-x:auto}
 iframe.doc{width:100%;border:1px solid var(--ring);border-radius:var(--r-md);background:#fff;min-height:200px}
 .sect{font-size:var(--fs-1);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:var(--fw-semibold);margin:var(--sp-4) 0 var(--sp-2)}
 .btn{display:inline-block;border:1px solid var(--ring);background:var(--raised);border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-3);cursor:pointer;text-decoration:none;color:var(--ink);font-size:var(--fs-3);margin:0 var(--sp-2) var(--sp-2) 0}
@@ -390,7 +396,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .tf-setup{display:flex;gap:var(--sp-4);align-items:center;flex-wrap:wrap;margin:var(--sp-2) 0}
 .acct .tf-setup img{border-radius:var(--r-md);background:#fff}
 .acct .tf-key{font-size:var(--fs-4);letter-spacing:.04em;user-select:all;word-break:break-all}
-.acct .tf-codes{columns:2;font:var(--fs-4)/1.7 ui-monospace,Consolas,monospace;background:var(--hover);padding:var(--sp-2) var(--sp-4);border-radius:var(--r-sm);user-select:all;max-width:340px}
+.acct .tf-codes{columns:2;font:var(--fs-4)/1.7 var(--font-mono);background:var(--hover);padding:var(--sp-2) var(--sp-4);border-radius:var(--r-sm);user-select:all;max-width:340px}
 .acct #users label.check{margin:var(--sp-1) 0 var(--sp-2)}
 @media (max-width:640px){
   main.acct{padding:var(--sp-3) var(--sp-4)}
@@ -430,7 +436,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .off{display:none !important}
 /* a SMART Health Link pasted or scanned (import-shl.js) */
 .imp .shl-text{display:grid;gap:var(--sp-1);margin:var(--sp-2) 0}
-.imp .shl-text textarea{width:100%;box-sizing:border-box;font:var(--fs-3)/1.4 ui-monospace,monospace;padding:var(--sp-1) var(--sp-2);overflow-wrap:anywhere}
+.imp .shl-text textarea{width:100%;box-sizing:border-box;font:var(--fs-3)/1.4 var(--font-mono);padding:var(--sp-1) var(--sp-2);overflow-wrap:anywhere}
 .imp .shl-video{display:block;width:100%;max-width:420px;border-radius:var(--r-md);margin:var(--sp-2) 0;background:#000}
 .imp .shl-about{border-top:1px solid var(--grid);margin-top:var(--sp-3);padding-top:var(--sp-1)}
 .imp .shl-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-1) var(--sp-3);margin:var(--sp-2) 0;font-size:var(--fs-3)}
@@ -564,7 +570,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
   .sets .ms .set-row,.sets .rules .set-row{grid-template-columns:1fr}
   .sets .set-row .set-tick{display:flex;flex-direction:row;align-items:center;gap:var(--sp-2)}
 }
-.sets .set-json{width:100%;max-width:560px;font:var(--fs-2) ui-monospace,Consolas,monospace;border:1px solid var(--ring);border-radius:var(--r-sm);background:var(--raised);color:var(--ink);padding:var(--sp-1)}
+.sets .set-json{width:100%;max-width:560px;font:var(--fs-2) var(--font-mono);border:1px solid var(--ring);border-radius:var(--r-sm);background:var(--raised);color:var(--ink);padding:var(--sp-1)}
 @media (max-width:600px){
   .sets .set-head{display:none}
   .sets .set-row,.sets .c3 .set-row{grid-template-columns:1fr;border-bottom:1px solid var(--grid);padding-bottom:var(--sp-2)}
@@ -617,7 +623,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .dir .dir-hd p{margin:var(--sp-1) 0 0}
 .dir #detail h3.sub{margin:var(--sp-4) 0 var(--sp-2)}
 .dir .dir-copy{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
-.dir .dir-copy-v{flex:1 1 220px;font:var(--fs-2) ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.dir .dir-copy-v{flex:1 1 220px;font:var(--fs-2) var(--font-mono)}
 .dir .dir-back{margin-bottom:var(--sp-2)}
 .dir .dir-back p{margin:var(--sp-1) 0 0}
 .dir .bad{color:var(--crit)}
@@ -679,7 +685,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .conn .walk-step p{margin:var(--sp-1) 0}
 .conn .walk-copy{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2);align-items:center;margin:var(--sp-2) 0}
 .conn .walk-k{flex:0 0 100%;font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2)}
-.conn .walk-v{flex:1 1 240px;min-width:0;padding:var(--sp-1) var(--sp-2);background:color-mix(in srgb,var(--ink) 5%,var(--raised));color:var(--ink);font:var(--fs-2) ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.5}
+.conn .walk-v{flex:1 1 240px;min-width:0;padding:var(--sp-1) var(--sp-2);background:color-mix(in srgb,var(--ink) 5%,var(--raised));color:var(--ink);font:var(--fs-2) var(--font-mono);line-height:1.5}
 .conn .walk-acts{display:inline-flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
 .conn .walk-acts .msg{border:0;padding:0;margin:0;font-size:var(--fs-2)}
 .conn .walk-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-2);margin-top:var(--sp-2)}
@@ -701,7 +707,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .cal .cal-opts p{margin:0}
 .cal .cal-setup{margin-top:var(--sp-3);border-left:3px solid var(--accent);padding:var(--sp-1) 0 var(--sp-1) var(--sp-3)}
 .cal .cal-url{display:flex;gap:var(--sp-2);max-width:720px;flex-wrap:wrap}
-.cal .cal-url input{flex:1 1 220px;font:var(--fs-2) ui-monospace,Consolas,monospace}
+.cal .cal-url input{flex:1 1 220px;font:var(--fs-2) var(--font-mono)}
 .cal .cal-steps{padding-left:var(--sp-4);font-size:var(--fs-3);max-width:720px}
 .cal .cal-steps li{margin:var(--sp-1) 0;overflow-wrap:anywhere}
 /* ---- Export everything: the format, and what a FHIR export includes (#205) */
@@ -911,7 +917,7 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 .acct .share-sees p{margin:var(--sp-1) 0}
 .acct .share-sees ul{margin:var(--sp-1) 0;padding-left:var(--sp-5)}
 .acct .share-made{border:1px solid var(--good);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin-top:var(--sp-3)}
-.acct .share-url{flex:1 1 240px;font-family:ui-monospace,monospace;font-size:var(--fs-2)}
+.acct .share-url{flex:1 1 240px;font-family:var(--font-mono);font-size:var(--fs-2)}
 .share-page main.share{max-width:960px}
 .share .share-lab{margin-top:var(--sp-3)}
 .share .share-flag{font-weight:var(--fw-semibold);color:var(--crit)}

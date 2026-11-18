@@ -80,16 +80,24 @@ panZoom($("#view-health"), {...mainWindow, minSpan: 3 * DAY,
   get: () => hRange(),
   draw: () => { const [a, b] = hRange(); $("#view-health").querySelectorAll("svg").forEach(s => s._draw && s._draw(a, b)); },
   end: () => { renderFilters(); renderHealth(); save(); }});
-/* how wide a chart label is, in the chart's own units: measured in the font its class has in app.css (read once a class) */
-const labelFonts = {}, labelCtx = document.createElement("canvas").getContext("2d");
+/* how wide a chart label is, in the chart's own units: laid out in a hidden <text> of its class, so in the font and
+   weight the chart draws it in. app.css lays these labels out at their own size (geometricPrecision), so the width
+   doesn't change with the chart's scale, as a canvas's or a hinted font's would (#253). Kept per class and text until a
+   font finishes loading; a chart drawn before Inter arrived measured its fallback, which is wider, so nothing overflows
+   (drawing again then would move what's under the pointer: a tooltip's ▲ loads the fallback face too). */
+const labelSizes = new Map();
+let labelText = null;
 function labelW(text, cls) {
-  if (!labelFonts[cls]) {
-    const s = document.body.appendChild(el("svg:svg", {class: "vh", "aria-hidden": "true"}, el("svg:text", {class: cls}))), cs = getComputedStyle(s.firstChild);
-    labelFonts[cls] = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; s.remove();
+  const key = cls + "\n" + text;
+  if (!labelSizes.has(key)) {
+    if (!labelText || !labelText.isConnected) labelText = document.body.appendChild(el("svg:svg", {class: "vh", "aria-hidden": "true"}, el("svg:text", {}))).firstChild;
+    labelText.setAttribute("class", cls);
+    labelText.textContent = text;
+    labelSizes.set(key, labelText.getComputedTextLength());
   }
-  labelCtx.font = labelFonts[cls];
-  return labelCtx.measureText(text).width;
+  return labelSizes.get(key);
 }
+document.fonts.addEventListener("loadingdone", () => labelSizes.clear());
 /* milestone rules on a time chart: accent dashed line from y0 to y1, label on its own row at labelY (null = no labels).
    A label stays inside the plot, x(a) to R (#312): after its rule, before it near the right edge, against that edge,
    or shortened with "…" to the room there is; its <title> has the full names and dates. Returns the milestones shown,
