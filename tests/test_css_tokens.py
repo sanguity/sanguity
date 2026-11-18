@@ -71,16 +71,18 @@ TOKENS = "www/css/tokens.css"
 ALLOWED = {
     # its two px font sizes are outside the type scale on purpose (#255): the journal's body figure, in its own units, and
     # the heatmap's ? in its 12 px circle
-    "www/css/app.css": {"colours": 11, "px font sizes": 2, "radii": 17, "shadows": 12},
-    "www/css/summary.css": {"radii": 2},
-    # a page's one colour (sign-in's and setup's third) is the brand mark's white highlight, stroke="#fff"
+    # its radius is a colour key's or swatch's 2 px (a data mark, not a component); its shadows are bars drawn inset
+    # (a selected item's accent bar, a seg's underline), the sticky Save bar's shadow upward and the offline flash (#256)
+    "www/css/app.css": {"colours": 5, "px font sizes": 2, "radii": 1, "shadows": 5},
+    # a page's one colour (sign-in's and setup's second; the other is their button's white text) is the brand mark's
+    # white highlight, stroke="#fff"
     "www/account.html": {"colours": 1},
     "www/admin.html": {"colours": 1},
     "www/guide.html": {"colours": 1},
     "www/index.html": {"colours": 1, "style attributes": 3},
-    "www/login.html": {"colours": 3, "radii": 2, "shadows": 1, "style attributes": 1},
+    "www/login.html": {"colours": 2, "style attributes": 1},
     "www/settings.html": {"colours": 1},
-    "www/setup.html": {"colours": 3, "radii": 2, "shadows": 1, "style attributes": 3},
+    "www/setup.html": {"colours": 2, "style attributes": 3},
     "www/share.html": {"colours": 1},
     "www/sharing.html": {"colours": 1},
     "www/sources.html": {"colours": 1},
@@ -89,13 +91,13 @@ ALLOWED = {
     "www/js/costs.js": {"script styles": 47},
     "www/js/cycle.js": {"script styles": 2},
     "www/js/drawer.js": {"script styles": 18, "colours": 1},   # the colour: a record's text in its own frame (srcdoc)
-    "www/js/health.js": {"script styles": 24},
+    "www/js/health.js": {"script styles": 21},
     "www/js/heatmap.js": {"script styles": 5},
     "www/js/journal.js": {"script styles": 3},
     "www/js/medlog.js": {"script styles": 1},
     "www/js/meds.js": {"script styles": 7},
     "www/js/nav.js": {"script styles": 1},
-    "www/js/overview.js": {"script styles": 12},
+    "www/js/overview.js": {"script styles": 11},
     "www/js/rename.js": {"script styles": 2},
     "www/js/timeline.js": {"script styles": 1},
     "www/js/trends.js": {"script styles": 9},

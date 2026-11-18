@@ -3876,12 +3876,14 @@ def main():
             check("…at 1400 px it covers only part of the page, which stays usable", not js("document.querySelector('main').inert")
                   and ax_roles() == ["banner", "complementary", "main"], ax_roles())
             page.keyboard.press("Escape")
-            motion = "[getComputedStyle(document.getElementById('drawer')).transitionDuration, smoothly()]"
+            # the drawer's slide (--dur-2) and a tab's hover (--dur-1, #256), pointed at
+            motion = "[getComputedStyle(document.getElementById('drawer')).transitionDuration, smoothly(), getComputedStyle(document.getElementById('tab-labs')).transitionDuration]"
+            page.hover("#tab-labs")
             page.emulate_media(reduced_motion="reduce")
             less = js(motion)
             page.emulate_media(reduced_motion="no-preference")
-            check("less motion when asked for: no transitions, no smooth scrolling (and both back when not)", less == ["0s", "auto"]
-                  and js(motion) == ["0.18s", "smooth"], [less, js(motion)])
+            check("less motion when asked for: no transitions, no smooth scrolling (and both back when not)", less == ["0s", "auto", "0s"]
+                  and js(motion) == ["0.2s", "smooth", "0.12s, 0.12s, 0.12s"], [less, js(motion)])
             page.reload()   # the saved views as the server has them again (none)
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
 

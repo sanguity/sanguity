@@ -68,5 +68,16 @@
 :root{
   --fs-1:11.5px; --fs-2:12.5px; --fs-3:14px; --fs-4:15.5px; --fs-5:18px; --fs-6:22px; --fs-7:28px;
   --fw-regular:400; --fw-medium:500; --fw-semibold:600; --fw-bold:700;
+  /* spacing (#256), a 4-point scale with one rule: 12 px or less between what belongs together, 16 to 24 between
+     cards, 32 to 48 between sections */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px; --sp-7:48px;
+  /* corners: a control, a box inside a card, a card or dialog, and a pill or circle */
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --r-pill:999px;
+  /* two elevations: raised a little (a hairline and a soft 1 px shadow) and floating over the page (menus, tooltips,
+     the drawer, dialogs); the hairline is --ring, so it follows the theme */
+  --shadow-1:0 0 0 1px var(--ring),0 1px 2px rgba(0,0,0,.06);
+  --shadow-2:0 8px 24px rgba(0,0,0,.18);
+  /* motion: hover, press and menus; the drawer. The reduced-motion rule (app.css) turns both off */
+  --dur-1:120ms; --dur-2:200ms; --ease-out:cubic-bezier(.2,.8,.2,1);
 }
 }

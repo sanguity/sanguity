@@ -485,7 +485,7 @@ function bpCard(box, a, b, long, legend, head, home, clinic) {
         r.pulse != null ? el("div", {class: "s", text: `Pulse ${fmtNum(r.pulse)} bpm`}) : null, flagsOf(r) ? el("div", {class: "s", text: flagsOf(r)}) : null]}; }});
   // the latest readings, listed (all of them with Table)
   const recent = all.slice(-5).reverse();
-  if (recent.length) card.append(el("h3", {class: "sub", style: {marginTop: "10px"}, text: all.length > 5 ? `Latest 5 of ${all.length} readings in this period (Table lists them all)` : "Readings in this period"}),
+  if (recent.length) card.append(el("h3", {class: "sub next", text: all.length > 5 ? `Latest 5 of ${all.length} readings in this period (Table lists them all)` : "Readings in this period"}),
     el("ul", {class: "vital-list"}, ...recent.map(r => el("li", {}, el("b", {text: `${bpText(r)} mmHg`}), r.pulse != null ? ` · pulse ${fmtNum(r.pulse)}` : "",
       flagsOf(r) ? el("span", {class: "abn", text: ` · ${flagsOf(r)}`}) : "", el("span", {class: "muted", text: ` · ${fmtDT(r.t)} · ${bpWhere(r)}`})))));
 }
@@ -656,7 +656,7 @@ function hGlucose(box, a, b, {head, legend, byDay}) {
 function latestList(card, all, n, text, where, flags) {
   const recent = all.slice(-n).reverse();
   if (!recent.length) return;
-  card.append(el("h3", {class: "sub", style: {marginTop: "10px"}, text: all.length > n ? `Latest ${n} of ${all.length} in this period (Table lists them all)` : "In this period"}),
+  card.append(el("h3", {class: "sub next", text: all.length > n ? `Latest ${n} of ${all.length} in this period (Table lists them all)` : "In this period"}),
     el("ul", {class: "vital-list"}, ...recent.map(r => el("li", {}, el("b", {text: text(r)}), flags(r) ? el("span", {class: "abn", text: ` · ${flags(r)}`}) : "",
       el("span", {class: "muted", text: ` · ${where(r)}`})))));
 }
@@ -851,7 +851,7 @@ function hZones(box, a, b, {long, legend, head, byDay}) {
   // the period's workouts with heart rate, the latest first; each opens its details (the drawer)
   const recent = inP.slice(-5).reverse();
   if (!recent.length) { card.append(el("p", {class: "hint", text: "No workouts with heart rate in this period."})); return; }
-  card.append(el("h3", {class: "sub", style: {marginTop: "10px"}, text: inP.length > 5 ? `Latest 5 of ${inP.length} workouts with heart rate in this period` : "Workouts with heart rate in this period"}),
+  card.append(el("h3", {class: "sub next", text: inP.length > 5 ? `Latest 5 of ${inP.length} workouts with heart rate in this period` : "Workouts with heart rate in this period"}),
     el("ul", {class: "vital-list zones-list"}, ...recent.map(x => {
       const ev = EV.find(e => e.k === "exercise" && e.ts === x.t), z = x.hr.zones, most = z ? Math.max(...z.slice(1)) : 0;
       const top = most > 0 ? [1, 2, 3, 4, 5].filter(k => z[k] === most) : [];   // the zone (or zones, tied) with the most time
