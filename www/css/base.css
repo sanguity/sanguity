@@ -1,0 +1,14 @@
+/* Sanguity · what every page shares, sign-in and setup included (#310): the reset and the one focus ring. Every page
+   loads it second, after tokens.css (which declares the layers' order) and before app.css or its own <style>, so there
+   is one copy of each. app.css's head says what each layer holds. */
+@layer reset {
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+}
+
+@layer base {
+/* focus (2.4.7, docs/accessibility.md): one ring for everything that takes focus by keyboard, the accent's 3:1 in both
+   themes. A component sets its own only to do something different: inset in a row of buttons or a menu, closer or
+   further, an SVG mark that thickens its stroke instead; forced colours keep theirs. */
+:where(:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+}
