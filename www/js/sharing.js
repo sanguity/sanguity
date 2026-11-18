@@ -336,15 +336,17 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       return el("span", {}, heightText(h.cm, u), el("span", {class: "muted", text: ` (${heightText(h.cm, u === "cm" ? "ftin" : "cm")})`})); };
     /* a change: the server answers with everything again; drawn afresh, focus back on the control that had it (or
        focus, an id); said in msg (the targets' card has its own, #234) */
-    async function send(path, method, payload, said, focus, msg = $("#aboutMsg")) {
+    /* quiet: the words shown in the message line, said by a toast instead (#263); true once it's done */
+    async function send(path, method, payload, said, focus, msg = $("#aboutMsg"), quiet = false) {
       const had = document.activeElement && document.activeElement.id;
       try {
         const got = await call(path, method, payload);
-        if (P !== p) return;
+        if (P !== p) return false;
         showAbout(p, got);
-        for (const m of [$("#aboutMsg"), $("#targetsMsg")]) sayIn(m, m === msg ? (typeof said === "function" ? said(got) : said) : "");
+        for (const m of [$("#aboutMsg"), $("#targetsMsg")]) sayIn(m, m === msg ? (typeof said === "function" ? said(got) : said) : "", false, {say: !quiet});
         (focus && document.getElementById(focus) || had && document.getElementById(had) || $("#aboutHeightHd")).focus();
-      } catch (e) { fail(e, msg); }
+        return true;
+      } catch (e) { fail(e, msg); return false; }
     }
     const parts = [];
     // the birth date and sex
@@ -412,10 +414,12 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       el("thead", {}, el("tr", {}, ...["Date", "Height", ""].map(h => el("th", {text: h})))),
       el("tbody", {}, ...mine.map(h => el("tr", {}, el("td", {text: aboutDay(h.date)}), el("td", {}, hText(h)),
         el("td", {class: "acts"}, edit ? el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove the height on ${aboutDay(h.date)}`,
-          onclick: async () => {
-            if (!await ask({title: "Remove this height?", message: `${heightText(h.cm, heightUnit(HEIGHT_PREF, h.unit))} on ${aboutDay(h.date)}. You can add it again.`,
-                            action: "Remove height", danger: true})) return;
-            send(`profiles/${p.id}/person/heights/${h.date}`, "DELETE", undefined, `Removed the height on ${aboutDay(h.date)}.`); }}) : null)))))
+          onclick: async () => {   // at once, with an Undo that adds it back as it was (#263; it asked first before)
+            const said = `Removed the height on ${aboutDay(h.date)}: ${heightText(h.cm, heightUnit(HEIGHT_PREF, h.unit))}.`;
+            if (await send(`profiles/${p.id}/person/heights/${h.date}`, "DELETE", undefined, said, null, $("#aboutMsg"), true))
+              toast(said, {action: "Undo", onAction: async () => {
+                if (!await send(`profiles/${p.id}/person/heights`, "POST", {date: h.date, unit: h.unit, cm: h.cm}, `Undone: the height on ${aboutDay(h.date)} is back.`))
+                  throw new Error("it couldn't be added back"); }}); }}) : null)))))
       : el("p", {class: "muted", id: "aboutNoHeight", text: "No height written down yet."}));
     // the heights a clinic recorded: beside the history, never in it until someone adds one
     if (a.recorded.length) {
@@ -435,7 +439,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
         all ? el("div", {class: "about-row"}, all) : null);
     }
     $("#aboutBody").replaceChildren(...parts.filter(Boolean));
-    $("#targetsBody").replaceChildren(targetsCard(p, a, UNITS_PREF, (path, method, payload, said, focus) => send(path, method, payload, said, focus, $("#targetsMsg"))));   // #234
+    $("#targetsBody").replaceChildren(targetsCard(p, a, UNITS_PREF, (path, method, payload, said, focus, quiet) => send(path, method, payload, said, focus, $("#targetsMsg"), quiet)));   // #234
     $("#about").dataset.profile = p.id;   // whose details are drawn (the browser check waits for it)
   }
 

@@ -4156,9 +4156,37 @@ def main():
             js("switchTab('labs')")
             settle(300)
             check("a view removed on Settings is gone from Trends", js("[...document.querySelectorAll('#viewPick option')].map(o => o.value)") == ["CBC (browser check)"])
+            # #263: deleting a view asks nothing now; a toast says it, with an Undo that puts it back
+            toasts = """() => { const r = document.getElementById('sgToasts'), l = r && r.querySelector('[aria-live]');
+                return r && {name: r.getAttribute('aria-label'), landmark: r.tagName, open: r.matches(':popover-open'), live: l && l.getAttribute('aria-live'),
+                  toasts: [...r.querySelectorAll('.sg-toast')].map(t => [t.querySelector('.sg-toast-text').textContent, ...[...t.querySelectorAll('button')].map(b => b.getAttribute('aria-label') || b.textContent)])}; }"""
             page.click("#tvBox button:text-is('Delete')")
-            answer_ask(page)
             page.wait_for_function("CFG.trends.views.length === 0", timeout=10000)
+            settle(200)
+            shown = js(toasts)
+            check("toasts (#263): deleting a view asks nothing; a toast in the polite live region named Notifications says so, with Undo and Dismiss",
+                  not js("!!document.querySelector('dialog.sg-ask')") and shown and shown["name"] == "Notifications" and shown["landmark"] == "SECTION"
+                  and shown["open"] and shown["live"] == "polite" and shown["toasts"][-1:] == [["Deleted “CBC (browser check)”.", "Undo", "Dismiss"]], shown)
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+            page.wait_for_function("CFG.trends.views.length === 1", timeout=10000)
+            settle(200)
+            check("…its Undo puts the view back, as saved, and the toast goes",
+                  js("CFG.trends.views.map(v => v.name)") == ["CBC (browser check)"] and not js(toasts)["toasts"]
+                  and js("api('profiles/1/settings').then(r => r.json()).then(j => j.trends.views.map(v => v.name))") == ["CBC (browser check)"], js(toasts))
+            page.click("#tvBox button:text-is('Delete')")
+            page.wait_for_function("CFG.trends.views.length === 0", timeout=10000)
+            page.mouse.move(700, 500)
+            settle(9500)
+            still = len(js(toasts)["toasts"])
+            page.focus("#tab-labs")   # (the view picker is disabled with no view left)
+            page.keyboard.press("Alt+n")
+            reached = js("document.activeElement.closest('.sg-toast') ? document.activeElement.textContent : null")
+            settle(1500)   # past 10 s, with focus in it: it waits
+            waited = len(js(toasts)["toasts"])
+            page.keyboard.press("Escape")
+            check("…a toast stays at least 10 s, Alt+N takes focus to its Undo, it waits while focus is in it, and Escape puts it away with focus back",
+                  still == 1 and reached == "Undo" and waited == 1 and not js(toasts)["toasts"] and js("document.activeElement.id") == "tab-labs"
+                  and js("CFG.trends.views.length") == 0, [still, reached, waited, js("document.activeElement.id")])
             check("deleting the last view from Trends leaves none", js("document.getElementById('viewPick').disabled") is True)
             if kept is not None:
                 js(f"localStorage.setItem(stateKey(), {json.dumps(kept)})")
@@ -5302,6 +5330,10 @@ def main():
             card = js(f"{last_card}.textContent")
             check("a CareSpace export uploads and is imported in the background, as CareSpace",
                   card.startswith("Imported.") and "CareSpace" in card and "lab result" in card, card)
+            done_toast = js("(t => t && [t.querySelector('.sg-toast-text').textContent, ...[...t.querySelectorAll('a, button')].map(b => b.getAttribute('aria-label') || b.textContent), t.querySelector('a')?.getAttribute('href')])(document.querySelector('#sgToasts .sg-toast:last-child'))")
+            check("…and a toast says what came in (#263), with Open Labs and Undo, the card no longer a live region of its own",
+                  done_toast and done_toast[0].startswith("Imported ") and "lab " in done_toast[0] and done_toast[1:4] == ["Open Labs", "Undo", "Dismiss"]
+                  and done_toast[4] == "index.html?profile=2#labs" and not js(f"{last_card}.hasAttribute('aria-live')"), done_toast)
             up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
             check("the job is done, read by the CareSpace importer", job is not None and tuple(job) == ("done", "carespace"), job and tuple(job))
@@ -7204,11 +7236,12 @@ def main():
             settle(200)
             del problems[n_problems:]   # the refusal's 400 was asked for
             page.click("#tgt-spo2-clear")
-            asked = answer_ask(page)
             page.wait_for_function("document.getElementById('targetsMsg').textContent === 'Cleared the target for blood oxygen.'", timeout=10000)
+            asked = js("[!!document.querySelector('dialog.sg-ask'), document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text')?.textContent]")
             stored = js("fetch('api/profiles/1/person').then(r => r.json())")["targets"]
-            check("…changed, refused in words (a low end above the high end), and cleared after asking; the others kept",
-                  said_ch == "Changed the target for blood pressure: up to 125/80 mmHg." and asked[0] == "Clear this target?" and "at least 95%" in asked[1]
+            check("…changed, refused in words (a low end above the high end), and cleared at once, a toast saying what it was (#263); the others kept",
+                  said_ch == "Changed the target for blood pressure: up to 125/80 mmHg." and not asked[0] and asked[1].startswith("Cleared the target for blood oxygen.")
+                  and "at least 95%" in asked[1]
                   and sorted(stored) == ["bp", "cgm", "glucose", "temp", "weight"] and stored["glucose"]["low"] == 80
                   and js("document.activeElement.id") == "tgt-spo2-hd", [said_ch, asked, sorted(stored)])
             check("…kept in one unit each (weight in kg, as typed in lb), with who set it and when",
@@ -7989,11 +8022,19 @@ def main():
             about(apid)
             hs = rows_of(hist)
             check("…shows every height in it, the other unit beside", "138.4 cm" in hs[0] and "(4 ft 6.5 in)" in hs[0] and "134.6 cm" in hs[1], hs)
+            before_h = js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")["heights"]
             page.click(f"{hist}:nth-child(2) button")
-            said = answer_ask(page)
             page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 2", timeout=10000)
-            check("…a height removed after asking", said[0] == "Remove this height?" and "134.6 cm" in said[1]
+            said = js("[!!document.querySelector('dialog.sg-ask'), document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text')?.textContent]")
+            check("…a height removed at once, a toast saying which with an Undo (#263)", not said[0] and "134.6 cm" in said[1]
                   and js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")["heights"][-1]["date"] == "2026-04-06", said)
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+            page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 3", timeout=10000)
+            hs_back = js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")["heights"]
+            check("…and its Undo adds it back as it was", hs_back == before_h, [hs_back, before_h])
+            page.click(f"{hist}:nth-child(2) button")
+            page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 2", timeout=10000)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             # ---- heights from the phone (#223): an uploaded Apple Health export's, beside the history like a clinic's,
             # marked as from the phone, added only on request
             from server import watch_store as ws_r

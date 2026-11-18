@@ -864,6 +864,14 @@ Everything on `main` so far; it becomes the first tagged release.
   grab handle: swiped down by the handle or its title, it closes (its close button and Escape still do). Escape in a dialog asked
   from the drawer no longer closes the drawer too, and what the app says (the status line) is heard while a dialog
   is open.
+- **Toasts, and Undo instead of asking** (#263): what has just happened is said at the foot of the screen, with what
+  can be done about it, instead of only in a line that could be out of sight: Settings' saves ("Saved “Key labs”." ·
+  Undo, which puts back what each setting was), an import that finished ("Imported 45 lab results in 12 tests." ·
+  Open Labs · Undo, Import history's undo at once), records typed in, and removals that can be put back, which no
+  longer ask first: a saved Labs view, a target for home readings and a height in About this person. A toast stays
+  at least 10 seconds and waits while the pointer is on it or focus is in it; Alt+N goes to it, Escape or its ✕
+  puts it away; up to three show at once. It's said once, in a live region named Notifications. What can't be undone
+  or touches security (passkeys, sign-in, sharing, cycle data, a dose or reminder removed) still asks first.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

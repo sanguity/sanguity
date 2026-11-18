@@ -135,8 +135,8 @@ const announce = (() => {
   const box = {}, wait = {}, next = {};
   const make = () => {
     if (box.status || !document.body) return;
-    box.status = el("div", {class: "vh sg-live", id: "sgStatus", role: "status"});
-    box.alert = el("div", {class: "vh sg-live", id: "sgAlert", role: "alert"});
+    box.status = el("div", {class: "vh sg-live sg-follow", id: "sgStatus", role: "status"});
+    box.alert = el("div", {class: "vh sg-live sg-follow", id: "sgAlert", role: "alert"});
     document.body.append(box.status, box.alert);
   };
   make();   // there from the start: a screen reader only follows a live region that was in the page before it changed
@@ -154,14 +154,15 @@ const announce = (() => {
 /* sayIn(m, text, bad): a page's message line (a .msg beside its Save button, a form's hint): shows the text (or
    nodes: words with a link), marked .bad for an error, and says it through announce(), as an alert when bad. The
    line itself stops being a live region (older markup has role=status), so it isn't said twice. An empty text
-   clears it and says nothing. repeat: false for a line redrawn as you type, whose same words again aren't said. */
-function sayIn(m, text, bad = false, {repeat = true} = {}) {
+   clears it and says nothing. repeat: false for a line redrawn as you type, whose same words again aren't said;
+   say: false for words a toast says (below), shown here without being said twice. */
+function sayIn(m, text, bad = false, {repeat = true, say = true} = {}) {
   if (!m) return;
   if (m.getAttribute("role") === "status") m.removeAttribute("role");
   const was = m.textContent;
   m.replaceChildren(...[].concat(text == null ? [] : text));
   m.classList.toggle("bad", !!bad);
-  if (m.textContent && (repeat || m.textContent !== was)) announce(m.textContent, {error: !!bad});
+  if (say && m.textContent && (repeat || m.textContent !== was)) announce(m.textContent, {error: !!bad});
 }
 /* viewTitle(title, say): the browser tab's title for what's shown ("Labs · Ben" → "Labs · Ben · Sanguity"), and,
    when say is given, those words said politely: for a view changed by a sidebar link or a button elsewhere, which a
@@ -278,11 +279,16 @@ function openDialog(d, {as = "center", modal = true} = {}) {
   if (d.contains(was) && was !== document.activeElement) was.focus({preventScroll: true});
   liveFollow();
 }
-/* the shared status line (announce(), #sgStatus and #sgAlert) goes into the modal dialog on top while one is open, and
-   back to the page after: what's behind a modal dialog is inert, and a screen reader hears nothing said there */
+/* what every page shares (.sg-follow: the status line of announce(), #sgStatus and #sgAlert, the toasts and the
+   tooltip) goes into the modal dialog on top while one is open, and back to the page after: what's behind a modal
+   dialog is inert, so a screen reader would hear nothing said there, and a toast's Undo couldn't be pressed. A
+   popover among them is shown again once moved (a move hides it), over the dialog. */
 function liveFollow() {
   const home = [...document.querySelectorAll("dialog:modal")].at(-1) || document.body;
-  for (const r of document.querySelectorAll(".sg-live")) if (r.parentElement !== home) home.append(r);
+  for (const r of document.querySelectorAll(".sg-follow")) if (r.parentElement !== home) {
+    home.append(r);
+    if (r.matches("#sgToasts") && !r.matches(":popover-open")) r.showPopover();
+  }
 }
 function wireDialog(d) {
   d.sgWired = true;
@@ -348,7 +354,7 @@ const placeAt = (node, at) => { for (const [k, v] of Object.entries(at)) node.st
     const text = t.dataset.tip;
     if (!text || !t.isConnected) return hide();
     if (on !== t) hide();
-    if (!box) document.body.append(box = el("div", {class: "sg-tip", id: "sgTip", role: "tooltip", popover: "manual"}));
+    if (!box) (document.querySelector("dialog:modal") || document.body).append(box = el("div", {class: "sg-tip sg-follow", id: "sgTip", role: "tooltip", popover: "manual"}));
     box.textContent = text;
     on = t; by = how;
     t.classList.add("sg-tip-on");   // the anchor app.css places it from
@@ -432,3 +438,78 @@ function icon(name, {label} = {}) {
   const svg = el("svg:svg", {class: `icon i-${name}`, "aria-hidden": "true", focusable: "false"}, el("svg:use", {href: `${ICON_SPRITE}#i-${name}`}));
   return label ? el("span", {class: "icon-l"}, svg, el("span", {class: "vh", text: label})) : svg;
 }
+
+/* ---- toasts (#263): toast(text, {action, onAction, actions, timeout}) says that something has happened, with what
+   can be done about it, at the foot of the screen on every page: "Saved “Key labs”. · Undo", "Imported 6 lab results ·
+   Open Labs · Undo". action and onAction are a button and what it does (an Undo); actions more of them, each
+   {text, onClick} or a link {text, href}. A toast stays at least 10 seconds (timeout, in ms, can only make it longer),
+   and its time stops while the pointer is on it or focus is in it; its close button puts it away, as Escape does with focus in
+   it. Alt+N takes focus to the newest toast's first button, and focus goes back where it was when that toast goes:
+   no toast takes focus by itself. Up to three show at once, the newest at the foot; a fourth sends the oldest away.
+   They're one region named Notifications (a landmark a screen reader can go to), its list a polite live region, so
+   each toast is said once as it appears: its words are said only there, not through announce() as well (a page's own
+   line beside it shows them with sayIn's say: false). The region is a popover over everything, and goes into a modal
+   dialog while one is open (liveFollow, above), so its buttons work there. An action that fails says so in the toast,
+   which stays. What can't be undone, or touches security, still asks first (ask()). */
+const toast = (() => {
+  let region = null, list = null, back = null;
+  const make = () => {
+    // every page with app.css, where its look is: not sign-in or setup, which have nothing to report or undo
+    if (region || !document.body || !document.querySelector('link[rel=stylesheet][href$="app.css"]')) return;
+    list = el("div", {class: "sg-toast-list", "aria-live": "polite", "aria-relevant": "additions"});
+    region = el("section", {class: "sg-toasts sg-follow", id: "sgToasts", "aria-label": "Notifications", popover: "manual"}, list);
+    (document.querySelector("dialog:modal") || document.body).append(region);
+    region.showPopover();
+  };
+  make();   // there from the start, as announce()'s lines are: a live region is followed only if it was there first
+  if (!region) document.addEventListener("DOMContentLoaded", make);
+  document.addEventListener("keydown", ev => {
+    if (!ev.altKey || ev.ctrlKey || ev.metaKey || ev.code !== "KeyN" || !list || !list.lastElementChild) return;
+    ev.preventDefault();
+    const t = list.lastElementChild;
+    if (!t.contains(document.activeElement)) back = document.activeElement;
+    t.querySelector("button, a").focus();
+  });
+  return (text, {action, onAction, actions = [], timeout = 10000} = {}) => {
+    make();
+    if (!list) { announce(text); return {close() {}, node: null}; }
+    const acts = [...(action ? [{text: action, onClick: onAction}] : []), ...actions];
+    const words = el("p", {class: "sg-toast-text", text});
+    let left = Math.max(10000, timeout), start = 0, timer = 0, over = false, t = null;
+    const gone = () => {
+      clearTimeout(timer);
+      if (!t.isConnected) return;
+      const had = t.contains(document.activeElement);
+      t.remove();
+      if (had) {
+        // where focus was, or what took its place when the page was drawn again (the same id)
+        const to = !back || back === document.body ? null : back.isConnected ? back : back.id ? document.getElementById(back.id) : null;
+        back = null;
+        if (to) to.focus({preventScroll: true});
+      }
+    };
+    const run = () => { clearTimeout(timer); start = Date.now(); timer = setTimeout(gone, left); };
+    const pause = () => { if (timer) { clearTimeout(timer); timer = 0; left = Math.max(2000, left - (Date.now() - start)); } };
+    const resume = () => { if (!over && !t.contains(document.activeElement)) run(); };
+    t = el("div", {class: "sg-toast", role: "group", "aria-label": "Notification"},
+      words,
+      acts.length ? el("div", {class: "sg-toast-acts"}, ...acts.map(a => a.href ? el("a", {class: "btn small", href: a.href, text: a.text})
+        : el("button", {class: "btn small", type: "button", text: a.text, onclick: async ev => {
+          const b = ev.currentTarget;
+          b.disabled = true;
+          try { await a.onClick(); gone(); }
+          catch (e) { b.disabled = false; words.textContent = `${text} ${a.text} didn't work: ${e.message}`; }
+        }}))) : null,
+      el("button", {class: "btn quiet sg-toast-x", type: "button", "aria-label": "Dismiss", onclick: gone}, icon("x")),
+      acts.length ? el("span", {class: "vh", text: " Alt+N goes to it."}) : null);
+    t.addEventListener("pointerenter", () => { over = true; pause(); });
+    t.addEventListener("pointerleave", () => { over = false; resume(); });
+    t.addEventListener("focusin", pause);
+    t.addEventListener("focusout", ev => { if (!t.contains(ev.relatedTarget)) resume(); });
+    t.addEventListener("keydown", ev => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); gone(); } });
+    while (list.children.length >= 3) list.firstElementChild.remove();
+    list.append(t);
+    run();
+    return {close: gone, node: t};
+  };
+})();
