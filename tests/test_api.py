@@ -254,6 +254,8 @@ class Api(unittest.TestCase):
         self.assertEqual(alex.get(f"/api/profiles/{alex_pid}/data").status_code, 204)  # exists, but no records yet
 
         # Ben shares his profile with Alex as viewer: Alex sees it, Sam still doesn't
+        r = ben.put("/api/profiles/1/members", json={"username": "nobody-here", "role": "viewer"}, headers=H)   # no such account
+        self.assertEqual((r.status_code, r.json()["detail"]), (404, "No active account with that username. An admin can create it under Admin → Accounts."))
         self.assertEqual(ben.put("/api/profiles/1/members", json={"username": "alex", "role": "viewer"}, headers=H).status_code, 200)
         self.assertEqual(sorted(p["id"] for p in alex.get("/api/me").json()["profiles"]), sorted([1, alex_pid]))
         self.assertEqual(alex.get("/api/profiles/1/data").status_code, 200)

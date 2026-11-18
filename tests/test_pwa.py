@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Install as a phone app (#56): the manifest, icons and service worker are served with the right types and the
 pages' own headers (by nginx.conf and by the development server alike), the worker keeps every file of the app but
-nothing from /api/, every page links the manifest and registers the worker, and /api/me says when the sign-in ends
-(the offline copy of records is deleted then). The browser side (install, offline view, clearing) is in
-tests/browser_check.py.
+nothing from /api/, every page links the manifest and registers the worker, every file it keeps is UTF-8 (#248), and
+/api/me says when the sign-in ends (the offline copy of records is deleted then). The browser side (install, offline
+view, clearing) is in tests/browser_check.py.
 
   pip install -r requirements-dev.txt
   python3 tests/test_pwa.py
@@ -138,6 +138,23 @@ class Pwa(unittest.TestCase):
         self.assertNotIn("api/", re.sub(r"/\*.*?\*/|//[^\n]*", "", sw, flags=re.S))
         # it never writes the offline records' cache (the page does, only when turned on)
         self.assertNotIn("sanguity-offline", re.sub(r"/\*.*?\*/|//[^\n]*", "", sw, flags=re.S))
+
+    def test_every_app_file_is_utf8(self):
+        # #248: the pages say they're UTF-8 and are sent as such, so a byte of another encoding (a Windows-1252 "…",
+        # 0x85) shows as a garbled character. Every file under www/ but the images decodes.
+        bad = []
+        for root, _, files in os.walk(WWW):
+            for n in files:
+                if n.endswith((".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp")):
+                    continue
+                path = os.path.join(root, n)
+                with open(path, "rb") as f:
+                    data = f.read()
+                try:
+                    data.decode("utf-8")
+                except UnicodeDecodeError as e:
+                    bad.append(f"{os.path.relpath(path, ROOT)}: byte {data[e.start]:#04x} at {e.start}")
+        self.assertEqual(bad, [], "files under www/ that aren't valid UTF-8")
 
     def test_me_says_when_the_sign_in_ends(self):
         self.assertEqual(self.served["login"], 200)

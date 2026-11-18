@@ -103,7 +103,7 @@ function renderCosts() {
         costState.dir = costState.sort === key ? -costState.dir : (["d", "billed", "paid", "owe"].includes(key) ? -1 : 1); costState.sort = key; renderCosts();
         $(`#costTable th:nth-child(${i + 1}) button`)?.focus(); }}))))),
     el("tbody", {}, list.slice(0, costState.limit).map(r => el("tr", {class: "link", onclick: () => openEvent(byId.get(r.id))},
-      el("td", {text: r.d}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: r.title.length > 60 ? r.title.slice(0, 59) + "…" : r.title})),
+      el("td", {text: fmtD(dayTs(r.d))}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: r.title.length > 60 ? r.title.slice(0, 59) + "…" : r.title})),
       el("td", {text: r.prov}), el("td", {text: r.cat}),
       el("td", {text: usd(r.billed)}), el("td", {text: usd(r.paid)}), el("td", {class: r.owe > 0 ? "" : "", text: usd(r.owe)}),
       el("td", {class: isDenied(r) ? "abn" : "", text: (r.status || "").replace(/_/g, " ").toLowerCase()})))))));

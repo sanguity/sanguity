@@ -985,7 +985,7 @@ def share(pid: int, body: MemberIn, request: Request, s=Depends(user), db=Depend
     need(db, s, pid, "owner")
     u = db.execute("SELECT id, username FROM users WHERE username=? AND disabled=0", (body.username.strip(),)).fetchone()
     if not u:
-        raise HTTPException(404, "No active account with that username. An admin can create it under Account.")
+        raise HTTPException(404, "No active account with that username. An admin can create it under Admin → Accounts.")
     with dbm.transaction(db):
         before, old = dbm.active_owners(db, pid), role_of(db, u["id"], pid)
         db.execute("""INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, ?)
