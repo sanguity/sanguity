@@ -1131,8 +1131,9 @@ CHART_ACCENT_JS = r"""sel => {
 
 # a tile's change line (Costs' figures' notes too, #260), as laid out (#330): each one that wraps, as its lines, when it ends in a short
 # fragment (its last line under 40% of its longest, such as "▼ −0.03 since Aug 18," over "2026"), breaks a date, or has
-# only the change on its first line ("▼ −0.03" over "since Aug 18, 2026", #374); and each row of tiles whose sparklines
-# don't start at the same height ([the tiles' container, the tops])
+# only the change on its first line ("▼ −0.03" over "since Aug 18, 2026", #374), or a line that starts with its "·"
+# ("diagnosis" over "· Nov 12, 2026", #379); and each row of tiles whose sparklines don't start at the same height
+# ([the tiles' container, the tops])
 TILE_LINES_JS = r"""() => {
   const lines = e => {   // {text, left, right} per line the element's words are laid out on
     const out = [], walk = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
@@ -1150,7 +1151,7 @@ TILE_LINES_JS = r"""() => {
     if (!e.checkVisibility() || !e.textContent.trim()) continue;
     out.n++;
     const ls = lines(e), w = ls.map(l => l.r - l.l);
-    if (ls.length > 1 && (w.at(-1) < .4 * Math.max(...w) || ls.some((l, i) => i && year.test(l.text) && date.test(ls[i - 1].text))
+    if (ls.length > 1 && (w.at(-1) < .4 * Math.max(...w) || ls.some((l, i) => i && (year.test(l.text) && date.test(ls[i - 1].text) || l.text.startsWith("·")))
                           || / since /.test(e.textContent.replace(/\s+/g, " ")) && !/ since /.test(ls[0].text + " ")))
       out.bad.push(ls.map(l => l.text));
   }
@@ -1872,7 +1873,7 @@ def main():
                     js("([t, p]) => { if (p) setPeriod(p); switchTab(t); }", [tab, preset])
                     settle(300)
                     got = js(TILE_LINES_JS)
-                    check(f"{tab} ({width} px, #330, #374): no tile's change line ends in a short fragment, breaks a date or has only the change on its first line"
+                    check(f"{tab} ({width} px, #330, #374, #379): no tile's change line ends in a short fragment, breaks a date, has only the change on its first line or starts a line with its \"·\""
                           + (", and a row's sparklines line up" if tab == "overview" else ""),
                           got["n"] > 0 and not got["bad"] and not got["uneven"], got)
             # ---- one tile for every tab (#260): the Overview's key labs, home readings, Watch & scale and insurance figures,
@@ -2216,7 +2217,7 @@ def main():
                 const day = k => Object.fromEntries(WATCH.metrics.find(m => m.key === k).pts), deep = day('sleep_deep_min'), rem = day('sleep_rem_min');
                 const avg = m => Math.round(ns.reduce((s, p) => s + (m[isoDay(p[0])] || 0), 0) / ns.length);
                 const tile = [...document.querySelectorAll('#view-health .tile')].find(t => t.querySelector('.lbl').textContent === 'Sleep');
-                return [tile.querySelector('.delta').textContent, `${avg(deep)} min deep · ${avg(rem)} min REM`, ns.length, avg(deep)]; })()""")
+                return [tile.querySelector('.delta').textContent.replace(/\\s+/g, ' '), `${avg(deep)} min deep · ${avg(rem)} min REM`, ns.length, avg(deep)]; })()""")
             check("Sleep tile (#216): the period's average deep and REM sleep a night, in minutes as the watch gave them, not hours called minutes",
                   st[2] > 30 and st[0] == st[1] and 30 <= st[3] <= 150, st)
             js("[state.preset, state.from, state.to] = window._was216; save()")
@@ -6003,6 +6004,20 @@ def main():
             tpg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
             coarse = tpg.evaluate("matchMedia('(pointer: coarse)').matches")
             tq_at.update(tq_lines(tpg, True))
+            # #379: on a touch screen the ✎'s target on the heatmap table's last row stays inside the table's scroller, so
+            # with its rows fitting (the demo's labs, under the 70vh it may take) the table doesn't scroll, at 1400 and 375 px
+            hm379 = {}
+            tpg.click("#tab-labs")
+            tpg.click("#labsView button[data-view=heatmap]")
+            tpg.evaluate("state.tables.add('#hm'); renderHeatmap()")
+            for width in (1400, 375):
+                tpg.set_viewport_size({"width": width, "height": 900})
+                tpg.wait_for_timeout(300)
+                hm379[width] = tpg.evaluate("""(w => w && [w.scrollHeight, w.clientHeight, w.querySelectorAll('tr:last-child .rename-btn').length,
+                    parseFloat(getComputedStyle(w).maxHeight)])(document.querySelector('.tablewrap.hm-table'))""")
+            tpg.evaluate("state.tables.delete('#hm'); renderHeatmap()")
+            check("…on a touch screen, the heatmap table whose rows fit doesn't scroll: the ✎'s target on its last row stays inside it, at 1400 and 375 px (#379)",
+                  all(r and r[2] and r[0] < r[3] and r[0] == r[1] for r in hm379.values()), hm379)
             tctx.close()
             tq_bad = [f"{k}: {x}" for k, r in tq_at.items() for x in r["icons"] if x["dy"] is None or x["dy"] > 1 or x.get("overlaps") or not x["hit"] or x["takes"]
                       or "target" in x and (x["box"] != [24, 24] or x["target"] != ([44, 44] if k.endswith("touch") or int(k.split()[0]) <= 640 else [24, 24]))]

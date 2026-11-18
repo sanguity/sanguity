@@ -1018,6 +1018,12 @@ Everything on `main` so far; it becomes the first tagged release.
   "Open it full size") beside a title saying they need the server: two tooltips that disagreed, on a link that did
   nothing. Their tip and description are the reason now, with no title, and a test page link's name no longer says it
   opens a new tab while it can't.
+- **The heatmap's table no longer scrolls on a phone or touch screen, and the weight tile no longer starts a line
+  with "·"** (#379): #373's 44 px target around the ✎ reached 4 px past the table's last row, so the table, whose rows
+  fit, scrolled by 4 px (with a 15 px scrollbar where scrollbars take room). On a table's last row the target stops
+  at the ✎'s foot. The Overview's weight tile read "▼ −4.3 lb since" / "diagnosis" / "· Nov 12, 2026" at 1280 px and
+  on a phone; the "·" is kept with the word before it, "diagnosis ·" over the date. So it is in Body and activity's
+  Sleep ("70 min deep" over "· 90 min REM") and Blood pressure tiles and Costs' Payments and "Reduced or forgiven".
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
