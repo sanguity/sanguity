@@ -547,7 +547,7 @@ function sectionCard(sec, opts = {}) {
   save.onclick = async () => {
     const todo = items.filter(it => it.dirty());
     if (!todo.length) return;
-    const pid = PID;
+    const pid = PID, had = card.contains(document.activeElement);   // (before Save is disabled, which takes focus away)
     save.disabled = discard.disabled = true;
     sayIn(msg, "Saving…");
     const done = [], was = [];
@@ -560,6 +560,7 @@ function sectionCard(sec, opts = {}) {
         changed();
         sayIn(msg, (done.length ? `Saved ${quoted(done)}. ` : "") + `${quoted([it.st.label])} isn't saved: ${e.message}`, true);
         it.node.scrollIntoView({block: "nearest"});
+        if (had && !card.contains(document.activeElement)) save.focus({preventScroll: true});   // (enabled again)
         if (done.length) reload();
         return;
       }
@@ -569,6 +570,8 @@ function sectionCard(sec, opts = {}) {
     changed();
     const said = `Saved ${quoted(done)}.`;
     await reload({section: sec.id, text: said, quiet: true});
+    // drawn again, Save with it (and disabled now): focus on the section's heading, to come back to from the toast (#368)
+    if (had && !document.getElementById("sec-" + sec.id)?.contains(document.activeElement)) document.getElementById(`sec-${sec.id}-hd`)?.focus();
     // what the server keeps now (as it stored it), for the Undo to tell whether a setting was changed again since
     const kept = await stored(base).catch(() => null);
     if (kept) for (const w of was) if (kept[w.key]) w.wrote = kept[w.key];
@@ -577,9 +580,7 @@ function sectionCard(sec, opts = {}) {
   discard.onclick = () => {
     const fresh = sectionCard(sec, {...opts, note: "Changes discarded: back as saved."});
     card.replaceWith(fresh);
-    const h = fresh.querySelector("h2");
-    h.tabIndex = -1;
-    h.focus();
+    fresh.querySelector("h2").focus();
   };
   const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", disabled: !changedHere, hidden: !anyEditable,
     onclick: async () => {
@@ -590,7 +591,7 @@ function sectionCard(sec, opts = {}) {
       catch (e) { sayIn(msg, e.message, true); reset.disabled = false; }
     }});
   card = el("section", {class: "card", id: "sec-" + sec.id},
-    el("div", {class: "set-hd"}, el("h2", {text: sec.title}), reset),
+    el("div", {class: "set-hd"}, el("h2", {id: `sec-${sec.id}-hd`, tabindex: -1, text: sec.title}), reset),
     sec.help ? el("p", {class: "hint", text: sec.help}) : null,
     sec.id === "overview" ? presetsBlock(sec) : null,   // "Start from a condition" (presets.js, #186)
     ...items.map(it => it.node),
