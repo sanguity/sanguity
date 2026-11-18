@@ -244,14 +244,16 @@ button.tile{cursor:pointer}
 /* ---- menus (#261, menuWire in nav.js): the list is a popover, in the top layer over everything (no z-index), placed
    by CSS anchor positioning: under its button (the anchor, scoped to the menu's own box), its right edge on the
    button's (the top bar's; the records bar's and the kinds' line up on the left, in pages), turned to the other side,
-   pulled 8 px in from the screen's right, or opened above where it wouldn't fit. It fades in as it opens
-   (@starting-style), never as it closes; the reduced-motion rule turns that off. A browser without anchor positioning
-   places it from where nav.js measured its button and the menu (menuPlace, #356: the menu shown unseen for that,
-   .sg-measure), no taller than the room there is (--menu-room), scrolling inside if it must. */
+   pulled 8 px in from the screen's right, or opened above where it wouldn't fit. It's never taller than the larger of
+   the room under and over its button (--menu-room, nav.js's menuPlace, as it opens and as the page scrolls), so one of
+   those fits whatever its height, and it scrolls inside if it must (the period menu on a phone on its side, #357).
+   Chromium tries only the first five fallbacks. It fades in as it opens (@starting-style), never as it closes; the
+   reduced-motion rule turns that off. A browser without anchor positioning places it from where menuPlace measured
+   its button and the menu (shown unseen for that, .sg-measure). */
 :is(.menu,.kind){anchor-scope:--menu}
 :is(.menu,.kind)>[aria-haspopup=menu]{anchor-name:--menu}
 .menu-list{position:fixed;position-anchor:--menu;inset:auto;top:calc(anchor(bottom) + 6px);right:anchor(right);margin:0;width:auto;height:auto;
-  position-try-fallbacks:flip-inline,--menu-edge,flip-block,flip-block flip-inline;
+  position-try-fallbacks:flip-inline,--menu-edge,flip-block,flip-block flip-inline,flip-block --menu-edge;
   min-width:210px;max-width:min(280px,calc(100vw - 24px));max-height:var(--menu-room,none);background:var(--raised);color:var(--ink);border:1px solid var(--ring);
   border-radius:var(--r-md);box-shadow:var(--shadow-2);padding:var(--sp-1);overflow-y:auto}
 @position-try --menu-edge{left:auto;right:8px}
@@ -264,11 +266,12 @@ button.tile{cursor:pointer}
 .menu-sep{height:1px;background:var(--grid);margin:var(--sp-1) 2px}
 
 /* ---- tooltips (#261, data-tip, util.js): over its element, centred on it, or under it where there's no room above,
-   never on it; kept 8 px inside the screen; fading in as menus do. Words in the page's ink on its raised colour
-   with a ring, like a menu, so its contrast is the page's own in both themes and forced colours draw its edge. */
+   never on it; kept 8 px inside the screen (its margins: a box shifted to fit keeps them inside the screen, #357);
+   fading in as menus do. Words in the page's ink on its raised colour with a ring, like a menu, so its contrast is
+   the page's own in both themes and forced colours draw its edge. */
 .sg-tip-on{anchor-name:--sg-tip}
 :is(.menu,.kind)>[aria-haspopup=menu].sg-tip-on{anchor-name:--menu,--sg-tip}   /* a menu's button is its menu's anchor too */
-.sg-tip{position:fixed;position-anchor:--sg-tip;inset:auto;margin:0;position-area:top;margin-bottom:var(--sp-1);position-try-fallbacks:flip-block;
+.sg-tip{position:fixed;position-anchor:--sg-tip;inset:auto;position-area:top;margin:var(--sp-2) var(--sp-2) var(--sp-1);position-try-fallbacks:flip-block;
   justify-self:anchor-center;width:max-content;max-width:min(320px,calc(100vw - 16px));
   padding:var(--sp-1) var(--sp-2);background:var(--raised);color:var(--ink);border:1px solid var(--ring);border-radius:var(--r-sm);
   box-shadow:var(--shadow-2);font-size:var(--fs-2);line-height:1.4;white-space:pre-line;overflow-wrap:anywhere;text-align:left}

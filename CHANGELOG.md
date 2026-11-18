@@ -937,6 +937,10 @@ Everything on `main` so far; it becomes the first tagged release.
   where it opened as the page scrolled, and was drawn at the screen's top left for a moment. It now opens over its
   button where there's no room under it, no taller than the room there is (scrolling inside if it must), placed
   before it's drawn, and it and a tooltip follow their button as the page scrolls or the window changes size.
+- **The period menu on a phone on its side, and tooltips at the screen's edge** (#357): at 640×360 or 800×450 the
+  Timeline's More… menu fitted neither under nor over its button and ran off the right of the screen; a menu is now
+  never taller than the larger room beside its button and scrolls inside, so it always opens on the screen.
+  Tooltips shifted to fit the screen touched its edge; they keep 8 px from it, as the comment always said.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -4962,6 +4962,24 @@ def main():
                               not bad and js("['presets', 'periodMoreBtn', 'from', 'to', 'datesClear'].every(id => { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.right <= 375; })"),
                               bad[:6])
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            # #357: on a phone on its side (640×360) and at 800×450, the menu (60% of the screen tall) fitted neither under
+            # More… nor over it, and the browser kept it under, its left edge on the button's, running off the right. It's
+            # never taller than the larger room now, so one of the tries fits, sideways too: with More… at the top of the
+            # screen and as low as the page lets it go, all of the menu is on the screen
+            bad = []
+            for w, h in ((640, 360), (800, 450)):
+                page.set_viewport_size({"width": w, "height": h})
+                for where in ("start", "end"):
+                    js("w => { scrollTo(0, 0); document.getElementById('periodMoreBtn').scrollIntoView({block: w}); }", where)
+                    settle(100)
+                    js("document.getElementById('periodMoreBtn').click()")
+                    settle(200)
+                    g = js("""() => { const l = document.getElementById('periodMoreList'), r = l.getBoundingClientRect(), b = document.getElementById('periodMoreBtn').getBoundingClientRect();
+                        return [l.matches(':popover-open'), ...[r.left, r.top, r.right, r.bottom, b.top, b.bottom].map(Math.round)]; }""")
+                    if not (g[0] and g[1] >= 0 and g[2] >= 0 and g[3] <= w and g[4] <= h and (g[2] >= g[6] or g[4] <= g[5])):
+                        bad.append(f"{w}×{h}, More… at the {where}: open, menu left, top, right, bottom, button top, bottom {g}")
+                    page.keyboard.press("Escape")
+            check("the period menu at 640×360 and 800×450 opens all on the screen, under or over More…, scrolling inside where it must (#357)", not bad, bad)
             page.set_viewport_size({"width": 1400, "height": 900})
             # periods saved before #191: "dx" (the primary milestone), a milestone, a year
             for key, chosen in (("dx", [pm[1]]), (om[0], ["More: " + om[1]]), (yr, ["More: " + yr])):
@@ -4971,6 +4989,26 @@ def main():
                 check(f"a period saved as {key!r} opens as it was", js(period)["chosen"] == chosen and not js(period)["dates"], js(period))
             js("([a, b]) => setRange(a, b)", was)
             open_tab("labs")
+            # #357 (tooltips, #261 above): a tooltip shifted to fit the screen touched its edge; it's 8 px inside it now.
+            # Labs' Remove ✕ at the right, a lab's name in the list at the left (its tip, the name in the records, is wide)
+            bad = []
+            for w in (1400, 375):
+                page.set_viewport_size({"width": w, "height": 900 if w == 1400 else 800})
+                settle(300)
+                for sel in (".chart .hd > button[data-tip^='Remove ']", ".srow .nm[data-tip]"):
+                    loc = page.locator(sel).first
+                    loc.scroll_into_view_if_needed()
+                    page.mouse.move(0, 0)
+                    settle(100)
+                    loc.hover()
+                    settle(700)
+                    t = js(tip_at)
+                    if not t or t["box"][0] < 8 or t["box"][2] > w - 8 or t["covers"]:
+                        bad.append(f"{w} px, {sel}: {t}")
+                    page.keyboard.press("Escape")
+            page.mouse.move(0, 0)
+            check("tooltips at the screen's edge, at 1400 and 375 px, are 8 px inside it and not over their element (#357)", not bad, bad)
+            page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- pick one and on or off (#193): every pick-one group (.seg) on each records tab, and the journal form's
             # kinds, has exactly one selected; every toggle chip (.toggle) says "true" or "false"; each kind has one look in
