@@ -668,6 +668,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Rows of buttons have room under them again** (#309): since #246, Admin → Backups' "Back up now" sat on the
   Schedule heading and its Save on "Check a backup", and Sharing's summary buttons and activity filters touched what
   followed. Every row of buttons on Sources, Sharing, Settings, Account and Admin is 8 px from what's above and below it.
+- **Short screens: headings and menus follow the top bar that scrolls away** (#308): under 500 px tall (a phone on
+  its side, a large zoom) the top bar scrolls with the page, but the Timeline's month headings still stuck its height
+  down the screen, with rows showing above them, and on a phone Add and your menu opened that far down, under a bar
+  that had scrolled up. There the headings (and Settings' sidebar) stick at the top, and the menus open right under
+  the bar wherever it is.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
