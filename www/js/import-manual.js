@@ -31,8 +31,10 @@
   const today = zToday;   // dates.js
   const rows = () => [...box.querySelectorAll(".man-row")];
   const valueOf = r => Object.fromEntries(FIELDS.map(([f]) => [f, r.querySelector(`[data-f=${f}]`).value.trim()]));
-  // a row with only what a new row is given (date, time, lab) is still empty
+  // a row with only what a new row is given (date, time, lab) is still empty: nothing of it is sent
   const blank = v => !["test", "value", "unit", "range", "flag"].some(f => v[f]);
+  // but it's been typed into once any of its fields differs from what it was given, its date or lab too (#384)
+  const typedIn = r => JSON.stringify(valueOf(r)) !== r.dataset.given;
 
   function field([f, cap, ph]) {
     const input = f === "flag"
@@ -50,6 +52,7 @@
       el("div", {class: "man-check", "aria-live": "polite"}));
     // a new row starts on the last one's date, time and lab: a report's results share them
     for (const [f] of FIELDS) r.querySelector(`[data-f=${f}]`).value = v[f] ?? (["date", "time", "lab"].includes(f) ? from[f] || (f === "date" ? today() : "") : "");
+    r.dataset.given = JSON.stringify(valueOf(r));
     if (after) after.after(r); else box.append(r);
     label();
     return r;
@@ -177,7 +180,7 @@
       soon();
       return true;
     }
-    if (!labs.hidden && rows().every(r => blank(valueOf(r)))) { box.replaceChildren(); labs.hidden = true; soon(); }
+    if (!labs.hidden && !rows().some(typedIn)) { box.replaceChildren(); labs.hidden = true; soon(); }
     return false;
   }};
   $("#manAdd").onclick = () => { const r = addRow(); if (r) r.querySelector("[data-f=test]").focus(); soon(); };
@@ -192,7 +195,7 @@
     } catch (e) {}
   }
   saveBtn.onclick = async () => {
-    const p = pid(), rs = rows(), sent = body(true, rs);
+    const p = pid(), rs = rows(), sent = body(true, rs), wasOn = document.activeElement === saveBtn;
     saving = true; saveBtn.disabled = true; $("#profile").disabled = true;
     tell("Saving…");
     try {
@@ -212,8 +215,11 @@
       const HEALTH = ["home", "home_bp", "home_glucose", "home_temp", "home_spo2", "workout"];
       const onHealth = HEALTH.some(k => typed[k]), onTimeline = Object.keys(typed).some(k => k !== "labs" && k !== "height" && !HEALTH.includes(k));
       box.replaceChildren(); labs.hidden = false; addRow({date: rs.length ? valueOf(rs[rs.length - 1]).date : today()});
-      recs.saved(); keepBox.checked = false; $("#manKeepWrap").hidden = true;
+      recs.saved(); keepBox.checked = false; $("#manKeepWrap").hidden = true; $("#manKind").value = "labs";   // as on load
       saving = false; ok = bad = okRecs = badRecs = 0;
+      // a check of what was there before (a field's change event as Save was clicked, 350 ms) has nothing to say about
+      // the new form: not run, or not shown, so it doesn't clear the saved line below (#384)
+      clearTimeout(timer); seq++;
       const links = [names.length ? el("a", {href: recordsLink(p, "labs"), text: "See them on Labs", onclick: () => openTrends(p, names)}) : null,
         onTimeline ? el("a", {href: recordsLink(p, "timeline"), text: "See them on the timeline"}) : null,
         onHealth ? el("a", {href: recordsLink(p, "health"), text: "See them on Body and activity"}) : null,
@@ -239,11 +245,15 @@
       tell("Couldn't save: " + e.message + " Nothing was saved.", true);
     } finally {
       saving = false; $("#profile").disabled = false; saveBtn.disabled = true;
+      // Save disabled itself, so focus fell to <body>: to the line that says what happened, its links next (#384)
+      if (wasOn && (document.activeElement === document.body || document.activeElement === saveBtn)) msg.focus({preventScroll: true});
     }
   };
 
   /* ---------------------------------------------------------------- start */
-  addRow();
+  // arriving with another kind's form already there (Costs' "Type in a payment", sources.html#payment, import-records.js):
+  // lab results start put away, as if that kind had been added (#384)
+  if (recs.count()) labs.hidden = true; else addRow();
   recs.onchange(soon);
   keepBox.addEventListener("change", () => { if (!saving) soon(); });
   $("#profile").addEventListener("change", () => { recs.reset(); soon(); });

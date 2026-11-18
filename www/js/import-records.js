@@ -242,7 +242,8 @@
   });
 
   // the Costs tab's "Type in what you paid" (#55) opens sources.html#payment: Type records in, with a payment's form
-  if (location.hash === "#payment") { showKind("manual"); add("payment"); }
+  // (the picker on it, as Add leaves it; import-manual.js starts with lab results put away, #384)
+  if (location.hash === "#payment") { showKind("manual"); picker.value = "payment"; add("payment"); }
   $("#profile").addEventListener("change", () => { if (cards().some(c => HINTS[c.dataset.kind])) loadUnits(); });
 
   window.sanguityRecords = {
