@@ -1315,6 +1315,37 @@ def main():
                 .map(t => [t.querySelector('.st').textContent, !!t.querySelector('svg .spark-abn'), !t.querySelector('svg circle')])""")
             check("Overview (#60): an out-of-range tile says High or Low, and its sparkline ends in ▲ or ▼, not a red dot",
                   ov and all(s in ("▲ High", "▼ Low") and m and c for s, m, c in ov), ov)
+            # ---- a record's details, loaded when it's opened (#217): the records come with a lab day's list of results and
+            # what the Overview lists of an immunization, nothing else of details; opening a lab day shows it at once and asks
+            # once for its results, which then stay for the page; one that couldn't be loaded says why, and is asked for again
+            asked = []
+            page.on("request", lambda r: "/details?ids=" in r.url and asked.append(r.url))
+            look = js("""(() => { const v = Object.values(DATA.details); return {n: v.length, events: DATA.events.length, rows: v.some(d => d.rows || d.lines),
+                listed: v.every(d => d.type === 'labday' || d.partial || d.type === 'exercise' || d.type === 'ecg')}; })()""")
+            check("details (#217): the records come without each record's details, only a lab day's list and what the Overview lists",
+                  look["listed"] and not look["rows"] and 0 < look["n"] < look["events"], look)
+            day = js("EV.find(e => e.k === 'lab' && !e.hidden && (DATA.details[e.id]?.ids || []).length > 1 && DATA.details[e.id].ids.every(i => !detailsHave(i))).id")
+            first = js("id => { const p = openEvent(byId.get(id)); return [!!p, !!document.querySelector('#drawer.open #dbody .details-wait'), document.getElementById('dtitle').textContent]; }", day)
+            page.wait_for_selector("#dbody details.res table.data", timeout=5000)
+            n = len(asked)
+            js("id => { closeDrawer(); return openEvent(byId.get(id)); }", day)
+            check("…opening a lab day shows it at once, saying its details are loading, then its results, asked for in one request",
+                  first[0] and first[1] and first[2] and n == 1 and js("id => DATA.details[id].ids.every(i => detailsHave(i))", day), (first, asked))
+            check("…and opened again they're kept for the page: no new request", len(asked) == 1 and js("document.querySelectorAll('#dbody details.res').length") > 1, asked)
+            claim = js("EV.find(e => e.k === 'claim' && !detailsHave(e.id)).id")
+            before = len(problems)
+            busy = re.compile(r"/api/profiles/\d+/details\?")
+            page.route(busy, lambda route: route.fulfill(status=503, content_type="application/json", body='{"detail": "The server is busy (a fictional outage)."}'))
+            js("id => openEvent(byId.get(id))", claim)
+            miss = js("[document.querySelector('#dbody .details-missed')?.textContent || '', document.getElementById('dtitle').textContent, !!document.querySelector('#dbody p.source')]")
+            page.unroute(busy)
+            js("id => openEvent(byId.get(id))", claim)
+            again = js("[!!document.querySelector('#dbody .details-missed'), document.querySelector('#dbody dl.kv')?.textContent || '']")
+            problems[before:] = [x for x in problems[before:] if "/details?ids=" not in x and "503" not in x]
+            check("…one that couldn't be loaded says why, keeping its title and source, and is asked for again when opened next",
+                  "couldn't be loaded" in miss[0] and "fictional outage" in miss[0] and miss[1] and miss[2] and not again[0] and ("Insurer" in again[1] or "Billed" in again[1]),
+                  (miss, again))
+            js("closeDrawer()")
             js("openEvent(EV.find(e => e.k === 'lab' && e.abn))")
             settle(300)
             dr = js("""[...document.querySelectorAll('#dbody table.data tbody tr')].filter(r => r.querySelector('td.abn')).map(r => r.lastElementChild.textContent)""")
@@ -2452,7 +2483,7 @@ def main():
             row = f"#hm text.row[data-key='{lab}']"
             check("…the heatmap row too", page.locator(row).count() == 1 and page.locator(row).text_content().startswith("Hgb (renamed)"),
                   page.locator(row).text_content() if page.locator(row).count() else None)
-            rid = js("n => { const e = EV.find(e => (DATA.details[e.id] || {}).type === 'result' && (DATA.details[e.id].rows || []).some(r => r[0] === n)); return e && e.id; }", lab)
+            rid = js("async n => { await loadDetails(DATA.events.map(e => e.id)); const e = EV.find(e => (DATA.details[e.id] || {}).type === 'result' && (DATA.details[e.id].rows || []).some(r => r[0] === n)); return e && e.id; }", lab)
             js("id => openEvent(byId.get(id))", rid)
             settle(200)
             cell = js("n => { const td = [...document.querySelectorAll('#dbody table.data td')].find(td => td.title === 'In the records: ' + n); return td && td.textContent; }", lab)
@@ -2528,7 +2559,7 @@ def main():
             # "sandbox allow-same-origin" in its CSP, so its refresh is refused as in the drawer's frame; PDFs and
             # pictures are served without it, so they still open. A context of its own: bypass_csp would drop the sandbox.
             doc_src = js("document.querySelector('#dbody iframe.doc').getAttribute('src')")
-            pdf_src = js("Object.values(DATA.details).find(d => d && d.type === 'file' && (d.ext || '').toLowerCase() === 'pdf' && d.url)?.url")
+            pdf_src = js("(async () => { await loadDetails(DATA.events.map(e => e.id)); return Object.values(DATA.details).find(d => d && d.type === 'file' && (d.ext || '').toLowerCase() === 'pdf' && d.url)?.url; })()")
             page.keyboard.press("Escape")
             tab_ctx =browser.new_context(viewport={"width": 1400, "height": 900})
             tab_ctx.add_cookies(page.context.cookies())
@@ -4416,7 +4447,7 @@ def main():
                   listed[:400])
             check("…and the Epic MyChart export's conversation and hospital admission", "Lab question" in listed and "Hospital admission" in listed,
                   listed[:400])
-            doc = js("""(async () => { const e = EV.find(e => e.title === 'Discharge summary'), d = e && DATA.details[e.id];
+            doc = js("""(async () => { const e = EV.find(e => e.title === 'Discharge summary'); if (e) await loadDetails([e.id]); const d = e && DATA.details[e.id];
                 if (!d || !d.url) return null; const r = await fetch(d.url);
                 return {status: r.status, type: r.headers.get('content-type'), pdf: (await r.text()).startsWith('%PDF')}; })()""")
             check("…whose attached PDF, stored with the upload, opens", doc == {"status": 200, "type": "application/pdf", "pdf": True}, doc)
@@ -5608,7 +5639,7 @@ def main():
             cell = js("document.querySelector('#charts table.data tbody td:nth-child(2)').textContent")
             check("…its table shows the reported value beside each", re.search(r"µmol/L \(reported [\d.]+ mg/dL, ref 0\.7–1\.3\)", cell), cell)
             js("state.tables.clear()")
-            ev = js("EV.find(e => e.k === 'lab' && (DATA.details[e.id]?.ids || []).some(i => (DATA.details[i]?.rows || []).some(r => r[0] === 'Creatinine')))?.id")
+            ev = js("(async () => { await loadDetails(DATA.events.map(e => e.id)); return EV.find(e => e.k === 'lab' && (DATA.details[e.id]?.ids || []).some(i => (DATA.details[i]?.rows || []).some(r => r[0] === 'Creatinine')))?.id; })()")
             js("id => openEvent(byId.get(id))", ev)
             page.wait_for_selector("#drawer.open #dbody td small.orig", timeout=10000)
             row = js("[...document.querySelectorAll('#dbody tr')].map(r => [...r.cells].map(c => c.textContent)).find(c => c[0].replace('✎', '').trim() === 'Creatinine')")
@@ -7022,8 +7053,8 @@ def main():
                   "same result from 1 more source" in page.inner_text("#charts") and "Sources" in page.inner_text("#charts .source"),
                   page.inner_text("#charts")[:400])
             page.set_viewport_size({"width": 375, "height": 800})
-            day_ev = js("DATA.events.find(e => e.k === 'lab' && e.t.startsWith('2025-03-04') && "
-                        "(DATA.details[e.id]?.ids || []).some(i => (DATA.details[i]?.same || []).length)).id")
+            day_ev = js("(async () => { await loadDetails(DATA.events.map(e => e.id)); return DATA.events.find(e => e.k === 'lab' && e.t.startsWith('2025-03-04') && "
+                        "(DATA.details[e.id]?.ids || []).some(i => (DATA.details[i]?.same || []).length)).id; })()")
             js(f"openEvent(byId.get({day_ev}))")
             page.wait_for_selector("#dbody .same-line", timeout=5000)
             check("the drawer: the result once, saying the same result also came from the sync, with Undo link",
@@ -8045,6 +8076,23 @@ def main():
             check("records on: one profile's records, settings and watch data are kept",
                   bool(copy) and copy["profile"]["id"] == 1 and bool(json.loads(copy["data"])["events"]) and bool(copy.get("settings")) and bool(copy.get("watch")),
                   copy and sorted(copy))
+            # ---- offline records and details opened (#217): a record's details come when it's opened, so the copy keeps
+            # those of the records opened here (a lab day's results; the documents, loaded as if each were opened), with
+            # the records they belong to, and a reload of the same records keeps them; the others' aren't kept
+            day = ph.evaluate("""(async () => { const e = EV.find(e => e.k === 'lab' && (DATA.details[e.id]?.ids || []).length > 1);
+                await openEvent(e); closeDrawer(); return [e.id, ...DATA.details[e.id].ids]; })()""")
+            docs = ph.evaluate("(async () => { const ids = EV.filter(e => e.k === 'document').map(e => e.id); await loadDetails(ids); return ids; })()")
+            KEPT = COPY + ".then(c => !!c && " + json.dumps([str(i) for i in day[1:] + docs]) + ".every(k => k in (c.details || {})) && c.loaded)"
+            until(KEPT, 5000)
+            loaded = ph.evaluate(KEPT)
+            ph.reload()
+            until(LOADED, 20000)
+            until(f"{KEPT}.then(t => t > {loaded})", 10000)
+            look = ph.evaluate(COPY + """.then(c => ({files: Object.values(c.details).filter(d => d && d.type === 'file').length,
+                claims: Object.values(c.details).filter(d => d && d.type === 'claim').length,
+                listed: Object.values(JSON.parse(c.data).details).every(d => d.type === 'labday' || d.partial), rev: c.rev}))""")
+            check("offline records (#217): the copy keeps the details of the records opened here, with their records' revision, after a reload too",
+                  look["files"] == len(docs) and look["claims"] == 0 and look["listed"] and bool(look["rev"]), look)
             # offline: that profile, read-only, with when it was loaded
             ctx.set_offline(True)
             ph.reload()
@@ -8063,10 +8111,18 @@ def main():
             check("offline: a link to another page isn't followed", ph.evaluate("location.pathname") == "/")
             check("offline: a change is refused as needing the server",
                   ph.evaluate("api('profiles/1/edits', {method: 'POST', body: '{}'}).then(async r => [r.status, (await r.json()).detail])") == [503, "You're offline. This needs the server."])
-            ph.evaluate("openEvent(byId.get(+Object.keys(DATA.details).find(k => DATA.details[k].type === 'file' && byId.get(+k))))")   # a PDF
+            ph.evaluate("""(async () => { await loadDetails(EV.filter(e => e.k === 'document').map(e => e.id));   // kept, as opened before (#217)
+                return openEvent(byId.get(+Object.keys(DATA.details).find(k => DATA.details[k].type === 'file' && byId.get(+k)))); })()""")   # a PDF
             ph.wait_for_selector("#dbody .offline-note", timeout=5000)
             check("offline: a document isn't loaded, and says why",
                   ph.evaluate("!document.querySelector('#dbody iframe[src], #dbody img[src]')") and "aren't kept on this device" in ph.inner_text("#dbody"))
+            ph.evaluate("id => openEvent(byId.get(id))", day[0])   # (#217) opened online before: its results, from the copy
+            shown = ph.evaluate("[document.querySelectorAll('#dbody details.res table.data').length, !!document.querySelector('#dbody .details-missed')]")
+            check("offline (#217): a lab day opened before shows its results from the copy", shown == [len(day) - 1, False], (shown, len(day) - 1))
+            ph.evaluate("openEvent(EV.find(e => e.k === 'claim'))")   # never opened on this device
+            miss = ph.evaluate("document.querySelector('#dbody .details-missed')?.textContent || ''")
+            check("offline (#217): a record not opened before says its details weren't kept, and still shows its title and source",
+                  "weren't kept on this device" in miss and ph.evaluate("document.getElementById('dtitle').textContent.length > 0 && !!document.querySelector('#dbody p.source')"), miss)
             ph.evaluate("closeDrawer()")
             ctx.set_offline(False)
 

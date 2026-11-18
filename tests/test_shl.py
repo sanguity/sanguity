@@ -27,6 +27,7 @@ from cryptography.hazmat.primitives.asymmetric import ec   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, activity, config, crypto, db as dbm, main, net, outside, profiles as prof, shl, uploads   # noqa: E402
+from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 import shl_server   # noqa: E402
 from tests import netguard   # noqa: E402
 
@@ -293,7 +294,7 @@ class Links(unittest.TestCase):
         j = self.wait(r["job"], save=False)
         self.assertEqual((j["state"], j["counts"]["kinds"]), ("preview", {"immunization": 2}), j)
         self.assertEqual(self.wait(r["job"])["state"], "done")
-        data = self.robin.get(f"/api/profiles/{self.pid}/data").json()
+        data = whole(self.robin, self.pid)
         imms = sorted((e for e in data["events"] if e["k"] == "immunization"), key=lambda e: e["t"])
         self.assertEqual([(e["t"][:10], e["title"]) for e in imms], [("2025-01-15", "COVID-19 vaccine"), ("2025-02-12", "COVID-19 vaccine")])
         self.assertEqual(data["details"][str(imms[1]["id"])],   # the shape the C-CDA and FHIR importers give one

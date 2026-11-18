@@ -572,6 +572,15 @@ Everything on `main` so far; it becomes the first tagged release.
   changes and Reset to defaults undo it. A condition the problem list names is offered, never from an allergy; a
   child's profile leaves adult measures out. The definitions are `condition-presets.json`, checked by
   `tests/test_condition_presets.py`, each awaiting a clinician's review; `docs/condition-presets.md` says how to add one.
+- **A record's details load when it's opened** (#217): the records page no longer reads every record's details (a
+  result's values, a claim's lines, a message, a letter) with the records. The drawer asks for them when it opens one
+  (`GET /api/profiles/{id}/details?ids=`, a lab day's results in one request, the same access as the records and
+  never a share link's) and keeps them while the page is open, in the chosen units. The records still bring what
+  lists, counts and search need: a lab day's results and what the Overview lists of an immunization. With ten years
+  of records the page's data is 2.11 MB instead of 3.51 MB (256 KB instead of 443 KB as sent), and its budget is
+  lowered to match. The visit summary, share links and both exports read every record's details on the server, as
+  before. The offline copy keeps the details of the records opened on that device, as long as the records stay the
+  same; one not opened before says so offline.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

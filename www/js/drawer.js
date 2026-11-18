@@ -66,6 +66,7 @@ function openEvent(e) {
   $("#dkey").style.background = c.color; $("#dtitle").textContent = e.title;
   $("#dsub").textContent = `${KIND_LABEL[e.k]} · ${e.end && e.te - e.ts > DAY ? fmtD(e.ts) + " – " + fmtD(e.te) : fmtDT(e.ts)}${e.sub ? " · " + e.sub : ""}`;
   const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
+  { const wait = detailsWait(e, body); if (wait) { showDrawer(); return wait; } }   // its details, loaded when it's opened (details.js, #217)
   if (d.type === "result") body.append(...resultBody(d, e.id));
   else if (d.type === "labday") {
     body.append(el("div", {}, el("button", {class: "btn", text: "Show this day in Lab trends", onclick: () => { setRange(e.ts - 45*DAY, e.ts + 45*DAY); pickTab("labs"); }})));

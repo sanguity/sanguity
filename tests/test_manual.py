@@ -25,6 +25,7 @@ import io, json, logging   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, activity, crypto, db as dbm, main, profiles as prof, uploads   # noqa: E402
+from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -92,9 +93,7 @@ class Manual(unittest.TestCase):
         return (c or self.robin).post(f"/api/profiles/{pid or self.pid}/manual", json={"rows": rows, "save": save}, headers=H)
 
     def data(self, pid):
-        r = self.robin.get(f"/api/profiles/{pid}/data")
-        self.assertEqual(r.status_code, 200, r.text)
-        return r.json()
+        return whole(self.robin, pid)
 
     # ---------------------------------------------------------------- saving
 

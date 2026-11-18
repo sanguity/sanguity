@@ -23,6 +23,7 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, activity, crypto, db as dbm, history, jobs, main, profiles as prof, records, uploads, watch_store   # noqa: E402
+from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -119,7 +120,7 @@ class History(unittest.TestCase):
         for part in ("data", "watch", "settings"):
             r = self.ines.get(f"/api/profiles/{pid}/{part}")
             self.assertIn(r.status_code, (200, 204), r.text)
-            out[part] = (r.status_code, r.json() if r.status_code == 200 else None)
+            out[part] = (r.status_code, (whole(self.ines, pid) if part == "data" else r.json()) if r.status_code == 200 else None)   # #217
         return out
 
     def undo(self, pid, iid, c=None, status=200):

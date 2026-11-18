@@ -49,10 +49,11 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 
 | Budget | What is measured | Measured | Budget |
 |---|---|---:|---:|
-| `records_bytes` | The records page's data, `GET /api/profiles/{id}/data`, as JSON | 3.50 MB | 4.5 MB |
-| `records_gzip_bytes` | The same as nginx sends it (gzip at its default level) | 439 KB | 600 KB |
-| `records_cold_s` | That request right after the records changed, put together from the database | 0.28 s | 2.5 s |
-| `records_s` | That request again with nothing changed (the server keeps the answer) | 0.003 s | 0.25 s |
+| `records_bytes` | The records page's data, `GET /api/profiles/{id}/data`, as JSON: every record, its details apart (#217, below) | 2.11 MB | 2.6 MB |
+| `records_gzip_bytes` | The same as nginx sends it (gzip at its default level) | 256 KB | 350 KB |
+| `records_cold_s` | That request right after the records changed, put together from the database | 0.29 s | 2.5 s |
+| `records_s` | That request again with nothing changed (the server keeps the answer) | 0.002 s | 0.25 s |
+| `details_s` | A lab day's results as the drawer opens it, `GET /api/profiles/{id}/details?ids=…` (3.8 KB, #217) | 0.002 s | 0.25 s |
 | `watch_bytes`, `watch_s` | `GET /api/profiles/{id}/watch`: ten years of watch and scale days, with the glucose and the home readings | 1.28 MB, 0.03 s | 1.5 MB, 0.5 s |
 | `build_load_s` | The big build loaded into a profile (the first start, `setup rebuild`) | 0.19 s | 5 s |
 | `export_s` | **Export everything** of the big profile: a 1.4 MB zip with its 1,000 documents | 0.55 s | 6 s |
@@ -106,12 +107,33 @@ No index was needed: every query the records page and the imports make on a prof
 server's time is mostly decrypting rows (each is encrypted on its own), which grows with the records and nothing
 else.
 
+## A record's details when it's opened (#217)
+
+Of the 3.5 MB the records page read, 1.4 MB was each record's details (a result's rows, a claim's lines, a message,
+a letter), mostly for records nobody opens. The page now asks for them when the drawer opens a record:
+`GET /api/profiles/{id}/details?ids=…`, a lab day's results in one request, kept for as long as the page is open.
+
+| The big fixture | Before | After |
+|---|---:|---:|
+| The records page's data, as JSON | 3.51 MB | 2.11 MB |
+| …as nginx sends it | 443 KB | 256 KB |
+| Its details | 1.39 MB | 15.5 KB (a lab day's list of results; of an immunization what the Overview lists) |
+| Opening a lab day | nothing more | 3.8 KB, 0.002 s |
+
+What the page reads of details without opening anything stays in its data (`LISTED` in `server/records.py`): a lab
+day's list of results, which counts them, finds a day by its tests' names and lists them in the drawer, and of an
+immunization the dose and where it was given, which the Overview lists. Everything else on the page that read
+details did so inside the drawer: a result's rows in the chosen units (#41), the same result from another source
+(#96), the sources of what was merged in (#100). The server's own readers (the visit summary and its measures,
+share links, both exports, the medications' history) read the records with every record's details, as before
+(`records.served`). The server keeps both, and each record's details apart, until the records change.
+
+The offline copy (#56) keeps the details of the records opened on that device, with the revision of the records they
+belong to (`X-Records-Rev`): a reload of the same records keeps them, a change starts again. Keeping every record's
+details instead would put back the 1.4 MB for each copy, and more than the person ever looked at on that device.
+
 ## Not done yet
 
-- **Details on demand.** Of the 3.5 MB the records page reads, 1.4 MB is the details the drawer shows (a claim's
-  lines, a result's rows), mostly for records nobody opens. Loading them when the drawer opens would make the data
-  about 40% smaller. The page uses them in a few other places (units, the visit summary), so it is a change of its
-  own.
 - **Body and activity and the Timeline draw a mark per day or per record.** With ten years shown that is about
   14,500 and 11,000 elements: within the budget, and quick, but they would be summarised by week once many fall on
   each pixel, as the sleep and steps charts already are.

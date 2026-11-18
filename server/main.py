@@ -1025,15 +1025,37 @@ def profile_activity(pid: int, actor: Optional[int] = None, action: Optional[str
 
 @app.get("/api/profiles/{pid}/data")
 def profile_data(pid: int, request: Request, s=Depends(user), db=Depends(get_db)):
+    """The records page's data: every record, with only some of their details (records.page, #217)."""
     need(db, s, pid, "viewer")
     prof.sync_build(db, pid)
-    body = records.served(db, pid)
-    if body is None:
+    got = records.page(db, pid)
+    if got is None:
         if (why := prof.build_error(pid)):
             raise HTTPException(500, f"The built records couldn't be loaded ({why}). Details are in the app's log.")
         return Response(status_code=204)   # the profile exists but has no records yet
     activity.once(db, s, pid, "view", _client_ip(request))
-    return Response(body, media_type="application/json")
+    return Response(got[0], media_type="application/json", headers={"X-Records-Rev": got[1]})
+
+
+@app.get("/api/profiles/{pid}/details")
+def profile_details(pid: int, request: Request, ids: str = "", s=Depends(user), db=Depends(get_db)):
+    """Records' details, as the page opens them (#217): ids= event ids, comma-separated (at most
+    records.DETAILS_MAX). {"details": {event id: its details}} for those that have details. The same access as the
+    records (viewers and up); a share link is no session, so it never reaches these. X-Records-Rev: the records'
+    revision, as with .../data (the offline copy keeps details only with the records they belong to)."""
+    need(db, s, pid, "viewer")
+    try:
+        wanted = [int(i) for i in ids.split(",") if i.strip()]
+    except ValueError:
+        raise HTTPException(400, "ids is a list of record ids, separated by commas.") from None
+    if not wanted or len(wanted) > records.DETAILS_MAX:
+        raise HTTPException(400, f"Ask for 1 to {records.DETAILS_MAX} records' details at a time.")
+    prof.sync_build(db, pid)
+    got = records.details(db, pid, wanted)
+    if got is None:
+        return Response(b'{"details":{}}', media_type="application/json")
+    activity.once(db, s, pid, "view", _client_ip(request))
+    return Response(got[0], media_type="application/json", headers={"X-Records-Rev": got[1]})
 
 
 @app.get("/api/profiles/{pid}/export")
