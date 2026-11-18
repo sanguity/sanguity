@@ -941,6 +941,14 @@ Everything on `main` so far; it becomes the first tagged release.
   Timeline's More… menu fitted neither under nor over its button and ran off the right of the screen; a menu is now
   never taller than the larger room beside its button and scrolls inside, so it always opens on the screen.
   Tooltips shifted to fit the screen touched its edge; they keep 8 px from it, as the comment always said.
+- **Tooltip text for the keyboard, touch and screen readers** (#358): tips on things that can't take focus (a lab's
+  name in the records, its latest date, a nickname's real name, a range) reached only a mouse. A renamed lab's chart
+  now says its name in the records beside the unit; the Labs list's checkbox shows its row's tips on focus and is
+  described by them; a key lab's tile says a nickname's real name and "against a range from settings" in its name,
+  and shows them on focus; the heatmap's table says a row's name in the records and range in its heading and as its
+  ✎'s and ?'s description. Titles that said what's on no screen (the Body and activity tab, the milestone preset,
+  Clear dates, Connect, Undo link, Same result, Not the same, Hide, a payment's memo) are tips, and a description
+  the name already says (the ✎'s "Rename this lab", a test page link's title) is left out.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

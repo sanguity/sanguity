@@ -102,8 +102,13 @@ function renderOverview() {
     const st = statusOf(last);
     const d = prev ? last[1] - prev[1] : null;
     const recent = s.pts.filter(p => p.ts >= last.ts - 182 * DAY);
-    const tile = el("button", {class: "tile", onclick: () => goSeries(n)},
-      el("span", {class: "lbl"}, el("span", {text: nice(n), "data-tip": nice(n) !== n ? n : null}), st ? el("span", {class: "st " + st.cls, "data-tip": st.title}, st.icon ? [icon(st.icon), " "] : null, st.text) : null),
+    // a nickname's name in the records and "Against a range from settings": the name's and the status's tips, said in
+    // the tile's name for screen readers, and the tile's own tip, shown when it has focus (#358)
+    const real = nice(n) !== n ? n : null, about = [real, st && st.title].filter(Boolean).join("\n");
+    const tile = el("button", {class: "tile", "data-tip": about || null, onclick: () => goSeries(n)},
+      el("span", {class: "lbl"}, el("span", {text: nice(n), "data-tip": real}), real ? el("span", {class: "vh", text: ` (${real})`}) : null,
+        st ? el("span", {class: "st " + st.cls, "data-tip": st.title}, st.icon ? [icon(st.icon), " "] : null, st.text) : null,
+        st && st.title ? el("span", {class: "vh", text: `, ${st.title.toLowerCase()}`}) : null),
       el("span", {class: "val"}, last[5] || fmtNum(last[1]), el("small", {text: s.unit})),
       ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
       el("span", {class: "delta"}, keepDates((d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")} since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : ""))),

@@ -122,7 +122,10 @@ function rowRanges(s) {
   return d ? `\n${RANGE_DIFFERS}: ${d} ${s.unit}` : "";
 }
 /* the heatmap as a table (#60): a row per lab, grouped by panel as on the heatmap, a column per draw day; a result
-   outside its reference range has ▲ or ▼ beside it, said as "high" or "low" */
+   outside its reference range has ▲ or ▼ beside it, said as "high" or "low". What a row's and a result's tips say
+   (the name in the records, the reference range) is in the row's heading for screen readers too, and the description
+   of its ✎ and ? (#358); a result's own range is said in its cell only where the row's ranges differ */
+let hmAbout = 0;
 function hmTable(rows, cols) {
   const box = $("#hmTable");
   if (!rows.length || !cols.length) { box.replaceChildren(el("p", {class: "hint", text: "No lab draws in this date range."})); return; }
@@ -134,12 +137,20 @@ function hmTable(rows, cols) {
       tb.append(el("tr", {class: "grp"}, el("th", {scope: "rowgroup", colspan: cols.length + 1, text: panel})));
     }
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(isoDay(p.ts), p);
-    tb.append(el("tr", {}, el("th", {scope: "row", "data-tip": renamedTitle("lab", s.name) + rowRanges(s)}, `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`, renameButton("lab", s.name), testLink(s.name, true)),   // #163
+    const differ = rowRanges(s), ranged = [...byDay.values()].find(p => p[2] != null || p[3] != null);
+    const about = [nice(s.name) !== s.name ? renamedTitle("lab", s.name) : null,
+      differ ? differ.trim() : ranged ? `ref ${ranged[2] ?? ""}–${ranged[3] ?? ""}${s.unit ? " " + s.unit : ""}${ranged.rs === "settings" ? ` (${RANGE_FROM_SETTINGS})` : ""}` : null].filter(Boolean).join("; ");
+    const aboutId = about ? "hmAbout" + (++hmAbout) : null, edit = renameButton("lab", s.name), tq = testLink(s.name, true);   // #163
+    for (const b of [edit, tq]) if (b && aboutId) b.setAttribute("aria-describedby", aboutId);
+    tb.append(el("tr", {}, el("th", {scope: "row", "data-tip": renamedTitle("lab", s.name) + differ}, `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`,
+      about ? el("span", {class: "vh"}, ", ", el("span", {id: aboutId, text: about})) : null, edit, tq),
       ...cols.map(([k]) => {
         const p = byDay.get(k); if (!p) return el("td", {});
         const lv = hmLevel(p[1], p[2], p[3]), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it
-        return el("td", {class: w ? "abn" : null, "data-tip": p[2] != null || p[3] != null ? refText(p) : null}, p[5] || fmtNum(p[1]),
-          w ? el("span", {"aria-hidden": "true", text: " " + w[0]}) : null, w ? el("span", {class: "vh", text: " " + w[1].toLowerCase()}) : null);
+        const ref = p[2] != null || p[3] != null ? refText(p) : null;
+        return el("td", {class: w ? "abn" : null, "data-tip": ref}, p[5] || fmtNum(p[1]),
+          w ? el("span", {"aria-hidden": "true", text: " " + w[0]}) : null, w ? el("span", {class: "vh", text: " " + w[1].toLowerCase()}) : null,
+          ref && differ ? el("span", {class: "vh hm-ref", text: ", " + ref}) : null);
       })));
   }
   box.replaceChildren(el("p", {class: "hint", text: `${rows.length} lab${rows.length === 1 ? "" : "s"} on ${cols.length} draw day${cols.length === 1 ? "" : "s"}. ▲ above its reference range, ▼ below.`}),

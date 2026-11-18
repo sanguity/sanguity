@@ -240,7 +240,7 @@
     $("#viewerNote").hidden = d.can_connect;
     $("#noSources").hidden = !!d.sources.length || !d.can_connect;
     $("#sourceButtons").replaceChildren(...(d.can_connect ? d.sources : []).filter(s => !s.waiting).map(s =>
-      el("button", {class: "btn", type: "button", text: `Connect ${s.name}…`, title: `Signs in at ${s.host}`, onclick: () => {
+      el("button", {class: "btn", type: "button", text: `Connect ${s.name}…`, "data-tip": `Signs in at ${s.host}`, onclick: () => {
         const open = document.getElementById("choose-" + s.id);
         if (open) { open.remove(); return; }
         $("#sourceButtons").after(connectForm(s));

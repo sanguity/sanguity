@@ -248,7 +248,7 @@ function editPanel(e) {
     input.focus();
   };
   const acts = el("div", {class: "edit-acts"},
-    el("button", {class: "btn", type: "button", text: "Hide", title: "Leave this event out of the records", onclick: () => post({action: "hide"}, {edits: true})}),
+    el("button", {class: "btn", type: "button", text: "Hide", "data-tip": "Leave this event out of the records", onclick: () => post({action: "hide"}, {edits: true})}),
     el("button", {class: "btn", type: "button", text: "Rename", onclick: () => {
       const i = el("input", {type: "text", maxlength: 300, "aria-label": "New title"}); i.value = e.title;
       const [box, got] = similarChoice(e, false);

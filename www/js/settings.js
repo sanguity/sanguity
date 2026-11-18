@@ -222,7 +222,7 @@ function tilesEditor(value, changed, ro, setting) {
     preview.replaceChildren(...names.map(n => {
       const s = labInfo(n), last = s.pts[s.pts.length - 1];
       return el("div", {class: "tile", "data-lab": n},
-        el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}),
+        el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}), nick(n) !== n ? el("span", {class: "vh", text: ` (${n})`}) : null,   // #358
           last[4] === "H" ? el("span", {class: "st hi", text: "▲ High"}) : last[4] === "L" ? el("span", {class: "st lo", text: "▼ Low"}) : null),
         el("span", {class: "val"}, last[5] || String(last[1]), el("small", {text: s.unit || ""})));
     }));
