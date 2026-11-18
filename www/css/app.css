@@ -38,7 +38,7 @@ svg.icon{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.12
      variants  the default (a raised face and a hairline edge), .primary (the accent, filled: the one action a form or
                dialog is for), .danger (red, filled: what can't be undone), .quiet (no face or edge until pointed at:
                a row's own small actions)
-     states    hover (the motion of #256), pressed (:active, a shade darker), aria-pressed="true" (a toggle button:
+     states    hover (the motion of #256), pressed (:active, a shade darker; a filled one keeps its fill), aria-pressed="true" (a toggle button:
                the accent tint and bar of a chosen segment), disabled (faded, no hover); the one focus ring (base.css)
    A button in the top bar or the drawer's head (.iconbtn) is the default button, under the class those pages and
    scripts give it. Space around a button is its row's: a .btn keeps a margin after it and below it for the pages
@@ -55,8 +55,9 @@ svg.icon{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.12
 :is(.btn,.iconbtn):not(:disabled):hover{background:var(--hover);color:var(--ink)}
 .btn:is(.primary,.danger):not(:disabled):hover{background:var(--accent-fill);color:var(--on-accent);filter:brightness(.9)}
 .btn.danger:not(:disabled):hover{background:var(--crit-fill)}
-:is(.btn,.iconbtn):not(:disabled):active{background:color-mix(in srgb,var(--ink) 12%,var(--raised))}
-.btn:is(.primary,.danger):not(:disabled):active{filter:brightness(.8)}
+:is(.btn,.iconbtn):not(:disabled):active{background:color-mix(in srgb,var(--ink) 12%,var(--raised))}   /* the default's and the quiet's pressed face */
+.btn:is(.primary,.danger):not(:disabled):active{background:var(--accent-fill);color:var(--on-accent);filter:brightness(.8)}   /* a filled one keeps its fill and only darkens, pointed at or not (Space held, #350) */
+.btn.danger:not(:disabled):active{background:var(--crit-fill)}
 :is(.btn,.iconbtn)[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 15%,var(--raised));border-color:var(--accent);color:var(--ink);
   box-shadow:inset 0 -2px 0 var(--accent)}
 :is(.btn,.iconbtn):disabled,.btn:is(.primary,.danger,.quiet):disabled{background:var(--raised);border-color:var(--ring);color:var(--ink);opacity:.45;cursor:default}

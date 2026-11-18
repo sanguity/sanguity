@@ -9269,6 +9269,40 @@ def main():
             check("in forced colours, the filled buttons keep an edge (#202)", all(edges.values()), edges)
             check("…and the icons are drawn, in the colour of the text they're in, as the system sets it (#257)", fc_n > 20 and not fc_icons,
                   fc_icons[:8] or f"{fc_n} icons")
+            # a filled button held down (#350): Space held on Account's Change password and on a danger dialog's action, the
+            # pointer elsewhere (no :hover), keeps its fill and only darkens, its white label 4.5:1 or more against it. The
+            # colours as drawn: each resolved through a canvas, then the brightness filter applied to both, as the browser does
+            pressed_js = r"""() => { const b = document.activeElement, cs = getComputedStyle(b);
+              const rgb = c => { const x = document.createElement('canvas').getContext('2d'); x.fillStyle = c; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data].slice(0, 3); };
+              const k = +((cs.filter.match(/brightness\(([\d.]+)\)/) || [])[1] || 1), dim = c => rgb(c).map(v => Math.min(255, v * k));
+              const lum = c => c.map(v => v / 255).map(v => v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((s, v, i) => s + v * [.2126, .7152, .0722][i], 0);
+              const [f, g] = [lum(dim(cs.color)), lum(dim(cs.backgroundColor))];
+              return {text: b.textContent, active: b.matches(':active'), hover: b.matches(':hover'), bg: cs.backgroundColor, filter: cs.filter,
+                      ratio: Math.round((Math.max(f, g) + .05) / (Math.min(f, g) + .05) * 10) / 10}; }"""
+            held = {}
+            for theme in ("light", "dark"):
+                pctx = browser.new_context(viewport={"width": 1400, "height": 900}, color_scheme=theme)
+                pctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+                pp = pctx.new_page()
+                pp.goto(base + "/account.html")
+                pp.wait_for_selector("#sessList tbody tr", timeout=10000)
+                for kind in ("primary", "danger"):
+                    if kind == "danger":
+                        pp.evaluate("() => { ask({title: 'Hold this down? (browser check, #350)', message: 'A check of a pressed danger button.', action: 'Remove', danger: true}); }")
+                        pp.wait_for_selector("dialog.sg-ask[open] .btn.danger", timeout=5000)
+                    pp.mouse.move(5, 895)
+                    pp.focus(".btn.primary >> nth=0" if kind == "primary" else "dialog.sg-ask[open] .btn.danger")
+                    pp.keyboard.down(" ")
+                    pp.wait_for_timeout(400)   # past the hover's shade (--dur-1)
+                    held[f"{theme} {kind}"] = pp.evaluate(pressed_js)
+                    pp.evaluate("document.activeElement.blur()")   # let go without pressing it: focus away first, then the key up
+                    pp.keyboard.up(" ")
+                    pp.wait_for_timeout(150)
+                    if pp.locator("dialog.sg-ask[open]").count():
+                        pp.keyboard.press("Escape")
+                pctx.close()
+            check("a primary or danger button held down by Space keeps its fill, only darker, its label 4.5:1 or more against it, light and dark (#350)",
+                  len(held) == 4 and all(v["active"] and not v["hover"] and v["ratio"] >= 4.5 and "brightness" in v["filter"] for v in held.values()), held)
             # accessible sign-in (3.3.8): a password manager can fill the fields, and pasting isn't stopped
             ctx = browser.new_context(viewport={"width": 1400, "height": 900})
             lp = ctx.new_page()
