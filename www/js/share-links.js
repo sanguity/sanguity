@@ -88,7 +88,7 @@ function shareLinksPanel(p, {open = false} = {}) {
         const j = await call(`profiles/${p.id}/links`, "POST", chosen());
         const url = new URL(j.path, location.href).href;
         const field = el("input", {value: url, readonly: true, "aria-label": "The share link", class: "share-url", onfocus: e => e.target.select()});
-        const copy = el("button", {class: "btn small", type: "button", text: "Copy", onclick: async () => {
+        const copy = el("button", {class: "btn", type: "button", text: "Copy", onclick: async () => {
           try { await navigator.clipboard.writeText(url); copy.textContent = "Copied"; } catch (e) { field.select(); } }});
         made.replaceChildren(el("div", {class: "share-made"}, el("p", {}, el("b", {text: "Copy the link now."}),
           " It's shown only this once: Sanguity keeps a fingerprint of it, not the link itself, so it can't show it again."),

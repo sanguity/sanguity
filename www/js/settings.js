@@ -20,6 +20,7 @@ $("#logout").onclick = async () => { try { await call("logout", "POST"); } catch
 /* ---------------------------------------------------------------- editors: each builds its controls from a value
    and reads the value back (get), calling changed() on every edit */
 const small = (text, label, onclick) => el("button", {class: "btn small", type: "button", "aria-label": label, onclick}, text);   // text: words or an icon
+const beside = (text, label, onclick) => el("button", {class: "btn", type: "button", "aria-label": label, onclick}, text);   // a button in a row of fields: their height (#352)
 
 /* an ordered list of lab names: move up, down, remove, add (suggesting the profile's own labs) */
 function labsEditor(value, changed, ro) {
@@ -39,7 +40,7 @@ function labsEditor(value, changed, ro) {
   input.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); add(); } });
   draw();
   box.append(ol);
-  if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn small", type: "button", text: "Add", onclick: add})));
+  if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn", type: "button", text: "Add", onclick: add})));
   return {node: box, get: () => list};
 }
 
@@ -57,7 +58,7 @@ function rowsEditor(rows, cols, changed, ro, blank, cls = "") {
       el("span", {class: "set-lbl", text: c.label}),
       el("input", {"data-k": c.key, type: c.type || "text", name: c.type === "radio" ? group + c.key : null, value: tick(c) ? null : r[c.key] ?? "", checked: tick(c) ? !!r[c.key] : null,
         disabled: ro, oninput: ev => { if (tick(c)) only(c, ev.target); changed(); }, ...(c.attrs || {})}))));
-    row.append(ro ? el("span") : small("Remove", "Remove this row", () => { row.remove(); changed(); }));
+    row.append(ro ? el("span") : beside("Remove", "Remove this row", () => { row.remove(); changed(); }));
     return row;
   };
   body.append(head, ...rows.map(make));
@@ -247,7 +248,7 @@ function tilesEditor(value, changed, ro, setting) {
   input.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); add(); } });
   drawPreview(); drawSuggestions();
   const box = el("div", {class: "set-list"}, ol.node);
-  if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn small", type: "button", text: "Add", onclick: add})), sugg, msg);
+  if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn", type: "button", text: "Add", onclick: add})), sugg, msg);
   box.append(el("h4", {class: "set-ph", text: "Preview"}), preview);
   return {node: box, get: () => ol.get()};
 }
@@ -350,7 +351,7 @@ function viewsEditor(value, changed, ro) {
     const item = el("div", {class: "set-view"},
       el("div", {class: "row"}, el("label", {for: id + "n", text: "Name"}), name,
         el("label", {class: "check"}, def, "Default"),
-        ro ? null : small("Remove", `Remove the view ${v.name || "without a name"}`, () => { item.remove(); changed(); })),
+        ro ? null : beside("Remove", `Remove the view ${v.name || "without a name"}`, () => { item.remove(); changed(); })),
       labs.node);
     item._labs = labs;
     return item;
@@ -406,7 +407,7 @@ function rangesEditor(value, changed, ro) {
       field("ageTo", "Age to", num("ageTo", r.ageTo, {min: 0, max: 130, step: 1, placeholder: "any"})),
       field("low", "Low", num("low", r.low)),
       field("high", "High", num("high", r.high)));
-    row.append(ro ? el("span") : small("Remove", "Remove this range", () => { row.remove(); update(); }));
+    row.append(ro ? el("span") : beside("Remove", "Remove this range", () => { row.remove(); update(); }));
     return row;
   };
   const read = () => [...body.querySelectorAll(".set-row:not(.set-head)")].map(row => {
