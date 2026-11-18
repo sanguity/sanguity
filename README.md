@@ -748,6 +748,14 @@ its own key file, after its own key, only to read the summary. With `--records`,
 test copy's `config/` folder. `--down` stops it, `--logs` follows its logs, `--reset` starts it over; `--help`
 lists everything.
 
+A branch replaces the code in `--dir/src`, including its `compose.yaml`, so whoever can push that branch decides
+what the test copy mounts, publishes and runs. To let a branch supply only code, keep a reviewed copy of
+`compose.yaml` outside `--dir/src` and pass `--compose /path/to/compose.yaml`: it is copied over the branch's own
+after every checkout, and the script says when the branch's version differs so you can update your copy on
+purpose. Either way `--branch` fetches only a branch (or else a tag) of that name, never another ref such as a
+pull request's, the script writes its own `compose.override.yaml` in place of any the branch has, and it refuses
+to start when a link in the code points outside `src/` (Docker follows links when it mounts those paths).
+
 On TrueNAS the script works without sudo: when Docker isn't reachable it deploys the test copy as a custom app
 (it appears on the Apps page and starts with the server), and the setup code is in its `data/setup-code.txt`.
 Keep `--dir` private (for example mode 750) when it holds a copy of your records.
