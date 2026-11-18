@@ -37,7 +37,36 @@ ICONS = [
     "grip-vertical",         # drag to reorder
     "plus",                  # Add
     "chevrons-left-right", "chevrons-right-left",  # the drawer wider, narrower
-    "sun-moon",              # light or dark (the share page)
+    "sun-moon",              # light or dark (the share page, your menu's Dark mode, Settings' Display)
+    # the kinds of record (#354): core.js's KIND_ICON, on the Timeline's chips and rows
+    "bed",                   # a hospital stay
+    "stethoscope",           # a visit
+    "clipboard",             # chart activity: a chart review, a call, a fax
+    "test-tube-diagonal",    # labs (and Settings' Labs and ranges, Admin's Lab name matches)
+    "scan-line",             # imaging
+    "bandage",               # a procedure
+    "syringe",               # an immunization
+    "microscope",            # a report or study
+    "message-square",        # a conversation, an appointment or automated message
+    "mail", "file-text",     # a letter, a document (and Sharing's Visit summary)
+    "pill",                  # a medication, a pharmacy fill
+    "banknote",              # an insurance claim
+    "watch",                 # the watch, a workout (and Sources' Phone and watch)
+    "activity",              # an ECG, an irregular rhythm notification
+    "notebook",              # the journal (and Add's Journal entry)
+    "smile",                 # mood and energy
+    "droplet",               # cycle tracking
+    # the sidebars, the Add menu and your menu (#354)
+    "layout-grid", "flag",   # Settings: Dashboard (and Sources' Overview), Milestones and activity
+    "upload", "keyboard", "link", "plug", "history",  # Sources (and Add): Upload files, Type records in, Paste a Health
+                             # Link, Portals (and Admin's apps), Import history (and Sharing's and Admin's Activity)
+    "users", "share-2", "calendar", "download", "user",  # Sharing: People (and Admin's Accounts), Share links (and your
+                             # menu's Sharing), Calendar feed, Export everything, About this person
+    "lock", "smartphone",    # Account: Sign-in and security, This device
+    "archive", "book-user", "globe",  # Admin: Backups, Provider directory, Outside connections
+    "database", "settings", "circle-user", "wrench", "compass", "log-out",
+                             # your menu: Sources, Settings, Account (and Sharing's Profile), Admin, Getting started,
+                             # Log out
 ]
 
 

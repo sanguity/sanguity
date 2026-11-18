@@ -30,6 +30,8 @@ a{color:var(--accent)}   /* links in the accent, never the browser's blue or vis
 :root{--icon-check:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E")}
 svg.icon{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.125em;overflow:visible}
 .icon{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}   /* a <use class="icon"> in a chart too */
+/* an icon before its words (#354): a sidebar's links, the Add menu's and your menu's items */
+:is(.set-nav-list a,.menu-item[role=menuitem])>.icon:first-child{margin-right:var(--sp-2)}
 
 /* ---- the button (#258): one component, everywhere. <button class="btn"> (or an <a>, or a <label> around a file
    input), in three sizes and four variants:
@@ -147,9 +149,9 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
 .toggle::before{content:"";flex:none;width:var(--fs-1);height:var(--fs-1);background:currentColor;mask:var(--icon-check) center/contain no-repeat;   /* the ✓, Lucide's (#257) */
   color:color-mix(in srgb,var(--tone) 55%,var(--ink))}
 .toggle[aria-pressed="false"]::before,.toggle:has(>input:not(:checked))::before{content:none}
-.toggle .key{flex:none;width:14px;height:3px;border-radius:2px;background:var(--tone)}
+.toggle .key{color:var(--tone)}   /* a kind's icon in its colour, the chart's key (#354) */
 .toggle .n{color:var(--ink2);font-variant-numeric:tabular-nums}
-.toggle[aria-pressed="false"] .key,.toggle:has(>input:not(:checked)) .key{background:var(--muted)}
+.toggle[aria-pressed="false"] .key,.toggle:has(>input:not(:checked)) .key{color:var(--muted)}
 .toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:var(--muted)}
 .toggle>input{position:absolute;inset:0;width:100%;height:100%;margin:0;border-radius:inherit;opacity:0;cursor:pointer}
 .toggle:has(>input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}   /* the chip, when the box inside it has focus */
@@ -174,8 +176,8 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
   button.toggle,label.toggle{background:Canvas;color:CanvasText;border:1px dashed CanvasText}
   .toggle[aria-pressed="true"],.toggle:has(>input:checked){forced-color-adjust:none;background:Highlight;color:HighlightText;border:1px solid Highlight}
   .toggle::before{color:inherit}
-  .toggle .key{forced-color-adjust:none}
-  .toggle[aria-pressed="false"] .key,.toggle:has(>input:not(:checked)) .key{background:GrayText}
+  .toggle .key{color:inherit}
+  .toggle[aria-pressed="false"] .key,.toggle:has(>input:not(:checked)) .key{color:GrayText}
   .toggle .n,.toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:inherit}
   .seg>button:focus-visible,.seg>label:has(>input:focus-visible),.toggle:focus-visible,.toggle:has(>input:focus-visible){outline-color:CanvasText}
 }
@@ -422,10 +424,10 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .month{font-weight:var(--fw-semibold);font-size:var(--fs-3);color:var(--ink2);padding:var(--sp-4) 0 var(--sp-1);border-bottom:1px solid var(--grid);position:sticky;top:var(--bar-h,0px);background:var(--surface)}   /* under the top bar (--bar-h, nav.js), not behind it (#247) */
 #list .tl-row{scroll-margin-top:44px}   /* a row given focus is scrolled clear of the month heading stuck above it */
 /* the Timeline list's row (timeline.js); its own class, so the pages' rows of buttons (.acct .row) aren't styled like it (#246) */
-.tl-row{display:grid;grid-template-columns:92px 16px 1fr auto;gap:var(--sp-2);align-items:baseline;padding:var(--sp-2) var(--sp-2);border-bottom:1px solid var(--grid);cursor:pointer;border-radius:var(--r-sm)}
+.tl-row{display:grid;grid-template-columns:92px 1em 1fr auto;gap:var(--sp-2);align-items:baseline;padding:var(--sp-2) var(--sp-2);border-bottom:1px solid var(--grid);cursor:pointer;border-radius:var(--r-sm)}
 .tl-row:hover,.tl-row.sel{background:var(--hover)}
 .tl-row .d{color:var(--muted);font-size:var(--fs-2);font-variant-numeric:tabular-nums}
-.tl-row .key{width:12px;height:3px;border-radius:2px;align-self:center}
+.tl-row .key{align-self:center}   /* its kind's icon, in its lane's colour (#354) */
 .tl-row .t{font-weight:var(--fw-medium);overflow:hidden;text-overflow:ellipsis}
 .tl-row .s{color:var(--ink2);font-size:var(--fs-2);grid-column:3/4}
 .tl-row .b{grid-row:1/3;grid-column:4;align-self:center}
@@ -585,7 +587,7 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
   .layout{grid-template-columns:1fr}
   .series-list{max-height:300px}
   header,.filters,main{padding-left:var(--sp-4);padding-right:var(--sp-4)}
-  .tl-row{grid-template-columns:62px 12px 1fr}
+  .tl-row{grid-template-columns:62px 1em 1fr}
   .tl-row .b{display:none}
 }
 /* phones */
@@ -617,7 +619,6 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
   .kv{grid-template-columns:92px 1fr}
   .tip{max-width:calc(100vw - 24px)}
 }
-@media (forced-colors:active){.tl-row .key{forced-color-adjust:none}}
 /* ---- account page */
 main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct [role="tabpanel"]:focus{outline:none}

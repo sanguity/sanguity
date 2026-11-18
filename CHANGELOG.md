@@ -911,6 +911,12 @@ Everything on `main` so far; it becomes the first tagged release.
   Settings' drag handle are the quiet small button, 44 px on a phone like every other; a Labs chart is a card, its
   corner and inset the lab list's on a phone; and a milestone's Primary is a radio of the usual size, named with its
   milestone ("Primary Diagnosis").
+- **Icons for the sidebars, the kinds of record and the top bar's menus** (#354): each link of the Settings, Sources,
+  Sharing, Account and Admin sidebars, each item of the Add menu and of your menu (Dark mode and Light mode alike),
+  and each kind of record have a Lucide icon before their words, hidden from screen readers. A kind's icon is its key
+  on the Timeline, in its lane's colour: on its chip (grey while it's hidden) and on each of its rows in the list, in
+  place of the coloured dash; one map in `core.js` (`KIND_ICON`) gives every kind its icon. The sprite holds 57 icons,
+  10.5 KB; `static_bytes` is 389.6 KB of 390 KB, and the service worker keeps the new sprite (`sanguity-shell-v5`).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

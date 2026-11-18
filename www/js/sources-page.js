@@ -15,13 +15,13 @@
 const SgSources = (() => {
   const main = $("main.src"), sel = $("#profile");
   const GROUPS = [
-    {id: "overview", title: "Overview", has: ["srcOverview"]},
-    {id: "upload", title: "Upload files", has: ["importer", "viewOnly"]},
-    {id: "manual", title: "Type records in", has: ["typeIn", "viewOnly"]},
-    {id: "link", title: "Paste a Health Link", has: ["healthLink", "viewOnly"]},
-    {id: "portals", title: "Portals and health plans", has: ["mine"]},
-    {id: "phone", title: "Phone and watch", has: ["watch", "cycle", "viewOnly"]},   // cycle tracking (#183)
-    {id: "history", title: "Import history", has: ["history"]},
+    {id: "overview", title: "Overview", icon: "layout-grid", has: ["srcOverview"]},
+    {id: "upload", title: "Upload files", icon: "upload", has: ["importer", "viewOnly"]},
+    {id: "manual", title: "Type records in", icon: "keyboard", has: ["typeIn", "viewOnly"]},
+    {id: "link", title: "Paste a Health Link", icon: "link", has: ["healthLink", "viewOnly"]},
+    {id: "portals", title: "Portals and health plans", icon: "plug", has: ["mine"]},
+    {id: "phone", title: "Phone and watch", icon: "watch", has: ["watch", "cycle", "viewOnly"]},   // cycle tracking (#183)
+    {id: "history", title: "Import history", icon: "history", has: ["history"]},
   ];
   /* the old pages' addresses (import.html#manual, #link, #zip, #payment; settings.html#watch: moved.js) */
   const ALIAS = {zip: "upload", folder: "upload", files: "upload", payment: "manual", watch: "phone"};
@@ -34,8 +34,8 @@ const SgSources = (() => {
   /* ---------------------------------------------------------------- the sidebar */
   const list = el("ul", {class: "set-nav-list"});
   const nav = el("nav", {class: "set-nav", id: "srcNav", "aria-label": "Sources sections"}, list);
-  list.replaceChildren(...GROUPS.map(g => el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id, text: g.title,
-    onclick: ev => { ev.preventDefault(); show(g.id, {push: true}); }}))));
+  list.replaceChildren(...GROUPS.map(g => el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id,
+    onclick: ev => { ev.preventDefault(); show(g.id, {push: true}); }}, icon(g.icon), g.title))));   // its icon beside its name (#354)
   function apply() {
     for (const g of GROUPS) for (const id of g.has) {
       const part = document.getElementById(id);

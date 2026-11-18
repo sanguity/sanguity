@@ -28,13 +28,13 @@ $("#logout").onclick = async () => { try { await call("logout", "POST"); } catch
 /* The address follows the group (admin.html#apps); an address naming a section (admin.html#users, #labmaps,
    #sec-sync, #outside) opens that section's group and scrolls to it. */
 const GROUPS = [
-  {id: "accounts", title: "Accounts", has: ["users"]},
-  {id: "backups", title: "Backups", has: ["backups"]},   // #200
-  {id: "apps", title: "Connected-source apps", has: ["admin", "sec-sync"]},
-  {id: "directory", title: "Provider directory", has: ["directory"]},
-  {id: "labs", title: "Lab name matches", has: ["labmaps"]},
-  {id: "outside", title: "Outside connections", has: ["outside"]},
-  {id: "activity", title: "Install activity", has: ["installLog"]},
+  {id: "accounts", title: "Accounts", icon: "users", has: ["users"]},
+  {id: "backups", title: "Backups", icon: "archive", has: ["backups"]},   // #200
+  {id: "apps", title: "Connected-source apps", icon: "plug", has: ["admin", "sec-sync"]},
+  {id: "directory", title: "Provider directory", icon: "book-user", has: ["directory"]},
+  {id: "labs", title: "Lab name matches", icon: "test-tube-diagonal", has: ["labmaps"]},
+  {id: "outside", title: "Outside connections", icon: "globe", has: ["outside"]},
+  {id: "activity", title: "Install activity", icon: "history", has: ["installLog"]},
 ];
 const AdminNav = (() => {
   const main = $("main.sets"), list = el("ul", {class: "set-nav-list"});
@@ -58,8 +58,8 @@ const AdminNav = (() => {
   }
   const follow = () => { const r = fromHash(); show(r.g, {scrollTo: r.el}); };
   function start() {
-    list.replaceChildren(...GROUPS.map(g => el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id, text: g.title,
-      onclick: ev => { ev.preventDefault(); show(g, {push: true}); }}))));
+    list.replaceChildren(...GROUPS.map(g => el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id,
+      onclick: ev => { ev.preventDefault(); show(g, {push: true}); }}, icon(g.icon), g.title))));   // its icon beside its name (#354)
     main.prepend(nav);
     main.classList.add("with-nav");
     $("#intro").hidden = false;
