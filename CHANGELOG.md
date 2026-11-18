@@ -673,6 +673,9 @@ Everything on `main` so far; it becomes the first tagged release.
   down the screen, with rows showing above them, and on a phone Add and your menu opened that far down, under a bar
   that had scrolled up. There the headings (and Settings' sidebar) stick at the top, and the menus open right under
   the bar wherever it is.
+- **The page's title is readable on the narrowest phones** (#315): at 320 px the top bar's title had about 23 px
+  beside the brand and the menus, so Settings read "S." and Getting started "G. / s.". At 400 px and narrower it's on
+  the second row, under the brand, with the profile picker beside it where there is one.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -6621,11 +6621,28 @@ def main():
                                 ("/settings.html#display", "!!document.querySelector('#sections > section')")):
                 page.goto(base + path)
                 page.wait_for_function(ready, timeout=20000)
-                check(f"…{path} fits too, the picker under the page's title and the menus, whole",
+                check(f"…{path} fits too, the picker beside the page's title under the menus (#315), whole",
                       js("document.documentElement.scrollWidth") <= 375 and page.is_visible("#profile")
-                      and js(box + "('.page-title')")[1] <= js(box + "('#profilePick')")[0] and js(box + "('#profilePick')")[3] <= 375
+                      and js(box + "('#addMenu')")[1] <= min(js(box + "('.page-title')")[0], js(box + "('#profilePick')")[0])
+                      and js(box + "('.page-title')")[3] <= js(box + "('#profilePick')")[2] and js(box + "('#profilePick')")[3] <= 375
                       and js(box + "('#profilePick')")[1] <= js(box + "('header.topbar')")[1],
-                      [js("document.documentElement.scrollWidth"), js(box + "('.page-title')"), js(box + "('#profilePick')")])
+                      [js("document.documentElement.scrollWidth"), js(box + "('#addMenu')"), js(box + "('.page-title')"), js(box + "('#profilePick')")])
+            # #315: at 320 px the title beside the brand and the menus had 23 px, "S." for Settings; on its own row under them
+            # (with the picker, where there is one), each page's title is whole, on the screen and clear of the menus
+            title_whole = """(() => { const t = document.querySelector('header .page-title'), r = t.getBoundingClientRect(),
+                menus = [...document.querySelectorAll('header .menu')].filter(m => m.checkVisibility()).map(m => m.getBoundingClientRect());
+              return [t.textContent, t.checkVisibility() && t.scrollWidth <= t.clientWidth && t.scrollHeight <= t.clientHeight + 1 && r.left >= 0 && r.right <= 320
+                && menus.every(m => r.top >= m.bottom || r.bottom <= m.top || r.right <= m.left || r.left >= m.right),
+                [t.scrollWidth, t.clientWidth, t.scrollHeight, t.clientHeight, Math.round(r.left), Math.round(r.right)]]; })()"""
+            page.set_viewport_size({"width": 320, "height": 800})
+            titles = {}
+            for path in ("sources.html", "sharing.html", "settings.html", "account.html", "admin.html", "guide.html"):
+                page.goto(base + "/" + path)
+                page.wait_for_selector("header .page-title", timeout=10000)
+                settle(300)
+                titles[path] = js(title_whole)
+            check("at 320 px every page's title in the top bar is whole, on a row of its own under the menus (#315)",
+                  all(ok and name in ("Sources", "Sharing", "Settings", "Account", "Admin", "Getting started") for name, ok, _ in titles.values()), titles)
             page.set_viewport_size({"width": 1400, "height": 900})
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- milestones (#39) and visits counted as workouts (#43) on the Settings page: a milestone added (primary)

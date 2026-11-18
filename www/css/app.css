@@ -1052,6 +1052,14 @@ main.src[data-role=viewer] .src-edit{display:none}
   header.topbar .page-title + .profile-pick + .spacer{display:none}
   .profile-pick .iconbtn.profile{max-width:100%}
 }
+@media (max-width:400px){
+  /* the page's title on the second row, before the picker: beside the brand and the menus it had 23 px at 320 px, one
+     letter (#315). The bar's ::after is the line break before it, its 8 px gap taken back */
+  header.topbar:has(.page-title)::after{content:"";order:3;flex-basis:100%}
+  header.topbar .page-title{order:4;flex:0 1 auto;padding-left:0;border-left:0;margin-top:-8px}
+  header.topbar .page-title ~ .profile-pick{flex:1 1 0;width:auto;margin-top:-8px;padding-left:8px;border-left:1px solid var(--ring)}
+  header.topbar .page-title + .spacer,header.topbar .page-title + .profile-pick + .spacer{display:block}
+}
 /* "More about this" (#176): the rest of a card's explanation behind one toggle, the same on every page (util.js
    moreAbout(), or the same <details class="more"> written in the page). Closed, it's one short line under the lead. */
 details.more{margin:-4px 0 8px;color:var(--muted);font-size:12px}
