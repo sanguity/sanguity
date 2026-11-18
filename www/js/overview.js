@@ -62,7 +62,10 @@ function homeTiles() {
   const mine = (r, names) => r && r.home && r.tf ? r.tf.map((f, i) => f ? `${names[i]} ${tgtWord(f)}`.trim() : "").filter(Boolean).map(t => " · " + t).join("") : "";
   const tile = (label, val, unit, sub, id) => el("button", {class: "tile home-tile", "data-home": id.slice(3), onclick: () => openVital(id)},
     el("span", {class: "lbl"}, el("span", {text: label})), el("span", {class: "val"}, val, el("small", {text: unit})),
-    el("span", {class: "delta"}, keepDates(sub)));   // a date kept on one line (#330)
+    // a date kept on one line (#330), and each "·" with the word before it (#379, #385): else a line can start with
+    // one, as "· at home · Typed in" under the reading's date and time; and the time with its AM or PM, so that "PM ·"
+    // doesn't go to the next line without "9:05"
+    el("span", {class: "delta"}, keepDates(sub.replaceAll(" · ", "\u00a0· ").replace(/(\d:\d\d) (?=[AP]M\b)/g, "$1\u00a0"))));
   for (const k of want) {
     if (k === "bp") {
       const r = latest([...V.bp.home, ...V.bp.clinic]);

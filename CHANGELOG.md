@@ -1033,6 +1033,12 @@ Everything on `main` so far; it becomes the first tagged release.
   lab had been changed counted as nothing typed and went, without a word, when another kind was added; any change
   keeps it now. After a save the picker reads Lab results again, as on load. And the saved line ("Saved 1 record. See
   them on the timeline") no longer clears itself a moment after Save, and focus goes to it rather than to the page.
+- **The Overview's home tiles no longer start a line with "·", and offline menu items say why from the keyboard**
+  (#385): with home readings shown as tiles, Blood pressure and Body temperature read "Nov 14, 2026, 8:05 AM" over
+  "· at home · Typed in", and Blood glucose had a line of its own starting with "·"; each "·" is kept with the word
+  before it, as #379 did for the other tiles, and a time with its AM or PM. Offline, your menu's Sharing, Sources,
+  Settings, Account and Getting started, still reached with the arrow keys, gave the reason they do nothing only as a
+  title, which the keyboard never shows; it's their tooltip and description now.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

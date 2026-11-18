@@ -8354,6 +8354,27 @@ def main():
                 pass
             check("…a tile opens its card on Body and activity", js("state.tab") == "health" and js("document.activeElement.id") == "h-bp",
                   [js("state.tab"), js("document.activeElement.id"), js("!!document.getElementById('h-bp')"), js("document.activeElement.tagName")])
+            # #385: with one of each typed in (the latest readings, on the demo's last evening), each tile reads "date, time ·
+            # at home · Typed in", whose "·" (held to the word before it, as #379's) starts no line at 1400, 375 or 320 px, nor
+            # does any other tile's; then the import is undone
+            import385 = js("""items => fetch('api/profiles/1/manual', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+              body: JSON.stringify({rows: [], items, save: true})}).then(r => r.json()).then(j => j.import_id)""",
+                           [{"kind": "home_bp", "date": "2026-11-15", "time": "21:05", "sys": "126", "dia": "81", "pulse": "66"},
+                            {"kind": "home_glucose", "date": "2026-11-15", "time": "21:10", "glucose": "104", "glucose_unit": "mg/dL", "meal": "before"},
+                            {"kind": "home_temp", "date": "2026-11-15", "time": "21:15", "temp": "37.4", "temp_unit": "C"}])
+            page.goto(base + "/?profile=1")
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            js("switchTab('overview')")
+            lines385 = {}
+            for width in (1400, 375, 320):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                settle(300)
+                got = js(TILE_LINES_JS)
+                lines385[width] = [got["bad"], js("[...document.querySelectorAll('#view-overview .home-tile .delta')].map(d => d.textContent.replace(/\\s+/g, ' '))")]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            undone385 = js("id => fetch('api/profiles/1/imports/' + id + '/undo', {method: 'POST', headers: {'X-Sanguity': '1'}}).then(r => r.status)", import385)
+            check("…with one of each typed in, no tile starts a line with its \"·\" (nor ends in a short fragment or breaks a date) at 1400, 375 or 320 px (#385)",
+                  undone385 == 200 and all(not bad and len(texts) == 3 and all("Typed in" in t for t in texts) for bad, texts in lines385.values()), [import385, lines385])
             js("fetch('api/profiles/1/settings/overview.homeTiles', {method: 'DELETE', headers: {'X-Sanguity': '1'}})")
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- glucose and blood oxygen typed in, in the visit summary, a share link and the Overview's glucose tile
@@ -8447,7 +8468,7 @@ def main():
             settle(400)
             tile232 = js("(t => t && [t.querySelector('.val').textContent, t.querySelector('.delta').textContent])(document.querySelector('#view-overview .home-tile[data-home=glucose]'))")
             check("…the Overview's glucose tile shows the latest typed in, with its meal note",
-                  tile232 and tile232[0].startswith("151") and "a meter reading at home · Typed in, after a meal" in tile232[1], tile232)
+                  tile232 and tile232[0].startswith("151") and "a meter reading at home · Typed in, after a meal" in tile232[1].replace("\u00a0", " "), tile232)
             t232_bad, t232_axe = [], []
             for width in (1400, 375):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
@@ -11326,8 +11347,25 @@ def main():
             ph.click("#tab-labs")
             ph.wait_for_selector("#charts svg", timeout=10000)
             check("offline: Trends draws from the kept copy", ph.evaluate("document.querySelectorAll('#charts svg').length") > 0)
-            check("offline: Import, Settings and Account say they need the server",
-                  ph.evaluate("[...document.querySelectorAll('header a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && /offline/.test(a.title))"))
+            check("offline: Import, Settings and Account say they need the server, as their tip, with no title (#385)",
+                  ph.evaluate("[...document.querySelectorAll('header a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && a.dataset.tip === \"Needs the server: you're offline\" && !a.hasAttribute('title'))"))
+            # (#385) your menu's links, still reached with the arrow keys: each shows the reason as its tooltip and has it as
+            # its description, focused from the keyboard
+            ph.mouse.move(0, 0)
+            ph.focus("#userMenuBtn")
+            ph.keyboard.press("Enter")
+            menu385 = []
+            for _ in range(ph.evaluate("[...document.querySelectorAll('#userMenuList [role=menuitem]')].filter(x => !x.hidden).length")):
+                ph.wait_for_timeout(150)
+                if ph.evaluate("document.activeElement.matches('a.acct')"):
+                    menu385.append([ph.evaluate("document.activeElement.textContent.trim()"),
+                                    ph.evaluate("(t => t && t.matches(':popover-open') && t.textContent)(document.getElementById('sgTip'))"),
+                                    ax_said(ph, "#userMenuList a.acct:focus")])
+                ph.keyboard.press("ArrowDown")
+            ph.keyboard.press("Escape")
+            check("offline (#385): your menu's links, reached with the arrow keys, give the reason as their tooltip and description",
+                  {"Sharing", "Sources", "Settings", "Account", "Getting started"} <= {m[0] for m in menu385}
+                  and all(m[1] == "Needs the server: you're offline" and m[2] and m[2][1] == "Needs the server: you're offline" for m in menu385), menu385)
             ph.evaluate("document.querySelector('#settingsLink').click()")
             ph.wait_for_timeout(300)
             check("offline: a link to another page isn't followed", ph.evaluate("location.pathname") == "/")
