@@ -357,7 +357,8 @@ const J_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"], J_PHOTOS_MAX = 
 function jPhotosPart(have, uid) {
   const photos = (have || []).map(p => ({id: p.id, alt: p.alt || "", src: jPhotoUrl(p)}));
   const list = el("div", {class: "jpics jpics-edit"}), msg = el("p", {class: "hint jphoto-msg", role: "status"});
-  const input = el("input", {type: "file", id: `j-photo-${uid}`, accept: J_PHOTO_TYPES.join(","), multiple: true, class: "jphoto-in"});
+  const input = el("input", {type: "file", id: `j-photo-${uid}`, accept: J_PHOTO_TYPES.join(","), multiple: true, class: "jphoto-in",
+    "aria-labelledby": `j-photo-${uid}-l j-photo-${uid}-b`});   // "Photos (optional) …, Add photos…"
   const draw = () => {
     list.replaceChildren(...photos.map((p, i) => {
       const alt = el("input", {type: "text", id: `j-alt-${uid}-${i}`, maxlength: 300, placeholder: "e.g. Red patch, 3 cm, left forearm", autocomplete: "off"});
@@ -388,8 +389,8 @@ function jPhotosPart(have, uid) {
     }
   };
   draw();
-  const node = el("div", {class: "jfield jphotos"}, el("label", {for: input.id}, "Photos (optional) ", el("span", {class: "hint", text: `JPEG, PNG or WebP, up to ${J_PHOTOS_MAX}`})),
-    input, list, msg);
+  const node = el("div", {class: "jfield jphotos"}, el("span", {id: `j-photo-${uid}-l`}, "Photos (optional) ", el("span", {class: "hint", text: `JPEG, PNG or WebP, up to ${J_PHOTOS_MAX}`})),
+    el("label", {class: "btn pick", id: `j-photo-${uid}-b`}, "Add photos…", input), list, msg);   // the button's look (#353)
   return {node, get: () => photos.map(p => ({id: p.id, alt: p.alt.trim()}))};
 }
 

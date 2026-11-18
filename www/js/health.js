@@ -192,7 +192,7 @@ function renderHealth() {
   const [a, b] = hRange(), len = b - a, long = len > 150 * DAY;
   // toolbar (the period is in the records bar)
   box.append(el("div", {class: "toolbar"},
-    el("label", {}, el("input", {type: "checkbox", checked: hState.stays || null, onchange: e => { hState.stays = e.target.checked; hSave(); renderHealth(); }}), "Shade hospital stays"),
+    el("label", {class: "toggle"}, el("input", {type: "checkbox", checked: hState.stays || null, onchange: e => { hState.stays = e.target.checked; hSave(); renderHealth(); }}), "Shade hospital stays"),
     el("span", {class: "hint", style: {margin: 0}, text: `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`})),
     el("p", {class: "hint chart-hint", text: "Drag any chart sideways to move through time: every chart moves together."}),
     moreAbout("Scroll or pinch to zoom, and double-click to show everything."));
@@ -593,7 +593,7 @@ function hGlucose(box, a, b, {head, legend, byDay}) {
       : "From a phone: each day a continuous glucose monitor (CGM) was worn, its lowest to highest reading and its average; meter (finger-stick) readings as points" + (G.meter.some(m => m[2]) ? ", those typed in at home among them, said so." : ".")}));
   box.append(card);
   tgtLine(card, "glucose", u, G.mT ? P.meter.map(p => p[4]) : null);   // targets of the person's own (#234)
-  if (G.lab.length) card.append(el("div", {class: "toolbar"}, el("label", {},
+  if (G.lab.length) card.append(el("div", {class: "toolbar"}, el("label", {class: "toggle"},   // on or off: a toggle chip (#353)
     el("input", {type: "checkbox", checked: gOpt.labs || null, onchange: e => { gOpt.labs = e.target.checked; try { localStorage.setItem(gKey(), JSON.stringify({labs: gOpt.labs})); } catch (x) {} renderHealth(); }}),
     "Show lab glucose results alongside")));
   if (P.n) {   // time in ranges, the period's CGM days together
@@ -894,7 +894,7 @@ function bmiChart(card, a, b, {long}) {
   const adult = all.some(r => !r.child), who = hState.bmiWho && adult;
   box.append(el("p", {class: "hint", text: "Body mass index: the weight in kilograms divided by the square of the height in metres, each weight with the height in effect on its day (About this person)."
     + (all.some(r => r.child) ? " Under 20, it's shown without the adult categories" + (SEX_CODE[personOf().sex] ? ", with its percentile for age and sex on the CDC's chart (Growth charts, below)." : ".") : "")}));
-  if (adult) box.append(el("div", {class: "toolbar"}, el("label", {},
+  if (adult) box.append(el("div", {class: "toolbar"}, el("label", {class: "toggle"},   // on or off: a toggle chip (#353)
     el("input", {type: "checkbox", id: "bmiWho", checked: hState.bmiWho || null, onchange: e => { hState.bmiWho = e.target.checked; hSave(); renderHealth(); }}),
     "Show the WHO's categories for adults")));
   if (who) box.append(el("p", {class: "hint", text: "The World Health Organization's categories of BMI for adults (20 and over): under 18.5, 18.5–24.9, 25–29.9, and 30 and over. "

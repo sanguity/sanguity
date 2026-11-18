@@ -52,6 +52,13 @@ svg.icon{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.12
 .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
 .btn.danger{background:var(--crit-fill);border-color:transparent;color:var(--on-accent)}
 .btn.quiet{background:transparent;border-color:transparent;color:var(--ink2)}
+.btn.quiet[aria-label]:has(>svg.icon:only-child){min-width:32px;padding-inline:0}   /* a quiet button that's only an icon (a chart's ✕, the ✎, a drag grip): square */
+.btn.quiet.small[aria-label]:has(>svg.icon:only-child){min-width:24px}
+.btn.pick{position:relative}   /* a file picker: <label class="btn pick">Choose files… <input type="file"></label>, the input see-through over it */
+.btn.pick>input[type=file]{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.btn.pick:has(>input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.btn.pick:has(>input:disabled){opacity:.45;cursor:default}
+.btn.pick:has(>input:disabled)>input{cursor:default}
 :is(.btn,.iconbtn):not(:disabled):hover{background:var(--hover);color:var(--ink)}
 .btn:is(.primary,.danger):not(:disabled):hover{background:var(--accent-fill);color:var(--on-accent);filter:brightness(.9)}
 .btn.danger:not(:disabled):hover{background:var(--crit-fill)}
@@ -61,7 +68,7 @@ svg.icon{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.12
 :is(.btn,.iconbtn)[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 15%,var(--raised));border-color:var(--accent);color:var(--ink);
   box-shadow:inset 0 -2px 0 var(--accent)}
 :is(.btn,.iconbtn):disabled,.btn:is(.primary,.danger,.quiet):disabled{background:var(--raised);border-color:var(--ring);color:var(--ink);opacity:.45;cursor:default}
-@media (max-width:640px),(pointer:coarse){ :is(.btn,.iconbtn),.btn:is(.small,.large){min-height:44px} }
+@media (max-width:640px),(pointer:coarse){ :is(.btn,.iconbtn),.btn:is(.small,.large){min-height:44px} .btn.quiet[aria-label]:is(*,.small):has(>svg.icon:only-child){min-width:44px} }
 @media (forced-colors:active){
   .btn:is(.primary,.danger){border-color:ButtonText}   /* a filled button keeps its edge (#202) */
   :is(.btn,.iconbtn)[aria-pressed="true"]{forced-color-adjust:none;background:Highlight;color:HighlightText;border-color:Highlight;box-shadow:none}
@@ -191,7 +198,7 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
    change lines' and the sparklines', so a label that wraps moves every value in its row down with it and the values
    sit on one line, the sparklines at the foot. The space between rows of tiles is each tile's margin, not the grid's
    gap, which would come between a tile's own rows too. */
-.card{background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--sp-4);margin-bottom:var(--sp-5)}
+.card{--card-pad:var(--sp-4);background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--card-pad);margin-bottom:var(--sp-5)}   /* --card-pad: for a card whose rows reach its edges (Labs' list) */
 .tiles,.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:0 var(--sp-3);margin-bottom:var(--sp-3)}   /* and each tile's margin (below) */
 .tiles.compact{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
 .stats{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
@@ -224,7 +231,7 @@ button.tile{cursor:pointer}
 :is(.tiles,.stats) .tile>:not(:first-child){margin-top:2px}   /* the flex tile's gap, kept off its empty rows */
 .card :is(.tile,.tile-tq){background:var(--hover);border-color:transparent}
 .card .tile-tq>.tile{background:none}
-@media (max-width:700px){ .card{padding:var(--sp-3);border-radius:var(--r-md);margin-bottom:var(--sp-4)} }
+@media (max-width:700px){ .card{--card-pad:var(--sp-3);border-radius:var(--r-md);margin-bottom:var(--sp-4)} }
 @media (max-width:600px){
   .tiles,.tiles.compact,.stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .tile .val{font-size:var(--fs-6)}
@@ -427,15 +434,16 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .badge.abn::before{content:"▲";font-size:.8em}
 .layout{display:grid;grid-template-columns:320px 1fr;gap:0 var(--sp-5);align-items:start}
 .series-list{max-height:calc(100vh - 210px);overflow:auto;padding:0}
-.series-list .grp{font-size:var(--fs-1);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:var(--sp-3) var(--sp-4) var(--sp-1);font-weight:var(--fw-semibold)}
-.srow{display:grid;grid-template-columns:18px 1fr auto;gap:var(--sp-2);align-items:center;padding:var(--sp-1) var(--sp-4);cursor:pointer;border-top:1px solid var(--grid)}
+.series-list .grp{font-size:var(--fs-1);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:var(--sp-3) var(--card-pad) var(--sp-1);font-weight:var(--fw-semibold)}
+.srow{display:grid;grid-template-columns:18px 1fr auto;gap:var(--sp-2);align-items:center;padding:var(--sp-1) var(--card-pad,var(--sp-4));   /* the card's inset, as a chart's (#353) */
+  cursor:pointer;border-top:1px solid var(--grid)}
 .srow:hover{background:var(--hover)}
 .srow .nm{font-size:var(--fs-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .srow .lv{font-size:var(--fs-2);color:var(--ink2);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .srow .lv.abn{color:var(--crit);font-weight:var(--fw-semibold)}
 .srow input{margin:0}
 .charts{display:flex;flex-direction:column;gap:var(--sp-4)}
-.chart{background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--sp-2) var(--sp-4) var(--sp-1)}
+.charts>.chart{margin:0}   /* a .card (#353); the list's gap is the space between charts */
 .chart .hd{display:flex;align-items:baseline;gap:var(--sp-2);flex-wrap:wrap}
 .chart .hd .name{font-weight:var(--fw-semibold)}
 .chart .hd .unit{color:var(--muted);font-size:var(--fs-2)}
@@ -444,9 +452,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 /* on a phone the readout has a row of its own, one line long, so hovering a point (a longer readout: its unit, time and
    flag) never moves the header onto another line, and the chart from under the pointer (#253: Inter wraps it elsewhere) */
 @media (max-width:640px){.chart .hd .read{flex-basis:100%;margin-left:0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
-.chart .hd>button{display:inline-flex;align-items:center;justify-content:center;min-width:24px;min-height:24px;border:0;border-radius:var(--r-sm);background:none;color:var(--muted);cursor:pointer;font-size:var(--fs-2);padding:0 var(--sp-1)}
-.chart .hd>button:hover{color:var(--ink);background:var(--hover)}
-@media (max-width:640px),(pointer:coarse){ .chart .hd>button{min-width:44px;min-height:44px} }   /* a chart's ✕: the quiet button's sizes (#258) */
+.chart .hd>.btn{margin:0;align-self:center}   /* its ✕: the quiet small button (#353) */
 .chart svg:not(.icon){width:100%;display:block}
 .pz{touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
 .dragging .pz,.dragging .pz *{cursor:grabbing!important}
@@ -456,7 +462,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .chart .hd .lg{display:inline-flex;gap:var(--sp-2);font-size:var(--fs-1);color:var(--ink2)}
 .chart .hd .lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:var(--sp-1);vertical-align:-1px}
 .toolbar{display:flex;gap:var(--sp-4);align-items:center;flex-wrap:wrap;margin:0 0 var(--sp-3)}
-.toolbar label{display:inline-flex;gap:var(--sp-2);align-items:center;font-size:var(--fs-3);color:var(--ink2);cursor:pointer}
+.toolbar label:not(.toggle){display:inline-flex;gap:var(--sp-2);align-items:center;font-size:var(--fs-3);color:var(--ink2);cursor:pointer}
 .toolbar input{margin:0}
 .evmark{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 3;opacity:.7}
 .evlabel{font-size:var(--fs-1);fill:var(--ink2)}
@@ -669,9 +675,6 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 /* import page (import.html) */
 .imp .imp-tabs{margin:var(--sp-4) 0 var(--sp-1)}
 .imp [role="tabpanel"] .hint{margin:var(--sp-2) 0}
-.imp .btn.pick{position:relative}
-.imp .btn.pick input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
-.imp .btn.pick:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .imp .drop{margin-top:var(--sp-3);border:2px dashed var(--ring);border-radius:var(--r-md);padding:var(--sp-4) var(--sp-3);text-align:center;color:var(--muted);font-size:var(--fs-3)}
 .imp .drop.over{border-color:var(--accent);color:var(--ink);background:var(--hover)}
 .imp .imp-sum{justify-content:space-between;margin-top:var(--sp-4)}
@@ -732,6 +735,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .rec-long,.imp .rec-wide{grid-column:1 / -1}
 .imp .man-err{color:var(--crit);font-size:var(--fs-2)}
 .imp .man-err:empty{display:none}
+.imp .rec-f>.btn.pick{align-self:flex-start;margin:0}   /* a file: the button, as Sources' upload (#353) */
 .imp .man-file{color:var(--muted);font-size:var(--fs-2);overflow-wrap:anywhere}
 .imp .man-file:empty{display:none}
 .imp .man-item .del{position:absolute;top:6px;right:6px;border:0;background:none;cursor:pointer;color:var(--muted);font-size:var(--fs-4);padding:var(--sp-1) var(--sp-2);border-radius:var(--r-sm)}
@@ -820,7 +824,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .ms .set-row{grid-template-columns:170px minmax(0,1fr) 64px 72px}
 .sets .rules .set-row{grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) 80px 96px 72px}
 .sets .set-row .set-tick{align-self:center}
-.sets .set-row .set-tick input{width:auto;min-height:22px}
+.sets .set-row .set-tick input{width:auto;justify-self:start}   /* its native size, not stretched across the column (#353) */
 @media (max-width:600px){
   .sets .ms .set-row,.sets .rules .set-row{grid-template-columns:1fr}
   .sets .set-row .set-tick{display:flex;flex-direction:row;align-items:center;gap:var(--sp-2)}
@@ -834,8 +838,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 /* settings page: ordered lists, key-lab tiles, tabs, theme (#36, #40, #45) */
 .sets .set-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .sets .set-order li.dragging{opacity:.6;background:var(--hover)}
-.sets .set-grip{border:1px solid transparent;background:none;color:var(--muted);cursor:grab;touch-action:none;font-size:var(--fs-4);line-height:1;padding:var(--sp-1) var(--sp-2);border-radius:var(--r-sm);min-width:32px;min-height:32px}
-.sets .set-grip:hover,.sets .set-grip:focus-visible{border-color:var(--ring);color:var(--ink)}
+.sets .set-grip{margin:0;cursor:grab;touch-action:none}   /* the quiet small button (#353) */
 .sets .set-grip:active{cursor:grabbing}
 .sets .set-count{font-size:var(--fs-2)}
 .sets .set-check{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
@@ -1055,7 +1058,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .jpics-edit .jpic img{width:84px;height:84px;flex:none}
 .jpics-edit figcaption{display:flex;flex-direction:column;gap:var(--sp-1);flex:1;min-width:0;font-size:var(--fs-3)}
 .jpics-edit figcaption .btn{align-self:flex-start;margin:0}
-.jphoto-in{font:inherit;font-size:var(--fs-3);color:var(--ink2);max-width:100%}
+.jphotos>.btn.pick{align-self:flex-start;margin:0}
 .jphoto-msg:empty{display:none}
 .jscale>label{display:flex;align-items:center;gap:var(--sp-2)}
 .jsev-out.off{opacity:.55}
@@ -1099,7 +1102,7 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 .tv .tv-msg:empty{display:none}
 /* ---- Labs: the name filter in the lab list's header, and the chart overlays apart from the legend (#192). The
    list's header (filter, what's selected, saved views) stays at the top while its rows scroll */
-.series-hd{position:sticky;top:0;z-index:1;background:var(--surface);padding:var(--sp-3) var(--sp-4) var(--sp-2);border-bottom:1px solid var(--grid);display:flex;flex-direction:column;gap:var(--sp-2)}
+.series-hd{position:sticky;top:0;z-index:1;background:var(--surface);padding:var(--sp-3) var(--card-pad) var(--sp-2);border-bottom:1px solid var(--grid);display:flex;flex-direction:column;gap:var(--sp-2)}
 .series-hd .tv{padding:0}
 #tvBox:empty{display:none}
 .series-sel{display:flex;gap:var(--sp-2);align-items:center}
@@ -1120,8 +1123,7 @@ body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disa
 .sets .set-view .row input:not([type=radio]){flex:1 1 140px;min-width:0}
 
 /* ---- renaming where a name is shown (#38): the ✎ beside a lab, tag or source, and its small form (js/rename.js) */
-.rename-btn{border:0;background:none;color:var(--muted);cursor:pointer;font-size:var(--fs-2);padding:2px var(--sp-1);margin-left:2px;border-radius:var(--r-sm);line-height:1}
-.rename-btn:hover,.rename-btn:focus-visible{color:var(--ink);background:var(--hover)}
+.rename-btn{margin:0 0 0 2px}   /* the quiet small button (#353) */
 .rename-box{position:fixed;z-index:60;background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);box-shadow:var(--shadow-2);padding:var(--sp-3);width:320px;max-width:calc(100vw - 32px);box-sizing:border-box;display:flex;flex-direction:column;gap:var(--sp-2);font-size:var(--fs-3)}
 .rename-box label{display:flex;flex-direction:column;gap:var(--sp-1);color:var(--ink2);overflow-wrap:anywhere}
 .rename-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
@@ -1512,7 +1514,7 @@ html:has(.sets section[data-dirty]):has(body>.sg-toasts .sg-toast){scroll-paddin
 .cell-btn{border:0;background:none;padding:3px 0;margin:-3px 0;font:inherit;color:inherit;text-align:inherit;cursor:pointer;border-radius:var(--r-sm)}   /* 24 px tall, the row as before (2.5.8) */
 .cell-btn:hover{text-decoration:underline}
 th>.cell-btn{font-weight:inherit;white-space:nowrap}
-.rename-btn{min-width:24px;min-height:24px;margin-top:-5px;margin-bottom:-5px}   /* the ✎: a 24 px target, the line as before (2.5.8) */
+.rename-btn{margin-top:-5px;margin-bottom:-5px}   /* the ✎: a 24 px target (44 on a phone), the line as before (2.5.8) */
 /* zoomed in a long way, or a phone on its side: the page gets the room (1.4.10). The bar scrolls with the page, so
    what stuck under it sticks at the top instead (#308): the Timeline's month headings and Settings' sidebar */
 @media (max-height:500px){ header{position:relative} html{scroll-padding-top:8px} .month{top:0} main.sets.with-nav>.set-nav{top:8px} }
@@ -1686,7 +1688,7 @@ svg text.growth-pct{font-size:var(--fs-1)}
    them off. Only on the way in, so a change of theme or of a pressed state is never caught half way. */
 @media (hover:hover){
   :is(.btn,.iconbtn,.tabs button,.chip,.toggle,.seg>button,.seg>label,.kind-more,.period-more-btn,.menu-item,.tile,.tile-tq,
-    .tl-row,.ov-row,.srow,.jrow,.dir-hit,.set-nav-list a,.guide-way,.rename-btn,.linkish,.fsum-reset,.chart .hd>button):hover{
+    .tl-row,.ov-row,.srow,.jrow,.dir-hit,.set-nav-list a,.guide-way,.linkish,.fsum-reset):hover{
     transition:background-color var(--dur-1) var(--ease-out),border-color var(--dur-1) var(--ease-out),color var(--dur-1) var(--ease-out),
       filter var(--dur-1) var(--ease-out)}   /* a filled button's shade (#258) */
 }

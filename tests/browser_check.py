@@ -1113,6 +1113,19 @@ FIELD_ROWS_JS = r"""() => { const out = {n: 0, bad: []};
   }
   return out; }"""
 
+# the controls of #353, on the page shown: each checkbox shown in <main> that isn't a switch, a toggle chip's or in a
+# table (a bare on/off box), each file input that the browser draws (not see-through inside a .btn.pick), and the
+# sizes of the quiet icon buttons: a chart's ✕, the ✎ and Settings' drag grip
+CONTROLS353_JS = r"""() => {
+  const bare = [...document.querySelectorAll('main input[type=checkbox]')].filter(i => i.checkVisibility())
+    .filter(i => !i.closest('label.switch, .toggle, table') && i.getAttribute('role') !== 'switch').map(i => (i.closest('label') || i.parentElement).textContent.trim().slice(0, 40));
+  const files = [...document.querySelectorAll('input[type=file]')].filter(i => i.closest('main, dialog') && i.parentElement.checkVisibility())
+    .map(i => [i.id || i.className, !!i.closest('.btn.pick') && getComputedStyle(i).opacity === '0']);
+  const quiet = [...document.querySelectorAll('.chart .hd>.btn, .rename-btn, .set-grip')].filter(b => b.checkVisibility())
+    .map(b => [b.className, Math.round(b.getBoundingClientRect().width), Math.round(b.getBoundingClientRect().height)]);
+  const toggles = [...document.querySelectorAll('main label.toggle')].filter(l => l.checkVisibility()).map(l => l.textContent.trim());
+  return {bare, files, quiet, toggles}; }"""
+
 # the swap to the fonts (#329): the cards and tiles a page draws, by name, with their heights
 SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main .card, main .tile, .sets .set')]
   .filter(e => e.checkVisibility()).map((e, i) => [`${e.className.split(' ')[0]} ${i} ${(e.querySelector('h1,h2,h3,.lbl,.l')?.textContent || '').trim().slice(0, 40)}`,
@@ -7081,6 +7094,82 @@ def main():
                 sw_pages[path] = js("s => [...document.querySelectorAll(s)].every(i => i.getAttribute('role') === 'switch' && i.closest('label.switch'))", sel)
             check("…as are the other single on/off settings: Require two-factor sign-in, Offline records, the calendar feed's options",
                   all(sw_pages.values()), sw_pages)
+            # ---- the controls still outside the components (#353): Body and activity's and Costs' on/off options are toggle
+            # chips, not bare checkboxes; no file picker is the browser's own (the journal's photos, a typed-in record's file,
+            # Sources' upload: the button's look); the quiet icon buttons (a chart's ✕, the ✎, Settings' drag grip) are 44 px
+            # on a phone; a Labs chart is a card, its corner and inset the lab list's at 375 px; the visit summary's picked labs
+            # are action chips; Settings' milestones' Primary is a radio of its native size named with its milestone
+            c353, bad353 = {}, []
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+            js("window._was353 = [state.tab, state.preset, state.from, state.to]; setPeriod('all')")
+            for t in ("health", "costs"):
+                js("t => switchTab(t)", t)
+                settle(300)
+                c353[t] = js(CONTROLS353_JS)
+                bad353 += [f"{t}: a bare checkbox “{x}”" for x in c353[t]["bare"]]
+            if "Shade hospital stays" not in c353["health"]["toggles"] or "Denied only" not in c353["costs"]["toggles"]:
+                bad353.append(f"toggle chips: {c353['health']['toggles']} {c353['costs']['toggles']}")
+            js("journalNew()")
+            settle(300)
+            c353["journal"] = js(CONTROLS353_JS)
+            page.keyboard.press("Escape")
+            settle(200)
+            page.set_viewport_size({"width": 375, "height": 800})
+            js("() => { switchTab('labs'); for (const s of SERIES.filter(s => !s.watch).slice(0, 2)) state.sel.add(s.name); renderLabs(); }")
+            settle(400)
+            c353["labs 375"] = js(CONTROLS353_JS)
+            c353["cards 375"] = js("""() => { const c = getComputedStyle(document.querySelector('#charts .chart')), l = document.getElementById('series'),
+                h = getComputedStyle(l.querySelector('.series-hd')), r = getComputedStyle(l.querySelector('.srow'));
+              return [[c.borderTopLeftRadius, c.paddingLeft], [getComputedStyle(l).borderTopLeftRadius, h.paddingLeft, r.paddingLeft],
+                      document.querySelector('#charts .chart').classList.contains('card')]; }""")
+            js("[state.tab, state.preset, state.from, state.to] = window._was353; switchTab(state.tab); renderAll()")
+            (cr, cp), (lr, hp_, rp), is_card = c353["cards 375"]
+            if not (is_card and cr == lr and cp == hp_ == rp):
+                bad353.append(f"375 px: a chart's corner and inset {cr} {cp}, the lab list's {lr} {hp_} {rp}")
+            page.goto(base + "/settings.html?profile=1#dashboard")
+            page.wait_for_selector("#sec-overview .set-grip", timeout=10000)
+            settle(200)
+            c353["settings 375"] = js(CONTROLS353_JS)
+            bad353 += [f"375 px: {c} {w}×{h}" for k in ("labs 375", "settings 375") for c, w, h in c353[k]["quiet"] if w < 44 or h < 44]
+            if not any("set-grip" in q[0] for q in c353["settings 375"]["quiet"]) or not any("rename-btn" in q[0] for q in c353["labs 375"]["quiet"]) \
+                    or not any(q[0] == "btn quiet small" for q in c353["labs 375"]["quiet"]):
+                bad353.append(f"quiet buttons not all found: {c353['labs 375']['quiet'][:3]} {c353['settings 375']['quiet'][:1]}")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click(".set-nav-list a[data-group=activity]")
+            page.wait_for_selector(".ms .set-row:not(.set-head) input[type=radio]", timeout=10000)
+            c353["primary"] = js("""() => [...document.querySelectorAll('.ms .set-row:not(.set-head)')].map(r => {
+                const i = r.querySelector('input[type=radio]'), b = i.getBoundingClientRect();
+                const name = (i.getAttribute('aria-labelledby') || '').split(' ').map(id => document.getElementById(id)).map(e => e ? (e.tagName === 'INPUT' ? e.value : e.textContent) : '?').join(' ');
+                return [Math.round(b.width), Math.round(b.height), name, r.querySelector('[data-k=label]').value]; })""")
+            bad353 += [f"Primary {w}×{h}, named “{n}”" for w, h, n, lab in c353["primary"] if w > 20 or h > 20 or not lab or lab not in n or not n.startswith("Primary")]
+            page.goto(base + "/sources.html?profile=1#manual")
+            page.wait_for_selector("#manKind option", state="attached", timeout=10000)
+            js("""() => { const s = document.getElementById('manKind'); s.value = [...s.options].find(o => /letter/i.test(o.text)).value;
+                document.getElementById('manAddKind').click(); }""")
+            settle(200)
+            c353["typed-in file"] = js(CONTROLS353_JS)
+            page.click("#manItems .man-item .del")
+            page.click("#srcNav a[data-group=upload]")
+            settle(200)
+            c353["upload"] = js(CONTROLS353_JS)
+            for k in ("journal", "typed-in file", "upload"):
+                if not c353[k]["files"] or not all(ok for _, ok in c353[k]["files"]):
+                    bad353.append(f"{k}: file inputs {c353[k]['files']}")
+            page.goto(base + "/sharing.html?profile=1#summary")
+            page.wait_for_selector("#labIn", timeout=10000)
+            page.wait_for_function("typeof OPTS !== 'undefined' && OPTS && OPTS.labs.length > 0", timeout=10000)
+            js("() => { PICKED.push(...[...OPTS.labs.filter(l => !OPTS.keyLabs.includes(l.name)), ...OPTS.labs].slice(0, 2).map(l => l.name)); drawPicked(); }")
+            chips = js("[...document.querySelectorAll('#picked > li')].map(li => [li.children.length, li.firstElementChild.className, li.firstElementChild.getAttribute('aria-label')])")
+            if js("!!document.querySelector('#picked > li:last-child > .chip')"):
+                page.click("#picked > li:last-child > .chip")
+            gone = js("[PICKED.length, document.activeElement.className || document.activeElement.id]")
+            js("() => { PICKED.length = 0; drawPicked(); }")
+            if not chips or not all(n == 1 and c == "chip" and a.startswith("Don't trend ") for n, c, a in chips) or gone[0] != len(chips) - 1 or gone[1] not in ("chip", "labIn"):
+                bad353.append(f"the picked labs: {chips} {gone}")
+            check("controls on their components (#353): toggle chips for Body and activity's and Costs' on/off options, no browser file "
+                  "button, the ✕, ✎ and grip 44 px on a phone, a chart a card like the lab list, picked labs as chips, a milestone's Primary "
+                  "its native size and named with its milestone", not bad353, bad353[:8] or c353)
             page.goto(base + "/")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             unit_of = "n => { const s = SERIES.find(s => s.name === n); const p = s && s.pts.at(-1); return s && {unit: s.unit, from: s.uc ? s.uc.from : null, v: p[1], orig: p.orig ? p.orig.v : null, lo: p[2]}; }"

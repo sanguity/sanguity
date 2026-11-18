@@ -15,9 +15,10 @@ function chosen() {
 }
 
 function drawPicked() {
-  $("#picked").replaceChildren(...PICKED.map((n, i) => el("li", {}, labelOf(n),
-    el("button", {class: "btn small", type: "button", "aria-label": `Don't trend ${labelOf(n)}`,
-      onclick: () => { PICKED.splice(i, 1); drawPicked(); }}, icon("x")))));
+  $("#picked").replaceChildren(...PICKED.map((n, i) => el("li", {},   // an action chip each (#353), as presets.js's chosen conditions
+    el("button", {class: "chip", type: "button", "aria-label": `Don't trend ${labelOf(n)}`, onclick: () => {
+      PICKED.splice(i, 1); drawPicked();
+      ($("#picked").querySelectorAll("button")[Math.min(i, PICKED.length - 1)] || $("#labIn")).focus(); }}, labelOf(n), icon("x")))));
 }
 const labelOf = n => (OPTS.labs.find(l => l.name === n) || {label: n}).label;
 function addLab() {

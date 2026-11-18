@@ -50,13 +50,15 @@ function labsEditor(value, changed, ro) {
 let rowsEditors = 0;
 function rowsEditor(rows, cols, changed, ro, blank, cls = "") {
   const body = el("div", {class: "set-rows c" + cols.length + (cls ? " " + cls : "")}), group = "rows" + (++rowsEditors) + "-";
+  let made = 0;
   const head = el("div", {class: "set-row set-head", "aria-hidden": "true"}, ...cols.map(c => el("span", {text: c.label})), el("span"));
   const tick = c => c.type === "checkbox" || c.type === "radio";
   const only = (c, input) => { if (c.only && input.checked) for (const x of body.querySelectorAll(`[data-k="${c.key}"]`)) if (x !== input) x.checked = false; };
   const make = r => {
+    const id = group + (++made) + "-";   // c.of: the column that names the row, said with a radio's label ("Primary Diagnosis", #353)
     const row = el("div", {class: "set-row"}, ...cols.map(c => el("label", {class: tick(c) ? "set-tick" : null},
-      el("span", {class: "set-lbl", text: c.label}),
-      el("input", {"data-k": c.key, type: c.type || "text", name: c.type === "radio" ? group + c.key : null, value: tick(c) ? null : r[c.key] ?? "", checked: tick(c) ? !!r[c.key] : null,
+      el("span", {class: "set-lbl", id: id + c.key + "-l", text: c.label}),
+      el("input", {"data-k": c.key, id: id + c.key, "aria-labelledby": c.of ? `${id}${c.key}-l ${id}${c.of}` : null, type: c.type || "text", name: c.type === "radio" ? group + c.key : null, value: tick(c) ? null : r[c.key] ?? "", checked: tick(c) ? !!r[c.key] : null,
         disabled: ro, oninput: ev => { if (tick(c)) only(c, ev.target); changed(); }, ...(c.attrs || {})}))));
     row.append(ro ? el("span") : beside("Remove", "Remove this row", () => { row.remove(); changed(); }));
     return row;
@@ -97,7 +99,7 @@ function rulesEditor(value, changed, ro) {
 function milestonesEditor(value, changed, ro) {
   const cols = [{key: "date", label: "Date", type: "date", attrs: {min: "1900-01-01", max: "2100-12-31", required: true}},
                 {key: "label", label: "Name", attrs: {maxlength: 60, placeholder: "Diagnosis"}},
-                {key: "primary", label: "Primary", type: "radio"}];
+                {key: "primary", label: "Primary", type: "radio", of: "label"}];
   const r = rowsEditor(value, cols, changed, ro, {date: "", label: "", primary: false}, "ms");
   return {node: r.node, get: () => r.read().filter(x => x.date || x.label)
     .map(x => ({date: x.date, label: x.label, ...(x.primary ? {primary: true} : {})}))};
@@ -167,7 +169,7 @@ function orderList(items, opts) {
   function draw() {
     ol.replaceChildren(...list.map((it, i) => {
       const n = opts.name(it), li = el("li", {"data-i": i});
-      const grip = opts.ro ? null : el("button", {class: "set-grip", type: "button", "data-act": "grip", title: "Drag to reorder",
+      const grip = opts.ro ? null : el("button", {class: "set-grip btn quiet small", type: "button", "data-act": "grip", title: "Drag to reorder",
         "aria-label": `Reorder ${n}, ${i + 1} of ${list.length}: drag, or press up or down`,
         onkeydown: ev => { const to = {ArrowUp: i - 1, ArrowDown: i + 1, Home: 0, End: list.length - 1}[ev.key]; if (to !== undefined) { ev.preventDefault(); move(i, to, "grip"); } },
         onpointerdown: ev => drag(ev, li)}, icon("grip-vertical"));

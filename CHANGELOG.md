@@ -904,6 +904,13 @@ Everything on `main` so far; it becomes the first tagged release.
   person, the visit summary's Add, a new share link's Copy, and Settings → Dashboard's Add and a lab name's Remove were
   the small 24 px button beside a 32 px field; they're the default size now. The small size stays for buttons in
   dense rows of text.
+- **The last controls on the shared components** (#353): Body and activity's "Shade hospital stays", "Show lab glucose
+  results alongside" and "Show the WHO's categories for adults", and Costs' "Denied only", are toggle chips instead of
+  bare checkboxes; the visit summary's picked labs are action chips; the journal's photos and a typed-in record's file
+  are chosen with a button instead of the browser's "Choose Files"; a Labs chart's ✕, the ✎ beside a name and
+  Settings' drag handle are the quiet small button, 44 px on a phone like every other; a Labs chart is a card, its
+  corner and inset the lab list's on a phone; and a milestone's Primary is a radio of the usual size, named with its
+  milestone ("Primary Diagnosis").
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
