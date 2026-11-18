@@ -4188,6 +4188,41 @@ def main():
                   still == 1 and reached == "Undo" and waited == 1 and not js(toasts)["toasts"] and js("document.activeElement.id") == "tab-labs"
                   and js("CFG.trends.views.length") == 0, [still, reached, waited, js("document.activeElement.id")])
             check("deleting the last view from Trends leaves none", js("document.getElementById('viewPick').disabled") is True)
+            # #359: a view's Undo puts that view back into the views as they are now, not the list as it was: delete
+            # Alpha, delete Beta, Undo Alpha, Undo Beta; then delete Gamma, make Beta the default, Undo Gamma
+            vlabs = js("SERIES.filter(s => !s.watch).slice(0, 6).map(s => s.name)")
+            abg = [{"name": n, "labs": vlabs[2 * i:2 * i + 2], "default": False} for i, n in enumerate(["Alpha", "Beta", "Gamma"])]
+            on_server = lambda: [[v["name"], v["default"]] for v in js("api('profiles/1/settings').then(r => r.json()).then(j => j.trends.views)")]
+            js("v => api('profiles/1/settings/trends.views', {method: 'PUT', body: JSON.stringify({value: v})}).then(r => r.status)", abg)
+            page.reload()
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            js("switchTab('labs')")
+            settle(300)
+            steps = []
+            for n in ("Alpha", "Beta"):
+                page.select_option("#viewPick", n)
+                page.click("#tvBox button:text-is('Delete')")
+                page.wait_for_function(f"!CFG.trends.views.some(v => v.name === {json.dumps(n)})", timeout=10000)
+                steps.append(on_server())
+            for n in ("Alpha", "Beta"):
+                page.locator("#sgToasts .sg-toast", has_text=f"Deleted “{n}”").locator("button:text-is('Undo')").click()
+                page.wait_for_function(f"CFG.trends.views.some(v => v.name === {json.dumps(n)})", timeout=10000)
+                steps.append(on_server())
+            check("Labs views (#359): delete two, Undo each: both back, in their places, read from the server after each step",
+                  steps == [[["Beta", False], ["Gamma", False]], [["Gamma", False]], [["Alpha", False], ["Gamma", False]],
+                            [["Alpha", False], ["Beta", False], ["Gamma", False]]], steps)
+            page.select_option("#viewPick", "Gamma")
+            page.click("#tvBox button:text-is('Delete')")
+            page.wait_for_function("CFG.trends.views.length === 2", timeout=10000)
+            page.select_option("#viewPick", "Beta")
+            page.click("#tvBox button:text-is('Make default')")
+            page.wait_for_function("CFG.trends.views.some(v => v.default)", timeout=10000)
+            page.locator("#sgToasts .sg-toast", has_text="Deleted “Gamma”").locator("button:text-is('Undo')").click()
+            page.wait_for_function("CFG.trends.views.length === 3", timeout=10000)
+            check("…delete one, make another the default, Undo the delete: it's back, the other still the default",
+                  on_server() == [["Alpha", False], ["Beta", True], ["Gamma", False]], on_server())
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            js("api('profiles/1/settings/trends.views', {method: 'PUT', body: JSON.stringify({value: []})})")
             if kept is not None:
                 js(f"localStorage.setItem(stateKey(), {json.dumps(kept)})")
             page.reload()
@@ -6587,6 +6622,35 @@ def main():
                   cfg["overview"])
             check("…(the Labs view and the key labs' order put back as they were, for the checks below)",
                   js(api_put, ["profiles/1/settings/trends.views", saved_views]) == 200 and js(api_put, ["profiles/1/settings/overview.keyLabs", p2]) == 200)
+            # #359: a save's Undo puts back only what still holds what the save wrote, and keeps changes not saved yet
+            # in the section: save a tick, tick another (not saved), Undo; then save again, change it elsewhere, Undo
+            ticked = lambda: js(api_get, "profiles/1/settings")["summary"]["ticked"]
+            undo_toast = "#sgToasts .sg-toast:last-child button:text-is('Undo')"
+            sum_msg = "document.querySelector('#sec-summary .set-foot > .msg').textContent"
+            box = lambda i: f"#sec-summary [data-key='summary.ticked'] input[type=checkbox] >> nth={i}"
+            page.reload()
+            page.wait_for_selector("#sec-summary [data-key='summary.ticked'] input[type=checkbox]", timeout=10000)
+            page.check(box(0))
+            first = js("SET_ITEMS['summary.ticked'].value()")
+            page.click("#sec-summary .set-foot button:text-is('Save')")
+            page.wait_for_function(f"{sum_msg}.startsWith('Saved')", timeout=10000)
+            saved_t = ticked()
+            page.check(box(1))
+            both = js("SET_ITEMS['summary.ticked'].value()")
+            page.click(undo_toast)
+            page.wait_for_function(f"{sum_msg}.startsWith('Undone')", timeout=10000)
+            check("Settings' Undo (#359) puts the saved tick back on the server and keeps a change not saved yet in the section, said so",
+                  saved_t == first and len(both) == 2 and ticked() == [] and js("SET_ITEMS['summary.ticked'].value()") == both
+                  and js("document.getElementById('sec-summary').hasAttribute('data-dirty')") and "not saved yet are kept" in js(sum_msg),
+                  [saved_t, both, ticked(), js("SET_ITEMS['summary.ticked'].value()"), js(sum_msg)])
+            page.click("#sec-summary .set-foot button:text-is('Save')")
+            page.wait_for_function(f"{sum_msg}.startsWith('Saved')", timeout=10000)
+            js(api_put, ["profiles/1/settings/summary.ticked", first])   # changed again since, elsewhere
+            page.click(undo_toast)
+            page.wait_for_function(f"{sum_msg}.includes('changed since')", timeout=10000)
+            check("…and leaves a setting changed again since as it is, said so", ticked() == first and "left as it is" in js(sum_msg), [ticked(), js(sum_msg)])
+            js(api_put, ["profiles/1/settings/summary.ticked", []])
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             page.goto(base + "/")   # back on the records page, as the checks below expect
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
 
