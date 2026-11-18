@@ -5105,6 +5105,36 @@ def main():
                     page.keyboard.press("Escape")
             page.mouse.move(0, 0)
             check("tooltips at the screen's edge, at 1400 and 375 px, are 8 px inside it and not over their element (#357)", not bad, bad)
+            # #372: a tip on what's half out of a strip that scrolls sideways ran off the screen (the area over its element
+            # doesn't bring it back inside): at 375×700 the milestone preset, past the right of the presets with the strip
+            # at its start. Tabbed to, the preset is brought into view first; hovered where it shows, it stays half out.
+            # Either way its tip is wholly on the screen, 8 px from its edge, and not over the preset
+            page.set_viewport_size({"width": 375, "height": 700})
+            open_tab("timeline")
+            settle(300)
+            ms_at = "() => { const b = document.querySelector('#presets button[data-tip]'), r = b && b.getBoundingClientRect(); return r && [Math.round(r.left), Math.round(r.top), Math.round(r.right)]; }"
+            bad, half = [], []
+            for how in ("focus", "hover"):
+                page.mouse.move(0, 400)
+                js("() => { document.getElementById('presets').scrollLeft = 0; }")
+                at = js(ms_at)
+                half.append(at)
+                if not at:
+                    break
+                if how == "focus":
+                    page.keyboard.press("Shift")
+                    js("() => { const b = document.querySelector('#presets button[data-tip]'); b.previousElementSibling.focus(); document.getElementById('presets').scrollLeft = 0; }")
+                    page.keyboard.press("Tab")
+                else:
+                    page.mouse.move((at[0] + 370) / 2, at[1] + 8)
+                settle(700)
+                t, now = js(tip_at), js(ms_at)
+                if not t or not t["text"].startswith("Since ") or t["box"][0] < 8 or t["box"][2] > 375 - 8 or t["covers"] or (how == "focus" and now[2] > 375):
+                    bad.append([how, at, now, t])
+                page.keyboard.press("Escape")
+            page.mouse.move(0, 0)
+            check("…and one on the milestone preset half out of the presets' strip at 375 px, tabbed to or hovered, is wholly on the screen, "
+                  "8 px from its edge; tabbed to, the preset is brought into view (#372)", all(a and a[2] > 375 for a in half) and not bad, [half, bad])
             page.set_viewport_size({"width": 1400, "height": 900})
             # #358: a tip on what can't take focus (a span, a cell) reached only a mouse: its words are where the keyboard
             # and a screen reader get them now, in the name or description (Chromium's accessibility tree, ax_said) of

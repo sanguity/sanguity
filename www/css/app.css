@@ -266,12 +266,14 @@ button.tile{cursor:pointer}
 .menu-sep{height:1px;background:var(--grid);margin:var(--sp-1) 2px}
 
 /* ---- tooltips (#261, data-tip, util.js): over its element, centred on it, or under it where there's no room above,
-   never on it; kept 8 px inside the screen (its margins: a box shifted to fit keeps them inside the screen, #357);
-   fading in as menus do. Words in the page's ink on its raised colour with a ring, like a menu, so its contrast is
+   never on it; kept 8 px inside the screen (its margins: a box shifted to fit keeps them inside the screen, #357),
+   even when its element is half out of a strip that scrolls sideways: placed by insets, the screen's width from edge
+   to edge and its element's top, not by position-area, whose area over an element half out of the screen doesn't
+   bring the tip back inside (#372); fading in as menus do. Words in the page's ink on its raised colour with a ring, like a menu, so its contrast is
    the page's own in both themes and forced colours draw its edge. */
 .sg-tip-on{anchor-name:--sg-tip}
 :is(.menu,.kind)>[aria-haspopup=menu].sg-tip-on{anchor-name:--menu,--sg-tip}   /* a menu's button is its menu's anchor too */
-.sg-tip{position:fixed;position-anchor:--sg-tip;inset:auto;position-area:top;margin:var(--sp-2) var(--sp-2) var(--sp-1);position-try-fallbacks:flip-block;
+.sg-tip{position:fixed;position-anchor:--sg-tip;inset:auto;inset:auto 0 anchor(top);margin:var(--sp-2) var(--sp-2) var(--sp-1);position-try-fallbacks:flip-block;
   justify-self:anchor-center;width:max-content;max-width:min(320px,calc(100vw - 16px));
   padding:var(--sp-1) var(--sp-2);background:var(--raised);color:var(--ink);border:1px solid var(--ring);border-radius:var(--r-sm);
   box-shadow:var(--shadow-2);font-size:var(--fs-2);line-height:1.4;white-space:pre-line;overflow-wrap:anywhere;text-align:left}

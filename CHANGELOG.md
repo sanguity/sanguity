@@ -949,6 +949,10 @@ Everything on `main` so far; it becomes the first tagged release.
   ✎'s and ?'s description. Titles that said what's on no screen (the Body and activity tab, the milestone preset,
   Clear dates, Connect, Undo link, Same result, Not the same, Hide, a payment's memo) are tips, and a description
   the name already says (the ✎'s "Rename this lab", a test page link's title) is left out.
+- **A tooltip on something half out of a strip** (#372): at 375 px the milestone preset, half past the right of the
+  period's presets, had its tip run off the screen ("Since Ap…"): a tip over an element half out of the screen wasn't
+  brought back inside. Tips are placed from the screen's width now, 8 px inside it whatever their element, and an
+  element given focus by the keyboard is scrolled wholly into view in its strip first.
 - **The static files' budget is 400 KB** (`tests/test_performance.py`, `docs/performance.md`): Redesign 3's icon sprite
   (10.5 KB, 57 icons) and its components took the stylesheets from 140 to 156 KB, 393.6 KB in all, past the 390 KB
   left for them in #328; 6.4 KB of room is left, and more has to be argued for.
