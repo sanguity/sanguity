@@ -98,10 +98,10 @@ function labelW(text, cls) {
   return labelSizes.get(key);
 }
 document.fonts.addEventListener("loadingdone", () => labelSizes.clear());
-/* milestone rules on a time chart: accent dashed line from y0 to y1, label on its own row at labelY (null = no labels).
-   A label stays inside the plot, x(a) to R (#312): after its rule, before it near the right edge, against that edge,
-   or shortened with "…" to the room there is; its <title> has the full names and dates. Returns the milestones shown,
-   in words for the chart's aria-label ("" when none). */
+/* milestone rules on a time chart: a dashed line in --milestone (never the accent, #334) from y0 to y1, label on its own
+   row at labelY (null = no labels). A label stays inside the plot, x(a) to R (#312): after its rule, before it near the
+   right edge, against that edge, or shortened with "…" to the room there is; its <title> has the full names and dates.
+   Returns the milestones shown, in words for the chart's aria-label ("" when none). */
 const msInRange = (a, b) => MILESTONES.some(m => { const t = dayTs(m.date); return t >= a && t <= b; });
 function msMarks(g, x, a, b, y0, y1, R, labelY) {
   const L = x(a), tw = s => labelW(s, "mslabel"), names = items => items.map(([m]) => m.label).join(" · ");

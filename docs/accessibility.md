@@ -80,7 +80,9 @@ What can't be done here is a pass with a real screen reader: see [Still open](#s
 ## The colours
 
 The colours (#254, Direction A of #243) are warm neutrals with a navy accent for controls, links and the focus ring
-only (the data's blue is `--c-lab`), red for what's out of range or wrong, and green for what's in range or done. Each
+only (the data's blue is `--c-lab`), red for what's out of range or wrong, and green for what's in range or done.
+Nothing a chart draws is in the accent (#334): a milestone's rule and label are `--milestone`, a near-black (near-white
+in dark) neutral, and a chart's cursor `--cursor`, a grey, since every hue already names a kind of record. Each
 is one token in `www/css/tokens.css`, declared once as a `light-dark()` pair: the system's theme picks the colour
 unless the person chose one (`data-theme` on `<html>`), and `tests/browser_check.py` checks that both ways give the
 same colours. A card is white on the warm page in light; in dark each step up (page, card, a field or menu on a card)
@@ -133,6 +135,8 @@ reference: a card stands off the page by its white and its edge, not by contrast
 | `--accent` | `--surface` | the focus ring | 8.16 (#1f4f8f on #ffffff) | 8.28 (#8db4ee on #1a1917) | 3:1 |
 | `--accent` | `--raised` | the focus ring | 8.16 (#1f4f8f on #ffffff) | 7.59 (#8db4ee on #22211e) | 3:1 |
 | `--crit` | `--raised` | a field marked wrong | 6.54 (#b3261e on #ffffff) | 6.54 (#f2877c on #22211e) | 3:1 |
+| `--milestone` | `--surface` | a milestone's label on a chart (its dashed rule needs 3) | 14.10 (#2e2b26 on #ffffff) | 12.35 (#dcd8ce on #1a1917) | 4.5:1 |
+| `--cursor` | `--surface` | a chart's cursor, a crosshair or an ECG trace's | 5.63 (#6b675e on #ffffff) | 6.18 (#9d998f on #1a1917) | 3:1 |
 | `--surface` | `--page` | a card against the page | 1.09 (#ffffff on #f6f5f1) | 1.07 (#1a1917 on #121110) | – |
 | `--ring` | `--page` | a card's edge against the page | 1.21 (#e3e0d8 on #f6f5f1) | 1.34 (#2c2b2a on #121110) | – |
 | `--grid` | `--surface` | a divider, a chart's grid | 1.32 (#e3e0d8 on #ffffff) | 1.26 (#2e2c28 on #1a1917) | – |

@@ -756,6 +756,11 @@ Everything on `main` so far; it becomes the first tagged release.
   edge and the focus ring 3:1 or more on every surface they're on, in both themes: `tools/contrast.py` measures them
   and docs/accessibility.md has the table. The browser's bar and the home-screen icons follow the new page colour.
   The kinds of record keep their colours.
+- **Charts no longer draw in the accent** (#334): milestones' dashed rules and labels were navy, the colour of links
+  and controls, and so was an ECG trace's cursor. A milestone is a near-black (near-white in dark) neutral now
+  (`--milestone`), darker than an event's dotted grey, and every chart's cursor, the Labs and Body and activity
+  crosshair and the ECG's, is one grey (`--cursor`), lighter than the trace it crosses. Both are in the contrast table;
+  `tokens.css` lists which colours are for controls and which for data.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
