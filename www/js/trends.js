@@ -189,18 +189,21 @@ function drawChart(svg, s, pts, read) {
     });
     for (const k of ["lo", "hi"]) if (edge[k]) g.push(el("svg:path", {class: "refedge", d: edge[k], fill: "none"}));
   }
-  msMarks(g, x, state.from, state.to, hasMs ? 16 : T, B, R, 12);
-  // treatment events: dashed rule + label (procedures labelled when there is room)
-  let lastLabelX = -1e9;
-  for (const e of marks) {
-    const mx = x(e.ts);
+  const msWords = msMarks(g, x, state.from, state.to, hasMs ? 16 : T, B, R, 12);
+  // treatment events: dashed rule + head, and a procedure named beside it where there is room: inside the chart, clear
+  // of the label before it and of every other mark's head (#312). One left unnamed keeps its tooltip and drawer.
+  const headX = marks.map(e => x(e.ts));
+  let lastEnd = -1e9;
+  marks.forEach((e, i) => {
+    const mx = headX[i];
     g.push(el("svg:line", {class: "evmark", x1: mx, x2: mx, y1: T - 4, y2: B}));
     g.push(evHead(e.k, mx, T - 7));
-    if (e.k === "procedure" && mx - lastLabelX > 90 && mx + 60 < R) {
-      g.push(el("svg:text", {class: "evlabel", x: mx + 6, y: T - 5, text: shortTitle(e.title)}));
-      lastLabelX = mx;
-    }
-  }
+    if (e.k !== "procedure") return;
+    const text = shortTitle(e.title), x0 = mx + 6, x1 = x0 + labelW(text, "evlabel");
+    if (x0 < lastEnd + 8 || x1 > R || headX.some((hx, j) => j !== i && hx + 5 > x0 && hx - 5 < x1)) return;
+    g.push(el("svg:text", {class: "evlabel", x: x0, y: T - 5, text}));
+    lastEnd = x1;
+  });
   for (const [t, lab] of ticks(state.from, state.to, R - L)) g.push(el("svg:text", {x: x(t), y: h - 6, "text-anchor": "middle", text: lab}));
   g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
   const dayW = Math.max(1, x(state.from + DAY) - x(state.from));
@@ -280,7 +283,7 @@ function drawChart(svg, s, pts, read) {
   // the keyboard (#60): ← and → step through the results shown, with the same readout and tooltip as hovering
   const unit = s.watch ? (s.kind === "stack" ? "night" : "day") : "result", nAbn = pts.filter(p => p[4]).length;
   chartKeys(svg, `${nice(s.name)}: ${pts.length} ${unit}${pts.length === 1 ? "" : "s"}${pts.length ? ` from ${fmtD(pts[0].ts)} to ${fmtD(lastP.ts)}, latest ${readText(s, lastP)[0]}` : " in this period"}`
-    + `${nAbn ? `, ${nAbn} outside reference range` : ""}${rangesDiffer(pts) ? `. ${RANGE_DIFFERS}: ${rangesDiffer(pts)} ${s.unit}` : ""}. Left and right arrow keys step through them.`,
+    + `${nAbn ? `, ${nAbn} outside reference range` : ""}${rangesDiffer(pts) ? `. ${RANGE_DIFFERS}: ${rangesDiffer(pts)} ${s.unit}` : ""}. Left and right arrow keys step through them.${msWords ? " " + msWords : ""}`,
     () => pts.map(p => p.ts),
     t => { const p = pts.find(p => p.ts === t); return showAt(t, x(t), svgPoint(svg, x(t), p ? y(p[1]) : T)); },
     () => { document.querySelectorAll("#charts svg").forEach(o => o._hover && o._hover(null)); hideTip(); });

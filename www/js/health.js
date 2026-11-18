@@ -108,7 +108,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
     const g = [];
     if (hState.stays) for (const s of STAYS) if (s.te >= a && s.ts <= b) g.push(el("svg:rect", {x: x(Math.max(a, s.ts)), y: T, width: Math.max(2, x(Math.min(b, s.te)) - x(Math.max(a, s.ts))), height: B - T, fill: "var(--stay)"}));
     for (const v of niceTicks(lo, hi, 4)) { g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)})); g.push(el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: fmtY(v)})); }
-    msMarks(g, x, a, b, T > 8 ? 17 : T, B, R, 13);
+    { const ms = msMarks(g, x, a, b, T > 8 ? 17 : T, B, R, 13); if (ms) svg.setAttribute("aria-label", svg.getAttribute("aria-label") + " " + ms); }   // their names in words (#312)
     g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
     const span = (b - a) / DAY, fmtX = span > 500 ? {year: "numeric"} : span > 75 ? {month: "short"} : {month: "short", day: "numeric"};
     const step = span > 500 ? 365 : span > 75 ? 30.4 : 7, n = Math.max(1, Math.ceil(span / step / Math.max(2, Math.floor((R - L) / 64))));

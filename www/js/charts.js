@@ -80,24 +80,53 @@ panZoom($("#view-health"), {...mainWindow, minSpan: 3 * DAY,
   get: () => hRange(),
   draw: () => { const [a, b] = hRange(); $("#view-health").querySelectorAll("svg").forEach(s => s._draw && s._draw(a, b)); },
   end: () => { renderFilters(); renderHealth(); save(); }});
-/* milestone rules on a time chart: accent dashed line from y0 to y1, label on its own row at labelY (null = no labels) */
+/* how wide a chart label is, in the chart's own units: measured in the font its class has in app.css (read once a class) */
+const labelFonts = {}, labelCtx = document.createElement("canvas").getContext("2d");
+function labelW(text, cls) {
+  if (!labelFonts[cls]) {
+    const s = document.body.appendChild(el("svg:svg", {class: "vh", "aria-hidden": "true"}, el("svg:text", {class: cls}))), cs = getComputedStyle(s.firstChild);
+    labelFonts[cls] = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; s.remove();
+  }
+  labelCtx.font = labelFonts[cls];
+  return labelCtx.measureText(text).width;
+}
+/* milestone rules on a time chart: accent dashed line from y0 to y1, label on its own row at labelY (null = no labels).
+   A label stays inside the plot, x(a) to R (#312): after its rule, before it near the right edge, against that edge,
+   or shortened with "…" to the room there is; its <title> has the full names and dates. Returns the milestones shown,
+   in words for the chart's aria-label ("" when none). */
 const msInRange = (a, b) => MILESTONES.some(m => { const t = dayTs(m.date); return t >= a && t <= b; });
 function msMarks(g, x, a, b, y0, y1, R, labelY) {
-  const textW = s => s.length * 6.4 + 8;   // ~10.5px semibold
-  const groups = [];   // a milestone whose label would run into the previous label joins it: "Diagnosis · Treatment start"
+  const L = x(a), tw = s => labelW(s, "mslabel"), names = items => items.map(([m]) => m.label).join(" · ");
+  const groups = [], shown = [];   // a milestone whose label would run into the previous label joins it: "Diagnosis · Treatment start"
   for (const m of MILESTONES) {
     const t = dayTs(m.date); if (t < a || t > b) continue;
     const mx = x(t);
+    shown.push(`${m.label}, ${fmtD(t)}`);
     g.push(el("svg:line", {class: "msmark", x1: mx, x2: mx, y1: y0, y2: y1}));
     const last = groups[groups.length - 1];
-    if (last && mx < last.x + textW(last.items.map(([n]) => n.label).join(" · "))) last.items.push([m, t]); else groups.push({x: mx, items: [[m, t]]});
+    if (last && mx < last.x + tw(names(last.items)) + 12) last.items.push([m, t]); else groups.push({x: mx, items: [[m, t]]});
   }
-  if (labelY == null) return;
-  for (const {x: mx, items} of groups) {
-    const text = items.map(([m]) => m.label).join(" · "), flip = mx + textW(text) > R;   // keep the label inside the chart
-    g.push(el("svg:text", {class: "mslabel", x: flip ? mx - 4 : mx + 4, y: labelY, "text-anchor": flip ? "end" : "start"}, text,
+  const words = shown.length ? `Milestone${shown.length > 1 ? "s" : ""}: ${shown.join("; ")}.` : "";
+  if (labelY == null) return words;
+  const shorten = (s, room) => { for (let n = s.length - 1; n > 2; n--) { const t = s.slice(0, n).trimEnd() + "…"; if (tw(t) <= room) return t; } return null; };
+  const place = (items, mx, left) => {   // where a group's label goes, starting no further left than left; null: no room
+    const text = names(items), w = tw(text);
+    if (mx + 4 + w <= R) return {x: mx + 4, anchor: "start", text, end: mx + 4 + w};
+    if (mx - 4 - w >= left) return {x: mx - 4, anchor: "end", text, end: mx - 4};
+    if (R - w >= left) return {x: R, anchor: "end", text, end: R};
+    const short = shorten(text, R - left);
+    return short && {x: left, anchor: "start", text: short, end: left + tw(short)};
+  };
+  const labels = [];   // a group with no room left joins the one before it
+  for (let {x: mx, items} of groups) {
+    let left = labels.length ? labels[labels.length - 1].at.end + 8 : L, at;
+    while (!(at = place(items, mx, left)) && labels.length) { const p = labels.pop(); items = [...p.items, ...items]; mx = p.mx; left = p.left; }
+    if (at) labels.push({items, mx, left, at});
+  }
+  for (const {items, at} of labels)
+    g.push(el("svg:text", {class: "mslabel", x: at.x, y: labelY, "text-anchor": at.anchor}, at.text,
       el("svg:title", {text: items.map(([m, t]) => `${m.label} · ${fmtD(t)}`).join("\n")})));
-  }
+  return words;
 }
 /* ---- chart accessibility (#60): every chart has a table to show instead, out-of-range results are marked by shape
    as well as colour, and a chart takes focus, its points stepped through from the keyboard.
