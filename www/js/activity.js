@@ -6,7 +6,7 @@ const KIND_NAME = {visit: "Visits", contact: "Chart activity", procedure: "Proce
   message: "Messages", appt_msg: "Appointment messages", auto_msg: "Automated messages", letter: "Letters", document: "Documents"};   // #237
 const WHAT = {
   view: () => "opened the records",
-  document: d => `opened ${d.name || "a document"}`,
+  document: d => d.title ? `opened the document “${d.title}”` : `opened ${d.name || "a document"}`,   // its record's title (#342); before, its file's name
   create: () => "created the profile",
   rename: d => `renamed the profile from “${d.from}” to “${d.to}”`,
   share: d => d.repair ? `made ${d.username} an owner, as an admin (the profile had no active owner)` :

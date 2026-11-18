@@ -805,6 +805,12 @@ Everything on `main` so far; it becomes the first tagged release.
   landmark whether or not it scrolled, so at 1400 px Costs' HSA and FSA, Prescriptions and Claims were extra stops
   with nothing hidden. A table's box is a named region in the Tab order only while it scrolls, sideways or down, and
   changes as the window or its rows do; the shared page's tables and the share links' list work the same way.
+- **Long words and wide figures fit a phone** (#342): opening a document was logged under its stored file's name, a
+  32-character hex word that pushed Sharing → Activity out of its card at 375 px and made the page scroll sideways at
+  320, as a long IPv6 address did. A document opened is logged under its record's title now ("opened the document
+  “PET/CT end of treatment (PDF)”"); older entries keep their file names, and an activity log's entry and address
+  wrap, as an account page's table cells do on a phone. The Overview's insurance figures wrap to a second line when
+  one is too wide for a third of the card, as "4 772 $US" is in a French browser at 320 px.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

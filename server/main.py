@@ -1157,7 +1157,12 @@ def _document(db, s, pid, doc):
 
 
 def _opened(db, s, pid, doc, r, request):
-    activity.once(db, s, pid, "document", _client_ip(request), {"name": os.path.basename(r["path"])}, key=doc[:64])
+    """Log a document opened, once a session, by its record's title (#342): an imported file's stored name is a random
+    hex word. One no record names (a stale link) keeps its file's name."""
+    def detail():
+        title = records.document_title(db, pid, doc[:64])
+        return {"title": title} if title else {"name": os.path.basename(r["path"])}
+    activity.once(db, s, pid, "document", _client_ip(request), detail, key=doc[:64])
 
 
 @app.get("/api/profiles/{pid}/documents/{doc}")

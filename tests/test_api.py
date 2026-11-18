@@ -392,7 +392,7 @@ class Api(unittest.TestCase):
         self.assertEqual([e["action"] for e in mine].count("view"), 1)
         self.assertEqual([e["action"] for e in mine].count("document"), 1)
         opened = next(e for e in mine if e["action"] == "document")
-        self.assertEqual((opened["actor"], opened["detail"]), ("ben", {"name": "demo-report.pdf"}))
+        self.assertEqual((opened["actor"], opened["detail"]), ("ben", {"title": "PET/CT end of treatment (PDF)"}))   # its record's title (#342)
         self.login("ben").get("/api/profiles/1/data")   # a new session is a new view
         self.assertEqual([e["action"] for e in newer(log(ben))].count("view"), 2)
         # sharing and renaming are recorded with what changed
