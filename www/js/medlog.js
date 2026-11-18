@@ -173,7 +173,7 @@ function todayDoses() {
       el("span", {class: "dose-got"}, ...other.map(logged), write ? quick(m, null, m.name) : null)));
   }
   const week = thisWeek(DOSES.filter(d => cur.some(m => m.key === d.key)));
-  return el("div", {class: "card", id: "ovDoses"}, el("h2", {text: "Today's medication doses"}),
+  return el("div", {class: "card", id: "ovDoses"}, el("h3", {text: "Today's medication doses"}),
     el("p", {class: "hint", text: write ? "Log what happened, for your own record: taken, taken late or skipped." : "What was logged today."}),
     el("ul", {class: "doselist today"}, ...rows),
     el("p", {class: "dose-week", text: "This week: " + doseSaid(doseCounts(week))}),

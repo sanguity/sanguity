@@ -127,7 +127,7 @@ function renderOverview() {
     out.push({s, last, since: s.pts[i].ts, streak: s.pts.length - i});
   }
   out.sort((a, b) => (keyLabs.includes(b.s.name) - keyLabs.includes(a.s.name)) || b.s.n - a.s.n);
-  const oc = el("div", {class: "card"}, el("h2", {text: `Outside reference range at latest draw (${out.length})`}),
+  const oc = el("div", {class: "card"}, el("h3", {text: `Outside reference range at latest draw (${out.length})`}),
     el("p", {class: "hint", text: "Values from the last two weeks of draws that were flagged high or low, and how long they have been that way. Not a diagnosis; your care team interprets these in context."}));
   if (!out.length) oc.append(el("div", {class: "empty slim", text: "Everything measured recently is within its reference range."}));
   for (const o of out.slice(0, 14)) {
@@ -143,7 +143,7 @@ function renderOverview() {
   const wk = ["hr_rest", "sleep", "steps", "hr", "weight"];
   const ws = wk.map(k => SERIES.find(s => s.key === k)).filter(Boolean);
   if (ws.length) {
-    const wc = el("div", {class: "card"}, el("h2", {text: "Watch & scale"}), el("p", {class: "hint", text: "The watch's last 7 days against the 4 weeks before, and the latest weight against your weight at diagnosis."}),
+    const wc = el("div", {class: "card"}, el("h3", {text: "Watch & scale"}), el("p", {class: "hint", text: "The watch's last 7 days against the 4 weeks before, and the latest weight against your weight at diagnosis."}),
       moreAbout("Sparklines show the last 30 days for the watch, and the last year for weight."));
     const grid = el("div", {class: "tiles", style: {gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", marginBottom: 0}});
     const now = Math.max(...ws.filter(s => s.key !== "weight").flatMap(s => s.pts.map(p => p.ts)));
@@ -176,7 +176,7 @@ function renderOverview() {
   // upcoming appointments
   const up = (DATA.upcoming || []).filter(u => u.t >= isoDay(Date.now()));
   if (up.length) {
-    const uc = el("div", {class: "card"}, el("h2", {text: "Upcoming"}), listOf(up.map(u => u.where)) ? el("p", {class: "hint", text: "Scheduled at " + listOf(up.map(u => u.where))}) : null);
+    const uc = el("div", {class: "card"}, el("h3", {text: "Upcoming"}), listOf(up.map(u => u.where)) ? el("p", {class: "hint", text: "Scheduled at " + listOf(up.map(u => u.where))}) : null);
     for (const u of up.slice(0, 6)) uc.append(el("div", {class: "ov-row", style: {cursor: "default"}},
       el("span", {class: "n", text: u.title}), el("span", {class: "r", text: fmtD(dayTs(u.t))}), el("span", {}),
       el("span", {class: "s", text: [u.who, u.where].filter(Boolean).join(" · ")})));
@@ -186,7 +186,7 @@ function renderOverview() {
   // insurance cost summary
   if ((DATA.costs || []).length) {
     const rows = DATA.costs, pm = primaryMs(), dx = pm ? rows.filter(r => r.d >= pm.date) : rows;
-    const cc = el("div", {class: "card"}, el("h2", {text: pm ? `Insurance costs since ${lcLabel(pm.label)}` : "Insurance costs"}),
+    const cc = el("div", {class: "card"}, el("h3", {text: pm ? `Insurance costs since ${lcLabel(pm.label)}` : "Insurance costs"}),
       dx.length ? el("p", {class: "hint", text: `Claims from ${fmtD(dayTs(dx.reduce((m, r) => r.d < m ? r.d : m, dx[0].d)))} on (${listOf(insurerSpans(dx).map(s => s[0]), ", then ")}).`}) : null);
     const mini = (l, v) => el("div", {}, el("div", {class: "ov-mini-v", text: v}), el("div", {class: "hint", style: {margin: 0}, text: l}));
     cc.append(el("div", {class: "ov-minis"},
@@ -197,7 +197,7 @@ function renderOverview() {
   // problem list (allergies have a card of their own, under it: #179)
   const probs =(DATA.problems || []).filter(p => (p.status || "").toLowerCase() === "active" && p.type !== "Allergy");
   if (probs.length) {
-    const pc = el("div", {class: "card"}, el("h2", {text: `Active problem list (${probs.length})`}), listOf(probs.map(p => p.src)) ? el("p", {class: "hint", text: "As recorded by " + listOf(probs.map(p => p.src))}) : null);
+    const pc = el("div", {class: "card"}, el("h3", {text: `Active problem list (${probs.length})`}), listOf(probs.map(p => p.src)) ? el("p", {class: "hint", text: "As recorded by " + listOf(probs.map(p => p.src))}) : null);
     for (const p of probs) pc.append(el("div", {class: "ov-row", style: {cursor: "default"}}, el("span", {class: "n plain", text: p.name}), el("span", {class: "r", text: p.date ? fmtD(dayTs(p.date)) : ""}), el("span", {})));
     left.append(pc);
   }
@@ -205,7 +205,7 @@ function renderOverview() {
   const ended = s => /^(resolved|inactive|refuted|entered in error)$/i.test(s || "");
   const allergies = (DATA.problems || []).filter(p => p.type === "Allergy" && !ended(p.status));
   if (allergies.length) {
-    const ac = el("div", {class: "card", id: "ovAllergies"}, el("h2", {text: `Allergies and intolerances (${allergies.length})`}),
+    const ac = el("div", {class: "card", id: "ovAllergies"}, el("h3", {text: `Allergies and intolerances (${allergies.length})`}),
       listOf(allergies.map(p => p.src)) ? el("p", {class: "hint", text: "As recorded by " + listOf(allergies.map(p => p.src))}) : null);
     for (const p of allergies) ac.append(el("div", {class: "ov-row", style: {cursor: "default"}},
       el("span", {class: "n plain", text: p.substance || p.name.replace(/^Allergy: /, "")}),
@@ -216,7 +216,7 @@ function renderOverview() {
   }
   const imms = EV.filter(e => e.k === "immunization" && !e.hidden).sort((a, b) => b.ts - a.ts);
   if (imms.length) {
-    const ic = el("div", {class: "card", id: "ovImmunizations"}, el("h2", {text: `Immunizations (${imms.length})`}),
+    const ic = el("div", {class: "card", id: "ovImmunizations"}, el("h3", {text: `Immunizations (${imms.length})`}),
       el("p", {class: "hint", text: "Vaccines the records say were given, newest first"}));
     for (const e of imms.slice(0, 8)) {
       const d = DATA.details[e.id] || {};
@@ -230,7 +230,7 @@ function renderOverview() {
     left.append(ic);
   }
   // recent events
-  const rc = el("div", {class: "card"}, el("h2", {text: "Recent"}));
+  const rc = el("div", {class: "card"}, el("h3", {text: "Recent"}));
   const recent = EV.filter(e => !e.hidden && e.k !== "auto_msg" && e.k !== "cycle").sort((a, b) => b.ts - a.ts).slice(0, 10);   // cycle records: their lane only (#183)
   for (const e of recent) rc.append(el("div", {class: "ov-row", ...pressable(() => openEvent(e))},
     el("span", {class: "n"}, el("span", {class: "key", style: {display: "inline-block", width: "12px", height: "3px", borderRadius: "2px", background: CAT_OF[e.k].color, marginRight: "8px", verticalAlign: "middle"}}), e.title),
@@ -238,5 +238,11 @@ function renderOverview() {
     e.sub ? el("span", {class: "s", text: e.sub}) : null));
   right.append(rc);
   { const td = todayDoses(); if (td) right.prepend(td); }   // today's medication doses (medlog.js, #235)
+  /* the outline (#331): the cards are h3s under a section's h2, the out-of-range card under Key labs; the others under
+     sections whose names aren't shown, as the columns already group them (plan #243: key labs, today and readings,
+     the record) */
+  const rec = [...left.children].find(c => c !== oc);
+  if (rec) rec.before(el("h2", {class: "vh", text: "Your record"}));
+  if (right.children.length) right.prepend(el("h2", {class: "vh", text: "Recent and upcoming"}));
 }
 

@@ -22,8 +22,9 @@ a{color:var(--accent)}   /* links in the accent, never the browser's blue or vis
 
 @layer pages {
 header{display:flex;align-items:center;gap:var(--sp-4);padding:var(--sp-4) var(--sp-5);border-bottom:1px solid var(--grid);background:var(--surface);position:sticky;top:0;z-index:20;flex-wrap:wrap}
-header h1{font-size:var(--fs-5);margin:0;font-weight:var(--fw-semibold);letter-spacing:-.01em;display:flex;align-items:center;gap:var(--sp-2)}
-header h1 .brand{width:19px;height:23px;flex:none}
+/* the brand: a paragraph, so each page's one h1 is its own title (#331) */
+header .brand-name{font-size:var(--fs-5);margin:0;font-weight:var(--fw-semibold);letter-spacing:-.01em;display:flex;align-items:center;gap:var(--sp-2)}
+header .brand-name .brand{width:19px;height:23px;flex:none}
 .brand-drop{fill:var(--brand)}.brand-line{stroke:var(--brand-ink)}.brand-dot{fill:var(--brand-ink)}
 header .meta{color:var(--muted);font-size:var(--fs-2)}
 .tabs{display:flex;gap:2px;background:var(--hover);border-radius:var(--r-md);padding:3px}
@@ -79,7 +80,7 @@ header.topbar .tabs button{white-space:nowrap}
 .pagefoot .meta{color:var(--muted);font-size:var(--fs-2)}
 @media (max-width:700px){
   header.topbar{flex-wrap:wrap;gap:var(--sp-2) var(--sp-2);padding:var(--sp-2) var(--sp-3) var(--sp-2)}
-  header.topbar h1{flex:none}
+  header.topbar .brand-name{flex:none}
   header.topbar .spacer{display:block;flex:1}
   header.topbar .tabs{order:5;width:100%}
   .page-title{font-size:var(--fs-3);padding-left:var(--sp-2);flex:1 1 0}
@@ -104,12 +105,12 @@ footer.notice{max-width:1500px;margin:0 auto;padding:var(--sp-3) var(--sp-5) var
 .range-note{color:var(--ink2);font-size:var(--fs-2);margin:var(--sp-2) 0 var(--sp-2)}
 .tiles + .range-note{margin:-8px 0 var(--sp-4)}
 .card{background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--sp-4);margin-bottom:var(--sp-5)}
-.card h2{font-size:var(--fs-4);margin:0 0 2px;font-weight:var(--fw-semibold)}
+.card h2,.card>h1,.ov-cols .card>h3{font-size:var(--fs-4);margin:0 0 2px;font-weight:var(--fw-semibold)}
 .card .hint{color:var(--muted);font-size:var(--fs-3);margin:0 0 var(--sp-2)}
 /* the type scale (#255, tokens.css): Source Serif 4 for page and section titles and the headline values, Inter for the
    rest (a value's unit too); tabular figures wherever numbers are read against each other: values, tables, chart axes,
    the drawer's facts */
-.card h2,.ov-h h2,.sets .set-top h1,.guide-hd h1,.guide-step h2,.sg-ask h2,#drawer .dh h3,.dir .dir-hd h2,.src .dir-hd h3,
+.card h2,.card>h1,.ov-cols .card>h3,.ov-h h2,.sets .set-top h1,.guide-hd h1,.guide-step h2,.sg-ask h2,#drawer .dh h3,.dir .dir-hd h2,.src .dir-hd h3,
   .tile .val,.stat .n,.ov-mini-v{font-family:var(--font-display,Georgia,serif)}
 .tile .val small{font-family:var(--font-ui,system-ui,sans-serif)}
 .tile .val,.stat .n,.ov-mini-v,svg text,.tip,.kv dd,.acct .tbl,.zones-tbl,.ecg-sum,.bk .kv{font-variant-numeric:tabular-nums}
@@ -324,7 +325,7 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
 .ftoggle{display:none}
 @media (max-width:700px){
   header{gap:var(--sp-2) var(--sp-2);padding:var(--sp-2) var(--sp-3) var(--sp-2)}
-  header h1{font-size:var(--fs-4);flex:1}
+  header .brand-name{font-size:var(--fs-4);flex:1}
   header .meta{display:none}
   .tabs{order:5;width:100%;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
   .tabs::-webkit-scrollbar{display:none}
@@ -593,7 +594,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-count{font-size:var(--fs-2)}
 .sets .set-check{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 .sets .set-sugg{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;margin-top:var(--sp-2);max-width:720px}
-.sets .set-ph{margin:var(--sp-3) 0 var(--sp-2);font-size:var(--fs-3);color:var(--ink2)}
+.sets .set-ph{margin:var(--sp-3) 0 var(--sp-2);font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2)}   /* an h4 under a setting's h3, at its weight (#331) */
 .sets .set-preview{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:var(--sp-2);max-width:720px}
 .sets .set-preview .tile{cursor:default}
 .sets .set-preview .set-wide,.sets .set-preview>p{grid-column:1 / -1;margin:0}

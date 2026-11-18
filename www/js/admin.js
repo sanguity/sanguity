@@ -44,6 +44,7 @@ const AdminNav = (() => {
     for (const x of GROUPS) for (const id of x.has) document.getElementById(id).classList.toggle("grp-off", x !== g);
     for (const a of list.querySelectorAll("a")) a.setAttribute("aria-current", a.dataset.group === g.id ? "page" : "false");
     main.dataset.group = g.id;
+    $("#groupTitle").textContent = g.title;   // the page's h1, as on Settings and Sharing (#331)
     viewTitle("Admin: " + g.title, push && "Admin: " + g.title);   // the browser tab's title; said when picked (#209)
     if (push && location.hash.slice(1) !== g.id) history.replaceState(null, "", "#" + g.id);
     if (scrollTo) scrollTo.scrollIntoView({block: "start"});
@@ -61,6 +62,7 @@ const AdminNav = (() => {
       onclick: ev => { ev.preventDefault(); show(g, {push: true}); }}))));
     main.prepend(nav);
     main.classList.add("with-nav");
+    $("#intro").hidden = false;
     follow();
     addEventListener("hashchange", follow);
   }
