@@ -1,52 +1,33 @@
-:root{
-  color-scheme:light;
-  --page:#f9f9f7; --surface:#fcfcfb; --raised:#ffffff;
-  --ink:#0b0b0b; --ink2:#52514e; --muted:#6a6964;
-  --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10); --hover:rgba(11,11,11,.04);
-  --c-lab:#2a78d6; --c-imaging:#eb6834; --c-procedure:#1baf7a; --c-study:#eda100;
-  --c-letter:#e87ba4; --c-visit:#008300; --c-contact:#5c7a62; --c-message:#6250d6; --c-journal:#0d7f86; --c-immunization:#a3479c; --c-ecg:#94602a;
-  --stay:rgba(11,11,11,.07); --stay-line:#898781;
-  --range:rgba(42,120,214,.10);
-  --crit:#d03b3b; --good:#0ca30c;
-  --accent:#2470cc; --good-text:#006300;
-  --accent-fill:#2470cc; --on-accent:#fff; --crit-fill:#d03b3b; --field-line:#8f8e89;   /* #202: text 4.5:1, a field's edge 3:1 */
-  --brand:#8a2438; --brand-ink:#fbf4f1;
-  --div-lo:#2a78d6; --div-mid:#f0efec; --div-hi:#e34948;
-  --seq1:#184f95; --seq2:#3987e5; --seq3:#86b6ef;
-}
-@media (prefers-color-scheme:dark){
-  :root:where(:not([data-theme="light"])){
-    color-scheme:dark;
-    --page:#0d0d0d; --surface:#1a1a19; --raised:#222220;
-    --ink:#f0efec; --ink2:#c3c2b7; --muted:#9c9a94;
-    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
-    --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
-    --c-letter:#d55181; --c-visit:#008300; --c-contact:#8fae95; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4; --c-ecg:#c8955a;
-    --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#4a93ec;
-    --accent-fill:#2a6cc4; --on-accent:#fff; --crit:#e66767; --crit-fill:#c43434; --field-line:#74736e;
-    --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
-    --seq1:#9ec5f4; --seq2:#5598e7; --seq3:#1c5cab;
-    --brand:#b4485e; --brand-ink:#1c1a19;
-  }
-}
-:root[data-theme="dark"]{
-  color-scheme:dark;
-  --page:#0d0d0d; --surface:#1a1a19; --raised:#222220;
-  --ink:#f0efec; --ink2:#c3c2b7; --muted:#9c9a94;
-  --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
-  --c-lab:#3987e5; --c-imaging:#d95926; --c-procedure:#199e70; --c-study:#c98500;
-  --c-letter:#d55181; --c-visit:#008300; --c-contact:#8fae95; --c-message:#9085e9; --c-journal:#3bb8bf; --c-immunization:#d07fc4; --c-ecg:#c8955a;
-  --stay:rgba(255,255,255,.07); --range:rgba(57,135,229,.16); --accent:#4a93ec;
-  --accent-fill:#2a6cc4; --on-accent:#fff; --crit:#e66767; --crit-fill:#c43434; --field-line:#74736e;
-  --good-text:#0ca30c; --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
-  --seq1:#9ec5f4; --seq2:#5598e7; --seq3:#1c5cab;
-  --brand:#b4485e; --brand-ink:#1c1a19;
-}
+/* Sanguity · the app's styles. Colours and the other design tokens are in tokens.css, which every page loads first.
+
+   In cascade layers (#251), declared in tokens.css and repeated here so this file keeps the same order on its own:
+     reset       box-sizing, and [hidden] always hiding
+     tokens      tokens.css: the colour tokens, light and dark
+     base        the elements' defaults: the page's type and colours, form controls, links, and one focus ring
+     components  (empty for now) shared components, as they're gathered from the pages layer
+     pages       everything else, in the order it was written: a later rule still wins over an earlier one of the same
+                 specificity, as before the layers
+     utilities   single-purpose classes that win over the rest (.vh)
+   A later layer wins over an earlier one whatever the selectors' specificity, so a rule moved into an earlier layer
+   gets weaker, and into a later one, stronger. summary.css adds to the pages layer. */
+@layer reset, tokens, base, components, pages, utilities;
+
+@layer reset {
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+}
+
+@layer base {
 body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 button,input,select{font:inherit;color:inherit}
 a{color:var(--accent)}   /* links in the accent, never the browser's blue or visited purple (#247); a button or menu item that is a link sets its own */
+/* focus (2.4.7, docs/accessibility.md): one ring for everything that takes focus by keyboard, the accent's 3:1 in both
+   themes. A component sets its own only to do something different: inset in a row of buttons or a menu, closer or
+   further, an SVG mark that thickens its stroke instead; forced colours keep theirs. */
+:where(:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+}
+
+@layer pages {
 header{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid var(--grid);background:var(--surface);position:sticky;top:0;z-index:20;flex-wrap:wrap}
 header h1{font-size:17px;margin:0;font-weight:650;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
 header h1 .brand{width:19px;height:23px;flex:none}
@@ -757,8 +738,6 @@ main.acct{max-width:860px;margin:0 auto;padding:20px}
 @media (max-width:640px){.jrow{grid-template-columns:72px 18px 1fr auto}}
 @media (forced-colors:active){.jmark,.jsev-bar span{forced-color-adjust:none}}
 /* the journal's home on the Timeline tab (#173): a card between the timeline and the events list */
-.jhome:focus{outline:none}
-.jhome:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .jhome .list-hd .btn{margin:0}
 .jhome .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
 .jhome .jlist{margin-bottom:8px}
@@ -992,7 +971,6 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .period-more-btn:hover{color:var(--ink)}
 .period-more-btn[aria-expanded="true"]{background:var(--hover);color:var(--ink)}
 .period-more-btn.on{background:color-mix(in srgb,var(--accent) 15%,var(--raised));color:var(--ink);font-weight:650;box-shadow:inset 0 -2px 0 var(--accent)}
-.period-more-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .period-more .menu-list{left:0;right:auto;width:max-content;min-width:200px;max-width:min(320px,calc(100vw - 24px));max-height:min(60vh,440px);overflow-y:auto}
 .period-more .menu-item{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-left:28px;white-space:normal}
 .period-more .menu-item[aria-checked="true"]{background:color-mix(in srgb,var(--accent) 12%,var(--raised));font-weight:650}
@@ -1068,7 +1046,6 @@ main.src[data-role=viewer] .src-edit{display:none}
 .profile-one{display:flex;align-items:center;gap:6px;min-width:0;font-weight:550;white-space:nowrap}
 .profile-name{overflow:hidden;text-overflow:ellipsis}
 .profile-role{flex:none;font-weight:400;font-size:12px;color:var(--ink2);border:1px solid var(--ring);border-radius:999px;padding:0 7px}
-.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 @media (max-width:700px){
   /* a row of its own beside a page's title, or as a select (the records page's tabs below it) */
   header.topbar .page-title ~ .profile-pick,header.topbar .profile-pick.many{order:4;width:100%}
@@ -1122,7 +1099,7 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
 .toggle[aria-pressed="false"] .key,.toggle:has(>input:not(:checked)) .key{background:var(--muted)}
 .toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:var(--muted)}
 .toggle>input{position:absolute;inset:0;width:100%;height:100%;margin:0;border-radius:inherit;opacity:0;cursor:pointer}
-.toggle:focus-visible,.toggle:has(>input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.toggle:has(>input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}   /* the chip, when the box inside it has focus */
 @media (max-width:700px){
   .seg:not(.wrap){flex:none;overflow-x:auto;scrollbar-width:none}   /* the records bar's presets: they scroll, the chosen one kept in view */
   .seg:not(.wrap)::-webkit-scrollbar{display:none}
@@ -1153,7 +1130,6 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
 .kind>.toggle[aria-pressed="true"]+.kind-more{background:color-mix(in srgb,var(--tone) 15%,var(--raised));border-color:color-mix(in srgb,var(--tone) 70%,var(--ink));color:var(--ink)}
 .kind>.toggle[aria-pressed="true"]+.kind-more:hover,.kind>.toggle[aria-pressed="true"]+.kind-more[aria-expanded="true"]{background:color-mix(in srgb,var(--tone) 28%,var(--raised))}
 .kind>.toggle:focus-visible,.kind-more:focus-visible{z-index:1}
-.kind-more:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .kind>.menu-list{left:0;right:auto;min-width:170px}
 @media (max-width:700px){ .kind-more{padding:0 12px 0 10px} }
 @media (forced-colors:active){
@@ -1207,7 +1183,6 @@ dialog.sg-ask::backdrop{background:rgba(0,0,0,.45)}
 .sg-ask .btn{margin:0;padding:7px 14px;font-size:14px;font-weight:550}
 .sg-ask .btn.primary{background:var(--accent-fill);border-color:transparent;color:var(--on-accent)}
 .sg-ask .btn.danger{background:var(--crit-fill);border-color:transparent;color:var(--on-accent)}
-.sg-ask .btn:focus-visible,.sg-ask-msg input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (forced-colors: active){
   .sg-ask .btn.primary,.sg-ask .btn.danger{border:2px solid ButtonText}
 }
@@ -1295,7 +1270,6 @@ main.acct.guide{max-width:640px}
 .guide-ways{list-style:none;margin:12px 0;padding:0;display:grid;gap:8px}
 .guide-way{display:grid;gap:2px;padding:11px 14px;border:1px solid var(--ring);border-radius:10px;background:var(--raised);color:var(--ink);text-decoration:none}
 .guide-way:hover{border-color:var(--accent);background:var(--hover)}
-.guide-way:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .guide-way b{font-weight:650}
 .guide-way b::after{content:" →";color:var(--accent)}
 .guide-way span{font-size:13px;color:var(--ink2)}
@@ -1313,7 +1287,6 @@ main.acct.guide{max-width:640px}
 .empty-state .btn.empty-next{margin:0;padding:7px 14px;font-size:13px;font-weight:550;background:var(--accent-fill);border:1px solid transparent;color:var(--on-accent)}
 .empty-state:not(.card) .btn.empty-next{padding:4px 11px;font-size:12px}
 .empty-state .btn.empty-next:hover{filter:brightness(1.08)}
-.empty-state .btn.empty-next:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (forced-colors:active){ .empty-state .btn.empty-next,.guide-back,.guide-way{border-color:ButtonText} }
 
 /* ---- WCAG 2.2 AA (#202, docs/accessibility.md): a field's edge 3:1 against the page (1.4.11, an invalid field keeps
@@ -1328,10 +1301,8 @@ html:has(.sets section[data-dirty]){scroll-padding-bottom:72px}
 .tablewrap{scroll-padding-top:34px}
 .cell-btn{border:0;background:none;padding:3px 0;margin:-3px 0;font:inherit;color:inherit;text-align:inherit;cursor:pointer;border-radius:4px}   /* 24 px tall, the row as before (2.5.8) */
 .cell-btn:hover{text-decoration:underline}
-.cell-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .rename-btn{min-width:24px;min-height:24px;margin-top:-5px;margin-bottom:-5px}   /* the ✎: a 24 px target, the line as before (2.5.8) */
-.tablewrap[tabindex="0"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}   /* a table that scrolls, scrolled by keyboard */
 @media (max-height:500px){ header{position:static} html{scroll-padding-top:8px} }   /* zoomed in a long way, or a phone on its side: the page gets the room (1.4.10) */
 @media (forced-colors:active){
   .btn.primary,.btn.danger,.empty-state .btn.empty-next{border:1px solid ButtonText}
@@ -1357,11 +1328,8 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .vital-list .abn{color:var(--crit);font-weight:600}
 .vital-link{margin:6px 0 0}
 
-/* ---- menstrual cycle tracking, opt-in (#183, cycle.js and sources-cycle.js): its own colour (over 5:1 against the
-   page in both themes), the lane's and charts' marks, and the Sources card's lists */
-:root{--c-cycle:#b2305f}
-@media (prefers-color-scheme:dark){ :root:where(:not([data-theme="light"])){--c-cycle:#f290b4} }
-:root[data-theme="dark"]{--c-cycle:#f290b4}
+/* ---- menstrual cycle tracking, opt-in (#183, cycle.js and sources-cycle.js): its own colour (--c-cycle in
+   tokens.css), the lane's and charts' marks, and the Sources card's lists */
 .cymark{cursor:pointer}
 .cymark:hover,.cymark:focus-visible,.cymark.sel{stroke:var(--ink);stroke-width:2;outline:none}
 .cy-list{margin:4px 0 10px;padding-left:20px;font-size:13px;color:var(--ink2)}
@@ -1373,7 +1341,6 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 /* ---- ECG recordings in the drawer (#182, ecg.js): the trace drawn small, 10 seconds a row, its readout and summary */
 .ecg-trace{margin:4px 0 6px}
 .ecg-svg{display:block;width:100%;height:auto;border-radius:6px;background:var(--surface);touch-action:pan-y}
-.ecg-svg:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .ecg-grid{stroke:var(--grid);stroke-width:1}
 .ecg-zero{stroke:var(--axis)}
 .ecg-tick{font-size:11px;fill:var(--ink2);font-variant-numeric:tabular-nums}
@@ -1385,11 +1352,8 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .ecg-note{color:var(--ink2)}
 @media (forced-colors:active){ .ecg-line{stroke:CanvasText} .ecg-cursor{stroke:Highlight} }
 
-/* ---- heart rate zones on workouts (#197, health.js): five steps of one hue, light to dark (dark to light in dark
-   mode), checked for step and surface contrast; the zones table in the card and the drawer */
-:root{--zone1:#86b6ef; --zone2:#5598e7; --zone3:#2f78d4; --zone4:#1d58a8; --zone5:#123a70}
-@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){--zone1:#1d4f91; --zone2:#2d6fc4; --zone3:#4b8fe6; --zone4:#7fb1f0; --zone5:#b5d3f8}}
-:root[data-theme="dark"]{--zone1:#1d4f91; --zone2:#2d6fc4; --zone3:#4b8fe6; --zone4:#7fb1f0; --zone5:#b5d3f8}
+/* ---- heart rate zones on workouts (#197, health.js): five steps of one hue (--zone1 to --zone5, tokens.css),
+   checked for step and surface contrast; the zones table in the card and the drawer */
 .zones-tbl{border-collapse:collapse;font-size:13px;margin:6px 0;min-width:min(100%,320px)}
 .zones-tbl th,.zones-tbl td{text-align:left;padding:4px 12px 4px 0;border-top:1px solid var(--grid);font-weight:400}
 .zones-tbl thead th{color:var(--ink2);font-weight:550;font-size:12px;border-top:0}
@@ -1501,3 +1465,9 @@ svg text.growth-pct{font-size:10px}
 .sets .pre-def ol{margin:4px 0 2px;padding-left:22px;columns:2 14rem;column-gap:24px}
 .sets .pre-def li{break-inside:avoid}
 .sets .pre-def p{margin:2px 0;font-size:13px}
+}   /* end of @layer pages */
+
+@layer utilities {
+/* said, not shown: the text is there for screen readers */
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+}
