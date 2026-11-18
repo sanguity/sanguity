@@ -670,6 +670,12 @@ Everything on `main` so far; it becomes the first tagged release.
   `"style":`, `setAttribute("style", ...)`, `Object.assign(x.style, ...)` and `x.style[k] = ...`. A number format's
   `{style: "currency"}` no longer counts as a style, so those files' allowances are one lower. A failure gives each
   line and value, and the token a colour matches.
+- **The style check's last blind spots** (#321): it counts `x.style = "..."`, a named colour chosen by a ternary or a
+  default (`fill: on ? "red" : "blue"`), one in markup written in a string (`'<rect fill="red"/>'`), and the strings
+  after `a++ / 2`, which it had taken for a regex; "Issue #252" in a sentence is no longer a colour. The focus-ring
+  check reads subfolders and catches `:is(button,input):focus-visible` and `body :focus-visible`. What it still can't
+  see is listed in its docstring. The Labs procedure-name check in `tests/browser_check.py` now needs at least one name
+  at 1400 px, so it fails if the names are gone. Every count is unchanged.
 - **Rows of buttons have room under them again** (#309): since #246, Admin → Backups' "Back up now" sat on the
   Schedule heading and its Save on "Check a backup", and Sharing's summary buttons and activity filters touched what
   followed. Every row of buttons on Sources, Sharing, Settings, Account and Admin is 8 px from what's above and below it.

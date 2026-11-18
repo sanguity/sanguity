@@ -1338,7 +1338,8 @@ def main():
                   and ev["legend"] == [["Procedure", "circle"], ["Imaging", "rect"]] and off, ev)
             # …and their names (#312): at 1400, 375 and 320 px a procedure is named only inside the chart and where no
             # other mark falls on its name, and every mark is still drawn (one left unnamed opens its drawer: below, with
-            # the milestone labels, after the #217 check of what details the records come with)
+            # the milestone labels, after the #217 check of what details the records come with). At 1400 px there's room
+            # for at least one name (the demo has 6), so the check can't pass with the names gone (#321)
             js("window._marks312 = state.marks; state.marks = true; renderCharts()")
             for width in (1400, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
@@ -1346,8 +1347,10 @@ def main():
                 settle(400)
                 got = js(CHART_LABELS_JS, "#charts .chart svg")
                 heads = js("[document.querySelectorAll('#charts .chart svg .evhead').length, markEvents().length]")
-                check(f"Labs ({width} px, #312): a procedure's name is inside its chart with no mark on it, and every mark is still drawn",
-                      got["charts"] and not got["problems"] and heads[1] > 0 and heads[0] == heads[1] * len(got["charts"]), [got["problems"], got["ev"], heads])
+                check(f"Labs ({width} px, #312): a procedure's name is inside its chart with no mark on it, and every mark is still drawn"
+                      + (", and at least one is named" if width == 1400 else ""),
+                      got["charts"] and not got["problems"] and heads[1] > 0 and heads[0] == heads[1] * len(got["charts"])
+                      and (width != 1400 or got["ev"] > 0), [got["problems"], got["ev"], heads])
             js("state.marks = window._marks312; renderCharts()")
             page.set_viewport_size({"width": 1400, "height": 900})
             settle(300)
