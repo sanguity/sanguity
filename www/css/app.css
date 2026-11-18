@@ -9,7 +9,7 @@
      components  (empty for now) shared components, as they're gathered from the pages layer
      pages       everything else, in the order it was written: a later rule still wins over an earlier one of the same
                  specificity, as before the layers
-     utilities   single-purpose classes that win over the rest (.vh)
+     utilities   single-purpose classes that win over the rest (.vh, and the margins .mt-1 to .my-2)
    A later layer wins over an earlier one whatever the selectors' specificity, so a rule moved into an earlier layer
    gets weaker, and into a later one, stronger. summary.css adds to the pages layer. */
 @layer reset, tokens, base, components, pages, utilities;
@@ -209,6 +209,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-row .r{color:var(--muted);font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 .ov-row .s{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-2)}
 .ov-mini-v{font-size:var(--fs-6);font-weight:var(--fw-semibold)}   /* the Overview's insurance figures (overview.js) */
+.ov-minis{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-3);margin:var(--sp-2) 0 var(--sp-3)}   /* …three side by side (#333) */
 /* heatmap */
 /* overflow-x:clip (not auto) so the wrapper is not a scroll container and the month axis can stick to the window bottom */
 .hm-wrap{overflow-x:clip}
@@ -297,6 +298,7 @@ table.data tr.link:hover td{background:var(--hover)}
 pre.report{white-space:pre-wrap;font:var(--fs-2)/1.5 var(--font-mono);background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:0;overflow-x:auto}
 iframe.doc{width:100%;border:1px solid var(--ring);border-radius:var(--r-md);background:var(--paper);min-height:200px}
 .sect{font-size:var(--fs-1);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:var(--fw-semibold);margin:var(--sp-4) 0 var(--sp-2)}
+.dlist{margin:0;padding-left:var(--sp-4)}   /* a list under a section's heading in the drawer (#333) */
 .btn{display:inline-block;border:1px solid var(--ring);background:var(--raised);border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-3);cursor:pointer;text-decoration:none;color:var(--ink);font-size:var(--fs-3);margin:0 var(--sp-2) var(--sp-2) 0}
 .btn:hover{background:var(--hover)}
 details.res{border:1px solid var(--ring);border-radius:var(--r-md);margin-bottom:var(--sp-2);background:var(--raised)}
@@ -1521,6 +1523,10 @@ svg text.growth-pct{font-size:var(--fs-1)}
 }   /* end of @layer pages */
 
 @layer utilities {
+/* space above or below something a script builds, on the spacing scale (#333), instead of a style it sets: they win
+   over the element's own margin on that side only */
+.mt-1{margin-top:var(--sp-1)} .mt-2{margin-top:var(--sp-2)} .mt-3{margin-top:var(--sp-3)} .mb-2{margin-bottom:var(--sp-2)}
+.my-2{margin-top:var(--sp-2);margin-bottom:var(--sp-2)}
 /* said, not shown: the text is there for screen readers */
 .vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 }

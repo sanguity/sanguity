@@ -114,7 +114,7 @@ function openEvent(e) {
   else if (d.type === "visit") {
     body.append(el("dl", {class: "kv"}, ...[["Provider", d.who], ["Location", d.where], ["Diagnosis", d.dx], ["Billed as", d.billed], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
     if (d.note) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}));
-    if (d.procs && d.procs.length) body.append(el("div", {class: "sect", text: "Recorded that day"}), el("ul", {style: {margin: 0, paddingLeft: "18px"}}, ...d.procs.map(p => el("li", {text: p}))));
+    if (d.procs && d.procs.length) body.append(el("div", {class: "sect", text: "Recorded that day"}), el("ul", {class: "dlist"}, ...d.procs.map(p => el("li", {text: p}))));
     const sameDay = EV.filter(x => x.k === "document" && isoDay(x.ts) === isoDay(e.ts));
     if (sameDay.length) body.append(el("div", {class: "sect", text: "Documents from that day"}), ...sameDay.map(x => el("button", {class: "btn", text: x.title, onclick: () => openEvent(x)})));
   } else if (d.type === "claim") {

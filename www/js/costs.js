@@ -48,7 +48,7 @@ function renderCosts() {
     [...costBuckets(rows, by)].reverse().map(([k, m]) => [by === "year" ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"}),
       usd(m.paid), usd(m.owe), usd(m.billed), m.n.toLocaleString()])));
   else {
-    mc.append(el("div", {class: "legend", style: {margin: "4px 0 6px"}},
+    mc.append(el("div", {class: "legend mb-2"},
       el("span", {}, el("i", {style: {background: "var(--c-lab)"}}), "Paid by insurance"),
       el("span", {}, el("i", {style: {background: "var(--c-imaging)"}}), "Your share"),
       el("span", {}, el("i", {style: {background: "var(--stay)"}}), "Hospital stay")));
@@ -84,7 +84,7 @@ function renderCosts() {
   const q = el("input", {class: "search", type: "search", placeholder: "Search service, provider, drug…", "aria-label": "Search claims", value: costState.q});
   q.oninput = () => { clearTimeout(window._cq); window._cq = setTimeout(() => { costState.q = q.value; renderCosts(); const n = $("#costTable input.search"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
   const sel = el("select", {class: "search", "aria-label": "Type of care", style: {minWidth: "0"}, onchange: e => { costState.cat = e.target.value; renderCosts(); }}, el("option", {value: "", text: "All types of care"}), ...cats.map(c => el("option", {value: c, text: c, selected: c === costState.cat || null})));
-  const den = el("label", {style: {display: "inline-flex", gap: "6px", alignItems: "center", fontSize: "var(--fs-3)", color: "var(--ink2)"}},
+  const den = el("label", {},   // laid out by .toolbar label, the toolbar it goes in
     el("input", {type: "checkbox", checked: costState.deniedOnly || null, onchange: e => { costState.deniedOnly = e.target.checked; renderCosts(); }}), "Denied only");
   // with filters on: what they keep, with Reset filters, and the totals for the claims shown (#190, filters.js)
   const on = !!(costState.q || costState.cat || costState.deniedOnly);
@@ -170,7 +170,7 @@ function oopEditor(r) {
     if (r.hsa) lines.push(`Tagged ${r.hsa}${r.hsaFrom === "account" ? " from the account it was paid from" : r.hsaFrom === "typed" ? " when it was typed in" : ""}.`);
   } else lines.push(`Where the number came from: the claim's patient responsibility${r.ins ? ", as " + r.ins + " reported it" : ""}. It's counted until a payment is matched to the claim.`);
   for (const l of lines) box.append(el("p", {class: "hint", style: {margin: "2px 0"}, text: l}));
-  const btns = el("div", {class: "btns", style: {margin: "6px 0"}});
+  const btns = el("div", {class: "btns my-2"});
   if (r.receipt != null && byId.get(r.receipt)) btns.append(el("button", {class: "btn", type: "button", text: "Open receipt", onclick: () => openEvent(byId.get(r.receipt))}));
   if (r.claim && byId.get(r.claim.id)) btns.append(el("button", {class: "btn", type: "button", text: "Open claim", onclick: () => openEvent(byId.get(r.claim.id))}));
   btns.append(el("button", {class: "btn", type: "button", text: "Close", onclick: () => { paidState.open = null; renderCosts(); }}));
@@ -240,7 +240,7 @@ function renderPaid(box, claimRows, periodLabel) {
     tiles.push(tile(gap >= 0 ? (settled ? "Reduced or forgiven" : "Share not yet paid") : "Paid beyond listed share", usd(Math.abs(gap)),
       gap >= 0 ? (settled ? `negotiated down or written off · you owe $0 as of ${settled}` : "still owed, on a plan, or reduced") : "includes bills from earlier periods"));
   }
-  card.append(el("div", {class: "stats", style: {marginTop: "10px"}}, ...tiles));
+  card.append(el("div", {class: "stats mt-3"}, ...tiles));
   // HSA and FSA by year
   const years = new Map();
   for (const r of counted) if (r.hsa) {
@@ -256,7 +256,7 @@ function renderPaid(box, claimRows, periodLabel) {
   // cumulative: share listed vs bills paid
   if (claims) {   // Chart | Table (#60): the table by month
     const bills = pays.filter(r => r.group === "Medical bills");
-    card.append(el("div", {class: "list-hd", style: {marginTop: "10px"}}, el("h3", {class: "sub", style: {margin: 0}, text: "Your share and the bills you paid, running totals"}),
+    card.append(el("div", {class: "list-hd mt-3"}, el("h3", {class: "sub", style: {margin: 0}, text: "Your share and the bills you paid, running totals"}),
       el("span", {class: "spacer"}), viewSeg("#paidCum", "the running totals", renderCosts)));
     if (state.tables.has("#paidCum")) {
       const m = new Map();
@@ -270,7 +270,7 @@ function renderPaid(box, claimRows, periodLabel) {
       card.append(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", settled ? "Reduced so far" : "Difference"], out.reverse()));
     } else {
       const svg = el("svg:svg", {role: "img", "aria-label": "Your share and the bills you paid, running totals. Table lists them by month."});
-      card.append(el("div", {class: "legend", style: {margin: "4px 0 6px"}},
+      card.append(el("div", {class: "legend mb-2"},
         el("span", {}, el("i", {style: {background: "var(--c-imaging)"}}), "Your share per insurers, running total"),
         el("span", {}, el("i", {style: {background: "var(--c-procedure)"}}), "Medical bills you paid, running total")), svg);
       requestAnimationFrame(() => drawPaidCum(svg, claimRows, bills, settled));
@@ -298,7 +298,7 @@ function renderPaid(box, claimRows, periodLabel) {
   const tw = el("div", {id: "paidTable", tabindex: -1, style: {marginTop: "12px"}});
   // filtered (HSA only, or a row above picked): what it keeps, with Reset filters, the total for those shown (#190)
   const kept = fil === "HSA" || fil === "FSA" ? `paid with an ${fil}` : rows.some(r => r.group === fil) ? `for ${fil}` : `paid to ${fil}`;
-  tw.append(el("div", {class: "toolbar", style: {margin: "0 0 6px"}},
+  tw.append(el("div", {class: "toolbar mb-2"},
     el("span", {class: "hint", style: {margin: 0}, text: fil ? `For the amounts shown: ${usd(sum(list))} counted` : `${list.length} amount${list.length === 1 ? "" : "s"} · ${usd(sum(list))} counted`}),
     ...["HSA", "FSA"].filter(t => all.some(r => r.hsa === t)).map(t => el("button", {class: "toggle", type: "button", "aria-pressed": fil === t, text: `${t} only`,   // on/off chips (#193)
       onclick: () => { paidState.q = fil === t ? "" : t; renderCosts(); }}))),
