@@ -31,17 +31,20 @@ function renameButton(kind, key) {
   return b;
 }
 
-/* the small form, beside what opened it: the name in the records, the name to show, Save, the original name back */
+/* the small form, beside what opened it: the name in the records, the name to show, Save, the original name back.
+   A popover="auto" (#363), as a menu is: the browser closes it on Escape (before the drawer's Escape, drawer.js) and on
+   a click or tap outside it, and when a menu or another one opens; its own button opens and closes it. As it closes
+   with focus in it, or lost (a click on nothing), focus goes back to the button. */
 let renameBox = null;
 function closeRename(refocus = true) {
   if (!renameBox) return;
-  const {box, anchor} = renameBox; renameBox = null; box.remove();
-  document.removeEventListener("pointerdown", renameOutside, true);
-  if (refocus && anchor.isConnected) anchor.focus({preventScroll: true});
+  renameBox.refocus = refocus;
+  renameBox.box.hidePopover();
 }
-function renameOutside(ev) { if (renameBox && !renameBox.box.contains(ev.target) && ev.target !== renameBox.anchor) closeRename(false); }
 function openRename(anchor, kind, key) {
+  const again = renameBox && renameBox.anchor === anchor;
   closeRename(false); hideTip();
+  if (again) return;   // its own button, pressed again: closed
   const r = RENAME[kind], original = r.original(key), shown = r.shown(key);
   const input = el("input", {type: "text", maxlength: kind === "import" ? 80 : 120, "aria-label": `Name shown for ${original}`});
   input.value = shown;
@@ -56,7 +59,7 @@ function openRename(anchor, kind, key) {
       afterRename(kind, key);
     } catch (e) { sayIn(msg, "Couldn't reach the server: " + e.message, true); }
   };
-  const box = el("form", {class: "rename-box", role: "dialog", "aria-label": `Rename ${shown}`},
+  const box = el("form", {class: "rename-box", role: "dialog", "aria-label": `Rename ${shown}`, popover: "auto"},
     el("label", {}, el("span", {text: `Show “${original}” as`}), input),
     el("div", {class: "rename-acts"},
       el("button", {class: "btn primary", type: "submit", text: "Save"}),
@@ -65,11 +68,22 @@ function openRename(anchor, kind, key) {
     el("p", {class: "hint", text: kind === "import" ? "Shown wherever a record says where it came from." : "Shown on every tab, for everyone this profile is shared with."}),
     msg);
   box.addEventListener("submit", ev => { ev.preventDefault(); save(input.value.trim()); });
-  box.addEventListener("keydown", ev => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeRename(); } });   // not the drawer's Escape (nor a modal one's, #262)
+  const me = {box, anchor, kind, key, refocus: true};
+  box.addEventListener("beforetoggle", ev => {
+    if (ev.newState !== "closed") return;
+    if (renameBox === me) renameBox = null;
+    const a = document.activeElement;   // in it, or lost: on the page, or on the drawer itself (a click on its words)
+    const lost = box.contains(a) || a === document.body || a.matches("dialog") && a.contains(anchor);
+    if (me.refocus && lost && anchor.isConnected) anchor.focus({preventScroll: true});
+  });
+  box.addEventListener("toggle", ev => { if (ev.newState === "closed") box.remove(); });
   (anchor.closest("dialog") || document.body).append(box);   // in the drawer while it's a modal dialog (#262): the page behind is inert
-  renameBox = {box, anchor, kind, key};
+  renameBox = me;
+  // its invoker, a button (not a heatmap's SVG label): a click on it isn't one outside, and its own click handler
+  // opens and closes it
+  if ("popoverTargetElement" in anchor) anchor.popoverTargetElement = box;
+  box.showPopover(anchor instanceof HTMLElement ? {source: anchor} : {});
   placeRename();
-  document.addEventListener("pointerdown", renameOutside, true);
   input.focus(); input.select();
 }
 /* fixed beside the anchor, inside the window (16 px from its edges on a phone) */
