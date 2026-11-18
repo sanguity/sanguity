@@ -6346,6 +6346,16 @@ def main():
             cl_tables, cl_bad = cell_labels(page, "Sharing → Visit summary")
             check("…its preview's tables with each cell under its column's name (#320)",
                   not cl_bad and sum(1 for t in cl_tables if t[0].startswith("preview") and t[1] and t[3]) >= 2, cl_bad[:6] or cl_tables)
+            # #324: no preview cell is wider than its row (a long test name beside an unbroken date was cut at the card's edge)
+            wide = {}
+            for w in (375, 320):
+                page.set_viewport_size({"width": w, "height": 800})
+                settle(200)
+                wide[w] = js("""[...document.querySelectorAll('#preview .tbl td')].filter(td => {
+                    const r = td.closest('tr').getBoundingClientRect(), c = td.getBoundingClientRect();
+                    return td.offsetParent && (c.right > r.right + 0.5 || td.scrollWidth > td.clientWidth + 1); })
+                  .map(td => td.textContent.slice(0, 40))""")
+            check("…and no preview cell is wider than its row at 375 and 320 px (#324)", not wide[375] and not wide[320], wide)
             page.set_viewport_size({"width": 1400, "height": 900})
             with page.expect_download(timeout=20000) as dl:
                 page.click("#download")

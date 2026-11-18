@@ -21,4 +21,6 @@
 .sum-preview ol{margin:4px 0;padding-left:22px;font-size:13px}
 .sum-preview .spark{width:70px;height:16px;vertical-align:middle}
 .sum-preview .fitwarn{color:var(--crit);font-size:13px;font-weight:550;margin:8px 0 0}
+/* on a phone each row is a card (app.css, #320): its cells wrap, so a long name and a date fit inside it (#324) */
+@media (max-width:640px){ .sum-preview .tbl td{white-space:normal;overflow-wrap:anywhere} }
 }
