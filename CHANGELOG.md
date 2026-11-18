@@ -771,6 +771,12 @@ Everything on `main` so far; it becomes the first tagged release.
   line wrapped to leave "2026" or "period" alone on a line, and the tiles that wrapped grew, so a row's sparklines
   were at different heights. A date stays on one line, the lines are balanced (on the Overview, Body and activity and
   Costs), and a tile's sparkline sits at its foot, so every sparkline in a row starts at the same height.
+- **One h1 per page, and the Overview's cards under their sections** (#331): the brand in the top bar was a heading on
+  every page, a second h1 beside the page's own; it's a paragraph now and looks the same. Sources and Admin have a
+  title of their own, the group shown, as Settings, Sharing and Account do; the shared page's, the moved pages' and
+  the connecting page's titles are h1s. The Overview's cards are h3s: the out-of-range card under Key labs, the
+  others under sections a screen reader hears ("Your record", "Recent and upcoming"). Settings' "Preview" heading is
+  at the scale's weight.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -15,7 +15,7 @@
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
   if (!header) return {sync() {}, lock() {}, profiles() { return null; }, menu() {}};
-  const svgLogo = header.querySelector("h1");
+  const svgLogo = header.querySelector(".brand-name");
   const onRecords = !!document.getElementById("tab-overview");
 
   /* the brand: a link back to the records, except on the records page itself */

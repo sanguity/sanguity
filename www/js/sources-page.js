@@ -47,6 +47,7 @@ const SgSources = (() => {
       if (a.dataset.group === current.id && list.scrollWidth > list.clientWidth) list.scrollLeft = a.parentElement.offsetLeft - list.offsetLeft - 16;
     }
     main.dataset.group = current.id;
+    $("#groupTitle").textContent = current.title;   // the page's h1, as on Settings and Sharing (#331)
     hint();
   }
   function show(id, {push = false, scrollTo = null} = {}) {

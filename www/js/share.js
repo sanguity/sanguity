@@ -85,7 +85,7 @@ async function shLoad() {
   const status = $("#shareStatus");
   const token = location.hash.slice(1);
   const broken = () => {
-    $("#shareHead").replaceChildren(el("h2", {text: "This link doesn't work"}),
+    $("#shareHead").replaceChildren(el("h1", {text: "This link doesn't work"}),
       el("p", {class: "hint", text: "It may have expired or been revoked, or the address may be incomplete. Ask the person who sent it for a new link."}));
     $("#shareBody").replaceChildren();
   };
@@ -101,7 +101,7 @@ async function shLoad() {
   const d = await r.json();
   const range = d.from && d.to ? `from ${shDay(d.from)} to ${shDay(d.to)}` : d.from ? `from ${shDay(d.from)} on` : d.to ? `up to ${shDay(d.to)}` : "of any date";
   document.title = `${d.profile} · shared records · Sanguity`;
-  $("#shareHead").replaceChildren(el("h2", {text: `${d.profile}: shared records`}),
+  $("#shareHead").replaceChildren(el("h1", {text: `${d.profile}: shared records`}),
     el("p", {class: "hint", text: `Shared read-only through a link, by an owner of this profile. It shows records ${range}, ` +
       `in these sections only: ${d.sections.map(s => s.label).join(", ")}. The link stops working on ${fmtDT(d.expires * 1000)}, ` +
       "or earlier if it's revoked. Each time it's opened, the profile's owners see that in its activity log."}));

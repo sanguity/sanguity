@@ -773,6 +773,31 @@ def axe_check(page, label):
     return serious, other
 
 
+# a page's heading outline (#331): its headings, drawn or there for screen readers only (.vh), as "h2 Key labs", and
+# those that skip a level (the first heading counts as following an h0)
+OUTLINE_JS = r"""() => {
+  const hs = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6, [role=heading]')].filter(h => h.getClientRects().length && !h.closest('[aria-hidden=true], [inert]'));
+  const o = hs.map(h => [+(h.getAttribute('aria-level') || h.tagName[1]), h.textContent.trim().replace(/\s+/g, ' ').slice(0, 40)]);
+  return {outline: o.map(([l, t]) => `h${l} ${t}`), h1: o.filter(h => h[0] === 1).length,
+    skipped: o.filter((h, i) => h[0] > (i ? o[i - 1][0] : 0) + 1).map(([l, t]) => `h${l} ${t}`)};
+}"""
+AXE_HEADINGS = """() => axe.run(document, {runOnly: {type: 'rule', values: ['heading-order', 'page-has-heading-one', 'empty-heading']}})
+  .then(r => r.violations.map(v => v.id + ' at ' + v.nodes.slice(0, 3).map(n => n.target.join(' ')).join(', ')))"""
+
+
+def heading_outline(page, label):
+    """The page's heading outline as it is drawn now, as one line ("label: h1 Costs > h2 …"), and what's wrong with it
+    (#331): not exactly one h1, a level skipped, or axe-core's heading rules (heading-order, page-has-heading-one,
+    empty-heading: best practice, so not among axe_check's WCAG rules) failing."""
+    o = page.evaluate(OUTLINE_JS)
+    bad = ([f"{label}: {o['h1']} h1s"] if o["h1"] != 1 else []) + [f"{label}: {h} skips a level" for h in o["skipped"]]
+    if AXE_JS is not None:
+        if not page.evaluate("typeof axe === 'object' && typeof axe.run === 'function'"):
+            page.evaluate(AXE_JS)
+        bad += [f"{label}: axe {v}" for v in page.evaluate(AXE_HEADINGS)]
+    return f"{label}: " + " > ".join(o["outline"]), bad
+
+
 # #320: on a phone an account page's table (.acct .tbl) hides its header row, and each cell shows its column's name
 # before its value instead (labelCells in util.js, td::before in app.css). Of each such table drawn: where it is, whether
 # its headings are hidden, its rows shown, and its cells labelled; and what's wrong: a cell with a value (text or a
@@ -1312,6 +1337,8 @@ def main():
         check("share links: …with no control cut off or overlapping, in light and dark (#61)", not shared_bad, shared_bad[:8] or "")
         check("share links: …and no serious or critical axe-core finding, in light and dark (WCAG 2.2 AA, #202)", not shared_axe[0],
               (shared_axe[0] + shared_axe[1])[:8] or "")
+        shared_outline, shared_hbad = heading_outline(hp, "share.html")
+        check("share links: …one h1, whose records they are, and no heading level skipped (#331)", not shared_hbad, shared_hbad or shared_outline)
         strict.set_viewport_size({"width": 375, "height": 800})
         strict.wait_for_timeout(200)
         check("share links: the owner's panel fits 375 px", strict.evaluate("document.documentElement.scrollWidth") <= 375, strict.evaluate("document.documentElement.scrollWidth"))
@@ -1329,10 +1356,10 @@ def main():
         answer_ask(strict)
         sl_until(strict, "document.querySelector('#links .share-links table').textContent.includes('revoked')")
         hp.reload()
-        sl_until(hp, "document.querySelector('#shareHead h2').textContent === \"This link doesn't work\"")
+        sl_until(hp, "document.querySelector('#shareHead h1').textContent === \"This link doesn't work\"")
         check("share links: a revoked link shows nothing", hp.evaluate("document.getElementById('shareBody').children.length") == 0)
         hp.goto(base + "/share.html#not-a-real-token-at-all-0000000000000000000")
-        sl_until(hp, "document.querySelector('#shareHead h2').textContent === \"This link doesn't work\"")
+        sl_until(hp, "document.querySelector('#shareHead h1').textContent === \"This link doesn't work\"")
         check("share links: a made-up link says it doesn't work", True)
         holder.close()
         strict.goto(base + "/account.html")
@@ -8432,12 +8459,16 @@ def main():
             # buttons keep an edge. On each of them too, no link is in the browser's own blue (#247: links are in the accent).
             t_axe, axe_bad, axe_other, axe_seen = time.time(), [], [], []
             ua_links, links_seen = [], [0]
+            outlines, outline_bad = [], []   # #331: each page's heading outline (in light: it's the same in dark)
             # Chromium's own link colour, light and dark (a visited link's purple reads as this to scripts too)
             UA_LINKS = """(() => { const as = [...document.querySelectorAll('a[href]')].filter(a => a.checkVisibility());
               return [as.length, as.filter(a => ['rgb(0, 0, 238)', 'rgb(158, 158, 255)'].includes(getComputedStyle(a).color)).map(a => a.textContent.trim().slice(0, 40))]; })()"""
-            def axe_at(pg, label):
+            def axe_at(pg, label, outline=False):
                 bad_, other_ = axe_check(pg, label)
                 axe_bad.extend(bad_); axe_other.extend(other_); axe_seen.append(label)
+                if outline and label.startswith("light "):
+                    o, ob = heading_outline(pg, label[6:])
+                    outlines.append(o); outline_bad.extend(ob)
                 n, blue = pg.evaluate(UA_LINKS)
                 links_seen[0] += n
                 ua_links.extend(f"{label}: “{t}”" for t in blue)
@@ -8449,7 +8480,7 @@ def main():
                 for t in ("overview", "health", "timeline", "heatmap", "labs", "costs"):
                     open_tab(t)
                     settle(300)
-                    axe_at(page, f"{theme} {t}")
+                    axe_at(page, f"{theme} {t}", outline=True)
                     if t == "heatmap" or (t == "labs" and js("document.querySelectorAll('#charts .chart .view-seg').length")):   # as its table (#60)
                         seg = "#hmHd .view-seg button" if t == "heatmap" else "#charts .chart .view-seg button"
                         page.click(f"{seg} >> nth=1")
@@ -8488,17 +8519,17 @@ def main():
                     for g in js("[...document.querySelectorAll('.set-nav a[data-group]')].map(a => a.dataset.group)"):
                         page.click(f".set-nav a[data-group={g}]")
                         settle(150)
-                        axe_at(page, f"{theme} {path.split('.')[0]}#{g}")
+                        axe_at(page, f"{theme} {path.split('.')[0]}#{g}", outline=True)
                 for path, ready in (("guide.html?profile=1", "#step-name:not([hidden])"), ("providers.html?q=medicare", ".dir-hit")):
                     page.goto(base + "/" + path)
                     page.wait_for_selector(ready, timeout=10000)
                     settle(200)
-                    axe_at(page, f"{theme} {path.split('?')[0]}")
+                    axe_at(page, f"{theme} {path.split('?')[0]}", outline=True)
                 ctx = browser.new_context(viewport={"width": 1400, "height": 900}, color_scheme=theme)   # no session, the real CSP
                 lp = ctx.new_page()
                 lp.goto(base + "/login.html")
                 lp.wait_for_selector("#u", timeout=10000)
-                axe_at(lp, f"{theme} sign-in")
+                axe_at(lp, f"{theme} sign-in", outline=True)
                 ctx.close()
             js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was)})" if theme_was else "localStorage.removeItem('ht-theme')")
             check(f"WCAG 2.2 AA, axe-core: no serious or critical finding on {len(axe_seen)} pages and states, in light and dark (#202)",
@@ -8506,6 +8537,9 @@ def main():
             check("…its moderate and minor findings, listed (none fail)", True, "; ".join(axe_other[:12]) or "none")
             check("…and no link in the browser's own blue or purple, on all of them in light and dark: links are in the accent (#247)",
                   links_seen[0] > 100 and not ua_links, ua_links[:8] or f"{links_seen[0]} links")
+            check(f"…and on each of the {len(outlines)} pages, exactly one h1 (the page's, not the brand), no heading level skipped and "
+                  "axe-core's heading rules passing; each page's outline (#331)", len(outlines) >= 35 and not outline_bad,
+                  outline_bad[:10] or " | ".join(outlines))
             # the keyboard at 375 px, where the top bar is tallest: Tab from the start and Shift+Tab from the end
             t_keys, kbad = time.time(), []
             page.set_viewport_size({"width": 375, "height": 800})
@@ -9183,7 +9217,7 @@ def main():
             ph.wait_for_selector("#offlineBanner", timeout=10000)
             text = ph.inner_text("#offlineBanner")
             check("offline, records off: the app opens and says records aren't available offline",
-                  "Records aren't available offline" in text and ph.is_visible("header h1") and ph.evaluate("typeof EV === 'undefined' || !EV.length"), text)
+                  "Records aren't available offline" in text and ph.is_visible("header .brand-name") and ph.evaluate("typeof EV === 'undefined' || !EV.length"), text)
             offline_font = ph.evaluate("document.fonts.ready.then(() => [[...document.fonts].some(f => f.family === 'Inter' && f.status === 'loaded'), getComputedStyle(document.body).fontFamily.split(',')[0]])")
             check("offline (#253): the page is still in Inter", offline_font == [True, "Inter"], offline_font)
             ctx.set_offline(False)
