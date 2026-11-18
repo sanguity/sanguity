@@ -83,7 +83,7 @@ check changes without updating the list, and it exercises this table against a l
 | A calendar feed of the profile for themself | Yes | Yes | Yes | No | No | No |
 | Everyone's calendar feeds of the profile: see, revoke | No | No | Yes | No | No | No |
 | Share links: make, list, revoke | No | No | Yes | No | No | No |
-| Who has access: see | Yes | Yes | Yes | No | No | No |
+| Who has access: see | Yes | Yes | Yes, and whose account an admin has disabled (#314) | No | No | No |
 | Who has access: share, change roles, remove someone | Leave only | Leave only | Yes | Repairs a profile with no active owner only | No | No |
 | The profile's activity log | No | No | Yes | No | No | No |
 | Rename or delete the profile | No | No | Yes | No | No | No |

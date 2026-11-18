@@ -8393,16 +8393,38 @@ def main():
             alex_sel, my_sel = "#memberList select[aria-label=\"alex's role\"]", f"#memberList select[aria-label=\"{USER}'s role\"]"
             focus_js = "(() => { const d = document.querySelector('dialog.sg-ask[open]'); return [d.getAttribute('role'), document.activeElement.textContent]; })()"
             page.select_option(alex_sel, "owner")
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+            owner_focus = js(focus_js)
             asked = answer_ask(page, yes=False)
             settle(300)
-            check("giving someone owner asks first, saying what an owner can do (#249)", asked[0] == "Make alex an owner of Second person?"
-                  and "change anyone's role (yours too)" in asked[1], asked)
+            check("giving someone owner asks first, saying what an owner can do (#249), in red with focus on Cancel (#314)",
+                  asked[0] == "Make alex an owner of Second person?" and "change anyone's role (yours too)" in asked[1]
+                  and owner_focus == ["alertdialog", "Cancel"], [asked, owner_focus])
             check("…Cancel puts the select back and changes nothing", js(f"document.querySelector({json.dumps(alex_sel)}).value") == "viewer"
                   and role_of("alex") == "viewer")
             page.select_option(alex_sel, "owner")
             answer_ask(page)
             page.wait_for_function("document.getElementById('peopleMsg').textContent === 'alex is now an owner.'", timeout=10000)
             check("…confirming makes them an owner", role_of("alex") == "owner")
+            # #314: a co-owner whose account is disabled isn't an owner to the server, so demoting yourself isn't asked
+            # (it would be refused after); owners see the account is disabled
+            from server import db as dbm_314
+            db_314 = dbm_314.connect()
+            db_314.execute("UPDATE users SET disabled=1 WHERE username='alex'")
+            page.reload()
+            page.wait_for_function(f"document.getElementById('people').dataset.profile === '2' && document.querySelector({json.dumps(my_sel)})", timeout=10000)
+            before_314 = len(problems)
+            page.select_option(my_sel, "editor")
+            page.wait_for_function("document.getElementById('peopleMsg').textContent.includes('active owner')", timeout=10000)
+            check("…with only a disabled co-owner, changing your own role isn't asked, and the server's refusal is said (#314)",
+                  not js("document.querySelector('dialog.sg-ask')") and js(f"document.querySelector({json.dumps(my_sel)}).value") == "owner"
+                  and role_of(USER) == "owner", js("document.getElementById('peopleMsg').textContent"))
+            check("…and the People table says that account is disabled (#314)", "alex (account disabled)" in page.inner_text("#memberList"), page.inner_text("#memberList"))
+            problems[before_314:] = [x for x in problems[before_314:] if "409" not in x]   # the refusal was the point
+            db_314.execute("UPDATE users SET disabled=0 WHERE username='alex'")
+            db_314.close()
+            page.reload()
+            page.wait_for_function(f"document.getElementById('people').dataset.profile === '2' && document.querySelector({json.dumps(my_sel)})", timeout=10000)
             page.select_option(my_sel, "editor")
             page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
             mine_focus = js(focus_js)
@@ -8411,6 +8433,7 @@ def main():
             check("changing your own role asks first, in red with focus on Cancel, saying what you'd lose (#249)",
                   asked[0] == "Make yourself an editor of Second person?" and "no longer be able to share Second person" in asked[1]
                   and "rename or delete it" in asked[1] and mine_focus == ["alertdialog", "Cancel"], [asked, mine_focus])
+            check("…cycle tracking's owner-only changes among them (#314)", "turn cycle tracking on or off or delete what it kept" in asked[1], asked)
             check("…Cancel keeps you an owner", js(f"document.querySelector({json.dumps(my_sel)}).value") == "owner" and role_of(USER) == "owner")
             page.select_option(my_sel, "editor")
             answer_ask(page)
@@ -8545,6 +8568,27 @@ def main():
             answer_ask(page)
             page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && !r.querySelector('.tag') && r.textContent.includes('Make admin'))", timeout=10000)
             check("…confirming removes it", not alex_is()["is_admin"])
+            # #314: requiring two-factor sign-in for everyone asks first, saying how many accounts have no second factor;
+            # Cancel changes nothing. Turning it off again isn't asked
+            required = lambda: js("fetch('api/settings').then(r => r.json()).then(s => s.require_2fa)")  # noqa: E731
+            lacking = js("fetch('api/users').then(r => r.json()).then(l => l.filter(u => !u.disabled && !u.two_factor).length)")
+            page.click("#reqTf")
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+            tf_focus = js(focus_js)
+            asked = answer_ask(page, yes=False)
+            settle(300)
+            check("Require two-factor sign-in for everyone asks first, in red with focus on Cancel, saying how many accounts have no second factor (#314)",
+                  asked[0] == "Require two-factor sign-in for everyone?" and lacking >= 1
+                  and asked[1].startswith("1 account doesn't" if lacking == 1 else f"{lacking} accounts don't")
+                  and tf_focus == ["alertdialog", "Cancel"], [asked, tf_focus, lacking])
+            check("…Cancel leaves it off", not page.is_checked("#reqTf") and required() is False)
+            page.click("#reqTf")
+            answer_ask(page)
+            page.wait_for_function("document.getElementById('userMsg').textContent === 'Everyone now needs two-factor sign-in.'", timeout=10000)
+            check("…confirming turns it on", page.is_checked("#reqTf") and required() is True)
+            page.click("#reqTf")
+            page.wait_for_function("document.getElementById('userMsg').textContent === 'Two-factor sign-in is now optional.'", timeout=10000)
+            check("…and turning it off isn't asked", not js("document.querySelector('dialog.sg-ask')") and required() is False)
             # Disable asks first (#249); for the only owner of a profile, the server's refusal is asked once more, after it
             alex = db.execute("SELECT id FROM users WHERE username='alex'").fetchone()[0]
             profiles.create_profile(db, "Alex's records", owner_id=alex)

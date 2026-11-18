@@ -460,6 +460,16 @@ class Api(unittest.TestCase):
         self.assertEqual((shared["actor"], shared["detail"]), ("ben", {"username": "mia", "role": "owner", "from": "viewer", "repair": True}))
         self.assertEqual(ben.get("/api/activity").json()[0]["action"], "profile.repair")
         self.assertEqual(ben.get(f"/api/profiles/{pid}/data").status_code, 404)   # the admin still can't see its records
+        # #314: its owners see whose account is disabled (ola: an owner who doesn't count as one), so the page knows that
+        # mia changing her own role would be refused; someone who isn't an owner isn't told
+        members = mia.get(f"/api/profiles/{pid}/members").json()
+        self.assertEqual([(m["username"], m["role"], m["disabled"]) for m in members], [("mia", "owner", False), ("ola", "owner", True)])
+        self.assertEqual(mia.put(f"/api/profiles/{pid}/members", json={"username": "mia", "role": "editor"}, headers=H).status_code, 409)
+        row = db.execute("SELECT id FROM users WHERE username='nia'").fetchone()
+        nia = row[0] if row else accounts.create(db, "nia", password="nia keeps a long passphrase")[0]
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (nia, pid))
+        listed = self.login("nia", "nia keeps a long passphrase").get(f"/api/profiles/{pid}/members").json()
+        self.assertEqual([sorted(m) for m in listed], [["role", "user_id", "username"]] * 3)
         db.close()
 
     def test_remove_account(self):

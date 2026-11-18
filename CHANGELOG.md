@@ -688,6 +688,12 @@ Everything on `main` so far; it becomes the first tagged release.
 - **No more "My records's records"** (#313): messages that put "'s" after a profile's name say it another way: "They'll
   stop seeing the records in My records" (Sharing → People → Remove), "Only the owners of …" on Sharing, "This gives you
   access to the records in …" (Admin), "Kept: the records in …" (Account) and "… has records now" (the guide).
+- **Confirmations, continued** (#314): Make owner's question starts on Cancel, in red, as Make admin's does. Changing
+  your own role is asked only when another owner's account is enabled, as the server counts owners; with only a
+  disabled co-owner the server's refusal is said instead, and owners see "(account disabled)" beside such an account
+  in People (the members list gives owners whose account is disabled). What you'd lose now includes turning cycle
+  tracking on or off and deleting what it kept. Admin → Accounts asks before requiring two-factor sign-in for
+  everyone, saying how many accounts have no second factor yet; turning it off stays instant.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
