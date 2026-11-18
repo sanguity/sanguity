@@ -74,10 +74,11 @@ function viewsBar() {
   const bar = el("div", {class: "tv-bar"}, pick);
   if (can && cur) {
     bar.append(
-      el("button", {class: "btn", type: "button", "aria-pressed": cur.default ? "true" : "false",
+      el("button", {class: "btn", type: "button", id: "viewDefault", "aria-pressed": cur.default ? "true" : "false",
         "data-tip": cur.default ? "Labs starts with this view. Press to stop." : "Start Labs with this view",
-        onclick: () => tvStore(views.map(v => ({...tvPlain(v), default: v === cur ? !cur.default : false})),
-          cur.default ? `“${cur.name}” is no longer the default.` : `Labs now starts with “${cur.name}”.`)}, ...(cur.default ? ["Default ", icon("check")] : ["Make default"])),
+        onclick: async () => { await tvStore(views.map(v => ({...tvPlain(v), default: v === cur ? !cur.default : false})),
+          cur.default ? `“${cur.name}” is no longer the default.` : `Labs now starts with “${cur.name}”.`);
+          $("#viewDefault")?.focus(); }}, ...(cur.default ? ["Default ", icon("check")] : ["Make default"])),   // drawn again: focus on it again (#376)
       el("button", {class: "btn", type: "button", text: "Delete", "aria-label": `Delete the view ${cur.name}`,
         onclick: async () => {   // at once, with an Undo that puts this view back (#263; it asked first before)
           const gone = tvPlain(cur), order = views.map(v => v.name), said = `Deleted “${cur.name}”.`;

@@ -998,6 +998,11 @@ Everything on `main` so far; it becomes the first tagged release.
   result and on a typed record's form were their own 28 × 30 px buttons, 30 px tall beside 44 px fields on a phone;
   they're the quiet button, the fields' height and 44 px on a phone. An Overview key lab's change line no longer puts
   the change alone on its first line ("▼ −0.03" over "since Aug 18, 2026"): the change keeps its "since" with it.
+- **Settings' Save keeps the page where it is** (#376): since #368, Save moved focus to its section's heading and the
+  page scrolled up to it, by mouse too, so what was just saved went off screen (Overview's home readings at 1400 px:
+  from 855 px down to the top). Focus still goes to the heading, for the Undo to give it back to, but the page stays
+  put. Settings → Display's "Use this device's", which hides itself once pressed, leaves focus on the zone's field,
+  and Labs' "Make default" / "Default ✓", drawn again when pressed, on itself; both dropped it to the page.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
