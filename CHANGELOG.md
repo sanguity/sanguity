@@ -742,12 +742,18 @@ Everything on `main` so far; it becomes the first tagged release.
   Admin → Connected sources the vendor list no longer makes the page wider than a 320 px screen.
 - **The app's own fonts** (#253): Inter for the interface and Source Serif 4 for titles (#255), both variable, served from
   `www/fonts/` with their licences (SIL OFL 1.1) instead of whatever `system-ui` is (DejaVu Sans on Linux, where the
-  app's 550 and 650 weights fell to 400 or 700). Latin and Latin Extended only; Inter's Latin file is preloaded by every
-  page and the rest load when a page needs them. Text shows at once in Arial or Times New Roman resized to match, so
-  nothing moves when the font arrives. Nothing is fetched from anyone else (the CSP is unchanged), the browser keeps
-  the fonts for a year and the service worker keeps them for offline use (its copy is `sanguity-shell-v2` now). Code
-  and addresses are in one monospace stack. `tests/test_performance.py` has a budget for the static files
-  (`static_bytes`: stylesheets, fonts and icons, 476 KB of 500 KB).
+  app's 550 and 650 weights fell to 400 or 700). Latin and Latin Extended only, each loaded when a page needs it. Text
+  shows at once in Arial or Times New Roman resized to match, so nothing moves when the font arrives. Nothing is
+  fetched from anyone else (the CSP is unchanged), the browser keeps the fonts for a year and the service worker keeps
+  them for offline use (its copy is `sanguity-shell-v3` now). Code and addresses are in one monospace stack.
+  `tests/test_performance.py` has a budget for the static files (`static_bytes`: stylesheets, fonts and icons, 362 KB
+  of 390 KB, measured with all of this release's stylesheets).
+- **Source Serif is a third of the size, and pages paint sooner on a slow connection** (#328): the serif has its
+  weight axis only, without the optical size axis, so its Latin file is 51 KB instead of 122 KB (titles are 15.5 to
+  28 px). No page preloads a font any more: on a slow connection Inter's preload shared the bandwidth with the
+  stylesheets and held up the first paint by 0.15 to 0.3 s. On a cold load at 1.6 Mbps the sign-in, records and
+  Settings pages paint within 40 ms of when they did before the fonts, and the serif arrives 0.4 s sooner on the
+  records page and 0.7 s sooner on Settings (docs/performance.md has the numbers).
 - **Warm, calm colours, light and dark from one set** (#254): warm neutrals (a white card on a warm page in light,
   so cards stand off it; each step lighter in dark), a navy accent for controls, links and the focus ring only (the
   lab data's blue stays apart; an Overview sparkline's last point is in it now, not the accent), red for out of range

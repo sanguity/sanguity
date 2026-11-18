@@ -834,4 +834,5 @@ The fonts in `www/fonts/` are not Sanguity's own either, and are under the SIL O
 licence beside it: [Inter](https://rsms.me/inter/) © 2016 The Inter Project Authors, and
 [Source Serif 4](https://github.com/adobe-fonts/source-serif) © 2014–2021 Adobe, with Reserved Font Name "Source".
 They're the Latin and Latin Extended files of the variable fonts as [Fontsource](https://fontsource.org) publishes
-them (`@fontsource-variable/inter` 5.3.0 and `@fontsource-variable/source-serif-4` 5.3.1), unchanged.
+them (`@fontsource-variable/inter` 5.3.0, and `@fontsource-variable/source-serif-4` 5.3.1's files with the weight
+axis only, `wght`), unchanged.

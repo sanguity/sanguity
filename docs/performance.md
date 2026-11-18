@@ -66,7 +66,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `tab_elements` | Elements in a tab with the period **All** | 16,185 (Body and activity) | 18,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
-| `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as on disk (#253, below) | 476 KB | 500 KB |
+| `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as on disk (#253, below) | 362 KB | 390 KB |
 
 Measured on a 20-thread desktop (Intel Core Ultra 7 265K), Chromium headless. Each tab's own numbers, and the size
 of each part of the records data, are printed at the end of the test's output; `PERF_REPORT=file.json` also writes
@@ -84,15 +84,42 @@ sprite, once there is one, and the app's icon); the install icons (PNG) are fetc
 
 | | Bytes | What a page fetches |
 |---|---:|---|
-| Stylesheets (tokens, base, app, summary) | 119 KB (38 KB as nginx sends them) | every page: tokens, base and app, or its own `<style>` |
-| Inter, Latin | 48 KB | every page, preloaded |
+| Stylesheets (tokens, base, app, summary) | 135 KB (41 KB as nginx sends them) | every page: tokens, base and app, or its own `<style>` |
+| Inter, Latin | 48 KB | every page |
 | Inter, Latin Extended | 85 KB | only a page with a character in its range (a name with ő or ł, say) |
-| Source Serif 4, Latin and Latin Extended | 122 KB and 101 KB | only a page with text in it (titles and headline values), the second as above |
+| Source Serif 4, Latin and Latin Extended | 51 KB and 42 KB | only a page with a title or a headline value on it, the second as above |
 | SVG icons | 0.5 KB | |
-| All | 476 KB | |
+| All | 362 KB | |
 
-The fonts are variable, so one file holds every weight. The browser keeps them for a year (`nginx.conf`, `/fonts/`)
-and the service worker keeps them for offline use, so they're fetched once a device.
+The fonts are variable, so one file holds every weight: Inter's weight axis, and Source Serif 4's weight axis without
+its optical size axis (#328), which made its Latin file 122 KB for titles that are all 15.5 to 28 px. The browser keeps
+them for a year (`nginx.conf`, `/fonts/`) and the service worker keeps them for offline use, so they're fetched once
+a device. The budget, 390 KB, leaves 28 KB: room for Redesign 3's icon sprite (10 to 20 KB) and a little growth in the
+stylesheets, and no more, so a second font or a heavier cut has to be argued for.
+
+### A cold load on a slow connection (#328)
+
+Nothing cached and no service worker, at 1.6 Mbps with 150 ms latency (Chromium's network throttling, the median of
+five loads at 1400 px; the stylesheets and scripts gzipped as nginx sends them). First paint, and when the Source
+Serif file had arrived:
+
+| | Before the fonts (#253) | #253 | Now (#328) |
+|---|---:|---:|---:|
+| Sign-in, first paint | 384 ms | 532 ms | 424 ms |
+| Records (Overview), first paint | 812 ms | 1,088 ms | 832 ms |
+| …ready (`sanguity:ready`) | 2,989 ms | 3,266 ms | 3,257 ms |
+| …Source Serif arrived | – | 4,034 ms | 3,668 ms |
+| Settings, first paint | 744 ms | 1,068 ms | 764 ms |
+| …Source Serif arrived | – | 2,400 ms | 1,717 ms |
+
+The first paint was late because of Inter's preload, not the font's size: a preloaded font is fetched at the same
+priority as the stylesheets, so on a slow connection it shares their bandwidth and the page paints when both have
+arrived. No page preloads a font now, so a page paints in the fallback within 20 to 40 ms of what it did before the
+fonts, and swaps to Inter when it arrives (0.8 s on sign-in; on the records page before its records are drawn). The
+fallbacks are sized to the fonts (#329, `www/css/base.css`), so the swap moves nothing. Preloading Source Serif on the
+records page was measured too: it arrived at 1.3 s, before the records, but the first paint was 116 ms later and the
+page ready 265 ms later (its 51 KB on the same connection), so it isn't preloaded; it arrives about 0.4 s after the
+page is ready, and the headline values swap in place.
 
 ## What the budgets found, and what changed (#201)
 
