@@ -346,7 +346,10 @@ function wireDialog(d) {
    pointer moves onto it, never covers its element (above it, or below where there's no room: CSS anchor positioning,
    or placed from here where the browser has none), and Escape puts it away without moving the pointer or focus
    (WCAG 1.4.13); a press on its element puts it away too, and it has no timer. While shown it is the element's
-   description (aria-describedby), unless it says the same as the element's name. One shared popover="manual", so it
+   description (aria-describedby), unless the element's name or description already says each line of it (#358: a
+   screen reader would hear it twice). It's for what can take focus, or for hovering what's said elsewhere too: a tip
+   on a span or a cell, which the keyboard, a tap and a screen reader don't reach, has its words in the page as well,
+   as text for screen readers or a focusable control's tip and description (#358). One shared popover="manual", so it
    never closes an open menu. A title= stays where it's purely a hint beside a name that already says it all, on a
    disabled control (which gets no focus or pointer events) and on an iframe, whose title is its name. Charts' own
    readouts (#tip, core.js) are the chart kit's. */
@@ -355,7 +358,11 @@ function wireDialog(d) {
 const placeAt = (node, at) => { for (const [k, v] of Object.entries(at)) node.style.setProperty(k, v + "px"); };
 (() => {
   let box = null, on = null, by = null, wait = 0, gone = 0;
-  const words = t => (t.getAttribute("aria-label") || t.textContent || "").trim();
+  const norm = s => (s || "").replace(/\s+/g, " ").trim().toLowerCase();
+  const textOf = ids => (ids || "").split(" ").filter(x => x && x !== "sgTip").map(x => document.getElementById(x)?.textContent || "").join(" ");
+  // what the element says already: its name (aria-labelledby, aria-label, its label's words or its own) and description
+  const says = t => norm([textOf(t.getAttribute("aria-labelledby")) || t.getAttribute("aria-label") || (t.labels?.[0] || t).textContent,
+    textOf(t.getAttribute("aria-describedby"))].join(" "));
   const describe = (t, add) => {
     const ids = (t.getAttribute("aria-describedby") || "").split(" ").filter(x => x && x !== "sgTip");
     if (add) ids.push("sgTip");
@@ -377,7 +384,7 @@ const placeAt = (node, at) => { for (const [k, v] of Object.entries(at)) node.st
     box.textContent = text;
     on = t; by = how;
     t.classList.add("sg-tip-on");   // the anchor app.css places it from
-    describe(t, text !== words(t));
+    describe(t, !text.split("\n").every(l => says(t).includes(norm(l))));
     if (!box.matches(":popover-open")) {
       // focus given back while another popover opens (a menu closed by the next one): shown once that's done
       try { box.showPopover(); } catch (e) { wait = setTimeout(() => { if (on === t) { on = null; show(t, how); } }); return; }

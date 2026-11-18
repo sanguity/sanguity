@@ -319,7 +319,7 @@ function renderPaid(box, claimRows, periodLabel) {
       el("td", {style: {whiteSpace: "nowrap"}}, el("button", {class: "cell-btn", type: "button", "aria-expanded": paidState.open === oopKey(r), text: fmtD(dayTs(r.d)),
         onclick: ev => { ev.stopPropagation(); toggle(r); $(`#paidTable tr[data-oop="${oopKey(r)}"] .cell-btn`)?.focus({preventScroll: true}); }})),
       el("td", {text: r.who || "—"}),
-      el("td", {title: r.memo || null, text: r.type === "claim" ? `${r.group} · ${r.claim.title}` : r.group + (r.claim ? " · paid a claim" : "")}),
+      el("td", {"data-tip": r.memo || null, text: r.type === "claim" ? `${r.group} · ${r.claim.title}` : r.group + (r.claim ? " · paid a claim" : "")}),
       el("td", {text: srcText(r) + (r.receipt != null ? " · receipt" : "")}),
       el("td", {text: r.hsa || ""}),
       el("td", {style: {fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: r.amount < 0 ? "var(--good-text)" : null},

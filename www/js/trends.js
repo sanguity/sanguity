@@ -48,10 +48,14 @@ function renderSeriesList() {
     wrap.append(el("div", {class: "grp", text: g}));
     for (const s of g.startsWith("Watch") ? groups.get(g) : groups.get(g).sort((a, b) => b.n - a.n)) {
       const L = latest(s); const id = "s_" + s.name.replace(/\W/g, "_"), tq = testLink(s.name, true);   // #163
+      // the name's and the latest value's tips: the checkbox's too, shown when it has focus, and its description (#358)
+      const nmTip = `${renamedTitle("lab", s.name)} · ${s.n} results`, lvTip = L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "";
       wrap.append(el("label", {class: "srow" + (tq ? " has-tq" : ""), for: id},
-        el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; tvRefresh(); }}),
-        el("span", {class: "nm", "data-tip": `${renamedTitle("lab", s.name)} · ${s.n} results`, text: nice(s.name)}), tq,
-        el("span", {class: "lv" + (L && L[4] ? " abn" : ""), "data-tip": L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "", text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : ""})));
+        el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, "aria-describedby": id + "_about", "data-tip": [nmTip, lvTip].filter(Boolean).join("\n"),
+          onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; tvRefresh(); }}),
+        el("span", {class: "nm", "data-tip": nmTip, text: nice(s.name)}), tq,
+        el("span", {class: "lv" + (L && L[4] ? " abn" : ""), "data-tip": lvTip, text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : ""}),
+        el("span", {id: id + "_about", hidden: "", text: [nmTip, lvTip].filter(Boolean).join(". ")})));
     }
   }
 }
@@ -128,8 +132,9 @@ function chartCard(s) {
   const hasStages = s.kind === "stack" && pts.some(p => p.parts && (p.parts.deep || p.parts.rem || p.parts.light));
   const legend = hasStages ? el("span", {class: "lg"}, ...[["Deep", "--seq1"], ["REM", "--seq2"], ["Light", "--seq3"]].map(([n, c]) => el("span", {}, el("i", {style: {background: `var(${c})`}}), n)))
     : s.kind === "band" ? el("span", {class: "lg"}, el("span", {}, el("i", {style: {background: "var(--c-lab)", height: "3px"}}), "Daily average"), el("span", {}, el("i", {style: {background: "var(--c-lab)", opacity: .2}}), "Low–high")) : null;
-  card.append(el("div", {class: "hd"}, el("span", {class: "name", "data-tip": renamedTitle("lab", s.name), text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
-    el("span", {class: "unit", text: `${s.unit}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), testLink(s.name), legend, read,   // "What is this test?" (#163, test-pages.js)
+  // its name in the records, when renamed, on the screen beside the unit, not in a tip only a mouse finds (#358)
+  card.append(el("div", {class: "hd"}, el("span", {class: "name", text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
+    el("span", {class: "unit", text: `${s.unit}${!s.watch && nice(s.name) !== s.name ? " · " + renamedTitle("lab", s.name).replace(/^In/, "in") : ""}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), testLink(s.name), legend, read,   // "What is this test?" (#163, test-pages.js)
     viewSeg(s.name, nice(s.name), renderCharts),   // Chart | Table (#60)
     el("button", {class: "btn quiet small", type: "button", "data-tip": `Remove ${nice(s.name)}`, "aria-label": `Remove ${nice(s.name)}`, onclick: () => { state.sel.delete(s.name); renderLabs(); }}, icon("x")),
     rangeNote(s, pts, showTable)));

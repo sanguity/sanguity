@@ -25,8 +25,8 @@ const renamedTitle = (kind, key) => { const r = RENAME[kind], o = r.original(key
 /* the pencil (✎) beside a name (nothing for someone who can't rename) */
 function renameButton(kind, key) {
   if (!canRename()) return null;
-  const b = el("button", {class: "rename-btn btn quiet small", type: "button", "data-rename": kind, "data-key": String(key), "data-tip": `Rename this ${RENAME[kind].what}`,
-    "aria-label": `Rename ${RENAME[kind].shown(key)}`}, icon("pencil"));
+  const say = `Rename ${RENAME[kind].shown(key)}`;   // the tip says its name, so it isn't its description too (#358)
+  const b = el("button", {class: "rename-btn btn quiet small", type: "button", "data-rename": kind, "data-key": String(key), "data-tip": say, "aria-label": say}, icon("pencil"));
   b.addEventListener("click", ev => { ev.stopPropagation(); ev.preventDefault(); openRename(b, kind, key); });
   return b;
 }

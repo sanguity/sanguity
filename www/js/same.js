@@ -49,7 +49,7 @@ function sameNotes(eid, d) {
     const row = rows[x.row];
     lines.push(el("div", {class: "edit-line same-line", "data-link": x.link},
       el("span", {}, el("b", {text: (row ? row[0] : x.name) || "Result"}), " · the same result also came from ", ...sourceNodes(x.imp)),
-      canEdit() ? el("button", {class: "btn small", type: "button", text: "Undo link", title: "Show the two results apart again",
+      canEdit() ? el("button", {class: "btn small", type: "button", text: "Undo link", "data-tip": "Show the two results apart again",
         onclick: () => sendSame("/" + x.link, {method: "DELETE"}, msg, reopen)}) : null));
   }
   for (const x of DATA.possible || []) for (const [me, other] of [[x.a, x.b], [x.b, x.a]]) {
@@ -58,9 +58,9 @@ function sameNotes(eid, d) {
     lines.push(el("div", {class: "edit-line same-line possible", "data-ref": x.ref},
       el("span", {}, el("b", {text: me.name}), ` ${sameValue(me)} · possibly the same result as ${other.name} ${sameValue(other)}, ${sameWhen(other.t)}, from `,
         ...sourceNodes(other.imp)),
-      canEdit() ? el("button", {class: "btn small primary", type: "button", text: "Same result", title: "Show it once, with both sources",
+      canEdit() ? el("button", {class: "btn small primary", type: "button", text: "Same result", "data-tip": "Show it once, with both sources",
         onclick: () => sendSame("", {method: "POST", body: JSON.stringify({ref: x.ref, same: true})}, msg, alt)}) : null,
-      canEdit() ? el("button", {class: "btn small", type: "button", text: "Not the same", title: "Keep both, and stop flagging them",
+      canEdit() ? el("button", {class: "btn small", type: "button", text: "Not the same", "data-tip": "Keep both, and stop flagging them",
         onclick: () => sendSame("", {method: "POST", body: JSON.stringify({ref: x.ref, same: false})}, msg, alt)}) : null));
   }
   if (!lines.length) return null;

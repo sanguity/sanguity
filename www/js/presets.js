@@ -154,7 +154,7 @@ function presetsBlock(sec) {
     const tiles = keyLabTiles(plan.keyLabs, LABS, false).map(n => {
       const s = LABS.find(x => x.name === n), last = s.pts[s.pts.length - 1];
       return el("div", {class: "tile", "data-lab": n},
-        el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}), before.includes(n) ? null : el("span", {class: "tag pre-new", text: "new"})),
+        el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}), nick(n) !== n ? el("span", {class: "vh", text: ` (${n})`}) : null, before.includes(n) ? null : el("span", {class: "tag pre-new", text: "new"})),
         el("span", {class: "val"}, last[5] || String(last[1]), el("small", {text: s.unit || ""})),
         several && from.has(n) ? el("span", {class: "pre-from", text: fromText(from.get(n))}) : null);
     });

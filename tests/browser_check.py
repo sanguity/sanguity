@@ -792,6 +792,37 @@ def without_anchor_positioning(ctx):
     ctx.route(re.compile(r".*/css/app\.css(\?.*)?$"), css)
 
 
+# #358: what Chromium's accessibility tree, what a screen reader is given, says of the first element a selector
+# finds: [its name, its description] (None when there's no such element)
+def ax_said(page, selector):
+    cdp = page.context.new_cdp_session(page)
+    try:
+        root = cdp.send("DOM.getDocument", {"depth": 0})["root"]["nodeId"]
+        node = cdp.send("DOM.querySelector", {"nodeId": root, "selector": selector})["nodeId"]
+        if not node:
+            return None
+        n = cdp.send("Accessibility.getPartialAXTree", {"nodeId": node, "fetchRelatives": False})["nodes"][0]
+        return [n.get("name", {}).get("value", ""), n.get("description", {}).get("value", "")]
+    finally:
+        cdp.detach()
+
+
+# …and every element of the page whose description its name already says, as [role, name, description]
+def ax_echoes(page):
+    cdp = page.context.new_cdp_session(page)
+    try:
+        nodes = cdp.send("Accessibility.getFullAXTree")["nodes"]
+    finally:
+        cdp.detach()
+    norm = lambda s: " ".join(str(s).split()).lower()
+    out = []
+    for n in nodes:
+        name, desc = norm(n.get("name", {}).get("value", "")), norm(n.get("description", {}).get("value", ""))
+        if desc and not n.get("ignored") and desc in name:
+            out.append([n.get("role", {}).get("value"), name, desc])
+    return out
+
+
 # #257: the app's icons are Lucide's, from www/icons/sprite.svg, in place of Unicode glyphs. On the page as it is: a glyph
 # still standing for an icon in a button's or link's text (or drawn by its ::before or ::after), an arrow or + at either
 # end of one, or one that is only "?"; an icon not drawn (its <use> found no symbol: 0 by 0, waited for once, as the sprite
@@ -1139,7 +1170,9 @@ TILE_LINES_JS = r"""() => {
 # (a container's tiles with the same top) whose values don't end at the same height, so don't share one baseline
 TILE_FIT_JS = r"""() => {
   const out = {n: 0, rows: 0, wide: [], overlap: [], baseline: []};
-  const ext = e => { const r = document.createRange(); r.selectNodeContents(e); const rs = [...r.getClientRects()].filter(x => x.width > 0);
+  // the words as drawn: text in a visually hidden span (.vh, said to screen readers, #358) is clipped to nothing
+  const ext = e => { const rs = [], w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    for (let n; (n = w.nextNode());) if (!n.parentElement.closest('.vh')) { const r = document.createRange(); r.selectNodeContents(n); rs.push(...[...r.getClientRects()].filter(x => x.width > 0)); }
     return rs.length ? {l: Math.min(...rs.map(x => x.left)), r: Math.max(...rs.map(x => x.right))} : null; };
   const name = t => (t.querySelector('.lbl')?.textContent || '').trim().slice(0, 30);
   const groups = new Map();
@@ -1973,7 +2006,7 @@ def main():
             settle(300)
             ht = js("""(() => { const t = document.querySelector('#hmTable table');
                 return t && [document.getElementById('hmWrap').hidden, document.getElementById('hmTable').hidden, t.querySelectorAll('tbody th[scope=row]').length,
-                  t.querySelectorAll('thead th[scope=col]').length, [...t.querySelectorAll('td.abn .vh')].map(v => v.textContent.trim()),
+                  t.querySelectorAll('thead th[scope=col]').length, [...t.querySelectorAll('td.abn .vh:not(.hm-ref)')].map(v => v.textContent.trim()),
                   t.querySelectorAll('tbody th[scope=rowgroup]').length]; })()""")
             check("…Table: a real table, a header for each lab and each draw day, out-of-range results said high or low",
                   ht and ht[0] and not ht[1] and ht[2] == nrows and ht[3] == ncols + 1 and len(ht[4]) == cells[0]
@@ -3245,8 +3278,8 @@ def main():
             page.keyboard.press("Enter")
             page.wait_for_function("n => CFG.labNicknames[n] === 'Hgb (renamed)' && !document.querySelector('.rename-box')", arg=lab, timeout=10000)
             settle(300)
-            hd = js("n => { const b = document.querySelector(`#charts .chart .hd [data-key='${n}']`), h = b && b.parentElement; return h && [h.querySelector('.name').textContent, h.querySelector('.name').dataset.tip]; }", lab)
-            check("…the chart is called by the new name, the name in the records on hover", hd == ["Hgb (renamed)", f"In the records: {lab}"], hd)
+            hd = js("n => { const b = document.querySelector(`#charts .chart .hd [data-key='${n}']`), h = b && b.parentElement; return h && [h.querySelector('.name').textContent, h.querySelector('.unit').textContent]; }", lab)
+            check("…the chart is called by the new name, the name in the records beside its unit, on the screen (#358)", hd and hd[0] == "Hgb (renamed)" and f"in the records: {lab}" in hd[1], hd)
             check("…and so is the list of labs", "Hgb (renamed)" in js("[...document.querySelectorAll('#series .nm')].map(x => x.textContent)"))
             check("…focus goes back to its ✎", js("document.activeElement && document.activeElement.dataset.rename") == "lab")
             check("…kept on the server", js("n => api('profiles/1/settings').then(r => r.json()).then(j => j.labNicknames[n])", lab) == "Hgb (renamed)")
@@ -5009,6 +5042,95 @@ def main():
             page.mouse.move(0, 0)
             check("tooltips at the screen's edge, at 1400 and 375 px, are 8 px inside it and not over their element (#357)", not bad, bad)
             page.set_viewport_size({"width": 1400, "height": 900})
+            # #358: a tip on what can't take focus (a span, a cell) reached only a mouse: its words are where the keyboard
+            # and a screen reader get them now, in the name or description (Chromium's accessibility tree, ax_said) of
+            # something that takes focus. A key lab given a nickname for this check only (CFG, not saved): its tile, its
+            # row in the Labs list and its chart; the heatmap table's rows and cells; a description the name already
+            # says is left out (the ✎'s "Rename this lab" beside its name "Rename Hemoglobin"); the titles on controls
+            # that said what's on no screen are tips (the Body and activity tab, the milestone preset, Clear dates, Hide)
+            def ax_at(expr, *arg):   # the element expr returns, marked for ax_said
+                js("() => document.querySelector('[data-check358]')?.removeAttribute('data-check358')")
+                return ax_said(page, "[data-check358]") if js(f"(a) => {{ const n = ({expr})(a); if (n) n.setAttribute('data-check358', ''); return !!n; }}", *arg) else None
+            def key_focus(expr, *arg):   # focus as the keyboard gives it (shown, so its tip shows), then what it says
+                page.keyboard.press("Shift")
+                js(f"(a) => ({expr})(a).focus()", *arg)
+                settle(150)
+                return ax_at(expr, *arg)
+            open_tab("overview")
+            settle(300)
+            n358 = js("[...document.querySelectorAll('#view-overview .tiles .tile .lbl > span:first-child')].map(s => s.textContent).find(t => SERIES.some(s => s.name === t && !s.watch))")
+            js("n => { CFG.labNicknames[n] = 'Nick 358'; renderAll(); }", n358)
+            settle(300)
+            tile = "() => [...document.querySelectorAll('#view-overview .tiles .tile')].find(t => t.querySelector('.lbl > span').textContent === 'Nick 358')"
+            tile_ax, tile_focus = ax_at(tile), key_focus(tile)
+            tile_tip = js("(document.getElementById('sgTip') || {}).textContent")
+            ranged = js("[...document.querySelectorAll('#view-overview .tile')].filter(t => t.querySelector('.st[data-tip]')).map(t => t.querySelector('.st').dataset.tip)")
+            ranged_ok = js("""() => [...document.querySelectorAll('#view-overview .tile')].filter(t => t.querySelector('.st[data-tip]'))
+                .every(t => t.textContent.toLowerCase().includes(t.querySelector('.st').dataset.tip.toLowerCase()))""")
+            check("…a nicknamed key lab's tile (#358): its name in the records in the tile's name, shown as its tip on focus and not its description too; a status's own tip in it as well",
+                  tile_ax and n358 in tile_ax[0] and tile_focus and n358 in tile_focus[0] and not tile_focus[1] and tile_tip.split("\n")[0] == n358 and ranged_ok, [n358, tile_ax, tile_focus, tile_tip, ranged])
+            js("n => { state.sel.add(n); }", n358)
+            open_tab("labs")
+            settle(500)
+            row = "n => document.getElementById('s_' + n.replace(/\\W/g, '_'))"
+            row_ax = ax_at(row, n358)
+            row_words = js("n => { const l = document.getElementById('s_' + n.replace(/\\W/g, '_')).closest('label'); return [l.querySelector('.nm').dataset.tip, l.querySelector('.lv').dataset.tip]; }", n358)
+            row_focus, row_tip = key_focus(row, n358), js("(document.getElementById('sgTip') || {}).textContent")
+            echoes_row = ax_echoes(page)
+            card_unit = js("n => [...document.querySelectorAll('.chart .hd')].find(h => h.querySelector('.name').textContent === 'Nick 358')?.querySelector('.unit').textContent", n358)
+            check("…its row in the Labs list: the name in the records and the latest date are its checkbox's description, and its tip on focus, said once",
+                  row_ax and all(w and w in row_ax[1] for w in row_words) and row_focus and row_focus[1] == row_ax[1] and row_tip == "\n".join(row_words)
+                  and "In the records: " + n358 in row_words[0], [row_words, row_ax, row_focus, row_tip])
+            check("…its chart says its name in the records on the screen, beside the unit, with no tip for it",
+                  card_unit and f"in the records: {n358}" in card_unit and not js("[...document.querySelectorAll('.chart .hd .name[data-tip]')].length"), card_unit)
+            js("state.tables.add('#hm'); switchTab('labs', 'heatmap')")
+            settle(500)
+            hm_rows = js("""() => [...document.querySelectorAll('#hmTable tbody th[scope=row]')].map(th => {
+                const about = th.querySelector('.vh [id]'), cells = [...th.parentElement.querySelectorAll('td[data-tip]')];
+                return {name: th.firstChild.textContent, about: about ? about.textContent : null, id: about ? about.id : null,
+                        controls: [...th.querySelectorAll('button, a')].map(b => b.getAttribute('aria-describedby')),
+                        cells: cells.map(c => c.dataset.tip), said: cells.map(c => c.querySelector('.hm-ref') ? c.querySelector('.hm-ref').textContent : null)}; })""")
+            hm_bad = []
+            for r in hm_rows:
+                for c, s in zip(r["cells"], r["said"]):   # each cell's range: in its row's description, or said in the cell where they differ
+                    if not ((r["about"] and c.split(" (")[0] in r["about"]) or (s and c in s)):
+                        hm_bad.append(f"{r['name']}: {c} {r['about']} {s}")
+                        break
+                if r["about"] and (not r["controls"] or any(x != r["id"] for x in r["controls"])):
+                    hm_bad.append(f"{r['name']}: its ✎ and ? aren't described by it {r}")
+            nick_row = next((r for r in hm_rows if r["name"].startswith("Nick 358")), None)
+            hm_ax = ax_at("() => [...document.querySelectorAll('#hmTable tbody th[scope=row]')].find(th => th.firstChild.textContent.startsWith('Nick 358'))?.querySelector('.rename-btn')")
+            check("…the heatmap's table: each row's name in the records and its range are its ✎'s and ?'s description and said in its heading, each result's range there or in its cell",
+                  hm_rows and not hm_bad and (nick_row is None or (f"In the records: {n358}" in nick_row["about"] and hm_ax and nick_row["about"] in hm_ax[1])),
+                  [hm_bad[:4], nick_row, hm_ax])
+            pen_focus = key_focus("() => document.querySelector('#hmTable .rename-btn')")
+            pen_tip = js("(document.getElementById('sgTip') || {}).textContent")
+            echoes_pen = ax_echoes(page)
+            check("…no description that its element's name already says: the ✎'s tip is its name, shown on focus, with no description beyond its row's",
+                  pen_focus and pen_tip == pen_focus[0] and pen_tip.startswith("Rename ") and pen_tip not in pen_focus[1] and not echoes_pen and not echoes_row,
+                  [pen_focus, pen_tip, echoes_pen[:4], echoes_row[:4]])
+            page.keyboard.press("Escape")
+            js("n => { delete CFG.labNicknames[n]; state.sel.delete(n); state.tables.delete('#hm'); switchTab('labs', 'chart'); }", n358)
+            settle(300)
+            open_tab("timeline")
+            settle(300)
+            health = key_focus("() => document.getElementById('tab-health')")
+            preset = js("() => { const b = document.querySelector('#presets button[data-tip]'); return b && [b.textContent, b.dataset.tip]; }")
+            preset_ax = key_focus("() => document.querySelector('#presets button[data-tip]')") if preset else None
+            js("openEvent(EV.find(e => e.k === 'visit'))")
+            page.wait_for_selector("#drawer.open", timeout=5000)
+            hide_ax = key_focus("() => [...document.querySelectorAll('#dbody .edit-acts button')].find(b => b.textContent === 'Hide')")
+            page.keyboard.press("Escape")
+            page.keyboard.press("Escape")
+            settle(300)
+            titled = js("""() => ['#tab-health', '#datesClear', '#presets button', '#dbody .edit-acts button'].flatMap(s => [...document.querySelectorAll(s)])
+                .filter(b => b.hasAttribute('title')).map(b => b.id || b.textContent)""")
+            check("…and the controls whose title said what's on no screen have tips, their description on focus: the Body and activity tab, the milestone preset, Clear dates, Hide",
+                  health and health[1] == "Watch, sleep and smart-scale data" and preset and preset_ax and preset_ax[1] == preset[1]
+                  and hide_ax and hide_ax[1] == "Leave this event out of the records" and js("document.getElementById('datesClear').dataset.tip || ''").startswith("Back to ")
+                  and not titled, [health, preset, preset_ax, hide_ax, titled])
+            open_tab("labs")
+            settle(300)
 
             # ---- pick one and on or off (#193): every pick-one group (.seg) on each records tab, and the journal form's
             # kinds, has exactly one selected; every toggle chip (.toggle) says "true" or "false"; each kind has one look in
@@ -8950,6 +9072,9 @@ def main():
                   js("!document.getElementById('srcForm') && document.querySelector('#adminNote a').getAttribute('href')") == "admin.html#apps")
             page.select_option("#profile", label="Second person (owner)")
             page.wait_for_selector("#sourceButtons button", timeout=10000)
+            check("…each Connect button says where it signs in as a tip, not a title, the words on no screen (#358)",
+                  js("[...document.querySelectorAll('#sourceButtons button')].every(b => !b.hasAttribute('title') && /^Signs in at /.test(b.dataset.tip || ''))"),
+                  js("[...document.querySelectorAll('#sourceButtons button')].map(b => [b.title, b.dataset.tip])"))
             conn_pid = js("+document.getElementById('profile').value")
             # the same results (#96): a spreadsheet of the fake patient's 4 March 2025 labs, with dates only and
             # Hemoglobin in g/L, saved in the profile first; the first pull below brings them again
@@ -9046,6 +9171,9 @@ def main():
                   and page.locator("#dbody .same button", has_text="Undo link").count() == 1
                   and js("[...document.querySelectorAll('#dbody table.data td:first-child')].filter(td => td.firstChild?.textContent === 'Hemoglobin').length") == 1,
                   page.inner_text("#dbody")[:500])
+            check("…its Undo link (and Same result, Not the same) say what they do in a tip, not a title, the words on no screen (#358)",
+                  js("(bs => bs.length > 0 && bs.every(b => !b.hasAttribute('title') && b.dataset.tip))([...document.querySelectorAll('#dbody .same-line button')])"),
+                  js("[...document.querySelectorAll('#dbody .same-line button')].map(b => [b.title, b.dataset.tip])"))
             check("…and fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.click("#dbody .same button:has-text('Undo link')")
             page.wait_for_selector("#dbody .same-line.possible", timeout=20000)   # reloaded, the panel reopened

@@ -178,7 +178,7 @@ const moreBtn = $("#periodMoreBtn"), moreList = $("#periodMoreList");
 function renderPeriod() {
   const p = state.preset, pm = primaryMs(), pk = pm ? msKey(pm) : null;   // the primary milestone has a button: "Since diagnosis"
   $("#presets").replaceChildren(...[...PRESETS, ...(pm ? [[pk, "Since " + lcLabel(pm.label)]] : [])].map(([k, l]) =>
-    el("button", {type: "button", "aria-pressed": p === k, text: l, title: k === pk ? "Since " + fmtD(dayTs(pm.date)) : null, onclick: () => applyPreset(k)})));
+    el("button", {type: "button", "aria-pressed": p === k, text: l, "data-tip": k === pk ? "Since " + fmtD(dayTs(pm.date)) : null, onclick: () => applyPreset(k)})));
   { const pre = $("#presets"), b = pre.querySelector("[aria-pressed=true]");   // on a phone the buttons scroll: the chosen one in view
     if (b && pre.scrollWidth > pre.clientWidth) pre.scrollLeft = b.offsetLeft - pre.offsetLeft - (pre.clientWidth - b.offsetWidth) / 2; }
   const item = (k, text, note) => el("button", {type: "button", class: "menu-item", role: "menuitemradio", tabindex: "-1", "aria-checked": p === k, "data-period": k},
@@ -197,7 +197,7 @@ function renderPeriod() {
   $("#dates").hidden = p !== "custom";
   $("#from").value = isoDay(state.from); $("#to").value = isoDay(state.to);
   const lp = lastPeriod, lm = msOf(lp);
-  $("#datesClear").title = "Back to " + (lp === "all" ? "everything on file" : lm ? "since " + lcLabel(lm.label) : PRESET_TEXT[lp] || lp);
+  $("#datesClear").dataset.tip = "Back to " + (lp === "all" ? "everything on file" : lm ? "since " + lcLabel(lm.label) : PRESET_TEXT[lp] || lp);
 }
 SgNav.menu({btn: moreBtn, list: moreList, wrap: $("#periodMore"), onOpen() {   // nav.js: a popover, kept on the screen by app.css
   const on = moreList.querySelector("[aria-checked=true]");
