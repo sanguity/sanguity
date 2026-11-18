@@ -110,8 +110,12 @@
       inputmode: type === "money" || type === "number" ? "decimal" : null});
     Object.assign(input, {id}); input.dataset.f = f;
     input.setAttribute("aria-describedby", id + "-err");
-    return el("label", {class: `rec-f rec-${type}` + (f === "file" ? " rec-wide" : ""), for: id}, el("span", {class: "cap", text: cap}), input,
-      f === "file" ? el("span", {class: "man-file", "aria-live": "polite"}) : null, err);
+    if (type === "file") {   // the button's look, as Sources' upload (#353), named by its caption and the button
+      input.setAttribute("aria-labelledby", `${id}-cap ${id}-b`);
+      return el("div", {class: `rec-f rec-${type} rec-wide`}, el("span", {class: "cap", id: id + "-cap", text: cap}),
+        el("label", {class: "btn pick", id: id + "-b"}, "Choose a file…", input), el("span", {class: "man-file", "aria-live": "polite"}), err);
+    }
+    return el("label", {class: `rec-f rec-${type}`, for: id}, el("span", {class: "cap", text: cap}), input, err);
   }
 
   function add(kind, focus = true) {
