@@ -129,7 +129,7 @@ function renderOverview() {
   out.sort((a, b) => (keyLabs.includes(b.s.name) - keyLabs.includes(a.s.name)) || b.s.n - a.s.n);
   const oc = el("div", {class: "card"}, el("h2", {text: `Outside reference range at latest draw (${out.length})`}),
     el("p", {class: "hint", text: "Values from the last two weeks of draws that were flagged high or low, and how long they have been that way. Not a diagnosis; your care team interprets these in context."}));
-  if (!out.length) oc.append(el("div", {class: "empty", style: {padding: "16px"}, text: "Everything measured recently is within its reference range."}));
+  if (!out.length) oc.append(el("div", {class: "empty slim", text: "Everything measured recently is within its reference range."}));
   for (const o of out.slice(0, 14)) {
     const st = statusOf(o.last);
     oc.append(el("div", {class: "ov-row", ...pressable(() => goSeries(o.s.name))},

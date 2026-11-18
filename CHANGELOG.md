@@ -734,6 +734,12 @@ Everything on `main` so far; it becomes the first tagged release.
   the line under a card's title that says what to do (12 px grey before); the tiles' values are 28 px. Page and
   section titles and the headline values are in the display serif; values, tables, chart labels and the drawer's facts
   have tabular figures. Each records tab has a heading of its own (hidden: the tab names it) over its sections.
+- **Spacing, corners, elevation and motion scales** (#256): spacing on a 4-point scale (4 to 48 px), so what belongs
+  together is 12 px apart or less, cards 24 px apart with 16 px inside, and the page's edges 24 px; three corner radii
+  and a pill instead of 19 radii; two elevations (a hairline, and menus, tooltips, the drawer and dialogs) instead of
+  15 shadows. Tiles inside a card are tinted instead of bordered. What you point at eases into its hover look and a
+  menu fades in (120 ms), the drawer slides in 200 ms; none of it moves when the system asks for less motion. On
+  Admin → Connected sources the vendor list no longer makes the page wider than a 320 px screen.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
