@@ -1227,12 +1227,14 @@ FIELD_ROWS_JS = r"""() => { const out = {n: 0, bad: []};
 # table (a bare on/off box), each file input that the browser draws (not see-through inside a .btn.pick), and the
 # sizes of the quiet icon buttons: a chart's ✕, the ✎ and Settings' drag grip
 CONTROLS353_JS = r"""() => {
+  const targetOf = e => { const r = e.getBoundingClientRect(), a = getComputedStyle(e, '::after');   // a see-through ::after out past its edges is its target too (the ✎, #373)
+    const o = a.content !== 'none' && a.position === 'absolute' ? Math.max(0, -parseFloat(a.top) || 0) : 0; return [r.width + 2 * o, r.height + 2 * o]; };
   const bare = [...document.querySelectorAll('main input[type=checkbox]')].filter(i => i.checkVisibility())
     .filter(i => !i.closest('label.switch, .toggle, table') && i.getAttribute('role') !== 'switch').map(i => (i.closest('label') || i.parentElement).textContent.trim().slice(0, 40));
   const files = [...document.querySelectorAll('input[type=file]')].filter(i => i.closest('main, dialog') && i.parentElement.checkVisibility())
     .map(i => [i.id || i.className, !!i.closest('.btn.pick') && getComputedStyle(i).opacity === '0']);
   const quiet = [...document.querySelectorAll('.chart .hd>.btn, .rename-btn, .set-grip')].filter(b => b.checkVisibility())
-    .map(b => [b.className, Math.round(b.getBoundingClientRect().width), Math.round(b.getBoundingClientRect().height)]);
+    .map(b => { const [w, h] = targetOf(b); return [b.className, Math.round(w), Math.round(h)]; });
   const toggles = [...document.querySelectorAll('main label.toggle')].filter(l => l.checkVisibility()).map(l => l.textContent.trim());
   return {bare, files, quiet, toggles}; }"""
 
@@ -1244,8 +1246,10 @@ SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main 
 # each segmented control, toggle chip and action chip (#259), whose height isn't one of the sizes, 24, 32 or 40 px, or
 # 44 px on a phone; one whose words wrap onto more lines may be taller
 CONTROL_SIZES_JS = r"""phone => { const ok = phone ? [44] : [24, 32, 40], out = [];
+  const targetOf = e => { const r = e.getBoundingClientRect(), a = getComputedStyle(e, '::after');   // a see-through ::after out past its edges is its target too (the ✎, #373)
+    const o = a.content !== 'none' && a.position === 'absolute' ? Math.max(0, -parseFloat(a.top) || 0) : 0; return [r.width + 2 * o, r.height + 2 * o]; };
   for (const e of document.querySelectorAll('.btn, .iconbtn, .tabs button, .period-more-btn, .seg, .toggle, .chip')) {
-    const h = Math.round(e.getBoundingClientRect().height * 10) / 10;
+    const h = Math.round(targetOf(e)[1] * 10) / 10;
     if (!h || !e.checkVisibility() || ok.some(v => Math.abs(h - v) < .5)) continue;
     const r = document.createRange(); r.selectNodeContents(e);
     if (h > Math.max(...ok) && new Set([...r.getClientRects()].filter(x => x.width > 1).map(x => Math.round(x.top))).size > 1) continue;
@@ -5897,34 +5901,83 @@ def main():
             went = js(follow, "#dbody table.data a.test-page")
             check("…following it leaves the drawer open where it was (the row's Show trend isn't made)",
                   went and js("document.getElementById('drawer').classList.contains('open')") and js("state.tab") == "overview")
-            # #355: each ? (and ✎) in the drawer's results sits on its line, its middle within 1 px of the middle of the text
-            # beside it, and, at 320 px where long names wrap, overlaps neither the name's button nor the ✎ (24 px targets)
+            # #355, #373: each ? and ✎ in the drawer's results, and the ✎ beside a Labs chart's name, sits on a line of its
+            # text, its middle within 1 px of that text's (one on a line of its own fails); in the drawer it overlaps neither
+            # the name's button nor the other, and a name's cell is whole 24 px lines, as many as its text has (an icon makes
+            # none taller or adds one). On a phone or touch screen the ✎ stays 24 px and its 44 px target is a see-through
+            # ::after around it, the name's button and the ? keeping all of theirs. At 1400, 375 and 320 px, with and without
+            # a touch screen (Playwright's has_touch makes (pointer: coarse) true).
             TQ_LINE = r"""() => {
-              const mid = r => (r.top + r.bottom) / 2, ov = (a, b) => a.right > b.left && b.right > a.left && a.bottom > b.top && b.bottom > a.top, out = [];
+              const mid = r => (r.top + r.bottom) / 2, ov = (a, b) => a.right > b.left && b.right > a.left && a.bottom > b.top && b.bottom > a.top;
+              const texts = (box, sel) => { const rs = [], w = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+                for (let n; (n = w.nextNode());) if (n.textContent.trim() && !n.parentElement.closest('.vh') && (!sel || n.parentElement.closest(sel))) {
+                  const g = document.createRange(); g.selectNodeContents(n); rs.push(...[...g.getClientRects()].filter(r => r.width > 1)); }
+                return rs; };
+              const hits = (x, y, e) => { const h = document.elementFromPoint(x, y); return !!h && (h === e || e.contains(h)); };
+              const out = {icons: [], cells: []};
+              for (const t of document.querySelectorAll('#dbody table.data tbody tr > td:first-child > :is(.test-page.tq, .rename-btn), #charts .chart .hd > .rename-btn')) {
+                if (!t.checkVisibility()) continue;
+                t.scrollIntoView({block: 'center'});
+                const td = t.closest('td'), box = td || t.parentElement, rs = texts(box, td ? null : '.name');
+                const i = t.querySelector('svg').getBoundingClientRect(), on = rs.filter(r => r.bottom > mid(i) && r.top < mid(i)), b = t.getBoundingClientRect();
+                const dy = on.length ? Math.min(...on.map(r => Math.abs(mid(r) - mid(i)))) : null;
+                const others = [...box.querySelectorAll('a, button')].filter(o => o !== t && o.checkVisibility());
+                const x = {where: td ? 'drawer' : 'chart', name: (td || box.querySelector('.name')).textContent.trim().slice(0, 24), what: t.classList[0], dy: dy == null ? null : +dy.toFixed(1),
+                           hit: hits((i.left + i.right) / 2, mid(i), t),
+                           takes: others.filter(o => { const r = o.getBoundingClientRect();
+                             return [[r.left + 3, r.top + 3], [r.right - 3, r.top + 3], [r.left + 3, r.bottom - 3], [r.right - 3, r.bottom - 3], [(r.left + r.right) / 2, mid(r)]].some(([px, py]) => hits(px, py, t)); })
+                             .map(o => o.classList[0] || o.tagName)};
+                if (td) x.overlaps = others.filter(o => o.matches('.cell-btn, .rename-btn, .test-page') && ov(o.getBoundingClientRect(), b)).length;
+                if (t.matches('.rename-btn')) { const a = getComputedStyle(t, '::after');
+                  x.box = [Math.round(b.width), Math.round(b.height)];
+                  x.target = a.content !== 'none' && a.position === 'absolute' ? [Math.round(b.width - 2 * parseFloat(a.left)), Math.round(b.height - 2 * parseFloat(a.top))] : x.box; }
+                out.icons.push(x);
+              }
               for (const td of document.querySelectorAll('#dbody table.data tbody tr > td:first-child')) {
-                const rs = [], w = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
-                for (let n; (n = w.nextNode());) if (n.textContent.trim()) { const rg = document.createRange(); rg.selectNodeContents(n); rs.push(...rg.getClientRects()); }
-                const targets = [...td.querySelectorAll('.cell-btn, .rename-btn, .test-page')].map(t => t.getBoundingClientRect());
-                for (const t of td.querySelectorAll('.test-page.tq, .rename-btn')) {
-                  const i = t.querySelector('svg').getBoundingClientRect(), on = rs.filter(r => r.bottom > mid(i) && r.top < mid(i)), b = t.getBoundingClientRect();
-                  const dy = on.length ? Math.min(...on.map(r => Math.abs(mid(r) - mid(i)))) : null;
-                  out.push({name: td.textContent.trim().slice(0, 24), what: t.className, dy: dy == null ? null : +dy.toFixed(1),
-                            overlaps: targets.filter(r => r !== b && !(r.left === b.left && r.top === b.top) && ov(r, b)).length});
-                }
+                if (!td.checkVisibility() || !td.querySelector(':scope > .test-page.tq')) continue;
+                const g = document.createRange(); g.selectNodeContents(td); const c = g.getBoundingClientRect();
+                out.cells.push([td.textContent.trim().slice(0, 24), +c.height.toFixed(1), new Set(texts(td).map(q => Math.floor((mid(q) - c.top) / 24))).size]);
               }
               return out;
             }"""
-            tq_at = {}
-            for width in (1400, 320):
-                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                settle(300)
-                tq_at[width] = js(TQ_LINE)
-            page.set_viewport_size({"width": 1400, "height": 900})
-            tq_bad = [f"{w} px: {x}" for w, xs in tq_at.items() for x in xs if (x["dy"] is not None and x["dy"] > 1) or x["overlaps"]]
-            check("…each ? and ✎ beside a result's name sits on its line (within 1 px of the text's middle), clear of the name's button "
-                  "when the name wraps, at 1400 and 320 px (#355)", tq_at[1400] and all(x["dy"] is not None for x in tq_at[1400])
-                  and any(x["what"].startswith("test-page") for x in tq_at[320]) and not tq_bad, tq_bad[:6] or tq_at[1400][:4])
+
+            def tq_lines(pg, touch):
+                """TQ_LINE at 1400, 375 and 320 px: the drawer's results, then two Labs charts (put back after)"""
+                got = {}
+                for width in (1400, 375, 320):
+                    pg.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    pg.evaluate("openEvent(EV.filter(e => e.k === 'lab' && DATA.details[e.id]).pop())")
+                    pg.wait_for_timeout(400)
+                    got[f"{width}{' touch' if touch else ''}"] = r = pg.evaluate(TQ_LINE)
+                    pg.evaluate("closeDrawer()")
+                    pg.evaluate("() => { window._sel373 = [state.tab, state.labsView, [...state.sel]]; switchTab('labs', 'chart'); for (const s of SERIES.filter(s => !s.watch && s.n).slice(0, 2)) state.sel.add(s.name); renderLabs(); }")
+                    pg.wait_for_timeout(400)
+                    r["icons"] += pg.evaluate(TQ_LINE)["icons"]
+                    pg.evaluate("() => { const [t, v, s] = window._sel373; state.sel = new Set(s); switchTab(t, v); renderAll(); }")
+                    pg.wait_for_timeout(200)
+                pg.set_viewport_size({"width": 1400, "height": 900})
+                return got
+
             js("closeDrawer()")
+            tq_at = tq_lines(page, False)
+            tctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True, has_touch=True)
+            tctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            tpg = tctx.new_page()
+            tpg.goto(base + "/?profile=1#overview")
+            tpg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+            coarse = tpg.evaluate("matchMedia('(pointer: coarse)').matches")
+            tq_at.update(tq_lines(tpg, True))
+            tctx.close()
+            tq_bad = [f"{k}: {x}" for k, r in tq_at.items() for x in r["icons"] if x["dy"] is None or x["dy"] > 1 or x.get("overlaps") or not x["hit"] or x["takes"]
+                      or "target" in x and (x["box"] != [24, 24] or x["target"] != ([44, 44] if k.endswith("touch") or int(k.split()[0]) <= 640 else [24, 24]))]
+            tq_bad += [f"{k}: the cell of {n} is {h} px for {lines} line(s) of 24" for k, r in tq_at.items() for n, h, lines in r["cells"] if abs(h - 24 * lines) > 1]
+            check("…each ? and ✎ beside a result's name in the drawer, and the ✎ beside a Labs chart's name, sits on a line of its text "
+                  "(within 1 px of its middle), the drawer's clear of the name's button and its cells whole 24 px lines; on a phone or "
+                  "touch screen the ✎ stays 24 px with a 44 px target around it, taking none of the name's or the ?'s; at 1400, 375 "
+                  "and 320 px, with and without a touch screen (#355, #373)",
+                  coarse and len(tq_at) == 6 and all(any(x["where"] == "chart" for x in r["icons"]) and any(x["what"] == "test-page" for x in r["icons"])
+                                                     and any(x["what"] == "rename-btn" for x in r["icons"]) and r["cells"] for r in tq_at.values()) and not tq_bad,
+                  tq_bad[:6] or {k: r["icons"][:2] for k, r in tq_at.items()})
             tp_seen, theme_before = [], js("document.documentElement.dataset.theme || null")
             for mode in ("light", "dark"):
                 js("t => { document.documentElement.dataset.theme = t; }", mode)

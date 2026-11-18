@@ -986,6 +986,12 @@ Everything on `main` so far; it becomes the first tagged release.
   from a list box, such as the view picker where deleting a Labs view leaves focus (it said "Alt+N goes to it" but
   did nothing). After a click on the drawer's text, which focuses the drawer itself, a toast gives focus back to the
   drawer's first control, not the drawer.
+- **The ✎ and ? on their name's line on a phone or touch screen** (#373): since #353 the ✎ was 44 px on a phone or touch
+  screen, inside the line, so in the drawer's results it sat 10 px below its name, rows grew (45 to 53 px at 375, 33 to
+  53 at 1400 with a touch screen) and at 320 px Hemoglobin's ? dropped to a line of its own; on a Labs chart the ✎ sat
+  13 px below the lab's name. The ✎ is 24 px again, in its line, and its 44 px target is drawn around the line instead;
+  the name's button and the ? beside it keep all of theirs. In the drawer the ✎ and ? follow the name's last word,
+  taking it down with them when they don't fit, never on a line of their own.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
