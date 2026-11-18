@@ -4834,6 +4834,58 @@ def main():
             check("…the wheel over the modal sheet, on its scrim or its body, leaves the page's scroll where it was (#364), and the event is on screen when it closes",
                   y_was == y_wheel > 0 and on_screen and js("document.activeElement.matches('#list .tl-row')") and js("getComputedStyle(document.documentElement).overflow") == "visible",
                   [y_was, y_wheel, on_screen])
+            # #370: with scrollbars that take room (Windows, Linux, a Mac set to show them), the page behind doesn't move
+            # sideways as ask() or the modal drawer opens and closes: the room its scrollbar took is kept while it can't
+            # scroll. In a browser of its own, launched without --hide-scrollbars (Playwright's, which the rest of this
+            # check keeps). Chromium's html clientWidth counts the kept room as the page's while it can't scroll, so
+            # what's measured is where the page is laid out: the body's width and the top bar's right edge.
+            sb_browser = p.chromium.launch(ignore_default_args=["--hide-scrollbars"])
+            try:
+                sb_ctx = sb_browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+                sb_ctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+                sbp = sb_ctx.new_page()
+                sbp.on("pageerror", lambda e: problems.append(f"script error (classic scrollbars): {e}"))
+                sbp.goto(base + "/#timeline")
+                sbp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted && !!document.querySelector('#list .tl-row')", timeout=20000)
+                laid = "[Math.round(document.body.getBoundingClientRect().width), Math.round(document.querySelector('header.topbar').getBoundingClientRect().right), innerWidth - document.documentElement.clientWidth, scrollY]"
+                gutter = {}
+                for w, h in ((1400, 900), (375, 740)):
+                    sbp.set_viewport_size({"width": w, "height": h})
+                    sbp.wait_for_timeout(300)
+                    sbp.evaluate("scrollTo(0, 300)")
+                    sbp.wait_for_timeout(100)
+                    steps = {"page": sbp.evaluate(laid)}
+                    sbp.evaluate("window.sgAsked = ask({title: 'Classic scrollbars (browser check)?', message: 'Nothing moves behind this.'}); 0")
+                    sbp.wait_for_selector("dialog.sg-ask[open]", timeout=5000)
+                    sbp.wait_for_timeout(200)
+                    sbp.mouse.move(5, h - 5)   # the scrim
+                    sbp.mouse.wheel(0, 600)
+                    sbp.wait_for_timeout(200)
+                    steps["ask"] = sbp.evaluate(laid)
+                    sbp.keyboard.press("Escape")
+                    sbp.wait_for_timeout(300)
+                    steps["ask closed"] = sbp.evaluate(laid)
+                    if w == 375:   # the drawer is modal only on a phone (beside the page at 1400 px it doesn't hold the scroll)
+                        sbp.evaluate("(r => { r.scrollIntoView({block: 'center'}); r.focus({preventScroll: true}); })(document.querySelectorAll('#list .tl-row')[6])")
+                        steps["row"] = sbp.evaluate(laid)
+                        sbp.keyboard.press("Enter")
+                        sbp.wait_for_selector("#drawer.open", timeout=5000)
+                        sbp.wait_for_timeout(400)
+                        sbp.mouse.move(180, 4)   # the scrim, above the sheet
+                        sbp.mouse.wheel(0, 600)
+                        sbp.wait_for_timeout(200)
+                        steps["drawer"] = sbp.evaluate(laid) + [sbp.evaluate("document.getElementById('drawer').matches(':modal')")]
+                        sbp.keyboard.press("Escape")
+                        sbp.wait_for_timeout(400)
+                        steps["drawer closed"] = sbp.evaluate(laid)
+                    gutter[w] = steps
+                same = lambda a, b: a[:2] == b[:2] and a[3] == b[3]   # (not the scrollbar's room, column 3)
+                still = all(s["page"][2] > 0 and same(s["ask"], s["page"]) and same(s["ask closed"], s["page"])
+                            and ("row" not in s or same(s["drawer"], s["row"]) and same(s["drawer closed"], s["row"])) for s in gutter.values())
+                check("with scrollbars that take room, ask() and the modal drawer opening and closing leave the page behind where it was, sideways and down (#370), at 1400 and 375 px",
+                      still and gutter[375]["drawer"][4] is True and sbp.evaluate("document.documentElement.scrollWidth <= innerWidth"), gutter)
+            finally:
+                sb_browser.close()
             # …and its grab handle is drawn in the system's text colour in forced colours, where a background is dropped
             page.emulate_media(forced_colors="active")
             page.keyboard.press("Enter")
