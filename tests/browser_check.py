@@ -1275,6 +1275,17 @@ TITLES_JS = r"""() => { const out = [], words = s => ((s || '').toLowerCase().ma
   }
   return out; }"""
 SWAP_FONTS_JS = "() => [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family).filter((f, i, a) => a.indexOf(f) === i).sort()"
+# the fonts the page has fetched (#253, #328), read once the Overview's tiles are drawn (their values are its first text in
+# Source Serif) and Source Serif has been fetched, or 10 s after: on a slow runner the records load well before the
+# tiles ask for it (#380). Polled from here, as the CSP refuses wait_for_function's string
+FONTS_FETCHED_JS = r"""async () => {
+  const wait = async (ok, ms) => { for (const end = Date.now() + ms; !ok() && Date.now() < end;) await new Promise(r => setTimeout(r, 50)); };
+  const fonts = () => performance.getEntriesByType('resource').map(e => new URL(e.name).pathname).filter(p => p.startsWith('/fonts/'));
+  await wait(() => document.querySelector('#view-overview .tile .val')?.checkVisibility(), 10000);
+  await document.fonts.ready;
+  await wait(() => fonts().some(p => p.startsWith('/fonts/source-serif-')), 10000);
+  return fonts().sort();
+}"""
 
 
 def font_swap(browser, state, url, width):
@@ -1365,7 +1376,8 @@ def main():
         # the fonts (#253): Inter loads from www/fonts/ under the real CSP (default-src 'self' covers font-src; a
         # violation would be in csp_problems), and the page's text is in it, in light and dark. No font is preloaded
         # (#328: on a slow connection a preload took bandwidth from the stylesheets and held up the first paint), and
-        # Source Serif is the weight-only file, the one the Overview's titles and values ask for
+        # Source Serif is the weight-only file, the one the Overview's titles and values ask for, read once they've asked (#380)
+        fetched = strict.evaluate(FONTS_FETCHED_JS)
         fonts, theme_before = {}, strict.evaluate("document.documentElement.dataset.theme || null")
         for theme in ("light", "dark"):
             strict.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
@@ -1373,7 +1385,6 @@ def main():
               document.fonts.check('14px Inter'), getComputedStyle(document.body).fontFamily.split(',')[0].trim(),
               getComputedStyle(document.documentElement).colorScheme])""")
         preload = strict.evaluate("[...document.querySelectorAll('link[rel=preload]')].map(l => new URL(l.href).pathname)")
-        fetched = strict.evaluate("[...performance.getEntriesByType('resource')].map(e => new URL(e.name).pathname).filter(p => p.startsWith('/fonts/')).sort()")
         check("fonts (#253, #328): Inter and Source Serif load from the app itself under the CSP, nothing is preloaded, and the page's text is in Inter, in light and dark",
               all(f == [True, True, "Inter", theme] for theme, f in fonts.items()) and preload == []
               and fetched == ["/fonts/inter-v4.001-latin.woff2", "/fonts/source-serif-4-v4.004-wght-latin.woff2"], (fonts, preload, fetched))

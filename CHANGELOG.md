@@ -1024,6 +1024,10 @@ Everything on `main` so far; it becomes the first tagged release.
   at the ✎'s foot. The Overview's weight tile read "▼ −4.3 lb since" / "diagnosis" / "· Nov 12, 2026" at 1280 px and
   on a phone; the "·" is kept with the word before it, "diagnosis ·" over the date. So it is in Body and activity's
   Sleep ("70 min deep" over "· 90 min REM") and Blood pressure tiles and Costs' Payments and "Reduced or forgiven".
+- **The browser check's fonts check no longer fails now and then** (#380, `tests/browser_check.py`): it read which
+  fonts were fetched as soon as the records loaded, before the Overview's tiles had asked for Source Serif on a slow
+  runner. It waits for the tiles and for Source Serif (up to 10 s) now: 20 runs in a row pass with the CPU slowed four
+  times (the old read failed 16 of them), and it still fails when Source Serif is never asked for.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
