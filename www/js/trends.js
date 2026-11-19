@@ -29,12 +29,13 @@ function clearLabFilter() { state.labQ = ""; $("#labQ").value = $("#hmQ").value 
 /* a lab's row given focus scrolls clear of the list's sticky header (#202, 2.4.11) */
 new ResizeObserver(([e]) => { const list = e.target.parentElement; if (list) list.style.scrollPaddingTop = e.target.offsetHeight + 4 + "px"; }).observe($("#series .series-hd"));
 /* the list's labs by panel (#279, labGroups in util.js), the most measured first in each and the panels in that order;
-   the labs with no panel in a collapsed Other (open while filtering, or once opened). -> [{panel, names}] */
-const byFrequency = list => [...list].sort((a, b) => b.n - a.n || nice(a.name).localeCompare(nice(b.name))).map(s => s.name);
+   the labs with no panel in a collapsed Other (open while filtering, or once opened). Series, not names: a lab kept in
+   two units is two rows (#438) */
+const byFrequency = list => [...list].sort((a, b) => b.n - a.n || nice(a.name).localeCompare(nice(b.name)));
 let labOtherOpen = false;
 function renderSeriesList() {
   const wrap = $("#seriesRows"); wrap.replaceChildren();
-  const all = SERIES.filter(s => !s.watch && s.n >= 2), top = all.filter(labMatch), of = new Map(top.map(s => [s.name, s]));
+  const all = SERIES.filter(s => !s.watch && s.n >= 2), top = all.filter(labMatch), ids = new Set();
   labCount("#labQn", top.length, all.length);
   const groups = labGroups(byFrequency(top));
   // the list's header (#192, index.html): under the filter, what's selected with Clear and Defaults, then the saved
@@ -45,20 +46,26 @@ function renderSeriesList() {
   $("#tvBox").replaceChildren(...[viewsBar()].filter(Boolean));
   if (!top.length) wrap.append(el("p", {class: "hint lab-none"}, `No lab names match “${$("#labQ").value.trim()}”. `,
     el("button", {class: "btn", type: "button", text: "Clear the filter", onclick: () => { clearLabFilter(); $("#labQ").focus(); }})));
-  for (const {panel, names} of groups) {
+  for (const {panel, labs} of groups) {
     let box = wrap;
     if (panel === LAB_OTHER && groups.length > 1) {
       box = el("details", {class: "grp-other", open: labOtherOpen || !!state.labQ || null, ontoggle: ev => { if (!state.labQ) labOtherOpen = ev.target.open; }},
         el("summary", {class: "grp"}, panel, el("span", {class: "grp-n"})));
       wrap.append(box);
     } else wrap.append(el("div", {class: "grp", text: panel}));
-    for (const s of names.map(n => of.get(n))) {
-      const L = latest(s); const id = "s_" + s.name.replace(/\W/g, "_"), tq = testLink(s.name, true);   // #163
+    for (const s of labs) {
+      const L = latest(s), tq = testLink(s.name, true);   // #163
+      const base = "s_" + s.name.replace(/\W/g, "_");   // a lab's second unit: s_Hemoglobin_2 (#438)
+      let id = base;
+      for (let k = 2; ids.has(id); k++) id = base + "_" + k;
+      ids.add(id);
       // the name's and the latest value's tips: the checkbox's too, shown when it has focus, and its description (#358)
       const nmTip = `${renamedTitle("lab", s.name)} · ${s.n} results`, lvTip = L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "";
       box.append(el("label", {class: "srow" + (tq ? " has-tq" : ""), for: id},
-        el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, "aria-describedby": id + "_about", "data-tip": [nmTip, lvTip].filter(Boolean).join("\n"),
-          onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; otherSays(); tvRefresh(); }}),
+        el("input", {type: "checkbox", id, "data-lab": s.name, checked: state.sel.has(s.name) || null, "aria-describedby": id + "_about", "data-tip": [nmTip, lvTip].filter(Boolean).join("\n"),
+          onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name);
+            for (const c of wrap.querySelectorAll("input[data-lab]")) if (c.dataset.lab === s.name) c.checked = ev.target.checked;   // its other unit's row too (#438)
+            renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; otherSays(); tvRefresh(); }}),
         el("span", {class: "nm", "data-tip": nmTip, text: nice(s.name)}), tq,
         el("span", {class: "lv" + (L && L[4] ? " abn" : ""), "data-tip": lvTip, text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : ""}),
         el("span", {id: id + "_about", hidden: "", text: [nmTip, lvTip].filter(Boolean).join(". ")})));

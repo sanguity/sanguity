@@ -18,9 +18,10 @@ function renderHeatmap() {
   $("#hmLegend").hidden = $("#hmWrap").hidden = asTable; $("#hmTable").hidden = !asTable;
   const all = SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null)), shown = all.filter(labMatch);   // the Labs filter (#192, trends.js)
   labCount("#hmQn", shown.length, all.length);
-  // by panel as in the list (#279, labGroups in util.js): the most measured first, Other last. grp: a lab's panel
-  const of = new Map(shown.map(s => [s.name, s])), grp = new Map(), rows = [];
-  for (const {panel, names} of labGroups(byFrequency(shown))) for (const n of names) { grp.set(n, panel); rows.push(of.get(n)); }
+  // by panel as in the list (#279, labGroups in util.js): the most measured first, Other last. grp: a series' panel,
+  // by the series, as a lab kept in two units is two rows of one name (#438)
+  const grp = new Map(), rows = [];
+  for (const {panel, labs} of labGroups(byFrequency(shown))) for (const s of labs) { grp.set(s, panel); rows.push(s); }
   // columns: draw days in range
   const dayKey = ts => isoDay(ts);
   const days = new Map();
@@ -44,7 +45,7 @@ function renderHeatmap() {
   const groups = []; let gy = top;
   const yOf = new Map();
   let lastPanel = null;
-  for (const s of rows) { const p = grp.get(s.name); if (p !== lastPanel) { groups.push([p, gy]); gy += 16; lastPanel = p; } yOf.set(s.name, gy); gy += rowH; }
+  for (const s of rows) { const p = grp.get(s); if (p !== lastPanel) { groups.push([p, gy]); gy += 16; lastPanel = p; } yOf.set(s, gy); gy += rowH; }
   const W = LW + cols.length * cw + 8, H = gy + 4, AH = 22;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W); svg.setAttribute("height", H);
   svg._geom = {L: LW, R: LW + cols.length * cw, w: W};
@@ -62,28 +63,29 @@ function renderHeatmap() {
   g.push(el("svg:text", {x: LW - 8, y: 14, "text-anchor": "end", text: "Hospital"}));
   g.push(el("svg:text", {x: LW - 8, y: 28, "text-anchor": "end", text: "Procedure"}));
   for (const [p, py] of groups) g.push(el("svg:text", {class: "grp", x: 0, y: py + 11, text: p.length > 30 ? p.slice(0, 29) + "…" : p}));
-  for (const s of rows) {
-    const ry = yOf.get(s.name);
+  rows.forEach((s, i) => {
+    // a lab kept in two units says which row is which, its unit kept whole (#438)
+    const ry = yOf.get(s), unit = s.unit && rows.some(o => o !== s && o.name === s.name) ? ` (${s.unit})` : "";
     const nm = nice(s.name), edit = canRename();   // an editor renames a row by its name (#38, rename.js)
     // "What is this test?" (#163, test-pages.js): a ? in a circle beside the name, clicked (on the circle under the icon,
     // which takes no clicks itself, #257); by keyboard, the link in the table or a chart
-    const tp = testPage(s.name), cut = (LW < 150 ? 17 : 28) - (tp ? 3 : 0);
+    const tp = testPage(s.name), cut = Math.max(5, (LW < 150 ? 17 : 28) - (tp ? 3 : 0) - unit.length);
     if (tp) g.push(el("svg:g", {class: "hm-tq"}, el("svg:title", {text: testPageName(s.name, tp)}),
       el("svg:circle", {cx: LW - 14, cy: ry + rowH / 2, r: 7, "data-tp": tp.url}),
       el("svg:use", {class: "icon", href: `${ICON_SPRITE}#i-circle-question-mark`, x: LW - 21, y: ry + rowH / 2 - 7, width: 14, height: 14})));
     g.push(el("svg:text", {class: "row" + (edit ? " renamable" : ""), x: LW - (tp ? 24 : 8), y: ry + rowH - 4, "text-anchor": "end",
       ...(edit ? {"data-rename": "lab", "data-key": s.name} : {})},   // clicked; by keyboard, the ✎ in the heatmap's table or a chart (#202: the grid is one picture)
-      nm.length > cut ? nm.slice(0, cut - 1) + "…" : nm,
-      el("svg:title", {text: renamedTitle("lab", s.name) + (edit ? " · click to rename" : "") + rowRanges(s)})));
+      (nm.length > cut ? nm.slice(0, cut - 1) + "…" : nm) + unit,
+      el("svg:title", {text: renamedTitle("lab", s.name) + unit + (edit ? " · click to rename" : "") + rowRanges(s)})));
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(dayKey(p.ts), p);
     for (const [k, p] of byDay) {
       const lv = hmLevel(p[1], p[2], p[3]);
       const r = el("svg:rect", {class: "cell", x: colX.get(k) + (cw > 6 ? .5 : 0), y: ry + 1, width: cw - (cw > 6 ? 1 : 0), height: rowH - gap, rx: cw > 8 ? 2 : 0, style: `fill:${lv == null ? "var(--grid)" : hmFill(lv)}`});
-      r.dataset.s = s.name; r.dataset.k = k;
+      r.dataset.s = s.name; r.dataset.i = i; r.dataset.k = k;
       g.push(r);
       if (lv && cw >= 3) g.push(abnMark(colX.get(k) + cw / 2, ry + 1 + (rowH - gap) / 2, lv > 0 ? "H" : "L", Math.min(3.6, cw / 2 - .8), "hm-mark"));   // #60
     }
-  }
+  });
   // month labels go in a separate axis strip that sticks to the bottom of the window until the heatmap's end scrolls into view
   let lastM = "", lastLabelX = -1e9;
   for (const [k, ts] of cols) {
@@ -99,7 +101,7 @@ function renderHeatmap() {
     const d = ev.target.dataset || {};
     if (d.proc) { showTip([el("div", {class: "v", text: d.proc}), el("div", {class: "s", text: fmtD(+d.day)})], ev); return; }
     if (!d.s) { hideTip(); return; }
-    const s = seriesBy(d.s), p = s.pts.filter(p => isoDay(p.ts) === d.k).pop(); if (!p) return;
+    const s = rows[+d.i], p = s.pts.filter(p => isoDay(p.ts) === d.k).pop(); if (!p) return;
     const st = statusOf(p);
     showTip([el("div", {class: "v", text: `${p[5] || fmtNum(p[1])} ${s.unit}`}), el("div", {class: "s", text: nice(s.name) + (nice(s.name) !== s.name ? ` (${s.name})` : "")}), el("div", {class: "s", text: `${fmtDT(p.ts)} · ${refText(p)}`}),
       ucOrig(s, p) ? el("div", {class: "s", text: "Reported as " + ucOrig(s, p)}) : null,   // #41
@@ -132,8 +134,8 @@ function hmTable(rows, cols, grp) {
   const bodies = [];
   let panel = null, tb = null;
   for (const s of rows) {
-    if (grp.get(s.name) !== panel) {
-      panel = grp.get(s.name); tb = el("tbody", {}); bodies.push(tb);
+    if (grp.get(s) !== panel) {
+      panel = grp.get(s); tb = el("tbody", {}); bodies.push(tb);
       tb.append(el("tr", {class: "grp"}, el("th", {scope: "rowgroup", colspan: cols.length + 1, text: panel})));
     }
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(isoDay(p.ts), p);

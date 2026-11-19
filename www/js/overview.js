@@ -206,14 +206,12 @@ function ovKeyLabs(lastDraw) {
       el("span", {class: "s", text: (o.streak > 1 ? `${word} on the last ${o.streak} results, since ${fmtD(o.since)}` : `${word} on ${fmtD(o.last.ts)}`) + (o.old ? ", not repeated since" : "")})));
   }
   if (out.length > 14) flags.append(el("p", {class: "hint", text: `${out.length - 14} more in Labs.`}));
-  const groups = typeof labGroups === "function" ? labGroups(shown.map(s => s.name)) : [{panel: "", names: shown.map(s => s.name)}];
+  const groups = labGroups(shown);   // the series themselves, each looked up by itself (#438)
   const parts = [ovHead("Key labs", el("p", {class: "hint", text: [lastDraw ? `latest draw ${fmtD(lastDraw)}` : "", since ? `changes since ${fmtD(dayTs(since))}` : "",
     "sparklines show the last 6 months", "click a tile for its full trend"].filter(Boolean).join(" · ")})), flags];
   for (const g of groups) {
-    const ss = g.names.map(seriesBy).filter(s => s && s.pts.length);
-    if (!ss.length) continue;
     if (groups.length > 1) parts.push(el("h3", {class: "ov-panel", text: g.panel}));
-    parts.push(el("div", {class: "tiles"}, ...ss.map(s => labTile(s, since, lastDraw))));
+    parts.push(el("div", {class: "tiles"}, ...g.labs.map(s => labTile(s, since, lastDraw))));
   }
   parts.push(el("p", {class: "range-note", text: RANGE_NOTE + (RANGES_USED ? RANGE_NOTE_SETTINGS : "")}));
   return parts;

@@ -2273,7 +2273,7 @@ def main():
               const rows = [...v.querySelectorAll('#ovOut .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.s').textContent]);
               const groups = typeof labGroups === 'function' ? labGroups(keys) : null, multi = groups && groups.length > 1;
               const tiles = [...v.querySelectorAll('.tiles:not(.ov-read) .tile .lbl > span:first-child')].map(s => s.dataset.tip || s.textContent);
-              return {since, keys, tiles, want: multi ? groups.flatMap(g => g.names) : keys, panels: [...v.querySelectorAll('.ov-panel')].map(h => h.textContent),
+              return {since, keys, tiles, want: multi ? groups.flatMap(g => g.labs) : keys, panels: [...v.querySelectorAll('.ov-panel')].map(h => h.textContent),
                 wantPanels: multi ? groups.map(g => g.panel) : [], flagged, rows, say: v.querySelector('#ovOut .ov-out-say').textContent,
                 ok: v.querySelectorAll('.tiles .st.ok').length, inRange: [...v.querySelectorAll('.tiles .tile')].filter(t => /In range/.test(t.textContent)).length,
                 sinceOnTiles: since ? [...v.querySelectorAll('.tiles:not(.ov-read) .tile .delta')].filter(d => d.textContent.includes('since ' + since)).length : -1}; }""")
@@ -7157,7 +7157,7 @@ def main():
             # "More about this" behind the ⓘ
             open_tab("labs")
             settle(300)
-            want279 = js("Object.fromEntries(labGroups(SERIES.filter(s => !s.watch).map(s => s.name)).flatMap(g => g.names.map(n => [n, g.panel])))")
+            want279 = js("Object.fromEntries(labGroups(SERIES.filter(s => !s.watch).map(s => s.name)).flatMap(g => g.labs.map(n => [n, g.panel])))")
             list279 = js("""(() => { const id = new Map(SERIES.filter(s => !s.watch).map(s => ['s_' + s.name.replace(/\\W/g, '_'), s])), out = []; let g = null;
               for (const x of document.querySelectorAll('#seriesRows .grp, #seriesRows .srow'))
                 if (x.classList.contains('grp')) g = x.firstChild.textContent.trim();
@@ -7196,6 +7196,37 @@ def main():
             hmt279 = js("""[...document.querySelectorAll('#hmTable tbody')].map(b => [b.querySelector('tr.grp th').textContent, b.querySelectorAll('tr:not(.grp)').length])""")
             check("…and its table's row groups too", [g for g, _ in hmt279] == list(dict.fromkeys(want279.get(n) for n, _ in hm279))
                   and sum(k for _, k in hmt279) == len(hm279), [hmt279, hm279])
+            # a lab kept in two units (#438): joinSeries keeps Hemoglobin in g/dL and in mmol/L apart, and the list, the
+            # heatmap's grid and its table show each once, with its own unit, under the same panel (labGroups groups series)
+            two438 = js("""(() => {
+              const h = SERIES.find(s => !s.watch && s.name === 'Hemoglobin');
+              const c = {...h, unit: 'mmol/L', n: 30, txt: [], pts: h.pts.slice(-30).map(p => Object.assign(p.map((v, i) => i === 1 ? +(v * .62).toFixed(1) : i === 5 ? null : v), {ts: p.ts}))};
+              SERIES.push(c);
+              try {
+                renderSeriesList();
+                const under = (x, sel) => { let g = null; for (const y of document.querySelectorAll(sel)) { if (y.matches('.grp')) g = y.firstChild.textContent.trim(); if (y === x) return g; } };
+                const list = [...document.querySelectorAll('#seriesRows .srow')].filter(r => r.querySelector('input').dataset.lab === 'Hemoglobin')
+                  .map(r => [r.querySelector('.lv').textContent.split(' ').pop(), under(r, '#seriesRows .grp, #seriesRows .srow'), r.querySelector('input').id]);
+                renderHeatmap();   // its table, as the switch left it
+                const table = [...document.querySelectorAll('#hmTable tbody tr:not(.grp) th')].filter(t => t.firstChild.textContent.startsWith('Hemoglobin'))
+                  .map(t => [t.firstChild.textContent, t.closest('tbody').querySelector('tr.grp th').textContent]);
+                state.tables.delete('#hm'); renderHeatmap();
+                const gs = [...document.querySelectorAll('#hm text.grp')].map(t => [+t.getAttribute('y'), t.textContent]);
+                const grid = [...document.querySelectorAll('#hm text.row')].filter(t => t.firstChild.textContent.startsWith('Hemoglobin'))
+                  .map(t => [t.firstChild.textContent, gs.filter(x => x[0] < +t.getAttribute('y')).pop()?.[1]]);
+                const cellRows = new Set([...document.querySelectorAll('#hm rect.cell[data-s=Hemoglobin]')].map(r => r.getAttribute('y'))).size;
+                return {list, table, grid, cellRows};
+              } finally { SERIES.splice(SERIES.indexOf(c), 1); state.tables.add('#hm'); renderSeriesList(); renderHeatmap(); }
+            })()""")
+            hb = want279.get("Hemoglobin")
+            check("Labs (#438): a lab in two units is two rows in the list, once each, each with its unit and its own id, under one panel",
+                  sorted(u for u, _, _ in two438["list"]) == ["g/dL", "mmol/L"] and {g for _, g, _ in two438["list"]} == {hb}
+                  and len({i for _, _, i in two438["list"]}) == 2, two438)
+            check("…two rows in the heatmap's grid, each said with its unit, under one panel, its cells in two rows",
+                  sorted(n for n, _ in two438["grid"]) == ["Hemoglobin (g/dL)", "Hemoglobin (mmol/L)"]
+                  and all(same279("Hemoglobin", g) for _, g in two438["grid"]) and two438["cellRows"] == 2, two438)
+            check("…and in its table", sorted(n for n, _ in two438["table"]) == ["Hemoglobin (g/dL)", "Hemoglobin (mmol/L)"]
+                  and {g for _, g in two438["table"]} == {hb}, two438)
             page.click("#hmHd .view-seg button:text-is('Grid')")
             check("…on the heatmap, the header has only the switch: Show on charts, the Legend and the ⓘ are the charts'",
                   js("[...document.querySelectorAll('#view-labs .chart-only')].every(x => !x.checkVisibility()) && document.querySelector('#view-labs .labs-head .range-note').checkVisibility()"))
@@ -7250,7 +7281,7 @@ def main():
               return out; })()""")
             check("…the Overview's key-lab tiles under the same panels, in the order chosen within each",
                   ov279 and all(want279.get(n) == g for n, g in ov279)
-                  and [n for n, _ in ov279] == js("labGroups(keyLabTiles(CFG.overview.keyLabs, SERIES, JSON.stringify(CFG.overview.keyLabs) === JSON.stringify(DEFAULT_SETTINGS.overview.keyLabs))).flatMap(g => g.names)"), ov279)
+                  and [n for n, _ in ov279] == js("labGroups(keyLabTiles(CFG.overview.keyLabs, SERIES, JSON.stringify(CFG.overview.keyLabs) === JSON.stringify(DEFAULT_SETTINGS.overview.keyLabs))).flatMap(g => g.labs)"), ov279)
 
             # ---- "What is this test?" (#163): beside a lab on Labs (its chart's header and the list), the heatmap (a ? in
             # the grid, clicked; a link in its table), the Overview's tiles and the drawer's results, a link to the lab's

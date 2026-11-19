@@ -1459,6 +1459,10 @@ Everything on `main` so far; it becomes the first tagged release.
   charts' tables under 560 px, each value named by its column. Show 200 more on the claims leaves focus on the first
   claim it adds. The Overview's Open Costs opens Claims, and Sources' "See them on Costs" after a payment opens What
   you paid, rather than the view last used.
+- **A lab kept in two units shows each once** (#438): since labs were grouped by panel (#279), Hemoglobin in g/dL and
+  in mmol/L, kept apart as two series, showed the mmol/L one twice and the g/dL one not at all in the Labs list, the
+  heatmap and its table. The grouping keeps each series in its panel now, so each shows once with its own unit, the
+  heatmap's grid naming the unit beside a name it shows twice.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
