@@ -1253,6 +1253,9 @@ Everything on `main` so far; it becomes the first tagged release.
   the profile's owner following `settings.html#profile` (or Sharing's old address for it) landed on Dashboard with
   nothing said; they're told only a profile's owners can rename or delete it. Rename or delete's name field shows its
   label, "Profile name". docs/database.md no longer says About this person is changed on Sharing.
+- **Dark and Light mode switch offline again** (#414): since #410 your menu's (and the palette's) Dark mode saved the
+  account's theme, so offline it went back, saying it wasn't saved (or "Failed to fetch"). Offline it changes for this
+  browser for now, says so, and is saved for the account once the server answers again.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
