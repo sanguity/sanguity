@@ -72,10 +72,18 @@ async function profileGone() {
   if (ME.profiles.length) {
     SgNav.profiles(ME.profiles);
     $("#profile").dispatchEvent(new Event("change", {bubbles: true}));
-    return;
+    return goneFocus();
   }
   SgNav.profiles([]);
   for (const id of ["about", "targets", "profileCard"]) $("#" + id).hidden = true;
   $("#noProfiles").hidden = false;
   await load(null, null, true);
+  goneFocus();
+}
+/* focus on the page's heading: the button it was on went with the profile (#417) */
+function goneFocus() {
+  const h = $("#groupTitle");
+  if (!h) return;
+  if (!h.hasAttribute("tabindex")) h.tabIndex = -1;
+  h.focus();
 }

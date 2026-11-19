@@ -321,7 +321,7 @@ const SgPalette = (() => {
     if (!onRecords) return arrive("event", id, "#timeline");
     const e = byId.get(id);
     if (!e) return;
-    pickTab("timeline");
+    keepFocus(() => pickTab("timeline"));   // what had focus before the palette opened, if it's drawn again: what the drawer gives it back to (#417)
     openEvent(e);
   }
   /* the Timeline's search, for what was typed; focus on the list's heading, which says how many it shows */

@@ -771,6 +771,11 @@ CLEAR_OF_BAR_JS = r"""(() => {
 })()"""
 
 
+# where focus is, when it's on a control in sight (#417): not the page itself, shown, inside the window; else None
+IN_SIGHT = """(a => a && a !== document.body && a.checkVisibility() && (r => r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth)(a.getBoundingClientRect())
+    ? [a.tagName, a.id, a.dataset.id || '', a.textContent.trim().slice(0, 40)] : null)(document.activeElement)"""
+
+
 def clear_of_bar(page):
     """Scroll up just enough that no control lies half under the sticky top bar, before axe looks at a part scrolled
     into view: axe counts a control the bar half covers as too small a target (2.5.8), so where the scroll happened to
@@ -3770,6 +3775,42 @@ def main():
             settle(300)
             check("…the undo and a resize to 375 px and back while open, then Escape: focus on that row again (#404)",
                   js(on_row, [row404, False]), js("document.activeElement.outerHTML.slice(0, 160)"))
+            # #417: hidden from its Timeline row, which leaves the list: Escape puts focus on the row now where it was (the
+            # next), in sight; and after a Merge from a row, on that row
+            js("id => { closeDrawer(); const e = byId.get(id); setRange(e.ts - 20 * DAY, e.ts + 20 * DAY); }", again)
+            settle(300)
+            next417 = js("id => { const rs = [...document.querySelectorAll('#list .tl-row')], i = rs.findIndex(r => r.dataset.id === String(id)); return (rs[i + 1] || rs[i - 1]).dataset.id; }", again)
+            page.focus(row404)
+            page.keyboard.press("Enter")
+            settle(300)
+            page.click("#dmoreBtn")
+            page.click("#dmoreList button:text-is('Hide')")
+            page.wait_for_function("(DATA.edits || []).length === 1 && document.getElementById('dtitle').textContent === 'Edits to these records'", timeout=20000)
+            settle(200)
+            page.keyboard.press("Escape")
+            settle(300)
+            hide417 = js(IN_SIGHT)
+            undo417 = "(async () => { for (const x of DATA.edits || []) await sendEdit('/' + x.id, {method: 'DELETE'}, el('p'), {edits: true}); closeDrawer(); })()"
+            js(undo417)
+            merge417 = js("""(() => { const e = EV.find(e => e.k === 'visit' && !e.hidden && DATA.events.some(x => x.id !== e.id && !WATCH_KINDS.has(x.k) && Math.abs(zParse(x.t) - e.ts) <= 7 * DAY));
+                setRange(e.ts - 20 * DAY, e.ts + 20 * DAY); return e.id; })()""")
+            settle(300)
+            page.focus(f"#list .tl-row[data-id='{merge417}']")
+            page.keyboard.press("Enter")
+            settle(300)
+            page.click("#dmoreBtn")
+            page.click("#dmoreList button:text-is('Merge with…')")
+            page.click("#dbody .edit-form button:text-is('Save')")
+            page.wait_for_function("(DATA.edits || []).some(x => x.action === 'merge')", timeout=20000)
+            settle(300)
+            page.keyboard.press("Escape")
+            settle(300)
+            merged417 = js(IN_SIGHT)
+            js(undo417)
+            settle(300)
+            check("…hidden from its Timeline row, gone from the list, then Escape: focus on the row now where it was; merged into from its row: on that row (#417)",
+                  hide417 is not None and hide417[2] == next417 and merged417 is not None and merged417[2] == str(merge417),
+                  [hide417, next417, merged417, merge417])
 
             # ---- chart activity (#236): the demo's chart review and phone call aren't visits; a billing-code title is a plain one
             got = js("""(async () => { await loadDetails(EV.filter(e => e.k === 'visit').map(e => e.id));   // loaded when opened (#217)
@@ -4589,6 +4630,20 @@ def main():
                 js("""async ids => { for (const d of DATA.doses.filter(d => !ids.includes(d.id))) {
                     const r = await api(`profiles/${PROFILE.id}/medications/doses/${d.id}`, {method: 'DELETE'}); storePut('doses', await r.json()); } }""", ids404)
                 js("ids => storePut('doses', {removed: ids})", fake404)
+                # #417: a listing opened from the medication's history (the listing's title is the medication's name too),
+                # then a dose logged from the Overview beside it: the drawer still shows the listing, not the history
+                page.locator("#dbody table.medspans button.cell-btn").first.click()
+                settle(300)
+                head417 = "[document.getElementById('dtitle').textContent, document.getElementById('dsub').textContent]"
+                was417, ids417 = js(head417), js("(DATA.doses || []).map(d => d.id)")
+                page.locator("#ovDoses .dose-today", has=page.locator(".dose-quick")).filter(has_text=cur["name"]).last.locator(".dose-quick button:text-is('Taken')").click()
+                page.wait_for_function("n => (DATA.doses || []).length === n + 1", arg=len(ids417), timeout=20000)
+                settle(300)
+                now417 = js(head417)
+                check("…a listing opened from its history, then a dose logged from the Overview beside it: the drawer still shows the listing (#417)",
+                      not was417[1].startswith("Medication history") and now417 == was417, [was417, now417])
+                js("""async ids => { for (const d of DATA.doses.filter(d => !ids.includes(d.id))) {
+                    const r = await api(`profiles/${PROFILE.id}/medications/doses/${d.id}`, {method: 'DELETE'}); storePut('doses', await r.json()); } }""", ids417)
                 page.keyboard.press("Escape")
                 settle(200)
                 # the Timeline: marks on the span, by shape, with a tooltip
@@ -7697,6 +7752,24 @@ def main():
                 bad.append("at 1400 px a menu isn't its popover again")
             check("at 320, 375 and 390 px, the top bar's profile menu, Add and your menu open as sheets on their first item, every item on the screen and 44 px tall; "
                   "Escape closes each, focus back on its button; at 1400 px they're popovers again (#244, #264, #269)", not bad, bad[:6])
+            # #417: on a phone, Add → Journal entry opens its form in the drawer from the Add sheet, which then closes:
+            # Escape puts focus on Add, not on the item in the closed sheet
+            page.set_viewport_size({"width": 390, "height": 800})
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            page.focus("#addMenuBtn")
+            page.keyboard.press("Enter")
+            settle(300)
+            page.focus("dialog.sheet[open] #journalBtn")
+            page.keyboard.press("Enter")
+            page.wait_for_selector("#drawer.open", timeout=5000)
+            settle(400)
+            journal417 = js("document.getElementById('dtitle').textContent")
+            page.keyboard.press("Escape")
+            settle(400)
+            check("…on a phone, Add → Journal entry, then Escape: focus on Add, in sight (#417)",
+                  journal417 == "New journal entry" and (js(IN_SIGHT) or [0, 0])[1] == "addMenuBtn", [journal417, js(IN_SIGHT)])
+            page.set_viewport_size({"width": 1400, "height": 800})
             # #308, #319: under 500 px tall the bar scrolls with the page; the menus opened under it where it was. As sheets
             # (#269) they're at the screen's foot, on the screen, whatever the page's scroll, their items scrolling inside
             # them where the screen is too short for all of them
@@ -9807,6 +9880,29 @@ def main():
             check("…the top bar's Search opens it; “visit” finds events (the Timeline's index), the arrows move the marked one, and Enter opens it on the Timeline, in the drawer",
                   at is not None and moved[4:] == [f"palO{at}", "true", 1] and js("[state.tab, document.getElementById('dtitle').textContent]") == ["timeline", want],
                   [found, moved, js("[state.tab, document.getElementById('dtitle').textContent]")])
+            # #417: a record opened from the palette by Ctrl+K, the Timeline drawn again under it: Escape puts focus on what
+            # had it before the palette opened (a Timeline row, found again), or, when nothing had, on the record's row or
+            # the list's heading, in sight
+            back417 = []
+            for start in ("row", "nothing"):
+                js("closeDrawer()")
+                settle(200)
+                if start == "row":
+                    page.focus("#list .tl-row")
+                    back417.append(js("document.activeElement.dataset.id"))
+                else:
+                    js("document.activeElement.blur()")
+                pal("visit")
+                for _ in range(at or 0):   # the visit found above
+                    page.keyboard.press("ArrowDown")
+                page.keyboard.press("Enter")
+                page.wait_for_selector("#drawer.open", timeout=5000)
+                settle(300)
+                page.keyboard.press("Escape")
+                settle(300)
+                back417.append(js(IN_SIGHT))
+            check("…opened by Ctrl+K from a Timeline row, Escape puts focus back on that row; from nothing, on a control in sight (#417)",
+                  back417[1] is not None and back417[1][2] == back417[0] and back417[2] is not None, back417)
             js("closeDrawer()")
             pal("visit")
             page.locator("#palList [role=option]").filter(has_text="Search the Timeline for “visit”").click()
@@ -12513,6 +12609,8 @@ def main():
             page.wait_for_function("![...document.querySelectorAll('#profile option')].some(o => o.textContent.includes('Second person')) && "
                                    "[...document.querySelectorAll('#sgToasts .sg-toast-text')].some(t => t.textContent.startsWith('Deleted “Second person”.'))", timeout=10000)
             check("…and another profile is shown after it", js("document.getElementById('profile').value") != "2")
+            settle(300)
+            check("…with focus on the page's heading, in sight (#417)", (js(IN_SIGHT) or [0, 0])[1] == "groupTitle", js(IN_SIGHT))
             js(f"api('profiles/{third}', {{method: 'DELETE', body: JSON.stringify({{confirm_name: 'Third person, renamed'}})}}).then(r => r.status)")
             js("localStorage.setItem('ht-profile', '1')")
             gone_from = len(problems)

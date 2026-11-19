@@ -8,14 +8,15 @@
    a phone (700 px or narrower) as a bottom sheet, modal, swiped down by its handle or its header to close. On a screen
    1200 px or wider it's docked (#270): the page moves over for it (html.sg-docked, app.css) instead of being covered,
    and is drawn again for its new width. Escape closes it wherever focus is, and focus goes back to what opened it,
-   found again if the page was drawn again meanwhile (drawerBack). .open says it's open (or opening). */
+   found again if the page was drawn again meanwhile (drawerBack), or to what's nearest it in sight (drawerTo). .open
+   says it's open (or opening). */
 const drawer = $("#drawer");
 let drawerReturn = null, drawerFrom = null;   // what opened it, and where that was on the page (drawerSpot)
 function closeDrawer() {
-  const r = drawerBack(), back = drawer.classList.contains("open") && drawer.contains(document.activeElement) && r?.isConnected ? r : null;
+  const a = document.activeElement, r = drawerBack(), back = drawer.classList.contains("open") && (drawer.contains(a) || a === document.body) ? drawerTo() : null;
   drawerReturn = drawerFrom = null; drawer.classList.remove("open");
   if (drawer.open) { drawer.close(); liveFollow(); }
-  if (back) back.focus({preventScroll: true});   // once the page behind isn't inert any more
+  if (back) back.focus({preventScroll: back === r});   // once the page behind isn't inert any more; what's nearest it, scrolled to
   setTimeout(() => { if (!drawer.classList.contains("open")) $("#dbody").replaceChildren(); }, 250);   // unload any PDF / document once it has slid away
   state.selEv = null; document.querySelectorAll(".tl-row.sel").forEach(r => r.classList.remove("sel"));
   if (!drawerDock(false)) renderTimeline();   // undocked, the page is drawn again anyway
@@ -36,10 +37,12 @@ function drawerFit() {
 const FOCUSABLE = "a[href], button, input, select, textarea, [tabindex]";
 const focusSig = x => [x.tagName, x.id, x.dataset?.id, x.getAttribute("aria-label"), x.textContent.trim().slice(0, 80)].join("\u001f");
 const recordSig = x => x.dataset?.id ? [x.tagName, x.classList[0], x.dataset.id].join("\u001f") : null;
+const kinOf = x => x.tagName + "\u001f" + x.classList[0];   // a row of a list, whichever record (drawerTo)
 function drawerSpot(x, v = x?.closest?.("main > section")) {
   if (!v) return null;
-  const all = [...v.querySelectorAll(FOCUSABLE)], sig = focusSig(x), rec = recordSig(x);
-  return {v, sig, rec, n: all.filter(y => focusSig(y) === sig).indexOf(x), rn: rec ? all.filter(y => recordSig(y) === rec).indexOf(x) : -1};
+  const all = [...v.querySelectorAll(FOCUSABLE)], sig = focusSig(x), rec = recordSig(x), kin = kinOf(x);
+  return {v, sig, rec, kin, n: all.filter(y => focusSig(y) === sig).indexOf(x), rn: rec ? all.filter(y => recordSig(y) === rec).indexOf(x) : -1,
+    kn: all.filter(y => kinOf(y) === kin).indexOf(x)};
 }
 function drawerFind(s) {
   if (!s) return null;
@@ -53,6 +56,25 @@ function drawerBack() {
   const x = drawerReturn.isConnected ? drawerReturn : drawerFind(drawerFrom);
   if (x) { drawerReturn = x; drawerFrom = drawerSpot(x) || drawerFrom; }
   return drawerReturn;
+}
+/* where focus goes as the drawer closes (#417): what opened it, found again (drawerBack); an item of a menu or a sheet
+   that has closed since (a phone's Add → Journal entry), that menu's button; and when that's gone or out of sight (the
+   page had focus nowhere, as after the command palette; its row hidden or merged away), the open record's row in the
+   view shown, else the row that's now where that one was (the next), else the heading of its list or view */
+function drawerTo() {
+  let x = drawerBack();
+  const box = x?.closest?.("dialog"), pop = x?.closest?.("[popover]");
+  if (box && box !== drawer && !box.open) x = box.sgFrom;   // a sheet's button (nav.js menuSheet)
+  else if (pop && !pop.matches(":popover-open")) x = [...document.querySelectorAll("button")].find(b => b.popoverTargetElement === pop);
+  const seen = y => !!y && y.isConnected && y !== document.body && !drawer.contains(y) && y.checkVisibility();
+  if (seen(x)) return x;
+  const s = drawerFrom, v = [s?.v, document.querySelector("main > section:not([hidden])")].find(seen);
+  if (!v) return null;
+  const all = [...v.querySelectorAll(FOCUSABLE)].filter(seen), kin = s ? all.filter(y => kinOf(y) === s.kin) : [];
+  const head = [v.querySelector("#listTitle"), ...v.querySelectorAll("h2")].find(seen);   // the Timeline's: its list's
+  x = all.find(y => state.selEv != null && y.dataset.id === String(state.selEv)) || (s && s.v === v && s.kn >= 0 && kin[Math.min(s.kn, kin.length - 1)]) || head;
+  if (x === head && head && !head.hasAttribute("tabindex")) head.tabIndex = -1;
+  return seen(x) ? x : null;
 }
 /* docked or not: the page's width changes, so its charts are drawn again; what had focus on it, and what focus goes
    back to, are found again in what's drawn. True if it changed. */
@@ -104,7 +126,7 @@ function drawerHead(k, title, line, tone, days = []) {
   key.style.setProperty("--tone", tone || CAT_OF[k]?.color || "var(--muted)");
   $("#dtitle").textContent = title; $("#dsub").textContent = line;
   drawerSaid = new Set([title, ...title.split(" · "), ...line.split(" · ").flatMap(x => x.split(" – ")), ...days.filter(isFinite).map(fmtD)].filter(Boolean).map(saidKey));
-  drawerMenu([]);
+  drawerMenu([]); delete drawer.dataset.med;   // a medication's history marks it again (meds.js medShown, #417)
   const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
   return body;
 }
