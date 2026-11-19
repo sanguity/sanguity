@@ -246,12 +246,19 @@
 
   // the Costs tab's "Type in what you paid" (#55) opens sources.html#payment: Type records in, with a payment's form
   // (the picker on it, as Add leaves it; import-manual.js starts with lab results put away, #384). Focus goes into it once
-  // the section is shown (import.js, once /api/me has answered), not before, when it would stay on the page (#388)
-  if (location.hash === "#payment") {
-    showKind("manual"); picker.value = "payment";
-    const card = add("payment", false);
-    SgSources.ready.then(me => setTimeout(() => { if (me && card.isConnected && document.activeElement === document.body) focusIn(card); }));
-  }
+  // the section is shown (import.js, once /api/me has answered), not before, when it would stay on the page (#388).
+  // Add → Home reading (#264) opens sources.html#home-reading the same way, with a blood pressure at home's form; on
+  // the Sources page itself only the address changes, and the form comes the same
+  const typeIn = (hash, here) => {
+    const kind = {"#payment": "payment", "#home-reading": "home_bp"}[hash];
+    if (!kind) return;
+    showKind("manual"); picker.value = kind;
+    const card = add(kind, false);
+    if (here) setTimeout(() => focusIn(card));
+    else SgSources.ready.then(me => setTimeout(() => { if (me && card.isConnected && document.activeElement === document.body) focusIn(card); }));
+  };
+  typeIn(location.hash);
+  addEventListener("hashchange", ev => typeIn(new URL(ev.newURL).hash, true));
   $("#profile").addEventListener("change", () => { if (cards().some(c => HINTS[c.dataset.kind])) loadUnits(); });
 
   window.sanguityRecords = {

@@ -1,16 +1,14 @@
 /* Sanguity · the top bar on every signed-in page (after util.js and pwa.js, before the page's own script).
 
-   One row: the brand (back to the records), the page's title, the profile picker on the pages about a profile
-   (#170), the records page's tabs, then two menus. Add: import records, connect a source, type records in, a
-   journal entry. The person's own menu: sharing (who sees the profile, share links, calendar feed, visit summary,
-   export: #168), settings, account, Admin (admins only: nav.js asks the API itself, #167), Getting started (the
-   first-run guide, #199), the light/dark toggle, log out. The items keep the ids the pages already use (#importLink,
-   #journalBtn, #settingsLink, #theme, #logout, #who), so each page's script sets them up as before; nav.js only
-   builds the bar and its menus (menuWire, above).
+   One row, the same on every page (#264): the brand (back to the records), the profile menu (switch profile; About
+   this person, Settings, Sources, Sharing; New profile), the records tabs as links, then two menus. Add: today's (a dose, a journal entry, a home reading) and records in (upload, connect, type
+   in, a Health Link). The person's own menu: Account, Display, Admin (admins only: nav.js asks the API itself, #167),
+   Getting started (the first-run guide, #199), the light/dark toggle, log out. The items keep the ids the pages
+   already use (#importLink, #journalBtn, #settingsLink, #theme, #logout, #who, #profile, #tab-labs), so each page's
+   script sets them up as before; nav.js only builds the bar and its menus (menuWire, below).
 
-   <header class="topbar" data-title="Settings" data-profile> gets the bar, with the profile picker for data-profile;
-   anything already inside it (the records page's profile picker, tabs and Install app button) stays where it is,
-   between the brand and the menus. */
+   <header class="topbar" data-profile> gets the bar; data-profile says the page fills the profile menu itself
+   (SgNav.profiles). Anything already in it (the records page's Install app button) stays, before the menus. */
 "use strict";
 /* A menu (#191, #261): a button and its list of [role^=menuitem] items (tabindex -1, replaceable while it's closed),
    for every menu in the app: the top bar's Add and your menu, the records bar's More… periods, the Timeline's kind
@@ -84,9 +82,9 @@ function menuPlace(m) {
 }
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
-  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, menu: menuWire};
+  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, layout() { return {}; }, menu: menuWire, TABS: []};
   const svgLogo = header.querySelector(".brand-name");
-  const onRecords = !!document.getElementById("tab-overview");
+  const onRecords = !!document.getElementById("view-overview"), page = location.pathname.split("/").pop() || "index.html";
 
   /* the brand: a link back to the records, except on the records page itself */
   if (svgLogo && !onRecords) {
@@ -94,27 +92,59 @@ const SgNav = (() => {
     a.append(...svgLogo.childNodes);
     svgLogo.append(a);
   }
-  if (header.dataset.title) svgLogo.after(el("span", {class: "page-title", text: header.dataset.title}));
 
-  /* the profile picker (#170), on the pages about a profile (<header data-profile>, and the records page, whose
-     #profile is already in the bar): every profile shared with you, by name and your role, or a plain label when
-     there's only one. It keeps the id #profile, so the page's scripts read its value and follow its "change" as
-     they did their own select's. The page fills it once it knows who's signed in: SgNav.profiles(list, want). The
-     choice is this browser's (ht-profile) and the address's (?profile=2, when the address names one). */
+  const items = m => [...m.list.querySelectorAll("[role^=menuitem]")].filter(x => !x.hidden);   // menuitem, menuitemradio (#191)
+  const caret = () => el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down"));
+  function menu(id, label, ico, entries) {
+    const btn = el("button", {class: "iconbtn menu-btn", type: "button", id: id + "Btn", "aria-haspopup": "menu", "aria-expanded": "false",
+      "aria-controls": id + "List"}, ico ? el("span", {class: "menu-ico", "aria-hidden": "true"}, icon(ico)) : null, label);
+    const list = el("div", {class: "menu-list", id: id + "List", role: "menu", "aria-labelledby": id + "Btn"}, ...entries);
+    for (const x of list.querySelectorAll("[role^=menuitem]")) x.tabIndex = -1;
+    return menuWire({btn, list, wrap: el("div", {class: "menu", id}, btn, list)});
+  }
+  /* each item with its icon before its words (#354), hidden from assistive technology; a link to the page you're on
+     says so (aria-current) */
+  const link = (href, ico, text, attrs = {}) => el("a", {class: "menu-item acct", role: "menuitem", href,
+    "aria-current": href.split("?")[0] === page ? "page" : null, ...attrs}, icon(ico), text);
+  const action = (id, ico, text, attrs = {}) => el("button", {class: "menu-item", role: "menuitem", type: "button", id, ...attrs}, icon(ico), text);
+  const sep = () => el("div", {class: "menu-sep", role: "separator"});
+  const head = text => el("div", {class: "menu-head", "aria-hidden": "true", text});
+  const group = (label, ...kids) => el("div", {role: "group", "aria-label": label}, head(label), ...kids);
+
+  /* ---- the profile menu (#170, #264): the profile shown, by name and your role; in it, the other profiles shared
+     with you (your role in each), this profile's own pages and New profile. The choice itself is kept in a hidden
+     <select id="profile">, so the pages' scripts read its value and follow its "change" as they did when it was the
+     picker; a page that stops the change (Settings, with changes not saved, #210) leaves it as it was. The page fills
+     it once it knows who's signed in, SgNav.profiles(list, want); on a page that isn't about a profile (Account,
+     Admin: no data-profile) nav.js does. The choice is this browser's (ht-profile) and the address's (?profile=2,
+     when the address names one). */
   const ROLE = {owner: "owner", editor: "editor", viewer: "view only"};
   let pick = header.querySelector("#profile");
-  if (pick || header.hasAttribute("data-profile")) {
-    const fresh = !pick;
-    if (fresh) pick = el("select", {id: "profile"});
-    pick.className = "iconbtn profile";
-    pick.removeAttribute("hidden");
-    pick.setAttribute("aria-label", "Profile");
-    const wrap = el("div", {class: "profile-pick", id: "profilePick", hidden: ""});
-    if (fresh) (header.querySelector(".page-title") || svgLogo).after(wrap); else pick.before(wrap);
-    wrap.append(pick, el("span", {class: "profile-one", id: "profileOne", hidden: ""}));
-    // before the page's own "change" listeners, so a page that reloads (the records page) opens the new one
-    pick.addEventListener("change", () => remember(pick.value), true);
-  }
+  if (pick) pick.remove(); else pick = el("select", {id: "profile", "aria-label": "Profile"});
+  pick.className = "";
+  pick.hidden = true;
+  const prof = menu("profileMenu", "", "", []);
+  prof.btn.classList.add("profile-btn");
+  const radios = el("div", {role: "group", "aria-label": "Switch profile"}), rSep = sep();
+  const pLinks = [link("settings.html#about", "book-user", "About this person", {id: "aboutLink"}),   // in Settings now (#267)
+    link("settings.html", "settings", "Settings", {id: "settingsLink"}), link("sources.html", "database", "Sources", {id: "sourcesLink"}),
+    link("sharing.html", "share-2", "Sharing", {id: "sharingLink"})];
+  prof.list.append(radios, rSep, ...pLinks, sep(), link("guide.html?new", "plus", "New profile", {id: "newProfileLink"}));
+  for (const x of items(prof)) x.tabIndex = -1;
+  const wrap = el("div", {class: "profile-pick", id: "profilePick", hidden: ""}, prof.wrap, pick);
+  svgLogo.after(wrap);
+  // before the page's own "change" listeners, so a page that reloads (the records page) opens the new one
+  pick.addEventListener("change", () => remember(pick.value), true);
+  document.addEventListener("change", ev => { if (ev.target === pick) draw(); });
+  prof.list.addEventListener("click", ev => {
+    const b = ev.target.closest("[data-pid]");
+    if (!b || b.getAttribute("aria-disabled") === "true") return;
+    prof.close();   // first, so focus is back on its button before the page follows the change
+    if (pick.value === b.dataset.pid) return;
+    pick.value = b.dataset.pid;
+    pick.dispatchEvent(new Event("change", {bubbles: true}));
+    draw();
+  });
   function remember(id) {
     try { localStorage.setItem("ht-profile", String(id)); } catch (e) {}
     const q = new URLSearchParams(location.search);
@@ -122,79 +152,112 @@ const SgNav = (() => {
     q.set("profile", id);
     try { history.replaceState(history.state, "", location.pathname + "?" + q + location.hash); } catch (e) {}
   }
-  /* fill the picker with the profiles shared with you and choose one: want, else the address's, else this
-     browser's last, else the first. Returns the profile's id (null when there are none). */
+  let known = [], locked = false;
+  /* the button and the menu for the profile chosen now (the select's value): its name and role; the others to switch
+     to (not while the select is disabled: offline, or a save under way); its pages' and the tabs' addresses */
+  function draw() {
+    const p = known.find(x => String(x.id) === pick.value);
+    wrap.hidden = !p || locked;
+    if (!p) return;
+    const role = x => ROLE[x.role] || x.role, q = "?profile=" + p.id;
+    prof.btn.replaceChildren(el("span", {class: "vh", text: "Profile: "}), el("span", {class: "profile-name", text: p.name}), " ",
+      el("span", {class: "profile-role", text: role(p)}), caret());
+    radios.replaceChildren(...(known.length < 2 ? [] : [head("Switch profile"), ...known.map(x => el("button", {class: "menu-item", role: "menuitemradio",
+      type: "button", tabindex: "-1", "data-pid": x.id}, icon("check"), x.name, el("span", {class: "menu-note", text: role(x)})))]));
+    rSep.hidden = known.length < 2;
+    mark();
+    for (const a of pLinks) a.setAttribute("href", a.getAttribute("href").replace(/^([^?#]*)(\?[^#]*)?/, "$1" + q));
+    if (!onRecords) for (const [t] of TABS) tabEl[t].setAttribute("href", `./${q}#${t}`);
+  }
+  /* fill the menu with the profiles shared with you and choose one: want, else the address's, else this browser's
+     last, else the first. Returns the profile's id (null when there are none). */
   function profiles(list, want) {
-    if (!pick) return null;
-    const wrap = pick.parentElement, one = wrap.querySelector(".profile-one");
-    list = list || [];
-    if (!list.some(p => p.id === want)) {
+    known = list || [];
+    if (!known.some(p => p.id === want)) {
       try { want = +(new URLSearchParams(location.search).get("profile") || localStorage.getItem("ht-profile")); } catch (e) {}
     }
-    const p = list.find(x => x.id === want) || list[0];
-    const label = x => `${x.name} (${ROLE[x.role] || x.role})`;
-    pick.replaceChildren(...list.map(x => el("option", {value: x.id, text: label(x)})));
-    wrap.hidden = !p;
-    if (!p) return null;
-    pick.value = p.id;
-    remember(p.id);
-    pick.hidden = list.length < 2;
-    one.hidden = list.length !== 1;
-    wrap.classList.toggle("many", list.length > 1);
-    one.replaceChildren(el("span", {class: "vh", text: "Profile: "}), el("span", {class: "profile-name", text: p.name}), " ",
-      el("span", {class: "profile-role", text: ROLE[p.role] || p.role}));
-    return p.id;
+    const p = known.find(x => x.id === want) || known[0];
+    pick.replaceChildren(...known.map(x => el("option", {value: x.id, text: `${x.name} (${ROLE[x.role] || x.role})`})));
+    if (p) { pick.value = p.id; remember(p.id); tabsOf(p.id); }
+    draw();
+    return p ? p.id : null;
+  }
+  /* which is chosen, and whether another can be: as the menu opens too (the select disabled since, or put back by its
+     page) */
+  function mark() {
+    for (const b of radios.querySelectorAll("[data-pid]")) {
+      b.setAttribute("aria-checked", String(b.dataset.pid === pick.value));
+      if (pick.disabled) b.setAttribute("aria-disabled", "true"); else b.removeAttribute("aria-disabled");
+    }
+  }
+  prof.onOpen = mark;
+
+  /* ---- the records tabs (#264): links to the records page's tabs, on every page, in the profile's order without its
+     hidden ones (Settings → Dashboard → Tabs: the records page passes its own, other pages ask for it). On the records
+     page app.js shows the one picked (aria-current) and follows the links itself. Where they don't fit, the row
+     scrolls sideways. */
+  const TABS = [["overview", "Overview"], ["health", "Body and activity"], ["timeline", "Timeline"], ["labs", "Labs"], ["costs", "Costs"]];
+  const tabEl = Object.fromEntries(TABS.map(([t, text]) => [t, el("a", {id: "tab-" + t, href: (onRecords ? "#" : "./#") + t, text,
+    "data-tip": t === "health" ? "Watch, sleep and smart-scale data" : null})]));
+  const tabs = el("nav", {class: "tabs", "aria-label": "Records"}, ...Object.values(tabEl));
+  wrap.after(tabs);
+  let order = TABS.map(([t]) => t), hidden = new Set();
+  /* the profile's layout ({order, hidden}, as Settings saves it): every tab in order, a tab it doesn't name after the
+     rest, at least one shown. Returns {order, hidden} */
+  function layout(cfg) {
+    const ids = TABS.map(([t]) => t), ok = x => Array.isArray(x) ? x.filter(t => ids.includes(t)) : [];
+    order = [...new Set([...ok(cfg && cfg.order), ...ids])];
+    hidden = new Set(ok(cfg && cfg.hidden));
+    if (hidden.size >= ids.length) hidden.clear();
+    for (const t of ids) tabEl[t].hidden = hidden.has(t);
+    tabs.prepend(...order.map(t => tabEl[t]));
+    return {order, hidden};
+  }
+  let tabsFor = null;
+  function tabsOf(pid) {
+    if (onRecords || tabsFor === pid) return;
+    tabsFor = pid;
+    api(`profiles/${pid}/settings`).then(r => r.ok ? r.json() : null).then(s => { if (s && tabsFor === pid) layout(s.tabs); }).catch(() => {});
   }
 
-  const items = m => [...m.list.querySelectorAll("[role^=menuitem]")].filter(x => !x.hidden);   // menuitem, menuitemradio (#191)
-  function menu(id, label, ico, entries) {
-    const btn = el("button", {class: "iconbtn menu-btn", type: "button", id: id + "Btn", "aria-haspopup": "menu", "aria-expanded": "false",
-      "aria-controls": id + "List"}, ico ? el("span", {class: "menu-ico", "aria-hidden": "true"}, icon(ico)) : null, label);
-    const list = el("div", {class: "menu-list", id: id + "List", role: "menu", "aria-labelledby": id + "Btn"}, ...entries);
-    for (const x of entries) if (x.getAttribute && x.getAttribute("role") === "menuitem") x.tabIndex = -1;
-    return menuWire({btn, list, wrap: el("div", {class: "menu", id}, btn, list)});
-  }
-
-  /* each item with its icon before its words (#354), hidden from assistive technology */
-  const link = (href, ico, text, attrs = {}) => el("a", {class: "menu-item acct", role: "menuitem", href, ...attrs}, icon(ico), text);
-  const action = (id, ico, text, attrs = {}) => el("button", {class: "menu-item", role: "menuitem", type: "button", id, ...attrs}, icon(ico), text);
-  const sep = () => el("div", {class: "menu-sep", role: "separator"});
-
-  /* Add: records in, each way opening its section of the Sources page (#166); a journal entry, whose form journal.js
-     opens on the records page (from another page, the link takes you there and it opens, #173). On the Sources page
-     itself only the address's #section changes: the page isn't loaded again, so the profile in its address (?profile=2)
-     and what's typed in are kept (#388) */
-  const src = location.pathname.endsWith("/sources.html") ? "" : "sources.html";
+  /* ---- Add (#264), in two groups. Today: a dose of a current medication (the Overview's "Today's medication doses",
+     app.js), a journal entry (its form opens on the records page; from another page the link takes you there and it
+     opens, #173), a home reading (Type records in, with a blood pressure's form). Records: each way in, opening its
+     section of the Sources page (#166). On the Sources page itself only the address's #section changes: the page
+     isn't loaded again, so the profile in its address (?profile=2) and what's typed in are kept (#388) */
+  const src = page === "sources.html" ? "" : "sources.html", rec = onRecords ? "" : "./";
   const add = menu("addMenu", "Add", "plus", [
-    link(src + "#upload", "upload", "Upload files", {id: "importLink", "data-needs": "import"}),
-    link(src + "#portals", "plug", "Connect a portal or plan", {"data-needs": "import"}),
-    link(src + "#manual", "keyboard", "Type records in", {"data-needs": "import"}),
-    link(src + "#link", "link", "Paste a Health Link", {"data-needs": "import"}),
-    sep(), onRecords ? action("journalBtn", "notebook", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "notebook", "Journal entry", {id: "journalBtn"}),
+    group("Today",
+      link(rec + "#log-dose", "pill", "Log a dose", {id: "doseLink", "data-needs": "import"}),
+      onRecords ? action("journalBtn", "notebook", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "notebook", "Journal entry", {id: "journalBtn"}),
+      link(src + "#home-reading", "activity", "Home reading", {"data-needs": "import"})),
+    group("Records",
+      link(src + "#upload", "upload", "Upload files", {id: "importLink", "data-needs": "import"}),
+      link(src + "#portals", "plug", "Connect a portal or plan", {"data-needs": "import"}),
+      link(src + "#manual", "keyboard", "Type records in", {"data-needs": "import"}),
+      link(src + "#link", "link", "Paste a Health Link", {"data-needs": "import"})),
   ]);
-  /* the person's own menu */
+  /* the person's own menu (#264): what's theirs whichever profile is shown */
   const who = el("span", {id: "who", text: "Account"});
   const user = menu("userMenu", "", "", [
-    link("sharing.html", "share-2", "Sharing", {id: "sharingLink"}),
-    sep(),
-    link("sources.html", "database", "Sources", {id: "sourcesLink"}),
-    link("settings.html", "settings", "Settings", {id: "settingsLink"}),
-    link("account.html", "circle-user", "Account"),
+    link("account.html", "circle-user", "Account", {id: "accountLink"}),
+    link("settings.html#display", "settings", "Display", {id: "displayLink"}),
     link("admin.html", "wrench", "Admin", {id: "adminLink", hidden: ""}),
     link("guide.html", "compass", "Getting started", {id: "guideLink"}),   // the first-run guide, any time (#199)
     action("theme", "sun-moon", "Dark mode"),
     sep(),
     action("logout", "log-out", "Log out"),
   ]);
-  user.btn.replaceChildren(who, el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
-  add.btn.append(el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
+  user.btn.replaceChildren(who, caret());
+  add.btn.append(caret());
   user.btn.setAttribute("aria-label", "Your menu");
   // the spacer before the records page's Install app button, so it sits with the menus
   const inst = document.getElementById("installBtn");
   if (inst) inst.before(el("span", {class: "spacer"}));
   else header.append(el("span", {class: "spacer"}));
   // in one box, so where the bar wraps on a phone the two go to the next row together, never your menu alone (#319)
-  header.append(el("div", {class: "bar-menus"}, add.wrap, user.wrap));
+  const menus = el("div", {class: "bar-menus"}, add.wrap, user.wrap);
+  header.append(menus);
 
   /* light or dark: this browser's own choice over the account's default (applyTheme in util.js) */
   const isDark = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
@@ -204,21 +267,23 @@ const SgNav = (() => {
   new MutationObserver(themeLabel).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
   themeLabel();
 
-  /* the ways in follow #importLink (the records page hides it for someone who can only view); with nothing in it,
-     Add goes */
+  /* the ways in follow #importLink (the records page hides it for someone who can only view); a group with nothing
+     in it goes, and with nothing in it at all, Add goes */
   const setHidden = (x, h) => { if (x.hidden !== h) x.hidden = h; };   // only real changes: the observer below sees these
   function sync() {
     const imp = document.getElementById("importLink");
     for (const x of add.list.querySelectorAll("[data-needs=import]")) if (x !== imp) setHidden(x, imp.hidden);
+    for (const g of add.list.querySelectorAll("[role=group]")) setHidden(g, ![...g.querySelectorAll("[role^=menuitem]")].some(x => !x.hidden));
     setHidden(add.wrap, items(add).length === 0);
-    for (const s of add.list.querySelectorAll(".menu-sep")) setHidden(s, imp.hidden || !items(add).some(x => !x.dataset.needs));
   }
   new MutationObserver(sync).observe(add.list, {attributes: true, subtree: true, attributeFilter: ["hidden"]});
   sync();
-  /* Admin, for admins only (#167): once the page's own scripts have asked who's signed in */
-  let locked = false;
+  /* Admin, for admins only (#167): once the page's own scripts have asked who's signed in; and on a page that isn't
+     about a profile, the profile menu */
+  const own = onRecords || header.hasAttribute("data-profile");
   document.addEventListener("DOMContentLoaded", () => {
     api("me").then(r => r.ok ? r.json() : null).then(me => {
+      if (me && !own && !locked) profiles(me.profiles);
       if (me && me.user && me.user.is_admin && !locked) {
         const a = document.getElementById("adminLink");
         a.hidden = false;
@@ -229,7 +294,7 @@ const SgNav = (() => {
   /* nothing to go to but Log out (a password to change or a second factor to set up first, account.js) */
   function lock() {
     locked = true;
-    add.wrap.hidden = true;
+    add.wrap.hidden = wrap.hidden = tabs.hidden = true;
     for (const x of items(user)) if (x.id !== "logout" && x.id !== "theme") x.hidden = true;
     for (const s of user.list.querySelectorAll(".menu-sep")) s.hidden = true;
     const b = header.querySelector(".brand-link");
@@ -237,5 +302,5 @@ const SgNav = (() => {
   }
   /* the bar's height as --bar-h, so what gets focus is scrolled clear of it (scroll-padding in app.css, #202) */
   new ResizeObserver(() => document.documentElement.style.setProperty("--bar-h", header.offsetHeight + "px")).observe(header);
-  return {sync, lock, profiles, menu: menuWire};
+  return {sync, lock, profiles, layout, menu: menuWire, TABS: TABS.map(([t]) => t)};
 })();

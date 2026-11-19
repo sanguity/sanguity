@@ -24,7 +24,7 @@ const SgSources = (() => {
     {id: "history", title: "Import history", icon: "history", has: ["history"]},
   ];
   /* the old pages' addresses (import.html#manual, #link, #zip, #payment; settings.html#watch: moved.js) */
-  const ALIAS = {zip: "upload", folder: "upload", files: "upload", payment: "manual", watch: "phone"};
+  const ALIAS = {zip: "upload", folder: "upload", files: "upload", payment: "manual", "home-reading": "manual", watch: "phone"};   // Add → Home reading (#264)
   /* what's drawn after the page loads: an import in the history (a record's Source link, #100), a connection */
   const LATER = [[/^import-\d+$/, "history"], [/^conn-\d+$/, "portals"]];
   let ME = null, current = null;

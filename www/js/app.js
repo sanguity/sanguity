@@ -4,21 +4,13 @@
 /* ---------------------------------------------------------------- tabs & boot */
 /* "health" is Body and activity (watch, sleep and smart-scale data) and "labs" is Labs, the chart and heatmap of
    the lab results (#172): Trends and Lab heatmap were two tabs, and their old ids still open Labs (TAB_ALIAS, core.js) */
-const TABS = ["overview", "health", "timeline", "labs", "costs"];
-/* the profile's tab layout (#40, CFG.tabs): its order, and the hidden tabs, which leave the tab bar and the arrow
-   keys; asking for a hidden tab (a saved view, a link, a button elsewhere) opens the first shown one. The server
-   gives a layout saved with the old tabs in the new ones (server/settings.py, tab_layout) */
+const TABS = SgNav.TABS;   // the top bar's links to them (nav.js, #264)
+/* the profile's tab layout (#40, CFG.tabs): its order, and the hidden tabs, which leave the top bar (nav.js puts
+   them in it); asking for a hidden tab (a saved view, a link, a button elsewhere) opens the first shown one. The
+   server gives a layout saved with the old tabs in the new ones (server/settings.py, tab_layout) */
 let TAB_ORDER = [...TABS], TAB_HIDDEN = new Set();
 const shownTabs = () => TAB_ORDER.filter(t => !TAB_HIDDEN.has(t));
-function applyTabs(cfg) {
-  const order = (Array.isArray(cfg && cfg.order) ? cfg.order : []).filter(t => TABS.includes(t));
-  TAB_ORDER = [...new Set([...order, ...TABS])];
-  TAB_HIDDEN = new Set((Array.isArray(cfg && cfg.hidden) ? cfg.hidden : []).filter(t => TABS.includes(t)));
-  if (!shownTabs().length) TAB_HIDDEN.clear();
-  const bar = $(".tabs");
-  bar.append(...TAB_ORDER.map(t => $("#tab-" + t)));
-  for (const t of TABS) $("#tab-" + t).hidden = TAB_HIDDEN.has(t);
-}
+function applyTabs(cfg) { ({order: TAB_ORDER, hidden: TAB_HIDDEN} = SgNav.layout(cfg)); }
 /* the tab in the address (#208): index.html#overview, #health, #timeline, #labs (Labs as charts), #labs-heatmap (Labs
    as the heatmap) or #costs; the old #trends and #heatmap still open Labs as charts or the heatmap. An address with
    no # opens the tab last used (save(), core.js). tabOfHash: the address's [tab, Labs view], or null */
@@ -44,9 +36,10 @@ function switchTab(t, view, push) {
   const changed = t !== state.tab;
   if (changed && drawer.classList.contains("open")) closeDrawer();   // details belong to the tab they were opened from
   hideTip(); state.tab = t;
-  { const b = $("#tab-" + t), bar = b.parentElement; if (bar.scrollWidth > bar.clientWidth) bar.scrollTo({left: bar.scrollLeft + b.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - b.offsetWidth) / 2, behavior: smoothly()}); }
-  for (const k of TABS) { $("#tab-" + k).setAttribute("aria-selected", t === k); $("#view-" + k).hidden = t !== k; }
-  { const b = $("#tab-" + t); $("#tabTitle").textContent = b.textContent; viewTitle([b.textContent, PROFILE && PROFILE.name].filter(Boolean).join(" · "), changed && booted && !b.parentElement.contains(document.activeElement) && b.textContent); }   // "Labs · Ben · Sanguity"; said when opened from elsewhere (#209)
+  for (const k of TABS) { $("#tab-" + k).setAttribute("aria-current", t === k ? "page" : "false"); $("#view-" + k).hidden = t !== k; }   // the top bar's link (nav.js, #264)
+  // on a phone the tabs are a row that scrolls sideways: the one shown in the middle of it
+  { const b = $("#tab-" + t), bar = $(".tabs"); if (b.parentElement === bar && bar.scrollWidth > bar.clientWidth) bar.scrollTo({left: bar.scrollLeft + b.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - b.offsetWidth) / 2, behavior: smoothly()}); }
+  { const b = $("#tab-" + t); $("#tabTitle").textContent = b.textContent; viewTitle([b.textContent, PROFILE && PROFILE.name].filter(Boolean).join(" · "), changed && booted && !$(".tabs").contains(document.activeElement) && b.textContent); }   // "Labs · Ben · Sanguity"; said when opened from elsewhere (#209)
   // the records bar: its period on every tab with time (#171); the search and the categories on Timeline only (Labs
   // filters its lab names in the list's own header, #192: trends.js)
   $(".filters").style.display = t === "overview" ? "none" : "";
@@ -57,17 +50,33 @@ function switchTab(t, view, push) {
   if (changed) window.scrollTo({top: 0, left: 0, behavior: "instant"});   // each tab starts at the top
   tabAddress(push && changed);   // #208
 }
-for (const k of TABS) $("#tab-" + k).onclick = () => pickTab(k);
-$(".tabs").addEventListener("keydown", ev => {   // left and right (Home, End) move between the shown tabs
-  const shown = shownTabs(), i = shown.indexOf(ev.target.id.replace(/^tab-/, ""));
-  if (i < 0) return;
-  const next = {ArrowRight: shown[(i + 1) % shown.length], ArrowLeft: shown[(i + shown.length - 1) % shown.length], Home: shown[0], End: shown.at(-1)}[ev.key];
-  if (!next) return;
-  ev.preventDefault(); pickTab(next); $("#tab-" + next).focus();
+/* the tabs are links (#264): Tab reaches each, Enter or a click opens it here, Labs as it was last shown; one opened in
+   a new window (Ctrl, ⌘ or Shift) is the browser's. Where the browser has them, and less motion isn't asked for, the
+   page changes as a View Transition */
+for (const k of TABS) $("#tab-" + k).addEventListener("click", ev => {
+  if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button) return;
+  ev.preventDefault();
+  if (k === state.tab || !document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) pickTab(k);
+  else document.startViewTransition(() => pickTab(k));
 });
 let booted = false;
 // Back, Forward, a link or a typed address: the tab it names (an old alias's # becomes its tab's own)
-addEventListener("hashchange", () => { const t = tabOfHash(); if (t && booted) { if (t[1]) state.labsView = t[1]; switchTab(t[0]); } });
+addEventListener("hashchange", () => {
+  if (!booted) return;
+  if (location.hash === "#log-dose") return logDose();
+  const t = tabOfHash();
+  if (t) { if (t[1]) state.labsView = t[1]; switchTab(t[0]); }
+});
+/* Add → Log a dose (#264): the Overview's "Today's medication doses" (medlog.js), its first button focused; with no
+   current medication to log, a toast says so */
+function logDose() {
+  try { history.replaceState(history.state, "", location.pathname + location.search + "#overview"); } catch (e) {}
+  switchTab("overview");
+  const card = $("#ovDoses");
+  if (!card) { toast("There's no current medication to log a dose for."); return; }
+  card.scrollIntoView({block: "start"});
+  (card.querySelector(".dose-quick button") || card.querySelector("button")).focus({preventScroll: true});
+}
 $("#optMarks").onchange = e => { state.marks = e.target.checked; renderCharts(); save(); };
 $("#optSmooth").onchange = e => { state.smooth = e.target.checked; renderCharts(); save(); };
 function renderAll() {
@@ -137,7 +146,6 @@ async function syncWarning(pid) {
     renderProfileMenu();
     syncWarning(PROFILE.id);
     testPagesLoad();   // "What is this test?" links (test-pages.js, #163), alongside the records
-    $("#settingsLink").href = `settings.html?profile=${PROFILE.id}`;
     const r = await api(`profiles/${PROFILE.id}/data`);
     if (r.status === 401) { location.replace("login.html"); return; }
     if (r.status >= 500) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || r.status + " " + r.statusText); }
@@ -184,4 +192,5 @@ async function syncWarning(pid) {
   booted = true;
   try { performance.mark("sanguity:ready"); } catch (e) {}   // the records page is ready: what docs/performance.md times (#201)
   journalResume();  // Add → Journal entry from another page (journal.js)
+  if (location.hash === "#log-dose") logDose();   // arriving from Add on another page (nav.js)
 })();
