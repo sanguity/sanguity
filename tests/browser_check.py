@@ -6670,10 +6670,20 @@ def main():
             tabs425 = "[...document.querySelectorAll('header .tabs > a[id^=tab-], #tabMoreList > a[id^=tab-]')].filter(a => !a.hidden).map(a => a.id.slice(4)).join(',')"
             put425 = "v => api('profiles/2/settings/tabs', {method: v ? 'PUT' : 'DELETE', ...(v ? {body: JSON.stringify({value: v})} : {})}).then(r => r.status)"
             js(f"({put425})({{order: ['costs', 'overview', 'health', 'timeline', 'labs'], hidden: ['health']}})")
+            # (#430: and the account's theme, dark here, with no theme of this browser's own; put back below)
+            was430 = js("""api('settings/user').then(r => r.json()).then(j => [j.theme, localStorage.getItem('ht-theme'), localStorage.getItem('ht-theme-default')])""")
+            js("""api('settings/user/theme', {method: 'PUT', body: JSON.stringify({value: 'dark'})})
+                .then(() => { localStorage.removeItem('ht-theme'); localStorage.removeItem('ht-theme-default'); })""")
             pick_profile(page, label="Second person (owner)")
             page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
             check("an empty profile's tab layout is applied on the records page, Costs first and Body and activity hidden, as the other pages show it (#425)",
                   js(tabs425) == "costs,overview,timeline,labs", js(tabs425))
+            check("…and the account's theme, dark, as a profile with records shows it (#430)",
+                  js("[document.documentElement.dataset.theme, localStorage.getItem('ht-theme-default')]") == ["dark", "dark"],
+                  js("[document.documentElement.dataset.theme, localStorage.getItem('ht-theme-default')]"))
+            js("""([t, own, def]) => api('settings/user/theme', {method: 'PUT', body: JSON.stringify({value: t})}).then(() => {
+                own == null ? localStorage.removeItem('ht-theme') : localStorage.setItem('ht-theme', own);
+                def == null ? localStorage.removeItem('ht-theme-default') : localStorage.setItem('ht-theme-default', def); applyTheme(); })""", was430)
             js(f"({put425})(null)")
             check("the period is kept per profile (not carried to another)", js("state.preset") == "2y", js("state.preset"))
             check("empty profile explains itself", "no records yet" in page.inner_text("main"))
@@ -10157,6 +10167,33 @@ def main():
             page.keyboard.press("Escape")
             check("…“account” and Enter on Settings opens Account at once, the records still on their way; a choice made with the arrows stays as they arrive (#423)",
                   t423 < 1.5 and arrow423[0] and arrow423[0] == arrow423[1] and arrow423[0][1] != "Creatinine", [t423, arrow423])
+            # (#430) Enter while the records are on their way, then an arrow: the wait is taken back, so nothing opens as
+            # they arrive; the option arrowed to opens on an Enter of its own
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sections > section", state="attached", timeout=10000)
+            js(f"({slow423})(2500)")
+            pal("he")
+            page.keyboard.press("Enter")
+            page.keyboard.press("ArrowDown")
+            arrow430 = [js(marked)]
+            page.wait_for_function(f"({has_opt})('Hemoglobin')", timeout=20000)
+            settle(500)
+            arrow430 += [js("document.querySelector('dialog.palette').open"), js("location.pathname"), js(marked)]
+            page.keyboard.press("Enter")
+            opened430 = False
+            for _ in range(30):   # (it may open another page)
+                try:
+                    if not js("!!document.querySelector('dialog.palette')?.open"):
+                        opened430 = True
+                        break
+                except Exception:
+                    pass
+                page.wait_for_timeout(100)
+            arrow430.append(opened430)
+            check("…Enter then ↓ while the records are on their way opens nothing as they arrive, the arrowed choice still marked; a second Enter opens it (#430)",
+                  arrow430[0] and arrow430[1:4] == [True, "/settings.html", arrow430[0]] and arrow430[4] is True, arrow430)
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             pal("new share")   # (“share” alone: Share links first, its title starting with it, #403)
             page.wait_for_function(f"({has_opt})('New share link')", timeout=10000)
             share = js(pal_found)
@@ -13470,7 +13507,19 @@ def main():
             ph.click("#offlineBanner a")
             until(LOADED, 20000)
             check("…and the banner's link opens the records kept on this device", "Offline · read-only" in ph.inner_text("#offlineBanner"))
+            # (#430) a journal entry being written as the connection comes back: the page waits for it (#424), and the
+            # banner says it's back online, its Save reaching the server, and the latest records loaded once it's closed
+            ph.evaluate("journalNew()")
+            until("!!document.querySelector('#drawer[open] form')", 5000)
             ctx.set_offline(False)
+            try:
+                until("(document.getElementById('offlineBanner')?.textContent || '').startsWith('Back online.')", 8000)
+            except TimeoutError:
+                pass
+            form430 = ph.evaluate("[document.getElementById('offlineBanner')?.textContent, OFFLINE.on, !!document.querySelector('#drawer[open] form')]")
+            check("…online again with a journal entry open (#430): the banner says it's back online, and that the latest records come once it's closed",
+                  form430 == ["Back online. What you save now goes to the server; the page loads the latest records once you've closed what's open.", False, True], form430)
+            ph.evaluate("closeDrawer()")
             # online again: the records page goes back to live data by itself (#424: it stayed "Offline · read-only" until
             # a reload; here Chromium doesn't always say it's online, so it's the server answering again that's noticed),
             # and the links are followed, with their own tips and names

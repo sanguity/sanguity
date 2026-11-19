@@ -26,7 +26,8 @@
 
    It's a combobox and a listbox (WAI-ARIA's pattern): focus stays in the box while the up and down arrows move through
    what's found (aria-activedescendant; the first is marked from the start, so Enter opens the best match, waiting for
-   the records if they're still on their way and could outrank it, #412, #423; one picked with the arrows stays picked
+   the records if they're still on their way and could outrank it, #412, #423, unless an arrow key is pressed while it
+   waits, #430; one picked with the arrows stays picked
    as the list is drawn again), Enter or a click opens it, Escape or Close closes the palette, and focus goes back to what had it (opened from a menu, to the
    menu's button). How many it found is said once typing stops. "/" can be turned off by the switch at its foot (a
    key on its own, WCAG 2.1.4), for this browser.
@@ -278,8 +279,9 @@ const SgPalette = (() => {
   input.addEventListener("input", () => { later = moved = false; draw(); });
   input.addEventListener("keydown", ev => {
     const n = shown.length;
-    if ((ev.key === "ArrowDown" || ev.key === "ArrowUp") && n) { ev.preventDefault(); moved = true; mark((active + (ev.key === "ArrowDown" ? 1 : n - 1)) % n); }
-    else if ((ev.key === "PageDown" || ev.key === "PageUp") && n) { ev.preventDefault(); moved = true; mark(Math.max(0, Math.min(n - 1, active + (ev.key === "PageDown" ? 5 : -5)))); }
+    // an arrow after Enter, while it waits for the records, takes it back: the one arrowed to opens on its own Enter (#430)
+    if ((ev.key === "ArrowDown" || ev.key === "ArrowUp") && n) { ev.preventDefault(); moved = true; later = false; mark((active + (ev.key === "ArrowDown" ? 1 : n - 1)) % n); }
+    else if ((ev.key === "PageDown" || ev.key === "PageUp") && n) { ev.preventDefault(); moved = true; later = false; mark(Math.max(0, Math.min(n - 1, active + (ev.key === "PageDown" ? 5 : -5)))); }
     else if (ev.key === "Enter") { ev.preventDefault(); enter(); }
   });
   /* opened from a menu (Add open, then "/" or Ctrl+K), what had focus is an item in a list now closed: focus goes back
