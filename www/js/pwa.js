@@ -113,18 +113,40 @@ const SgLogout = (() => {
     try { localStorage.removeItem(KEY); } catch (e) {}
     return true;
   }
-  return {due, later, finish, KEY};
+  /* (#432) Log out, online or not, asks the other open tabs first (util.js logOut): elsewhere() resolves to the names
+     of the pages whose own "Leave site?" guards hold something not saved, as they answer within ms; once it's going
+     ahead, tell() sends them all to the sign-in page (signedOutElsewhere below) */
+  const ch = "BroadcastChannel" in window ? new BroadcastChannel("sg-logout") : null;
+  function elsewhere(ms = 150) {
+    if (!ch) return Promise.resolve([]);
+    const id = Math.random().toString(36).slice(2), names = [];
+    const heard = ({data}) => { if (data && data.answer === id) names.push(data.name); };
+    ch.addEventListener("message", heard);
+    ch.postMessage({ask: id});
+    return new Promise(r => setTimeout(() => { ch.removeEventListener("message", heard); r(names); }, ms));
+  }
+  const tell = () => { try { ch && ch.postMessage({out: true}); } catch (e) {} };
+  return {due, later, finish, KEY, elsewhere, tell, ch};
 })();
 /* and in every tab: one opened meanwhile, and one already open (#429: Log out in another tab, which says so here with
-   a storage event; or this one shown again, asleep when it was said), goes there at once, so no tab keeps the sign-in
-   alive or shows what it had loaded. What it had typed goes, as the sign-out was asked for */
+   a storage event, and a message on the channel online or not, #432; or this one shown again, asleep when it was
+   said), goes there at once, so no tab keeps the sign-in alive or shows what it had loaded. What it had typed goes,
+   as the sign-out was asked for, after this tab was asked about it */
 (function signedOutElsewhere() {
   if (/\/(login|setup|share)\.html$/.test(location.pathname)) return;
-  const go = () => {
-    if (!SgLogout.due()) return;
+  const leave = () => {
     try { sgLeaving = true; } catch (e) {}   // (util.js's: the page's "Leave site?" guards stand aside)
     location.replace(new URL("login.html", SgOffline.base));
   };
+  const go = () => { if (SgLogout.due()) leave(); };
+  if (SgLogout.ch) SgLogout.ch.addEventListener("message", ({data}) => {
+    if (!data) return;
+    if (data.out) return leave();
+    if (!data.ask) return;
+    const e = new Event("beforeunload", {cancelable: true});   // (as logOut asks its own page)
+    dispatchEvent(e);
+    if (e.defaultPrevented) SgLogout.ch.postMessage({answer: data.ask, name: document.title.split(" · ")[0].split(": ")[0]});   // "Settings"
+  });
   go();
   addEventListener("storage", e => { if (e.key === SgLogout.KEY || e.key === null) go(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) go(); });
