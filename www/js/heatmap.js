@@ -16,17 +16,17 @@ function renderHeatmap() {
   const asTable = state.tables.has("#hm");   // Grid | Table (#60)
   const hd = $("#hmHd"); hd.querySelector(".view-seg")?.remove(); hd.append(viewSeg("#hm", "the heatmap", renderHeatmap, "Grid"));
   $("#hmLegend").hidden = $("#hmWrap").hidden = asTable; $("#hmTable").hidden = !asTable;
-  const all = SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null)), rows = all.filter(labMatch);   // the Labs filter (#192, trends.js)
-  labCount("#hmQn", rows.length, all.length);
-  const panelOrder = ["CBC WITH DIFFERENTIAL", "COMPREHENSIVE METABOLIC PANEL"];
-  const prank = p => { const i = panelOrder.indexOf(p); return i < 0 ? 9 : i; };
-  rows.sort((a, b) => prank(a.panel) - prank(b.panel) || a.panel.localeCompare(b.panel) || b.n - a.n);
+  const all = SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null)), shown = all.filter(labMatch);   // the Labs filter (#192, trends.js)
+  labCount("#hmQn", shown.length, all.length);
+  // by panel as in the list (#279, labGroups in util.js): the most measured first, Other last. grp: a lab's panel
+  const of = new Map(shown.map(s => [s.name, s])), grp = new Map(), rows = [];
+  for (const {panel, names} of labGroups(byFrequency(shown))) for (const n of names) { grp.set(n, panel); rows.push(of.get(n)); }
   // columns: draw days in range
   const dayKey = ts => isoDay(ts);
   const days = new Map();
   for (const s of rows) for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) { const k = dayKey(p.ts); if (!days.has(k)) days.set(k, dayTs(k)); }
   const cols = [...days.entries()].sort((a, b) => a[1] - b[1]);
-  if (asTable) { hmTable(rows, cols); return; }
+  if (asTable) { hmTable(rows, cols, grp); return; }
   const svg = $("#hm"), axis = $("#hmAxis");
   const avail = Math.max(320, svg.parentElement.clientWidth);
   const LW = avail < 600 ? 120 : 190, top = 34, rowH = 14, gap = 2;
@@ -44,7 +44,7 @@ function renderHeatmap() {
   const groups = []; let gy = top;
   const yOf = new Map();
   let lastPanel = null;
-  for (const s of rows) { const p = s.panel || "Other"; if (p !== lastPanel) { groups.push([p, gy]); gy += 16; lastPanel = p; } yOf.set(s.name, gy); gy += rowH; }
+  for (const s of rows) { const p = grp.get(s.name); if (p !== lastPanel) { groups.push([p, gy]); gy += 16; lastPanel = p; } yOf.set(s.name, gy); gy += rowH; }
   const W = LW + cols.length * cw + 8, H = gy + 4, AH = 22;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W); svg.setAttribute("height", H);
   svg._geom = {L: LW, R: LW + cols.length * cw, w: W};
@@ -126,14 +126,14 @@ function rowRanges(s) {
    (the name in the records, the reference range) is in the row's heading for screen readers too, and the description
    of its ✎ and ? (#358); a result's own range is said in its cell only where the row's ranges differ */
 let hmAbout = 0;
-function hmTable(rows, cols) {
+function hmTable(rows, cols, grp) {
   const box = $("#hmTable");
   if (!rows.length || !cols.length) { box.replaceChildren(el("p", {class: "hint", text: "No lab draws in this date range."})); return; }
   const bodies = [];
   let panel = null, tb = null;
   for (const s of rows) {
-    if ((s.panel || "Other") !== panel) {
-      panel = s.panel || "Other"; tb = el("tbody", {}); bodies.push(tb);
+    if (grp.get(s.name) !== panel) {
+      panel = grp.get(s.name); tb = el("tbody", {}); bodies.push(tb);
       tb.append(el("tr", {class: "grp"}, el("th", {scope: "rowgroup", colspan: cols.length + 1, text: panel})));
     }
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(isoDay(p.ts), p);

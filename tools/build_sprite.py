@@ -28,6 +28,7 @@ ICONS = [
     "check",                 # done, in range, good, the default, a step of the guide done
     "triangle-alert",        # a warning: backups late, a source needing attention
     "circle-question-mark",  # "What is this test?" where space is short (#163)
+    "info",                  # ⓘ: more about what's shown, a click away (the Labs charts' header, #279)
     "external-link",         # a link that opens another site
     "arrow-right",           # go on to a page or tab ("Open Costs")
     "arrow-up", "arrow-down",  # move up or down a list; a table's sort order

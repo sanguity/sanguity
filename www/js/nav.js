@@ -19,7 +19,9 @@
    in. This keeps the rest: the button's aria-expanded; Enter, Space or the down arrow on the button opens it on its
    first item; the arrow keys, Home and End move through it; Tab leaves it, closed; and when it closes with focus
    inside it (Escape, an item picked), focus goes back to the button, unless the item sent it somewhere else.
-   m is {btn, list, wrap?, onOpen?}; menuWire(m) gives it open() and close(), and returns it (SgNav.menu). */
+   m is {btn, list, wrap?, onOpen?, text?}; menuWire(m) gives it open() and close(), and returns it (SgNav.menu). With
+   text, the list is words rather than items (Labs' Legend and ⓘ, #279): the button opens and closes it as any button
+   does, and focus stays on it. */
 function menuWire(m) {
   const {btn, list} = m, its = () => [...list.querySelectorAll("[role^=menuitem]")].filter(x => !x.hidden);
   list.removeAttribute("hidden");
@@ -46,6 +48,7 @@ function menuWire(m) {
   });
   list.addEventListener("toggle", ev => { if (ev.newState === "open") m.onOpen?.(); });
   btn.addEventListener("keydown", ev => {
+    if (m.text) return;   // words, not items (Labs' Legend and ⓘ, #279): Enter and Space are the button's own, opening and closing it
     if (ev.key !== "ArrowDown" && ev.key !== "Enter" && ev.key !== " ") return;
     ev.preventDefault();
     m.open();

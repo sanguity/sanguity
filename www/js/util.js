@@ -75,6 +75,26 @@ function keyLabTiles(chosen, series, isDefault) {
   return out;
 }
 
+/* Labs grouped by panel (#279), the one grouping wherever labs are listed: the Labs list and heatmap, the Overview's
+   key-lab tiles and Settings' key-lab list, so a lab is under the same panel everywhere. labGroups(names, series) ->
+   [{panel, names}]: the names in the order given, under the panel they came in; the panels in the order of their first
+   name, then "Other": the labs with no panel, or alone in theirs here (a test drawn on its own, like Magnesium, whose
+   "panel" is the test). series: the profile's labs, [{name, panel, watch}]; the records page's SERIES, else Settings'
+   LABS. A name's panel is the first one it came with, as joinSeries (same.js) keeps it. */
+const LAB_OTHER = "Other";
+function labGroups(names, series = typeof SERIES !== "undefined" ? SERIES : typeof LABS !== "undefined" ? LABS : []) {
+  const panelOf = new Map(), size = new Map(), by = new Map();
+  for (const s of series) if (s && !s.watch && !panelOf.has(s.name)) panelOf.set(s.name, s.panel || "");
+  for (const p of panelOf.values()) size.set(p, (size.get(p) || 0) + 1);
+  for (const n of names) {
+    const p = panelOf.get(n), g = p && size.get(p) > 1 ? p : LAB_OTHER;
+    if (!by.has(g)) by.set(g, []);
+    by.get(g).push(n);
+  }
+  const other = by.get(LAB_OTHER); by.delete(LAB_OTHER);
+  return [...by].map(([panel, names]) => ({panel, names})).concat(other ? [{panel: LAB_OTHER, names: other}] : []);
+}
+
 /* A warning when this page came over plain HTTP from somewhere other than this machine, the home network or a
    tailnet (where WireGuard already encrypts): passwords and records would cross the internet readable (ASVS 9.1.1). */
 function plainHttpWarning() {

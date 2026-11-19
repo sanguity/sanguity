@@ -212,6 +212,7 @@ function renderLabs() {
   $("#labsNone")?.remove();
   $(".labs-head").hidden = none;
   $("#labsChart").hidden = hm || none; $("#labsHeatmap").hidden = !hm || none;
+  for (const x of document.querySelectorAll("#view-labs .chart-only")) x.hidden = hm;   // the header's overlays, Legend and ⓘ (#279)
   if (none) {
     const e = emptyState("Lab results appear here, each charted over time against its reference range.",
       canEdit() ? {href: `sources.html?profile=${PROFILE.id}#manual`, text: "Add lab results"} : null);
