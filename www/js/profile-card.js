@@ -11,9 +11,10 @@ function drawProfile(p) {
   sayIn(msg, "");
   card.hidden = p.role !== "owner";
   if (card.hidden) { $("#profileBody").replaceChildren(); return; }
-  const name = el("input", {value: p.name, maxlength: 80, "aria-label": "Profile name", id: "profileName"});   // ids: focus back after a rename (#409)
+  const name = el("input", {value: p.name, maxlength: 80, id: "profileName"});   // ids: focus back after a rename (#409)
   $("#profileBody").replaceChildren(
-    el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
+    // its label shown (#419): the card's own "Name" is said only, under the group's title, while it's alone there
+    el("form", {class: "form inline", onsubmit: async ev => { ev.preventDefault();
       const was = p.name, to = name.value.trim();
       if (to === was) return;
       const had = document.activeElement?.id;
@@ -26,7 +27,7 @@ function drawProfile(p) {
         const text = back ? `Undone: the profile is “${was}” again.` : "The profile was renamed since, so its name is left as it is.";
         if (await profileNamed(p.id)) sayIn($("#profileMsg"), text); else toast(text);   // another profile shown now (#367)
       }}); }},
-      name, el("button", {class: "btn", type: "submit", id: "profileRename", text: "Rename"})),
+      el("label", {}, "Profile name", name), el("button", {class: "btn", type: "submit", id: "profileRename", text: "Rename"})),
     profileDelete(p, fail));
 }
 /* the names as they are now: in the top bar's profile menu, and in this card while it's pid's. -> whether it is */

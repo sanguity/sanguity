@@ -200,8 +200,9 @@ async function ticked() {
   let st;
   try { st = await tickedSetting(pid); } catch (e) { return; }
   if (PID !== pid || !st || !st.can_change) return;
+  // ids: focus goes back to the box an Undo drew again, from its toast (util.js, #419)
   $("#sumTickedBoxes").replaceChildren(...Object.entries(st.choices || {}).map(([id, label]) => el("label", {class: "check"},
-    el("input", {type: "checkbox", value: id, checked: st.value.includes(id) || null, onchange: ev => tickSave(st, ev.target)}), " " + label)));
+    el("input", {type: "checkbox", id: "sumTick-" + id, value: id, checked: st.value.includes(id) || null, onchange: ev => tickSave(st, ev.target)}), " " + label)));
   part.hidden = false;
 }
 async function tickSave(st, input) {

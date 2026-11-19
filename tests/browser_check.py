@@ -8300,8 +8300,11 @@ def main():
                   [cfg["overview"], cfg["summary"], hidden_ticks, ticks_at])
             page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
             page.wait_for_function("document.getElementById('sumTickedMsg').textContent.startsWith('Undone')", timeout=10000)
+            settle(300)   # (the toast gone, focus put back)
             undone_ticks = js(api_get, "profiles/1/settings")["summary"]["ticked"]
-            check("…a tick there has an Undo (#272)", undone_ticks == ["home_bp"] and js("document.querySelector('#sumTickedBoxes input[value=home_bp]').checked"), undone_ticks)
+            check("…a tick there has an Undo (#272), focus back on the tick it undid, drawn again (#419)", undone_ticks == ["home_bp"]
+                  and js("document.querySelector('#sumTickedBoxes input[value=home_bp]').checked") and js("document.activeElement.id") == "sumTick-home_bp",
+                  [undone_ticks, js("document.activeElement.id")])
             js("fetch('api/profiles/1/settings/summary.ticked', {method: 'DELETE', headers: {'X-Sanguity': '1'}}).then(r => r.status)")   # as it was
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             presets_open()   # back on Settings for the checks below
@@ -8366,6 +8369,33 @@ def main():
                   and un_held == [[True, 1, True, True, True], "1 change", "Not saved: A fictional refusal.", un_was["weight"]]
                   and un_kept == [un_w, [False, 0, False, False, False]], [un_way, un_there, un_held, un_kept])
             check("…(the units put back as they were)", js(api_put, ["settings/user/units", un_was]) == 200)
+            # #419: Units is one setting for its four kinds, so a second unit picked waits for the first's answer; the page
+            # left at once still sends it (keepalive, settings.js saveLeft). The server answers a save 1.5 s late, once it's
+            # made (its answer, settings.merged, held: the request still on its way as the page is left, as on a slow
+            # network): lb then ft/in then away to another page, and the server has both
+            page.reload()
+            page.wait_for_selector("#sec-units input[name=units-height][value=ftin]", timeout=10000)
+            lv_to = {"weight": "lb" if un_was["weight"] != "lb" else "kg", "height": "ftin" if un_was["height"] != "ftin" else "cm"}
+            from server import settings as lv_settings
+            lv_merged = lv_settings.merged
+            lv_settings.merged = lambda *a, **k: (time.sleep(1.5), lv_merged(*a, **k))[1]
+            try:
+                page.click(f"#sec-units label:has(#units-weight-{lv_to['weight']})")
+                page.click(f"#sec-units label:has(#units-height-{lv_to['height']})")
+                lv_way = js(un_state)
+                page.goto("about:blank")
+            finally:
+                lv_settings.merged = lv_merged
+            page.goto(base + "/settings.html?profile=1#display")
+            page.wait_for_selector("#sec-units input[name=units-height][value=ftin]", timeout=10000)
+            for _ in range(20):   # (sent as the page was left: read until it's there, or 5 s)
+                lv_got = un_units()
+                if [lv_got["weight"], lv_got["height"]] == [lv_to["weight"], lv_to["height"]]:
+                    break
+                settle(250)
+            check("…two units picked in a row (lb, then ft/in), the page left at once: nothing asked, and both saved on the server (#419)",
+                  lv_way == [False, 0, False, False, False] and {k: lv_got[k] for k in lv_to} == lv_to, [lv_way, lv_got, lv_to])
+            check("…(the units put back as they were, again)", js(api_put, ["settings/user/units", un_was]) == 200)
             # …and the bar's Discard, pressed for another change while a tick is on its way, leaves the tick as picked:
             # the page and the server agree once it's saved, the other change discarded
             page.goto(base + "/settings.html?profile=1#dashboard")
@@ -10414,10 +10444,23 @@ def main():
             zb.goto(base + "/settings.html?profile=1#profile")
             zb.wait_for_selector("#setNav a[aria-current=page]", timeout=10000)
             zb.wait_for_load_state("networkidle")
-            check("…and on Settings no Rename or delete, the profile's owners' (#402): its address shows the first group",
+            check("…and on Settings no Rename or delete, the profile's owners' (#402): its address shows the first group, saying why, the address "
+                  "naming the group shown (#419)",
                   zb.evaluate("[document.querySelector('#setNav a[data-group=profile]'), document.getElementById('profileCard').hidden, "
-                              "document.querySelector('#setNav a[aria-current=page]').dataset.group]") == [None, True, "dashboard"],
-                  zb.evaluate("[...document.querySelectorAll('#setNav a')].map(a => a.dataset.group)"))
+                              "document.querySelector('#setNav a[aria-current=page]').dataset.group, document.getElementById('loadMsg').textContent, location.hash]")
+                  == [None, True, "dashboard", "Only a profile's owners can rename or delete it.", "#dashboard"],
+                  zb.evaluate("[[...document.querySelectorAll('#setNav a')].map(a => a.dataset.group), document.getElementById('loadMsg').textContent, location.hash]"))
+            # #419: an editor following Sharing's old address for it is told why too; it's said until another group is shown
+            sdb.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=1", (uid2,))
+            zb.goto(base + "/sharing.html?profile=1#profile")
+            zb.wait_for_function("location.pathname.endsWith('/settings.html') && location.hash === '#dashboard' && !!document.getElementById('loadMsg').textContent", timeout=10000)
+            why_ed = [zb.evaluate("document.getElementById('loadMsg').textContent"), zb.evaluate("document.querySelector('#setNav a[aria-current=page]').dataset.group"),
+                      zb.evaluate("!!document.querySelector('#setNav a[data-group=profile]')")]
+            zb.click("#setNav a[data-group=display]")
+            why_ed.append(zb.evaluate("document.getElementById('loadMsg').textContent"))
+            check("…an editor following sharing.html#profile lands on Settings' first group, told only owners rename or delete a profile, said until "
+                  "another group is shown (#419)", why_ed == ["Only a profile's owners can rename or delete it.", "dashboard", False, ""], why_ed)
+            sdb.execute("UPDATE memberships SET role='viewer' WHERE user_id=? AND profile_id=1", (uid2,))
             zb.goto(base + "/sharing.html?profile=1#links")
             zb.wait_for_selector("#memberList tbody tr", timeout=10000)
             check("…an owner's group in the address shows People, saying share links are for owners",
@@ -12429,6 +12472,10 @@ def main():
                   new_at == ["/guide.html?new", "guide.html?new"] and js("document.querySelector('#setNav a[aria-current=page]').dataset.group") == "profile"
                   and js("document.getElementById('groupTitle').textContent") == "Rename or delete"
                   and js("document.querySelector('#profileBody input').value") == "Third person (fictional)", [new_at, third])
+            # #419: the card alone in its group, its h2 "Name" is said only: the field's own label is shown
+            name_label = js("""(() => { const i = document.getElementById('profileName'), l = i.labels[0], r = l && l.getBoundingClientRect();
+                return [l ? l.firstChild.textContent : null, !!r && r.height > 0 && r.width > 1 && !l.closest('.vh'), i.computedName ?? null, i.hasAttribute('aria-label')]; })()""")
+            check("…its name field has a label you can see, “Profile name” (#419)", name_label[:2] == ["Profile name", True] and not name_label[3], name_label)
             page.fill("#profileBody input", "Third person, renamed")
             page.click("#profileBody button:text-is('Rename')")
             page.wait_for_function("document.getElementById('profileMsg').textContent === 'Renamed to “Third person, renamed”.' && document.querySelector('#profile option:checked').textContent === 'Third person, renamed (owner)'", timeout=10000)

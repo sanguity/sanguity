@@ -35,12 +35,27 @@
     }
     return w === "profile" && main.dataset.role === "viewer" ? "view" : w === "you" && main.dataset.role === "" ? "own" : w;
   }
+  /* an address naming a group this person's role on the profile doesn't give them (settings.html#profile, or
+     sharing.html#profile moved here, for an editor or a viewer): once the role is known (data-role, settings.js), the
+     group's why is said under the title of the one shown instead, until another is, and the address names that one
+     (#419) */
+  const RANK = {viewer: 0, editor: 1, owner: 2}, said = document.getElementById("loadMsg");
+  let told = null;
+  function whyNot() {
+    const h = decodeURIComponent(location.hash.slice(1)), role = main.dataset.role, g = GROUPS.find(x => x.id === h || x.has.includes(h));
+    if (told || !role || !g?.why || RANK[role] >= RANK[g.needs]) return;
+    told = g.why;
+    sayIn(said, told);
+    if (nav.current()) history.replaceState(null, "", "#" + nav.current().id);
+  }
   const who = document.getElementById("introHint");
   const nav = sideNav({id: "setNav", page: "Settings", groups: GROUPS, find: "Find in Settings", none: q => `Nothing in Settings matches “${q}”.`,
     allowed: (g, parts) => parts.some(p => !p.hidden),   // the groups with something to show: a part that's there, not hidden by its own script
+    shown: () => { if (told && said.textContent === told) sayIn(said, ""); },   // (whyNot's, said for the group first shown)
     label: g => { const w = SAY[whoOf(g)]; return g.title + (w ? " · " + w[0] : ""); },
     intro: (g, q) => who.replaceChildren(...(q ? [`Matching “${q}”, from every group.`] : g && SAY[whoOf(g)] ? [el("strong", {text: SAY[whoOf(g)][0]}), SAY[whoOf(g)][1]] : [])),
     watch: [document.getElementById("sections")],   // the sections arrive later (the server's list), one by one
     bar: {save: saveParts, discard: discardParts, profile: () => PID}});   // the group's changes, one bar (#272, settings.js)
   nav.start();
+  new MutationObserver(whyNot).observe(main, {attributes: true, attributeFilter: ["data-role"]});
 })();

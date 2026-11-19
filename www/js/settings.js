@@ -9,8 +9,8 @@
 "use strict";   // $, el and api come from util.js
 let ME, PID = null, LAB_NAMES = [], LABS = [], NICK = {}, HAS_CLAIMS = false;
 
-async function call(path, method = "GET", body) {
-  const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body)});
+async function call(path, method = "GET", body, opts = {}) {   // opts: fetch's own (keepalive, #419)
+  const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body), ...opts});
   if (r.status === 401) { location.replace("login.html"); throw new Error("signed out"); }
   const j = r.status === 204 ? null : await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || (Array.isArray(j.detail) ? "Please check the fields." : r.status + " " + r.statusText));
@@ -581,18 +581,22 @@ function sectionCard(sec, opts = {}) {
    saying it with an Undo (as a save's). The theme shows at once, this browser's own choice (your menu's) giving way
    to it. On its way it isn't counted as a change not saved (#407). Not saved (the server said no): it stays changed,
    its line says why, and the bar offers to save it. Its section drawn again meanwhile (the bar's Discard of other
-   changes there): the setting drawn now is the one marked saved or refused. */
+   changes there): the setting drawn now is the one marked saved or refused. Each save goes with keepalive, and one
+   still waiting behind another's answer as the page is left is sent then (saveLeft, #419). */
 function saveNow(it, card) {
-  const pid = PID, base = setBase(), sec = card.sgSec;
+  const pid = PID, base = setBase(), sec = card.sgSec, path = `${base}/${encodeURIComponent(it.st.key)}`;
   let mine = null;   // this browser's own theme, put back by the Undo
   if (it.st.kind === "theme") { try { mine = localStorage.getItem("ht-theme"); localStorage.removeItem("ht-theme"); } catch (e) {} applyTheme(it.value()); }
+  it.path = path;
   it.queue = (it.queue || Promise.resolve()).then(async () => {
     if (!it.dirty() || PID !== pid) return;
     const value = it.value(), was = [{key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from, wrote: {value}}];
     let now = it;
     const live = () => { const x = SET_ITEMS[it.st.key]; now = x && x !== it && x.node.isConnected ? x : it; card = now.node.closest(".card") || card; };
-    try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value}); }
+    it.sending = value;
+    try { await call(path, "PUT", {value}, {keepalive: true}); }
     catch (e) { live(); sayIn(now.msg, `Not saved: ${e.message}`, true); now.refuse(); if (it.st.kind === "theme") applyTheme(it.st.value); return; }
+    finally { it.sending = undefined; }
     live(); now.saved(value); card.sgChanged(); card.sgTidy();
     if (it.st.kind === "timezone" || it.st.kind === "dateformat") useDates(SET_ITEMS["dates.timeZone"]?.st.value, SET_ITEMS["dates.format"]?.st.value);
     if (it.st.kind === "units") aboutUnits(value);   // About this person and Targets in them (about.js, #408)
@@ -606,6 +610,18 @@ function saveNow(it, card) {
     }});
   }).catch(() => {});
 }
+
+/* the page left while a simple preference waits behind the answer to its last save (#419: Units is one setting for
+   its four kinds, so lb then ft/in is two saves, the second sent once the first is answered): its latest value is
+   sent then, with keepalive, so it isn't lost. One the server refused (held) is a change not saved, asked about
+   before leaving (sidebar.js); one on its way already with this value isn't sent again. */
+function saveLeft() {
+  for (const it of Object.values(SET_ITEMS)) {
+    if (!it.instant || !it.path || it.held || !it.dirty() || (it.sending !== undefined && same(it.sending, it.value()))) continue;
+    api(it.path, {method: "PUT", body: JSON.stringify({value: it.value()}), keepalive: true}).catch(() => {});
+  }
+}
+addEventListener("pagehide", saveLeft);
 
 /* the bar's Save (sidebar.js): every change in these sections, in turn; the first the server refuses stops it, said
    there and in the bar (msg), the ones before it saved. Done: a toast says what, with an Undo, and focus, if it was
@@ -647,7 +663,7 @@ function discardSections(cards) {
   let first = null;
   for (const c of cards) {
     const fresh = sectionCard(c.sgSec, {note: first ? "" : "Changes discarded: back as saved."});
-    for (const it of c.sgItems) if (it.dirty() && !it.counts()) { const x = fresh.sgItems.find(y => y.st === it.st); if (x) { x.put(it.value(), false); x.queue = it.queue; } }
+    for (const it of c.sgItems) if (it.dirty() && !it.counts()) { const x = fresh.sgItems.find(y => y.st === it.st); if (x) { x.put(it.value(), false); x.queue = it.queue; x.path = it.path; } }
     c.replaceWith(fresh);
     first ||= fresh;
   }
