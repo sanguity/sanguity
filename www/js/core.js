@@ -159,8 +159,6 @@ function renderPeriod() {
   const p = state.preset, pm = primaryMs(), pk = pm ? msKey(pm) : null;   // the primary milestone has a button: "Since diagnosis"
   $("#presets").replaceChildren(...[...PRESETS, ...(pm ? [[pk, "Since " + lcLabel(pm.label)]] : [])].map(([k, l]) =>
     el("button", {type: "button", "aria-pressed": p === k, text: l, "data-tip": k === pk ? "Since " + fmtD(dayTs(pm.date)) : null, onclick: () => applyPreset(k)})));
-  { const pre = $("#presets"), b = pre.querySelector("[aria-pressed=true]");   // on a phone the buttons scroll: the chosen one in view
-    if (b && pre.scrollWidth > pre.clientWidth) pre.scrollLeft = b.offsetLeft - pre.offsetLeft - (pre.clientWidth - b.offsetWidth) / 2; }
   const item = (k, text, note) => el("button", {type: "button", class: "menu-item", role: "menuitemradio", tabindex: "-1", "aria-checked": p === k, "data-period": k},
     icon("check"), text, note ? el("span", {class: "menu-note", text: note}) : null);
   const group = (label, items) => items.length ? el("div", {role: "group", "aria-label": label}, el("div", {class: "menu-head", "aria-hidden": "true", text: label}), ...items) : null;
@@ -174,7 +172,16 @@ function renderPeriod() {
   moreBtn.setAttribute("aria-label", picked ? `Period: ${picked}. More periods` : "More periods");
   $("#periodWords").textContent = periodWords();
   $("#periodWords").hidden = p === "custom";   // the date boxes say it
-  $("#dates").hidden = p !== "custom";
+  $("#dates").hidden = p !== "custom" && !PHONE.matches;   // in the phone's sheet they're always there
+  $("#datesClear").hidden = p !== "custom";
+  // on a phone (#269): the pill names the period, and its sheet lists every one
+  const pm2 = msOf(p);
+  pill.replaceChildren(el("span", {class: "vh", text: "Period: "}), pm2 ? "Since " + lcLabel(pm2.label) : periodWords(),
+    el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
+  pillList.replaceChildren(...present(
+    ...PRESETS.map(([k]) => item(k, k === "all" ? "Everything on file" : PRESET_TEXT[k].replace(/^the l/, "L"))),
+    group("Since a milestone", MILESTONES.map(m => item(msKey(m), "Since " + lcLabel(m.label), fmtD(dayTs(m.date))))),
+    group("Calendar year", periodYears().map(y => item(y, y)))));
   $("#from").value = isoDay(state.from); $("#to").value = isoDay(state.to);
   const lp = lastPeriod, lm = msOf(lp);
   $("#datesClear").dataset.tip = "Back to " + (lp === "all" ? "everything on file" : lm ? "since " + lcLabel(lm.label) : PRESET_TEXT[lp] || lp);
@@ -188,7 +195,33 @@ moreList.addEventListener("click", ev => {
   if (b.dataset.period !== "custom") { applyPreset(b.dataset.period); moreBtn.focus(); return; }
   state.preset = "custom"; renderAll(); $("#from").focus();   // the period's dates, to change
 });
-$("#datesClear").onclick = () => { applyPreset(lastPeriod); ($("#presets [aria-pressed=true]") || moreBtn).focus(); };
+$("#datesClear").onclick = () => {
+  applyPreset(lastPeriod);
+  (PHONE.matches ? pillList.querySelector("[aria-checked=true]") || pill : $("#presets [aria-pressed=true]") || moreBtn).focus();
+};
+/* ---- on a phone (#269, nav.js's sheets): the period is one pill, "Last 2 years ▾", whose sheet lists every period
+   (the presets, each milestone, the calendar years: a menu, picked by touch or keyboard as More… is) with the date boxes
+   for custom dates under it, moved there from the bar; and on the Timeline, Filters opens a sheet of its own: the search
+   (moved there too), each kind with records as a checkbox (its icon, name and count, renderKinds) and Reset. */
+const pill = $("#periodPill"), pillList = $("#periodPillList");
+const datesBox = el("section", {class: "sheet-dates", "aria-labelledby": "datesHd"}, el("h3", {id: "datesHd", text: "Custom dates"}));
+menuSheet(SgNav.menu({btn: pill, list: pillList}), "Period", datesBox);
+pillList.addEventListener("click", ev => { const b = ev.target.closest("[data-period]"); if (b) applyPreset(b.dataset.period); });   // the sheet closes (nav.js)
+const kindChecks = el("div", {class: "kind-checks", role: "group", "aria-labelledby": "kindChecksHd"});
+const qSlot = el("div", {class: "sheet-q"});
+const fSheet = phoneSheet("Filters", el("div", {class: "sheet-body"}, qSlot, el("h3", {id: "kindChecksHd", text: "Kinds of records"}), kindChecks),
+  el("div", {class: "sheet-foot"}, el("button", {class: "btn", type: "button", text: "Reset filters", onclick() { resetTimelineFilters(); announce("Filters reset."); }}),
+    el("button", {class: "btn primary", type: "button", text: "Done", onclick: () => fSheet.close()})));
+$("#ftoggle").onclick = () => { openDialog(fSheet, {as: "sheet"}); $("#ftoggle").setAttribute("aria-expanded", "true"); };
+fSheet.addEventListener("close", () => $("#ftoggle").setAttribute("aria-expanded", "false"));
+/* the date boxes and the search: in the sheets on a phone, in the records bar wider */
+function barOrSheet() {
+  if (PHONE.matches) { datesBox.append($("#dates")); qSlot.append($("#q")); }
+  else { $("#periodWords").after($("#dates")); $("#chips").after($("#q")); fSheet.close(); }
+  if (typeof booted !== "undefined" && booted) renderPeriod();
+}
+PHONE.addEventListener("change", barOrSheet);
+barOrSheet();
 function renderFilters() {
   renderPeriod();
   renderKinds();
@@ -211,6 +244,7 @@ function renderKinds() {
   const counts = {}; EV.forEach(e => { const c = CAT_OF[e.k]; if (c && inRange(e)) counts[c.k] = (counts[c.k] || 0) + 1; });
   const kinds = CATS.filter(hasLane), hidden = kinds.some(c => !state.cats.has(c.k));
   const item = (k, text, run) => el("button", {type: "button", class: "menu-item", role: "menuitem", tabindex: "-1", "data-k": k, text, onclick: run});
+  const checks = [], had = kindChecks.contains(document.activeElement) && document.activeElement.dataset.k;
   box.replaceChildren(...kinds.map(c => {
     const on = state.cats.has(c.k), n = counts[c.k] || 0, id = "kindMenu-" + c.k;
     const chip = el("button", {type: "button", class: "toggle", "data-k": c.k, "aria-pressed": on, "aria-label": `${c.label}, ${n}, ${on ? "shown" : "hidden"}`,
@@ -222,9 +256,14 @@ function renderKinds() {
     const list = el("div", {class: "menu-list", id, role: "menu", "aria-label": c.label}, ...items);
     const m = SgNav.menu({btn, list});   // nav.js: a popover, kept on the screen by app.css
     chip.oncontextmenu = ev => { ev.preventDefault(); m.open(); items[0].focus(); };
-    for (const x of [chip, btn]) x.style.setProperty("--tone", c.color);
+    const check = el("label", {class: "kind-check"}, el("input", {type: "checkbox", "data-k": c.k, checked: on,
+      onchange: () => { on ? state.cats.delete(c.k) : state.cats.add(c.k); renderAll(); }}), kindIcon(c.k, "key"), c.label, el("span", {class: "n", text: n}));
+    checks.push(check);   // the phone's Filters sheet (#269)
+    for (const x of [chip, btn, check]) x.style.setProperty("--tone", c.color);
     return el("span", {class: "kind"}, chip, btn, list);
   }));
+  kindChecks.replaceChildren(...checks);
+  if (had) kindChecks.querySelector(`[data-k="${had}"]`)?.focus();
   // a chip or its menu had focus: the same one keeps it once redrawn (or the first chip, if its kind went)
   if (was) (box.querySelector(`${was.classList.contains("toggle") ? ".toggle" : ".kind-more"}[data-k="${was.dataset.k}"]`) || box.querySelector(".toggle"))?.focus();
 }

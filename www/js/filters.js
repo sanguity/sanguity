@@ -3,7 +3,7 @@
    as they start: never the period, which has its own control in the records bar. filterLine() draws the line; each tab
    describes its own filters where they are:
    - the Timeline's kinds and search: under the records bar (#fsum, below), still there on a phone with the Filters
-     panel closed, where the Filters button counts the filters on ("Filters (2)"); its counts say they're for what's
+     sheet closed (#269), where the Filters button counts the filters on ("Filters (2)"); its counts say they're for what's
      shown (#statsNote). The kinds' visible "Show all" (#189) gave way to it: the two sat side by side, and each kind's
      ⋯ menu still has Show all for the kinds alone;
    - the Labs name filter: under its box, in the lab list's header and the heatmap's (trends.js, labCount);
@@ -56,7 +56,7 @@ function renderFilterSum() {
   const tl = state.tab === "timeline", f = timelineFilters();
   filterLine(tl ? showingParts(f.narrowed && kindsShown(f.on.map(c => c.label), f.kinds.length), "events", [f.q && `matching “${f.q}”`]) : [],
     resetTimelineFilters, () => visibleIn(...document.querySelectorAll("#chips .toggle"), $("#ftoggle"), $("#q")), $("#fsum"));
-  $("#ftoggle").textContent = !tl ? "Dates" : f.n ? `Filters (${f.n})` : "Filters";   // what it opens on a phone
+  $("#ftoggle").textContent = f.n ? `Filters (${f.n})` : "Filters";   // its sheet, on a phone's Timeline (#269, core.js)
   $("#statsNote").hidden = !(tl && f.n);
 }
 { let t; $("#q").addEventListener("input", () => {   // said once typing stops, not on each key

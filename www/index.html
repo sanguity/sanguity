@@ -23,6 +23,11 @@
 </header>
 <p class="sync-warn" id="syncWarn" role="status" hidden></p>
 <div class="filters">
+  <!-- on a phone, the period as one pill opening a sheet (#269, core.js) -->
+  <div class="menu period-pick">
+    <button class="period-pill" id="periodPill" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="periodPillList"></button>
+    <div class="menu-list" id="periodPillList" role="menu" aria-label="Period" popover></div>
+  </div>
   <div class="seg" id="presets" role="group" aria-label="Period"></div>
   <div class="menu period-more" id="periodMore">
     <button class="period-more-btn" id="periodMoreBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="periodMoreList">More…</button>
@@ -33,7 +38,7 @@
     <button class="btn" id="datesClear" type="button">Clear dates</button></div>
   <div class="chips" id="chips" role="group" aria-label="Kinds of records shown"></div>
   <input class="search" id="q" type="search" placeholder="Search events…" aria-label="Search events">
-  <button class="iconbtn ftoggle" id="ftoggle" type="button" aria-expanded="false">Filters</button>
+  <button class="iconbtn ftoggle" id="ftoggle" type="button" aria-haspopup="dialog" aria-expanded="false">Filters</button>
   <!-- what the filters leave out, with Reset filters; still shown on a phone with the panel closed (#190, filters.js) -->
   <p class="fsum" id="fsum" hidden></p>
 </div>
