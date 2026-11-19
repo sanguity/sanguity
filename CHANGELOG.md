@@ -1242,6 +1242,12 @@ Everything on `main` so far; it becomes the first tagged release.
   heading: a section of one setting with the same name, as Tabs, Units and Milestones are, no longer says it twice),
   the command palette finds it by "edit tabs", and a new order or a tab hidden there shows in the top bar once it's
   saved, not after a reload. Its help no longer mentions the arrow keys, which #264 replaced.
+- **The top bar follows the profile you switch to** (#415): switching profile on Sources, Sharing or Account kept the
+  last profile's tabs (a tab it hid stayed out of reach); the new profile's are shown now, on every page. Someone who
+  can only view a profile is no longer offered Edit tabs…, which led to switches they couldn't turn. A page opened
+  without a profile in its address (after signing in, `/`) now says the one it shows (`?profile=1`), so reloading it
+  after another browser tab switched profile keeps it. In forced colours the tab shown, and More when it names the
+  tab shown ("Labs ▾"), are marked in the system's highlight; neither was.
 - **One icon per thing** (#399): the same item had different icons in different places (Display a gear in your
   menu and a sun in Settings; Body and activity a heart on a phone and a pulse in the palette), and one icon stood for
   several things (the pulse was a home reading, Workouts and Body and activity). Each place now has one icon wherever

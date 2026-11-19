@@ -173,7 +173,7 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
 @media (forced-colors:active){   /* selected or shown: the system's highlight, kept as is (no text backplate over it) */
   .seg{background:CanvasText;border-color:CanvasText}
   .seg>button,.seg>label{background:Canvas;color:CanvasText}
-  .seg>[aria-pressed="true"],.seg>[aria-checked="true"],.seg>label:has(>input:checked),.tabs>[aria-current="page"]{forced-color-adjust:none;background:Highlight;color:HighlightText;box-shadow:none}
+  .seg>[aria-pressed="true"],.seg>[aria-checked="true"],.seg>label:has(>input:checked){forced-color-adjust:none;background:Highlight;color:HighlightText;box-shadow:none}
   button.toggle,label.toggle{background:Canvas;color:CanvasText;border:1px dashed CanvasText}
   .toggle[aria-pressed="true"],.toggle:has(>input:checked){forced-color-adjust:none;background:Highlight;color:HighlightText;border:1px solid Highlight}
   .toggle::before{color:inherit}
@@ -370,6 +370,7 @@ header .meta{color:var(--muted);font-size:var(--fs-2)}
   cursor:pointer;color:var(--ink2);font:inherit;font-weight:var(--fw-medium);text-decoration:none;white-space:nowrap}
 .tabs>a:hover,.tab-more:hover{color:var(--ink)}
 .tabs>[aria-current="page"],.tab-more.tab-cur{background:var(--raised);color:var(--ink);box-shadow:var(--shadow-1)}   /* More naming the tab shown (#395) */
+@media (forced-colors:active){ .tabs>[aria-current="page"],.tab-more.tab-cur{forced-color-adjust:none;background:Highlight;color:HighlightText;box-shadow:none} .tab-cur>.menu-caret{color:inherit} }   /* (here: a components rule loses to the one above, #415) */
 @media (max-width:640px),(pointer:coarse){ .tabs>a,.tab-more{min-height:44px} }   /* the button's sizes (#258) */
 .spacer{flex:1}
 /* the account pages' sidebar: groups, one at a time (sidebar.js, #266), in a 1280 px shell */
@@ -449,7 +450,7 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
   header.topbar .tabs>[aria-current="page"]{background:none;box-shadow:none;font-weight:var(--fw-semibold)}
   .tabs>[aria-current="page"]>.icon{background:color-mix(in srgb,var(--accent) 18%,transparent)}
   .tabs>a[data-short]::after{content:attr(data-short) / ""}
-  @media (forced-colors:active){ header.topbar .tabs>[aria-current="page"]>.icon{forced-color-adjust:none;background:Highlight;color:HighlightText} }
+  @media (forced-colors:active){ header.topbar .tabs>[aria-current="page"]{color:CanvasText} header.topbar .tabs>[aria-current="page"]>.icon{forced-color-adjust:none;background:Highlight;color:HighlightText} }
 }
 /* what's said but not shown there: Add's and your menu's words, the brand's and the profile's role at 480 px or
    narrower, a tab's whole name beside its short one */
