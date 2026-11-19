@@ -366,10 +366,10 @@ header .brand-name .brand{width:19px;height:23px;flex:none}
 header .meta{color:var(--muted);font-size:var(--fs-2)}
 /* the records tabs (nav.js, #264): links, the one shown raised; More (#265) looks like one of them */
 .tabs{display:flex;gap:2px;background:var(--hover);border-radius:var(--r-md);padding:3px}
-.tabs>a,.tab-more{display:inline-flex;align-items:center;gap:var(--sp-1);border:0;background:none;min-height:32px;padding:var(--sp-1) var(--sp-4);border-radius:var(--r-sm);
+.tabs>a,.tab-more{display:inline-flex;align-items:center;gap:var(--sp-1);border:0;background:none;min-height:32px;padding:var(--sp-1) var(--sp-3);border-radius:var(--r-sm);
   cursor:pointer;color:var(--ink2);font:inherit;font-weight:var(--fw-medium);text-decoration:none;white-space:nowrap}
 .tabs>a:hover,.tab-more:hover{color:var(--ink)}
-.tabs>[aria-current="page"]{background:var(--raised);color:var(--ink);box-shadow:var(--shadow-1)}
+.tabs>[aria-current="page"],.tab-more.tab-cur{background:var(--raised);color:var(--ink);box-shadow:var(--shadow-1)}   /* More naming the tab shown (#395) */
 @media (max-width:640px),(pointer:coarse){ .tabs>a,.tab-more{min-height:44px} }   /* the button's sizes (#258) */
 .spacer{flex:1}
 /* the account pages' sidebar: groups, one at a time (sidebar.js, #266), in a 1280 px shell */
@@ -395,9 +395,10 @@ main.sets.with-nav>.set-nav{grid-column:1;grid-row:1 / span 50;position:sticky;t
   .set-nav-new{margin-left:var(--sp-1);padding-left:var(--sp-3);border-left:1px solid var(--ring)}
 }
 /* the top bar (nav.js, #264): brand, the profile menu, the records tabs, then Add and the person's menu; the tabs take
-   the room left, those that don't fit going under More (#265) */
+   the room left, those that don't fit going under More (#265). They never shrink, so More is always whole (#395): the
+   profile's name is cut short first (nav.js fit()) */
 header.topbar{flex-wrap:nowrap;gap:var(--sp-3);padding:var(--sp-2) var(--sp-5)}
-header.topbar .tabs{flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+header.topbar .tabs{flex:none;overflow-x:auto;scrollbar-width:none}
 header.topbar .tabs::-webkit-scrollbar{display:none}
 .brand-link{display:flex;align-items:center;gap:var(--sp-2);color:inherit;text-decoration:none;border-radius:var(--r-sm)}
 .brand-link:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
@@ -634,6 +635,13 @@ table.data tr.link:hover td{background:var(--hover)}
 html.sg-docked{--dock:min(600px,40vw)}
 html.sg-docked body{margin-right:var(--dock)}
 html.sg-docked #drawer{width:var(--dock)}
+/* the page laid out for the room docking leaves it (#395): as at 900 px or narrower while that's at most 900 px */
+@media (max-width:1500px){
+  html.sg-docked :is(.layout,.ov-cols){grid-template-columns:minmax(0,1fr)}
+  html.sg-docked .series-list{max-height:300px}
+  html.sg-docked .tl-row{grid-template-columns:62px 1em 1fr}
+  html.sg-docked .tl-row .b{display:none}
+}
 /* opened from a row, the row grows into it (openFrom, a View Transition), not sliding in as well */
 .vt-from,#drawer.vt{view-transition-name:sg-record}
 #drawer.vt{transition:none}

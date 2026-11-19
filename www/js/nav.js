@@ -271,7 +271,10 @@ const SgNav = (() => {
      hidden ones (Settings → Dashboard → Tabs: the records page passes its own, other pages ask for it). On the records
      page app.js shows the one picked (aria-current, then SgNav.fit()) and follows the links itself. Those that don't
      fit go under More (#265), which ends with Edit tabs…; the tab shown always stays in sight, taking the last place
-     there is. On a phone they're the bar at the screen's foot instead, five places (phoneBar, below). */
+     there is. More itself is always whole (#395): the tabs never shrink, the profile's name does first, down to FLOOR
+     (or its whole length, if that's less); where even one tab beside More doesn't fit, that tab goes under More too,
+     and More takes its name ("Labs ▾", raised as the tab shown is). On a phone they're the bar at the screen's foot
+     instead, five places (phoneBar, below). */
   const TABS = [["overview", "Overview"], ["health", "Body and activity"], ["timeline", "Timeline"], ["labs", "Labs"], ["costs", "Costs"]];
   const tabEl = Object.fromEntries(TABS.map(([t, text]) => [t, el("a", {id: "tab-" + t, href: (onRecords ? "#" : "./#") + t, text,
     "data-tip": t === "health" ? "Watch, sleep and smart-scale data" : null})]));
@@ -279,12 +282,13 @@ const SgNav = (() => {
   const more = menu("tabMore", "More", "", [sep(), editTabs]);
   more.btn.className = "tab-more";
   more.btn.append(caret());
-  more.btn.setAttribute("aria-label", "More tabs");
   const tabs = el("nav", {class: "tabs", "aria-label": "Records"}, ...Object.values(tabEl), more.wrap);
   wrap.after(tabs);
   let order = TABS.map(([t]) => t), hidden = new Set();
+  const FLOOR = 8;   // the profile's name, in em, kept before a tab goes under More
   function fit() {
     const shown = order.filter(t => !hidden.has(t)).map(t => tabEl[t]), had = document.activeElement;
+    const cur = shown.find(a => a.getAttribute("aria-current") === "page"), word = more.btn.querySelector(".menu-word");
     const put = vis => {
       for (const a of shown) {
         const out = !vis.includes(a);
@@ -294,19 +298,25 @@ const SgNav = (() => {
       tabs.prepend(...vis);
       more.list.prepend(...shown.filter(a => !vis.includes(a)));
       more.wrap.hidden = vis.length === shown.length;
+      const named = !vis.length && !!cur;   // every tab under More: it says which is shown
+      word.textContent = named ? cur.textContent : "More";
+      more.btn.setAttribute("aria-label", named ? cur.textContent + ", more tabs" : "More tabs");
+      more.btn.classList.toggle("tab-cur", named);
     };
+    const name = wrap.hidden ? null : prof.btn.querySelector(".profile-name");
+    const floor = name ? Math.min(name.scrollWidth, FLOOR * parseFloat(getComputedStyle(name).fontSize)) : 0;
+    const tight = () => header.scrollWidth > header.clientWidth + 1 || tabs.scrollWidth > tabs.clientWidth + 1
+      || (name && (floor < name.scrollWidth ? name.clientWidth + 1 < floor : name.scrollWidth > name.clientWidth));   // (a short name: whole)
     put(shown);
-    const cur = shown.find(a => a.getAttribute("aria-current") === "page");
     if (PHONE.matches) put(phoneSlots(shown, cur));
     else {
-      for (let n = shown.length - 1; n > 0 && tabs.scrollWidth > tabs.clientWidth; n--) {
+      for (let n = shown.length - 1; n >= 0 && tight(); n--) {
         const vis = shown.slice(0, n);
-        if (cur && !vis.includes(cur)) vis[n - 1] = cur;
+        if (cur && n && !vis.includes(cur)) vis[n - 1] = cur;
         put(vis);
       }
     }
     // the profile's name cut short: the whole of it in a tip (said in the button's name already, #396)
-    const name = wrap.hidden ? null : prof.btn.querySelector(".profile-name");
     if (name && name.scrollWidth > name.clientWidth) prof.btn.dataset.tip = name.textContent; else delete prof.btn.dataset.tip;
     // a tab that had focus and moved: focus stays with it, or goes to More when it's put away
     if (shown.includes(had) && document.activeElement !== had) (had.parentElement === tabs ? had : more.btn).focus({preventScroll: true});
