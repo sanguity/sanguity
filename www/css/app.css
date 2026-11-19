@@ -427,9 +427,8 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
    the tabs stay a row in the top bar, which scrolls away with the page (#308). The top bar's menus are sheets (below). */
 .tabs>a>.icon,.tab-more>.menu-ico,#userMenuBtn>.menu-ico{display:none}
 @media (max-width:700px){
-  header.topbar .profile-pick{flex:1 1 0;max-width:max-content;min-width:0}
-  .profile-pick>.menu{min-width:0}
-  .profile-btn.menu-btn{max-width:100%;padding-inline:var(--sp-2)}
+  header.topbar .profile-pick{flex:999 1 0;max-width:max-content;min-width:0}   /* the room left, before the spacer gets any (#396) */
+  .profile-btn.menu-btn{padding-inline:var(--sp-2)}
   header.topbar .bar-menus{gap:var(--sp-1)}
   :is(#addMenuBtn,#userMenuBtn){min-width:44px;padding-inline:var(--sp-2)}
   #userMenuBtn>.menu-ico{display:inline}
@@ -1419,7 +1418,9 @@ main.src[data-role=viewer] .src-edit{display:none}
 @media (max-width:640px){.about-dl,.share-about{grid-template-columns:1fr;gap:0}.about-dl dd,.share-about dd{margin-bottom:var(--sp-2)}
   .about .about-recorded tr{grid-template-columns:1fr 1fr}}
 /* the profile menu in the top bar (#170, #264, nav.js): the profile's name, cut short if it must be, and your role */
-.profile-pick{display:flex;flex:none;min-width:0}
+.profile-pick{display:flex;flex:0 1 auto;min-width:0}
+.profile-pick>.menu{flex:0 1 auto;min-width:0}
+.profile-btn.menu-btn{max-width:100%}   /* the room the bar has, the name cut inside it, its caret kept (#396) */
 .profile-btn{font-weight:var(--fw-medium)}
 .profile-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .profile-role{flex:none;font-weight:var(--fw-regular);font-size:var(--fs-2);color:var(--ink2);border:1px solid var(--ring);border-radius:var(--r-pill);padding:0 var(--sp-2)}
