@@ -10072,6 +10072,51 @@ def main():
             page.wait_for_function("typeof booted !== 'undefined' && booted && state.tab === 'labs' && state.sel.has('Creatinine')", timeout=20000)
             check("…with the records slowed, “cre” and Enter at once on Settings opens Creatinine once they arrive (#412)",
                   slow412[1] == "Looking through the records…" and js("[location.pathname, location.search]") == ["/", "?profile=1"], [slow412, js("location.href")])
+            # (#423) on the records page too, its own records slowed (the first page after signing in): "cre" and Enter at
+            # once opens Creatinine once they're drawn, and "hem" lists Hemoglobin then; on Settings "account" and Enter
+            # opens Account at once (nothing still to come can outrank a title starting with it in a group listed before
+            # Labs and Events); and one picked with the arrows stays picked as the records arrive
+            slow423 = "ms => { const f = window.fetch; window.fetch = (u, o) => /profiles\\/1\\/data/.test(String(u)) ? new Promise(r => setTimeout(r, ms)).then(() => f(u, o)) : f(u, o); }"
+            c423, rec423 = browser.new_context(storage_state=page.context.storage_state(), viewport={"width": 1400, "height": 900}, bypass_csp=True), {}
+            p423 = c423.new_page()
+            p423.add_init_script(f"({slow423})(3000)")
+            for q in ("cre", "hem"):
+                p423.goto(base + "/?profile=1")
+                p423.keyboard.press("Control+k")
+                p423.wait_for_selector("dialog.palette[open]", timeout=5000)
+                p423.fill("#palQ", q)
+                p423.wait_for_timeout(150)
+                rec423[q] = [p423.evaluate(marked), p423.evaluate("document.querySelector('.pal-note').textContent")]
+                if q == "cre":
+                    p423.keyboard.press("Enter")
+                    p423.wait_for_function("typeof booted !== 'undefined' && booted && state.tab === 'labs' && state.sel.has('Creatinine')", timeout=20000)
+                    rec423[q].append(p423.evaluate("document.activeElement.matches('#charts svg.pz')"))
+                else:
+                    p423.wait_for_function(f"({has_opt})('Hemoglobin')", timeout=20000)
+                    rec423[q].append(p423.evaluate(marked))
+            c423.close()
+            check("…on the records page, its records slowed, “cre” and Enter at once opens Creatinine once they're drawn, and “hem” lists Hemoglobin then (#423)",
+                  [r[1] for r in rec423.values()] == ["Looking through the records…"] * 2 and rec423["cre"][2] is True and rec423["hem"][2] == ["Labs", "Hemoglobin"], rec423)
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sections > section", state="attached", timeout=10000)
+            js(f"({slow423})(3000)")
+            pal("account")
+            t423 = time.time()
+            page.keyboard.press("Enter")
+            page.wait_for_url("**/account.html?profile=1", timeout=10000)
+            t423 = time.time() - t423
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sections > section", state="attached", timeout=10000)
+            js(f"({slow423})(3000)")
+            pal("c")
+            page.keyboard.press("ArrowDown")
+            page.keyboard.press("ArrowDown")
+            arrow423 = [js(marked)]
+            page.wait_for_function(f"({has_opt})('Creatinine')", timeout=20000)
+            arrow423.append(js(marked))
+            page.keyboard.press("Escape")
+            check("…“account” and Enter on Settings opens Account at once, the records still on their way; a choice made with the arrows stays as they arrive (#423)",
+                  t423 < 1.5 and arrow423[0] and arrow423[0] == arrow423[1] and arrow423[0][1] != "Creatinine", [t423, arrow423])
             pal("new share")   # (“share” alone: Share links first, its title starting with it, #403)
             page.wait_for_function(f"({has_opt})('New share link')", timeout=10000)
             share = js(pal_found)
@@ -10519,7 +10564,7 @@ def main():
             zb.wait_for_selector("dialog.palette[open]", timeout=5000)
             zb.wait_for_timeout(600)   # (who's signed in, asked as it opens)
             seen = {}
-            for q in ("", "share", "export", "accounts"):
+            for q in ("", "share", "export", "accounts", "tabs"):
                 zb.fill("#palQ", q)
                 zb.wait_for_timeout(150)
                 seen[q] = zb.evaluate("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent)")
@@ -10528,6 +10573,7 @@ def main():
                   not any(x.endswith(", Add") or x.startswith("New share link") for x in seen[""] + seen["share"])
                   and not any(x.startswith(("Share links", "Export everything", "Admin", "Accounts")) for v in seen.values() for x in v)
                   and any(x.startswith("People, Sharing") for x in seen["share"]), seen)
+            check("…nor Settings › Dashboard › Tabs, whose switches a viewer can't turn (#423)", not any(x.startswith("Tabs,") for x in seen["tabs"]), seen["tabs"])
             # #415: nor Edit tabs…, in the profile menu or under More: a viewer can't change the profile's tabs
             edit415 = zb.evaluate("[PROFILE.role, ...['editTabsLink', 'editTabs'].map(i => document.getElementById(i).hidden), "
                                   "[...document.querySelectorAll('#profileMenuList [role^=menuitem], #tabMoreList [role^=menuitem]')].filter(x => !x.hidden).some(x => x.textContent.includes('Edit tabs'))]")
@@ -13022,6 +13068,18 @@ def main():
                   "Records aren't available offline" in text and ph.is_visible("header .brand-name") and ph.evaluate("typeof EV === 'undefined' || !EV.length"), text)
             offline_font = ph.evaluate("document.fonts.ready.then(() => [[...document.fonts].some(f => f.family === 'Inter' && f.status === 'loaded'), getComputedStyle(document.body).fontFamily.split(',')[0]])")
             check("offline (#253): the page is still in Inter", offline_font == [True, "Inter"], offline_font)
+            # (#423) the command palette there counts it as offline too: nothing that needs the server is listed, and it says so
+            ph.keyboard.press("Control+k")
+            ph.wait_for_selector("dialog.palette[open]", timeout=5000)
+            pal423 = {}
+            for q in ("", "new profile", "settings", "getting started", "account"):
+                ph.fill("#palQ", q)
+                ph.wait_for_timeout(150)
+                pal423[q] = ph.evaluate("[[...document.querySelectorAll('#palList .pal-t')].map(x => x.textContent), document.querySelector('.pal-note').textContent]")
+            ph.keyboard.press("Escape")
+            check("offline, records off: the command palette lists nothing that needs the server, and says so (#423)",
+                  all("they need the server, and you're offline" in n for _, n in pal423.values())
+                  and not {"New profile", "Sources", "Sharing", "Settings", "Account", "Getting started"} & {t for v in pal423.values() for t in v[0]}, pal423)
             ctx.set_offline(False)
 
             # installing (#56): without the browser's install prompt, the Account page says where to look; with it (a

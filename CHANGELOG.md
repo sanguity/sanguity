@@ -1303,6 +1303,13 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Dark and Light mode switch offline again** (#414): since #410 your menu's (and the palette's) Dark mode saved the
   account's theme, so offline it went back, saying it wasn't saved (or "Failed to fetch"). Offline it changes for this
   browser for now, says so, and is saved for the account once the server answers again.
+- **The command palette waits only when it has to, and offers only what you can use** (#423): on the records page, the
+  first after signing in, Enter pressed before its records were drawn opened the best of what was there ("cre" opened
+  New profile) and "hem" said "Nothing matches" even once they had arrived; it waits for them there too, and the list
+  is drawn again when they're in. Elsewhere Enter no longer waits when nothing still to come can beat the match
+  ("account" opens Account at once), and one picked with the arrows stays picked as the records arrive. Someone who
+  can only view the profile isn't offered Settings → Dashboard → Tabs, and the records page offline with no copy kept
+  lists nothing that needs the server.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
