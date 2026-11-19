@@ -157,7 +157,12 @@ async function settingsLoad() {
     const canImport = p => p.role === "owner" || p.role === "editor";
     doseOffer();   // none until the records are here (#401)
     // the first-run guide and the empty states (#199): with no profile, make one (guide.html?new)
-    if (!ME.profiles.length) { emptyCard(emptyState(`No health profile is shared with you yet: make one of your own, or ask a profile's owner to share theirs with ${ME.user.username}.`, {href: "guide.html?new", text: "Make a profile"})); return; }
+    if (!ME.profiles.length) {   // (with the account's own theme, as Settings shows it, #433)
+      const u = await api("settings/user").then(x => x.ok ? x.json() : null).catch(() => null);
+      if (u) applyTheme(u.theme);
+      emptyCard(emptyState(`No health profile is shared with you yet: make one of your own, or ask a profile's owner to share theirs with ${ME.user.username}.`, {href: "guide.html?new", text: "Make a profile"}));
+      return;
+    }
     // the top bar's picker (nav.js, #170): the profile the address names, else this browser's last, else the first
     PROFILE = ME.profiles.find(p => p.id === SgNav.profiles(ME.profiles));
     hLoad();

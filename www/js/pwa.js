@@ -87,11 +87,13 @@ function forgetPicks() {
 /* (#429) what the sign-in left waiting on the device, for the account or for the next page, goes too, so the next
    person to sign in here doesn't get it: a theme picked offline, to be saved for the account once online (nav.js,
    sg-theme-later), with this browser's stand-in for it meanwhile (ht-theme, while it's the same), and what the
-   command palette left the records page to do (palette.js, sg-palette in this tab) */
+   command palette left the records page to do (palette.js, sg-palette in this tab); and the account's theme as this
+   browser keeps it for the first frame (ht-theme-default, util.js applyTheme), as the next account's isn't it (#433) */
 function forgetWaiting() {
   try {
     const t = localStorage.getItem("sg-theme-later");
     if (t) { localStorage.removeItem("sg-theme-later"); if (localStorage.getItem("ht-theme") === t) localStorage.removeItem("ht-theme"); }
+    localStorage.removeItem("ht-theme-default");
   } catch (e) {}
   try { sessionStorage.removeItem("sg-palette"); } catch (e) {}
 }

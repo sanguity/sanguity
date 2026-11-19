@@ -1351,6 +1351,10 @@ Everything on `main` so far; it becomes the first tagged release.
   the arrow takes the waiting Enter back, and the choice opens on its own Enter. On the records page, back online with
   a form open, the banner still said "Offline · read-only" while Save already worked; it says you're back online and
   that the latest records load once it's closed.
+- **An account with no profile gets its own theme on the records page** (#433): the records page didn't apply the
+  theme of an account with no profile, and sign-out left the last account's theme in the browser, so after someone
+  with Dark logged out, the next account showed dark there whatever its own was. It's applied now, and sign-out
+  leaves no account's theme behind.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
