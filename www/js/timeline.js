@@ -150,7 +150,7 @@ function renderList() {
     const m = fmtMonth(e.ts); if (m !== month) { month = m; frag.append(el("div", {class: "month", text: m})); }
     const c = CAT_OF[e.k], key = kindIcon(e.k, "key");   // its kind's icon, in its lane's colour (#354)
     key.style.color = c.color;
-    frag.append(el("div", {class: "tl-row" + (state.selEv === e.id ? " sel" : ""), ...pressable(() => openEvent(e))},
+    frag.append(el("div", {class: "tl-row" + (state.selEv === e.id ? " sel" : ""), ...pressable(ev => openFrom(ev.currentTarget, () => openEvent(e)))},   // it grows into the drawer (drawer.js, #270)
       el("span", {class: "d", text: fmtD(e.ts)}), key,
       el("span", {class: "t", text: e.title}),
       el("span", {class: "b"}, e.abn ? el("span", {class: "badge abn", text: `${e.abn} out of range`}) : el("span", {class: "badge", text: KIND_LABEL[e.k]})),

@@ -2219,7 +2219,7 @@ def main():
             miss = js("[document.querySelector('#dbody .details-missed')?.textContent || '', document.getElementById('dtitle').textContent, !!document.querySelector('#dbody p.source')]")
             page.unroute(busy)
             js("id => openEvent(byId.get(id))", claim)
-            again = js("[!!document.querySelector('#dbody .details-missed'), document.querySelector('#dbody dl.kv')?.textContent || '']")
+            again = js("[!!document.querySelector('#dbody .details-missed'), document.querySelector('#dbody :is(dl.kv, dl.facts)')?.textContent || '']")
             problems[before:] = [x for x in problems[before:] if "/details?ids=" not in x and "503" not in x]
             check("…one that couldn't be loaded says why, keeping its title and source, and is asked for again when opened next",
                   "couldn't be loaded" in miss[0] and "fictional outage" in miss[0] and miss[1] and miss[2] and not again[0] and ("Insurer" in again[1] or "Billed" in again[1]),
@@ -2926,6 +2926,20 @@ def main():
             # such as a workout without heart rate's zones or a hospital stay's note
             said_null = []
             nulls_js = "/\\b(null|undefined)\\b/.test(document.getElementById('drawer').innerText)"
+            # #270: every kind in one layout: its kind's icon, the title, one line of kind and when, the corrections in the
+            # ⋯ menu (none for what the watch made, or a cycle record), at most four key facts, one Source, and no value said
+            # twice (the title, the line's parts, the facts and the details, and the line under the facts)
+            layout_js = """k => { const b = document.getElementById('dbody');
+              const said = [document.getElementById('dtitle').textContent, ...document.getElementById('dsub').textContent.split(' · ')].map(x => x.trim().toLowerCase());
+              const vals = [...b.querySelectorAll(':scope > dl.facts dd, :scope > dl.kv dd, :scope > .dnote')].map(x => x.textContent.trim().toLowerCase());
+              const all = [...said, ...vals], twice = all.filter((x, i) => x && all.indexOf(x) !== i);
+              const sources = b.querySelectorAll(':scope > p.source').length + [...b.querySelectorAll(':scope > dl dt')].filter(x => x.textContent === 'Source').length;
+              const facts = b.querySelectorAll(':scope > dl.facts > div').length, menu = !document.getElementById('dmore').hidden;
+              const bad = [!document.querySelector('#dkey svg.icon') && 'no icon', twice.length && 'twice: ' + twice, sources > 1 && sources + ' sources',
+                facts > 4 && facts + ' facts', menu !== !['exercise', 'ecg', 'rhythm', 'cycle'].includes(k) && 'menu ' + menu,
+                b.querySelector('.edit-acts') && 'corrections in the body'].filter(Boolean);
+              return bad.length ? k + ': ' + bad.join(', ') : null; }"""
+            not_one = []
             for k in js("[...new Set(EV.filter(e => !e.hidden).map(e => e.k))].sort()"):
                 js("k => openEvent(EV.find(e => e.k === k && !e.hidden))", k)
                 settle(200)
@@ -2933,7 +2947,12 @@ def main():
                 check(f"drawer opens for {k}", ok)
                 if js(nulls_js):
                     said_null.append(k)
+                page.wait_for_function("!document.querySelector('#dbody .details-wait')", timeout=5000)
+                not_one.append(js(layout_js, k))
                 page.keyboard.press("Escape")
+            not_one = [x for x in not_one if x]
+            check("…each in one layout (#270): its kind's icon, title and one line of when, its corrections in the ⋯ menu, up to four key facts, one Source, nothing said twice",
+                  not not_one, not_one)
             check("drawer closes on Escape", not js("document.getElementById('drawer').classList.contains('open')"))
             for what, find in (("a workout without heart rate", "e => e.k === 'exercise' && !e.hidden && !DATA.details[e.id]?.hr"),
                                ("a hospital stay", "e => e.k === 'stay' && !e.hidden")):
@@ -2943,6 +2962,50 @@ def main():
                     said_null.append(what if found else f"{what}: none in the demo")
                 page.keyboard.press("Escape")
             check("…and no drawer says “null” or “undefined” (#245): every kind, a workout without heart rate, a hospital stay", not said_null, said_null)
+            # #270: at 1400 px the drawer is docked: the page moves over beside it (not covered) and is drawn for its width;
+            # opened from a row of the list the row grows into it (a View Transition); another record opens in it, still
+            # docked; while a record's details load it shows their shape; closed, the page has its width back and focus
+            # is on the row again. At 1100 px it covers the page's side, as before.
+            js("switchTab('timeline'); applyPreset('1y')")
+            settle(300)
+            js("(() => { window._vt270 = 0; const f = document.startViewTransition.bind(document); document.startViewTransition = cb => { window._vt270++; return f(cb); }; })()")   # counted (a function given back would be called)
+            row = page.locator("#list .tl-row").first
+            row.focus()
+            page.keyboard.press("Enter")
+            page.wait_for_selector("#drawer.open", timeout=5000)
+            settle(500)
+            dock_js = """(() => { const d = document.getElementById('drawer').getBoundingClientRect(), m = document.querySelector('main').getBoundingClientRect();
+              return {docked: document.documentElement.classList.contains('sg-docked'), modal: document.getElementById('drawer').matches(':modal'),
+                over: Math.round(m.right - d.left), tl: Math.round(document.getElementById('tl').getBoundingClientRect().right - d.left), w: Math.round(d.width),
+                title: document.getElementById('dtitle').textContent}; })()"""
+            docked = js(dock_js)
+            other = js("(() => { const r = [...document.querySelectorAll('#list .tl-row')].find(r => !r.textContent.includes(document.getElementById('dtitle').textContent)); r.click(); return r.querySelector('.t').textContent; })()")
+            settle(300)
+            moved = js(dock_js)
+            js("(() => { const was = window._fetch270 = window.fetch; window.fetch = (...a) => String(a[0]).includes('details?') ? new Promise(r => setTimeout(r, 600)).then(() => was(...a)) : was(...a); })()")
+            js("""(() => { const e = EV.find(e => e.k === 'lab' && !e.hidden);   // its results' details let go, to be loaded again
+              for (const id of DATA.details[e.id].ids) { DETAILS_GOT.delete(id); delete DATA.details[id]; }
+              openEvent(e); })()""")
+            skel = js("!!document.querySelector('#dbody .details-wait') && document.querySelectorAll('#dbody .skel i').length")
+            page.wait_for_selector("#dbody dl.facts", timeout=5000)
+            js("(() => { window.fetch = window._fetch270; })()")
+            page.keyboard.press("Escape")
+            settle(300)
+            back = js("""[document.documentElement.classList.contains('sg-docked'), Math.round(document.querySelector('main').getBoundingClientRect().right),
+              document.activeElement.matches('#list .tl-row')]""")
+            check("the drawer at 1400 px (#270): docked beside the page, not modal, the page and its timeline moved over, not covered",
+                  docked["docked"] and not docked["modal"] and docked["over"] <= 0 and docked["tl"] <= 0 and docked["w"] < 700, docked)
+            check("…opened from a row with a View Transition; another record opens in it, still docked; a skeleton while its details load",
+                  js("window._vt270") == 1 and moved["title"] == other and moved["docked"] and moved["over"] <= 0 and skel and skel >= 3, [js("window._vt270"), moved, other, skel])
+            check("…closed, the page has its width back and focus is on the row again", back[0] is False and back[1] > 1300 and back[2], back)
+            page.set_viewport_size({"width": 1100, "height": 900})
+            js("openEvent(EV.find(e => e.k === 'visit' && !e.hidden))")
+            settle(300)
+            narrow = js(dock_js)
+            check("…at 1100 px it covers the page's side as before, not docked", not narrow["docked"] and narrow["over"] > 0, narrow)
+            page.keyboard.press("Escape")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
 
             # ---- immunizations and allergies (#179): the Overview lists the allergies with their reactions, severity and
             # criticality as recorded (not the resolved one, and not again in the problem list) and the immunizations newest
@@ -2962,17 +3025,18 @@ def main():
             page.focus("#ovImmunizations .ov-row")
             page.keyboard.press("Enter")
             settle(300)
-            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
-            want = {"Vaccine": "Influenza vaccine", "Code": "CVX 150", "Dose": "1", "Amount": "0.5 mL", "Route": "Intramuscular", "Site": "Left deltoid",
+            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody :is(dl.kv, dl.facts) dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
+            want = {"Code": "CVX 150", "Dose": "1", "Amount": "0.5 mL", "Route": "Intramuscular", "Site": "Left deltoid",
                     "Lot": "FICT-FLU-11", "Made by": "Fictional Vaccines Inc.", "Given by": "Sam Ortega, RN", "Where": "Fictional Clinic", "Status": "Completed"}
             check("…Enter on one opens it in the drawer, said as an Immunization, with what the record says",
                   js("document.getElementById('drawer').classList.contains('open')") and js("document.getElementById('dtitle').textContent") == "Influenza vaccine"
-                  and js("document.getElementById('dsub').textContent").startswith("Immunization · ") and {k: kv.get(k) for k in want} == want, kv)
+                  and js("document.getElementById('dsub').textContent").startswith("Immunization · ") and {k: kv.get(k) for k in want} == want
+                  and "Vaccine" not in kv, kv)
             imm_axe = axe_check(page, "immunization drawer, light")
             page.keyboard.press("Escape")
             js("openEvent(EV.find(e => e.title === 'Fictionalol 25 mg tablet'))")
             settle(200)
-            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
+            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody :is(dl.kv, dl.facts) dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
             check("…a pharmacy fill from FHIR shows its pharmacy, quantity and supply, not a medication list's note",
                   {k: kv.get(k) for k in ("Pharmacy", "Quantity", "Days' supply", "Prescribed by")} ==
                   {"Pharmacy": "Fictional Corner Pharmacy", "Quantity": "30 tablet", "Days' supply": "30", "Prescribed by": "Dr. Rowan Vale"}
@@ -3084,7 +3148,7 @@ def main():
                   and lane["rows"] > 0, {k: lane[k] for k in ("label", "chip", "bars", "marks", "fill", "key", "rows")} | {"first": lane["spans"][:1], "last": lane["spans"][-1:]})
             page.locator("#tl rect.cymark").last.click()
             settle(300)
-            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
+            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody :is(dl.kv, dl.facts) dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
             check("…a bar opens the drawer: the period as logged, its flow day by day, said as recorded and not advice",
                   js("document.getElementById('dtitle').textContent") == "Period, 5 days" and js("document.getElementById('dsub').textContent").startswith("Cycle tracking · ")
                   and kv.get("Recorded as") == "A period, logged as one" and kv.get("From the app") == "Health Connect"
@@ -3256,7 +3320,7 @@ def main():
                   lane["n"] == 5 and not lane["samples"], lane)
             js("openEvent(EV.find(e => e.k === 'ecg' && /Atrial/.test(e.title)))")
             page.wait_for_selector("#dbody svg.ecg-svg polyline", timeout=10000)
-            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
+            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody :is(dl.kv, dl.facts) dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
             want = {"Classification": "Atrial Fibrillation", "Average heart rate": "81 bpm", "Symptoms": "Rapid, pounding, or fluttering heartbeat",
                     "Recorded with": "Fictional Watch", "Software version": "2.0"}
             check("…a recording's drawer says what the device said: its classification word for word, average heart rate, symptoms, device",
@@ -3269,7 +3333,7 @@ def main():
               return {rows: s.querySelectorAll('polyline.ecg-line').length, pts: [...s.querySelectorAll('polyline')].reduce((n, p) => n + p.points.length, 0),
                       ticks: [...s.querySelectorAll('.ecg-tick')].map(t => t.textContent), tab: s.getAttribute('tabindex'), role: s.getAttribute('role'),
                       label: s.getAttribute('aria-label'), sum: Object.fromEntries([...document.querySelectorAll('#dbody table.ecg-sum tr')].map(r => [r.cells[0] ? r.querySelector('th').textContent : '', r.querySelector('td').textContent])),
-                      edits: !!document.querySelector('#dbody .edit-acts')}; })()""")
+                      edits: !document.getElementById('dmore').hidden}; })()""")
             check("…its trace is drawn small, three rows of 10 seconds with a time and mV scale, each column's highs and lows",
                   tr["rows"] == 3 and 1500 < tr["pts"] < 4000 and {"0 s", "10 s", "20 s", "30 s", "+1 mV", "−1 mV", "0"} <= set(tr["ticks"]), {k: tr[k] for k in ("rows", "pts")})
             check("…it takes focus with a text summary for screen readers: what it is, how long, the device's classification, and the keys",
@@ -3306,7 +3370,7 @@ def main():
             page.keyboard.press("Escape")
             js("openEvent(EV.find(e => e.k === 'rhythm'))")
             settle(200)
-            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
+            kv = js("Object.fromEntries([...document.querySelectorAll('#dbody :is(dl.kv, dl.facts) dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))")
             check("…a notification's drawer says what it is, when, the period it covers and the device, with no trace",
                   js("document.getElementById('dtitle').textContent") == "Irregular rhythm notification" and kv.get("Recorded with") == "Fictional Watch"
                   and "Period it covers" in kv and not js("!!document.querySelector('#dbody svg.ecg-svg')"), kv)
@@ -3512,7 +3576,8 @@ def main():
             check("an event to correct is on the timeline", pick and js(f"({there})", pick) and js(f"({listed})", pick), pick)
             js("id => openEvent(byId.get(id))", pick["id"])
             settle(200)
-            page.click("#dbody .edit-acts button:text-is('Hide')")
+            page.click("#dmoreBtn")   # the ⋯ menu of corrections (#270)
+            page.click("#dmoreList button:text-is('Hide')")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && document.getElementById('drawer').classList.contains('open') && "
                                    "document.getElementById('dtitle').textContent === 'Edits to these records'", timeout=20000)
             settle()
@@ -3531,7 +3596,8 @@ def main():
             again = js(f"(t => EV.find(e => e.title === t.title && e.t === t.t).id)", pick)
             js("id => openEvent(byId.get(id))", again)
             settle(200)
-            page.click("#dbody .edit-acts button:text-is('Rename')")
+            page.click("#dmoreBtn")   # the ⋯ menu of corrections (#270)
+            page.click("#dmoreList button:text-is('Rename')")
             page.fill("#dbody .edit-form input", "Renamed in the browser check")
             page.click("#dbody .edit-form button:text-is('Save')")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && document.getElementById('dtitle').textContent === 'Renamed in the browser check'", timeout=20000)
@@ -3562,7 +3628,8 @@ def main():
                 pass
             check("…its drawer says it wasn't a visit", "wasn't a visit" in page.inner_text("#dbody") or "no visit took place" in page.inner_text("#dbody"),
                   page.inner_text("#dbody")[:200])
-            page.click("#dbody .edit-acts button:text-is('Change category')")
+            page.click("#dmoreBtn")   # the ⋯ menu of corrections (#270)
+            page.click("#dmoreList button:text-is('Change category')")
             page.wait_for_function("document.querySelector('#dbody .similar') && !document.querySelector('#dbody .similar .hint')", timeout=10000)
             check("Change category offers the other categories and a rule for new imports",
                   js("[...document.querySelectorAll('#dbody .edit-form select option')].map(o => o.value).includes('visit') && "
@@ -3581,7 +3648,8 @@ def main():
             before_pt = js("EV.filter(e => e.k === 'visit' && e.title === 'Physical therapy session').length")
             js("openEvent(EV.find(e => e.k === 'visit' && e.title === 'Physical therapy session'))")
             settle(200)
-            page.click("#dbody .edit-acts button:text-is('Rename')")
+            page.click("#dmoreBtn")   # the ⋯ menu of corrections (#270)
+            page.click("#dmoreList button:text-is('Rename')")
             page.wait_for_function("document.querySelector('#dbody .similar input[data-similar=all]')", timeout=10000)
             offer = re.search(r"Also the (\d+) other entries titled “Physical therapy session” from (.+)", page.inner_text("#dbody .similar"))
             n_pt = int(offer.group(1)) + 1 if offer else 0
@@ -3694,6 +3762,7 @@ def main():
             settle(200)
             check("a Trends marker opens its entry from the keyboard", js("document.getElementById('dtitle').textContent") == "Headache (browser check)")
             page.keyboard.press("Escape")
+            settle(200)   # closed, the page is drawn again at its own width, the charts in the next frame (#270)
             check("…and Escape takes focus back to the marker", js("document.activeElement.classList.contains('jmark')"))
             page.uncheck("#optJournal")
             settle(200)
@@ -3755,7 +3824,8 @@ def main():
             settle(300)
             page.click("#journalHome .jrow")
             settle(200)
-            page.click("#dbody .btns button:text-is('Delete')")
+            page.click("#dmoreBtn")   # in the ⋯ menu, as a record's corrections are (#270)
+            page.click("#dmoreList button:text-is('Delete')")
             page.wait_for_selector("dialog.sg-ask[open]", timeout=5000)
             asked = js("(d => d && [d.getAttribute('role'), d.querySelector('h2').textContent, d.querySelector('.sg-ask-msg').textContent, document.activeElement.textContent, d.querySelector('.btn.danger')?.textContent])(document.querySelector('dialog.sg-ask[open]'))")
             check("…its Delete asks in the app's dialog (#363): an alert dialog saying it can't be undone, a red Delete, focus on Keep it",
@@ -3917,7 +3987,7 @@ def main():
             page.focus("#charts .jmood")
             page.keyboard.press("Enter")
             settle(200)
-            check("…opened from the keyboard there", js("document.getElementById('dtitle').textContent") == "Mood 9/10" and "Mood and energy" in page.inner_text("#dbody"))
+            check("…opened from the keyboard there", js("document.getElementById('dtitle').textContent") == "Mood 9/10" and "Mood and energy" in page.inner_text("#drawer"))   # its kind in the head (#270)
             page.keyboard.press("Escape")
 
             # a photo: its GPS location and camera taken out on the way in, shown to whoever can view the profile
@@ -5482,11 +5552,12 @@ def main():
             preset_ax = key_focus("() => document.querySelector('#presets button[data-tip]')") if preset else None
             js("openEvent(EV.find(e => e.k === 'visit'))")
             page.wait_for_selector("#drawer.open", timeout=5000)
-            hide_ax = key_focus("() => [...document.querySelectorAll('#dbody .edit-acts button')].find(b => b.textContent === 'Hide')")
+            js("dMenu.open()")   # in the ⋯ menu of corrections (#270)
+            hide_ax = key_focus("() => [...document.querySelectorAll('#dmoreList button')].find(b => b.textContent === 'Hide')")
             page.keyboard.press("Escape")
             page.keyboard.press("Escape")
             settle(300)
-            titled = js("""() => ['#tab-health', '#datesClear', '#presets button', '#dbody .edit-acts button'].flatMap(s => [...document.querySelectorAll(s)])
+            titled = js("""() => ['#tab-health', '#datesClear', '#presets button', '#dmoreList button'].flatMap(s => [...document.querySelectorAll(s)])
                 .filter(b => b.hasAttribute('title')).map(b => b.id || b.textContent)""")
             check("…and the controls whose title said what's on no screen have tips, their description on focus: the Body and activity tab, the milestone preset, Clear dates, Hide",
                   health and health[1] == "Watch, sleep and smart-scale data" and preset and preset_ax and preset_ax[1] == preset[1]
@@ -8357,8 +8428,9 @@ def main():
             page.wait_for_selector("#drawer.open #dbody td small.orig", timeout=10000)
             row = js("[...document.querySelectorAll('#dbody tr')].map(r => [...r.cells].map(c => c.textContent)).find(c => c[0].replace(/[✎?]/g, '').trim() === 'Creatinine')")   # the ✎ and "What is this test?" (#163) beside the name
             check("drawer: the result in µmol/L, its range converted, the reported value and range under it",
-                  row and re.match(r"[\d.]+ µmol/LReported [\d.]+ mg/dL, ref 0\.7", row[1]) and re.match(r"61\.9–115", row[2]), row)
+                  row and re.match(r"[\d.]+\sµmol/LReported [\d.]+ mg/dL, ref 0\.7", row[1]) and re.match(r"61\.9–115", row[2]), row)
             page.set_viewport_size({"width": 375, "height": 800})
+            settle(300)   # beside the page at 1400 px, the drawer becomes the phone's sheet and the page is drawn again (#270)
             check("…and the drawer fits 375 px", js("document.documentElement.scrollWidth <= 375 && document.getElementById('dbody').scrollWidth <= document.getElementById('dbody').clientWidth"),
                   js("document.getElementById('dbody').scrollWidth"))
             js("closeDrawer(); switchTab('overview')")
@@ -9197,11 +9269,12 @@ def main():
             # #248: a result's Collected and Resulted, a claim's services and the Costs claims table in that format too,
             # not as the record's ISO text; and the drawer's buttons name the Labs tab by its name
             dmy = r"\d{1,2} [A-Z][a-z]{2} \d{4}"
-            kv_js = "Object.fromEntries([...document.querySelectorAll('#dbody dl.kv dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))"
+            kv_js = "Object.fromEntries([...document.querySelectorAll('#dbody :is(dl.kv, dl.facts) dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]))"
             btns_js = "[...document.querySelectorAll('#dbody button.btn')].map(b => b.textContent)"
             za.evaluate("Promise.resolve(openEvent(EV.find(e => e.k === 'lab' && !e.hidden && DATA.details[e.id]?.type === 'labday')))")
             za.wait_for_selector("#dbody details.res dl.kv", timeout=5000)
             lab_kv, lab_btns = za.evaluate(kv_js), za.evaluate(btns_js)
+            lab_kv.setdefault("Collected", za.evaluate("document.getElementById('dsub').textContent.split(' · ').pop()"))   # said in the head (#270)
             za.evaluate("closeDrawer(); Promise.resolve(openEvent(EV.find(e => e.k === 'claim' && !e.hidden)))")
             za.wait_for_selector("#dbody table.data tbody td", timeout=5000)
             line_day = za.evaluate("document.querySelector('#dbody table.data tbody td').textContent")

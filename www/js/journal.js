@@ -140,11 +140,7 @@ CHART_LAYERS.push({
 /* ---------------------------------------------------------------- the drawer: one entry, the list, the form */
 const jCanWrite = () => !!PROFILE && (PROFILE.role === "owner" || PROFILE.role === "editor");
 const jPhotoUrl = p => `api/profiles/${PROFILE.id}/journal/photos/${p.id}`;
-function jDrawer(title, sub) {
-  $("#dkey").style.background = "var(--c-journal)"; $("#dtitle").textContent = title; $("#dsub").textContent = sub;
-  const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
-  return body;
-}
+const jDrawer = (title, sub, k = "journal") => drawerHead(k, title, sub);   // drawer.js: the one layout (#270)
 function jSeverityMeter(n, what = "Severity") {
   return el("span", {class: "jsev", role: "img", "aria-label": `${what} ${n} out of 10`},
     el("span", {class: "jsev-bar", "aria-hidden": "true"}, el("span", {style: {width: n * 10 + "%"}})), el("b", {text: `${n}/10`}));
@@ -155,10 +151,8 @@ const jWhereFigure = ids => el("div", {class: "jbfigs jbmini", "aria-hidden": "t
 function openJournal(e) {
   const j = e.j;
   state.selEv = e.id;
-  const body = jDrawer(jTitle(j), `${J_LABEL[j.kind]} · ${jWhen(j)}`);
+  const body = jDrawer(jTitle(j), `${j.kind === "mood" ? "Mood and energy" : J_LABEL[j.kind]} · ${jWhen(j)}`, e.k);   // its kind and when, said there only
   body.append(el("dl", {class: "kv"},
-    el("dt", {text: "Kind"}), el("dd", {text: j.kind === "mood" ? "Mood and energy" : J_LABEL[j.kind]}),
-    el("dt", {text: "When"}), el("dd", {text: jWhen(j)}),
     jRated(j) ? [el("dt", {text: "Severity"}), el("dd", {}, jSeverityMeter(j.severity))] : null,
     j.mood != null ? [el("dt", {text: "Mood"}), el("dd", {}, jSeverityMeter(j.mood, "Mood"))] : null,
     j.energy != null ? [el("dt", {text: "Energy"}), el("dd", {}, jSeverityMeter(j.energy, "Energy"))] : null,
@@ -174,15 +168,13 @@ function openJournal(e) {
         el("img", {src: jPhotoUrl(p), alt: p.alt || `Photo ${i + 1} of ${j.photos.length} for ${jTitle(j)}`, loading: "lazy"})),
       p.alt ? el("figcaption", {text: p.alt}) : null))));
   const msg = el("p", {class: "hint edit-msg", role: "status"});
-  const acts = el("div", {class: "btns"});
-  if (jCanWrite()) {
-    acts.append(el("button", {class: "btn", type: "button", text: "Edit", onclick: () => journalForm(j, {}, () => openEvent(e))}),
-      el("button", {class: "btn", type: "button", text: "Delete", onclick: async () => {   // ask()ed: it can't be put back, photos and all (#363)
-        if (!await ask({title: `Delete “${jTitle(j)}”?`, message: (j.photos?.length ? `The entry and its ${j.photos.length > 1 ? j.photos.length + " photos" : "photo"} go.` : "The entry goes.") + " This can't be undone.",
-          action: "Delete", cancel: "Keep it", danger: true})) return;
-        jSend(`/${j.id}`, {method: "DELETE"}, msg, {list: true});
-      }}));
-  }
+  const acts = el("div", {class: "btns dgo"});
+  if (jCanWrite()) drawerMenu([{text: "Edit", run: () => journalForm(j, {}, () => openEvent(e))},   // in the ⋯ menu, as a record's corrections are (#270)
+    {text: "Delete", run: async () => {   // ask()ed: it can't be put back, photos and all (#363)
+      if (!await ask({title: `Delete “${jTitle(j)}”?`, message: (j.photos?.length ? `The entry and its ${j.photos.length > 1 ? j.photos.length + " photos" : "photo"} go.` : "The entry goes.") + " This can't be undone.",
+        action: "Delete", cancel: "Keep it", danger: true})) return;
+      jSend(`/${j.id}`, {method: "DELETE"}, msg, {list: true});
+    }}], "Change this entry");
   acts.append(el("button", {class: "btn", type: "button", text: "Day on the timeline", onclick: () => { setRange(e.ts - 15 * DAY, e.ts + 15 * DAY); pickTab("timeline"); }}),
     el("button", {class: "btn", type: "button", text: "All journal entries", onclick: () => journalHome(true)}));
   body.append(acts, msg);

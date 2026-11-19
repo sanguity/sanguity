@@ -123,9 +123,7 @@ function openMedication(m) {
   if (!m) return;
   medSel = m.i; state.selEv = null;
   const last = m.spans[m.spans.length - 1];
-  $("#dkey").style.background = CAT_OF.med.color; $("#dtitle").textContent = m.name;
-  $("#dsub").textContent = "Medication history · " + (m.spans.length ? `${fmtD(m.spans[0].ts)} – ${last.open ? "no end in the records" : fmtD(last.te)}` : `pharmacy fills only, from ${fmtD(m.fills[0].ts)}`);
-  const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
+  const body = drawerHead("med", m.name, "Medication history · " + (m.spans.length ? `${fmtD(m.spans[0].ts)} – ${last.open ? "no end in the records" : fmtD(last.te)}` : `pharmacy fills only, from ${fmtD(m.fills[0].ts)}`));   // drawer.js (#270)
   const kv = (rows) => el("dl", {class: "kv"}, ...rows.filter(r => r[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})]));
   body.append(kv([["Started", m.spans.length ? fmtD(m.spans[0].ts) : ""], ["Stopped", m.stop ? fmtD(dayTs(m.stop)) : ""],
     ["Still listed", last && last.open ? "Yes: the latest listing gives no end date" : ""],
@@ -242,8 +240,7 @@ function medReminderSection(m) {
 }
 /* the add / edit form, in the drawer. r: the reminder (null: a new one) */
 function medReminderForm(m, r) {
-  $("#dtitle").textContent = r ? "Edit reminder" : "New reminder"; $("#dsub").textContent = m.name;
-  const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0;
+  const body = drawerHead("med", r ? "Edit reminder" : "New reminder", m.name);
   const uid = Math.random().toString(36).slice(2, 8), id = n => `mr-${n}-${uid}`;
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   const times = el("div", {class: "mr-times"});

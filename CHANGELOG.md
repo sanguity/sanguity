@@ -1080,6 +1080,20 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Tabs that don't fit go under More** (#265): as many tabs as fit, in the profile's order, the rest under **More**,
   which ends with **Edit tabs…** (Settings → Tabs). The tab shown always stays in the bar, taking the last place.
   All five fit at 1,100 px and wider; on a phone the tabs still scroll sideways.
+- **The drawer: one layout for every record, docked on wide screens** (#270): every kind of record (and a journal
+  entry, a cycle record, a medication's history) opens the same way: its kind's icon in its colour, the title, one
+  line of what it is and when, and a ⋯ menu with the corrections (Hide, Rename, Change category, Fix date, Merge…; a
+  journal entry's Edit and Delete), which no longer look like part of the record. Under them, its three or four key
+  facts in boxes (a visit's provider, place and diagnosis; a claim's status, billed, paid and your share), then the
+  record, the actions that go somewhere (Show this day in Labs, Medication history, Add a journal note) and where it
+  came from. Nothing is said twice: the line under the title no longer repeats the details ("Pharmacy fill · … ·
+  Pharmacy fill"), a visit has one Source line (with what the record itself names, "as recorded: …"), a lab day's
+  results don't repeat its time, and a value keeps its unit on its line on a phone ("14.4 g/dL"). At 1200 px and
+  wider the drawer is docked beside the page, which moves over and is drawn again for its width instead of being
+  covered, and focus goes back to what opened it; narrower it covers the page's side as before, and on a phone it's
+  the bottom sheet (#262). While a record's details load it shows their shape, and a row of the Timeline's list grows
+  into the drawer (a View Transition, where the browser has them and motion isn't reduced). Another record still
+  opens in it without closing it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

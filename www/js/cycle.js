@@ -114,12 +114,9 @@ const cycleWhen = e => e.cy.kind === "span" ? (e.cy.from === e.cy.to ? cycleDay(
 function openCycle(e) {
   const s = e.cy;
   state.selEv = e.id;
-  $("#dkey").style.background = "var(--c-cycle)"; $("#dtitle").textContent = e.title;
-  $("#dsub").textContent = `Cycle tracking · ${cycleWhen(e)}`;
-  const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
-  const kv = rows => el("dl", {class: "kv"}, ...rows.filter(r => r[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})]));
+  const body = drawerHead("cycle", e.title, `Cycle tracking · ${cycleWhen(e)}`), kv = rows => drawerFacts(rows) || "";   // drawer.js: the days are in its head (#270)
   if (s.kind === "span") {
-    body.append(kv([["From", cycleDay(s.from)], ["To", cycleDay(s.to)], ["Recorded as", s.logged ? "A period, logged as one" : "Flow, day by day"],
+    body.append(kv([["Recorded as", s.logged ? "A period, logged as one" : "Flow, day by day"],
       ["From the app", s.app], ["Source", s.source]]));
     if (s.flow && s.flow.length) body.append(el("div", {class: "sect", text: "Flow recorded"}),
       scrollBox({class: "tablewrap", "aria-label": "Flow recorded, day by day", style: {maxHeight: "none"}}, el("table", {class: "data"},
