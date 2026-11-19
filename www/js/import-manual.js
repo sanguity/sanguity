@@ -23,6 +23,8 @@
   const box = $("#manRows"), msg = $("#manMsg"), saveBtn = $("#manSave"), recs = window.sanguityRecords;
   const keepBox = $("#manKeep"), labs = $("#manLabs"), BODY_MAX = 60000;   // nginx refuses API bodies over 64 KB
   let timer = null, seq = 0, ok = 0, bad = 0, okRecs = 0, badRecs = 0, saving = false;
+  // a save that failed: its words stay until something's changed, past a check scheduled before it (#387)
+  let failed = false;
 
   const pid = () => +$("#profile").value;
   const tell = (text, isBad = false, link = null, urgent = isBad) => {   // urgent: said at once (sayIn, util.js)
@@ -62,7 +64,7 @@
   }
 
   /* ---------------------------------------------------------------- checking as you go */
-  function soon() { clearTimeout(timer); timer = setTimeout(check, 350); }
+  function soon() { failed = false; clearTimeout(timer); timer = setTimeout(check, 350); }
   const body = (save, rs) => JSON.stringify({rows: rs.map(valueOf).map(v => blank(v) ? {} : v), items: recs.values(), save,
     ...(save ? {keep_duplicates: keepBox.checked} : {})});
   async function check() {
@@ -75,7 +77,7 @@
       if (r.status === 401) { location.replace("login.html"); return; }
       j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : "The server answered " + r.status + ".");
-    } catch (e) { if (mine === seq) tell("Couldn't check the rows: " + e.message, true); return; }
+    } catch (e) { if (mine === seq && !failed) tell("Couldn't check the rows: " + e.message, true); return; }
     if (mine !== seq) return;   // a newer check is on its way
     show(rs, j.rows || [], j.items || []);
   }
@@ -116,7 +118,8 @@
     const fixing = bad + badRecs, ready = ok + okRecs;
     saveBtn.disabled = saving || !ready || fixing > 0 || recs.busy();
     const what = [ok ? plural(ok, "result", "results") : "", okRecs ? plural(okRecs, "record", "records") : ""].filter(Boolean).join(" and ");
-    if (!saving) tell(fixing ? (badRecs ? `${plural(fixing, "entry needs", "entries need")} fixing before saving.` : `${bad === 1 ? "1 row needs" : bad + " rows need"} fixing before saving.`)
+    // (after a failed save, Save enabled again but the failure's words left: a check scheduled as Save was clicked, #387)
+    if (!saving && !failed) tell(fixing ? (badRecs ? `${plural(fixing, "entry needs", "entries need")} fixing before saving.` : `${bad === 1 ? "1 row needs" : bad + " rows need"} fixing before saving.`)
       : recs.busy() ? "Uploading the file…" : ready ? `${what} ready to save.` + (dup ? ` ${plural(dup, "is", "are")} already in this profile.` : "") : "", fixing > 0, null, false);   // as you type: said politely
   }
 
@@ -196,6 +199,7 @@
   }
   saveBtn.onclick = async () => {
     const p = pid(), rs = rows(), sent = body(true, rs), wasOn = document.activeElement === saveBtn;
+    let retry = false;   // failed, and nothing in the rows to fix: Save stays on to try again (a network failure, a 500)
     saving = true; saveBtn.disabled = true; $("#profile").disabled = true;
     tell("Saving…");
     try {
@@ -204,16 +208,19 @@
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
         saving = false;
-        if (j.rows) show(rs, j.rows, j.items);
+        if (j.rows) show(rs, j.rows, j.items); else retry = true;   // the rows' problems set Save themselves (show)
         tell(typeof j.detail === "string" ? j.detail : "The server answered " + r.status + ". Nothing was saved.", true);
+        failed = true;
         return;
       }
       // counts.results counts vitals too (they're charted as series): what was typed is in counts.typed
       const typed = (j.counts || {}).typed || {}, n = typed.labs || 0, names = j.series || [];
       const others = Object.entries(typed).filter(([k]) => k !== "labs").reduce((a, [, c]) => a + c, 0);
-      // #224: readings taken at home are on Body and activity, a height in About this person; the rest on the timeline
-      const HEALTH = ["home", "home_bp", "home_glucose", "home_temp", "home_spo2", "workout"];
-      const onHealth = HEALTH.some(k => typed[k]), onTimeline = Object.keys(typed).some(k => k !== "labs" && k !== "height" && !HEALTH.includes(k));
+      // #224: readings taken at home are on Body and activity, a height in About this person; payments and claims on Costs,
+      // problems and upcoming appointments on the Overview (#387); the rest on the timeline
+      const HEALTH = ["home", "home_bp", "home_glucose", "home_temp", "home_spo2", "workout"], COSTS = ["payment", "claim"], OVERVIEW = ["problem", "upcoming"];
+      const any = ks => ks.some(k => typed[k]), elsewhere = ["labs", "height", ...HEALTH, ...COSTS, ...OVERVIEW];
+      const onHealth = any(HEALTH), onCosts = any(COSTS), onOverview = any(OVERVIEW), onTimeline = Object.keys(typed).some(k => !elsewhere.includes(k));
       box.replaceChildren(); labs.hidden = false; addRow({date: rs.length ? valueOf(rs[rs.length - 1]).date : today()});
       recs.saved(); keepBox.checked = false; $("#manKeepWrap").hidden = true; $("#manKind").value = "labs";   // as on load
       saving = false; ok = bad = okRecs = badRecs = 0;
@@ -222,6 +229,8 @@
       clearTimeout(timer); seq++;
       const links = [names.length ? el("a", {href: recordsLink(p, "labs"), text: "See them on Labs", onclick: () => openTrends(p, names)}) : null,
         onTimeline ? el("a", {href: recordsLink(p, "timeline"), text: "See them on the timeline"}) : null,
+        onCosts ? el("a", {href: recordsLink(p, "costs"), text: "See them on Costs"}) : null,
+        onOverview ? el("a", {href: recordsLink(p, "overview"), text: "See them on the Overview"}) : null,
         onHealth ? el("a", {href: recordsLink(p, "health"), text: "See them on Body and activity"}) : null,
         typed.height ? el("a", {href: `sharing.html?profile=${p}#about`, text: "See the height history"}) : null].filter(Boolean);
       const what = [n ? plural(n, "result", "results") : "", others ? plural(others, "record", "records") : ""].filter(Boolean).join(" and ");
@@ -243,10 +252,17 @@
     } catch (e) {
       saving = false;
       tell("Couldn't save: " + e.message + " Nothing was saved.", true);
+      failed = retry = true;
     } finally {
-      saving = false; $("#profile").disabled = false; saveBtn.disabled = true;
-      // Save disabled itself, so focus fell to <body>: to the line that says what happened, its links next (#384)
-      if (wasOn && (document.activeElement === document.body || document.activeElement === saveBtn)) msg.focus({preventScroll: true});
+      // saved: off until something's typed; failed for no fault in the rows: on, so it can be tried again as it is
+      saving = false; $("#profile").disabled = false; if (!failed) saveBtn.disabled = true; else if (retry) saveBtn.disabled = false;
+      // Save disabled itself, so focus fell to <body>: to the line that says what happened, its links next (#384), and
+      // the line scrolled clear of the toast just shown (scroll-padding-bottom, from the toasts' height once they're laid
+      // out: the frame after next, util.js), which the focus alone doesn't do: the line under it counts as in view (#387)
+      if (wasOn && (document.activeElement === document.body || document.activeElement === saveBtn)) {
+        msg.focus({preventScroll: true});
+        requestAnimationFrame(() => requestAnimationFrame(() => { if (document.activeElement === msg) msg.scrollIntoView({block: "nearest"}); }));
+      }
     }
   };
 
