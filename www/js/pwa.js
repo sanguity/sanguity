@@ -84,9 +84,20 @@ function forgetPicks() {
     }
   } catch (e) {}
 }
+/* (#429) what the sign-in left waiting on the device, for the account or for the next page, goes too, so the next
+   person to sign in here doesn't get it: a theme picked offline, to be saved for the account once online (nav.js,
+   sg-theme-later), with this browser's stand-in for it meanwhile (ht-theme, while it's the same), and what the
+   command palette left the records page to do (palette.js, sg-palette in this tab) */
+function forgetWaiting() {
+  try {
+    const t = localStorage.getItem("sg-theme-later");
+    if (t) { localStorage.removeItem("sg-theme-later"); if (localStorage.getItem("ht-theme") === t) localStorage.removeItem("ht-theme"); }
+  } catch (e) {}
+  try { sessionStorage.removeItem("sg-palette"); } catch (e) {}
+}
 // signing out (any page's Log out button) or reaching the sign-in or setup page: whatever the device kept is deleted
-document.addEventListener("sg:logout", () => { SgOffline.forget(); forgetPicks(); });   // util.js's logOut, once it's going ahead (#391)
-if (/\/(login|setup)\.html$/.test(location.pathname)) { SgOffline.forget(); forgetPicks(); }
+document.addEventListener("sg:logout", () => { SgOffline.forget(); forgetPicks(); forgetWaiting(); });   // util.js's logOut, once it's going ahead (#391)
+if (/\/(login|setup)\.html$/.test(location.pathname)) { SgOffline.forget(); forgetPicks(); forgetWaiting(); }
 
 /* Log out without the server (#422: offline, or it didn't answer): what the device kept goes at once (sg:logout),
    and the sign-in on the server is ended once it's reached, never claimed before. Until then every page here goes
@@ -100,9 +111,23 @@ const SgLogout = (() => {
     try { localStorage.removeItem(KEY); } catch (e) {}
     return true;
   }
-  return {due, later, finish};
+  return {due, later, finish, KEY};
 })();
-if (SgLogout.due() && !/\/(login|setup|share)\.html$/.test(location.pathname)) location.replace(new URL("login.html", SgOffline.base));
+/* and in every tab: one opened meanwhile, and one already open (#429: Log out in another tab, which says so here with
+   a storage event; or this one shown again, asleep when it was said), goes there at once, so no tab keeps the sign-in
+   alive or shows what it had loaded. What it had typed goes, as the sign-out was asked for */
+(function signedOutElsewhere() {
+  if (/\/(login|setup|share)\.html$/.test(location.pathname)) return;
+  const go = () => {
+    if (!SgLogout.due()) return;
+    try { sgLeaving = true; } catch (e) {}   // (util.js's: the page's "Leave site?" guards stand aside)
+    location.replace(new URL("login.html", SgOffline.base));
+  };
+  go();
+  addEventListener("storage", e => { if (e.key === SgLogout.KEY || e.key === null) go(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) go(); });
+  addEventListener("pageshow", e => { if (e.persisted) go(); });
+})();
 
 /* the browser's bar in the app's colours, light or dark, following the page's own theme switch too */
 (function themeColour() {

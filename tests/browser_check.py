@@ -13571,27 +13571,63 @@ def main():
             ph.goto(base + "/?profile=1")
             until(LOADED, 20000)
             kept_copy(full=True)
+            # (#429) a second tab open meanwhile, on Settings
+            p429 = ctx.new_page()
+            p429.on("pageerror", lambda e: problems.append(f"script error (phone, second tab): {e}"))
+            p429.goto(base + "/settings.html?profile=1")
+            p429.wait_for_selector("#sections > section", state="attached", timeout=10000)
             ctx.set_offline(True)
             ph.reload()
             until(LOADED, 20000)
+            # (#429) a theme picked offline, waiting to be saved for the account once online (#414)
+            menu_click(ph, "#theme")
+            until("localStorage.getItem('sg-theme-later') !== null", 3000)
             menu_click(ph, "#logout")
             ph.wait_for_url("**/login.html", timeout=10000)
             until("!!document.getElementById('outNote')", 5000)
             off422 = [ph.inner_text("#outNote"), ph.evaluate(NO_COPY), ph.evaluate("localStorage.getItem('sg-logout-later')")]
+            try:
+                p429.wait_for_url("**/login.html", timeout=5000)
+            except Exception:
+                pass
+            off429 = [ph.evaluate("[localStorage.getItem('sg-theme-later'), localStorage.getItem('ht-theme')]"), p429.evaluate("location.pathname")]
             ph.goto(base + "/?profile=1")
             ph.wait_for_url("**/login.html", timeout=10000)
             off422.append(ph.evaluate("location.pathname"))
             check("Log out offline (#422): the copy goes, and the sign-in page says the sign-in on the server ends once it's reached; the app opened meanwhile goes there",
                   off422 == ["Signed out on this device, and what it kept for offline is deleted. Your sign-in on the server ends once this device reaches it again; "
                              "until then, Sanguity here opens on this page.", True, "1", "/login.html"], off422)
+            check("…what the sign-in left waiting goes with it, the theme picked offline (#429), and the tab open on Settings is on the sign-in page at once",
+                  off429 == [[None, None], "/login.html"], off429)
+            # (#429) the first tab closed, the second ends the sign-in on the server once it's reached
+            ph.close()
+            ph = p429
             ctx.set_offline(False)
+            t429 = time.monotonic()
             try:
                 until("(document.getElementById('outNote')?.textContent || '').startsWith('Signed out. ')", 10000)
             except TimeoutError:
                 pass
-            on422 = [ph.inner_text("#outNote"), ph.evaluate("localStorage.getItem('sg-logout-later')"), alive422(token422)]
-            check("…back online, the server's session is ended, and the page says so",
-                  on422 == ["Signed out. Your sign-in on the server has ended too.", None, False], on422)
+            on422 = [ph.inner_text("#outNote"), ph.evaluate("localStorage.getItem('sg-logout-later')"), alive422(token422), round(time.monotonic() - t429, 1)]
+            check("…back online, with the tab that logged out closed, the server's session is ended within a few seconds from the other one, which says so (#422, #429)",
+                  on422[:3] == ["Signed out. Your sign-in on the server has ended too.", None, False] and on422[3] < 8, on422)
+            # (#429) another account signing in here keeps its own theme: the one picked offline before isn't saved for it
+            db = sg_db.connect()
+            uid429 = db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, ?, 0, 0)", ("rio", sg_sec.hash_password(PW2))).lastrowid
+            db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'viewer')", (uid429,))
+            db.close()
+            ph.fill("#u", "rio")
+            ph.fill("#p", PW2)
+            ph.click("#b")
+            ph.wait_for_url(lambda u: "login.html" not in u, timeout=10000)
+            until(LOADED, 20000)
+            ph.wait_for_timeout(1500)   # (nav.js saveLater would have saved it by now)
+            rio429 = [ph.evaluate("api('settings/user').then(r => r.json()).then(j => j.theme)"), ph.evaluate("localStorage.getItem('ht-theme')"),
+                      ph.evaluate("[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent).filter(t => /theme/i.test(t))")]
+            check("…and another account signing in here then keeps its own theme, nothing saved for it (#429)", rio429 == ["system", None, []], rio429)
+            db = sg_db.connect()
+            db.execute("DELETE FROM users WHERE id=?", (uid429,))
+            db.close()
             # offline, the browser reports each request it couldn't make; signing out ends in 401s
             problems[before:] = [x for x in problems[before:] if "ERR_INTERNET_DISCONNECTED" not in x and "401" not in x]
             ctx.close()

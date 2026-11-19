@@ -21,16 +21,17 @@ if (SgLogout.due()) {
   f.querySelector(".logo").after(out);
   sayIn(out, "Signed out on this device, and what it kept for offline is deleted. Your sign-in on the server ends once " +
     "this device reaches it again; until then, Sanguity here opens on this page.");
-  let trying = false;
-  const end = async () => {
-    if (trying || !SgLogout.due()) return;
+  let trying = false, done = false;
+  const end = async () => {   // (ended from another tab's sign-in page, #429: said here too)
+    if (trying || done) return;
     trying = true;
-    if (await SgLogout.finish()) { clearInterval(again); sayIn(out, "Signed out. Your sign-in on the server has ended too."); }
+    if (!SgLogout.due() || await SgLogout.finish()) { done = true; clearInterval(again); sayIn(out, "Signed out. Your sign-in on the server has ended too."); }
     trying = false;
   };
   const again = setInterval(end, 4000);
   end();
   addEventListener("online", end);
+  addEventListener("storage", e => { if (e.key === SgLogout.KEY) end(); });
 }
 let ticket = null;   // after a correct password, when the account has two-factor sign-in on
 const pkBtn = document.getElementById("pk"), pkBox = document.getElementById("pkBox");
