@@ -1345,6 +1345,12 @@ Everything on `main` so far; it becomes the first tagged release.
   sign-out now, with anything else the sign-in left waiting. Another tab left open stayed signed in, and kept the
   sign-in on the server alive once back online; every open tab goes to the sign-in page as soon as you log out in
   one, and the sign-in on the server ends from there once it's reached.
+- **An empty profile's theme, the palette's waiting Enter, and the banner by an open form** (#430): a profile with no
+  records ignored the account's theme (Dark showed light); it's applied as with records. In the command palette, Enter
+  pressed while the records were on their way, then an arrow key, opened the arrowed choice by itself once they came;
+  the arrow takes the waiting Enter back, and the choice opens on its own Enter. On the records page, back online with
+  a form open, the banner still said "Offline · read-only" while Save already worked; it says you're back online and
+  that the latest records load once it's closed.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

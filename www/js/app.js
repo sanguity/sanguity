@@ -174,6 +174,7 @@ async function settingsLoad() {
       }
       await settingsLoad();
       applyTabs(CFG.tabs);   // its tabs as it has them, as the other pages show them (#425)
+      applyTheme(CFG.theme);   // and the account's theme, as with records (#430)
       emptyCard(canImport(PROFILE)
         ? emptyState(`${PROFILE.name} has no records yet: lab results, visits, medications and the rest appear here once they're brought in.`,
             {href: `guide.html?profile=${PROFILE.id}`, text: "Get started"})

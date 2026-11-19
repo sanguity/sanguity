@@ -181,14 +181,23 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
      again, and the page is loaded again, live, as the other pages are (offline-page.js); a theme picked offline is
      saved then (nav.js saveLater, #424). An entry being written (a form in the drawer, a journal entry offline, say)
      or another dialog open is left to finish first: its Save reaches the server now, and the page is loaded again once
-     it's done; a record only shown there isn't waited for */
+     it's done, the banner saying so meanwhile (#430); a record only shown there isn't waited for */
   let asking = false;
   function back() {
     if (asking || !document.body.classList.contains("offline")) return;
     asking = true;
     realFetch(API + "me", {cache: "no-store", credentials: "same-origin"}).then(() => {
       OFFLINE.on = false;
-      (function live() { if (document.querySelector("#drawer[open] form, dialog[open]:not(#drawer)")) setTimeout(live, 1000); else location.reload(); })();
+      let said = false;
+      (function live() {
+        if (!document.querySelector("#drawer[open] form, dialog[open]:not(#drawer)")) { location.reload(); return; }
+        if (!said) {
+          said = true;
+          banner(...[document.querySelector("#offlineBanner > h1"), el("strong", {text: "Back online. "}),
+            "What you save now goes to the server; the page loads the latest records once you've closed what's open."].filter(Boolean));
+        }
+        setTimeout(live, 1000);
+      })();
     }, () => { asking = false; });
   }
   addEventListener("online", back);
