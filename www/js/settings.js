@@ -460,7 +460,7 @@ EDITORS.ranges = rangesEditor;
    sidebar, and leaving the page or picking another profile asks first (sidebar.js). Whose settings these are is said
    once per group, above them; a setting says it only where its section mixes them. Where a setting's value comes
    from ("your own", "set for this profile"), and its section's Reset to defaults, show only when it isn't the
-   default. */
+   default. A section of one setting named as it is (Tabs, Units, Milestones) has one heading, the section's (#398). */
 const FROM = {default: "default", install: "set for this server", profile: "set for this profile", user: "your own"};
 const SCOPE_TAG = {install: "for this server", profile: "for this profile", user: "just for you"};
 const INSTANT = new Set(["theme", "timezone", "dateformat", "units", "choices"]);
@@ -474,9 +474,10 @@ const setBase = () => PID == null ? "settings/user" : `profiles/${PID}/settings`
    wrong saving it. changed(item) after every edit in it; changed() when it's filled in otherwise (put). A simple
    preference on its way to the server isn't a change not saved (#407): counts() is what the bar, the sidebar's dot,
    "not saved" and the questions before leaving count; for one of those, only one held for the bar: refused by the
-   server, or filled in by put(). */
+   server, or filled in by put(). solo: the section's only setting, with its name, which the section's heading says: no
+   heading of its own, only its marks (#398). */
 const SET_ITEMS = {};   // key -> the setting's item drawn last: put(value) fills its editor in, unsaved (presets.js, #186)
-function settingNode(st, changed, mixed) {
+function settingNode(st, changed, mixed, solo) {
   const ro = !st.can_change;
   const msg = el("span", {class: "msg", role: "status"});
   const from = el("span", {class: "tag"});
@@ -497,7 +498,7 @@ function settingNode(st, changed, mixed) {
   item.put = (v, held = true) => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); item.held = held; mark(); changed(); };   // #186: not saved, a simple one too
   SET_ITEMS[st.key] = item;
   tag();
-  node.append(...present(el("h3", {class: "sub"}, st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
+  node.append(...present(el(solo ? "div" : "h3", {class: "sub"}, solo ? null : st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
     st.help ? el("p", {class: "hint", text: st.help}) : null,
     ed.node, msg));
   return item;
@@ -562,7 +563,8 @@ function sectionCard(sec, opts = {}) {
     if (n && !msg.classList.contains("bad")) sayIn(msg, "");
     if (card && it && it.instant && it.dirty()) saveNow(it, card);
   };
-  const items = sec.settings.map(st => settingNode(st, changed, mixed));
+  const solo = sec.settings.length === 1 && sec.settings[0].label === sec.title;
+  const items = sec.settings.map(st => settingNode(st, changed, mixed, solo));
   const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", onclick: () => resetSection(card)});
   const tidy = () => { reset.hidden = !items.some(it => it.st.can_change && isOwn(it.st) && !atDefault(it.st)); };
   tidy();
@@ -700,6 +702,7 @@ async function load(note, force, all = false) {
   { const ov = every.find(x => x.key === "ranges.overrides"); RANGE_CFG = {...rangeConfig(merged), ...(ov ? {overrides: ov.value} : {})}; }   // #44
   { const th = every.find(st => st.key === "theme"); if (th) applyTheme(th.value); }   // #45: the saved default, here too
   { const u = every.find(st => st.kind === "units"); if (u) aboutUnits(u.value); }   // and the Units (an Undo's too): About this person's (#408)
+  { const tb = every.find(st => st.key === "tabs"); if (tb) SgNav.layout(tb.value); }   // the top bar's tabs as saved, Undo and Reset too (#398)
   document.querySelector("main.sets").dataset.role = d.role || "";   // whose settings each group's are (settings-nav.js)
   const forced = [].concat(force || []);
   const cards = d.sections.map(sec => {

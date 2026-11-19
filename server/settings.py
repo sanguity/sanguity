@@ -417,7 +417,7 @@ section("tabs", "Tabs", "Which tabs this profile shows, and in what order.")
 section("appearance", "Appearance", "How Sanguity looks for you, on every device you sign in on.")
 
 define("tabs", "tabs", "Tabs", {"order": list(TABS), "hidden": []}, tab_layout, kind="tabs", private=False, reread=True,
-       help="A hidden tab leaves the tab bar and the arrow keys; a saved view or link to it opens the first shown tab.")
+       help="A hidden tab leaves the top bar and its More menu; a saved view or a link to it opens the first shown tab.")
 define("theme", "appearance", "Theme", "system", theme, scope="user", kind="theme", private=False,
        help="On every device you sign in on. Dark mode or Light mode in your menu changes it too.")
 

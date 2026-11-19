@@ -190,7 +190,9 @@ const SgNav = (() => {
   prof.btn.classList.add("profile-btn");
   const radios = el("div", {role: "group", "aria-label": "Switch profile"}), rSep = sep();
   const pLinks = [link("settings.html#about", "book-user", "About this person", {id: "aboutLink"}),   // in Settings now (#267)
-    link("settings.html", "settings", "Settings", {id: "settingsLink"}), link("sources.html", "database", "Sources", {id: "sourcesLink"}),
+    link("settings.html", "settings", "Settings", {id: "settingsLink"}),
+    link("settings.html#sec-tabs", "pencil", "Edit tabs…", {id: "editTabsLink"}),   // always in reach, whether or not More shows (#398)
+    link("sources.html", "database", "Sources", {id: "sourcesLink"}),
     link("sharing.html", "share-2", "Sharing", {id: "sharingLink"})];
   prof.list.append(radios, rSep, ...pLinks, sep(), link("guide.html?new", "plus", "New profile", {id: "newProfileLink"}));
   for (const x of items(prof)) x.tabIndex = -1;

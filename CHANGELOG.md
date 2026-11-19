@@ -1212,6 +1212,11 @@ Everything on `main` so far; it becomes the first tagged release.
   touch screen, where it was 32 or 24 px wide); your menu's name starts with what it shows ("demo, your menu", so
   speech input can say it); and a link from a menu to a part of the page you're on (About this person, on Settings)
   puts focus on its heading, as the command palette's links do, instead of leaving it nowhere.
+- **Edit tabs… always in reach** (#398): it was only under More, which isn't there when every tab fits (on a wide
+  screen, and on phones). It's in the profile menu too now; it lands with focus on Settings → Tabs' heading (one
+  heading: a section of one setting with the same name, as Tabs, Units and Milestones are, no longer says it twice),
+  the command palette finds it by "edit tabs", and a new order or a tab hidden there shows in the top bar once it's
+  saved, not after a reload. Its help no longer mentions the arrow keys, which #264 replaced.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
