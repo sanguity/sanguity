@@ -201,9 +201,14 @@ class Sources(unittest.TestCase):
         iid = stored(self.pid, SECOND, "upload", "fhir")
         label = records.source_label("upload", "fhir")
         name = lambda body, i=iid, pid=self.pid, c=self.c, h=H: c.put(f"/api/profiles/{pid}/imports/{i}/name", json=body, headers=h)
+        rev = lambda: self.c.get(f"/api/profiles/{self.pid}/data").headers["X-Records-Rev"]
+        before = rev()
         r = name({"name": "  Clinic B  portal "})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json(), {"id": iid, "label": label, "name": "Clinic B portal"})
+        # #416: the reply says the records' revision after it, as the page's data does, for the offline copy
+        self.assertEqual(r.headers["X-Records-Rev"], rev())
+        self.assertNotEqual(r.headers["X-Records-Rev"], before)
         got = self.data()["imports"][str(iid)]   # served again, not the cached records from before
         self.assertEqual((got["label"], got["name"]), (label, "Clinic B portal"))
         self.assertNotIn("name", self.data()["imports"][str(self.first)])

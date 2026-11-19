@@ -12883,6 +12883,22 @@ def main():
                 && {json.dumps([str(i) for i in day[1:] + docs])}.every(k => k in (c.details || {{}})); }})"""
             until(IN405, 5000)
             in405 = ph.evaluate(IN405)
+            # #416: and those whose replies aren't records: a visit's source renamed (its reply says the records' revision
+            # after it), a lab renamed and a Trends view saved (their replies are the settings), then a lab day not opened
+            # before is opened: the copy has the names, the view and that day's details
+            ch416 = ph.evaluate("""(async () => {
+                const v = EV.find(e => e.k === 'visit' && !e.hidden), lab = SERIES.find(s => !s.watch).name, labs = SERIES.filter(s => !s.watch).slice(0, 2).map(s => s.name);
+                let r = await RENAME.import.save(v.imp, 'Clinic renamed (#416)'); RENAME.import.done(await r.json(), v.imp);
+                r = await RENAME.lab.save(lab, 'Nickname (#416)'); RENAME.lab.done(await r.json());
+                await tvStore([...CFG.trends.views.map(tvPlain), {name: 'Preset (#416)', labs, default: false}], 'Saved.');
+                const day = EV.find(e => e.k === 'lab' && (DATA.details[e.id]?.ids || []).length > 1 && !detailsHave(DATA.details[e.id].ids[0]));
+                await openEvent(day); closeDrawer();
+                return {imp: v.imp, lab, day: [day.id, ...DATA.details[day.id].ids]}; })()""")
+            IN416 = COPY + f""".then(c => {{ const d = c && JSON.parse(c.data), s = c && JSON.parse(c.settings || '{{}}');
+                return !!d && d.imports[{ch416["imp"]}].name === 'Clinic renamed (#416)' && Object.values(s.labNicknames || {{}}).includes('Nickname (#416)')
+                && (s.trends?.views || []).some(v => v.name === 'Preset (#416)') && {json.dumps([str(i) for i in ch416["day"][1:]])}.every(k => k in (c.details || {{}})); }})"""
+            until(IN416, 5000)
+            in416 = ph.evaluate(IN416)
             # offline: that profile, read-only, with when it was loaded
             test_pages = ph.evaluate("TEST_PAGES")   # (#378, below)
             theme414 = ph.evaluate("api('settings/user').then(r => r.json()).then(j => j.theme)")   # (#414, below: put back after)
@@ -12902,6 +12918,11 @@ def main():
             check("offline (#405): a dose logged, a visit renamed and a claim marked in place, then a lab day opened: after a reload offline all three are there and the lab day's details are kept",
                   ch405["dose"] and ch405["hsa"] == "HSA" and in405
                   and off405 == {"dose": True, "title": "Renamed for offline (#405)", "hsa": "HSA", "day": True}, [ch405, in405, off405])
+            off416 = ph.evaluate("""(async c => { await loadDetails(c.day);
+                return {source: importName(c.imp), lab: nice(c.lab), view: CFG.trends.views.some(v => v.name === 'Preset (#416)'),
+                        day: c.day.every(id => detailsHave(id) && !DETAILS_MISSED.has(id))}; })""", ch416)
+            check("offline (#416): a source renamed, a lab renamed and a Trends view saved, then a lab day opened: after a reload offline the new names, the view and the day's details are there",
+                  in416 and off416 == {"source": "Clinic renamed (#416)", "lab": "Nickname (#416)", "view": True, "day": True}, [ch416, in416, off416])
             check("offline: Import, Settings and Account say they need the server, as their tip, with no title (#385)",
                   ph.evaluate("[...document.querySelectorAll('header a.acct, dialog.sheet a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && a.dataset.tip === \"Needs the server: you're offline\" && !a.hasAttribute('title'))"))
             # (#385) the profile menu's and your menu's links, still reached with the arrow keys: each shows the reason as
@@ -13076,6 +13097,8 @@ def main():
                 const x = (await (await api('profiles/1/edits')).json()).edits.find(x => x.action === 'rename' && x.ids.includes(c.visit));
                 if (x) await api(`profiles/1/edits/${x.id}`, {method: 'DELETE'});
                 await api('profiles/1/costs/mark', {method: 'PUT', body: JSON.stringify({event: c.claim, hsa: 'auto'})}); })""", ch405)
+            ph.evaluate("""(async c => { await RENAME.import.save(c.imp, ''); await RENAME.lab.save(c.lab, '');   // #416's undone
+                await tvStore(CFG.trends.views.map(tvPlain).filter(v => v.name !== 'Preset (#416)'), 'Deleted.'); })""", ch416)
 
             # turned off: the copy goes
             ph.goto(base + "/account.html#offline")

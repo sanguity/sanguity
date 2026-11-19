@@ -70,8 +70,9 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
 
   /* a change's reply, for the copy's profile, with the records' revision after it: the records whole (an edit, a link
      between results; the details opened before went with the records they belonged to), the rows of the list it
-     changed (store.js putRows) or the out-of-pocket part (a Costs mark); rev: what the copy's records are now */
-  const CHANGE = /^profiles\/(\d+)\/(edits|same|journal|medications\/doses|medications\/reminders|costs\/mark)(\/|$)/;
+     changed (store.js putRows), the out-of-pocket part (a Costs mark) or a source's own name (rename.js, #416);
+     rev: what the copy's records are now */
+  const CHANGE = /^profiles\/(\d+)\/(edits|same|journal|medications\/doses|medications\/reminders|costs\/mark|imports\/(\d+)\/name)(\/|$)/;
   const LIST = {journal: "journal", "medications/doses": "doses", "medications/reminders": "reminders"};
   function keepChange(path, r) {
     const cm = path.match(CHANGE), rev = r.headers.get("X-Records-Rev");
@@ -83,12 +84,33 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
       if ("records" in j) {
         if (!j.records) { copy = null; await SgOffline.drop(); return; }   // none left
         copy.data = JSON.stringify(j.records); copy.details = {};
+      } else if (cm[3]) {   // the source's name: the details opened before stay, as its records do
+        const data = JSON.parse(copy.data), src = (data.imports || {})[cm[3]];
+        if (src) { if (j.name) src.name = j.name; else delete src.name; }
+        copy.data = JSON.stringify(data);
       } else {
         const data = JSON.parse(copy.data);
         if (list) data[list] = putRows(data[list], list, j); else data.oop = j.oop || undefined;
         copy.data = JSON.stringify(data);
       }
       copy.rev = rev;
+      await write();
+    }).catch(e => console.warn("offline copy not kept:", e.message));
+  }
+
+  /* settings saved on the page (a lab's or a source tag's name, rename.js; a saved Trends view; the journal's groups):
+     the reply is the settings whole, as GET .../settings answers them (a reset's are its "settings"), so they're the
+     copy's settings now (#416) */
+  const SETTINGS = /^profiles\/(\d+)\/settings(\/|$)/;
+  function keepSettings(path, r) {
+    const sm = path.match(SETTINGS);
+    if (!sm || !r.ok || !SgOffline.on()) return;
+    const pid = +sm[1], body = r.clone().json();
+    queue = queue.then(async () => {
+      if (!copy || copy.profile.id !== pid) return;
+      const j = await body, now = path.endsWith("/reset") ? j.settings : j;
+      if (!now || typeof now !== "object") return;
+      copy.settings = JSON.stringify(now);
       await write();
     }).catch(e => console.warn("offline copy not kept:", e.message));
   }
@@ -129,7 +151,7 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
       }
       throw err;
     }
-    if (method === "GET") keep(path, r); else keepChange(path, r);
+    if (method === "GET") keep(path, r); else { keepChange(path, r); keepSettings(path, r); }
     return r;
   };
 

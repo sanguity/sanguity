@@ -1,9 +1,10 @@
 """A profile's import history and undoing an import (history.py). Anyone the profile is shared with sees the history;
 owners and editors may undo, and give an import its own name (#38). The CSRF check in main.guard covers the POST
-and PUT like every other change."""
+and PUT like every other change. A name's reply says the records' revision after it (X-Records-Rev, records.stamp),
+as the page's other changes do, so the offline copy follows it (#416)."""
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from . import activity, db as dbm, history, records
@@ -34,7 +35,7 @@ class Name(BaseModel):
 
 
 @router.put("/api/profiles/{pid}/imports/{iid}/name")
-def name_import(pid: int, iid: int, body: Name, request: Request, s=Depends(user), db=Depends(get_db)):
+def name_import(pid: int, iid: int, body: Name, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     """Name the import (shown in place of its importer's label wherever a record says where it came from), or, with
     no name, go back to the label. Returns {"id", "label", "name"}."""
     need(db, s, pid, "editor")
@@ -47,4 +48,5 @@ def name_import(pid: int, iid: int, body: Name, request: Request, s=Depends(user
             activity.log(db, "source", s, pid, {"import": iid, "label": label, "named": name is not None}, _client_ip(request))
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
+    records.stamp(response, db, pid)
     return {"id": iid, "label": label, "name": name}
