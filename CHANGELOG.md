@@ -1382,6 +1382,16 @@ Everything on `main` so far; it becomes the first tagged release.
   VO2 max), each under its heading with its own tiles, which jump to its cards, and a bar of the sections above that
   jumps to each. A section with nothing in it is left out. Shading hospital stays is under "Show on charts", as on
   Labs, and the phone's last sync sits apart on the right.
+- **The Overview grouped by question: today, labs, readings, the record** (#274): it opened on 12 lab tiles, 11 saying
+  "In range", and Upcoming started 1,217 px down at 1400 px (2,694 px on a phone). It's in groups now, in the same order
+  at every width: **Today** (today's doses, Upcoming with "in 8 days" and **Prepare a visit summary**, when the watch
+  last synced), **Key labs**, **Readings** (the watch's, the scale's and the home readings in one row), the **Health
+  record** (problems, allergies, immunizations) and **Recent**. Today's doses and the next appointment are on the first
+  screen at 1400 and 390 px. The key lab tiles keep the person's order, grouped by panel, show a status only when it's
+  high or low, and the header says once what the changes are since; it also lists what's outside its range at its
+  latest result, a key lab not tested again since included, where Magnesium could say ▲ High above "Outside reference
+  range at latest draw (0)". An upcoming appointment opens its details in the drawer. Recent lists clinical records
+  only, with the watch's workouts summed in one line.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -128,7 +128,7 @@ ALLOWED = {
     "www/js/medlog.js": {"script styles": 1},
     "www/js/meds.js": {"script styles": 6},
     "www/js/nav.js": {"script styles": 1},
-    "www/js/overview.js": {"script styles": 7, "px spacing": 1},   # 8 px margins, on the scale but written out
+    "www/js/overview.js": {"script styles": 2},   # a record's kind icon in its lane's colour, as on the Timeline (#274)
     "www/js/rename.js": {"script styles": 2},
     "www/js/timeline.js": {"script styles": 1},
     "www/js/trends.js": {"script styles": 8},
