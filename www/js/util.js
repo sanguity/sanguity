@@ -585,13 +585,17 @@ const toast = (() => {
    Type records in, an upload on its way) is asked about first, in the app's own dialog: signed out first, there'd be
    nothing left to save it with, and the browser's "Leave site?" would come too late. Said yes to, the guards stand
    aside (sgLeaving), and pwa.js deletes what the device kept (sg:logout). The server not reached (offline), the
-   sign-in there is ended once it is, and the sign-in page says so (pwa.js SgLogout, #422). */
+   sign-in there is ended once it is, and the sign-in page says so (pwa.js SgLogout, #422). The other open tabs are
+   asked too, and named (#432): signed out, they go to the sign-in page, and what they hadn't saved is lost as well. */
 let sgLeaving = false;
 async function logOut() {
   const unsaved = new Event("beforeunload", {cancelable: true});
   dispatchEvent(unsaved);
-  if (unsaved.defaultPrevented && !await ask({title: "Log out with changes not saved?", danger: true, action: "Log out", cancel: "Stay",
-      message: "What's on this page and not saved yet will be lost. Stay to save it first."})) return;
+  const here = unsaved.defaultPrevented, tabs = await SgLogout.elsewhere(), there = [...new Set(tabs)].sort();
+  const list = there.length > 1 ? there.slice(0, -1).join(", ") + " and " + there.at(-1) : there[0];
+  if ((here || tabs.length) && !await ask({title: "Log out with changes not saved?", danger: true, action: "Log out", cancel: "Stay",
+      message: !tabs.length ? "What's on this page and not saved yet will be lost. Stay to save it first." :
+        `Changes not saved ${here ? "on this page and " : ""}in ${list} (${tabs.length > 1 ? "other tabs" : "another tab"}) will be lost. Stay to save them first.`})) return;
   sgLeaving = true;
   document.dispatchEvent(new Event("sg:logout"));
   let out = false;
@@ -601,5 +605,6 @@ async function logOut() {
     toast("You're still signed in: logging out needs the server. Try again once you're online.");
     return;
   }
+  SgLogout.tell();   // the other tabs, to the sign-in page (#432)
   location.replace("login.html");
 }

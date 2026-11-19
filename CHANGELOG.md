@@ -1355,6 +1355,11 @@ Everything on `main` so far; it becomes the first tagged release.
   theme of an account with no profile, and sign-out left the last account's theme in the browser, so after someone
   with Dark logged out, the next account showed dark there whatever its own was. It's applied now, and sign-out
   leaves no account's theme behind.
+- **Log out asks about every open tab's unsaved changes** (#432): Log out asked only about the page it was chosen on,
+  so changes not saved in another tab (a name on Settings, a lab typed in on Sources) were lost without a word as that
+  tab went to the sign-in page. It asks every open tab now, online or offline, and names those with changes not saved
+  ("Changes not saved in Settings and Sources (other tabs) will be lost"); Stay keeps everything, and Log out sends
+  every tab to the sign-in page, online too.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

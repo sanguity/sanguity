@@ -7143,6 +7143,63 @@ def main():
                   "focus back on Your menu",
                   out_asked[0] == "Log out with changes not saved?" and stayed == [200, True, "Hemoglobin"] and stay_focus == "userMenuBtn", [out_asked, stayed, stay_focus])
             page.fill(".man-row [data-f=test]", "")
+            # #432: and it asks the other open tabs, online here (offline: the phone's PWA run, #429's check), in a browser
+            # signed in of its own: with a name typed on Settings → Labs and ranges and a lab on Sources → Type records in,
+            # Log out on the records page names both; Stay leaves the three as they were, signed in on the server; Log out
+            # then ends the sign-in and sends the other two to the sign-in page. Signed in again, with nothing unsaved in
+            # the other tab, nothing is asked
+            ctx432 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            tabs432 = [ctx432.new_page() for _ in range(3)]
+            for p in tabs432:
+                p.on("pageerror", lambda e: problems.append(f"script error (#432): {e}"))
+            a432, b432, c432 = tabs432
+            me432 = "fetch('api/me', {cache: 'no-store'}).then(r => r.status)"
+
+            def in432():
+                a432.goto(base + "/login.html")
+                a432.fill("#u", USER)
+                a432.fill("#p", PW)
+                a432.click("#b")
+                a432.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.id === 1", timeout=20000)
+                b432.goto(base + "/settings.html?profile=1#sec-names")
+                b432.wait_for_selector("[data-key=labNicknames] button:text-is('Add a row')", timeout=10000)
+            in432()
+            b432.click("[data-key=labNicknames] button:text-is('Add a row')")
+            b432.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Typed, not saved")
+            c432.goto(base + "/sources.html?profile=1#manual")
+            c432.wait_for_selector(".man-row [data-f=test]", timeout=10000)
+            c432.fill(".man-row [data-f=test]", "Hemoglobin")
+            a432.bring_to_front()
+            held432 = lambda: [a432.evaluate("location.pathname"), b432.evaluate("location.pathname"), c432.evaluate("location.pathname")]   # noqa: E731
+            menu_click(a432, "#logout")
+            asked432 = answer_ask(a432, yes=False)
+            a432.wait_for_timeout(300)
+            stay432 = [held432(), b432.input_value("[data-key=labNicknames] .set-row:last-child input[data-k=to]"), c432.input_value(".man-row [data-f=test]"),
+                       a432.evaluate(me432), a432.evaluate("document.activeElement.id")]
+            menu_click(a432, "#logout")
+            a432.click("dialog.sg-ask[open] .sg-ask-acts button:last-child")   # (the page goes as it closes: no wait for it)
+            a432.wait_for_url("**/login.html", timeout=10000)
+            for p in (b432, c432):
+                try:
+                    p.wait_for_url("**/login.html", timeout=5000)
+                except Exception:
+                    pass
+            out432 = [held432(), a432.evaluate(me432)]
+            in432()
+            a432.bring_to_front()
+            menu_click(a432, "#logout")
+            for p in (a432, b432):
+                try:
+                    p.wait_for_url("**/login.html", timeout=5000)
+                except Exception:
+                    pass
+            plain432 = [held432()[:2], a432.evaluate("!!document.querySelector('dialog.sg-ask[open]')"), a432.evaluate(me432)]
+            ctx432.close()
+            check("…and online, Log out asks the other open tabs too, naming the pages with changes not saved (#432); Stay leaves all three as they were, signed in",
+                  asked432 == ["Log out with changes not saved?", "Changes not saved in Settings and Sources (other tabs) will be lost. Stay to save them first."]
+                  and stay432 == [["/", "/settings.html", "/sources.html"], "Typed, not saved", "Hemoglobin", 200, "userMenuBtn"], [asked432, stay432])
+            check("…Log out then ends the sign-in on the server and sends the other tabs to the sign-in page; with nothing unsaved elsewhere, nothing more is asked (#432)",
+                  out432 == [["/login.html"] * 3, 401] and plain432 == [["/login.html"] * 2, False, 401], [out432, plain432])
             # #391: Add's items only change the section on Sources (#388); the one shown comes from the top of the page, with
             # its name said and in the tab's title, as the sidebar shows one
             page.set_viewport_size({"width": 375, "height": 760})
@@ -13652,31 +13709,53 @@ def main():
             # (#429) a second tab open meanwhile, on Settings
             p429 = ctx.new_page()
             p429.on("pageerror", lambda e: problems.append(f"script error (phone, second tab): {e}"))
-            p429.goto(base + "/settings.html?profile=1")
-            p429.wait_for_selector("#sections > section", state="attached", timeout=10000)
+            p429.goto(base + "/settings.html?profile=1#sec-names")
+            p429.wait_for_selector("[data-key=labNicknames] button:text-is('Add a row')", timeout=10000)
+            # (#432) with a name typed there and not saved, and a third tab with a lab typed on Sources → Type records in
+            p429.click("[data-key=labNicknames] button:text-is('Add a row')")
+            p429.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Typed, not saved")
+            p432 = ctx.new_page()
+            p432.on("pageerror", lambda e: problems.append(f"script error (phone, third tab): {e}"))
+            p432.goto(base + "/sources.html?profile=1#manual")
+            p432.wait_for_selector(".man-row [data-f=test]", timeout=10000)
+            p432.fill(".man-row [data-f=test]", "Hemoglobin")
+            ph.bring_to_front()
             ctx.set_offline(True)
             ph.reload()
             until(LOADED, 20000)
             # (#429) a theme picked offline, waiting to be saved for the account once online (#414)
             menu_click(ph, "#theme")
             until("localStorage.getItem('sg-theme-later') !== null", 3000)
+            # (#432) Log out offline asks about the other two tabs, by name; Stay leaves the three as they were, signed in
+            # on the server, nothing noted for later; Log out then goes ahead
             menu_click(ph, "#logout")
+            asked432 = answer_ask(ph, yes=False)
+            ph.wait_for_timeout(300)
+            stay432 = [[p.evaluate("location.pathname") for p in (ph, p429, p432)], p429.input_value("[data-key=labNicknames] .set-row:last-child input[data-k=to]"),
+                       p432.input_value(".man-row [data-f=test]"), ph.evaluate("[localStorage.getItem('sg-logout-later'), localStorage.getItem('sg-theme-later') !== null]"), alive422(token422)]
+            check("Log out offline asks the other open tabs too, naming the pages with changes not saved (#432); Stay leaves all three as they were, still signed in on the server",
+                  asked432 == ["Log out with changes not saved?", "Changes not saved in Settings and Sources (other tabs) will be lost. Stay to save them first."]
+                  and stay432 == [["/", "/settings.html", "/sources.html"], "Typed, not saved", "Hemoglobin", [None, True], True], [asked432, stay432])
+            menu_click(ph, "#logout")
+            ph.click("dialog.sg-ask[open] .sg-ask-acts button:last-child")   # (the page goes as it closes: no wait for it)
             ph.wait_for_url("**/login.html", timeout=10000)
             until("!!document.getElementById('outNote')", 5000)
             off422 = [ph.inner_text("#outNote"), ph.evaluate(NO_COPY), ph.evaluate("localStorage.getItem('sg-logout-later')")]
-            try:
-                p429.wait_for_url("**/login.html", timeout=5000)
-            except Exception:
-                pass
-            off429 = [ph.evaluate("[localStorage.getItem('sg-theme-later'), localStorage.getItem('ht-theme')]"), p429.evaluate("location.pathname")]
+            for p in (p429, p432):
+                try:
+                    p.wait_for_url("**/login.html", timeout=5000)
+                except Exception:
+                    pass
+            off429 = [ph.evaluate("[localStorage.getItem('sg-theme-later'), localStorage.getItem('ht-theme')]"), p429.evaluate("location.pathname"), p432.evaluate("location.pathname")]
+            p432.close()
             ph.goto(base + "/?profile=1")
             ph.wait_for_url("**/login.html", timeout=10000)
             off422.append(ph.evaluate("location.pathname"))
             check("Log out offline (#422): the copy goes, and the sign-in page says the sign-in on the server ends once it's reached; the app opened meanwhile goes there",
                   off422 == ["Signed out on this device, and what it kept for offline is deleted. Your sign-in on the server ends once this device reaches it again; "
                              "until then, Sanguity here opens on this page.", True, "1", "/login.html"], off422)
-            check("…what the sign-in left waiting goes with it, the theme picked offline (#429), and the tab open on Settings is on the sign-in page at once",
-                  off429 == [[None, None], "/login.html"], off429)
+            check("…what the sign-in left waiting goes with it, the theme picked offline (#429), and the tabs open on Settings and Sources are on the sign-in page at once (#432)",
+                  off429 == [[None, None], "/login.html", "/login.html"], off429)
             # (#429) the first tab closed, the second ends the sign-in on the server once it's reached
             ph.close()
             ph = p429
