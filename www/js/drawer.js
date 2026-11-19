@@ -117,7 +117,7 @@ drawer.addEventListener("cancel", e => e.preventDefault());
    the record holds, the actions that go somewhere (.dgo: another tab, the medication's history, a journal note), and
    where it came from. Each fact once: a value the head or a key fact says isn't said again below (drawerFacts), by
    meaning as well as by its words (#406): a day the head names, however it's written, or the place its title is. */
-let drawerSaid = new Set();
+let drawerSaid = new Set(), drawerKeys = [];   // drawerKeys: the key facts, [label, value] (factSays)
 const saidKey = v => String(v).trim().toLowerCase();
 /* days: the timestamps of the days the head names (a fact gives a day without its time) */
 function drawerHead(k, title, line, tone, days = []) {
@@ -126,6 +126,7 @@ function drawerHead(k, title, line, tone, days = []) {
   key.style.setProperty("--tone", tone || CAT_OF[k]?.color || "var(--muted)");
   $("#dtitle").textContent = title; $("#dsub").textContent = line;
   drawerSaid = new Set([title, ...title.split(" · "), ...line.split(" · ").flatMap(x => x.split(" – ")), ...days.filter(isFinite).map(fmtD)].filter(Boolean).map(saidKey));
+  drawerKeys = [];
   drawerMenu([]); delete drawer.dataset.med;   // a medication's history marks it again (meds.js medShown, #417)
   const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
   return body;
@@ -145,8 +146,15 @@ function drawerFacts(rows, cls = "kv") {
   const keep = rows.filter(r => r && r[1] != null && r[1] !== "").map(([k, v, o]) => [k, unsaid(v), o]).filter(r => r[1] !== "");
   if (!keep.length) return null;
   if (cls === "kv") return el("dl", {class: "kv"}, keep.flatMap(([k, v, o]) => [el("dt", {text: k}), el("dd", {text: v, ...o})]));
-  keep.forEach(r => drawerSaid.add(saidKey(r[1])));
+  keep.forEach(r => { drawerSaid.add(saidKey(r[1])); drawerKeys.push(r); });
   return el("dl", {class: "facts"}, keep.map(([k, v, o]) => el("div", {}, el("dt", {text: k}), el("dd", {text: v, ...o}))));
+}
+/* whether a key fact says x in other words (#418): x's one number is the fact's value, and a word of x is a word of
+   its label ("2 messages": Messages 2; "30-day supply": Days' supply 30) */
+const stems = s => (String(s).toLowerCase().match(/[a-z]+/g) || []).map(w => w.replace(/s$/, ""));
+function factSays(x) {
+  const n = String(x).match(/\d+(?:[.,]\d+)?/g), w = stems(x);
+  return n?.length === 1 && drawerKeys.some(([k, v]) => String(v).trim() === n[0] && stems(k).some(s => w.includes(s)));
 }
 /* the ⋯ menu: [{text, tip?, run}], none (hidden) for a record that can't be corrected; label: what its button says */
 const dMenu = SgNav.menu({btn: $("#dmoreBtn"), list: $("#dmoreList")});
@@ -296,10 +304,11 @@ function openEvent(e) {
   // a list of details built elsewhere (an ECG's, ecg.js) leaves out what the head or a key fact says, as drawerFacts does
   for (const dl of main) if (dl?.matches?.("dl.kv")) for (const dd of dl.querySelectorAll(":scope > dd"))
     if (drawerSaid.has(saidKey(dd.textContent))) { dd.previousElementSibling?.remove(); dd.remove(); }
-  // what the line under its title said that nothing else does (a stay's reason, a fill's supply), said once, first
+  // what the line under its title said that nothing else does (a stay's reason, a fill's supply), said once, first;
+  // not what a key fact says in other words (a conversation's count, a fill's supply when it's a fact: #418)
   if (d.type !== "labday") {
     const said = [...drawerSaid, ...main.map(n => n ? saidKey(n.textContent) : "")].join("\n");
-    const rest = (e.sub || "").split(" · ").filter(x => x && !said.includes(saidKey(x)));
+    const rest = (e.sub || "").split(" · ").filter(x => x && !said.includes(saidKey(x)) && !factSays(x));
     if (rest.length) main.unshift(note(rest.join(" · ")));
   }
   { const mh = medHistoryAction(e); if (mh) go.push(mh); }   // a medication's whole history (meds.js, #50)

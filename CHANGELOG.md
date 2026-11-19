@@ -1208,6 +1208,11 @@ Everything on `main` so far; it becomes the first tagged release.
   it before the palette opened (found again once the Timeline is drawn), to Add (not the item in its closed sheet),
   or, with that gone, to the record's row, the row now where it was, or the list's heading. Deleting a profile in
   Settings puts focus on the page's heading.
+- **The drawer says a count, a supply and a start time once** (#418): a conversation said "2 messages" above its fact
+  "Messages 2", an imported pharmacy fill "30-day supply" above "Days' supply 30", and an irregular rhythm
+  notification "Period it covers: Nov 3, 2026, 2:00 AM – Nov 3, 2026, 4:10 AM" under a head that says when it began.
+  What the line under a record's title says that a key fact says in other words is left out, and the period says
+  only its end ("to 4:10 AM", with its day when it's another).
 - **The top bar's links open the profile shown** (#397): with a browser tab for each child, Add's links (Log a dose,
   Upload files…), Display and Getting started opened whichever profile had been picked last in any tab, not the one
   shown. Every link in the top bar to another page now carries the profile shown (`?profile=`), as the tabs, the

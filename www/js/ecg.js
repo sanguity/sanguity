@@ -31,8 +31,11 @@ const kvList = rows => el("dl", {class: "kv"}, ...rows.filter(x => x[1] != null 
 /* the drawer's body for either kind */
 function ecgBody(e, d) {
   if (d.type !== "ecg") return [];
+  // the period from when it was notified, which the drawer's head says (drawer.js): only its end, and its day only
+  // when it's another (#418)
   if (e.k === "rhythm") return [
-    kvList([["Notified", fmtDT(e.ts)], ["Period it covers", e.te > e.ts ? `${fmtDT(e.ts)} – ${fmtDT(e.te)}` : ""], ["Recorded with", d.device], ["Came through", d.via]]),
+    kvList([["Notified", fmtDT(e.ts)], ["Period it covers", e.te > e.ts ? "to " + (isoDay(e.te) === isoDay(e.ts) ? fmtTime(e.te) : fmtDT(e.te)) : ""],
+      ["Recorded with", d.device], ["Came through", d.via]]),
     el("p", {class: "hint ecg-note", text: "The watch's notification, as it sent it. Sanguity doesn't read heart rhythms; this isn't medical advice."})];
   const holder = el("div", {class: "ecg-rec"});
   const out = [
