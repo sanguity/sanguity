@@ -8,8 +8,9 @@
    for, on Sources and Sharing, and Sharing's and Settings' why; Account's hint),
    and for the palette:
    - words: what else someone might type for it ("password" for Sign-in and security), in lower case;
-   - finds: its parts that are worth going to by name, [title as the part's heading says it, its id, words]. The
-     palette goes to page#id, which opens the group and scrolls to the part.
+   - finds: its parts that are worth going to by name, [title as the part's heading says it, its id, words, and the
+     role it needs, if its group doesn't: Tabs, #423]. The palette goes to page#id, which opens the group and scrolls
+     to the part.
    A group with rest: true (Settings' More: the sections no other group names) isn't searched.
 
    The icons (#399): one per place, the same wherever it's shown (the top bar and its menus, a phone's tab bar, the
@@ -62,7 +63,7 @@ const SG_PAGES = {
   settings: {page: "settings.html", title: "Settings", icon: "settings", profile: true, words: "preferences options", groups: [
     // sec-summary (#186) is set on Sharing → Visit summary (#402): kept here out of sight, for Start from a condition
     {id: "dashboard", title: "Dashboard", icon: "layout-dashboard", part: "This profile", has: ["sec-overview", "sec-tabs", "sec-trends", "sec-summary"],
-     finds: [["Overview tiles", "sec-overview", "key labs home readings"], ["Tabs", "sec-tabs", "edit order hide show"],
+     finds: [["Overview tiles", "sec-overview", "key labs home readings"], ["Tabs", "sec-tabs", "edit order hide show", "editor"],
        ["Lab charts", "sec-trends", "labs selected at first saved views"]]},
     {id: "about", title: "About this person", icon: "user", part: "This profile", has: ["about", "targets"],   // #194, #234; on Sharing before #267
      finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate"], ["Targets of your own", "targets", "goals"]]},

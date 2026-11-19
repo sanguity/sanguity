@@ -15,8 +15,10 @@
    One ranking runs across them all (#403): a title starting with what's typed first, then one with each word typed
    starting a word of it, then what else it's known by (groups.js's words, Add's, a tab's, Log a dose's medications),
    always at the start of a word; the group with the best match comes first. Offline (offline.js) what needs the server
-   (another page, New profile's too) or that Add shows disabled isn't listed, and it says so.
-   On the records page Labs and Events come from the records shown (store.js). On another page they come from the API:
+   (another page, New profile's too) or that Add shows disabled isn't listed, and it says so; the records page offline
+   with no copy kept counts too (#423).
+   On the records page Labs and Events come from the records shown (store.js), once app.js has drawn them, the list
+   drawn again then (resume(); or none coming: its empty card). On another page they come from the API:
    the profile's records (GET profiles/{pid}/data, and its settings for the names labs are shown by) are read once,
    the first time the palette opens there (again after another profile is chosen), and choosing one opens the records
    page there, which does the rest (resume(), from app.js once the records are drawn; sessionStorage says what).
@@ -24,7 +26,8 @@
 
    It's a combobox and a listbox (WAI-ARIA's pattern): focus stays in the box while the up and down arrows move through
    what's found (aria-activedescendant; the first is marked from the start, so Enter opens the best match, waiting for
-   the records if they're still on their way, #412), Enter or a click opens it, Escape or Close closes the palette, and focus goes back to what had it (opened from a menu, to the
+   the records if they're still on their way and could outrank it, #412, #423; one picked with the arrows stays picked
+   as the list is drawn again), Enter or a click opens it, Escape or Close closes the palette, and focus goes back to what had it (opened from a menu, to the
    menu's button). How many it found is said once typing stops. "/" can be turned off by the switch at its foot (a
    key on its own, WCAG 2.1.4), for this browser.
    SgPalette: open(q, typed in it first), resume(). Plain script, after nav.js and groups.js; all files share one scope. */
@@ -38,6 +41,12 @@ const SgPalette = (() => {
   const pid = () => document.getElementById("profile")?.value || "";
   const day = t => typeof fmtD === "function" ? fmtD(t) : String(t).slice(0, 10);   // dates.js, where the page has it
   const recs = () => onRecords && typeof DATA !== "undefined" && DATA;   // store.js: the records page's, once loaded
+  /* the records page's records drawn (app.js: booted), or none coming (its empty card: none yet, or they couldn't be
+     loaded) */
+  const drawn = () => (typeof booted !== "undefined" && booted) || !!document.querySelector("main > .empty");
+  /* offline: offline.js's or offline-page.js's flag; on the records page with no copy kept, offline.js says so on the
+     page (body.offline) and leaves the flag off */
+  const offline = () => (typeof OFFLINE !== "undefined" && OFFLINE.on) || document.body.classList.contains("offline");
   /* "/" is a key on its own, so it can be turned off (WCAG 2.1.4: speech input can type it), by the switch at the
      palette's foot; this browser remembers */
   const slashOn = () => { try { return localStorage.getItem("sg-palette-slash") !== "off"; } catch (e) { return true; } };
@@ -145,7 +154,7 @@ const SgPalette = (() => {
       for (const g of P.groups) {
         if (g.rest || (g.needs && role < RANK[g.needs])) continue;
         out.push({icon: g.icon, title: g.title, ctx: P.title, words: g.words, go: () => goTo(P, g.id)});
-        for (const [title, id, words] of g.finds || []) out.push({icon: sgIcon(P.page.replace(".html", "/") + id), title, ctx: `${P.title} › ${g.title}`, words, go: () => goTo(P, id, true)});
+        for (const [title, id, words, needs] of g.finds || []) if (!needs || role >= RANK[needs]) out.push({icon: sgIcon(P.page.replace(".html", "/") + id), title, ctx: `${P.title} › ${g.title}`, words, go: () => goTo(P, id, true)});
       }
     }
     if (page !== "guide.html") out.push({icon: sgIcon("guide"), title: "Getting started", ctx: "Page", words: "guide first records", go: () => { location.href = "guide.html" + (pid() ? "?profile=" + pid() : ""); }});
@@ -154,7 +163,7 @@ const SgPalette = (() => {
   /* the labs: null while another page's are still on their way */
   function labs() {
     if (!onRecords) return REC && REC.labs;
-    if (!recs()) return [];
+    if (!recs() || !drawn()) return [];
     const seen = new Map();
     for (const s of SERIES) if (!s.watch && s.pts.length) {
       const have = seen.get(s.name);
@@ -162,7 +171,7 @@ const SgPalette = (() => {
     }
     return [...seen.values()];
   }
-  const events = () => onRecords ? (recs() ? EV : []) : REC && REC.events;
+  const events = () => onRecords ? (recs() && drawn() ? EV : []) : REC && REC.events;
 
   /* how well something matches what's typed (#403), the same in every group, lower better: 0 its title starts with
      it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
@@ -182,7 +191,7 @@ const SgPalette = (() => {
      Enter opens) is the best of all; and a note to show, if any. Offline (offline.js, on the records page) what needs
      the server isn't listed, as the menus don't follow their links to it, and the note says so */
   function find(typed) {
-    const words = flat(typed).trim().split(" ").filter(Boolean), off = typeof OFFLINE !== "undefined" && OFFLINE.on;
+    const words = flat(typed).trim().split(" ").filter(Boolean), off = offline();
     const acts = known(actions()).filter(x => !off || !x.server), pgs = all => off ? [] : pages(all);   // (every page is another)
     const offNote = off ? "Pages and settings aren't listed: they need the server, and you're offline." : "";
     if (!words.length) return {groups: [["Actions", acts], ["Records tabs", tabs()], ["Pages", pgs(false)]], offNote};
@@ -202,24 +211,30 @@ const SgPalette = (() => {
       groups.push(["Events", found]);
     }
     const best = xs => xs.length ? xs[0][0] : 9;   // (the sort keeps the order above for a tie)
-    return {groups: groups.sort((a, b) => best(a[1]) - best(b[1])).map(([h, xs]) => [h, xs.map(([, x]) => x)]), offNote,
-      wait: !onRecords && pid() && !REC ? "Looking through the records…" : !onRecords && REC?.failed ? "The records couldn't be searched just now." : ""};
+    groups.sort((a, b) => best(a[1]) - best(b[1]));
+    return {groups: groups.map(([h, xs]) => [h, xs.map(([, x]) => x)]), offNote, top: groups[0][1].length ? [groups[0][0], groups[0][1][0][0]] : null,
+      wait: recWait() ? "Looking through the records…" : !onRecords && REC?.failed ? "The records couldn't be searched just now." : ""};
   }
 
   /* ---- the list */
   let shown = [], active = -1, sayT = 0;
-  /* Enter while who you are, or another page's records, are still on their way (#412): what's listed may not have
-     the best match yet ("cre" finds Create… before Creatinine is there), so unless an arrow key picked one, Enter waits
-     and opens the best match once they're in (draw, below) */
-  let later = false, moved = false;
-  const loading = () => !meDone || (!onRecords && !!pid() && !REC);
+  /* Enter while who you are, or the records, are still on their way (#412; the records page's own too, #423): what's
+     listed may not have the best match yet ("cre" finds Create… before Creatinine is there), so unless an arrow key
+     picked one, Enter waits and opens the best match once they're in (draw, below). Not when nothing still to come
+     can outrank it (sure): a title starting with what's typed, in a group listed before every group still to come
+     (on another page Labs and Events; on the records page Add's actions too: Log a dose comes with the records) */
+  let later = false, moved = false, top = null;
+  const recWait = () => onRecords ? !drawn() : !!pid() && !REC, loading = () => !meDone || recWait();
+  const ORDER = ["Actions", "Records tabs", "Pages and settings"], sure = () => meDone && top && top[1] === 0 && !onRecords && ORDER.includes(top[0]);
   function enter() {
-    if (!input.value.trim() || moved || !loading()) return pick(active);
+    if (!input.value.trim() || moved || !loading() || sure()) return pick(active);
     later = true;
     announce("Looking through the records…");
   }
+  const keyOf = x => x.title + "\n" + x.ctx;
   function draw() {
-    const typed = input.value, {groups, wait, offNote} = find(typed);
+    const typed = input.value, was = moved && shown[active] ? keyOf(shown[active][1]) : null, found = find(typed), {groups, wait, offNote} = found;
+    top = found.top || null;
     shown = [];
     list.replaceChildren(...groups.filter(([, xs]) => xs.length).map(([head, xs], g) => el("div", {role: "group", "aria-labelledby": "palG" + g},
       el("div", {class: "pal-sec", id: "palG" + g, role: "presentation", text: head}),
@@ -232,8 +247,11 @@ const SgPalette = (() => {
         return o;
       }))));
     input.setAttribute("aria-expanded", String(shown.length > 0));
-    mark(shown.length ? 0 : -1, false);
-    moved = false;
+    // the one picked with the arrows stays picked, if it's still listed (the records arriving, #423); else the first
+    const keep = was == null ? -1 : shown.findIndex(([, x]) => keyOf(x) === was);
+    active = -1;
+    mark(keep >= 0 ? keep : shown.length ? 0 : -1, keep >= 0);
+    moved = keep >= 0;
     if (later && !loading()) { later = false; return pick(active); }
     const nothing = typed.trim() && !shown.length && !wait ? `Nothing matches “${typed.trim()}”${offNote ? " offline" : ""}.` : "";
     note.textContent = [wait, nothing, offNote].filter(Boolean).join(" ");
@@ -257,7 +275,7 @@ const SgPalette = (() => {
     dlg.close();   // first: focus goes back to what had it, and the page is no longer inert
     x.go();
   }
-  input.addEventListener("input", () => { later = false; draw(); });
+  input.addEventListener("input", () => { later = moved = false; draw(); });
   input.addEventListener("keydown", ev => {
     const n = shown.length;
     if ((ev.key === "ArrowDown" || ev.key === "ArrowUp") && n) { ev.preventDefault(); moved = true; mark((active + (ev.key === "ArrowDown" ? 1 : n - 1)) % n); }
@@ -269,7 +287,7 @@ const SgPalette = (() => {
   let menuBtn = null;
   dlg.addEventListener("close", () => {
     clearTimeout(sayT);
-    later = false;
+    later = moved = false;
     const a = document.activeElement;
     if (menuBtn && menuBtn.isConnected && (!a || a === document.body || dlg.contains(a))) menuBtn.focus({preventScroll: true});
     menuBtn = null;
@@ -369,8 +387,10 @@ const SgPalette = (() => {
     const t = setTimeout(() => ob.disconnect(), ms);
     ob.observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"]});
   }
-  /* what was chosen on another page, done here: on the records page once they're drawn (app.js), on Sharing as it loads */
+  /* what was chosen on another page, done here: on the records page once they're drawn (app.js), on Sharing as it
+     loads; and on the records page, the list drawn again with them (#423) */
   function resume() {
+    if (onRecords && dlg.open) draw();
     let w = null;
     try { w = JSON.parse(sessionStorage.getItem(KEY) || "null"); } catch (e) {}
     if (!w || (onRecords ? w.do === "new-link" : w.do !== "new-link")) return;
@@ -379,5 +399,10 @@ const SgPalette = (() => {
     ({lab: openLab, event: openEv, timeline, "new-link": newLink})[w.do]?.(w.v);
   }
   if (page === "sharing.html") document.addEventListener("DOMContentLoaded", () => waitFor(() => pid(), resume));
+  // the records page with none coming (app.js's empty card in place of the page, offline with no copy too): drawn again
+  if (onRecords) {
+    const ob = new MutationObserver(() => { if (!drawn()) return; ob.disconnect(); if (dlg.open) draw(); });
+    ob.observe(document.querySelector("main"), {childList: true});
+  }
   return {open, resume};
 })();
