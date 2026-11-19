@@ -354,11 +354,34 @@ const SgNav = (() => {
   const menus = el("div", {class: "bar-menus"}, barSearch(), add.wrap, user.wrap);
   header.append(menus);
 
-  /* light or dark: this browser's own choice over the account's default (applyTheme in util.js) */
+  /* light or dark (#410): the account's theme, as Settings → Display has it, shown at once and saved, a toast saying
+     so with an Undo (back to what it was, if it's still as set here); a page with it shown draws it again (theme:changed,
+     settings.js). Someone with a password to change first (lock()) can't save settings yet: theirs is this browser's
+     own, the only one there is (applyTheme in util.js) */
   const isDark = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
   const themeBtn = document.getElementById("theme");
   const themeLabel = () => { themeBtn.lastChild.textContent = isDark() ? "Light mode" : "Dark mode"; };   // after its icon
-  themeBtn.onclick = () => { try { localStorage.setItem("ht-theme", isDark() ? "light" : "dark"); } catch (e) {} applyTheme(); themeLabel(); };
+  const putTheme = async v => {
+    const r = await api("settings/user/theme", {method: "PUT", body: JSON.stringify({value: v})});
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    try { localStorage.removeItem("ht-theme"); } catch (e) {}
+    applyTheme(v);
+    document.dispatchEvent(new Event("theme:changed"));
+  };
+  themeBtn.onclick = async () => {
+    const to = isDark() ? "light" : "dark";
+    if (locked) { try { localStorage.setItem("ht-theme", to); } catch (e) {} applyTheme(); return; }
+    const was = document.documentElement.dataset.theme;
+    document.documentElement.dataset.theme = to;   // shown as it's picked
+    let from;
+    try { from = (await (await api("settings/user")).json()).theme; await putTheme(to); }
+    catch (e) { if (was) document.documentElement.dataset.theme = was; else delete document.documentElement.dataset.theme; toast(`The theme isn't saved: ${e.message}`); return; }
+    toast(`Saved your theme: ${to === "dark" ? "Dark" : "Light"}.`, {action: "Undo", onAction: async () => {
+      const now = (await (await api("settings/user")).json()).theme;
+      if (now !== to) { toast("The theme was changed since, so it's left as it is."); return; }
+      await putTheme(from);
+    }});
+  };
   new MutationObserver(themeLabel).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
   themeLabel();
 

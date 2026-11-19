@@ -51,8 +51,9 @@ const SG_PAGES = {
     {id: "milestones", title: "Milestones", icon: "flag", part: "This profile", has: ["sec-milestones"], words: "diagnosis surgery treatment named dates"},
     {id: "activity", title: "Workouts", icon: "activity", part: "This profile", has: ["sec-health"], words: "visits exercise body and activity"},   // visits counted as workouts (#43)
     {id: "display", title: "Display", icon: "sun-moon", part: "You", has: ["sec-appearance", "sec-dates", "sec-units"],
-     finds: [["Appearance", "sec-appearance", "theme dark light mode"], ["Dates and times", "sec-dates", "time zone date format"],
-       ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches"]]},
+      finds: [["Appearance", "sec-appearance", ""],   // (the theme: your menu's Dark or Light mode, #410)
+        ["Dates and times", "sec-dates", "time zone date format"],
+        ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches"]]},
     {id: "more", title: "More", icon: "ellipsis", has: [], rest: true},   // a section no group names yet
   ]},
   account: {page: "account.html", title: "Account", icon: "circle-user", words: "sign-in security", groups: [

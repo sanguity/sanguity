@@ -277,9 +277,10 @@ function tabsEditor(value, changed, ro) {
 
 /* a pick-one group of radios (#193): the labels, each with its radio, drawn as one segmented control (app.css .seg) */
 const radioSeg = labels => el("div", {class: "seg wrap"}, ...labels);
-/* #45 this user's theme, shown as it's picked (#272: saved then, settings.js saveNow); Dark mode or Light mode in
-   the top bar's menu picks one for this browser until a theme is picked here. Each control has an id, for focus to
-   come back to once the section is drawn again (a toast's Undo). */
+/* #45 this user's theme, shown as it's picked (#272: saved then, settings.js saveNow), as Dark mode or Light mode in
+   your menu saves it too (#410). A choice of this browser's own (made there before a password was changed, or left
+   from before #410) is said, with a way to drop it. Each control has an id, for focus to come back to once the
+   section is drawn again (a toast's Undo). */
 function themeEditor(value, changed, ro) {
   const note = el("p", {class: "hint", id: "themeOwn"});
   const opts = [["system", "Follow the system"], ["light", "Light"], ["dark", "Dark"]];
@@ -288,7 +289,7 @@ function themeEditor(value, changed, ro) {
       onchange: () => { note.remove(); changed(); }}), l))));   // (this browser's own choice gives way to it)
   let own = null; try { own = localStorage.getItem("ht-theme"); } catch (e) {}
   if (own === "light" || own === "dark")
-    note.append(`This browser shows ${own}, picked with ${own === "dark" ? "Dark" : "Light"} mode in your menu, until you pick a theme here. `,
+    note.append(`This browser shows ${own}, a choice of its own, until you pick a theme here. `,
       el("button", {class: "btn small", type: "button", text: "Use my default on this browser", onclick: () => {
         try { localStorage.removeItem("ht-theme"); } catch (e) {} applyTheme(); note.textContent = "This browser now uses your default."; }}));
   return {node: el("div", {}, box, note.childNodes.length ? note : null), get: () => box.querySelector("input:checked")?.value || value};
@@ -735,6 +736,7 @@ async function loadLabNames() {
   if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
   if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
   $("#who").textContent = ME.user.username;
+  document.addEventListener("theme:changed", () => load());   // your menu's Dark or Light mode saved the theme (nav.js, #410)
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   if (!ME.profiles.length) {   // no profile yet: their own settings, and how to get one
     $("#noProfiles").hidden = false;

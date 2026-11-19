@@ -8616,8 +8616,8 @@ def main():
             check("…while the address with no # opens the tab last used", addr()[1:3] == ["#health", "health"], addr())
             tctx.close()
 
-            # ---- #45 a default theme for the account: a fresh browser signed in as the same person uses it; the ◐
-            # toggle still overrides it there; Reset to defaults follows the system again
+            # ---- #45 a default theme for the account: a fresh browser signed in as the same person uses it; your
+            # menu's Dark or Light mode changes it (#410); Reset to defaults follows the system again
             js("localStorage.removeItem('ht-theme')")
             page.goto(base + "/settings.html?profile=1#sec-appearance")
             page.wait_for_selector("#sec-appearance input[value=dark]", timeout=10000)
@@ -8636,10 +8636,28 @@ def main():
             check("…and so does its next page, before it draws", fp.evaluate("document.documentElement.dataset.theme") == "dark")
             fp.goto(base + "/")
             fp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            # #410: one theme. Your menu's Light mode there saves the account's theme (no choice of this browser's own),
+            # a toast saying so; Display shows it there, and the menu's Dark mode on Settings shows in Display at once,
+            # saved, its Undo putting Light back on the server, the page and Display
+            fp_theme = lambda: fp.evaluate("fetch('api/settings/user').then(r => r.json())")["theme"]
+            fp_said = "t => [...document.querySelectorAll('#sgToasts .sg-toast-text')].some(x => x.textContent === t)"
+            fp_shown = "[document.documentElement.dataset.theme || null, localStorage.getItem('ht-theme'), document.querySelector('#sec-appearance input:checked')?.value || null]"
             menu_click(fp, "#theme")
-            fp.reload()
-            fp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
-            check("…where the ◐ toggle still overrides it", fp.evaluate("document.documentElement.dataset.theme") == "light")
+            fp.wait_for_function(fp_said, arg="Saved your theme: Light.", timeout=10000)
+            one = [fp_theme(), fp.evaluate(fp_shown)]
+            fp.goto(base + "/settings.html?profile=1#display")
+            fp.wait_for_selector("#sec-appearance input[value=dark]", timeout=10000)
+            one.append(fp.evaluate(fp_shown))
+            menu_click(fp, "#theme")
+            fp.wait_for_function(fp_said, arg="Saved your theme: Dark.", timeout=10000)
+            fp.wait_for_function("document.querySelector('#sec-appearance input:checked').value === 'dark'", timeout=10000)
+            one += [fp_theme(), fp.evaluate(fp_shown), fp.evaluate("document.getElementById('theme').textContent.trim()")]
+            fp.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+            fp.wait_for_function("document.querySelector('#sec-appearance input:checked').value === 'light'", timeout=10000)
+            one += [fp_theme(), fp.evaluate(fp_shown)]
+            check("…your menu's Dark or Light mode is the account's theme (#410): saved, shown in Display (at once where it's open), with an Undo; "
+                  "no choice of this browser's own",
+                  one == ["light", ["light", None, None], ["light", None, "light"], "dark", ["dark", None, "dark"], "Light mode", "light", ["light", None, "light"]], one)
             fresh.close()
             page.click("#sec-appearance button:text-is('Reset to defaults')")
             page.wait_for_function("document.querySelector('#sec-appearance .set-msg').textContent.includes('back to their defaults')", timeout=10000)
@@ -9440,6 +9458,13 @@ def main():
                   and [t for g, t in empty if g == "Pages"] == ["Sources", "Sharing", "Settings", "Account", "Admin", "Getting started"], [js(pal_aria), empty])
             page.keyboard.press("Escape")
             check("…Escape closes it, focus back where it was", not js("document.querySelector('dialog.palette').open") and js("document.activeElement.id") == "tab-overview")
+            pal_theme = {}
+            for q in ("theme", "dark", "light"):
+                pal(q)
+                pal_theme[q] = [t for g, t in js(pal_found) if t in ("Dark mode", "Light mode", "Appearance", "Display")]
+                page.keyboard.press("Escape")
+            check("…and one theme entry, your menu's (#410): “theme”, “dark” and “light” each find it alone, not Settings' Appearance too",
+                  all(len(v) == 1 and v[0] in ("Dark mode", "Light mode") for v in pal_theme.values()), pal_theme)
             pal("hemoglobin", "/")
             hemo = js(pal_found)
             page.keyboard.press("Enter")
