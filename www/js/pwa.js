@@ -114,10 +114,11 @@ const SgLogout = (() => {
     return true;
   }
   /* (#432) Log out, online or not, asks the other open tabs first (util.js logOut): elsewhere() resolves to the names
-     of the pages whose own "Leave site?" guards hold something not saved, as they answer within ms; once it's going
+     of the pages whose own "Leave site?" guards hold something not saved, as they answer within ms (600: a tab busy
+     drawing, or a phone's in the background, still answers, #436); once it's going
      ahead, tell() sends them all to the sign-in page (signedOutElsewhere below) */
   const ch = "BroadcastChannel" in window ? new BroadcastChannel("sg-logout") : null;
-  function elsewhere(ms = 150) {
+  function elsewhere(ms = 600) {
     if (!ch) return Promise.resolve([]);
     const id = Math.random().toString(36).slice(2), names = [];
     const heard = ({data}) => { if (data && data.answer === id) names.push(data.name); };
