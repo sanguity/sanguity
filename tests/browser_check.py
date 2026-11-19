@@ -1887,6 +1887,20 @@ def main():
                     check(f"{tab} ({width} px, #330, #374, #379): no tile's change line ends in a short fragment, breaks a date, has only the change on its first line or starts a line with its \"·\""
                           + (", and a row's sparklines line up" if tab == "overview" else ""),
                           got["n"] > 0 and not got["bad"] and not got["uneven"], got)
+            # #389: with a lab dated today (a draw later than each key lab's latest value, so each one says "as of"), no
+            # key lab's change line starts a line with "·", ends in a short fragment or breaks a date, at 1400, 375 and 320 px.
+            # The day's draw is the latest lab's event again, today, for the Overview only; put back after
+            js("switchTab('overview')")
+            js("() => { window._was389 = EV.length; EV.push({...EV.filter(e => e.k === 'lab').at(-1), ts: Date.now()}); renderOverview(); }")
+            asof389 = {}
+            for width in (1400, 375, 320):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                settle(300)
+                got = js(TILE_LINES_JS)
+                asof389[width] = [js("[...document.querySelectorAll('#view-overview .tile .delta')].filter(e => / as of /.test(e.textContent)).length"), got["bad"], got["uneven"]]
+            js("() => { EV.length = window._was389; renderOverview(); }")
+            check("…and with a lab dated today, each key lab saying “as of”, none starts a line with “·” at 1400, 375 or 320 px (#389)",
+                  all(r[0] > 5 and not r[1] and not r[2] for r in asof389.values()), asof389)
             # ---- one tile for every tab (#260): the Overview's key labs, home readings, Watch & scale and insurance figures,
             # Body and activity's, the Timeline's counts and Costs' figures are all .tile, with nothing else drawn as a
             # tile (no .stat or .ov-mini left); its parts look the same on every tab (label, value, change line), a tile
@@ -4594,6 +4608,23 @@ def main():
             check("…delete one, make another the default, Undo the delete: it's back, the other still the default",
                   on_server() == [["Alpha", False], ["Beta", True], ["Gamma", False]], on_server())
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # #389: a toast with two actions (Type records in's, with its longest link) has its ✕ on its first line, at the
+            # right, not wrapped onto a line of its own, at 1400 and 375 px; the actions go under the words
+            x389 = {}
+            for width in (1400, 375):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                js("""() => { for (const [t, a] of [['Saved 1 result and 1 record.', 'Open Body and activity'], ['Saved 1 result.', 'Open Labs']])
+                    toast(t, {actions: [{text: a, href: '#'}, {text: 'Undo…', onClick: async () => false}]}); }""")
+                settle(300)
+                x389[width] = js("""() => [...document.querySelectorAll('#sgToasts .sg-toast')].map(t => {
+                    const x = t.querySelector('.sg-toast-x').getBoundingClientRect(), r = document.createRange();
+                    r.selectNodeContents(t.querySelector('.sg-toast-text'));
+                    const line = [...r.getClientRects()][0], right = Math.max(...[...t.querySelectorAll('.sg-toast-text, .sg-toast-acts .btn')].map(e => e.getBoundingClientRect().right));
+                    return [t.querySelector('.sg-toast-text').textContent, x.top < line.bottom && x.bottom > line.top, x.left >= right]; })""")
+                js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("toasts (#389): one with two actions has its ✕ on its first line, at its right, at 1400 and 375 px",
+                  all(len(r) == 2 and all(t[1] and t[2] for t in r) for r in x389.values()), x389)
             # #361: deleting a view by keyboard leaves focus on what stays; an Undo by keyboard gives focus back where it
             # was; a fourth toast sending away a focused one gives focus back too; Alt+N isn't taken while typing in a field
             focus_id = "[document.activeElement.tagName, document.activeElement.id]"

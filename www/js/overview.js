@@ -114,7 +114,11 @@ function renderOverview() {
         st && st.title ? el("span", {class: "vh", text: `, ${st.title.toLowerCase()}`}) : null),
       el("span", {class: "val"}, last[5] || fmtNum(last[1]), el("small", {text: s.unit})),
       ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
-      el("span", {class: "delta"}, keepDates((d == null ? "" : `${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")}\u00a0since ${fmtD(prev.ts)}`) + (last.ts < (lastDraw || 0) - 2 * DAY ? ` · as of ${fmtD(last.ts)}` : ""))),
+      // "as of" (a value older than the latest draw) on a line of its own, as the fonts drew it anyway at every width, with no
+      // "·" to start a line or, held to the date before it, to wrap that line in the fallback fonts but not in the fonts:
+      // the change's line is as on any other tile, in either (#389, #338)
+      el("span", {class: "delta"}, ...(d == null ? [] : keepDates(`${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")}\u00a0since ${fmtD(prev.ts)}`)),
+        ...(last.ts < (lastDraw || 0) - 2 * DAY ? [...(d == null ? [] : [" ", el("br")]), ...keepDates(`as of ${fmtD(last.ts)}`)] : [])),
       spark(s, recent));
     // "What is this test?" (#163, test-pages.js): a link can't be inside the tile's button, so beside it in one card
     const tq = testLink(n, true);
