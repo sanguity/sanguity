@@ -210,10 +210,12 @@ const SgNav = (() => {
     pick.dispatchEvent(new Event("change", {bubbles: true}));
     draw();
   });
+  /* this browser's last profile, and the page's own address (#415: always, not only when it named one, so a page
+     opened at / keeps its profile on a reload after another browser tab has switched) */
   function remember(id) {
     try { localStorage.setItem("ht-profile", String(id)); } catch (e) {}
     const q = new URLSearchParams(location.search);
-    if (!q.has("profile") || q.get("profile") === String(id)) return;
+    if (q.get("profile") === String(id)) return;
     q.set("profile", id);
     try { history.replaceState(history.state, "", location.pathname + "?" + q + location.hash); } catch (e) {}
   }
@@ -224,7 +226,9 @@ const SgNav = (() => {
     const p = known.find(x => String(x.id) === pick.value);
     wrap.hidden = !p || locked;
     sync();   // Add, by your role on it (#401)
+    canEditTabs(p);
     if (!p) return;
+    tabsOf(p.id);   // its tabs, whenever the profile changes (#415)
     const role = x => ROLE[x.role] || x.role;
     prof.btn.replaceChildren(el("span", {class: "vh", text: "Profile: "}), el("span", {class: "profile-name", text: p.name}), " ",
       el("span", {class: "profile-role", text: role(p)}), caret());
@@ -256,7 +260,7 @@ const SgNav = (() => {
     }
     const p = known.find(x => x.id === want) || known[0];
     pick.replaceChildren(...known.map(x => el("option", {value: x.id, text: `${x.name} (${ROLE[x.role] || x.role})`})));
-    if (p) { pick.value = p.id; remember(p.id); tabsOf(p.id); }
+    if (p) { pick.value = p.id; remember(p.id); }
     draw();
     return p ? p.id : null;
   }
@@ -282,7 +286,7 @@ const SgNav = (() => {
   const tabEl = Object.fromEntries(TABS.map(([t, text]) => [t, el("a", {id: "tab-" + t, href: (onRecords ? "#" : "./#") + t, text,
     "data-tip": t === "health" ? "Watch, sleep and smart-scale data" : null})]));
   const editTabs = el("a", {class: "menu-item acct", role: "menuitem", id: "editTabs", href: "settings.html#sec-tabs"}, icon(sgIcon("settings/sec-tabs")), "Edit tabs…");
-  const more = menu("tabMore", "More", "", [sep(), editTabs]);
+  const editSep = sep(), more = menu("tabMore", "More", "", [editSep, editTabs]);
   more.btn.className = "tab-more";
   more.btn.append(caret());
   const tabs = el("nav", {class: "tabs", "aria-label": "Records"}, ...Object.values(tabEl), more.wrap);
@@ -335,11 +339,20 @@ const SgNav = (() => {
     fit();
     return {order, hidden};
   }
+  /* the profile's tabs, on a page other than the records page: asked for as it's chosen, the first time and on every
+     switch (#415); not found, the usual ones rather than the last profile's */
   let tabsFor = null;
   function tabsOf(pid) {
     if (onRecords || tabsFor === pid) return;
     tabsFor = pid;
-    api(`profiles/${pid}/settings`).then(r => r.ok ? r.json() : null).then(s => { if (s && tabsFor === pid) layout(s.tabs); }).catch(() => {});
+    const put = s => { if (tabsFor === pid) layout(s && s.tabs); };
+    api(`profiles/${pid}/settings`).then(r => r.ok ? r.json() : null).then(put, () => put(null));
+  }
+  /* Edit tabs… (the profile menu's and More's) for those who can change the profile's tabs, its owners and editors:
+     a viewer would find only switches they can't turn (#415) */
+  function canEditTabs(p) {
+    const can = !!p && (p.role === "owner" || p.role === "editor");
+    for (const x of [document.getElementById("editTabsLink"), editTabs, editSep]) setHidden(x, !can);
   }
 
   /* ---- Add (#264), in two groups. Today: a dose of a current medication (the Overview's "Today's medication doses",

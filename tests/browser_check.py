@@ -1758,7 +1758,8 @@ def main():
         check("…saying which lists aren't loaded, with no command: an admin gets a link to Admin (#167)", "build_directory" not in note and "python" not in note
               and strict.evaluate("document.querySelector('#srcNote a').getAttribute('href')") == "admin.html#directory", note)
         check("…in the connect step of Sources → Portals and health plans (#166)", strict.evaluate("location.pathname + location.search + location.hash")
-              == "/sources.html?q=medicare#portals" and strict.evaluate("getComputedStyle(document.getElementById('mine')).display") != "none")
+              in ("/sources.html?q=medicare#portals", "/sources.html?q=medicare&profile=1#portals")   # (with the profile shown, #415)
+              and strict.evaluate("getComputedStyle(document.getElementById('mine')).display") != "none")
         strict.click(".dir-hit")
         strict.wait_for_selector("#detail h3", timeout=10000)
         detail = strict.inner_text("#detail")
@@ -8917,6 +8918,52 @@ def main():
                   "the palette finds it by “edit tabs”; a tab hidden and saved there leaves the top bar at once, and Reset brings it back",
                   all(not m and f == ["sec-tabs-hd", "Tabs", 1] for m, f in edit_tabs.values()) and any(t.startswith("Tabs") for t in found_tabs)
                   and gone == [True, ["overview", "health", "timeline", "labs"]], [edit_tabs, found_tabs, gone])
+            # #415: the profile's tabs follow a switch made on a page other than the records page (Sources, Sharing,
+            # Account): My records' Costs hidden and Labs moved up, Second person's five as they are
+            tabs415 = "[...document.querySelectorAll('header .tabs > a[id^=tab-], #tabMoreList > a[id^=tab-]')].filter(a => !a.hidden).map(a => a.id.slice(4)).join(',')"
+            put415 = "v => api('profiles/1/settings/tabs', {method: v ? 'PUT' : 'DELETE', ...(v ? {body: JSON.stringify({value: v})} : {})}).then(r => r.status)"
+            js(f"({put415})({{order: ['overview', 'health', 'labs', 'timeline', 'costs'], hidden: ['costs']}})")
+            switched415, filled415 = {}, "!!document.querySelector('#profileMenuList [data-pid]')"
+            for p in ("sources.html", "sharing.html", "account.html"):
+                page.goto(base + f"/{p}?profile=1")
+                page.wait_for_function(f"{filled415} && {tabs415} === 'overview,health,labs,timeline'", timeout=20000)
+                pick_profile(page, "2")
+                try:
+                    page.wait_for_function(f"{tabs415} === 'overview,health,timeline,labs,costs'", timeout=10000)
+                except Exception:
+                    pass
+                switched415[p] = js(tabs415)
+            js(f"({put415})(null)")
+            check("…switching profile on Sources, Sharing or Account shows the new profile's tabs, not the last one's (#415)",
+                  all(v == "overview,health,timeline,labs,costs" for v in switched415.values()), switched415)
+            # #415: the page's own address always says the profile shown, so one opened at / keeps it on a reload after
+            # another browser tab has switched (this browser's last profile changing under it)
+            js("localStorage.setItem('ht-profile', '1')")
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            addr415 = [js("location.search")]
+            js("localStorage.setItem('ht-profile', '2')")   # as another tab switching to Second person leaves this browser
+            page.reload()
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            addr415 += [js("PROFILE.id"), js("location.search")]
+            check("…a page opened at / says its profile in its address (?profile=1), and keeps it on a reload once another tab has switched to Second person (#415)",
+                  addr415 == ["?profile=1", 1, "?profile=1"], addr415)
+            # #415: More naming the tab shown (no room for any tab beside it) is marked as current in forced colours, as a tab
+            # shown is: the system's Highlight, its words HighlightText
+            page.set_viewport_size({"width": 740, "height": 900})
+            page.emulate_media(forced_colors="active")
+            js("switchTab('labs')")
+            settle(300)
+            hi = "(() => { const d = document.body.appendChild(document.createElement('i')); d.style.cssText = 'background:Highlight;color:HighlightText'; const c = getComputedStyle(d), v = [c.backgroundColor, c.color]; d.remove(); return v; })()"
+            cur415 = {}
+            cur415[740] = js("(b => [b.classList.contains('tab-cur'), getComputedStyle(b).backgroundColor, getComputedStyle(b).color])(document.getElementById('tabMoreBtn'))")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            cur415[1400] = js("(b => [b.id, getComputedStyle(b).backgroundColor, getComputedStyle(b).color])(document.querySelector('header .tabs > [aria-current=page]'))")
+            hl = js(hi)
+            page.emulate_media(forced_colors="none")
+            check("…in forced colours More naming the tab shown (740 px) and the tab shown (1400 px) are marked in Highlight (#415)",
+                  cur415[740] == [True, *hl] and cur415[1400] == ["tab-labs", *hl], [cur415, hl])
             page.goto(base + "/")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             js("switchTab('overview')")
@@ -10452,6 +10499,10 @@ def main():
                   not any(x.endswith(", Add") or x.startswith("New share link") for x in seen[""] + seen["share"])
                   and not any(x.startswith(("Share links", "Export everything", "Admin", "Accounts")) for v in seen.values() for x in v)
                   and any(x.startswith("People, Sharing") for x in seen["share"]), seen)
+            # #415: nor Edit tabs…, in the profile menu or under More: a viewer can't change the profile's tabs
+            edit415 = zb.evaluate("[PROFILE.role, ...['editTabsLink', 'editTabs'].map(i => document.getElementById(i).hidden), "
+                                  "[...document.querySelectorAll('#profileMenuList [role^=menuitem], #tabMoreList [role^=menuitem]')].filter(x => !x.hidden).some(x => x.textContent.includes('Edit tabs'))]")
+            check("…nor Edit tabs…, in the profile menu or under More (#415)", edit415 == ["viewer", True, True, False], edit415)
             # #248: a result's Collected and Resulted, a claim's services and the Costs claims table in that format too,
             # not as the record's ISO text; and the drawer's buttons name the Labs tab by its name
             dmy = r"\d{1,2} [A-Z][a-z]{2} \d{4}"
@@ -12903,7 +12954,7 @@ def main():
 
             ph.goto(base + "/")
             ph.evaluate("localStorage.setItem('ht-profile', '1')")
-            ph.reload()
+            ph.goto(base + "/?profile=1")   # the address says the profile shown since #415: a reload keeps the one the first load wrote
             until(LOADED, 20000)
             until("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000)
             check("PWA: the service worker controls the page", ph.evaluate("navigator.serviceWorker.controller.scriptURL").endswith("/sw.js"))
