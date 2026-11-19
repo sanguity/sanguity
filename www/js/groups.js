@@ -42,7 +42,7 @@ const SG_PAGES = {
   ]},
   settings: {page: "settings.html", title: "Settings", icon: "settings", profile: true, words: "preferences options", groups: [
     {id: "dashboard", title: "Dashboard", icon: "layout-grid", part: "This profile", has: ["sec-overview", "sec-tabs", "sec-trends", "sec-names", "sec-summary"],   // sec-summary: #186
-     finds: [["Overview tiles", "sec-overview", "key labs home readings"], ["Tabs", "sec-tabs", "order hide show"],
+     finds: [["Overview tiles", "sec-overview", "key labs home readings"], ["Tabs", "sec-tabs", "edit order hide show"],
        ["Lab charts", "sec-trends", "labs selected at first saved views"], ["Names", "sec-names", "nicknames rename lab names result sources"],
        ["Visit summary measures", "sec-summary", "ticked"]]},
     {id: "about", title: "About this person", icon: "user", part: "This profile", has: ["about", "targets"],   // #194, #234; on Sharing before #267

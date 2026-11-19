@@ -604,7 +604,7 @@ def start_app():
 
 
 USER_MENU = {"#logout", "#theme", "#accountLink", "#displayLink", "#adminLink", "#guideLink"}
-PROFILE_MENU = {"#settingsLink", "#sharingLink", "#sourcesLink", "#aboutLink", "#newProfileLink"}   # #264
+PROFILE_MENU = {"#settingsLink", "#sharingLink", "#sourcesLink", "#aboutLink", "#newProfileLink", "#editTabsLink"}   # #264, #398
 
 
 def menu_click(pg, item):
@@ -8674,6 +8674,42 @@ def main():
                   not more_whole, more_whole)
             js("switchTab('overview')")
             page.set_viewport_size({"width": 1400, "height": 900})
+            # #398: Edit tabs… is always in reach, in the profile menu, whether More shows or not (at 1400 px it doesn't, nor
+            # on a phone with five tabs); it lands on Settings → Tabs with focus on its one heading, the palette finds it by
+            # "edit tabs", and a tab hidden there and saved leaves the top bar at once, without the page loading again
+            edit_tabs = {}
+            for w in (1400, 375):
+                page.set_viewport_size({"width": w, "height": 900 if w > 400 else 800})
+                page.goto(base + "/?profile=1#overview")
+                page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+                more_shown = js("document.getElementById('tabMore').checkVisibility()")
+                page.click("#profileMenuBtn")
+                page.click("#editTabsLink")
+                page.wait_for_url(lambda u: u.endswith("/settings.html?profile=1#sec-tabs"), timeout=10000)
+                try:
+                    page.wait_for_function("document.activeElement.id === 'sec-tabs-hd'", timeout=10000)
+                except Exception:
+                    pass
+                edit_tabs[w] = [more_shown, js("[document.activeElement.id, document.activeElement.textContent, document.querySelectorAll('#sec-tabs :is(h2, h3, h4)').length]")]
+            js("SgPalette.open()")
+            page.fill("#palQ", "edit tabs")
+            found_tabs = js("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent)")
+            page.keyboard.press("Escape")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("window.__same398 = true")
+            page.uncheck("#sec-tabs input[data-tab=costs]")
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function("document.getElementById('tab-costs').hidden", timeout=10000)
+            gone = js("[window.__same398, [...document.querySelectorAll('header .tabs a[id^=tab-], #tabMoreList a[id^=tab-]')].filter(a => !a.hidden).map(a => a.id.slice(4))]")
+            page.click("#sec-tabs button:text-is('Reset to defaults')")
+            page.wait_for_function("!document.getElementById('tab-costs').hidden", timeout=10000)
+            check("Edit tabs… (#398): from the profile menu at 1400 and 375 px (no More there), on Settings → Tabs with focus on its one heading; "
+                  "the palette finds it by “edit tabs”; a tab hidden and saved there leaves the top bar at once, and Reset brings it back",
+                  all(not m and f == ["sec-tabs-hd", "Tabs", 1] for m, f in edit_tabs.values()) and any(t.startswith("Tabs") for t in found_tabs)
+                  and gone == [True, ["overview", "health", "timeline", "labs"]], [edit_tabs, found_tabs, gone])
+            page.goto(base + "/")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            js("switchTab('overview')")
             # #264: a tab picked changes the page as a View Transition, but not when less motion is asked for
             js("window.__vt = 0; const o = document.startViewTransition.bind(document); document.startViewTransition = f => { window.__vt++; return o(f); }; null")
             tab_click(page, "#tab-labs")
@@ -9741,7 +9777,7 @@ def main():
                 pages: [...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.textContent), one: document.querySelectorAll('#profile').length === 1
                   && !!document.querySelector('header.topbar #profilePick > select#profile[hidden]') && !document.querySelector('main #profile, main label.set-profile')})"""
             want_bar = {"brand": True, "tabs": ["Overview", "Body and activity", "Timeline", "Labs", "Costs"], "menus": ["profileMenuBtn", "addMenuBtn", "userMenuBtn"],
-                        "profiles": both, "pages": ["About this person", "Settings", "Sources", "Sharing", "New profile"], "one": True}
+                        "profiles": both, "pages": ["About this person", "Settings", "Edit tabs…", "Sources", "Sharing", "New profile"], "one": True}
             bars = {}
             filled = "!!document.querySelector('#profileMenuList [data-pid]')"
             for path, ready in (("/", "typeof booted !== 'undefined' && booted"), ("/sources.html#portals", "!document.getElementById('intro').hidden"),
@@ -9761,9 +9797,10 @@ def main():
                   [first, js("document.activeElement.id")])
             page.click("#profileMenuBtn")
             pid = js("document.getElementById('profile').value")
-            check("…the profile menu: About this person in Settings (#267), the profile's Settings, Sources and Sharing, each for the profile shown, and New profile",
+            check("…the profile menu: About this person in Settings (#267), the profile's Settings, Edit tabs… (#398), Sources and Sharing, each for the profile shown, and New profile",
                   js("[...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.getAttribute('href'))")
-                  == [f"settings.html?profile={pid}#about"] + [f"{x}.html?profile={pid}" for x in ("settings", "sources", "sharing")] + ["guide.html?new"],
+                  == [f"settings.html?profile={pid}#about", f"settings.html?profile={pid}", f"settings.html?profile={pid}#sec-tabs"]
+                  + [f"{x}.html?profile={pid}" for x in ("sources", "sharing")] + ["guide.html?new"],
                   js("[...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.getAttribute('href'))"))
             page.keyboard.press("Escape")
             # a tab link from another page opens that tab (#264), on the profile shown there
