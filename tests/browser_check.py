@@ -2049,7 +2049,7 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             page.set_viewport_size({"width": 1400, "height": 900})
 
-            # ---- tiles (#330): on the Overview (key labs, home readings, Watch & scale), Body and activity and Costs, at
+            # ---- tiles (#330): on the Overview (key labs, Readings: #274), Body and activity and Costs, at
             # 1400, 1100, 375 and 320 px, no change line ends in a short fragment (a lone year), breaks a date or has only the
             # change on its first line (#374), and the sparklines in a row of tiles start at the same height
             js("window._was330 = [state.tab, state.preset, state.from, state.to]")
@@ -2076,7 +2076,82 @@ def main():
             js("() => { EV.length = window._was389; renderOverview(); }")
             check("…and with a lab dated today, each key lab saying “as of”, none starts a line with “·” at 1400, 375 or 320 px (#389)",
                   all(r[0] > 5 and not r[1] and not r[2] for r in asof389.values()), asof389)
-            # ---- one tile for every tab (#260): the Overview's key labs, home readings, Watch & scale and insurance figures,
+            # ---- the Overview grouped by question (#274): Today (today's doses, what's coming up, the watch's last sync),
+            # Key labs, Readings, the Health record and Recent, in that order at every width; today's doses and the next
+            # appointment on the first screen at 1400 and 390 px (under the top bar, above a phone's tab bar)
+            OV274 = r"""() => { scrollTo(0, 0); const v = document.getElementById('view-overview'), tabs = document.querySelector('nav.tabs')?.getBoundingClientRect();
+              const low = tabs && tabs.top > innerHeight / 2 ? tabs.top : innerHeight, top = document.querySelector('header.topbar').getBoundingClientRect().bottom;
+              const seen = s => { const e = v.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return b.top >= top - 1 && b.bottom <= low + 1; };
+              const ahead = (DATA.upcoming || []).some(u => u && typeof u.t === 'string' && u.t.slice(0, 10) >= zToday());
+              return {h2: [...v.querySelectorAll('.ov-h h2')].map(h => h.textContent), doses: seen('#ovDoses h3'), dosesRow: seen('#ovDoses .dose-today'),
+                ahead, up: seen('#ovUpcoming h3'), next: seen('#ovUpcoming .ov-row'), fits: document.documentElement.scrollWidth <= innerWidth}; }"""
+            got274 = {}
+            for width, height in ((1400, 860), (390, 844), (320, 640)):
+                page.set_viewport_size({"width": width, "height": height})
+                js("switchTab('overview')")
+                settle(300)
+                got274[width] = js(OV274)
+                if width == 320:
+                    got274["fits320"] = phone_fits(page, "overview at 320 px (#274)")
+            order = ["Today", "Key labs", "Readings", "Health record", "Recent"]
+            check("Overview (#274): grouped by question, in order at 1400, 390 and 320 px: Today, Key labs, Readings, Health record, Recent",
+                  all([h for h in got274[w]["h2"] if h in order] == order for w in (1400, 390, 320)) and not got274["fits320"], got274)
+            check("…today's doses and the next appointment on the first screen at 1400 and 390 px",
+                  all(got274[w]["doses"] and got274[w]["dosesRow"] and (got274[w]["up"] and got274[w]["next"] or not got274[w]["ahead"]) for w in (1400, 390)), got274)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(200)
+            # Key labs: the status only on exceptions; the change's date said once in the header (a tile says its own only
+            # when it differs); every key lab outside its range at its latest result named in the header's list, however old
+            # (and said to be "not repeated since"), with any other lab of the last two weeks of draws; the tiles in the
+            # person's order, by panel when labGroups (#279) groups them
+            labs274 = js(r"""() => { const v = document.getElementById('view-overview'), hint = v.querySelector('.ov-h:has(+ #ovOut) .hint').textContent;
+              const since = (hint.match(/changes since (.+?)(?: ·|$)/) || [])[1] || null;
+              const keys = keyLabTiles(CFG.overview.keyLabs, SERIES, JSON.stringify(CFG.overview.keyLabs) === JSON.stringify(DEFAULT_SETTINGS.overview.keyLabs)).filter(n => seriesBy(n)?.pts.length);
+              const lastDraw = Math.max(...EV.filter(e => e.k === 'lab').map(e => e.ts));
+              const flagged = keys.filter(n => seriesBy(n).pts.at(-1)[4]).map(n => [nice(n), seriesBy(n).pts.at(-1).ts < lastDraw - 2 * DAY]);
+              const rows = [...v.querySelectorAll('#ovOut .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.s').textContent]);
+              const groups = typeof labGroups === 'function' ? labGroups(keys) : null, multi = groups && groups.length > 1;
+              const tiles = [...v.querySelectorAll('.tiles:not(.ov-read) .tile .lbl > span:first-child')].map(s => s.dataset.tip || s.textContent);
+              return {since, keys, tiles, want: multi ? groups.flatMap(g => g.names) : keys, panels: [...v.querySelectorAll('.ov-panel')].map(h => h.textContent),
+                wantPanels: multi ? groups.map(g => g.panel) : [], flagged, rows, say: v.querySelector('#ovOut .ov-out-say').textContent,
+                ok: v.querySelectorAll('.tiles .st.ok').length, inRange: [...v.querySelectorAll('.tiles .tile')].filter(t => /In range/.test(t.textContent)).length,
+                sinceOnTiles: since ? [...v.querySelectorAll('.tiles:not(.ov-read) .tile .delta')].filter(d => d.textContent.includes('since ' + since)).length : -1}; }""")
+            check("…Key labs: no “In range” on the tiles, the changes' date said once in the header and not again on a tile",
+                  labs274["ok"] == 0 and labs274["inRange"] == 0 and labs274["since"] and labs274["sinceOnTiles"] == 0, labs274)
+            check("…every key lab outside its range at its latest result is in the header's list, an old one “not repeated since”",
+                  all(any(r[0] == n and (not old or r[1].endswith("not repeated since")) for r in labs274["rows"]) for n, old in labs274["flagged"])
+                  and (labs274["rows"] and labs274["say"].endswith(f"({len(labs274['rows'])}):") if labs274["rows"] else labs274["say"].startswith("Nothing outside")), labs274)
+            check("…the tiles in the person's own order, grouped by panel when labGroups groups them",
+                  labs274["tiles"] == labs274["want"] and labs274["panels"] == labs274["wantPanels"], labs274)
+            # Readings in one row at 1400 px; Recent: clinical records only, the workouts in one line
+            rest274 = js(r"""() => { const v = document.getElementById('view-overview'), read = [...v.querySelectorAll('.ov-read > *')];
+              const kinds = [...v.querySelectorAll('#ovRecent .ov-row[data-id]')].map(r => byId.get(+r.dataset.id)?.k);
+              const works = EV.filter(e => e.k === 'exercise' && !e.hidden && e.ts <= Date.now()), end = works.length ? Math.max(...works.map(e => e.ts)) : 0;
+              return {rows: new Set(read.map(t => Math.round(t.getBoundingClientRect().top))).size, n: read.length, kinds,
+                line: document.getElementById('ovWorkouts')?.textContent || null, want: works.filter(e => e.ts > end - 30 * DAY).length}; }""")
+            check("…Readings in one row at 1400 px; Recent lists clinical records only, the watch's workouts summed in one line",
+                  rest274["n"] > 0 and rest274["rows"] == 1 and rest274["kinds"]
+                  and not set(rest274["kinds"]) & {"exercise", "ecg", "rhythm", "journal", "mood", "cycle", "auto_msg", "claim", None}
+                  and (re.match(rf"{rest274['want']} workouts? in the ", rest274["line"] or "") if rest274["want"] else rest274["line"] is None), rest274)
+            # Upcoming: each row says how far off it is and opens its details, with the visit summary to prepare
+            if js("!!document.querySelector('#ovUpcoming')"):
+                up274 = js(r"""() => [...document.querySelectorAll('#ovUpcoming .ov-row')].map(r => r.querySelector('.r').textContent)""")
+                page.focus("#ovUpcoming .ov-row")
+                page.keyboard.press("Enter")
+                page.wait_for_function("drawer.classList.contains('open')", timeout=5000)
+                settle(300)
+                d274 = js("""() => ({title: document.getElementById('dtitle').textContent, sub: document.getElementById('dsub').textContent,
+                  first: document.querySelector('#ovUpcoming .ov-row .n').textContent, link: document.querySelector('#dbody a.btn')?.getAttribute('href'),
+                  card: document.querySelector('#ovUpcoming a.btn')?.getAttribute('href')})""")
+                page.keyboard.press("Escape")
+                settle(300)
+                back = js("document.activeElement.matches('#ovUpcoming .ov-row')")
+                check("…Upcoming: each row says when (“in 8 days · Nov 27, 2026”), opens its details by keyboard, focus back on it; "
+                      "“Prepare a visit summary” in both",
+                      up274 and all(re.match(r"(today|tomorrow|in \d+ (days|weeks|months)) · ", r) for r in up274)
+                      and d274["title"] == d274["first"] and d274["sub"].startswith("Upcoming · ") and back
+                      and d274["link"] == d274["card"] and re.fullmatch(r"sharing\.html\?profile=\d+#summary", d274["card"] or ""), [up274, d274, back])
+            # ---- one tile for every tab (#260): the Overview's key labs, Readings and insurance figures,
             # Body and activity's, the Timeline's counts and Costs' figures are all .tile, with nothing else drawn as a
             # tile (no .stat or .ov-mini left); its parts look the same on every tab (label, value, change line), a tile
             # in a card is tinted with no edge and one on the page has the card's edge and surface
@@ -9727,10 +9802,10 @@ def main():
             settle(400)
             tiles = js("""[...document.querySelectorAll('#view-overview .tiles .tile.home-tile')].map(t => [t.dataset.home, t.querySelector('.lbl').textContent,
               t.querySelector('.val').textContent, t.querySelector('.delta').textContent])""")
-            check("…chosen, the Overview shows them after the key labs: the latest value, its date and where it came from",
+            check("…chosen, the Overview shows them in Readings, after the watch's (#274): the latest value, its date and where it came from",
                   [t[0] for t in tiles] == ["bp", "glucose", "temp"] and re.match(r"\d+/\d+mmHg", tiles[0][2] if tiles else "")
                   and all(re.search(r"\d{4}", t[3]) and ("at home" in t[3] or "at a visit" in t[3] or "phone app" in t[3]) for t in tiles)
-                  and js("document.querySelector('#view-overview .tiles .tile:last-child').classList.contains('home-tile')"), tiles)
+                  and js("document.querySelector('#view-overview .ov-read .tile:last-child').classList.contains('home-tile')"), tiles)
             ov_bad, ov_axe = [], []
             for width in (1400, 375):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
@@ -11311,7 +11386,7 @@ def main():
                 settle(300)
                 check(f"Overview ({width} px): the flag says it's against a range from settings, and fits",
                       js("document.querySelector('#view-overview .tile .st')?.dataset.tip") == "Against a range from settings"
-                      and "(range from settings)" in page.inner_text("#view-overview .ov-row .r")
+                      and "(range from settings)" in page.inner_text("#ovOut .ov-row .r")
                       and "range from settings" in page.inner_text("#view-overview .range-note") and js("document.documentElement.scrollWidth") <= width,
                       js("document.querySelector('#view-overview .tile .st')?.dataset.tip"))
                 js("switchTab('labs', 'chart')")

@@ -491,12 +491,12 @@ main{padding:var(--sp-4) var(--sp-5) var(--sp-7);max-width:1500px;margin:0 auto}
 footer.notice{max-width:1500px;margin:0 auto;padding:var(--sp-3) var(--sp-5) var(--sp-5);border-top:1px solid var(--grid);color:var(--ink2);font-size:var(--fs-2);box-sizing:border-box}
 .range-note{color:var(--ink2);font-size:var(--fs-2);margin:var(--sp-2) 0 var(--sp-2)}
 .tiles + .range-note{margin:-8px 0 var(--sp-4)}
-.card h2,.card>h1,.ov-cols .card>h3{font-size:var(--fs-4);margin:0 0 2px;font-weight:var(--fw-semibold)}
+.card h2,.card>h1,:is(.ov-cols,.ov-today) .card>h3{font-size:var(--fs-4);margin:0 0 2px;font-weight:var(--fw-semibold)}
 .card .hint{color:var(--muted);font-size:var(--fs-3);margin:0 0 var(--sp-2)}
 /* the type scale (#255, tokens.css): Source Serif 4 for page and section titles and the headline values, Inter for the
    rest (a value's unit too); tabular figures wherever numbers are read against each other: values, tables, chart axes,
    the drawer's facts */
-.card h2,.card>h1,.ov-cols .card>h3,.ov-h h2,.sets .set-top h1,.guide-hd h1,.guide-step h2,.sg-ask h2,#drawer .dh h3,.dir .dir-hd h2,.src .dir-hd h3,
+.card h2,.card>h1,:is(.ov-cols,.ov-today) .card>h3,.ov-h h2,.sets .set-top h1,.guide-hd h1,.guide-step h2,.sg-ask h2,#drawer .dh h3,.dir .dir-hd h2,.src .dir-hd h3,
   .tile .val{font-family:var(--font-display,Georgia,serif)}
 .tile .val small{font-family:var(--font-ui,system-ui,sans-serif)}
 .tile .val,svg text,.tip,.kv dd,.acct .tbl,.zones-tbl,.ecg-sum,.bk .kv{font-variant-numeric:tabular-nums}
@@ -569,16 +569,24 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 /* chart labels are placed by their width (labelW in charts.js, #312): laid out at their own size, not the screen's, so
    the width measured is the width drawn whatever the chart's scale (#253) */
 .mslabel,.evlabel{text-rendering:geometricPrecision}
-/* overview */
-.ov-h{display:flex;align-items:baseline;gap:var(--sp-2);margin:var(--sp-1) 0 var(--sp-3)}
-.ov-h h2{font-size:var(--fs-5);margin:0}
+/* overview: its groups (#274), each under its heading, a step apart */
+.ov-h{display:flex;align-items:baseline;gap:var(--sp-2);margin:var(--sp-5) 0 var(--sp-3)}
+.ov-h:first-child{margin-top:var(--sp-1)}
+.ov-h h2{font-size:var(--fs-5);margin:0;flex-shrink:0;max-width:100%}   /* its name kept whole beside a long hint */
 .ov-h .hint{margin:0}
+.ov-today{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:0 var(--sp-5);align-items:start}
+.ov-out-say{margin:0 0 var(--sp-1);font-weight:var(--fw-semibold)}
+.ov-out{margin-bottom:var(--sp-4)}
+.ov-out .ov-row{display:flex;flex-wrap:wrap}   /* a flag on one line, wrapping on a phone */
+.ov-panel{font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2);margin:0 0 var(--sp-2)}   /* a panel of key labs (labGroups, #279) */
+.tiles.ov-read{grid-template-columns:repeat(auto-fill,minmax(min(150px,calc(50% - var(--sp-3))),1fr))}   /* one row at 1400 px */
 .st{display:inline-flex;align-items:center;gap:3px;font-size:var(--fs-1);font-weight:var(--fw-semibold);white-space:nowrap}
 .st.hi,.st.lo{color:var(--crit)}
-.st.ok{color:var(--good-text)}
 .ov-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:0 var(--sp-5);align-items:start}
 .ov-row{display:grid;grid-template-columns:1fr auto auto;gap:var(--sp-1) var(--sp-3);align-items:baseline;padding:var(--sp-2) var(--sp-1);border-bottom:1px solid var(--grid);cursor:pointer;border-radius:var(--r-sm)}
 .ov-row:hover{background:var(--hover)}
+.ov-row.still{cursor:default}   /* a problem or an allergy: a list to read */
+.ov-row .n>.key{margin-right:var(--sp-2);vertical-align:-2px}   /* its kind's icon, in its lane's colour (#354) */
 .ov-row .n{font-weight:var(--fw-medium)}
 .ov-row .n.plain{font-weight:var(--fw-regular)}   /* a problem's or an allergy's name: a list to read, not to open */
 .ov-row .v{font-variant-numeric:tabular-nums;font-weight:var(--fw-semibold)}
