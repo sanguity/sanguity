@@ -549,8 +549,10 @@ const toast = (() => {
     const run = () => { clearTimeout(timer); if (!acts.length) { start = Date.now(); timer = setTimeout(gone, left); } };   // (one to act on stays)
     const pause = () => { if (timer) { clearTimeout(timer); timer = 0; left = Math.max(2000, left - (Date.now() - start)); } };
     const resume = () => { if (!over && !t.contains(document.activeElement)) run(); };
+    // its words and its actions in one box, which wraps the actions under the words, and its ✕ beside that box, on the
+    // first line: never wrapped onto a line of its own (#389)
     t = el("div", {class: "sg-toast", role: "group", "aria-label": "Notification"},
-      words,
+      el("div", {class: "sg-toast-body"}, words,
       acts.length ? el("div", {class: "sg-toast-acts"}, ...acts.map(a => a.href ? el("a", {class: "btn small", href: a.href, text: a.text, onclick: a.onClick})
         : el("button", {class: "btn small", type: "button", text: a.text, onclick: async ev => {
           // not disabled while it runs (aria-disabled): focus stays on it, to go back from when the toast goes
@@ -559,7 +561,7 @@ const toast = (() => {
           b.setAttribute("aria-disabled", "true");
           try { if (await a.onClick() === false) b.removeAttribute("aria-disabled"); else gone(); }   // false: not done (a question answered No)
           catch (e) { b.removeAttribute("aria-disabled"); words.textContent = `${text} ${a.text} didn't work: ${e.message}`; }
-        }}))) : null,
+        }}))) : null),
       el("button", {class: "btn quiet sg-toast-x", type: "button", "aria-label": "Dismiss", onclick: gone}, icon("x")),
       acts.length ? el("span", {class: "vh", text: " Alt+N goes to it."}) : null);
     t.addEventListener("pointerenter", () => { over = true; pause(); });

@@ -1048,6 +1048,11 @@ Everything on `main` so far; it becomes the first tagged release.
   Overview's links give), Add → Type records in loaded the page again and lost everything typed, without a word. On
   Sources, Add's ways in only change the section now, and leaving the page with something typed in and not saved asks
   first, as Settings does. Arriving from Costs' "Type in a payment" puts focus in "Paid to" rather than on the page.
+- **A key lab's "as of" on a line of its own, and a toast's ✕ beside its words** (#389): once a lab dated today was
+  typed in, the key lab tiles' "· as of Oct 17, 2026" could start a line with its "·". The "as of" is on a line of its
+  own now, under the change, as the fonts drew it anyway, with no "·" to strand, and the tiles keep their height when
+  the fonts arrive. A toast with two actions could wrap its ✕ onto a line of its own; its ✕ stays on the first line,
+  at the right, with the actions under the words.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

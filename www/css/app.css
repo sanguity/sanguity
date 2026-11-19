@@ -320,10 +320,13 @@ dialog.sg-dlg-sheet [data-grab]{touch-action:none}
 .sg-toasts{position:fixed;inset:auto auto var(--sp-4) var(--sp-4);margin:0;padding:0;border:0;background:none;overflow:visible;
   width:min(420px,calc(100vw - 32px));pointer-events:none;color:var(--ink)}
 .sg-toast-list{display:flex;flex-direction:column;gap:var(--sp-2)}
-.sg-toast{pointer-events:auto;display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);padding:var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
+/* its words and actions in one box (.sg-toast-body), wrapping within it, the actions under the words; its ✕ beside the
+   box at the top, on the first line, never on a line of its own (#389); a box shorter than the ✕ centred against it */
+.sg-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:var(--sp-3);padding:var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
   background:var(--raised);color:var(--ink);border:1px solid var(--ring);border-radius:var(--r-md);box-shadow:var(--shadow-2);
   opacity:1;translate:0 0;transition:opacity var(--dur-2) var(--ease-out),translate var(--dur-2) var(--ease-out)}
 @starting-style{ .sg-toast{opacity:0;translate:0 var(--sp-2)} }
+.sg-toast-body{flex:1;min-width:0;align-self:center;display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3)}
 .sg-toast-text{flex:1 1 12em;margin:0;font-size:var(--fs-3)}
 .sg-toast-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .sg-toast-acts .btn{margin:0}
