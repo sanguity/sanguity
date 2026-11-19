@@ -13102,6 +13102,8 @@ def main():
             text = ph.inner_text("#offlineBanner")
             check("offline, records off: the app opens and says records aren't available offline",
                   "Records aren't available offline" in text and ph.is_visible("header .brand-name") and ph.evaluate("typeof EV === 'undefined' || !EV.length"), text)
+            H1S = "[...document.querySelectorAll('h1')].filter(h => h.checkVisibility()).map(h => h.textContent)"
+            check("…with one visible h1, the banner's: Records (#424)", ph.evaluate(H1S) == ["Records"] and ph.evaluate("!!document.querySelector('#offlineBanner > h1')"), ph.evaluate(H1S))
             offline_font = ph.evaluate("document.fonts.ready.then(() => [[...document.fonts].some(f => f.family === 'Inter' && f.status === 'loaded'), getComputedStyle(document.body).fontFamily.split(',')[0]])")
             check("offline (#253): the page is still in Inter", offline_font == [True, "Inter"], offline_font)
             # (#423) the command palette there counts it as offline too: nothing that needs the server is listed, and it says so
@@ -13217,6 +13219,29 @@ def main():
             # offline: that profile, read-only, with when it was loaded
             test_pages = ph.evaluate("TEST_PAGES")   # (#378, below)
             theme414 = ph.evaluate("api('settings/user').then(r => r.json()).then(j => j.theme)")   # (#414, below: put back after)
+            # (#424) the theme picked online from your menu, here (offline.js) and on Settings (offline-page.js): the copy's
+            # settings take it each time, so the records page opened offline shows the one picked last
+            TOASTS = "[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent)"
+            SHOWN = "document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')"
+            COPY_THEME = COPY + ".then(c => c && JSON.parse(c.settings || '{}').theme)"
+            picked424 = []
+            for where in ("/", "/settings.html", "/"):
+                if where != "/":
+                    ph.goto(base + where)
+                    ph.wait_for_timeout(800)
+                elif picked424:
+                    ph.goto(base + where)
+                    until(LOADED, 20000)
+                to424 = "dark" if ph.evaluate(SHOWN) == "light" else "light"
+                menu_click(ph, "#theme")
+                until(TOASTS + ".some(t => t.startsWith('Saved your theme'))", 5000)
+                try:
+                    until(COPY_THEME + f".then(t => t === '{to424}')", 3000)
+                except TimeoutError:
+                    pass
+                picked424.append([where, to424, ph.evaluate(COPY_THEME)])
+            check("theme (#424): picked online from your menu on the records page and on Settings, the offline copy's settings take it each time",
+                  all(t == kept for _, t, kept in picked424), picked424)
             ctx.set_offline(True)
             ph.reload()
             until(LOADED, 20000)
@@ -13224,6 +13249,8 @@ def main():
             name = ph.evaluate("PROFILE.name")
             check("offline, records on: the last profile opens read-only, with when it was loaded",
                   "Offline · read-only" in text and f"{name}, as loaded on" in text, text)
+            check("…in the theme picked online last (#424), not the one the records were loaded with",
+                  ph.evaluate(SHOWN) == picked424[-1][1], [ph.evaluate(SHOWN), picked424])
             tab_click(ph, "#tab-labs")
             ph.wait_for_selector("#charts svg", timeout=10000)
             check("offline: Trends draws from the kept copy", ph.evaluate("document.querySelectorAll('#charts svg').length") > 0)
@@ -13335,8 +13362,6 @@ def main():
             ph.evaluate("DATA.journal = []; journalLoad(); closeDrawer()")
             # (#414) Dark mode offline, from your menu and from the palette: the page changes, for this browser for now,
             # and the toast says it's saved for the account once online (checked below, online again); never a raw error
-            TOASTS = "[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent)"
-            SHOWN = "document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')"
             ph.evaluate("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             to = "dark" if ph.evaluate(SHOWN) == "light" else "light"
             menu_click(ph, "#theme")
@@ -13364,6 +13389,7 @@ def main():
                 ph.wait_for_timeout(300)
                 got = ph.evaluate("""() => { const b = document.getElementById('offlineBanner'), a = b.querySelector('a[href]');
                     return {text: b.innerText, link: a && new URL(a.href).pathname, shown: b.checkVisibility(), main: document.querySelector('main').checkVisibility(),
+                        h1: [...document.querySelectorAll('h1')].filter(h => h.checkVisibility()).map(h => [h.textContent, b.contains(h)]),
                         links: [...document.querySelectorAll('header a.acct, dialog.sheet a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && a.dataset.tip === "Needs the server: you're offline"),
                         theme: document.documentElement.dataset.theme}; }""")
                 ph.evaluate("document.getElementById('accountLink').click()")
@@ -13379,9 +13405,10 @@ def main():
                 ph.keyboard.press("Escape")
                 off413[path] = got
             name413 = {"settings.html": "Settings", "sharing.html": "Sharing", "account.html": "Account", "guide.html": "Getting started"}
-            check("offline (#413): Settings, Sharing, Account and Getting started from the service worker say they need the server in the banner, with a link to the records, "
-                  "and show nothing that needs it: no empty page, no menu link followed, nothing in the palette that needs the server",
-                  all(g["text"].startswith(f"Offline. {name413[k]} needs the server") and g["link"] == "/" and g["shown"] and not g["main"] and g["links"] and g["stayed"]
+            check("offline (#413, #424): Settings, Sharing, Account and Getting started from the service worker say they need the server in the banner, under the page's "
+                  "one visible h1, with a link to the records, and show nothing that needs it: no empty page, no menu link followed, nothing in the palette that needs the server",
+                  all(g["text"].startswith(f"{name413[k]}\nOffline. {name413[k]} needs the server") and g["h1"] == [[name413[k], True]]
+                      and g["link"] == "/" and g["shown"] and not g["main"] and g["links"] and g["stayed"]
                       and g["theme"] == back
                       and all(off_note in n for _, n in g["palette"].values())
                       and not ({"Sources", "Sharing", "Settings", "Account", "Getting started", "Upload files", "New share link", "New profile"} & set(g["palette"][""][0]))   # New profile: #412
@@ -13391,13 +13418,22 @@ def main():
             until(LOADED, 20000)
             check("…and the banner's link opens the records kept on this device", "Offline · read-only" in ph.inner_text("#offlineBanner"))
             ctx.set_offline(False)
-            # online again: the links are followed, with their own tips and names
-            ph.reload()
-            until(LOADED + " && booted", 20000)
+            # online again: the records page goes back to live data by itself (#424: it stayed "Offline · read-only" until
+            # a reload; here Chromium doesn't always say it's online, so it's the server answering again that's noticed),
+            # and the links are followed, with their own tips and names
+            t424 = time.monotonic()
+            try:
+                until(LOADED + " && booted && !OFFLINE.on && !document.getElementById('offlineBanner')", 8000)
+            except TimeoutError:
+                pass
+            live424 = [round(time.monotonic() - t424, 1), ph.evaluate("typeof OFFLINE !== 'undefined' && !OFFLINE.on && !document.getElementById('offlineBanner')"),
+                       ph.evaluate("[...document.querySelectorAll('dialog[open]')].map(d => d.id || d.className)")]
+            check("…online again (#424), the records page offline goes back to live data by itself within a few seconds, with no reload",
+                  live424[1] and live424[0] < 8, live424)
             until("localStorage.getItem('sg-theme-later') === null", 5000)
             saved414 = [ph.evaluate("api('settings/user').then(r => r.json()).then(j => j.theme)"), ph.evaluate("localStorage.getItem('ht-theme')"), ph.evaluate(SHOWN),
                         ph.evaluate(TOASTS)]
-            check("…online again (#414), the theme picked offline is saved for the account, and is no longer this browser's own",
+            check("…online again (#414, #424), the theme picked offline there is saved for the account, and is no longer this browser's own",
                   saved414 == [back, None, back, [f"Saved your theme for your account: {back.title()}, as picked offline."]], saved414)
             ph.evaluate("t => api('settings/user/theme', {method: 'PUT', body: JSON.stringify({value: t})}).then(() => applyTheme(t))", theme414)
             ph.evaluate("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")

@@ -1320,6 +1320,13 @@ Everything on `main` so far; it becomes the first tagged release.
   sign-in on the server was never ended, so opening the app back online was still signed in. Now the device's copy is
   deleted at once and the sign-in page says the sign-in on the server ends once this device reaches it again; until
   then the app opens on that page, which ends it as soon as the server answers (signing in waits for that) and says so.
+- **Offline: the theme you picked, the connection coming back, and a heading** (#424): Dark or Light picked online
+  (your menu, or Settings → Display) didn't reach the offline copy, so offline the records page went back to the
+  theme the records were loaded with, and every page opened offline after it. The copy takes your own settings as
+  they're saved now. The records page offline stayed "Offline · read-only" after the connection came back, with a
+  theme picked offline unsaved, until a reload; it goes back to live data by itself now, as the other pages do, and
+  saves the theme. A page opened offline had no visible heading; the banner carries the page's own ("Settings",
+  "Records" when this device keeps none).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
