@@ -344,7 +344,7 @@ dialog.sg-dlg-sheet [data-grab]{touch-action:none}
 .sg-toast-acts .btn{margin:0}
 .sg-toast-x{flex:none;margin:0;min-width:32px;padding:0}   /* the quiet button (#258), square */
 @media (max-width:700px){ .sg-toasts{inset:auto var(--sp-2) calc(var(--sp-2) + var(--tabbar,0px)) var(--sp-2);width:auto} }   /* over a phone's tabs (#268) */
-html:has(.sets section[data-dirty]) .sg-toasts{bottom:calc(72px + var(--tabbar,0px))}
+html:has(.sg-bar:not([hidden])) .sg-toasts{bottom:calc(76px + var(--tabbar,0px))}   /* above the group bar (#272) */
 /* in a modal dialog, or the drawer beside the page (liveFollow, #362): no popover, in the dialog's flow at its foot,
    under its buttons and over nothing in it; the drawer's body scrolls above */
 dialog>.sg-toasts{position:static;width:auto;pointer-events:auto;flex:none}
@@ -887,7 +887,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 /* settings page (settings.js) */
 .sets .set{border-top:1px solid var(--grid);padding:var(--sp-3) 0 var(--sp-1)}
 .sets .set .row{margin:var(--sp-2) 0 var(--sp-2)}
-/* #174: the group shown and whose settings these are; one Save per section, kept in view while it has changes;
+/* #174: the group shown and whose settings these are; a setting not saved yet marked so (#272: the group's bar saves it);
    a key lab's row on a phone: its handle, name and a menu (orderList's opts.more) */
 .sets .set-top{margin:2px 0 var(--sp-4)}
 .sets .set-top-hd{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2) var(--sp-4);flex-wrap:wrap}
@@ -896,13 +896,19 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-who strong{color:var(--ink);font-weight:var(--fw-semibold)}
 .sets .set-top .msg{display:block;margin-top:var(--sp-2)}
 .sets .set-in{margin:0 0 var(--sp-2);font-size:var(--fs-2);color:var(--muted);font-weight:var(--fw-medium)}
-.sets .set h3 .set-unsaved{display:none;color:var(--accent);background:none;box-shadow:inset 0 0 0 1px currentColor}
-.sets .set-changed h3 .set-unsaved{display:inline-block}
-.sets .set-foot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);border-top:1px solid var(--grid);margin:var(--sp-3) calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4));padding:var(--sp-2) var(--sp-4);border-radius:0 0 var(--r-lg) var(--r-lg);background:var(--surface)}
-.sets section:not([data-dirty])>.set-foot:has(>.msg:empty){display:none}   /* until there's something to save or say */
-.sets section[data-dirty]>.set-foot{position:sticky;bottom:var(--tabbar,0px);z-index:5;box-shadow:0 -8px 14px -10px rgba(0,0,0,.35)}
-@media (max-width:700px){ .sets .set-foot{margin:var(--sp-3) calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3));padding:var(--sp-2) var(--sp-3);border-radius:0 0 var(--r-md) var(--r-md)} }   /* the card's own padding there */
-.set-nav-dirty::after{content:"";display:inline-block;width:7px;height:7px;border-radius:var(--r-pill);background:var(--accent);margin-left:var(--sp-2);vertical-align:1px}
+.sets .set-unsaved{display:none;color:var(--accent);background:none;box-shadow:inset 0 0 0 1px currentColor}
+.sets .set-changed .set-unsaved{display:inline-block}
+.sets .set-msg{display:block;margin:var(--sp-3) 0 0}
+.sets .set-msg:empty{display:none}
+/* the group bar (#272, sidebar.js): "3 changes · Discard · Save", at the foot of the screen while there are any */
+.sg-bar{position:sticky;bottom:calc(var(--sp-3) + var(--tabbar,0px));z-index:5;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--sp-2) var(--sp-4);
+  margin-top:var(--sp-4);padding:var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);box-shadow:var(--shadow-2)}
+.sg-bar-what{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-1) var(--sp-3);min-width:0}
+.sg-bar-n{font-weight:var(--fw-semibold)}
+.sg-bar-acts{display:flex;gap:var(--sp-2);margin-left:auto}
+.sg-bar .btn{margin:0}
+.set-nav-dirty::after,.sg-bar-n::before{content:"";display:inline-block;width:7px;height:7px;border-radius:var(--r-pill);background:var(--accent);margin-left:var(--sp-2);vertical-align:1px}
+.sg-bar-n::before{margin:0 var(--sp-2) 0 0}
 .sets .set-more{display:none}
 .sets .set-more-btn{min-width:36px;font-size:var(--fs-4);line-height:1}
 .sets .set-more .menu-list{min-width:170px}
@@ -1623,16 +1629,18 @@ main.acct.guide{max-width:640px}
 
 /* ---- WCAG 2.2 AA (#202, docs/accessibility.md): a field's edge 3:1 against the page (1.4.11, an invalid field keeps
    its red); a menu item and a date field with focus ringed (2.4.7); what has focus scrolled clear of the sticky top bar
-   (--bar-h, its height, set by nav.js), a scrolling table's header row and a Settings group's sticky Save bar (2.4.11);
+   (--bar-h, its height, set by nav.js), a scrolling table's header row and the sticky group bar (#272: not its own
+   buttons, which it keeps in sight, so focus on them doesn't scroll the page) (2.4.11);
    a button in a table's cell that reads as the cell's text (.cell-btn) and the ✎, 24 px targets (2.5.8) */
 .menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 html{scroll-padding-top:calc(var(--bar-h,0px) + 8px);scroll-padding-bottom:var(--tabbar,0px)}   /* and clear of a phone's tabs (#268) */
-html:has(.sets section[data-dirty]){scroll-padding-bottom:calc(72px + var(--tabbar,0px))}
+html:has(.sg-bar:not([hidden])){scroll-padding-bottom:calc(72px + var(--tabbar,0px))}
+.sg-bar .btn{scroll-margin-bottom:-100vh}
 /* toasts over the page (#362): what takes focus is scrolled clear of them (--toasts-h, their height, util.js), above
-   Settings' Save bar while it shows, and the page's foot can scroll up above them */
+   the group bar while it shows, and the page's foot can scroll up above them */
 html:has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + var(--sp-5) + var(--tabbar,0px))}
 html:has(body>.sg-toasts .sg-toast) body{padding-bottom:calc(var(--toasts-h,0px) + var(--sp-5) + var(--tabbar,0px))}
-html:has(.sets section[data-dirty]):has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + 72px + var(--sp-2) + var(--tabbar,0px))}
+html:has(.sg-bar:not([hidden])):has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + 72px + var(--sp-2) + var(--tabbar,0px))}
 .tablewrap{scroll-padding-top:34px}
 .cell-btn{border:0;background:none;padding:3px 0;margin:-3px 0;min-width:var(--sp-5);font:inherit;color:inherit;text-align:inherit;cursor:pointer;border-radius:var(--r-sm)}   /* 24 px tall, the row as before (2.5.8) */
 .cell-btn:hover{text-decoration:underline}

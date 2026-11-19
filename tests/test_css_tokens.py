@@ -100,7 +100,7 @@ ALLOWED = {
     # keep a 24 px target (the ✎, a test link, Reset filters on a phone) from making its line taller
     # its durations: the offline banner's .6s flash, and the reduced-motion rule's 1ms, which stops animations but still
     # lets them end (an animationend handler runs)
-    "www/css/app.css": {"colours": 2, "px font sizes": 2, "radii": 1, "shadows": 5, "px spacing": 4, "durations": 2},
+    "www/css/app.css": {"colours": 1, "px font sizes": 2, "radii": 1, "shadows": 4, "px spacing": 4, "durations": 2},
     # a page's one colour (sign-in's and setup's too: their button's text is --on-accent now) is the brand mark's white
     # highlight, stroke="#fff"
     "www/account.html": {"colours": 1},

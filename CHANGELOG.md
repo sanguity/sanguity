@@ -1133,6 +1133,19 @@ Everything on `main` so far; it becomes the first tagged release.
   the Timeline, Filters opens a sheet with the search, a checkbox for each kind of record with its count, Reset
   filters and Done, instead of 11 chips on nine rows. The top bar's menus (the profile's, Add, yours, More) are sheets
   there too. Each is the sheet of #262: worked by touch or keyboard, closed with Escape, its ✕ or a swipe down.
+- **One save model for Settings, Sharing, Account and Admin** (#272): there were five ways a change was saved. Now a
+  simple preference (the theme, units, the time zone and date format, a tick such as a home reading's tile or a
+  measure the visit summary ticks, Admin's sync switches, the calendar feed's options, offline records) is saved as
+  it's changed, a toast saying so with an **Undo**; the theme shows as it's picked, this browser's own choice giving
+  way to it. Lists and values (key labs, names, ranges, milestones, workout rules, tabs, About this person's details
+  and every target, the visit summary's questions, Admin's sync numbers) are marked "not saved" and wait for **one bar
+  per group** at the foot of the screen, "3 changes · Discard · Save", instead of a Save per section (five on
+  Dashboard) or per target (six on About this person); the questions are no longer saved as you type. Its Undo, and
+  focus on the section's heading without scrolling, are as Save's were (#359, #367, #368, #376, #377). Reset to
+  defaults (now with an Undo, asking first only when it would lose changes not saved) and the "your own" or "set for
+  this profile" mark show only when something isn't the default. A profile renamed and another person's editor or
+  viewer role changed have an Undo too; what can't be undone or touches security still asks first. Leaving the page,
+  logging out or picking another profile with changes not saved still asks, on Sharing and Admin too.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

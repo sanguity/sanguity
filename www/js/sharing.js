@@ -37,7 +37,8 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
   const nav = sideNav({id: "shrNav", page: "Sharing", groups: GROUPS, find: "Find in Sharing", none: q => `Nothing in Sharing matches “${q}”.`,
     allowed, alias: {profiles: "people"},   // the old Account tab's name (account.html#profiles)
     refuse: g => { if (g.why && P) { sayIn($("#pageMsg"), g.why); return true; } },
-    shown: g => { if (g.id === "activity") drawActivity(); }});   // fresh each time it's opened
+    shown: g => { if (g.id === "activity") drawActivity(); },   // fresh each time it's opened
+    bar: {save: (parts, msg, had) => summarySave(msg, had), discard: summaryDiscard, profile: () => P ? String(P.id) : null}});   // the questions draft (#272, summary.js)
   let started = false;
   /* the groups this profile's role allows, the one shown kept if it's one of them (the address's, the first time) */
   const showAllowed = () => { if (started) nav.show(nav.current()); else { started = true; nav.start(); } };
@@ -144,9 +145,22 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
         el("td", {}, m.username, m.user_id === me ? el("span", {class: "muted", text: " (you)"}) : null,
           m.disabled ? el("span", {class: "muted", text: " (account disabled)"}) : null),   // owners are told (#314)
         el("td", {}, owner ? roleSelect(m.role, async ev => {
-          if (!await sureOfRole(p, m, ev.target.value)) { ev.target.value = m.role; return; }
-          try { await call(`profiles/${p.id}/members`, "PUT", {username: m.username, role: ev.target.value}); await again(); sayIn($("#peopleMsg"), `${m.username} is now ${an(ev.target.value)}.`); }
-          catch (e) { ev.target.value = m.role; fail(e); } }, `${m.username}'s role`) : m.role),
+          const to = ev.target.value, from = m.role;
+          if (!await sureOfRole(p, m, to)) { ev.target.value = from; return; }
+          try { await call(`profiles/${p.id}/members`, "PUT", {username: m.username, role: to}); await again(); }
+          catch (e) { ev.target.value = from; fail(e); return; }
+          // at once (#272); what wasn't asked first (another's editor or viewer) has an Undo, if it's still as set
+          const said = `${m.username} is now ${an(to)}.`;
+          sayIn($("#peopleMsg"), said, false, {say: false});
+          toast(said, m.user_id === me || to === "owner" || from === "owner" ? {} : {action: "Undo", onAction: async () => {
+            const now = (await call(`profiles/${p.id}/members`)).find(x => x.user_id === m.user_id);
+            const back = now && now.role === to;
+            if (back) await call(`profiles/${p.id}/members`, "PUT", {username: m.username, role: from});
+            const text = back ? `Undone: ${m.username} is ${an(from)} again.` : `${m.username}'s role was changed since, so it's left as it is.`;
+            if (P?.id !== p.id) { toast(`${p.name}: ${text}`); return; }   // another profile shown now (#367)
+            await again();
+            sayIn($("#peopleMsg"), text);
+          }}); }, `${m.username}'s role`) : m.role),
         el("td", {class: "acts"}, m.user_id === me ? el("button", {class: "btn small", type: "button", text: "Leave",
           onclick: async () => {
             if (!await ask({title: `Leave ${p.name}?`, message: "You'll stop having access to its records." + (owner ? "" : " An owner can share it with you again."),
@@ -188,7 +202,18 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     const name = el("input", {value: p.name, maxlength: 80, "aria-label": "Profile name"});
     $("#profileBody").replaceChildren(
       el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
-        try { await call("profiles/" + p.id, "PATCH", {name: name.value}); await refresh(p.id); sayIn($("#profileMsg"), "Renamed."); } catch (e) { fail(e); } }},
+        const was = p.name, to = name.value.trim();
+        if (to === was) return;
+        try { await call("profiles/" + p.id, "PATCH", {name: to}); await refresh(p.id); } catch (e) { fail(e); return; }
+        // with an Undo (#272): the name before, if it's still the one given here
+        sayIn($("#profileMsg"), `Renamed to “${to}”.`, false, {say: false});
+        toast(`Renamed “${was}” to “${to}”.`, {action: "Undo", onAction: async () => {
+          ME = await call("me");
+          const now = ME.profiles.find(x => x.id === p.id), back = now && now.name === to;
+          if (back) await call("profiles/" + p.id, "PATCH", {name: was});
+          await refresh(P?.id);
+          note(back ? `Undone: the profile is “${was}” again.` : "The profile was renamed since, so its name is left as it is.");
+        }}); }},
         name, el("button", {class: "btn", type: "submit", text: "Rename"})),
       deletePanel(p, fail));
   }

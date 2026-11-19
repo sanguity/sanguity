@@ -1,6 +1,7 @@
 /* Sanguity · Settings page (#35): how things look. A profile's settings and the person's own (Display), in the
-   sections the server's registry (server/settings.py) gives, each setting with a simple editor for its kind, and per
-   section one Save, Discard changes and "Reset to defaults" (#174). Viewers see the profile's settings without
+   sections the server's registry (server/settings.py) gives, each setting with a simple editor for its kind: a
+   simple preference saved as it's changed, with an Undo; lists and values saved by the group's bar (#272), and a
+   section's "Reset to defaults" when it isn't at them (#174). Viewers see the profile's settings without
    editors; their own (per-user) settings they can change, and someone with no profile yet still has those (#169).
    A new kind of setting adds an editor to EDITORS. About this person and Targets (#267) are about.js's. What used to
    be here and isn't about how things look has its own page now, its old addresses moved.js's. */
@@ -276,15 +277,18 @@ function tabsEditor(value, changed, ro) {
 
 /* a pick-one group of radios (#193): the labels, each with its radio, drawn as one segmented control (app.css .seg) */
 const radioSeg = labels => el("div", {class: "seg wrap"}, ...labels);
-/* #45 this user's default theme; Dark mode or Light mode in the top bar's menu overrides it for one browser */
+/* #45 this user's theme, shown as it's picked (#272: saved then, settings.js saveNow); Dark mode or Light mode in
+   the top bar's menu picks one for this browser until a theme is picked here. Each control has an id, for focus to
+   come back to once the section is drawn again (a toast's Undo). */
 function themeEditor(value, changed, ro) {
+  const note = el("p", {class: "hint", id: "themeOwn"});
   const opts = [["system", "Follow the system"], ["light", "Light"], ["dark", "Dark"]];
   const box = el("fieldset", {class: "set-radios"}, el("legend", {class: "set-sr", text: "Default theme"}),
-    radioSeg(opts.map(([v, l]) => el("label", {}, el("input", {type: "radio", name: "theme", value: v, checked: v === value, disabled: ro, onchange: changed}), l))));
+    radioSeg(opts.map(([v, l]) => el("label", {}, el("input", {type: "radio", name: "theme", id: "theme-" + v, value: v, checked: v === value, disabled: ro,
+      onchange: () => { note.remove(); changed(); }}), l))));   // (this browser's own choice gives way to it)
   let own = null; try { own = localStorage.getItem("ht-theme"); } catch (e) {}
-  const note = el("p", {class: "hint", id: "themeOwn"});
   if (own === "light" || own === "dark")
-    note.append(`This browser uses its own choice, ${own}, set with Dark mode or Light mode in your menu. `,
+    note.append(`This browser shows ${own}, picked with ${own === "dark" ? "Dark" : "Light"} mode in your menu, until you pick a theme here. `,
       el("button", {class: "btn small", type: "button", text: "Use my default on this browser", onclick: () => {
         try { localStorage.removeItem("ht-theme"); } catch (e) {} applyTheme(); note.textContent = "This browser now uses your default."; }}));
   return {node: el("div", {}, box, note.childNodes.length ? note : null), get: () => box.querySelector("input:checked")?.value || value};
@@ -292,7 +296,7 @@ function themeEditor(value, changed, ro) {
 /* #225 some of a few choices, each a checkbox (the Overview's home readings as tiles), in the server's order */
 function choicesEditor(value, changed, ro, setting) {
   const boxes = Object.entries(setting.choices || {}).map(([id, label]) => el("label", {class: "check"},
-    el("input", {type: "checkbox", value: id, checked: value.includes(id) || null, disabled: ro, onchange: changed}), " " + label));
+    el("input", {type: "checkbox", id: `${setting.key}-${id}`, value: id, checked: value.includes(id) || null, disabled: ro, onchange: changed}), " " + label));
   return {node: el("div", {class: "row set-choices", role: "group", "aria-label": setting.label}, ...boxes),
     get: () => boxes.map(b => b.querySelector("input")).filter(i => i.checked).map(i => i.value)};
 }
@@ -312,28 +316,30 @@ function zoneEditor(value, changed, ro) {
   for (const z of [cur, here, "UTC"]) if (!zones.includes(z)) zones.unshift(z);
   const id = "zones" + (++zoneLists), msgId = id + "-msg";
   const list = el("datalist", {id}, ...zones.map(z => el("option", {value: shown(z)})));
-  const input = el("input", {class: "set-select set-zone", type: "text", list: id, "aria-label": "Time zone", "aria-describedby": msgId,
+  const input = el("input", {class: "set-select set-zone", type: "text", id: "timeZone", list: id, "aria-label": "Time zone", "aria-describedby": msgId,
     autocomplete: "off", spellcheck: "false", disabled: ro, value: shown(cur)});
   const hint = el("span", {class: "hint", id: msgId});
-  const use = beside("Use this device's", "Use this device's time zone", () => { input.value = shown(here); pick(); input.focus(); });   // the field's height (#374); hidden now, focus on the field (#376)
+  const use = beside("Use this device's", "Use this device's time zone", () => { input.value = shown(here); pick(true); input.focus(); });   // the field's height (#374); hidden now, focus on the field (#376)
   use.hidden = ro;
   const zoneOf = t => zones.find(z => z === t.trim().replace(/ /g, "_")) || zones.find(z => shown(z).toLowerCase() === t.trim().toLowerCase());
   const note = () => { const same = cur === here; use.hidden = ro || same;
     hint.textContent = input.getAttribute("aria-invalid") === "true" ? "Pick a time zone from the list, such as America/New York."
       : same ? "" : `This device is set to ${shown(here)}.`; };
-  const pick = (final = false) => {   // a zone on the list is the value; what's typed so far only once it's left
+  /* a zone on the list is the value once it's picked from the list or the field is left (#272: saved then), not as
+     it's typed: "EST" on the way to "EST5EDT" isn't one */
+  const pick = (final = false) => {
     const z = zoneOf(input.value);
-    if (z) { input.removeAttribute("aria-invalid"); if (final) input.value = shown(z); if (z !== cur) { cur = z; changed(); } }
+    if (z) { input.removeAttribute("aria-invalid"); if (final) { input.value = shown(z); if (z !== cur) { cur = z; changed(); } } }
     else if (final) input.setAttribute("aria-invalid", "true");
     note();
   };
-  input.oninput = () => pick();
+  input.oninput = ev => pick(ev.inputType === "insertReplacementText" || !ev.inputType);   // (picked from the list)
   input.onchange = () => pick(true);
   note();
   return {node: el("div", {class: "set-add"}, input, list, use, hint), get: () => cur};
 }
 function formatEditor(value, changed, ro) {
-  const sel = el("select", {class: "set-select", "aria-label": "Date format", disabled: ro, onchange: changed},
+  const sel = el("select", {class: "set-select", id: "dateFormat", "aria-label": "Date format", disabled: ro, onchange: changed},
     ...Object.entries(DATE_FORMATS).map(([k, example]) => el("option", {value: k, text: example})));
   sel.value = value || browserFormat();
   return {node: el("div", {class: "set-add"}, sel), get: () => sel.value};
@@ -373,7 +379,7 @@ function unitsEditor(value, changed, ro, st) {
   const parts = [["lab", "Lab tests"], ["weight", "Weight"], ["temperature", "Temperature"], ["height", "Height"]];   // height: #194
   const boxes = parts.map(([part, label]) => el("fieldset", {class: "set-radios", "data-part": part}, el("legend", {text: label}),
     radioSeg(Object.entries((st.choices || {})[part] || {}).map(([v, l]) => el("label", {},
-      el("input", {type: "radio", name: "units-" + part, value: v, checked: v === (value[part] || "reported"), disabled: ro, onchange: changed}), l)))));
+      el("input", {type: "radio", name: "units-" + part, id: `units-${part}-${v}`, value: v, checked: v === (value[part] || "reported"), disabled: ro, onchange: changed}), l)))));
   return {node: el("div", {class: "set-units"}, ...boxes),
     get: () => Object.fromEntries(parts.map(([part], i) => [part, boxes[i].querySelector("input:checked")?.value || value[part] || "reported"]))};
 }
@@ -445,34 +451,46 @@ function rangesEditor(value, changed, ro) {
 }
 EDITORS.ranges = rangesEditor;
 
-/* ---------------------------------------------------------------- the sections (#174): each setting with its
-   editor, and one Save per section for every setting changed in it; Discard changes puts them back as saved. A
-   setting changed and not saved yet says so, its section has data-dirty (its group is marked in the sidebar,
-   settings-nav.js, and the section's Save stays in view while it's long), and leaving the page asks first. Whose
-   settings these are is said once per group, above them; a setting says it only where its section mixes them. */
+/* ---------------------------------------------------------------- the sections (#174, #272): each setting with its
+   editor. A simple preference (a kind in INSTANT: the theme, the time zone and date format, units, choices ticked on
+   or off) is saved as it's changed, a toast saying so with an Undo. A list or a value (key labs, names, ranges,
+   milestones...) is kept as changed, marked "not saved", its section's data-dirty the number of them, until the
+   group's bar (sidebar.js) saves every change shown, or Discard puts them back as saved; the group is marked in the
+   sidebar, and leaving the page or picking another profile asks first (sidebar.js). Whose settings these are is said
+   once per group, above them; a setting says it only where its section mixes them. Where a setting's value comes
+   from ("your own", "set for this profile"), and its section's Reset to defaults, show only when it isn't the
+   default. */
 const FROM = {default: "default", install: "set for this server", profile: "set for this profile", user: "your own"};
 const SCOPE_TAG = {install: "for this server", profile: "for this profile", user: "just for you"};
+const INSTANT = new Set(["theme", "timezone", "dateformat", "units", "choices"]);
+/* at its default: the server's, or for the time zone and date format (set from the browser at the first sign-in,
+   dates.js) this browser's own */
+const atDefault = st => same(st.value, st.default) || (st.kind === "timezone" && st.value === browserZone()) || (st.kind === "dateformat" && st.value === browserFormat());
+const isOwn = st => st.from === "profile" || st.from === "user";   // kept here: Reset to defaults takes it off
+const setBase = () => PID == null ? "settings/user" : `profiles/${PID}/settings`;
 
-/* one setting: its name, where its value comes from, its editor, and a line for what went wrong saving it.
-   changed() after every edit. */
+/* one setting: its name, where its value comes from (unless it's the default), its editor, and a line for what went
+   wrong saving it. changed(item) after every edit in it; changed() when it's filled in otherwise (put). */
 const SET_ITEMS = {};   // key -> the setting's item drawn last: put(value) fills its editor in, unsaved (presets.js, #186)
 function settingNode(st, changed, mixed) {
   const ro = !st.can_change;
   const msg = el("span", {class: "msg", role: "status"});
-  const from = el("span", {class: "tag", text: FROM[st.from] || st.from});
+  const from = el("span", {class: "tag"});
   const unsaved = el("span", {class: "tag set-unsaved", text: "not saved"});
   const node = el("div", {class: "set", "data-key": st.key, "data-scope": st.scope});
+  const tag = () => { from.textContent = FROM[st.from] || st.from; from.hidden = atDefault(st); };
   let ed = null;
-  const item = {st, node, msg,
+  const item = {st, node, msg, instant: INSTANT.has(st.kind) && !ro,
     dirty: () => !ro && !!ed && !same(ed.get(), st.value),
     value: () => ed.get(),
-    saved(value) { st.value = value; st.from = st.scope; from.textContent = FROM[st.from] || st.from; mark(); },
-    back(value, was) { st.value = value; st.from = was; from.textContent = FROM[st.from] || st.from; mark(); changed(); }};   // put back by an Undo (#359)
+    saved(value) { st.value = value; st.from = st.scope; tag(); mark(); },
+    back(value, was) { st.value = value; st.from = was; tag(); mark(); changed(); }};   // put back by an Undo (#359)
   const mark = () => node.classList.toggle("set-changed", item.dirty());
-  const make = v => (EDITORS[st.kind] || jsonEditor)(v, () => { sayIn(msg, ""); mark(); changed(); }, ro, st);
+  const make = v => (EDITORS[st.kind] || jsonEditor)(v, () => { sayIn(msg, ""); mark(); changed(item); }, ro, st);
   ed = make(st.value);
-  item.put = v => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); mark(); changed(); };   // #186
+  item.put = v => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); mark(); changed(); };   // #186: not saved, a simple one too
   SET_ITEMS[st.key] = item;
+  tag();
   node.append(...present(el("h3", {class: "sub"}, st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
     st.help ? el("p", {class: "hint", text: st.help}) : null,
     ed.node, msg));
@@ -484,14 +502,14 @@ async function stored(base) {
   const d = await call(`${base}/sections`);
   return Object.fromEntries(d.sections.flatMap(sec => sec.settings).map(st => [st.key, {value: st.value, from: st.from}]));
 }
-/* a save's Undo (#263, #359): each setting it saved goes back to what it was (the default it came from taken off
-   again, where a profile's setting can be; otherwise the value it had), but only one that still holds what this save
-   wrote: one changed again since is left, and said to be. The section is drawn again as saved, unless it has changes
-   not saved: those are kept, its other settings shown as they are now. pid: the profile it saved (PID then): another
-   picked since keeps its page as it is, and a toast says what was undone in the first (#367), unless the section's
-   settings are the person's own (Appearance, Dates, Units: the same on every profile), drawn and said as without a
-   switch (#377). */
-async function undoSave(base, reload, sec, was, pid) {
+/* an Undo (#263, #359) of a save, a change saved as it was made, or a Reset: each setting it changed goes back to
+   what it was (the default it came from taken off again, where a profile's setting can be; otherwise the value it
+   had), but only one that still holds what was written: one changed again since is left, and said to be. Its
+   sections (secs) are drawn again as saved, unless one has changes not saved: those are kept, its other settings
+   shown as they are now. pid: the profile it was on (PID then): another picked since keeps its page as it is, and
+   a toast says what was undone in the first (#367), unless the settings are the person's own (Appearance, Dates,
+   Units: the same on every profile), drawn and said as without a switch (#377). */
+async function undoSave(base, secs, was, pid) {
   const now = await stored(base), back = [], since = [];
   for (const w of was) {
     if (!w.wrote || !now[w.key] || !same(now[w.key].value, w.wrote.value)) { since.push(w.label); continue; }
@@ -502,128 +520,156 @@ async function undoSave(base, reload, sec, was, pid) {
   }
   const text = [back.length ? `Undone: ${quoted(back.map(w => w.label))} ${back.length === 1 ? "is" : "are"} as before.` : "",
     since.length ? `${quoted(since)} ${since.length === 1 ? "was" : "were"} changed since, so ${since.length === 1 ? "it's" : "they're"} left as ${since.length === 1 ? "it is" : "they are"}.` : ""].join(" ").trim();
-  if (PID !== pid && !sec.settings.every(st => st.scope === "user")) { toast(`${ME.profiles.find(x => x.id === pid)?.name || "The other profile"}: ${text}`); return; }
-  const card = () => document.getElementById("sec-" + sec.id);
-  if (!card()?.hasAttribute("data-dirty")) { await reload({section: sec.id, text}, sec.id); return; }
-  // changes not saved in it: kept, each setting's saved value now the one put back (so one changed back to it is
-  // no longer a change); a setting not changed here shows it
+  if (PID !== pid && !secs.every(sec => sec.settings.every(st => st.scope === "user"))) { toast(`${ME.profiles.find(x => x.id === pid)?.name || "The other profile"}: ${text}`); return; }
+  const card = id => document.getElementById("sec-" + id), ids = secs.map(sec => sec.id);
+  const kept = ids.filter(id => card(id)?.hasAttribute("data-dirty"));
+  if (!kept.length) { await load({sections: ids, text}, ids); return; }
+  // changes not saved in one: kept, each setting's saved value now the one put back (so one changed back to it is
+  // no longer a change); a setting not changed there shows it
   const after = await stored(base).catch(() => now);
   for (const w of back) {
     const it = SET_ITEMS[w.key];
-    if (!it || !card().contains(it.node) || !after[w.key]) continue;
+    if (!it || !kept.some(id => card(id).contains(it.node)) || !after[w.key]) continue;
     const dirty = it.dirty();
     it.back(after[w.key].value, after[w.key].from);
     if (!dirty) it.put(after[w.key].value);
   }
-  await reload();   // the other sections, as they are now: this one, still with changes, stays
-  if (card()?.hasAttribute("data-dirty")) sayIn(card().querySelector(".set-foot > .msg"), text + " Your changes not saved yet are kept.");
-  else await reload({section: sec.id, text}, sec.id);
+  await load();   // the other sections, as they are now: these, still with changes, stay
+  const clean = ids.filter(id => !card(id)?.hasAttribute("data-dirty"));
+  for (const id of ids) if (!clean.includes(id)) sayIn(card(id)?.querySelector(".set-msg"), text + " Your changes not saved yet are kept.");
+  if (clean.length) await load({sections: clean, text}, clean);
 }
 
 /* “A”, “A” and “B”, “A”, “B” and “C” */
 const quoted = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.length - 1 ? " and " : ", ") + `“${l}”`).join("");
 
-/* a section: its title, Reset to defaults, its settings and one Save for them all. opts.base is where its settings
-   are changed (the API's profiles/<id>/settings unless given); opts.reload(note, force) draws the sections again
-   after a save or a reset (note: {section, text, quiet} to say in this one, or only show with quiet, a toast saying
-   it; force: this section's id, to draw it again even with changes not saved); opts.note is said in it once drawn
-   (shown only, with opts.quiet). A save is said by a toast (#263) with an Undo, which puts back what each setting
-   saved was: its value, or the default it came from (taken off again, where the setting can be). */
+/* a section: its title, Reset to defaults (when something in it isn't the default), a line for what's said about it,
+   and its settings. opts.note is said in that line once drawn (shown only, with opts.quiet: a toast says it). The
+   card keeps its items and section (sgItems, sgSec), and sgChanged() and sgTidy() for after a save. */
 function sectionCard(sec, opts = {}) {
-  const base = opts.base || (PID == null ? "settings/user" : `profiles/${PID}/settings`);
-  const reload = opts.reload || load;
-  const msg = el("span", {class: "msg"}); sayIn(msg, opts.note || "", false, {say: !opts.quiet});   // said too (util.js, #209), or by a toast
-  const anyEditable = sec.settings.some(st => st.can_change);
-  const changedHere = sec.settings.some(st => st.can_change && st.from !== "default" && st.from !== "install");
+  const msg = el("span", {class: "msg set-msg"}); sayIn(msg, opts.note || "", false, {say: !opts.quiet});   // said too (util.js, #209), or by a toast
   const mixed = new Set(sec.settings.map(st => st.scope)).size > 1;
-  const save = el("button", {class: "btn primary small", type: "button", text: "Save", disabled: true});
-  const discard = el("button", {class: "btn small", type: "button", text: "Discard changes", disabled: true});
   let card = null;
-  const changed = () => {
-    const n = items.filter(it => it.dirty()).length;
-    save.disabled = discard.disabled = !n;
-    card?.toggleAttribute("data-dirty", n > 0);
+  const changed = it => {
+    const n = items.filter(x => x.dirty()).length;
+    if (card) { if (n) card.setAttribute("data-dirty", n); else card.removeAttribute("data-dirty"); }
     if (n && !msg.classList.contains("bad")) sayIn(msg, "");
+    if (card && it && it.instant && it.dirty()) saveNow(it, card);
   };
-  const items = sec.settings.map(st => settingNode(st, () => changed(), mixed));
-  save.onclick = async () => {
-    const todo = items.filter(it => it.dirty());
-    if (!todo.length) return;
-    const pid = PID, had = card.contains(document.activeElement);   // (before Save is disabled, which takes focus away)
-    save.disabled = discard.disabled = true;
-    sayIn(msg, "Saving…");
-    const done = [], was = [];
-    for (const it of todo) {
-      const value = it.value(), before = {key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from};
-      try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value}); }
-      catch (e) {
-        // the ones before it are saved; this one and the rest stay as changed, to put right and save again
-        sayIn(it.msg, e.message, true);
-        changed();
-        sayIn(msg, (done.length ? `Saved ${quoted(done)}. ` : "") + `${quoted([it.st.label])} isn't saved: ${e.message}`, true);
-        it.node.scrollIntoView({block: "nearest"});
-        if (had && !card.contains(document.activeElement)) save.focus({preventScroll: true});   // (enabled again)
-        if (done.length) reload();
-        return;
-      }
-      it.saved(value);
-      done.push(it.st.label); was.push({...before, wrote: {value}});
-    }
-    changed();
-    const said = `Saved ${quoted(done)}.`;
-    await reload({section: sec.id, text: said, quiet: true});
-    // drawn again, Save with it (and disabled now): focus on the section's heading, to come back to from the toast
-    // (#368), without scrolling the page up to it: what was saved stays in view (#376)
-    if (had && !document.getElementById("sec-" + sec.id)?.contains(document.activeElement)) document.getElementById(`sec-${sec.id}-hd`)?.focus({preventScroll: true});
-    // what the server keeps now (as it stored it), for the Undo to tell whether a setting was changed again since
-    const kept = await stored(base).catch(() => null);
-    if (kept) for (const w of was) if (kept[w.key]) w.wrote = kept[w.key];
-    toast(said, {action: "Undo", onAction: () => undoSave(base, reload, sec, was, pid)});
-  };
-  discard.onclick = () => {
-    const fresh = sectionCard(sec, {...opts, note: "Changes discarded: back as saved."});
-    card.replaceWith(fresh);
-    fresh.querySelector("h2").focus();
-  };
-  const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", disabled: !changedHere, hidden: !anyEditable,
-    onclick: async () => {
-      if (!await ask({title: `Reset the ${sec.title} settings?`, message: "Each of them goes back to its default.",
-                      action: "Reset to defaults", danger: true})) return;
-      reset.disabled = true;
-      try { await call(`${base}/reset`, "POST", {section: sec.id}); await reload({section: sec.id, text: `${sec.title} settings are back to their defaults.`}, sec.id); }
-      catch (e) { sayIn(msg, e.message, true); reset.disabled = false; }
-    }});
+  const items = sec.settings.map(st => settingNode(st, changed, mixed));
+  const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", onclick: () => resetSection(card)});
+  const tidy = () => { reset.hidden = !items.some(it => it.st.can_change && isOwn(it.st) && !atDefault(it.st)); };
+  tidy();
   card = el("section", {class: "card", id: "sec-" + sec.id},
     el("div", {class: "set-hd"}, el("h2", {id: `sec-${sec.id}-hd`, tabindex: -1, text: sec.title}), reset),
     sec.help ? el("p", {class: "hint", text: sec.help}) : null,
     sec.id === "overview" ? presetsBlock(sec) : null,   // "Start from a condition" (presets.js, #186)
-    ...items.map(it => it.node),
-    anyEditable ? el("div", {class: "set-foot"}, save, discard, msg) : null);
-  return card;
+    ...items.map(it => it.node), msg);   // (at its foot: words changing there move nothing in it)
+  return Object.assign(card, {sgItems: items, sgSec: sec, sgChanged: () => changed(), sgTidy: tidy});
 }
-const unsavedSections = () => [...document.querySelectorAll("#sections > section[data-dirty]")];
-addEventListener("beforeunload", ev => { if (!sgLeaving && unsavedSections().length) { ev.preventDefault(); ev.returnValue = ""; } });
-/* another profile: changes not saved here would be lost. Asked before anything else follows the picker, so saying
-   no leaves the whole page on this profile: the change stops here and the picker shows this profile while the app's
-   dialog asks (#210); saying yes picks the other profile again, and that change goes on to everything else. */
-let switchAsked = false;
-document.addEventListener("change", async ev => {
-  if (ev.target.id !== "profile" || PID == null || switchAsked) return;
-  const left = unsavedSections().map(c => c.querySelector("h2").textContent);
-  if (!left.length) return;
-  const pick = ev.target, wanted = pick.value;
-  ev.stopImmediatePropagation();
-  pick.value = PID;
-  if (!await ask({title: "Switch profile and lose your changes?", message: `Your changes to ${quoted(left)} aren't saved.`,
-                  action: "Switch and lose changes", cancel: "Stay here", danger: true})) return;
-  pick.value = wanted;
-  switchAsked = true;
-  try { pick.dispatchEvent(new Event("change", {bubbles: true})); } finally { switchAsked = false; }
-}, true);
+
+/* a simple preference, saved as it's changed (#272): the latest value, one save at a time per setting, a toast
+   saying it with an Undo (as a save's). The theme shows at once, this browser's own choice (your menu's) giving way
+   to it. Not saved (the server said no): it stays changed, its line says why, and the bar offers to save it. */
+function saveNow(it, card) {
+  const pid = PID, base = setBase(), sec = card.sgSec;
+  let mine = null;   // this browser's own theme, put back by the Undo
+  if (it.st.kind === "theme") { try { mine = localStorage.getItem("ht-theme"); localStorage.removeItem("ht-theme"); } catch (e) {} applyTheme(it.value()); }
+  it.queue = (it.queue || Promise.resolve()).then(async () => {
+    if (!it.dirty() || PID !== pid) return;
+    const value = it.value(), was = [{key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from, wrote: {value}}];
+    try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value}); }
+    catch (e) { sayIn(it.msg, `Not saved: ${e.message}`, true); if (it.st.kind === "theme") applyTheme(it.st.value); return; }
+    it.saved(value); card.sgChanged(); card.sgTidy();
+    if (it.st.kind === "timezone" || it.st.kind === "dateformat") useDates(SET_ITEMS["dates.timeZone"]?.st.value, SET_ITEMS["dates.format"]?.st.value);
+    const said = `Saved “${it.st.label}”.`;
+    sayIn(card.querySelector(".set-msg"), said, false, {say: false});
+    const kept = await stored(base).catch(() => null);
+    if (kept && kept[it.st.key]) was[0].wrote = kept[it.st.key];
+    toast(said, {action: "Undo", onAction: async () => {
+      await undoSave(base, [sec], was, pid);
+      if (mine) { try { localStorage.setItem("ht-theme", mine); } catch (e) {} applyTheme(); }
+    }});
+  }).catch(() => {});
+}
+
+/* the bar's Save (sidebar.js): every change in these sections, in turn; the first the server refuses stops it, said
+   there and in the bar (msg), the ones before it saved. Done: a toast says what, with an Undo, and focus, if it was
+   on the bar, goes to the first section's heading (#368), without scrolling the page up to it: what was saved stays
+   in view (#376). Gives back whether all were saved. */
+async function saveSections(cards, msg, had) {
+  const base = setBase(), pid = PID, done = [], was = [], secs = [];
+  for (const card of cards) for (const it of card.sgItems.filter(x => x.dirty())) {
+    const value = it.value(), before = {key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from};
+    try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value}); }
+    catch (e) {
+      // the ones before it are saved; this one and the rest stay as changed, to put right and save again
+      sayIn(it.msg, e.message, true, {say: false});
+      for (const c of cards) c.sgChanged();
+      sayIn(msg, (done.length ? `Saved ${quoted(done)}. ` : "") + `${quoted([it.st.label])} isn't saved: ${e.message}`, true);
+      it.node.scrollIntoView({block: "nearest"});
+      if (done.length) load();
+      return false;
+    }
+    it.saved(value);
+    done.push(it.st.label); was.push({...before, wrote: {value}});
+    if (!secs.includes(card.sgSec)) secs.push(card.sgSec);
+  }
+  for (const c of cards) c.sgChanged();
+  if (!done.length) return true;
+  const said = `Saved ${quoted(done)}.`, ids = secs.map(sec => sec.id);
+  sayIn(msg, "");
+  await load({sections: ids, text: said, quiet: true});
+  if (had) document.getElementById(`sec-${ids[0]}-hd`)?.focus({preventScroll: true});
+  // what the server keeps now (as it stored it), for the Undo to tell whether a setting was changed again since
+  const kept = await stored(base).catch(() => null);
+  if (kept) for (const w of was) if (kept[w.key]) w.wrote = kept[w.key];
+  toast(said, {action: "Undo", onAction: () => undoSave(base, secs, was, pid)});
+  return true;
+}
+/* the bar's Discard: these sections drawn again as saved, focus on the first one's heading */
+function discardSections(cards) {
+  let first = null;
+  for (const c of cards) {
+    const fresh = sectionCard(c.sgSec, {note: first ? "" : "Changes discarded: back as saved."});
+    c.replaceWith(fresh);
+    first ||= fresh;
+  }
+  first?.querySelector("h2").focus();
+}
+/* Reset to defaults: at once, with an Undo that puts back what each setting was (#272); asked first only when the
+   section has changes not saved, which it loses */
+async function resetSection(card) {
+  const sec = card.sgSec, base = setBase(), pid = PID, msg = card.querySelector(".set-msg");
+  if (card.hasAttribute("data-dirty") && !await ask({title: `Reset the ${sec.title} settings?`, action: "Reset to defaults", danger: true,
+      message: "Each of them goes back to its default, and your changes to them not saved yet are lost."})) return;
+  const had = card.contains(document.activeElement);
+  const was = card.sgItems.filter(it => it.st.can_change && isOwn(it.st)).map(it => ({key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from}));
+  try { await call(`${base}/reset`, "POST", {section: sec.id}); }
+  catch (e) { sayIn(msg, e.message, true); return; }
+  const said = `${sec.title} settings are back to their defaults.`;
+  await load({sections: [sec.id], text: said, quiet: true}, [sec.id]);
+  if (had) document.getElementById(`sec-${sec.id}-hd`)?.focus({preventScroll: true});
+  const kept = await stored(base).catch(() => ({}));
+  for (const w of was) w.wrote = kept[w.key];
+  toast(said, {action: "Undo", onAction: () => undoSave(base, [sec], was, pid)});
+}
+/* the bar's Save and Discard (settings-nav.js): the parts shown with changes, sections and About this person's */
+const aboutPart = p => p.id === "about" || p.id === "targets";
+async function saveParts(parts, msg, had) {
+  const cards = parts.filter(p => p.sgItems), about = parts.filter(aboutPart);
+  if (cards.length && !await saveSections(cards, msg, had)) return;
+  if (about.length) await aboutSave(about, msg, had && !cards.length);
+}
+function discardParts(parts) {
+  discardSections(parts.filter(p => p.sgItems));
+  const about = parts.filter(aboutPart);
+  if (about.length) aboutDiscard(about);
+}
 
 /* the profile's sections (or, with no profile, the person's own), drawn again: one with changes not saved stays as
-   it is, unless it's the one forced or all are drawn afresh (another profile); note: {section, text} to say in that
-   section */
+   it is, unless it's one forced (force: section ids) or all are drawn afresh (another profile); note: {sections,
+   text, quiet} to say in those sections */
 async function load(note, force, all = false) {
   const box = $("#sections");
   let d, merged = null;
@@ -641,10 +687,11 @@ async function load(note, force, all = false) {
   { const ov = every.find(x => x.key === "ranges.overrides"); RANGE_CFG = {...rangeConfig(merged), ...(ov ? {overrides: ov.value} : {})}; }   // #44
   { const th = every.find(st => st.key === "theme"); if (th) applyTheme(th.value); }   // #45: the saved default, here too
   document.querySelector("main.sets").dataset.role = d.role || "";   // whose settings each group's are (settings-nav.js)
+  const forced = [].concat(force || []);
   const cards = d.sections.map(sec => {
     const old = document.getElementById("sec-" + sec.id);
-    if (!all && old && old.parentNode === box && old.hasAttribute("data-dirty") && sec.id !== force) return old;
-    return sectionCard(sec, {note: note && note.section === sec.id ? note.text : "", quiet: !!(note && note.quiet)});
+    if (!all && old && old.parentNode === box && old.hasAttribute("data-dirty") && !forced.includes(sec.id)) return old;
+    return sectionCard(sec, {note: note && (note.sections || []).includes(sec.id) ? note.text : "", quiet: !!(note && note.quiet)});
   });
   const inPlace = !all && box.children.length === cards.length && d.sections.every((sec, i) => box.children[i].id === "sec-" + sec.id);
   if (inPlace) cards.forEach((c, i) => { if (box.children[i] !== c) box.children[i].replaceWith(c); });

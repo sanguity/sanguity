@@ -41,7 +41,7 @@
 
   <!-- About this person (#194, here since #267): birth date, sex used for reference ranges, height history (about.js, person.js) -->
   <section class="card about" id="about" hidden>
-    <h2>Birth date, sex and height</h2>
+    <h2 id="aboutHd" tabindex="-1">Birth date, sex and height</h2>
     <p class="hint">Some views depend on who the person is: the age on each result's day, ranges of your own by sex and
       age (Labs and ranges, here), and what is built on height. Each is optional.</p>
     <details class="more"><summary>More about this</summary>
@@ -55,7 +55,7 @@
   </section>
   <!-- targets of your own for home readings (#234): each as the care team gave it (targets.js, server/targets.py) -->
   <section class="card about" id="targets" hidden>
-    <h2>Targets of your own</h2>
+    <h2 id="targetsHd" tabindex="-1">Targets of your own</h2>
     <div id="targetsBody"></div>
     <span class="msg" id="targetsMsg" role="status"></span>
   </section>

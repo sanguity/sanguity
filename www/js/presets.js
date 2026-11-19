@@ -6,8 +6,8 @@
    condition's own list behind "Its list".
 
    Filling in only changes the editors below (and, if ticked, Saved views and the visit summary's ticks, each in its
-   own section): the person saves them as any other change, or Discard changes puts them back; Reset to defaults
-   after saving. Applied once, not linked: nothing here is kept, and a later change to a preset changes no one's
+   own section): the person saves them as any other change, with the group's bar (#272), or its Discard puts them
+   back; Reset to defaults after saving. Applied once, not linked: nothing here is kept, and a later change to a preset changes no one's
    settings. Not medical advice: "commonly followed for", as its guideline says; labs with no results here are named
    without suggesting anyone get them. Uses settings.js's call, PID, LABS, nick and SET_ITEMS; nothing goes into
    innerHTML. */
@@ -204,7 +204,7 @@ function presetsBlock(sec) {
       it.put(plan[k]);
       where.push(k === "views" ? "Saved views (Lab charts)" : k === "ticked" ? "the visit summary's ticks" : it.st.label);
     }
-    sayIn(msg, where.length ? `Filled in: ${presetText(where)}. Save each section to keep ${where.length === 1 ? "it" : "them"}, or Discard changes.`
+    sayIn(msg, where.length ? `Filled in: ${presetText(where)}. Save to keep ${where.length === 1 ? "it" : "them"}, or Discard.`
       : "Nothing to change: these are filled in already.");
     drawOut();
     fill.focus();

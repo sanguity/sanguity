@@ -199,25 +199,33 @@ $("#srcForm").onsubmit = async ev => {
 };
 
 /* ---------------------------------------------------------------- the defaults of every connection (#101, #102) */
-/* The install's own settings (server/settings.py, scope "install"), from GET settings/install: one Save for the
-   section, and Reset to defaults. A connection can change its own on the Connected sources page. */
-/* a whole number, on or off, some of a few choices (the install's sync.* settings, #101) */
-function numberEditor(value, changed, ro) {
-  const input = el("input", {type: "number", step: 1, min: 1, value, disabled: ro, oninput: changed, class: "set-num", "aria-label": "Value"});
+/* The install's own settings (server/settings.py, scope "install"), from GET settings/install, saved as Settings'
+   are (#272): on or off and the kinds ticked as they're changed, a toast saying so with an Undo; the numbers kept as
+   typed, marked "not saved" and counted in the card's data-dirty, until the group's bar (sidebar.js, admin.js) saves
+   them (syncSave) or puts them back (syncDiscard). "set for this server" and Reset to defaults show only when one
+   isn't Sanguity's own default, and a Reset has an Undo too. A connection can change its own on the Connected
+   sources page. */
+/* a whole number, on or off, some of a few choices (the install's sync.* settings, #101); each control has an id, for
+   focus to come back to once the card is drawn again (a toast's Undo) */
+function numberEditor(value, changed, ro, setting) {
+  const input = el("input", {type: "number", step: 1, min: 1, value, disabled: ro, oninput: changed, class: "set-num", "aria-label": "Value", id: setting.key});
   return {node: input, get: () => input.value === "" ? null : +input.value};
 }
 function toggleEditor(value, changed, ro, setting) {   // a switch (#259), named by the setting's heading above it
-  const input = el("input", {type: "checkbox", role: "switch", "aria-label": setting.label, checked: value ? "" : null, disabled: ro, onchange: changed});
+  const input = el("input", {type: "checkbox", role: "switch", id: setting.key, "aria-label": setting.label, checked: value ? "" : null, disabled: ro, onchange: changed});
   return {node: el("label", {class: "check switch"}, input), get: () => input.checked};
 }
 function choicesEditor(value, changed, ro, setting) {
   const boxes = Object.entries(setting.choices || {}).map(([id, label]) => el("label", {class: "check"},
-    el("input", {type: "checkbox", value: id, checked: value.includes(id) ? "" : null, disabled: ro, onchange: changed}), label));
+    el("input", {type: "checkbox", id: `${setting.key}-${id}`, value: id, checked: value.includes(id) ? "" : null, disabled: ro, onchange: changed}), label));
   return {node: el("div", {class: "row set-choices"}, ...boxes),
     get: () => boxes.map(b => b.querySelector("input")).filter(i => i.checked).map(i => i.value)};
 }
 const SYNC_EDITORS = {number: numberEditor, toggle: toggleEditor, choices: choicesEditor};
+const SYNC_NOW = new Set(["toggle", "choices"]);   // saved as they're changed
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const syncList = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.length - 1 ? " and " : ", ") + `“${l}”`).join("");
+let SYNC = [];   // the settings drawn: {st, dirty(), get(), put(value)}
 
 async function loadSync(note) {
   const box = $("#sec-sync");
@@ -228,47 +236,96 @@ async function loadSync(note) {
   if (!sec) { box.hidden = true; return; }
   drawSync(sec, note);
 }
-function drawSync(sec, note) {
-  const msg = el("span", {class: "msg", role: "status"});
-  const save = el("button", {class: "btn primary small", type: "button", id: "syncSave", text: "Save", disabled: true});
-  const eds = [];
-  const changed = () => { save.disabled = eds.every(({st, ed}) => same(ed.get(), st.value)); sayIn(msg, ""); };
-  const rows = sec.settings.map(st => {
-    const ed = (SYNC_EDITORS[st.kind] || numberEditor)(st.value, changed, false, st);
-    eds.push({st, ed});
-    return el("div", {class: "set", "data-key": st.key},
-      el("h3", {class: "sub"}, st.label, el("span", {class: "tag", text: st.from === "install" ? "set for this server" : "default"})),
-      st.help ? el("p", {class: "hint", text: st.help}) : null,
-      ed.node);
+/* drawn again from the server's answer; keep: the settings changed and not saved, kept as typed */
+function drawSync(sec, note, keep = []) {
+  const card = $("#sec-sync"), msg = el("span", {class: "msg set-msg"}), back = card.contains(document.activeElement) ? document.activeElement.id : null;
+  const count = () => { const n = SYNC.filter(e => e.dirty()).length; if (n) card.setAttribute("data-dirty", n); else card.removeAttribute("data-dirty"); };
+  const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", hidden: sec.settings.every(st => same(st.value, st.default)) || null, onclick: () => syncReset(sec)});
+  SYNC = sec.settings.map(st => {
+    const node = el("div", {class: "set", "data-key": st.key}), e = {st};
+    const make = v => (SYNC_EDITORS[st.kind] || numberEditor)(v, () => {
+      node.classList.toggle("set-changed", e.dirty()); count();
+      if (SYNC_NOW.has(st.kind) && e.dirty()) syncNow(e);
+    }, false, st);
+    let ed = make(keep.find(k => k.st.key === st.key)?.get() ?? st.value);
+    Object.assign(e, {node, dirty: () => !same(ed.get(), st.value), get: () => ed.get(), put: v => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); }});
+    node.classList.toggle("set-changed", e.dirty());
+    node.append(...present(el("h3", {class: "sub"}, st.label, same(st.value, st.default) ? null : el("span", {class: "tag", text: "set for this server"}),
+      el("span", {class: "tag set-unsaved", text: "not saved"})), st.help ? el("p", {class: "hint", text: st.help}) : null, ed.node));
+    return e;
   });
-  save.onclick = async () => {   // each setting that changed, in turn; the first refusal stops and says why
-    save.disabled = true;
-    const todo = eds.filter(({st, ed}) => !same(ed.get(), st.value));
-    let last;
-    for (const {st, ed} of todo) {
-      try { last = await call(`settings/install/${encodeURIComponent(st.key)}`, "PUT", {value: ed.get()}); }
-      catch (e) {
-        sayIn(msg, `“${st.label}”: ${e.message}`, true); save.disabled = false;
-        if (last) for (const x of last.sections.find(s => s.id === "sync").settings) { const o = eds.find(y => y.st.key === x.key); if (o) o.st.value = x.value; }
-        return;
-      }
+  if (note) sayIn(msg, note, false, {say: false});
+  card.replaceChildren(...present(
+    el("div", {class: "set-hd"}, el("h2", {id: "sec-sync-hd", tabindex: -1, text: sec.title}), reset),
+    sec.help ? el("p", {class: "hint", text: sec.help}) : null, msg,
+    ...SYNC.map(e => e.node)));
+  count();
+  if (back && !card.contains(document.activeElement)) document.getElementById(back)?.focus({preventScroll: true});   // (a control saved as it's changed)
+}
+const syncSec = d => d.sections.find(s => s.id === "sync");
+/* an Undo: each setting put back as it was (was: [{key, label, value, wrote}]), only one still as written */
+async function syncUndo(was) {
+  const now = syncSec(await call("settings/install")).settings, back = [], since = [];
+  for (const w of was) {
+    if (!same(now.find(st => st.key === w.key)?.value, w.wrote)) { since.push(w.label); continue; }
+    await call(`settings/install/${encodeURIComponent(w.key)}`, "PUT", {value: w.value});
+    back.push(w.label);
+  }
+  const text = [back.length ? `Undone: ${syncList(back)} ${back.length === 1 ? "is" : "are"} as before.` : "",
+    since.length ? `${syncList(since)} ${since.length === 1 ? "was" : "were"} changed since, so ${since.length === 1 ? "it's" : "they're"} left as ${since.length === 1 ? "it is" : "they are"}.` : ""].join(" ").trim();
+  drawSync(syncSec(await call("settings/install")), text, SYNC.filter(e => e.dirty()));
+  sayIn($("#sec-sync .set-msg"), text);
+}
+/* on or off, or the kinds ticked: saved at once, one at a time */
+function syncNow(e) {
+  e.queue = (e.queue || Promise.resolve()).then(async () => {
+    if (!e.dirty()) return;
+    const value = e.get(), was = [{key: e.st.key, label: e.st.label, value: e.st.value, wrote: value}];
+    let d;
+    try { d = await call(`settings/install/${encodeURIComponent(e.st.key)}`, "PUT", {value}); }
+    catch (err) { sayIn($("#sec-sync .set-msg"), `“${e.st.label}” isn't saved: ${err.message}`, true); return; }
+    const said = `Saved “${e.st.label}”.`;
+    drawSync(syncSec(d), said, SYNC.filter(x => x !== e && x.dirty()));
+    toast(said, {action: "Undo", onAction: () => syncUndo(was)});
+  }).catch(() => {});
+}
+/* the bar's Save: each number changed, in turn; the first refusal stops it and says why */
+async function syncSave(msg, had) {
+  const todo = SYNC.filter(e => e.dirty()), done = [], was = [];
+  let last = null;
+  for (const e of todo) {
+    const value = e.get();
+    try { last = await call(`settings/install/${encodeURIComponent(e.st.key)}`, "PUT", {value}); }
+    catch (err) {
+      sayIn(msg, (done.length ? `Saved ${syncList(done)}. ` : "") + `“${e.st.label}” isn't saved: ${err.message}`, true);
+      if (last) drawSync(syncSec(last), "", SYNC.filter(x => x.dirty() && !done.includes(x.st.label)));
+      return;
     }
-    drawSync(last.sections.find(s => s.id === "sync"), `Saved ${todo.length === 1 ? `“${todo[0].st.label}”` : "the sync defaults"}.`);
-  };
-  const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", disabled: !sec.settings.some(st => st.from === "install"),
-    onclick: async () => {
-      if (!await ask({title: "Reset the sync defaults?", message: "They go back to Sanguity's own, for every connection that doesn't set its own.",
-                      action: "Reset to defaults", danger: true})) return;
-      reset.disabled = true;
-      try { drawSync((await call("settings/install/reset", "POST", {section: "sync"})).sections.find(s => s.id === "sync"), "The sync defaults are back to Sanguity's own."); }
-      catch (e) { sayIn(msg, e.message, true); reset.disabled = false; }
-    }});
-  if (note) sayIn(msg, note);
-  $("#sec-sync").replaceChildren(...present(
-    el("div", {class: "set-hd"}, el("h2", {text: sec.title}), reset),
-    sec.help ? el("p", {class: "hint", text: sec.help}) : null,
-    ...rows,
-    el("div", {class: "row"}, save, msg)));
+    done.push(e.st.label); was.push({key: e.st.key, label: e.st.label, value: e.st.value, wrote: value});
+  }
+  const said = `Saved ${syncList(done)}.`;
+  drawSync(syncSec(last), said);
+  if (had) $("#sec-sync-hd").focus({preventScroll: true});
+  toast(said, {action: "Undo", onAction: () => syncUndo(was)});
+}
+function syncDiscard() {
+  for (const e of SYNC) if (e.dirty()) { e.put(e.st.value); e.node.classList.remove("set-changed"); }
+  $("#sec-sync").removeAttribute("data-dirty");
+  sayIn($("#sec-sync .set-msg"), "Changes discarded: back as saved.");
+  $("#sec-sync-hd").focus();
+}
+/* Reset to defaults: at once, with an Undo; asked first only with changes not saved, which it loses */
+async function syncReset(sec) {
+  if ($("#sec-sync").hasAttribute("data-dirty") && !await ask({title: "Reset the sync defaults?", action: "Reset to defaults", danger: true,
+      message: "They go back to Sanguity's own, for every connection that doesn't set its own, and your changes not saved yet are lost."})) return;
+  const was = sec.settings.filter(st => !same(st.value, st.default)).map(st => ({key: st.key, label: st.label, value: st.value, wrote: st.default}));
+  let d;
+  try { d = await call("settings/install/reset", "POST", {section: "sync"}); }
+  catch (e) { sayIn($("#sec-sync .set-msg"), e.message, true); return; }
+  const said = "The sync defaults are back to Sanguity's own.";
+  drawSync(syncSec(d), said);
+  $("#sec-sync-hd").focus({preventScroll: true});
+  toast(said, {action: "Undo", onAction: () => syncUndo(was)});
 }
 
 /* ---------------------------------------------------------------- the provider directory (#93) */

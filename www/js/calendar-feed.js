@@ -60,6 +60,7 @@
       $("#calDetailsNow").value = f.details;
       $("#calLabsNow").checked = f.labs;
       $("#calMedsNow").checked = f.meds;   // medication reminders (#162)
+      shown = {details: f.details, labs: f.labs, meds: f.meds};
     }
     const others = d.everyone || [];
     $("#calOthers").hidden = !others.length;
@@ -99,9 +100,19 @@
     try { await call(`profiles/${pid}/calendar`, "DELETE"); await load(); say("Your calendar feed is off."); }
     catch (e) { say(e.message, true); }
   };
+  /* what the feed says, changed at once, with an Undo (#272) that puts back what it was if it's still as set here */
+  let shown = {};   // as loaded: {details, labs, meds}
   const patch = async body => {
-    try { await call(`profiles/${pid}/calendar`, "PATCH", body); await load(); say("Saved. Your calendar app shows the change at its next refresh."); }
-    catch (e) { say(e.message, true); }
+    const p = pid, [k] = Object.keys(body), was = shown[k];
+    try { await call(`profiles/${p}/calendar`, "PATCH", body); await load(); }
+    catch (e) { say(e.message, true); return; }
+    const said = "Saved. Your calendar app shows the change at its next refresh.";
+    sayIn(msg, said, false, {say: false});
+    toast(said, {action: "Undo", onAction: async () => {
+      const now = (await call(`profiles/${p}/calendar`)).mine, back = now && now[k] === body[k];
+      if (back) await call(`profiles/${p}/calendar`, "PATCH", {[k]: was});
+      if (pid === p) { await load(); say(back ? "Undone: the feed says what it did before." : "The feed was changed since, so it's left as it is."); }
+    }});
   };
   $("#calDetailsNow").onchange = () => patch({details: $("#calDetailsNow").value});
   $("#calLabsNow").onchange = () => patch({labs: $("#calLabsNow").checked});
