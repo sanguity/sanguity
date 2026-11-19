@@ -1360,6 +1360,10 @@ Everything on `main` so far; it becomes the first tagged release.
   tab went to the sign-in page. It asks every open tab now, online or offline, and names those with changes not saved
   ("Changes not saved in Settings and Sources (other tabs) will be lost"); Stay keeps everything, and Log out sends
   every tab to the sign-in page, online too.
+- **The Timeline's kind chips stay put as the fonts arrive** (#434): at 1280 and 1400 px the chips took a row more in
+  Inter than in the stand-in font drawn before it, so everything below jumped 40 px once it arrived. Each chip's words
+  now take the room they need in the stand-in, a little more, whichever font is drawn, so no chip moves; the browser
+  check's font swap covers the Timeline at 1280, 1400 and 375 px.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

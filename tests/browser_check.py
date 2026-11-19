@@ -1329,10 +1329,13 @@ CONTROLS353_JS = r"""() => {
   const toggles = [...document.querySelectorAll('main label.toggle')].filter(l => l.checkVisibility()).map(l => l.textContent.trim());
   return {bare, files, quiet, toggles}; }"""
 
-# the swap to the fonts (#329): the cards and tiles a page draws, by name, with their heights
-SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main .card, main .tile, .sets .set')]
+# the swap to the fonts (#329): the cards and tiles a page draws, by name, with their heights; and the Timeline's kinds'
+# chips, by kind, with where they end on the page (#434: their words' room doesn't depend on the font, so none moves)
+SWAP_BOXES_JS = """() => Object.fromEntries([...[...document.querySelectorAll('main .card, main .tile, .sets .set')]
   .filter(e => e.checkVisibility()).map((e, i) => [`${e.className.split(' ')[0]} ${i} ${(e.querySelector('h1,h2,h3,.lbl,.l')?.textContent || '').trim().slice(0, 40)}`,
-    Math.round(e.getBoundingClientRect().height * 10) / 10]))"""
+    Math.round(e.getBoundingClientRect().height * 10) / 10]),
+  ...[...document.querySelectorAll('#chips .kind')].filter(e => e.checkVisibility()).map(e => { const b = e.getBoundingClientRect();
+    return [`kind ${e.firstElementChild.dataset.k}`, Math.round(b.right * 10) / 10]; })])"""
 # the button's sizes (#258): each button shown (.btn, the top bar's and the drawer's, the tabs, the period's More…), and
 # each segmented control, toggle chip and action chip (#259), whose height isn't one of the sizes, 24, 32 or 40 px, or
 # 44 px on a phone; one whose words wrap onto more lines may be taller
@@ -1486,18 +1489,22 @@ def main():
         # (base.css), and when the fonts arrive the layout shift is under 0.015 (Web Vitals call under 0.1 good). Tiles and
         # stats, laid out at exact sizes (#338), don't change height at 1400 px or by more than a line at 375 px; cards and
         # settings rows use the default rendering, which keeps small text crisp on Linux, and may move by a line or two.
-        # Body and activity at 320 px too, where its chart cards' headings sit beside their Chart | Table (#426)
+        # Body and activity at 320 px too, where its chart cards' headings sit beside their Chart | Table (#426); the
+        # Timeline at 1280 px too, where its kinds' chips took a row more in Inter than in the fallback (#434)
         state = strict.context.storage_state()
-        for name, path in (("Overview", "/#overview"), ("Settings", "/settings.html"), ("Costs", "/#costs"), ("Body and activity", "/#health")):
-            for width in (1400, 375, 320) if path == "/#health" else (1400, 375):
+        swap_widths = {"/#health": (1400, 375, 320), "/#timeline": (1400, 1280, 375)}
+        for name, path in (("Overview", "/#overview"), ("Settings", "/settings.html"), ("Costs", "/#costs"), ("Body and activity", "/#health"), ("Timeline", "/#timeline")):
+            for width in swap_widths.get(path, (1400, 375)):
                 changed, boxes, shift, fonts_before, fonts_after = font_swap(browser, state, base + path, width)
                 drawn = (boxes > 3 and "Inter fallback" in fonts_before and "Inter" not in fonts_before
                          and "Source Serif 4" not in fonts_before and {"Inter", "Source Serif 4"} <= set(fonts_after))
                 worst = max((abs(b - a) for a, b in changed.values()), default=0)
                 tiles = [abs(b - a) for k, (a, b) in changed.items() if k.split(" ")[0] == "tile"]
+                kinds = [k for k in changed if k.startswith("kind ")]
                 check(f"fonts (#329, #338): {name} at {width} px, drawn in the fallbacks and then the fonts, moves less than 0.015, "
-                      + ("no tile changes height" if width > 640 else "no tile by more than a line") + " and no card by more than two",
-                      drawn and shift < 0.015 and (not tiles if width > 640 else max(tiles, default=0) <= 24) and worst <= 40,
+                      + ("no tile changes height" if width > 640 else "no tile by more than a line") + " and no card by more than two"
+                      + (", and no kind's chip moves or changes width (#434)" if path == "/#timeline" else ""),
+                      drawn and shift < 0.015 and (not tiles if width > 640 else max(tiles, default=0) <= 24) and worst <= 40 and not kinds,
                       [boxes, shift, changed, fonts_before, fonts_after] if not drawn else [shift, changed])
         # exact layout only where a width decides wrapping (#338): the tiles and stats; the page's text and its controls
         # keep the default, which keeps small regular text crisp on Linux
