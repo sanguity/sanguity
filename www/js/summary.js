@@ -1,6 +1,7 @@
 /* Sanguity · the visit summary (#48), on the Sharing page (#168): pick the visit and the "since" point, tick
    sections, add labs to trend, type questions (kept as your own draft for the profile, #219: saved with the group's
-   bar as any change is, #272, or by downloading the PDF), preview, download the PDF.
+   bar as any change is, #272, or by downloading the PDF), preview, download the PDF; and the measures the profile
+   ticks at first (#402).
    The server builds both the preview and the PDF from the same records (server/summary.py); nothing here is put
    into innerHTML. Follows the page's profile picker (#profile, filled by sharing.js); call() is sharing.js's. */
 "use strict";   // $, el and api come from util.js
@@ -188,6 +189,42 @@ $("#build").onsubmit = async ev => {
   finally { b.disabled = false; }
 };
 
+/* ---------------------------------------------------------------- the measures ticked at first (#186): the profile's
+   setting summary.ticked, here beside the summary since #402 (Settings → Dashboard before; Settings keeps it out of
+   sight, for Start from a condition to fill in). Its owners and editors tick them, each tick saved as it's made with
+   an Undo (#272), and the summary being made follows; someone who can only view the profile isn't shown it. */
+const tickedSetting = pid => call(`profiles/${pid}/settings/sections`).then(d => d.sections.flatMap(s => s.settings).find(x => x.key === "summary.ticked"));
+async function ticked() {
+  const pid = PID, part = $("#sumTicked");
+  part.hidden = true; sayIn($("#sumTickedMsg"), "");
+  let st;
+  try { st = await tickedSetting(pid); } catch (e) { return; }
+  if (PID !== pid || !st || !st.can_change) return;
+  $("#sumTickedBoxes").replaceChildren(...Object.entries(st.choices || {}).map(([id, label]) => el("label", {class: "check"},
+    el("input", {type: "checkbox", value: id, checked: st.value.includes(id) || null, onchange: ev => tickSave(st, ev.target)}), " " + label)));
+  part.hidden = false;
+}
+async function tickSave(st, input) {
+  const pid = PID, msg = $("#sumTickedMsg"), name = $("#profile").selectedOptions[0]?.textContent.replace(/ \([^)]*\)$/, "");
+  const value = [...document.querySelectorAll("#sumTickedBoxes input:checked")].map(i => i.value), was = {value: st.value, from: st.from};
+  const path = `profiles/${pid}/settings/summary.ticked`, said = `Saved “${st.label}”.`, same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  try { await call(path, "PUT", {value}); }
+  catch (e) { input.checked = !input.checked; sayIn(msg, e.message, true); return; }
+  Object.assign(st, {value, from: "profile"});
+  const box = document.querySelector(`#sections input[value="${input.value}"]`);
+  if (box) box.checked = input.checked;
+  sayIn(msg, said, false, {say: false});
+  toast(said, {action: "Undo", onAction: async () => {   // what it was, if it's still as ticked here
+    const now = await tickedSetting(pid), back = !!now && same(now.value, value);
+    if (back) { if (was.from === "default") await call(path, "DELETE"); else await call(path, "PUT", {value: was.value}); }
+    const text = back ? `Undone: “${st.label}” is as before.` : `“${st.label}” was changed since, so it's left as it is.`;
+    if (PID !== pid) { toast(`${name}: ${text}`); return; }   // another profile shown now (#367)
+    if (back && box) box.checked = !input.checked;
+    await ticked();
+    sayIn($("#sumTickedMsg"), text);
+  }});
+}
+
 /* ---------------------------------------------------------------- follow the profile picker */
 /* sharing.js fills it once it knows who's signed in (and the dates' format, dates.js), then sets its value; with a
    questions draft not saved, another profile is picked only once you say so (sidebar.js) */
@@ -199,6 +236,7 @@ $("#build").onsubmit = async ev => {
     PID = v;
     $("#summaryIntro").hidden = false;
     load();
+    ticked();
   };
   sel.addEventListener("change", pick);
   new MutationObserver(pick).observe(sel, {childList: true});

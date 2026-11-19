@@ -1234,6 +1234,18 @@ Everything on `main` so far; it becomes the first tagged release.
   nothing; the first says why and the second opens its form, the entry kept for when the records arrive. Sources
   lists only its Overview and Import history to someone who can only view the profile (as Sharing leaves out its
   owners' groups), and an address naming another, the old import page's, opens the Overview.
+- **A profile's name and deleting it are in Settings, and there's one New profile** (#402): renaming and deleting a
+  profile were still under Sharing → Profiles after About this person moved to Settings (#267), its card titled "This
+  profile", and someone who could only view a profile got a Profile group holding only New profile, a second way to
+  make one beside the profile menu's. Now **Settings → This profile → Rename or delete** has them, for the profile's
+  owners only, with every question deleting asked before: it's behind "Delete profile…", offers Export everything
+  first, and goes ahead only once the profile's name is typed exactly, which the server checks again. New profile is
+  the profile menu's alone (the command palette's opens it). Sharing's groups lose their "Sharing" label, which only
+  repeated the page's title. The visit summary's **Measures ticked at first** moved from Settings → Dashboard to
+  Sharing → Visit summary, beside the summary they tick (owners and editors set them, each tick saved as it's made with
+  an Undo; Start from a condition still fills them in), and **Names** (lab nicknames) from Dashboard to Labs and
+  ranges. The old addresses (`sharing.html#profile`, `#newProfile`, `settings.html#sec-summary`) land in the new
+  places; the service worker keeps the new script (`sanguity-shell-v9`).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

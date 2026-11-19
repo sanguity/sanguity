@@ -46,30 +46,32 @@ const SG_PAGES = {
     {id: "history", title: "Import history", icon: "history", part: "History", has: ["history"], words: "imports undo remove"},
   ]},
   sharing: {page: "sharing.html", title: "Sharing", icon: "share-2", profile: true, words: "share who sees", groups: [
-    {id: "people", title: "People", icon: "users", part: "Sharing", has: ["people"],
+    // no part labels: "Sharing" over all of them only said the page's title again (#402)
+    {id: "people", title: "People", icon: "users", has: ["people"],
      words: "share who has access invite account owner editor viewer role leave", finds: [["Who has access", "people", "members"]]},
-    {id: "links", title: "Share links", icon: "send", part: "Sharing", has: ["links"], needs: "owner", why: "Share links are made by a profile's owners.",
+    {id: "links", title: "Share links", icon: "send", has: ["links"], needs: "owner", why: "Share links are made by a profile's owners.",
      words: "share link doctor clinician provider send revoke expire"},
-    {id: "calendar", title: "Calendar feed", icon: "calendar", part: "Sharing", has: ["calendar"], words: "ics subscribe appointments calendar"},
-    {id: "summary", title: "Visit summary", icon: "file-text", part: "Sharing", has: ["summaryIntro", "build", "preview"],
-     words: "doctor appointment print pdf questions"},
-    {id: "export", title: "Export everything", icon: "download", part: "Sharing", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it.",
+    {id: "calendar", title: "Calendar feed", icon: "calendar", has: ["calendar"], words: "ics subscribe appointments calendar"},
+    {id: "summary", title: "Visit summary", icon: "file-text", has: ["summaryIntro", "build", "preview", "sumTicked"],   // sumTicked: from Settings → Dashboard (#402)
+     words: "doctor appointment print pdf questions", finds: [["Measures ticked at first", "sumTicked", "home readings watch"]]},
+    {id: "export", title: "Export everything", icon: "download", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it.",
      words: "download backup zip copy"},
-    {id: "activity", title: "Activity", icon: "scroll-text", part: "Sharing", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners.",
+    {id: "activity", title: "Activity", icon: "scroll-text", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners.",
      words: "log who opened viewed changes"},
-    {id: "profile", title: "Profile", icon: "user-pen", part: "Profiles", has: ["profileCard", "newProfile"],
-     words: "rename delete profile", finds: [["New profile", "newProfile", "create add child family someone else"]]},
   ]},
   settings: {page: "settings.html", title: "Settings", icon: "settings", profile: true, words: "preferences options", groups: [
-    {id: "dashboard", title: "Dashboard", icon: "layout-dashboard", part: "This profile", has: ["sec-overview", "sec-tabs", "sec-trends", "sec-names", "sec-summary"],   // sec-summary: #186
+    // sec-summary (#186) is set on Sharing → Visit summary (#402): kept here out of sight, for Start from a condition
+    {id: "dashboard", title: "Dashboard", icon: "layout-dashboard", part: "This profile", has: ["sec-overview", "sec-tabs", "sec-trends", "sec-summary"],
      finds: [["Overview tiles", "sec-overview", "key labs home readings"], ["Tabs", "sec-tabs", "edit order hide show"],
-       ["Lab charts", "sec-trends", "labs selected at first saved views"], ["Names", "sec-names", "nicknames rename lab names result sources"],
-       ["Visit summary measures", "sec-summary", "ticked"]]},
+       ["Lab charts", "sec-trends", "labs selected at first saved views"]]},
     {id: "about", title: "About this person", icon: "user", part: "This profile", has: ["about", "targets"],   // #194, #234; on Sharing before #267
      finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate"], ["Targets of your own", "targets", "goals"]]},
-    {id: "labs", title: "Labs and ranges", icon: "ruler", part: "This profile", has: ["sec-ranges"], words: "reference ranges normal high low"},
+    {id: "labs", title: "Labs and ranges", icon: "ruler", part: "This profile", has: ["sec-names", "sec-ranges"], words: "reference ranges normal high low",
+     finds: [["Names", "sec-names", "nicknames rename lab names result sources"]]},   // Names on Dashboard before #402
     {id: "milestones", title: "Milestones", icon: "flag", part: "This profile", has: ["sec-milestones"], words: "diagnosis surgery treatment named dates"},
     {id: "activity", title: "Workouts", icon: "dumbbell", part: "This profile", has: ["sec-health"], words: "visits exercise body and activity"},   // visits counted as workouts (#43)
+    {id: "profile", title: "Rename or delete", icon: "user-pen", part: "This profile", has: ["profileCard"], needs: "owner",   // on Sharing before #402
+     words: "profile name rename delete remove", finds: [["Delete this profile", "profileCard", "remove erase"]]},
     {id: "display", title: "Display", icon: "monitor", part: "You", has: ["sec-appearance", "sec-dates", "sec-units"],
       finds: [["Appearance", "sec-appearance", ""],   // (the theme: your menu's Dark or Light mode, #410)
         ["Dates and times", "sec-dates", "time zone date format"],

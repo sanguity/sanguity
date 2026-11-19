@@ -73,7 +73,7 @@ ICONS = [
     "heart-pulse", "chart-gantt",  # Body and activity, Timeline
     # #399: a place of its own for what shared one
     "gauge",                 # Add's Home reading
-    "user-plus", "user-pen",  # New profile, Sharing's Profile
+    "user-plus", "user-pen",  # New profile; Settings: Rename or delete (Sharing's Profile before #402)
     "key-round",             # the Account page
     "monitor",               # Display (your menu, Settings)
     "layout-list", "layout-dashboard",  # Sources' Overview, Settings' Dashboard

@@ -1560,9 +1560,10 @@ def main():
         strict.click("#shrNav a[data-group=activity]")   # drawn when its group is opened
         strict.wait_for_selector("#actBody .activity tbody tr", timeout=10000)
         groups = strict.evaluate("[...document.querySelectorAll('#shrNav a')].map(a => a.textContent)")
-        check("under the CSP: the Sharing page's scripts run, with a sidebar of its groups, Profile set apart (About this person is on Settings, #267)", groups ==
-              ["People", "Share links", "Calendar feed", "Visit summary", "Export everything", "Activity", "Profile"]
-              and strict.evaluate("document.querySelector('#shrNav a[data-group=profile]').closest('li').previousElementSibling.classList.contains('set-nav-part')"), groups)
+        check("under the CSP: the Sharing page's scripts run, with a sidebar of its groups, under no label repeating the page's title, and nothing of "
+              "the profile itself (About this person, #267, renaming and deleting it, #402, are on Settings; New profile is the profile menu's)", groups ==
+              ["People", "Share links", "Calendar feed", "Visit summary", "Export everything", "Activity"]
+              and strict.evaluate("!document.querySelector('#shrNav .set-nav-part, #profileCard, #newProfile, #profNew')"), groups)
         check("no Sharing card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         # ---- one sidebar (#266): the five pages' sidebars are one component (sidebar.js): a search box, the groups under
         # their labels, the group's title as the h1 and the tab's, a card's own title only beside another card of the
@@ -1574,7 +1575,7 @@ def main():
                     cur: cur && cur.textContent, title: document.title, parts: parts.length, shell: getComputedStyle(n.parentElement).maxWidth,
                     titles: cards.map(h => h.getBoundingClientRect().width > 2 && h.matches(':not(.vh)'))}; }"""
         side_bad = []
-        for path, find, labels, alone in (("sources.html?profile=1#portals", "srcFind", 3, True), ("sharing.html?profile=1#links", "shrFind", 2, True),
+        for path, find, labels, alone in (("sources.html?profile=1#portals", "srcFind", 3, True), ("sharing.html?profile=1#links", "shrFind", 0, True),
                                           ("settings.html?profile=1#display", "setFind", 2, False), ("account.html#security", "acctFind", 0, False),
                                           ("admin.html#apps", "admFind", 4, False), ("admin.html#backups", "admFind", 4, True)):
             strict.goto(base + "/" + path)
@@ -1884,7 +1885,7 @@ def main():
         holder.close()
         # #352, #374: a button in a row of fields is the fields' height (the default button, not .small), on every group of
         # Sharing, Settings, Sources, Account and Admin, at 1400 and 320 px (with the share link's Copy, above): those
-        # #352 named must have such a row at 1400 px (Sharing's People's Share, Profile's Rename, Visit summary's Add,
+        # #352 named must have such a row at 1400 px (Sharing's People's Share, Settings' Rename or delete, Visit summary's Add,
         # Settings → About this person's Clear, Dashboard's Add and a lab name's Remove), and Sources → Type records in
         # its result row's ✕, with a typed record's form open too, whose ✕ must be 44 px on a phone (Settings → Display's
         # "Use this device's" shows only in another time zone: checked with the time zones, below)
@@ -1913,7 +1914,7 @@ def main():
                 strict.set_viewport_size({"width": 1400, "height": 900})
             if path.startswith("sources"):
                 strict.evaluate("() => { for (const b of document.querySelectorAll('#manItems .man-item .del')) b.click(); }")   # the typed record's form, gone
-        need352 = ["sharing#people", "sharing#profile", "settings#about", "sharing#summary", "settings#dashboard", "sources#manual"]
+        need352 = ["sharing#people", "settings#profile", "settings#about", "sharing#summary", "settings#dashboard", "sources#manual"]
         bad352 = [f"{k}: {b}" for k, v in rows352.items() for b in v["bad"]] + [f"{k} 1400: no field and button in a row" for k in need352 if not rows352.get(f"{k} 1400", {}).get("n")]
         bad352 += [f"{w} px: {k}'s {c} {bw}×{bh}" for w, k, c, bw, bh in del374 if c != "del btn quiet" or w < 400 and (bw < 44 or bh < 44)]
         check("a button beside a field is the field's height, on every group of Sharing, Settings, Sources, Account and Admin "
@@ -7491,8 +7492,8 @@ def main():
                   js("!document.getElementById('sec-sync') && !document.getElementById('outside') && !document.querySelector('.set-nav-list a[data-group=sources], .set-nav-list a[data-group=outside]')"))
             # ---- the Settings sidebar (settings-nav.js) and the top bar's menus (nav.js)
             display = "id => getComputedStyle(document.getElementById(id)).display"
-            check("Settings: a sidebar of groups, one shown at a time",
-                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:6] == ["Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Display"]
+            check("Settings: a sidebar of groups, one shown at a time (an owner's ending This profile with Rename or delete, #402)",
+                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:7] == ["Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Rename or delete", "Display"]
                   and js(display, "sec-overview") != "none" and js(display, "sec-units") == "none", js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)"))
             page.fill("#setFind", "time zone")
             check("…Find in Settings shows the settings that match, from every group",
@@ -8025,6 +8026,12 @@ def main():
             page.click(f"#sec-overview button[aria-label='Move {first} down']")
             page.click("#setBar button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-overview .set-msg').textContent.startsWith('Saved')", timeout=10000)
+            page.goto(base + "/settings.html?profile=1#sec-names")   # Names (lab nicknames) are under Labs and ranges (#402)
+            page.wait_for_selector("[data-key=labNicknames] button:text-is('Add a row')", timeout=10000)
+            check("Names (the labs' nicknames) are under Labs and ranges, beside the reference ranges, and their address opens them there (#402)",
+                  js("[document.querySelector('#setNav a[aria-current=page]').dataset.group, ...[...document.querySelectorAll('#sections > section')]"
+                     ".filter(s => s.checkVisibility()).map(s => s.id)]") == ["labs", "sec-names", "sec-ranges"],
+                  js("[...document.querySelectorAll('#sections > section')].filter(s => s.checkVisibility()).map(s => s.id)"))
             page.click("[data-key=labNicknames] button:text-is('Add a row')")
             page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=from]", first)
             page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Renamed in Settings")
@@ -8075,7 +8082,8 @@ def main():
                   [t for t, _ in after[:2]] == [before[1][0], first] and after[1][1] == "Renamed in Settings", after[:3])
             page.goto(base + "/settings.html?profile=1#sec-overview")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-            for sec in ("overview", "names"):
+            for sec, group in (("overview", "dashboard"), ("names", "labs")):   # Names: under Labs and ranges (#402)
+                page.click(f".set-nav-list a[data-group={group}]")
                 page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
                 page.wait_for_function(f"document.querySelector('#sec-{sec} .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
@@ -8270,13 +8278,33 @@ def main():
             check("…the Overview shows the preset's tiles, once: nothing is linked to the preset", [t for t, _ in js(tiles)][:4] == ["Creatinine", "Potassium, Blood", "Sodium, Blood", "Hemoglobin"],
                   js(tiles)[:5])
             presets_open()
-            for sec in ("overview", "summary"):
-                page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
-                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.click("#sec-overview button:text-is('Reset to defaults')")
+            page.wait_for_function("document.querySelector('#sec-overview .set-msg').textContent.includes('back to their defaults')", timeout=10000)
+            # the visit summary's ticks are set beside the summary (#402): Sharing → Visit summary, each tick saved as
+            # it's made, the summary being made following it; Settings keeps their section out of sight
+            hidden_ticks = js("[document.getElementById('sec-summary').hidden, document.getElementById('setNav').textContent.includes('Visit summary')]")
+            page.goto(base + "/settings.html?profile=1#sec-summary")   # its old address
+            page.wait_for_url("**/sharing.html?profile=1#sumTicked", timeout=10000)
+            page.wait_for_selector("#sumTicked:not([hidden]) #sumTickedBoxes input[value=home_bp]:checked", timeout=10000)
+            page.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
+            ticks_at = [js("document.querySelector('#shrNav a[aria-current=page]').dataset.group"),
+                        js("[...document.querySelectorAll('#sumTickedBoxes input')].map(i => i.closest('label').textContent.trim())")]
+            page.uncheck("#sumTickedBoxes input[value=home_bp]")
+            page.wait_for_function("document.getElementById('sumTickedMsg').textContent === 'Saved “Measures ticked at first”.'", timeout=10000)
             cfg = js(api_get, "profiles/1/settings")
             KEY_LABS_DEFAULT = __import__("server.settings", fromlist=["KEY_LABS"]).KEY_LABS
-            check("…and Reset to defaults undoes it", cfg["overview"]["keyLabs"] == KEY_LABS_DEFAULT and cfg["overview"]["homeTiles"] == [] and cfg["summary"]["ticked"] == [],
-                  cfg["overview"])
+            check("…and Reset to defaults undoes it, and the visit summary's ticks are unticked where they're set now: Sharing → Visit summary, "
+                  "its old Settings address landing there, out of sight on Settings (#402)",
+                  cfg["overview"]["keyLabs"] == KEY_LABS_DEFAULT and cfg["overview"]["homeTiles"] == [] and cfg["summary"]["ticked"] == []
+                  and hidden_ticks == [True, False] and ticks_at[0] == "summary" and "Blood pressure at home" in ticks_at[1],
+                  [cfg["overview"], cfg["summary"], hidden_ticks, ticks_at])
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+            page.wait_for_function("document.getElementById('sumTickedMsg').textContent.startsWith('Undone')", timeout=10000)
+            undone_ticks = js(api_get, "profiles/1/settings")["summary"]["ticked"]
+            check("…a tick there has an Undo (#272)", undone_ticks == ["home_bp"] and js("document.querySelector('#sumTickedBoxes input[value=home_bp]').checked"), undone_ticks)
+            js("fetch('api/profiles/1/settings/summary.ticked', {method: 'DELETE', headers: {'X-Sanguity': '1'}}).then(r => r.status)")   # as it was
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            presets_open()   # back on Settings for the checks below
             check("…(the Labs view and the key labs' order put back as they were, for the checks below)",
                   js(api_put, ["profiles/1/settings/trends.views", saved_views]) == 200 and js(api_put, ["profiles/1/settings/overview.keyLabs", p2]) == 200)
             # ---- #272: one save model. A simple preference (a tick, the theme, units, the date format) is saved as it's
@@ -8535,7 +8563,7 @@ def main():
             # #362: at 375 px, toasts with an Undo up at the foot of the screen, Tab through all of Settings: nothing that
             # takes focus is wholly under one (the page scrolls it clear, and its foot can scroll up above them)
             page.reload()
-            page.wait_for_selector("#sec-summary [data-key='summary.ticked'] input[type=checkbox]", timeout=10000)
+            page.wait_for_selector("#sec-summary [data-key='summary.ticked'] input[type=checkbox]", state="attached", timeout=10000)
             page.set_viewport_size({"width": 375, "height": 740})
             js("for (const n of [1, 2]) toast('Saved “Measures ticked at first”, for the browser check ' + n + '.', {action: 'Undo', onAction: async () => {}})")
             js("document.activeElement.blur(); scrollTo(0, 0)")
@@ -10217,7 +10245,7 @@ def main():
             check("no profile: Settings shows Display (their own), says how to get a profile, and no profile choice",
                   zb.evaluate("[...document.querySelectorAll('#setNav a')].map(a => a.dataset.group).join()") == "display"
                   and zb.evaluate("[...document.querySelectorAll('#sections > section')].map(s => s.id).join()") == "sec-appearance,sec-dates,sec-units"
-                  and zb.is_visible("#noProfiles") and zb.locator("#noProfiles a[href='sharing.html#profile']").count() == 1
+                  and zb.is_visible("#noProfiles") and zb.locator("#noProfiles a[href='guide.html?new']").count() == 1
                   and zb.is_hidden("#profile") and zb.evaluate("document.getElementById('groupTitle').textContent") == "Display",
                   zb.evaluate("[...document.querySelectorAll('#sections > section')].map(s => s.id).join()"))
             zb.select_option("[data-key='dates.format'] select", "dmy")
@@ -10368,8 +10396,8 @@ def main():
             # owner's controls; an address for an owner's group shows People instead, saying why
             zb.wait_for_selector("#memberList tbody tr", state="attached", timeout=10000)
             groups = zb.evaluate("[...document.querySelectorAll('#shrNav a')].map(a => a.textContent)")
-            check("a viewer's Sharing page: People, Calendar feed, Visit summary and Profile only",
-                  groups == ["People", "Calendar feed", "Visit summary", "Profile"], groups)
+            check("a viewer's Sharing page: People, Calendar feed and Visit summary only (#402: no Profile group holding only New profile)",
+                  groups == ["People", "Calendar feed", "Visit summary"], groups)
             zb.click("#shrNav a[data-group=people]")
             people = zb.inner_text("#people")
             check("…who has access and as what, with Leave for themselves and no role menus, Remove or Share",
@@ -10379,9 +10407,17 @@ def main():
             zb.click("#shrNav a[data-group=calendar]")
             zb.wait_for_selector("#calendar:not([hidden]) #calNew:not([hidden])", timeout=10000)
             check("…their own calendar feed can be made, with no list of everyone's", zb.evaluate("document.getElementById('calOthers').hidden"))
-            zb.click("#shrNav a[data-group=profile]")
-            check("…Profile: no Rename or Delete, only New profile", zb.evaluate("!document.querySelector('#profileCard button, #profileCard input')")
-                  and zb.is_visible("#profNew"), zb.inner_text("#profileCard"))
+            zb.click("#shrNav a[data-group=summary]")
+            zb.wait_for_selector("#build:not([hidden])", timeout=10000)
+            check("…the visit summary with no measures ticked at first to set: the profile's owners and editors set them (#402)",
+                  zb.evaluate("document.getElementById('sumTicked').hidden && !document.querySelector('#sumTickedBoxes input')"))
+            zb.goto(base + "/settings.html?profile=1#profile")
+            zb.wait_for_selector("#setNav a[aria-current=page]", timeout=10000)
+            zb.wait_for_load_state("networkidle")
+            check("…and on Settings no Rename or delete, the profile's owners' (#402): its address shows the first group",
+                  zb.evaluate("[document.querySelector('#setNav a[data-group=profile]'), document.getElementById('profileCard').hidden, "
+                              "document.querySelector('#setNav a[aria-current=page]').dataset.group]") == [None, True, "dashboard"],
+                  zb.evaluate("[...document.querySelectorAll('#setNav a')].map(a => a.dataset.group)"))
             zb.goto(base + "/sharing.html?profile=1#links")
             zb.wait_for_selector("#memberList tbody tr", timeout=10000)
             check("…an owner's group in the address shows People, saying share links are for owners",
@@ -11698,7 +11734,7 @@ def main():
                 page.wait_for_selector(f"{nav} a[data-group]", timeout=10000)
                 settle(200)
                 icons_in([f"{nav} a[data-group]"])
-            want = {"#setNav a[data-group]": 6, "#srcNav a[data-group]": 7, "#shrNav a[data-group]": 7, "#acctNav a[data-group]": 2, "#admNav a[data-group]": 7,
+            want = {"#setNav a[data-group]": 7, "#srcNav a[data-group]": 7, "#shrNav a[data-group]": 6, "#acctNav a[data-group]": 2, "#admNav a[data-group]": 7,
                     "#profileMenuList [role=menuitem]": 5, "#addMenuList [role=menuitem]": 7, "#userMenuList [role=menuitem]": 6}
             check("icons (#354): one Lucide icon, hidden from screen readers and drawn from a symbol the sprite has, in each link of the "
                   "five sidebars, each kind chip (its kind's), each Timeline row and each item of the profile menu, the Add menu and your menu",
@@ -12369,26 +12405,36 @@ def main():
             js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was_210)}); applyTheme()" if theme_was_210 else "localStorage.removeItem('ht-theme'); applyTheme()")
             page.set_viewport_size({"width": 1400, "height": 900})
             page.set_viewport_size({"width": 375, "height": 800})
-            for g in ("people", "links", "calendar", "summary", "export", "activity", "profile"):
+            for g in ("people", "links", "calendar", "summary", "export", "activity"):
                 page.click(f"#shrNav a[data-group={g}]")
                 settle(200)
                 check(f"Sharing → {g} fits 375 px, its item in sight in the sidebar's row", js("document.documentElement.scrollWidth") <= 375
                       and js(f"(() => {{ const a = document.querySelector('#shrNav a[data-group={g}]').getBoundingClientRect(), b = document.querySelector('#shrNav ul').getBoundingClientRect(); return a.left >= b.left - 1 && a.right <= b.right + 1; }})()"),
                       js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
-            # Profile, apart from sharing: a new profile is made and shown; deleting one needs its name typed exactly
-            page.click("#shrNav a[data-group=profile]")
-            page.fill("#profName", "Third person (fictional)")
-            page.click("#profNew button[type=submit]")
-            page.wait_for_function("document.getElementById('profMsg').textContent.startsWith('Created')", timeout=10000)
-            third = js("document.getElementById('profile').value")
-            check("New profile makes one, and the page shows it", js("document.querySelector('#profile option:checked').textContent") == "Third person (fictional) (owner)"
-                  and js("document.querySelector('#profileBody input').value") == "Third person (fictional)", third)
+            # #402: New profile is the profile menu's alone, which the command palette's opens too; renaming and deleting
+            # a profile are its owners', under Settings → Rename or delete, where Sharing's old addresses land
+            page.keyboard.press("Control+k")
+            page.fill("#palQ", "new profile")
+            new_opt = "#palList [role=option]:has(.pal-t:text-is('New profile'))"
+            page.wait_for_selector(new_opt, timeout=10000)
+            page.click(new_opt)
+            page.wait_for_url(re.compile(r"/guide\.html\?new"), timeout=10000)
+            new_at = [js("location.pathname + location.search"), js("document.getElementById('newProfileLink').getAttribute('href')")]
+            third = js("api('profiles', {method: 'POST', body: JSON.stringify({name: 'Third person (fictional)'})}).then(r => r.json()).then(j => j.id)")
+            page.goto(base + f"/sharing.html?profile={third}#profile")
+            page.wait_for_url(f"**/settings.html?profile={third}#profile", timeout=10000)
+            page.wait_for_selector("#profileBody input", timeout=10000)
+            check("one New profile: the profile menu's, which the palette's opens; Sharing's old Profile address opens Settings → Rename or delete, for the profile (#402)",
+                  new_at == ["/guide.html?new", "guide.html?new"] and js("document.querySelector('#setNav a[aria-current=page]').dataset.group") == "profile"
+                  and js("document.getElementById('groupTitle').textContent") == "Rename or delete"
+                  and js("document.querySelector('#profileBody input').value") == "Third person (fictional)", [new_at, third])
             page.fill("#profileBody input", "Third person, renamed")
             page.click("#profileBody button:text-is('Rename')")
             page.wait_for_function("document.getElementById('profileMsg').textContent === 'Renamed to “Third person, renamed”.' && document.querySelector('#profile option:checked').textContent === 'Third person, renamed (owner)'", timeout=10000)
             check("Rename renames it, in the picker too, a toast saying so with an Undo (#272)",
-                  js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == "Renamed “Third person (fictional)” to “Third person, renamed”.")
+                  js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == "Renamed “Third person (fictional)” to “Third person, renamed”."
+                  and js("document.getElementById('profileMenuBtn').textContent").startswith("Profile: Third person, renamed"))
             # #409: focus stays where it was, the card drawn again: on Rename, and on the name after Enter; back on it after the Undo
             ren_focus = [js("document.activeElement.id")]
             page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
@@ -12403,14 +12449,22 @@ def main():
             check("…focus stays on Rename, or on the name typed, and comes back there after the Undo (#409)", ren_focus == ["profileRename", "profileRename", "profileName"], ren_focus)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             pick_profile(page, "2")
-            page.wait_for_function("document.querySelector('#profileBody input').value === 'Second person'", timeout=10000)
+            page.wait_for_function("document.querySelector('#profileBody input')?.value === 'Second person'", timeout=10000)
             second = page.locator("#profileCard")
             second.get_by_role("button", name="Delete profile…").click()
             go = second.get_by_role("button", name="Delete it and everything in it")
-            check("delete needs the profile's name first", go.is_disabled())
+            check("delete needs the profile's name first, typed exactly, with Export everything offered first",
+                  go.is_disabled() and second.get_by_role("link", name="Export everything first").get_attribute("href") == "api/profiles/2/export")
+            second.get_by_label("Type Second person to confirm").fill("Second perso")
+            check("…a name not quite its own leaves it disabled", go.is_disabled())
+            refused_from = len(problems)
+            refused = js("api('profiles/2', {method: 'DELETE', body: JSON.stringify({confirm_name: 'Second perso'})}).then(r => r.status)")
+            check("…and the server refuses a delete whose name doesn't match", refused == 400 and js("fetch('api/profiles/2/data').then(r => r.status)") != 404, refused)
+            problems[refused_from:] = [x for x in problems[refused_from:] if "400" not in x]   # that refusal was the point
             second.get_by_label("Type Second person to confirm").fill("Second person")
             go.click()
-            page.wait_for_function("![...document.querySelectorAll('#profile option')].some(o => o.textContent.includes('Second person')) && document.getElementById('pageMsg').textContent.startsWith('Deleted')", timeout=10000)
+            page.wait_for_function("![...document.querySelectorAll('#profile option')].some(o => o.textContent.includes('Second person')) && "
+                                   "[...document.querySelectorAll('#sgToasts .sg-toast-text')].some(t => t.textContent.startsWith('Deleted “Second person”.'))", timeout=10000)
             check("…and another profile is shown after it", js("document.getElementById('profile').value") != "2")
             js(f"api('profiles/{third}', {{method: 'DELETE', body: JSON.stringify({{confirm_name: 'Third person, renamed'}})}}).then(r => r.status)")
             js("localStorage.setItem('ht-profile', '1')")

@@ -572,15 +572,16 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   any others picked, current medications, upcoming appointments and your questions (kept as your own draft for the
   profile; no one else sees it, #219). Anyone the profile is shared with can make one, viewers included; it's made on
   request, never stored, and each one is in the activity log. The phone's and watch's measures are sections of their own, offered when the
-  profile has some and unticked until you tick them (#225): blood pressure and temperature taken at home (the count,
+  profile has some and unticked until you tick them, unless they're among its measures ticked at first, set there too
+  (#225, #402): blood pressure and temperature taken at home (the count,
   average, highest and the readings), glucose by day (a CGM's time in the standard published ranges, labelled as
   such; each reading typed in at home with its meal note, #232), blood oxygen (the watch's days and each reading
   typed in), respiratory rate, VO2 max, immunizations, ECGs and BMI (for a child, the growth charts'
   percentiles). A share link offers the same, unticked; never cycle tracking. **Settings → Overview → Home
   readings** adds blood pressure, glucose and temperature tiles after the key labs, each the latest reading with its
   date and where it came from.
-- **Delete profile:** an owner can delete a profile and everything in it under **Sharing → Profile**, after typing its name;
-  the original exports and older backups are left alone.
+- **Delete profile:** an owner can delete a profile and everything in it under **Settings → Rename or delete**, after
+  typing its name; the original exports and older backups are left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
   changed it, and when (**Sharing → Activity**); admins see account changes (**Admin > Install activity**). Entries are kept for a year
   (`ACTIVITY_DAYS` in `.env`).

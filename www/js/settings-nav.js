@@ -1,7 +1,7 @@
 /* Sanguity · the Settings page's groups, in the sidebar every account page has (sidebar.js, #266), after settings.js,
    which draws the sections. Settings is how things look (#169): this profile's (Dashboard, About this person and its
-   targets, Labs and ranges, Milestones, Workouts) and the person's own (Display). What else was here has its own page
-   now (moved.js).
+   targets, Labs and ranges, Milestones, Workouts, Rename or delete) and the person's own (Display). What else was
+   here has its own page now (moved.js).
 
    Each section (#sec-<id> from the server's list) belongs to a group, and About this person's two cards (#about,
    #targets: about.js, #267) to theirs. The sidebar lists the groups that have something to show this person; the
@@ -18,7 +18,7 @@
   const GROUPS = SG_PAGES.settings.groups;   // groups.js: one list, which the command palette searches too (#273)
   /* whose settings each group holds: the registry's sections say it by their settings' scope (data-scope); a group
      missing here goes by that */
-  const WHO = {dashboard: "profile", about: "profile", labs: "profile", milestones: "profile", activity: "profile", display: "you"};
+  const WHO = {dashboard: "profile", about: "profile", labs: "profile", milestones: "profile", activity: "profile", profile: "profile", display: "you"};
   const SAY = {
     profile: ["This profile", ", for everyone it's shared with."],
     view: ["This profile", ": you can view it, so these are shown as they are; its owners and editors change them."],
