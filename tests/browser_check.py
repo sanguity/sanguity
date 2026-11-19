@@ -10294,6 +10294,35 @@ def main():
             about(apid)
             hs = rows_of(hist)
             check("…shows every height in it, the other unit beside", "138.4 cm" in hs[0] and "(4 ft 6.5 in)" in hs[0] and "134.6 cm" in hs[1], hs)
+            # #408: each unit changed in Display (saved as it's picked) reaches About this person and Targets without a
+            # reload, a target typed and not saved kept (in the new unit), and each toast's Undo, newest first, puts
+            # them back; the server read each step
+            u_seen = lambda: [rows_of(hist)[0], js("[...document.querySelectorAll('#targets [data-field] legend')].map(l => l.textContent).join('|')"),
+                              js("document.getElementById('tgt-temp-low').value"), js("document.querySelector('#targets [data-field=temp]').classList.contains('set-changed')")]
+            page.fill("#tgt-temp-low", "36")
+            u_before = u_seen()
+            js("location.hash = '#display'")
+            page.wait_for_selector("#sec-units input[name=units-height][value=ftin]", state="visible", timeout=10000)
+            u_steps = []
+            for part, v in (("height", "ftin"), ("temperature", "F"), ("weight", "lb")):
+                page.check(f"#sec-units input[name=units-{part}][value={v}]")
+                page.wait_for_function(f"SET_ITEMS.units.st.value.{part} === '{v}' && !document.querySelector('#sec-units .set-msg').textContent.startsWith('Undone')", timeout=10000)
+                u_steps.append(js("fetch('api/settings/user').then(r => r.json())")["units"][part])
+            js("location.hash = '#about'")
+            settle(200)
+            u_after = u_seen()
+            for _ in range(3):
+                n_t = js("document.querySelectorAll('#sgToasts .sg-toast').length")
+                page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+                page.wait_for_function(f"document.querySelectorAll('#sgToasts .sg-toast').length < {n_t}", timeout=10000)
+            page.wait_for_function(f"!document.querySelector('#targets [data-field=temp] legend').textContent.includes('°F')", timeout=10000)
+            u_back = [u_seen(), js("fetch('api/settings/user').then(r => r.json())")["units"]]
+            check("…units changed in Display reach About this person and Targets without a reload, a target typed and not saved kept in the new unit, "
+                  "and back with each Undo (#408)",
+                  u_steps == ["ftin", "F", "lb"] and "4 ft 6.5 in" in u_after[0] and "(138.4 cm)" in u_after[0] and "In °F" in u_after[1] and "In lb" in u_after[1]
+                  and u_after[2:] == ["96.8", True] and u_back[0] == u_before and u_back[1] == {**units_was, "height": "cm"},
+                  [u_before, u_steps, u_after, u_back])
+            js("(i => { i.value = ''; i.dispatchEvent(new Event('input', {bubbles: true})); })(document.getElementById('tgt-temp-low'))")   # (as saved)
             before_h = js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")["heights"]
             page.click(f"{hist}:nth-child(2) button")
             page.wait_for_function(f"document.querySelectorAll({json.dumps(hist)}).length === 2", timeout=10000)

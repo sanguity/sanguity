@@ -1160,6 +1160,9 @@ Everything on `main` so far; it becomes the first tagged release.
   asked; Discard then showed the old value though the new one was saved. Now one on its way counts nowhere, and the
   bar's Discard of other changes leaves it as picked; only one the server refuses waits in the bar, saying why
   (Settings and Admin's sync defaults).
+- **Units changed in Display reach About this person and Targets at once** (#408): heights and targets stayed in the
+  old units until a reload. Saving or undoing Units draws them again, keeping what's typed there (a target typed in
+  °C becomes °F with the unit).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

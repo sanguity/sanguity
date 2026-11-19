@@ -24,6 +24,28 @@ async function drawAbout(p) {
   if (ABOUT_P === p) showAbout(p, a, true);
 }
 const aboutDay = d => fmtD(zParse(d));
+/* the Units choice saved or undone in Display (settings.js, #408): both cards drawn again in it, what's typed there
+   kept (a target typed in a unit that changed, turned into the new one) */
+function aboutUnits(units) {
+  const was = UNITS_PREF;
+  UNITS_PREF = units || {}; HEIGHT_PREF = UNITS_PREF.height || "reported";
+  if (same(UNITS_PREF, was) || !ABOUT_A || $("#about").dataset.profile !== String(ABOUT_P.id)) return;
+  // the height being added: its date and value as typed, and the unit it's typed in once a value is
+  const typed = [...$("#about").querySelectorAll(".about-add input[id]")].filter(i => i.value !== i.defaultValue).map(i => [i.id, i.value]);
+  const typedIn = typed.some(([id]) => id !== "heightDate") && $("#about input[name=heightUnit]:checked")?.value;
+  const units0 = Object.fromEntries(aboutFields().map(f => [f.dataset.field, f.dataset.unit]));
+  showAbout(ABOUT_P, ABOUT_A);   // (the targets typed: kept as typed)
+  for (const [id, v] of typed) { const i = document.getElementById(id); if (i) i.value = v; }
+  const u = typedIn && $(`#about input[name=heightUnit][value=${typedIn}]`);
+  if (u && !u.checked) { u.checked = true; u.dispatchEvent(new Event("change", {bubbles: true})); }
+  for (const f of aboutFields()) {
+    const k = f.dataset.field, from = units0[k], to = f.dataset.unit;
+    if (!from || !to || from === to || !fieldChanged(f)) continue;
+    const pl = (k === "glucose" || k === "cgm") ? (/mmol/.test(to) ? 1 : 0) : TGT[k].places;
+    for (const n of ["low", "high"]) { const i = f.querySelector(`[name="${n}"]`); if (i && i.value !== "") i.value = +tgtConv(k, tgtCanon(k, +i.value, from), to).toFixed(pl); }
+  }
+  aboutCount();
+}
 
 /* ---- changes not saved (#272) */
 const aboutFields = () => [...document.querySelectorAll("#about [data-field], #targets [data-field]")];

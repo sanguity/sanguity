@@ -591,6 +591,7 @@ function saveNow(it, card) {
     catch (e) { live(); sayIn(now.msg, `Not saved: ${e.message}`, true); now.refuse(); if (it.st.kind === "theme") applyTheme(it.st.value); return; }
     live(); now.saved(value); card.sgChanged(); card.sgTidy();
     if (it.st.kind === "timezone" || it.st.kind === "dateformat") useDates(SET_ITEMS["dates.timeZone"]?.st.value, SET_ITEMS["dates.format"]?.st.value);
+    if (it.st.kind === "units") aboutUnits(value);   // About this person and Targets in them (about.js, #408)
     const said = `Saved “${it.st.label}”.`;
     sayIn(card.querySelector(".set-msg"), said, false, {say: false});
     const kept = await stored(base).catch(() => null);
@@ -697,6 +698,7 @@ async function load(note, force, all = false) {
   NICK = every.find(st => st.key === "labNicknames")?.value || {};
   { const ov = every.find(x => x.key === "ranges.overrides"); RANGE_CFG = {...rangeConfig(merged), ...(ov ? {overrides: ov.value} : {})}; }   // #44
   { const th = every.find(st => st.key === "theme"); if (th) applyTheme(th.value); }   // #45: the saved default, here too
+  { const u = every.find(st => st.kind === "units"); if (u) aboutUnits(u.value); }   // and the Units (an Undo's too): About this person's (#408)
   document.querySelector("main.sets").dataset.role = d.role || "";   // whose settings each group's are (settings-nav.js)
   const forced = [].concat(force || []);
   const cards = d.sections.map(sec => {
