@@ -60,8 +60,8 @@ BUDGETS = {
     "tab_elements": 18_000,             # elements in a tab with the period "All"
     "phone_page_ready_ms": 5000,        # the same at 375 px with the CPU four times slower, like a phone's
     "phone_tab_draw_ms": 3000,
-    "static_bytes": 400_000,            # www/'s stylesheets, fonts and SVG icons as on disk, whatever the records (#253):
-                                        # Redesign 3's sprite and components took the room #328 left; 6 KB more, no more
+    "static_bytes": 310_000,            # www/'s stylesheets, fonts and SVG icons as nginx sends them, whatever the records
+                                        # (#253; compressed as sent since Redesign 4, the owner's choice): room for R4–R7
 }
 RUNS = 3
 
@@ -386,20 +386,24 @@ class ServerBudgets(unittest.TestCase):
 
 class StaticBudgets(unittest.TestCase):
     def test_static_bytes(self):
-        """the stylesheets, fonts and SVG icons in www/, as on disk: what the redesign adds to the app's own files. A
-        page fetches its stylesheets and Inter's Latin file; the other fonts only when a page has a character or a
-        title in them, and the service worker keeps them all"""
-        def sizes(sub, ext):
-            folder = os.path.join(ROOT, "www", sub)
-            return {n: os.path.getsize(os.path.join(folder, n)) for n in sorted(os.listdir(folder)) if n.endswith(ext)}
-        parts = {"css": sizes("css", ".css"), "fonts": sizes("fonts", ".woff2"), "icons": sizes("icons", ".svg")}
+        """the stylesheets, fonts and SVG icons in www/, as nginx sends them: what the redesign adds to the app's own
+        files. Stylesheets and icons go compressed (gzip_types in nginx.conf, level 1, files of 1 KB and more), fonts as
+        they are (woff2 is compressed already), so a comment costs next to nothing and a rule what it really adds. A page
+        fetches its stylesheets and Inter's Latin file; the other fonts only when a page has a character or a title in
+        them, and the service worker keeps them all"""
+        def sizes(sub, ext, packed):
+            folder, out = os.path.join(ROOT, "www", sub), {}
+            for n in sorted(os.listdir(folder)):
+                if n.endswith(ext):
+                    with open(os.path.join(folder, n), "rb") as f:
+                        b = f.read()
+                    out[n] = len(gzip.compress(b, 1)) if packed and len(b) >= 1024 else len(b)
+            return out
+        parts = {"css": sizes("css", ".css", True), "fonts": sizes("fonts", ".woff2", False), "icons": sizes("icons", ".svg", True)}
         self.assertTrue(parts["css"] and parts["fonts"], parts)
         measure("static_parts_bytes", {k: sum(v.values()) for k, v in parts.items()})
-        css = b""
-        for n in parts["css"]:
-            with open(os.path.join(ROOT, "www", "css", n), "rb") as f:
-                css += f.read()
-        measure("static_css_gzip_bytes", len(gzip.compress(css, 1)))   # the stylesheets as nginx sends them
+        raw = sum(os.path.getsize(os.path.join(ROOT, "www", "css", n)) for n in parts["css"])
+        measure("static_css_raw_bytes", raw)   # the stylesheets on disk, comments and all
         total = measure("static_bytes", sum(sum(v.values()) for v in parts.values()))
         self.assertLessEqual(total, BUDGETS["static_bytes"],
                              f"static_bytes is over its budget (docs/performance.md): {total:,} > {BUDGETS['static_bytes']:,} {parts}")

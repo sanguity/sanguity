@@ -66,7 +66,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `tab_elements` | Elements in a tab with the period **All** | 16,185 (Body and activity) | 18,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
-| `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as on disk (#253, below) | 396.1 KB | 400 KB |
+| `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as nginx sends them (#253, below) | 281.9 KB | 310 KB |
 
 Measured on a 20-thread desktop (Intel Core Ultra 7 265K), Chromium headless. Each tab's own numbers, and the size
 of each part of the records data, are printed at the end of the test's output; `PERF_REPORT=file.json` also writes
@@ -80,29 +80,33 @@ python3 tests/test_performance.py    # about 30 seconds; needs Playwright's Chro
 
 `static_bytes` doesn't depend on the records: it is what the redesign adds to the app's own files, so a new font,
 stylesheet or icon set has to fit. It counts `www/css/*.css`, `www/fonts/*.woff2` and `www/icons/*.svg` (the icon
-sprite and the app's icon); the install icons (PNG) are fetched only when the app is installed.
+sprite and the app's icon) **as nginx sends them**: stylesheets and icons compressed (`gzip_types`, level 1, files of
+1 KB and more), fonts as they are, since woff2 is compressed already. The install icons (PNG) are fetched only when the
+app is installed.
 
-| | Bytes | What a page fetches |
-|---|---:|---|
-| Stylesheets (tokens, base, app, summary) | 159 KB (51 KB as nginx sends them) | every page: tokens, base and app, or its own `<style>` |
-| Inter, Latin | 48 KB | every page |
-| Inter, Latin Extended | 85 KB | only a page with a character in its range (a name with ő or ł, say) |
-| Source Serif 4, Latin and Latin Extended | 51 KB and 42 KB | only a page with a title or a headline value on it, the second as above |
-| SVG icons: the sprite (#257, #354) and the app's icon | 10.5 KB (2.8 KB compressed) and 0.5 KB | the sprite: every page with an icon, once; the app's icon: none (the browser's tab) |
-| All | 396.1 KB | |
+| | As sent | On disk | What a page fetches |
+|---|---:|---:|---|
+| Stylesheets (tokens, base, app, summary) | 51.7 KB | 159 KB | every page: tokens, base and app, or its own `<style>` |
+| Inter, Latin | 48 KB | 48 KB | every page |
+| Inter, Latin Extended | 85 KB | 85 KB | only a page with a character in its range (a name with ő or ł, say) |
+| Source Serif 4, Latin and Latin Extended | 51 and 42 KB | 51 and 42 KB | only a page with a title or a headline value on it, the second as above |
+| SVG icons: the sprite (#257, #354) and the app's icon | 3.2 and 0.5 KB | 10.5 and 0.5 KB | the sprite: every page with an icon, once; the app's icon: none (the browser's tab) |
+| All | 281.9 KB | 396.3 KB | |
 
 The fonts are variable, so one file holds every weight: Inter's weight axis, and Source Serif 4's weight axis without
 its optical size axis (#328), which made its Latin file 122 KB for titles that are all 15.5 to 28 px. The browser keeps
 them for a year (`nginx.conf`, `/fonts/`) and the service worker keeps them for offline use, so they're fetched once
-a device. The budget, 390 KB, left 25 KB for Redesign 3's icon sprite (10 to 20 KB, it was thought) and a little growth
-in the stylesheets. The sprite holds only the Lucide icons the app uses: 16 in place of glyphs (#257), and 41 for the
-kinds of record, the sidebars and the top bar's menus (#354), 10.5 KB, chosen small and shared where one meaning
-covers two places (Labs and Labs and ranges, the activity logs and Import history). Redesign 3's stylesheets grew
-from 140 KB to 156 KB (its components, and the fixes from its review), which took the total to 393.6 KB, over the 390 KB
-budget. That growth is what the budget was left for, so it went to 400 KB; the second review's fixes took it to
-396.1 KB (stylesheets 159 KB), leaving 3.9 KB: a second font, a heavier
-cut, more icons or a large stylesheet for a later redesign have to be argued for, and room found.
-Each icon added to it is about 150 to 250 bytes (`tools/build_sprite.py`).
+a device. The sprite holds only the Lucide icons the app uses: 16 in place of glyphs (#257), and 41 for the kinds of
+record, the sidebars and the top bar's menus (#354), chosen small and shared where one meaning covers two places. Each
+icon added is about 150 to 250 bytes on disk (`tools/build_sprite.py`).
+
+**How the budget came to count what's sent.** Until Redesign 3 it counted bytes on disk: 390 KB, raised to 400 KB once
+Redesign 3's sprite and components had used the room left for them (393.6 KB, then 396.3 KB with its review's fixes).
+That left 3.7 KB for Redesigns 4 to 7. The stylesheets are 159 KB on disk but 51.7 KB as sent, because they're
+commented throughout, so a budget on disk measured comments as much as rules. Since Redesign 4, at the owner's choice,
+it counts what a browser downloads: 281.9 KB, with the budget at 310 KB, room for Redesigns 4 to 7 (the shared shell
+and phones, the data store, page layouts, the chart kit). nginx sends the SVG sprite compressed too (it didn't before).
+A second font, a heavier cut, more icons or a large stylesheet still have to be argued for.
 
 ### A cold load on a slow connection (#328)
 
