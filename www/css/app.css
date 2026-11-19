@@ -1625,6 +1625,7 @@ main.acct.guide{max-width:640px}
 .empty-state:not(.card){padding:var(--sp-1) 0;color:var(--ink2);list-style:none}
 .empty-state:not(.card) p{margin:0 0 var(--sp-2)}
 .empty-state .btn.empty-next{margin:0}
+.empty-acts{display:flex;flex-wrap:wrap;justify-content:center;gap:var(--sp-2)}
 @media (forced-colors:active){ .guide-back,.guide-way{border-color:ButtonText} }
 
 /* ---- WCAG 2.2 AA (#202, docs/accessibility.md): a field's edge 3:1 against the page (1.4.11, an invalid field keeps

@@ -6,7 +6,7 @@
    Each section (#sec-<id> from the server's list) belongs to a group, and About this person's two cards (#about,
    #targets: about.js, #267) to theirs. The sidebar lists the groups that have something to show this person; the
    address follows the group (settings.html#display), and an address naming a section (settings.html#sec-units) opens
-   that section's group and scrolls to it. "Find a setting" shows, across every group, only the settings whose name or
+   that section's group and scrolls to it. "Find in Settings" shows, across every group, only the settings whose name or
    help mentions what's typed.
 
    Under the group's title, whose settings these are (WHO): this profile's, for everyone it's shared with (or shown as
@@ -36,7 +36,7 @@
     return w === "profile" && main.dataset.role === "viewer" ? "view" : w === "you" && main.dataset.role === "" ? "own" : w;
   }
   const who = document.getElementById("introHint");
-  const nav = sideNav({id: "setNav", page: "Settings", groups: GROUPS, find: "Find a setting", none: q => `No setting matches “${q}”.`,
+  const nav = sideNav({id: "setNav", page: "Settings", groups: GROUPS, find: "Find in Settings", none: q => `Nothing in Settings matches “${q}”.`,
     allowed: (g, parts) => parts.some(p => !p.hidden),   // the groups with something to show: a part that's there, not hidden by its own script
     label: g => { const w = SAY[whoOf(g)]; return g.title + (w ? " · " + w[0] : ""); },
     intro: (g, q) => who.replaceChildren(...(q ? [`Matching “${q}”, from every group.`] : g && SAY[whoOf(g)] ? [el("strong", {text: SAY[whoOf(g)][0]}), SAY[whoOf(g)][1]] : [])),

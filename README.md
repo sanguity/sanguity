@@ -80,7 +80,7 @@ your role; switch profile; its About this person, Settings, Sources and Sharing;
 reading; records: upload files, connect a portal or plan, type records in, paste a Health Link) and your menu (account,
 display, getting started, light or dark, log out). The tab shown is in the address (`#timeline`, `#labs`, `#labs-heatmap`...), so Back moves between tabs and a
 copied link opens the same one. **Settings** is grouped in a sidebar (this profile's dashboard, About this person (birth date, sex for reference
-ranges, height) and its targets, labs and ranges, milestones, workouts; your display), one group at a time, with **Find a setting** to search them all. Sources, Sharing, Account and Admin have the same
+ranges, height) and its targets, labs and ranges, milestones, workouts; your display), one group at a time, with **Find in Settings** to search them all (finding nothing, it offers to search everywhere). Sources, Sharing, Account and Admin have the same
 sidebar, each with a search of its own.
 **Account** is you and this device: sign-in and security (password, two-factor sign-in, passkeys, where you're
 signed in), and this device (install as an app, offline records).

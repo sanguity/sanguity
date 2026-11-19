@@ -29,7 +29,7 @@ const SG_PAGES = {
     {id: "people", title: "People", icon: "users", part: "Sharing", has: ["people"],
      words: "share who has access invite account owner editor viewer role leave", finds: [["Who has access", "people", "members"]]},
     {id: "links", title: "Share links", icon: "share-2", part: "Sharing", has: ["links"], needs: "owner", why: "Share links are made by a profile's owners.",
-     words: "share link clinician revoke expire"},
+     words: "share link doctor clinician provider send revoke expire"},
     {id: "calendar", title: "Calendar feed", icon: "calendar", part: "Sharing", has: ["calendar"], words: "ics subscribe appointments calendar"},
     {id: "summary", title: "Visit summary", icon: "file-text", part: "Sharing", has: ["summaryIntro", "build", "preview"],
      words: "doctor appointment print pdf questions"},
@@ -38,7 +38,7 @@ const SG_PAGES = {
     {id: "activity", title: "Activity", icon: "history", part: "Sharing", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners.",
      words: "log who opened viewed changes"},
     {id: "profile", title: "Profile", icon: "circle-user", part: "Profiles", has: ["profileCard", "newProfile"],
-     words: "rename delete profile", finds: [["New profile", "newProfile", "create add"]]},
+     words: "rename delete profile", finds: [["New profile", "newProfile", "create add child family someone else"]]},
   ]},
   settings: {page: "settings.html", title: "Settings", icon: "settings", profile: true, words: "preferences options", groups: [
     {id: "dashboard", title: "Dashboard", icon: "layout-grid", part: "This profile", has: ["sec-overview", "sec-tabs", "sec-trends", "sec-names", "sec-summary"],   // sec-summary: #186
@@ -46,13 +46,13 @@ const SG_PAGES = {
        ["Lab charts", "sec-trends", "labs selected at first saved views"], ["Names", "sec-names", "nicknames rename lab names result sources"],
        ["Visit summary measures", "sec-summary", "ticked"]]},
     {id: "about", title: "About this person", icon: "user", part: "This profile", has: ["about", "targets"],   // #194, #234; on Sharing before #267
-     finds: [["Birth date, sex and height", "about", "age birthday due date maximum heart rate"], ["Targets of your own", "targets", "goals"]]},
+     finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate"], ["Targets of your own", "targets", "goals"]]},
     {id: "labs", title: "Labs and ranges", icon: "test-tube-diagonal", part: "This profile", has: ["sec-ranges"], words: "reference ranges normal high low"},
     {id: "milestones", title: "Milestones", icon: "flag", part: "This profile", has: ["sec-milestones"], words: "diagnosis surgery treatment named dates"},
     {id: "activity", title: "Workouts", icon: "activity", part: "This profile", has: ["sec-health"], words: "visits exercise body and activity"},   // visits counted as workouts (#43)
     {id: "display", title: "Display", icon: "sun-moon", part: "You", has: ["sec-appearance", "sec-dates", "sec-units"],
      finds: [["Appearance", "sec-appearance", "theme dark light mode"], ["Dates and times", "sec-dates", "time zone date format"],
-       ["Units", "sec-units", "metric imperial mmol mg"]]},
+       ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches"]]},
     {id: "more", title: "More", icon: "ellipsis", has: [], rest: true},   // a section no group names yet
   ]},
   account: {page: "account.html", title: "Account", icon: "circle-user", words: "sign-in security", groups: [

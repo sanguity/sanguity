@@ -1510,7 +1510,7 @@ def main():
         side_js = """() => { const n = document.querySelector('main > nav.set-nav'), cur = n.querySelector('a[aria-current=page]');
             const parts = [...document.querySelectorAll('main > :is(section, form, div):not(.set-top), #sections > section')].filter(p => p.checkVisibility() && !p.matches('.set-nav, [id$=None]'));
             const cards = parts.flatMap(p => [...p.querySelectorAll(':scope > h2, :scope > .set-hd > h2')]);
-            return {find: n.querySelector('input[type=search]')?.id, labels: n.querySelectorAll('.set-nav-part').length, h1: document.getElementById('groupTitle').textContent,
+            return {find: n.querySelector('input[type=search]')?.id, ph: n.querySelector('input[type=search]')?.placeholder, labels: n.querySelectorAll('.set-nav-part').length, h1: document.getElementById('groupTitle').textContent,
                     cur: cur && cur.textContent, title: document.title, parts: parts.length, shell: getComputedStyle(n.parentElement).maxWidth,
                     titles: cards.map(h => h.getBoundingClientRect().width > 2 && h.matches(':not(.vh)'))}; }"""
         side_bad = []
@@ -1522,10 +1522,10 @@ def main():
             strict.wait_for_timeout(600)
             v = strict.evaluate(side_js)
             page_name = path.split(".")[0].capitalize()
-            if not (v["find"] == find and v["labels"] == labels and v["h1"] == v["cur"] and v["title"] == f"{page_name}: {v['cur']} · Sanguity" and v["shell"] == "1280px"
+            if not (v["find"] == find and v["ph"] == f"Find in {page_name}" and v["labels"] == labels and v["h1"] == v["cur"] and v["title"] == f"{page_name}: {v['cur']} · Sanguity" and v["shell"] == "1280px"
                     and v["titles"] and (v["titles"] == [False] if alone else all(v["titles"]) and len(v["titles"]) > 1)):
                 side_bad.append((path, v))
-        check("one sidebar (#266): Sources, Sharing, Settings, Account and Admin each have its search box, group labels and the group's title as the h1, "
+        check("one sidebar (#266): Sources, Sharing, Settings, Account and Admin each have its search box (named “Find in …” on each, #403), group labels and the group's title as the h1, "
               "a card's title only beside another card, in a 1280 px shell", not side_bad, side_bad)
         strict.fill("#admFind", "usb stick")
         strict.wait_for_timeout(200)
@@ -1533,12 +1533,12 @@ def main():
                                 "document.querySelector('#backups > h2').getBoundingClientRect().width > 2, !!document.querySelector('#admNav a[aria-current=page]')]")
         strict.fill("#admFind", "no such thing zq")
         strict.wait_for_timeout(200)
-        empty = strict.evaluate("(b => [b.checkVisibility() && b.querySelector('p').textContent, b.querySelector('button')?.textContent])(document.getElementById('admNone'))")
-        strict.click("#admNone button")
+        empty = strict.evaluate("(b => [b.checkVisibility() && b.querySelector('p').textContent, ...[...b.querySelectorAll('button')].map(x => x.textContent)])(document.getElementById('admNone'))")
+        strict.click("#admNone button:text-is('Clear the search')")
         back = strict.evaluate("[document.activeElement.id, document.getElementById('admFind').value, document.getElementById('groupTitle').textContent, document.getElementById('admNone').hidden]")
         check("…its search on every page (Admin's here): the parts that mention it, from every group, each with its title, or says none does, with a button that clears it",
               found[0] == "Find in Admin" and "backups" in found[1] and "users" not in found[1] and found[2] and not found[3]
-              and empty == ["Nothing in Admin matches “no such thing zq”.", "Clear the search"] and back == ["admFind", "", "Backups", True], (found, empty, back))
+              and empty == ["Nothing in Admin matches “no such thing zq”.", "Search everywhere for “no such thing zq”", "Clear the search"] and back == ["admFind", "", "Backups", True], (found, empty, back))
         # ---- shorter help text (#176): a card leads with a short line, and the rest of its explanation is behind one
         # "More about this" toggle, the same on every page: closed at first, still in the page when closed, opened and
         # closed by keyboard, readable in dark mode (this page's theme) and at 375 px. What someone needs to decide
@@ -7338,13 +7338,13 @@ def main():
                   js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:6] == ["Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Display"]
                   and js(display, "sec-overview") != "none" and js(display, "sec-units") == "none", js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)"))
             page.fill("#setFind", "time zone")
-            check("…Find a setting shows the settings that match, from every group",
+            check("…Find in Settings shows the settings that match, from every group",
                   js(display, "sec-dates") != "none" and js(display, "sec-overview") == "none" and js(display, "sec-units") == "none")
             # #247: a search that matches nothing said nothing, a blank page; it says so, readable in both themes, with a
             # button that clears it
             page.fill("#setFind", "no such setting zq")
             settle(150)
-            none_look = """(() => { const b = document.getElementById('setNone'), p = b?.querySelector('p'), c = b?.querySelector('.empty-state'), btn = b?.querySelector('button');
+            none_look = """(() => { const b = document.getElementById('setNone'), p = b?.querySelector('p'), c = b?.querySelector('.empty-state'), btn = b?.querySelector('button:last-of-type');
               if (!p || !c) return [null, null, 'rgb(0, 0, 0)', 'rgb(0, 0, 0)', -1];
               return [b.checkVisibility() ? p.textContent : null, btn && btn.textContent, getComputedStyle(p).color, getComputedStyle(c).backgroundColor,
                       [...document.querySelectorAll('#sections > section')].filter(s => s.checkVisibility()).length]; })()"""
@@ -7355,10 +7355,25 @@ def main():
                 nones[theme] = [*v[:2], contrast(v[2], v[3]), v[4]]
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             check("…a search matching nothing says so, readable in light and dark, with a button to clear it (#247)",
-                  all(v[0] == "No setting matches “no such setting zq”." and v[1] == "Clear the search" and v[2] >= 4.5 and v[3] == 0 for v in nones.values()), nones)
-            page.click("#setNone button")
+                  all(v[0] == "Nothing in Settings matches “no such setting zq”." and v[1] == "Clear the search" and v[2] >= 4.5 and v[3] == 0 for v in nones.values()), nones)
+            page.click("#setNone button:text-is('Clear the search')")
             check("…which empties the search, back in the box, and shows the group again", js("document.getElementById('setFind').value") == ""
                   and js("document.activeElement.id") == "setFind" and page.is_hidden("#setNone") and js(display, "sec-overview") != "none")
+            # (#403) a search here finding nothing offers to search everywhere: the command palette, with the words typed,
+            # which finds what's on another page (Account's two-factor sign-in); Escape, back on the button
+            page.fill("#setFind", "two-factor")
+            settle(200)
+            every = "#setNone button:text-is('Search everywhere for “two-factor”')"
+            offered = page.locator(every).count()
+            page.click(every)
+            page.wait_for_selector("dialog.palette[open]", timeout=5000)
+            page.wait_for_function("document.querySelector('#palList [aria-selected=true]')", timeout=5000)
+            got = js("[document.getElementById('palQ').value, document.activeElement.id, document.querySelector('#palList [aria-selected=true] .pal-t').textContent]")
+            page.keyboard.press("Escape")
+            settle(150)
+            check("…a search finding nothing offers “Search everywhere” (#403): the command palette opens with the words, and finds Account's two-factor sign-in",
+                  offered == 1 and got == ["two-factor", "palQ", "Two-factor sign-in"] and js("document.activeElement.textContent") == "Search everywhere for “two-factor”",
+                  [offered, got, js("document.activeElement.outerHTML.slice(0, 80)")])
             page.fill("#setFind", "")
             page.click(".set-nav-list a[data-group=display]")
             check("…a group picked in the sidebar is the one shown, and the address says so",
@@ -9308,6 +9323,41 @@ def main():
             check("…“/” opens it too; “hemoglobin” finds the lab first, and Enter charts it on Labs, focus on its chart",
                   hemo[:1] == [["Labs", "Hemoglobin"]] and js("[state.tab, state.sel.has('Hemoglobin'), document.activeElement.matches('#charts svg.pz'), document.activeElement.getAttribute('aria-label').startsWith('Hemoglobin')]")
                   == ["labs", True, True, True], [hemo[:3], js("[state.tab, document.activeElement.outerHTML.slice(0, 80)]")])
+            # (#403) one ranking across the groups, Enter on the best of all; a word typed is found at the start of a word,
+            # never inside one ("hem" isn't in "theme", "alt" in "Health", "cre" in "create" only after Creatinine)
+            marked = "(o => o && [o.closest('[role=group]').firstChild.textContent, o.querySelector('.pal-t').textContent])(document.querySelector('#palList [aria-selected=true]'))"
+            enter403 = {}
+            for q, lab in (("hem", "Hemoglobin"), ("alt", "ALT"), ("cre", "Creatinine")):
+                pal(q)
+                first = js(marked)
+                page.keyboard.press("Enter")
+                settle(300)
+                enter403[q] = [first, js("n => [state.tab, state.sel.has(n), document.activeElement.matches('#charts svg.pz')]", lab)]
+            check("…(#403) Enter after “hem”, “alt”, “cre” opens Hemoglobin, ALT, Creatinine: the best match of every group, not the first group's",
+                  all(v == [["Labs", lab], ["labs", True, True]] for (q, lab), v in zip((("hem", "Hemoglobin"), ("alt", "ALT"), ("cre", "Creatinine")), enter403.values())), enter403)
+            words403 = {}
+            pal("")
+            for q in ("dob", "date of birth", "doctor", "share doctor", "medication", "kg"):
+                pal(q, None)
+                words403[q] = [js(marked), [t for g, t in js(pal_found)]]
+            page.keyboard.press("Escape")
+            check("…everyday words find the right places: “dob” and “date of birth” About this person's birth date, “doctor” Share links and the Visit summary, "
+                  "“medication” Log a dose, “kg” Units",
+                  words403["dob"][0] == words403["date of birth"][0] == ["Pages and settings", "Birth date, sex and height"]
+                  and {"Share links", "Visit summary"} <= set(words403["doctor"][1]) and words403["share doctor"][0] == ["Pages and settings", "Share links"]
+                  and words403["medication"][0] == ["Actions", "Log a dose"] and words403["kg"][0] == ["Pages and settings", "Units"], words403)
+            # opened from inside a menu, its item gone with the menu: Escape puts focus on the menu's button
+            back403 = []
+            for key in ("/", "Control+k"):
+                page.focus("#addMenuBtn")
+                page.keyboard.press("Enter")
+                page.wait_for_selector("#addMenuList:popover-open", timeout=5000)
+                page.keyboard.press(key)
+                page.wait_for_selector("dialog.palette[open]", timeout=5000)
+                page.keyboard.press("Escape")
+                settle(150)
+                back403.append(js("document.activeElement.id"))
+            check("…opened from the Add menu (“/” or Ctrl+K), Escape puts focus on Add", back403 == ["addMenuBtn", "addMenuBtn"], back403)
             page.click("#barSearch")
             pal("visit", None)
             found = js(pal_found)
@@ -9374,14 +9424,14 @@ def main():
             check("…off the records page, labs and events come from the API once it opens; a lab chosen there opens on the records page, charted, focus on it",
                   ["Labs", "Hemoglobin"] in off and js("[location.search, state.sel.has('Hemoglobin'), document.activeElement.matches('#charts svg.pz')]") == ["?profile=1", True, True],
                   [off[:4], js("[location.href, document.activeElement.outerHTML.slice(0, 80)]")])
-            pal("share")
+            pal("new share")   # (“share” alone: Share links first, its title starting with it, #403)
             page.wait_for_function(f"({has_opt})('New share link')", timeout=10000)
             share = js(pal_found)
             page.keyboard.press("Enter")
             page.wait_for_url("**/sharing.html?profile=1#links", timeout=10000)
             page.wait_for_selector("#linksBody .share-form", timeout=10000)
             settle(300)
-            check("…“share” finds New share link first, and Enter opens Sharing's form for one, focus in it", share[:1] == [["Actions", "New share link"]]
+            check("…“new share” finds New share link first, and Enter opens Sharing's form for one, focus in it", share[:1] == [["Actions", "New share link"]]
                   and js("!!document.activeElement.closest('#linksBody .share-form')"), [share[:3], js("document.activeElement.outerHTML.slice(0, 80)")])
             page.locator("#linksBody .share-form button").filter(has_text="Cancel").click()
             page.focus("#shrFind")
@@ -12178,6 +12228,22 @@ def main():
             ph.evaluate("document.querySelector('#settingsLink').click()")
             ph.wait_for_timeout(300)
             check("offline: a link to another page isn't followed", ph.evaluate("location.pathname") == "/")
+            # (#403) nor through the command palette: what needs the server isn't listed (pages and settings, Add's ways in
+            # on the Sources page, New share link), and it says why; what's on this page still is
+            ph.keyboard.press("Control+k")
+            ph.wait_for_selector("dialog.palette[open]", timeout=5000)
+            pal403 = {}
+            for q in ("", "password", "upload", "share", "getting started", "hemoglobin"):
+                ph.fill("#palQ", q)
+                ph.wait_for_timeout(150)
+                pal403[q] = ph.evaluate("[[...document.querySelectorAll('#palList .pal-t')].map(x => x.textContent), document.querySelector('.pal-note').textContent]")
+            ph.keyboard.press("Enter")   # (Hemoglobin: on this page)
+            ph.wait_for_timeout(300)
+            off_note = "Pages and settings aren't listed: they need the server, and you're offline."
+            check("offline (#403): the command palette lists nothing that needs the server, and says so; a lab still opens, on this page",
+                  all(off_note in n for _, n in pal403.values()) and not ({"Sources", "Sharing", "Settings", "Account", "Getting started", "Upload files", "New share link"} & set(pal403[""][0]))
+                  and pal403["password"][0] == pal403["upload"][0] == pal403["getting started"][0] == [] and "New share link" not in pal403["share"][0]
+                  and "Hemoglobin" in pal403["hemoglobin"][0] and ph.evaluate("[location.pathname, state.tab]") == ["/", "labs"], [pal403, ph.evaluate("location.href")])
             check("offline: a change is refused as needing the server",
                   ph.evaluate("api('profiles/1/edits', {method: 'POST', body: '{}'}).then(async r => [r.status, (await r.json()).detail])") == [503, "You're offline. This needs the server."])
             ph.evaluate("""(async () => { await loadDetails(EV.filter(e => e.k === 'document').map(e => e.id));   // kept, as opened before (#217)

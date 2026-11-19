@@ -12,6 +12,10 @@
    - Events: the Timeline's index (the words its search box finds: an event's title, what it's about, its kind, a lab
      day's results' names), each opened in the drawer on the Timeline, most recent first, and a search of the Timeline
      for what's typed when there are more.
+   One ranking runs across them all (#403): a title starting with what's typed first, then one with each word typed
+   starting a word of it, then what else it's known by (groups.js's words, Add's, a tab's, Log a dose's medications),
+   always at the start of a word; the group with the best match comes first. Offline (offline.js) what needs the server
+   isn't listed, and it says so.
    On the records page Labs and Events come from the records shown (store.js). On another page they come from the API:
    the profile's records (GET profiles/{pid}/data, and its settings for the names labs are shown by) are read once,
    the first time the palette opens there (again after another profile is chosen), and choosing one opens the records
@@ -20,9 +24,10 @@
 
    It's a combobox and a listbox (WAI-ARIA's pattern): focus stays in the box while the up and down arrows move through
    what's found (aria-activedescendant; the first is marked from the start, so Enter opens the best match), Enter or a
-   click opens it, Escape or Close closes the palette, and focus goes back to what had it. How many it found is said
-   once typing stops. "/" can be turned off by the switch at its foot (a key on its own, WCAG 2.1.4), for this browser.
-   SgPalette: open(), resume(). Plain script, after nav.js and groups.js; all files share one scope. */
+   click opens it, Escape or Close closes the palette, and focus goes back to what had it (opened from a menu, to the
+   menu's button). How many it found is said once typing stops. "/" can be turned off by the switch at its foot (a
+   key on its own, WCAG 2.1.4), for this browser.
+   SgPalette: open(q, typed in it first), resume(). Plain script, after nav.js and groups.js; all files share one scope. */
 "use strict";
 const SgPalette = (() => {
   const btn = document.getElementById("barSearch");
@@ -84,8 +89,11 @@ const SgPalette = (() => {
     for (const e of d.events || []) title.set(e.id, e.title || "");
     const events = (d.events || []).map(e => ({id: e.id, k: e.k, title: e.title || "", ts: Date.parse(e.t), t: e.t,
       _q: [e.title, e.sub, ...(e.k === "lab" ? (d.details?.[e.id]?.ids || []).map(i => title.get(i)) : [])].filter(Boolean).join(" ").toLowerCase()}));
-    return {labs: [...by.values()], events};
+    return {labs: [...by.values()], events, meds: current(d.medications)};
   }
+  /* the names of the medications the records list as current (meds.js mrCurrent), Log a dose's words */
+  const current = ms => (Array.isArray(ms) ? ms : []).filter(m => m && m.spans?.at?.(-1)?.open).map(m => m.name);
+  const medNames = () => (onRecords ? (recs() ? current(DATA.medications) : []) : REC?.meds || []).join(" ");
 
   /* ---- what it finds: {icon (a name or an element), title, ctx (where or what it is), words, go()} */
   const TAB_ICON = {overview: "layout-grid", health: "activity", timeline: "calendar", labs: "test-tube-diagonal", costs: "banknote"};
@@ -100,10 +108,27 @@ const SgPalette = (() => {
     if (th && !th.hidden) out.push({icon: "sun-moon", title: th.textContent.trim(), ctx: "Your menu", words: "theme dark light", go: () => th.click()});
     return out;
   }
+  /* what else the actions are known by (#403): Add's ways in, as their Sources groups (groups.js), the rest here, and
+     Log a dose by the names of the profile's current medications; and whether one opens another page, which needs
+     the server (New share link: Sharing) */
+  const ADD_WORDS = {doseLink: "medication meds medicine pill tablet dose took taken", journalBtn: "note diary symptom feeling",
+    "home-reading": "blood pressure weight glucose temperature"};
+  function known(xs) {
+    const items = [...document.querySelectorAll("#addMenu [role^=menuitem]")];
+    return xs.map(x => {
+      const m = items.find(i => i.textContent.trim() === x.title);
+      if (!m) return x.go === newLink ? {...x, server: true} : x;
+      const href = m.getAttribute("href") || "", hash = href.split("#")[1] || "", g = SG_PAGES.sources.groups.find(g => g.id === hash);
+      return {...x, server: !!href && !href.startsWith("#"),
+        words: [x.words, ADD_WORDS[m.id] || ADD_WORDS[hash], g && g.words, m.id === "doseLink" && medNames()].filter(Boolean).join(" ")};
+    });
+  }
+  const TAB_WORDS = {overview: "home dashboard summary tiles", health: "body vitals steps sleep heart weight", timeline: "events history",
+    labs: "tests results charts blood work", costs: "money bills claims payments insurance", meds: "meds medication medicine prescriptions"};
   function tabs() {
     if (document.querySelector("header.topbar nav.tabs")?.hidden) return [];
     return SgNav.TABS.map(t => document.getElementById("tab-" + t)).filter(a => a && !a.hidden)
-      .map(a => ({icon: TAB_ICON[a.id.slice(4)], title: a.textContent.trim(), ctx: "Records tab", go: () => a.click()}));
+      .map(a => ({icon: TAB_ICON[a.id.slice(4)], title: a.textContent.trim(), ctx: "Records tab", words: TAB_WORDS[a.id.slice(4)], go: () => a.click()}));
   }
   /* the pages (not the one you're on) and, when something's typed, their groups and named parts */
   function pages(all) {
@@ -134,42 +159,52 @@ const SgPalette = (() => {
   }
   const events = () => onRecords ? (recs() ? EV : []) : REC && REC.events;
 
-  /* how well x matches: every word typed somewhere in it, then its title starting with what's typed, a word of the
-     title starting with it, the title holding it, or only what else it's known by (-1: not at all) */
-  function score(title, hay, words, q) {
-    const t = norm(title);
-    if (!words.every(w => hay.includes(w))) return -1;
-    return t.startsWith(q) ? 0 : (" " + t).includes(" " + words[0]) ? 1 : t.includes(words[0]) ? 2 : 3;
+  /* how well something matches what's typed (#403), the same in every group, lower better: 0 its title starts with
+     it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
+     -1 not at all. A word typed is found only at the start of a word, never inside one ("hem" isn't in "theme").
+     Words are letters and digits: "two-factor" is "two factor", as "mg/dL" is "mg dl" */
+  const flat = s => " " + norm(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  function score(title, also, words) {
+    const t = flat(title), hay = t + flat(also), at = (h, w) => h.includes(" " + w);
+    if (!words.every(w => at(hay, w))) return -1;
+    return t.startsWith(" " + words.join(" ")) ? 0 : words.every(w => at(t, w)) ? 1 : at(t, words[0]) ? 2 : 3;
   }
-  const ranked = (xs, q, words, cap) => xs.map(x => [score(x.title, norm([x.title, x.ctx, x.words].join(" ")), words, q), x])
-    .filter(([s]) => s >= 0).sort((a, b) => a[0] - b[0]).slice(0, cap).map(([, x]) => x);
-  /* the groups found for q: [heading, entries]; and a note to show, if any */
+  /* xs scored (x.s, or its title, then where it is and its words), best first, then as given or by more, at most
+     cap: [[score, x]] */
+  const ranked = (xs, words, cap, more = () => 0) => xs.map(x => [x.s ?? score(x.title, [x.ctx, x.words].join(" "), words), x])
+    .filter(([n]) => n >= 0).sort((a, b) => a[0] - b[0] || more(a[1], b[1])).slice(0, cap);
+  /* the groups found for what's typed: [heading, entries], those with the best match first, so the one marked (what
+     Enter opens) is the best of all; and a note to show, if any. Offline (offline.js, on the records page) what needs
+     the server isn't listed, as the menus don't follow their links to it, and the note says so */
   function find(typed) {
-    const q = norm(typed), words = q.split(/\s+/).filter(Boolean);
-    if (!q) return {groups: [["Actions", actions()], ["Records tabs", tabs()], ["Pages", pages(false)]]};
-    const groups = [["Actions", ranked(actions(), q, words, 8)], ["Records tabs", ranked(tabs(), q, words, 8)],
-      ["Pages and settings", ranked(pages(true), q, words, 10)]];
+    const words = flat(typed).trim().split(" ").filter(Boolean), off = typeof OFFLINE !== "undefined" && OFFLINE.on;
+    const acts = known(actions()).filter(x => !off || !x.server), pgs = all => off ? [] : pages(all);   // (every page is another)
+    const offNote = off ? "Pages and settings aren't listed: they need the server, and you're offline." : "";
+    if (!words.length) return {groups: [["Actions", acts], ["Records tabs", tabs()], ["Pages", pgs(false)]], offNote};
+    const groups = [["Actions", ranked(acts, words, 8)], ["Records tabs", ranked(tabs(), words, 8)], ["Pages and settings", ranked(pgs(true), words, 10)]];
     const L = labs(), E = events();
-    if (L) groups.push(["Labs", L.map(s => [score(s.shown, norm([s.name, s.shown, s.panel].join(" ")), words, q), s]).filter(([n]) => n >= 0)
-      .sort((a, b) => a[0] - b[0] || b[1].n - a[1].n).slice(0, 8).map(([, s]) => ({icon: "test-tube-diagonal", title: s.shown,
-        ctx: [s.shown !== s.name && "In the records: " + s.name, `${s.n} result${s.n === 1 ? "" : "s"}`].filter(Boolean).join(" · "), go: () => openLab(s.name)}))]);
+    if (L) groups.push(["Labs", ranked(L.map(s => ({icon: "test-tube-diagonal", title: s.shown, n: s.n, s: score(s.shown, [s.name, s.panel].join(" "), words),
+      ctx: [s.shown !== s.name && "In the records: " + s.name, `${s.n} result${s.n === 1 ? "" : "s"}`].filter(Boolean).join(" · "), go: () => openLab(s.name)})),
+      words, 8, (a, b) => b.n - a.n)]);
     if (E) {
-      // the Timeline's own search: the whole of what's typed in an event's words (core.js matchQ)
-      const lq = typed.trim().toLowerCase(), hit = E.filter(e => e._q.includes(lq)), CAP = 6;
-      const top = hit.map(e => [norm(e.title).startsWith(q) ? 0 : norm(e.title).includes(q) ? 1 : 2, e]).sort((a, b) => a[0] - b[0] || (b[1].ts || 0) - (a[1].ts || 0)).slice(0, CAP);
-      const kind = k => typeof KIND_LABEL !== "undefined" && KIND_LABEL[k];
-      const found = top.map(([, e]) => ({icon: typeof kindIcon === "function" ? kindIcon(e.k) : "file-text", title: e.title,
-        ctx: [kind(e.k), day(e.ts || e.t)].filter(Boolean).join(" · "), go: () => openEv(e.id)}));
-      if (hit.length > CAP) found.push({icon: "arrow-right", title: `Search the Timeline for “${typed.trim()}”`, ctx: `${hit.length.toLocaleString()} events in all`, go: () => timeline(typed.trim())});
+      // the Timeline's own search: the whole of what's typed in an event's words (core.js matchQ); listed, those with
+      // each word at the start of one of theirs, the most recent first; the rest through the Timeline's search
+      const lq = typed.trim().toLowerCase(), hit = E.filter(e => e._q.includes(lq)), kind = k => typeof KIND_LABEL !== "undefined" && KIND_LABEL[k];
+      const found = ranked(hit.map(e => ({icon: typeof kindIcon === "function" ? kindIcon(e.k) : "file-text", title: e.title, ts: e.ts || 0, s: score(e.title, e._q, words),
+        ctx: [kind(e.k), day(e.ts || e.t)].filter(Boolean).join(" · "), go: () => openEv(e.id)})), words, 6, (a, b) => b.ts - a.ts);
+      if (hit.length > found.length) found.push([found.length ? found.at(-1)[0] : 3, {icon: "arrow-right", title: `Search the Timeline for “${typed.trim()}”`,
+        ctx: `${hit.length.toLocaleString()} event${hit.length === 1 ? "" : "s"} in all`, go: () => timeline(typed.trim())}]);
       groups.push(["Events", found]);
     }
-    return {groups, wait: !onRecords && pid() && !REC ? "Looking through the records…" : !onRecords && REC?.failed ? "The records couldn't be searched just now." : ""};
+    const best = xs => xs.length ? xs[0][0] : 9;   // (the sort keeps the order above for a tie)
+    return {groups: groups.sort((a, b) => best(a[1]) - best(b[1])).map(([h, xs]) => [h, xs.map(([, x]) => x)]), offNote,
+      wait: !onRecords && pid() && !REC ? "Looking through the records…" : !onRecords && REC?.failed ? "The records couldn't be searched just now." : ""};
   }
 
   /* ---- the list */
   let shown = [], active = -1, sayT = 0;
   function draw() {
-    const typed = input.value, {groups, wait} = find(typed);
+    const typed = input.value, {groups, wait, offNote} = find(typed);
     shown = [];
     list.replaceChildren(...groups.filter(([, xs]) => xs.length).map(([head, xs], g) => el("div", {role: "group", "aria-labelledby": "palG" + g},
       el("div", {class: "pal-sec", id: "palG" + g, role: "presentation", text: head}),
@@ -183,11 +218,11 @@ const SgPalette = (() => {
       }))));
     input.setAttribute("aria-expanded", String(shown.length > 0));
     mark(shown.length ? 0 : -1, false);
-    const nothing = typed.trim() && !shown.length && !wait ? `Nothing matches “${typed.trim()}”.` : "";
-    note.textContent = [wait, nothing].filter(Boolean).join(" ");
+    const nothing = typed.trim() && !shown.length && !wait ? `Nothing matches “${typed.trim()}”${offNote ? " offline" : ""}.` : "";
+    note.textContent = [wait, nothing, offNote].filter(Boolean).join(" ");
     note.hidden = !note.textContent;
     clearTimeout(sayT);
-    if (typed.trim()) sayT = setTimeout(() => announce(nothing || (shown.length ? `${shown.length} found.` : wait)), 700);
+    if (typed.trim()) sayT = setTimeout(() => announce(nothing ? [nothing, offNote].join(" ").trim() : shown.length ? `${shown.length} found.` : wait), 700);
   }
   /* the option marked: the one Enter opens, and the one a screen reader says */
   function mark(i, scroll = true) {
@@ -212,15 +247,26 @@ const SgPalette = (() => {
     else if ((ev.key === "PageDown" || ev.key === "PageUp") && n) { ev.preventDefault(); mark(Math.max(0, Math.min(n - 1, active + (ev.key === "PageDown" ? 5 : -5)))); }
     else if (ev.key === "Enter") { ev.preventDefault(); pick(active); }
   });
-  dlg.addEventListener("close", () => clearTimeout(sayT));
+  /* opened from a menu (Add open, then "/" or Ctrl+K), what had focus is an item in a list now closed: focus goes back
+     to the menu's button instead (#403) */
+  let menuBtn = null;
+  dlg.addEventListener("close", () => {
+    clearTimeout(sayT);
+    const a = document.activeElement;
+    if (menuBtn && menuBtn.isConnected && (!a || a === document.body || dlg.contains(a))) menuBtn.focus({preventScroll: true});
+    menuBtn = null;
+  });
 
-  function open() {
+  /* open(q): with q typed (a sidebar's "Search everywhere", sidebar.js), else empty */
+  function open(q = "") {
     if (btn.hidden || btn.closest("[hidden]")) return;   // the bar locked (account.js: a password to change first)
     if (dlg.open) { input.select(); return; }
     if (document.querySelector("dialog:modal")) return;   // not over a question waiting for an answer, or the drawer over the page
     who();
     records();
-    input.value = "";
+    const pop = document.activeElement?.closest?.("[popover]");
+    menuBtn = pop ? [...document.querySelectorAll("button")].find(b => b.popoverTargetElement === pop) || null : null;
+    input.value = typeof q === "string" ? q : "";   // (not a click's event, from the Search button)
     document.getElementById("palSlash").checked = slashOn();   // (as another window may have set it)
     draw();
     openDialog(dlg, {as: "center"});
