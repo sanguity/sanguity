@@ -1316,6 +1316,10 @@ Everything on `main` so far; it becomes the first tagged release.
   profile; a tick that's the profile's own is saved to the profile it was made on, its toast naming it. The note saying
   why a group isn't yours to use was green, as a save is; it's in the style of the line above it now. The records
   page applies an empty profile's own tab layout, as the other pages do.
+- **Log out offline signs you out** (#422): offline, Log out went to the sign-in page as if it had worked, but the
+  sign-in on the server was never ended, so opening the app back online was still signed in. Now the device's copy is
+  deleted at once and the sign-in page says the sign-in on the server ends once this device reaches it again; until
+  then the app opens on that page, which ends it as soon as the server answers (signing in waits for that) and says so.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
