@@ -45,7 +45,6 @@ function switchTab(t, view, push) {
   // filters its lab names in the list's own header, #192: trends.js)
   $(".filters").style.display = t === "overview" ? "none" : "";
   $(".filters").classList.toggle("period-only", t !== "timeline");
-  $("#ftoggle").textContent = t !== "timeline" ? "Dates" : "Filters";   // what it opens on a phone
   $("#chips").style.display = t === "timeline" ? "" : "none";
   renderAll();
   if (changed) window.scrollTo({top: 0, left: 0, behavior: "instant"});   // each tab starts at the top

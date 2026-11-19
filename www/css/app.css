@@ -163,7 +163,7 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
   padding:0 var(--sp-3);color:var(--ink2);font:inherit;font-size:var(--fs-3);font-weight:var(--fw-medium);cursor:pointer}
 .chip:hover{border-color:var(--ink2);color:var(--ink)}
 @media (max-width:700px){
-  .seg:not(.wrap){flex:none;overflow-x:auto;scrollbar-width:none}   /* the records bar's presets: they scroll, the chosen one kept in view */
+  .seg:not(.wrap){flex:none;overflow-x:auto;scrollbar-width:none}   /* a row of choices too wide scrolls (the period is a pill there, #269) */
   .seg:not(.wrap)::-webkit-scrollbar{display:none}
   .seg>button,.seg>label{flex:none}
   .seg.wrap>button,.seg.wrap>label{flex:1 0 auto}
@@ -418,18 +418,13 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
   header.topbar .spacer{display:block;flex:1}
   header.topbar .tabs{order:5;width:100%}
   .menu-btn{max-width:10em}
-  /* the top bar's menus (Add, the person's own): the bar wraps, so a menu pinned to its button's right edge would open
-     off the screen's left (#244); instead each is the screen's width under the bar (--bar-h, nav.js), 8 px in */
-  header.topbar .menu-list{position:fixed;left:8px;right:8px;top:calc(var(--bar-h,56px) + 6px);min-width:0;max-width:none;position-try-fallbacks:none;
-    max-height:calc(100vh - var(--bar-h,56px) - 14px);max-height:calc(100dvh - var(--bar-h,56px) - 14px);overflow-y:auto}
-  header.topbar .menu-item{white-space:normal}
 }
 /* ---- phones (#268, nav.js phoneBar): the top bar one row: the brand, the profile menu taking the room left (its name
    cut short only if it must be), then Add and your menu as 44 px icons, their words still said; at 480 px or narrower
    the brand's mark alone and the profile's role said only. The records tabs a bar fixed at the screen's foot, clear of
    the home indicator: each place an icon over a short name, 56 px tall, the tab shown with its icon in a tinted pill;
    the page ends above it (--tabbar: the body, the scroll padding, the toasts and Settings' Save bar). Under 500 px tall
-   the tabs stay a row in the top bar, which scrolls away with the page (#308). */
+   the tabs stay a row in the top bar, which scrolls away with the page (#308). The top bar's menus are sheets (below). */
 .tabs>a>.icon,.tab-more>.menu-ico,#userMenuBtn>.menu-ico{display:none}
 @media (max-width:700px){
   header.topbar .profile-pick{flex:1 1 0;max-width:max-content;min-width:0}
@@ -460,6 +455,33 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
 @media (max-width:700px){ :is(#addMenuBtn,#userMenuBtn)>:is(.menu-word,#who){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap} }
 @media (max-width:480px){ header :is(.brand-word,.profile-role){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap} }
 @media (max-width:700px) and (min-height:501px){ .tabs>a[data-short]>.tab-long{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap} }
+/* ---- sheets (#269, nav.js phoneSheet): a heading and ✕ (a handle to swipe it down by too), then what scrolls; a menu
+   in one is its list of items, 44 px each, as the top bar's menus and the period's are on a phone; the period's date
+   boxes under its list, the Timeline's search and kinds (a checkbox each, in its colour) with Reset and Done at the
+   foot. The period on a phone: one pill naming it, in place of the presets, More… and the words */
+dialog.sheet[open]{display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px)}
+.sheet-hd{display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-2) var(--sp-1) var(--sp-4)}
+.sheet-hd h2{flex:1;margin:0;font-family:var(--font-display,Georgia,serif);font-size:var(--fs-5);font-weight:var(--fw-semibold)}
+.sheet-x{margin:0}
+.sheet-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 var(--sp-3) var(--sp-4)}
+.sheet-body h3{margin:var(--sp-4) 0 var(--sp-2);font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2)}
+.sheet .menu-list{position:static;display:flex;flex-direction:column;min-width:0;max-width:none;max-height:none;padding:0;border:0;border-radius:0;box-shadow:none;background:none;overflow:visible}
+.sheet .menu-item{display:flex;align-items:center;min-height:44px;white-space:normal}
+.sheet .menu-item>.i-check{margin-top:0}
+.sheet-foot{display:flex;justify-content:flex-end;gap:var(--sp-2);padding:var(--sp-3);border-top:1px solid var(--grid)}
+.sheet-foot .btn{margin:0}
+.kind-check{display:flex;align-items:center;gap:var(--sp-2);min-height:44px;font-size:var(--fs-3);cursor:pointer}
+.kind-check>input{margin:0;width:var(--sp-5);height:var(--sp-5);accent-color:var(--accent)}
+.kind-check>.key{color:var(--tone)}
+.kind-check>.n{margin-left:auto;color:var(--ink2)}
+.period-pick{display:none}
+.period-pill{display:inline-flex;align-items:center;gap:var(--sp-2);max-width:100%;min-height:44px;margin:0;padding:var(--sp-1) var(--sp-4);border:1px solid var(--axis);
+  border-radius:var(--r-pill);background:var(--raised);color:var(--ink);font:inherit;font-weight:var(--fw-medium);cursor:pointer}
+.period-pill[aria-expanded="true"]{background:var(--hover)}
+@media (max-width:700px){
+  .period-pick{display:block;min-width:0}
+  #presets,#periodMore,#periodWords,#chips{display:none}
+}
 .filters{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;padding:var(--sp-3) var(--sp-5);border-bottom:1px solid var(--grid);background:var(--surface)}
 .dates{display:flex;gap:var(--sp-2);align-items:center;color:var(--muted);font-size:var(--fs-3)}
 .search{min-width:200px}
@@ -699,8 +721,6 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
   main{padding:var(--sp-3) var(--sp-3) var(--sp-7)}
   .filters{padding:var(--sp-2) var(--sp-3);gap:var(--sp-2);position:relative}
   .ftoggle{display:inline-block;margin-left:auto}
-  .filters:not(.open) .dates,.filters:not(.open) .chips,.filters:not(.open) .search{display:none}
-  .filters.open .chips{width:100%}
   .search{min-width:0;width:100%}
   .dates{width:100%}
   .dates input{flex:1;min-width:0}
@@ -1182,7 +1202,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .offline-banner .why{color:var(--ink2)}
 .offline-banner.flash{animation:offline-flash .6s ease-out}
 @keyframes offline-flash{from{box-shadow:0 0 0 3px var(--c-study)}to{box-shadow:0 0 0 0 transparent}}
-body.offline header a.acct[aria-disabled="true"],body.offline #dbody a[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline #dbody a[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
 .offline-note{color:var(--ink2)}
 @media (max-width:700px){.offline-banner{width:calc(100% - 24px)}}
 /* saved Trends views (#37, trends-views.js) */
@@ -1338,11 +1358,7 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .period-words[hidden],.dates[hidden]{display:none}
 .dates input{color:var(--ink)}
 .dates .btn{margin:0 0 0 var(--sp-1)}
-@media (max-width:700px){
-  .filters:not(.open) .dates:not([hidden]){display:flex}   /* custom dates show once chosen, not behind Filters */
-  .filters.period-only .ftoggle{display:none}               /* Body and activity, Costs: nothing else to open */
-  .period-words{flex:1 1 0;min-width:0}
-}
+@media (max-width:700px){ .filters.period-only .ftoggle{display:none} }   /* Body and activity, Costs: nothing else to open */
 @media (forced-colors:active){
   .period-more-btn.on{forced-color-adjust:none;background:Highlight;color:HighlightText;box-shadow:none;border-color:Highlight}
 }
@@ -1634,12 +1650,6 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 /* zoomed in a long way, or a phone on its side: the page gets the room (1.4.10). The bar scrolls with the page, so
    what stuck under it sticks at the top instead (#308): the Timeline's month headings and Settings' sidebar */
 @media (max-height:500px){ header{position:relative} html{scroll-padding-top:8px} .month{top:0} main.sets.with-nav>.set-nav{top:8px} }
-/* and on a phone the bar's menus open under the bar where it is now, not where it would be stuck (--bar-h): placed
-   from the bar (its anchor, --bar; nav.js measures it where the browser has no anchor positioning), the screen's
-   width 8 px in as in #244, scrolling with it. The page scrolls, so a menu is as tall as its items, not a box of one
-   item under a tall bar at 320×180 (#319) */
-@media (max-height:500px) and (max-width:700px){ header.topbar{anchor-name:--bar} header.topbar .menu-list{position:absolute;top:calc(anchor(--bar bottom) + 6px);max-height:none} }
-@supports not (anchor-name: --a){ @media (max-height:500px) and (max-width:700px){ header.topbar .menu-list{top:calc(var(--menu-bar,0px) + 6px)} } }
 @media (forced-colors:active){
   .menu-item:focus-visible,.cell-btn:focus-visible{outline-color:Highlight}
 }

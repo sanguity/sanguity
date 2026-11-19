@@ -1127,6 +1127,12 @@ Everything on `main` so far; it becomes the first tagged release.
   More once more than five tabs are shown, the one open always among the four). The page, the toasts, Settings' Save
   bar and the heatmap's month axis end above it, and what takes focus is scrolled clear of it. Under 500 px tall the
   tabs are a row in the top bar again, which scrolls away with the page as before.
+- **Phones: the period, the filters and the menus as sheets** (#269): on a phone the period is one pill naming it
+  ("Last 2 years ▾") instead of seven presets scrolling sideways and More…; it opens a sheet from the foot of the
+  screen with every period (the presets, each milestone, the calendar years) and the date boxes for custom dates. On
+  the Timeline, Filters opens a sheet with the search, a checkbox for each kind of record with its count, Reset
+  filters and Done, instead of 11 chips on nine rows. The top bar's menus (the profile's, Add, yours, More) are sheets
+  there too. Each is the sheet of #262: worked by touch or keyboard, closed with Escape, its ✕ or a swipe down.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

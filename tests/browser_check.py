@@ -5323,8 +5323,10 @@ def main():
                 open_tab(t)
                 settle(300)
                 fits = js("document.documentElement.scrollWidth")
+                # on a phone the period is one pill naming it (#269), in place of the presets and More…
                 check(f"the records bar on {t} fits 375 px, with its period showing", fits <= 375 and
-                      js("['presets', 'periodMoreBtn'].every(id => { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.right <= 375; })"), fits)
+                      js("(() => { const r = document.getElementById('periodPill').getBoundingClientRect(); return r.width > 0 && r.right <= 375; })()")
+                      and js("['presets', 'periodMoreBtn'].every(id => !document.getElementById(id).checkVisibility())"), fits)
             page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- the period's controls (#191): each kind of period (a preset, All, the primary milestone's button, another
@@ -5409,37 +5411,117 @@ def main():
                       chosen: ratio(document.getElementById('periodMoreBtn')), words: ratio(document.getElementById('periodWords'))};
             })()"""
             theme_before = js("document.documentElement.dataset.theme || null")
-            for width in (1400, 375):
-                page.set_viewport_size({"width": width, "height": 800 if width == 375 else 900})
-                for theme in ("light", "dark"):
-                    js("t => { document.documentElement.dataset.theme = t; }", theme)
-                    js(f"applyPreset('{yr}')")   # More… chosen, its item ticked
-                    settle(200)
-                    bad = phone_fits(page, f"{theme}, {yr}") if width == 375 else []
-                    page.click("#periodMoreBtn")
-                    settle(100)
-                    look = js(menu_look)
-                    if width == 375:
-                        bad += phone_fits(page, f"{theme}, More… open")
-                    page.keyboard.press("Escape")
-                    check(f"period at {width} px, {theme}: the More… menu fits the screen, nothing in it cut off, its text and the chosen period readable",
-                          look["inside"] and look["solid"] and not look["cut"] and look["text"] >= 4.5 and look["quiet"] >= 4.5
-                          and look["chosen"] >= 4.5 and look["words"] >= 4.5, look)
-                    if width == 375:
-                        page.click("#periodMoreBtn")
-                        page.click("#periodMoreList [data-period=custom]")
-                        settle(200)
-                        bad += phone_fits(page, f"{theme}, custom dates")
-                        check(f"period at 375 px, {theme}: the presets, More…, the words and the date boxes fit, no control cut off or overlapping",
-                              not bad and js("['presets', 'periodMoreBtn', 'from', 'to', 'datesClear'].every(id => { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.right <= 375; })"),
-                              bad[:6])
+            page.set_viewport_size({"width": 1400, "height": 900})
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                js(f"applyPreset('{yr}')")   # More… chosen, its item ticked
+                settle(200)
+                page.click("#periodMoreBtn")
+                settle(100)
+                look = js(menu_look)
+                page.keyboard.press("Escape")
+                check(f"period at 1400 px, {theme}: the More… menu fits the screen, nothing in it cut off, its text and the chosen period readable",
+                      look["inside"] and look["solid"] and not look["cut"] and look["text"] >= 4.5 and look["quiet"] >= 4.5
+                      and look["chosen"] >= 4.5 and look["words"] >= 4.5, look)
+            # #269: on a phone the period is one pill ("Last 2 years ▾") opening a sheet: every period in one menu (the
+            # presets, each milestone, the calendar years), the picked one ticked and focused, and the date boxes for
+            # custom dates under it. Picked by touch or keyboard it closes, focus back on the pill; Escape and a swipe down
+            # by its handle close it too. In light and dark at 375 px: on the screen, nothing cut off or overlapping, its
+            # text readable, axe clean
+            sheet_look = r"""(() => {
+              const rgb = c => { const x = document.createElement('canvas').getContext('2d'); x.fillStyle = c; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data]; };
+              const bg = n => {   // the backgrounds behind it, a see-through one (a hover's, a focus's tint) laid over those under it
+                const layers = []; for (; n; n = n.parentElement) { const c = rgb(getComputedStyle(n).backgroundColor); if (c[3] > 0) { layers.push(c); if (c[3] === 255) break; } }
+                return layers.reverse().reduce((o, c) => o.map((v, i) => v * (1 - c[3] / 255) + c[i] * c[3] / 255), [255, 255, 255]); };
+              const lum = c => { const v = c.slice(0, 3).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+              const ratio = n => { const [a, b] = [lum(rgb(getComputedStyle(n).color)), lum(bg(n))].sort((p, q) => q - p); return Math.round((a + 0.05) / (b + 0.05) * 10) / 10; };
+              const d = document.querySelector('dialog.sheet[open]'), r = d && d.getBoundingClientRect(), items = d ? [...d.querySelectorAll('[role=menuitemradio]')] : [];
+              return d && {modal: d.matches(':modal'), title: d.querySelector('h2').textContent, inside: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight + 1 && r.top >= 0,
+                      items: items.map(i => i.dataset.period), ticked: items.filter(i => i.getAttribute('aria-checked') === 'true').map(i => i.dataset.period),
+                      focus: document.activeElement.dataset.period || document.activeElement.id, tall: Math.min(...items.map(i => i.getBoundingClientRect().height)),
+                      cut: items.filter(i => i.scrollWidth > i.clientWidth + 1).map(i => i.textContent), dates: !!d.querySelector('#dates:not([hidden]) #from'),
+                      text: Math.min(...items.map(ratio)), quiet: Math.min(...[...d.querySelectorAll('.menu-head, .menu-note, h3')].map(ratio)),
+                      expanded: document.getElementById('periodPill').getAttribute('aria-expanded')};
+            })()"""
+            pill = "[document.getElementById('periodPill').textContent, state.preset, document.activeElement.id, !!document.querySelector('dialog.sheet[open]')]"
+            page.set_viewport_size({"width": 375, "height": 800})
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                js(f"applyPreset('{yr}')")
+                settle(200)
+                bad = phone_fits(page, f"{theme}, {yr}")
+                page.click("#periodPill")
+                page.mouse.move(0, 0)   # off the item it opened over: a hover's tint isn't its look
+                settle(300)
+                look = js(sheet_look)
+                bad += phone_fits(page, f"{theme}, the period's sheet open") + axe_check(page, f"the period's sheet at 375 px, {theme}")[0]
+                page.keyboard.press("Escape")
+                settle(300)
+                check(f"period at 375 px, {theme}: the pill opens a sheet of every period, the one shown ticked and focused, the date boxes under them; "
+                      "on the screen, nothing cut off or overlapping, 44 px items, its text readable, axe clean (#269)",
+                      look and look["modal"] and look["title"] == "Period" and look["inside"] and look["ticked"] == [yr] and look["focus"] == yr
+                      and look["items"][:7] == ["all", "5y", "2y", "1y", "6m", "90d", "30d"] and {pm[0], om[0], yr} <= set(look["items"])
+                      and look["dates"] and look["tall"] >= 44 and not look["cut"] and look["text"] >= 4.5 and look["quiet"] >= 4.5 and look["expanded"] == "true"
+                      and not bad and js(pill)[1:] == [yr, "periodPill", False] and js(pill)[0] == f"Period: {yr}", [look, bad[:6], js(pill)])
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
-            # #357: on a phone on its side (640×360) and at 800×450, the menu (60% of the screen tall) fitted neither under
+            js("applyPreset('2y')")
+            settle(200)
+            page.click("#periodPill")
+            settle(300)
+            page.click("dialog.sheet[open] [data-period='1y']")
+            settle(400)
+            check("…a period picked by a tap or click is picked, the sheet closed, focus back on the pill naming it", js(pill) == ["Period: Last year", "1y", "periodPill", False], js(pill))
+            page.keyboard.press("Enter")
+            settle(300)
+            first = js("document.activeElement.dataset.period")
+            page.keyboard.press("ArrowDown")
+            page.keyboard.press("Enter")
+            settle(400)
+            got = js(pill)
+            page.keyboard.press("Enter")
+            settle(300)
+            page.keyboard.press("End")
+            last = js("document.activeElement.dataset.period")
+            page.keyboard.press("Escape")
+            settle(300)
+            check("…by keyboard: Enter opens it on the period shown, the arrow keys move, Enter picks, End goes to the last, Escape closes it, focus back on the pill",
+                  first == "1y" and got == ["Period: Last 6 months", "6m", "periodPill", False] and last == js("periodYears().at(-1)")
+                  and js(pill)[1:] == ["6m", "periodPill", False], [first, got, last, js(pill)])
+            page.click("#periodPill")
+            settle(300)
+            g = page.locator("dialog.sheet[open] .sg-grab").bounding_box()
+            page.mouse.move(g["x"] + g["width"] / 2, g["y"] + g["height"] / 2)
+            page.mouse.down()
+            page.mouse.move(g["x"] + g["width"] / 2, g["y"] + 220, steps=10)
+            page.mouse.up()
+            settle(500)
+            check("…and swiped down by its handle it closes", js(pill)[1:] == ["6m", "periodPill", False], js(pill))
+            page.click("#periodPill")
+            settle(300)
+            page.fill("#from", f"{yr}-03-01")
+            page.dispatch_event("#from", "change")
+            settle(300)
+            got = js(pill)
+            check("…a date typed in its box makes the period custom, the sheet open and the pill naming the dates, Clear dates there",
+                  got[1] == "custom" and got[3] and js("isoDay(state.from)") == f"{yr}-03-01" and got[0].startswith("Period: Mar 1, " + yr)
+                  and page.is_visible("dialog.sheet[open] #datesClear"), got)
+            page.click("dialog.sheet[open] #datesClear")
+            settle(300)
+            check("…and Clear dates goes back to the period before, focus on it in the sheet",
+                  js("state.preset") == "6m" and js("document.activeElement.dataset.period") == "6m" and page.is_hidden("#datesClear"), js(pill))
+            page.keyboard.press("Escape")
+            settle(300)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…and wider than a phone the presets, More… and the date boxes are back in the records bar, the pill gone",
+                  js("[document.getElementById('periodPill').checkVisibility(), document.getElementById('presets').checkVisibility(), !!document.getElementById('dates').closest('.filters'), !!document.getElementById('q').closest('.filters'), document.getElementById('periodPillList').popover]")
+                  == [False, True, True, True, "auto"])
+            # #357: on a phone on its side (740×360) and at 800×450, the menu (60% of the screen tall) fitted neither under
             # More… nor over it, and the browser kept it under, its left edge on the button's, running off the right. It's
             # never taller than the larger room now, so one of the tries fits, sideways too: with More… at the top of the
-            # screen and as low as the page lets it go, all of the menu is on the screen
+            # screen and as low as the page lets it go, all of the menu is on the screen (at 700 px or narrower it's the
+            # pill's sheet, #269)
             bad = []
-            for w, h in ((640, 360), (800, 450)):
+            for w, h in ((740, 360), (800, 450)):
                 page.set_viewport_size({"width": w, "height": h})
                 for where in ("start", "end"):
                     js("w => { scrollTo(0, 0); document.getElementById('periodMoreBtn').scrollIntoView({block: w}); }", where)
@@ -5451,7 +5533,7 @@ def main():
                     if not (g[0] and g[1] >= 0 and g[2] >= 0 and g[3] <= w and g[4] <= h and (g[2] >= g[6] or g[4] <= g[5])):
                         bad.append(f"{w}×{h}, More… at the {where}: open, menu left, top, right, bottom, button top, bottom {g}")
                     page.keyboard.press("Escape")
-            check("the period menu at 640×360 and 800×450 opens all on the screen, under or over More…, scrolling inside where it must (#357)", not bad, bad)
+            check("the period menu at 740×360 and 800×450 opens all on the screen, under or over More…, scrolling inside where it must (#357)", not bad, bad)
             page.set_viewport_size({"width": 1400, "height": 900})
             # periods saved before #191: "dx" (the primary milestone), a milestone, a year
             for key, chosen in (("dx", [pm[1]]), (om[0], ["More: " + om[1]]), (yr, ["More: " + yr])):
@@ -5482,34 +5564,38 @@ def main():
             check("tooltips at the screen's edge, at 1400 and 375 px, are 8 px inside it and not over their element (#357)", not bad, bad)
             # #372: a tip on what's half out of a strip that scrolls sideways ran off the screen (the area over its element
             # doesn't bring it back inside): at 375×700 the milestone preset, past the right of the presets with the strip
-            # at its start. Tabbed to, the preset is brought into view first; hovered where it shows, it stays half out.
-            # Either way its tip is wholly on the screen, 8 px from its edge, and not over the preset
-            page.set_viewport_size({"width": 375, "height": 700})
+            # at its start. A phone's period is one pill now (#269); the strip that scrolls sideways there is the tabs' row
+            # in the top bar of a short screen (#268): at 320×400 Body and activity, half out of its left edge. Tabbed to,
+            # the tab is brought into view first; hovered where it shows, it stays half out. Either way its tip is wholly on
+            # the screen, 8 px from its edge, and not over the tab
+            page.set_viewport_size({"width": 320, "height": 400})
             open_tab("timeline")
             settle(300)
-            ms_at = "() => { const b = document.querySelector('#presets button[data-tip]'), r = b && b.getBoundingClientRect(); return r && [Math.round(r.left), Math.round(r.top), Math.round(r.right)]; }"
+            ms_at = "() => { const r = document.getElementById('tab-health').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.right)]; }"
+            half_out = """() => { const s = document.querySelector('header .tabs'), b = document.getElementById('tab-health'); s.scrollLeft = 0;
+                s.scrollLeft = b.getBoundingClientRect().left - s.getBoundingClientRect().left + b.offsetWidth / 2; }"""
             bad, half = [], []
             for how in ("focus", "hover"):
-                page.mouse.move(0, 400)
-                js("() => { document.getElementById('presets').scrollLeft = 0; }")
+                js("scrollTo(0, 0)")
+                page.mouse.move(160, 380)
+                js(half_out)
                 at = js(ms_at)
                 half.append(at)
-                if not at:
-                    break
                 if how == "focus":
                     page.keyboard.press("Shift")
-                    js("() => { const b = document.querySelector('#presets button[data-tip]'); b.previousElementSibling.focus(); document.getElementById('presets').scrollLeft = 0; }")
-                    page.keyboard.press("Tab")
+                    js("() => { document.getElementById('tab-timeline').focus(); }")
+                    js(half_out)
+                    page.keyboard.press("Shift+Tab")
                 else:
-                    page.mouse.move((at[0] + 370) / 2, at[1] + 8)
+                    page.mouse.move((at[2] + 4) / 2, at[1] + 8)
                 settle(700)
                 t, now = js(tip_at), js(ms_at)
-                if not t or not t["text"].startswith("Since ") or t["box"][0] < 8 or t["box"][2] > 375 - 8 or t["covers"] or (how == "focus" and now[2] > 375):
+                if not t or not t["text"].startswith("Watch, sleep") or t["box"][0] < 8 or t["box"][2] > 320 - 8 or t["covers"] or (how == "focus" and now[0] < 0):
                     bad.append([how, at, now, t])
                 page.keyboard.press("Escape")
             page.mouse.move(0, 0)
-            check("…and one on the milestone preset half out of the presets' strip at 375 px, tabbed to or hovered, is wholly on the screen, "
-                  "8 px from its edge; tabbed to, the preset is brought into view (#372)", all(a and a[2] > 375 for a in half) and not bad, [half, bad])
+            check("…and one on the Body and activity tab half out of the tabs' row at 320×400, tabbed to or hovered, is wholly on the screen, "
+                  "8 px from its edge; tabbed to, the tab is brought into view (#372, #268)", all(a[0] < 0 < a[2] for a in half) and not bad, [half, bad])
             page.set_viewport_size({"width": 1400, "height": 900})
             # #358: a tip on what can't take focus (a span, a cell) reached only a mouse: its words are where the keyboard
             # and a screen reader get them now, in the name or description (Chromium's accessibility tree, ax_said) of
@@ -5679,12 +5765,63 @@ def main():
             check("…and on a pick-one choice", js("document.activeElement.dataset.sort") == "asc" and js(ring)[1:3] == [True, "solid"], js(ring))
             page.set_viewport_size({"width": 375, "height": 800})
             open_tab("timeline")
-            page.click("#ftoggle")
-            settle(200)
+            settle(300)
             # the page's width, then each shown control's right edge
             fit = "sel => [document.documentElement.scrollWidth, ...[...document.querySelectorAll(sel)].filter(n => n.getClientRects().length).map(n => Math.round(n.getBoundingClientRect().right))]"
-            check("on or off at 375 px: the kinds' chips wrap inside the screen", max(js(fit, "#chips .toggle")) <= 375 and len(js(fit, "#chips .toggle")) > 3, js(fit, "#chips .toggle"))
+            # #269: on a phone the Timeline's filters are a sheet: the search, each kind with records as a checkbox (its
+            # icon, name and count, checked while shown), Reset filters and Done. A box unticked hides its kind, the
+            # Filters button counting it; Reset puts every kind back; Escape, Done and a swipe close it, focus back on
+            # Filters. On the screen at 375 px, nothing cut off or overlapping, 44 px rows, axe clean in light and dark
+            fsheet = """() => { const d = document.querySelector('dialog.sheet[open]'); if (!d) return null;
+                const rows = [...d.querySelectorAll('.kind-check')], r = d.getBoundingClientRect();
+                return {modal: d.matches(':modal'), title: d.querySelector('h2').textContent, q: !!d.querySelector('#q'), inside: r.top >= 0 && r.bottom <= innerHeight + 1 && r.right <= innerWidth,
+                        kinds: rows.map(x => x.querySelector('input').dataset.k), on: rows.filter(x => x.querySelector('input').checked).map(x => x.querySelector('input').dataset.k),
+                        tall: Math.min(...rows.map(x => x.getBoundingClientRect().height)), named: rows.every(x => /\\d+$/.test(x.textContent.trim())),
+                        foot: [...d.querySelectorAll('.sheet-foot button')].map(b => b.textContent), expanded: document.getElementById('ftoggle').getAttribute('aria-expanded')}; }"""
+            lanes = js("CATS.filter(hasLane).map(c => c.k)")
+            theme_before = js("document.documentElement.dataset.theme || null")
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                page.click("#ftoggle")
+                settle(300)
+                f = js(fsheet)
+                bad = phone_fits(page, f"the Filters sheet, {theme}") + axe_check(page, f"the Filters sheet at 375 px, {theme}")[0]
+                page.keyboard.press("Escape")
+                settle(300)
+                check(f"filters at 375 px, {theme}: Filters opens a sheet of the search and a checkbox for each kind with records, as it's shown, Reset and Done; "
+                      "on the screen, nothing cut off or overlapping, 44 px rows, axe clean (#269)",
+                      f and f["modal"] and f["title"] == "Filters" and f["q"] and f["inside"] and f["kinds"] == lanes and f["on"] == js("lanes => lanes.filter(k => state.cats.has(k))", lanes)
+                      and f["tall"] >= 44 and f["named"] and f["foot"] == ["Reset filters", "Done"] and f["expanded"] == "true" and not bad
+                      and js("[document.activeElement.id, document.getElementById('ftoggle').getAttribute('aria-expanded')]") == ["ftoggle", "false"], [f, bad[:6]])
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             page.click("#ftoggle")
+            settle(300)
+            page.click("dialog.sheet[open] .kind-check:has(input[data-k=visit])")
+            settle(300)
+            page.focus("dialog.sheet[open] input[data-k=lab]")
+            page.keyboard.press("Space")
+            settle(300)
+            got = js("[state.cats.has('visit'), state.cats.has('lab'), document.getElementById('ftoggle').textContent, document.activeElement.dataset.k, EV.filter(visible).some(e => ['visit', 'lab'].includes(CAT_OF[e.k].k))]")
+            check("…a box tapped or ticked by Space hides its kind on the Timeline, the Filters button counting the filter, focus kept on the box",
+                  got == [False, False, "Filters (1)", "lab", False], got)
+            page.click("dialog.sheet[open] .sheet-foot button:text-is('Reset filters')")
+            settle(300)
+            check("…Reset filters shows every kind again (Insurance claims as they start), its boxes ticked",
+                  js("[state.cats.has('visit'), state.cats.has('lab'), document.getElementById('ftoggle').textContent, [...document.querySelectorAll('dialog.sheet[open] .kind-check input')].filter(i => !i.checked).map(i => i.dataset.k)]")
+                  == [True, True, "Filters", ["claim"]])
+            page.click("dialog.sheet[open] .sheet-foot button:text-is('Done')")
+            settle(300)
+            closed = "[!!document.querySelector('dialog.sheet[open]'), document.activeElement.id]"
+            check("…Done closes it, focus back on Filters", js(closed) == [False, "ftoggle"], js(closed))
+            page.click("#ftoggle")
+            settle(300)
+            g = page.locator("dialog.sheet[open] .sheet-hd h2").bounding_box()
+            page.mouse.move(g["x"] + 10, g["y"] + 5)
+            page.mouse.down()
+            page.mouse.move(g["x"] + 10, g["y"] + 260, steps=10)
+            page.mouse.up()
+            settle(500)
+            check("…and a swipe down by its heading closes it too", js(closed) == [False, "ftoggle"], js(closed))
             open_tab("labs")
             settle(300)
             check("…and the chart overlays", max(js(fit, "#view-labs .toggle")) <= 375   # and Doses logged once doses are (#235)
@@ -5767,28 +5904,8 @@ def main():
             settle(200)
             check("kinds: the filter line's Reset filters shows every kind (Insurance claims shown, as they were), focus on the first chip", only() == lanes
                   and js("document.activeElement === document.querySelector('#chips .toggle')"), only())
-            # 375 px, light and dark: the chips and a menu open on the last one fit
-            page.set_viewport_size({"width": 375, "height": 800})
-            page.click("#ftoggle")
-            js("state.cats.delete('claim'); renderAll()")
-            for theme in ("light", "dark"):
-                js("t => { document.documentElement.dataset.theme = t; }", theme)
-                last = lanes[-1]
-                page.click(f"#chips .kind-more[data-k={last}]")
-                settle(150)
-                box = js(f"(r => [r.left, r.right])(document.getElementById('kindMenu-{last}').getBoundingClientRect())")
-                check(f"kinds at 375 px ({theme}): chips and an open menu fit", phone_fits(page, "Timeline kinds") == [] and box[0] >= 0 and box[1] <= 375,
-                      [phone_fits(page, "Timeline kinds"), box])
-                page.click(f"#chips .kind-more[data-k={last}]")
-            page.click("#chips .kind-more[data-k=visit]")
-            page.click("#kindMenu-visit [role=menuitem]:first-child")
-            settle(200)
-            check("kinds at 375 px: Show only this from the ⋯", only() == ["visit"] and phone_fits(page, "Timeline kinds") == [], only())
-            page.click("#fsum .fsum-reset")
-            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            # at 375 px the kinds are the Filters sheet's checkboxes (#269, checked with the sheet above)
             js("state.cats.delete('claim'); renderAll()")   # as the checks after this expect: Insurance claims hidden
-            page.click("#ftoggle")
-            page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- what the filters leave out (#190): on each tab that filters, one line saying how, ending in Reset filters,
             # which puts that tab's filters back but not the period. The Timeline's is under the records bar, still shown on
@@ -5838,11 +5955,12 @@ def main():
                 closed = [fsum() == want, page.is_hidden("#chips"), page.is_hidden("#q"), ftog()]
                 bad = phone_fits(page, f"Timeline filtered, {theme}")
                 page.click("#ftoggle")
-                settle(150)
-                bad += phone_fits(page, f"Timeline filtered, panel open, {theme}")
-                page.click("#ftoggle")
+                settle(300)
+                bad += phone_fits(page, f"Timeline filtered, the Filters sheet open, {theme}")
+                page.keyboard.press("Escape")
+                settle(300)
                 look = line_look("#fsum")
-                check(f"filters at 375 px ({theme}): with the panel closed the line stays, “Filters (2)” says how many are on; it fits, open or closed, and reads",
+                check(f"filters at 375 px ({theme}): with the Filters sheet closed the line stays, “Filters (2)” says how many are on; it fits, open or closed, and reads",
                       closed == [True, True, True, "Filters (2)"] and not bad and min(look) >= 4.5, [closed, bad, look])
             js("document.getElementById('sgStatus').textContent = ''")
             page.click("#fsum .fsum-reset")
@@ -5856,8 +5974,10 @@ def main():
                 settle(150)
                 bad = phone_fits(page, f"Timeline unfiltered, {theme}")
                 page.click("#ftoggle")
-                bad += phone_fits(page, f"Timeline unfiltered, panel open, {theme}")
-                page.click("#ftoggle")
+                settle(300)
+                bad += phone_fits(page, f"Timeline unfiltered, the Filters sheet open, {theme}")
+                page.keyboard.press("Escape")
+                settle(300)
                 check(f"…and unfiltered at 375 px ({theme}), it all fits, open or closed", not bad and fsum() is None, bad)
             page.set_viewport_size({"width": 1400, "height": 900})
             set_theme(theme_before)
@@ -5874,7 +5994,7 @@ def main():
             open_tab("labs")
             js("clearLabFilter()")
             settle(300)
-            check("filters on Labs (#190): no name filter, no line", fsum("#labSum") is None and ftog() == "Dates")
+            check("filters on Labs (#190): no name filter, no line, no Filters button (the Timeline's)", fsum("#labSum") is None and not page.is_visible("#ftoggle"))
             page.fill("#labQ", "hemo")
             settle(400)
             lab_want = "Showing lab names matching “hemo” · Reset filters"
@@ -5953,7 +6073,7 @@ def main():
             open_tab("labs")
             js("clearLabFilter()")
             settle(300)
-            check("Labs: the records bar shows no search box (Timeline's alone)", not page.is_visible("#q") and js("document.getElementById('ftoggle').textContent") == "Dates")
+            check("Labs: the records bar shows no search box (Timeline's alone)", not page.is_visible("#q") and not page.is_visible("#ftoggle"))
             order = js("""(() => { const y = s => document.querySelector(s).getBoundingClientRect().top, hd = document.querySelector('#series .series-hd');
               return [hd.contains(document.getElementById('labQ')), hd.contains(document.getElementById('viewPick')),
                       [...hd.querySelectorAll('#seriesSel button')].map(b => b.textContent), y('#labQ') < y('#seriesSel') && y('#seriesSel') < y('#tvBox'),
@@ -7355,11 +7475,19 @@ def main():
                   js("[...document.querySelectorAll('#addMenuList [role=group]')].map(g => [g.getAttribute('aria-label'), ...[...g.querySelectorAll('[role=menuitem]')].map(a => a.getAttribute('href'))])"))
             page.keyboard.press("Escape")
             # #244: on a phone the bar wraps, and a menu pinned to its button's right edge opened off the screen's left;
-            # each now opens the screen's width under the bar, so every item is on the screen
-            menu_out = """id => { const vw = document.documentElement.clientWidth, vh = innerHeight, bar = document.querySelector('header.topbar').getBoundingClientRect().bottom;
-                const its = [...document.querySelectorAll(`#${id} [role^=menuitem]`)].filter(x => x.checkVisibility());
-                return its.length ? its.filter(x => { const r = x.getBoundingClientRect(); return r.left < 0 || r.right > vw || r.top < bar || r.bottom > vh; })
-                  .map(x => x.textContent.trim()) : ['nothing shown']; }"""
+            # each opened the screen's width under the bar. Since #269 each is a sheet from the screen's foot (nav.js
+            # menuSheet): a modal dialog, its button saying so (aria-haspopup="dialog") and opening on its first item,
+            # every item on the screen and 44 px tall; Escape closes it, focus back on its button. At 1400 px the same list
+            # is its popover again
+            menu_out = """id => { const vw = document.documentElement.clientWidth, vh = innerHeight, l = document.getElementById(id), d = l.closest('dialog.sheet[open]');
+                const its = [...l.querySelectorAll('[role^=menuitem]')].filter(x => x.checkVisibility());
+                if (!d || !d.matches(':modal') || !its.length) return ['not a sheet with items: ' + !!d + ' ' + its.length];
+                const b = document.getElementById(id.replace('List', 'Btn'));
+                return [...(b.getAttribute('aria-haspopup') === 'dialog' && b.getAttribute('aria-expanded') === 'true' ? [] : ['its button: ' + b.getAttribute('aria-haspopup') + ' ' + b.getAttribute('aria-expanded')]),
+                  ...(document.activeElement === its[0] ? [] : ['focus on ' + (document.activeElement.id || document.activeElement.textContent)]),
+                  ...its.filter(x => { const r = x.getBoundingClientRect(); return r.left < 0 || r.right > vw || r.top < 0 || r.bottom > vh || r.height < 44; })
+                  .map(x => x.textContent.trim())]; }"""
+            back = "id => [!document.querySelector('dialog.sheet[open]'), document.activeElement.id === id, document.getElementById(id).getAttribute('aria-expanded')]"
             bad = []
             for path in ("/", "/settings.html#display"):
                 for w in (320, 375, 390):
@@ -7368,17 +7496,30 @@ def main():
                     page.wait_for_selector("#userMenuBtn", state="visible", timeout=10000)
                     settle(300)
                     for m in ("profileMenu", "addMenu", "userMenu"):
-                        page.click(f"#{m}Btn")
+                        page.focus(f"#{m}Btn")
+                        page.keyboard.press("Enter")
+                        settle(300)
                         bad += [f"{path} at {w} px, {m}: {x}" for x in js(menu_out, m + "List")]
                         page.keyboard.press("Escape")
-            check("at 320, 375 and 390 px, the top bar's profile menu, Add and your menu open under the bar with every item on the screen (#244, #264)", not bad, bad[:6])
-            # #308: under 500 px tall the bar scrolls with the page, and the menus opened --bar-h down the screen, a gap under
-            # a bar that had scrolled up; opened with the bar scrolled up to the buttons, each sits right under the bar, on the screen
-            # (its foot may run below the screen's: it's as tall as its items, and the page scrolls to it, #319)
-            menu_short = """id => { const vw = document.documentElement.clientWidth, vh = innerHeight, bar = document.querySelector('header.topbar').getBoundingClientRect().bottom;
-                const r = document.getElementById(id).getBoundingClientRect();
-                return r.top - bar >= 0 && r.top - bar <= 8 && r.top >= 0 && r.bottom + scrollY <= document.documentElement.scrollHeight && r.left >= 0 && r.right <= vw ? null
-                  : [Math.round(bar), Math.round(r.top), Math.round(r.bottom), Math.round(r.left), Math.round(r.right), vw, vh]; }"""
+                        settle(300)
+                        if js(back, m + "Btn") != [True, True, "false"]:
+                            bad.append(f"{path} at {w} px, {m}: after Escape {js(back, m + 'Btn')}")
+            page.set_viewport_size({"width": 1400, "height": 800})
+            settle(300)
+            if js("['profileMenuList', 'addMenuList', 'userMenuList'].some(id => { const l = document.getElementById(id); return l.popover !== 'auto' || l.closest('dialog'); })"):
+                bad.append("at 1400 px a menu isn't its popover again")
+            check("at 320, 375 and 390 px, the top bar's profile menu, Add and your menu open as sheets on their first item, every item on the screen and 44 px tall; "
+                  "Escape closes each, focus back on its button; at 1400 px they're popovers again (#244, #264, #269)", not bad, bad[:6])
+            # #308, #319: under 500 px tall the bar scrolls with the page; the menus opened under it where it was. As sheets
+            # (#269) they're at the screen's foot, on the screen, whatever the page's scroll, their items scrolling inside
+            # them where the screen is too short for all of them
+            menu_short = """id => { const l = document.getElementById(id), d = l.closest('dialog.sheet[open]'), vw = document.documentElement.clientWidth;
+                if (!d) return 'not a sheet';
+                const r = d.getBoundingClientRect(), its = [...l.querySelectorAll('[role^=menuitem]')].filter(x => x.checkVisibility()), last = its.at(-1);
+                last.scrollIntoView({block: 'nearest'});
+                const e = last.getBoundingClientRect();
+                return r.top >= 0 && Math.abs(r.bottom - innerHeight) <= 1 && r.left >= 0 && r.right <= vw && e.top >= r.top - 1 && e.bottom <= r.bottom + 1 ? null
+                  : [Math.round(r.top), Math.round(r.bottom), Math.round(e.top), Math.round(e.bottom), innerHeight]; }"""
             page.set_viewport_size({"width": 667, "height": 375})
             bad = []
             for path in ("/", "/settings.html#display"):
@@ -7386,17 +7527,16 @@ def main():
                 page.wait_for_selector("#userMenuBtn", state="visible", timeout=10000)
                 settle(300)
                 for m in ("profileMenu", "addMenu", "userMenu"):
-                    # scrolled to the button's top edge and tapped (a click from Playwright or the keyboard would scroll the bar back)
                     js("id => { const b = document.getElementById(id); scrollTo(0, b.getBoundingClientRect().top + scrollY); }", m + "Btn")
                     settle(100)
-                    scrolled = js("scrollY")
                     js("id => document.getElementById(id).click()", m + "Btn")
-                    settle(100)
+                    settle(300)
                     where = js(menu_short, m + "List")
-                    if where or not scrolled:
-                        bad.append(f"{path} at 667×375 scrolled {scrolled} px, {m}: bar bottom, menu top, bottom, left, right, screen {where}")
+                    if where:
+                        bad.append(f"{path} at 667×375, {m}: sheet top, bottom, its last item's top, bottom, screen {where}")
                     page.keyboard.press("Escape")
-            check("…and at 667×375, where the bar scrolls away, each opened after scrolling sits right under the bar, on the screen (#308)", not bad, bad[:6])
+                    settle(300)
+            check("…and at 667×375, where the bar scrolls away, each opens as a sheet at the screen's foot, its last item reached inside it (#308, #269)", not bad, bad[:6])
             # #319: between 376 and 451 px the records bar had room for Add on its first row but not your menu, which dropped
             # onto a row of its own; the two are one box now, side by side on one row at every width, on the screen. The
             # records page is checked as it is (the picker a select on a row of its own) and with one profile (a label
@@ -7420,10 +7560,9 @@ def main():
                         bad.append(f"{path}{' (one profile)' if one else ''} at {w} px: Add, your menu (top, left, right) {where}")
             check("at 320, 375, 400, 451 and 452 px the top bar's Add and your menu sit side by side on one row, on the records page and a page with a title (#319)", not bad, bad[:6])
             # #319: under 500 px tall the menus scroll with the page, and kept a height of the screen less the bar's: at
-            # 320×180 (1280×720 at 400%) a box of 37 px showing one item at a time. They're as tall as their items now
-            menu_whole = """id => { const l = document.getElementById(id), its = [...l.querySelectorAll('[role^=menuitem]')].filter(x => x.checkVisibility());
-                const foot = Math.round(l.getBoundingClientRect().bottom + scrollY), page = document.documentElement.scrollHeight;
-                return its.length && l.scrollHeight <= l.clientHeight + 1 && foot <= page ? null : [its.length, l.scrollHeight, l.clientHeight, foot, page]; }"""
+            # 320×180 (1280×720 at 400%) a box of 37 px showing one item at a time. As sheets (#269) they take the screen's
+            # height less 16 px, their items scrolling inside them, the last one reached there
+            menu_whole = menu_short
             page.set_viewport_size({"width": 320, "height": 180})
             bad = []
             for path in ("/", "/settings.html#display"):
@@ -7434,12 +7573,13 @@ def main():
                     bad.append(f"{path} at 320×180: Add, your menu {js(menus_row)}")
                 for m in ("profileMenu", "addMenu", "userMenu"):
                     js("id => document.getElementById(id).click()", m + "Btn")
-                    settle(100)
+                    settle(400)
                     where = js(menu_whole, m + "List")
                     if where:
-                        bad.append(f"{path} at 320×180, {m}: items, scroll height, height, foot, page's height {where}")
+                        bad.append(f"{path} at 320×180, {m}: sheet top, bottom, its last item's top, bottom, screen {where}")
                     page.keyboard.press("Escape")
-            check("…and at 320×180 both share a row and each menu opens with all its items, no scrolling inside it, the page scrolling to its foot (#319)", not bad, bad[:6])
+                    settle(300)
+            check("…and at 320×180 both share a row and each menu opens as a sheet on the screen, its last item reached inside it (#319, #269)", not bad, bad[:6])
             # #356: in a browser without CSS anchor positioning (without_anchor_positioning, above main) nav.js places a
             # menu: before it's drawn (with less motion it was drawn at the screen's top left for a frame), over its button
             # where there's no room under it (a row menu at the screen's foot opened off the screen), and again as the
@@ -10767,11 +10907,13 @@ def main():
                     open_tab(t)
                     settle(250)
                     bad += phone_fits(page, t, phone_known)
-                    if page.is_visible("#ftoggle"):
-                        page.click("#ftoggle")
-                        settle(150)
-                        bad += phone_fits(page, t + " with its filters open", phone_known)
-                        page.click("#ftoggle")
+                    for sheet in ("#ftoggle", "#periodPill"):   # the Filters and period sheets (#269)
+                        if page.is_visible(sheet):
+                            page.click(sheet)
+                            settle(300)
+                            bad += phone_fits(page, f"{t} with {sheet} open", phone_known)
+                            page.keyboard.press("Escape")
+                            settle(300)
                     if t == "timeline":
                         page.click("#list .tl-row >> nth=0")
                         page.wait_for_function("document.getElementById('drawer').classList.contains('open')", timeout=5000)
@@ -10779,10 +10921,12 @@ def main():
                         bad += phone_fits(page, "the drawer", phone_known)
                         page.keyboard.press("Escape")
                         settle(250)
-                for m in ("#addMenuBtn", "#userMenuBtn"):
+                for m in ("#profileMenuBtn", "#addMenuBtn", "#userMenuBtn"):
                     page.click(m)
+                    settle(300)
                     bad += phone_fits(page, m + " open", phone_known)
                     page.keyboard.press("Escape")
+                    settle(300)
                 check(f"at 375 px, {theme}: every records tab, with its filters open, the drawer and the menus fit, no control cut off or overlapping (#61)",
                       js("document.documentElement.dataset.theme") == theme and not bad, bad[:8] or "")
                 bad, seen = [], []
@@ -11906,7 +12050,7 @@ def main():
             ph.wait_for_selector("#charts svg", timeout=10000)
             check("offline: Trends draws from the kept copy", ph.evaluate("document.querySelectorAll('#charts svg').length") > 0)
             check("offline: Import, Settings and Account say they need the server, as their tip, with no title (#385)",
-                  ph.evaluate("[...document.querySelectorAll('header a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && a.dataset.tip === \"Needs the server: you're offline\" && !a.hasAttribute('title'))"))
+                  ph.evaluate("[...document.querySelectorAll('header a.acct, dialog.sheet a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && a.dataset.tip === \"Needs the server: you're offline\" && !a.hasAttribute('title'))"))
             # (#385) the profile menu's and your menu's links, still reached with the arrow keys: each shows the reason as
             # its tooltip and has it as its description, focused from the keyboard; the other profile can't be picked (#264)
             ph.mouse.move(0, 0)

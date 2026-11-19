@@ -246,8 +246,9 @@ function ask({title, message = "", action = "OK", cancel = "Cancel", danger = fa
       liveFollow();   // the status line back out first (below)
       box.remove();
       // asked from a menu's item (Log out, #391): the menu has closed by now, so focus goes to the button that opens it
-      const pop = opener && opener.closest?.("[popover]"), back = pop && !pop.matches(":popover-open")
-        ? [...document.querySelectorAll("button")].find(b => b.popoverTargetElement === pop) : opener;
+      // (a sheet's on a phone, nav.js: #269)
+      const pop = opener && opener.closest?.("[popover], dialog.sheet"), back = pop && !(pop.open || pop.matches(":popover-open"))
+        ? pop.sgFrom || [...document.querySelectorAll("button")].find(b => b.popoverTargetElement === pop) : opener;
       if (back && back.isConnected && back !== document.body) back.focus();
       resolve(box.returnValue === "yes");
     });

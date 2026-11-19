@@ -49,13 +49,13 @@ function menuWire(m) {
     if (ev.key !== "ArrowDown" && ev.key !== "Enter" && ev.key !== " ") return;
     ev.preventDefault();
     m.open();
-    its()[0]?.focus();
+    if (!m.sheet) its()[0]?.focus();   // a sheet opens on its picked item (menuSheet, below)
   });
   list.addEventListener("keydown", ev => {
     const all = its(), i = all.indexOf(document.activeElement);
     const to = {ArrowDown: all[(i + 1) % all.length], ArrowUp: all[(i - 1 + all.length) % all.length], Home: all[0], End: all.at(-1)}[ev.key];
     if (to) { ev.preventDefault(); to.focus(); }
-    else if (ev.key === "Tab") { leaving = true; m.close(); }   // on to what's next, not back to the button
+    else if (ev.key === "Tab" && !m.sheet) { leaving = true; m.close(); }   // on to what's next, not back to the button (a sheet keeps it, below)
   });
   list.addEventListener("click", ev => { if (ev.target.closest("[role^=menuitem]")) setTimeout(m.close); });
   return m;
@@ -65,9 +65,8 @@ function menuWire(m) {
    other, scrolling inside if it must; app.css's anchor positioning (or the rest of this) puts it there. Without CSS
    anchor positioning (app.css, @supports not (anchor-name: --a)) the rest is worked out here: under its button, or
    over it where there's no room under and there is over; 8 px inside the screen sideways, its right edge on the
-   button's when that's on the right; and how far down the page the bar ends, for a phone's short screen, where the bar
-   scrolls away (#308, #319). Called as it's about to open, before it's drawn (measured shown, unseen, for a moment), and
-   while it's open as the page scrolls or the window changes size. */
+   button's when that's on the right. Called as it's about to open, before it's drawn (measured shown, unseen, for a
+   moment), and while it's open as the page scrolls or the window changes size. */
 function menuPlace(m) {
   const {btn, list} = m, r = btn.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
   const below = Math.floor(vh - r.bottom - 14), above = Math.floor(r.top - 14);
@@ -76,10 +75,10 @@ function menuPlace(m) {
   list.classList.add("sg-measure");   // shown (unseen) to be measured, if it isn't yet
   const w = list.offsetWidth, h = list.offsetHeight;
   list.classList.remove("sg-measure");
-  const bar = document.querySelector("header.topbar"), right = r.left + r.width / 2 > vw / 2;
+  const right = r.left + r.width / 2 > vw / 2;
   const left = Math.max(8, Math.min(right ? r.right - w : r.left, vw - 8 - w));
   const top = h <= below || below >= above ? r.bottom + 6 : r.top - 6 - h;
-  placeAt(list, {"--menu-top": top, "--menu-left": left, "--menu-bar": bar ? bar.getBoundingClientRect().bottom + scrollY : 0});
+  placeAt(list, {"--menu-top": top, "--menu-left": left});
 }
 /* the top bar's Search (#273): opens the command palette (palette.js wires it, and puts the keys that open it too in
    its tip). An icon, its name said. Hidden with the rest of the bar by lock() */
@@ -87,8 +86,63 @@ function barSearch() {
   return el("button", {class: "iconbtn bar-search", type: "button", id: "barSearch", "aria-label": "Search", "aria-haspopup": "dialog", "data-tip": "Search"},
     icon("search"));
 }
-/* phones (#268): the layout at 700 px or narrower (nav.js's phoneBar, below) */
+/* ---- phones (#268, #269): at 700 px or narrower the top bar's menus, the records bar's period and the Timeline's
+   filters open as sheets from the foot of the screen (openDialog's, util.js: #262), in reach of a thumb, the screen's
+   width, swiped down by their grab handle or their heading, or closed with Escape or their ✕. */
 const PHONE = matchMedia("(max-width:700px)");
+/* a sheet: its heading and ✕ (the heading a handle to swipe it down by, as its grab bar is), then kids; kept in the page
+   (closed) for openDialog(d, {as: "sheet"}). -> the <dialog> */
+function phoneSheet(title, ...kids) {
+  const id = "sheet" + (phoneSheet.n = (phoneSheet.n || 0) + 1);
+  const d = el("dialog", {class: "sheet", "aria-labelledby": id},
+    el("div", {class: "sheet-hd", "data-grab": ""}, el("h2", {id, text: title}),
+      el("button", {class: "btn quiet sheet-x", type: "button", "aria-label": "Close", onclick: () => d.close()}, icon("x"))), ...kids);
+  document.body.append(d);
+  return d;
+}
+/* a menu (menuWire's m) that's a sheet on a phone and its popover wider, changing as the window does: the same list,
+   moved into the sheet, the items worked the same way (the arrow keys, Home and End; Tab on to what follows in the
+   sheet, not out of it); opened on its picked item, or its first; closed when one is picked. extra: what the sheet has
+   under the menu (the period's date boxes). -> m */
+function menuSheet(m, title, ...extra) {
+  const {btn, list} = m, pop = {open: m.open, close: m.close}, home = list.parentNode;
+  const body = el("div", {class: "sheet-body"}, ...extra), d = phoneSheet(title, body);
+  d.sgFrom = btn;   // where ask() sends focus back once the sheet has gone (Log out, util.js)
+  d.addEventListener("close", () => btn.setAttribute("aria-expanded", "false"));
+  btn.addEventListener("click", () => { if (m.sheet) d.open ? d.close() : m.open(); });
+  const sheet = () => {
+    m.open = () => {
+      if (d.open || !btn.isConnected) return;
+      openDialog(d, {as: "sheet"});
+      btn.setAttribute("aria-expanded", "true");
+      m.onOpen?.();
+      const its = [...list.querySelectorAll("[role^=menuitem]")].filter(x => !x.hidden);
+      (its.find(x => x.getAttribute("aria-checked") === "true") || its[0])?.focus();
+    };
+    m.close = () => d.close();
+  };
+  function mode() {
+    if (m.sheet === PHONE.matches) return;
+    m.sheet = PHONE.matches;
+    if (m.sheet) {
+      pop.close();
+      list.removeAttribute("popover");
+      btn.popoverTargetElement = null;
+      body.prepend(list);
+      sheet();
+    } else {
+      d.close();
+      home.append(list);
+      list.popover = "auto";
+      btn.popoverTargetElement = list;
+      Object.assign(m, pop);
+    }
+    btn.setAttribute("aria-haspopup", m.sheet ? "dialog" : "menu");
+  }
+  PHONE.addEventListener("change", mode);
+  mode();
+  return m;
+}
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
   if (!header) return {sync() {}, lock() {}, profiles() { return null; }, layout() { return {}; }, fit() {}, menu: menuWire, TABS: []};
@@ -355,7 +409,8 @@ const SgNav = (() => {
      Add and your menu as icons; the records tabs a bar fixed at the screen's foot (app.css), each an icon and a short
      name ("Body": the whole name is still its name, for a screen reader and #tabTitle). The bar has five places: every
      tab while there are five or fewer, else four and More, the tab shown among the four (phoneSlots). Under 500 px
-     tall the tabs go back to a row in the top bar, which scrolls away with the page (#308). */
+     tall the tabs go back to a row in the top bar, which scrolls away with the page (#308). The top bar's menus are
+     sheets there (menuSheet, above, #269). */
   function phoneSlots(shown, cur) {
     if (shown.length <= 5) return shown;
     const vis = shown.slice(0, 4);
@@ -374,6 +429,10 @@ const SgNav = (() => {
     user.btn.prepend(el("span", {class: "menu-ico", "aria-hidden": "true"}, icon("circle-user")));
     const brand = header.querySelector(".brand-link") || svgLogo, word = brand && [...brand.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
     if (word) word.replaceWith(el("span", {class: "brand-word", text: word.textContent}));
+    menuSheet(prof, "Profile");
+    menuSheet(add, "Add");
+    menuSheet(user, "Your menu");
+    menuSheet(more, "More tabs");
   }
   phoneBar();
   return {sync, lock, profiles, layout, fit, menu: menuWire, TABS: TABS.map(([t]) => t)};
