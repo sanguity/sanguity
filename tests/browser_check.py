@@ -9824,6 +9824,38 @@ def main():
             settle(300)
             got = js("[getComputedStyle(document.querySelector('header.topbar')).position, getComputedStyle(document.querySelector('header .tabs')).position, document.querySelector('header .tabs').getBoundingClientRect().bottom <= document.querySelector('header.topbar').getBoundingClientRect().bottom, getComputedStyle(document.documentElement).getPropertyValue('--tabbar')]")
             check("…and under 500 px tall the tabs are a row in the top bar, which scrolls with the page (#268, #308)", got == ["relative", "static", True, ""], got)
+            # #396: a long profile name (40 characters; the server allows 80) is cut short inside its slot, its caret kept,
+            # and never covers Search or Add: each is tapped at its centre. On a wide screen it takes the room the bar has
+            # (whole at 1400 px); wherever it's cut, its whole name is still its button's name, and its tip. At 320, 375, 390
+            # and 1400 px
+            long_name = "Samantha Josephine Okonkwo-Fairweather J"
+            rename2 = lambda n: js("n => fetch('api/profiles/2', {method: 'PATCH', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+                                   "body: JSON.stringify({name: n})}).then(r => r.status)", n)
+            renamed = rename2(long_name)
+            name_fit = {} if renamed == 200 else {"renamed": renamed}
+            for w in (320, 375, 390, 1400):
+                page.set_viewport_size({"width": w, "height": 800 if w < 400 else 900})
+                page.goto(base + "/settings.html?profile=2")
+                page.wait_for_function(filled, timeout=20000)
+                settle(300)
+                bad = js("""() => { const bad = [], r = e => e.getBoundingClientRect(), b = document.getElementById('profileMenuBtn'), slot = r(document.getElementById('profilePick')), x = r(b);
+                  if (x.left < slot.left - 1 || x.right > slot.right + 1) bad.push('outside its slot: ' + [x.left, x.right, slot.left, slot.right].map(Math.round));
+                  const c = b.querySelector('.menu-caret');
+                  if (!c.checkVisibility() || r(c).right > x.right + 1) bad.push('its caret gone');
+                  for (const id of ['barSearch', 'addMenuBtn', 'userMenuBtn']) { const e = document.getElementById(id), y = r(e), h = document.elementFromPoint((y.left + y.right) / 2, (y.top + y.bottom) / 2);
+                    if (!h || !e.contains(h)) bad.push(id + ' covered at its centre by ' + (h ? h.id || h.className : 'nothing')); }
+                  const n = b.querySelector('.profile-name'), cut = n.scrollWidth > n.clientWidth;
+                  if (cut && b.dataset.tip !== n.textContent) bad.push('cut, its tip ' + b.dataset.tip);
+                  if (cut && innerWidth >= 1400) bad.push('cut at 1400 px: ' + n.clientWidth + ' of ' + n.scrollWidth);
+                  return bad; }""")
+                said = ax_said(page, "#profileMenuBtn")[0]
+                if long_name not in said:
+                    bad.append("its name: " + said)
+                if bad:
+                    name_fit[w] = bad
+            rename2("Second person")
+            check("a 40-character profile name (#396): its button inside its slot with its caret, Search, Add and your menu tapped at their centres, "
+                  "whole at 1400 px, and where it's cut its whole name its button's name and tip, at 320, 375, 390 and 1400 px", not name_fit, name_fit)
             page.set_viewport_size({"width": 1400, "height": 900})
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- milestones (#39) and visits counted as workouts (#43) on the Settings page: a milestone added (primary)

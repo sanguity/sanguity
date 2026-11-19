@@ -1198,6 +1198,10 @@ Everything on `main` so far; it becomes the first tagged release.
   Upload files…), Display and Getting started opened whichever profile had been picked last in any tab, not the one
   shown. Every link in the top bar to another page now carries the profile shown (`?profile=`), as the tabs, the
   profile menu's pages and the command palette's links did.
+- **A long profile name stays in its place** (#396): on a phone a name of more than about 13 characters ran over
+  Search and Add (a tap on Search opened the profile menu), and on a wide screen it was cut at 16 characters with room
+  to spare, shown whole only inside its menu. It's cut short inside its own place now, its ▾ kept, taking the room the
+  bar has; where it's cut its whole name is its tip, and still its button's name.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -305,6 +305,9 @@ const SgNav = (() => {
         put(vis);
       }
     }
+    // the profile's name cut short: the whole of it in a tip (said in the button's name already, #396)
+    const name = wrap.hidden ? null : prof.btn.querySelector(".profile-name");
+    if (name && name.scrollWidth > name.clientWidth) prof.btn.dataset.tip = name.textContent; else delete prof.btn.dataset.tip;
     // a tab that had focus and moved: focus stays with it, or goes to More when it's put away
     if (shown.includes(had) && document.activeElement !== had) (had.parentElement === tabs ? had : more.btn).focus({preventScroll: true});
   }
