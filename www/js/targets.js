@@ -130,11 +130,18 @@ const tgtLayer = (b, label = "Your target") => b ? {type: "target", low: b[0], h
 const tgtKey = (label = "Your target, as your care team gave it") => el("span", {}, el("i", {class: "tgt-key"}), label);
 
 /* ---- Settings → About this person: the editor (owners and editors), or the list (viewers) */
+/* what saving a target said: "Saved the target for weight: 60–70 kg." (before, after: the target then and now) */
+function targetSaid(k, before, after) {
+  if (!after) return `Cleared the target for ${tgtLower(k)}.`;
+  const u = after.unit || TGT[k].units[0], pl = (k === "glucose" || k === "cgm") ? (u === "mmol/L" ? 1 : 0) : TGT[k].places;
+  return `${before ? "Changed" : "Saved"} the target for ${tgtLower(k)}: ${k === "bp" ? tgtBpText(after) : tgtRange(tgtConv(k, after.low, u), tgtConv(k, after.high, u), pl, TGT_UNIT[u] || u)}.`;
+}
 /* p: the profile; a: GET person's answer; pref: this person's Units choices (settings/user units); send(path, method,
    payload, said, focusId, quiet) as about.js's, the words to say once done (naming the profile if another is shown
-   by then, #377); undo(left, path, method, payload, said, since,
-   focusId) about.js's, for an Undo (#367) */
-function targetsCard(p, a, pref, send, undo) {
+   by then, #377); undo(left, path, method, payload, said, since, focusId) about.js's, for an Undo (#367); saveBar(ev)
+   a form's submit, which the group's bar saves (#272: each target a field, data-field, about.js); notSaved() its
+   "not saved" mark */
+function targetsCard(p, a, pref, send, undo, saveBar, notSaved) {
   const T = a.targets || {}, edit = a.can_change, box = el("div", {class: "tgt-edit"});
   const unitFor = k => {   // the unit each is typed in: the person's Units choice, else as it was typed, else the first
     const u = pref || {}, typed = (T[k] || {}).unit;
@@ -148,36 +155,31 @@ function targetsCard(p, a, pref, send, undo) {
   for (const k of Object.keys(TGT)) {
     const t = T[k], unit = unitFor(k), pl = placesFor(k, unit), id = "tgt-" + k;
     const now = t ? (k === "bp" ? tgtBpText(t) : tgtRange(tgtConv(k, t.low, unit), tgtConv(k, t.high, unit), pl, shownUnit(unit))) : "";
-    const head = el("h3", {class: "sub", id: id + "-hd", tabindex: -1, text: TGT[k].name});
+    const head = el("h3", {class: "sub", id: id + "-hd", tabindex: -1}, TGT[k].name, edit ? notSaved() : null);
     const said = el("p", {class: "muted tgt-now", text: t ? `Your target: ${now}${tgtWho(t) ? ` (${tgtWho(t)})` : ""}.` : "No target entered."});
     if (!edit) { box.append(el("section", {class: "tgt-one", "aria-labelledby": id + "-hd"}, head, said)); continue; }
     const num = (name, label, v) => el("label", {class: "about-num"}, label,
-      el("input", {type: "number", name, step: "any", inputmode: "decimal", value: v == null ? "" : String(+v.toFixed(pl))}));
+      el("input", {type: "number", name, id: `${id}-${name}`, step: "any", inputmode: "decimal", value: v == null ? "" : String(+v.toFixed(pl))}));
     const fields = k === "bp"
       ? [["sys", "Systolic"], ["dia", "Diastolic"]].map(([part, n]) => el("fieldset", {class: "tgt-pair"}, el("legend", {text: `${n} (mmHg)`}),
           num(part + "Low", "Low end", t ? t[part + "Low"] : null), num(part + "High", "High end", t ? t[part + "High"] : null)))
       : [el("fieldset", {class: "tgt-pair"}, el("legend", {text: `In ${shownUnit(unit)}`}),
           num("low", "Low end", t ? tgtConv(k, t.low, unit) : null), num("high", "High end", t ? tgtConv(k, t.high, unit) : null))];
-    const by = el("input", {type: "text", name: "by", maxlength: 80, value: t ? t.by || "" : "", autocomplete: "off"});
-    const on = el("input", {type: "date", name: "on", value: t ? t.on || "" : "", min: "1900-01-01", max: isoDay(Date.now())});
-    const form = el("form", {class: "tgt-form", "aria-labelledby": id + "-hd", onsubmit: ev => { ev.preventDefault();
-      const f = n => { const i = form.elements[n]; return i && i.value !== "" ? +i.value : null; };
-      const body = k === "bp" ? {sysLow: f("sysLow"), sysHigh: f("sysHigh"), diaLow: f("diaLow"), diaHigh: f("diaHigh")} : {low: f("low"), high: f("high"), unit};
-      send(`profiles/${p.id}/person`, "PUT", {targets: {[k]: {...body, by: by.value.trim(), on: on.value || ""}}},
-        got => `${t ? "Changed" : "Saved"} the target for ${tgtLower(k)}: ${k === "bp" ? tgtBpText(got.targets[k]) : tgtRange(tgtConv(k, got.targets[k].low, unit), tgtConv(k, got.targets[k].high, unit), pl, shownUnit(unit))}.`,
-        id + "-save"); }},
+    const by = el("input", {type: "text", name: "by", id: id + "-by", maxlength: 80, value: t ? t.by || "" : "", autocomplete: "off"});
+    const on = el("input", {type: "date", name: "on", id: id + "-on", value: t ? t.on || "" : "", min: "1900-01-01", max: isoDay(Date.now())});
+    const form = el("form", {class: "tgt-form", "aria-labelledby": id + "-hd", onsubmit: saveBar},
       ...fields,
       el("div", {class: "tgt-who"}, el("label", {class: "about-num"}, "Set by (optional)", by), el("label", {class: "about-num"}, "On (optional)", on)),
-      el("div", {class: "about-row"}, el("button", {class: "btn", type: "submit", id: id + "-save", text: t ? "Save changes" : "Save target"}),
-        t ? el("button", {class: "btn small", type: "button", id: id + "-clear", text: "Clear", "aria-label": `Clear the target for ${tgtLower(k)}`,
+      t ? el("div", {class: "about-row"},
+        el("button", {class: "btn small", type: "button", id: id + "-clear", text: "Clear", "aria-label": `Clear the target for ${tgtLower(k)}`,
           onclick: async () => {   // at once, with an Undo that enters it again as it was, in the unit it was typed in (#263), if none was since (#367)
             const said = `Cleared the target for ${tgtLower(k)}.`, was = k === "bp" ? {...t} : {...t, low: tgtConv(k, t.low, t.unit), high: tgtConv(k, t.high, t.unit)};
             const done = await send(`profiles/${p.id}/person`, "PUT", {targets: {[k]: null}}, said, id + "-hd", true);
             if (done)
               toast(`${done} It was ${now}.`, {action: "Undo", onAction: () => undo(got => !(got.targets || {})[k],   // none entered since
                 `profiles/${p.id}/person`, "PUT", {targets: {[k]: was}}, `Undone: the target for ${tgtLower(k)} is back.`,
-                `A target for ${tgtLower(k)} was entered since: it's left as it is.`, id + "-hd")}); }}) : null));
-    box.append(el("section", {class: "tgt-one", "aria-labelledby": id + "-hd"}, head, said, form));
+                `A target for ${tgtLower(k)} was entered since: it's left as it is.`, id + "-hd")}); }})) : null);
+    box.append(el("section", {class: "tgt-one", "aria-labelledby": id + "-hd", "data-field": k, "data-unit": k === "bp" ? null : unit}, head, said, form));
   }
   return el("div", {},
     el("p", {class: "hint", text: "For readings taken at home: a target each, as your care team gave it. Optional; with none entered, nothing changes."}),

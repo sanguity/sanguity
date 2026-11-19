@@ -1,5 +1,6 @@
 /* Sanguity · the visit summary (#48), on the Sharing page (#168): pick the visit and the "since" point, tick
-   sections, add labs to trend, type questions (kept as your own draft for the profile as you type, #219), preview, download the PDF.
+   sections, add labs to trend, type questions (kept as your own draft for the profile, #219: saved with the group's
+   bar as any change is, #272, or by downloading the PDF), preview, download the PDF.
    The server builds both the preview and the PDF from the same records (server/summary.py); nothing here is put
    into innerHTML. Follows the page's profile picker (#profile, filled by sharing.js); call() is sharing.js's. */
 "use strict";   // $, el and api come from util.js
@@ -33,17 +34,36 @@ function addLab() {
 $("#labAdd").onclick = addLab;
 $("#labIn").addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); addLab(); } });
 
-/* the questions draft, kept a moment after typing stops */
-let qTimer = null, qSaved = "";
-async function saveQuestions(pid = PID) {   // pid: the profile they were typed for, when switching away from it
-  clearTimeout(qTimer); qTimer = null;
-  const text = $("#questions").value;
-  if (text === qSaved) return;
-  try { await call(`profiles/${pid}/summary/questions`, "PUT", {text}); qSaved = text; sayIn($("#qMsg"), "Draft saved."); }
-  catch (e) { sayIn($("#qMsg"), "The draft wasn't saved: " + e.message, true); }
+/* the questions draft (#272): changed and not saved, it's marked so, and #build's data-dirty puts it in the group's
+   bar (sidebar.js), whose Save keeps it (summarySave) and Discard puts the saved one back (summaryDiscard); leaving
+   the page or picking another profile asks first. The PDF keeps it too (the server does, as it makes one). */
+let qSaved = "";
+function qMark() {
+  const dirty = $("#questions").value !== qSaved;
+  $("#questions").closest("section").classList.toggle("set-changed", dirty);
+  if (dirty) $("#build").setAttribute("data-dirty", 1); else $("#build").removeAttribute("data-dirty");
 }
-$("#questions").addEventListener("input", () => { sayIn($("#qMsg"), ""); clearTimeout(qTimer); qTimer = setTimeout(saveQuestions, 800); });
-$("#questions").addEventListener("blur", () => { if (qTimer) saveQuestions(); });
+$("#questions").addEventListener("input", () => { sayIn($("#qMsg"), ""); qMark(); });
+/* the bar's Save: a toast says it, with an Undo that puts the draft before back, if it's still the one saved here */
+async function summarySave(msg, had) {
+  const pid = PID, text = $("#questions").value, was = qSaved, name = $("#profile").selectedOptions[0]?.textContent.replace(/ \([^)]*\)$/, "");
+  try { await call(`profiles/${pid}/summary/questions`, "PUT", {text}); }
+  catch (e) { sayIn($("#qMsg"), e.message, true, {say: false}); sayIn(msg, "Your questions aren't saved: " + e.message, true); return; }
+  if (PID === pid) { qSaved = text; qMark(); sayIn($("#qMsg"), "Saved.", false, {say: false}); if (had) $("#questions").focus({preventScroll: true}); }
+  toast("Saved your questions.", {action: "Undo", onAction: async () => {
+    const now = (await call(`profiles/${pid}/summary`)).questions || "";
+    let said = "Your questions were changed since, so they're left as they are.";
+    if (now === text) { await call(`profiles/${pid}/summary/questions`, "PUT", {text: was}); said = "Undone: your questions are as before."; }
+    if (PID !== pid) { toast(`${name}: ${said}`); return; }   // another profile shown now (#367)
+    if (now === text) { const kept = $("#questions").value !== qSaved; qSaved = was; if (!kept) $("#questions").value = was; qMark(); }
+    sayIn($("#qMsg"), said);
+  }});
+}
+function summaryDiscard() {
+  $("#questions").value = qSaved; qMark();
+  sayIn($("#qMsg"), "Changes discarded: back as saved.");
+  $("#questions").focus();
+}
 
 async function load() {
   $("#build").hidden = true; $("#preview").hidden = true; sayIn($("#loadMsg"), "Loading…");
@@ -67,7 +87,7 @@ async function load() {
     : "No key labs with results (they're set in Settings). Add labs here to trend them.";
   $("#labNames").replaceChildren(...OPTS.labs.map(l => el("option", {value: l.label})));
   PICKED = []; drawPicked();
-  $("#questions").value = qSaved = OPTS.questions || ""; sayIn($("#qMsg"), "");
+  $("#questions").value = qSaved = OPTS.questions || ""; sayIn($("#qMsg"), ""); qMark();
   $("#notice").textContent = OPTS.notice;
   $("#build").hidden = false;
 }
@@ -162,22 +182,21 @@ $("#build").onsubmit = async ev => {
     const url = URL.createObjectURL(blob), a = el("a", {href: url, download: name, hidden: true});
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
-    qSaved = $("#questions").value; clearTimeout(qTimer); qTimer = null;   // the server kept these questions as the draft
+    qSaved = $("#questions").value; qMark();   // the server kept these questions as the draft
     sayIn($("#buildMsg"), `Downloaded ${name}.`);
   } catch (e) { sayIn($("#buildMsg"), e.message, true); }
   finally { b.disabled = false; }
 };
 
 /* ---------------------------------------------------------------- follow the profile picker */
-/* sharing.js fills it once it knows who's signed in (and the dates' format, dates.js), then sets its value; a
-   questions draft not saved yet is saved to the profile it was typed for before the next one loads */
+/* sharing.js fills it once it knows who's signed in (and the dates' format, dates.js), then sets its value; with a
+   questions draft not saved, another profile is picked only once you say so (sidebar.js) */
 (() => {
   const sel = $("#profile");
-  const pick = async () => {
-    const v = +sel.value, was = PID;
+  const pick = () => {
+    const v = +sel.value;
     if (!v || v === PID) return;
     PID = v;
-    if (qTimer && was) await saveQuestions(was);
     $("#summaryIntro").hidden = false;
     load();
   };

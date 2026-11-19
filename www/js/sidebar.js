@@ -20,7 +20,15 @@
    elements whose children arriving redraw it, as hidden, data-dirty or data-role changing anywhere in main does; a
    group with rest: true holds their children no other group names.
    Gives {nav, start(), show(group or id, {push, scrollTo}), follow(), refresh(), again(), hide(), current(),
-   partsOf(g)}. Plain script; all files share one scope. */
+   partsOf(g)}.
+
+   The group bar (#272), with o.bar = {save(parts, msg, had), discard(parts), profile()}: while a part shown has
+   changes not saved (data-dirty, the number of them), one bar at the foot of the screen says how many, with Discard
+   and Save for them all: "3 changes · Discard · Save". save and discard get the parts shown with changes (had: focus
+   was in the bar); save gives back once it's done (or has said in msg what stopped it), each part's data-dirty saying
+   what's left. A part with changes, shown or not, is asked about before the page is left (logOut() too, util.js) or
+   another profile is picked (profile(): the one shown, to put the picker back on if the answer is to stay). Plain
+   script; all files share one scope. */
 "use strict";
 function sideNav(o) {
   const main = $("main.sets"), G = o.groups, pre = o.id.replace(/Nav$/, ""), pools = o.watch || [];
@@ -40,7 +48,9 @@ function sideNav(o) {
   const list = el("ul", {class: "set-nav-list"});
   const nav = el("nav", {class: "set-nav", id: o.id, "aria-label": o.page + " sections"}, search, list);
   const none = el("div", {id: pre + "None", hidden: ""});
-  let current = null, chosen = false, pending = false, drawn = null;
+  let current = null, chosen = false, pending = false, drawn = null, shown = [];
+  const dirtyIn = ps => ps.filter(p => p.hasAttribute("data-dirty"));
+  const bar = o.bar ? groupBar() : null;
 
   /* the links, drawn again only when the groups listed change (another page's script may add to a link) */
   function draw() {
@@ -86,6 +96,8 @@ function sideNav(o) {
       if (!q) for (const s of p.querySelectorAll(".set-off")) s.classList.remove("set-off");
       for (const h of p.querySelectorAll(":scope > h2, :scope > .set-hd > h2")) h.classList.toggle("vh", alone && on.has(p));
     }
+    shown = [...on];
+    if (bar) bar.draw();
     const found = !!q && on.size > 0;
     for (const a of list.querySelectorAll("a")) {
       const g = byId(a.dataset.group), dirty = partsOf(g).some(p => p.hasAttribute("data-dirty")), mark = a.querySelector(".set-nav-dirty");
@@ -154,8 +166,59 @@ function sideNav(o) {
     if (gs.length && (!chosen || !gs.includes(current)) && current !== gs[0]) show(gs[0]);
     else apply();
   }
+  /* the bar: how many changes the parts shown have, Discard and Save */
+  function groupBar() {
+    const n = el("span", {class: "sg-bar-n"}), msg = el("span", {class: "msg"});
+    const drop = el("button", {class: "btn", type: "button", text: "Discard"});
+    const save = el("button", {class: "btn primary", type: "button", text: "Save"});
+    const box = el("div", {class: "sg-bar", id: pre + "Bar", role: "region", "aria-label": "Changes not saved", hidden: ""},
+      el("span", {class: "sg-bar-what"}, n, msg), el("span", {class: "sg-bar-acts"}, drop, save));
+    let busy = false;
+    const draw = () => {
+      const c = dirtyIn(shown).reduce((a, p) => a + (+p.dataset.dirty || 1), 0);
+      n.textContent = `${c} change${c === 1 ? "" : "s"}`;
+      if (!c && !busy) sayIn(msg, "");
+      box.hidden = !c && !busy;
+      save.disabled = drop.disabled = busy || !c;
+    };
+    save.onclick = async () => {
+      const ps = dirtyIn(shown);
+      if (!ps.length || busy) return;
+      const had = box.contains(document.activeElement);   // (before Save is disabled, which takes focus away)
+      busy = true; draw(); sayIn(msg, "Saving…");
+      try { await o.bar.save(ps, msg, had); }
+      catch (e) { sayIn(msg, e.message, true); }
+      finally {
+        busy = false; if (msg.textContent === "Saving…") sayIn(msg, ""); draw();
+        // not all saved: focus back on Save, to put it right and save again (all saved: the page put it on a heading)
+        if (had && !box.hidden && (!document.activeElement || document.activeElement === document.body)) save.focus({preventScroll: true});
+      }
+    };
+    drop.onclick = () => { const ps = dirtyIn(shown); sayIn(msg, ""); if (ps.length) o.bar.discard(ps); };
+    // leaving the page, or picking another profile, with changes not saved: asked first
+    const all = () => dirtyIn(G.flatMap(partsOf));
+    addEventListener("beforeunload", ev => { if (!sgLeaving && all().length) { ev.preventDefault(); ev.returnValue = ""; } });
+    let switching = false;
+    document.addEventListener("change", async ev => {   // before the page's own listeners: said no, the profile stays
+      const pick = ev.target, was = o.bar.profile && o.bar.profile();
+      if (pick.id !== "profile" || switching || was == null) return;
+      const names = [...new Set(all().map(p => groupOf(p)?.title).filter(Boolean))];
+      if (!names.length) return;
+      const wanted = pick.value;
+      ev.stopImmediatePropagation();
+      pick.value = was;
+      const list = names.map((t, i) => (i === 0 ? "" : i === names.length - 1 ? " and " : ", ") + `“${t}”`).join("");
+      if (!await ask({title: "Switch profile and lose your changes?", message: `Your changes in ${list} aren't saved.`,
+                      action: "Switch and lose changes", cancel: "Stay here", danger: true})) return;
+      pick.value = wanted;
+      switching = true;
+      try { pick.dispatchEvent(new Event("change", {bubbles: true})); } finally { switching = false; }
+    }, true);
+    return {box, draw};
+  }
   function start() {
     main.prepend(nav);
+    if (bar) main.append(bar.box);
     main.classList.add("with-nav");
     ($("#intro") || nav).after(none);
     search.addEventListener("input", apply);

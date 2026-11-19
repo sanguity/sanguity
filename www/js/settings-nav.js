@@ -40,6 +40,7 @@
     allowed: (g, parts) => parts.some(p => !p.hidden),   // the groups with something to show: a part that's there, not hidden by its own script
     label: g => { const w = SAY[whoOf(g)]; return g.title + (w ? " · " + w[0] : ""); },
     intro: (g, q) => who.replaceChildren(...(q ? [`Matching “${q}”, from every group.`] : g && SAY[whoOf(g)] ? [el("strong", {text: SAY[whoOf(g)][0]}), SAY[whoOf(g)][1]] : [])),
-    watch: [document.getElementById("sections")]});   // the sections arrive later (the server's list), one by one
+    watch: [document.getElementById("sections")],   // the sections arrive later (the server's list), one by one
+    bar: {save: saveParts, discard: discardParts, profile: () => PID}});   // the group's changes, one bar (#272, settings.js)
   nav.start();
 })();

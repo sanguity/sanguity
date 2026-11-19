@@ -92,7 +92,14 @@ if (/\/(login|setup)\.html$/.test(location.pathname)) { SgOffline.forget(); forg
   };
   input.checked = SgOffline.on();
   input.disabled = !SgOffline.works();
-  input.onchange = async () => { await SgOffline.set(input.checked); status(); };
+  // at once, with an Undo (#272): off deletes the copy, which comes back once records are opened again
+  const turn = async on => { await SgOffline.set(on); input.checked = on; status(); };
+  input.onchange = async () => {
+    const on = input.checked;
+    await turn(on);
+    toast(on ? "Offline records are on for this device." : "Offline records are off for this device: its copy is deleted.",
+      {action: "Undo", onAction: () => turn(!on)});
+  };
   box.replaceChildren(
     el("h2", {text: "Offline records on this device"}),
     el("p", {class: "hint", text: "Sanguity opens from your home screen without a connection either way. With this on, this device also " +

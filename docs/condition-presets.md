@@ -13,7 +13,7 @@ picker.
   to a published guideline, which the picker names and links. Nothing judges a result or suggests a test: the labs a
   profile has no results for are named ("no results in this profile's records, so no tile"), never recommended.
 - **Applied once, not linked.** Picking conditions shows a preview first. **Fill these in** changes the settings'
-  editors on the page, unsaved: the person saves each section as any other change, **Discard changes** puts it back,
+  editors on the page, unsaved: the person saves them with the group's bar as any other change, **Discard** puts them back,
   and **Reset to defaults** undoes it after saving. Nothing about the preset is kept, so a later change to
   `condition-presets.json` never changes anyone's settings.
 - **Add to my tiles** puts the preset's labs after the person's own; **Replace my tiles** uses only the preset's.

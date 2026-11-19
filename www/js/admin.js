@@ -29,7 +29,8 @@ $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (
    matching. The address follows the group (admin.html#apps); an address naming a section (admin.html#users,
    #labmaps, #sec-sync, #outside) opens that section's group and scrolls to it. */
 const GROUPS = SG_PAGES.admin.groups;   // groups.js: one list, which the command palette searches too (#273)
-const AdminNav = sideNav({id: "admNav", page: "Admin", groups: GROUPS, find: "Find in Admin", none: q => `Nothing in Admin matches “${q}”.`});
+const AdminNav = sideNav({id: "admNav", page: "Admin", groups: GROUPS, find: "Find in Admin", none: q => `Nothing in Admin matches “${q}”.`,
+  bar: {save: (parts, msg, had) => syncSave(msg, had), discard: () => syncDiscard()}});   // the sync defaults' numbers (#272, admin-sources.js)
 
 /* ---------------------------------------------------------------- notices: failed sign-ins, sources that stopped */
 async function loadNotice() {

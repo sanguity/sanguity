@@ -516,7 +516,9 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   ([docs/fhir-export.md](docs/fhir-export.md) says what each record becomes, and what a bundle has no place for).
 - **Settings:** each profile's dashboard preferences (key lab tiles, the labs Labs starts with, saved Labs views, lab and source
   nicknames, visits counted as workouts, milestones) are changed on the **Settings** page by its owners and
-  editors, with "Reset to defaults" per section. A lab, a result's source tag or an import can also be renamed right
+  editors. A simple preference (the theme, units, the date format, a tick) is saved as it's changed, with an Undo;
+  lists and values wait for the group's bar ("3 changes · Discard · Save"); "Reset to defaults" shows on a section
+  that isn't at them (#272). A lab, a result's source tag or an import can also be renamed right
   where it's shown (the pencil beside it on Labs' charts and heatmap and the details). A workout rule says "visits titled X count as workouts of N
   minutes": X is plain text found anywhere in the title, or, as an advanced option, a regular expression, which is
   checked before it's saved and refused if it could make matching slow. Milestones are named dates, one of them
@@ -526,7 +528,7 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   chronic kidney disease, atrial fibrillation, hepatitis C, sickle cell disease, myeloma, lupus, HIV, pregnancy, on
   lithium or warfarin, and more, #187) to preview and fill in the key-lab tiles and home readings commonly followed for them,
   as a published guideline lists them (named and linked), and if you like a Labs view per condition and the visit
-  summary's ticks. Filled in once, then yours to change; Discard changes and Reset to defaults undo it. Labs with no
+  summary's ticks. Filled in once, then yours to change; Discard and Reset to defaults undo it. Labs with no
   results here are named, never suggested; a child's profile leaves adult measures out. A condition the problem list
   names is offered (never from allergies). [docs/condition-presets.md](docs/condition-presets.md) lists them by body system,
   the ones left out and why, and how to add one.

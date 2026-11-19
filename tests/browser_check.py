@@ -1191,6 +1191,9 @@ TILE_LINES_JS = r"""() => {
 # the tiles as laid out (#351): each one's label or value whose words run past its tile's edge (the text, not its box,
 # which a grid or flex item keeps inside); each pair of tiles in one row or grid that overlap; and each row of tiles
 # (a container's tiles with the same top) whose values don't end at the same height, so don't share one baseline
+# a phone's tab bar's height (#268), as laid out: --tabbar holds a calc() with env(), which reading the property gives as text
+TABBAR_JS = "(() => { const d = document.createElement('div'); d.style.height = 'var(--tabbar, 0px)'; document.body.append(d); const h = d.getBoundingClientRect().height; d.remove(); return h; })()"
+
 TILE_FIT_JS = r"""() => {
   const out = {n: 0, rows: 0, wide: [], overlap: [], baseline: []};
   // the words as drawn: text in a visually hidden span (.vh, said to screen readers, #358) is clipped to nothing
@@ -2742,8 +2745,8 @@ def main():
             page.goto(base + "/settings.html?profile=1#about")
             page.wait_for_selector("#about[data-profile='1'] #aboutMaxHr", timeout=10000)
             page.fill("#aboutMaxHr", "190")
-            page.click("#aboutSave")
-            page.wait_for_function("document.getElementById('aboutMsg').textContent === 'Saved.'", timeout=10000)
+            page.click("#setBar button.primary")   # the group's bar (#272)
+            page.wait_for_function("document.getElementById('aboutMsg').textContent.startsWith('Saved “')", timeout=10000)
             check("…a measured maximum heart rate typed in About this person (owners and editors)",
                   js("fetch('api/profiles/1/person').then(r => r.json())")["maxHr"] == 190 and "220 minus the age" in page.inner_text("#about"))
             page.goto(base + "/")
@@ -4692,8 +4695,8 @@ def main():
                   == [["CBC (browser check)", True], ["Kidney (browser check)", False]])
             check("…and fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.click("[data-key='trends.views'] button[aria-label='Remove the view Kidney (browser check)']")
-            page.click("#sec-trends .set-foot button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-trends .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-trends .set-msg').textContent.startsWith('Saved')", timeout=10000)
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
@@ -5981,6 +5984,7 @@ def main():
                 check(f"…and unfiltered at 375 px ({theme}), it all fits, open or closed", not bad and fsum() is None, bad)
             page.set_viewport_size({"width": 1400, "height": 900})
             set_theme(theme_before)
+            settle(500)   # the Timeline draws its chips again for the wider screen (the filters back out of a phone's sheet, #269): a menu opened before that is closed by it
             page.click("#chips .kind-more[data-k=visit]")
             page.click("#kindMenu-visit [role=menuitem]:first-child")
             settle(200)
@@ -7380,8 +7384,8 @@ def main():
                   groups["dashboard"][0] == "This profile" and groups["display"][0] == "Just for you" and "calendar" not in groups
                   and all(w in say.values() and len(sc) <= 1 and (not sc or say[sc[0]] == w) for w, sc in groups.values()), groups)
             saves = js("[...document.querySelectorAll('#sections > section')].map(s => [...s.querySelectorAll('button')].filter(b => b.textContent === 'Save').length)")
-            check("…one Save per section (none per setting), and nothing marked unsaved on arrival",
-                  set(saves) == {1} and not js("[...document.querySelectorAll('#sections .set button')].some(b => b.textContent === 'Save')")
+            check("…no Save in a section or a setting: one bar for the group (#272), out of sight with nothing changed, and nothing marked unsaved on arrival",
+                  set(saves) == {0} and js("document.getElementById('setBar').hidden")
                   and not js("document.querySelector('#sections > [data-dirty], .set-changed')"), saves)
             page.click(".set-nav-list a[data-group=dashboard]")
             rows = "[...document.querySelectorAll('#sec-overview .set-order li')]"
@@ -7395,10 +7399,12 @@ def main():
             page.click("#sec-overview .set-order li:nth-child(1) .set-more-btn")
             page.click("#sec-overview .set-order li:nth-child(1) .menu-item:text-is('Move down')")
             check("…its menu, tapped, moves the lab down", js(order)[:2] == [o0[1], o0[0]], js(order)[:3])
-            check("…and it shows it isn't saved: on the setting, with its section's Save kept in view, and its group in the sidebar",
+            # how far the bar's foot is from the screen's, less a phone's tab bar under it (#268)
+            bar_at = js("(b => [b.hidden, b.querySelector('.sg-bar-n').textContent, getComputedStyle(b).position, Math.round(innerHeight - b.getBoundingClientRect().bottom - (" + TABBAR_JS + "))])(document.getElementById('setBar'))")
+            check("…and it shows it isn't saved: on the setting, in the group's bar kept in view at the foot of the screen (#272), and its group in the sidebar",
                   js("document.querySelector(\"[data-key='overview.keyLabs']\").classList.contains('set-changed')")
-                  and js("getComputedStyle(document.querySelector('#sec-overview .set-foot')).position") == "sticky"
-                  and js("document.querySelector('.set-nav-list a[data-group=dashboard]').textContent") == "Dashboard, changes not saved")
+                  and bar_at[:3] == [False, "1 change", "sticky"] and 0 <= bar_at[3] <= 24
+                  and js("document.querySelector('.set-nav-list a[data-group=dashboard]').textContent") == "Dashboard, changes not saved", bar_at)
             page.focus("#sec-overview .set-order li:nth-child(2) .set-more-btn")
             page.keyboard.press("Enter")
             first_act = js("document.activeElement.textContent")
@@ -7419,11 +7425,11 @@ def main():
             answer_ask(page, yes=False)
             check("…so does switching profiles, which stays put when told to",
                   js("PID") == 1 and js("document.getElementById('profile').value") == "1" and js("document.getElementById('sec-overview').hasAttribute('data-dirty')"))
-            page.click("#sec-overview .set-foot button:text-is('Discard changes')")
+            page.click("#setBar button:text-is('Discard')")
             check("…Discard changes puts it back as saved, and nothing's left unsaved",
                   js(order) == o0 and not js("document.querySelector('#sections > [data-dirty]')") and not js(leave)
                   and js("document.querySelector('.set-nav-list a[data-group=dashboard]').textContent") == "Dashboard"
-                  and js("document.querySelector('#sec-overview .set-foot > .msg').textContent").startswith("Changes discarded"), js(order)[:3])
+                  and js("document.querySelector('#sec-overview .set-msg').textContent").startswith("Changes discarded"), js(order)[:3])
             settle(200)
             check("…and the key labs fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             # (#210) told yes in the app's dialog, switching profile with changes not saved goes on to the other profile
@@ -7607,8 +7613,9 @@ def main():
             npg.wait_for_timeout(200)
             foot = row_btn.evaluate(na_geo)
             fm, fb, (fw, fh) = foot["menu"], foot["btn"], foot["screen"]
+            na_tabbar = npg.evaluate(TABBAR_JS)   # a phone's tab bar (#268): the screen's foot is above it
             check("without anchor positioning (#356): a row menu at the screen's foot opens over its button, all of it on the screen, placed before it's drawn (less motion)",
-                  foot["open"] and fb[3] > fh - 60 and fm[0] >= 0 and fm[1] >= 0 and fm[2] <= fw and fm[3] <= fh and 0 <= fb[1] - fm[3] <= 10
+                  foot["open"] and fb[3] > fh - na_tabbar - 60 and fm[0] >= 0 and fm[1] >= 0 and fm[2] <= fw and fm[3] <= fh and 0 <= fb[1] - fm[3] <= 10
                   and foot["frames"] and all(f == fm[:2] for f in foot["frames"]), foot)
             npg.evaluate("scrollBy(0, 150)")
             npg.wait_for_timeout(200)
@@ -7640,18 +7647,31 @@ def main():
             page.wait_for_selector("#sec-sync .set", timeout=10000)
             check("Admin: an old Settings address opens its new place, the sync defaults (#167)",
                   js(display, "sec-sync") != "none" and js(display, "admin") != "none" and js(display, "users") == "none")
-            check("…as a switch, numbers and choices, with one Save for the section (#101, #102, #174)",
+            check("…as a switch, numbers and choices, no Save of its own, and neither “set for this server” nor Reset to defaults while all are Sanguity's own (#101, #102, #272)",
                   js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length, "
-                     "document.querySelectorAll('#sec-sync button.primary').length]") == [5, 3, 1], js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
+                     "document.querySelectorAll('#sec-sync button.primary').length, document.querySelectorAll('#sec-sync h3 .tag:not(.set-unsaved)').length, "
+                     "document.querySelector('#sec-sync .set-hd button').hidden]") == [5, 3, 0, 0, True], js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
+            # #272: a number waits for the group's bar; the switch beside it is saved as it's changed, the number kept as typed
             page.fill("#sec-sync [data-key='sync.staleDays'] input", "5")
-            page.click("#syncSave")
-            page.wait_for_function("document.querySelector('#sec-sync .msg').textContent.startsWith('Saved')", timeout=10000)
+            sync_bar = js("[document.getElementById('admBar').hidden, document.querySelector('#admBar .sg-bar-n').textContent]")
+            auto = "fetch('api/settings/install').then(r => r.json()).then(d => d.sections[0].settings.find(s => s.key === 'sync.attachAuto').value)"
+            page.click("#sec-sync [data-key='sync.attachAuto'] label")
+            page.wait_for_function("document.querySelector('#sec-sync .set-msg').textContent === 'Saved “Fetch attachments automatically”.'", timeout=10000)
+            check("…a number changed waits for the group's bar (“1 change”); the switch is saved as it's changed, the number still as typed (#272)",
+                  sync_bar == [False, "1 change"] and js(auto) is False and js("document.querySelector(\"#sec-sync [data-key='sync.staleDays'] input\").value") == "5"
+                  and js("document.activeElement.id") == "sync.attachAuto", sync_bar)
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+            page.wait_for_function("document.querySelector('#sec-sync .set-msg').textContent.startsWith('Undone')", timeout=10000)
+            check("…its Undo puts it back, the number still as typed", js(auto) is True and js("document.querySelector(\"#sec-sync [data-key='sync.staleDays'] input\").value") == "5")
+            page.click("#admBar button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-sync .set-msg').textContent.startsWith('Saved')", timeout=10000)
             stale = "fetch('api/profiles/1/settings').then(r => r.json()).then(s => s.sync.staleDays)"
-            check("…saved for every connection on the server", js(stale) == 5 and "set for this server" in page.inner_text("#sec-sync [data-key='sync.staleDays']"), js(stale))
+            check("…saved for every connection on the server", js(stale) == 5 and "set for this server" in page.inner_text("#sec-sync [data-key='sync.staleDays']")
+                  and js("document.getElementById('admBar').hidden"), js(stale))
             page.click("#sec-sync .set-hd button")
-            answer_ask(page)
-            page.wait_for_function("document.querySelector('#sec-sync .msg').textContent.includes('back to')", timeout=10000)
-            check("…and Reset to defaults puts them back", js(stale) == 3, js(stale))
+            page.wait_for_function("document.querySelector('#sec-sync .set-msg').textContent.includes('back to')", timeout=10000)
+            check("…and Reset to defaults puts them back at once, asking nothing (#272), with an Undo", js(stale) == 3 and not js("!!document.querySelector('dialog[open]')")
+                  and js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == "The sync defaults are back to Sanguity's own.", js(stale))
             page.click("#admNav a[data-group=directory]")
             dir_text = page.inner_text("#directory")
             check("Admin: a group picked in the sidebar is the one shown, and the address says so",
@@ -7792,13 +7812,13 @@ def main():
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             first = before[0][0]
             page.click(f"#sec-overview button[aria-label='Move {first} down']")
-            page.click("#sec-overview .set-foot button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-overview .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-overview .set-msg').textContent.startsWith('Saved')", timeout=10000)
             page.click("[data-key=labNicknames] button:text-is('Add a row')")
             page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=from]", first)
             page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Renamed in Settings")
-            page.click("#sec-names .set-foot button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-names .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-names .set-msg').textContent.startsWith('Saved')", timeout=10000)
             # ---- calendar feed (#51): made on the Sharing page (#168; Settings' old address opens it there), its address
             # shown once with setup steps, and the address works for a calendar app with no session
             page.goto(base + "/settings.html?profile=1#calendar")
@@ -7846,8 +7866,7 @@ def main():
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             for sec in ("overview", "names"):
                 page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
-                answer_ask(page)
-                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
+                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             js("switchTab('overview')")
@@ -7883,8 +7902,8 @@ def main():
             p2 = js(preview)
             check("…and so do the arrow keys on its handle, which keeps the focus",
                   p2[:3] == [p0[0], p0[2], p0[1]] and js("document.activeElement.dataset.act") == "grip", p2[:3])
-            page.click("#sec-overview .set-foot button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-overview .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-overview .set-msg').textContent.startsWith('Saved')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             js("switchTab('overview')")
@@ -8008,11 +8027,11 @@ def main():
             check("…Fill these in changes the key labs below, not saved yet",
                   js("SET_ITEMS['overview.keyLabs'].value()") == ["Creatinine", "Potassium, Blood", "Sodium, Blood", "Hemoglobin"]
                   and js("!!document.querySelector('#sec-overview[data-dirty] [data-key=\"overview.keyLabs\"].set-changed')")
-                  and page.inner_text("#preOut .msg").startswith("Filled in: Key labs") and "Discard changes" in page.inner_text("#preOut .msg"),
+                  and page.inner_text("#preOut .msg").startswith("Filled in: Key labs") and " Save to keep " in page.inner_text("#preOut .msg") and page.inner_text("#preOut .msg").endswith(", or Discard."),
                   page.inner_text("#preOut .msg"))
             check("…and its tiles' preview below follows", js("[...document.querySelectorAll('#sec-overview .set-preview .tile')].map(t => t.dataset.lab)")
                   == ["Creatinine", "Potassium, Blood", "Sodium, Blood", "Hemoglobin"])
-            page.click("#sec-overview .set-foot button:text-is('Discard changes')")
+            page.click("#setBar button:text-is('Discard')")
             check("…Discard changes puts them back as saved", js("SET_ITEMS['overview.keyLabs'].value()") == p2 and not js("document.querySelector('#sections > section[data-dirty]')"))
             page.click("#preOpen")
             page.fill("#preFind", "kidney")
@@ -8021,12 +8040,13 @@ def main():
             page.check("#preViews")
             page.check("#preSummary")
             page.click("#preFill")
-            check("…filled in with a view on Labs and the visit summary's ticks: three sections changed",
-                  js("[...document.querySelectorAll('#sections > section[data-dirty]')].map(s => s.id)") == ["sec-overview", "sec-trends", "sec-summary"],
-                  js("[...document.querySelectorAll('#sections > section[data-dirty]')].map(s => s.id)"))
+            filled = [js("[...document.querySelectorAll('#sections > section[data-dirty]')].map(s => s.id)"), js("document.querySelector('#setBar .sg-bar-n').textContent")]
+            check("…filled in with a view on Labs and the visit summary's ticks: three sections changed, four changes in the group's bar (#272: "
+                  "the ticks too, filled in, though a tick of your own is saved as it's made)",
+                  filled == [["sec-overview", "sec-trends", "sec-summary"], "4 changes"], filled)
+            page.click("#setBar button:text-is('Save')")   # one Save for the group's changes (#272)
             for sec in ("overview", "trends", "summary"):
-                page.click(f"#sec-{sec} .set-foot button:text-is('Save')")
-                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-msg').textContent.startsWith('Saved')", timeout=10000)
             cfg = js(api_get, "profiles/1/settings")
             check("…saved: the key labs, a Labs view named for the condition, blood pressure at home as a tile and ticked in the summary",
                   cfg["overview"]["keyLabs"] == ["Creatinine", "Potassium, Blood", "Sodium, Blood", "Hemoglobin"] and cfg["overview"]["homeTiles"] == ["bp"]
@@ -8041,84 +8061,54 @@ def main():
             presets_open()
             for sec in ("overview", "summary"):
                 page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
-                answer_ask(page)
-                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
+                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             cfg = js(api_get, "profiles/1/settings")
             KEY_LABS_DEFAULT = __import__("server.settings", fromlist=["KEY_LABS"]).KEY_LABS
             check("…and Reset to defaults undoes it", cfg["overview"]["keyLabs"] == KEY_LABS_DEFAULT and cfg["overview"]["homeTiles"] == [] and cfg["summary"]["ticked"] == [],
                   cfg["overview"])
             check("…(the Labs view and the key labs' order put back as they were, for the checks below)",
                   js(api_put, ["profiles/1/settings/trends.views", saved_views]) == 200 and js(api_put, ["profiles/1/settings/overview.keyLabs", p2]) == 200)
-            # #359: a save's Undo puts back only what still holds what the save wrote, and keeps changes not saved yet
-            # in the section: save a tick, tick another (not saved), Undo; then save again, change it elsewhere, Undo
-            ticked = lambda: js(api_get, "profiles/1/settings")["summary"]["ticked"]
+            # ---- #272: one save model. A simple preference (a tick, the theme, units, the date format) is saved as it's
+            # changed, a toast saying so with an Undo; lists and values wait for the group's bar, "N changes · Discard ·
+            # Save", whose Save keeps them all and has an Undo too
             undo_toast = "#sgToasts .sg-toast:last-child button:text-is('Undo')"
-            sum_msg = "document.querySelector('#sec-summary .set-foot > .msg').textContent"
-            box = lambda i: f"#sec-summary [data-key='summary.ticked'] input[type=checkbox] >> nth={i}"
-            page.reload()
-            page.wait_for_selector("#sec-summary [data-key='summary.ticked'] input[type=checkbox]", timeout=10000)
-            page.check(box(0))
-            first = js("SET_ITEMS['summary.ticked'].value()")
-            page.click("#sec-summary .set-foot button:text-is('Save')")
-            page.wait_for_function(f"{sum_msg}.startsWith('Saved')", timeout=10000)
-            saved_t = ticked()
-            page.check(box(1))
-            both = js("SET_ITEMS['summary.ticked'].value()")
-            page.click(undo_toast)
-            page.wait_for_function(f"{sum_msg}.startsWith('Undone')", timeout=10000)
-            check("Settings' Undo (#359) puts the saved tick back on the server and keeps a change not saved yet in the section, said so",
-                  saved_t == first and len(both) == 2 and ticked() == [] and js("SET_ITEMS['summary.ticked'].value()") == both
-                  and js("document.getElementById('sec-summary').hasAttribute('data-dirty')") and "not saved yet are kept" in js(sum_msg),
-                  [saved_t, both, ticked(), js("SET_ITEMS['summary.ticked'].value()"), js(sum_msg)])
-            page.click("#sec-summary .set-foot button:text-is('Save')")
-            page.wait_for_function(f"{sum_msg}.startsWith('Saved')", timeout=10000)
-            js(api_put, ["profiles/1/settings/summary.ticked", first])   # changed again since, elsewhere
-            page.click(undo_toast)
-            page.wait_for_function(f"{sum_msg}.includes('changed since')", timeout=10000)
-            check("…and leaves a setting changed again since as it is, said so", ticked() == first and "left as it is" in js(sum_msg), [ticked(), js(sum_msg)])
-            # #368: Save by keyboard redraws the section: focus on its heading, not the page, and back there after the
-            # toast's Undo (Alt+N, Enter), which redraws it again
-            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
-            page.focus(box(1))
-            page.keyboard.press("Space")
-            page.focus("#sec-summary .set-foot button:text-is('Save')")
-            page.keyboard.press("Enter")
-            page.wait_for_function(f"{sum_msg}.startsWith('Saved')", timeout=10000)
-            settle(200)
-            kb_focus = [js("[document.activeElement.tagName, document.activeElement.id]")]
-            page.keyboard.press("Alt+n")
-            page.keyboard.press("Enter")
-            page.wait_for_function(f"{sum_msg}.startsWith('Undone')", timeout=10000)
-            settle(200)
-            kb_focus += [js("[document.activeElement.tagName, document.activeElement.id]"), ticked()]
-            check("Settings' Save by keyboard leaves focus on its section's heading, and its Undo by keyboard gives it back there (#368)",
-                  kb_focus == [["H2", "sec-summary-hd"], ["H2", "sec-summary-hd"], first], kb_focus)
-            # #376: Save at the foot of a long section (Overview's home readings), its heading off screen, by mouse and by
-            # keyboard at 1400 and 375 px: the page stays where it was (focus on the heading, not scrolled to), and the
-            # Undo (a click, or Alt+N and Enter) gives focus back there, the page still put; the server's read each step
+            toasts_said = "[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent)"
             home = lambda: js(api_get, "profiles/1/settings")["overview"]["homeTiles"]
-            ov_msg = "document.querySelector('#sec-overview .set-foot > .msg').textContent"
-            ov_save = "#sec-overview .set-foot button:text-is('Save')"
+            ov_msg = "document.querySelector('#sec-overview .set-msg').textContent"
             tile = "#sec-overview [data-key='overview.homeTiles'] input[type=checkbox] >> nth=0"
+            page.reload()
+            page.wait_for_selector(tile, timeout=10000)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            was_home = home()
+            page.click(tile)
+            page.wait_for_function(f"{ov_msg}.startsWith('Saved')", timeout=10000)
+            inst = [home(), js("document.getElementById('setBar').hidden"), js("!!document.querySelector('#sections > [data-dirty], .set-changed')"),
+                    js(toasts_said), js("document.activeElement.id"), js("!document.querySelector('#sec-overview .set-hd button').hidden")]
+            page.click(undo_toast)
+            page.wait_for_function(f"{ov_msg}.startsWith('Undone')", timeout=10000)
+            check("a tick on Settings is saved as it's made (#272): no bar, nothing left unsaved, a toast “Saved · Undo”, focus where it was, Reset shown "
+                  "now that it isn't the default; its Undo puts it back on the server",
+                  inst[0] != was_home and inst[1] and not inst[2] and inst[3] == ["Saved “Home readings”."] and inst[4] == "overview.homeTiles-bp" and inst[5]
+                  and home() == was_home and js(ov_msg) == "Undone: “Home readings” is as before.", inst)
+            # #376, a change saved as it's made: with the section's heading off screen, by mouse and by keyboard at 1400
+            # and 375 px, the page stays where it was and focus on the tick; its Undo (a click, or Alt+N and Enter) gives
+            # focus back there, the page still put; the server's read each step
             ov_where = "[scrollY, document.activeElement.id, document.getElementById('sec-overview-hd').getBoundingClientRect().bottom < 0]"
             stays = {}
             for w, h in ((1400, 900), (375, 740)):
                 page.set_viewport_size({"width": w, "height": h})
                 for how in ("mouse", "keyboard"):
                     js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
-                    was_home = home()
+                    page.locator(tile).scroll_into_view_if_needed()
+                    settle(200)
+                    # where the page is as the tick is pressed (once Playwright and the focus have brought it into view)
+                    js("for (const t of ['pointerdown', 'keydown']) document.addEventListener(t, () => { window.__y = scrollY; }, {capture: true, once: true})")
                     if how == "mouse":
                         page.click(tile)
-                        settle(200)
-                        y0 = js("scrollY")
-                        page.click(ov_save)
                     else:
                         page.focus(tile)
                         page.keyboard.press("Space")
-                        page.focus(ov_save)
-                        settle(200)
-                        y0 = js("scrollY")
-                        page.keyboard.press("Enter")
+                    y0 = js("window.__y")
                     page.wait_for_function(f"{ov_msg}.startsWith('Saved')", timeout=10000)
                     settle(200)
                     saved_at, saved_home = js(ov_where), home()
@@ -8131,40 +8121,124 @@ def main():
                     settle(200)
                     stays[f"{how} {w}"] = [y0, saved_at, saved_home != was_home, js(ov_where)[:2], home() == was_home]
             page.set_viewport_size({"width": 1400, "height": 900})
-            check("Settings' Save with its section's heading off screen, by mouse and by keyboard at 1400 and 375 px, leaves the page where it was and "
-                  "focus on the heading, saved on the server, and the Undo puts it back there, the page still put and the server as before (#376)",
-                  all(v[1] == [v[0], "sec-overview-hd", True] and v[2] and v[3] == [v[0], "sec-overview-hd"] and v[4] for v in stays.values()), stays)
-            # #367: an Undo pressed after switching profile (Settings doesn't reload) puts back its own profile's setting
-            # only; the other profile's section keeps its saved values and a change not saved yet, a toast saying it
-            page.check(box(1))
-            page.click("#sec-summary .set-foot button:text-is('Save')")
-            page.wait_for_function(f"{sum_msg}.startsWith('Saved')", timeout=10000)
-            mine = ticked()
-            ticked2 = lambda: js(api_get, "profiles/2/settings")["summary"]["ticked"]
-            other_had = ticked2()
-            js("document.getElementById('sec-summary').dataset.was = 1")   # (drawn again for the other profile: a new section)
+            check("…by mouse and by keyboard at 1400 and 375 px, with its section's heading off screen: the page stays where it was and focus on the tick, "
+                  "saved on the server, and the Undo gives focus back there, the page still put and the server as before (#376)",
+                  all(v[1] == [v[0], "overview.homeTiles-bp", True] and v[2] and v[3] == [v[0], "overview.homeTiles-bp"] and v[4] for v in stays.values()), stays)
+            # #359: the bar's Undo puts back only what still holds what the save wrote, and keeps changes not saved yet in
+            # the section: take a lab out of Labs selected at first, Save, take another out (not saved), Undo; then Save
+            # again, change it elsewhere, Undo
+            dl_of = lambda pid=1: js(api_get, f"profiles/{pid}/settings")["trends"]["defaultLabs"]
+            tr_msg = "document.querySelector('#sec-trends .set-msg').textContent"
+            drop = lambda: page.locator("[data-key='trends.defaultLabs'] .set-labs button:text-is('Remove')").first.click()
+            labs0 = dl_of()
+            drop()
+            bar = js("[document.getElementById('setBar').hidden, document.querySelector('#setBar .sg-bar-n').textContent, document.getElementById('sec-trends').dataset.dirty]")
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function(f"{tr_msg}.startsWith('Saved')", timeout=10000)
+            saved_dl, bar_after = dl_of(), js("document.getElementById('setBar').hidden")
+            check("Settings' group bar (#272): a lab taken out is one change, said in the bar; its Save keeps it, a toast with an Undo saying so, the bar gone",
+                  bar == [False, "1 change", "1"] and saved_dl == labs0[1:] and bar_after and js(toasts_said)[-1] == "Saved “Labs selected at first”.", [bar, saved_dl])
+            drop()
+            both = js("SET_ITEMS['trends.defaultLabs'].value()")
+            page.click(undo_toast)
+            page.wait_for_function(f"{tr_msg}.startsWith('Undone')", timeout=10000)
+            check("…its Undo (#359) puts the saved list back on the server and keeps a change not saved yet in the section, said so",
+                  both == labs0[2:] and dl_of() == labs0 and js("SET_ITEMS['trends.defaultLabs'].value()") == both
+                  and js("document.getElementById('sec-trends').hasAttribute('data-dirty')") and "not saved yet are kept" in js(tr_msg),
+                  [both, dl_of(), js("SET_ITEMS['trends.defaultLabs'].value()"), js(tr_msg)])
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function(f"{tr_msg}.startsWith('Saved')", timeout=10000)
+            js(api_put, ["profiles/1/settings/trends.defaultLabs", labs0[1:]])   # changed again since, elsewhere
+            page.click(undo_toast)
+            page.wait_for_function(f"{tr_msg}.includes('changed since')", timeout=10000)
+            check("…and leaves a setting changed again since as it is, said so", dl_of() == labs0[1:] and "left as it is" in js(tr_msg), [dl_of(), js(tr_msg)])
+            js(api_put, ["profiles/1/settings/trends.defaultLabs", labs0])
+            page.reload()
+            page.wait_for_selector("[data-key='trends.defaultLabs'] .set-labs button", timeout=10000)
+            # #368: the bar's Save by keyboard redraws the section: focus on its heading, not the page, and back there after
+            # the toast's Undo (Alt+N, Enter), which redraws it again; Discard gives it the heading too
+            drop()
+            page.focus("#setBar button:text-is('Save')")
+            page.keyboard.press("Enter")
+            page.wait_for_function(f"{tr_msg}.startsWith('Saved')", timeout=10000)
+            settle(200)
+            kb_focus = [js("[document.activeElement.tagName, document.activeElement.id]")]
+            page.keyboard.press("Alt+n")
+            page.keyboard.press("Enter")
+            page.wait_for_function(f"{tr_msg}.startsWith('Undone')", timeout=10000)
+            settle(200)
+            kb_focus += [js("[document.activeElement.tagName, document.activeElement.id]"), dl_of() == labs0]
+            drop()
+            page.focus("#setBar button:text-is('Discard')")
+            page.keyboard.press("Enter")
+            kb_focus += [js("[document.activeElement.tagName, document.activeElement.id, document.getElementById('setBar').hidden]"), js(tr_msg)]
+            check("Settings' bar: Save by keyboard leaves focus on the section's heading, and its Undo by keyboard gives it back there (#368); "
+                  "Discard puts it back as saved, focus on the heading too",
+                  kb_focus == [["H2", "sec-trends-hd"], ["H2", "sec-trends-hd"], True, ["H2", "sec-trends-hd", True], "Changes discarded: back as saved."], kb_focus)
+            # #376, the bar: with the section's heading scrolled off screen, its Save by mouse and by keyboard at 1400 and
+            # 375 px leaves the page where it was, focus on the heading (not scrolled to); the Undo the same
+            ov_save = "#setBar button:text-is('Save')"
+            stays = {}
+            for w, h in ((1400, 900), (375, 740)):
+                page.set_viewport_size({"width": w, "height": h})
+                for how in ("mouse", "keyboard"):
+                    js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+                    page.focus("#sec-overview .set-grip >> nth=0")
+                    page.keyboard.press("ArrowDown")
+                    js("(b => { if (b > -10) scrollBy(0, b + 40); })(document.getElementById('sec-overview-hd').getBoundingClientRect().bottom)")   # (off screen)
+                    settle(200)
+                    y0 = js("scrollY")
+                    if how == "mouse":
+                        page.click(ov_save)
+                    else:
+                        page.focus(ov_save)
+                        page.keyboard.press("Enter")
+                    page.wait_for_function(f"{ov_msg}.startsWith('Saved')", timeout=10000)
+                    settle(200)
+                    saved_at = js(ov_where)
+                    if how == "mouse":
+                        page.click(undo_toast)
+                    else:
+                        page.keyboard.press("Alt+n")
+                        page.keyboard.press("Enter")
+                    page.wait_for_function(f"{ov_msg}.startsWith('Undone')", timeout=10000)
+                    settle(200)
+                    stays[f"{how} {w}"] = [y0, saved_at, js(ov_where)[:2]]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…its Save with the section's heading off screen, by mouse and by keyboard at 1400 and 375 px, leaves the page where it was and "
+                  "focus on the heading, and the Undo puts it back there, the page still put (#376)",
+                  all(v[1] == [v[0], "sec-overview-hd", True] and v[2] == [v[0], "sec-overview-hd"] for v in stays.values()), stays)
+            # #367: the bar's Undo pressed after switching profile (Settings doesn't reload) puts back its own profile's
+            # setting only; the other profile's section keeps its saved values and a change not saved yet, a toast saying it
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            drop()
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function(f"{tr_msg}.startsWith('Saved')", timeout=10000)
+            mine = dl_of()
+            other_had = dl_of(2)
+            js("document.getElementById('sec-trends').dataset.was = 1")   # (drawn again for the other profile: a new section)
             pick_profile(page, "2")
-            page.wait_for_function("PID === 2 && !!document.querySelector(\"#sec-summary:not([data-was]) [data-key='summary.ticked'] input[type=checkbox]\")", timeout=10000)
-            page.check(box(2))
-            p2_edit = js("SET_ITEMS['summary.ticked'].value()")
+            page.wait_for_function("PID === 2 && !!document.querySelector(\"#sec-trends:not([data-was]) [data-key='trends.defaultLabs'] .set-labs button\")", timeout=10000)
+            drop()
+            p2_edit = js("SET_ITEMS['trends.defaultLabs'].value()")
             page.click(undo_toast)
             page.wait_for_function("[...document.querySelectorAll('#sgToasts .sg-toast-text')].some(t => t.textContent.startsWith('My records: Undone'))", timeout=10000)
-            p2_after = [ticked(), ticked2(), js("SET_ITEMS['summary.ticked'].value()") == p2_edit, js("JSON.stringify(SET_ITEMS['summary.ticked'].st.value)"),
-                        js("document.getElementById('sec-summary').hasAttribute('data-dirty')"), js(sum_msg)]
+            p2_after = [dl_of(), dl_of(2), js("SET_ITEMS['trends.defaultLabs'].value()") == p2_edit, js("JSON.stringify(SET_ITEMS['trends.defaultLabs'].st.value)"),
+                        js("document.getElementById('sec-trends').hasAttribute('data-dirty')"), js(tr_msg)]
             check("…an Undo pressed after switching profile puts back its own profile's setting only; the profile shown keeps its saved values "
                   "and its change not saved yet, a toast saying what was undone where (#367)",
-                  len(mine) == 2 and p2_after[0] == first and p2_after[1] == other_had and p2_after[2] and p2_after[3] == json.dumps(other_had, separators=(",", ":"))
+                  mine == labs0[1:] and p2_after[0] == labs0 and p2_after[1] == other_had and p2_after[2] and p2_after[3] == json.dumps(other_had, separators=(",", ":"))
                   and p2_after[4] and "Undone" not in p2_after[5], [mine, p2_after])
-            page.click("#sec-summary .set-foot button:text-is('Discard changes')")
-            js("document.getElementById('sec-summary').dataset.was = 1")
+            page.click("#setBar button:text-is('Discard')")
+            js("document.getElementById('sec-trends').dataset.was = 1")
             pick_profile(page, "1")
-            page.wait_for_function("PID === 1 && !!document.querySelector('#sec-summary:not([data-was])')", timeout=10000)
-            js(api_put, ["profiles/1/settings/summary.ticked", []])
+            page.wait_for_function("PID === 1 && !!document.querySelector('#sec-trends:not([data-was])')", timeout=10000)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
-            # #377: a setting of the person's own (Theme: the same on every profile) saved on one profile and undone on
-            # another: drawn and said there as without a switch, the theme put back on the page, no profile named
+            # #377: a setting of the person's own (Theme: the same on every profile) saved on one profile, as it's picked
+            # (#272: shown at once), and undone on another: drawn and said there as without a switch, the theme put back on
+            # the page, no profile named
             my_theme = lambda: js(api_get, "settings/user")["theme"]
-            th_msg = "document.querySelector('#sec-appearance .set-foot > .msg').textContent"
+            th_msg = "document.querySelector('#sec-appearance .set-msg').textContent"
             own_was = js("localStorage.getItem('ht-theme')")   # (this browser's own choice would keep the page as it is)
             js("localStorage.removeItem('ht-theme')")
             page.goto(base + "/settings.html?profile=1#display")
@@ -8172,9 +8246,9 @@ def main():
             th_before = my_theme()
             th = [th_before]
             page.locator("#sec-appearance label", has_text="Dark").click()
-            page.click("#sec-appearance .set-foot button:text-is('Save')")
+            th.append(js("document.documentElement.dataset.theme"))   # shown as it's picked, before the server answers
             page.wait_for_function(f"{th_msg}.startsWith('Saved')", timeout=10000)
-            th.append([my_theme(), js("document.documentElement.dataset.theme")])
+            th.append([my_theme(), js("document.documentElement.dataset.theme"), js("document.getElementById('setBar').hidden")])
             js("document.getElementById('sec-appearance').dataset.was = 1")
             pick_profile(page, "2")
             page.wait_for_function("PID === 2 && !!document.querySelector('#sec-appearance:not([data-was]) input[value=dark]')", timeout=10000)
@@ -8182,11 +8256,11 @@ def main():
             page.click(undo_toast)
             page.wait_for_function(f"{th_msg}.startsWith('Undone')", timeout=10000)
             th.append([my_theme(), js("document.querySelector('#sec-appearance input:checked').value"), js("document.documentElement.dataset.theme || null"),
-                       js(th_msg), js("[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent)")])
-            check("…a setting of your own (Theme) saved on one profile and undone on another: the server and the page shown put back, "
-                  "the theme with them, said there naming no profile (#377)",
-                  th_before != "dark" and th[1] == ["dark", "dark"] and th[2] == "dark" and th[3][:2] == [th_before, th_before]
-                  and th[3][2] == (th_before if th_before in ("light", "dark") else None) and th[3][3] == "Undone: “Theme” is as before." and th[3][4] == [], th)
+                       js(th_msg), js(toasts_said)])
+            check("…a setting of your own (Theme) picked on one profile, shown and saved at once (#272), and undone on another: the server and the page "
+                  "shown put back, the theme with them, said there naming no profile (#377)",
+                  th_before != "dark" and th[1] == "dark" and th[2] == ["dark", "dark", True] and th[3] == "dark" and th[4][:2] == [th_before, th_before]
+                  and th[4][2] == (th_before if th_before in ("light", "dark") else None) and th[4][3] == "Undone: “Theme” is as before." and th[4][4] == [], th)
             if own_was:
                 js("t => localStorage.setItem('ht-theme', t)", own_was)
             page.goto(base + "/settings.html?profile=1#sec-overview")   # (as it was)
@@ -8223,8 +8297,8 @@ def main():
             page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
             page.uncheck("#sec-tabs input[data-tab=costs]")
             page.click("#sec-tabs button[aria-label='Move Timeline up']")
-            page.click("#sec-tabs .set-foot button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-tabs .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-tabs .set-msg').textContent.startsWith('Saved')", timeout=10000)
             shown_tabs = "[...document.querySelectorAll('.tabs a[id^=tab-]')].filter(b => !b.hidden).map(b => b.id.slice(4))"
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
@@ -8267,11 +8341,10 @@ def main():
                 page.uncheck(f"#sec-tabs input[data-tab={t}]")
             check("…and the last shown tab can't be hidden", js("document.querySelector('#sec-tabs input[data-tab=timeline]').disabled"))
             page.click("#sec-tabs button:text-is('Reset to defaults')")
-            answer_ask(page)
-            page.wait_for_function("document.querySelector('#sec-tabs .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            answer_ask(page)   # (it has changes not saved, which it loses: asked first, #272)
+            page.wait_for_function("document.querySelector('#sec-tabs .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             page.click("#sec-overview button:text-is('Reset to defaults')")
-            answer_ask(page)
-            page.wait_for_function("document.querySelector('#sec-overview .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.wait_for_function("document.querySelector('#sec-overview .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             check("…Reset to defaults shows every tab again", js(shown_tabs) == ["overview", "health", "timeline", "labs", "costs"], js(shown_tabs))
@@ -8292,8 +8365,7 @@ def main():
                   == [["overview", True], ["labs", True], ["health", True], ["timeline", True], ["costs", False]],
                   js("[...document.querySelectorAll('#sec-tabs input[data-tab]')].map(i => [i.dataset.tab, i.checked])"))
             page.click("#sec-tabs button:text-is('Reset to defaults')")
-            answer_ask(page)
-            page.wait_for_function("document.querySelector('#sec-tabs .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.wait_for_function("document.querySelector('#sec-tabs .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             js("switchTab('overview')")
@@ -8410,9 +8482,8 @@ def main():
             js("localStorage.removeItem('ht-theme')")
             page.goto(base + "/settings.html?profile=1#sec-appearance")
             page.wait_for_selector("#sec-appearance input[value=dark]", timeout=10000)
-            page.check("#sec-appearance input[value=dark]")
-            page.click("#sec-appearance .set-foot button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-appearance .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.check("#sec-appearance input[value=dark]")   # saved as it's picked (#272)
+            page.wait_for_function("document.querySelector('#sec-appearance .set-msg').textContent.startsWith('Saved')", timeout=10000)
             check("theme: saving a default applies it here", js("document.documentElement.dataset.theme") == "dark")
             fresh = browser.new_context(viewport={"width": 375, "height": 800}, bypass_csp=True)
             fresh.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")}
@@ -8432,8 +8503,7 @@ def main():
             check("…where the ◐ toggle still overrides it", fp.evaluate("document.documentElement.dataset.theme") == "light")
             fresh.close()
             page.click("#sec-appearance button:text-is('Reset to defaults')")
-            answer_ask(page)
-            page.wait_for_function("document.querySelector('#sec-appearance .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.wait_for_function("document.querySelector('#sec-appearance .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             check("…and Reset to defaults follows the system again",
                   js("document.documentElement.dataset.theme === undefined && localStorage.getItem('ht-theme-default') === null"))
             # ---- #41 unit preferences: SI units and kg, picked on the Settings page, convert the demo's creatinine
@@ -8453,8 +8523,8 @@ def main():
             check("pick one on Settings: every group of radios is one control with exactly one checked (theme, units, sex for ranges)",
                   len(got) == 5 and all(n == 1 and k > 1 for _, n, k, _ in got), got)
             check("…and the one picked looks selected", [x[3] for x in got if x[0] in ("sec-units lab", "sec-units weight")] == ["si", "kg"], got)
-            page.click("#sec-units .set-foot button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-units .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            # each saved as it's picked (#272)
+            page.wait_for_function("SET_ITEMS.units.st.value.lab === 'si' && SET_ITEMS.units.st.value.weight === 'kg'", timeout=10000)
             # ---- on or off as a switch (#259): Settings' tabs are checkboxes with role="switch", each saying on or off
             # (checked) to a screen reader; Space toggles one from the keyboard and marks the section unsaved; on and off
             # look apart (the track's fill and the knob's place) in light, dark and forced colours
@@ -8616,8 +8686,7 @@ def main():
             check("the Settings page with the units fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click("#sec-units button:text-is('Reset to defaults')")
-            answer_ask(page)
-            page.wait_for_function("document.querySelector('#sec-units .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
+            page.wait_for_function("document.querySelector('#sec-units .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             check("…Reset to defaults shows units as reported again", js("document.querySelector('#sec-units input[name=units-lab]:checked').value") == "reported")
             # ---- visit summary (#48): pick the visit and sections, add a lab, type questions (kept as a draft),
             # preview, then download the PDF and read it back
@@ -8641,7 +8710,15 @@ def main():
             page.click("#labAdd")
             check("…a lab added to the trends", js("PICKED") == ["Ferritin"], js("PICKED"))
             page.fill("#questions", "Is the ferritin result worth rechecking?\nShould the next draw be fasting?")
-            page.wait_for_function("document.getElementById('qMsg').textContent === 'Draft saved.'", timeout=10000)
+            # #272: the draft waits for the group's bar, marked not saved, and leaving asks first; its Save keeps it
+            q_bar = js("[document.getElementById('shrBar').hidden, document.querySelector('#shrBar .sg-bar-n').textContent, "
+                       "document.querySelector('#build .set-changed .set-unsaved')?.checkVisibility() || false, "
+                       "(() => { const e = new Event('beforeunload', {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; })()]")
+            page.click("#shrBar button:text-is('Save')")
+            page.wait_for_function("document.getElementById('qMsg').textContent === 'Saved.'", timeout=10000)
+            check("…the questions draft, typed, is marked not saved, one change in the group's bar, and leaving asks; its Save keeps it, said by a toast with an Undo (#272)",
+                  q_bar == [False, "1 change", True, True] and js("document.getElementById('shrBar').hidden")
+                  and js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == "Saved your questions.", q_bar)
             page.click("#previewBtn")
             page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
             heads = js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent.replace(/ \\(\\d+\\)$/, ''))")
@@ -8684,7 +8761,8 @@ def main():
             page.wait_for_selector("#build:not([hidden])", timeout=10000)
             check("…and the questions draft is still there", js("document.getElementById('questions').value").startswith("Is the ferritin result"))
             page.fill("#questions", "")   # leave no draft behind
-            page.wait_for_function("document.getElementById('qMsg').textContent === 'Draft saved.'", timeout=10000)
+            page.click("#shrBar button:text-is('Save')")
+            page.wait_for_function("document.getElementById('qMsg').textContent === 'Saved.'", timeout=10000)
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- the phone's and watch's measures in the visit summary, share links and Overview tiles (#225): on profile 1
             # (the readings browser_check folds in: home blood pressure, glucose, temperature, oxygen, respiratory rate,
@@ -8792,9 +8870,8 @@ def main():
             check("Overview tiles (#225): Settings → Overview offers home readings as tiles, none chosen by default",
                   ht == [["bp", False, "Blood pressure"], ["glucose", False, "Blood glucose"], ["temp", False, "Body temperature"]], ht)
             for k in ("bp", "glucose", "temp"):
-                page.check(f"#sec-overview .set[data-key='overview.homeTiles'] input[value={k}]")
-            page.click("#sec-overview .set-foot button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-overview .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+                page.check(f"#sec-overview .set[data-key='overview.homeTiles'] input[value={k}]")   # each saved as it's ticked (#272)
+            page.wait_for_function("SET_ITEMS['overview.homeTiles'].st.value.length === 3", timeout=10000)
             page.goto(base + "/?profile=1")
             page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
             js("switchTab('overview')")
@@ -8993,11 +9070,12 @@ def main():
                   tcard[0] and "Targets of your own" in tcard[1] and "as your care team gave it" in tcard[1] and tcard[1].count("No target entered.") == 6
                   and all(n in tcard[1] for n in ("Blood pressure", "Blood glucose, meter readings", "CGM time in range", "Body temperature", "Blood oxygen", "Weight")),
                   tcard[1][:300])
-            def t_save(k, vals, said_start):
+            def t_save(k, vals, said_start):   # typed in, saved with the group's bar (#272), its toast put away
                 for name, v in vals.items():
-                    page.fill(f"#tgt-{k}-save >> xpath=ancestor::form//input[@name='{name}']", v)
-                page.click(f"#tgt-{k}-save")
+                    page.fill(f"#tgt-{k}-{name}", v)
+                page.click("#setBar button:text-is('Save')")
                 page.wait_for_function(f"document.getElementById('targetsMsg').textContent.startsWith({json.dumps(said_start)})", timeout=10000)
+                js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-x').click()")
                 return js("document.getElementById('targetsMsg').textContent")
             said = [t_save("bp", {"sysHigh": "130", "diaHigh": "80", "by": "Dr. Rowan Vale (fictional)", "on": "2026-06-02"}, "Saved the target for blood pressure"),
                     t_save("glucose", {"low": "80", "high": "140"}, "Saved the target for blood glucose"),
@@ -9007,17 +9085,24 @@ def main():
                     t_save("weight", {"high": "170"}, "Saved the target for weight")]
             check("…typed in per measure by an owner or editor, each said back in words", said[0] == "Saved the target for blood pressure: up to 130/80 mmHg."
                   and said[1] == "Saved the target for blood glucose, meter readings: 80–140 mg/dL." and said[5].endswith("up to 170 lb.")
-                  and js("document.activeElement.id") == "tgt-weight-save", said)
+                  and js("document.activeElement.id") == "tgt-weight-hd", said)
             said_ch = t_save("bp", {"sysHigh": "125"}, "Changed the target for blood pressure")
             n_problems = len(problems)
-            page.fill("#tgt-glucose-save >> xpath=ancestor::form//input[@name='low']", "150")
-            page.click("#tgt-glucose-save")
+            page.fill("#tgt-glucose-low", "150")
+            page.click("#setBar button:text-is('Save')")
             page.wait_for_function("document.getElementById('targetsMsg').textContent.includes('below the high end')", timeout=10000)
             settle(200)
             del problems[n_problems:]   # the refusal's 400 was asked for
+            page.fill("#tgt-glucose-low", "80")   # (as saved: nothing left to save)
+            page.fill("#tgt-temp-low", "36")   # typed, not saved: kept as typed while the cards are drawn again (#272)
             page.click("#tgt-spo2-clear")
             page.wait_for_function("document.getElementById('targetsMsg').textContent === 'Cleared the target for blood oxygen.'", timeout=10000)
             asked = js("[!!document.querySelector('dialog.sg-ask'), document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text')?.textContent]")
+            kept_typed = js("[document.getElementById('tgt-temp-low').value, document.querySelector('#setBar .sg-bar-n').textContent, "
+                            "document.querySelector('[data-field=temp]').classList.contains('set-changed'), document.querySelector('[data-field=spo2]').classList.contains('set-changed')]")
+            check("…a target typed and not saved stays as typed, marked so, while another is cleared and the cards drawn again (#272)",
+                  kept_typed == ["36", "1 change", True, False], kept_typed)
+            js("(i => { i.value = ''; i.dispatchEvent(new Event('input', {bubbles: true})); })(document.getElementById('tgt-temp-low'))")   # (as saved; focus stays)
             stored = js("fetch('api/profiles/1/person').then(r => r.json())")["targets"]
             check("…changed, refused in words (a low end above the high end), and cleared at once, a toast saying what it was (#263); the others kept",
                   said_ch == "Changed the target for blood pressure: up to 125/80 mmHg." and not asked[0] and asked[1].startswith("Cleared the target for blood oxygen.")
@@ -9440,7 +9525,7 @@ def main():
                     order.append(js("document.activeElement.id"))
                     if order[-1] == "addMenuBtn":
                         break
-                if order != js("[...document.querySelectorAll('header .tabs > a, #tabMoreBtn')].filter(a => a.checkVisibility()).map(a => a.id)") + ["addMenuBtn"]:
+                if order != js("[...document.querySelectorAll('header .tabs > a, #tabMoreBtn')].filter(a => a.checkVisibility()).map(a => a.id)") + ["barSearch", "addMenuBtn"]:   # Search (#273) before Add
                     reach[f"{w}: keyboard"] = order
                 # a control on the screen but under the bar (50 px from the screen's foot), focused: scrolled clear of it
                 js("() => { const f = [...document.querySelectorAll('main a[href], main button')].filter(n => n.checkVisibility()).at(-1); scrollBy(0, f.getBoundingClientRect().top - (innerHeight - 50)); f.focus(); }")
@@ -9477,8 +9562,8 @@ def main():
             page.fill(f"{ms} .set-row:last-child input[data-k=label]", "Browser check milestone")
             page.check(f"{ms} .set-row:last-child input[data-k=primary]")
             check("…one primary at a time", js(f"document.querySelectorAll('{ms} input[data-k=primary]:checked').length") == 1)
-            page.click("#sec-milestones .set-foot button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-milestones .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-milestones .set-msg').textContent.startsWith('Saved')", timeout=10000)
             rules = "[data-key=visitWorkouts]"
             page.click(".set-nav-list a[data-group=activity]")   # Workouts: a group of its own since #267
             page.click(f"{rules} button:text-is('Add a row')")
@@ -9487,7 +9572,7 @@ def main():
             page.fill(f"{rules} .set-row:last-child input[data-k=minutes]", "40")
             page.check(f"{rules} .set-row:last-child input[data-k=regex]")
             n0 = len(problems)
-            page.click("#sec-health .set-foot button:text-is('Save')")
+            page.click("#setBar button:text-is('Save')")
             page.wait_for_function(f"document.querySelector('{rules} .msg').textContent.includes('very slow')", timeout=10000)
             settle(200)
             refused = [p for p in problems[n0:] if ("HTTP 400" in p and p.endswith("/settings/visitWorkouts")) or "status of 400" in p]
@@ -9496,8 +9581,8 @@ def main():
                   "very slow" in js(f"document.querySelector('{rules} .msg').textContent") and len(refused) == 2, refused)
             page.fill(f"{rules} .set-row:last-child input[data-k=match]", want)
             page.uncheck(f"{rules} .set-row:last-child input[data-k=regex]")
-            page.click("#sec-health .set-foot button:text-is('Save')")
-            page.wait_for_function("document.querySelector('#sec-health .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function("document.querySelector('#sec-health .set-msg').textContent.startsWith('Saved')", timeout=10000)
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("the milestones and workout rules fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
@@ -9526,8 +9611,7 @@ def main():
             for sec, group in (("milestones", "milestones"), ("health", "activity")):
                 page.click(f".set-nav-list a[data-group={group}]")
                 page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
-                answer_ask(page)
-                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
+                page.wait_for_function(f"document.querySelector('#sec-{sec} .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             check("…both reset", js("MILESTONES.length === 0 && !CFG.visitWorkouts.length"), js("[MILESTONES, CFG.visitWorkouts]"))
@@ -9557,7 +9641,8 @@ def main():
             za.goto(base + "/settings.html?profile=1#sec-dates")
             za.wait_for_selector("#sec-dates select", timeout=10000)
             # the time zone is a field that searches the IANA zones (#259): something not on the list says so, and isn't
-            # kept (the section has nothing to save); a zone typed as shown, in any case, is
+            # kept (nothing to save); a zone typed as shown, in any case, is, saved as the field is left (#272: a simple
+            # preference, saved as it's changed), and so is the date format as it's picked
             tz = "[data-key='dates.timeZone'] input.set-zone"
             za.fill(tz, "Atlantis/Lost City")
             za.press(tz, "Tab")
@@ -9565,14 +9650,16 @@ def main():
                 document.getElementById(i.getAttribute('aria-describedby')).textContent, !!document.querySelector('#sec-dates[data-dirty]')]; }})()""")
             za.fill(tz, "america/los angeles")
             za.press(tz, "Tab")
+            za.wait_for_function("document.querySelector('#sec-dates .set-msg').textContent == 'Saved “Time zone”.'", timeout=10000)
             check("time zone (#259): a field searching a list of every IANA zone; one not on it is marked invalid, said and not kept, "
-                  "and one typed as shown is", bad_tz[0] == "true" and bad_tz[1] > 300 and "from the list" in bad_tz[2] and not bad_tz[3]
-                  and za.input_value(tz) == "America/Los Angeles" and za.get_attribute(tz, "aria-invalid") is None, [bad_tz, za.input_value(tz)])
+                  "and one typed as shown is, saved as the field is left (#272)", bad_tz[0] == "true" and bad_tz[1] > 300 and "from the list" in bad_tz[2] and not bad_tz[3]
+                  and za.input_value(tz) == "America/Los Angeles" and za.get_attribute(tz, "aria-invalid") is None and mine(za)["dates.timeZone"] == "America/Los_Angeles",
+                  [bad_tz, za.input_value(tz)])
             za.select_option("[data-key='dates.format'] select", "dmy")
-            za.click("#sec-dates .set-foot button:text-is('Save')")   # one Save for the section's two changes (#174)
-            za.wait_for_function("document.querySelector('#sec-dates .set-foot > .msg').textContent == 'Saved “Time zone” and “Date format”.'", timeout=10000)
-            check("…changed on the Settings page, just for that person", mine(za)["dates.timeZone"] == "America/Los_Angeles"
-                  and mine(zb)["dates.timeZone"] == "America/Chicago", (mine(za), mine(zb)))
+            za.wait_for_function("document.querySelector('#sec-dates .set-msg').textContent == 'Saved “Date format”.'", timeout=10000)
+            check("…changed on the Settings page, just for that person, each as it's changed, the group bar never shown (#272)",
+                  mine(za)["dates.timeZone"] == "America/Los_Angeles" and mine(za)["dates.format"] == "dmy" and mine(zb)["dates.timeZone"] == "America/Chicago"
+                  and za.evaluate("document.getElementById('setBar').hidden"), (mine(za), mine(zb)))
             # #374: in a time zone other than the one saved, Display → Time zone's "Use this device's" is beside the zone's
             # field, as tall as it (the default button, not .small)
             zone374 = {}
@@ -9584,24 +9671,31 @@ def main():
             check("…and in another time zone, “Use this device's” beside the field is the field's height, at 1400 and 320 px (#374)",
                   za.evaluate("[...document.querySelectorAll('#sec-dates .set-add .btn')].filter(b => b.checkVisibility()).map(b => b.textContent).join()") == "Use this device's"
                   and zone374[1400]["n"] and not zone374[1400]["bad"] and not zone374[320]["bad"], zone374)
-            # #376: "Use this device's" hides itself once the device's zone is picked: focus goes to the zone's field, not the page
+            # #376: "Use this device's" hides itself once the device's zone is picked: focus goes to the zone's field, not the page;
+            # saved then (#272), and the toast's Undo puts the zone before back
             za.click("#sec-dates .set-add .btn:text-is(\"Use this device's\")")
+            za.wait_for_function("document.querySelector('#sec-dates .set-msg').textContent == 'Saved “Time zone”.'", timeout=10000)
             here376 = za.evaluate("[document.activeElement.matches(\"[data-key='dates.timeZone'] input.set-zone\"), document.activeElement.value, "
-                                  "!!document.querySelector('#sec-dates[data-dirty]'), [...document.querySelectorAll('#sec-dates .set-add .btn')].some(b => b.checkVisibility())]")
-            za.click("#sec-dates .set-foot button:text-is('Discard changes')")
-            check("…pressed, it goes from sight and focus is on the zone's field, which holds the device's zone (#376)",
-                  here376[0] and here376[1] == za.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone").replace("_", " ") and here376[2] and not here376[3], here376)
+                                  "[...document.querySelectorAll('#sec-dates .set-add .btn')].some(b => b.checkVisibility())]")
+            here376.append(mine(za)["dates.timeZone"])
+            za.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+            za.wait_for_function("document.querySelector('#sec-dates .set-msg').textContent.startsWith('Undone')", timeout=10000)
+            check("…pressed, it goes from sight and focus is on the zone's field, which holds the device's zone (#376), saved; its Undo puts the zone before back",
+                  here376[0] and here376[1] == za.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone").replace("_", " ") and not here376[2]
+                  and here376[3] == za.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone") and mine(za)["dates.timeZone"] == "America/Los_Angeles", here376)
             zb.goto(base + "/settings.html?profile=1#dashboard")   # #174: a viewer of the profile
-            zb.wait_for_selector("#sec-dates .set-foot", state="attached", timeout=10000)
-            check("a viewer's Settings: the profile's groups say they're shown as they are, with no Save, while their own settings have one",
+            zb.wait_for_selector("#sec-dates select", state="attached", timeout=10000)
+            check("a viewer's Settings: the profile's groups say they're shown as they are, with nothing to change or reset, while their own settings can be",
                   zb.evaluate("document.getElementById('introHint').textContent").startswith("This profile: you can view it")
-                  and zb.evaluate("!document.querySelector('#sec-overview .set-foot, #sec-names .set-foot') && !!document.querySelector('#sec-units .set-foot')"),
+                  and zb.evaluate("!document.querySelector('#sec-overview :is(input, select, textarea):not(:disabled), #sec-names :is(input, select, textarea):not(:disabled)')"
+                                  " && [...document.querySelectorAll('#sec-overview .set-hd button, #sec-names .set-hd button')].every(b => b.hidden)"
+                                  " && !document.querySelector('#sec-units input[type=radio]').disabled"),
                   zb.evaluate("document.getElementById('introHint').textContent"))
             # #169: with no profile at all, Settings still has their own Display settings, says how to get a profile,
             # and saves; an old address opened by a link within the page goes on to its new home too
             sdb.execute("DELETE FROM memberships WHERE user_id=? AND profile_id=1", (uid2,))
             zb.goto(base + "/settings.html")
-            zb.wait_for_selector("#sec-dates .set-foot", state="attached", timeout=10000)
+            zb.wait_for_selector("#sec-dates select", state="attached", timeout=10000)
             check("no profile: Settings shows Display (their own), says how to get a profile, and no profile choice",
                   zb.evaluate("[...document.querySelectorAll('#setNav a')].map(a => a.dataset.group).join()") == "display"
                   and zb.evaluate("[...document.querySelectorAll('#sections > section')].map(s => s.id).join()") == "sec-appearance,sec-dates,sec-units"
@@ -9609,8 +9703,7 @@ def main():
                   and zb.is_hidden("#profile") and zb.evaluate("document.getElementById('groupTitle').textContent") == "Display",
                   zb.evaluate("[...document.querySelectorAll('#sections > section')].map(s => s.id).join()"))
             zb.select_option("[data-key='dates.format'] select", "dmy")
-            zb.click("#sec-dates .set-foot button:text-is('Save')")
-            zb.wait_for_function("document.querySelector('#sec-dates .set-foot > .msg').textContent == 'Saved “Date format”.'", timeout=10000)
+            zb.wait_for_function("document.querySelector('#sec-dates .set-msg').textContent == 'Saved “Date format”.'", timeout=10000)
             check("…and saves them", mine(zb)["dates.format"] == "dmy", mine(zb))
             zb.evaluate("location.hash = '#watch'")
             zb.wait_for_url("**/sources.html#phone", timeout=10000)
@@ -9902,8 +9995,8 @@ def main():
             page.wait_for_selector(f"#about[data-profile='{rpid}'] #aboutBirth", timeout=10000)
             page.fill("#aboutBirth", "1990-03-01")
             page.check("#about input[name=aboutSex][value=female]")
-            page.click("#aboutSave")
-            page.wait_for_function("document.getElementById('aboutMsg').textContent === 'Saved.'", timeout=10000)
+            page.click("#setBar button.primary")   # the group's bar (#272)
+            page.wait_for_function("document.getElementById('aboutMsg').textContent.startsWith('Saved “')", timeout=10000)
             page.goto(base + f"/settings.html?profile={rpid}#sec-ranges")
             page.wait_for_selector("#sec-ranges [data-key='ranges.overrides'] .set-sugg .chip", timeout=10000)
             chips = js("[...document.querySelectorAll('#sec-ranges .set-sugg .chip')].map(b => (b.querySelector('svg.i-plus') ? '+ ' : '') + b.textContent)")   # the + an icon (#257)
@@ -9923,11 +10016,11 @@ def main():
             r1.locator("[data-k=low]").fill("200")
             r1.locator("[data-k=high]").fill("20")
             n_problems = len(problems)
-            page.locator("#sec-ranges .set-foot button:text-is('Save')").click()
+            page.locator("#setBar button:text-is('Save')").click()
             page.wait_for_function(f"document.querySelector(\"{ov} .msg\").textContent.includes('low is above the high')", timeout=10000)
-            check("…a low above the high is refused, in words, beside the setting and its section's Save",
-                  "isn't saved" in js("document.querySelector('#sec-ranges .set-foot > .msg').textContent")
-                  and js("document.getElementById('sec-ranges').hasAttribute('data-dirty')"), js("document.querySelector('#sec-ranges .set-foot > .msg').textContent"))
+            check("…a low above the high is refused, in words, beside the setting and in the group's bar (#272), its Save there to try again",
+                  "isn't saved" in js("document.querySelector('#setBar .msg').textContent") and not js("document.getElementById('setBar').hidden")
+                  and js("document.getElementById('sec-ranges').hasAttribute('data-dirty')"), js("document.querySelector('#setBar .msg').textContent"))
             settle(200)
             del problems[n_problems:]   # the refusal's 400 was asked for
             r1.locator("[data-k=low]").fill("20")
@@ -9946,8 +10039,8 @@ def main():
             settle(200)
             check("…and the ranges editor fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.locator("#sec-ranges .set-foot button:text-is('Save')").click()
-            page.wait_for_function("document.querySelector('#sec-ranges .set-foot > .msg').textContent.startsWith('Saved “Ranges')", timeout=10000)
+            page.locator("#setBar button:text-is('Save')").click()
+            page.wait_for_function("document.querySelector('#sec-ranges .set-msg').textContent.startsWith('Saved “Ranges')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.name === 'Ranges (fictional)'", timeout=20000)
             got = js("SERIES.filter(s => !s.watch).flatMap(s => s.pts.map(p => [s.name, s.unit, p[0], p[2], p[3], p[4] || '', p.rs || '']))")
@@ -10053,8 +10146,8 @@ def main():
                   "Sex used for reference ranges" in atext and "What labs base their reference ranges on" in atext and "isn't gender identity" in atext, atext[:300])
             page.fill("#aboutBirth", "2016-05-20")
             page.check("#about input[name=aboutSex][value=male]")
-            page.click("#aboutSave")
-            page.wait_for_function("document.getElementById('aboutMsg').textContent === 'Saved.'", timeout=10000)
+            page.click("#setBar button.primary")   # the group's bar (#272)
+            page.wait_for_function("document.getElementById('aboutMsg').textContent.startsWith('Saved “')", timeout=10000)
             got = js(f"fetch('api/profiles/{apid}/person').then(r => r.json())")
             check("…the birth date and sex saved together, the age today beside it", (got["birthDate"], got["sex"]) == ("2016-05-20", "male")
                   and f"aged {person_r.age_on('2016-05-20', js('isoDay(Date.now())'))} today" in page.inner_text("#about"), got)
@@ -10316,13 +10409,13 @@ def main():
                   js("document.getElementById('aboutDue').value") == CHILD_DUE and "growth charts use the age counted from it" in page.inner_text("#about"))
             page.fill("#aboutDue", "2022-09-20")
             n_problems = len(problems)
-            page.click("#aboutSave")
+            page.click("#setBar button.primary")   # the group's bar (#272)
             page.wait_for_function("document.getElementById('aboutMsg').textContent.includes('more than 20 weeks after the birth date')", timeout=10000)
             settle(200)
             del problems[n_problems:]   # the refusal's 400 was asked for
             page.fill("#aboutDue", "")
-            page.click("#aboutSave")
-            page.wait_for_function("document.getElementById('aboutMsg').textContent === 'Saved.'", timeout=10000)
+            page.click("#setBar button.primary")   # the group's bar (#272)
+            page.wait_for_function("document.getElementById('aboutMsg').textContent.startsWith('Saved “')", timeout=10000)
             check("…a due date that can't be (more than 20 weeks after the birth) is refused in words; cleared, it's saved",
                   js(f"fetch('api/profiles/{cpid}/person').then(r => r.json())")["dueDate"] == "")
             # ---- a condition's preset on a child's profile (#186): measures for adults left out, and said
@@ -11556,6 +11649,16 @@ def main():
             role_of = lambda who: js(f"fetch('api/profiles/2/members').then(r => r.json()).then(m => m.find(x => x.username === {json.dumps(who)}).role)")  # noqa: E731
             check("changing a role in the table saves it", role_of("alex") == "viewer")
             check("…someone else's editor/viewer change isn't asked (#249)", not js("document.querySelector('dialog.sg-ask')"))
+            # #272: applied at once, a toast saying so with an Undo that puts the role before back
+            role_toast = js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent")
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+            page.wait_for_function("document.getElementById('peopleMsg').textContent === 'Undone: alex is an editor again.'", timeout=10000)
+            check("…said by a toast, “alex is now a viewer.”, whose Undo makes them an editor again (#272)",
+                  role_toast == "alex is now a viewer." and role_of("alex") == "editor"
+                  and js("document.querySelector(\"#memberList select[aria-label=\\\"alex's role\\\"]\").value") == "editor", role_toast)
+            page.select_option("#memberList select[aria-label=\"alex's role\"]", "viewer")
+            page.wait_for_function("document.getElementById('peopleMsg').textContent === 'alex is now a viewer.'", timeout=10000)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             # ---- role changes that are hard to take back ask first (#249): Cancel puts the select back and sends nothing
             alex_sel, my_sel = "#memberList select[aria-label=\"alex's role\"]", f"#memberList select[aria-label=\"{USER}'s role\"]"
             focus_js = "(() => { const d = document.querySelector('dialog.sg-ask[open]'); return [d.getAttribute('role'), document.activeElement.textContent]; })()"
@@ -11673,8 +11776,10 @@ def main():
                   and js("document.querySelector('#profileBody input').value") == "Third person (fictional)", third)
             page.fill("#profileBody input", "Third person, renamed")
             page.click("#profileBody button:text-is('Rename')")
-            page.wait_for_function("document.getElementById('profileMsg').textContent === 'Renamed.' && document.querySelector('#profile option:checked').textContent === 'Third person, renamed (owner)'", timeout=10000)
-            check("Rename renames it, in the picker too", True)
+            page.wait_for_function("document.getElementById('profileMsg').textContent === 'Renamed to “Third person, renamed”.' && document.querySelector('#profile option:checked').textContent === 'Third person, renamed (owner)'", timeout=10000)
+            check("Rename renames it, in the picker too, a toast saying so with an Undo (#272)",
+                  js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == "Renamed “Third person (fictional)” to “Third person, renamed”.")
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             pick_profile(page, "2")
             page.wait_for_function("document.querySelector('#profileBody input').value === 'Second person'", timeout=10000)
             second = page.locator("#profileCard")
