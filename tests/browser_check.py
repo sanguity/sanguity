@@ -5183,7 +5183,7 @@ def main():
                 row275 = next((r for r in med275["cur"] if r[0] == cur["name"]), [])
                 check("Medications tab (#275): Today, Current and Past (closed) and the medications over the period; a row for each medication "
                       "the records list as current, the rest under Past, a row each in the lane",
-                      med275["h2"] == ["Today", f"Current ({med275['want'][0]})", f"Past ({med275['want'][1]})", "Over all the records"]
+                      med275["h2"] == ["Today", f"Current ({med275['want'][0]})", f"Past ({med275['want'][1]})", "All the records"]
                       and len(med275["cur"]) == med275["want"][0] and len(med275["past"]) == med275["want"][1] >= 1 and med275["open"] is False
                       and med275["lane"] == med275["want"][2] >= len(med275["cur"]) and cur["name"] in med275["today"], {k: v for k, v in med275.items() if k != "text"})
                 check("…the current medication with a reminder: since when, as listed, its last fill and the reminder's times, each fact named",
@@ -5250,18 +5250,49 @@ def main():
                 page.set_viewport_size({"width": 1400, "height": 900})
                 js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme275)
                 check("…the tab fits 375 px and passes axe-core's WCAG A and AA rules at 1400 and 375 px, in light and dark", not bad275 and not axe275, (bad275 + axe275)[:6])
-                # a fill's claims on Costs: the link, for each current medication with pharmacy claims, opens Costs with them listed
+                # #439: Past keeps its open state as the tab is drawn again: after the resizes above, and after a dose
+                # logged from Today. That dose, logged today (after the records' last day, where the presets end), shows
+                # in the lane at 30 days; and the lane's heading says the period as a heading: "Since diagnosis (Apr 14,
+                # 2025)", "The last 30 days" (not "Over since…"). The dose is removed after
+                open439 = [js("document.querySelector('#view-medications .med-past').open")]
+                ids439 = js("(DATA.doses || []).map(d => d.id)")
+                page.locator("#medToday .dose-today", has=page.locator(".dose-quick")).filter(has_text=cur["name"]).last.locator(".dose-quick button:text-is('Taken')").click()
+                page.wait_for_function("n => (DATA.doses || []).length === n + 1", arg=len(ids439), timeout=20000)
+                settle(300)
+                open439.append(js("document.querySelector('#view-medications .med-past').open"))
+                check("…Past stays open as the tab is drawn again: after a resize, and after a dose is logged (#439)", open439 == [True, True], open439)
+                js("setPeriod('30d'); renderAll()")
+                settle(300)
+                lane439 = js("""k => { const m = MEDS.find(m => m.key === k), d = DOSES.at(-1);
+                    return {after: d.ts > state.to, today: doseDay(d) === zToday(), marks: document.querySelectorAll(`#view-medications svg.med-lane .dosemark[data-med="${m.i}"]`).length}; }""", cur["key"])
+                check("…a dose logged today, after the records' last day, shows in the lane at 30 days (#439)", lane439["today"] and lane439["marks"] >= 1, lane439)
+                head439 = [js("[...document.querySelectorAll('#view-medications h2')].at(-1).textContent")]
+                js("setPeriod(msKey(primaryMs())); renderAll()")
+                settle(300)
+                head439 += js("[[...document.querySelectorAll('#view-medications h2')].at(-1).textContent, `Since ${lcLabel(primaryMs().label)} (${fmtD(dayTs(primaryMs().date))})`]")
+                check("…the lane's heading says the period: “The last 30 days”, “Since diagnosis (Apr 14, 2025)” (#439)",
+                      head439[0] == "The last 30 days" and head439[1] == head439[2], head439)
+                js("""async ids => { for (const d of DATA.doses.filter(d => !ids.includes(d.id))) {
+                    const r = await api(`profiles/${PROFILE.id}/medications/doses/${d.id}`, {method: 'DELETE'}); storePut('doses', await r.json()); } }""", ids439)
+                js("setPeriod('all'); renderAll()")
+                settle(300)
+                # a fill's claims on Costs: the link, for each current medication with pharmacy claims, opens Costs with them
+                # listed, its search focused; from What you paid too, on Claims then (#439), with only the drug's filters on
                 links275 = js("[document.querySelectorAll('#view-medications a.med-costs').length, MEDS.filter(mrCurrent).filter(m => medClaims(m).length).length]")
                 costs275 = None
                 if links275[0]:
                     key275 = js("() => MEDS.filter(mrCurrent).find(m => medClaims(m).length).key")
+                    js("Object.assign(costState, {view: 'paid', deniedOnly: true})")   # as Costs was left
                     page.locator("#view-medications a.med-costs").first.click()
                     settle(400)
                     costs275 = js("""k => [state.tab, costState.q, document.activeElement.matches('#costTable input.search'),
-                        [...document.querySelectorAll('#costTable tbody tr')].length > 0 && [...document.querySelectorAll('#costTable tbody tr')].every(r => r.textContent.toLowerCase().includes(k))]""", key275)
+                        [...document.querySelectorAll('#costTable tbody tr')].length > 0 && [...document.querySelectorAll('#costTable tbody tr')].every(r => r.textContent.toLowerCase().includes(k)),
+                        costState.view, costState.deniedOnly, document.querySelector('#costView [aria-pressed=true]')?.textContent]""", key275)
                     js("costState.q = ''; costState.cat = ''")
-                check("…a current medication's last fill links to its claims on Costs when it has pharmacy claims: Costs opens with them listed, its search focused",
-                      links275[0] == links275[1] and (costs275 is None or costs275[0] == "costs" and costs275[2] and costs275[3]), [links275, costs275])
+                check("…a current medication's last fill links to its claims on Costs when it has pharmacy claims: from What you paid, Costs opens on Claims "
+                      "with them listed, its search focused (#439)",
+                      links275[0] == links275[1] and (costs275 is None or costs275[0] == "costs" and costs275[2] and costs275[3]
+                                                      and costs275[4] == "claims" and costs275[5] is False and costs275[6] == "Claims"), [links275, costs275])
                 # Add → Log a dose: on the Medications tab's Today, its first button focused; with the tab hidden, the Overview's
                 js("switchTab('overview')")
                 menu_click(page, "#doseLink")
@@ -14170,6 +14201,18 @@ def main():
                   "Offline · read-only" in text and f"{name}, as loaded on" in text, text)
             check("…in the theme picked online last (#424), not the one the records were loaded with",
                   ph.evaluate(SHOWN) == picked424[-1][1], [ph.evaluate(SHOWN), picked424])
+            # (#439) today's doses, on the Medications tab and the Overview: each button says why it does nothing (its tip,
+            # as Add's Log a dose has), the card says so too, and a press sends nothing
+            off439 = {}
+            for t, card in (("medications", "#medToday"), ("overview", "#ovDoses")):
+                tab_click(ph, f"#tab-{t}")
+                ph.wait_for_timeout(300)
+                off439[t] = ph.evaluate("""c => { const box = document.querySelector(c), bs = box ? [...box.querySelectorAll('.dose-today button.btn')] : [];
+                    const n = (DATA.doses || []).length; bs.forEach(b => b.click());
+                    return {buttons: bs.length, off: bs.every(b => b.getAttribute('aria-disabled') === 'true' && b.dataset.tip === "Needs the server: you're offline"),
+                      says: !!box && box.textContent.includes("needs the server: you're offline"), sent: (DATA.doses || []).length !== n || !!document.querySelector(c + ' .edit-msg:not(:empty)')}; }""", card)
+            check("offline (#439): today's doses on the Medications tab and the Overview: the buttons disabled, saying why, and a press sends nothing",
+                  all(v["buttons"] > 0 and v["off"] and v["says"] and not v["sent"] for v in off439.values()), off439)
             tab_click(ph, "#tab-labs")
             ph.wait_for_selector("#charts svg", timeout=10000)
             check("offline: Trends draws from the kept copy", ph.evaluate("document.querySelectorAll('#charts svg').length") > 0)

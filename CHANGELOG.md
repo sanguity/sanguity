@@ -1421,6 +1421,13 @@ Everything on `main` so far; it becomes the first tagged release.
   drawer), **Past** (closed until opened) and the medications over the records bar's period. It's hideable like any
   tab; a tab layout saved before it gets it after Body and activity, not at the end, on the server and in a copy kept
   offline. With six tabs, a phone's bar shows four and More, and from 1,100 px down some go under More.
+- **The Medications tab: its Costs link, Past, today's doses in the lane, and offline** (#439): "Its claims on Costs"
+  opened What you paid, empty, when Costs was last left there; it opens Claims now, with the drug's claims listed and
+  focus in their search. Past closed again whenever the tab was drawn again (a dose logged, the window resized); it
+  stays as it was left. A dose logged today fell outside the lane at 30 days, 1 year and 2 years, which end at the
+  records' last day; the lane runs on to it. Its heading said "Over since diagnosis (Apr 14, 2025)"; it says the
+  period: "Since diagnosis (Apr 14, 2025)", "The last 30 days". Offline, Taken, Taken late and Skipped each failed
+  with "You're offline"; on the tab and the Overview they're disabled now, each saying why, as Add's Log a dose is.
 - **Help text: one line under a heading, the rest behind ⓘ** (#280): most cards ran heading, hint, "More about this",
   then content, with up to six lines of hint before the first control (Account's offline records) and 26 "More about
   this" toggles across the pages. Now a heading has at most one line of hint at 1,400 px. A card's background (how it

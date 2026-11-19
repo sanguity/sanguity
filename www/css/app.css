@@ -1241,7 +1241,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .offline-banner .why{color:var(--ink2)}
 .offline-banner.flash{animation:offline-flash .6s ease-out}
 @keyframes offline-flash{from{box-shadow:0 0 0 3px var(--c-study)}to{box-shadow:0 0 0 0 transparent}}
-body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline #dbody a[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline #dbody a[aria-disabled="true"],body.offline .dose-today .btn[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
 .offline-note{color:var(--ink2)}
 @media (max-width:700px){.offline-banner{width:calc(100% - 24px)}}
 /* saved Trends views (#37, trends-views.js) */
