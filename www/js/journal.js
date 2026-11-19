@@ -7,9 +7,9 @@
    (CHART_LAYERS, trends.js), and moods in a row of their own. Severity is shown by the marker's size, the kind by its
    shape (note: square, symptom: circle, side effect: diamond), a mood and energy by bars' heights, and each in its
    label: never by colour alone. Owners and editors add, change and delete entries (server/routes_journal.py); viewers
-   read them. The journal's home is a card on the Timeline tab with its filters and search, and the body map of where
-   symptoms have been in the dates shown (journal-body.js); Add → Journal entry opens the form for a new one from any
-   tab (#173). Symptom groups are the setting journal.groups (CFG.journal.groups), changed from that card.
+   read them. The journal's home is the Timeline tab's Journal view (#277), a card with its filters and search, and the
+   body map of where symptoms have been in the dates shown (journal-body.js); Add → Journal entry opens the form for a
+   new one from any tab (#173). Symptom groups are the setting journal.groups (CFG.journal.groups), changed from that card.
    Plain script, loaded in order by index.html after trends.js and journal-body.js; all files share one global scope. */
 "use strict";
 const J_KINDS = [["note", "Note"], ["symptom", "Symptom"], ["side_effect", "Side effect"], ["mood", "Mood"]];
@@ -183,9 +183,8 @@ function openJournal(e) {
 }
 
 /* ---------------------------------------------------------------- the list, and the journal's home (#173)
-   Its home is a card on the Timeline tab, between the timeline and the events list, added here (index.html has no
-   place for it): the newest entries, with the filters and search, then where symptoms have been (#161). The panel
-   shows the same list only when the Timeline tab is hidden (Settings → Tabs, #40). The card is built again, in place,
+   Its home is a card in the Timeline tab's Journal view (#tlJournal, timeline.js: #277), made here: the newest
+   entries, with the filters and search, then where symptoms have been (#161). The panel shows the same list only when the Timeline tab is hidden (Settings → Tabs, #40). The card is built again, in place,
    whenever the journal changes (store.js, #271). */
 const jFilter = {kinds: new Set(J_KINDS.map(([k]) => k)), med: "", q: "", inRange: false, all: false, where: ""};   // kinds: those shown
 const J_FEW = 5;   // the card shows the newest five until "Show all"
@@ -263,12 +262,12 @@ function jWhereSection(showOnly) {
   draw();
   return {node: box, draw};
 }
-/* the card on the Timeline tab: none for someone who can only read a journal no one has written in */
+/* the card in the Timeline tab's Journal view: none for someone who can only read a journal no one has written in */
 let jHomeDraw = null;
 function journalHomeCard() {
-  const events = $("#list")?.closest(".card");
+  const home = $("#tlJournal");
   $("#journalHome")?.remove(); jHomeDraw = null;
-  if (!events || !JOURNAL.length && !jCanWrite()) return;
+  if (!home || !JOURNAL.length && !jCanWrite()) return;
   const n = JOURNAL.length, groups = jGroups();
   const card = el("section", {class: "card jhome", id: "journalHome", tabindex: -1, "aria-labelledby": "journalHomeTitle"},
     el("div", {class: "list-hd"}, el("h2", {id: "journalHomeTitle", text: n ? `Journal (${n})` : "Journal"}), el("span", {class: "spacer"}),
@@ -290,20 +289,18 @@ function journalHomeCard() {
     }
     jHomeDraw = () => { v.draw(); map?.draw(); };
   }
-  events.before(card);
+  home.append(card);
 }
 storeOn("journal", () => keepFocus(journalHomeCard));
-// "Only the dates shown" and the body map follow the timeline's dates: the events list is drawn again whenever they change
-{ const evList = $("#list"); if (evList) new MutationObserver(() => { if (jHomeDraw) jHomeDraw(); }).observe(evList, {childList: true}); }
-/* to the journal's home: the card on the Timeline tab, or the list in the panel when that tab is hidden. push:
+// "Only the dates shown" and the body map follow the period: drawn again with the tab (renderTimelineTab, timeline.js)
+/* to the journal's home: the Timeline tab's Journal view, or the list in the panel when that tab is hidden. push:
    someone asked for it, so Back returns to the tab before (#208) */
 function journalHome(push) {
   const card = $("#journalHome");
   if (!card || !shownTabs().includes("timeline")) return openJournalList();
   if (drawer.classList.contains("open")) closeDrawer();
-  switchTab("timeline", null, push);
-  const bar = document.querySelector("header")?.offsetHeight || 0;   // the top bar stays on screen: scroll to just under it
-  window.scrollTo({top: card.getBoundingClientRect().top + scrollY - bar - 12, behavior: "instant"}); card.focus({preventScroll: true});
+  switchTab("timeline", "journal", push);
+  window.scrollTo({top: 0, left: 0, behavior: "instant"}); card.focus({preventScroll: true});
 }
 function openJournalList() {
   state.selEv = null;

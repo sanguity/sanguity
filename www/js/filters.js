@@ -2,10 +2,10 @@
    ("Showing 3 of 11 kinds · matching “visit”") and ends with one "Reset filters", which puts that tab's filters back
    as they start: never the period, which has its own control in the records bar. filterLine() draws the line; each tab
    describes its own filters where they are:
-   - the Timeline's kinds and search: under the records bar (#fsum, below), still there on a phone with the Filters
-     sheet closed (#269), where the Filters button counts the filters on ("Filters (2)"); its counts say they're for what's
-     shown (#statsNote). The kinds' visible "Show all" (#189) gave way to it: the two sat side by side, and each kind's
-     ⋯ menu still has Show all for the kinds alone;
+   - the Timeline's kinds and search: under them in the Events card's header (#fsum, below; #277), still there on a
+     phone with the Filters sheet closed (#269), where the Filters button counts the filters on ("Filters (2)"); the line
+     over the list then says its counts are "with these filters" (tlSum, timeline.js). The kinds' visible "Show all"
+     (#189) gave way to it: the two sat side by side, and each kind's ⋯ menu still has Show all for the kinds alone;
    - the Labs name filter: under its box, in the lab list's header and the heatmap's (trends.js, labCount);
    - Costs: under each list's own filters, the claims and the out-of-pocket amounts, their totals then saying they're
      for what's shown (costs.js);
@@ -38,7 +38,7 @@ function showingParts(kinds, noun, rest) {
 }
 const visibleIn = (...els) => els.find(n => n && n.getClientRects().length);   // the first drawn: a hidden one has no box
 
-/* ---- the Timeline: its kinds and search (records bar) */
+/* ---- the Timeline: its kinds and search (the Events card's header, #277) */
 const KINDS_OFF_AT_START = new Set(["claim"]);   // as state.cats starts (core.js): Insurance claims are on Costs
 function timelineFilters() {
   const kinds = CATS.filter(hasLane), on = kinds.filter(c => state.cats.has(c.k));
@@ -51,14 +51,13 @@ function resetTimelineFilters() {
   clearTimeout(qT); state.q = ""; $("#q").value = "";
   renderAll();
 }
-/* from renderAll (app.js): the line, the Filters button's count and the counts' caption */
+/* from renderAll (app.js): the line and the Filters button's count */
 function renderFilterSum() {
   const tl = state.tab === "timeline", f = timelineFilters();
   filterLine(tl ? showingParts(f.narrowed && kindsShown(f.on.map(c => c.label), f.kinds.length), "events", [f.q && `matching “${f.q}”`]) : [],
     resetTimelineFilters, () => visibleIn(...document.querySelectorAll("#chips .toggle"), $("#ftoggle"), $("#q")), $("#fsum"));
   $("#ftoggle").textContent = f.n ? `Filters (${f.n})` : "Filters";   // its sheet, on a phone's Timeline (#269, core.js)
-  $("#statsNote").hidden = !(tl && f.n);
 }
 { let t; $("#q").addEventListener("input", () => {   // said once typing stops, not on each key
-  clearTimeout(t); t = setTimeout(() => { if (state.q) { const n = EV.filter(visible).length; announce(`${n ? n.toLocaleString() : "No"} event${n === 1 ? "" : "s"} match.`); } }, 1000);
+  clearTimeout(t); t = setTimeout(() => { if (state.q) { const n = tlListed().length; announce(`${n ? n.toLocaleString() : "No"} event${n === 1 ? "" : "s"} match.`); } }, 1000);
 }); }

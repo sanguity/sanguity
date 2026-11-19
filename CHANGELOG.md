@@ -1392,6 +1392,19 @@ Everything on `main` so far; it becomes the first tagged release.
   latest result, a key lab not tested again since included, where Magnesium could say ▲ High above "Outside reference
   range at latest draw (0)". An upcoming appointment opens its details in the drawer. Recent lists clinical records
   only, with the watch's workouts summed in one line.
+- **The Timeline: events by day, workouts folded, its filters beside the list, the journal a view of it** (#277): 97
+  of the last year's 119 events were watch workouts, each row was 63 px tall with its kind about 1,100 px from its
+  title and its date wrapping on a phone, and the list stopped at 600 rows, which ten years of records reach. Now the
+  Events list groups a day's events under its date, said once (its number over its weekday) under the month's
+  heading, with each event's kind small beside its title. Workouts stay on their lane and are left out of the list
+  unless **List workouts** is on (or Watch is the only kind shown); listed, a day's several fold into one row ("3
+  workouts · 2 h 10 m") that opens to each. The list draws 400 events at a time with **Show more**, and the browser
+  skips the months off screen, so ten years list everything within the performance budgets. The seven count cards,
+  which repeated the kinds' counts, are one line over the list: the lab draws, results and those out of range, and the
+  workouts. The kinds and the search moved from the records bar, where they sat on every tab, into the Events card's
+  header (on a phone, its Filters button opens the same sheet); the records bar holds only the period. And the
+  journal, a card between the chart and its list, is a view of the tab: **Timeline | Journal**, as Labs has Chart |
+  Heatmap, at `#timeline-journal`.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -69,11 +69,12 @@ const stateKey = () => "ht-state" + (PROFILE ? ":" + PROFILE.id : "");
 // DATA, EV, STAYS, SERIES, byId, WATCH, STEPS: the records and what's worked out from them, in store.js (#271)
 const hasLane = c => EV.some(e => CAT_OF[e.k] === c) || (c.k === "watch" && STEPS.length > 0);
 /* preset: the records bar's period (#171), shared by every tab with time ("period" below); labsView: the Labs tab's
-   "chart" or "heatmap" (#172) */
-const state = { from: 0, to: 0, min: 0, max: 0, preset: "2y", cats: new Set(CATS.map(c => c.k).filter(k => k !== "claim")), q: "", tab: "overview", labsView: "chart", marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
+   "chart" or "heatmap" (#172); tlView: the Timeline tab's "timeline" or "journal", and tlWork: its list has the
+   workouts too (#277, timeline.js) */
+const state = { from: 0, to: 0, min: 0, max: 0, preset: "2y", cats: new Set(CATS.map(c => c.k).filter(k => k !== "claim")), q: "", tab: "overview", labsView: "chart", tlView: "timeline", tlWork: false, marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
 
 /* ---------------------------------------------------------------- persistence */
-function save() { try { localStorage.setItem(stateKey(), JSON.stringify({preset: state.preset, from: state.from, to: state.to, cats: [...state.cats], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
+function save() { try { localStorage.setItem(stateKey(), JSON.stringify({preset: state.preset, from: state.from, to: state.to, cats: [...state.cats], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, tlView: state.tlView, tlWork: state.tlWork, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
 function restore() {
   try {
     let raw = localStorage.getItem(stateKey());
@@ -84,6 +85,8 @@ function restore() {
     if (s.sel) state.sel = new Set(s.sel);
     if (s.tab && s.v === 2) [state.tab, state.labsView] = tabAlias(s.tab, s.labsView);   // Trends and Lab heatmap are Labs now (#172)
     if (s.preset) state.preset = s.preset;
+    if (s.tlView === "journal") state.tlView = "journal";
+    if (typeof s.tlWork === "boolean") state.tlWork = s.tlWork;
     if (typeof s.marks === "boolean") state.marks = s.marks; if (typeof s.smooth === "boolean") state.smooth = s.smooth; if (typeof s.asc === "boolean") state.asc = s.asc;
     if (s.preset === "custom" && s.from && s.to) { state.from = s.from; state.to = s.to; }
   } catch (e) {}
@@ -201,8 +204,9 @@ $("#datesClear").onclick = () => {
 };
 /* ---- on a phone (#269, nav.js's sheets): the period is one pill, "Last 2 years ▾", whose sheet lists every period
    (the presets, each milestone, the calendar years: a menu, picked by touch or keyboard as More… is) with the date boxes
-   for custom dates under it, moved there from the bar; and on the Timeline, Filters opens a sheet of its own: the search
-   (moved there too), each kind with records as a checkbox (its icon, name and count, renderKinds) and Reset. */
+   for custom dates under it, moved there from the bar; and on the Timeline, the Events card's Filters (#277) opens a
+   sheet of its own: the search (moved there too), each kind with records as a checkbox (its icon, name and count,
+   renderKinds) and Reset. */
 const pill = $("#periodPill"), pillList = $("#periodPillList");
 const datesBox = el("section", {class: "sheet-dates", "aria-labelledby": "datesHd"}, el("h3", {id: "datesHd", text: "Custom dates"}));
 menuSheet(SgNav.menu({btn: pill, list: pillList}), "Period", datesBox);
@@ -214,7 +218,8 @@ const fSheet = phoneSheet("Filters", el("div", {class: "sheet-body"}, qSlot, el(
     el("button", {class: "btn primary", type: "button", text: "Done", onclick: () => fSheet.close()})));
 $("#ftoggle").onclick = () => { openDialog(fSheet, {as: "sheet"}); $("#ftoggle").setAttribute("aria-expanded", "true"); };
 fSheet.addEventListener("close", () => $("#ftoggle").setAttribute("aria-expanded", "false"));
-/* the date boxes and the search: in the sheets on a phone, in the records bar wider */
+/* the date boxes and the search: in the sheets on a phone; wider, the dates in the records bar and the search after the
+   kinds, in the Events card's header (#277) */
 function barOrSheet() {
   if (PHONE.matches) { datesBox.append($("#dates")); qSlot.append($("#q")); }
   else { $("#periodWords").after($("#dates")); $("#chips").after($("#q")); fSheet.close(); }
@@ -227,11 +232,12 @@ function renderFilters() {
   renderKinds();
 }
 /* ---------------------------------------------------------------- the Timeline's kinds (#189)
-   Each kind with records is an on/off chip (#193, app.css .toggle) in the kind's colour, its name saying the state
+   In the Events card's header with the search (#277: they were in the records bar on every tab, and filter only the
+   Timeline's chart and list). Each kind with records is an on/off chip (#193, app.css .toggle) in the kind's colour, its name saying the state
    ("Visits, 31, shown"). Beside it a "⋯" menu button: "Show only Visits", and "Show all" while any kind is hidden.
    Right-click on a chip, or the keyboard's menu key, opens the same menu (and a long press, on phones that send one
    as a right-click). Shown kinds: state.cats, kept by save(). The "Show all" button that followed the chips while any
-   was hidden gave way to the filters' line under the records bar and its Reset filters (#190, filters.js). */
+   was hidden gave way to the filters' line under them and its Reset filters (#190, filters.js). */
 /* every kind with records shown (only == null), or only that one */
 function showKinds(only) {
   $("#chips .menu-list:popover-open")?.hidePopover();   // focus back on its ⋯ (nav.js), kept there once redrawn

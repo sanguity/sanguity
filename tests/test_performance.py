@@ -421,13 +421,22 @@ DRAW_JS = """async t => { const [tab, view] = t.split("-");
 TABS = ("overview", "health", "timeline", "labs", "labs-heatmap", "costs")
 # Body and activity's sections on the ten years, each with its cards (#276)
 SECTIONS = [["hs-body", ["h-body"]], ["hs-vitals", ["h-heart", "h-bp", "h-glucose", "h-temp", "h-oxygen"]], ["hs-sleep", ["h-sleep"]], ["hs-activity", ["h-activity"]]]
+# the Timeline's Events list with the period "All" (#277): its first page, then Show more until every event it lists is
+# drawn, each press timed to the frame after; {want: the events it lists, first: rows drawn at first, rows: drawn at the
+# end, presses, ms: the slowest press, focused: the first new row has focus, elements: the tab's with everything shown}
+TL_ALL_JS = """async () => { const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r)));
+  switchTab("timeline", "timeline"); await frame();
+  const rows = () => document.querySelectorAll("#list .tl-row[data-id]").length, want = tlListed().length, first = rows(), times = [];
+  for (let b; (b = document.getElementById("tlMore"));) { const s = performance.now(); b.click(); await frame(); times.push(performance.now() - s); }
+  return {want, first, rows: rows(), presses: times.length, ms: Math.round(Math.max(0, ...times)), focused: !times.length || document.activeElement.matches("#list .tl-row"),
+    elements: document.getElementById("view-timeline").getElementsByTagName("*").length}; }"""
 
 
 def page_times(viewport, throttle=1):
     """{tab: median ms to the page ready, loaded on that tab}, {tab: median ms of its first draw with the period
     "All"}, {tab: its elements}, any script or console errors, what Costs' out-of-pocket list shows before and
-    after Show 200 more, and Body and activity's sections with their cards (#276). throttle: Chromium's CPU slowdown
-    (4: a phone)."""
+    after Show 200 more, Body and activity's sections with their cards (#276), and the Timeline's list shown whole
+    (TL_ALL_JS, #277). throttle: Chromium's CPU slowdown (4: a phone)."""
     from playwright.sync_api import sync_playwright
     errors, ready_ms, draw_ms, elements = [], {}, {}, {}
     with sync_playwright() as p:
@@ -473,8 +482,9 @@ def page_times(viewport, throttle=1):
         paged = [page.evaluate(rows), more.inner_text()]
         more.click()
         paged += [page.evaluate(rows), page.evaluate("() => document.querySelector('#paidTable tbody tr:nth-child(201)').contains(document.activeElement)")]   # its button (#202)
+        tl_all = page.evaluate(TL_ALL_JS)
         browser.close()
-    return ready_ms, draw_ms, elements, errors, paged, sections
+    return ready_ms, draw_ms, elements, errors, paged, sections, tl_all
 
 
 class PageBudgets(unittest.TestCase):
@@ -486,17 +496,26 @@ class PageBudgets(unittest.TestCase):
             over.update({f"{prefix + name} on {t}": f"{v:,} > {BUDGETS[prefix + name]:,}" for t, v in values.items() if v > BUDGETS[prefix + name]})
         self.assertEqual(over, {}, "over budget (docs/performance.md)")
 
+    def check_timeline(self, tl_all, prefix):
+        """ten years on the Timeline (#277): the list draws a page at first and, with Show more, every event it lists,
+        the first new row focused each time; each press is within the tab draw budget (check, with the tabs)"""
+        measure(prefix + "timeline_list", tl_all)
+        self.assertTrue(tl_all["presses"] > 0 and tl_all["first"] < tl_all["want"], tl_all)
+        self.assertEqual([tl_all["rows"], tl_all["focused"]], [tl_all["want"], True], tl_all)
+
     def test_desktop(self):
-        ready_ms, draw_ms, elements, errors, paged, sections = page_times({"width": 1400, "height": 900})
+        ready_ms, draw_ms, elements, errors, paged, sections, tl_all = page_times({"width": 1400, "height": 900})
         self.assertEqual(errors, [])
         self.assertEqual(paged, [200, "Show 200 more", 400, True])
         self.assertEqual(sections, SECTIONS, "Body and activity's sections (#276)")
-        self.check("", {"page_ready_ms": ready_ms, "tab_draw_ms": draw_ms, "tab_elements": elements})
+        self.check_timeline(tl_all, "")
+        self.check("", {"page_ready_ms": ready_ms, "tab_draw_ms": {**draw_ms, "timeline, Show more": tl_all["ms"]}, "tab_elements": elements})
 
     def test_phone(self):   # 375 px wide, with the CPU four times slower
-        ready_ms, draw_ms, _, errors, _, _ = page_times({"width": 375, "height": 800}, throttle=4)
+        ready_ms, draw_ms, _, errors, _, _, tl_all = page_times({"width": 375, "height": 800}, throttle=4)
         self.assertEqual(errors, [])
-        self.check("phone_", {"page_ready_ms": ready_ms, "tab_draw_ms": draw_ms})
+        self.check_timeline(tl_all, "phone_")
+        self.check("phone_", {"page_ready_ms": ready_ms, "tab_draw_ms": {**draw_ms, "timeline, Show more": tl_all["ms"]}})
 
 
 if __name__ == "__main__":

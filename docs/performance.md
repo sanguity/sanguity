@@ -62,7 +62,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `apple_health_s` | The ten-year Apple Health `export.xml` imported the same way | 0.67 s | 10 s |
 | `sync_s` | A connected source's first pull of the big FHIR patient (186 requests), its preview saved | 1.7 s | 15 s |
 | `page_ready_ms` | The records page, loaded on each tab, from the request to its `sanguity:ready` mark (`www/js/app.js`) | 132 ms (Body and activity) | 1,500 ms |
-| `tab_draw_ms` | A tab's first draw with the period **All**, the page loaded on another tab, to the next frame | 110 ms (Body and activity) | 1,000 ms |
+| `tab_draw_ms` | A tab's first draw with the period **All**, the page loaded on another tab, to the next frame; and each **Show more** of the Timeline's list (#277, below) | 110 ms (Body and activity) | 1,000 ms |
 | `tab_elements` | Elements in a tab with the period **All** | 16,185 (Body and activity) | 18,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
@@ -164,6 +164,26 @@ so it isn't preloaded; it arrives about 0.4 s after the page is ready, and the h
 No index was needed: every query the records page and the imports make on a profile already uses one, and the
 server's time is mostly decrypting rows (each is encrypted on its own), which grows with the records and nothing
 else.
+
+## The Timeline's list, all of it (#277)
+
+The Timeline's list of events stopped at 600 rows and said to narrow the dates, which ten years of records reach. It
+draws 400 events at a time now, whole days, with **Show more** for the next 400; each month of it is
+`content-visibility: auto`, so the browser skips laying out and painting the months off screen. Workouts (most of a
+watch-wearer's events) are left out of the list unless asked for, their lane staying, and a day's several fold into
+one row when they are listed. The test draws the big fixture's list with the period **All** and presses Show more
+until every event is listed, the first new row focused each time (`check_timeline`), each press within `tab_draw_ms`:
+
+| The big fixture, period **All** | Desktop | Phone (CPU ×4) |
+|---|---:|---:|
+| Events listed (workouts left out) | 1,878 | 1,878 |
+| Drawn at first, and presses of Show more to list them all | 400, 4 | 400, 4 |
+| The slowest press | 22 ms | 102 ms |
+| Timeline, first draw | 75 ms | 290 ms |
+| Elements on the Timeline at first, and with everything listed | 10,896, 24,825 | |
+
+`tab_elements` counts a tab as first drawn; with the whole list shown the Timeline has more, which is what someone
+asks for by pressing Show more, and the months off screen cost no layout or paint.
 
 ## A record's details when it's opened (#217)
 
