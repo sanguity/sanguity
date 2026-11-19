@@ -232,7 +232,7 @@
         onCosts ? el("a", {href: recordsLink(p, "costs"), text: "See them on Costs"}) : null,
         onOverview ? el("a", {href: recordsLink(p, "overview"), text: "See them on the Overview"}) : null,
         onHealth ? el("a", {href: recordsLink(p, "health"), text: "See them on Body and activity"}) : null,
-        typed.height ? el("a", {href: `sharing.html?profile=${p}#about`, text: "See the height history"}) : null].filter(Boolean);
+        typed.height ? el("a", {href: `settings.html?profile=${p}#about`, text: "See the height history"}) : null].filter(Boolean);
       const what = [n ? plural(n, "result", "results") : "", others ? plural(others, "record", "records") : ""].filter(Boolean).join(" and ");
       const said = `Saved ${what || "nothing new"}.`
         + (j.skipped ? ` ${plural(j.skipped, "was", "were")} in this profile already and left out.` : "");

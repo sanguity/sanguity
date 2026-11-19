@@ -1497,9 +1497,9 @@ def main():
         strict.click("#shrNav a[data-group=activity]")   # drawn when its group is opened
         strict.wait_for_selector("#actBody .activity tbody tr", timeout=10000)
         groups = strict.evaluate("[...document.querySelectorAll('#shrNav a')].map(a => a.textContent)")
-        check("under the CSP: the Sharing page's scripts run, with a sidebar of its groups, Profile and About this person set apart (#194)", groups ==
-              ["People", "Share links", "Calendar feed", "Visit summary", "Export everything", "Activity", "About this person", "Profile"]
-              and strict.evaluate("document.querySelector('#shrNav a[data-group=about]').closest('li').previousElementSibling.classList.contains('set-nav-part')"), groups)
+        check("under the CSP: the Sharing page's scripts run, with a sidebar of its groups, Profile set apart (About this person is on Settings, #267)", groups ==
+              ["People", "Share links", "Calendar feed", "Visit summary", "Export everything", "Activity", "Profile"]
+              and strict.evaluate("document.querySelector('#shrNav a[data-group=profile]').closest('li').previousElementSibling.classList.contains('set-nav-part')"), groups)
         check("no Sharing card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         # ---- one sidebar (#266): the five pages' sidebars are one component (sidebar.js): a search box, the groups under
         # their labels, the group's title as the h1 and the tab's, a card's own title only beside another card of the
@@ -1792,8 +1792,8 @@ def main():
         holder.close()
         # #352, #374: a button in a row of fields is the fields' height (the default button, not .small), on every group of
         # Sharing, Settings, Sources, Account and Admin, at 1400 and 320 px (with the share link's Copy, above): those
-        # #352 named must have such a row at 1400 px (Sharing's People's Share, Profile's Rename, About this person's
-        # Clear, Visit summary's Add, Settings → Dashboard's Add and a lab name's Remove), and Sources → Type records in
+        # #352 named must have such a row at 1400 px (Sharing's People's Share, Profile's Rename, Visit summary's Add,
+        # Settings → About this person's Clear, Dashboard's Add and a lab name's Remove), and Sources → Type records in
         # its result row's ✕, with a typed record's form open too, whose ✕ must be 44 px on a phone (Settings → Display's
         # "Use this device's" shows only in another time zone: checked with the time zones, below)
         ready352 = {"people": "#memberList tbody tr", "profile": "#profileBody input", "about": "#aboutBirth", "summary": "#labIn",
@@ -1821,7 +1821,7 @@ def main():
                 strict.set_viewport_size({"width": 1400, "height": 900})
             if path.startswith("sources"):
                 strict.evaluate("() => { for (const b of document.querySelectorAll('#manItems .man-item .del')) b.click(); }")   # the typed record's form, gone
-        need352 = ["sharing#people", "sharing#profile", "sharing#about", "sharing#summary", "settings#dashboard", "sources#manual"]
+        need352 = ["sharing#people", "sharing#profile", "settings#about", "sharing#summary", "settings#dashboard", "sources#manual"]
         bad352 = [f"{k}: {b}" for k, v in rows352.items() for b in v["bad"]] + [f"{k} 1400: no field and button in a row" for k in need352 if not rows352.get(f"{k} 1400", {}).get("n")]
         bad352 += [f"{w} px: {k}'s {c} {bw}×{bh}" for w, k, c, bw, bh in del374 if c != "del btn quiet" or w < 400 and (bw < 44 or bh < 44)]
         check("a button beside a field is the field's height, on every group of Sharing, Settings, Sources, Account and Admin "
@@ -2681,7 +2681,7 @@ def main():
             zn = js("""(() => { const c = document.getElementById('h-zones'); return c && {text: c.innerText, link: c.querySelector('.zones-need a')?.getAttribute('href'),
                 svg: !!c.querySelector('svg'), seg: !!c.querySelector('.view-seg'), basis: WATCH.hrZones, hr: WATCH.exercise.filter(x => x.hr).map(x => x.hr)}; })()""")
             check("heart rate zones (#197): without a birth date or a measured maximum, no zones: the card says how to add one, linking to About this person",
-                  zn and "need a birth date or a measured maximum heart rate" in zn["text"] and zn["link"] == "sharing.html?profile=1#about" and not zn["svg"] and not zn["seg"]
+                  zn and "need a birth date or a measured maximum heart rate" in zn["text"] and zn["link"] == "settings.html?profile=1#about" and not zn["svg"] and not zn["seg"]
                   and zn["basis"] == {"basis": None, "maxHr": None, "workouts": True} and len(zn["hr"]) == 4 and not any("zones" in h or "hist" in h for h in zn["hr"]),
                   zn and {k: zn[k] for k in ("link", "svg", "basis")})
             js("openEvent(EV.find(e => e.k === 'exercise' && e.ts === zParse('2026-09-08T11:00:00+00:00')))")
@@ -2739,7 +2739,7 @@ def main():
                   "Average 128 bpm (zone 2) · highest 158 bpm (zone 4)" in dz and "only its average and highest" in dz and not js("!!document.querySelector('#dbody .zones-tbl')"), dz[-300:])
             js("closeDrawer()")
             # a measured maximum, typed in About this person
-            page.goto(base + "/sharing.html?profile=1#about")
+            page.goto(base + "/settings.html?profile=1#about")
             page.wait_for_selector("#about[data-profile='1'] #aboutMaxHr", timeout=10000)
             page.fill("#aboutMaxHr", "190")
             page.click("#aboutSave")
@@ -2804,7 +2804,7 @@ def main():
             settle(400)
             none = page.inner_text("#h-body .bmi") if page.locator("#h-body .bmi").count() else ""
             check("BMI (#195): with no height, the weight card says a height in About this person gives each weight's BMI, and there's no BMI tile",
-                  "With a height under About this person" in none and js("document.querySelector('#h-body .bmi a').getAttribute('href')") == "sharing.html?profile=1#about"
+                  "With a height under About this person" in none and js("document.querySelector('#h-body .bmi a').getAttribute('href')") == "settings.html?profile=1#about"
                   and "BMI" not in js("[...document.querySelectorAll('#view-health .tile .lbl')].map(l => l.textContent)"), none)
             st195 = [api195("POST", "profiles/1/person/heights", {"date": "2019-01-10", "unit": "cm", "cm": 178}),
                      api195("POST", "profiles/1/person/heights", {"date": "2026-03-02", "unit": "ftin", "ft": 5, "inches": 9.9})]
@@ -7211,7 +7211,7 @@ def main():
             # ---- the Settings sidebar (settings-nav.js) and the top bar's menus (nav.js)
             display = "id => getComputedStyle(document.getElementById(id)).display"
             check("Settings: a sidebar of groups, one shown at a time",
-                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:4] == ["Dashboard", "Labs and ranges", "Milestones and activity", "Display"]
+                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:6] == ["Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Display"]
                   and js(display, "sec-overview") != "none" and js(display, "sec-units") == "none", js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)"))
             page.fill("#setFind", "time zone")
             check("…Find a setting shows the settings that match, from every group",
@@ -8396,7 +8396,7 @@ def main():
                     or not any(q[0] == "btn quiet small" for q in c353["labs 375"]["quiet"]):
                 bad353.append(f"quiet buttons not all found: {c353['labs 375']['quiet'][:3]} {c353['settings 375']['quiet'][:1]}")
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.click(".set-nav-list a[data-group=activity]")
+            page.click(".set-nav-list a[data-group=milestones]")   # a group of its own (#267)
             page.wait_for_selector(".ms .set-row:not(.set-head) input[type=radio]", timeout=10000)
             c353["primary"] = js("""() => [...document.querySelectorAll('.ms .set-row:not(.set-head)')].map(r => {
                 const i = r.querySelector('input[type=radio]'), b = i.getBoundingClientRect();
@@ -8845,7 +8845,7 @@ def main():
             settle(500)
             check("targets of your own (#234): with none entered, Body and activity draws none, and says nothing of any",
                   js(no_marks) == 0 and "your target" not in js("document.getElementById('view-health').innerText").lower())
-            page.goto(base + "/sharing.html?profile=1#about")
+            page.goto(base + "/settings.html?profile=1#about")
             page.wait_for_selector("#about[data-profile='1']", timeout=10000)
             tcard = js("[!document.getElementById('targets').hidden && !document.getElementById('targets').classList.contains('grp-off'), "
                        "document.getElementById('targets').innerText]")
@@ -9155,6 +9155,7 @@ def main():
             page.click("#sec-milestones .set-foot button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-milestones .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
             rules = "[data-key=visitWorkouts]"
+            page.click(".set-nav-list a[data-group=activity]")   # Workouts: a group of its own since #267
             page.click(f"{rules} button:text-is('Add a row')")
             page.fill(f"{rules} .set-row:last-child input[data-k=match]", "(a+)+$")
             page.fill(f"{rules} .set-row:last-child input[data-k=name]", "Browser check rule")
@@ -9197,7 +9198,8 @@ def main():
             check("…and says so", f"{days} browser check rule appointment" in js("document.getElementById('view-health').innerText"))
             page.goto(base + "/settings.html?profile=1#sec-milestones")
             page.wait_for_selector("#sec-milestones", timeout=10000)
-            for sec in ("milestones", "health"):
+            for sec, group in (("milestones", "milestones"), ("health", "activity")):
+                page.click(f".set-nav-list a[data-group={group}]")
                 page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
                 answer_ask(page)
                 page.wait_for_function(f"document.querySelector('#sec-{sec} .set-foot > .msg').textContent.includes('back to their defaults')", timeout=10000)
@@ -9394,8 +9396,8 @@ def main():
             # owner's controls; an address for an owner's group shows People instead, saying why
             zb.wait_for_selector("#memberList tbody tr", state="attached", timeout=10000)
             groups = zb.evaluate("[...document.querySelectorAll('#shrNav a')].map(a => a.textContent)")
-            check("a viewer's Sharing page: People, Calendar feed, Visit summary, About this person (#194) and Profile only",
-                  groups == ["People", "Calendar feed", "Visit summary", "About this person", "Profile"], groups)
+            check("a viewer's Sharing page: People, Calendar feed, Visit summary and Profile only",
+                  groups == ["People", "Calendar feed", "Visit summary", "Profile"], groups)
             zb.click("#shrNav a[data-group=people]")
             people = zb.inner_text("#people")
             check("…who has access and as what, with Leave for themselves and no role menus, Remove or Share",
@@ -9555,8 +9557,8 @@ def main():
                                                 {"name": "Ferritin", "unit": "ug/L", "panel": "Iron", "n": 2, "txt": [], "pts": ug}]},
                             "upload", fmt="csv")
             db.close()
-            # the birth date and sex are About this person's since #194 (Sharing), and Settings says so beside the ranges
-            page.goto(base + f"/sharing.html?profile={rpid}#about")
+            # the birth date and sex are About this person's since #194 (on Settings since #267), said beside the ranges
+            page.goto(base + f"/settings.html?profile={rpid}#about")
             page.wait_for_selector(f"#about[data-profile='{rpid}'] #aboutBirth", timeout=10000)
             page.fill("#aboutBirth", "1990-03-01")
             page.check("#about input[name=aboutSex][value=female]")
@@ -9570,7 +9572,7 @@ def main():
             uses = js("document.getElementById('rangesUses').textContent")
             check("…and says the ages and sexes are matched against About this person's, with a link there (#194)",
                   "born" in uses and "1990" in uses and "female" in uses
-                  and js("document.querySelector('#rangesUses a').getAttribute('href')") == f"sharing.html?profile={rpid}#about"
+                  and js("document.querySelector('#rangesUses a').getAttribute('href')") == f"settings.html?profile={rpid}#about"
                   and not js("!!document.querySelector(\"#sec-ranges [data-key='ranges.birthDate'], #sec-ranges [data-key='ranges.sex']\")"), uses)
             ov = "#sec-ranges [data-key='ranges.overrides']"
             page.wait_for_selector(f"{ov} .set-sugg .chip", timeout=10000)
@@ -9690,14 +9692,23 @@ def main():
             db.close()
             about = lambda pid_: page.wait_for_selector(f"#about[data-profile='{pid_}']", timeout=10000)
             page.goto("about:blank")   # the new profile may have the id the one above had: a fresh page, not a change of #
-            page.goto(base + f"/sharing.html?profile={apid}#about")
+            page.goto(base + f"/sharing.html?profile={apid}#about")   # its old address, on Sharing (#267)
+            page.wait_for_url(f"**/settings.html?profile={apid}#about", timeout=10000)
             about(apid)
-            groups = js("[...document.querySelectorAll('#shrNav li')].map(li => li.textContent)")
+            groups = js("[...document.querySelectorAll('#setNav li')].map(li => li.textContent)")
             atext = page.inner_text("#about")
             unset = [js("document.getElementById('aboutBirth').value"), js("document.querySelector('#about input[name=aboutSex]:checked')?.value"),
                      "No height written down yet." in atext]
-            check("About this person: its own group on Sharing, under Profiles, every detail optional and unset at first",
-                  groups[-3:] == ["Profiles", "About this person", "Profile"] and unset == ["", "", True], (groups[-3:], unset))
+            check("About this person (#267): its own group on Settings under This profile, its old Sharing address landing there with the profile; "
+                  "every detail optional and unset at first", groups[:3] == ["This profile", "Dashboard", "About this person"]
+                  and js("document.querySelector('#setNav a[aria-current=page]').dataset.group") == "about" and js("document.getElementById('groupTitle').textContent") == "About this person"
+                  and unset == ["", "", True], (groups[:3], unset))
+            page.goto(base + f"/sharing.html?profile={apid}#targets")
+            page.wait_for_url(f"**/settings.html?profile={apid}#targets", timeout=10000)
+            page.wait_for_selector(f"#about[data-profile='{apid}']", timeout=10000)
+            check("…and Targets' (sharing.html#targets) too, in the same group, beside it",
+                  js("[document.getElementById('targets').checkVisibility(), document.getElementById('about').checkVisibility(), document.querySelector('#setNav a[aria-current=page]').dataset.group]")
+                  == [True, True, "about"])
             check("…the sex worded as what labs base reference ranges on, apart from gender identity",
                   "Sex used for reference ranges" in atext and "What labs base their reference ranges on" in atext and "isn't gender identity" in atext, atext[:300])
             page.fill("#aboutBirth", "2016-05-20")
@@ -9800,7 +9811,7 @@ def main():
             check("…the records page has them (CFG.person), with the age in years and months, the sex for ranges and the height on a day, "
                   "as the server works them out", web == srv_ and web[2][:2] == [0, 1] and web[4][3] == 128.5 and web[0] == [None, None, "male", None], web)
             # a viewer
-            page.goto(base + f"/sharing.html?profile={vpid}#about")
+            page.goto(base + f"/settings.html?profile={vpid}#about")
             about(vpid)
             vt = page.inner_text("#about")
             check("…a viewer sees them as text, with nothing to change", js("fmtD(zParse('1958-11-02'))") in vt and "Not set" in vt and "165 cm" in vt
@@ -9822,7 +9833,7 @@ def main():
                     page.set_viewport_size({"width": width, "height": 900 if width > 375 else 800})
                     for pid_ in (apid, vpid):
                         page.goto("about:blank")   # a page load each time (the theme is read as it loads)
-                        page.goto(base + f"/sharing.html?profile={pid_}#about")
+                        page.goto(base + f"/settings.html?profile={pid_}#about")
                         about(pid_)
                         settle(150)
                         a_bad += phone_fits(page, f"About this person {pid_} at {width} px, {theme}")
@@ -9959,7 +9970,7 @@ def main():
             check("…at 1400 and 375 px, light and dark, both charts' sets and the table: nothing cut off or overlapping, and axe-core finds nothing serious",
                   not g_bad and not g_axe, (g_bad + g_axe)[:6])
             # the due date is About this person's, changed by owners and editors
-            page.goto(base + f"/sharing.html?profile={cpid}#about")
+            page.goto(base + f"/settings.html?profile={cpid}#about")
             page.wait_for_selector(f"#about[data-profile='{cpid}'] #aboutDue", timeout=10000)
             check("…the due date is in About this person, beside the birth date, saying what it's for",
                   js("document.getElementById('aboutDue').value") == CHILD_DUE and "growth charts use the age counted from it" in page.inner_text("#about"))
@@ -10646,7 +10657,7 @@ def main():
                 page.wait_for_selector(f"{nav} a[data-group]", timeout=10000)
                 settle(200)
                 icons_in([f"{nav} a[data-group]"])
-            want = {"#setNav a[data-group]": 4, "#srcNav a[data-group]": 7, "#shrNav a[data-group]": 8, "#acctNav a[data-group]": 2, "#admNav a[data-group]": 7,
+            want = {"#setNav a[data-group]": 6, "#srcNav a[data-group]": 7, "#shrNav a[data-group]": 7, "#acctNav a[data-group]": 2, "#admNav a[data-group]": 7,
                     "#profileMenuList [role=menuitem]": 5, "#addMenuList [role=menuitem]": 7, "#userMenuList [role=menuitem]": 6}
             check("icons (#354): one Lucide icon, hidden from screen readers and drawn from a symbol the sprite has, in each link of the "
                   "five sidebars, each kind chip (its kind's), each Timeline row and each item of the profile menu, the Add menu and your menu",

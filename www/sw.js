@@ -35,7 +35,7 @@ const FILES = [
   "guide.html", "js/guide.js",
   "js/cycle.js", "js/sources-cycle.js",
   "js/targets.js",
-  "js/sidebar.js",
+  "js/sidebar.js", "js/about.js",
   "js/journal-body.js",
 
   "js/medlog.js",

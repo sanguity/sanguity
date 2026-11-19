@@ -1,4 +1,4 @@
-"""Targets of your own for home readings (#234): a target the person's care team gave them, typed in on Sharing → About
+"""Targets of your own for home readings (#234): a target the person's care team gave them, typed in on Settings → About
 this person, for each measure taken at home. Sanguity never suggests one or says what one should be; with none
 entered nothing changes anywhere; the standard published ranges (CGM time in range, 70-180 mg/dL) stay labelled as
 the publisher's, and a target is always worded as "your target, as your care team gave it".

@@ -2,8 +2,8 @@
    sections the server's registry (server/settings.py) gives, each setting with a simple editor for its kind, and per
    section one Save, Discard changes and "Reset to defaults" (#174). Viewers see the profile's settings without
    editors; their own (per-user) settings they can change, and someone with no profile yet still has those (#169).
-   A new kind of setting adds an editor to EDITORS. What used to be here and isn't about how things look has its own
-   page now, its old addresses moved.js's. */
+   A new kind of setting adds an editor to EDITORS. About this person and Targets (#267) are about.js's. What used to
+   be here and isn't about how things look has its own page now, its old addresses moved.js's. */
 "use strict";   // $, el and api come from util.js
 let ME, PID = null, LAB_NAMES = [], LABS = [], NICK = {}, HAS_CLAIMS = false;
 
@@ -380,13 +380,13 @@ function unitsEditor(value, changed, ro, st) {
 EDITORS.units = unitsEditor;
 
 /* ---------------------------------------------------------------- #44 reference ranges from settings (ranges.js) */
-/* the birth date and sex the rows' ages and sexes are matched against: About this person's (#194, Sharing), loaded
+/* the birth date and sex the rows' ages and sexes are matched against: About this person's (#194, here: #267), loaded
    with the sections; the preview of what the rows colour uses them */
 let RANGE_CFG = {birthDate: "", sex: "", overrides: []};
 function rangesUses() {
   const b = RANGE_CFG.birthDate, s = RANGE_CFG.sex;
   return el("p", {class: "hint", id: "rangesUses"}, "Ages and sexes are matched against ",
-    el("a", {href: `sharing.html?profile=${PID}#about`, text: "About this person"}), ": ",
+    el("a", {href: `settings.html?profile=${PID}#about`, text: "About this person"}), ": ",
     b ? `born ${fmtD(zParse(b))}` : "no birth date (rows with an age band aren't used)", "; ",
     s ? `sex used for reference ranges ${s}` : "no sex for reference ranges (only rows for anyone are used)", ".");
 }
@@ -685,7 +685,9 @@ async function loadLabNames() {
   }
   const sel = $("#profile");
   SgNav.profiles(ME.profiles);   // the top bar's picker (nav.js, #170): the address's profile, else this browser's last
-  const pick = () => { PID = +sel.value; loadLabNames().then(() => load(null, null, true)); };
+  // About this person (about.js, #267) once the sections are there: its group arrives with theirs, not before
+  const pick = () => { PID = +sel.value; const p = ME.profiles.find(x => x.id === PID); loadLabNames().then(() => load(null, null, true)).then(() => { if (PID === p.id) drawAbout(p); }); };
+  document.addEventListener("about:changed", () => load());   // the ranges' preview matches ages and sexes against it
   sel.onchange = pick;
   $("#intro").hidden = false;
   pick();

@@ -7,14 +7,15 @@
    - a part of a page that went to another, by its #: SG_MOVED, on arriving and as the # changes. sgMoved() does it
      there, and says whether it did (the page then draws nothing). Settings is how things look (#169): the server's
      (#167) went to Admin, the phone's upload secret (#166) to Sources, the calendar feed (#168) to Sharing. Account's
-     Profiles tab went to Sharing (#168) and its Admin tab to Admin (#167). A "?" in a new address is the old one's
-     query.
+     Profiles tab went to Sharing (#168) and its Admin tab to Admin (#167). About this person and Targets went from
+     Sharing to Settings (#267). A "?" in a new address is the old one's query.
    Each old page also says where it went, for a browser that doesn't run this. */
 "use strict";
 const SG_MOVED = {
   "settings.html": {outside: "admin.html#outside", sources: "admin.html#apps", "sec-sync": "admin.html#sec-sync",
     watch: "sources.html?#phone", calendar: "sharing.html?#calendar"},
   "account.html": {profiles: "sharing.html#people", admin: "admin.html", users: "admin.html#users", labmaps: "admin.html#labmaps"},
+  "sharing.html": {about: "settings.html?#about", targets: "settings.html?#targets"},
 };
 function sgMoved() {
   const to = (SG_MOVED[location.pathname.split("/").pop()] || {})[decodeURIComponent(location.hash.slice(1))];

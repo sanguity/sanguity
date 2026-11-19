@@ -790,7 +790,7 @@ const zoneOf = (bpm, zmax) => zoneBounds(zmax).filter(x => Math.round(bpm) >= x)
 const zoneRange = (k, zmax) => { const lo = zoneBounds(zmax); return k === 5 ? `${lo[4]} bpm and above` : `${lo[k - 1]}–${lo[k] - 1} bpm`; };
 const zoneName = k => k ? `zone ${k}` : "below zone 1";
 const zMin = s => Math.round(s / 60);
-const aboutLink = () => el("a", {href: `sharing.html?profile=${PROFILE.id}#about`, text: "About this person"});
+const aboutLink = () => el("a", {href: `settings.html?profile=${PROFILE.id}#about`, text: "About this person"});
 /* where a workout's zones come from, in words */
 const zoneBasis = hr => hr.basis === "measured" ? `the maximum heart rate entered in About this person, ${hr.zmax} bpm`
   : `an estimated maximum heart rate of ${hr.zmax} bpm: 220 minus age ${hr.age}, the common formula`;
@@ -886,7 +886,7 @@ function bmiChart(card, a, b, {long}) {
     if (!H.scale.length && !H.clinic.length) return;
     const none = !personOf().heights.length;
     box.append(el("p", {class: "hint"}, none ? "With a height under " : "No weight here has a height from its day or before in ",
-      canEdit() ? el("a", {href: `sharing.html?profile=${PROFILE.id}#about`, text: "About this person"}) : "About this person",
+      canEdit() ? el("a", {href: `settings.html?profile=${PROFILE.id}#about`, text: "About this person"}) : "About this person",
       none ? ", each weight's BMI is shown here." : `, so none has a BMI${personOf().birthDate ? " (under 20, the height must be from the 3 months before the weight)" : ""}.`));
     card.append(box);
     return;

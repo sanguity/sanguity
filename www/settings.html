@@ -34,10 +34,31 @@
 
   <!-- no profile yet: only the person's own settings are drawn (settings.js) -->
   <p class="card hint" id="noProfiles" hidden>No health profile is shared with you yet, so only your own settings are here.
-    A profile's dashboard, labs and milestones appear once you have one: <a href="sharing.html#profile">create a profile</a>,
+    A profile's dashboard, About this person, labs and milestones appear once you have one: <a href="sharing.html#profile">create a profile</a>,
     or ask a profile's owner to share it with you.</p>
 
   <div id="sections"></div>
+
+  <!-- About this person (#194, here since #267): birth date, sex used for reference ranges, height history (about.js, person.js) -->
+  <section class="card about" id="about" hidden>
+    <h2>Birth date, sex and height</h2>
+    <p class="hint">Some views depend on who the person is: the age on each result's day, ranges of your own by sex and
+      age (Labs and ranges, here), and what is built on height. Each is optional.</p>
+    <details class="more"><summary>More about this</summary>
+      <p>A profile's owners and editors change these, and everyone it's shared with sees them. They're encrypted like
+        the records and go with the profile's export. A share link shows them only if its owner ticks About this
+        person.</p>
+      <p>They're never used to judge a result or to replace the range printed on a report. This isn't medical advice.</p>
+    </details>
+    <div id="aboutBody"></div>
+    <span class="msg" id="aboutMsg" role="status"></span>
+  </section>
+  <!-- targets of your own for home readings (#234): each as the care team gave it (targets.js, server/targets.py) -->
+  <section class="card about" id="targets" hidden>
+    <h2>Targets of your own</h2>
+    <div id="targetsBody"></div>
+    <span class="msg" id="targetsMsg" role="status"></span>
+  </section>
 
   <datalist id="labNames"></datalist>
 </main>
@@ -47,8 +68,10 @@
 <script src="js/nav.js"></script>
 <script src="js/dates.js"></script>
 <script src="js/person.js"></script>
+<script src="js/targets.js"></script>
 <script src="js/ranges.js"></script>
 <script src="js/presets.js"></script>
+<script src="js/about.js"></script>
 <script src="js/sidebar.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/settings-nav.js"></script>

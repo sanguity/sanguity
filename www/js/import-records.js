@@ -68,7 +68,7 @@
   // #224: what a home reading's form is for, under its name; and its units as this person chose them (Settings → Units)
   const HOME = "Shown on Body and activity beside the phone's readings, as typed in. To correct one, type it again for the same date and time.";
   const HINTS = {home_bp: HOME, home_glucose: HOME, home_temp: HOME, home_spo2: HOME,
-    height: "Goes into the height history under Sharing → About this person, where it can be changed or removed. In feet and inches, write it like 5 ft 8 in."};
+    height: "Goes into the height history under Settings → About this person, where it can be changed or removed. In feet and inches, write it like 5 ft 8 in."};
   const PREF = {glucose_unit: u => u.lab === "si" ? "mmol/L" : u.lab === "conventional" ? "mg/dL" : null,
     temp_unit: u => u.temperature === "C" || u.temperature === "F" ? u.temperature : null,
     height_unit: u => u.height === "ftin" ? "in" : u.height === "cm" ? "cm" : null, weight_unit: u => u.weight === "kg" || u.weight === "lb" ? u.weight : null};

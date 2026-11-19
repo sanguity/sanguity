@@ -17,7 +17,7 @@ together here, each optional:
 Stored as profile settings (server/settings.py, section "person", not on the Settings screen): person.birthDate,
 person.sex, person.heights and person.dueDate (#196), sealed (encrypted) like every setting that can hold health information. So they are
 in the merged settings every page loads (CFG.person on the records page), exported with the profile's settings.json
-and loaded back with it, and backed up with the database. Owners and editors change them, on Sharing → About this
+and loaded back with it, and backed up with the database. Owners and editors change them, on Settings → About this
 person (routes_person.py, which also checks the three agree: no height before the birth date); viewers see them.
 A share link shows them only when its owner ticks "About this person" (share_links.py), never otherwise.
 
