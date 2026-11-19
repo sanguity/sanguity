@@ -164,7 +164,11 @@ class Costs(unittest.TestCase):
         self.mark(400, event=c2, claim=c2)
         self.assertEqual(self.robin.put(f"/api/profiles/{self.pid}/costs/mark", json={"payment": harbor, "hsa": "HSA"}).status_code, 403)
         # the plan payment paid the MRI, by hand: its share is no longer counted
-        self.assertEqual(self.mark(payment=harbor, claim=c2), {"mark": {"claim": True}})
+        r = self.robin.put(f"/api/profiles/{self.pid}/costs/mark", json={"payment": harbor, "claim": c2}, headers=H)
+        page = self.robin.get(f"/api/profiles/{self.pid}/data")
+        self.assertEqual(r.json()["mark"], {"claim": True})
+        # #405: the reply carries the out-of-pocket part as the page reads it, and the records' revision after it
+        self.assertEqual((r.json()["oop"], r.headers["X-Records-Rev"]), (page.json()["oop"], page.headers["X-Records-Rev"]))
         _, pays, claims = self.oop()
         self.assertEqual((pays[2]["claim"], pays[2]["match"], claims[c2]["by"], claims[c2]["counted"], claims[c2]["paid"]), (c2, "marked", [2], 0.0, 100.0))
         # the HSA payment paid no claim: the office visit's share is counted again

@@ -6,10 +6,15 @@ in the profile's activity log (as an "edit" with action "cost": what was said, n
                                        "hsa": "HSA" | "FSA" | "none" | "auto"
                                        "claim": a claim's event id, 0 for no claim, -1 to match it again (payments)
                                        "same": false (two payments, not one) | true (look for it again) (payments)
+                                       -> {"mark": what's said now, "oop": data["oop"] as the records page reads it
+                                       after the change}: the page puts it in place (store.js, #405), and its
+                                       X-Records-Rev header is the records' revision after it
 """
+import json
+
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from . import activity, db as dbm, edits, oop, records
@@ -27,7 +32,7 @@ class Mark(BaseModel):
 
 
 @router.put("/api/profiles/{pid}/costs/mark")
-def mark(pid: int, body: Mark, request: Request, s=Depends(user), db=Depends(get_db)):
+def mark(pid: int, body: Mark, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     if (body.payment is None) == (body.event is None):
         raise HTTPException(400, "Say which payment or which claim this is about.")
@@ -64,4 +69,6 @@ def mark(pid: int, body: Mark, request: Request, s=Depends(user), db=Depends(get
         now = oop.set_mark(db, pid, s["id"], key, **said)
         log = {k: (("claim" if v else "none" if v == "" else "auto") if k == "claim" else v) for k, v in said.items()}
         activity.log(db, "edit", s, pid, {"action": "cost", "of": what, **log}, _client_ip(request))
-    return {"mark": {k: (v if k != "claim" else bool(v)) for k, v in now.items()}}
+    got = records.page(db, pid)   # worked out once, for the page's next load too
+    response.headers["X-Records-Rev"] = got[1] if got else ""
+    return {"mark": {k: (v if k != "claim" else bool(v)) for k, v in now.items()}, "oop": json.loads(got[0]).get("oop") if got else None}

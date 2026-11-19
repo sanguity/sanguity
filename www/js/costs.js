@@ -152,9 +152,7 @@ async function sendMark(body, msg) {
     const r = await api(`profiles/${PROFILE.id}/costs/mark`, {method: "PUT", body: JSON.stringify(body)});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save (${r.status}).`, true); return; }
-    const d = await api(`profiles/${PROFILE.id}/data`);   // a mark changes only the out-of-pocket part
-    if (d.ok) DATA.oop = (await d.json()).oop;
-    renderCosts();
+    storePut("oop", j);   // a mark changes only the out-of-pocket part, which its reply carries (store.js, #405)
     const again = document.querySelector("#oopEdit .oop-msg");
     sayIn(again, "Saved.");
   } catch (e) { sayIn(msg, "Couldn't reach the server: " + e.message, true); }

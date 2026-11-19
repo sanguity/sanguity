@@ -200,6 +200,22 @@ class Journal(unittest.TestCase):
         r = self.robin.delete(self.url(f"/{j['id']}"), headers=H)
         self.assertEqual(r.json(), {"ok": True, "removed": [j["id"]]})
 
+    def test_replies_say_the_records_revision(self):
+        """#405: each change's reply says the records' revision after it, as the page's data does, so the offline copy
+        can follow the change"""
+        rev = lambda: self.robin.get(f"/api/profiles/{self.pid}/data").headers["X-Records-Rev"]
+        before = rev()
+        r = self.robin.post(self.url(), json={"kind": "note", "t": "2026-04-03", "note": "Fictional"}, headers=H)
+        self.assertEqual(r.headers["X-Records-Rev"], rev())
+        self.assertNotEqual(r.headers["X-Records-Rev"], before)
+        jid = r.json()["id"]
+        for change in (lambda: self.robin.post(self.url("/group"), json={"group": "Fictional", "t": "2026-04-03", "items": [{"title": "Cough", "severity": 2}]}, headers=H),
+                       lambda: self.robin.put(self.url(f"/{jid}"), json={"kind": "note", "t": "2026-04-04", "note": "Fictional, changed"}, headers=H),
+                       lambda: self.robin.delete(self.url(f"/{jid}"), headers=H)):
+            r = change()
+            self.assertIn(r.status_code, (200, 201), r.text)
+            self.assertEqual(r.headers["X-Records-Rev"], rev())
+
     def test_what_cant_be_saved(self):
         bad = [
             {"kind": "mood", "t": "2026-04-03", "note": "x"},

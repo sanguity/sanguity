@@ -388,7 +388,7 @@ def _entry(db, pid):
                 _cache[pid] = _cache.pop(pid)   # most recently used last
                 return hit
         data = _assemble(db, pid)
-    entry = {"key": key, "rev": f"{key[0]}.{key[1]}", "body": None, "page": None, "details": {}, "docs": {}}
+    entry = {"key": key, "rev": _rev(key), "body": None, "page": None, "details": {}, "docs": {}}
     if data is not None:
         entry["body"] = _dumps(data)
         details = data.get("details") or {}
@@ -428,6 +428,18 @@ def served(db, pid):
     """assemble() as JSON bytes, every record's details with it (what the server's own readers parse), or None."""
     e = _entry(db, pid)
     return e and e["body"]
+
+
+def _rev(key):
+    return f"{key[0]}.{key[1]}"
+
+
+def stamp(response, db, pid):
+    """Say on a change's reply what the records' revision is now, as page() and details() say it (X-Records-Rev): a
+    change to a list the page puts in place (the journal, the doses, the reminders, a Costs mark) moves it, and the
+    offline copy the page keeps takes the change with it, so it keeps the details opened after it too (#405)."""
+    r = db.execute("SELECT records_rev, created FROM profiles WHERE id=?", (pid,)).fetchone()
+    response.headers["X-Records-Rev"] = _rev((r["records_rev"], r["created"])) if r else ""
 
 
 def page(db, pid):

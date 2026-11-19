@@ -6,7 +6,9 @@
      the API's answers themselves stay no-store and nothing else from the API is kept. With the option off, or after
      a 401, any copy is deleted. A record's details come when it's opened (details.js, #217), so the copy keeps those
      of the records opened on this device, with the records they belong to (X-Records-Rev: while those stay the same,
-     a new copy keeps the details opened before);
+     a new copy keeps the details opened before). A change made on the page (#271) goes into the copy too, from the
+     same reply the page puts in place, with the records' revision after it (#405), so the copy stays as the page is
+     and keeps the details of what's opened after it;
    - when the server can't be reached, app.js is answered from that copy (only that profile; anything else, and every
      change, is refused as needing the server), and the page says it's offline, read-only, and when the records were
      loaded. Without a copy it says records aren't available offline. */
@@ -66,6 +68,31 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
     }).catch(e => console.warn("offline copy not kept:", e.message));
   }
 
+  /* a change's reply, for the copy's profile, with the records' revision after it: the records whole (an edit, a link
+     between results; the details opened before went with the records they belonged to), the rows of the list it
+     changed (store.js putRows) or the out-of-pocket part (a Costs mark); rev: what the copy's records are now */
+  const CHANGE = /^profiles\/(\d+)\/(edits|same|journal|medications\/doses|medications\/reminders|costs\/mark)(\/|$)/;
+  const LIST = {journal: "journal", "medications/doses": "doses", "medications/reminders": "reminders"};
+  function keepChange(path, r) {
+    const cm = path.match(CHANGE), rev = r.headers.get("X-Records-Rev");
+    if (!cm || !r.ok || !rev || !SgOffline.on()) return;
+    const pid = +cm[1], body = r.clone().json(), list = LIST[cm[2]];
+    queue = queue.then(async () => {
+      if (!copy || copy.profile.id !== pid) return;
+      const j = await body;
+      if ("records" in j) {
+        if (!j.records) { copy = null; await SgOffline.drop(); return; }   // none left
+        copy.data = JSON.stringify(j.records); copy.details = {};
+      } else {
+        const data = JSON.parse(copy.data);
+        if (list) data[list] = putRows(data[list], list, j); else data.oop = j.oop || undefined;
+        copy.data = JSON.stringify(data);
+      }
+      copy.rev = rev;
+      await write();
+    }).catch(e => console.warn("offline copy not kept:", e.message));
+  }
+
   /* ---- offline: answer from the kept copy */
   function fromCopy(path, method, url) {
     const c = OFFLINE.copy;
@@ -102,7 +129,7 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
       }
       throw err;
     }
-    if (method === "GET") keep(path, r);
+    if (method === "GET") keep(path, r); else keepChange(path, r);
     return r;
   };
 

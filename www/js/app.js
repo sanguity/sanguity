@@ -96,7 +96,7 @@ function renderAll() {
 /* the parts of the records each tab shows (store.js, #271): when one changes (a dose logged, an entry or an edit
    saved), the tab shown is drawn again in place, its scroll and focus kept; the others are drawn when they're opened */
 const TAB_SHOWS = {overview: ["events", "labs", "medications"], health: ["events"], timeline: ["events", "medications", "journal"],
-  labs: ["events", "labs", "medications", "journal"], costs: ["events"]};
+  labs: ["events", "labs", "medications", "journal"], costs: ["events", "costs"]};
 storeOn(STORE_PARTS, parts => { if (booted && TAB_SHOWS[state.tab].some(p => parts.has(p))) keepFocus(renderAll); });
 /* no records to show (an empty profile, none shared, or an error): a message instead of the tabs, and none of the
    controls that would render them, since those need DATA and the tab sections this replaces. One empty state

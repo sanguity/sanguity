@@ -187,7 +187,10 @@ share links, both exports, the medications' history) read the records with every
 (`records.served`). The server keeps both, and each record's details apart, until the records change.
 
 The offline copy (#56) keeps the details of the records opened on that device, with the revision of the records they
-belong to (`X-Records-Rev`): a reload of the same records keeps them, a change starts again. Keeping every record's
+belong to (`X-Records-Rev`): a reload of the same records keeps them, a change starts again. A change made on the
+page (#271) goes into the copy from its reply, which says the revision after it (#405): a dose, a journal entry, a
+reminder or a Costs mark keeps the details kept so far, and an edit, whose reply carries the records whole, starts
+them again. Keeping every record's
 details instead would put back the 1.4 MB for each copy, and more than the person ever looked at on that device.
 
 ## Not done yet

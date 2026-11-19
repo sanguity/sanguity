@@ -1,16 +1,17 @@
 /* Sanguity · the records page's data store (#271): the records (GET api/profiles/{pid}/data), the profile's settings
    and the watch data in one place, with what every tab reads worked out from them (EV, the events, the journal's and
    the watch's among them; STAYS, SERIES, byId, STEPS), and a change notice for each part: "events", "labs",
-   "medications" (and the doses logged, the reminders) and "journal".
+   "medications" (and the doses logged, the reminders), "journal" and "costs" (the out-of-pocket part, DATA.oop).
    A view says which parts it shows (storeOn) and is drawn again, in place, only when one of them changes: the tab shown
    (app.js) and the journal's card (journal.js). A change made on the page doesn't load the page again: the API's
-   reply carries what it changed, put in here (storePut: journal entries, doses, reminders), or, for an edit, which can
-   change any record, the records whole (storeRecords, drawer.js afterEdit). Switching profile still loads the page.
+   reply carries what it changed, put in here (storePut: journal entries, doses, reminders, a Costs mark's out-of-pocket
+   part), or, for an edit, which can change any record, the records whole (storeRecords, drawer.js afterEdit); the
+   offline copy takes the same reply (offline.js, #405). Switching profile still loads the page.
    Plain script, loaded in order by index.html after core.js; all files share one global scope. */
 "use strict";
 let CFG = DEFAULT_SETTINGS;   // the settings (core.js has the defaults)
 let DATA, EV = [], STAYS = [], SERIES = [], byId = new Map(), WATCH = null, STEPS = [];
-const STORE_PARTS = ["events", "labs", "medications", "journal"];
+const STORE_PARTS = ["events", "labs", "medications", "journal", "costs"];
 
 /* each value as the server sent it (a name map it sends is the whole map: a default nickname removed in Settings
    stays removed); a missing or malformed one keeps the default */
@@ -134,13 +135,19 @@ function storeWatch() {
   applyUnits(SERIES.filter(s => s.watch));   // after the clinic weights joined the scale's (#41)
 }
 /* a change's reply (the API's, #271) put in: list, the records' list it changed ("journal", "doses" or "reminders"),
-   reply[list] the rows added or changed, reply.removed the ids of those removed. Only what follows from that list is
-   worked out again, and the part it belongs to gets its notice. */
+   reply[list] the rows added or changed, reply.removed the ids of those removed; or "oop", a Costs mark's, reply.oop
+   the out-of-pocket part whole (#405). Only what follows from it is worked out again, and the part it belongs to gets
+   its notice. */
 function storePut(list, reply) {
-  const gone = new Set([...(reply.removed || []), ...(reply[list] || []).map(x => x.id)]);
-  const rows = (Array.isArray(DATA[list]) ? DATA[list] : []).filter(x => !gone.has(x.id)).concat(reply[list] || []);
-  // as the server lists them: reminders as they were set, the rest by date
-  DATA[list] = rows.sort((a, b) => list !== "reminders" && ((a.t > b.t) - (a.t < b.t)) || a.id - b.id);
+  if (list === "oop") { DATA.oop = reply.oop || undefined; storeChanged("costs"); return; }
+  DATA[list] = putRows(DATA[list], list, reply);
   if (list === "journal") { journalLoad(); YEARS = null; } else if (list === "doses") medLogLoad();
   storeChanged(list === "journal" ? "journal" : "medications");
+}
+/* a list's rows with a change's reply put in, as the server lists them: reminders as they were set, the rest by date
+   (the offline copy's too, offline.js) */
+function putRows(rows, list, reply) {
+  const gone = new Set([...(reply.removed || []), ...(reply[list] || []).map(x => x.id)]);
+  return (Array.isArray(rows) ? rows : []).filter(x => !gone.has(x.id)).concat(reply[list] || [])
+    .sort((a, b) => list !== "reminders" && ((a.t > b.t) - (a.t < b.t)) || a.id - b.id);
 }
