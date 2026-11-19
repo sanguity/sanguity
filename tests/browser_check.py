@@ -1394,8 +1394,14 @@ def font_swap(browser, state, url, width):
     before, fonts_before = pg.evaluate(SWAP_BOXES_JS), pg.evaluate(SWAP_FONTS_JS)
     pg.evaluate("""() => { window.__swapShift = 0; new PerformanceObserver(l => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__swapShift += e.value; })
       .observe({type: 'layout-shift'}); }""")
-    for r in held:
+    # Source Serif first and drawn alone for a moment, then Inter: either may arrive first, and a row that fits in
+    # both fonts and in neither may not fit in the serif beside Inter's fallback (#426: a heading pushed its Chart |
+    # Table under it for that frame). Without the order the check caught that only now and then
+    for r in sorted(held, key=lambda r: "/fonts/source-serif-" not in r.request.url):
         r.continue_()
+        if "/fonts/source-serif-" in r.request.url:
+            pg.evaluate("""async () => { for (let i = 0; i < 100 && ![...document.fonts].some(f => f.family === 'Source Serif 4' && f.status === 'loaded'); i++)
+              await new Promise(r => setTimeout(r, 20)); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); }""")
     ctx.unroute("**/fonts/**")
     pg.evaluate("document.fonts.ready.then(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))))")
     pg.wait_for_timeout(500)
@@ -1479,10 +1485,11 @@ def main():
         # the swap barely moves anything (#329): each page drawn with the fonts held back is drawn in the fallbacks
         # (base.css), and when the fonts arrive the layout shift is under 0.015 (Web Vitals call under 0.1 good). Tiles and
         # stats, laid out at exact sizes (#338), don't change height at 1400 px or by more than a line at 375 px; cards and
-        # settings rows use the default rendering, which keeps small text crisp on Linux, and may move by a line or two
+        # settings rows use the default rendering, which keeps small text crisp on Linux, and may move by a line or two.
+        # Body and activity at 320 px too, where its chart cards' headings sit beside their Chart | Table (#426)
         state = strict.context.storage_state()
         for name, path in (("Overview", "/#overview"), ("Settings", "/settings.html"), ("Costs", "/#costs"), ("Body and activity", "/#health")):
-            for width in (1400, 375):
+            for width in (1400, 375, 320) if path == "/#health" else (1400, 375):
                 changed, boxes, shift, fonts_before, fonts_after = font_swap(browser, state, base + path, width)
                 drawn = (boxes > 3 and "Inter fallback" in fonts_before and "Inter" not in fonts_before
                          and "Source Serif 4" not in fonts_before and {"Inter", "Source Serif 4"} <= set(fonts_after))
