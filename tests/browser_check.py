@@ -10618,6 +10618,35 @@ def main():
             zb.select_option("[data-key='dates.format'] select", "dmy")
             zb.wait_for_function("document.querySelector('#sec-dates .set-msg').textContent == 'Saved “Date format”.'", timeout=10000)
             check("…and saves them", mine(zb)["dates.format"] == "dmy", mine(zb))
+            # #433: on a browser where an account with Dark was signed in, one with no profile sees its own theme on the
+            # records page, and a change to it after a reload
+            ctx433 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True, timezone_id="America/Chicago")
+            p433 = sign_in(ctx433, USER, PW)
+            theme433 = "v => api('settings/user/theme', {method: 'PUT', body: JSON.stringify({value: v})}).then(r => r.status)"
+            p433.evaluate(f"({theme433})('dark')")
+            p433.reload()
+            p433.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && localStorage.getItem('ht-theme-default') === 'dark'", timeout=20000)
+            menu_click(p433, "#logout")
+            p433.wait_for_url("**/login.html", timeout=10000)
+            seen433 = [p433.evaluate("[document.documentElement.dataset.theme ?? null, localStorage.getItem('ht-theme-default')]")]
+            p433.fill("#u", USER2)
+            p433.fill("#p", PW2)
+            p433.click("#b")
+            p433.wait_for_function("location.pathname === '/' && !!document.querySelector('main .empty a[href=\"guide.html?new\"]')", timeout=20000)
+            p433.wait_for_timeout(300)
+            shown433 = "[document.documentElement.dataset.theme ?? null, localStorage.getItem('ht-theme-default')]"
+            seen433 += [p433.evaluate("api('settings/user').then(r => r.json()).then(j => j.theme)"), p433.evaluate(shown433)]
+            p433.evaluate(f"({theme433})('light')")
+            p433.reload()
+            p433.wait_for_function("!!document.querySelector('main .empty a[href=\"guide.html?new\"]')", timeout=20000)
+            p433.wait_for_timeout(300)
+            seen433.append(p433.evaluate(shown433))
+            p433.evaluate(f"({theme433})('system')")
+            ctx433.close()
+            za.evaluate(f"({theme433})({json.dumps(before.get('theme', 'system'))})")
+            check("an account with no profile, signed in after one with Dark, sees its own theme on the records page, and a change to it after a reload; "
+                  "sign-out leaves no account's theme behind (#433)",
+                  seen433 == [[None, None], "system", [None, None], ["light", "light"]], seen433)
             zb.evaluate("location.hash = '#watch'")
             zb.wait_for_url("**/sources.html#phone", timeout=10000)
             check("…an old Settings address followed within the page opens its new home (#watch → Sources)", True)
