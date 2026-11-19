@@ -1340,6 +1340,11 @@ Everything on `main` so far; it becomes the first tagged release.
   offline were always in the browser's format). The copy takes them now, and the records page offline shows dates in
   your format. A page opened offline (Settings, Sources…) went live again only when the browser said it was online;
   it asks the server every few seconds too, as the records page does, so it opens once the server answers.
+- **Log out offline: nothing left for the next person, and no other tab keeping you signed in** (#429): a theme
+  picked offline waited on the device after Log out, and was saved for the next account signed in there; it goes at
+  sign-out now, with anything else the sign-in left waiting. Another tab left open stayed signed in, and kept the
+  sign-in on the server alive once back online; every open tab goes to the sign-in page as soon as you log out in
+  one, and the sign-in on the server ends from there once it's reached.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
