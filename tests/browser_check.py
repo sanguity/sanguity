@@ -8105,6 +8105,62 @@ def main():
                   "now that it isn't the default; its Undo puts it back on the server",
                   inst[0] != was_home and inst[1] and not inst[2] and inst[3] == ["Saved “Home readings”."] and inst[4] == "overview.homeTiles-bp" and inst[5]
                   and home() == was_home and js(ov_msg) == "Undone: “Home readings” is as before.", inst)
+            # #407: a simple preference on its way to the server isn't a change not saved: with its PUT 1.5 s slow, a unit
+            # picked shows no bar, no "not saved", no dot in the sidebar and no question before leaving, and the page and
+            # the server agree once it's there; one the server refuses waits in the bar, said why, its Save keeps it
+            page.goto(base + "/settings.html?profile=1#display")
+            page.wait_for_selector("#sec-units input[name=units-temperature][value=F]", timeout=10000)
+            # (the page's own PUTs of the units held 1.5 s, or answered with a refusal, in the page: what's read meanwhile is
+            # read while the save is on its way)
+            js("""() => { const f = window.fetch; window.__put = 'slow';
+                window.fetch = (u, o) => !(o && o.method === 'PUT' && String(u).endsWith('/settings/units')) || !window.__put ? f(u, o)
+                  : window.__put === 'refuse' ? new Promise(r => setTimeout(r, 300)).then(() => new Response('{"detail": "A fictional refusal."}', {status: 400, headers: {'Content-Type': 'application/json'}}))
+                  : new Promise(r => setTimeout(r, 1500)).then(() => f(u, o)); }""")
+            un_units = lambda: js(api_get, "settings/user")["units"]
+            un_was = un_units()
+            un_state = """(() => [!document.getElementById('setBar').hidden, document.querySelectorAll('.set-changed').length, !!document.querySelector('#sections > [data-dirty]'),
+                !!document.querySelector('.set-nav-dirty'), (() => { const e = new Event('beforeunload', {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; })()])()"""
+            un_temp = "document.querySelector('#sec-units input[name=units-temperature]:checked').value"
+            un_to = "C" if un_was["temperature"] == "F" else "F"
+            page.click(f"#sec-units label:has(#units-temperature-{un_to})")
+            settle(300)
+            un_way = [js(un_state), un_units()["temperature"]]
+            page.wait_for_function(f"document.querySelector('#sec-units .set-msg').textContent.startsWith('Saved') && SET_ITEMS.units.st.value.temperature === '{un_to}'", timeout=10000)
+            un_there = [un_units()["temperature"], js(un_temp), js(un_state)]
+            js("window.__put = 'refuse'")
+            un_w = "lb" if un_was["weight"] != "lb" else "kg"
+            page.click(f"#sec-units label:has(#units-weight-{un_w})")
+            page.wait_for_function("!!document.querySelector('#sec-units .set .msg.bad')", timeout=10000)
+            un_held = [js(un_state), js("document.querySelector('#setBar .sg-bar-n').textContent"), js("document.querySelector('#sec-units .set .msg.bad').textContent"), un_units()["weight"]]
+            js("window.__put = ''")
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function("document.getElementById('setBar').hidden", timeout=10000)
+            un_kept = [un_units()["weight"], js(un_state)]
+            check("an instant save on its way (#407): no bar, no “not saved”, no sidebar dot and no question before leaving while its PUT is slow; then the "
+                  "page and the server agree; one refused waits in the bar (said why) and leaving asks, and the bar's Save keeps it",
+                  un_way == [[False, 0, False, False, False], un_was["temperature"]] and un_there == [un_to, un_to, [False, 0, False, False, False]]
+                  and un_held == [[True, 1, True, True, True], "1 change", "Not saved: A fictional refusal.", un_was["weight"]]
+                  and un_kept == [un_w, [False, 0, False, False, False]], [un_way, un_there, un_held, un_kept])
+            check("…(the units put back as they were)", js(api_put, ["settings/user/units", un_was]) == 200)
+            # …and the bar's Discard, pressed for another change while a tick is on its way, leaves the tick as picked:
+            # the page and the server agree once it's saved, the other change discarded
+            page.goto(base + "/settings.html?profile=1#dashboard")
+            page.wait_for_selector(tile, timeout=10000)
+            js("""() => { const f = window.fetch; window.fetch = (u, o) => o && o.method === 'PUT' && String(u).endsWith('/settings/overview.homeTiles')
+                ? new Promise(r => setTimeout(r, 1500)).then(() => f(u, o)) : f(u, o); }""")
+            kl_was = js(api_get, "profiles/1/settings")["overview"]["keyLabs"]
+            ticked = "[...document.querySelectorAll(\"#sec-overview [data-key='overview.homeTiles'] input:checked\")].map(i => i.value)"
+            js("document.querySelector(\"#sec-overview [data-key='overview.keyLabs'] .set-acts button:nth-child(2)\").click()")   # (a key lab moved down: the bar)
+            page.click(tile)
+            page.click("#setBar button:text-is('Discard')")
+            dropped = [home(), js(ticked), js("document.getElementById('setBar').hidden")]
+            page.wait_for_function(f"{ov_msg}.startsWith('Saved')", timeout=10000)
+            dropped += [home(), js(ticked), js(api_get, "profiles/1/settings")["overview"]["keyLabs"] == kl_was]
+            check("…a tick on its way kept through the bar's Discard of another change in its section: the page and the server agree once it's saved (#407)",
+                  dropped[0] == was_home and dropped[1] == dropped[3] and dropped[2] and dropped[3] != was_home and dropped[4], dropped)
+            js(api_put, ["profiles/1/settings/overview.homeTiles", was_home])
+            page.reload()
+            page.wait_for_selector(tile, timeout=10000)
             # #376, a change saved as it's made: with the section's heading off screen, by mouse and by keyboard at 1400
             # and 375 px, the page stays where it was and focus on the tick; its Undo (a click, or Alt+N and Enter) gives
             # focus back there, the page still put; the server's read each step

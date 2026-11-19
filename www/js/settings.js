@@ -470,7 +470,10 @@ const isOwn = st => st.from === "profile" || st.from === "user";   // kept here:
 const setBase = () => PID == null ? "settings/user" : `profiles/${PID}/settings`;
 
 /* one setting: its name, where its value comes from (unless it's the default), its editor, and a line for what went
-   wrong saving it. changed(item) after every edit in it; changed() when it's filled in otherwise (put). */
+   wrong saving it. changed(item) after every edit in it; changed() when it's filled in otherwise (put). A simple
+   preference on its way to the server isn't a change not saved (#407): counts() is what the bar, the sidebar's dot,
+   "not saved" and the questions before leaving count; for one of those, only one held for the bar: refused by the
+   server, or filled in by put(). */
 const SET_ITEMS = {};   // key -> the setting's item drawn last: put(value) fills its editor in, unsaved (presets.js, #186)
 function settingNode(st, changed, mixed) {
   const ro = !st.can_change;
@@ -480,15 +483,17 @@ function settingNode(st, changed, mixed) {
   const node = el("div", {class: "set", "data-key": st.key, "data-scope": st.scope});
   const tag = () => { from.textContent = FROM[st.from] || st.from; from.hidden = atDefault(st); };
   let ed = null;
-  const item = {st, node, msg, instant: INSTANT.has(st.kind) && !ro,
+  const item = {st, node, msg, instant: INSTANT.has(st.kind) && !ro, held: false,
     dirty: () => !ro && !!ed && !same(ed.get(), st.value),
+    counts: () => item.dirty() && (!item.instant || item.held),
     value: () => ed.get(),
-    saved(value) { st.value = value; st.from = st.scope; tag(); mark(); },
+    saved(value) { st.value = value; st.from = st.scope; item.held = false; tag(); mark(); },
+    refuse() { item.held = true; mark(); changed(); },
     back(value, was) { st.value = value; st.from = was; tag(); mark(); changed(); }};   // put back by an Undo (#359)
-  const mark = () => node.classList.toggle("set-changed", item.dirty());
-  const make = v => (EDITORS[st.kind] || jsonEditor)(v, () => { sayIn(msg, ""); mark(); changed(item); }, ro, st);
+  const mark = () => node.classList.toggle("set-changed", item.counts());
+  const make = v => (EDITORS[st.kind] || jsonEditor)(v, () => { item.held = false; sayIn(msg, ""); mark(); changed(item); }, ro, st);
   ed = make(st.value);
-  item.put = v => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); mark(); changed(); };   // #186: not saved, a simple one too
+  item.put = (v, held = true) => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); item.held = held; mark(); changed(); };   // #186: not saved, a simple one too
   SET_ITEMS[st.key] = item;
   tag();
   node.append(...present(el("h3", {class: "sub"}, st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
@@ -551,7 +556,7 @@ function sectionCard(sec, opts = {}) {
   const mixed = new Set(sec.settings.map(st => st.scope)).size > 1;
   let card = null;
   const changed = it => {
-    const n = items.filter(x => x.dirty()).length;
+    const n = items.filter(x => x.counts()).length;
     if (card) { if (n) card.setAttribute("data-dirty", n); else card.removeAttribute("data-dirty"); }
     if (n && !msg.classList.contains("bad")) sayIn(msg, "");
     if (card && it && it.instant && it.dirty()) saveNow(it, card);
@@ -570,7 +575,9 @@ function sectionCard(sec, opts = {}) {
 
 /* a simple preference, saved as it's changed (#272): the latest value, one save at a time per setting, a toast
    saying it with an Undo (as a save's). The theme shows at once, this browser's own choice (your menu's) giving way
-   to it. Not saved (the server said no): it stays changed, its line says why, and the bar offers to save it. */
+   to it. On its way it isn't counted as a change not saved (#407). Not saved (the server said no): it stays changed,
+   its line says why, and the bar offers to save it. Its section drawn again meanwhile (the bar's Discard of other
+   changes there): the setting drawn now is the one marked saved or refused. */
 function saveNow(it, card) {
   const pid = PID, base = setBase(), sec = card.sgSec;
   let mine = null;   // this browser's own theme, put back by the Undo
@@ -578,9 +585,11 @@ function saveNow(it, card) {
   it.queue = (it.queue || Promise.resolve()).then(async () => {
     if (!it.dirty() || PID !== pid) return;
     const value = it.value(), was = [{key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from, wrote: {value}}];
+    let now = it;
+    const live = () => { const x = SET_ITEMS[it.st.key]; now = x && x !== it && x.node.isConnected ? x : it; card = now.node.closest(".card") || card; };
     try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value}); }
-    catch (e) { sayIn(it.msg, `Not saved: ${e.message}`, true); if (it.st.kind === "theme") applyTheme(it.st.value); return; }
-    it.saved(value); card.sgChanged(); card.sgTidy();
+    catch (e) { live(); sayIn(now.msg, `Not saved: ${e.message}`, true); now.refuse(); if (it.st.kind === "theme") applyTheme(it.st.value); return; }
+    live(); now.saved(value); card.sgChanged(); card.sgTidy();
     if (it.st.kind === "timezone" || it.st.kind === "dateformat") useDates(SET_ITEMS["dates.timeZone"]?.st.value, SET_ITEMS["dates.format"]?.st.value);
     const said = `Saved “${it.st.label}”.`;
     sayIn(card.querySelector(".set-msg"), said, false, {say: false});
@@ -599,7 +608,7 @@ function saveNow(it, card) {
    in view (#376). Gives back whether all were saved. */
 async function saveSections(cards, msg, had) {
   const base = setBase(), pid = PID, done = [], was = [], secs = [];
-  for (const card of cards) for (const it of card.sgItems.filter(x => x.dirty())) {
+  for (const card of cards) for (const it of card.sgItems.filter(x => x.counts())) {
     const value = it.value(), before = {key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from};
     try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value}); }
     catch (e) {
@@ -627,11 +636,13 @@ async function saveSections(cards, msg, had) {
   toast(said, {action: "Undo", onAction: () => undoSave(base, secs, was, pid)});
   return true;
 }
-/* the bar's Discard: these sections drawn again as saved, focus on the first one's heading */
+/* the bar's Discard: these sections drawn again as saved, focus on the first one's heading; a simple preference on
+   its way to the server (#407) isn't a change to discard: it stays as picked */
 function discardSections(cards) {
   let first = null;
   for (const c of cards) {
     const fresh = sectionCard(c.sgSec, {note: first ? "" : "Changes discarded: back as saved."});
+    for (const it of c.sgItems) if (it.dirty() && !it.counts()) { const x = fresh.sgItems.find(y => y.st === it.st); if (x) { x.put(it.value(), false); x.queue = it.queue; } }
     c.replaceWith(fresh);
     first ||= fresh;
   }
@@ -690,7 +701,7 @@ async function load(note, force, all = false) {
   const forced = [].concat(force || []);
   const cards = d.sections.map(sec => {
     const old = document.getElementById("sec-" + sec.id);
-    if (!all && old && old.parentNode === box && old.hasAttribute("data-dirty") && !forced.includes(sec.id)) return old;
+    if (!all && old && old.parentNode === box && (old.hasAttribute("data-dirty") || old.sgItems?.some(x => x.dirty())) && !forced.includes(sec.id)) return old;   // (one on its way, #407)
     return sectionCard(sec, {note: note && (note.sections || []).includes(sec.id) ? note.text : "", quiet: !!(note && note.quiet)});
   });
   const inPlace = !all && box.children.length === cards.length && d.sections.every((sec, i) => box.children[i].id === "sec-" + sec.id);
