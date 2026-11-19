@@ -103,7 +103,10 @@ const upWhen = u => fmtD(dayTs(u.t.slice(0, 10))) + (u.t.length > 10 ? ", " + fm
 
 function ovToday() {
   const doses = todayDoses();   // today's medication doses (medlog.js, #235): how they look and work is the dose list's own
-  if (doses && $("#view-medications")) doses.append(el("button", {class: "btn mt-2", type: "button", onclick: () => pickTab("medications")}, "Open Medications ", icon("arrow-right")));
+  // the way to the dose log's own tab (#275), at the end of the week's line, so the next visit stays on a phone's first
+  // screen (#274); not while that tab is hidden
+  const week = doses && shownTabs().includes("medications") && doses.querySelector(".dose-week");
+  if (week) week.append(" · ", el("a", {href: "#medications", onclick: ev => { ev.preventDefault(); pickTab("medications"); }}, "Open Medications"));
   const up = ovUpcoming(), sync = WATCH && WATCH.last_payload ? `watch last synced ${fmtDT(WATCH.last_payload)}` : "";
   if (!doses && !up && !sync) return [];
   const day = zdate(Date.now()).toLocaleDateString(undefined, {weekday: "long", month: "long", day: "numeric"});
