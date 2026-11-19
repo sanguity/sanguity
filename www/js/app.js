@@ -82,6 +82,11 @@ function renderAll() {
   else renderOverview();
   save();
 }
+/* the parts of the records each tab shows (store.js, #271): when one changes (a dose logged, an entry or an edit
+   saved), the tab shown is drawn again in place, its scroll and focus kept; the others are drawn when they're opened */
+const TAB_SHOWS = {overview: ["events", "labs", "medications"], health: ["events"], timeline: ["events", "medications", "journal"],
+  labs: ["events", "labs", "medications", "journal"], costs: ["events"]};
+storeOn(STORE_PARTS, parts => { if (booted && TAB_SHOWS[state.tab].some(p => parts.has(p))) keepFocus(renderAll); });
 /* no records to show (an empty profile, none shared, or an error): a message instead of the tabs, and none of the
    controls that would render them, since those need DATA and the tab sections this replaces. One empty state
    (emptyState, util.js: #199), or the words of an error */
@@ -113,6 +118,7 @@ async function syncWarning(pid) {
 }
 (async function boot() {
   const dates = datesReady();   // this person's time zone and date format (dates.js), read alongside the rest
+  let data;
   try {
     const m = await api("me");
     if (m.status === 401) { const s = await api("setup").then(r => r.json()).catch(() => ({})); location.replace(s.needed ? "setup.html" : "login.html"); return; }
@@ -148,85 +154,25 @@ async function syncWarning(pid) {
       return;
     }
     if (!r.ok) throw new Error(r.status + " " + r.statusText);
-    DATA = await r.json();
+    data = await r.json();
     // this profile's settings (changed on the Settings page); if they can't be loaded the defaults are used
     try {
       const s = await api(`profiles/${PROFILE.id}/settings`);
       if (s.ok) applySettings(await s.json());
     } catch (e) { console.warn("settings ignored:", e.message); }
-    // milestones are a setting since #39 (the server moved those of data.json and corrections.json in once)
-    MILESTONES = CFG.milestones.filter(m => m && /^\d{4}-\d{2}-\d{2}/.test(m.date || ""))
-      .map(m => ({...m, date: m.date.slice(0, 10), label: m.label || "Milestone"})).sort((a, b) => a.date.localeCompare(b.date));
   } catch (e) { emptyCard("Couldn't load the records: " + e.message); return; }
   applyTabs(CFG.tabs);
   applyTheme(CFG.theme);   // this user's default theme (#45), unless this browser has its own (the light/dark toggle)
-  await dates;   // before any time is read: one without an offset is this person's wall-clock time
-  for (const e of DATA.events) {
-    e.ts = zParse(e.t); e.te = e.end ? zParse(e.end) : e.ts;
-    e._q = (e.title + " " + (e.sub || "") + " " + (KIND_LABEL[e.k] || "")).toLowerCase();
-    byId.set(e.id, e);
-    if (e.k === "lab") { const d = DATA.details[e.id]; e.n = d ? d.ids.length : 1; }
-  }
-  EV = DATA.events.filter(e => e.k !== "stay" ? true : true);
-  STAYS = DATA.events.filter(e => e.k === "stay");
-  // let search hit lab-day events through their child results' names
-  for (const e of DATA.events) if (e.k === "lab") { const d = DATA.details[e.id]; if (d) e._q += " " + d.ids.map(i => (byId.get(i)?.title || "")).join(" ").toLowerCase(); }
-  for (const s of DATA.labs) for (const p of s.pts) p.ts = zParse(p[0]);
-  // #44: results with no range of their own (ranges.js). Before the units, since an override is stated in the
-  // reported unit and is then converted with the values (#41)
-  RANGES_USED = applyRangeOverrides(DATA.labs, rangeConfig(CFG));   // with About this person's birth date and sex (#194)
-  applyUnits(DATA.labs); applyUnitsToRows(DATA.labs, DATA.details);   // this person's units, exact conversions only (units.js, #41)
-  SERIES = joinSeries(DATA.labs);   // one chart per test, whichever imports brought it (same.js)
-  if (RANGES_USED) for (const n of document.querySelectorAll(".range-note")) n.textContent += RANGE_NOTE_SETTINGS;
   // optional: watch data from the Health Connect receiver
   try {
     const w = await api(`profiles/${PROFILE.id}/watch`);
     if (w.status === 200) WATCH = await w.json();
   } catch (e) {}
-  if (WATCH) {
-    const M = Object.fromEntries((WATCH.metrics || []).map(m => [m.key, m]));
-    const byDay = k => Object.fromEntries(M[k] ? M[k].pts : []);
-    const mkPts = m => m.pts.map(([d, v]) => { const p = [d + "T12:00:00", v, null, null, "", ""]; p.ts = dayTs(d); p.day = d; return p; });
-    const add = (m, extra) => { const pts = mkPts(m); const s = {name: m.name, unit: m.unit, panel: m.group === "Body" ? "Body · smart scale" : "Watch · " + m.group, n: pts.length, pts, txt: [], watch: true, key: m.key, kind: "line", conv: m.conv, ...extra}; SERIES.push(s); return s; };
-    if (M.hr_avg) {   // one chart: daily average inside a low–high band
-      const lo = byDay("hr_min"), hi = byDay("hr_max");
-      const s = add(M.hr_avg, {name: "Heart rate", key: "hr", kind: "band"});
-      for (const p of s.pts) { p.lo = lo[p.day]; p.hi = hi[p.day]; }
-    }
-    if (M.sleep_h) {  // stacked deep / REM / light per night
-      const parts = {deep: byDay("sleep_deep_min"), rem: byDay("sleep_rem_min"), light: byDay("sleep_light_min")};
-      const s = add(M.sleep_h, {name: "Sleep", key: "sleep", kind: "stack"});
-      for (const p of s.pts) p.parts = {deep: (parts.deep[p.day] || 0) / 60, rem: (parts.rem[p.day] || 0) / 60, light: (parts.light[p.day] || 0) / 60};
-    }
-    if (M.steps) { add(M.steps, {kind: "bars"}); STEPS = mkPts(M.steps).map(p => [zParse(p.day + "T00:00:00"), p[1]]); }
-    const cw = DATA.clinicWeights || [];
-    if (M.weight || cw.length) {
-      const s = add(M.weight || {key: "weight", name: "Weight", unit: "lb", group: "Body", pts: [], conv: DATA.unitConv?.lb}, {name: "Body weight", key: "weight"});
-      const have = new Set(s.pts.map(p => p.day));
-      for (const [t, v, org] of cw) {
-        const day = t.slice(0, 10); if (have.has(day)) continue; have.add(day);
-        const p = [day + "T12:00:00", v, null, null, "", "", "Clinic"]; p.ts = dayTs(day); p.day = day; p.org = org; s.pts.push(p);
-      }
-      s.pts.sort((a, b) => a.ts - b.ts); s.n = s.pts.length;
-    }
-    const folded = new Set(["weight", "hr_avg", "hr_min", "hr_max", "sleep_h", "sleep_deep_min", "sleep_rem_min", "sleep_light_min", "sleep_awake_min", "steps"]);
-    for (const m of WATCH.metrics || []) if (!folded.has(m.key) && !m.key.startsWith("glucose_")) add(m);   // glucose: Body and activity's own (#181)
-    let wid = DATA.events.reduce((m, e) => Math.max(m, +e.id || 0), 1e7);   // after every record's id
-    for (const x of WATCH.exercise || []) {
-      const ev = {id: ++wid, t: x.start, end: x.end, k: "exercise", title: x.name.replace(/_/g, " "), sub: `${x.minutes} min`};
-      ev.ts = zParse(ev.t); ev.te = zParse(ev.end); ev._q = (ev.title + " workout exercise").toLowerCase();
-      DATA.events.push(ev); byId.set(ev.id, ev); DATA.details[ev.id] = {type: "exercise", kind: x.kind, minutes: x.minutes, hr: x.hr};   // hr: heart rate zones (#197)
-    }
-    wid = ecgLoad(wid);   // ECGs and irregular rhythm notifications (ecg.js, #182)
-    EV = DATA.events;
-    applyUnits(SERIES.filter(s => s.watch));   // after the clinic weights joined the scale's (#41)
-  }
-  journalLoad();   // the journal's entries join EV as events of kind "journal" (journal.js)
+  await dates;   // before any time is read: one without an offset is this person's wall-clock time
+  storeRecords(data);   // the records, the watch's joined to them, ready to draw (store.js, #271)
+  if (RANGES_USED) for (const n of document.querySelectorAll(".range-note")) n.textContent += RANGE_NOTE_SETTINGS;
   await cycleLoad();   // cycle tracking, only when turned on and for owners and editors (cycle.js, #183)
-  medsLoad();      // each medication's spans and fills (meds.js, #50)
-  medLogLoad();    // the medication log: doses typed in and the phone's (medlog.js, #235)
-  const ts = DATA.events.map(e => e.ts).filter(isFinite); state.min = Math.min(...ts); state.max = Math.max(...ts);
-  for (const s of SERIES) if (s.watch && s.pts.length) state.max = Math.max(state.max, s.pts[s.pts.length - 1].ts);
+  storeSpan();
   $("#meta").textContent = [DATA.source, DATA.built && "built " + fmtD(DATA.built), WATCH && WATCH.last_payload && "watch synced " + fmtDT(WATCH.last_payload)]
     .filter(Boolean).join(" · ");   // a profile of imports alone has no build to name (#199: it said "undefined · built")
   restore();   // a saved period naming a milestone that's since gone is All (setPeriod)
@@ -237,7 +183,5 @@ async function syncWarning(pid) {
   switchTab(state.tab);
   booted = true;
   try { performance.mark("sanguity:ready"); } catch (e) {}   // the records page is ready: what docs/performance.md times (#201)
-  drawerResume();   // after an edit's reload (drawer.js)
-  journalResume();  // after a journal entry was saved (journal.js)
-  medsResume();     // after a medication reminder was saved (meds.js, #162)
+  journalResume();  // Add → Journal entry from another page (journal.js)
 })();

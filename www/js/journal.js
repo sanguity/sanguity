@@ -33,7 +33,10 @@ const jSay = j => j.kind === "mood" ? `${jTitle(j)}, ${jWhen(j)}` :
   [`${J_LABEL[j.kind]}: ${jTitle(j)}`, jSev(j), j.med, j.where?.length && `where: ${jWhere(j)}`, j.group && `in “${j.group}”`, jPhotos(j), jWhen(j)].filter(Boolean).join(", ");
 const jGroups = () => Array.isArray(CFG.journal?.groups) ? CFG.journal.groups : [];
 
+/* the entries as events, in place of any from before (a change put in by store.js, #271) */
 function journalLoad() {
+  for (const e of JOURNAL) byId.delete(e.id);
+  EV = EV.filter(e => e.k !== "journal" && e.k !== "mood");
   JOURNAL = (Array.isArray(DATA.journal) ? DATA.journal : []).filter(j => j && J_LABEL[j.kind] && isFinite(jTime(j.t))).map(j => {
     const e = {id: -j.id, k: j.kind === "mood" ? "mood" : "journal", t: j.t, title: jTitle(j), j,
       sub: j.kind === "mood" ? (j.note || "").replace(/\s+/g, " ").slice(0, 80) : [J_LABEL[j.kind], jSev(j), j.med, j.group, jWhere(j), jPhotos(j)].filter(Boolean).join(" · ")};
@@ -46,7 +49,6 @@ function journalLoad() {
   // Add → Journal entry (nav.js): the new-entry form, from any tab; the panel gives focus back to the Add button
   $("#journalBtn").hidden = !jCanWrite();
   $("#journalBtn").onclick = () => { $("#addMenuBtn")?.focus({preventScroll: true}); journalNew(); };
-  journalHomeCard();
 }
 
 /* ---------------------------------------------------------------- marks: shape by kind, size by severity */
@@ -191,8 +193,8 @@ function openJournal(e) {
 /* ---------------------------------------------------------------- the list, and the journal's home (#173)
    Its home is a card on the Timeline tab, between the timeline and the events list, added here (index.html has no
    place for it): the newest entries, with the filters and search, then where symptoms have been (#161). The panel
-   shows the same list only when the Timeline tab is hidden (Settings → Tabs, #40). Saving or deleting reloads the
-   page, so the card is built once. */
+   shows the same list only when the Timeline tab is hidden (Settings → Tabs, #40). The card is built again, in place,
+   whenever the journal changes (store.js, #271). */
 const jFilter = {kinds: new Set(J_KINDS.map(([k]) => k)), med: "", q: "", inRange: false, all: false, where: ""};   // kinds: those shown
 const J_FEW = 5;   // the card shows the newest five until "Show all"
 const JOURNAL_HINT = "What you write is kept with the records, not with any import: undoing an import leaves it. It's in “Export everything” and in backups, photos included.";
@@ -298,6 +300,7 @@ function journalHomeCard() {
   }
   events.before(card);
 }
+storeOn("journal", () => keepFocus(journalHomeCard));
 // "Only the dates shown" and the body map follow the timeline's dates: the events list is drawn again whenever they change
 { const evList = $("#list"); if (evList) new MutationObserver(() => { if (jHomeDraw) jHomeDraw(); }).observe(evList, {childList: true}); }
 /* to the journal's home: the card on the Timeline tab, or the list in the panel when that tab is hidden. push:
@@ -592,27 +595,25 @@ function journalGroupForm(g, back) {
   rows[0]?.sev.input.focus({preventScroll: true});
 }
 
-/* every change reloads the records (as edits do, drawer.js) and reopens what was being looked at */
+/* every change: the reply's entries put in the records in place (store.js, #271), which draws again what shows the
+   journal, and what was being looked at opened again: the entry (reopen: {entry}, or {created} for a new one), else
+   the journal's home ({list}) */
 async function jSend(path, opts, msg, reopen) {
   sayIn(msg, "Saving…");
-  try {
-    const r = await api(`profiles/${PROFILE.id}/journal${path}`, opts);
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the entry (${r.status}).`, true); return; }
-    if (reopen.created) reopen = {entry: j.id};
-    try { sessionStorage.setItem("sg-after-journal", JSON.stringify(reopen)); } catch (e) {}
-    location.reload();
-  } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
+  let r, j;
+  try { r = await api(`profiles/${PROFILE.id}/journal${path}`, opts); j = await r.json().catch(() => ({})); }
+  catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return; }
+  if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the entry (${r.status}).`, true); return; }
+  storePut("journal", j);
+  const id = reopen.created ? j.id : reopen.entry;
+  if (id && byId.has(-id)) openEvent(byId.get(-id)); else journalHome();
+  announce(opts.method === "DELETE" ? "Entry deleted." : "Saved.");
 }
-/* after that reload, or arriving from Add → Journal entry on another page (nav.js links to ./#new-journal-entry) */
+/* arriving from Add → Journal entry on another page (nav.js links to ./#new-journal-entry) */
 function journalResume() {
-  let r = null;
-  try { r = JSON.parse(sessionStorage.getItem("sg-after-journal") || "null"); sessionStorage.removeItem("sg-after-journal"); } catch (e) {}
-  if (location.hash === "#new-journal-entry") {
-    history.replaceState(null, "", location.pathname + location.search + tabHash());   // a reload doesn't open it again; the tab's # (#208)
-    journalNew();
-  } else if (r && r.entry && byId.has(-r.entry)) openEvent(byId.get(-r.entry));
-  else if (r) journalHome();
+  if (location.hash !== "#new-journal-entry") return;
+  history.replaceState(null, "", location.pathname + location.search + tabHash());   // a reload doesn't open it again; the tab's # (#208)
+  journalNew();
 }
 
 /* in the drawer of any event: write a journal note dated to it */

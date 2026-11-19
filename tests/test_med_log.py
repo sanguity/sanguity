@@ -99,6 +99,17 @@ class Log(unittest.TestCase):
         self.assertEqual(len(self.c["kim"].get(self.path()).json()["doses"]), 2)
         self.assertEqual(self.c["lee"].delete(self.path(f"/{did}"), headers=H).status_code, 404)
 
+    def test_replies_carry_what_changed(self):
+        """#271: each change's reply has the dose as the records list it, so the page updates in place"""
+        j = self.log(note=NOTE)
+        listed = lambda: {d["id"]: d for d in self.data()["doses"]}
+        self.assertEqual(j["doses"], [listed()[j["id"]]])
+        r = self.c["robin"].put(self.path(f"/{j['id']}"), json={"med": "fictionamide", "t": D(-1) + "T08:15", "status": "late"}, headers=H)
+        self.assertEqual(r.json()["doses"], [listed()[j["id"]]])
+        self.assertEqual(r.json()["doses"][0]["status"], "late")
+        r = self.c["lee"].delete(self.path(f"/{j['id']}"), headers=H)
+        self.assertEqual(r.json(), {"ok": True, "removed": [j["id"]]})
+
     def test_who_and_refusals(self):
         self.log(who="kim", code=403)
         bad = [({"med": "no such"}, "Pick the medication"), ({"status": "due"}, "taken, taken late or skipped"),

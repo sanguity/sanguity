@@ -310,6 +310,8 @@ class CrossSource(unittest.TestCase):
         for name in ("Hemoglobin", "Platelet Count"):
             r = self.robin.post(f"/api/profiles/{self.pid}/same", json={"ref": refs[name]}, headers=H)
             self.assertEqual(r.status_code, 201, r.text)
+            self.assertEqual(r.json()["records"], self.robin.get(f"/api/profiles/{self.pid}/data").json(),
+                             "the reply has the records as the page loads them (#271)")
         d = self.data()
         self.assertNotIn("possible", d)
         for name in ("Hemoglobin", "Platelet Count"):

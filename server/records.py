@@ -437,6 +437,15 @@ def page(db, pid):
     return None if not e or e["page"] is None else (e["page"], e["rev"])
 
 
+def page_reply(db, pid, reply):
+    """(reply, a change's answer, with the records page's data as "records" (null when there are none) as JSON bytes,
+    the records' revision). For a change any record may show, an edit or a link between results: the page puts these
+    records in place of its own, rather than loading them again (#271)."""
+    got = page(db, pid)
+    head = _dumps(reply)[:-1] + (b"," if reply else b"")
+    return head + b'"records":' + (got[0] if got else b"null") + b"}", got[1] if got else ""
+
+
 def details(db, pid, ids):
     """({"details": {event id: its details}} as JSON bytes, for those of the ids that have details; the records'
     revision), or None when the profile has no records (#217)."""

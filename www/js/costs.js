@@ -88,9 +88,9 @@ function renderCosts() {
   list.sort((a, b) => (typeof a[k] === "number" ? (a[k] - b[k]) : String(a[k]).localeCompare(String(b[k]))) * dir);
   const q = el("input", {class: "search", type: "search", placeholder: "Search service, provider, drug…", "aria-label": "Search claims", value: costState.q});
   q.oninput = () => { clearTimeout(window._cq); window._cq = setTimeout(() => { costState.q = q.value; renderCosts(); const n = $("#costTable input.search"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
-  const sel = el("select", {class: "search", "aria-label": "Type of care", style: {minWidth: "0"}, onchange: e => { costState.cat = e.target.value; renderCosts(); }}, el("option", {value: "", text: "All types of care"}), ...cats.map(c => el("option", {value: c, text: c, selected: c === costState.cat || null})));
+  const sel = el("select", {class: "search", "aria-label": "Type of care", style: {minWidth: "0"}, onchange: e => { costState.cat = e.target.value; keepFocus(renderCosts); }}, el("option", {value: "", text: "All types of care"}), ...cats.map(c => el("option", {value: c, text: c, selected: c === costState.cat || null})));
   const den = el("label", {class: "toggle"},   // a filter on or off: a toggle chip (#193, #353)
-    el("input", {type: "checkbox", checked: costState.deniedOnly || null, onchange: e => { costState.deniedOnly = e.target.checked; renderCosts(); }}), "Denied only");
+    el("input", {type: "checkbox", checked: costState.deniedOnly || null, onchange: e => { costState.deniedOnly = e.target.checked; keepFocus(renderCosts); }}), "Denied only");   // focus kept on it, drawn again (store.js)
   // with filters on: what they keep, with Reset filters, and the totals for the claims shown (#190, filters.js)
   const on = !!(costState.q || costState.cat || costState.deniedOnly);
   const totals = `${on ? "For the claims shown: billed" : `${list.length} claims · billed`} ${usd(sumOf(list, "billed"))} · insurance paid ${usd(sumOf(list, "paid"))} · your share ${usd(sumOf(list, "owe"))}`;

@@ -257,12 +257,14 @@ def remove(db, pid, jid):
     return was
 
 
-def listing(db, pid):
+def listing(db, pid, ids=None):
     """The profile's entries, oldest first: {id, kind, t, title, severity, note, med, by, at, changed, changed_by}, and
-    (#161) where, group, photos [{id, alt, type, bytes}], mood and energy when they have them."""
+    (#161) where, group, photos [{id, alt, type, bytes}], mood and energy when they have them. ids: only those entries
+    (a change's reply carries the entries it changed, #271)."""
     out, pics = [], None
-    for r in db.execute("""SELECT id, body, created_name, created, changed_name, changed FROM journal
-                           WHERE profile_id=? ORDER BY id""", (pid,)):
+    only = "" if ids is None else f" AND id IN ({','.join('?' * len(ids))})"
+    for r in db.execute(f"""SELECT id, body, created_name, created, changed_name, changed FROM journal
+                           WHERE profile_id=?{only} ORDER BY id""", (pid, *(ids or ()))):
         e = json.loads(crypto.dec(r["body"]))
         row = {"id": r["id"], "kind": e.get("kind"), "t": e.get("t"), "title": e.get("title") or "",
                "severity": e.get("severity"), "note": e.get("note") or "", "med": e.get("med"),

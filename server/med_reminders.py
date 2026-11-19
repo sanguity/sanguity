@@ -133,11 +133,13 @@ def remove(db, pid, rid):
     return was
 
 
-def listing(db, pid):
-    """The profile's reminders, oldest first: {id, med, name, times, days, from, until, tz, on, by, at, changed, changed_by}."""
+def listing(db, pid, ids=None):
+    """The profile's reminders, oldest first: {id, med, name, times, days, from, until, tz, on, by, at, changed, changed_by}.
+    ids: only those reminders (a change's reply carries the reminder it changed, #271)."""
     out = []
-    for r in db.execute("""SELECT id, body, active, created_name, created, changed_name, changed FROM med_reminders
-                           WHERE profile_id=? ORDER BY id""", (pid,)):
+    only = "" if ids is None else f" AND id IN ({','.join('?' * len(ids))})"
+    for r in db.execute(f"""SELECT id, body, active, created_name, created, changed_name, changed FROM med_reminders
+                           WHERE profile_id=?{only} ORDER BY id""", (pid, *(ids or ()))):
         b = json.loads(crypto.dec(r["body"]))
         out.append({"id": r["id"], "med": b.get("med"), "name": b.get("name") or "", "times": b.get("times") or [],
                     "days": b.get("days") or list(DAYS), "from": b.get("from"), "until": b.get("until"), "tz": b.get("tz") or "",

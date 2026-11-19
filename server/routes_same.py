@@ -4,13 +4,15 @@ and "same"); the CSRF check in main.guard covers the POST and DELETE like every 
 the profile's activity log as an edit.
 
   POST   /api/profiles/{pid}/same        {"ref": a possible match's ref, "same": true | false}   -> {"id"}
-  DELETE /api/profiles/{pid}/same/{id}   undo it: both results show again (or the flag comes back)
+  DELETE /api/profiles/{pid}/same/{id}   undo it: both results show again (or the flag comes back)   -> {"ok"}
+Each reply also carries the records as the page loads them, "records", as an edit's does (routes_edits.py, #271).
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from . import activity, crossmatch, db as dbm, records
 from .main import _client_ip, get_db, need, user
+from .routes_edits import with_records
 
 router = APIRouter()
 
@@ -42,7 +44,7 @@ def decide(pid: int, body: Decision, request: Request, s=Depends(user), db=Depen
         rid = crossmatch.decide(db, pid, s["id"], keys[0], keys[1], body.same, sides)
         activity.log(db, "edit", s, pid, {"action": "same" if body.same else "not_same", "title": hit["a"]["name"]},
                      _client_ip(request))
-    return {"id": rid}
+    return with_records(db, pid, {"id": rid}, 201)
 
 
 @router.delete("/api/profiles/{pid}/same/{rid}")
@@ -55,4 +57,4 @@ def undo(pid: int, rid: int, request: Request, s=Depends(user), db=Depends(get_d
         title = (gone["sides"][0] if gone["sides"] else {}).get("name")
         activity.log(db, "edit", s, pid, {"action": "same" if gone["same"] else "not_same", "title": title, "undone": True},
                      _client_ip(request))
-    return {"ok": True}
+    return with_records(db, pid, {"ok": True})
