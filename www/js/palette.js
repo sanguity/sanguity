@@ -15,7 +15,7 @@
    One ranking runs across them all (#403): a title starting with what's typed first, then one with each word typed
    starting a word of it, then what else it's known by (groups.js's words, Add's, a tab's, Log a dose's medications),
    always at the start of a word; the group with the best match comes first. Offline (offline.js) what needs the server
-   isn't listed, and it says so.
+   (another page, New profile's too) or that Add shows disabled isn't listed, and it says so.
    On the records page Labs and Events come from the records shown (store.js). On another page they come from the API:
    the profile's records (GET profiles/{pid}/data, and its settings for the names labs are shown by) are read once,
    the first time the palette opens there (again after another profile is chosen), and choosing one opens the records
@@ -23,8 +23,8 @@
    Nothing is fetched until the palette opens.
 
    It's a combobox and a listbox (WAI-ARIA's pattern): focus stays in the box while the up and down arrows move through
-   what's found (aria-activedescendant; the first is marked from the start, so Enter opens the best match), Enter or a
-   click opens it, Escape or Close closes the palette, and focus goes back to what had it (opened from a menu, to the
+   what's found (aria-activedescendant; the first is marked from the start, so Enter opens the best match, waiting for
+   the records if they're still on their way, #412), Enter or a click opens it, Escape or Close closes the palette, and focus goes back to what had it (opened from a menu, to the
    menu's button). How many it found is said once typing stops. "/" can be turned off by the switch at its foot (a
    key on its own, WCAG 2.1.4), for this browser.
    SgPalette: open(q, typed in it first), resume(). Plain script, after nav.js and groups.js; all files share one scope. */
@@ -64,8 +64,8 @@ const SgPalette = (() => {
   document.body.append(dlg);
 
   /* ---- who you are, and the records of another page's profile, fetched when it first opens */
-  let ME = null, meWait = null, REC = null, recFor = null;
-  const who = () => meWait ||= api("me").then(r => r.ok ? r.json() : null).catch(() => null).then(m => { ME = m; if (dlg.open) draw(); });
+  let ME = null, meWait = null, meDone = false, REC = null, recFor = null;
+  const who = () => meWait ||= api("me").then(r => r.ok ? r.json() : null).catch(() => null).then(m => { ME = m; meDone = true; if (dlg.open) draw(); });
   const profile = () => ME?.profiles?.find(p => String(p.id) === pid()) || null;
   const RANK = {viewer: 0, editor: 1, owner: 2};
   document.addEventListener("change", ev => { if (ev.target.id === "profile") recFor = REC = null; });
@@ -96,17 +96,19 @@ const SgPalette = (() => {
   const medNames = () => (onRecords ? (recs() ? current(DATA.medications) : []) : REC?.meds || []).join(" ");
 
   /* ---- what it finds: {icon (a name or an element), title, ctx (where or what it is), words, go()} */
+  /* Add's items wherever its list is (#412: on a phone, in its sheet: nav.js menuSheet), while Add is shown */
+  const addItems = () => document.getElementById("addMenu")?.hidden ? [] : [...document.getElementById("addMenuList")?.querySelectorAll("[role^=menuitem]") || []];
   function actions() {
-    const out = [], add = document.getElementById("addMenu");
-    if (add && !add.hidden) for (const x of add.querySelectorAll("[role^=menuitem]")) {
-      if (x.hidden || x.closest("[role=group]")?.hidden) continue;
+    const out = [];
+    for (const x of addItems()) {
+      if (x.hidden || x.closest("[role=group]")?.hidden || x.getAttribute("aria-disabled") === "true") continue;   // (offline: offline.js)
       out.push({icon: x.querySelector("svg.icon"), title: x.textContent.trim(), ctx: "Add", go: () => x.click()});
     }
     if (profile()?.role === "owner") out.push({icon: sgIcon("sharing/links"), title: "New share link", ctx: "Sharing", go: newLink});
     // the profile menu's New profile, its only one (#402), even where that menu isn't shown (no profile yet)
     const np = document.getElementById("newProfileLink");
-    if (np && !document.getElementById("barSearch").hidden) out.push({icon: sgIcon("sharing/newProfile"), title: "New profile", ctx: "Profile menu", words: "create add person",
-      go: () => { location.href = np.href; }});
+    if (np && !document.getElementById("barSearch").hidden) out.push({icon: sgIcon("sharing/newProfile"), title: "New profile", ctx: "Profile menu", words: "create add person child family someone else",
+      server: true, go: () => { location.href = np.href; }});
     const th = document.getElementById("theme");
     if (th && !th.hidden) out.push({icon: sgIcon("theme"), title: th.textContent.trim(), ctx: "Your menu", words: "theme dark light", go: () => th.click()});
     return out;
@@ -117,7 +119,7 @@ const SgPalette = (() => {
   const ADD_WORDS = {doseLink: "medication meds medicine pill tablet dose took taken", journalBtn: "note diary symptom feeling",
     "home-reading": "blood pressure weight glucose temperature"};
   function known(xs) {
-    const items = [...document.querySelectorAll("#addMenu [role^=menuitem]")];
+    const items = addItems();
     return xs.map(x => {
       const m = items.find(i => i.textContent.trim() === x.title);
       if (!m) return x.go === newLink ? {...x, server: true} : x;
@@ -206,6 +208,16 @@ const SgPalette = (() => {
 
   /* ---- the list */
   let shown = [], active = -1, sayT = 0;
+  /* Enter while who you are, or another page's records, are still on their way (#412): what's listed may not have
+     the best match yet ("cre" finds Create… before Creatinine is there), so unless an arrow key picked one, Enter waits
+     and opens the best match once they're in (draw, below) */
+  let later = false, moved = false;
+  const loading = () => !meDone || (!onRecords && !!pid() && !REC);
+  function enter() {
+    if (!input.value.trim() || moved || !loading()) return pick(active);
+    later = true;
+    announce("Looking through the records…");
+  }
   function draw() {
     const typed = input.value, {groups, wait, offNote} = find(typed);
     shown = [];
@@ -221,6 +233,8 @@ const SgPalette = (() => {
       }))));
     input.setAttribute("aria-expanded", String(shown.length > 0));
     mark(shown.length ? 0 : -1, false);
+    moved = false;
+    if (later && !loading()) { later = false; return pick(active); }
     const nothing = typed.trim() && !shown.length && !wait ? `Nothing matches “${typed.trim()}”${offNote ? " offline" : ""}.` : "";
     note.textContent = [wait, nothing, offNote].filter(Boolean).join(" ");
     note.hidden = !note.textContent;
@@ -243,18 +257,19 @@ const SgPalette = (() => {
     dlg.close();   // first: focus goes back to what had it, and the page is no longer inert
     x.go();
   }
-  input.addEventListener("input", draw);
+  input.addEventListener("input", () => { later = false; draw(); });
   input.addEventListener("keydown", ev => {
     const n = shown.length;
-    if ((ev.key === "ArrowDown" || ev.key === "ArrowUp") && n) { ev.preventDefault(); mark((active + (ev.key === "ArrowDown" ? 1 : n - 1)) % n); }
-    else if ((ev.key === "PageDown" || ev.key === "PageUp") && n) { ev.preventDefault(); mark(Math.max(0, Math.min(n - 1, active + (ev.key === "PageDown" ? 5 : -5)))); }
-    else if (ev.key === "Enter") { ev.preventDefault(); pick(active); }
+    if ((ev.key === "ArrowDown" || ev.key === "ArrowUp") && n) { ev.preventDefault(); moved = true; mark((active + (ev.key === "ArrowDown" ? 1 : n - 1)) % n); }
+    else if ((ev.key === "PageDown" || ev.key === "PageUp") && n) { ev.preventDefault(); moved = true; mark(Math.max(0, Math.min(n - 1, active + (ev.key === "PageDown" ? 5 : -5)))); }
+    else if (ev.key === "Enter") { ev.preventDefault(); enter(); }
   });
   /* opened from a menu (Add open, then "/" or Ctrl+K), what had focus is an item in a list now closed: focus goes back
      to the menu's button instead (#403) */
   let menuBtn = null;
   dlg.addEventListener("close", () => {
     clearTimeout(sayT);
+    later = false;
     const a = document.activeElement;
     if (menuBtn && menuBtn.isConnected && (!a || a === document.body || dlg.contains(a))) menuBtn.focus({preventScroll: true});
     menuBtn = null;

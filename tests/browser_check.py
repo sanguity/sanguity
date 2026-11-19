@@ -9972,6 +9972,30 @@ def main():
             check("…off the records page, labs and events come from the API once it opens; a lab chosen there opens on the records page, charted, focus on it",
                   ["Labs", "Hemoglobin"] in off and js("[location.search, state.sel.has('Hemoglobin'), document.activeElement.matches('#charts svg.pz')]") == ["?profile=1", True, True],
                   [off[:4], js("[location.href, document.activeElement.outerHTML.slice(0, 80)]")])
+            # (#412) on a phone Add's list is in its sheet, and still the palette's: “medication” finds Log a dose, “upload”
+            # Upload files; “child” finds New profile (its words, #403)
+            page.set_viewport_size({"width": 375, "height": 667})
+            settle(300)
+            phone412 = {}
+            pal("")
+            for q in ("medication", "upload", "child"):
+                pal(q, None)
+                phone412[q] = js(marked)
+            page.keyboard.press("Escape")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…on a phone (375 px), Add's actions are found from its sheet: “medication” Log a dose, “upload” Upload files; and “child” New profile (#412)",
+                  phone412 == {"medication": ["Actions", "Log a dose"], "upload": ["Actions", "Upload files"], "child": ["Actions", "New profile"]}, phone412)
+            # (#412) while another page's records are on their way, Enter waits for them: "cre" opens Creatinine once
+            # they're in, not New profile ("create"), the best of what was there
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sections > section", state="attached", timeout=10000)
+            js("(() => { const f = window.fetch; window.fetch = (u, o) => /profiles\\/1\\/data/.test(String(u)) ? new Promise(r => setTimeout(r, 2500)).then(() => f(u, o)) : f(u, o); })()")
+            pal("cre")
+            slow412 = [js(marked), js("document.querySelector('.pal-note').textContent")]
+            page.keyboard.press("Enter")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && state.tab === 'labs' && state.sel.has('Creatinine')", timeout=20000)
+            check("…with the records slowed, “cre” and Enter at once on Settings opens Creatinine once they arrive (#412)",
+                  slow412[1] == "Looking through the records…" and js("[location.pathname, location.search]") == ["/", "?profile=1"], [slow412, js("location.href")])
             pal("new share")   # (“share” alone: Share links first, its title starting with it, #403)
             page.wait_for_function(f"({has_opt})('New share link')", timeout=10000)
             share = js(pal_found)
@@ -13069,16 +13093,17 @@ def main():
             ph.keyboard.press("Control+k")
             ph.wait_for_selector("dialog.palette[open]", timeout=5000)
             pal403 = {}
-            for q in ("", "password", "upload", "share", "getting started", "hemoglobin"):
+            for q in ("", "password", "upload", "share", "getting started", "new profile", "log a dose", "hemoglobin"):
                 ph.fill("#palQ", q)
                 ph.wait_for_timeout(150)
                 pal403[q] = ph.evaluate("[[...document.querySelectorAll('#palList .pal-t')].map(x => x.textContent), document.querySelector('.pal-note').textContent]")
             ph.keyboard.press("Enter")   # (Hemoglobin: on this page)
             ph.wait_for_timeout(300)
             off_note = "Pages and settings aren't listed: they need the server, and you're offline."
-            check("offline (#403): the command palette lists nothing that needs the server, and says so; a lab still opens, on this page",
+            check("offline (#403, #412): the command palette lists nothing that needs the server (New profile too) nor Add's disabled Log a dose, and says so; a lab still opens, on this page",
                   all(off_note in n for _, n in pal403.values()) and not ({"Sources", "Sharing", "Settings", "Account", "Getting started", "Upload files", "New share link"} & set(pal403[""][0]))
                   and pal403["password"][0] == pal403["upload"][0] == pal403["getting started"][0] == [] and "New share link" not in pal403["share"][0]
+                  and not ({"New profile", "Log a dose"} & set(pal403[""][0] + pal403["new profile"][0] + pal403["log a dose"][0]))   # (#412: another page; Add shows it disabled)
                   and "Hemoglobin" in pal403["hemoglobin"][0] and ph.evaluate("[location.pathname, state.tab]") == ["/", "labs"], [pal403, ph.evaluate("location.href")])
             check("offline: a change is refused as needing the server",
                   ph.evaluate("api('profiles/1/edits', {method: 'POST', body: '{}'}).then(async r => [r.status, (await r.json()).detail])") == [503, "You're offline. This needs the server."])

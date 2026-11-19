@@ -1155,6 +1155,12 @@ Everything on `main` so far; it becomes the first tagged release.
   their places. Offline, pages and settings and what opens them aren't listed, as the menus don't follow them, and
   it says so. Opened from a menu, Escape puts focus back on the menu's button. A sidebar's search that finds nothing
   offers **Search everywhere for “…”**, the palette with the words; Settings' box is "Find in Settings", as the others are.
+- **The command palette on a phone, offline and while the records load** (#412): on a phone, where Add's list is in
+  its sheet, the palette found none of Add's actions ("medication" found nothing, "upload" only the Sources page); it
+  reads Add's list wherever it is now. Offline on the records page it offered New profile, which opened the guide
+  from the browser's copy, and Log a dose, which Add shows disabled; neither is listed now. "child" finds New profile
+  again. Off the records page, Enter pressed before the records had arrived opened the best of what was there ("cre"
+  opened New profile); it waits for them now and opens the best match then (Creatinine), unless an arrow key picked one.
 - **A preference on its way to the server isn't "not saved"** (#407): while a unit, the theme or a tick was being
   saved, the bar showed "1 change · Discard · Save", the setting "not saved" and the sidebar its dot, and leaving
   asked; Discard then showed the old value though the new one was saved. Now one on its way counts nowhere, and the
