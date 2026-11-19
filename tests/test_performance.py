@@ -476,7 +476,8 @@ def page_times(viewport, throttle=1):
                 sections = page.evaluate("() => [...document.querySelectorAll('#view-health .h-sec')].map(s => [s.id, [...s.querySelectorAll('.card')].map(c => c.id)])")
             draw_ms[tab] = round(statistics.median(runs))
         # Costs lists the out-of-pocket amounts 200 at a time (the page is still on it): Show 200 more adds the next
-        # 200, the first of them focused
+        # 200, the first of them focused. They're in its What you paid view (#278)
+        page.evaluate("() => { costState.view = 'paid'; renderCosts(); }")
         rows = "() => document.querySelectorAll('#paidTable tbody tr').length"
         more = page.locator("#paidTable > button.btn")
         paged = [page.evaluate(rows), more.inner_text()]
