@@ -1446,6 +1446,12 @@ Everything on `main` so far; it becomes the first tagged release.
   disclosure named for them ("How to set up Health Auto Export on an iPhone"). What someone needs in order to act stays
   in full, at 14 px: what to upload, what a field expects, a warning before turning something on. Settings' own help
   splits the same way (a line break in the server's words), and no disclosure is labelled "More about this".
+- **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
+  search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
+  out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
+  events too adds the workouts not listed ("1 event matches" in the singular). With Watch the only kind shown, every
+  workout is listed, yet List workouts read off and did nothing; it now reads on and can't be put off, its tip saying
+  why. Body and activity's sync line moved out of the chart options with #442.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

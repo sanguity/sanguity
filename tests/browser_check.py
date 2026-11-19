@@ -2706,6 +2706,25 @@ def main():
                   js("state.tlWork") and on["work"] > 0 and "not listed" not in on["sum"] and f"{n_work:,} workouts" in on["sum"]
                   and on["fold"] and re.fullmatch(r"2 workouts · (\d+\sh(\s\d+\sm)?|\d+\smin)", on["fold"][0]) and on["fold"][1:] == ["false", "button"]
                   and on["title"] == f"Events ({on['listed']:,})", on)
+            # #444: with Watch the only kind shown every workout is listed, so List workouts reads on and can't be put off,
+            # its tip saying why (it read off, and did nothing); another kind back, it's as it was
+            cats_was = js("[...state.cats]")
+            js("state.tlWork = false; state.cats = new Set(['watch']); renderAll()")
+            settle(300)
+            alone = js("""(b => [b.checked, b.getAttribute('aria-disabled'), b.dataset.tip || '', tlListed().length, tlListed().every(isWork),
+              document.getElementById('listTitle').textContent])(document.getElementById('tlWork'))""")
+            page.click("label.toggle:has(#tlWork)", force=True)   # (Playwright waits for an aria-disabled one to be enabled)
+            settle(200)
+            alone_click = js("[document.getElementById('tlWork').checked, state.tlWork, document.getElementById('listTitle').textContent]")
+            page.keyboard.press("Space")   # focus is on it: the keyboard can't put it off either
+            settle(200)
+            alone_key = js("[document.getElementById('tlWork').checked, state.tlWork, document.activeElement.id]")
+            js("c => { state.cats = new Set(c); state.tlWork = true; renderAll(); }", cats_was)   # List workouts on, as before
+            settle(300)
+            back = js("(b => [b.checked, b.hasAttribute('aria-disabled'), 'tip' in b.dataset])(document.getElementById('tlWork'))")
+            check("…with Watch the only kind, List workouts is checked and disabled (aria-disabled, focusable), its tip saying why; a click or Space leaves it on (#444)",
+                  alone[:2] == [True, "true"] and "only kind" in alone[2] and alone[3] > 0 and alone[4] and alone[5] == f"Events ({alone[3]:,})"
+                  and alone_click == [True, False, alone[5]] and alone_key == [True, False, "tlWork"] and back == [True, False, False], [alone, alone_click, alone_key, back])
             fold_sel = '#list .tl-fold[data-day="%s"]' % js("window._fold277")
             js("s => document.querySelector(s).scrollIntoView({block: 'center'})", fold_sel)
             page.focus(fold_sel)
@@ -6817,7 +6836,9 @@ def main():
             tl_sum = js("(p => p.hidden ? null : p.textContent)(document.getElementById('tlSum'))")
             check("…the line over the list says its counts are with these filters, and the list's heading counts what it lists",
                   (tl_sum is None or ", with these filters: " in tl_sum) and page.inner_text("#listTitle") == f"Events ({n_vis:,})", [tl_sum, page.inner_text("#listTitle")])
-            n_said = f"{n_vis:,} event{'s' if n_vis != 1 else ''} match." if n_vis else "No events match."
+            n_work_q = js("tlWorkListed() ? 0 : EV.filter(visible).filter(isWork).length")
+            n_said = ((f"{n_vis:,} event{'s match' if n_vis != 1 else ' matches'}" + (f", and {n_work_q:,} workout{'s' if n_work_q != 1 else ''}, not listed" if n_work_q else "") + ".")
+                      if n_vis else f"Only workouts match: {n_work_q:,} workout{'s' if n_work_q != 1 else ''}, left out of the list." if n_work_q else "No events match.")
             check("…how many events match is said once typing stops, not for each key", said(page, tries=40) == n_said,
                   [js("document.getElementById('sgStatus').textContent"), n_said])
             for theme in ("light", "dark"):
@@ -6846,6 +6867,18 @@ def main():
                   fsum() is None and js(start_kinds) and js("state.q") == "" and page.input_value("#q") == "" and js("state.preset") == "1y"
                   and ftog() == "Filters" and "with these filters" not in page.inner_text("#tlSum") and said(page) == "Filters reset." and js("document.activeElement.id") == "ftoggle",
                   [fsum(), js("state.preset"), js("document.activeElement.id")])
+            # #444: a search only workouts match ("walking" over the last year) says so, and how many, as the list does;
+            # not "No events match"
+            js("document.getElementById('sgStatus').textContent = ''; state.tlWork = false")
+            js("(q => { q.value = 'walking'; q.dispatchEvent(new Event('input', {bubbles: true})); })(document.getElementById('q'))")
+            walk_said = said(page, tries=60)
+            walk = js("""[tlListed().length, EV.filter(visible).filter(isWork).length, document.getElementById('tlSum').textContent,
+              (p => p && p.textContent)(document.querySelector('#list .empty, #list p'))]""")
+            check("…a search only workouts match (“walking”, the last year) says that only workouts match, and how many, as the list does (#444)",
+                  walk[0] == 0 and walk[1] > 0 and walk_said == f"Only workouts match: {walk[1]:,} workout{'s' if walk[1] != 1 else ''}, left out of the list."
+                  and f"{walk[1]:,} workouts, not listed" in walk[2], [walk_said, walk])
+            js("resetTimelineFilters(); document.getElementById('sgStatus').textContent = ''")
+            settle(200)
             for theme in ("light", "dark"):
                 set_theme(theme)
                 settle(150)

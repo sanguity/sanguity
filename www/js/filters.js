@@ -58,6 +58,12 @@ function renderFilterSum() {
     resetTimelineFilters, () => visibleIn(...document.querySelectorAll("#chips .toggle"), $("#ftoggle"), $("#q")), $("#fsum"));
   $("#ftoggle").textContent = f.n ? `Filters (${f.n})` : "Filters";   // its sheet, on a phone's Timeline (#269, core.js)
 }
+/* what the search finds, as the list says it (#444): the events listed, and the workouts left out of the list */
+function tlMatchSaid() {
+  const all = EV.filter(visible), n = tlListed(all).length, w = tlWorkListed() ? 0 : all.filter(isWork).length;
+  return n ? `${tlN(n, "event")} match${n === 1 ? "es" : ""}${w ? `, and ${tlN(w, "workout")}, not listed` : ""}.`
+    : w ? `Only workouts match: ${tlN(w, "workout")}, left out of the list.` : "No events match.";
+}
 { let t; $("#q").addEventListener("input", () => {   // said once typing stops, not on each key
-  clearTimeout(t); t = setTimeout(() => { if (state.q) { const n = tlListed().length; announce(`${n ? n.toLocaleString() : "No"} event${n === 1 ? "" : "s"} match.`); } }, 1000);
+  clearTimeout(t); t = setTimeout(() => { if (state.q) announce(tlMatchSaid()); }, 1000);
 }); }
