@@ -1,4 +1,4 @@
-/* Sanguity · Timeline tab: lane chart with zoom and pan, stats, event list.
+/* Sanguity · Timeline tab: lane chart with zoom and pan, its events by day, and the switch to the journal (#277).
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---------------------------------------------------------------- timeline */
@@ -72,7 +72,7 @@ function renderTimeline() {
   if (!lanes.length) g.push(el("svg:text", {x: w/2, y: top + 20, "text-anchor": "middle", text: "No categories selected"}));
   tlSvg.replaceChildren(...g);
   // its table alternative is the list under it (#60): the same events, filters and period, each with its date, kind and title
-  tlSvg.setAttribute("aria-label", `Timeline of medical events, ${fmtD(state.from)} to ${fmtD(state.to)}. The events it shows are listed under Events, below.`);
+  tlSvg.setAttribute("aria-label", `Timeline of medical events, ${fmtD(state.from)} to ${fmtD(state.to)}. The events it shows are listed under Events, below (its workouts with List workouts).`);
 }
 /* zoom & pan */
 let drag = null;
@@ -120,41 +120,135 @@ tlSvg.addEventListener("dblclick", () => applyPreset("all"));
 let lastW = innerWidth;
 addEventListener("resize", () => { if (innerWidth === lastW) return; lastW = innerWidth; clearTimeout(window._rz); window._rz = setTimeout(() => keepFocus(renderAll), 120); });   // focus kept (store.js, #271)
 
-/* stats + list */
-function renderStats() {
-  const v = EV.filter(visible); const c = k => v.filter(e => k.includes(e.k)).length;
-  const abn = v.filter(e => e.k === "lab").reduce((a, e) => a + (e.abn || 0), 0);
-  const items = [[c(["lab"]), "Lab draw days"], [v.filter(e => e.k === "lab").reduce((a, e) => a + (e.n || 0), 0), "Lab results"], [abn, "Out-of-range values"], [c(["imaging","procedure","study"]), "Imaging, procedures & reports"], [c(["stay"]), "Hospital stays"], [c(["message","appt_msg","auto_msg"]), "Conversations"]];
-  if (EV.some(e => e.k === "visit")) items.push([c(["visit"]), "Visits"]);
-  if (EV.some(e => e.k === "contact")) items.push([c(["contact"]), "Chart activity"]);   // not visits (#236)
-  $("#stats").replaceChildren(...items.map(([n, l]) => el("div", {class: "tile"}, el("span", {class: "lbl", text: l}), el("span", {class: "val", text: n.toLocaleString()}))));
+/* ---------------------------------------------------------------- the tab: the timeline, or the journal (#277)
+   The chart and its Events card, or the journal's card (journal.js, in #tlJournal), switched as Labs' Chart | Heatmap
+   is, the view in the address (#timeline-journal, app.js) and kept (state.tlView). Someone who can only read a journal
+   no one has written in has no journal card: no switch, and the timeline. */
+function renderTimelineTab() {
+  const has = !!$("#journalHome");
+  if (!has) state.tlView = "timeline";
+  const j = state.tlView === "journal";
+  $(".tl-head").hidden = !has;
+  for (const b of $("#tlView").children) b.setAttribute("aria-pressed", b.dataset.view === state.tlView);
+  $("#tlMain").hidden = j; $("#tlJournal").hidden = !j;
+  if (j) jHomeDraw?.();   // "Only the dates shown" and the body map follow the period
+  else { renderTimeline(); renderList(); }
 }
+$("#tlView").onclick = ev => {
+  const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.tlView) return;
+  hideTip(); state.tlView = b.dataset.view; renderTimelineTab(); save(); tabAddress();   // #timeline or #timeline-journal (#208)
+};
+
+/* ---------------------------------------------------------------- the Events card (#277)
+   The chart's table alternative (#60): its events, with the same period, kinds and search (the kinds and the search in
+   the card's header, the Filters sheet on a phone: core.js), grouped by day under month headings. A day's date is said
+   once, short ("31 Fri"), and each row has its whole date for screen readers (.d); the kind is a small label beside the
+   title. Workouts are most of what a watch records, so they're left out of the list (their lane stays) unless "List
+   workouts" is on (state.tlWork) or Watch is the only kind shown; listed, a day's workouts fold into one row ("3 workouts
+   · 2 h 10 m") that opens to each. TL_PAGE events are drawn at a time, whole days, with Show more for the next, and a
+   month off screen is skipped by the browser (content-visibility, app.css): ten years list everything, within the
+   budgets (docs/performance.md). One line over the list counts what the kinds' chips don't: the lab results, those out
+   of range, and the workouts. */
+let TL_PAGE = 400;   // events drawn at a time (the browser check draws fewer, to see Show more on the demo)
+const isWork = e => e.k === "exercise";
+const tlN = (n, one, many = one + "s") => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+const tlMins = m => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} m` : ""}`).replace(/ /g, "\u00a0");   // kept on one line
+const tlWorkListed = () => state.tlWork || CATS.filter(hasLane).every(c => c.k === "watch" || !state.cats.has(c.k));
+/* the events the list holds, in its order */
+const tlListed = (all = EV.filter(visible), listed = tlWorkListed()) => all.filter(e => listed || !isWork(e)).sort((a, b) => state.asc ? a.ts - b.ts : b.ts - a.ts);
 $("#sortSeg").onclick = ev => { const b = ev.target.closest("button[data-sort]"); if (!b) return; state.asc = b.dataset.sort === "asc"; renderList(); save(); };
+$("#tlWork").onchange = ev => { state.tlWork = ev.target.checked; renderList(); save(); };
+/* the line over the list: "The last year: 9 lab draws, 22 results, 3 out of range · 97 workouts, not listed" */
+function tlSum(v, listed) {
+  const labs = v.filter(e => e.k === "lab"), res = labs.reduce((a, e) => a + (e.n || 0), 0), abn = labs.reduce((a, e) => a + (e.abn || 0), 0);
+  const work = v.filter(isWork).length, parts = [], when = periodLabel();
+  if (labs.length) parts.push(`${tlN(labs.length, "lab draw")}, ${tlN(res, "result")}${abn ? `, ${abn.toLocaleString()} out of range` : ""}`);
+  if (work) parts.push(tlN(work, "workout") + (listed ? "" : ", not listed"));
+  const p = $("#tlSum");
+  p.hidden = !parts.length;
+  p.textContent = parts.length ? `${when[0].toUpperCase() + when.slice(1)}${timelineFilters().n ? ", with these filters" : ""}: ${parts.join(" · ")}` : "";
+}
+let tlOpen = new Set(), tlList = null;   // the days whose workouts are open ("YYYY-MM-DD"); the list as drawn so far
 function renderList() {
-  const v = EV.filter(visible).sort((a, b) => state.asc ? a.ts - b.ts : b.ts - a.ts);
+  const listed = tlWorkListed(), all = EV.filter(visible), v = tlListed(all, listed);
+  tlSum(all, listed);
   $("#listTitle").textContent = `Events (${v.length.toLocaleString()})`;
   for (const b of $("#sortSeg").children) b.setAttribute("aria-pressed", (b.dataset.sort === "asc") === state.asc);
-  const list = $("#list"); list.replaceChildren();
+  $("#tlWork").checked = state.tlWork;
+  const list = $("#list");
   if (!v.length) {   // #199: what would be here, and the one way back to it
-    list.append(emptyState("No events in this period match these filters.", {text: "Show everything", onclick: () => {
-      setPeriod("all"); resetTimelineFilters(); announce("Showing everything.");
-      const h = $("#listTitle"); h.tabIndex = -1; h.focus();   // the button goes with the empty list
+    const w = all.filter(isWork).length, head = () => { const h = $("#listTitle"); h.tabIndex = -1; h.focus(); };   // the button goes with the empty list
+    tlList = null;
+    list.replaceChildren(w ? emptyState(`Only workouts in this period match these filters: ${tlN(w, "workout")}, left out of the list.`, {text: "List workouts", onclick: () => {
+      state.tlWork = true; renderList(); save(); ($("#list .tl-row") || $("#listTitle")).focus();
+    }}, {cls: ""}) : emptyState("No events in this period match these filters.", {text: "Show everything", onclick: () => {
+      setPeriod("all"); resetTimelineFilters(); announce("Showing everything."); head();
     }}, {cls: ""}));
     return;
   }
-  let month = "", frag = document.createDocumentFragment(), shown = 0;
-  const LIMIT = 600;
+  // the days in order, each with its rows: an event, or the day's workouts (an array, where its first one is)
+  const days = [];
   for (const e of v) {
-    if (shown++ >= LIMIT) { frag.append(el("div", {class: "empty", text: `${v.length - LIMIT} ${state.asc ? "newer" : "older"} events not shown — narrow the date range or search.`})); break; }
-    const m = fmtMonth(e.ts); if (m !== month) { month = m; frag.append(el("div", {class: "month", text: m})); }
-    const c = CAT_OF[e.k], key = kindIcon(e.k, "key");   // its kind's icon, in its lane's colour (#354)
-    key.style.color = c.color;
-    frag.append(el("div", {class: "tl-row" + (state.selEv === e.id ? " sel" : ""), "data-id": e.id, ...pressable(ev => openFrom(ev.currentTarget, () => openEvent(e)))},   // it grows into the drawer (drawer.js, #270); found again by its record after a redraw (#404)
-      el("span", {class: "d", text: fmtD(e.ts)}), key,
-      el("span", {class: "t", text: e.title}),
-      el("span", {class: "b"}, e.abn ? el("span", {class: "badge abn", text: `${e.abn} out of range`}) : el("span", {class: "badge", text: KIND_LABEL[e.k]})),
-      el("span", {class: "s", text: e.sub || ""})));
+    const key = isoDay(e.ts); let d = days[days.length - 1];
+    if (!d || d.key !== key) days.push(d = {key, ts: e.ts, rows: [], work: null, n: 0});
+    d.n++;
+    if (!isWork(e)) d.rows.push(e);
+    else if (d.work) d.work.push(e);
+    else d.rows.push(d.work = [e]);
+  }
+  // as many as were shown, while it's the same list (a record saved, the window resized); else the first page
+  const key = JSON.stringify([state.from, state.to, [...state.cats], state.q, state.asc, listed]);
+  const upTo = tlList?.key === key ? tlList.n : TL_PAGE;
+  tlList = {key, days, at: 0, n: 0, mon: "", sec: null};
+  list.replaceChildren();
+  tlMore(upTo);
+}
+/* the next days, until n events in all are drawn (whole days), then Show more if any are left. -> the first row drawn */
+function tlMore(n) {
+  const L = tlList, list = $("#list"), frag = document.createDocumentFragment();
+  let first = null;
+  $("#tlMore")?.remove();
+  while (L.at < L.days.length && L.n < n) {
+    const d = L.days[L.at++], mon = d.key.slice(0, 7), z = zdate(d.ts);
+    if (mon !== L.mon) { L.mon = mon; frag.append(L.sec = el("section", {class: "tl-month"}, el("div", {class: "month", text: fmtMonth(d.ts)}))); }
+    const day = el("div", {class: "tl-day"}, el("span", {class: "dd", "aria-hidden": "true"}, el("b", {text: z.getDate()}), z.toLocaleDateString(undefined, {weekday: "short"})));
+    for (const r of d.rows) day.append(...(Array.isArray(r) ? tlFold(r, d) : [tlRow(r)]));
+    first ??= day.querySelector(".tl-row");
+    L.sec.append(day); L.n += d.n;
   }
   list.append(frag);
+  let next = 0;
+  for (let i = L.at; i < L.days.length && next < TL_PAGE; i++) next += L.days[i].n;
+  if (next) list.append(el("button", {class: "btn tl-more", id: "tlMore", type: "button", text: `Show ${next.toLocaleString()} more`,
+    onclick: () => tlMore(L.n + TL_PAGE)?.focus()}));   // the first of them focused, the button gone (#202)
+  return first;
 }
-
+/* an event's row: its whole date (for screen readers: the day's is shown once), its kind's icon in its lane's colour
+   (#354), the title and its kind, a lab day's out-of-range count, and what it's about. It grows into the drawer
+   (drawer.js, #270), and is found again by its record after a redraw (#404) */
+function tlRow(e, cls) {
+  const key = kindIcon(e.k, "key");
+  key.style.color = CAT_OF[e.k].color;
+  return el("div", {class: "tl-row" + (cls ? " " + cls : "") + (state.selEv === e.id ? " sel" : ""), "data-id": e.id, ...pressable(ev => openFrom(ev.currentTarget, () => openEvent(e)))},
+    el("span", {class: "d vh", text: fmtD(e.ts)}), key, el("span", {class: "t", text: e.title}),
+    el("span", {class: "k"}, KIND_LABEL[e.k], e.abn ? el("span", {class: "badge abn", text: `${e.abn} out of range`}) : null),
+    e.sub ? el("span", {class: "s", text: e.sub}) : null);
+}
+/* a day's workouts: one row, or several folded into one that opens to each (kept open across redraws, tlOpen) */
+function tlFold(w, d) {
+  if (w.length === 1) return [tlRow(w[0])];
+  const mins = w.reduce((a, e) => a + (DATA.details[e.id]?.minutes || 0), 0);
+  let subs = [];
+  const fold = () => { subs = w.map(e => tlRow(e, "tl-sub")); row.classList.remove("sel"); return subs; };
+  const row = el("div", {class: "tl-row tl-fold" + (w.some(e => e.id === state.selEv) ? " sel" : ""), "data-day": d.key, "aria-expanded": "false", ...pressable(() => {
+      const open = !tlOpen.has(d.key);
+      tlOpen[open ? "add" : "delete"](d.key);
+      row.setAttribute("aria-expanded", open);
+      if (open) row.after(...fold()); else { subs.forEach(s => s.remove()); subs = []; }
+    })},
+    el("span", {class: "d vh", text: fmtD(d.ts)}), kindIcon("exercise", "key"), el("span", {class: "t", text: `${w.length} workouts${mins ? " · " + tlMins(mins) : ""}`}),
+    el("span", {class: "k"}, "Workouts", icon("chevron-down")), el("span", {class: "s", text: [...new Set(w.map(e => e.title))].join(", ")}));
+  if (!tlOpen.has(d.key)) return [row];
+  row.setAttribute("aria-expanded", "true");
+  return [row, ...fold()];
+}

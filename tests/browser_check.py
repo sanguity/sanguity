@@ -671,7 +671,7 @@ PHONE_FITS_JS = r"""(() => {
   };
   const items = [];
   for (const e of document.querySelectorAll(CONTROLS)) {
-    if (e.closest("svg, [inert]") || !e.checkVisibility({checkOpacity: true, checkVisibilityCSS: true})) continue;
+    if (e.closest("svg, [inert]") || !e.checkVisibility({checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true})) continue;   // (a month of the Timeline the browser skips off screen: #277)
     // the part that can be seen: cut to every box around it that scrolls or hides its overflow (a row of tabs that
     // scrolls sideways shows only some of them); none if it's clipped away (visually hidden)
     let rects = [...e.getClientRects()].map(r => ({l: r.left, r: r.right, t: r.top, b: r.bottom})), hidden = false;
@@ -714,7 +714,8 @@ def phone_fits(page, label="", ignore=()):
     switch, checkbox, radio) or one in the tab order. SVG content (chart marks) is left out.
 
     Not reported, so these don't need ignoring: controls that aren't drawn (display:none, visibility:hidden,
-    opacity 0, inside a closed <details> or an [inert] part); the part of a control scrolled out of sight inside a
+    opacity 0, inside a closed <details>, an [inert] part or a part the browser skips while off screen, content-visibility:
+    auto); the part of a control scrolled out of sight inside a
     box that scrolls (the tab bar, the period presets, a sidebar's row of groups, a wide table's wrapper) or hidden
     by its overflow; a control clipped away or 2 px or less across (a visually-hidden skip link), or moved wholly
     off the screen to the left or top (a skip link until it's focused), or to the right inside a fixed panel (the
@@ -1502,9 +1503,11 @@ def main():
         for name, path in (("Overview", "/#overview"), ("Settings", "/settings.html"), ("Costs", "/#costs"), ("Body and activity", "/#health"), ("Timeline", "/#timeline")):
             for width in swap_widths.get(path, (1400, 375)):
                 changed, boxes, shift, fonts_before, fonts_after = font_swap(browser, state, base + path, width)
-                drawn = (boxes > 3 and "Inter fallback" in fonts_before and "Inter" not in fonts_before
+                drawn = (boxes > (1 if path == "/#timeline" else 3) and "Inter fallback" in fonts_before   # the Timeline's two cards at 375 px (#277) and "Inter" not in fonts_before
                          and "Source Serif 4" not in fonts_before and {"Inter", "Source Serif 4"} <= set(fonts_after))
-                worst = max((abs(b - a) for a, b in changed.values()), default=0)
+                # the Timeline's Events card at 375 px: hundreds of rows of free text, mostly below the screen, whose lines
+                # change with the font; what's on screen is the layout shift (#277)
+                worst = max((abs(b - a) for k, (a, b) in changed.items() if not (width < 640 and path == "/#timeline" and " Events (" in k)), default=0)
                 tiles = [abs(b - a) for k, (a, b) in changed.items() if k.split(" ")[0] == "tile"]
                 kinds = [k for k in changed if k.startswith("kind ")]
                 check(f"fonts (#329, #338): {name} at {width} px, drawn in the fallbacks and then the fonts, moves less than 0.015, "
@@ -1675,7 +1678,7 @@ def main():
               ("sources.html?profile=1#upload", {"importer", "panel-manual", "panel-link", "mine", "finder", "watch"}),
               ("sharing.html?profile=1#links", {"linksBody", "calendar", "summaryIntro", "export"}),
               ("admin.html#labs", {"users", "admin", "directory", "dirAdd", "labmaps", "installLog"}),
-              ("", {"view-timeline", "labsChart", "labsHeatmap"}))), seen_more)
+              ("", {"tlMain", "labsChart", "labsHeatmap"}))), seen_more)
         dark = [int(x) for x in re.findall(r"\d+", next(iter(looks)).split(" ", 1)[1])[:3]] if looks else [0, 0, 0]
         check("…styled once: the same toggle everywhere, light on the dark theme", len(looks) == 1 and sum(dark) > 450, looks)
         strict.goto(base + "/sharing.html?profile=1#links")
@@ -2152,7 +2155,7 @@ def main():
                       and d274["title"] == d274["first"] and d274["sub"].startswith("Upcoming · ") and back
                       and d274["link"] == d274["card"] and re.fullmatch(r"sharing\.html\?profile=\d+#summary", d274["card"] or ""), [up274, d274, back])
             # ---- one tile for every tab (#260): the Overview's key labs, Readings and insurance figures,
-            # Body and activity's, the Timeline's counts and Costs' figures are all .tile, with nothing else drawn as a
+            # Body and activity's and Costs' figures are all .tile (the Timeline's counts are a line now, #277), with nothing else drawn as a
             # tile (no .stat or .ov-mini left); its parts look the same on every tab (label, value, change line), a tile
             # in a card is tinted with no edge and one on the page has the card's edge and surface
             look260 = r"""() => { const s = (e, ...ps) => e ? ps.map(p => getComputedStyle(e)[p]).join(' ') : null, out = [];
@@ -2165,7 +2168,7 @@ def main():
             seen260, odd260 = {}, []
             page.set_viewport_size({"width": 1400, "height": 900})
             page.mouse.move(1, 1)   # no tile under the pointer, in its hover look
-            for tab, preset in (("overview", None), ("health", "90d"), ("timeline", None), ("costs", "all"), ("costs-paid", "all")):
+            for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
                 js(TILE_TAB_JS, [tab, preset])
                 settle(300)
                 got260 = js(look260)
@@ -2176,19 +2179,19 @@ def main():
                     for k, v in (("box", box), ("lbl", lbl), ("val", val), ("delta", delta), ("card" if in_card else "page", paint)):
                         if v is not None and seen260.setdefault("look " + k, v) != v:
                             odd260.append(f"{tab}: {k} {v} ≠ {seen260['look ' + k]}")
-            check("one tile on every tab (#260): the Overview's, Body and activity's, the Timeline's and Costs' figures are one "
+            check("one tile on every tab (#260): the Overview's, Body and activity's and Costs' figures are one "
                   "component, alike in shape, label, value and change line; tinted in a card, the card's edge on the page",
-                  all(seen260.get(t, 0) > 0 for t in ("overview", "health", "timeline", "costs")) and not odd260
+                  all(seen260.get(t, 0) > 0 for t in ("overview", "health", "costs")) and not odd260
                   and "rgba(0, 0, 0, 0)" in seen260.get("look card", "") and seen260.get("look card") != seen260.get("look page"),
                   odd260[:8] or seen260)
             # #351: at 1400, 375 and 320 px no tile's value or label runs past its tile (the Overview's insurance figures
             # wrap to another row instead), no tile overlaps another, and the values in each row of tiles share one
-            # baseline, however many lines their labels take (the Timeline's "Imaging, procedures & reports", Costs'
-            # "Claim shares with no payment" and "Discounts & not covered", the key labs' names beside their state)
+            # baseline, however many lines their labels take (Costs' "Claim shares with no payment" and "Discounts & not
+            # covered", the key labs' names beside their state)
             fit351, rows351 = [], {}
             for width in (1400, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                for tab, preset in (("overview", None), ("health", "90d"), ("timeline", "all"), ("costs", "all"), ("costs-paid", "all")):
+                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
                     js(TILE_TAB_JS, [tab, preset])
                     settle(300)
                     got = js(TILE_FIT_JS)
@@ -2480,7 +2483,7 @@ def main():
             theme_before, months = js("document.documentElement.dataset.theme || null"), {}
             for theme in ("light", "dark"):
                 js(f"document.documentElement.dataset.theme = '{theme}'")
-                js("(() => { const m = document.querySelectorAll('#list .month')[1]; scrollTo(0, m.getBoundingClientRect().top + scrollY + 200); })()")
+                js("(() => { const m = [...document.querySelectorAll('#list .month')].reduce((a, b) => b.parentElement.querySelectorAll('.tl-row').length > a.parentElement.querySelectorAll('.tl-row').length ? b : a);   /* the longest month (each sticks within its own, #277) */ scrollTo(0, m.getBoundingClientRect().top + scrollY + 200); })()")
                 settle(150)
                 months[theme] = js(stuck_month)
                 months[theme] = months[theme] and [*months[theme][:2], contrast(*months[theme][2:])]
@@ -2492,7 +2495,7 @@ def main():
             size_before = page.viewport_size
             page.set_viewport_size({"width": 667, "height": 375})
             settle(200)
-            js("(() => { const m = document.querySelectorAll('#list .month')[1]; scrollTo(0, m.getBoundingClientRect().top + scrollY + 200); })()")
+            js("(() => { const m = [...document.querySelectorAll('#list .month')].reduce((a, b) => b.parentElement.querySelectorAll('.tl-row').length > a.parentElement.querySelectorAll('.tl-row').length ? b : a); scrollTo(0, m.getBoundingClientRect().top + scrollY + 200); })()")
             settle(150)
             short_month = js("""(() => { const m = [...document.querySelectorAll('#list .month')].filter(m => Math.abs(m.getBoundingClientRect().top) < 1.5).at(-1);
               return m ? [m.textContent, document.elementFromPoint(m.getBoundingClientRect().left + 8, m.getBoundingClientRect().bottom - 4) === m]
@@ -2510,6 +2513,90 @@ def main():
                   said: [...document.querySelectorAll('#list .badge.abn')].every(b => / out of range$/.test(b.textContent)) && !!document.querySelector('#list .badge.abn')}; })()""")
             check("Timeline (#250): a lab day with a result out of range has a ▲ over it (not a red dot), and the list says out of range in words",
                   tl_abn["days"] > 0 and tl_abn["badges"] == tl_abn["days"] and tl_abn["shapes"] and tl_abn["above"] and not tl_abn["dots"] and tl_abn["said"], tl_abn)
+            # ---- the Events list (#277): grouped by day under month headings, a day's date once (its number over its
+            # weekday) and each row's whole date for screen readers; the kind small beside the title; workouts left out of it
+            # (their lane stays), said in the line over the list and listed with List workouts, a day's several folded into one
+            # row that opens to each; Show more in place of a stop at 600; at 375 px, light and dark, fitting and axe-clean
+            tl_was = js("[state.preset, state.from, state.to, state.tlWork, state.asc]")
+            # a second workout on a day that has one, so there's a day to fold (taken out again below)
+            js("""(() => { const w = EV.find(e => e.k === 'exercise' && !e.hidden), x = {...w, id: 987654, title: 'rowing (browser check)', sub: '20 min'};
+              x._q = 'rowing workout exercise'; EV.push(x); byId.set(x.id, x); DATA.details[x.id] = {type: 'exercise', minutes: 20}; window._fold277 = isoDay(w.ts);
+              state.tlWork = false; state.asc = false; applyPreset('all'); })()""")
+            settle(300)
+            ev_list = r"""(() => { const rows = [...document.querySelectorAll('#list .tl-row[data-id]')], days = [...document.querySelectorAll('#list .tl-day')], ev = r => byId.get(+r.dataset.id);
+              return {rows: rows.length, days: days.length, months: document.querySelectorAll('#list .tl-month > .month').length,
+                dates: days.every(d => d.querySelectorAll('.dd').length === 1 && /^\d{1,2}\D/.test(d.querySelector('.dd').textContent) && d.querySelector('.dd').getAttribute('aria-hidden') === 'true'),
+                oneDay: (k => days.every(d => k(d).size === 1) && new Set(days.map(d => [...k(d)][0])).size === days.length)
+                  (d => new Set([...d.querySelectorAll('.tl-row')].map(r => r.dataset.day || isoDay(ev(r).ts)))),   // a folded row: its day's
+                whole: rows.every(r => r.querySelector('.d').textContent === fmtD(ev(r).ts) && r.querySelector('.d').classList.contains('vh')),
+                kinds: rows.every(r => { const k = r.querySelector('.t + .k'); const a = k?.getBoundingClientRect(), t = r.querySelector('.t').getBoundingClientRect(); return k && k.textContent.startsWith(KIND_LABEL[ev(r).k]) && a.top < t.bottom && a.bottom > t.top && a.left >= t.left; }),
+                work: rows.filter(r => ev(r).k === 'exercise').length, lane: [...document.querySelectorAll('#tl circle.ev')].filter(c => byId.get(+c.dataset.id)?.k === 'exercise').length,
+                sum: document.getElementById('tlSum').textContent, title: document.getElementById('listTitle').textContent, listed: tlListed().length,
+                fold: (f => f && [f.querySelector('.t').textContent, f.getAttribute('aria-expanded'), f.getAttribute('role')])(document.querySelector(`#list .tl-fold[data-day="${window._fold277}"]`)),
+                more: document.getElementById('tlMore')?.textContent || null}; })()"""
+            off = js(ev_list)
+            n_work = js("EV.filter(visible).filter(e => e.k === 'exercise').length")
+            check("Events (#277): a day's events together under their month, its date once (number over weekday) and each row's whole date for screen "
+                  "readers, the kind beside the title; workouts left out of the list but on their lane, the line over it saying so",
+                  off["rows"] > 0 and off["days"] <= off["rows"] and off["months"] > 1 and off["dates"] and off["oneDay"] and off["whole"] and off["kinds"]
+                  and off["work"] == 0 and off["lane"] > 0 and f"{n_work:,} workouts, not listed" in off["sum"] and off["sum"].startswith("Everything on file: ")
+                  and off["title"] == f"Events ({off['listed']:,})" and off["fold"] is None, off)
+            page.click("label.toggle:has(#tlWork)")
+            settle(300)
+            on = js(ev_list)
+            check("…List workouts lists them, the line no longer saying they aren't; a day's two fold into one row, closed, “2 workouts · 1 h 1 m”",
+                  js("state.tlWork") and on["work"] > 0 and "not listed" not in on["sum"] and f"{n_work:,} workouts" in on["sum"]
+                  and on["fold"] and re.fullmatch(r"2 workouts · (\d+\sh(\s\d+\sm)?|\d+\smin)", on["fold"][0]) and on["fold"][1:] == ["false", "button"]
+                  and on["title"] == f"Events ({on['listed']:,})", on)
+            fold_sel = '#list .tl-fold[data-day="%s"]' % js("window._fold277")
+            js("s => document.querySelector(s).scrollIntoView({block: 'center'})", fold_sel)
+            page.focus(fold_sel)
+            page.keyboard.press("Enter")
+            settle(200)
+            opened = js("""s => { const f = document.querySelector(s), subs = []; for (let n = f.nextElementSibling; n?.classList.contains('tl-sub'); n = n.nextElementSibling) subs.push(byId.get(+n.dataset.id).title);
+              return [f.getAttribute('aria-expanded'), subs.sort(), document.activeElement === f]; }""", fold_sel)
+            page.keyboard.press("Space")
+            settle(200)
+            closed = js("s => [document.querySelector(s).getAttribute('aria-expanded'), document.querySelectorAll('#list .tl-sub').length]", fold_sel)
+            check("…Enter opens the folded row to each of the day's workouts, Space closes it again, focus kept on it",
+                  opened[0] == "true" and len(opened[1]) == 2 and "rowing (browser check)" in opened[1] and opened[2] and closed == ["false", 0], [opened, closed])
+            # the demo lists fewer events than a page (400), so the page is made 60 for this
+            js("TL_PAGE = 60; tlList = null; renderList(); scrollTo(0, 0)")
+            settle(300)
+            more_was = js("[document.getElementById('tlMore')?.textContent || null, [...document.querySelectorAll('#list .tl-row[data-id]')].map(r => r.dataset.id)]")
+            page.click("#tlMore")
+            settle(300)
+            more = js("ids => [document.querySelectorAll('#list .tl-row[data-id]').length, document.activeElement.matches('#list .tl-row') && !ids.includes(document.activeElement.dataset.id)]", more_was[1])
+            for _ in range(20):
+                if not js("!!document.getElementById('tlMore')"):
+                    break
+                page.click("#tlMore")
+                settle(200)
+            drawn = js(r"[...document.querySelectorAll('#list .tl-row[data-id]:not(.tl-sub)')].length + [...document.querySelectorAll('#list .tl-fold')].reduce((n, f) => n + (f.querySelector('.t').textContent.match(/^\d+/)?.[0] | 0), 0)")
+            check("…Show more (no stop at 600) draws the next page of events, whole days, focus on the first of them; pressed until it's gone, every event is listed",
+                  more_was[0] and re.fullmatch(r"Show [\d,]+ more", more_was[0]) and len(more_was[1]) < on["listed"] and more[0] > len(more_was[1]) and more[1] and drawn == on["listed"],
+                  [more_was[0], len(more_was[1]), more, drawn, on["listed"]])
+            js("TL_PAGE = 400; tlList = null; renderList()")
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(300)
+            js("s => document.querySelector(s).click()", fold_sel)   # opened, so its rows are in what's checked
+            js("s => document.querySelector(s).scrollIntoView({block: 'center'})", fold_sel)
+            theme_before = js("document.documentElement.dataset.theme || null")
+            bad = []
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                settle(150)
+                js("s => document.querySelector(s).scrollIntoView({block: 'center'})", fold_sel)
+                bad += phone_fits(page, f"the Events list at 375 px, {theme}")
+                js("scrollTo(0, 0)")   # axe at the top: scrolled, a row passing under the month heading stuck over it is "partly obscured"
+                settle(100)
+                bad += axe_check(page, f"the Events list at 375 px, {theme}")[0]
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            check("…at 375 px, light and dark, with workouts listed and a day's opened: it fits and is axe-clean", not bad, bad[:6])
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("""w => { EV = EV.filter(e => e.id !== 987654); byId.delete(987654); delete DATA.details[987654]; tlOpen.clear();
+              [state.preset, state.from, state.to, state.tlWork, state.asc] = w; renderAll(); scrollTo(0, 0); }""", tl_was)
+            settle(300)
             # not by colour alone, elsewhere: the Overview's tiles and the drawer's results
             js("switchTab('overview')")
             settle(300)
@@ -4036,6 +4123,7 @@ def main():
                     y421 = js("scrollY")
                     mark.click()
                     page.wait_for_selector("#drawer.open", timeout=5000)
+                    page.mouse.move(1, 1)   # off the drawer: a button's tip shown by the pointer over it would take the Escape (1.4.13)
                     settle(300)
                     if how == "Escape":
                         page.keyboard.press("Escape")
@@ -4139,11 +4227,33 @@ def main():
                   js("document.activeElement.id"))
             tab_click(page, "#tab-timeline")
             settle()
-            home = js("""(() => { const c = document.getElementById('journalHome'), cards = [...document.querySelectorAll('#view-timeline > .card')];
-                return c && {title: c.querySelector('h2').textContent, at: cards.indexOf(c), tl: cards.findIndex(x => x.contains(document.getElementById('tl'))),
-                ev: cards.findIndex(x => x.contains(document.getElementById('list'))), add: !!c.querySelector('button.primary'), rows: c.querySelectorAll('.jrow').length}; })()""")
-            check("the journal has a home on the Timeline tab, between the timeline and the events, with New entry even when empty",
-                  home and home["title"] == "Journal" and home["tl"] < home["at"] < home["ev"] and home["add"] and home["rows"] == 0, home)
+            # #277: the journal is a view of the Timeline tab, Timeline | Journal as Labs has Chart | Heatmap, in the
+            # address and kept on a reload; the tab's link opens it as it was last shown, a link from elsewhere the timeline
+            tl_view = """(() => { const c = document.getElementById('journalHome');
+                return {title: c?.querySelector('h2').textContent, in: c?.parentElement.id, journal: !!c?.checkVisibility(), timeline: document.getElementById('tl').checkVisibility(),
+                  pressed: [...document.querySelectorAll('#tlView [aria-pressed=true]')].map(b => b.dataset.view), hash: location.hash, view: state.tlView,
+                  add: !!c?.querySelector('button.primary'), rows: c?.querySelectorAll('.jrow').length}; })()"""
+            start_view = js(tl_view)
+            page.click("#tlView button[data-view=journal]")
+            settle(200)
+            home = js(tl_view)
+            check("the journal is the Timeline tab's Journal view (#277): its switch says so, the address is #timeline-journal, New entry even when empty",
+                  start_view["timeline"] and not start_view["journal"] and start_view["pressed"] == ["timeline"] and start_view["hash"] == "#timeline"
+                  and home["title"] == "Journal" and home["in"] == "tlJournal" and home["journal"] and not home["timeline"] and home["pressed"] == ["journal"]
+                  and home["hash"] == "#timeline-journal" and home["add"] and home["rows"] == 0, [start_view, home])
+            page.reload()
+            page.wait_for_function("typeof booted !== 'undefined' && booted && !!document.getElementById('journalHome')", timeout=20000)
+            settle(200)
+            again = js(tl_view)
+            tab_click(page, "#tab-overview")
+            tab_click(page, "#tab-timeline")
+            settle(200)
+            by_link = js(tl_view)
+            js("pickTab('overview'); pickTab('timeline')")   # as an event's or a medication's link does
+            settle(200)
+            check("…kept on a reload and by the tab's link; picked from elsewhere, the Timeline is the timeline",
+                  again["journal"] and again["hash"] == "#timeline-journal" and by_link["journal"] and by_link["hash"] == "#timeline-journal"
+                  and js(tl_view)["timeline"] and js(tl_view)["hash"] == "#timeline", [again, by_link, js(tl_view)])
             day_of = js("(() => { const e = EV.find(e => e.k === 'visit' && !e.hidden && /T\\d\\d:\\d\\d/.test(e.t)); openEvent(e); return {id: e.id, day: isoDay(e.ts)}; })()")
             settle(200)
             page.click("#dbody .jadd button")
@@ -4181,7 +4291,7 @@ def main():
             lane = js("""(() => { const m = document.querySelector('#tl .jmark'); return {lane: [...document.querySelectorAll('#tl .lane-label')].some(t => t.textContent === 'Journal'),
                 n: document.querySelectorAll('#tl .jmark').length, r: m && +m.getAttribute('r'), shape: m && m.tagName}; })()""")
             check("…on the timeline in its own Journal lane, sized by severity", lane["lane"] and lane["n"] == 1 and lane["shape"] == "circle" and abs(lane["r"] - 6.15) < 0.01, lane)
-            check("…and in the event list", "Headache (browser check)" in page.inner_text("#list"))
+            check("…and in the event list", "Headache (browser check)" in js("document.getElementById('list').textContent"))
             js("closeDrawer()")   # the entry's panel covers the tab bar's right end on narrower or wider fonts
             tab_click(page, "#tab-labs")
             settle()
@@ -4209,8 +4319,8 @@ def main():
             settle(200)
             page.click("#dbody .btns button:text-is('All journal entries')")
             settle(300)
-            check("“All journal entries” goes to the journal's home on the Timeline tab, focused",
-                  js("state.tab === 'timeline' && !drawer.classList.contains('open') && document.activeElement.id === 'journalHome'")
+            check("“All journal entries” goes to the journal's home on the Timeline tab, its Journal view, focused",
+                  js("state.tab === 'timeline' && state.tlView === 'journal' && !drawer.classList.contains('open') && document.activeElement.id === 'journalHome'")
                   and page.inner_text("#journalHome h2") == "Journal (1)" and page.locator("#journalHome .jrow").count() == 1,
                   js("[state.tab, document.activeElement.id]"))
             jtoggles = r"""[...document.querySelectorAll('#journalHome .jfilters .toggle')].map(t => [t.textContent.trim().replace(/ \d+$/, ''),
@@ -4271,7 +4381,7 @@ def main():
             page.wait_for_function("typeof JOURNAL !== 'undefined' && EV.length > 0 && JOURNAL.length === 0 && booted && document.activeElement.id === 'journalHome'", timeout=20000)
             # the Labs charts aren't shown, so they're drawn when they are (#271: no reload): what they'll draw
             check("deleting the entry takes it off the timeline and Trends, back to the journal's home",
-                  js("document.querySelectorAll('#tl .jmark').length + jInWindow().length") == 0 and page.inner_text("#journalHome h2") == "Journal")
+                  page.inner_text("#journalHome h2") == "Journal" and js("(() => { switchTab('timeline', 'timeline'); const n = document.querySelectorAll('#tl .jmark').length + jInWindow().length; switchTab('timeline', 'journal'); return n; })()") == 0)
             page.goto(base + "/account.html")
             page.wait_for_selector("#addMenuBtn", timeout=10000)
             menu_click(page, "#journalBtn")
@@ -4287,7 +4397,7 @@ def main():
             # day's mood in its own lane and Trends row, a photo whose GPS location is taken out on the way in, the body
             # map of where symptoms have been with its table; at 1400 and 375 px, light and dark, axe-clean; then removed
             page.set_viewport_size({"width": 1400, "height": 900})
-            js("switchTab('timeline')")
+            js("switchTab('timeline', 'journal')")   # its Journal view (#277)
             settle()
             page.click("#journalHome .jgroup-btns button:text-is('Symptom groups')")
             settle(200)
@@ -4408,7 +4518,7 @@ def main():
             page.click("#dbody .jform button[type=submit]")
             page.wait_for_function("typeof JOURNAL !== 'undefined' && JOURNAL.length === 3 && booted && document.getElementById('dtitle').textContent === 'Mood 9/10'", timeout=20000)
             mood_day = js("isoDay(JOURNAL.find(e => e.k === 'mood').ts)")
-            js("closeDrawer(); switchTab('timeline'); setRange(Date.now() - 20 * DAY, Date.now() + 5 * DAY)")
+            js("closeDrawer(); switchTab('timeline', 'timeline'); setRange(Date.now() - 20 * DAY, Date.now() + 5 * DAY)")
             settle()
             lane = js("""({lane: [...document.querySelectorAll('#tl .lane-label')].some(t => t.textContent === 'Mood & energy'), n: document.querySelectorAll('#tl .jmood').length,
                 bars: document.querySelectorAll('#tl .jmood rect').length})""")
@@ -4484,7 +4594,7 @@ def main():
             page.keyboard.press("Escape")
 
             # where symptoms have been: the body map with counts, its places buttons; its table (#60)
-            js("closeDrawer(); switchTab('timeline'); setRange(Date.now() - 20 * DAY, Date.now() + 5 * DAY)")
+            js("closeDrawer(); switchTab('timeline', 'journal'); setRange(Date.now() - 20 * DAY, Date.now() + 5 * DAY)")
             settle()
             bmap = js("""(() => { const m = document.querySelector('#journalHome .jwhere-map'); if (!m) return null;
                 return {n: [...m.querySelectorAll('.jreg.has')].map(p => [p.dataset.region, p.getAttribute('aria-label')]),
@@ -4561,6 +4671,7 @@ def main():
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
             check("…all removed again", js("JOURNAL.length === 0 && (CFG.journal?.groups || []).length === 0 && !document.querySelector('#tl .jmood')"))
+            js("pickTab('timeline', 'timeline')")   # the timeline again, not the journal (#277)
             tab_click(page, "#tab-timeline")
             settle()
 
@@ -5965,8 +6076,8 @@ def main():
             page.keyboard.press("Escape")
             settle(300)
             page.set_viewport_size({"width": 1400, "height": 900})
-            check("…and wider than a phone the presets, More… and the date boxes are back in the records bar, the pill gone",
-                  js("[document.getElementById('periodPill').checkVisibility(), document.getElementById('presets').checkVisibility(), !!document.getElementById('dates').closest('.filters'), !!document.getElementById('q').closest('.filters'), document.getElementById('periodPillList').popover]")
+            check("…and wider than a phone the presets, More… and the date boxes are back in the records bar, the search after the kinds (#277), the pill gone",
+                  js("[document.getElementById('periodPill').checkVisibility(), document.getElementById('presets').checkVisibility(), !!document.getElementById('dates').closest('.filters'), document.getElementById('q').previousElementSibling?.id === 'chips', document.getElementById('periodPillList').popover]")
                   == [False, True, True, True, "auto"])
             # #357: on a phone on its side (740×360) and at 800×450, the menu (60% of the screen tall) fitted neither under
             # More… nor over it, and the browser kept it under, its left edge on the button's, running off the right. It's
@@ -6159,8 +6270,8 @@ def main():
               });
               return {groups, toggles};
             })()"""
-            want_groups = {"timeline": {"presets", "sortSeg"}, "labs": {"presets", "labsView"}, "heatmap": {"presets", "labsView"}, "costs": {"presets", "costBy"}}
-            want_toggles = {"timeline": "Visits", "labs": "Procedures & imaging", "heatmap": None, "costs": None}
+            want_groups = {"timeline": {"presets", "tlView", "sortSeg"}, "labs": {"presets", "labsView"}, "heatmap": {"presets", "labsView"}, "costs": {"presets", "costBy"}}
+            want_toggles = {"timeline": "List workouts", "labs": "Procedures & imaging", "heatmap": None, "costs": None}
             for t in ("timeline", "labs", "heatmap", "costs"):
                 open_tab(t)
                 settle(300)
@@ -6361,8 +6472,9 @@ def main():
             js("state.cats.delete('claim'); renderAll()")   # as the checks after this expect: Insurance claims hidden
 
             # ---- what the filters leave out (#190): on each tab that filters, one line saying how, ending in Reset filters,
-            # which puts that tab's filters back but not the period. The Timeline's is under the records bar, still shown on
-            # a phone with the panel closed, the Filters button counting the filters on and its counts captioned; the Labs
+            # which puts that tab's filters back but not the period. The Timeline's is under its kinds and search in the Events
+            # card (#277), still shown on a phone with the sheet closed, the Filters button counting the filters on and the
+            # line over the list saying its counts are with these filters; the Labs
             # name filter's is under its box (charts and heatmap); each Costs list's under its filters, their totals then
             # for what's shown. Filtered and not, at 1400 and 375 px, light and dark (phone_fits, and the line's contrast).
             # The journal's card is checked with the journal, above.
@@ -6381,18 +6493,19 @@ def main():
             js("applyPreset('1y')")
             settle(300)
             check("filters (#190): the Timeline as it starts (only Insurance claims hidden): no filter line, no count on Filters, its counts not captioned",
-                  fsum() is None and js(start_kinds) and js("state.q") == "" and ftog() == "Filters" and page.is_hidden("#statsNote"), [fsum(), ftog()])
+                  fsum() is None and js(start_kinds) and js("state.q") == "" and ftog() == "Filters" and "with these filters" not in page.inner_text("#tlSum"), [fsum(), ftog()])
             page.click("#chips .toggle[data-k=lab]")
             js("document.getElementById('sgStatus').textContent = ''")
             page.click("#q")
             page.locator("#q").press_sequentially("Visit", delay=60)
             settle(300)
             want = js("(k => `Showing ${k.filter(c => state.cats.has(c.k)).length} of ${k.length} kinds · matching “Visit” · Reset filters`)(CATS.filter(hasLane))")
-            check("…a kind hidden and a search typed: one line under the records bar says so, “Showing 9 of 11 kinds · matching “Visit” · Reset filters”",
-                  fsum() == want and js("document.getElementById('fsum').parentElement.classList.contains('filters')"), [fsum(), want])
-            n_vis = js("EV.filter(visible).length")
-            check("…its counts say they're for what's shown, as the list's are", page.is_visible("#statsNote") and "for what's shown" in page.inner_text("#statsNote")
-                  and page.inner_text("#listTitle") == f"Events ({n_vis:,})", page.inner_text("#listTitle"))
+            check("…a kind hidden and a search typed: one line under the kinds and the search, in the Events card (#277), says so, “Showing 9 of 11 kinds · matching “Visit” · Reset filters”",
+                  fsum() == want and js("document.getElementById('fsum').previousElementSibling.matches('.tl-filters') && !!document.getElementById('fsum').closest('#tlEvents')"), [fsum(), want])
+            n_vis = js("tlListed().length")
+            tl_sum = js("(p => p.hidden ? null : p.textContent)(document.getElementById('tlSum'))")
+            check("…the line over the list says its counts are with these filters, and the list's heading counts what it lists",
+                  (tl_sum is None or ", with these filters: " in tl_sum) and page.inner_text("#listTitle") == f"Events ({n_vis:,})", [tl_sum, page.inner_text("#listTitle")])
             n_said = f"{n_vis:,} event{'s' if n_vis != 1 else ''} match." if n_vis else "No events match."
             check("…how many events match is said once typing stops, not for each key", said(page, tries=40) == n_said,
                   [js("document.getElementById('sgStatus').textContent"), n_said])
@@ -6420,7 +6533,7 @@ def main():
             settle(200)
             check("…Reset filters there puts the kinds and the search back, not the period; said; focus on the Filters button",
                   fsum() is None and js(start_kinds) and js("state.q") == "" and page.input_value("#q") == "" and js("state.preset") == "1y"
-                  and ftog() == "Filters" and page.is_hidden("#statsNote") and said(page) == "Filters reset." and js("document.activeElement.id") == "ftoggle",
+                  and ftog() == "Filters" and "with these filters" not in page.inner_text("#tlSum") and said(page) == "Filters reset." and js("document.activeElement.id") == "ftoggle",
                   [fsum(), js("state.preset"), js("document.activeElement.id")])
             for theme in ("light", "dark"):
                 set_theme(theme)
@@ -6537,7 +6650,8 @@ def main():
             open_tab("labs")
             js("clearLabFilter()")
             settle(300)
-            check("Labs: the records bar shows no search box (Timeline's alone)", not page.is_visible("#q") and not page.is_visible("#ftoggle"))
+            check("Labs: the records bar shows no search box or kinds (the Timeline's, in its Events card: #277)", not page.is_visible("#q") and not page.is_visible("#ftoggle")
+                  and not page.is_visible("#chips") and js("!document.querySelector('.filters').contains(document.getElementById('chips'))"))
             order = js("""(() => { const y = s => document.querySelector(s).getBoundingClientRect().top, hd = document.querySelector('#series .series-hd');
               return [hd.contains(document.getElementById('labQ')), hd.contains(document.getElementById('viewPick')),
                       [...hd.querySelectorAll('#seriesSel button')].map(b => b.textContent), y('#labQ') < y('#seriesSel') && y('#seriesSel') < y('#tvBox'),
@@ -7117,8 +7231,8 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && "
                                    "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)   # the saved view restored
             check("the imported records open on the timeline of the profile they went into", js("state.tab") == "timeline", js("state.tab"))
-            check("…where the C-CDA's visits are listed", "Outpatient visit" in page.inner_text("#list"), page.inner_text("#list")[:300])
-            listed = page.inner_text("#list")
+            listed = js("document.getElementById('list').textContent")   # the list's text whole: innerText leaves out the months the browser skips off screen (#277)
+            check("…where the C-CDA's visits are listed", "Outpatient visit" in listed, listed[:300])
             check("…and the FHIR export's stay and documents, beside them", "Riverside General Hospital" in listed and "Discharge summary" in listed,
                   listed[:400])
             check("…and the Epic MyChart export's conversation and hospital admission", "Lab question" in listed and "Hospital admission" in listed,
@@ -7185,7 +7299,7 @@ def main():
                                    "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)
             js("switchTab('timeline')")   # the claims check left the profile on Costs
             settle(300)
-            listed = page.inner_text("#list")
+            listed = js("document.getElementById('list').textContent")
             check("…and the FHIR export's records leave the timeline, the C-CDA's staying",
                   "Riverside General Hospital" not in listed and "Discharge summary" not in listed and "Outpatient visit" in listed, listed[:400])
 

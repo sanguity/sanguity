@@ -11,12 +11,13 @@ const TABS = SgNav.TABS;   // the top bar's links to them (nav.js, #264)
 let TAB_ORDER = [...TABS], TAB_HIDDEN = new Set();
 const shownTabs = () => TAB_ORDER.filter(t => !TAB_HIDDEN.has(t));
 function applyTabs(cfg) { ({order: TAB_ORDER, hidden: TAB_HIDDEN} = SgNav.layout(cfg)); }
-/* the tab in the address (#208): index.html#overview, #health, #timeline, #labs (Labs as charts), #labs-heatmap (Labs
-   as the heatmap) or #costs; the old #trends and #heatmap still open Labs as charts or the heatmap. An address with
-   no # opens the tab last used (save(), core.js). tabOfHash: the address's [tab, Labs view], or null */
-const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"]};
+/* the tab in the address (#208): index.html#overview, #health, #timeline, #timeline-journal (the Timeline as the
+   journal, #277), #labs (Labs as charts), #labs-heatmap (Labs as the heatmap) or #costs; the old #trends and #heatmap
+   still open Labs as charts or the heatmap. An address with no # opens the tab last used (save(), core.js). tabOfHash:
+   the address's [tab, its view], or null */
+const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"], timeline: ["timeline", "timeline"], "timeline-journal": ["timeline", "journal"]};
 const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); return HASH_TABS[h] || (TABS.includes(h) ? [h] : null); };
-const tabHash = () => "#" + state.tab + (state.tab === "labs" && state.labsView === "heatmap" ? "-heatmap" : "");
+const tabHash = () => "#" + state.tab + (state.tab === "labs" && state.labsView === "heatmap" ? "-heatmap" : state.tab === "timeline" && state.tlView === "journal" ? "-journal" : "");
 /* the address follows the tab shown: a new history entry when someone picks another tab (push), so Back and Forward
    move between tabs; the boot, an old alias and the app's own switches replace the entry instead. history's own
    calls fire no hashchange, so the listener below doesn't run again. At the boot, another # in the address (Add →
@@ -27,11 +28,15 @@ function tabAddress(push) {
   try { if (push) history.pushState(null, "", h); else history.replaceState(history.state, "", h); } catch (e) {}
 }
 const pickTab = (t, view) => switchTab(t, view, true);   // someone chose it: a tab, a tile, a button that opens a tab
-/* t: a tab, or an old id ("trends", "heatmap": the Labs tab in that view); view: Labs' "chart" or "heatmap", if given;
-   push: someone picked it (pickTab), so Back returns to the tab before */
+/* t: a tab, or an old id ("trends", "heatmap": the Labs tab in that view); view: Labs' "chart" or "heatmap", or the
+   Timeline's "timeline" or "journal" (#277), if given; push: someone picked it (pickTab), so Back returns to the tab
+   before. The Timeline picked from elsewhere (an event, a medication's dates) is the timeline itself; its own tab
+   link opens it as it was last shown, as Labs' does */
 function switchTab(t, view, push) {
   if (TAB_ALIAS[t]) [t, state.labsView] = TAB_ALIAS[t];
   if (view === "chart" || view === "heatmap") state.labsView = view;
+  if (t === "timeline" && push && !view) view = "timeline";
+  if (view === "timeline" || view === "journal") state.tlView = view;
   if (!shownTabs().includes(t)) t = shownTabs()[0];
   const changed = t !== state.tab;
   if (changed && drawer.classList.contains("open")) closeDrawer();   // details belong to the tab they were opened from
@@ -41,11 +46,9 @@ function switchTab(t, view, push) {
   // on a phone the tabs are a row that scrolls sideways: the one shown in the middle of it
   { const b = $("#tab-" + t), bar = $(".tabs"); if (b.parentElement === bar && bar.scrollWidth > bar.clientWidth) bar.scrollTo({left: bar.scrollLeft + b.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - b.offsetWidth) / 2, behavior: smoothly()}); }
   { const b = $("#tab-" + t); $("#tabTitle").textContent = b.textContent; viewTitle([b.textContent, PROFILE && PROFILE.name].filter(Boolean).join(" · "), changed && booted && !$(".tabs").contains(document.activeElement) && b.textContent); }   // "Labs · Ben · Sanguity"; said when opened from elsewhere (#209)
-  // the records bar: its period on every tab with time (#171); the search and the categories on Timeline only (Labs
-  // filters its lab names in the list's own header, #192: trends.js)
+  // the records bar: its period, on every tab with time (#171); each tab's own filters are in the tab (the Timeline's
+  // kinds and search in its Events card's header, #277; Labs' lab names in its list's, #192)
   $(".filters").style.display = t === "overview" ? "none" : "";
-  $(".filters").classList.toggle("period-only", t !== "timeline");
-  $("#chips").style.display = t === "timeline" ? "" : "none";
   renderAll();
   if (changed) window.scrollTo({top: 0, left: 0, behavior: "instant"});   // each tab starts at the top
   tabAddress(push && changed);   // #208
@@ -57,7 +60,7 @@ for (const k of TABS) $("#tab-" + k).addEventListener("click", ev => {
   if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button) return;
   ev.preventDefault();
   const fromMore = !!ev.currentTarget.closest("[role=menu]");
-  const go = () => { pickTab(k); if (fromMore) $("#tab-" + k).focus({preventScroll: true}); };
+  const go = () => { pickTab(k, k === "timeline" ? state.tlView : null); if (fromMore) $("#tab-" + k).focus({preventScroll: true}); };
   if (k === state.tab || !document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) go();
   else document.startViewTransition(go);
 });
@@ -67,7 +70,7 @@ addEventListener("hashchange", () => {
   if (!booted) return;
   if (location.hash === "#log-dose") return logDose();
   const t = tabOfHash();
-  if (t) { if (t[1]) state.labsView = t[1]; switchTab(t[0]); }
+  if (t) switchTab(t[0], t[1]);
 });
 /* Add → Log a dose (#264): the Overview's "Today's medication doses" (medlog.js), its first button focused; with none
    to log (no current medication, no records yet, or a profile you can only view: an address typed in), a toast says
@@ -92,7 +95,7 @@ function renderAll() {
   renderFilters();
   renderFilterSum();   // what the filters leave out, and the Filters button's count (#190, filters.js)
   $("#optMarks").checked = state.marks; $("#optSmooth").checked = state.smooth;
-  if (state.tab === "timeline") { renderStats(); renderTimeline(); renderList(); }
+  if (state.tab === "timeline") renderTimelineTab();   // the timeline or the journal (timeline.js, #277)
   else if (state.tab === "labs") renderLabs();
   else if (state.tab === "costs") renderCosts();
   else if (state.tab === "health") renderHealth();
@@ -209,7 +212,7 @@ async function settingsLoad() {
   $("#meta").textContent = [DATA.source, DATA.built && "built " + fmtD(DATA.built), WATCH && WATCH.last_payload && "watch synced " + fmtDT(WATCH.last_payload)]
     .filter(Boolean).join(" · ");   // a profile of imports alone has no build to name (#199: it said "undefined · built")
   restore();   // a saved period naming a milestone that's since gone is All (setPeriod)
-  { const t = tabOfHash(); if (t) { state.tab = t[0]; if (t[1]) state.labsView = t[1]; } }
+  { const t = tabOfHash(); if (t) { state.tab = t[0]; if (t[1]) state[t[0] === "timeline" ? "tlView" : "labsView"] = t[1]; } }
   if (!state.sel.size) state.sel = startLabs();   // the default saved view, else trends.defaultLabs (trends.js)
   if (state.preset !== "custom" || !(state.to > state.from)) setPeriod(state.preset);
   await testPagesLoad();   // before the first draw, so the links are there (#163)
