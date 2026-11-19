@@ -582,14 +582,18 @@ function sectionCard(sec, opts = {}) {
    to it. On its way it isn't counted as a change not saved (#407). Not saved (the server said no): it stays changed,
    its line says why, and the bar offers to save it. Its section drawn again meanwhile (the bar's Discard of other
    changes there): the setting drawn now is the one marked saved or refused. Each save goes with keepalive, and one
-   still waiting behind another's answer as the page is left is sent then (saveLeft, #419). */
+   still waiting behind another's answer as the page is left is sent then (saveLeft, #419). Another profile picked
+   meanwhile (#425): it's still sent, to the profile it was made on (path), which for the person's own (Units) is the
+   same for every profile; the other profile is drawn once it's answered (pick, below), and one of the first
+   profile's own is said with its name. SAVING: the saves on their way. */
+const SAVING = new Set();
 function saveNow(it, card) {
   const pid = PID, base = setBase(), sec = card.sgSec, path = `${base}/${encodeURIComponent(it.st.key)}`;
   let mine = null;   // this browser's own theme, put back by the Undo
   if (it.st.kind === "theme") { try { mine = localStorage.getItem("ht-theme"); localStorage.removeItem("ht-theme"); } catch (e) {} applyTheme(it.value()); }
   it.path = path;
-  it.queue = (it.queue || Promise.resolve()).then(async () => {
-    if (!it.dirty() || PID !== pid) return;
+  const q = it.queue = (it.queue || Promise.resolve()).then(async () => {
+    if (!it.dirty()) return;
     const value = it.value(), was = [{key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from, wrote: {value}}];
     let now = it;
     const live = () => { const x = SET_ITEMS[it.st.key]; now = x && x !== it && x.node.isConnected ? x : it; card = now.node.closest(".card") || card; };
@@ -600,7 +604,8 @@ function saveNow(it, card) {
     live(); now.saved(value); card.sgChanged(); card.sgTidy();
     if (it.st.kind === "timezone" || it.st.kind === "dateformat") useDates(SET_ITEMS["dates.timeZone"]?.st.value, SET_ITEMS["dates.format"]?.st.value);
     if (it.st.kind === "units") aboutUnits(value);   // About this person and Targets in them (about.js, #408)
-    const said = `Saved “${it.st.label}”.`;
+    const other = PID !== pid && it.st.scope !== "user" ? ME.profiles.find(x => x.id === pid)?.name : "";
+    const said = (other ? other + ": " : "") + `Saved “${it.st.label}”.`;
     sayIn(card.querySelector(".set-msg"), said, false, {say: false});
     const kept = await stored(base).catch(() => null);
     if (kept && kept[it.st.key]) was[0].wrote = kept[it.st.key];
@@ -609,6 +614,8 @@ function saveNow(it, card) {
       if (mine) { try { localStorage.setItem("ht-theme", mine); } catch (e) {} applyTheme(); }
     }});
   }).catch(() => {});
+  SAVING.add(q);
+  q.finally(() => SAVING.delete(q));
 }
 
 /* the page left while a simple preference waits behind the answer to its last save (#419: Units is one setting for
@@ -773,7 +780,8 @@ async function loadLabNames() {
   SgNav.profiles(ME.profiles);   // the top bar's picker (nav.js, #170): the address's profile, else this browser's last
   // About this person (about.js, #267) once the sections are there: its group arrives with theirs, not before
   // and its name and deleting it (profile-card.js, #402), with them too
-  const pick = () => { PID = +sel.value; const p = ME.profiles.find(x => x.id === PID); loadLabNames().then(() => load(null, null, true)).then(() => { if (PID === p.id) { drawAbout(p); drawProfile(p); } }); };
+  // (once the saves on their way are answered, #425: what's drawn is what the server keeps)
+  const pick = () => { PID = +sel.value; const p = ME.profiles.find(x => x.id === PID); Promise.all([loadLabNames(), ...SAVING]).then(() => load(null, null, true)).then(() => { if (PID === p.id) { drawAbout(p); drawProfile(p); } }); };
   document.addEventListener("about:changed", () => load());   // the ranges' preview matches ages and sexes against it
   sel.onchange = pick;
   $("#intro").hidden = false;

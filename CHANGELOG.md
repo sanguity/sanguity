@@ -1310,6 +1310,12 @@ Everything on `main` so far; it becomes the first tagged release.
   ("account" opens Account at once), and one picked with the arrows stays picked as the records arrive. Someone who
   can only view the profile isn't offered Settings → Dashboard → Tabs, and the records page offline with no copy kept
   lists nothing that needs the server.
+- **Units picked before another profile, the why's look, and an empty profile's tabs** (#425): lb then ft/in, then
+  another profile picked at once, lost ft/in (the second save, waiting for the first's answer, was dropped with the
+  switch); both are saved now, and the other profile is shown once they are. Units are yours, the same on every
+  profile; a tick that's the profile's own is saved to the profile it was made on, its toast naming it. The note saying
+  why a group isn't yours to use was green, as a save is; it's in the style of the line above it now. The records
+  page applies an empty profile's own tab layout, as the other pages do.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
