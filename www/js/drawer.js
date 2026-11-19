@@ -13,13 +13,20 @@
 const drawer = $("#drawer");
 let drawerReturn = null, drawerFrom = null;   // what opened it, and where that was on the page (drawerSpot)
 function closeDrawer() {
-  const a = document.activeElement, r = drawerBack(), back = drawer.classList.contains("open") && (drawer.contains(a) || a === document.body) ? drawerTo() : null;
-  drawerReturn = drawerFrom = null; drawer.classList.remove("open");
+  const a = document.activeElement, want = drawer.classList.contains("open") && (drawer.contains(a) || a === document.body), sel = state.selEv;
+  const r = drawerBack(), mine = want && r && drawerTo(sel) === r ? r : null;   // what opened it, as it is now
+  drawer.classList.remove("open");
   if (drawer.open) { drawer.close(); liveFollow(); }
-  if (back) back.focus({preventScroll: back === r});   // once the page behind isn't inert any more; what's nearest it, scrolled to
+  mine?.focus({preventScroll: true});   // once the page behind isn't inert any more; found again as it's drawn (drawerDock)
   setTimeout(() => { if (!drawer.classList.contains("open")) $("#dbody").replaceChildren(); }, 250);   // unload any PDF / document once it has slid away
   state.selEv = null; document.querySelectorAll(".tl-row.sel").forEach(r => r.classList.remove("sel"));
   if (!drawerDock(false)) renderTimeline();   // undocked, the page is drawn again anyway
+  // else what's in sight once the page is laid out without it (#421), so the page stays where it is; found again once
+  // Labs' charts are drawn (the frame after, trends.js)
+  const x = want && !mine ? drawerTo(sel) : null, at = drawerSpot(x);
+  x?.focus({preventScroll: true});
+  if (at) requestAnimationFrame(() => requestAnimationFrame(() => { if (!x.isConnected && document.activeElement === document.body) drawerFind(at)?.focus({preventScroll: true}); }));
+  drawerReturn = drawerFrom = null;
 }
 $("#dclose").onclick = closeDrawer;
 drawer.addEventListener("close", () => { if (drawer.classList.contains("open") && !drawer.open) closeDrawer(); });   // swiped away
@@ -57,24 +64,31 @@ function drawerBack() {
   if (x) { drawerReturn = x; drawerFrom = drawerSpot(x) || drawerFrom; }
   return drawerReturn;
 }
-/* where focus goes as the drawer closes (#417): what opened it, found again (drawerBack); an item of a menu or a sheet
-   that has closed since (a phone's Add → Journal entry), that menu's button; and when that's gone or out of sight (the
-   page had focus nowhere, as after the command palette; its row hidden or merged away), the open record's row in the
-   view shown, else the row that's now where that one was (the next), else the heading of its list or view */
-function drawerTo() {
-  let x = drawerBack();
+/* where focus goes as the drawer closes (#417): what opened it, found again (drawerBack); else, asked once the drawer
+   has closed and the page is laid out without it, only what's in sight there (the top bar always is), as the page
+   doesn't move (#421): an item of a menu or a sheet that has closed since (a phone's Add → Journal entry), that menu's
+   button; when that's gone or out of sight (the page had focus nowhere, as after the command palette or a click on a
+   chart's mark; its row hidden or merged away), the open record's row in the view shown, else the row that's now where
+   that one was (the next), else the heading of its list or of another part of the view (the chart's), else any control
+   there */
+function drawerTo(sel = state.selEv) {
+  const r = drawerBack();
+  let x = r;
   const box = x?.closest?.("dialog"), pop = x?.closest?.("[popover]");
   if (box && box !== drawer && !box.open) x = box.sgFrom;   // a sheet's button (nav.js menuSheet)
   else if (pop && !pop.matches(":popover-open")) x = [...document.querySelectorAll("button")].find(b => b.popoverTargetElement === pop);
   const seen = y => !!y && y.isConnected && y !== document.body && !drawer.contains(y) && y.checkVisibility();
-  if (seen(x)) return x;
+  const top = document.querySelector("header.topbar")?.getBoundingClientRect().bottom || 0, tabs = document.querySelector("nav.tabs")?.getBoundingClientRect();
+  const low = tabs?.top > innerHeight / 2 ? tabs.top : innerHeight;   // under the top bar, above a phone's tab bar
+  const sight = y => seen(y) && (!!y.closest("header.topbar") || (b => b.bottom > top && b.top < low && b.right > 0 && b.left < innerWidth)(y.getBoundingClientRect()));
+  if (x === r ? seen(x) : sight(x)) return x;
   const s = drawerFrom, v = [s?.v, document.querySelector("main > section:not([hidden])")].find(seen);
   if (!v) return null;
   const all = [...v.querySelectorAll(FOCUSABLE)].filter(seen), kin = s ? all.filter(y => kinOf(y) === s.kin) : [];
-  const head = [v.querySelector("#listTitle"), ...v.querySelectorAll("h2")].find(seen);   // the Timeline's: its list's
-  x = all.find(y => state.selEv != null && y.dataset.id === String(state.selEv)) || (s && s.v === v && s.kn >= 0 && kin[Math.min(s.kn, kin.length - 1)]) || head;
-  if (x === head && head && !head.hasAttribute("tabindex")) head.tabIndex = -1;
-  return seen(x) ? x : null;
+  x = [all.find(y => sel != null && y.dataset.id === String(sel)), s && s.v === v && s.kn >= 0 && kin[Math.min(s.kn, kin.length - 1)],
+    v.querySelector("#listTitle"), ...v.querySelectorAll("h2"), ...all].find(sight);   // the Timeline's list's heading first
+  if (x?.matches("h2") && !x.hasAttribute("tabindex")) x.tabIndex = -1;
+  return x || null;
 }
 /* docked or not: the page's width changes, so its charts are drawn again; what had focus on it, and what focus goes
    back to, are found again in what's drawn. True if it changed. */

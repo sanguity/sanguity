@@ -1214,6 +1214,12 @@ Everything on `main` so far; it becomes the first tagged release.
   it before the palette opened (found again once the Timeline is drawn), to Add (not the item in its closed sheet),
   or, with that gone, to the record's row, the row now where it was, or the list's heading. Deleting a profile in
   Settings puts focus on the page's heading.
+- **Closing the drawer leaves the page where it was** (#421): a record opened by a click on a Timeline chart's mark
+  (which can't take focus), then closed, scrolled the page from the top to that record's row far down the list
+  (13,902 px at 1100 px wide), and at 1400 px left focus on a row out of sight, since the page was laid out again
+  as the drawer undocked. Focus now goes back once the drawer has closed and undocked, without scrolling: to what
+  opened it, or else only to something in sight (the record's row, the row now where it was, a heading such as the
+  chart's, or a control in the view).
 - **The drawer says a count, a supply and a start time once** (#418): a conversation said "2 messages" above its fact
   "Messages 2", an imported pharmacy fill "30-day supply" above "Days' supply 30", and an irregular rhythm
   notification "Period it covers: Nov 3, 2026, 2:00 AM – Nov 3, 2026, 4:10 AM" under a head that says when it began.

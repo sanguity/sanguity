@@ -3831,6 +3831,35 @@ def main():
             check("…hidden from its Timeline row, gone from the list, then Escape: focus on the row now where it was; merged into from its row: on that row (#417)",
                   hide417 is not None and hide417[2] == next417 and merged417 is not None and merged417[2] == str(merge417),
                   [hide417, next417, merged417, merge417])
+            # #421: a mark on the Timeline's chart clicked with the page at the top (a mark can't take focus, so nothing
+            # opened the drawer), then closed by Escape and by ✕, docked (1400 px) and not (1100 px): the page stays where
+            # it was, though the record's row is far down the list, and focus is on something in sight
+            range421 = js("[state.from, state.to]")
+            js("applyPreset('all')")
+            dot421 = []
+            for w in (1100, 1400):
+                page.set_viewport_size({"width": w, "height": 900})
+                settle(300)
+                for how in ("Escape", "close"):
+                    js("window.scrollTo(0, 0)")
+                    settle(200)
+                    mark = page.locator("#tl circle.ev").nth(3)
+                    mark.scroll_into_view_if_needed()
+                    y421 = js("scrollY")
+                    mark.click()
+                    page.wait_for_selector("#drawer.open", timeout=5000)
+                    settle(300)
+                    if how == "Escape":
+                        page.keyboard.press("Escape")
+                    else:
+                        page.click("#dclose")
+                    settle(300)
+                    dot421.append([w, how, y421, js("scrollY"), js(IN_SIGHT)])
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("([a, b]) => setRange(a, b)", range421)
+            settle(300)
+            check("…a mark on the Timeline's chart clicked with the page at the top, then Escape or ✕, at 1100 and 1400 px: the page stays where it was, focus on something in sight (#421)",
+                  all(d[2] == d[3] and d[4] is not None for d in dot421), dot421)
 
             # ---- chart activity (#236): the demo's chart review and phone call aren't visits; a billing-code title is a plain one
             got = js("""(async () => { await loadDetails(EV.filter(e => e.k === 'visit').map(e => e.id));   // loaded when opened (#217)
