@@ -1246,6 +1246,13 @@ Everything on `main` so far; it becomes the first tagged release.
   an Undo; Start from a condition still fills them in), and **Names** (lab nicknames) from Dashboard to Labs and
   ranges. The old addresses (`sharing.html#profile`, `#newProfile`, `settings.html#sec-summary`) land in the new
   places; the service worker keeps the new script (`sanguity-shell-v9`).
+- **The account pages' last loose ends** (#419): undoing a tick under Sharing → Visit summary → Measures ticked at
+  first left focus on the page, since the boxes were drawn again; it goes back to the tick now. Units is one setting
+  for its four kinds, so a second unit picked (lb, then ft/in) waits for the first's answer, and leaving the page
+  before it came lost it; it's sent as the page is left now (each such save goes with `keepalive`). Someone who isn't
+  the profile's owner following `settings.html#profile` (or Sharing's old address for it) landed on Dashboard with
+  nothing said; they're told only a profile's owners can rename or delete it. Rename or delete's name field shows its
+  label, "Profile name". docs/database.md no longer says About this person is changed on Sharing.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

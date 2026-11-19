@@ -5,7 +5,7 @@
    SG_PAGES[name] is {page: its file, title, icon, profile: true for a page about the profile chosen (its addresses
    carry ?profile=), admin: true for admins only, words (as a group's, below), groups}. Each group is what sideNav() takes, {id, title, icon, part,
    has: [the ids of its parts], …}, with what the page's own script reads (needs: the role on the profile shown it's
-   for, on Sources and Sharing, and Sharing's why; Account's hint),
+   for, on Sources and Sharing, and Sharing's and Settings' why; Account's hint),
    and for the palette:
    - words: what else someone might type for it ("password" for Sign-in and security), in lower case;
    - finds: its parts that are worth going to by name, [title as the part's heading says it, its id, words]. The
@@ -71,7 +71,7 @@ const SG_PAGES = {
     {id: "milestones", title: "Milestones", icon: "flag", part: "This profile", has: ["sec-milestones"], words: "diagnosis surgery treatment named dates"},
     {id: "activity", title: "Workouts", icon: "dumbbell", part: "This profile", has: ["sec-health"], words: "visits exercise body and activity"},   // visits counted as workouts (#43)
     {id: "profile", title: "Rename or delete", icon: "user-pen", part: "This profile", has: ["profileCard"], needs: "owner",   // on Sharing before #402
-     words: "profile name rename delete remove", finds: [["Delete this profile", "profileCard", "remove erase"]]},
+     why: "Only a profile's owners can rename or delete it.", words: "profile name rename delete remove", finds: [["Delete this profile", "profileCard", "remove erase"]]},
     {id: "display", title: "Display", icon: "monitor", part: "You", has: ["sec-appearance", "sec-dates", "sec-units"],
       finds: [["Appearance", "sec-appearance", ""],   // (the theme: your menu's Dark or Light mode, #410)
         ["Dates and times", "sec-dates", "time zone date format"],
