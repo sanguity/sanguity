@@ -371,15 +371,15 @@ header .meta{color:var(--muted);font-size:var(--fs-2)}
 .tabs>[aria-current="page"]{background:var(--raised);color:var(--ink);box-shadow:var(--shadow-1)}
 @media (max-width:640px),(pointer:coarse){ .tabs>a,.tab-more{min-height:44px} }   /* the button's sizes (#258) */
 .spacer{flex:1}
-/* Settings: a sidebar of groups, one group at a time (settings-nav.js) */
-main.sets.with-nav{display:grid;grid-template-columns:220px minmax(0,1fr);column-gap:var(--sp-5);max-width:1120px;align-items:start}
+/* the account pages' sidebar: groups, one at a time (sidebar.js, #266), in a 1280 px shell */
+main.sets.with-nav{display:grid;grid-template-columns:220px minmax(0,1fr);column-gap:var(--sp-5);max-width:1280px;align-items:start}
 main.sets.with-nav>*{grid-column:2}
 main.sets.with-nav>.set-nav{grid-column:1;grid-row:1 / span 50;position:sticky;top:76px}
 .set-nav input[type=search]{width:100%;margin-bottom:var(--sp-3)}
 .set-nav-list{list-style:none;margin:0;padding:0}
 .set-nav-part{font-size:var(--fs-1);color:var(--muted);text-transform:none;margin:var(--sp-3) var(--sp-2) var(--sp-1);font-weight:var(--fw-semibold)}
 .set-nav-list li:first-child.set-nav-part{margin-top:2px}
-.set-nav-list a{display:block;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-sm);color:var(--ink2);text-decoration:none;font-size:var(--fs-3)}
+.set-nav-list a{display:block;position:relative;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-sm);color:var(--ink2);text-decoration:none;font-size:var(--fs-3)}   /* relative: its "not saved" words, said only, stay in the row a phone scrolls */
 .set-nav-list a:hover{background:var(--hover);color:var(--ink)}
 .set-nav-list a[aria-current="page"]{background:var(--hover);color:var(--ink);font-weight:var(--fw-semibold);box-shadow:inset 3px 0 0 var(--accent)}
 .sets .grp-off,.sets .set-off{display:none}
@@ -391,6 +391,7 @@ main.sets.with-nav>.set-nav{grid-column:1;grid-row:1 / span 50;position:sticky;t
   .set-nav-part{display:none}
   .set-nav-list a{white-space:nowrap;border:1px solid var(--ring);padding:var(--sp-1) var(--sp-3);font-size:var(--fs-3)}
   .set-nav-list a[aria-current="page"]{box-shadow:none;border-color:var(--accent)}
+  .set-nav-new{margin-left:var(--sp-1);padding-left:var(--sp-3);border-left:1px solid var(--ring)}
 }
 /* the top bar (nav.js, #264): brand, the profile menu, the records tabs, then Add and the person's menu; the tabs take
    the room left, those that don't fit going under More (#265) */
@@ -856,6 +857,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
   .sets .set-order.has-more .set-more{display:block}
 }
 .sets .set-hd{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);flex-wrap:wrap}
+.sets .set-hd>.vh+*{margin-left:auto}   /* a card alone in its group: Reset at the right */
 .sets .set-hd h2{margin:0}
 .sets .set h3 .tag{font-weight:var(--fw-medium)}
 .sets .set-labs{margin:var(--sp-1) 0;padding-left:var(--sp-5);max-width:560px}
@@ -1333,7 +1335,6 @@ main.src[data-role=viewer] .src-edit{display:none}
 /* the Sharing page (#168, sharing.html): Settings' sidebar (main.sets) with Account's cards; Profile set apart in it */
 .shr .shr-members td:first-child{overflow-wrap:anywhere}
 .shr .shr-share input{flex:1 1 140px;min-width:0}
-@media (max-width:760px){.shr .set-nav-list li.shr-apart{margin-left:var(--sp-1);padding-left:var(--sp-3);border-left:1px solid var(--ring)}}
 /* ---- About this person (#194): Sharing → About this person (sharing.js), and its section on a share link's page */
 .about h3.sub{margin:var(--sp-5) 0 var(--sp-1)}
 .about .about-details>.about-row{margin-top:var(--sp-3)}

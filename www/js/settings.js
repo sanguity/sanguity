@@ -3,7 +3,7 @@
    section one Save, Discard changes and "Reset to defaults" (#174). Viewers see the profile's settings without
    editors; their own (per-user) settings they can change, and someone with no profile yet still has those (#169).
    A new kind of setting adds an editor to EDITORS. What used to be here and isn't about how things look has its own
-   page now (MOVED, at the end). */
+   page now, its old addresses moved.js's. */
 "use strict";   // $, el and api come from util.js
 let ME, PID = null, LAB_NAMES = [], LABS = [], NICK = {}, HAS_CLAIMS = false;
 
@@ -667,22 +667,9 @@ async function loadLabNames() {
   $("#labNames").replaceChildren(...LAB_NAMES.map(n => el("option", {value: n})));
 }
 
-/* ---------------------------------------------------------------- what moved
-   Settings is how things look (#169); what was here besides went to its own page, and its old addresses open it
-   there, keeping the profile (?profile=2): the server's (#167) to Admin, the phone's upload secret (#166) to
-   Sources, the calendar feed (#168) to Sharing. */
-const MOVED = {"#outside": "admin.html#outside", "#sources": "admin.html#apps", "#sec-sync": "admin.html#sec-sync",
-  "#watch": "sources.html?#phone", "#calendar": "sharing.html?#calendar"};
-function moved() {
-  const to = MOVED[location.hash];
-  if (to) location.replace(to.replace("?", location.search));
-  return !!to;
-}
-addEventListener("hashchange", moved);
-
 /* ---------------------------------------------------------------- start */
 (async () => {
-  if (moved()) return;
+  if (sgMoved()) return;   // what was here and isn't about how things look (moved.js)
   try { ME = await call("me"); } catch (e) { return; }
   await datesReady();   // dates in this person's time zone and format (dates.js)
   if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }

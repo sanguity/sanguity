@@ -1,5 +1,5 @@
 /* Sanguity · the Sharing page (#168): who can see a profile, and every way its records go out, for the profile picked
-   at the top, with a sidebar of groups (as Settings' and Admin's): People (who has access and as what, sharing with
+   at the top, with the sidebar of groups every account page has (sidebar.js, #266): People (who has access and as what, sharing with
    an account, changing roles, leaving), Share links (share-links.js), Calendar feed (calendar-feed.js), Visit summary
    (summary.js), Export everything and the profile's Activity (activity.js). Set apart from sharing, under Profile:
    renaming and deleting it (owners) and making a new one; and About this person (#194): its birth date, sex used for
@@ -26,70 +26,30 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
 
 (() => {
   let ME = null, P = null, MEMBERS = [], MEMBERS_OF = null;   // MEMBERS_OF: the profile MEMBERS are of
-  const sel = $("#profile"), main = $("main.sets");
+  const sel = $("#profile");
   $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
   /* ---------------------------------------------------------------- the sidebar: one group shown at a time */
   const RANK = {viewer: 0, editor: 1, owner: 2};
   const GROUPS = [
-    {id: "people", title: "People", icon: "users", has: ["people"]},
-    {id: "links", title: "Share links", icon: "share-2", has: ["links"], needs: "owner", why: "Share links are made by a profile's owners."},
-    {id: "calendar", title: "Calendar feed", icon: "calendar", has: ["calendar"]},
-    {id: "summary", title: "Visit summary", icon: "file-text", has: ["summaryIntro", "build", "preview"]},
-    {id: "export", title: "Export everything", icon: "download", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it."},
-    {id: "activity", title: "Activity", icon: "history", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners."},
+    {id: "people", title: "People", icon: "users", part: "Sharing", has: ["people"]},
+    {id: "links", title: "Share links", icon: "share-2", part: "Sharing", has: ["links"], needs: "owner", why: "Share links are made by a profile's owners."},
+    {id: "calendar", title: "Calendar feed", icon: "calendar", part: "Sharing", has: ["calendar"]},
+    {id: "summary", title: "Visit summary", icon: "file-text", part: "Sharing", has: ["summaryIntro", "build", "preview"]},
+    {id: "export", title: "Export everything", icon: "download", part: "Sharing", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it."},
+    {id: "activity", title: "Activity", icon: "history", part: "Sharing", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners."},
     {id: "about", title: "About this person", icon: "user", part: "Profiles", has: ["about", "targets"]},   // #194; targets of your own (#234)
     {id: "profile", title: "Profile", icon: "circle-user", part: "Profiles", has: ["profileCard", "newProfile"]},
   ];
-  const ALIAS = {profiles: "people"};   // the old Account tab's name (account.html#profiles)
   const PROFILE = GROUPS.at(-1);
   const allowed = g => P ? RANK[P.role] >= RANK[g.needs || "viewer"] : g === PROFILE;
-  const list = el("ul", {class: "set-nav-list"});
-  const nav = el("nav", {class: "set-nav", id: "shrNav", "aria-label": "Sharing sections"}, list);
-  let current = null;
-
-  function drawNav() {
-    const rows = [];
-    let part = null;
-    for (const g of GROUPS.filter(allowed)) {
-      const p = g.part || "Sharing";
-      if (p !== part) { rows.push(el("li", {class: "set-nav-part", "aria-hidden": "true", text: p})); part = p; }
-      rows.push(el("li", {class: g.part ? "shr-apart" : null}, el("a", {href: "#" + g.id, "data-group": g.id,
-        onclick: ev => { ev.preventDefault(); show(g, {push: true}); }}, icon(g.icon), g.title)));   // its icon beside its name (#354)
-    }
-    list.replaceChildren(...rows);
-  }
-  const groupOf = id => GROUPS.find(g => g.has.includes(id));
-  /* #links: a group; #calendar or #build: the group holding it, scrolled to it */
-  function fromHash() {
-    const h = decodeURIComponent(location.hash.slice(1)), g = GROUPS.find(x => x.id === (ALIAS[h] || h));
-    if (g) return {g};
-    const t = h && document.getElementById(h);
-    let of = null;
-    for (let n = t; n && n !== main && !of; n = n.parentElement) of = groupOf(n.id);
-    return of ? {g: of, el: t} : {g: null};
-  }
-  function show(g, {push = false, scrollTo = null} = {}) {
-    if (!g || !allowed(g)) {
-      if (g && g.why && P) { sayIn($("#pageMsg"), g.why); push = true; }
-      g = GROUPS.find(allowed);
-    }
-    const was = current;
-    current = g;
-    if (g.id === "activity" && g !== was) drawActivity();   // fresh each time it's opened
-    for (const x of GROUPS) for (const id of x.has) document.getElementById(id).classList.toggle("grp-off", x !== g);
-    for (const a of list.querySelectorAll("a")) a.setAttribute("aria-current", a.dataset.group === g.id ? "page" : "false");
-    main.dataset.group = g.id;
-    $("#groupTitle").textContent = g.title;
-    viewTitle("Sharing: " + g.title, push && "Sharing: " + g.title);   // the browser tab's title; said when picked (#209)
-    // on a phone the sidebar is one row that scrolls sideways: keep the group shown in sight
-    const a = list.querySelector(`a[data-group="${g.id}"]`), at = a && a.getBoundingClientRect(), box = list.getBoundingClientRect();
-    if (at && (at.left < box.left || at.right > box.right)) list.scrollLeft += at.left - box.left - 8;
-    if (push && location.hash.slice(1) !== g.id) history.replaceState(null, "", "#" + g.id);
-    if (scrollTo && scrollTo !== document.getElementById(g.id)) scrollTo.scrollIntoView({block: "start"});
-    else if (push) window.scrollTo({top: 0});
-  }
-  const follow = () => { const r = fromHash(); if (r.g) { sayIn($("#pageMsg"), ""); show(r.g, {scrollTo: r.el}); } };
+  const nav = sideNav({id: "shrNav", page: "Sharing", groups: GROUPS, find: "Find in Sharing", none: q => `Nothing in Sharing matches “${q}”.`,
+    allowed, alias: {profiles: "people"},   // the old Account tab's name (account.html#profiles)
+    refuse: g => { if (g.why && P) { sayIn($("#pageMsg"), g.why); return true; } },
+    shown: g => { if (g.id === "activity") drawActivity(); }});   // fresh each time it's opened
+  let started = false;
+  /* the groups this profile's role allows, the one shown kept if it's one of them (the address's, the first time) */
+  const showAllowed = () => { if (started) nav.show(nav.current()); else { started = true; nav.start(); } };
 
   /* ---------------------------------------------------------------- the profile picked, and what you can do with it */
   const SAYS = {
@@ -114,7 +74,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       P = null;
       SgNav.profiles([]);
       for (const id of ["calendar", "summaryIntro", "build", "preview"]) $("#" + id).hidden = true;
-      drawNav(); show(PROFILE);
+      showAllowed();
       return;
     }
     SgNav.profiles(ME.profiles, want);   // the top bar's picker (nav.js, #170): want, else the address's or this browser's
@@ -125,8 +85,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     const [a, b] = SAYS[p.role];
     $("#introHint").replaceChildren(el("strong", {text: a}), b(p.name));
     for (const g of GROUPS) if (g.needs) for (const id of g.has) $("#" + id).hidden = !allowed(g);
-    drawNav();
-    if (current) show(current); else { const r = fromHash(); show(r.g, {scrollTo: r.el}); }
+    showAllowed();
     $("#exportLink").href = `api/profiles/${p.id}/export`;
     exportCycle(p);   // #183
     drawProfileCard(p);
@@ -143,7 +102,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     MEMBERS = got; MEMBERS_OF = p.id;
     drawPeople(p);
     $("#people").dataset.profile = p.id;   // whose people are drawn (the browser check waits for it)
-    if (current.id === "activity") drawActivity();
+    if (nav.current()?.id === "activity") drawActivity();
   }
   /* the profile's activity (owners), drawn when its group is shown, once its people are known (for the filter) */
   function drawActivity() {
@@ -467,9 +426,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
     $("#who").textContent = ME.user.username;
     { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
-    main.prepend(nav);
-    main.classList.add("with-nav");
+    addEventListener("hashchange", () => sayIn($("#pageMsg"), ""));   // (before the sidebar's: a group refused says so after)
     fill();   // the profile the address names, else this browser's last (nav.js)
-    addEventListener("hashchange", follow);
   })();
 })();

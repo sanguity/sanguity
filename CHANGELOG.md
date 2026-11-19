@@ -1095,6 +1095,14 @@ Everything on `main` so far; it becomes the first tagged release.
   into the drawer (a View Transition, where the browser has them and motion isn't reduced). Another record still
   opens in it without closing it.
 
+- **One sidebar for Sources, Sharing, Settings, Account and Admin** (#266): the four copies of it are one component
+  (`sidebar.js`). Every page's sidebar has its search, which shows the parts of any group that mention what's typed
+  or says that none does, with a button to clear it; its groups under labels; the group's title as the page's
+  heading; a card's own title only beside another card (Share links no longer says "Share links" twice); and the
+  "not saved" mark. Sources' groups are Connected (portals and health plans, phone and watch), One-off (upload, type
+  in, Health Link) and History; Admin's are People, Data safety, Connections and Lab matching. The five pages are up
+  to 1280 px wide, not 1120. Every address is the same, and what moved to another page is sent on by `moved.js`
+  alone; the service worker keeps the new script (`sanguity-shell-v6`).
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

@@ -1458,8 +1458,8 @@ def main():
         strict.wait_for_selector("#importer", state="visible", timeout=10000)
         check("under the CSP: the Sources page's scripts run, import.html opening Upload files",
               strict.evaluate("document.querySelectorAll('#profile option').length") == 2 and strict.evaluate(
-                  "[...document.querySelectorAll('#srcNav a')].map(a => a.textContent)") == ["Overview", "Upload files", "Type records in",
-                  "Paste a Health Link", "Portals and health plans", "Phone and watch", "Import history"])
+                  "[...document.querySelectorAll('#srcNav a')].map(a => a.textContent)") == ["Overview", "Portals and health plans", "Phone and watch",
+                  "Upload files", "Type records in", "Paste a Health Link", "Import history"])
         for sel in ("#srcList h3", "#historyList li", "#watch .w-addr", "#connList p"):
             strict.wait_for_selector(sel, state="attached", timeout=10000)
         check("…every section drawn, only the group's shown", strict.evaluate(
@@ -1481,9 +1481,10 @@ def main():
         strict.goto(base + "/admin.html")
         for sel in ("#userList table", "#sec-sync .set", "#sourceList", "#dirSources ul", "#labmapList", "#outsideBody h3", "#acctLog tbody tr", "#bkStatus .kv"):
             strict.wait_for_selector(sel, state="attached", timeout=10000)
-        groups = strict.evaluate("[...document.querySelectorAll('#admNav a')].map(a => a.textContent)")
-        check("under the CSP: the Admin page's scripts run, with a sidebar of its groups", groups ==
-              ["Accounts", "Backups", "Connected-source apps", "Provider directory", "Lab name matches", "Outside connections", "Install activity"], groups)
+        groups = strict.evaluate("[...document.querySelectorAll('#admNav li')].map(li => (li.matches('.set-nav-part') ? '§' : '') + li.textContent)")
+        check("under the CSP: the Admin page's scripts run, with a sidebar of its groups under People, Data safety, Connections and Lab matching (#266)", groups ==
+              ["§People", "Accounts", "Install activity", "§Data safety", "Backups", "§Connections", "Connected-source apps", "Provider directory",
+               "Outside connections", "§Lab matching", "Lab name matches"], groups)
         strict.wait_for_selector("#adminLink:not([hidden])", state="attached", timeout=10000)
         check("…and the menu offers Admin to an admin", strict.evaluate("document.getElementById('adminLink').getAttribute('href')") == "admin.html")
         check("no Admin card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
@@ -1500,6 +1501,41 @@ def main():
               ["People", "Share links", "Calendar feed", "Visit summary", "Export everything", "Activity", "About this person", "Profile"]
               and strict.evaluate("document.querySelector('#shrNav a[data-group=about]').closest('li').previousElementSibling.classList.contains('set-nav-part')"), groups)
         check("no Sharing card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
+        # ---- one sidebar (#266): the five pages' sidebars are one component (sidebar.js): a search box, the groups under
+        # their labels, the group's title as the h1 and the tab's, a card's own title only beside another card of the
+        # group (said, not shown, when it's alone), in a 1280 px shell
+        side_js = """() => { const n = document.querySelector('main > nav.set-nav'), cur = n.querySelector('a[aria-current=page]');
+            const parts = [...document.querySelectorAll('main > :is(section, form, div):not(.set-top), #sections > section')].filter(p => p.checkVisibility() && !p.matches('.set-nav, [id$=None]'));
+            const cards = parts.flatMap(p => [...p.querySelectorAll(':scope > h2, :scope > .set-hd > h2')]);
+            return {find: n.querySelector('input[type=search]')?.id, labels: n.querySelectorAll('.set-nav-part').length, h1: document.getElementById('groupTitle').textContent,
+                    cur: cur && cur.textContent, title: document.title, parts: parts.length, shell: getComputedStyle(n.parentElement).maxWidth,
+                    titles: cards.map(h => h.getBoundingClientRect().width > 2 && h.matches(':not(.vh)'))}; }"""
+        side_bad = []
+        for path, find, labels, alone in (("sources.html?profile=1#portals", "srcFind", 3, True), ("sharing.html?profile=1#links", "shrFind", 2, True),
+                                          ("settings.html?profile=1#display", "setFind", 2, False), ("account.html#security", "acctFind", 0, False),
+                                          ("admin.html#apps", "admFind", 4, False), ("admin.html#backups", "admFind", 4, True)):
+            strict.goto(base + "/" + path)
+            strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
+            strict.wait_for_timeout(600)
+            v = strict.evaluate(side_js)
+            page_name = path.split(".")[0].capitalize()
+            if not (v["find"] == find and v["labels"] == labels and v["h1"] == v["cur"] and v["title"] == f"{page_name}: {v['cur']} · Sanguity" and v["shell"] == "1280px"
+                    and v["titles"] and (v["titles"] == [False] if alone else all(v["titles"]) and len(v["titles"]) > 1)):
+                side_bad.append((path, v))
+        check("one sidebar (#266): Sources, Sharing, Settings, Account and Admin each have its search box, group labels and the group's title as the h1, "
+              "a card's title only beside another card, in a 1280 px shell", not side_bad, side_bad)
+        strict.fill("#admFind", "usb stick")
+        strict.wait_for_timeout(200)
+        found = strict.evaluate("[document.getElementById('groupTitle').textContent, [...document.querySelectorAll('main > section')].filter(s => s.checkVisibility()).map(s => s.id), "
+                                "document.querySelector('#backups > h2').getBoundingClientRect().width > 2, !!document.querySelector('#admNav a[aria-current=page]')]")
+        strict.fill("#admFind", "no such thing zq")
+        strict.wait_for_timeout(200)
+        empty = strict.evaluate("(b => [b.checkVisibility() && b.querySelector('p').textContent, b.querySelector('button')?.textContent])(document.getElementById('admNone'))")
+        strict.click("#admNone button")
+        back = strict.evaluate("[document.activeElement.id, document.getElementById('admFind').value, document.getElementById('groupTitle').textContent, document.getElementById('admNone').hidden]")
+        check("…its search on every page (Admin's here): the parts that mention it, from every group, each with its title, or says none does, with a button that clears it",
+              found[0] == "Find in Admin" and "backups" in found[1] and "users" not in found[1] and found[2] and not found[3]
+              and empty == ["Nothing in Admin matches “no such thing zq”.", "Clear the search"] and back == ["admFind", "", "Backups", True], (found, empty, back))
         # ---- shorter help text (#176): a card leads with a short line, and the rest of its explanation is behind one
         # "More about this" toggle, the same on every page: closed at first, still in the page when closed, opened and
         # closed by keyboard, readable in dark mode (this page's theme) and at 375 px. What someone needs to decide
