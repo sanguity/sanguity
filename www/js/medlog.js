@@ -67,7 +67,7 @@ function medLogSection(m) {
       el("table", {class: "data doseweeks"}, el("thead", {}, el("tr", {}, ["Week of", "Logged", "Taken", "Of them late", "Skipped"].map(h => el("th", {scope: "col", text: h})))),
         el("tbody", {}, weeks.map(w => el("tr", {}, el("td", {text: fmtD(dayTs(w.week))}), el("td", {text: w.logged}), el("td", {text: w.taken}),
           el("td", {text: w.late}), el("td", {text: w.skipped})))))));
-    const list = el("ul", {class: "doselist"}), more = el("button", {class: "btn small", type: "button", hidden: true});
+    const list = el("ul", {class: "doselist"}), more = el("button", {class: "btn small", type: "button", hidden: true, "data-whole": ""});   // shown whole: kept so when drawn again (drawer.js drawerKeep)
     const newest = [...ds].reverse(), FEW = 10;
     let all = false;
     const draw = () => {
@@ -83,7 +83,7 @@ function medLogSection(m) {
             doseSend(`/${d.id}`, {method: "DELETE"}, msg, {med: m.key});
           }})) : null)));
       more.hidden = newest.length <= FEW;
-      more.textContent = all ? "Show fewer" : `Show all ${newest.length}`;
+      more.textContent = all ? "Show fewer" : `Show all ${newest.length}`; more.dataset.whole = all ? "1" : "";
     };
     more.onclick = () => { all = !all; draw(); };
     draw();
@@ -137,7 +137,7 @@ async function doseSend(path, opts, msg, after) {
   catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return; }
   if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the dose (${r.status}).`, true); return; }
   storePut("doses", j);
-  if (after.med) openMedication(MEDS.find(x => x.key === after.med));
+  if (after.med) medAgain(MEDS.find(x => x.key === after.med));
   else if (!document.activeElement || document.activeElement === document.body) document.querySelector(`[data-dose-row="${CSS.escape(after.row)}"] .dose-med`)?.focus({preventScroll: true});
   announce(opts.method === "DELETE" ? "Dose removed from the log." : "Dose logged.");
 }

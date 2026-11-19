@@ -1174,6 +1174,12 @@ Everything on `main` so far; it becomes the first tagged release.
   the account's theme and still showed "System". Now it saves the account's theme, as Display does, with an Undo, and
   Display shows it; the command palette offers one theme entry. (Someone who must change their password first, and
   can't save settings yet, still picks one for that browser.)
+- **The drawer keeps focus and its place when the page behind it is drawn again** (#404): closing it after a
+  correction saved, a dose logged or removed, a journal entry saved or a resize put focus on the page itself, since
+  the row or button that opened it had been drawn again. What opened it is found again after every redraw (a
+  Timeline or Overview row by its record, so a rename doesn't lose it), and Escape or ✕ takes focus back there. A
+  dose logged beside a medication's drawer, or a correction or "Same result" deep in a lab day, drew the drawer again
+  at its top with its log folded; it's drawn again in place now, its scroll, what's open and "Show all" as they were.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
