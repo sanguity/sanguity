@@ -419,12 +419,15 @@ DRAW_JS = """async t => { const [tab, view] = t.split("-");
   await new Promise(r => requestAnimationFrame(() => setTimeout(r)));
   return [performance.now() - s, document.getElementById("view-" + tab).getElementsByTagName("*").length]; }"""
 TABS = ("overview", "health", "timeline", "labs", "labs-heatmap", "costs")
+# Body and activity's sections on the ten years, each with its cards (#276)
+SECTIONS = [["hs-body", ["h-body"]], ["hs-vitals", ["h-heart", "h-bp", "h-glucose", "h-temp", "h-oxygen"]], ["hs-sleep", ["h-sleep"]], ["hs-activity", ["h-activity"]]]
 
 
 def page_times(viewport, throttle=1):
     """{tab: median ms to the page ready, loaded on that tab}, {tab: median ms of its first draw with the period
-    "All"}, {tab: its elements}, any script or console errors, and what Costs' out-of-pocket list shows before and
-    after Show 200 more. throttle: Chromium's CPU slowdown (4: a phone)."""
+    "All"}, {tab: its elements}, any script or console errors, what Costs' out-of-pocket list shows before and
+    after Show 200 more, and Body and activity's sections with their cards (#276). throttle: Chromium's CPU slowdown
+    (4: a phone)."""
     from playwright.sync_api import sync_playwright
     errors, ready_ms, draw_ms, elements = [], {}, {}, {}
     with sync_playwright() as p:
@@ -460,6 +463,8 @@ def page_times(viewport, throttle=1):
                 ready()
                 ms, elements[tab] = page.evaluate(DRAW_JS, tab)
                 runs.append(ms)
+            if tab == "health":
+                sections = page.evaluate("() => [...document.querySelectorAll('#view-health .h-sec')].map(s => [s.id, [...s.querySelectorAll('.card')].map(c => c.id)])")
             draw_ms[tab] = round(statistics.median(runs))
         # Costs lists the out-of-pocket amounts 200 at a time (the page is still on it): Show 200 more adds the next
         # 200, the first of them focused
@@ -469,7 +474,7 @@ def page_times(viewport, throttle=1):
         more.click()
         paged += [page.evaluate(rows), page.evaluate("() => document.querySelector('#paidTable tbody tr:nth-child(201)').contains(document.activeElement)")]   # its button (#202)
         browser.close()
-    return ready_ms, draw_ms, elements, errors, paged
+    return ready_ms, draw_ms, elements, errors, paged, sections
 
 
 class PageBudgets(unittest.TestCase):
@@ -482,13 +487,14 @@ class PageBudgets(unittest.TestCase):
         self.assertEqual(over, {}, "over budget (docs/performance.md)")
 
     def test_desktop(self):
-        ready_ms, draw_ms, elements, errors, paged = page_times({"width": 1400, "height": 900})
+        ready_ms, draw_ms, elements, errors, paged, sections = page_times({"width": 1400, "height": 900})
         self.assertEqual(errors, [])
         self.assertEqual(paged, [200, "Show 200 more", 400, True])
+        self.assertEqual(sections, SECTIONS, "Body and activity's sections (#276)")
         self.check("", {"page_ready_ms": ready_ms, "tab_draw_ms": draw_ms, "tab_elements": elements})
 
     def test_phone(self):   # 375 px wide, with the CPU four times slower
-        ready_ms, draw_ms, _, errors, _ = page_times({"width": 375, "height": 800}, throttle=4)
+        ready_ms, draw_ms, _, errors, _, _ = page_times({"width": 375, "height": 800}, throttle=4)
         self.assertEqual(errors, [])
         self.check("phone_", {"page_ready_ms": ready_ms, "tab_draw_ms": draw_ms})
 
