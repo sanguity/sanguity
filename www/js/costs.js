@@ -3,13 +3,21 @@
 "use strict";
 /* ---------------------------------------------------------------- costs */
 /* the period is the records bar's (#171, core.js; "All" is every claim on file). by: the chart's bars, "month" or
-   "year" ("": by year once the claims shown span more than four years) */
-const costState = {q: "", cat: "", deniedOnly: false, sort: "d", dir: -1, limit: 200, by: "", seen: null};
+   "year" ("": by year once the claims shown span more than four years). view: the claims, or "paid", what was paid
+   out of pocket (#278); more: a view's More figures open */
+const costState = {q: "", cat: "", deniedOnly: false, sort: "d", dir: -1, limit: 200, by: "", seen: null, view: "claims", more: false};
 
 /* a summary tile (#260): the one tile component (app.css), its label, its figure and a line under it, a date in it
    kept on one line (#330); a figure to read, not a button */
 const statTile = (label, value, sub, id) => el("div", {class: "tile", id: id || null},
   el("span", {class: "lbl", text: label}), el("span", {class: "val", text: value}), sub ? el("span", {class: "delta"}, keepDates(sub)) : null);
+/* a view's figures (#278): three to read first, the rest (and after them, more) under More figures, open or shut as
+   last left */
+function costFigures(box, head, rest, more) {
+  box.append(el("div", {class: "stats"}, ...head));
+  if (rest.length || more) box.append(el("details", {class: "more cost-more", open: costState.more || null, ontoggle: e => { costState.more = e.target.open; }},
+    el("summary", {text: "More figures"}), rest.length ? el("div", {class: "stats"}, ...rest) : null, more));
+}
 function costRows() { return inPeriod(DATA.costs || []); }
 const isDenied = r => /DENIED/i.test(r.status || "");
 const sumOf = (rows, k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
@@ -27,20 +35,22 @@ function renderCosts() {
   if (costState.seen !== seen) { costState.seen = seen; costState.limit = 200; paidState.q = ""; paidState.open = null; paidState.limit = 200; }
   const rows = costRows();
   const periodText = periodLabel(claims ? "all claims on file" : "everything on file");
-  if (claims) box.append(el("div", {class: "toolbar"}, el("span", {class: "hint", style: {margin: 0}, text: insurerHint(DATA.costs)})));
   if (!claims) { renderPaid(box, rows, periodText); return; }   // payments only: no claims to chart or list
-  // stat tiles
+  // Claims | What you paid (#278): the insurance story or the money out of pocket, each with its own figures
+  box.append(el("div", {class: "toolbar"},
+    el("div", {class: "seg", id: "costView", role: "group", "aria-label": "Show"}, ...[["claims", "Claims"], ["paid", "What you paid"]].map(([k, l]) =>
+      el("button", {type: "button", "aria-pressed": costState.view === k, text: l, onclick: () => { if (costState.view !== k) { costState.view = k; hideTip(); keepFocus(renderCosts); } }}))),
+    costState.view === "paid" ? null : el("span", {class: "hint", style: {margin: 0}, text: insurerHint(DATA.costs)})));   // where the claims came from
+  if (costState.view === "paid") { renderPaid(box, rows, periodText); return; }
   const billed = sumOf(rows, "billed"), paid = sumOf(rows, "paid"), owe = sumOf(rows, "owe");
   const denied = rows.filter(isDenied).length;
   const tile = statTile;
-  box.append(el("div", {class: "stats"},
-    tile("Billed by providers", usd(billed), "list prices, before insurance"),
+  costFigures(box, [tile("Your share", usd(owe), "per the insurers, before your payments"),
     tile("Paid by insurance", usd(paid), billed ? `${Math.round(paid / billed * 100)}% of billed` : ""),
-    tile("Your share", usd(owe), "per the insurers, before your payments"),
-    tile("Discounts & not covered", usd(Math.max(0, billed - paid - owe)), "network discounts, write-offs, denials"),
+    tile("Billed by providers", usd(billed), "list prices, before insurance")],
+  [tile("Discounts & not covered", usd(Math.max(0, billed - paid - owe)), "network discounts, write-offs, denials"),
     tile("Claims", rows.length.toLocaleString(), `${rows.filter(r => r.kind === "pharmacy").length} pharmacy fills`),
-    tile("Denied", denied.toLocaleString(), denied ? `${rows.filter(r => /PROVIDER_DENIED/i.test(r.status)).length} provider-denied` : "")));
-  renderPaid(box, rows, periodText);
+    tile("Denied", denied.toLocaleString(), denied ? `${rows.filter(r => /PROVIDER_DENIED/i.test(r.status)).length} provider-denied` : "")]);
   // the chart, by month or by year
   const ds = rows.map(r => r.d).sort(), span = ds.length ? (+ds.at(-1).slice(0, 4) - +ds[0].slice(0, 4)) * 12 + (+ds.at(-1).slice(5, 7) - +ds[0].slice(5, 7)) + 1 : 0;
   const by = costState.by || (span > 48 ? "year" : "month");
@@ -73,10 +83,10 @@ function renderCosts() {
     const g = groupCosts(rx, r => r.title.replace(/\s+\d.*$/, ""));
     const pc = el("div", {class: "card"}, el("h2", {text: `Prescriptions (${rx.length} fills)`}));
     pc.append(scrollBox({class: "tablewrap", "aria-label": "Prescriptions, by drug", style: {maxHeight: "360px"}}, el("table", {class: "data"},
-      el("thead", {}, el("tr", {}, ["Drug", "Fills", "First", "Last", "Insurance paid", "Your share"].map(h => el("th", {text: h})))),
+      el("thead", {}, el("tr", {}, ["Drug", "Fills", "First", "Last", "Insurance paid", "Your share"].map((h, i) => el("th", {class: i === 1 || i > 3 ? "num" : null, text: h})))),
       el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; renderCosts(); $("#costTable").scrollIntoView({behavior: smoothly()}); }},
-        el("td", {}, el("button", {class: "cell-btn", type: "button", text: x.key})), el("td", {text: x.n}), el("td", {text: fmtD(dayTs(x.first))}), el("td", {text: fmtD(dayTs(x.last))}),
-        el("td", {text: usd(x.paid)}), el("td", {text: usd(x.owe)})))))));
+        el("td", {}, el("button", {class: "cell-btn", type: "button", text: x.key})), el("td", {class: "num", text: x.n}), el("td", {text: fmtD(dayTs(x.first))}), el("td", {text: fmtD(dayTs(x.last))}),
+        el("td", {class: "num", text: usd(x.paid)}), el("td", {class: "num", text: usd(x.owe)})))))));
     box.append(pc);
   }
   // claims table
@@ -100,10 +110,12 @@ function renderCosts() {
       () => { Object.assign(costState, {q: "", cat: "", deniedOnly: false}); renderCosts(); }, () => $("#costTable input.search")),
     el("p", {class: "hint", text: totals}));
   const cols = [["d", "Date"], ["title", "Service / drug"], ["prov", "Provider"], ["cat", "Type"], ["billed", "Billed"], ["paid", "Ins. paid"], ["owe", "Your share"], ["status", "Status"]];
-  tc.append(scrollBox({class: "tablewrap", "aria-label": "Claims", style: {maxHeight: "none"}}, el("table", {class: "data"},
+  const money = ["billed", "paid", "owe"];   // right-aligned, in tabular figures (#278)
+  // under 600 px each claim is a stacked row, its headers a row of sort buttons (.claims, app.css; #278)
+  tc.append(scrollBox({class: "tablewrap", "aria-label": "Claims", style: {maxHeight: "none"}}, el("table", {class: "data claims"},
     // a column's sort is a button in its header, its order said by aria-sort; a claim opens from its name, a button, or
     // anywhere on its row by pointer (#202: by keyboard too, and said as what they are)
-    el("thead", {}, el("tr", {}, cols.map(([key, h], i) => el("th", {scope: "col", style: {whiteSpace: "nowrap"}, "aria-sort": costState.sort === key ? (costState.dir > 0 ? "ascending" : "descending") : null},
+    el("thead", {}, el("tr", {}, cols.map(([key, h], i) => el("th", {scope: "col", class: money.includes(key) ? "num" : null, style: {whiteSpace: "nowrap"}, "aria-sort": costState.sort === key ? (costState.dir > 0 ? "ascending" : "descending") : null},
       el("button", {class: "cell-btn", type: "button", onclick: () => {
         costState.dir = costState.sort === key ? -costState.dir : (["d", "billed", "paid", "owe"].includes(key) ? -1 : 1); costState.sort = key; renderCosts();
         $(`#costTable th:nth-child(${i + 1}) button`)?.focus(); }},   // the order an arrow (#257): ▲ and ▼ say out of range
@@ -111,8 +123,9 @@ function renderCosts() {
     el("tbody", {}, list.slice(0, costState.limit).map(r => el("tr", {class: "link", onclick: () => openEvent(byId.get(r.id))},
       el("td", {text: fmtD(dayTs(r.d))}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: r.title.length > 60 ? r.title.slice(0, 59) + "…" : r.title})),
       el("td", {text: r.prov}), el("td", {text: r.cat}),
-      el("td", {text: usd(r.billed)}), el("td", {text: usd(r.paid)}), el("td", {class: r.owe > 0 ? "" : "", text: usd(r.owe)}),
-      el("td", {class: isDenied(r) ? "abn" : "", text: (r.status || "").replace(/_/g, " ").toLowerCase()})))))));
+      ...money.map(k => el("td", {class: "num", text: usd(r[k])})),
+      // its status only when it isn't the usual one (#278): "processed", or "paid" from a FHIR plan
+      el("td", {class: isDenied(r) ? "abn" : null, text: (s => /^(processed|paid)?$/.test(s) ? "" : s)((r.status || "").replace(/_/g, " ").toLowerCase())})))))));
   if (list.length > costState.limit) tc.append(el("button", {class: "btn", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - costState.limit)} more`, onclick: () => { costState.limit += 200; renderCosts(); }}));
   box.append(tc);
 }
@@ -230,12 +243,15 @@ function renderPaid(box, claimRows, periodLabel) {
   const prem = sum(counted.filter(r => /premium/i.test(r.group)));
   const hsa = sum(counted.filter(r => r.hsa === "HSA")), fsa = sum(counted.filter(r => r.hsa === "FSA"));
   const dups = rows.filter(r => r.dup != null).length, matched = pays.filter(r => r.claim).length;
-  const tiles = [tile("Total out of pocket", usd(sum(counted)), `${pays.length} payment${pays.length === 1 ? "" : "s"}${shares.length ? ` + ${shares.length} claim share${shares.length === 1 ? "" : "s"}` : ""}`, "oopTotal"),
-    tile("Payments", usd(sum(pays)), [typed && `${usd(typed)} typed in`, exp && `${usd(exp)} from an export`].filter(Boolean).join("\u00a0· ") || "none in this period")];
-  if (claims) tiles.push(tile("Claim shares with no payment", usd(sum(shares)), "per the insurers; counted until a payment matches"),
-    tile("Payments matched to claims", matched.toLocaleString(), dups ? `${dups} that arrived twice, counted once` : "by amount, date and provider, or by hand"));
+  // the figures (#278): the total and its two parts first (with no claims, the HSA's), the rest under More figures
+  const hsaTile = tile("Paid with an HSA", usd(hsa), "tagged HSA", "oopHsa");
+  const head = [tile("Total out of pocket", usd(sum(counted)), `${pays.length} payment${pays.length === 1 ? "" : "s"}${shares.length ? ` + ${shares.length} claim share${shares.length === 1 ? "" : "s"}` : ""}`, "oopTotal"),
+    tile("Payments", usd(sum(pays)), [typed && `${usd(typed)} typed in`, exp && `${usd(exp)} from an export`].filter(Boolean).join("\u00a0· ") || "none in this period"),
+    claims ? tile("Claim shares with no payment", usd(sum(shares)), "per the insurers; counted until a payment matches") : hsaTile];
+  const tiles = [];
+  if (claims) tiles.push(tile("Payments matched to claims", matched.toLocaleString(), dups ? `${dups} that arrived twice, counted once` : "by amount, date and provider, or by hand"), hsaTile);
   else if (dups) tiles.push(tile("Counted once", dups.toLocaleString(), "payments that arrived twice"));
-  tiles.push(tile("Paid with an HSA", usd(hsa), "tagged HSA", "oopHsa"), tile("Paid with an FSA", usd(fsa), "tagged FSA", "oopFsa"));
+  tiles.push(tile("Paid with an FSA", usd(fsa), "tagged FSA", "oopFsa"));
   if (prem) tiles.push(tile("Insurance premiums", usd(prem), counted.some(r => r.est && /premium/i.test(r.group)) ? "includes estimated months" : "paid from your accounts"));
   const bal = meta.balance || {}, settled = bal.owed === 0 && bal.asOf ? fmtD(dayTs(bal.asOf)) : "";
   if (claims && has("export")) {   // the finance export's view: what the insurers listed against the bills paid
@@ -243,19 +259,18 @@ function renderPaid(box, claimRows, periodLabel) {
     tiles.push(tile(gap >= 0 ? (settled ? "Reduced or forgiven" : "Share not yet paid") : "Paid beyond listed share", usd(Math.abs(gap)),
       gap >= 0 ? (settled ? `negotiated down or written off\u00a0· you owe $0 as of ${settled}` : "still owed, on a plan, or reduced") : "includes bills from earlier periods"));
   }
-  card.append(el("div", {class: "stats mt-3"}, ...tiles));
-  // HSA and FSA by year
+  // HSA and FSA by year, under More figures too
   const years = new Map();
   for (const r of counted) if (r.hsa) {
     const y = years.get(r.d.slice(0, 4)) || {HSA: 0, FSA: 0, n: 0, rc: 0};
     y[r.hsa] += r.counted; y.n++; if (r.receipt != null) y.rc++;
     years.set(r.d.slice(0, 4), y);
   }
-  if (years.size) card.append(el("div", {id: "oopTax"}, el("h3", {class: "sub", text: "HSA and FSA, by year"}),
+  costFigures(box, head, tiles, years.size ? el("div", {id: "oopTax", class: "card"}, el("h2", {text: "HSA and FSA, by year"}),
     scrollBox({class: "tablewrap", "aria-label": "HSA and FSA, by year"}, el("table", {class: "data"},   // its columns scroll on a phone: a tab stop while they do (#335, #340)
-      el("thead", {}, el("tr", {}, ["Year", "HSA", "FSA", "Amounts", "With a receipt"].map(h => el("th", {text: h})))),
+      el("thead", {}, el("tr", {}, ["Year", "HSA", "FSA", "Amounts", "With a receipt"].map((h, i) => el("th", {class: i ? "num" : null, text: h})))),
       el("tbody", {}, [...years.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([y, v]) => el("tr", {},
-        el("td", {text: y}), el("td", {text: usd2(v.HSA)}), el("td", {text: usd2(v.FSA)}), el("td", {text: v.n}), el("td", {text: v.rc}))))))));
+        el("td", {text: y}), ...[usd2(v.HSA), usd2(v.FSA), v.n, v.rc].map(t => el("td", {class: "num", text: t})))))))) : null);
   // cumulative: share listed vs bills paid
   if (claims) {   // Chart | Table (#60): the table by month
     const bills = pays.filter(r => r.group === "Medical bills");
@@ -310,7 +325,7 @@ function renderPaid(box, claimRows, periodLabel) {
   const toggle = r => { paidState.open = paidState.open === oopKey(r) ? null : oopKey(r); renderCosts(); const e = $("#oopEdit"); if (e) e.scrollIntoView({block: "nearest"}); };
   const shown = Math.max(paidState.limit, list.findIndex(r => oopKey(r) === paidState.open) + 1);   // the open one too
   tw.append(scrollBox({class: "tablewrap", "aria-label": "Every amount out of pocket", style: {maxHeight: "420px"}}, el("table", {class: "data oop"},
-    el("thead", {}, el("tr", {}, ["Date", "Paid to", "For", "Where the number came from", "HSA/FSA", "Amount"].map(h => el("th", {text: h})))),
+    el("thead", {}, el("tr", {}, ["Date", "Paid to", "For", "Where the number came from", "HSA/FSA", "Amount"].map((h, i) => el("th", {class: i === 5 ? "num" : null, text: h})))),
     // a row opens its editor under the table, from anywhere on it by pointer; its date is the button that says whether
     // it's open (#202: a table's row can't be expanded itself)
     el("tbody", {}, list.slice(0, shown).map(r => el("tr", {class: "link" + (r.dup != null ? " oop-dup" : ""), "data-oop": oopKey(r), onclick: () => toggle(r)},
@@ -320,7 +335,7 @@ function renderPaid(box, claimRows, periodLabel) {
       el("td", {"data-tip": r.memo || null, text: r.type === "claim" ? `${r.group} · ${r.claim.title}` : r.group + (r.claim ? " · paid a claim" : "")}),
       el("td", {text: srcText(r) + (r.receipt != null ? " · receipt" : "")}),
       el("td", {text: r.hsa || ""}),
-      el("td", {style: {fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: r.amount < 0 ? "var(--good-text)" : null},
+      el("td", {class: "num", style: {whiteSpace: "nowrap", color: r.amount < 0 ? "var(--good-text)" : null},
         text: (r.amount < 0 ? `${usd2(-r.amount)} refund` : usd2(r.amount)) + (r.dup != null ? " · counted once" : "")})))))));
   if (list.length > shown) tw.append(el("button", {class: "btn", type: "button", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - shown)} more`,
     onclick: () => { paidState.limit = shown + 200; renderCosts(); $(`#paidTable tbody tr:nth-child(${shown + 1}) .cell-btn`)?.focus(); }}));   // the first one added

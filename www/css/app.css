@@ -1355,6 +1355,28 @@ table.data.oop tr[aria-expanded=true] td{background:var(--hover)}
 .oop-form{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);align-items:flex-end}
 .oop-form label{display:flex;flex-direction:column;gap:3px;font-size:var(--fs-2);color:var(--ink2);min-width:0;max-width:100%}
 .oop-form select{max-width:100%}
+/* Costs (#278): money right-aligned; More figures page-wide; under 600 px a claim per stacked row (name and your share;
+   when, who, what; billed and insurance paid; laid out exactly, #338, not rewrapped as the fonts come), the headers a
+   row of sort buttons */
+table.data .num{text-align:right}
+details.more.cost-more>:not(summary){max-width:none;color:var(--ink);font-size:var(--fs-3)}
+@media (max-width:600px){
+  table.claims,.claims>*{display:block}
+  .claims tr{display:flex;flex-wrap:wrap;gap:0 var(--sp-2)}
+  table.claims :is(th,td){position:static;border:0;padding:0;text-align:left;color:var(--ink2)}
+  .claims thead tr::before{content:"Sort by";color:var(--muted);padding-block:var(--sp-1)}
+  table.claims th{padding-block:var(--sp-1)}
+  .claims tbody tr{padding:var(--sp-2) 0;border-top:1px solid var(--grid);text-rendering:geometricPrecision}
+  .claims td:empty{display:none}
+  table.claims td:nth-child(2){order:-3;flex:1 1 0;color:var(--ink)}
+  table.claims td:nth-child(7){order:-2;color:var(--ink);font-weight:var(--fw-semibold)}
+  .claims td:nth-child(7)::before{content:"Your share ";color:var(--ink2);font-weight:var(--fw-regular)}
+  .claims tbody tr::before{content:"";order:-1;flex-basis:100%}
+  .claims td:is(:nth-child(5),:nth-child(6)){order:1}
+  .claims td:nth-child(5)::before{content:"Billed "}
+  .claims td:nth-child(6)::before{content:"· Insurance paid "}
+  .claims tbody tr::after{content:"";flex-basis:100%}
+}
 /* the records bar's one period (#171, its controls #191 below); the Labs tab's Chart / Heatmap switch above its one range
    caption (#172) */
 /* opaque: an open select's list can't show a see-through background, and drew white under light text in dark mode */
