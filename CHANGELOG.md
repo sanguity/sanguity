@@ -1327,6 +1327,13 @@ Everything on `main` so far; it becomes the first tagged release.
   theme picked offline unsaved, until a reload; it goes back to live data by itself now, as the other pages do, and
   saves the theme. A page opened offline had no visible heading; the banner carries the page's own ("Settings",
   "Records" when this device keeps none).
+- **Body and activity's cards stay put on a phone as the fonts arrive** (#426): a chart card's heading beside its
+  Chart | Table fit in the stand-in fonts and in the real ones, but not in Source Serif beside Inter's stand-in, so for
+  a moment the control dropped under it and the cards below jumped (the browser check's font swap failed now and
+  then). A heading beside a single control now wraps in its own column instead, which the control's height on a phone
+  holds two lines of, so the swap moves nothing; at 320 px the longer headings sit beside the control too. The
+  browser check lets Source Serif through first, so it catches that every time, and checks Body and activity at
+  320 px too.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
