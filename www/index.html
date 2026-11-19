@@ -52,7 +52,7 @@
       <div class="card">
         <h2>Timeline</h2>
         <p class="hint">Click or tap any mark for details. Shaded columns are hospital stays.</p>
-        <details class="more"><summary>More about this</summary><p>Scroll or pinch to zoom, drag to pan, and double-click or double-tap to show everything.</p></details>
+        <div class="about-words" hidden><p>Scroll or pinch to zoom, drag to pan, and double-click or double-tap to show everything.</p></div>
         <svg id="tl" role="img" aria-label="Timeline of medical events"></svg>
       </div>
       <div class="card" id="tlEvents">
@@ -83,18 +83,17 @@
           <label hidden><input type="checkbox" id="optSmooth"> 7-day average</label>
         </div>
         <div class="labs-aids chart-only">
-          <div class="menu labs-pop"><button class="btn" id="legendBtn" type="button" aria-expanded="false" aria-controls="legendList">Legend<svg class="icon i-chevron-down" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-chevron-down"/></svg></button>
+          <div class="menu pop"><button class="btn" id="legendBtn" type="button" aria-expanded="false" aria-controls="legendList">Legend<svg class="icon i-chevron-down" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-chevron-down"/></svg></button>
             <div class="menu-list legend chart-legend" id="legendList" role="group" aria-labelledby="legendBtn" popover>
               <span><i style="background:var(--c-lab);height:3px"></i>Value</span>
               <span><i class="refband" style="background:var(--good);opacity:.25"></i>Reference range</span>
               <span><b class="abn-key" aria-hidden="true">▲▼</b>Out of range: above, below</span>
               <span><i style="background:var(--stay)"></i>Hospital stay</span>
             </div></div>
-          <div class="menu labs-pop"><button class="iconbtn" id="chartsInfoBtn" type="button" aria-label="About the charts" data-tip="About the charts" aria-expanded="false" aria-controls="chartsInfo"><svg class="icon i-info" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-info"/></svg></button>
-            <div class="menu-list pop-text" id="chartsInfo" role="group" aria-label="About the charts" popover>
-              <p>Drag any chart sideways to move through time: every chart moves together.</p>
-              <p>Scroll or pinch to zoom, double-click to show everything, and hover to compare the same date across charts.</p>
-            </div></div>
+          <div class="about-words" id="chartsInfo" data-title="the charts" hidden>   <!-- its ⓘ (#280, util.js) -->
+            <p>Drag any chart sideways to move through time: every chart moves together.</p>
+            <p>Scroll or pinch to zoom, double-click to show everything, and hover to compare the same date across charts.</p>
+          </div>
         </div>
       </div>
       <p class="range-note">Out-of-range values are flagged against the reference ranges in your own lab reports. This isn't medical advice.</p>
@@ -117,7 +116,7 @@
         <div class="lab-find"><input type="search" id="hmQ" placeholder="Filter lab names…" aria-label="Filter lab names" aria-describedby="hmQn" autocomplete="off" spellcheck="false"><span class="n" id="hmQn"></span></div></div>
       <p class="fsum" id="hmSum" hidden></p>
       <p class="hint">Each column is a blood draw, each row a lab value, colored by where it sat against its reference range.</p>
-      <details class="more"><summary>More about this</summary><p>A gray strip is a hospital stay, and ◆ a procedure. Hover a cell for the value, and click to open that day. Drag sideways to move through time, scroll or pinch to zoom, and double-click to show everything.</p></details>
+      <div class="about-words" hidden><p>A gray strip is a hospital stay, and ◆ a procedure. Hover a cell for the value, and click to open that day. Drag sideways to move through time, scroll or pinch to zoom, and double-click to show everything.</p></div>
       <div class="hm-legend" id="hmLegend"></div>
       <div class="hm-wrap" id="hmWrap"><svg id="hm" class="pz" role="img" aria-label="Heatmap of lab values against reference ranges"></svg><svg id="hmAxis" class="pz" aria-hidden="true"></svg></div>
       <div id="hmTable" hidden></div>

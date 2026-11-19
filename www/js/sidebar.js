@@ -51,7 +51,7 @@ function sideNav(o) {
   const nav = el("nav", {class: "set-nav", id: o.id, "aria-label": o.page + " sections"}, search, list);
   const none = el("div", {id: pre + "None", hidden: ""});
   const lone = el("button", {class: "btn small", type: "button", id: pre + "Reset", hidden: ""});   // a lone card's Reset, beside the h1
-  let current = null, chosen = false, pending = false, drawn = null, shown = [];
+  let current = null, chosen = false, pending = false, drawn = null, shown = [], loneInfo = null;
   const dirtyIn = ps => ps.filter(p => p.hasAttribute("data-dirty"));
   const bar = o.bar ? groupBar() : null;
 
@@ -102,6 +102,11 @@ function sideNav(o) {
     const r = alone ? partsOf(current).find(p => !p.hidden)?.querySelector(":scope > .set-hd > .btn:not([hidden])") : null;
     if (r) { lone.textContent = r.textContent; lone.onclick = () => r.click(); }
     if (lone.hidden !== !r) lone.hidden = !r;
+    // and its ⓘ (#280, util.js), moved beside the h1, and back beside its own title once that shows
+    const part = alone ? partsOf(current).find(p => !p.hidden) : null;
+    const info = part && (loneInfo && part.contains(loneInfo.sgHome) ? loneInfo : part.querySelector(":scope > .set-hd > .info"));
+    if (loneInfo && loneInfo !== info) { loneInfo.sgHome.querySelector(":scope > h2").after(loneInfo); loneInfo = null; }
+    if (info && info !== loneInfo) { info.sgHome = info.parentElement; $("#groupTitle").after(info); loneInfo = info; }
     shown = [...on];
     if (bar) bar.draw();
     const found = !!q && on.size > 0;
@@ -235,6 +240,7 @@ function sideNav(o) {
     ($("#intro") || nav).after(none);
     $("#groupTitle")?.after(lone);
     search.addEventListener("input", apply);
+    aboutWire.after = refresh;   // a card's ⓘ made once it's drawn (util.js): moved beside the h1 if the card's alone
     addEventListener("hashchange", () => { const r = fromHash(); if (r.g) show(r.g, {scrollTo: r.el, push: !r.el, by: true}); });
     for (const p of pools) new MutationObserver(refresh).observe(p, {childList: true});
     // a part shown, hidden or changed: only a real change (a hidden set again to what it was is a record too)

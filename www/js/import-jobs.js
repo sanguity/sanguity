@@ -6,8 +6,8 @@
    each (#23: confirm it, pick another or keep it separate; remembered for later imports), results possibly the same as
    one another source brought (#96: ticked to show once), with Save and Cancel. Saving polls again and shows what came
    in, with a link to the timeline; cancelling throws the import and its upload away.
-   Self-contained plain script: no inline code (the pages' CSP allows scripts from js/ only), nothing it needs
-   from other files. */
+   Plain script: no inline code (the pages' CSP allows scripts from js/ only); from other files it needs only
+   util.js's aboutWords, for the ⓘ (#280). */
 "use strict";
 (function () {
   const STAGES = {queued: "Waiting for another import to finish…", detecting: "Recognising the files…",
@@ -28,8 +28,8 @@
     for (const c of kids.flat()) if (c != null) e.append(c);
     return e;
   }
-  // "More about this" (#176): the same toggle as util.js moreAbout(), built here so this file needs nothing else
-  const more = text => node("details", {class: "more"}, node("summary", {text: "More about this"}), node("p", {text}));
+  // the background behind an ⓘ at the end of a part's instructions (#280, util.js aboutWords), named for what it's about
+  const about = (title, text) => aboutWords({title}, text);
   function call(path, opts) {
     opts = opts || {};
     const write = opts.method && opts.method !== "GET";
@@ -112,10 +112,10 @@
     });
     const part = node("details", {class: "imp-labs", open: ""},
       node("summary", {text: `${plural(listed.length, ["lab name", "lab names"])} to match`}),
-      node("p", {class: "hint", text: "Sanguity doesn't know these test names. Put each in the series it belongs to, or keep it separate; " +
-        "your choice is used for later imports from this source, on every profile of this server."}),
-      more("In a series, a result is charted with the same test from other labs. Only the series changes: each result keeps the " +
-        "name the lab gave it. A match made before can be changed here for this import; to change it for good, ask an admin (Admin, Lab name matches)."),
+      node("p", {class: "howto"}, "Sanguity doesn't know these test names. Put each in the series it belongs to, or keep it separate; " +
+        "your choice is used for later imports from this source, on every profile of this server. ",
+        about("matching lab names", "In a series, a result is charted with the same test from other labs. Only the series changes: each result keeps the " +
+        "name the lab gave it. A match made before can be changed here for this import; to change it for good, ask an admin (Admin, Lab name matches).")),
       node("ul", {}, rows.map(r => r.li)));
     // sent, and remembered for later imports: a suggestion left chosen, or any choice changed by hand. A name matched
     // before is sent only when changed (for this import only); "keep it separate" left as it was isn't sent
@@ -134,10 +134,10 @@
     const boxes = [];
     const part = node("details", {class: "imp-same", open: ""},
       node("summary", {text: `${plural(listed.length, ["result", "results"])} possibly in the profile already, from another source`}),
-      node("p", {class: "hint", text: "Each of these has the same test, time and value as a result another source brought. " +
-        "Tick the ones that are the same result to show them once; nothing is merged unless you tick it."}),
-      more("Values are compared with their units converted. A result shown once lists both sources, and you can undo the link " +
-        "later from the result's panel."),
+      node("p", {class: "howto"}, "Each of these has the same test, time and value as a result another source brought. " +
+        "Tick the ones that are the same result to show them once; nothing is merged unless you tick it. ",
+        about("results shown once", "Values are compared with their units converted. A result shown once lists both sources, and you can undo the link " +
+        "later from the result's panel.")),
       node("ul", {}, listed.map(x => {
         const b = node("input", {type: "checkbox", value: x.ref, "aria-label": `Same result: ${x.name} ${valueText(x)}`});
         boxes.push(b);

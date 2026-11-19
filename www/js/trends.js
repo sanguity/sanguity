@@ -96,7 +96,7 @@ function evHead(k, cx, cy) {
   const key = (k, words) => el("span", {class: "jlegend marks-key", hidden: true}, el("svg:svg", {viewBox: "0 0 10 10", width: 10, height: 10, "aria-hidden": "true"}, evHead(k, 5, 5)), words);
   if (legend) legend.append(key("procedure", "Procedure"), key("imaging", "Imaging"));
   // the header's Legend and ⓘ (#279, index.html): each opens under its button as a menu does (nav.js), words, not items
-  for (const [btn, list] of [["#legendBtn", "#legendList"], ["#chartsInfoBtn", "#chartsInfo"]]) if ($(btn)) menuWire({btn: $(btn), list: $(list), text: true});
+  if ($("#legendBtn")) menuWire({btn: $("#legendBtn"), list: $("#legendList"), text: true});   // (the ⓘ: util.js aboutWire, #280)
 }
 function shortTitle(t) {
   let s = t.replace(/\s*\(.*?\)\s*/g, " ").split(/\s+(?:WITH|W\/?O?|WO|AND)\s+/i)[0].trim().toLowerCase();

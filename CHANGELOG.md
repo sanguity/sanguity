@@ -1421,6 +1421,15 @@ Everything on `main` so far; it becomes the first tagged release.
   drawer), **Past** (closed until opened) and the medications over the records bar's period. It's hideable like any
   tab; a tab layout saved before it gets it after Body and activity, not at the end, on the server and in a copy kept
   offline. With six tabs, a phone's bar shows four and More, and from 1,100 px down some go under More.
+- **Help text: one line under a heading, the rest behind ⓘ** (#280): most cards ran heading, hint, "More about this",
+  then content, with up to six lines of hint before the first control (Account's offline records) and 26 "More about
+  this" toggles across the pages. Now a heading has at most one line of hint at 1,400 px. A card's background (how it
+  works, what stays private, where its numbers come from) is behind an ⓘ beside its heading, named "About" and the
+  heading, which opens the words under it as Labs' Legend does (a sheet on a phone) and closes with Escape, focus back
+  on it; a card alone in its group has it beside the page's title. Steps read while doing something are in a
+  disclosure named for them ("How to set up Health Auto Export on an iPhone"). What someone needs in order to act stays
+  in full, at 14 px: what to upload, what a field expects, a warning before turning something on. Settings' own help
+  splits the same way (a line break in the server's words), and no disclosure is labelled "More about this".
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

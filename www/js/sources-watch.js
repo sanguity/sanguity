@@ -44,8 +44,8 @@
       }});
     box.replaceChildren(...[   // without the parts left out: replaceChildren would write a null out as text (#175)
       el("h2", {text: "Upload from the phone"}),   // (the group, Phone and watch, holds Cycle tracking too: its title is the h1, #409)
-      el("p", {class: "hint", text: "A phone app sends watch, sleep and smart-scale readings to this profile: Life Dashboard Companion on Android, or Health Auto Export on iPhone. In the app, set:"}),
-      moreAbout("Life Dashboard Companion reads Health Connect, and Health Auto Export reads Apple Health. Garmin, Fitbit, Withings and other apps come through them, by writing to Health Connect or Apple Health.",
+      el("p", {class: "hint", text: "Life Dashboard Companion (Android) or Health Auto Export (iPhone) sends watch, sleep and scale readings here."}),
+      aboutWords("Life Dashboard Companion reads Health Connect, and Health Auto Export reads Apple Health. Garmin, Fitbit, Withings and other apps come through them, by writing to Health Connect or Apple Health.",
         "Each profile has its own secret, so each person's phone uploads to their own profile. Readings are split into days in the phone's own time zone."),
       el("dl", {class: "kv w-kv"},
         el("dt", {text: "Last upload"}), el("dd", {id: "watchLast", text: st.last ? fmtWhen(st.last) : "Nothing received yet"}),
@@ -61,8 +61,9 @@
   /* Health Auto Export's setup (#148): a REST API automation per data type, with the secret in a header. */
   function hae(addr, secret) {
     const header = "Bearer " + (secret || "<the secret>"), li = (...c) => el("li", {}, ...c), b = t => el("b", {text: t});
-    return el("div", {class: "w-hae", id: "watchHae"},
-      el("h3", {class: "sub", text: "iPhone: Health Auto Export"}),
+    // the steps, read while setting the app up: a disclosure named for them (#280)
+    return el("div", {class: "w-hae"}, el("p", {class: "howto", text: "Android: in Life Dashboard Companion, set the upload address and the secret above; it signs each upload with the secret."}),
+      el("details", {class: "more", id: "watchHae"}, el("summary", {text: "How to set up Health Auto Export on an iPhone"}),
       el("ol", {class: "w-steps"},
         li("In Health Auto Export (its Premium subscription or trial), open ", b("Automations"), " and add a ", b("REST API"), " automation."),
         li(b("URL"), ": the upload address above (", el("code", {class: "w-addr", text: addr}), ")."),
@@ -73,8 +74,7 @@
         li(b("Sync"), ": hourly or daily, with the date range ", b("Since last sync"), " or ", b("Today"), ". Repeated or overlapping uploads count once."),
         li("Add a second automation the same way with the data type ", b("Workouts"), ", with the workouts' heart rate data included (for heart rate zones)."),
         li("For a glucose meter or a continuous glucose monitor, a third with only ", b("blood glucose"), " and no time grouping, so each reading comes on its own."),   // blood glucose (#181)
-        li("For a watch's ECG recordings and irregular rhythm notifications, one with the data type ", b("ECG"), " and one with ", b("Heart Rate Notifications"), ", synced daily since the last sync (a recording is about 1 MB as the app sends it).")),   // #182
-      el("p", {class: "hint", text: "Android: in Life Dashboard Companion, set the upload address and the secret above; it signs each upload with the secret."}));
+        li("For a watch's ECG recordings and irregular rhythm notifications, one with the data type ", b("ECG"), " and one with ", b("Heart Rate Notifications"), ", synced daily since the last sync (a recording is about 1 MB as the app sends it)."))));   // #182
   }
 
   (async () => {

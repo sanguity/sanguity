@@ -52,7 +52,10 @@ const SgOutside = (() => {
       sayIn(msg, "Couldn't load the outside connections: " + e.message, true);
       return;
     }
-    $("#outsideLead").textContent = v.nothing_else;
+    // its first sentence the lead; the rest, and whose this lists, behind the heading's ⓘ (#280)
+    const [lead, ...rest] = v.nothing_else.split(/(?<=\.) /);
+    $("#outsideLead").textContent = lead;
+    $("#outsideMore").textContent = rest.join(" ");
     $("#outsideScope").textContent = v.admin ? "You're an admin, so this lists the whole install."
       : "This lists the profiles you own or edit. An admin sees the whole install.";
     const body = $("#outsideBody");

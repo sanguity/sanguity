@@ -84,7 +84,7 @@ async function load() {
     el("input", {type: "checkbox", value: s.id, checked: !(s.ask || s.off) || null}), s.label,   // off: a measure, unticked (#225)
     s.ask ? el("span", {class: "muted", text: " (only if you tick it, each time)"}) : null)));   // cycle records (#183)
   $("#keyHint").textContent = OPTS.keyLabs.length
-    ? `The key labs from Settings: ${OPTS.keyLabs.map(labelOf).join(", ")}. Add any others here.`
+    ? "Your key labs from Settings, below; add any others here."   // (the chips under it name them, #280)
     : "No key labs with results (they're set in Settings). Add labs here to trend them.";
   $("#labNames").replaceChildren(...OPTS.labs.map(l => el("option", {value: l.label})));
   PICKED = []; drawPicked();

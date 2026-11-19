@@ -58,17 +58,19 @@ $("#sessOthers").onclick = async () => {
 
 /* ---------------------------------------------------------------- two-factor sign-in */
 const APPS = "an authenticator app such as Google Authenticator, Microsoft Authenticator, 1Password or Bitwarden";
+/* the line under the heading: a hint at rest, the steps to take while turning it on (#280: those stay in full) */
+const tfHint = (text, steps) => { const p = $("#tfHint"); p.textContent = text; p.className = steps ? "howto" : "hint"; };
 async function loadTwoFactor() {
   const st = await call("me/2fa"), body = $("#tfBody");
   say("#tfMsg", "");
   if (!st.on) {
-    $("#tfHint").textContent = `Ask for a code from ${APPS} as well as your password, so a stolen password alone can't ` +
-      "open your records." + (st.required ? " This server requires it." : "");
+    tfHint(`Ask for a code from an authenticator app as well as your password, so a stolen password alone can't open your records.` +
+      (st.required ? " This server requires it." : ""));
     body.replaceChildren(el("button", {class: "btn primary", type: "button", text: "Turn on", onclick: startTwoFactor}));
     return;
   }
-  $("#tfHint").textContent = `On. You have ${st.recovery_codes_left} recovery code${st.recovery_codes_left === 1 ? "" : "s"} left` +
-    (st.recovery_codes_left <= 3 ? ": make new ones soon." : ".");
+  tfHint(`On. You have ${st.recovery_codes_left} recovery code${st.recovery_codes_left === 1 ? "" : "s"} left` +
+    (st.recovery_codes_left <= 3 ? ": make new ones soon." : "."));
   const code = el("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "Code from the app", "aria-label": "Code from your authenticator app"});
   const pw = el("input", {type: "password", autocomplete: "current-password", placeholder: "Your password", "aria-label": "Your password"});
   body.replaceChildren(
@@ -90,7 +92,7 @@ async function startTwoFactor() {
   let s;
   try { s = await call("me/2fa/start", "POST"); } catch (e) { return say("#tfMsg", e.message, true); }
   const code = el("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "123 456", "aria-label": "Code from your authenticator app", required: true});
-  $("#tfHint").textContent = `Scan this with ${APPS}, then enter the code it shows. If you can't scan, type the key instead.`;
+  tfHint(`Scan this with ${APPS}, then enter the code it shows. If you can't scan, type the key instead.`, true);
   $("#tfBody").replaceChildren(
     el("div", {class: "tf-setup"},
       el("img", {src: s.qr, alt: "QR code for your authenticator app", width: 180, height: 180}),
@@ -103,9 +105,9 @@ async function startTwoFactor() {
 }
 function showRecoveryCodes(codes, justTurnedOn) {
   const text = "Sanguity recovery codes for " + ME.user.username + "\nEach works once, in place of a code from your app.\n\n" + codes.join("\n") + "\n";
-  $("#tfHint").textContent = (justTurnedOn ? "Two-factor sign-in is on. " : "") +
+  tfHint((justTurnedOn ? "Two-factor sign-in is on. " : "") +
     "Save these recovery codes somewhere safe, away from your phone. Each one signs you in once if you lose your phone. " +
-    "They won't be shown again.";
+    "They won't be shown again.", true);
   const done = el("button", {class: "btn primary small", type: "button", text: "I've saved them", onclick: async () => {
     if (ME.user.needs_two_factor) { location.replace("./"); return; }
     await Promise.all([loadTwoFactor(), loadPasskeys(), loadSessions()]);
@@ -131,9 +133,10 @@ async function loadPasskeys() {
   const st = await call("me/passkeys?origin=" + encodeURIComponent(location.origin));
   say("#pkMsg", "");
   const usable = passkeysWork() && !st.problem;
-  $("#pkHint").textContent = "Sign in with Face ID, Touch ID, Windows Hello, your phone or a security key: on its own, " +
-    "or as the step after your password. A passkey can't be phished or guessed, and your password still works too." +
-    (usable ? "" : " " + (st.problem || "This browser can't make passkeys here: open Sanguity at its https:// address."));
+  $("#pkHint").textContent = "Face ID, Touch ID, Windows Hello, your phone or a security key, on its own or after your password.";
+  // what's in the way, to act on, stays in full (#280)
+  $("#pkWhy").textContent = usable ? "" : st.problem || "This browser can't make passkeys here: open Sanguity at its https:// address.";
+  $("#pkWhy").hidden = usable;
   if (usable && st.user_handle)   // the device can forget passkeys removed here (or on another device)
     passkeySignalAccepted(st.site, st.user_handle, st.passkeys.filter(k => k.here).map(k => k.credential_id));
   const last = st.passkeys.length === 1 && st.required && !st.authenticator_app;

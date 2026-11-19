@@ -183,7 +183,7 @@ function targetsCard(p, a, pref, send, undo, saveBar, notSaved) {
   }
   return el("div", {},
     el("p", {class: "hint", text: "For readings taken at home: a target each, as your care team gave it. Optional; with none entered, nothing changes."}),
-    moreAbout("Body and activity draws each one on its chart, marks a reading at home above or below it with ▲ or ▼ and words, and says how many in the period were. " +
+    aboutWords("Body and activity draws each one on its chart, marks a reading at home above or below it with ▲ or ▼ and words, and says how many in the period were. " +
       "CGM time in your own range is shown beside the standard published range, each labelled. A visit summary or share link includes them only when you tick “Your targets for home readings”. " +
       "Sanguity never suggests a target or says what one should be. Values are in your units (Settings → Units). This isn't medical advice."),
     box);

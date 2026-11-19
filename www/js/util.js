@@ -25,10 +25,27 @@ const present = (...kids) => kids.flat().filter(k => k != null);
    "ov-row", ...pressable(() => openEvent(e))}, …). Its words are its name. A table's row gets a .cell-btn in a cell. */
 const pressable = fn => ({role: "button", tabindex: 0, onclick: fn,
   onkeydown: ev => { if ((ev.key === "Enter" || ev.key === " ") && ev.target === ev.currentTarget) { ev.preventDefault(); fn(ev); } }});
-/* "More about this" (#176): the rest of a card's explanation, a click away but still on the page and read by screen
-   readers. Strings become paragraphs; nulls are left out. Pages write the same <details class="more"> by hand. */
-const moreAbout = (...kids) => el("details", {class: "more"}, el("summary", {text: "More about this"}),
-  ...kids.flat().filter(k => k != null && k !== "").map(k => typeof k === "string" ? el("p", {text: k}) : k));
+/* the background to a part of a page (#280): how it works, where its numbers come from, what stays private. Behind
+   the ⓘ beside its heading (aboutWire, below), so a heading has one line of hint under it at most. Put where the
+   words are wanted, after the heading and its hint; strings become paragraphs, nulls are left out; a first {title}
+   names it ("About the charts") and puts its ⓘ there, where there's no heading to put it beside. Pages write the same
+   <div class="about-words" hidden> by hand (data-title for a title). moreAbout: its old name (#176), for meds.js and
+   medlog.js until they're moved to it. */
+function aboutWords(...kids) {
+  const o = kids[0] && !kids[0].nodeType && typeof kids[0] === "object" && !Array.isArray(kids[0]) ? kids.shift() : {};
+  const w = el("div", {class: "about-words", hidden: "", "data-title": o.title, id: o.id},
+    ...kids.flat().filter(k => k != null && k !== "").map(k => typeof k === "string" ? el("p", {text: k}) : k));
+  aboutWire.later.add(w);
+  if (aboutWire.later.size === 1) { queueMicrotask(aboutWire); requestAnimationFrame(() => aboutWire()); }
+  return w;
+}
+const moreAbout = aboutWords;
+/* a setting's or a section's help as the server words it (#280): its first line the hint under the heading, what
+   follows a line break (and more, more paragraphs) behind the heading's ⓘ. -> the nodes */
+const helpNodes = (help, ...more) => {
+  const [line, ...rest] = (help || "").split("\n"), words = [...rest, ...more].filter(Boolean);
+  return present(line ? el("p", {class: "hint", text: line}) : null, words.length ? aboutWords(...words) : null);
+};
 /* An empty state (#199): one sentence saying what would appear here, and the one next step, a link ({href, text}) or
    a button ({onclick, text}); none (null) for someone who can't take it. tag: "div" for a whole card's place, "li"
    inside a list. The records tabs, the Sources and Sharing lists and the journal use it. */
@@ -503,6 +520,75 @@ function icon(name, {label} = {}) {
   const svg = el("svg:svg", {class: `icon i-${name}`, "aria-hidden": "true", focusable: "false"}, el("svg:use", {href: `${ICON_SPRITE}#i-${name}`}));
   return label ? el("span", {class: "icon-l"}, svg, el("span", {class: "vh", text: label})) : svg;
 }
+
+/* ---- ⓘ (#280): a part's background (aboutWords, above) behind a button beside its heading, named "About <heading>"
+   (its tip too), opening the words under it as Labs' Legend does: a menu's popover of words (nav.js menuWire, text),
+   closed by the button again, Escape or a press elsewhere, focus kept on the button or put back on it; on a phone (700
+   px or narrower) in a sheet from the screen's foot, as the menus are, one sheet for them all. The heading is the
+   nearest before the words (beside them, or before the box they're in); the ⓘ goes after it, in the row it's in (a
+   card's .set-hd or .list-hd), or a .set-hd made around it. With a title, the ⓘ is where the words were. Each is done
+   once it's in the page: those there at first now (scripts load after the page's HTML), those made later as soon as
+   they're put in. */
+const ABOUT_PHONE = matchMedia("(max-width:700px)");
+function aboutWire() {
+  const later = aboutWire.later;
+  let did = 0;
+  for (const w of [...later, ...document.querySelectorAll(".about-words:not(.pop-text)")]) {
+    if (!w.isConnected) { if ((w.sgTries = (w.sgTries || 0) + 1) > 30) later.delete(w); continue; }
+    later.delete(w);
+    if (w.classList.contains("pop-text")) continue;
+    // its heading: the nearest before it within its card (or section, form, the drawer's body), never one outside
+    let h = null;
+    const stop = w.parentElement.closest(".card, section, form, dialog, #dbody, main");
+    if (!w.dataset.title) for (let n = w; n && !h && n !== stop; n = n.parentElement)
+      for (let x = n.previousElementSibling; x && !h; x = x.previousElementSibling)
+        h = x.matches("h1, h2, h3, h4") ? x : x.querySelector(":scope > :is(h1, h2, h3, h4)");
+    // the heading's own words: not its tags ("default", "not saved") or a count ("Journal (3)"); with none, what the
+    // part it's in is named by (the drawer: its title), and it's put where it is
+    const named = !h && !w.dataset.title && document.getElementById((w.closest("[aria-labelledby]")?.getAttribute("aria-labelledby") || "").split(" ")[0]);
+    const title = w.dataset.title || (h ? ([...h.childNodes].filter(c => c.nodeType === 3).map(c => c.data).join("").trim() || h.textContent.trim()).replace(/\s*\(\d[\d,]*\)$/, "")
+      : named?.textContent.trim() || "this part");
+    const name = "About " + title, id = w.id || "about" + (aboutWire.n = (aboutWire.n || 0) + 1);
+    const btn = el("button", {class: "btn quiet small", type: "button", id: id + "Btn", "aria-label": name, "data-tip": name, "aria-expanded": false, "aria-controls": id}, icon("info"));
+    w.removeAttribute("hidden");
+    Object.assign(w, {id, popover: "auto"});
+    w.classList.add("menu-list", "pop-text");
+    w.setAttribute("role", "group"); w.setAttribute("aria-label", name);
+    const box = el("span", {class: "menu pop info"});
+    if (h) {
+      let row = h.parentElement;
+      if (!row.matches(".set-hd, .list-hd, .ov-h")) { row = el("div", {class: "set-hd"}); h.replaceWith(row); row.append(h); }
+      h.after(box);
+    } else w.replaceWith(box);
+    box.append(btn, w);
+    did++;
+    const wire = () => {
+      menuWire({btn, list: w, text: true});
+      btn.addEventListener("click", () => { if (ABOUT_PHONE.matches) aboutSheet(btn, w); });
+      aboutMode(btn);
+    };
+    if (typeof menuWire === "function") wire(); else document.addEventListener("DOMContentLoaded", wire, {once: true});
+  }
+  if (later.size) requestAnimationFrame(() => aboutWire());
+  if (did) aboutWire.after?.();   // (sidebar.js: a lone card's ⓘ beside the h1)
+}
+aboutWire.later = new Set();
+/* a popover's on a wider screen, a sheet's on a phone (the button's click opens it: aboutSheet) */
+const aboutMode = btn => { const w = document.getElementById(btn.getAttribute("aria-controls")); if (ABOUT_PHONE.matches) w.hidePopover?.(); btn.popoverTargetElement = ABOUT_PHONE.matches ? null : w; };
+ABOUT_PHONE.addEventListener("change", () => { for (const b of document.querySelectorAll(".info > button")) aboutMode(b); });
+function aboutSheet(btn, w) {
+  let d = aboutSheet.d;
+  if (!d) {
+    d = aboutSheet.d = phoneSheet("", el("div", {class: "sheet-body pop-text"}));
+    d.addEventListener("close", () => { const s = d.sgShows; if (!s) return; s.w.append(...d.querySelector(".sheet-body").childNodes); s.btn.setAttribute("aria-expanded", "false"); d.sgShows = null; });
+  }
+  d.querySelector(".sheet-hd h2").textContent = w.getAttribute("aria-label");
+  d.querySelector(".sheet-body").append(...w.childNodes);
+  d.sgShows = {btn, w}; d.sgFrom = btn;
+  openDialog(d, {as: "sheet"});
+  btn.setAttribute("aria-expanded", "true");
+}
+aboutWire();
 
 /* ---- toasts (#263): toast(text, {action, onAction, actions, timeout}) says that something has happened, with what
    can be done about it, at the foot of the screen on every page: "Saved “Key labs”. · Undo", "Imported 6 lab results ·

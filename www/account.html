@@ -47,6 +47,11 @@
   <section class="card" id="twofa">
     <h2>Two-factor sign-in</h2>
     <p class="hint" id="tfHint"></p>
+    <div class="about-words" hidden>
+      <p>Authenticator apps include Google Authenticator, Microsoft Authenticator, 1Password and Bitwarden. Once it's on,
+        Sanguity asks for the app's code after your password.</p>
+      <p>Turning it on gives you recovery codes, each of which signs you in once if you lose your phone.</p>
+    </div>
     <div id="tfBody"></div>
     <span class="msg" id="tfMsg" role="status"></span>
   </section>
@@ -54,6 +59,11 @@
   <section class="card" id="passkeys">
     <h2>Passkeys</h2>
     <p class="hint" id="pkHint"></p>
+    <div class="about-words" hidden>
+      <p>A passkey signs you in on its own, or as the step after your password. It can't be phished or guessed, and your
+        password still works too.</p>
+    </div>
+    <p class="howto" id="pkWhy" hidden></p>
     <div id="pkList"></div>
     <div id="pkBody"></div>
     <span class="msg" id="pkMsg" role="status"></span>

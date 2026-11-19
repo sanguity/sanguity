@@ -515,7 +515,7 @@ function settingNode(st, changed, mixed, solo) {
   SET_ITEMS[st.key] = item;
   tag();
   node.append(...present(el(solo ? "div" : "h3", {class: "sub"}, solo ? null : st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
-    st.help ? el("p", {class: "hint", text: st.help}) : null,
+    solo ? null : helpNodes(st.help),   // (alone in its section: with the section's, #280)
     ed.node, msg));
   return item;
 }
@@ -586,7 +586,7 @@ function sectionCard(sec, opts = {}) {
   tidy();
   card = el("section", {class: "card", id: "sec-" + sec.id},
     el("div", {class: "set-hd"}, el("h2", {id: `sec-${sec.id}-hd`, tabindex: -1, text: sec.title}), reset),
-    sec.help ? el("p", {class: "hint", text: sec.help}) : null,
+    helpNodes(sec.help, ...(solo ? sec.settings[0].help.split("\n") : [])),
     sec.id === "overview" ? presetsBlock(sec) : null,   // "Start from a condition" (presets.js, #186)
     ...items.map(it => it.node), msg);   // (at its foot: words changing there move nothing in it)
   return Object.assign(card, {sgItems: items, sgSec: sec, sgChanged: () => changed(), sgTidy: tidy});

@@ -268,7 +268,7 @@ section("names", "Names", "Shorter or clearer names shown instead of the ones in
 section("health", "Workouts", "How the Body and activity tab counts workouts.")   # named as its group is (#409)
 
 define("overview.keyLabs", "overview", "Key labs", KEY_LABS, lab_list(), kind="tiles",
-       help="One tile each, in this order, for the labs this profile has results for. While this is the default list "
+       help="One tile each, in this order, for the labs this profile has results for.\nWhile this is the default list "
             "and few of its labs have results here, the most-measured labs fill the tiles instead.")
 define("trends.defaultLabs", "trends", "Labs selected at first",
        ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "ALT"], lab_list(), kind="labs",
@@ -283,8 +283,8 @@ define("sources", "names", "Result sources", {}, name_map(), kind="names", merge
 ATTACHMENT_TYPES = {"pdf": "PDF", "image": "Images", "text": "Text", "html": "Web pages (HTML)"}
 CEILING_MB = max(1, config.SYNC_MAX_ATTACHMENT // config.MB)   # SYNC_MAX_ATTACHMENT_MB: no setting goes above it
 
-section("sync", "Sync defaults", "Defaults for every connection on this server (each connection can change its "
-        "own on the Connected sources page). Attachments are the files records point at: visit notes, scans, reports.")
+section("sync", "Sync defaults", "Defaults for every connection on this server; each connection can change its own.\n"
+        "Attachments are the files records point at: visit notes, scans, reports.")
 define("sync.attachAuto", "sync", "Fetch attachments automatically", True, yes_no("Fetching attachments automatically"),
        scope="install", private=False, kind="toggle",
        help="Off: each sync lists the attachments it left out, and you fetch the ones you want.")
@@ -323,8 +323,8 @@ define("summary.ticked", "summary", "Measures ticked at first", [], some_of(SUMM
 CHOICES["summary.ticked"] = SUMMARY_TICKS
 
 define("visitWorkouts", "health", "Visits that count as workouts", [], workout_rules(), kind="rules",
-       help="Past visits whose title contains the text count as a workout of that many minutes, once a day per rule, "
-            "ignoring case. Tick “Regular expression” to match a pattern instead (an advanced option).")
+       help="Past visits whose title contains the text count as a workout of that many minutes, once a day per rule.\n"
+            "The text is matched ignoring case. Tick “Regular expression” to match a pattern instead (an advanced option).")
 
 
 # ---------------------------------------------------------------- #39 milestones
@@ -361,8 +361,8 @@ def milestone_list(most=50):
     return check
 
 
-section("milestones", "Milestones", "Named dates, like a diagnosis, a surgery or the start of a treatment: marked on "
-        "every chart, and periods on Health and Costs count “since” each one.")
+section("milestones", "Milestones", "Named dates, like a diagnosis, a surgery or the start of a treatment, marked on "
+        "every chart.\nPeriods on Body and activity and Costs count “since” each one.")
 define("milestones", "milestones", "Milestones", [], milestone_list(), kind="milestones",
        help="The primary milestone is the one the Overview counts from, with its own “Since” button above the "
             "records (the first, if none is marked).")
@@ -531,7 +531,7 @@ def trend_views(most=30):
 
 
 define("trends.views", "trends", "Saved views", [], trend_views(), kind="views",
-       help="Named sets of labs to pick from on Labs (save one there from what's charted). The default view is "
+       help="Named sets of labs to pick from on Labs (save one there from what's charted).\nThe default view is "
             "what Labs charts at first, instead of the labs above.")
 
 
@@ -559,7 +559,7 @@ def unit_prefs(v):
     return out
 
 
-section("units", "Units", "The units you see values in, on every profile. Only exact conversions are made; a test "
+section("units", "Units", "The units you see values in, on every profile.\nOnly exact conversions are made; a test "
         "without one stays in the unit its lab reported, and the reported value is always shown beside a converted one.")
 define("units", "units", "Units", {p: "reported" for p in UNIT_CHOICES}, unit_prefs, scope="user", kind="units",
        private=False, help="Lab tests: glucose, creatinine, urea nitrogen (BUN), calcium and magnesium convert between "
@@ -582,12 +582,12 @@ def _range_check(f):
     return check
 
 
-section("ranges", "Reference ranges", "Your own ranges, used only for results whose report gives none. Each is "
+section("ranges", "Reference ranges", "Your own ranges, used only for results whose report gives none.\nEach is "
         "labelled “range from settings” wherever it colours a result; a range printed on a report is always the one used.")
 define("ranges.overrides", "ranges", "Ranges for results without one", [], _range_check(_ranges.check_overrides),
-       kind="ranges", help="By the lab's name in the records and its unit: a result in another unit gets none, and nothing "
-                           "is converted. Leave the age empty for every age; a row for female or male wins over one for anyone. "
-                           "The age and sex are those set under About this person.")
+       kind="ranges", help="By the lab's name in the records and its unit. Leave the age empty for every age.\n"
+                           "A result in another unit gets none, and nothing is converted. A row for female or male wins over "
+                           "one for anyone. The age and sex are those set under About this person.")
 
 
 # ---------------------------------------------------------------- #194 about this person (server/person.py)

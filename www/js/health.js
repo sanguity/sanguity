@@ -215,13 +215,12 @@ function renderHealth() {
   H = H || hData();
   const [a, b] = hRange(), len = b - a, long = len > 150 * DAY;
   // what the charts can also show, as on Labs (#192), and apart on the right where the phone's data come from (the
-  // period is in the records bar)
+  // period is in the records bar); how to move the charts behind an ⓘ beside them, as on Labs (#280)
   box.append(el("div", {class: "toolbar overlays", role: "group", "aria-labelledby": "hOverlaysLbl"},
     el("span", {class: "lbl", id: "hOverlaysLbl", text: "Show on charts:"}),
     el("label", {class: "toggle"}, el("input", {type: "checkbox", checked: hState.stays || null, onchange: e => { hState.stays = e.target.checked; hSave(); keepFocus(renderHealth); }}), "Hospital stays"),
-    el("span", {class: "hint h-sync", text: `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`})),
-    el("p", {class: "hint chart-hint", text: "Drag any chart sideways to move through time: every chart moves together."}),
-    moreAbout("Scroll or pinch to zoom, and double-click to show everything."));
+    aboutWords({title: "the charts", id: "hChartsInfo"}, "Drag any chart sideways to move through time: every chart moves together.", "Scroll or pinch to zoom, and double-click to show everything."),
+    el("span", {class: "hint h-sync", text: `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`})));
   const S = hSections(box);
   // tiles, each in its card's section
   const prev = pts => inR(pts, a - len, a);
@@ -488,8 +487,8 @@ function renderVitals(box, vx) {
 function bpCard(box, a, b, long, legend, head, home, clinic) {
   const C = {home: "var(--c-lab)", clinic: "var(--ink2)"}, inP = r => r.t >= a && r.t <= b;
   const card = el("div", {class: "card", id: "h-bp", tabindex: -1}, head("Blood pressure", "#h-bp"),
-    el("p", {class: "hint", text: long ? "Readings taken at home as weekly averages, the band running from diastolic up to systolic; readings taken at visits one by one, systolic above diastolic."
-      : "Each reading's two pressures, systolic above diastolic, joined by a line: taken at home, and at visits."}));
+    el("p", {class: "hint", text: long ? "Home readings as weekly averages, the band from diastolic up to systolic; readings at visits one by one, systolic above diastolic."
+      : "Each reading's two pressures, systolic above diastolic, joined by a line: taken at home, and at visits."}));   // (one line with ▲▼'s words, #280)
   box.append(card);
   const all = [...home, ...clinic].filter(inP).sort((p, q) => p.t - q.t);
   const bT = [tgtIn("bp", "mmHg", "sys"), tgtIn("bp", "mmHg", "dia")];   // targets of the person's own (#234)
@@ -777,7 +776,7 @@ function hFitness() {
 function respCard(box, vx) {
   const {resp} = H.fit = H.fit || hFitness();
   if (resp.home.length || resp.clinic.length) phoneDayCard(box, vx, {...resp, id: "h-resp", title: "Respiratory rate", name: "Respiratory rate", color: "var(--c-study)", near: .6,
-    hint: long => `${long ? "The phone's daily average by week" : "The phone's daily average"} of the breaths a minute a watch measured (most measure it during sleep); rates taken at visits one by one.`});
+    hint: long => `${long ? "The phone's daily average by week" : "The phone's daily average"} of breaths a minute (most watches measure it asleep); visits' rates one by one.`});
 }
 function vo2Card(box, vx) {
   const {vo2} = H.fit = H.fit || hFitness();
@@ -833,7 +832,7 @@ const aboutLink = () => el("a", {href: `settings.html?profile=${PROFILE.id}#abou
 const zoneBasis = hr => hr.basis === "measured" ? `the maximum heart rate entered in About this person, ${hr.zmax} bpm`
   : `an estimated maximum heart rate of ${hr.zmax} bpm: 220 minus age ${hr.age}, the common formula`;
 /* how to get zones, when there's no birth date or maximum */
-const zonesNeed = () => el("p", {class: "hint zones-need"}, "Heart rate zones need a birth date or a measured maximum heart rate: ",
+const zonesNeed = () => el("p", {class: "howto zones-need"}, "Heart rate zones need a birth date or a measured maximum heart rate: ",
   canEdit() ? "add one in " : "an owner or editor can add one in ", aboutLink(), ".");
 /* one workout's heart rate and zones: for the drawer (workout details) and the zones card */
 function workoutZones(hr) {
@@ -866,10 +865,9 @@ function hZones(box, a, b, {long, legend, head, byDay}) {
     return;
   }
   const last = [...inP].reverse().find(x => x.hr.zmax) || [...withHr].reverse().find(x => x.hr.zmax);
-  card.append(head("Heart rate zones", key), el("p", {class: "hint", text: "Minutes a week in each of the five common zones, from the workouts the phone sent heart rate readings for. "
-    + (info.basis === "measured" ? `Zones from the maximum heart rate entered in About this person, ${info.maxHr} bpm.`
-      : `Zones from an estimated maximum heart rate, 220 minus age (the common formula), so it follows the age on each workout's day${last ? `: ${last.hr.zmax} bpm at ${last.hr.age} on the latest here` : ""}.`)
-    + " A common convention, not advice."}));
+  card.append(head("Heart rate zones", key), el("p", {class: "hint", text: "Minutes a week in each of the five common zones, from workouts with heart rate. A common convention, not advice."}),
+    aboutWords(info.basis === "measured" ? `Zones from the maximum heart rate entered in About this person, ${info.maxHr} bpm.`   // what they're from: its ⓘ (#280)
+      : `Zones from an estimated maximum heart rate, 220 minus age (the common formula), so it follows the age on each workout's day${last ? `: ${last.hr.zmax} bpm at ${last.hr.age} on the latest here` : ""}.`));
   const wk = t => { const d = zdate(t); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime() + 3 * DAY; };
   const weeks = new Map();
   for (const x of withHr) { if (!x.hr.zones) continue; const k = wk(x.t), w = weeks.get(k) || {z: [0, 0, 0, 0, 0, 0], n: 0}; x.hr.zones.forEach((s, i) => { w.z[i] += s; }); w.n++; weeks.set(k, w); }

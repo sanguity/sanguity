@@ -193,12 +193,15 @@ const SgLogout = (() => {
   };
   box.replaceChildren(
     el("h2", {text: "Offline records on this device"}),
-    el("p", {class: "hint", text: "Sanguity opens from your home screen without a connection either way. With this on, this device also " +
-      "keeps a copy of the last profile you opened, so you can read its records offline (read-only, with the time they were loaded). " +
-      "A record's details, such as a result's values or a claim's lines, are kept once you've opened it on this device."}),
-    el("p", {class: "hint", text: "That copy isn't encrypted the way records on the server are: anyone who can use this device while it's " +
-      "unlocked could open it. It holds that one profile's records, settings and watch data, never documents or other profiles. " +
-      "It's deleted when you sign out, when your sign-in ends, and when you turn this off. Leave it off on a shared device."}),
+    el("p", {class: "hint", text: "A copy of the last profile you opened, to read its records here without a connection."}),
+    aboutWords("Sanguity opens from your home screen without a connection either way. With this on, this device also keeps a copy of " +
+      "the last profile you opened, read-only, with the time it was loaded. A record's details, such as a result's values or a claim's " +
+      "lines, are kept once you've opened it on this device.",
+      "It holds that one profile's records, settings and watch data, never documents or other profiles. It's deleted when you sign " +
+      "out, when your sign-in ends, and when you turn this off."),
+    // the warning before turning it on stays in full (#280)
+    el("p", {class: "howto", text: "That copy isn't encrypted the way records on the server are: anyone who can use this device while " +
+      "it's unlocked could open it. Leave it off on a shared device."}),
     el("label", {class: "check switch"}, input, " Keep records for offline viewing on this device"),
     el("div", {class: "row"}, msg));
   status();

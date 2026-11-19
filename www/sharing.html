@@ -64,12 +64,12 @@
   <section class="card cal" id="calendar" hidden>
     <h2>Calendar feed</h2>
     <p class="hint">This profile's upcoming appointments, its expected lab draws and its medication reminders, in your own calendar app.</p>
-    <details class="more"><summary>More about this</summary>
+    <div class="about-words" hidden>
       <p>Sanguity sends nothing: your calendar app fetches a private address every few hours. The feed is yours alone and
         shows only what you can already see here. An expected lab draw is a guess from the steady rhythm of a panel's past
         draws, never an order or a booking. Medication reminders are the ones set on a medication's details (Timeline →
         Medications); each repeats at its times in the time zone it was set in.</p>
-    </details>
+    </div>
     <div id="calNew" hidden>
       <fieldset class="cal-opts">
         <legend>What each event says</legend>
@@ -119,11 +119,11 @@
   <section class="card" id="summaryIntro" hidden>
     <h2>Make a visit summary</h2>
     <p class="hint">One or two pages to print or bring to an appointment, made from the records you see here.</p>
-    <details class="more"><summary>More about this</summary>
+    <div class="about-words" hidden>
       <p>It can hold results out of range since the last visit, trends of your key labs, current medications, upcoming
         appointments and your own questions. It's made each time you ask, and isn't kept. Anyone the profile is shared
         with can make one.</p>
-    </details>
+    </div>
     <span class="msg" id="loadMsg" role="status"></span>
   </section>
 
@@ -172,8 +172,8 @@
   <!-- the measures ticked at first (#186), owners' and editors' to set: on Settings → Dashboard before #402 (summary.js) -->
   <section class="card" id="sumTicked" hidden>
     <h2 id="sumTickedHd">Measures ticked at first</h2>
-    <p class="hint">Those this profile has some of are ticked in the visit summary at first, for everyone it's shared
-      with; each summary can still untick them. The others start unticked.</p>
+    <p class="hint">Ticked at first in the visit summary of everyone it's shared with, where this profile has some.</p>
+    <div class="about-words" hidden><p>Each summary can still untick them. The others start unticked.</p></div>
     <div class="row set-choices" id="sumTickedBoxes" role="group" aria-labelledby="sumTickedHd"></div>
     <span class="msg" id="sumTickedMsg" role="status"></span>
   </section>
@@ -182,12 +182,12 @@
   <section class="card" id="export" hidden>
     <h2>Export everything</h2>
     <p class="hint">One zip of everything in this profile. Keep it as private as the records themselves.</p>
-    <details class="more"><summary>More about this</summary>
+    <div class="about-words" hidden>
       <p>It holds this profile's records, documents, settings and activity: to keep a copy of your own, or to move the
         profile to another server.</p>
       <p>FHIR R4 is the standard format health apps and patient portals read. A FHIR export holds the records you tick
         as one bundle, with the documents' files beside it in the zip. Sanguity's own import reads it back too.</p>
-    </details>
+    </div>
     <!-- the format, and with FHIR what goes in it (#205, sharing.js); the part names are fhir_export.PARTS' keys -->
     <fieldset class="exp-opts" id="exportFormat">
       <legend>Format</legend>

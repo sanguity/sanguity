@@ -52,6 +52,7 @@ const focusKey = x => [x.tagName, x.type, x.id || x.getAttribute("aria-label") |
 function keepFocus(draw) {
   const a = document.activeElement, key = a && a !== document.body ? focusKey(a) : null;
   draw();
+  aboutWire();   // the ⓘ drawn with it, there now to be found (util.js, #280)
   if (key && !a.isConnected) [...document.querySelectorAll(a.tagName)].find(x => focusKey(x) === key)?.focus({preventScroll: true});
   drawerBack();   // and what opened the drawer, found again (drawer.js, #404)
 }
