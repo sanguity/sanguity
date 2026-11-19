@@ -1,9 +1,10 @@
 /* Sanguity · the Sharing page (#168): who can see a profile, and every way its records go out, for the profile picked
    at the top, with the sidebar of groups every account page has (sidebar.js, #266): People (who has access and as
    what, sharing with an account, changing roles, leaving), Share links (share-links.js), Calendar feed
-   (calendar-feed.js), Visit summary (summary.js), Export everything and the profile's Activity (activity.js). Set
-   apart from sharing, under Profiles: renaming and deleting it (owners) and making a new one. About this person and
-   Targets are on Settings now (#267; about.js), and their old addresses (sharing.html#about) send you there (moved.js).
+   (calendar-feed.js), Visit summary (summary.js), Export everything and the profile's Activity (activity.js). About
+   this person and Targets (#267; about.js), and renaming and deleting the profile (#402; profile-card.js), are on
+   Settings now, and their old addresses (sharing.html#about, #profile) send you there (moved.js); New profile is the
+   profile menu's (guide.html?new).
 
    Someone who can only view a profile sees what they may (who has access, the visit summary, their own calendar
    feed) and no owner's controls: the groups they can't use aren't in the sidebar. The address follows the group
@@ -32,8 +33,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
   /* ---------------------------------------------------------------- the sidebar: one group shown at a time */
   const RANK = {viewer: 0, editor: 1, owner: 2};
   const GROUPS = SG_PAGES.sharing.groups;   // groups.js: one list, which the command palette searches too (#273)
-  const PROFILE = GROUPS.at(-1);
-  const allowed = g => P ? RANK[P.role] >= RANK[g.needs || "viewer"] : g === PROFILE;
+  const allowed = g => !!P && RANK[P.role] >= RANK[g.needs || "viewer"];
   const nav = sideNav({id: "shrNav", page: "Sharing", groups: GROUPS, find: "Find in Sharing", none: q => `Nothing in Sharing matches “${q}”.`,
     allowed, alias: {profiles: "people"},   // the old Account tab's name (account.html#profiles)
     refuse: g => { if (g.why && P) { sayIn($("#pageMsg"), g.why); return true; } },
@@ -49,7 +49,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     editor: ["You're an editor", n => ` of ${n}: you can change its records and export them. Its owners choose who sees it.`],
     viewer: ["You can view", n => ` ${n}: you can make a visit summary and a calendar feed of your own. Its owners choose who sees it.`],
   };
-  /* the page's own note: above the groups, or with no profile left, under New profile */
+  /* the page's own note: above the groups, or with no profile left, in the card that says so */
   const note = (text, bad) => sayIn($("#intro").hidden ? $("#profMsg") : $("#pageMsg"), text, bad);
 
   async function refresh(want) {
@@ -60,13 +60,12 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     const has = ME.profiles.length > 0;
     $("#noProfiles").hidden = has;
     $("#intro").hidden = !has;
-    $("#newProfile").hidden = false;
-    for (const id of ["people", "profileCard", "export", "links", "activity"]) $("#" + id).hidden = !has;
+    for (const id of ["people", "export", "links", "activity"]) $("#" + id).hidden = !has;
     if (!has) {
       P = null;
       SgNav.profiles([]);
-      for (const id of ["calendar", "summaryIntro", "build", "preview"]) $("#" + id).hidden = true;
-      showAllowed();
+      for (const id of ["calendar", "summaryIntro", "build", "preview", "sumTicked"]) $("#" + id).hidden = true;
+      if (started) nav.hide();   // no group to show (#402: New profile was one)
       return;
     }
     SgNav.profiles(ME.profiles, want);   // the top bar's picker (nav.js, #170): want, else the address's or this browser's
@@ -80,7 +79,6 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     showAllowed();
     $("#exportLink").href = `api/profiles/${p.id}/export`;
     exportCycle(p);   // #183
-    drawProfileCard(p);
     if (p.role === "owner") $("#linksBody").replaceChildren(shareLinksPanel(p, {open: true}));   // share-links.js
     else $("#linksBody").replaceChildren();
     sayIn($("#peopleMsg"), "");
@@ -191,69 +189,6 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       catch (e) { fail(e); } }},
       el("span", {class: "muted", text: "Share with"}), who, "as", role, el("button", {class: "btn", type: "submit", text: "Share"})));
   }
-
-  /* ---------------------------------------------------------------- Profile: rename, delete (owners), new */
-  function drawProfileCard(p) {
-    const msg = $("#profileMsg"), fail = e => sayIn(msg, e.message, true);
-    sayIn(msg, "");
-    if (p.role !== "owner") {
-      $("#profileBody").replaceChildren(el("p", {class: "hint", text: `Only the owners of ${p.name} can rename or delete it.`}));
-      return;
-    }
-    const name = el("input", {value: p.name, maxlength: 80, "aria-label": "Profile name", id: "profileName"});   // ids: focus back after a rename (#409)
-    $("#profileBody").replaceChildren(
-      el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
-        const was = p.name, to = name.value.trim();
-        if (to === was) return;
-        const had = document.activeElement?.id;
-        try { await call("profiles/" + p.id, "PATCH", {name: to}); await refresh(p.id); } catch (e) { fail(e); return; }
-        if (had) document.getElementById(had)?.focus({preventScroll: true});
-        // with an Undo (#272): the name before, if it's still the one given here
-        sayIn($("#profileMsg"), `Renamed to “${to}”.`, false, {say: false});
-        toast(`Renamed “${was}” to “${to}”.`, {action: "Undo", onAction: async () => {
-          ME = await call("me");
-          const now = ME.profiles.find(x => x.id === p.id), back = now && now.name === to;
-          if (back) await call("profiles/" + p.id, "PATCH", {name: was});
-          await refresh(P?.id);
-          note(back ? `Undone: the profile is “${was}” again.` : "The profile was renamed since, so its name is left as it is.");
-        }}); }},
-        name, el("button", {class: "btn", type: "submit", id: "profileRename", text: "Rename"})),
-      deletePanel(p, fail));
-  }
-  function deletePanel(p, fail) {
-    const typed = el("input", {autocomplete: "off", spellcheck: "false"});   // no placeholder: it would look filled in
-    const go = el("button", {class: "btn small danger", type: "button", text: "Delete it and everything in it", disabled: true});
-    typed.oninput = () => { go.disabled = typed.value.trim() !== p.name; };
-    go.onclick = async () => {
-      go.disabled = true;
-      try {
-        const r = await call(`profiles/${p.id}`, "DELETE", {confirm_name: typed.value});
-        try { if (localStorage.getItem("ht-profile") === String(p.id)) localStorage.removeItem("ht-profile"); } catch (e) {}
-        await refresh(null);
-        note(`Deleted “${p.name}”.` + (r.unlinked_build ? " Its records came from the setup build, which won't be loaded into a profile again unless an admin asks for it." : ""));
-      } catch (e) { fail(e); go.disabled = false; }
-    };
-    const box = el("div", {class: "danger-zone", hidden: true},
-      el("p", {}, "This deletes ", el("b", {text: p.name}), " for everyone it's shared with: its records, documents, settings, ",
-        "activity log and sharing. Your original exports and the watch receiver's data stay, and so do backups made before now. ",
-        "It can't be undone."),
-      el("div", {class: "row"}, el("a", {class: "btn small", href: `api/profiles/${p.id}/export`, download: "", text: "Export everything first"})),
-      el("label", {}, `Type ${p.name} to confirm`, typed),
-      el("div", {class: "row"}, go));
-    const open = el("button", {class: "btn small", type: "button", text: "Delete profile…", "aria-expanded": "false",
-      onclick: () => { box.hidden = !box.hidden; open.setAttribute("aria-expanded", !box.hidden); if (!box.hidden) typed.focus(); }});
-    return el("div", {class: "activity-wrap"}, open, box);
-  }
-  $("#profNew").onsubmit = async ev => {
-    ev.preventDefault();
-    const name = $("#profName").value.trim();
-    try {
-      const r = await call("profiles", "POST", {name});
-      $("#profNew").reset();
-      await refresh(r.id);
-      sayIn($("#profMsg"), `Created “${name}”: it's the profile shown here now, so you can share it under People.`);
-    } catch (e) { sayIn($("#profMsg"), e.message, true); }
-  };
 
   /* ---------------------------------------------------------------- Export: the cycle records, ticked each time (#183):
      offered to owners and editors only while the profile has cycle tracking on; unticked again once the export starts.

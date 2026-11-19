@@ -34,7 +34,7 @@
 
   <!-- no profile yet: only the person's own settings are drawn (settings.js) -->
   <p class="card hint" id="noProfiles" hidden>No health profile is shared with you yet, so only your own settings are here.
-    A profile's dashboard, About this person, labs and milestones appear once you have one: <a href="sharing.html#profile">create a profile</a>,
+    A profile's dashboard, About this person, labs and milestones appear once you have one: <a href="guide.html?new">create a profile</a>,
     or ask a profile's owner to share it with you.</p>
 
   <div id="sections"></div>
@@ -59,6 +59,12 @@
     <div id="targetsBody"></div>
     <span class="msg" id="targetsMsg" role="status"></span>
   </section>
+  <!-- the profile's name, and deleting it: its owners' (#402, on Sharing before; profile-card.js) -->
+  <section class="card" id="profileCard" hidden>
+    <h2>Name</h2>
+    <div id="profileBody"></div>
+    <span class="msg" id="profileMsg" role="status"></span>
+  </section>
 
   <datalist id="labNames"></datalist>
 </main>
@@ -74,6 +80,7 @@
 <script src="js/ranges.js"></script>
 <script src="js/presets.js"></script>
 <script src="js/about.js"></script>
+<script src="js/profile-card.js"></script>
 <script src="js/sidebar.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/settings-nav.js"></script>

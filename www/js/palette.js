@@ -2,8 +2,8 @@
    Ctrl+K (⌘K on a Mac), "/" when you're not typing in a field, or the top bar's Search (nav.js, barSearch) opens it,
    a <dialog> (openDialog, util.js). It finds, in groups:
    - Actions: what the top bar's Add menu offers here (Log a dose, Journal entry, Upload files…, as that menu shows
-     them, so someone who can only view a profile isn't offered them), New share link (for the profile's owners) and
-     light or dark mode;
+     them, so someone who can only view a profile isn't offered them), New share link (for the profile's owners), New
+     profile (the profile menu's) and light or dark mode;
    - Records tabs: the tabs the profile shows (nav.js's links to them);
    - Pages and settings: every page with a sidebar and every group in it (groups.js, the list those sidebars are drawn
      from), and the parts of a group worth going to by name (Password, Units…): Admin's for admins, Sharing's by the
@@ -103,6 +103,10 @@ const SgPalette = (() => {
       out.push({icon: x.querySelector("svg.icon"), title: x.textContent.trim(), ctx: "Add", go: () => x.click()});
     }
     if (profile()?.role === "owner") out.push({icon: sgIcon("sharing/links"), title: "New share link", ctx: "Sharing", go: newLink});
+    // the profile menu's New profile, its only one (#402), even where that menu isn't shown (no profile yet)
+    const np = document.getElementById("newProfileLink");
+    if (np && !document.getElementById("barSearch").hidden) out.push({icon: sgIcon("sharing/newProfile"), title: "New profile", ctx: "Profile menu", words: "create add person",
+      go: () => { location.href = np.href; }});
     const th = document.getElementById("theme");
     if (th && !th.hidden) out.push({icon: sgIcon("theme"), title: th.textContent.trim(), ctx: "Your menu", words: "theme dark light", go: () => th.click()});
     return out;

@@ -3,8 +3,9 @@
    simple preference saved as it's changed, with an Undo; lists and values saved by the group's bar (#272), and a
    section's "Reset to defaults" when it isn't at them (#174). Viewers see the profile's settings without
    editors; their own (per-user) settings they can change, and someone with no profile yet still has those (#169).
-   A new kind of setting adds an editor to EDITORS. About this person and Targets (#267) are about.js's. What used to
-   be here and isn't about how things look has its own page now, its old addresses moved.js's. */
+   A new kind of setting adds an editor to EDITORS. About this person and Targets (#267) are about.js's, the profile's
+   name and deleting it (#402) profile-card.js's. What used to be here and isn't about how things look has its own
+   page now, its old addresses moved.js's. */
 "use strict";   // $, el and api come from util.js
 let ME, PID = null, LAB_NAMES = [], LABS = [], NICK = {}, HAS_CLAIMS = false;
 
@@ -713,6 +714,10 @@ async function load(note, force, all = false) {
   const inPlace = !all && box.children.length === cards.length && d.sections.every((sec, i) => box.children[i].id === "sec-" + sec.id);
   if (inPlace) cards.forEach((c, i) => { if (box.children[i] !== c) box.children[i].replaceWith(c); });
   else box.replaceChildren(...cards);
+  // the visit summary's measures are ticked on Sharing → Visit summary (#402, summary.js): their section stays here out
+  // of sight, for Start from a condition to fill in (presets.js) and the group's bar to save
+  const ticks = document.getElementById("sec-summary");
+  if (ticks) ticks.hidden = true;
 }
 
 /* the profile's labs: their names, suggested when adding a lab or a nickname, and their results, for the key-lab
@@ -751,7 +756,8 @@ async function loadLabNames() {
   const sel = $("#profile");
   SgNav.profiles(ME.profiles);   // the top bar's picker (nav.js, #170): the address's profile, else this browser's last
   // About this person (about.js, #267) once the sections are there: its group arrives with theirs, not before
-  const pick = () => { PID = +sel.value; const p = ME.profiles.find(x => x.id === PID); loadLabNames().then(() => load(null, null, true)).then(() => { if (PID === p.id) drawAbout(p); }); };
+  // and its name and deleting it (profile-card.js, #402), with them too
+  const pick = () => { PID = +sel.value; const p = ME.profiles.find(x => x.id === PID); loadLabNames().then(() => load(null, null, true)).then(() => { if (PID === p.id) { drawAbout(p); drawProfile(p); } }); };
   document.addEventListener("about:changed", () => load());   // the ranges' preview matches ages and sexes against it
   sel.onchange = pick;
   $("#intro").hidden = false;

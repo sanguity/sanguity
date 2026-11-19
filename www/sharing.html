@@ -23,15 +23,16 @@
 </header>
 <!-- Sharing (#168): who can see a profile, and every way its records go out, for the profile picked here, with a
      sidebar of groups (sharing.js, sidebar.js). Each part keeps its own script: share-links.js, calendar-feed.js,
-     summary.js and activity.js. Renaming, deleting and adding profiles are set apart, under Profile. About this person
-     is on Settings (#267). -->
+     summary.js and activity.js. About this person (#267), renaming and deleting a profile (#402) are on Settings, and
+     New profile is the profile menu's (guide.html?new). -->
 <main class="acct sets sum shr">
   <div class="card warn" id="insecure" role="alert" hidden></div>
 
   <section class="card" id="noProfiles" hidden>
     <h2>Sharing</h2>
-    <p>No health profile is shared with you yet, so there's nothing to share. Create one below, or ask a profile's
-      owner to share it with you.</p>
+    <p>No health profile is shared with you yet, so there's nothing to share. <a href="guide.html?new">Create a profile</a>,
+      or ask a profile's owner to share it with you.</p>
+    <span class="msg" id="profMsg" role="status"></span>
   </section>
 
   <!-- the group shown: its title, the profile picked, and what you can do with it -->
@@ -168,6 +169,14 @@
   </form>
 
   <section class="card sum-preview" id="preview" hidden aria-live="polite"></section>
+  <!-- the measures ticked at first (#186), owners' and editors' to set: on Settings → Dashboard before #402 (summary.js) -->
+  <section class="card" id="sumTicked" hidden>
+    <h2 id="sumTickedHd">Measures ticked at first</h2>
+    <p class="hint">Those this profile has some of are ticked in the visit summary at first, for everyone it's shared
+      with; each summary can still untick them. The others start unticked.</p>
+    <div class="row set-choices" id="sumTickedBoxes" role="group" aria-labelledby="sumTickedHd"></div>
+    <span class="msg" id="sumTickedMsg" role="status"></span>
+  </section>
 
   <!-- Export everything: owners and editors (sharing.js) -->
   <section class="card" id="export" hidden>
@@ -220,20 +229,6 @@
     <div id="actBody"></div>
   </section>
 
-  <!-- Profile, apart from sharing: rename or delete this one (owners), or make a new one (sharing.js) -->
-  <section class="card" id="profileCard" hidden>
-    <h2>This profile</h2>
-    <div id="profileBody"></div>
-    <span class="msg" id="profileMsg" role="status"></span>
-  </section>
-  <section class="card" id="newProfile" hidden>
-    <h2>New profile</h2>
-    <p class="hint">A profile is one person whose records are tracked. You'll be its owner, and can share it from here.</p>
-    <form id="profNew" class="form inline">
-      <label>Name <input id="profName" maxlength="80" placeholder="Person's name" required></label>
-      <button class="btn" type="submit">Create</button><span class="msg" id="profMsg" role="status"></span>
-    </form>
-  </section>
 </main>
 <script src="js/moved.js"></script>
 <script src="js/util.js"></script>
