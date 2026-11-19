@@ -1058,6 +1058,10 @@ Everything on `main` so far; it becomes the first tagged release.
   couldn't save. Every page's Log out now asks first, in the app's own dialog, and signs out only once you say so.
   And on Sources, Add's items (which only change the section since #388) show it as the sidebar does: from the top
   of the page, with its name said.
+- **The static files' budget counts what's sent** (`tests/test_performance.py`, `docs/performance.md`): the stylesheets,
+  fonts and icons as nginx sends them, stylesheets and icons compressed, not as they are on disk, where comments
+  counted as much as rules. 281.9 KB is sent today (396.3 KB on disk), and the budget is 310 KB, room for Redesigns 4
+  to 7. nginx now compresses the SVG icon sprite too (10.5 KB on disk, 3.2 KB sent).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
