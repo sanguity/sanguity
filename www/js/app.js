@@ -11,10 +11,10 @@ const TABS = SgNav.TABS;   // the top bar's links to them (nav.js, #264)
 let TAB_ORDER = [...TABS], TAB_HIDDEN = new Set();
 const shownTabs = () => TAB_ORDER.filter(t => !TAB_HIDDEN.has(t));
 function applyTabs(cfg) { ({order: TAB_ORDER, hidden: TAB_HIDDEN} = SgNav.layout(cfg)); }
-/* the tab in the address (#208): index.html#overview, #health, #timeline, #timeline-journal (the Timeline as the
-   journal, #277), #labs (Labs as charts), #labs-heatmap (Labs as the heatmap) or #costs; the old #trends and #heatmap
-   still open Labs as charts or the heatmap. An address with no # opens the tab last used (save(), core.js). tabOfHash:
-   the address's [tab, its view], or null */
+/* the tab in the address (#208): index.html#overview, #health, #medications (#275), #timeline, #timeline-journal (the
+   Timeline as the journal, #277), #labs (Labs as charts), #labs-heatmap (Labs as the heatmap) or #costs; the old #trends
+   and #heatmap still open Labs as charts or the heatmap. An address with no # opens the tab last used (save(), core.js).
+   tabOfHash: the address's [tab, its view], or null */
 const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"], timeline: ["timeline", "timeline"], "timeline-journal": ["timeline", "journal"]};
 const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); return HASH_TABS[h] || (TABS.includes(h) ? [h] : null); };
 const tabHash = () => "#" + state.tab + (state.tab === "labs" && state.labsView === "heatmap" ? "-heatmap" : state.tab === "timeline" && state.tlView === "journal" ? "-journal" : "");
@@ -72,20 +72,23 @@ addEventListener("hashchange", () => {
   const t = tabOfHash();
   if (t) switchTab(t[0], t[1]);
 });
-/* Add → Log a dose (#264): the Overview's "Today's medication doses" (medlog.js), its first button focused; with none
-   to log (no current medication, no records yet, or a profile you can only view: an address typed in), a toast says
-   why. Add offers it only for a profile with a current medication (doseOffer, #401) */
+/* Add → Log a dose (#264): today's doses (medlog.js) on the Medications tab, where the log lives (#275), or on the
+   Overview while that tab is hidden, the first button focused; with none to log (no current medication, no records
+   yet, or a profile you can only view: an address typed in), a toast says why. Add offers it only for a profile with
+   a current medication (doseOffer, #401) */
 function logDose() {
-  try { history.replaceState(history.state, "", location.pathname + location.search + (DATA ? "#overview" : "")); } catch (e) {}
-  if (DATA) switchTab("overview");
-  const card = $("#ovDoses");
-  if (!card) {
+  const t = shownTabs().includes("medications") ? "medications" : "overview";
+  try { history.replaceState(history.state, "", location.pathname + location.search + (DATA ? "#" + t : "")); } catch (e) {}
+  if (DATA) switchTab(t);
+  const card = canEdit() && $(t === "medications" ? "#medToday" : "#ovDoses");
+  const first = card && (card.querySelector(".dose-quick button") || card.querySelector("button"));
+  if (!first) {
     toast(!canEdit() ? `You can view ${PROFILE.name}: its owners and editors log its doses.`
       : `${PROFILE.name} has no current medication to log a dose for.`);
     return;
   }
   card.scrollIntoView({block: "start"});
-  (card.querySelector(".dose-quick button") || card.querySelector("button")).focus({preventScroll: true});
+  first.focus({preventScroll: true});
 }
 const doseOffer = () => $("#doseLink").toggleAttribute("data-none", !DATA || !MEDS.some(mrCurrent));   // nav.js hides it then (#401)
 $("#optMarks").onchange = e => { state.marks = e.target.checked; renderCharts(); save(); };
@@ -99,13 +102,14 @@ function renderAll() {
   else if (state.tab === "labs") renderLabs();
   else if (state.tab === "costs") renderCosts();
   else if (state.tab === "health") renderHealth();
+  else if (state.tab === "medications") renderMedications();   // medications.js (#275)
   else renderOverview();
   save();
 }
 /* the parts of the records each tab shows (store.js, #271): when one changes (a dose logged, an entry or an edit
    saved), the tab shown is drawn again in place, its scroll and focus kept; the others are drawn when they're opened */
-const TAB_SHOWS = {overview: ["events", "labs", "medications"], health: ["events"], timeline: ["events", "medications", "journal"],
-  labs: ["events", "labs", "medications", "journal"], costs: ["events", "costs"]};
+const TAB_SHOWS = {overview: ["events", "labs", "medications"], health: ["events"], medications: ["events", "medications"],
+  timeline: ["events", "medications", "journal"], labs: ["events", "labs", "medications", "journal"], costs: ["events", "costs"]};
 storeOn(STORE_PARTS, parts => {
   if (parts.has("medications")) doseOffer();
   if (booted && TAB_SHOWS[state.tab].some(p => parts.has(p))) keepFocus(renderAll);

@@ -439,9 +439,9 @@ class Settings(unittest.TestCase):
         pid = self.fresh_profile()
         self.assertEqual(self.merged(pid)["tabs"], {"order": list(settings.TABS), "hidden": []})
         # reordered and hidden; the hidden listed in the tabs' order, and a tab left out goes at the end, shown
-        self.assertEqual(settings.TABS, ("overview", "health", "timeline", "labs", "costs"))   # Trends + Lab heatmap = Labs (#172)
-        m = self.put("tabs", {"order": ["timeline", "overview", "costs", "labs"], "hidden": ["health", "costs"]}, pid=pid)
-        self.assertEqual(m["tabs"], {"order": ["timeline", "overview", "costs", "labs", "health"], "hidden": ["costs", "health"]})
+        self.assertEqual(settings.TABS, ("overview", "health", "medications", "timeline", "labs", "costs"))   # Trends + Lab heatmap = Labs (#172)
+        m = self.put("tabs", {"order": ["timeline", "overview", "costs", "labs", "medications"], "hidden": ["health", "costs"]}, pid=pid)
+        self.assertEqual(m["tabs"], {"order": ["timeline", "overview", "costs", "labs", "medications", "health"], "hidden": ["costs", "health"]})
         self.assertEqual(self.put("tabs", {"hidden": ["costs"]}, pid=pid)["tabs"], {"order": list(settings.TABS), "hidden": ["costs"]})
         for bad in ({"order": ["overview", "nope"]}, {"hidden": list(settings.TABS)}, {"order": "overview"}, ["overview"],
                     {"hidden": [3]}, {"order": [], "hidden": [], "extra": 1}):
@@ -464,13 +464,13 @@ class Settings(unittest.TestCase):
         pid = self.fresh_profile("Old layout (fictional)")
         old = ["overview", "heatmap", "health", "timeline", "labs", "costs"]
         for value, want in (
-                ({"order": old, "hidden": ["labs"]}, {"order": ["overview", "labs", "health", "timeline", "costs"], "hidden": []}),
-                ({"order": old, "hidden": ["heatmap"]}, {"order": ["overview", "labs", "health", "timeline", "costs"], "hidden": []}),
-                ({"order": old, "hidden": ["labs", "costs", "heatmap"]}, {"order": ["overview", "labs", "health", "timeline", "costs"], "hidden": ["labs", "costs"]}),
-                ({"order": ["trends", "timeline"]}, {"order": ["labs", "timeline", "overview", "health", "costs"], "hidden": []}),
+                ({"order": old, "hidden": ["labs"]}, {"order": ["overview", "labs", "health", "medications", "timeline", "costs"], "hidden": []}),
+                ({"order": old, "hidden": ["heatmap"]}, {"order": ["overview", "labs", "health", "medications", "timeline", "costs"], "hidden": []}),
+                ({"order": old, "hidden": ["labs", "costs", "heatmap"]}, {"order": ["overview", "labs", "health", "medications", "timeline", "costs"], "hidden": ["labs", "costs"]}),
+                ({"order": ["trends", "timeline"]}, {"order": ["labs", "timeline", "overview", "health", "medications", "costs"], "hidden": []}),
                 ({"hidden": ["heatmap"]}, {"order": list(settings.TABS), "hidden": []})):
             self.assertEqual(self.put("tabs", value, pid=pid)["tabs"], want, value)
-        self.put("tabs", {"hidden": old}, pid=pid, status=400)   # still one tab at least shown
+        self.put("tabs", {"hidden": [*old, "medications"]}, pid=pid, status=400)   # still one tab at least shown
         # a row stored before the upgrade is read in today's tabs (merged, the Settings page's values, an export)
         db = dbm.connect()
         db.execute("DELETE FROM settings WHERE key='tabs' AND profile_id=?", (pid,))
@@ -479,11 +479,36 @@ class Settings(unittest.TestCase):
         stored = settings.stored(db, "profile", pid)["tabs"]
         exported = settings.to_file(db, pid)["tabs"]
         db.close()
-        want = {"order": ["labs", "overview", "health", "timeline", "costs"], "hidden": ["health"]}
+        want = {"order": ["labs", "overview", "health", "medications", "timeline", "costs"], "hidden": ["health"]}
         self.assertEqual((self.merged(pid)["tabs"], stored, exported), (want, want, want))
         # a settings.json from before (an export loaded back in, a setup build's) the same
         self.assertEqual(settings.from_file({"tabs": {"order": old, "hidden": ["heatmap", "costs"]}})["tabs"],
-                         {"order": ["overview", "labs", "health", "timeline", "costs"], "hidden": ["costs"]})
+                         {"order": ["overview", "labs", "health", "medications", "timeline", "costs"], "hidden": ["costs"]})
+
+    def test_tabs_before_medications(self):
+        """#275: a layout saved before the Medications tab gets it after Body and activity, wherever that is and whether or
+        not it's hidden (shown itself), not at the end; a layout that names it keeps it where it is, hidden or not. Sent
+        again, stored from before (merged, the Settings page's values, an export) or from a settings.json."""
+        pid = self.fresh_profile("Before Medications (fictional)")
+        before = ["costs", "overview", "health", "labs", "timeline"]
+        for value, want in (
+                ({"order": before}, {"order": ["costs", "overview", "health", "medications", "labs", "timeline"], "hidden": []}),
+                ({"order": before, "hidden": ["health"]}, {"order": ["costs", "overview", "health", "medications", "labs", "timeline"], "hidden": ["health"]}),
+                ({"order": ["labs", "timeline", "overview", "costs", "health"]}, {"order": ["labs", "timeline", "overview", "costs", "health", "medications"], "hidden": []}),
+                ({"order": ["labs", "costs"]}, {"order": ["labs", "costs", "overview", "health", "medications", "timeline"], "hidden": []}),
+                ({"order": ["medications", *before], "hidden": ["medications"]}, {"order": ["medications", *before], "hidden": ["medications"]}),
+                ({"order": [*before, "medications"]}, {"order": [*before, "medications"], "hidden": []})):
+            self.assertEqual(self.put("tabs", value, pid=pid)["tabs"], want, value)
+        db = dbm.connect()
+        db.execute("DELETE FROM settings WHERE key='tabs' AND profile_id=?", (pid,))
+        db.execute("INSERT INTO settings(key, profile_id, user_id, value, sealed, changed, changed_by) VALUES('tabs', ?, NULL, ?, NULL, ?, NULL)",
+                   (pid, json.dumps({"order": before, "hidden": ["costs"]}), dbm.now()))
+        stored = settings.stored(db, "profile", pid)["tabs"]
+        exported = settings.to_file(db, pid)["tabs"]
+        db.close()
+        want = {"order": ["costs", "overview", "health", "medications", "labs", "timeline"], "hidden": ["costs"]}
+        self.assertEqual((self.merged(pid)["tabs"], stored, exported), (want, want, want))
+        self.assertEqual(settings.from_file({"tabs": {"order": before, "hidden": ["costs"]}})["tabs"], want)
 
     def test_guide(self):
         """#199: whether the getting-started guide is done or skipped is each person's own, and kept off the Settings

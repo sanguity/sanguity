@@ -370,14 +370,17 @@ define("milestones", "milestones", "Milestones", [], milestone_list(), kind="mil
 
 # ---------------------------------------------------------------- tabs (#40) and theme (#45)
 
-TABS = ("overview", "health", "timeline", "labs", "costs")   # the main tabs' ids ("health" is Body and activity)
-TAB_NAMES = {"overview": "Overview", "health": "Body and activity", "timeline": "Timeline", "labs": "Labs", "costs": "Costs"}
+TABS = ("overview", "health", "medications", "timeline", "labs", "costs")   # the main tabs' ids ("health" is Body and activity)
+TAB_NAMES = {"overview": "Overview", "health": "Body and activity", "medications": "Medications", "timeline": "Timeline",
+             "labs": "Labs", "costs": "Costs"}
 OLD_TABS = {"heatmap": "labs", "trends": "labs"}   # #172: Trends ("labs") and Lab heatmap are the one Labs tab
+NEW_TABS = {"medications": "health"}   # #275: a tab added since layouts were saved, and the tab it goes after in one
 
 
 def tab_layout(v):
     """{"order": [tab ids], "hidden": [tab ids]}: every tab in order (one left out goes at the end, in the default
-    order, so a tab added later shows up), the hidden ones in that order. At least one tab stays shown.
+    order, so a tab added later shows up; Medications, added later still, goes after Body and activity wherever that
+    is, NEW_TABS: #275), the hidden ones in that order. At least one tab stays shown.
 
     A layout from before #172 names Trends ("labs") and Lab heatmap ("heatmap"): Labs takes the place of the first of
     them, and is hidden only if both were (stored values are read through this too: reread)."""
@@ -397,7 +400,10 @@ def tab_layout(v):
         labs = "heatmap" in hidden and bool(hidden & {"labs", "trends"})
         hidden = {t for t in hidden if t not in ("labs", "trends", "heatmap")} | ({"labs"} if labs else set())
     order = list(dict.fromkeys(OLD_TABS.get(t, t) for t in lists["order"]))
-    order += [t for t in TABS if t not in order]
+    for t in TABS:
+        if t not in order:
+            after = NEW_TABS.get(t)
+            order.insert(order.index(after) + 1 if after in order else len(order), t)
     hidden = [t for t in order if t in hidden]
     if len(hidden) == len(order):
         raise SettingError("At least one tab must stay shown.")

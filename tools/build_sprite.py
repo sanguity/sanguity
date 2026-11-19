@@ -72,6 +72,7 @@ ICONS = [
     # the records tabs on a phone's bar at the screen's foot (#268): Overview is layout-grid, Labs test-tube-diagonal,
     # Costs banknote, More ellipsis, your menu circle-user (above)
     "heart-pulse", "chart-gantt",  # Body and activity, Timeline
+    "pill-bottle",           # Medications (#275): where they're kept, apart from a dose's pill
     # #399: a place of its own for what shared one
     "gauge",                 # Add's Home reading
     "user-plus", "user-pen",  # New profile; Settings: Rename or delete (Sharing's Profile before #402)

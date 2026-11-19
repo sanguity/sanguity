@@ -418,7 +418,7 @@ DRAW_JS = """async t => { const [tab, view] = t.split("-");
   const s = performance.now(); switchTab(tab, view === "heatmap" ? "heatmap" : "chart", true);
   await new Promise(r => requestAnimationFrame(() => setTimeout(r)));
   return [performance.now() - s, document.getElementById("view-" + tab).getElementsByTagName("*").length]; }"""
-TABS = ("overview", "health", "timeline", "labs", "labs-heatmap", "costs")
+TABS = ("overview", "health", "medications", "timeline", "labs", "labs-heatmap", "costs")   # Medications since #275
 # Body and activity's sections on the ten years, each with its cards (#276)
 SECTIONS = [["hs-body", ["h-body"]], ["hs-vitals", ["h-heart", "h-bp", "h-glucose", "h-temp", "h-oxygen"]], ["hs-sleep", ["h-sleep"]], ["hs-activity", ["h-activity"]]]
 # the Timeline's Events list with the period "All" (#277): its first page, then Show more until every event it lists is

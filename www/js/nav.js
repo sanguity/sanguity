@@ -285,7 +285,7 @@ const SgNav = (() => {
      (or its whole length, if that's less); where even one tab beside More doesn't fit, that tab goes under More too,
      and More takes its name ("Labs ▾", raised as the tab shown is). On a phone they're the bar at the screen's foot
      instead, five places (phoneBar, below). */
-  const TABS = [["overview", "Overview"], ["health", "Body and activity"], ["timeline", "Timeline"], ["labs", "Labs"], ["costs", "Costs"]];
+  const TABS = [["overview", "Overview"], ["health", "Body and activity"], ["medications", "Medications"], ["timeline", "Timeline"], ["labs", "Labs"], ["costs", "Costs"]];
   const tabEl = Object.fromEntries(TABS.map(([t, text]) => [t, el("a", {id: "tab-" + t, href: (onRecords ? "#" : "./#") + t, text,
     "data-tip": t === "health" ? "Watch, sleep and smart-scale data" : null})]));
   const editTabs = el("a", {class: "menu-item acct", role: "menuitem", id: "editTabs", href: "settings.html#sec-tabs"}, icon(sgIcon("settings/sec-tabs")), "Edit tabs…");
@@ -332,10 +332,13 @@ const SgNav = (() => {
     if (shown.includes(had) && document.activeElement !== had) (had.parentElement === tabs ? had : more.btn).focus({preventScroll: true});
   }
   /* the profile's layout ({order, hidden}, as Settings saves it): every tab in order, a tab it doesn't name after the
-     rest, at least one shown. Returns {order, hidden} */
+     rest, except Medications, after Body and activity (a layout from before it, kept offline: server/settings.py
+     tab_layout gives the server's so, #275), at least one shown. Returns {order, hidden} */
+  const NEW_TABS = {medications: "health"};
   function layout(cfg) {
     const ids = TABS.map(([t]) => t), ok = x => Array.isArray(x) ? x.filter(t => ids.includes(t)) : [];
-    order = [...new Set([...ok(cfg && cfg.order), ...ids])];
+    order = [...new Set(ok(cfg && cfg.order))];
+    for (const t of ids) if (!order.includes(t)) order.splice(order.includes(NEW_TABS[t]) ? order.indexOf(NEW_TABS[t]) + 1 : order.length, 0, t);
     hidden = new Set(ok(cfg && cfg.hidden));
     if (hidden.size >= ids.length) hidden.clear();
     for (const t of ids) tabEl[t].hidden = hidden.has(t);
@@ -358,8 +361,8 @@ const SgNav = (() => {
     for (const x of [document.getElementById("editTabsLink"), editTabs, editSep]) setHidden(x, !can);
   }
 
-  /* ---- Add (#264), in two groups. Today: a dose of a current medication (the Overview's "Today's medication doses",
-     app.js), a journal entry (its form opens on the records page; from another page the link takes you there and it
+  /* ---- Add (#264), in two groups. Today: a dose of a current medication (the Medications tab's Today, #275, or the
+     Overview's doses: app.js), a journal entry (its form opens on the records page; from another page the link takes you there and it
      opens, #173), a home reading (Type records in, with a blood pressure's form). Records: each way in, opening its
      section of the Sources page (#166). On the Sources page itself only the address's #section changes: the page
      isn't loaded again, so the profile in its address (?profile=2) and what's typed in are kept (#388) */
@@ -559,7 +562,7 @@ const SgNav = (() => {
     return vis;
   }
   function phoneBar() {
-    const SHORT = {health: "Body", meds: "Meds"};
+    const SHORT = {health: "Body", medications: "Meds"};
     for (const [t] of TABS) {
       const a = tabEl[t];
       a.replaceChildren(icon(sgIcon(t)), el("span", {class: "tab-long", text: a.textContent}));

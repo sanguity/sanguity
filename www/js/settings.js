@@ -273,7 +273,7 @@ function tilesEditor(value, changed, ro, setting) {
 }
 
 /* #40 the main tabs: shown or hidden, in order; one at least stays shown */
-const TAB_LABEL = {overview: "Overview", health: "Body and activity", timeline: "Timeline", labs: "Labs", costs: "Costs"};   // #172
+const TAB_LABEL = {overview: "Overview", health: "Body and activity", medications: "Medications", timeline: "Timeline", labs: "Labs", costs: "Costs"};   // #172, #275
 function tabsEditor(value, changed, ro) {
   const hidden = new Set(value.hidden);
   let ol = null;

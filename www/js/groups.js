@@ -20,7 +20,8 @@
    Loaded before nav.js, which draws the bar with them. Plain script; all files share one scope. */
 "use strict";
 const SG_ICON = {
-  overview: "layout-grid", health: "heart-pulse", timeline: "chart-gantt", labs: "test-tube-diagonal", costs: "banknote", more: "ellipsis",
+  overview: "layout-grid", health: "heart-pulse", medications: "pill-bottle", timeline: "chart-gantt", labs: "test-tube-diagonal", costs: "banknote",
+  more: "ellipsis",
   search: "search", add: "plus", you: "circle-user", guide: "compass", theme: "sun-moon", logout: "log-out",
   dose: "pill", journal: "notebook", reading: "gauge",   // Add's Today
   "settings/sec-tabs": "pencil",   // Edit tabs… (the profile menu, More) and the palette's Tabs
