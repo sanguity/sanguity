@@ -4,7 +4,8 @@
      each new part set apart by a line), the group shown marked, and a group with a part changed and not saved yet
      (data-dirty) marked too.
    - One group is shown at a time. Its title is the page's h1 (#groupTitle) and the browser tab's. A card's own
-     title shows only beside another card of the group: alone, it's said, not shown, under the h1 that says it.
+     title shows only beside another card of the group: alone, it's said, not shown, under the h1 that says it, and
+     its Reset to defaults (the button in its .set-hd) shows beside the h1 instead (#409).
    - Its search box shows, from every group, the parts that mention what's typed (in a part with settings, .set,
      only those that do), each with its group's name above, or says that none does, with a button to clear it (#247)
      and one to search everywhere, the command palette opened with the words (palette.js, #403).
@@ -49,6 +50,7 @@ function sideNav(o) {
   const list = el("ul", {class: "set-nav-list"});
   const nav = el("nav", {class: "set-nav", id: o.id, "aria-label": o.page + " sections"}, search, list);
   const none = el("div", {id: pre + "None", hidden: ""});
+  const lone = el("button", {class: "btn small", type: "button", id: pre + "Reset", hidden: ""});   // a lone card's Reset, beside the h1
   let current = null, chosen = false, pending = false, drawn = null, shown = [];
   const dirtyIn = ps => ps.filter(p => p.hasAttribute("data-dirty"));
   const bar = o.bar ? groupBar() : null;
@@ -97,6 +99,9 @@ function sideNav(o) {
       if (!q) for (const s of p.querySelectorAll(".set-off")) s.classList.remove("set-off");
       for (const h of p.querySelectorAll(":scope > h2, :scope > .set-hd > h2")) h.classList.toggle("vh", alone && on.has(p));
     }
+    const r = alone ? partsOf(current).find(p => !p.hidden)?.querySelector(":scope > .set-hd > .btn:not([hidden])") : null;
+    if (r) { lone.textContent = r.textContent; lone.onclick = () => r.click(); }
+    if (lone.hidden !== !r) lone.hidden = !r;
     shown = [...on];
     if (bar) bar.draw();
     const found = !!q && on.size > 0;
@@ -228,6 +233,7 @@ function sideNav(o) {
     if (bar) main.append(bar.box);
     main.classList.add("with-nav");
     ($("#intro") || nav).after(none);
+    $("#groupTitle")?.after(lone);
     search.addEventListener("input", apply);
     addEventListener("hashchange", () => { const r = fromHash(); if (r.g) show(r.g, {scrollTo: r.el, push: !r.el, by: true}); });
     for (const p of pools) new MutationObserver(refresh).observe(p, {childList: true});

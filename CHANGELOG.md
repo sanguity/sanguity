@@ -1163,6 +1163,13 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Units changed in Display reach About this person and Targets at once** (#408): heights and targets stayed in the
   old units until a reload. Saving or undoing Units draws them again, keeping what's typed there (a target typed in
   °C becomes °F with the unit).
+- **The account pages' leftovers** (#409): Admin → Backups' schedule had a Save of its own; how often is now saved as
+  it's picked, with an Undo, and how many to keep waits in the bar, marked "not saved", with the sidebar's dot and the
+  question before leaving; turning backups off or keeping fewer than would stay is still asked first. On Sharing,
+  changing a role or renaming the profile, and their Undo, leave focus where it was instead of on the page. Sources →
+  Phone and watch no longer says its title twice (its upload card is "Upload from the phone"). The sidebar's "not
+  saved" dot shows in forced colours. A group of one card (Milestones, Workouts) has its Reset to defaults beside the
+  group's title, and Workouts' card is named Workouts.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -43,7 +43,7 @@
         catch (e) { sayIn(msg, e.message, true); go.disabled = false; }
       }});
     box.replaceChildren(...[   // without the parts left out: replaceChildren would write a null out as text (#175)
-      el("h2", {text: "Phone and watch"}),
+      el("h2", {text: "Upload from the phone"}),   // (the group, Phone and watch, holds Cycle tracking too: its title is the h1, #409)
       el("p", {class: "hint", text: "A phone app sends watch, sleep and smart-scale readings to this profile: Life Dashboard Companion on Android, or Health Auto Export on iPhone. In the app, set:"}),
       moreAbout("Life Dashboard Companion reads Health Connect, and Health Auto Export reads Apple Health. Garmin, Fitbit, Withings and other apps come through them, by writing to Health Connect or Apple Health.",
         "Each profile has its own secret, so each person's phone uploads to their own profile. Readings are split into days in the phone's own time zone."),

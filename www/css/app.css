@@ -909,6 +909,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sg-bar .btn{margin:0}
 .set-nav-dirty::after,.sg-bar-n::before{content:"";display:inline-block;width:7px;height:7px;border-radius:var(--r-pill);background:var(--accent);margin-left:var(--sp-2);vertical-align:1px}
 .sg-bar-n::before{margin:0 var(--sp-2) 0 0}
+@media (forced-colors:active){ .set-nav-dirty::after,.sg-bar-n::before{forced-color-adjust:none;background:CanvasText} }   /* (a background is dropped, #409) */
 .sets .set-more{display:none}
 .sets .set-more-btn{min-width:36px;font-size:var(--fs-4);line-height:1}
 .sets .set-more .menu-list{min-width:170px}
@@ -922,7 +923,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
   .sets .set-order.has-more .set-more{display:block}
 }
 .sets .set-hd{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);flex-wrap:wrap}
-.sets .set-hd>.vh+*{margin-left:auto}   /* a card alone in its group: Reset at the right */
+.sets .set-hd>.vh~.btn{display:none}   /* a card alone in its group: its Reset beside the h1 (sidebar.js, #409) */
 .sets .set-hd h2{margin:0}
 .sets .set h3 .tag{font-weight:var(--fw-medium)}
 .sets .set-labs{margin:var(--sp-1) 0;padding-left:var(--sp-5);max-width:560px}

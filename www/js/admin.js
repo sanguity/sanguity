@@ -30,7 +30,9 @@ $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (
    #labmaps, #sec-sync, #outside) opens that section's group and scrolls to it. */
 const GROUPS = SG_PAGES.admin.groups;   // groups.js: one list, which the command palette searches too (#273)
 const AdminNav = sideNav({id: "admNav", page: "Admin", groups: GROUPS, find: "Find in Admin", none: q => `Nothing in Admin matches “${q}”.`,
-  bar: {save: (parts, msg, had) => syncSave(msg, had), discard: () => syncDiscard()}});   // the sync defaults' numbers (#272, admin-sources.js)
+  // the bar (#272): the sync defaults' numbers (admin-sources.js) and the backups kept (#409, admin-backups.js)
+  bar: {save: async (parts, msg, had) => { for (const p of parts) await (p.id === "backups" ? bkKeepSave : syncSave)(msg, had); },
+    discard: parts => { for (const p of parts) (p.id === "backups" ? bkKeepDiscard : syncDiscard)(); }}});
 
 /* ---------------------------------------------------------------- notices: failed sign-ins, sources that stopped */
 async function loadNotice() {
