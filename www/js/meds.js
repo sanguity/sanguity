@@ -156,13 +156,17 @@ function openMedication(m) {
   showDrawer();
   renderTimeline();
 }
+/* the medication's history drawn again after a change: when the drawer shows it already, in place, as it was (its
+   scroll, its log shown whole, focus: drawer.js drawerKeep, #404) */
+function medAgain(m) {
+  if (m && drawer.classList.contains("open") && medSel === m.i && $("#dtitle").textContent === m.name) return drawerKeep(() => openMedication(m));
+  openMedication(m);
+}
 // a dose logged elsewhere (the Overview's, beside the panel) while the panel shows this medication: drawn again (#271)
 // (focus stays where it was, outside the panel)
 storeOn("medications", () => {
-  const m = MEDS[medSel], a = document.activeElement;
-  if (!m || !drawer.classList.contains("open") || $("#dtitle").textContent !== m.name) return;
-  openMedication(m);
-  if (a && a.isConnected && !drawer.contains(a)) a.focus({preventScroll: true});
+  const m = MEDS[medSel];
+  if (m && drawer.classList.contains("open") && $("#dtitle").textContent === m.name) medAgain(m);
 });
 /* the same grouping as server/medications.med_key: the leading words before any strength or form */
 function medKeyOf(name) {
@@ -294,6 +298,6 @@ async function mrSend(path, opts, msg, m) {
   catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return; }
   if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the reminder (${r.status}).`, true); return; }
   storePut("reminders", j);
-  openMedication(MEDS.find(x => x.key === m.key));
+  medAgain(MEDS.find(x => x.key === m.key));
   announce(opts.method === "DELETE" ? "Reminder removed." : "Reminder saved.");
 }

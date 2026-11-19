@@ -7,13 +7,13 @@
    (wide on a screen 1200 px or narrower, or 640 px or narrower), so Tab and a screen reader stay in it (#209); and on
    a phone (700 px or narrower) as a bottom sheet, modal, swiped down by its handle or its header to close. On a screen
    1200 px or wider it's docked (#270): the page moves over for it (html.sg-docked, app.css) instead of being covered,
-   and is drawn again for its new width. Escape closes it wherever focus is, and focus goes back to what opened it.
-   .open says it's open (or opening). */
+   and is drawn again for its new width. Escape closes it wherever focus is, and focus goes back to what opened it,
+   found again if the page was drawn again meanwhile (drawerBack). .open says it's open (or opening). */
 const drawer = $("#drawer");
-let drawerReturn = null;
+let drawerReturn = null, drawerFrom = null;   // what opened it, and where that was on the page (drawerSpot)
 function closeDrawer() {
-  const back = drawer.classList.contains("open") && drawer.contains(document.activeElement) && drawerReturn?.isConnected ? drawerReturn : null;
-  drawerReturn = null; drawer.classList.remove("open");
+  const r = drawerBack(), back = drawer.classList.contains("open") && drawer.contains(document.activeElement) && r?.isConnected ? r : null;
+  drawerReturn = drawerFrom = null; drawer.classList.remove("open");
   if (drawer.open) { drawer.close(); liveFollow(); }
   if (back) back.focus({preventScroll: true});   // once the page behind isn't inert any more
   setTimeout(() => { if (!drawer.classList.contains("open")) $("#dbody").replaceChildren(); }, 250);   // unload any PDF / document once it has slid away
@@ -29,27 +29,47 @@ function drawerFit() {
   openDialog(drawer, {as: drawerPhone.matches ? "sheet" : "side", modal: covers});
   drawerDock(!covers && !drawer.classList.contains("wide") && innerWidth >= 1200);
 }
-/* docked or not: the page's width changes, so its charts are drawn again; what had focus on it, and what focus goes
-   back to, are found again in what's drawn: the control that's the same (its tag, id, record, name and words), as
-   many of those along (a chart's marker under each chart). True if it changed. */
+/* where a control is, to find it again once what holds it is drawn again (a change saved, a dose logged, a resize, the
+   drawer docking: #404): what holds it (its view on the page, or the drawer's body), and its place among the controls
+   there that are the same (its tag, id, record, name and words), as many of those along (a chart's marker under each
+   chart); a record's row (data-id: the Timeline's, the Overview's) by its record, as a rename changes its words */
 const FOCUSABLE = "a[href], button, input, select, textarea, [tabindex]";
 const focusSig = x => [x.tagName, x.id, x.dataset?.id, x.getAttribute("aria-label"), x.textContent.trim().slice(0, 80)].join("\u001f");
+const recordSig = x => x.dataset?.id ? [x.tagName, x.classList[0], x.dataset.id].join("\u001f") : null;
+function drawerSpot(x, v = x?.closest?.("main > section")) {
+  if (!v) return null;
+  const all = [...v.querySelectorAll(FOCUSABLE)], sig = focusSig(x), rec = recordSig(x);
+  return {v, sig, rec, n: all.filter(y => focusSig(y) === sig).indexOf(x), rn: rec ? all.filter(y => recordSig(y) === rec).indexOf(x) : -1};
+}
+function drawerFind(s) {
+  if (!s) return null;
+  const all = [...s.v.querySelectorAll(FOCUSABLE)];
+  return (s.rn >= 0 && all.filter(y => recordSig(y) === s.rec)[s.rn]) || (s.n >= 0 && all.filter(y => focusSig(y) === s.sig)[s.n]) || null;
+}
+/* what opened the drawer, as it is now: found again if the page was drawn again since (after every redraw, store.js
+   keepFocus, and when it docks or closes) */
+function drawerBack() {
+  if (!drawerReturn) return null;
+  const x = drawerReturn.isConnected ? drawerReturn : drawerFind(drawerFrom);
+  if (x) { drawerReturn = x; drawerFrom = drawerSpot(x) || drawerFrom; }
+  return drawerReturn;
+}
+/* docked or not: the page's width changes, so its charts are drawn again; what had focus on it, and what focus goes
+   back to, are found again in what's drawn. True if it changed. */
 function drawerDock(on) {
   const root = document.documentElement;
   if (root.classList.contains("sg-docked") === on) return false;
-  const like = (v, sig) => [...v.querySelectorAll(FOCUSABLE)].filter(y => focusSig(y) === sig);
-  const spot = x => { const v = x?.closest?.("main > section"); if (!v) return null; const sig = focusSig(x); return [v, sig, like(v, sig).indexOf(x)]; };
-  const was = document.activeElement, a = spot(was), r = spot(drawerReturn), find = s => s && s[2] >= 0 ? like(s[0], s[1])[s[2]] : null;
+  const was = document.activeElement, a = drawerSpot(was);
+  drawerBack();
   root.classList.toggle("sg-docked", on);
   dockStill = ptrAt;
   renderAll();
   const back = () => {   // now, and again once Labs' charts are drawn (the frame after, trends.js)
-    if (a && !was.isConnected && [was, document.body].includes(document.activeElement)) find(a)?.focus({preventScroll: true});
-    if (r && drawerReturn === r[3] && !drawerReturn.isConnected) drawerReturn = r[3] = find(r) || drawerReturn;
+    if (a && !was.isConnected && [was, document.body].includes(document.activeElement)) drawerFind(a)?.focus({preventScroll: true});
   };
-  if (r) r[3] = drawerReturn;
   back(); requestAnimationFrame(() => requestAnimationFrame(back));
-  if (on && drawerReturn?.closest?.("main")) drawerReturn.scrollIntoView({block: "nearest"});   // what it was opened from, still in view
+  const r = drawerBack();
+  if (on && r?.closest?.("main")) r.scrollIntoView({block: "nearest"});   // what it was opened from, still in view
   return true;
 }
 // the page moving over puts something else under a pointer that hasn't moved: no tooltip for it (util.js, by hover,
@@ -251,9 +271,28 @@ function openEvent(e) {
   renderTimeline(); document.querySelectorAll(".tl-row").forEach(r => r.classList.remove("sel"));
 }
 function showDrawer() {
-  if (!drawer.classList.contains("open")) drawerReturn = document.activeElement;
+  if (!drawer.classList.contains("open")) { drawerReturn = document.activeElement; drawerFrom = drawerSpot(drawerReturn); }
   drawer.classList.add("open"); drawerFit();
   $("#dclose").focus({preventScroll: true});
+}
+/* the drawer drawn again with the same thing in it (a change saved there, a dose logged beside it: #404): its scroll,
+   the parts opened or closed and the lists shown whole (data-whole="1") stay as they were, and focus stays on what had
+   it, or on the same control drawn again. draw() may give back a promise (its details loading again, details.js):
+   kept once that's drawn. */
+function drawerKeep(draw) {
+  const body = $("#dbody"), top = body.scrollTop, sum = d => d.querySelector(":scope > summary")?.textContent;
+  const open = new Map([...body.querySelectorAll("details")].map(d => [sum(d), d.open]));
+  const whole = [...body.querySelectorAll("[data-whole]")].map(b => b.dataset.whole === "1");
+  const was = document.activeElement, at = body.contains(was) ? drawerSpot(was, body) : null;
+  const keep = () => {
+    for (const d of body.querySelectorAll("details")) if (open.has(sum(d))) d.open = open.get(sum(d));
+    [...body.querySelectorAll("[data-whole]")].forEach((b, i) => { if (whole[i] && b.dataset.whole !== "1") b.click(); });
+    body.scrollTop = top;
+    const x = was?.isConnected ? was : drawerFind(at);
+    if (x && x !== document.activeElement && was !== document.body) x.focus({preventScroll: true});
+  };
+  const r = draw();
+  return r?.then ? r.then(keep) : keep();
 }
 
 
@@ -284,9 +323,11 @@ function describeEdit(x) {
    now, {event} (or {alt}, a result linked away: the other side's day) if it's still there, else every edit */
 function afterEdit(reopen, reply) {
   if (!reply?.records) { location.reload(); return; }
+  const was = drawer.classList.contains("open") ? state.selEv : undefined;
   storeRecords(reply.records);
   const e = byId.get(reopen.event) || byId.get(reopen.alt);
-  if (e) openEvent(e); else openEdits();
+  if (e && e.id === was) drawerKeep(() => openEvent(e));   // the same record: as it was, scrolled to where it was (#404)
+  else if (e) openEvent(e); else openEdits();
   announce("Saved.");
 }
 async function sendEdit(path, opts, msg, reopen) {

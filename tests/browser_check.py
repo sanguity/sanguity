@@ -3662,14 +3662,27 @@ def main():
             settle()
             check("undoing the edit brings it back", js(f"({there})", pick) and js(f"({listed})", pick))
             again = js(f"(t => EV.find(e => e.title === t.title && e.t === t.t).id)", pick)
-            js("id => openEvent(byId.get(id))", again)
-            settle(200)
+            # #404: opened from its Timeline row, which a rename draws again with other words: Escape takes focus back to
+            # it, and again after an undo and a resize to 375 px and back while open
+            js("id => { closeDrawer(); const e = byId.get(id); setRange(e.ts - 20 * DAY, e.ts + 20 * DAY); }", again)
+            settle(300)
+            row404 = f"#list .tl-row[data-id='{again}']"
+            on_row = "([sel, words]) => document.activeElement.matches(sel) && document.activeElement.textContent.includes('Renamed in the browser check') === words"
+            page.focus(row404)
+            page.keyboard.press("Enter")
+            settle(300)
             page.click("#dmoreBtn")   # the ⋯ menu of corrections (#270)
             page.click("#dmoreList button:text-is('Rename')")
             page.fill("#dbody .edit-form input", "Renamed in the browser check")
             page.click("#dbody .edit-form button:text-is('Save')")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && document.getElementById('dtitle').textContent === 'Renamed in the browser check'", timeout=20000)
             check("a rename shows in the drawer, marked Edited", "Edited" in page.inner_text("#dbody .edited") and page.locator("#dbody .edited button[data-edit]").count() == 1)
+            page.keyboard.press("Escape")
+            settle(300)
+            check("…then Escape takes focus back to the Timeline row it was opened from, drawn again with its new title (#404)",
+                  js(on_row, [row404, True]), js("document.activeElement.outerHTML.slice(0, 160)"))
+            page.keyboard.press("Enter")   # opened again from that row
+            settle(300)
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("the event panel with its corrections fits 375 px", js("document.documentElement.scrollWidth <= 375 && document.getElementById('dbody').scrollWidth <= document.getElementById('dbody').clientWidth"),
@@ -3679,6 +3692,9 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && (DATA.edits || []).length === 0 && booted", timeout=20000)
             check("…and undoing it restores the title", js(f"({there})", pick))
             page.keyboard.press("Escape")
+            settle(300)
+            check("…the undo and a resize to 375 px and back while open, then Escape: focus on that row again (#404)",
+                  js(on_row, [row404, False]), js("document.activeElement.outerHTML.slice(0, 160)"))
 
             # ---- chart activity (#236): the demo's chart review and phone call aren't visits; a billing-code title is a plain one
             got = js("""(async () => { await loadDetails(EV.filter(e => e.k === 'visit').map(e => e.id));   // loaded when opened (#217)
@@ -4460,6 +4476,37 @@ def main():
                 page.wait_for_function("n => document.querySelectorAll('#dbody .dose-item').length === n", arg=n271, timeout=20000)
                 check("…removed the same way: no reload, the drawer open, the Overview's count back",
                       js("w => window.sg271 === 1 && drawer.classList.contains('open') && document.querySelector('#ovDoses .dose-week').textContent === w", at271["week"]))
+                page.keyboard.press("Escape")
+                settle(200)
+                check("…then Escape takes focus back to the Overview's medication it was opened from, though the Overview was drawn again (#404)",
+                      js("w => document.activeElement.matches('#ovDoses .dose-med') && document.activeElement.textContent === w", what),
+                      js("document.activeElement.outerHTML.slice(0, 160)"))
+                # #404: a dose logged from the Overview beside the medication's drawer, scrolled to its end with its log
+                # shown whole: the drawer is drawn again in place, its scroll and "Show all" as they were. The doses that
+                # make the log long enough for "Show all" are on the page only; the one logged is removed after.
+                fake404 = js("""k => { const m = MEDS.find(m => m.key === k);
+                    const rows = Array.from({length: 12}, (_, i) => ({id: 990000 + i, med: k, name: m.name, t: isoDay(Date.now() - (i + 30) * DAY) + 'T08:00',
+                      status: 'taken', note: '', slot: null, by: 'demo'}));
+                    storePut('doses', {doses: rows}); return rows.map(r => r.id); }""", cur["key"])
+                ids404 = js("DATA.doses.map(d => d.id)")
+                page.locator("#ovDoses .dose-med", has_text=cur["name"]).first.click()
+                settle(200)
+                page.click("#dbody [data-whole]")
+                js("document.getElementById('dbody').scrollTop = 1e6")
+                kept404 = """(() => { const b = document.getElementById('dbody');
+                    return {top: Math.round(b.scrollTop), whole: b.querySelector('[data-whole]')?.dataset.whole, items: b.querySelectorAll('.dose-item').length,
+                            title: document.getElementById('dtitle').textContent}; })()"""
+                before404 = js(kept404)
+                page.locator("#ovDoses .dose-today", has=page.locator(".dose-quick")).filter(has_text=cur["name"]).last.locator(".dose-quick button:text-is('Taken')").click()
+                page.wait_for_function("n => document.querySelectorAll('#dbody .dose-item').length === n + 1", arg=before404["items"], timeout=20000)
+                settle(200)
+                after404 = js(kept404)
+                check("…a dose logged beside the medication's drawer, scrolled with its log shown whole: drawn again in place, its scroll and Show all kept (#404)",
+                      before404["top"] > 200 and before404["whole"] == "1" and after404["whole"] == "1" and abs(after404["top"] - before404["top"]) <= 2
+                      and after404["title"] == cur["name"], [before404, after404])
+                js("""async ids => { for (const d of DATA.doses.filter(d => !ids.includes(d.id))) {
+                    const r = await api(`profiles/${PROFILE.id}/medications/doses/${d.id}`, {method: 'DELETE'}); storePut('doses', await r.json()); } }""", ids404)
+                js("ids => storePut('doses', {removed: ids})", fake404)
                 page.keyboard.press("Escape")
                 settle(200)
                 # the Timeline: marks on the span, by shape, with a tooltip

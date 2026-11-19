@@ -232,7 +232,7 @@ function renderOverview() {
       el("p", {class: "hint", text: "Vaccines the records say were given, newest first"}));
     for (const e of imms.slice(0, 8)) {
       const d = DATA.details[e.id] || {};
-      ic.append(el("div", {class: "ov-row", ...pressable(() => openEvent(e))},
+      ic.append(el("div", {class: "ov-row", "data-id": e.id, ...pressable(() => openEvent(e))},
         el("span", {class: "n"}, el("span", {class: "key", style: {display: "inline-block", width: "12px", height: "3px", borderRadius: "2px", background: CAT_OF[e.k].color, marginRight: "8px", verticalAlign: "middle"}}), e.title),
         el("span", {class: "r", text: fmtD(e.ts)}), el("span", {}),
         el("span", {class: "s", text: [d.dose ? "Dose " + d.dose : "", d.where || d.performer].filter(Boolean).join(" · ")})));
@@ -244,7 +244,7 @@ function renderOverview() {
   // recent events
   const rc = el("div", {class: "card"}, el("h3", {text: "Recent"}));
   const recent = EV.filter(e => !e.hidden && e.k !== "auto_msg" && e.k !== "cycle").sort((a, b) => b.ts - a.ts).slice(0, 10);   // cycle records: their lane only (#183)
-  for (const e of recent) rc.append(el("div", {class: "ov-row", ...pressable(() => openEvent(e))},
+  for (const e of recent) rc.append(el("div", {class: "ov-row", "data-id": e.id, ...pressable(() => openEvent(e))},
     el("span", {class: "n"}, el("span", {class: "key", style: {display: "inline-block", width: "12px", height: "3px", borderRadius: "2px", background: CAT_OF[e.k].color, marginRight: "8px", verticalAlign: "middle"}}), e.title),
     el("span", {class: "r", text: fmtD(e.ts)}), el("span", {}),
     e.sub ? el("span", {class: "s", text: e.sub}) : null));
