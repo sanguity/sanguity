@@ -37,6 +37,7 @@ function switchTab(t, view, push) {
   if (changed && drawer.classList.contains("open")) closeDrawer();   // details belong to the tab they were opened from
   hideTip(); state.tab = t;
   for (const k of TABS) { $("#tab-" + k).setAttribute("aria-current", t === k ? "page" : "false"); $("#view-" + k).hidden = t !== k; }   // the top bar's link (nav.js, #264)
+  SgNav.fit();   // kept in sight: out from under More if it was there (#265)
   // on a phone the tabs are a row that scrolls sideways: the one shown in the middle of it
   { const b = $("#tab-" + t), bar = $(".tabs"); if (b.parentElement === bar && bar.scrollWidth > bar.clientWidth) bar.scrollTo({left: bar.scrollLeft + b.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - b.offsetWidth) / 2, behavior: smoothly()}); }
   { const b = $("#tab-" + t); $("#tabTitle").textContent = b.textContent; viewTitle([b.textContent, PROFILE && PROFILE.name].filter(Boolean).join(" · "), changed && booted && !$(".tabs").contains(document.activeElement) && b.textContent); }   // "Labs · Ben · Sanguity"; said when opened from elsewhere (#209)
@@ -51,13 +52,15 @@ function switchTab(t, view, push) {
   tabAddress(push && changed);   // #208
 }
 /* the tabs are links (#264): Tab reaches each, Enter or a click opens it here, Labs as it was last shown; one opened in
-   a new window (Ctrl, ⌘ or Shift) is the browser's. Where the browser has them, and less motion isn't asked for, the
-   page changes as a View Transition */
+   a new window (Ctrl, ⌘ or Shift) is the browser's. One picked under More (#265) comes into the bar, with focus. Where
+   the browser has them, and less motion isn't asked for, the page changes as a View Transition */
 for (const k of TABS) $("#tab-" + k).addEventListener("click", ev => {
   if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button) return;
   ev.preventDefault();
-  if (k === state.tab || !document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) pickTab(k);
-  else document.startViewTransition(() => pickTab(k));
+  const fromMore = !!ev.currentTarget.closest("[role=menu]");
+  const go = () => { pickTab(k); if (fromMore) $("#tab-" + k).focus({preventScroll: true}); };
+  if (k === state.tab || !document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) go();
+  else document.startViewTransition(go);
 });
 let booted = false;
 // Back, Forward, a link or a typed address: the tab it names (an old alias's # becomes its tab's own)

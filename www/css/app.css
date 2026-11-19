@@ -363,13 +363,13 @@ header .brand-name{font-size:var(--fs-5);margin:0;font-weight:var(--fw-semibold)
 header .brand-name .brand{width:19px;height:23px;flex:none}
 .brand-drop{fill:var(--brand)}.brand-line{stroke:var(--brand-ink)}.brand-dot{fill:var(--brand-ink)}
 header .meta{color:var(--muted);font-size:var(--fs-2)}
-/* the records tabs (nav.js, #264): links, the one shown raised */
+/* the records tabs (nav.js, #264): links, the one shown raised; More (#265) looks like one of them */
 .tabs{display:flex;gap:2px;background:var(--hover);border-radius:var(--r-md);padding:3px}
-.tabs>a{display:inline-flex;align-items:center;gap:var(--sp-1);border:0;background:none;min-height:32px;padding:var(--sp-1) var(--sp-4);border-radius:var(--r-sm);
+.tabs>a,.tab-more{display:inline-flex;align-items:center;gap:var(--sp-1);border:0;background:none;min-height:32px;padding:var(--sp-1) var(--sp-4);border-radius:var(--r-sm);
   cursor:pointer;color:var(--ink2);font:inherit;font-weight:var(--fw-medium);text-decoration:none;white-space:nowrap}
-.tabs>a:hover{color:var(--ink)}
+.tabs>a:hover,.tab-more:hover{color:var(--ink)}
 .tabs>[aria-current="page"]{background:var(--raised);color:var(--ink);box-shadow:var(--shadow-1)}
-@media (max-width:640px),(pointer:coarse){ .tabs>a{min-height:44px} }   /* the button's sizes (#258) */
+@media (max-width:640px),(pointer:coarse){ .tabs>a,.tab-more{min-height:44px} }   /* the button's sizes (#258) */
 .spacer{flex:1}
 /* Settings: a sidebar of groups, one group at a time (settings-nav.js) */
 main.sets.with-nav{display:grid;grid-template-columns:220px minmax(0,1fr);column-gap:var(--sp-5);max-width:1120px;align-items:start}
@@ -393,7 +393,7 @@ main.sets.with-nav>.set-nav{grid-column:1;grid-row:1 / span 50;position:sticky;t
   .set-nav-list a[aria-current="page"]{box-shadow:none;border-color:var(--accent)}
 }
 /* the top bar (nav.js, #264): brand, the profile menu, the records tabs, then Add and the person's menu; the tabs take
-   the room left, scrolling sideways where they don't fit */
+   the room left, those that don't fit going under More (#265) */
 header.topbar{flex-wrap:nowrap;gap:var(--sp-3);padding:var(--sp-2) var(--sp-5)}
 header.topbar .tabs{flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
 header.topbar .tabs::-webkit-scrollbar{display:none}
@@ -1720,7 +1720,7 @@ td:has(>.cell-btn~.test-page.tq)>:is(.cell-btn,small)+.test-page.tq{margin-left:
    once), a menu fades in as it opens, the drawer slides (#drawer). The reduced-motion rule (#209, above) turns all of
    them off. Only on the way in, so a change of theme or of a pressed state is never caught half way. */
 @media (hover:hover){
-  :is(.btn,.iconbtn,.tabs>a,.chip,.toggle,.seg>button,.seg>label,.kind-more,.period-more-btn,.menu-item,.tile,.tile-tq,
+  :is(.btn,.iconbtn,.tabs>a,.tab-more,.chip,.toggle,.seg>button,.seg>label,.kind-more,.period-more-btn,.menu-item,.tile,.tile-tq,
     .tl-row,.ov-row,.srow,.jrow,.dir-hit,.set-nav-list a,.guide-way,.linkish,.fsum-reset):hover{
     transition:background-color var(--dur-1) var(--ease-out),border-color var(--dur-1) var(--ease-out),color var(--dur-1) var(--ease-out),
       filter var(--dur-1) var(--ease-out)}   /* a filled button's shade (#258) */

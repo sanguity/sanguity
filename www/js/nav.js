@@ -1,7 +1,8 @@
 /* Sanguity · the top bar on every signed-in page (after util.js and pwa.js, before the page's own script).
 
    One row, the same on every page (#264): the brand (back to the records), the profile menu (switch profile; About
-   this person, Settings, Sources, Sharing; New profile), the records tabs as links, then two menus. Add: today's (a dose, a journal entry, a home reading) and records in (upload, connect, type
+   this person, Settings, Sources, Sharing; New profile), the records tabs as links (those that don't fit under More,
+   #265), then two menus. Add: today's (a dose, a journal entry, a home reading) and records in (upload, connect, type
    in, a Health Link). The person's own menu: Account, Display, Admin (admins only: nav.js asks the API itself, #167),
    Getting started (the first-run guide, #199), the light/dark toggle, log out. The items keep the ids the pages
    already use (#importLink, #journalBtn, #settingsLink, #theme, #logout, #who, #profile, #tab-labs), so each page's
@@ -82,7 +83,7 @@ function menuPlace(m) {
 }
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
-  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, layout() { return {}; }, menu: menuWire, TABS: []};
+  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, layout() { return {}; }, fit() {}, menu: menuWire, TABS: []};
   const svgLogo = header.querySelector(".brand-name");
   const onRecords = !!document.getElementById("view-overview"), page = location.pathname.split("/").pop() || "index.html";
 
@@ -167,6 +168,7 @@ const SgNav = (() => {
     rSep.hidden = known.length < 2;
     mark();
     for (const a of pLinks) a.setAttribute("href", a.getAttribute("href").replace(/^([^?#]*)(\?[^#]*)?/, "$1" + q));
+    editTabs.setAttribute("href", `settings.html${q}#sec-tabs`);
     if (!onRecords) for (const [t] of TABS) tabEl[t].setAttribute("href", `./${q}#${t}`);
   }
   /* fill the menu with the profiles shared with you and choose one: want, else the address's, else this browser's
@@ -194,14 +196,45 @@ const SgNav = (() => {
 
   /* ---- the records tabs (#264): links to the records page's tabs, on every page, in the profile's order without its
      hidden ones (Settings → Dashboard → Tabs: the records page passes its own, other pages ask for it). On the records
-     page app.js shows the one picked (aria-current) and follows the links itself. Where they don't fit, the row
-     scrolls sideways. */
+     page app.js shows the one picked (aria-current, then SgNav.fit()) and follows the links itself. Those that don't
+     fit go under More (#265), which ends with Edit tabs…; the tab shown always stays in sight, taking the last place
+     there is. On a phone the row scrolls sideways instead. */
   const TABS = [["overview", "Overview"], ["health", "Body and activity"], ["timeline", "Timeline"], ["labs", "Labs"], ["costs", "Costs"]];
   const tabEl = Object.fromEntries(TABS.map(([t, text]) => [t, el("a", {id: "tab-" + t, href: (onRecords ? "#" : "./#") + t, text,
     "data-tip": t === "health" ? "Watch, sleep and smart-scale data" : null})]));
-  const tabs = el("nav", {class: "tabs", "aria-label": "Records"}, ...Object.values(tabEl));
+  const editTabs = el("a", {class: "menu-item acct", role: "menuitem", id: "editTabs", href: "settings.html#sec-tabs"}, icon("pencil"), "Edit tabs…");
+  const more = menu("tabMore", "More", "", [sep(), editTabs]);
+  more.btn.className = "tab-more";
+  more.btn.append(caret());
+  more.btn.setAttribute("aria-label", "More tabs");
+  const tabs = el("nav", {class: "tabs", "aria-label": "Records"}, ...Object.values(tabEl), more.wrap);
   wrap.after(tabs);
   let order = TABS.map(([t]) => t), hidden = new Set();
+  const phone = matchMedia("(max-width:700px)");
+  function fit() {
+    const shown = order.filter(t => !hidden.has(t)).map(t => tabEl[t]), had = document.activeElement;
+    const put = vis => {
+      for (const a of shown) {
+        const out = !vis.includes(a);
+        a.classList.toggle("menu-item", out);
+        if (out) { a.setAttribute("role", "menuitem"); a.tabIndex = -1; } else { a.removeAttribute("role"); a.removeAttribute("tabindex"); }
+      }
+      tabs.prepend(...vis);
+      more.list.prepend(...shown.filter(a => !vis.includes(a)));
+      more.wrap.hidden = vis.length === shown.length;
+    };
+    put(shown);
+    if (!phone.matches) {
+      const cur = shown.find(a => a.getAttribute("aria-current") === "page");
+      for (let n = shown.length - 1; n > 0 && tabs.scrollWidth > tabs.clientWidth; n--) {
+        const vis = shown.slice(0, n);
+        if (cur && !vis.includes(cur)) vis[n - 1] = cur;
+        put(vis);
+      }
+    }
+    // a tab that had focus and moved: focus stays with it, or goes to More when it's put away
+    if (shown.includes(had) && document.activeElement !== had) (had.parentElement === tabs ? had : more.btn).focus({preventScroll: true});
+  }
   /* the profile's layout ({order, hidden}, as Settings saves it): every tab in order, a tab it doesn't name after the
      rest, at least one shown. Returns {order, hidden} */
   function layout(cfg) {
@@ -210,7 +243,7 @@ const SgNav = (() => {
     hidden = new Set(ok(cfg && cfg.hidden));
     if (hidden.size >= ids.length) hidden.clear();
     for (const t of ids) tabEl[t].hidden = hidden.has(t);
-    tabs.prepend(...order.map(t => tabEl[t]));
+    fit();
     return {order, hidden};
   }
   let tabsFor = null;
@@ -300,7 +333,14 @@ const SgNav = (() => {
     const b = header.querySelector(".brand-link");
     if (b) { b.removeAttribute("href"); b.removeAttribute("title"); }
   }
-  /* the bar's height as --bar-h, so what gets focus is scrolled clear of it (scroll-padding in app.css, #202) */
-  new ResizeObserver(() => document.documentElement.style.setProperty("--bar-h", header.offsetHeight + "px")).observe(header);
-  return {sync, lock, profiles, layout, menu: menuWire, TABS: TABS.map(([t]) => t)};
+  /* the bar's height as --bar-h, so what gets focus is scrolled clear of it (scroll-padding in app.css, #202); and
+     the tabs fitted again as the bar's room changes (the window, the profile's name, the fonts arriving), in the
+     next frame, not inside the observer's own */
+  new ResizeObserver(() => {
+    document.documentElement.style.setProperty("--bar-h", header.offsetHeight + "px");
+    requestAnimationFrame(fit);
+  }).observe(header);
+  for (const x of [wrap, menus]) new ResizeObserver(() => requestAnimationFrame(fit)).observe(x);
+  document.fonts?.ready.then(fit);
+  return {sync, lock, profiles, layout, fit, menu: menuWire, TABS: TABS.map(([t]) => t)};
 })();
