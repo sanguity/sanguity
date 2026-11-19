@@ -222,16 +222,27 @@ const SgNav = (() => {
     const p = known.find(x => String(x.id) === pick.value);
     wrap.hidden = !p || locked;
     if (!p) return;
-    const role = x => ROLE[x.role] || x.role, q = "?profile=" + p.id;
+    const role = x => ROLE[x.role] || x.role;
     prof.btn.replaceChildren(el("span", {class: "vh", text: "Profile: "}), el("span", {class: "profile-name", text: p.name}), " ",
       el("span", {class: "profile-role", text: role(p)}), caret());
     radios.replaceChildren(...(known.length < 2 ? [] : [head("Switch profile"), ...known.map(x => el("button", {class: "menu-item", role: "menuitemradio",
       type: "button", tabindex: "-1", "data-pid": x.id}, icon("check"), x.name, el("span", {class: "menu-note", text: role(x)})))]));
     rSep.hidden = known.length < 2;
     mark();
-    for (const a of pLinks) a.setAttribute("href", a.getAttribute("href").replace(/^([^?#]*)(\?[^#]*)?/, "$1" + q));
-    editTabs.setAttribute("href", `settings.html${q}#sec-tabs`);
-    if (!onRecords) for (const [t] of TABS) tabEl[t].setAttribute("href", `./${q}#${t}`);
+    for (const a of header.querySelectorAll("a[href]")) carry(a, p.id);
+    for (const m of [prof, add, user, more]) for (const a of m.list.querySelectorAll("a[href]")) carry(a, p.id);   // (a sheet's list is out of the bar, #269)
+  }
+  /* a link that goes to another page, or to the records page's tabs from another, opens the profile shown here, not
+     this browser's last (#397: one browser tab per child, each its own), as the palette's links do: ?profile= added,
+     the link's own query kept. A link within the page (#log-dose on the records page) and New profile are left. */
+  const hrefs = new WeakMap();
+  function carry(a, id) {
+    if (!hrefs.has(a)) hrefs.set(a, a.getAttribute("href"));
+    const h = hrefs.get(a);
+    if (!h || h[0] === "#" || a.id === "newProfileLink") return;
+    const [path, hash] = h.split("#"), [file, qs] = path.split("?"), q = new URLSearchParams(qs || "");
+    q.set("profile", id);
+    a.setAttribute("href", `${file}?${q}${hash !== undefined ? "#" + hash : ""}`);
   }
   /* fill the menu with the profiles shared with you and choose one: want, else the address's, else this browser's
      last, else the first. Returns the profile's id (null when there are none). */

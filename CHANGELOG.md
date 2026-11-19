@@ -1194,6 +1194,10 @@ Everything on `main` so far; it becomes the first tagged release.
   kind once (a stay's title is its hospital, the line under it "Hospital stay" and its dates), a fact that's a day the
   head names or that starts with the place its title is says only what's left ("Where: Oncology unit", "Admitted:
   9:40 PM"), a medication's history has key facts in boxes like every record, and "Edited" is said with the edits.
+- **The top bar's links open the profile shown** (#397): with a browser tab for each child, Add's links (Log a dose,
+  Upload files…), Display and Getting started opened whichever profile had been picked last in any tab, not the one
+  shown. Every link in the top bar to another page now carries the profile shown (`?profile=`), as the tabs, the
+  profile menu's pages and the command palette's links did.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

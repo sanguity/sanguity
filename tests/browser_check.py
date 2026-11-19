@@ -1489,7 +1489,7 @@ def main():
               ["§People", "Accounts", "Install activity", "§Data safety", "Backups", "§Connections", "Connected-source apps", "Provider directory",
                "Outside connections", "§Lab matching", "Lab name matches"], groups)
         strict.wait_for_selector("#adminLink:not([hidden])", state="attached", timeout=10000)
-        check("…and the menu offers Admin to an admin", strict.evaluate("document.getElementById('adminLink').getAttribute('href')") == "admin.html")
+        check("…and the menu offers Admin to an admin", strict.evaluate("document.getElementById('adminLink').getAttribute('href')") == "admin.html?profile=1")   # (#397)
         check("no Admin card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         # the Sharing page (#168): its sidebar, each part drawn by its own script
         strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
@@ -7595,8 +7595,8 @@ def main():
             # #264: in two groups, Today and Records, each way in opening its section of Sources (#166)
             check("…in two groups: Today (a dose, a journal entry, a home reading), then Records, each way in opening its section of Sources (#166)",
                   js("[...document.querySelectorAll('#addMenuList [role=group]')].map(g => [g.getAttribute('aria-label'), ...[...g.querySelectorAll('[role=menuitem]')].map(a => a.getAttribute('href'))])")
-                  == [["Today", "./#log-dose", "./#new-journal-entry", "sources.html#home-reading"],
-                      ["Records", "sources.html#upload", "sources.html#portals", "sources.html#manual", "sources.html#link"]],
+                  == [["Today", "./?profile=1#log-dose", "./?profile=1#new-journal-entry", "sources.html?profile=1#home-reading"],   # for the profile shown (#397)
+                      ["Records", "sources.html?profile=1#upload", "sources.html?profile=1#portals", "sources.html?profile=1#manual", "sources.html?profile=1#link"]],
                   js("[...document.querySelectorAll('#addMenuList [role=group]')].map(g => [g.getAttribute('aria-label'), ...[...g.querySelectorAll('[role=menuitem]')].map(a => a.getAttribute('href'))])"))
             page.keyboard.press("Escape")
             # #244: on a phone the bar wraps, and a menu pinned to its button's right edge opened off the screen's left;
@@ -9732,6 +9732,23 @@ def main():
             pick_profile(page, "1")   # the records page loads again for it
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             check("…switching there opens the other", js("document.getElementById('profile').value") == "1" and js("localStorage.getItem('ht-profile')") == "1")
+            # #397: a link in the top bar that acts on a profile opens the one shown on its page, not this browser's last:
+            # Second person shown here, My records picked in another browser tab since; each of Add's links, Display and
+            # Getting started, followed from here, opens Second person
+            followed = {}
+            for menu, item in [("#addMenuBtn", f"#addMenuList a:text-is('{t}')") for t in ("Log a dose", "Journal entry", "Home reading", "Upload files",
+                                "Connect a portal or plan", "Type records in", "Paste a Health Link")] + [("#userMenuBtn", "#displayLink"), ("#userMenuBtn", "#guideLink")]:
+                page.goto(base + "/settings.html?profile=2")
+                page.wait_for_function(filled + " && document.getElementById('profile').value === '2'", timeout=20000)
+                js("localStorage.setItem('ht-profile', '1')")   # as another tab picking My records leaves this browser
+                page.click(menu)
+                page.click(item)
+                page.wait_for_function("document.getElementById('profile') && document.getElementById('profile').value !== ''", timeout=20000)
+                settle(400)
+                if js("document.getElementById('profile').value") != "2":
+                    followed[item] = js("[location.pathname + location.search + location.hash, document.getElementById('profile').value]")
+            check("the top bar's links open the profile shown (#397): with another browser tab on My records since, Add's links, Display and "
+                  "Getting started from Second person's Settings each open Second person", not followed, followed)
             page.set_viewport_size({"width": 375, "height": 800})
             box = "(s => { const r = document.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom, r.left, r.right]; })"
             # #268: on a phone every page's top bar is one row: the brand, the profile menu (its name whole at 375 px and
@@ -12772,7 +12789,7 @@ def main():
             fp.goto(fbase + "/")
             f_until("typeof booted !== 'undefined' && booted")
             check("…and signing in again opens the records, not the guide; the menu still has Getting started",
-                  fp.evaluate("location.pathname") == "/" and fp.get_attribute("#guideLink", "href") == "guide.html")
+                  fp.evaluate("location.pathname") == "/" and fp.get_attribute("#guideLink", "href") == "guide.html?profile=1")   # (#397)
             # the empty states: a second, empty profile
             new_profile = lambda name: fp.evaluate("""n => fetch('api/profiles', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
                 body: JSON.stringify({name: n})}).then(r => r.json()).then(j => j.id)""", name)
