@@ -22,16 +22,16 @@ function sourceNodes(imp, note) {
     ` · imported ${fmtD(s.at * 1000)}`, s.synced ? ` · last synced ${fmtDT(s.synced * 1000)}` : null, note ? ` (${note})` : null];
 }
 /* the drawer's Source line for an event: its import, the import of anything merged into it or linked to it as the
-   same result (#96), and whether it was edited */
+   same result (#96), whom the record itself names as its source (once, here: #270), and whether it was edited */
 function eventSource(e) {
   if (!e || e.imp == null) return null;
-  const d = DATA.details[e.id] || {};
+  const d = DATA.details[e.id] || {}, own = typeof d.src === "string" && d.src !== "Typed in" && d.src !== importName(e.imp) ? d.src : "";
   const merged = (Array.isArray(d.merged) ? d.merged : []).map(m => m && m.imp).filter(i => i != null && sourceOf(i));
   const same = [...new Set((Array.isArray(d.same) ? d.same : []).map(x => x && x.imp))].filter(i => i != null && i !== e.imp && sourceOf(i));
   const parts = [sourceNodes(e.imp), ...merged.map(i => ["; ", ...sourceNodes(i, "merged in")]), ...same.map(i => ["; ", ...sourceNodes(i, "same result")])];
   if (!parts[0].length) return null;
   const edited = (DATA.edits || []).some(x => x.found && x.ids.includes(e.id));
-  return el("p", {class: "source"}, el("b", {text: "Source "}), ...parts.flat(),
+  return el("p", {class: "source"}, el("b", {text: "Source "}), ...parts.flat(), own ? ` · as recorded: ${own}` : null,
     edited ? el("span", {class: "tag", text: "Edited"}) : null);
 }
 /* the line under a lab series' table on Trends */

@@ -5,8 +5,10 @@
 /* The drawer is a <dialog> (#262), shown by openDialog (util.js) as a side panel beside the records, which stay usable
    (another record clicked opens in it, which stays open: not modal); as a modal one when it covers the whole page
    (wide on a screen 1200 px or narrower, or 640 px or narrower), so Tab and a screen reader stay in it (#209); and on
-   a phone (700 px or narrower) as a bottom sheet, modal, swiped down by its handle or its header to close. Escape
-   closes it wherever focus is, and focus goes back to what opened it. .open says it's open (or opening). */
+   a phone (700 px or narrower) as a bottom sheet, modal, swiped down by its handle or its header to close. On a screen
+   1200 px or wider it's docked (#270): the page moves over for it (html.sg-docked, app.css) instead of being covered,
+   and is drawn again for its new width. Escape closes it wherever focus is, and focus goes back to what opened it.
+   .open says it's open (or opening). */
 const drawer = $("#drawer");
 let drawerReturn = null;
 function closeDrawer() {
@@ -15,7 +17,9 @@ function closeDrawer() {
   if (drawer.open) { drawer.close(); liveFollow(); }
   if (back) back.focus({preventScroll: true});   // once the page behind isn't inert any more
   setTimeout(() => { if (!drawer.classList.contains("open")) $("#dbody").replaceChildren(); }, 250);   // unload any PDF / document once it has slid away
-  state.selEv = null; renderTimeline(); document.querySelectorAll(".tl-row.sel").forEach(r => r.classList.remove("sel")); }
+  state.selEv = null; document.querySelectorAll(".tl-row.sel").forEach(r => r.classList.remove("sel"));
+  if (!drawerDock(false)) renderTimeline();   // undocked, the page is drawn again anyway
+}
 $("#dclose").onclick = closeDrawer;
 drawer.addEventListener("close", () => { if (drawer.classList.contains("open") && !drawer.open) closeDrawer(); });   // swiped away
 const drawerPhone = matchMedia("(max-width: 700px)");
@@ -23,7 +27,36 @@ function drawerFit() {
   if (!drawer.classList.contains("open")) return;
   const covers = drawerPhone.matches || document.documentElement.clientWidth <= (drawer.classList.contains("wide") ? 1200 : 640);   // app.css's widths
   openDialog(drawer, {as: drawerPhone.matches ? "sheet" : "side", modal: covers});
+  drawerDock(!covers && !drawer.classList.contains("wide") && innerWidth >= 1200);
 }
+/* docked or not: the page's width changes, so its charts are drawn again; what had focus on it, and what focus goes
+   back to, are found again in what's drawn: the control that's the same (its tag, id, record, name and words), as
+   many of those along (a chart's marker under each chart). True if it changed. */
+const FOCUSABLE = "a[href], button, input, select, textarea, [tabindex]";
+const focusSig = x => [x.tagName, x.id, x.dataset?.id, x.getAttribute("aria-label"), x.textContent.trim().slice(0, 80)].join("\u001f");
+function drawerDock(on) {
+  const root = document.documentElement;
+  if (root.classList.contains("sg-docked") === on) return false;
+  const like = (v, sig) => [...v.querySelectorAll(FOCUSABLE)].filter(y => focusSig(y) === sig);
+  const spot = x => { const v = x?.closest?.("main > section"); if (!v) return null; const sig = focusSig(x); return [v, sig, like(v, sig).indexOf(x)]; };
+  const was = document.activeElement, a = spot(was), r = spot(drawerReturn), find = s => s && s[2] >= 0 ? like(s[0], s[1])[s[2]] : null;
+  root.classList.toggle("sg-docked", on);
+  dockStill = ptrAt;
+  renderAll();
+  const back = () => {   // now, and again once Labs' charts are drawn (the frame after, trends.js)
+    if (a && !was.isConnected && [was, document.body].includes(document.activeElement)) find(a)?.focus({preventScroll: true});
+    if (r && drawerReturn === r[3] && !drawerReturn.isConnected) drawerReturn = r[3] = find(r) || drawerReturn;
+  };
+  if (r) r[3] = drawerReturn;
+  back(); requestAnimationFrame(() => requestAnimationFrame(back));
+  if (on && drawerReturn?.closest?.("main")) drawerReturn.scrollIntoView({block: "nearest"});   // what it was opened from, still in view
+  return true;
+}
+// the page moving over puts something else under a pointer that hasn't moved: no tooltip for it (util.js, by hover,
+// which would take the next Escape) until the pointer moves
+let ptrAt = "", dockStill = null;
+addEventListener("pointermove", ev => { ptrAt = ev.clientX + "," + ev.clientY; if (dockStill !== ptrAt) dockStill = null; }, true);
+addEventListener("pointerover", ev => { if (dockStill != null) ev.stopPropagation(); }, true);
 addEventListener("resize", drawerFit);
 function setWide(on) { drawer.classList.toggle("wide", on); drawerFit(); $("#dwide").setAttribute("aria-pressed", on); $("#dwide").dataset.tip = on ? "Narrower panel" : "Wider panel"; try { localStorage.setItem("ht-wide", on ? "1" : ""); } catch (e) {} }
 $("#dwide").onclick = () => setWide(!drawer.classList.contains("wide"));
@@ -35,6 +68,53 @@ addEventListener("keydown", e => {
 });
 // modal, the browser would close it on any Escape: only that listener does, so a form in it (renaming) keeps its own
 drawer.addEventListener("cancel", e => e.preventDefault());
+
+/* ---------------------------------------------------------------- one layout for every record (#270)
+   The head: the kind's icon in its colour, the title, one line of what kind it is and when, and a ⋯ menu of the
+   corrections (Hide, Rename, Fix date, Merge…: drawerMenu). The body: its key facts (three or four, dl.facts), what
+   the record holds, the actions that go somewhere (.dgo: another tab, the medication's history, a journal note), and
+   where it came from. Each fact once: a value the head or a key fact says isn't said again below (drawerFacts). */
+let drawerSaid = new Set();
+const saidKey = v => String(v).trim().toLowerCase();
+function drawerHead(k, title, line, tone) {
+  const key = $("#dkey");
+  key.replaceChildren(icon(KIND_ICON[k] || (k ? "file-text" : "history")));   // none: the list of edits
+  key.style.setProperty("--tone", tone || CAT_OF[k]?.color || "var(--muted)");
+  $("#dtitle").textContent = title; $("#dsub").textContent = line;
+  drawerSaid = new Set([title, ...line.split(" · ")].filter(Boolean).map(saidKey));
+  drawerMenu([]);
+  const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
+  return body;
+}
+/* [label, value, dd's attributes?] pairs, those with a value not already said: the key facts ("facts", each in its own
+   box, then said) or the rest ("kv") */
+function drawerFacts(rows, cls = "kv") {
+  const keep = rows.filter(r => r && r[1] != null && r[1] !== "" && !drawerSaid.has(saidKey(r[1])));
+  if (!keep.length) return null;
+  if (cls === "kv") return el("dl", {class: "kv"}, keep.flatMap(([k, v, o]) => [el("dt", {text: k}), el("dd", {text: v, ...o})]));
+  keep.forEach(r => drawerSaid.add(saidKey(r[1])));
+  return el("dl", {class: "facts"}, keep.map(([k, v, o]) => el("div", {}, el("dt", {text: k}), el("dd", {text: v, ...o}))));
+}
+/* the ⋯ menu: [{text, tip?, run}], none (hidden) for a record that can't be corrected; label: what its button says */
+const dMenu = SgNav.menu({btn: $("#dmoreBtn"), list: $("#dmoreList")});
+function drawerMenu(items, label = "Correct this record") {
+  items = items.filter(Boolean);
+  for (const x of [$("#dmoreBtn"), $("#dmoreList")]) x.setAttribute("aria-label", label);
+  $("#dmoreBtn").dataset.tip = label;
+  $("#dmoreList").replaceChildren(...items.map(x => el("button", {class: "menu-item", role: "menuitem", type: "button", tabindex: "-1", text: x.text,
+    "data-tip": x.tip, onclick: () => { dMenu.close(); x.run(); }})));
+  $("#dmore").hidden = !items.length;
+}
+/* while its details load (#217): the words (details.js) and the shape of what's coming */
+const drawerSkeleton = () => el("div", {class: "skel", "aria-hidden": "true"}, el("i"), el("i"), el("i"), el("i"));
+/* opened from a row: it grows into the drawer (a View Transition), where the browser can and motion isn't reduced;
+   with the drawer already open the record just changes in it */
+function openFrom(row, open) {
+  if (!document.startViewTransition || drawer.classList.contains("open") || matchMedia("(prefers-reduced-motion: reduce)").matches) return open();
+  row.classList.add("vt-from"); drawer.classList.add("vt");
+  document.startViewTransition(() => { row.classList.remove("vt-from"); open(); }).finished.finally(() => drawer.classList.remove("vt"));
+}
+
 function docFrame(html, h = 420, title = "The record as it was sent") {   // title: what a screen reader says of the frame (#202)
   const f = el("iframe", {class: "doc", sandbox: "allow-popups", title, style: {height: h + "px"}});
   f.srcdoc = `<!doctype html><meta charset=utf-8><base target=_blank><style>body{font:14px/1.45 system-ui,sans-serif;color:#111;margin:14px}table{border-collapse:collapse}td,th{padding:2px 6px}</style>${html}`;
@@ -47,113 +127,126 @@ function resultTable(rows) {
     el("thead", {}, el("tr", {}, ["Component", "Value", "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
     el("tbody", {}, rows.map(([n, v, u, rr, f], i) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
       el("td", {}, SERIES.some(s => s.name === n && s.n) ? el("button", {class: "cell-btn", type: "button", text: nice(n)}) : nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
-        SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null, testLink(n, true)), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}, ...rowOrig(rows[i])), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : ""}, ...flagNodes(f)))))));   // the mark and the word (#60); "What is this test?" (#163)
+        SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null, testLink(n, true)), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}, ...rowOrig(rows[i])), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : ""}, ...flagNodes(f)))))));   // the mark and the word (#60); "What is this test?" (#163); a value kept with its unit (#270)
 }
 /* #41: a converted row's value and range as reported (units.js), on its own line under the value */
 function rowOrig(row) {
   return row.orig ? [el("small", {class: "orig", text: `Reported ${`${row.orig[0] ?? ""} ${row.orig[1] || ""}`.trim()}${row.orig[2] ? ", ref " + row.orig[2] : ""}`})] : [];
 }
-function resultBody(d, eid) {
-  const out = [];
-  const kv = [["Order", d.order], ["Collected", recordDate(d.collected)], ["Resulted", recordDate(d.resulted)], ["Ordered by", d.provider], ["Status", d.status], ["Specimen", d.specimen], ["Lab", d.lab], ["Diagnosis", (d.dx || []).join("; ")]].filter(x => x[1]);
-  out.push(el("dl", {class: "kv"}, kv.flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
+/* a result: its key facts when it's the record open (top), else (one of a lab day's) all of them as a list */
+function resultBody(d, eid, top) {
+  const out = [], key = [["Ordered by", d.provider], ["Status", d.status], ["Lab", d.lab], ["Specimen", d.specimen]];
+  if (top) out.push(drawerFacts(key, "facts"));
+  out.push(drawerFacts([["Order", d.order], ["Collected", recordDate(d.collected)], ["Resulted", recordDate(d.resulted)], ...(top ? [] : key), ["Diagnosis", (d.dx || []).join("; ")]]));
   const t = resultTable(d.rows); if (t) out.push(el("div", {class: "sect", text: "Results"}), t);
   const same = sameNotes(eid, d); if (same) out.push(same);   // the same result from another source (same.js)
   for (const [k, h, isHtml] of d.report || []) out.push(el("div", {class: "sect", text: k === "combinedRTFNarrativeImpression" ? "Report" : k}),
     isHtml ? docFrame(h, 420, k === "combinedRTFNarrativeImpression" ? "Report" : k) : el("pre", {class: "report", text: h.replace(/\r\n/g, "\n").trim()}));
   if (d.comments && d.comments.length) out.push(el("div", {class: "sect", text: "Provider comments"}), ...d.comments.map(c => el("p", {text: c})));
-  return out;
+  return out.filter(Boolean);
 }
+const uniq = xs => [...new Set(xs.filter(Boolean))].join("; ");
+const goBtn = (text, onclick) => el("button", {class: "btn", type: "button", text, onclick});
+const note = text => el("p", {class: "hint dnote", text});
 function openEvent(e) {
   if (!e) return;
   if (e.k === "journal" || e.k === "mood") return openJournal(e);   // journal.js (a mood: #161)
   if (e.k === "cycle") return openCycle(e);       // cycle.js (#183)
-  const d = DATA.details[e.id] || {}, c = CAT_OF[e.k] || CATS[2];
+  const d = DATA.details[e.id] || {};
   state.selEv = e.id;
-  $("#dkey").style.background = c.color; $("#dtitle").textContent = e.title;
-  $("#dsub").textContent = `${KIND_LABEL[e.k]} · ${e.end && e.te - e.ts > DAY ? fmtD(e.ts) + " – " + fmtD(e.te) : fmtDT(e.ts)}${e.sub ? " · " + e.sub : ""}`;
-  const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
-  { const wait = detailsWait(e, body); if (wait) { showDrawer(); return wait; } }   // its details, loaded when it's opened (details.js, #217)
-  if (d.type === "result") body.append(...resultBody(d, e.id));
+  const body = drawerHead(e.k, e.title, `${KIND_LABEL[e.k] || "Record"} · ${e.end && e.te - e.ts > DAY ? fmtD(e.ts) + " – " + fmtD(e.te) : fmtDT(e.ts)}`);
+  { const wait = detailsWait(e, body); if (wait) { body.append(drawerSkeleton()); showDrawer(); return wait; } }   // its details, loaded when it's opened (details.js, #217)
+  const fixes = WATCH_KINDS.has(e.k) ? null : editPanel(e);   // the ⋯ menu's corrections, and what was corrected; the watch's own aren't records
+  const main = [], go = [], facts = rows => main.push(drawerFacts(rows, "facts")), kv = rows => main.push(drawerFacts(rows));
+  if (d.type === "result") main.push(...resultBody(d, e.id, true));
   else if (d.type === "labday") {
-    body.append(el("div", {}, el("button", {class: "btn", text: "Show this day in Labs", onclick: () => { setRange(e.ts - 45*DAY, e.ts + 45*DAY); pickTab("labs"); }})));
+    const rs = d.ids.map(id => DATA.details[id]).filter(Boolean), abn = rs.reduce((a, r) => a + (r.rows || []).filter(x => x[4]).length, 0);
+    facts([["Results", String(rs.reduce((a, r) => a + (r.rows || []).length, 0))], ["Out of range", abn ? String(abn) : "None"],
+      ["Ordered by", uniq(rs.map(r => r.provider))], ["Lab", uniq(rs.map(r => r.lab))]]);
+    go.push(goBtn("Show this day in Labs", () => { setRange(e.ts - 45*DAY, e.ts + 45*DAY); pickTab("labs"); }));
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
       const abn = (r.rows || []).filter(x => x[4]).length;
-      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {style: {color: "var(--muted)", fontSize: "var(--fs-2)", fontWeight: "var(--fw-regular)"}, text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", "data-tip": `${abn} outside reference range`, text: abn}, el("span", {class: "vh", text: " outside reference range"})) : null), el("div", {}, ...resultBody(r, id), eventSource(ev2)));
-      body.append(det);
+      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {class: "res-t", text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", "data-tip": `${abn} outside reference range`, text: abn}, el("span", {class: "vh", text: " outside reference range"})) : null), el("div", {}, ...resultBody({...r, order: null}, id), eventSource(ev2)));
+      main.push(det);
     }
   } else if (d.type === "conversation") {
+    facts([["Messages", String(d.messages.length)], ["From", uniq(d.messages.map(m => m.from)).replace(/; /g, ", ")]]);
     for (const m of d.messages) {
       const html = /<[a-z][\s\S]*>/i.test(m.body);
-      body.append(el("div", {class: "msg"}, el("div", {class: "mh"}, el("b", {text: m.from}), " · " + fmtDT(m.t)),
+      main.push(el("div", {class: "msg"}, el("div", {class: "mh"}, el("b", {text: m.from}), " · " + fmtDT(m.t)),
         html ? docFrame(m.body, 200, `Message from ${m.from}`) : el("pre", {text: m.body.replace(/\r\n/g, "\n").trim()}),
         m.att && m.att.length ? el("div", {class: "mh", text: "Attachments: " + m.att.join(", ")}) : null));
     }
-  } else if (d.type === "letter") body.append(docFrame(d.html, 600, e.title || "Letter"));
+  } else if (d.type === "letter") main.push(docFrame(d.html, 600, e.title || "Letter"));
+  else if (d.type === "file" && !d.url) main.push(note("Its file wasn't found in what was imported, so there's nothing to show."));   // profiles.py index_documents
   else if (d.type === "file") {
-    body.append(el("div", {class: "btns"}, el("a", {class: "btn", href: d.url, target: "_blank", rel: "noopener", text: "Open in new tab"}), el("a", {class: "btn", href: d.url, download: "", text: "Download"})));
+    go.push(el("a", {class: "btn", href: d.url, target: "_blank", rel: "noopener", text: "Open in new tab"}), el("a", {class: "btn", href: d.url, download: "", text: "Download"}));
     // documents fill the panel's remaining height so the viewer's own scrollbar and toolbar stay on screen
     // HTML records: no scripts (the sandbox has no allow-scripts, and the server sends script-src 'none'), but
     // same-origin, so the record can load the pictures and stylesheet saved beside it (an opaque origin can't)
-    if (d.ext === "html" || d.ext === "htm") { body.classList.add("fill"); body.append(el("iframe", {class: "doc", src: d.url, sandbox: "allow-same-origin", title: e.title})); }
-    else if (["jpg","jpeg","png","gif"].includes(d.ext)) body.append(el("img", {src: d.url, alt: e.title, style: {maxWidth: "100%", borderRadius: "8px"}}));
-    else if (d.ext === "pdf") { body.classList.add("fill"); body.append(el("iframe", {class: "doc", src: d.url + (d.url.includes("#") ? "" : "#view=FitH"), title: e.title})); }
-    else if (d.ext === "tif" || d.ext === "tiff") body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "Scanned TIFF document — browsers can't preview TIFF; use Download and open it in Photos or a PDF viewer."}));
+    if (d.ext === "html" || d.ext === "htm") { body.classList.add("fill"); main.push(el("iframe", {class: "doc", src: d.url, sandbox: "allow-same-origin", title: e.title})); }
+    else if (["jpg","jpeg","png","gif"].includes(d.ext)) main.push(el("img", {class: "doc-img", src: d.url, alt: e.title}));
+    else if (d.ext === "pdf") { body.classList.add("fill"); main.push(el("iframe", {class: "doc", src: d.url + (d.url.includes("#") ? "" : "#view=FitH"), title: e.title})); }
+    else if (d.ext === "tif" || d.ext === "tiff") main.push(note("Scanned TIFF document — browsers can't preview TIFF; use Download and open it in Photos or a PDF viewer."));
   } else if (d.type === "stay") {
-    body.append(...present(d.discharge
-      ? el("dl", {class: "kv"}, el("dt", {text: "Admitted"}), el("dd", {text: fmtDT(e.ts)}), el("dt", {text: "Discharged"}), el("dd", {text: fmtDT(e.te)}),
-          d.where ? el("dt", {text: "Where"}) : null, d.where ? el("dd", {text: d.where}) : null,
-          d.transfer_from ? el("dt", {text: "Transferred from"}) : null, d.transfer_from ? el("dd", {text: d.transfer_from}) : null,
-          d.transfer_to ? el("dt", {text: "Transferred to"}) : null, d.transfer_to ? el("dd", {text: d.transfer_to}) : null,
-          d.admission ? el("dt", {text: "Admission"}) : null, d.admission ? el("dd", {text: d.admission}) : null,
-          el("dt", {text: "Source"}), el("dd", {text: d.how || ""}))
-      : el("dl", {class: "kv"}, el("dt", {text: "Admitted"}), el("dd", {text: d.admit}), el("dt", {text: "Last result"}), el("dd", {text: fmtDT(d.lastResult)}), el("dt", {text: "Inpatient results"}), el("dd", {text: d.results})),
-      d.note ? el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}) : null,
-      d.discharge ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "Estimated: no admission record was available, so the end date is the last inpatient lab result."}),
-      el("button", {class: "btn", text: "Zoom timeline to this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); closeDrawer(); }}),
-      el("button", {class: "btn", text: "Labs during this stay", onclick: () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); pickTab("labs"); closeDrawer(); }})));
+    if (d.discharge) {
+      facts([["Where", d.where], ["Admission", d.admission], ["Transferred from", d.transfer_from], ["Transferred to", d.transfer_to]]);
+      kv([["Admitted", fmtDT(e.ts)], ["Discharged", fmtDT(e.te)], ["Recorded as", d.how]]);
+    } else {
+      facts([["Admitted", d.admit], ["Last result", fmtDT(d.lastResult)], ["Inpatient results", d.results]]);
+      main.push(note("Estimated: no admission record was available, so the end date is the last inpatient lab result."));
+    }
+    if (d.note) main.push(note(d.note));
+    go.push(goBtn("Zoom timeline to this stay", () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); closeDrawer(); }),
+      goBtn("Labs during this stay", () => { setRange(e.ts - 3*DAY, e.te + 3*DAY); pickTab("labs"); closeDrawer(); }));
   } else if (d.type === "exercise") {
-    body.append(...present(el("dl", {class: "kv"}, ...[["Activity", d.kind], ["Started", fmtDT(e.ts)], ["Ended", fmtDT(e.te)], ["Duration", d.minutes + " min"], ["Source", "Watch via Health Connect"]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
-      d.hr ? el("div", {class: "sect", text: "Heart rate"}) : null, workoutZones(d.hr),   // and its zones (#197, health.js)
-      el("button", {class: "btn", text: "Body and activity around this day", onclick: () => openHealth(e.ts - 14*DAY, e.ts + 14*DAY)})));
-  } else if (d.type === "ecg") body.append(...ecgBody(e, d));   // a watch's ECG or irregular rhythm notification (ecg.js, #182)
+    facts([["Activity", d.kind], ["Duration", d.minutes + " min"], ["From", "Watch via Health Connect"]]);
+    kv([["Started", fmtDT(e.ts)], ["Ended", fmtDT(e.te)]]);
+    if (d.hr) main.push(el("div", {class: "sect", text: "Heart rate"}), workoutZones(d.hr));   // and its zones (#197, health.js)
+    go.push(goBtn("Body and activity around this day", () => openHealth(e.ts - 14*DAY, e.ts + 14*DAY)));
+  } else if (d.type === "ecg") main.push(...ecgBody(e, d));   // a watch's ECG or irregular rhythm notification (ecg.js, #182)
   else if (d.type === "visit") {
-    body.append(el("dl", {class: "kv"}, ...[["Provider", d.who], ["Location", d.where], ["Diagnosis", d.dx], ["Billed as", d.billed], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
-    if (d.note) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}));
-    if (d.procs && d.procs.length) body.append(el("div", {class: "sect", text: "Recorded that day"}), el("ul", {class: "dlist"}, ...d.procs.map(p => el("li", {text: p}))));
+    facts([["Provider", d.who], ["Location", d.where], ["Diagnosis", d.dx], ["Billed as", d.billed]]);
+    if (d.note) main.push(note(d.note));
+    if (d.procs && d.procs.length) main.push(el("div", {class: "sect", text: "Recorded that day"}), el("ul", {class: "dlist"}, ...d.procs.map(p => el("li", {text: p}))));
     const sameDay = EV.filter(x => x.k === "document" && isoDay(x.ts) === isoDay(e.ts));
-    if (sameDay.length) body.append(el("div", {class: "sect", text: "Documents from that day"}), ...sameDay.map(x => el("button", {class: "btn", text: x.title, onclick: () => openEvent(x)})));
+    if (sameDay.length) main.push(el("div", {class: "sect", text: "Documents from that day"}), el("div", {class: "btns"}, ...sameDay.map(x => goBtn(x.title, () => openEvent(x)))));
   } else if (d.type === "claim") {
     const st = (d.status || "").replace(/_/g, " ").toLowerCase();
-    body.append(el("dl", {class: "kv"}, ...[["Insurer", d.insurer], ["Type", d.kind], ["Provider", d.provider], ["Drug", d.drug], ["Claim #", d.claimId], ["Status", st],
-      ["Network", (d.network || "").replace(/_/g, " ").toLowerCase()], ["Billed", usd(d.billed)], ["Plan paid", usd(d.paid)], ["Your share", usd(d.owe)]]
-      .filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v, style: k === "Status" && /denied/.test(st) ? {color: "var(--crit)", fontWeight: "var(--fw-semibold)"} : null})])));
-    if (d.lines && d.lines.length) body.append(el("div", {class: "sect", text: "Services billed"}), scrollBox({class: "tablewrap", "aria-label": "Services billed", style: {maxHeight: "none"}}, el("table", {class: "data"},
+    facts([["Status", st, /denied/.test(st) ? {class: "abn"} : null], ["Billed", usd(d.billed)], ["Plan paid", usd(d.paid)], ["Your share", usd(d.owe)]]);
+    kv([["Insurer", d.insurer], ["Type", d.kind], ["Provider", d.provider], ["Drug", d.drug], ["Claim #", d.claimId], ["Network", (d.network || "").replace(/_/g, " ").toLowerCase()]]);
+    if (d.lines && d.lines.length) main.push(el("div", {class: "sect", text: "Services billed"}), scrollBox({class: "tablewrap", "aria-label": "Services billed", style: {maxHeight: "none"}}, el("table", {class: "data"},
       el("thead", {}, el("tr", {}, ["Date", "Service", "Code", "Billed"].map(h => el("th", {text: h})))),
-      el("tbody", {}, d.lines.map(l => el("tr", {}, el("td", {text: recordDate(l.date) || ""}), el("td", {}, l.desc || "", ...(l.denied || []).map(x => el("div", {style: {color: "var(--crit)", fontSize: "var(--fs-2)"}, text: "Denied: " + x}))),
+      el("tbody", {}, d.lines.map(l => el("tr", {}, el("td", {text: recordDate(l.date) || ""}), el("td", {}, l.desc || "", ...(l.denied || []).map(x => el("div", {class: "abn denied", text: "Denied: " + x}))),
         el("td", {text: l.code || ""}), el("td", {text: l.billed ? usd(l.billed) : ""})))))));
-    if (/denied/.test(st)) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "\"Provider denied\" usually means the provider must correct or resubmit the claim and you aren't billed for it; \"denied\" can mean you are. The EOB on your insurer's site has the exact reason."}));
+    if (/denied/.test(st)) main.push(note("\"Provider denied\" usually means the provider must correct or resubmit the claim and you aren't billed for it; \"denied\" can mean you are. The EOB on your insurer's site has the exact reason."));
   } else if (d.type === "immunization") {   // #179: what the record says of a vaccine given, as recorded
-    body.append(el("dl", {class: "kv"}, ...[["Vaccine", d.vaccine], ["Code", d.code ? `${d.system ? d.system + " " : ""}${d.code}` : ""],
-      ["Given", fmtD(e.ts)], ["Dose", d.dose], ["Amount", d.amount], ["Route", d.route], ["Site", d.site], ["Lot", d.lot],
-      ["Made by", d.manufacturer], ["Given by", d.performer], ["Where", d.where], ["Status", d.status], ["Reason", d.reason], ["Source", d.src]]
-      .filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
-    if (d.note) body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: d.note}));
+    facts([["Dose", d.dose], ["Given by", d.performer], ["Where", d.where], ["Status", d.status]]);
+    kv([["Vaccine", d.vaccine], ["Code", d.code ? `${d.system ? d.system + " " : ""}${d.code}` : ""], ["Given", fmtD(e.ts)], ["Amount", d.amount], ["Route", d.route],
+      ["Site", d.site], ["Lot", d.lot], ["Made by", d.manufacturer], ["Reason", d.reason]]);
+    if (d.note) main.push(note(d.note));
   } else if (d.type === "med" && e.k === "rx") {   // #179: a pharmacy fill (FHIR MedicationDispense), not a medication list's line
-    body.append(el("dl", {class: "kv"}, ...[["Filled", fmtD(e.ts)], ["Pharmacy", d.pharmacy], ["Quantity", d.quantity],
-      ["Days' supply", d.daysSupply ? String(d.daysSupply) : ""], ["Instructions", d.instructions], ["Prescribed by", d.prescriber],
-      ["Status", d.status], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])));
+    facts([["Pharmacy", d.pharmacy], ["Quantity", d.quantity], ["Days' supply", d.daysSupply ? String(d.daysSupply) : ""], ["Prescribed by", d.prescriber]]);
+    kv([["Filled", fmtD(e.ts)], ["Instructions", d.instructions], ["Status", d.status]]);
   } else if (d.type === "med") {
     const typed = d.src === "Typed in";   // hand entry (import page): the dates are the ones typed
-    body.append(...present(el("dl", {class: "kv"}, ...[["Instructions", d.instructions], ["Status", d.status], [typed ? "Started" : "Listed since", fmtD(e.ts)],
-      ["Stopped", d.end ? fmtD(d.end) : ""], ["Prescribed by", d.prescriber], ["Source", d.src]].filter(x => x[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
-      typed ? null : el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "From the clinic's medication list. The date is when it was recorded there, not necessarily when you started it."})));
+    facts([["Instructions", d.instructions], ["Status", d.status], ["Prescribed by", d.prescriber]]);
+    kv([[typed ? "Started" : "Listed since", fmtD(e.ts)], ["Stopped", d.end ? fmtD(d.end) : ""]]);
+    if (!typed) main.push(note("From the clinic's medication list. The date is when it was recorded there, not necessarily when you started it."));
   }
-  { const mh = medHistoryAction(e); if (mh) body.append(mh); }   // a medication's whole history (meds.js, #50)
-  const src = eventSource(e); if (src) body.append(src);   // where it came from (sources.js)
-  body.append(journalAddAction(e));   // "Add a journal note" for this day (journal.js)
-  if (!WATCH_KINDS.has(e.k)) body.append(editPanel(e));   // the watch's own aren't records, so can't be edited
+  // a list of details built elsewhere (an ECG's, ecg.js) leaves out what the head or a key fact says, as drawerFacts does
+  for (const dl of main) if (dl?.matches?.("dl.kv")) for (const dd of dl.querySelectorAll(":scope > dd"))
+    if (drawerSaid.has(saidKey(dd.textContent))) { dd.previousElementSibling?.remove(); dd.remove(); }
+  // what the line under its title said that nothing else does (a stay's reason, a fill's supply), said once, first
+  if (d.type !== "labday") {
+    const said = [...drawerSaid, ...main.map(n => n ? saidKey(n.textContent) : "")].join("\n");
+    const rest = (e.sub || "").split(" · ").filter(x => x && !said.includes(saidKey(x)));
+    if (rest.length) main.unshift(note(rest.join(" · ")));
+  }
+  { const mh = medHistoryAction(e); if (mh) go.push(mh); }   // a medication's whole history (meds.js, #50)
+  go.push(journalAddAction(e));   // "Add a journal note" for this day (journal.js)
+  body.append(...present(fixes, ...main, el("div", {class: "btns dgo"}, ...go), eventSource(e)));   // where it came from (sources.js)
   showDrawer();
   renderTimeline(); document.querySelectorAll(".tl-row").forEach(r => r.classList.remove("sel"));
 }
@@ -162,6 +255,7 @@ function showDrawer() {
   drawer.classList.add("open"); drawerFit();
   $("#dclose").focus({preventScroll: true});
 }
+
 
 /* ---------------------------------------------------------------- corrections (edits, server/edits.py)
    Owners and editors can hide, rename, re-date, un-stay or merge the open event; everyone sees what was edited.
@@ -240,61 +334,61 @@ function similarChoice(e, rule) {
   }).catch(() => box.replaceChildren());
   return [box, got];
 }
+/* the open record's corrections: the ⋯ menu's (drawerMenu), a form opened from it at the top of the body, then what
+   was corrected (with Undo) and what's being saved; null when there's nothing to show and it can't be corrected */
 function editPanel(e) {
   const box = el("div", {class: "edits"}), msg = el("p", {class: "hint edit-msg", role: "status"});
   const mine = editsOf(e);
   if (mine.length) box.append(el("div", {class: "edited"}, el("b", {text: "Edited"}),
     ...mine.map(x => el("div", {class: "edit-line"}, el("span", {text: describeEdit(x) + (x.by ? ` · by ${x.by}` : "")}),
       canEdit() ? undoButton(x, msg, {event: e.id}) : null))));
-  if (!canEdit()) return mine.length ? box : el("span");
+  if (!canEdit()) return mine.length ? box : null;
   const forms = el("div", {class: "edit-form"});
   const post = (body, reopen = {event: e.id}) => sendEdit("", {method: "POST", body: JSON.stringify({event: e.id, ...body})}, msg, reopen);
   const form = (label, input, onsave, ...extra) => {
     forms.replaceChildren(el("label", {}, el("span", {text: label}), input), ...extra,
       el("div", {}, el("button", {class: "btn primary", type: "button", text: "Save", onclick: onsave}),
-        el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => forms.replaceChildren()})));
-    input.focus();
+        el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => { forms.replaceChildren(); $("#dmoreBtn").focus(); }})));
+    $("#dbody").scrollTop = 0; input.focus();
   };
-  const acts = el("div", {class: "edit-acts"},
-    el("button", {class: "btn", type: "button", text: "Hide", "data-tip": "Leave this event out of the records", onclick: () => post({action: "hide"}, {edits: true})}),
-    el("button", {class: "btn", type: "button", text: "Rename", onclick: () => {
+  drawerMenu([
+    {text: "Hide", tip: "Leave this event out of the records", run: () => post({action: "hide"}, {edits: true})},
+    {text: "Rename", run: () => {
       const i = el("input", {type: "text", maxlength: 300, "aria-label": "New title"}); i.value = e.title;
       const [box, got] = similarChoice(e, false);
       form("New title", i, () => post({action: "rename", title: i.value, ...(got.ids().length ? {also: got.ids()} : {})}), box);
-    }}),
-    MOVABLE.includes(e.k) ? el("button", {class: "btn", type: "button", text: "Change category", onclick: () => {
+    }},
+    MOVABLE.includes(e.k) ? {text: "Change category", run: () => {
       const sel = el("select", {"aria-label": "Category"}, ...MOVABLE.filter(k => k !== e.k).map(k => el("option", {value: k, text: KIND_LABEL[k] || k})));
       const [box, got] = similarChoice(e, true);
       form(`Move this ${(KIND_LABEL[e.k] || "entry").toLowerCase()} to`, sel, () => {
         const also = got.ids(), rule = got.rule();
         post({action: "kind", k: sel.value, ...(also.length ? {also} : {}), ...(rule ? {rule} : {})});
       }, box);
-    }}) : null,
-    el("button", {class: "btn", type: "button", text: "Fix date", onclick: () => {
+    }} : null,
+    {text: "Fix date", run: () => {
       const i = el("input", {type: "datetime-local", "aria-label": "New date and time"}); i.value = String(e.t || "").slice(0, 16);
       form("Starts", i, () => post({action: "date", t: i.value}));
-    }}),
-    e.k === "stay" ? el("button", {class: "btn", type: "button", text: "Not a hospital stay", onclick: () => post({action: "not_stay"})}) : null,
-    el("button", {class: "btn", type: "button", text: "Merge with…", onclick: () => {
+    }},
+    e.k === "stay" ? {text: "Not a hospital stay", run: () => post({action: "not_stay"})} : null,
+    {text: "Merge with…", run: () => {
       const near = DATA.events.filter(x => x.id !== e.id && !WATCH_KINDS.has(x.k) &&Math.abs(x.ts - e.ts) <= 7 * DAY)
         .sort((a, b) => Math.abs(a.ts - e.ts) - Math.abs(b.ts - e.ts)).slice(0, 50);
       if (!near.length) { sayIn(msg, "No other event within a week of this one to merge with."); return; }
       const sel = el("select", {"aria-label": "Event to merge into this one"},
         ...near.map(x => el("option", {value: x.id, text: `${fmtDT(x.ts)} · ${KIND_LABEL[x.k] || x.k} · ${x.title}`})));
       form("Fold this event into the open one (it keeps its own title and date)", sel, () => post({action: "merge", other: +sel.value}));
-    }}),
-    (DATA.edits || []).length + (DATA.same || []).length ? el("button", {class: "btn", type: "button", text: `All edits (${(DATA.edits || []).length + (DATA.same || []).length})`, onclick: openEdits}) : null);
-  box.append(el("div", {class: "sect", text: "Correct this event"}), acts, forms, msg);
+    }},
+    (DATA.edits || []).length + (DATA.same || []).length ? {text: `All edits (${(DATA.edits || []).length + (DATA.same || []).length})`, run: openEdits} : null]);
+  box.prepend(forms); box.append(msg);
   return box;
 }
 /* every edit to these records, including those whose event is gone (its import undone, or changed at the source) */
 function openEdits() {
   const list = DATA.edits || [], msg = el("p", {class: "hint edit-msg", role: "status"}), links = sameLines(msg);
   state.selEv = null;
-  $("#dkey").style.background = "var(--muted)"; $("#dtitle").textContent = "Edits to these records";
   const n = list.length + links.length;
-  $("#dsub").textContent = n ? `${n} edit${n === 1 ? "" : "s"}, applied every time the records load` : "No edits";
-  const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
+  const body = drawerHead(null, "Edits to these records", n ? `${n} edit${n === 1 ? "" : "s"}, applied every time the records load` : "No edits");
   body.append(el("div", {class: "edits"}, ...list.map(x => {
     const ev = x.found && x.action !== "hide" ? byId.get(x.ids[0]) : null;
     return el("div", {class: "edit-line"},

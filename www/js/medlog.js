@@ -97,8 +97,7 @@ function medLogSection(m) {
 
 /* the log / correct form, in the drawer. d: the dose (null: a new one); preset: {status, slot} */
 function doseForm(m, d, preset = {}) {
-  $("#dtitle").textContent = d ? "Correct a dose" : "Log a dose"; $("#dsub").textContent = m.name;
-  const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0;
+  const body = drawerHead("med", d ? "Correct a dose" : "Log a dose", m.name);
   const uid = Math.random().toString(36).slice(2, 8), id = n => `dose-${n}-${uid}`;
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   let status = d ? d.status : preset.status || "taken";
