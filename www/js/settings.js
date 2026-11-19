@@ -134,33 +134,37 @@ function rowMenu(label, entries, act) {
    up or down (Home, End), or its ↑ and ↓ buttons. items are strings; opts.name(item) names it, opts.body(item)
    gives what its row shows, opts.extra(item, i) more buttons; opts.changed() after every change. With opts.more
    (item, i), more entries [{text, run}] for a menu of the row's actions that takes the buttons' place on a phone
-   (#174), so each row stays one line. */
+   (#174), so each row stays one line. With opts.group(items) -> [{panel, names}], the items are kept in those groups
+   (the key labs by panel, #279), a list for each under its name when there's more than one, and move within theirs. */
 function orderList(items, opts) {
-  let list = [...items];
-  const ol = el("ol", {class: "set-labs set-order" + (opts.more && !opts.ro ? " has-more" : "")});
+  const tidy = l => opts.group ? opts.group(l).flatMap(g => g.names) : [...l];
+  let list = tidy(items), span = [];   // span[i]: [first, last], the rows item i moves among (its group's)
+  const cls = "set-labs set-order" + (opts.more && !opts.ro ? " has-more" : "");
+  const ol = el(opts.group ? "div" : "ol", {class: opts.group ? "set-groups" : cls});
   const said = el("span", {class: "set-sr", "aria-live": "polite"});
-  const refocus = (i, act) => ol.children[i]?.querySelector(`[data-act="${act}"]`)?.focus();
-  const tell = i => { said.textContent = `${opts.name(list[i])}: ${i + 1} of ${list.length}.`; };
+  const refocus = (i, act) => ol.querySelector(`li[data-i="${i}"] [data-act="${act}"]`)?.focus();
+  const tell = i => { const [a, b] = span[i]; said.textContent = `${opts.name(list[i])}: ${i - a + 1} of ${b - a + 1}.`; };
   const move = (from, to, act) => {
-    if (to < 0 || to >= list.length || to === from) return;
+    const [a, b] = span[from]; to = Math.max(a, Math.min(b, to));
+    if (to === from) return;
     const [x] = list.splice(from, 1); list.splice(to, 0, x);
     draw(); opts.changed(); refocus(to, act); tell(to);
   };
   function drag(ev, li) {
     if (ev.button !== 0) return;
     ev.preventDefault();
-    // the list takes the pointer, not the handle: moving the row in the page would drop the handle's capture
-    const grip = ol;
-    try { ol.setPointerCapture(ev.pointerId); } catch (e) {}
+    // the row's list takes the pointer, not the handle: moving the row in the page would drop the handle's capture
+    const grip = li.parentElement, [a, b] = span[+li.dataset.i];
+    try { grip.setPointerCapture(ev.pointerId); } catch (e) {}
     li.classList.add("dragging");
     const onMove = e => {
-      const before = [...ol.children].find(c => { if (c === li) return false; const r = c.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
-      if (before) { if (li.nextElementSibling !== before) ol.insertBefore(li, before); }
-      else if (ol.lastElementChild !== li) ol.append(li);
+      const before = [...grip.children].find(c => { if (c === li) return false; const r = c.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+      if (before) { if (li.nextElementSibling !== before) grip.insertBefore(li, before); }
+      else if (grip.lastElementChild !== li) grip.append(li);
     };
     const onUp = () => {
       for (const [k, f] of [["pointermove", onMove], ["pointerup", onUp], ["pointercancel", onUp]]) grip.removeEventListener(k, f);
-      const mine = list[+li.dataset.i], order = [...ol.children].map(c => list[+c.dataset.i]), to = order.indexOf(mine);
+      const to = a + [...grip.children].indexOf(li), order = [...list.slice(0, a), ...[...grip.children].map(c => list[+c.dataset.i]), ...list.slice(b + 1)];
       const moved = !same(order, list);
       list = order; draw();
       if (moved) { opts.changed(); tell(to); }
@@ -169,24 +173,27 @@ function orderList(items, opts) {
     grip.addEventListener("pointermove", onMove); grip.addEventListener("pointerup", onUp); grip.addEventListener("pointercancel", onUp);
   }
   function draw() {
-    ol.replaceChildren(...list.map((it, i) => {
-      const n = opts.name(it), li = el("li", {"data-i": i});
+    list = tidy(list);
+    const groups = opts.group ? opts.group(list) : [{names: list}];
+    span = []; let at = 0;
+    for (const g of groups) { const a = at; at += g.names.length; for (let k = a; k < at; k++) span[k] = [a, at - 1]; }
+    const rows = list.map((it, i) => {
+      const n = opts.name(it), li = el("li", {"data-i": i}), [a, b] = span[i];
       const grip = opts.ro ? null : el("button", {class: "set-grip btn quiet small", type: "button", "data-act": "grip", title: "Drag to reorder",
-        "aria-label": `Reorder ${n}, ${i + 1} of ${list.length}: drag, or press up or down`,
-        onkeydown: ev => { const to = {ArrowUp: i - 1, ArrowDown: i + 1, Home: 0, End: list.length - 1}[ev.key]; if (to !== undefined) { ev.preventDefault(); move(i, to, "grip"); } },
+        "aria-label": `Reorder ${n}, ${i - a + 1} of ${b - a + 1}: drag, or press up or down`,
+        onkeydown: ev => { const to = {ArrowUp: i - 1, ArrowDown: i + 1, Home: a, End: b}[ev.key]; if (to !== undefined) { ev.preventDefault(); move(i, to, "grip"); } },
         onpointerdown: ev => drag(ev, li)}, icon("grip-vertical"));
       li.append(...[grip, ...opts.body(it, i)].filter(Boolean));
       if (!opts.ro) li.append(el("span", {class: "set-acts"},
-        el("button", {class: "btn small", type: "button", "data-act": "up", "aria-label": `Move ${n} up`, disabled: i === 0, onclick: () => move(i, i - 1, i > 1 ? "up" : "down")}, icon("arrow-up")),
-        el("button", {class: "btn small", type: "button", "data-act": "down", "aria-label": `Move ${n} down`, disabled: i === list.length - 1, onclick: () => move(i, i + 1, i + 2 < list.length ? "down" : "up")}, icon("arrow-down")),
+        el("button", {class: "btn small", type: "button", "data-act": "up", "aria-label": `Move ${n} up`, disabled: i === a, onclick: () => move(i, i - 1, i - 1 > a ? "up" : "down")}, icon("arrow-up")),
+        el("button", {class: "btn small", type: "button", "data-act": "down", "aria-label": `Move ${n} down`, disabled: i === b, onclick: () => move(i, i + 1, i + 1 < b ? "down" : "up")}, icon("arrow-down")),
         ...(opts.extra ? opts.extra(it, i) : [])));
       if (opts.more && !opts.ro) {
-        const last = list.length - 1;
         li.append(rowMenu(`Move or remove ${n}`, [
-          ...(i > 1 ? [{text: "Move to the top", run: () => move(i, 0, "more")}] : []),
-          ...(i > 0 ? [{text: "Move up", run: () => move(i, i - 1, "more")}] : []),
-          ...(i < last ? [{text: "Move down", run: () => move(i, i + 1, "more")}] : []),
-          ...(i < last - 1 ? [{text: "Move to the bottom", run: () => move(i, last, "more")}] : []),
+          ...(i > a + 1 ? [{text: "Move to the top", run: () => move(i, a, "more")}] : []),
+          ...(i > a ? [{text: "Move up", run: () => move(i, i - 1, "more")}] : []),
+          ...(i < b ? [{text: "Move down", run: () => move(i, i + 1, "more")}] : []),
+          ...(i < b - 1 ? [{text: "Move to the bottom", run: () => move(i, b, "more")}] : []),
           ...opts.more(it, i).map(e => ({text: e.text, run: () => {
             e.run();
             // the row may be gone: the focus goes to the row now in its place (or the last one)
@@ -195,8 +202,13 @@ function orderList(items, opts) {
         ], "more"));
       }
       return li;
-    }));
-    if (!list.length) ol.append(el("li", {class: "muted", text: "None"}));
+    });
+    const none = list.length ? [] : [el("li", {class: "muted", text: "None"})];
+    if (!opts.group) ol.replaceChildren(...rows, ...none);
+    else ol.replaceChildren(...(none.length ? [el("ol", {class: cls}, ...none)] : groups.flatMap(g => {
+      const a = list.indexOf(g.names[0]);
+      return present(groups.length > 1 ? el("h4", {class: "sect set-grp", text: g.panel}) : null, el("ol", {class: cls}, ...rows.slice(a, a + g.names.length)));
+    })));
     if (opts.drawn) opts.drawn();
   }
   draw();
@@ -206,28 +218,31 @@ function orderList(items, opts) {
 const labInfo = n => LABS.find(s => s.name === n);
 const nick = n => NICK[n] || n;
 
-/* #36 the Overview's key-lab tiles: the profile's own labs, picked, ordered, and previewed as the Overview shows them */
+/* #36 the Overview's key-lab tiles: the profile's own labs, picked, ordered, and previewed as the Overview shows them:
+   by panel (#279, labGroups in util.js), in order within each. A saved order whose panels are mixed is the same
+   order grouped, not a change to save. */
 function tilesEditor(value, changed, ro, setting) {
   const msg = el("span", {class: "msg", role: "status"});
   const preview = el("div", {class: "tiles set-preview", role: "group", "aria-label": "Preview of the Overview's key lab tiles"});
   const sugg = el("div", {class: "set-sugg"});
-  const isDefault = list => same(list, setting.default);
+  const groups = list => labGroups(list, LABS), grouped = list => groups(list).flatMap(g => g.names);
+  const isDefault = list => same(list, grouped(setting.default));
   const update = () => { drawPreview(); drawSuggestions(); changed(); };
-  const ol = orderList(value, {ro, changed: update, name: nick,
+  const ol = orderList(value, {ro, changed: update, name: nick, group: groups,
     body: n => { const s = labInfo(n); return [el("span", {class: "set-name"}, nick(n), nick(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null),
       el("span", {class: "set-count muted", text: s ? `${s.pts.length} result${s.pts.length === 1 ? "" : "s"}` : "no results here"})]; },
     extra: n => [el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove ${nick(n)}`,
       onclick: () => { ol.set(ol.get().filter(x => x !== n)); update(); input.focus(); }})],
     more: n => [{text: "Remove", run: () => { ol.set(ol.get().filter(x => x !== n)); update(); }}]});
   function drawPreview() {
-    const names = keyLabTiles(ol.get(), LABS, isDefault(ol.get()));
-    preview.replaceChildren(...names.map(n => {
+    const names = keyLabTiles(ol.get(), LABS, isDefault(ol.get())), gs = groups(names);
+    preview.replaceChildren(...gs.flatMap(g => [gs.length > 1 ? el("h5", {class: "sect", text: g.panel}) : null, ...g.names.map(n => {
       const s = labInfo(n), last = s.pts[s.pts.length - 1];
       return el("div", {class: "tile", "data-lab": n},
         el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}), nick(n) !== n ? el("span", {class: "vh", text: ` (${n})`}) : null,   // #358
           last[4] === "H" ? el("span", {class: "st hi", text: "▲ High"}) : last[4] === "L" ? el("span", {class: "st lo", text: "▼ Low"}) : null),
         el("span", {class: "val"}, last[5] || String(last[1]), el("small", {text: s.unit || ""})));
-    }));
+    })]).filter(Boolean));
     if (!names.length) preview.append(el("p", {class: "hint", text: LABS.length ? "None of these labs has results in this profile yet." : "This profile has no lab results yet."}));
     else if (isDefault(ol.get()) && names.some(n => !ol.get().includes(n)))
       preview.prepend(el("p", {class: "hint set-wide", text: "Few of the default labs have results here, so the Overview shows this profile's most-measured labs until you choose."}));
@@ -254,7 +269,7 @@ function tilesEditor(value, changed, ro, setting) {
   const box = el("div", {class: "set-list"}, ol.node);
   if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn", type: "button", text: "Add", onclick: add})), sugg, msg);
   box.append(el("h4", {class: "set-ph", text: "Preview"}), preview);
-  return {node: box, get: () => ol.get()};
+  return {node: box, get: () => { const l = ol.get(); return same(l, grouped(setting.value)) ? setting.value : l; }};
 }
 
 /* #40 the main tabs: shown or hidden, in order; one at least stays shown */

@@ -28,14 +28,15 @@ function clearLabFilter() { state.labQ = ""; $("#labQ").value = $("#hmQ").value 
 }
 /* a lab's row given focus scrolls clear of the list's sticky header (#202, 2.4.11) */
 new ResizeObserver(([e]) => { const list = e.target.parentElement; if (list) list.style.scrollPaddingTop = e.target.offsetHeight + 4 + "px"; }).observe($("#series .series-hd"));
+/* the list's labs by panel (#279, labGroups in util.js), the most measured first in each and the panels in that order;
+   the labs with no panel in a collapsed Other (open while filtering, or once opened). -> [{panel, names}] */
+const byFrequency = list => [...list].sort((a, b) => b.n - a.n || nice(a.name).localeCompare(nice(b.name))).map(s => s.name);
+let labOtherOpen = false;
 function renderSeriesList() {
   const wrap = $("#seriesRows"); wrap.replaceChildren();
-  const all = SERIES.filter(s => !s.watch && s.n >= 2), top = all.filter(labMatch);
+  const all = SERIES.filter(s => !s.watch && s.n >= 2), top = all.filter(labMatch), of = new Map(top.map(s => [s.name, s]));
   labCount("#labQn", top.length, all.length);
-  const groups = new Map();
-  for (const s of top) { const g = s.watch ? s.panel : s.n >= 40 ? s.panel || "Other" : "Less frequent"; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(s); }
-  const rank = g => g === "Less frequent" ? 2 : g.startsWith("Watch") ? 1 : 0;
-  const order = [...groups.keys()].sort((a, b) => rank(a) - rank(b) || (rank(a) === 1 ? 0 : groups.get(b).length - groups.get(a).length));
+  const groups = labGroups(byFrequency(top));
   // the list's header (#192, index.html): under the filter, what's selected with Clear and Defaults, then the saved
   // views (#37, trends-views.js); the header stays while the rows scroll, so typing in the filter keeps its focus
   $("#seriesSel").replaceChildren(el("b", {text: `${state.sel.size} selected`}), el("span", {class: "spacer"}),
@@ -44,20 +45,32 @@ function renderSeriesList() {
   $("#tvBox").replaceChildren(...[viewsBar()].filter(Boolean));
   if (!top.length) wrap.append(el("p", {class: "hint lab-none"}, `No lab names match “${$("#labQ").value.trim()}”. `,
     el("button", {class: "btn", type: "button", text: "Clear the filter", onclick: () => { clearLabFilter(); $("#labQ").focus(); }})));
-  for (const g of order) {
-    wrap.append(el("div", {class: "grp", text: g}));
-    for (const s of g.startsWith("Watch") ? groups.get(g) : groups.get(g).sort((a, b) => b.n - a.n)) {
+  for (const {panel, names} of groups) {
+    let box = wrap;
+    if (panel === LAB_OTHER && groups.length > 1) {
+      box = el("details", {class: "grp-other", open: labOtherOpen || !!state.labQ || null, ontoggle: ev => { if (!state.labQ) labOtherOpen = ev.target.open; }},
+        el("summary", {class: "grp"}, panel, el("span", {class: "grp-n"})));
+      wrap.append(box);
+    } else wrap.append(el("div", {class: "grp", text: panel}));
+    for (const s of names.map(n => of.get(n))) {
       const L = latest(s); const id = "s_" + s.name.replace(/\W/g, "_"), tq = testLink(s.name, true);   // #163
       // the name's and the latest value's tips: the checkbox's too, shown when it has focus, and its description (#358)
       const nmTip = `${renamedTitle("lab", s.name)} · ${s.n} results`, lvTip = L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "";
-      wrap.append(el("label", {class: "srow" + (tq ? " has-tq" : ""), for: id},
+      box.append(el("label", {class: "srow" + (tq ? " has-tq" : ""), for: id},
         el("input", {type: "checkbox", id, checked: state.sel.has(s.name) || null, "aria-describedby": id + "_about", "data-tip": [nmTip, lvTip].filter(Boolean).join("\n"),
-          onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; tvRefresh(); }}),
+          onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name); renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; otherSays(); tvRefresh(); }}),
         el("span", {class: "nm", "data-tip": nmTip, text: nice(s.name)}), tq,
         el("span", {class: "lv" + (L && L[4] ? " abn" : ""), "data-tip": lvTip, text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : ""}),
         el("span", {id: id + "_about", hidden: "", text: [nmTip, lvTip].filter(Boolean).join(". ")})));
     }
   }
+  otherSays();
+}
+/* Other's count, with how many of its labs are charted, said on it while it's closed */
+function otherSays() {
+  const d = $("#seriesRows .grp-other"); if (!d) return;
+  const n = d.querySelectorAll(".srow").length, on = d.querySelectorAll(".srow input:checked").length;
+  d.querySelector(".grp-n").textContent = ` · ${n} lab${n === 1 ? "" : "s"}${on ? `, ${on} charted` : ""}`;
 }
 let hoverT = null;
 /* extra rows under each chart's time axis, one per layer: {space() -> its height in px (0: nothing to show),
@@ -82,6 +95,8 @@ function evHead(k, cx, cy) {
   const legend = document.querySelector("#view-labs .chart-legend");
   const key = (k, words) => el("span", {class: "jlegend marks-key", hidden: true}, el("svg:svg", {viewBox: "0 0 10 10", width: 10, height: 10, "aria-hidden": "true"}, evHead(k, 5, 5)), words);
   if (legend) legend.append(key("procedure", "Procedure"), key("imaging", "Imaging"));
+  // the header's Legend and ⓘ (#279, index.html): each opens under its button as a menu does (nav.js), words, not items
+  for (const [btn, list] of [["#legendBtn", "#legendList"], ["#chartsInfoBtn", "#chartsInfo"]]) if ($(btn)) menuWire({btn: $(btn), list: $(list), text: true});
 }
 function shortTitle(t) {
   let s = t.replace(/\s*\(.*?\)\s*/g, " ").split(/\s+(?:WITH|W\/?O?|WO|AND)\s+/i)[0].trim().toLowerCase();

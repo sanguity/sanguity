@@ -895,12 +895,15 @@ ICON_AUDIT = r"""([glyphs, marks]) => {
 
 def legend_marks_apart(page, sel):
     """#355: at 320 px, each mark (● ◆ ■ ○ ◇ • ▲ ▼) in the legend(s) at sel that a line break parts from the word after
-    it: [(the legend's first words, the mark)]. Each is joined to its word by a no-break space."""
+    it: [(the legend's first words, the mark)]. Each is joined to its word by a no-break space. A legend in a closed
+    popover (Labs' Legend, #279) is opened for this, and closed again."""
     size = page.viewport_size
     page.set_viewport_size({"width": 320, "height": 800})
     page.wait_for_timeout(250)
     apart = page.evaluate(r"""sel => {
       const out = [], line = r => r.getClientRects()[0];
+      const shut = [...new Set([...document.querySelectorAll(sel)].map(b => b.closest('[popover]')))].filter(p => p && !p.matches(':popover-open'));
+      shut.forEach(p => p.showPopover());
       for (const box of document.querySelectorAll(sel)) {
         if (!box.checkVisibility()) continue;
         const w = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
@@ -912,6 +915,7 @@ def legend_marks_apart(page, sel):
           if (!m[0].includes('\u00a0') || !ra || !rb || Math.abs(ra.top - rb.top) > 2) out.push([box.textContent.trim().slice(0, 30), m[0][0]]);
         }
       }
+      shut.forEach(p => p.hidePopover());
       return out;
     }""", sel)
     page.set_viewport_size(size)
@@ -1678,7 +1682,7 @@ def main():
               ("sources.html?profile=1#upload", {"importer", "panel-manual", "panel-link", "mine", "finder", "watch"}),
               ("sharing.html?profile=1#links", {"linksBody", "calendar", "summaryIntro", "export"}),
               ("admin.html#labs", {"users", "admin", "directory", "dirAdd", "labmaps", "installLog"}),
-              ("", {"tlMain", "labsChart", "labsHeatmap"}))), seen_more)
+              ("", {"tlMain", "labsHeatmap"}))), seen_more)   # Labs' charts: behind their ⓘ (#279)
         dark = [int(x) for x in re.findall(r"\d+", next(iter(looks)).split(" ", 1)[1])[:3]] if looks else [0, 0, 0]
         check("…styled once: the same toggle everywhere, light on the dark theme", len(looks) == 1 and sum(dark) > 450, looks)
         strict.goto(base + "/sharing.html?profile=1#links")
@@ -2245,7 +2249,7 @@ def main():
             marks = js("""[...document.querySelectorAll('#charts .chart svg .pt.abn')].map(m => [m.tagName, m.getAttribute('d') || ''])""")
             check("…its out-of-range results are triangles, ▲ above the range and ▼ below, not only red dots",
                   len(flagged) > 0 and len(marks) == len(flagged) and all(t == "path" and d.count("L") == 2 for t, d in marks)
-                  and "▲▼" in page.inner_text("#labsChart .legend"), [len(flagged), len(marks), marks[:2]])
+                  and "▲▼" in page.text_content("#view-labs .chart-legend"), [len(flagged), len(marks), marks[:2]])
             # procedures and imaging, shown (#250): a ● and a ■ at the top, never a triangle like ▲ or ▼ on the same chart;
             # the legend shows both shapes while they're on, and not while they're off
             js("window._marks250 = state.marks; state.marks = true; renderCharts()")
@@ -2253,12 +2257,12 @@ def main():
             ev = js("""(() => { const svg = document.querySelector('#charts .chart svg:not(.icon)'), want = markEvents();
                 const heads = [...svg.querySelectorAll('.evhead')];
                 const tri = [...svg.querySelectorAll('path')].filter(p => /var\\(--c-(procedure|imaging)\\)/.test(p.getAttribute('fill') || ''));
-                const keys = [...document.querySelectorAll('#labsChart .legend .marks-key')].filter(k => !k.hidden);
+                const keys = [...document.querySelectorAll('#view-labs .chart-legend .marks-key')].filter(k => !k.hidden);
                 return {want: want.length, kinds: [...new Set(want.map(e => e.k))].sort(), heads: heads.map(h => [h.dataset.k, h.tagName]).filter((h, i, a) => a.findIndex(o => o + '' === h + '') === i),
                   n: heads.length, tri: tri.length, legend: keys.map(k => [k.textContent, k.querySelector('svg .evhead')?.tagName])}; })()""")
             js("state.marks = window._marks250; renderCharts()")
             settle(200)
-            off = js("[...document.querySelectorAll('#labsChart .legend .marks-key')].every(k => k.hidden) === !state.marks")
+            off = js("[...document.querySelectorAll('#view-labs .chart-legend .marks-key')].every(k => k.hidden) === !state.marks")
             check("Labs (#250): procedures are a ● and imaging a ■ on the charts, no triangle, and the legend shows both while they're on",
                   ev["want"] > 0 and ev["n"] == ev["want"] and ev["kinds"] == ["imaging", "procedure"] and not ev["tri"]
                   and sorted(ev["heads"]) == [["imaging", "rect"], ["procedure", "circle"]]
@@ -6713,7 +6717,7 @@ def main():
             settle(300)
             open_tab("labs")
             settle(300)
-            grp = js("""(() => { const g = document.getElementById('optMarks').closest('[role=group]'), lg = document.querySelector('#labsChart .legend');
+            grp = js("""(() => { const g = document.getElementById('optMarks').closest('[role=group]'), lg = document.querySelector('#view-labs .chart-legend');
               return [g && document.getElementById(g.getAttribute('aria-labelledby')).textContent, ['optMarks', 'optMeds', 'optJournal'].map(id => g && g.contains(document.getElementById(id))),
                       [...g.querySelectorAll('.toggle')].filter(t => !t.hidden).map(t => t.textContent.trim()),
                       !!lg && !g.contains(lg) && !lg.querySelector('input, button') && lg.textContent.includes('Out of range')]; })()""")
@@ -6754,6 +6758,107 @@ def main():
                 settle(300)
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             page.set_viewport_size({"width": 1400, "height": 900})
+
+            # ---- Labs grouped by panel everywhere (#279): one grouping (labGroups, util.js) for the list, the heatmap (its
+            # grid and its table) and the Overview's tiles (Settings' key-lab list: with #36's checks), each lab under the
+            # same panel in each, the most measured first in the list, and the labs alone in their panel (the demo's
+            # Magnesium) in Other, last, collapsed in the list until opened or filtered for. And one header above the
+            # charts: Chart | Heatmap, Show on charts, a Legend and an ⓘ on one row, the caption under it; the drag hint and
+            # "More about this" behind the ⓘ
+            open_tab("labs")
+            settle(300)
+            want279 = js("Object.fromEntries(labGroups(SERIES.filter(s => !s.watch).map(s => s.name)).flatMap(g => g.names.map(n => [n, g.panel])))")
+            list279 = js("""(() => { const id = new Map(SERIES.filter(s => !s.watch).map(s => ['s_' + s.name.replace(/\\W/g, '_'), s])), out = []; let g = null;
+              for (const x of document.querySelectorAll('#seriesRows .grp, #seriesRows .srow'))
+                if (x.classList.contains('grp')) g = x.firstChild.textContent.trim();
+                else { const s = id.get(x.querySelector('input').id); out.push([s.name, g, s.n]); }
+              return out; })()""")
+            check("Labs (#279): the list groups each lab under its panel, as labGroups does, Other last",
+                  list279 and all(want279.get(n) == g for n, g, _ in list279)
+                  and list279[-1][1] == "Other" and "Magnesium" in [n for n, g, _ in list279 if g == "Other"]
+                  and {g for _, g, _ in list279} >= {"CBC WITH DIFFERENTIAL", "COMPREHENSIVE METABOLIC PANEL", "Other"}, list279)
+            check("…the most measured first within each panel", all(a[2] >= b[2] for a, b in zip(list279, list279[1:]) if a[1] == b[1]), list279)
+            other = lambda: js("(d => d && [d.open, d.querySelector('summary').textContent, d.querySelector('.srow input').checkVisibility()])(document.querySelector('#seriesRows details.grp-other'))")
+            check("…Other collapsed at first, saying how many labs it holds", other() == [False, "Other · 1 lab", False], other())
+            page.fill("#labQ", "m")
+            settle(400)
+            check("…open while the filter finds a lab in it and others", (other() or [None])[0] is True and other()[2] is True, other())
+            js("clearLabFilter()")
+            settle(300)
+            page.click("#seriesRows details.grp-other summary")
+            page.check("#s_Magnesium")
+            settle(300)
+            js("renderLabs()")
+            settle(200)
+            check("…opened, it stays open as the list is drawn again, and says how many of its labs are charted",
+                  other() == [True, "Other · 1 lab, 1 charted", True], other())
+            page.uncheck("#s_Magnesium")
+            page.click("#seriesRows details.grp-other summary")
+            settle(200)
+            page.click("#labsView button[data-view=heatmap]")
+            settle(400)
+            hm279 = js("""(() => { const g = [...document.querySelectorAll('#hm text.grp')].map(t => [+t.getAttribute('y'), t.textContent]);
+              return [...document.querySelectorAll('#hm text.row')].map(t => [t.dataset.key, g.filter(x => x[0] < +t.getAttribute('y')).pop()?.[1]]); })()""")
+            same279 = lambda n, g: want279.get(n) == g or (g or "").endswith("…") and want279.get(n, "").startswith(g[:-1])   # a long name cut short
+            check("…the heatmap's rows under the same panels", hm279 and all(same279(n, g) for n, g in hm279), hm279)
+            page.click("#hmHd .view-seg button:text-is('Table')")
+            settle(300)
+            hmt279 = js("""[...document.querySelectorAll('#hmTable tbody')].map(b => [b.querySelector('tr.grp th').textContent, b.querySelectorAll('tr:not(.grp)').length])""")
+            check("…and its table's row groups too", [g for g, _ in hmt279] == list(dict.fromkeys(want279.get(n) for n, _ in hm279))
+                  and sum(k for _, k in hmt279) == len(hm279), [hmt279, hm279])
+            page.click("#hmHd .view-seg button:text-is('Grid')")
+            check("…on the heatmap, the header has only the switch: Show on charts, the Legend and the ⓘ are the charts'",
+                  js("[...document.querySelectorAll('#view-labs .chart-only')].every(x => !x.checkVisibility()) && document.querySelector('#view-labs .labs-head .range-note').checkVisibility()"))
+            page.click("#labsView button[data-view=chart]")
+            settle(300)
+            head = js("""(() => { const r = s => document.querySelector(s).getBoundingClientRect(), mid = s => (r(s).top + r(s).bottom) / 2;
+              return [Math.max(...['#labsView', '#overlaysLbl', '#legendBtn', '#chartsInfoBtn'].map(mid)) - Math.min(...['#labsView', '#overlaysLbl', '#legendBtn', '#chartsInfoBtn'].map(mid)) < 4,
+                r('#legendBtn').bottom <= r('#view-labs .range-note').top, r('#view-labs .range-note').bottom <= r('#labsChart').top,
+                !document.querySelector('#labsChart details.more, #labsChart .chart-hint'), document.getElementById('legendList').checkVisibility()]; })()""")
+            check("…one header above the charts: the switch, Show on charts, Legend and ⓘ on one row at 1400 px, the caption under it, the hint and More about this gone, the legend closed",
+                  head == [True, True, True, True, False], head)
+            page.click("#legendBtn")
+            settle(200)
+            lg = js("""[document.getElementById('legendBtn').getAttribute('aria-expanded'), document.getElementById('legendList').matches(':popover-open'),
+              [...document.querySelectorAll('#legendList > span')].filter(s => s.checkVisibility()).map(s => s.textContent.trim()).slice(0, 4)]""")
+            check("…Legend opens what the marks mean under it", lg == ["true", True, ["Value", "Reference range", "▲▼Out of range: above, below", "Hospital stay"]], lg)
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                settle(150)
+                serious, minor = axe_check(page, f"Labs legend open ({theme})")
+                check(f"…axe finds nothing serious with it open ({theme})", not serious, "; ".join(serious + minor)[:600])
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.keyboard.press("Escape")
+            settle(200)
+            check("…Escape closes it", js("[document.getElementById('legendList').matches(':popover-open'), document.getElementById('legendBtn').getAttribute('aria-expanded')]") == [False, "false"])
+            page.focus("#chartsInfoBtn")
+            page.keyboard.press("Enter")
+            settle(200)
+            info = js("[document.getElementById('chartsInfo').matches(':popover-open'), document.getElementById('chartsInfo').textContent.replace(/\\s+/g, ' ').trim(), document.activeElement.id]")
+            page.keyboard.press("Enter")
+            settle(200)
+            check("…the ⓘ opens and closes by Enter, with the drag hint and how to zoom, focus kept on it",
+                  info[0] is True and "Drag any chart sideways" in info[1] and "pinch to zoom" in info[1] and info[2] == "chartsInfoBtn"
+                  and not js("document.getElementById('chartsInfo').matches(':popover-open')"), info)
+            for w in (375, 320):
+                page.set_viewport_size({"width": w, "height": 800})
+                settle(200)
+                page.click("#legendBtn")
+                settle(200)
+                bad = phone_fits(page, f"Labs header, legend open ({w} px)")
+                box = js("(r => [r.left, r.right])(document.getElementById('legendList').getBoundingClientRect())")
+                check(f"…at {w} px the header fits, the legend open inside the screen", not bad and box[0] >= 0 and box[1] <= w, [bad, box])
+                page.keyboard.press("Escape")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            open_tab("overview")
+            settle(300)
+            ov279 = js("""(() => { const out = []; let g = null;
+              for (const x of document.querySelectorAll('#view-overview > .tiles > .sect, #view-overview > .tiles .tile:not(.home-tile)'))
+                if (x.matches('.sect')) g = x.textContent; else { const s = x.querySelector('.lbl > span:first-child'); out.push([s.dataset.tip || s.textContent, g]); }
+              return out; })()""")
+            check("…the Overview's key-lab tiles under the same panels, in the order chosen within each",
+                  ov279 and all(want279.get(n) == g for n, g in ov279)
+                  and [n for n, _ in ov279] == js("labGroups(keyLabTiles(CFG.overview.keyLabs, SERIES, JSON.stringify(CFG.overview.keyLabs) === JSON.stringify(DEFAULT_SETTINGS.overview.keyLabs))).flatMap(g => g.names)"), ov279)
 
             # ---- "What is this test?" (#163): beside a lab on Labs (its chart's header and the list), the heatmap (a ? in
             # the grid, clicked; a link in its table), the Overview's tiles and the drawer's results, a link to the lab's
@@ -8623,6 +8728,21 @@ def main():
             preview = "[...document.querySelectorAll('#sec-overview .set-preview .tile')].map(t => t.dataset.lab)"
             p0 = js(preview)
             check("key labs: the preview shows the Overview's tiles", p0 == [t for t, _ in before], p0[:4])
+            # by panel (#279): the list a list per panel under its name, the preview the same, each lab under the panel the
+            # Labs tab and the Overview put it in (want279, above), and a lab moves only within its own
+            set279 = js("""(() => { const out = [], sel = '#sec-overview [data-key="overview.keyLabs"] .set-groups'; let g = null;
+              for (const x of document.querySelectorAll(`${sel} > h4, ${sel} li[data-i]`))
+                if (x.matches('h4')) g = x.textContent;
+                else { const n = x.querySelector('.set-name'), sm = n.querySelector('small'); out.push([sm ? sm.textContent.slice(2, -1) : n.firstChild.textContent, g]); }
+              return out; })()""")
+            prev279 = js("""(() => { const out = []; let g = null;
+              for (const x of document.querySelectorAll('#sec-overview .set-preview > .sect, #sec-overview .set-preview > .tile')) if (x.matches('.sect')) g = x.textContent; else out.push([x.dataset.lab, g]);
+              return out; })()""")
+            edges = js("""[...document.querySelectorAll('#sec-overview .set-groups > ol')].map(o => [o.querySelector('li:first-child [data-act=up]').disabled,
+              o.querySelector('li:last-child [data-act=down]').disabled, o.querySelector('li:first-child [data-act=grip]').getAttribute('aria-label').endsWith(`1 of ${o.children.length}: drag, or press up or down`)])""")
+            check("key labs (#279): Settings lists them by panel, as the Labs tab and the Overview do, and previews them so",
+                  set279 and all(want279.get(n) == g for n, g in set279) and prev279 == set279 and [n for n, _ in set279] == p0
+                  and len(edges) == 3 and all(e == [True, True, True] for e in edges), [set279, prev279, edges])
             page.click("#sec-overview button[aria-label='Remove Magnesium']")   # the demo has just the 12 default labs
             check("…a lab taken out leaves the preview", "Magnesium" not in js(preview))
             sugg_ = js("[...document.querySelectorAll('#sec-overview .set-sugg .chip')].map(b => b.getAttribute('aria-label'))")

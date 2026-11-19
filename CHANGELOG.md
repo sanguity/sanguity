@@ -1405,6 +1405,14 @@ Everything on `main` so far; it becomes the first tagged release.
   header (on a phone, its Filters button opens the same sheet); the records bar holds only the period. And the
   journal, a card between the chart and its list, is a view of the tab: **Timeline | Journal**, as Labs has Chart |
   Heatmap, at `#timeline-journal`.
+- **Labs grouped by panel everywhere, and one header above the charts** (#279): the Labs list put a lab under its
+  panel only once it had 40 results, so the metabolic panel was "Less frequent" in the list and a panel of its own in
+  the heatmap, and the Overview's tiles and Settings' key-lab list weren't grouped at all. One grouping now serves the
+  list, the heatmap and its table, the Overview's key labs and Settings' key-lab list and its preview: each lab under
+  the panel its results came in, the most measured first on Labs and in the order chosen elsewhere (a key lab moves
+  within its panel), and the labs with no panel, or alone in theirs, in Other, last, collapsed in the list until
+  opened. Above the charts, the view switch, Show on charts, a Legend and an ⓘ (the drag hint and how to zoom) share
+  one row, with the not-medical-advice caption under it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
