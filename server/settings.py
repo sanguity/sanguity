@@ -265,7 +265,7 @@ KEY_LABS = ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt
 section("overview", "Overview", "The tiles at the top of the Overview tab: key labs, and readings taken at home if you choose them.")
 section("trends", "Lab charts", "What the Labs tab charts before you pick anything.")
 section("names", "Names", "Shorter or clearer names shown instead of the ones in the records.")
-section("health", "Body and activity", "How the Body and activity tab counts workouts.")
+section("health", "Workouts", "How the Body and activity tab counts workouts.")   # named as its group is (#409)
 
 define("overview.keyLabs", "overview", "Key labs", KEY_LABS, lab_list(), kind="tiles",
        help="One tile each, in this order, for the labs this profile has results for. While this is the default list "

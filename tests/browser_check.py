@@ -1527,6 +1527,35 @@ def main():
                 side_bad.append((path, v))
         check("one sidebar (#266): Sources, Sharing, Settings, Account and Admin each have its search box (named “Find in …” on each, #403), group labels and the group's title as the h1, "
               "a card's title only beside another card, in a 1280 px shell", not side_bad, side_bad)
+        # #409: in no group of any of them does a card's title shown say again what the h1 says; a card alone in its
+        # group has its Reset to defaults beside the h1 (Milestones), none in the card; Workouts' card is named Workouts
+        repeats_js = """() => { const out = []; for (const a of document.querySelectorAll('main > nav.set-nav a')) { a.click();
+            const h1 = document.getElementById('groupTitle').textContent.trim().toLowerCase();
+            for (const h of document.querySelectorAll('main :is(section, form, div) > h2, main .set-hd > h2'))
+              if (h.checkVisibility() && !h.matches('.vh') && h.getBoundingClientRect().width > 2 && h.textContent.trim().toLowerCase() === h1) out.push(a.dataset.group + ': ' + h.textContent); }
+            return out; }"""
+        repeats = {}
+        for path in ("sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+            strict.goto(base + "/" + path)
+            strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
+            strict.wait_for_timeout(1500)   # (each page's cards drawn: Phone and watch's, Settings' sections)
+            repeats[path] = strict.evaluate(repeats_js)
+        check("no card's title shown repeats its group's h1, on any group of Sources, Sharing, Settings, Account or Admin (#409: Phone and watch's)",
+              not any(repeats.values()) and strict.evaluate("document.title") != "", repeats)
+        strict.goto(base + "/settings.html?profile=1#milestones")
+        strict.wait_for_selector("#sec-milestones .set-hd", state="attached", timeout=10000)
+        strict.wait_for_timeout(600)
+        lone = strict.evaluate("""(() => { const r = document.getElementById('setReset'), h = document.getElementById('groupTitle').getBoundingClientRect(), b = r.getBoundingClientRect();
+            return [r.checkVisibility() && r.textContent, b.top < h.bottom && b.bottom > h.top, document.querySelector('#sec-milestones .set-hd > .btn').checkVisibility(),
+                    document.querySelector('#sec-milestones .set-hd > h2').matches('.vh')]; })()""")
+        strict.click("#setNav a[data-group=activity]")
+        strict.wait_for_timeout(300)
+        lone.append(strict.evaluate("document.querySelector('#sec-health h2').textContent"))
+        check("…a card alone in its group (Milestones): Reset to defaults beside the group's title, the h1, and not in the card; Workouts' card "
+              "is named Workouts (#409)", lone == ["Reset to defaults", True, False, True, "Workouts"], lone)
+        strict.goto(base + "/admin.html#backups")   # (as the sidebar's checks left it, for its search below)
+        strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
+        strict.wait_for_timeout(600)
         strict.fill("#admFind", "usb stick")
         strict.wait_for_timeout(200)
         found = strict.evaluate("[document.getElementById('groupTitle').textContent, [...document.querySelectorAll('main > section')].filter(s => s.checkVisibility()).map(s => s.id), "
@@ -7329,7 +7358,7 @@ def main():
             menu_click(page, "#settingsLink")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Lab charts", "Names", "Body and activity", "Visit summary", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Lab charts", "Names", "Workouts", "Visit summary", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…but not the server's sync defaults or outside connections: those are on the Admin page (#167)",
                   js("!document.getElementById('sec-sync') && !document.getElementById('outside') && !document.querySelector('.set-nav-list a[data-group=sources], .set-nav-list a[data-group=outside]')"))
             # ---- the Settings sidebar (settings-nav.js) and the top bar's menus (nav.js)
@@ -7420,6 +7449,14 @@ def main():
                   js("document.querySelector(\"[data-key='overview.keyLabs']\").classList.contains('set-changed')")
                   and bar_at[:3] == [False, "1 change", "sticky"] and 0 <= bar_at[3] <= 24
                   and js("document.querySelector('.set-nav-list a[data-group=dashboard]').textContent") == "Dashboard, changes not saved", bar_at)
+            # #409: the sidebar's dot and the bar's are drawn in forced colours too (a background alone is dropped there)
+            dot_js = """[['.set-nav-list a[data-group=dashboard] .set-nav-dirty', '::after'], ['#setBar .sg-bar-n', '::before']].map(([s, w]) => {
+                const e = document.querySelector(s), d = getComputedStyle(e, w), bg = getComputedStyle(document.body).backgroundColor;
+                return [d.backgroundColor, d.backgroundColor !== 'rgba(0, 0, 0, 0)' && d.backgroundColor !== bg && parseFloat(d.width) > 0]; })"""
+            page.emulate_media(forced_colors="active")
+            dots = js(dot_js)
+            page.emulate_media(forced_colors="none")
+            check("…the sidebar's “not saved” dot and the bar's are drawn in forced colours too (#409)", all(d[1] for d in dots) and dots[0][0] == dots[1][0], dots)
             page.focus("#sec-overview .set-order li:nth-child(2) .set-more-btn")
             page.keyboard.press("Enter")
             first_act = js("document.activeElement.textContent")
@@ -7770,24 +7807,55 @@ def main():
                   and wrows[0] == ["Readings", "2", "2", "2"] and wrows[-1] == ["Archived uploads", "2", "2", "2"]
                   and [r[0] for r in wrows] == ["Readings", "Sleep records", "Workouts", "ECGs", "Archived uploads"]
                   and "cycle" not in res.lower(), (res[-400:], wrows))
-            page.click("#bkSchedSeg label:has-text('Daily')")
-            page.fill("#bkKeep", "3")
-            page.click("#bkSchedule button[type=submit]")
-            page.wait_for_function("document.getElementById('bkNowMsg').textContent.startsWith('Backups are scheduled daily')", timeout=10000)
+            # the schedule (#409, as Settings saves): how often saved as it's picked, with an Undo; how many to keep waits
+            # in the page's bar, marked not saved, leaving asking first; keeping fewer than would stay still asked first
             sched = "fetch('api/backups').then(r => r.json()).then(s => [s.schedule, s.keep])"
-            check("…the schedule: daily, keeping the newest 3, saved", js(sched) == ["daily", 3] and "daily, keeping the newest 3" in page.inner_text("#bkStatus"), js(sched))
-            page.click("#bkSchedSeg label:has-text('Off')")
+            sched_msg = "document.getElementById('bkSchedMsg').textContent"
+            def bk_fresh(done):   # the fresh check, if the sign-in was more than a few minutes ago (its 403 is what asks for it)
+                for _ in range(50):
+                    if js(f"!document.getElementById('bkReauth').hidden || {sched_msg}.startsWith({json.dumps(done)})"):
+                        break
+                    settle(100)
+                if js("!document.getElementById('bkReauth').hidden"):
+                    page.fill("#bkReauth input[type=password]", PW)
+                    page.click("#bkReauth button[type=submit]")
+                page.wait_for_function(f"{sched_msg}.startsWith({json.dumps(done)})", timeout=10000)
             refused_from = len(problems)   # a sign-in more than REAUTH_MINUTES old is refused (403) and the page asks
-            page.click("#bkSchedule button[type=submit]")
+            page.click("#bkSchedSeg label:has-text('Daily')")
+            page.wait_for_function(f"{sched_msg}.startsWith('Backups are scheduled daily')", timeout=10000)
+            freq = [js(sched), js("document.getElementById('admBar').hidden"), js("[...document.querySelectorAll('#sgToasts .sg-toast-text')].pop().textContent"),
+                    js("document.activeElement.id")]
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+            freq_asked = answer_ask(page)   # (back to off: asked first, as turning it off is)
+            bk_fresh("Undone: Scheduled backups are off.")
+            freq += [js(sched), js("document.querySelector('#bkSchedSeg input:checked').value")]
+            page.click("#bkSchedSeg label:has-text('Daily')")
+            page.wait_for_function(f"{sched_msg}.startsWith('Backups are scheduled daily')", timeout=10000)
+            check("…the schedule's frequency saved as it's picked (#409): no bar, a toast saying so, focus on it; its Undo asks before turning it "
+                  "off again, and puts it back on the server and the page",
+                  freq[:4] == [["daily", 14], True, "Backups are scheduled daily, keeping the newest 14.", "bkSched-daily"]
+                  and freq_asked[0] == "Turn off scheduled backups?" and freq[4:] == [["off", 14], "off"] and js(sched) == ["daily", 14], [freq, freq_asked])
+            leave = "(() => { const e = new Event('beforeunload', {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; })()"
+            page.fill("#bkKeep", "1")
+            keep_bar = [js("document.getElementById('admBar').hidden"), js("document.querySelector('#admBar .sg-bar-n').textContent"),
+                        page.is_visible("#bkSchedule .set-unsaved"), js("document.querySelector('#admNav a[data-group=backups]').textContent").endswith("changes not saved"),
+                        js(leave), js(sched)]
+            page.click("#admBar button:text-is('Save')")
+            keep_asked = answer_ask(page, yes=False)   # one backup in the folder and one to keep: the next deletes it
+            settle(200)
+            keep_bar.append([js("document.getElementById('admBar').hidden"), js(sched)])
+            page.fill("#bkKeep", "3")
+            page.click("#admBar button:text-is('Save')")
+            page.wait_for_function(f"{sched_msg}.startsWith('Saved: keeping the newest 3')", timeout=10000)
+            keep_bar.append([js(sched), js("document.getElementById('admBar').hidden"), js(leave), page.is_visible("#bkSchedule .set-unsaved"),
+                             "daily, keeping the newest 3" in page.inner_text("#bkStatus")])
+            check("…how many to keep waits in the bar: “1 change”, marked not saved there and in the sidebar, leaving asks; keeping fewer than "
+                  "would stay is still asked first (No: still in the bar), and the bar's Save keeps it",
+                  keep_bar[:6] == [False, "1 change", True, True, True, ["daily", 14]] and keep_asked[0] == "Keep only the newest 1 backup?"
+                  and keep_bar[6] == [False, ["daily", 14]] and keep_bar[7] == [["daily", 3], True, False, False, True], [keep_bar, keep_asked])
+            page.click("#bkSchedSeg label:has-text('Off')")
             asked = answer_ask(page)
-            for _ in range(50):   # the fresh check, if the sign-in was more than a few minutes ago
-                if js("!document.getElementById('bkReauth').hidden || document.getElementById('bkNowMsg').textContent.startsWith('Scheduled backups are off')"):
-                    break
-                settle(100)
-            if js("!document.getElementById('bkReauth').hidden"):
-                page.fill("#bkReauth input[type=password]", PW)
-                page.click("#bkReauth button[type=submit]")
-            page.wait_for_function("document.getElementById('bkNowMsg').textContent.startsWith('Scheduled backups are off')", timeout=10000)
+            bk_fresh("Scheduled backups are off")
             problems[refused_from:] = [x for x in problems[refused_from:] if "403" not in x]   # that refusal is what asks for the fresh check
             check("…turning it off is asked first, in the app's dialog", asked[0] == "Turn off scheduled backups?" and js(sched)[0] == "off", asked)
             # stale: the backup made 10 days ago, as far as the app can tell (its name says when it was made)
@@ -9716,7 +9784,7 @@ def main():
             page.wait_for_selector("#sec-milestones", timeout=10000)
             for sec, group in (("milestones", "milestones"), ("health", "activity")):
                 page.click(f".set-nav-list a[data-group={group}]")
-                page.click(f"#sec-{sec} button:text-is('Reset to defaults')")
+                page.click("#setReset")   # (a card alone in its group: its Reset beside the h1, #409)
                 page.wait_for_function(f"document.querySelector('#sec-{sec} .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
@@ -11779,8 +11847,10 @@ def main():
             form.get_by_role("button", name="Share").click()
             page.wait_for_function("document.querySelectorAll('#memberList tbody tr').length === 2 && document.getElementById('peopleMsg').textContent === 'Shared with alex as editor.'", timeout=10000)
             check("sharing adds them, as the role chosen", js("document.querySelector(\"#memberList select[aria-label=\\\"alex's role\\\"]\").value") == "editor")
+            page.focus("#memberList select[aria-label=\"alex's role\"]")
             page.select_option("#memberList select[aria-label=\"alex's role\"]", "viewer")
             page.wait_for_function("document.getElementById('peopleMsg').textContent === 'alex is now a viewer.'", timeout=10000)
+            role_focus = [js("document.activeElement.getAttribute('aria-label')")]   # (#409: on the select drawn in its place)
             role_of = lambda who: js(f"fetch('api/profiles/2/members').then(r => r.json()).then(m => m.find(x => x.username === {json.dumps(who)}).role)")  # noqa: E731
             check("changing a role in the table saves it", role_of("alex") == "viewer")
             check("…someone else's editor/viewer change isn't asked (#249)", not js("document.querySelector('dialog.sg-ask')"))
@@ -11788,9 +11858,13 @@ def main():
             role_toast = js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent")
             page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
             page.wait_for_function("document.getElementById('peopleMsg').textContent === 'Undone: alex is an editor again.'", timeout=10000)
+            settle(200)
+            role_focus.append(js("document.activeElement.getAttribute('aria-label')"))
             check("…said by a toast, “alex is now a viewer.”, whose Undo makes them an editor again (#272)",
                   role_toast == "alex is now a viewer." and role_of("alex") == "editor"
                   and js("document.querySelector(\"#memberList select[aria-label=\\\"alex's role\\\"]\").value") == "editor", role_toast)
+            check("…focus stays on the role's select after the change and after its Undo, the table drawn again (#409)",
+                  role_focus == ["alex's role", "alex's role"], role_focus)
             page.select_option("#memberList select[aria-label=\"alex's role\"]", "viewer")
             page.wait_for_function("document.getElementById('peopleMsg').textContent === 'alex is now a viewer.'", timeout=10000)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
@@ -11914,6 +11988,18 @@ def main():
             page.wait_for_function("document.getElementById('profileMsg').textContent === 'Renamed to “Third person, renamed”.' && document.querySelector('#profile option:checked').textContent === 'Third person, renamed (owner)'", timeout=10000)
             check("Rename renames it, in the picker too, a toast saying so with an Undo (#272)",
                   js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == "Renamed “Third person (fictional)” to “Third person, renamed”.")
+            # #409: focus stays where it was, the card drawn again: on Rename, and on the name after Enter; back on it after the Undo
+            ren_focus = [js("document.activeElement.id")]
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+            page.wait_for_function("document.querySelector('#profile option:checked').textContent === 'Third person (fictional) (owner)'", timeout=10000)
+            settle(200)
+            ren_focus.append(js("document.activeElement.id"))
+            page.fill("#profileName", "Third person, renamed")
+            page.press("#profileName", "Enter")
+            page.wait_for_function("document.querySelector('#profile option:checked').textContent === 'Third person, renamed (owner)'", timeout=10000)
+            settle(300)   # (the card drawn again, then focus put back)
+            ren_focus.append(js("document.activeElement.id"))
+            check("…focus stays on Rename, or on the name typed, and comes back there after the Undo (#409)", ren_focus == ["profileRename", "profileRename", "profileName"], ren_focus)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             pick_profile(page, "2")
             page.wait_for_function("document.querySelector('#profileBody input').value === 'Second person'", timeout=10000)

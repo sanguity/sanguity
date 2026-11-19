@@ -655,7 +655,7 @@ async function resetSection(card) {
   const sec = card.sgSec, base = setBase(), pid = PID, msg = card.querySelector(".set-msg");
   if (card.hasAttribute("data-dirty") && !await ask({title: `Reset the ${sec.title} settings?`, action: "Reset to defaults", danger: true,
       message: "Each of them goes back to its default, and your changes to them not saved yet are lost."})) return;
-  const had = card.contains(document.activeElement);
+  const had = card.contains(document.activeElement) || document.activeElement?.id === "setReset";   // (or its Reset beside the h1, sidebar.js)
   const was = card.sgItems.filter(it => it.st.can_change && isOwn(it.st)).map(it => ({key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from}));
   try { await call(`${base}/reset`, "POST", {section: sec.id}); }
   catch (e) { sayIn(msg, e.message, true); return; }

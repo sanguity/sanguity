@@ -103,40 +103,88 @@ function finished(run) {
 }
 
 /* ---------------------------------------------------------------- the schedule */
+/* Saved as Settings are (#272, #409): how often, a simple preference, as it's picked, a toast saying so with an Undo;
+   how many to keep, a value, kept as typed, marked "not saved" and counted in the card's data-dirty until the page's
+   bar (sidebar.js, admin.js) saves it (bkKeepSave) or puts it back (bkKeepDiscard). Turning the schedule off, or
+   keeping fewer backups than would stay, is still asked first and needs the fresh check, an Undo's too. bkTyped: the
+   number typed and not saved, kept while the card is drawn again (a run's progress draws it again). */
+let bkTyped = null;
 function drawSchedule(st) {
-  const form = $("#bkSchedule"), msg = el("span", {class: "msg", role: "status"});
+  const form = $("#bkSchedule"), had = form.contains(document.activeElement) ? document.activeElement.id : null;
   const opts = [["off", "Off"], ["daily", "Daily"], ["weekly", "Weekly"]];
-  const keep = el("input", {type: "number", id: "bkKeep", min: 1, max: st.keep_max, step: 1, value: st.keep, class: "set-num", required: true});
-  const save = el("button", {class: "btn primary small", type: "submit", text: "Save", disabled: true});
-  const pick = () => form.querySelector("input[name=bkSched]:checked")?.value || st.schedule;
-  const changed = () => { save.disabled = pick() === st.schedule && +keep.value === st.keep; sayIn(msg, ""); };
-  keep.oninput = changed;
+  const keep = el("input", {type: "number", id: "bkKeep", min: 1, max: st.keep_max, step: 1, value: bkTyped ?? st.keep, class: "set-num", required: true});
+  const line = el("label", {class: "bk-keep"}, "Keep the newest ", keep, " backups", el("span", {class: "tag set-unsaved", text: "not saved"}));
+  const mark = () => {
+    bkTyped = keep.value === String(st.keep) ? null : keep.value;
+    line.classList.toggle("set-changed", bkTyped != null);
+    if (bkTyped != null) $("#backups").setAttribute("data-dirty", 1); else $("#backups").removeAttribute("data-dirty");
+  };
+  keep.oninput = () => { sayIn($("#bkSchedMsg"), ""); mark(); };
   form.replaceChildren(
     el("fieldset", {class: "set-radios"}, el("legend", {class: "set-sr", text: "Make a backup"}),
       el("div", {class: "seg wrap", id: "bkSchedSeg"}, ...opts.map(([v, l]) => el("label", {},
-        el("input", {type: "radio", name: "bkSched", value: v, checked: v === st.schedule, onchange: changed}), l)))),
-    el("label", {class: "bk-keep"}, "Keep the newest ", keep, " backups"),
+        el("input", {type: "radio", name: "bkSched", id: "bkSched-" + v, value: v, checked: v === st.schedule, onchange: () => bkFreq(v)}), l)))),
+    line,
     el("p", {class: "hint", text: "While a schedule is on, older backups in the folder are deleted after each new one, keeping " +
       "this many. Only Sanguity's own backup files are counted or deleted; anything else in the folder is left alone. The " +
       "app makes the backup when the newest is a day (or a week) old, whoever made it."}),
-    el("div", {class: "row"}, save, msg));
-  form.onsubmit = async ev => {
-    ev.preventDefault();
-    const body = {schedule: pick(), keep: +keep.value}, n = st.backups.length;
-    const more = bkRemoves(n, body.schedule, body.keep) - bkRemoves(n, st.schedule, st.keep);
-    if (body.schedule === "off" && st.schedule !== "off" && !await ask({title: "Turn off scheduled backups?",
-        message: ["The app stops making backups by itself. The backups in the folder stay.",
-                  "Only do this if something else makes them, like a job on the server."], action: "Turn off", danger: true})) return;
-    if (more > 0 && !await ask({title: `Keep only the newest ${plural(body.keep, "backup")}?`,
-        message: `The next backup then deletes ${more === 1 ? "the oldest backup" : `the ${more} oldest backups`} from the folder.`,
-        action: "Keep fewer", danger: true})) return;
-    save.disabled = true;
-    try {
-      const st2 = await fresh(() => call("backups/schedule", "PUT", body), $("#bkReauth"));
-      drawBackups(st2);
-      say("#bkNowMsg", body.schedule === "off" ? "Scheduled backups are off." : `Backups are scheduled ${body.schedule}, keeping the newest ${body.keep}.`);
-    } catch (e) { sayIn(msg, e.message, true); changed(); }
-  };
+    el("span", {class: "msg", id: "bkSchedMsg", role: "status"}));
+  form.onsubmit = ev => { ev.preventDefault(); $("#admBar .btn.primary")?.click(); };   // Enter: the bar's Save
+  mark();
+  if (had && !form.contains(document.activeElement)) document.getElementById(had)?.focus({preventScroll: true});
+}
+/* a schedule and count to the server, asked first where it turns backups off or deletes more of them: gives back the
+   new state, or null when the answer was no */
+async function bkPut(body) {
+  const st = BK, n = st.backups.length, more = bkRemoves(n, body.schedule, body.keep) - bkRemoves(n, st.schedule, st.keep);
+  if (body.schedule === "off" && st.schedule !== "off" && !await ask({title: "Turn off scheduled backups?",
+      message: ["The app stops making backups by itself. The backups in the folder stay.",
+                "Only do this if something else makes them, like a job on the server."], action: "Turn off", danger: true})) return null;
+  if (more > 0 && !await ask({title: `Keep only the newest ${plural(body.keep, "backup")}?`,
+      message: `The next backup then deletes ${more === 1 ? "the oldest backup" : `the ${more} oldest backups`} from the folder.`,
+      action: "Keep fewer", danger: true})) return null;
+  const st2 = await fresh(() => call("backups/schedule", "PUT", body), $("#bkReauth"));
+  drawBackups(st2);
+  return st2;
+}
+const bkSays = st => st.schedule === "off" ? "Scheduled backups are off." : `Backups are scheduled ${st.schedule}, keeping the newest ${st.keep}.`;
+/* an Undo: the schedule or the count put back, if it's still as this change left it */
+const bkUndo = (part, from, to) => async () => {
+  drawBackups(await call("backups"));
+  if (BK[part] !== to) { sayIn($("#bkSchedMsg"), "The schedule was changed since, so it's left as it is."); return; }
+  const st = await bkPut({schedule: BK.schedule, keep: BK.keep, [part]: from});
+  if (!st) return false;   // (asked, and the answer was no: the toast stays)
+  sayIn($("#bkSchedMsg"), "Undone: " + bkSays(st));
+};
+/* how often: saved as it's picked */
+async function bkFreq(v) {
+  const from = BK.schedule;
+  let st;
+  try { st = await bkPut({schedule: v, keep: BK.keep}); }
+  catch (e) { drawSchedule(BK); sayIn($("#bkSchedMsg"), `Not saved: ${e.message}`, true); return; }
+  if (!st) { drawSchedule(BK); return; }   // (the answer was no: as it was)
+  const said = bkSays(st);
+  sayIn($("#bkSchedMsg"), said, false, {say: false});
+  toast(said, {action: "Undo", onAction: bkUndo("schedule", from, v)});
+}
+/* the bar's Save and Discard: the count kept */
+async function bkKeepSave(msg, had) {
+  const keep = +bkTyped, from = BK.keep, what = "“Keep the newest” isn't saved: ";
+  if (!Number.isInteger(keep) || keep < 1 || keep > BK.keep_max) { sayIn(msg, `${what}keep between 1 and ${BK.keep_max} backups.`, true); return; }
+  let st;
+  try { st = await bkPut({schedule: BK.schedule, keep}); }
+  catch (e) { sayIn(msg, what + e.message, true); return; }
+  if (!st) return;   // (the answer was no: it stays in the bar)
+  bkTyped = null; drawSchedule(st);
+  const said = `Saved: keeping the newest ${plural(st.keep, "backup")}.`;
+  sayIn($("#bkSchedMsg"), said, false, {say: false});
+  if (had) $("#bkKeep").focus({preventScroll: true});
+  toast(said, {action: "Undo", onAction: bkUndo("keep", from, keep)});
+}
+function bkKeepDiscard() {
+  bkTyped = null; drawSchedule(BK);
+  sayIn($("#bkSchedMsg"), "Changes discarded: back as saved.");
+  $("#bkKeep").focus();
 }
 
 /* ---------------------------------------------------------------- the backups in the folder, and checking one */

@@ -104,8 +104,8 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
 
   /* ---------------------------------------------------------------- People: who has access and as what */
   const ROLES = ["owner", "editor", "viewer"];
-  function roleSelect(value, onchange, label = "Role") {
-    const s = el("select", {"aria-label": label, onchange}, ...ROLES.map(r => el("option", {value: r, text: r})));
+  function roleSelect(value, onchange, label = "Role", id = null) {   // id: for focus to come back to once drawn again (#409)
+    const s = el("select", {"aria-label": label, onchange, id}, ...ROLES.map(r => el("option", {value: r, text: r})));
     s.value = value; return s;
   }
   /* a role change that's hard to take back is asked first (#249): giving someone owner, taking it away, or changing
@@ -138,7 +138,8 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
   function drawPeople(p) {
     const msg = $("#peopleMsg"), fail = e => sayIn(msg, e.message, true);
     const owner = p.role === "owner", me = ME.user.id;
-    const again = async () => { await refresh(p.id); };   // a role changed: yours too, perhaps
+    // a role changed: yours too, perhaps; focus back where it was, on what's drawn in its place (#409)
+    const again = async () => { const had = document.activeElement?.id; await refresh(p.id); if (had) document.getElementById(had)?.focus({preventScroll: true}); };
     $("#memberList").replaceChildren(el("table", {class: "tbl shr-members"},
       el("thead", {}, el("tr", {}, ...["Person", "Role", ""].map(h => el("th", {text: h})))),
       el("tbody", {}, ...MEMBERS.map(m => el("tr", {},
@@ -160,7 +161,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
             if (P?.id !== p.id) { toast(`${p.name}: ${text}`); return; }   // another profile shown now (#367)
             await again();
             sayIn($("#peopleMsg"), text);
-          }}); }, `${m.username}'s role`) : m.role),
+          }}); }, `${m.username}'s role`, `role-${m.user_id}`) : m.role),
         el("td", {class: "acts"}, m.user_id === me ? el("button", {class: "btn small", type: "button", text: "Leave",
           onclick: async () => {
             if (!await ask({title: `Leave ${p.name}?`, message: "You'll stop having access to its records." + (owner ? "" : " An owner can share it with you again."),
@@ -199,12 +200,14 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       $("#profileBody").replaceChildren(el("p", {class: "hint", text: `Only the owners of ${p.name} can rename or delete it.`}));
       return;
     }
-    const name = el("input", {value: p.name, maxlength: 80, "aria-label": "Profile name"});
+    const name = el("input", {value: p.name, maxlength: 80, "aria-label": "Profile name", id: "profileName"});   // ids: focus back after a rename (#409)
     $("#profileBody").replaceChildren(
       el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
         const was = p.name, to = name.value.trim();
         if (to === was) return;
+        const had = document.activeElement?.id;
         try { await call("profiles/" + p.id, "PATCH", {name: to}); await refresh(p.id); } catch (e) { fail(e); return; }
+        if (had) document.getElementById(had)?.focus({preventScroll: true});
         // with an Undo (#272): the name before, if it's still the one given here
         sayIn($("#profileMsg"), `Renamed to “${to}”.`, false, {say: false});
         toast(`Renamed “${was}” to “${to}”.`, {action: "Undo", onAction: async () => {
@@ -214,7 +217,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
           await refresh(P?.id);
           note(back ? `Undone: the profile is “${was}” again.` : "The profile was renamed since, so its name is left as it is.");
         }}); }},
-        name, el("button", {class: "btn", type: "submit", text: "Rename"})),
+        name, el("button", {class: "btn", type: "submit", id: "profileRename", text: "Rename"})),
       deletePanel(p, fail));
   }
   function deletePanel(p, fail) {
