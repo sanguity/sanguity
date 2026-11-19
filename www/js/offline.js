@@ -115,6 +115,18 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
     }).catch(e => console.warn("offline copy not kept:", e.message));
   }
 
+  /* the person's own settings saved here (your menu's theme; the reply is all of them, flat, a reset's its
+     "settings"): the copy's settings take them, as the next load would (#424; offline-page.js on the other pages) */
+  const USER = /^settings\/user\/[^/]+$/;
+  function keepUser(path, r) {
+    if (!USER.test(path) || !r.ok || !SgOffline.on()) return;
+    const body = r.clone().json();
+    queue = queue.then(async () => {
+      const j = await body;
+      if (copy && SgOffline.withUser(copy, path.endsWith("/reset") ? j.settings : j)) await write();
+    }).catch(e => console.warn("offline copy not kept:", e.message));
+  }
+
   /* ---- offline: answer from the kept copy */
   function fromCopy(path, method, url) {
     const c = OFFLINE.copy;
@@ -151,9 +163,28 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
       }
       throw err;
     }
-    if (method === "GET") keep(path, r); else { keepChange(path, r); keepSettings(path, r); }
+    if (method === "GET") keep(path, r); else { keepChange(path, r); keepSettings(path, r); keepUser(path, r); }
     return r;
   };
+
+  /* the connection back (the server answers: asked when the browser says it's online, and every few seconds while the
+     page is shown, as that isn't always said, nor is the server always back with it): what's sent goes to the server
+     again, and the page is loaded again, live, as the other pages are (offline-page.js); a theme picked offline is
+     saved then (nav.js saveLater, #424). An entry being written (a form in the drawer, a journal entry offline, say)
+     or another dialog open is left to finish first: its Save reaches the server now, and the page is loaded again once
+     it's done; a record only shown there isn't waited for */
+  let asking = false;
+  function back() {
+    if (asking || !document.body.classList.contains("offline")) return;
+    asking = true;
+    realFetch(API + "me", {cache: "no-store", credentials: "same-origin"}).then(() => {
+      OFFLINE.on = false;
+      (function live() { if (document.querySelector("#drawer[open] form, dialog[open]:not(#drawer)")) setTimeout(live, 1000); else location.reload(); })();
+    }, () => { asking = false; });
+  }
+  addEventListener("online", back);
+  let watching = 0;
+  const watchBack = () => { watching ||= setInterval(() => { if (!document.hidden) back(); }, 4000); };
 
   /* ---- what the page shows offline */
   function banner(...kids) {
@@ -164,13 +195,16 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
   }
   function notAvailable() {
     document.body.classList.add("offline");
-    banner(el("strong", {text: "Offline. Records aren't available offline on this device. "}),
+    watchBack();
+    // the page's h1 (the tab's goes with the records it names, app.js emptyCard: #424)
+    banner(el("h1", {text: "Records"}), el("strong", {text: "Offline. Records aren't available offline on this device. "}),
       "Sanguity needs its server to show them. To read the last records you open here without a connection, turn on ",
       el("b", {text: "Offline records on this device"}), " under Account when you're back online.");
   }
   function offlineView() {
     const c = OFFLINE.copy;
     document.body.classList.add("offline");
+    watchBack();
     banner(el("strong", {text: "Offline · read-only. "}),
       `${c.profile.name}, as loaded on ${fmtDT(c.loaded)}. `,   // in their date format (dates.js, loaded by the time a request fails)
       el("span", {class: "why", text: "Changes, documents, imports, settings and your account need the server; they come back when you're online."}));

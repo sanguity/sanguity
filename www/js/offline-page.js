@@ -19,12 +19,13 @@ const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on,
   const NEEDS_SERVER = "You're offline. This needs the server.", WHY = "Needs the server: you're offline";
   const name = document.title.split(" · ")[0];   // "Settings", before the sidebar adds its group
   let reached = false;   // the server answered since the page opened
-  const isApi = input => {
+  const apiPath = input => {
     const u = new URL(input instanceof Request ? input.url : String(input), location.href);
-    return u.origin === location.origin && u.pathname.startsWith(API);
+    return u.origin === location.origin && u.pathname.startsWith(API) ? u.pathname.slice(API.length) : null;
   };
   window.fetch = async function (input, opts) {
-    if (!isApi(input)) return realFetch(input, opts);
+    const path = apiPath(input);
+    if (path == null) return realFetch(input, opts);
     let r;
     try { r = await realFetch(input, opts); }
     catch (err) {
@@ -34,8 +35,20 @@ const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on,
     }
     reached = true;
     if (OFFLINE.on && !document.body.classList.contains("offline-page")) back();
+    if (r.ok && /^settings\/user\/[^/]+$/.test(path) && ((opts && opts.method) || "GET") !== "GET") keepUser(path, r);
     return r;
   };
+  /* the person's own settings saved here (Display, your menu's theme): the copy of records this device keeps takes
+     them, so the records page offline shows them as saved (#424; offline.js does the same there) */
+  let kept = Promise.resolve();
+  function keepUser(path, r) {
+    if (!SgOffline.on()) return;
+    const body = r.clone().json();
+    kept = kept.then(async () => {
+      const j = await body, c = await SgOffline.load();
+      if (c && SgOffline.withUser(c, path.endsWith("/reset") ? j.settings : j)) await SgOffline.save(c);
+    }).catch(e => console.warn("offline copy not kept:", e.message));
+  }
 
   const records = () => SgOffline.on()
     ? el("a", {href: SgOffline.base.pathname, text: "Read the records kept on this device"})
@@ -45,7 +58,8 @@ const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on,
     OFFLINE.on = true;
     const opened = !reached, main = document.querySelector("main");
     document.body.classList.add("offline");
-    const b = el("div", {id: "offlineBanner", class: "card offline-banner", role: "status"}, el("strong", {text: "Offline. "}),
+    // opened offline, its h1 is the page's (main, with its own, is left out: #424)
+    const b = el("div", {id: "offlineBanner", class: "card offline-banner", role: "status"}, opened ? el("h1", {text: name}) : null, el("strong", {text: "Offline. "}),
       opened ? `${name} needs the server, so it isn't shown without a connection; it opens once you're back online. `
         : "Changes here need the server; they can be made once you're back online. ", records());
     main.before(b);

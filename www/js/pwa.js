@@ -40,7 +40,21 @@ const SgOffline = (() => {
     await drop();
     return null;
   }
-  return {base, works, on, set, save, load, drop, forget};
+  /* the person's own settings (theme, dates, units: settings/user, the flat {key: value} its saves answer with), into
+     a copy's settings, nested as GET .../settings has them (#424); a copy without settings is left as it is */
+  function withUser(copy, flat) {
+    if (!copy.settings || !flat || typeof flat !== "object") return false;
+    const s = JSON.parse(copy.settings);
+    for (const [k, v] of Object.entries(flat)) {
+      const path = k.split("."), last = path.pop();
+      let d = s;
+      for (const p of path) d = d[p] = d[p] && typeof d[p] === "object" ? d[p] : {};
+      d[last] = v;
+    }
+    copy.settings = JSON.stringify(s);
+    return true;
+  }
+  return {base, works, on, set, save, load, drop, forget, withUser};
 })();
 
 if (SgOffline.works()) navigator.serviceWorker.register(new URL("sw.js", SgOffline.base), {scope: SgOffline.base.pathname})
