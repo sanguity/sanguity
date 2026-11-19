@@ -512,8 +512,8 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .tip .v{font-weight:var(--fw-bold);font-size:var(--fs-3);color:var(--ink)}
 .tip .s{color:var(--ink2)}
 .tip .k{display:inline-block;width:12px;height:2px;border-radius:2px;vertical-align:middle;margin-right:var(--sp-2)}
-.card h3.sub{font-size:var(--fs-3);font-weight:var(--fw-semibold);margin:0 0 var(--sp-1);color:var(--ink2)}
-.card h3.sub.next{margin-top:var(--sp-3)}   /* a part of a card after a chart or a list (health.js) */
+.card h3.sub,.h-sec h4.sub{font-size:var(--fs-3);font-weight:var(--fw-semibold);margin:0 0 var(--sp-1);color:var(--ink2)}
+.card h3.sub.next,.h-sec h4.sub.next{margin-top:var(--sp-3)}   /* a part of a card after a chart or a list (health.js) */
 .list{display:flex;flex-direction:column}
 .month{font-weight:var(--fw-semibold);font-size:var(--fs-3);color:var(--ink2);padding:var(--sp-4) 0 var(--sp-1);border-bottom:1px solid var(--grid);position:sticky;top:var(--bar-h,0px);background:var(--surface)}   /* under the top bar (--bar-h, nav.js), not behind it (#247) */
 #list .tl-row{scroll-margin-top:44px}   /* a row given focus is scrolled clear of the month heading stuck above it */
@@ -1698,6 +1698,13 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .vital-list .abn{color:var(--crit);font-weight:var(--fw-semibold)}
 .vital-link{margin:var(--sp-2) 0 0}
 
+/* ---- Body and activity's sections (#276, health.js): a bar, then each an h2, tiles and cards (their h3s as a card's h2) */
+.h-secbar{margin:0 0 var(--sp-2)}
+.h-sec>h2{margin:var(--sp-5) 0 var(--sp-3);font:var(--fw-semibold) var(--fs-5)/1.3 var(--font-display,Georgia,serif)}
+.h-sec .list-hd h3{margin:0;font:var(--fw-semibold) var(--fs-4)/1.3 var(--font-display,Georgia,serif)}
+.h-sync{margin:0 0 0 auto}
+.h-sec .tile .delta{min-height:2lh}   /* a delta that wraps in one font only moves nothing (#329), as in one row of all */
+
 /* ---- menstrual cycle tracking, opt-in (#183, cycle.js and sources-cycle.js): its own colour (--c-cycle in
    tokens.css), the lane's and charts' marks, and the Sources card's lists */
 .cymark{cursor:pointer}
@@ -1745,7 +1752,7 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .growth-set{margin:2px 0 var(--sp-3)}
 .growth-one{margin:2px 0 var(--sp-2);font-size:var(--fs-3);color:var(--ink2)}
 .growth-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:var(--sp-2) var(--sp-4)}
-.growth-cell h3.sub{margin:var(--sp-2) 0 2px}
+.growth-cell .sub{margin:var(--sp-2) 0 2px}
 .growth-curve{fill:none;stroke:var(--ink2);stroke-width:1;opacity:.55}
 .growth-curve.mid{stroke-width:1.8;opacity:.8}
 svg text.growth-pct{font-size:var(--fs-1)}

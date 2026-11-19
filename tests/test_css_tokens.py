@@ -122,7 +122,7 @@ ALLOWED = {
     # the colour and the spacing are a record's own frame (srcdoc), which doesn't load the tokens: its text, its margin
     # and its table cells' padding
     "www/js/drawer.js": {"script styles": 5, "colours": 1, "px spacing": 2},
-    "www/js/health.js": {"script styles": 15},
+    "www/js/health.js": {"script styles": 14},
     "www/js/heatmap.js": {"script styles": 5},
     "www/js/journal.js": {"script styles": 2},
     "www/js/medlog.js": {"script styles": 1},

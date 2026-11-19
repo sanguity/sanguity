@@ -2253,7 +2253,39 @@ def main():
             js("state.tables.clear(); switchTab('health')")
             settle(500)
             check("Body and activity (#60): every card with charts has Chart | Table",
-                  js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen", "#h-resp", "#h-vo2"])
+                  js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-heart", "#h-bp", "#h-glucose", "#h-temp", "#h-oxygen", "#h-resp", "#h-sleep", "#h-activity", "#h-vo2"])
+            # four sections (#276), each an h2 with its own tiles, which jump to their cards (h3s), and its cards; a bar
+            # above jumps to each, its heading taking focus. Hospital stays under "Show on charts", the sync apart on the right
+            sx = js("""(() => { const secs = [...document.querySelectorAll('#view-health .h-sec')];
+                const t = document.querySelector('#view-health .overlays'), sync = document.querySelector('#view-health .h-sync');
+                return {secs: secs.map(s => [s.querySelector(':scope > h2').textContent, s.getAttribute('aria-labelledby') === s.querySelector(':scope > h2').id,
+                    [...s.querySelectorAll('.card')].map(c => c.id), [...s.querySelectorAll('.tile .lbl')].map(l => l.textContent)]),
+                  tilesHome: [...document.querySelectorAll('#view-health .tile')].every(x => document.querySelector(x.dataset.card)?.closest('.h-sec') === x.closest('.h-sec')),
+                  titles: [...document.querySelectorAll('#view-health .card .list-hd')].every(h => h.querySelector('h3') && !h.querySelector('h2')),
+                  bar: [...document.querySelectorAll('#view-health .h-secbar button')].map(b => b.textContent),
+                  shows: t && [t.getAttribute('role'), t.innerText.replace(/\\s+/g, ' ').trim()],
+                  right: t && sync && Math.abs(t.getBoundingClientRect().right - sync.getBoundingClientRect().right) < 2 && sync.getBoundingClientRect().left > t.querySelector('.toggle').getBoundingClientRect().right + 100}; })()""")
+            want = [["Body", True, ["h-body"]], ["Vitals", True, ["h-heart", "h-bp", "h-glucose", "h-temp", "h-oxygen", "h-resp"]],
+                    ["Sleep", True, ["h-sleep"]], ["Activity and fitness", True, ["h-activity", "h-zones", "h-vo2"]]]
+            check("Body and activity in four sections (#276): Body, Vitals, Sleep, Activity and fitness, each its cards' heading over them",
+                  [x[:3] for x in sx["secs"]] == want and sx["titles"], sx)
+            check("…each opening with its own tiles, which jump to cards in the same section",
+                  sx["tilesHome"] and [x[3][:1] for x in sx["secs"]] == [["Weight"], ["Resting heart rate"], ["Sleep"], ["Steps"]]
+                  and {"Blood pressure", "Glucose"} <= set(sx["secs"][1][3]) and "Workouts" in sx["secs"][3][3], sx["secs"])
+            check("…Hospital stays under Show on charts, as on Labs, and the sync status apart on the right",
+                  sx["shows"] and sx["shows"][0] == "group" and sx["shows"][1].startswith("Show on charts: Hospital stays Watch and smart scale") and sx["right"], sx["shows"])
+            page.click("#view-health .h-secbar button:text-is('Sleep')")
+            settle(800)
+            jump = js("[document.activeElement.id, (r => r.top >= 0 && r.top < innerHeight / 2)(document.getElementById('hs-sleep').getBoundingClientRect())]")
+            check("…and a bar of them that jumps to each, its heading taking focus", sx["bar"] == [w[0] for w in want] and jump == ["hs-sleep-h", True], [sx["bar"], jump])
+            # a section with nothing in it is left out, and so is its tile and its place in the bar: here, no sleep
+            gone = js("""(() => { const w = WATCH; WATCH = {...w, metrics: w.metrics.filter(m => !m.key.startsWith('sleep_'))}; H = null; renderHealth();
+                const r = [[...document.querySelectorAll('#view-health .h-sec')].map(s => s.id), [...document.querySelectorAll('#view-health .h-secbar button')].map(b => b.textContent),
+                  [...document.querySelectorAll('#view-health .tile .lbl')].some(l => l.textContent === 'Sleep')];
+                WATCH = w; H = null; renderHealth(); return r; })()""")
+            check("…a section with nothing in it left out, with its tile and its place in the bar",
+                  gone == [["hs-body", "hs-vitals", "hs-activity"], ["Body", "Vitals", "Activity and fitness"], False], gone)
+            js("scrollTo(0, 0)")
             page.focus("#h-body svg")
             page.keyboard.press("Home")
             settle(150)
@@ -2261,7 +2293,7 @@ def main():
             check("…its charts step from the keyboard too, with the hover's crosshair and tooltip", re.match(r"Weight: \d+ readings from", hk[0] or "")
                   and hk[1] == "block" and " lb" in hk[2] and hk[3] == "visible", hk)
             page.keyboard.press("Escape")
-            for k in ("#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen", "#h-resp", "#h-vo2"):
+            for k in ("#h-body", "#h-heart", "#h-bp", "#h-glucose", "#h-temp", "#h-oxygen", "#h-resp", "#h-sleep", "#h-activity", "#h-vo2"):
                 page.click(f"{k} .view-seg button:text-is('Table')")
                 settle(200)
             ht = js("['#h-body', '#h-glucose', '#h-sleep', '#h-activity', '#h-heart', '#h-bp', '#h-temp', '#h-oxygen', '#h-resp', '#h-vo2'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
@@ -2428,9 +2460,9 @@ def main():
                 return {tile: tile ? tile.innerText.replace(/\\s+/g, ' ') : null, tir: (c.querySelector('.glu-tir')?.innerText || '').replace(/\\s+/g, ' '),
                   dots: c.querySelectorAll('svg circle').length, want: G.meter.filter(p => p[0] >= a && p[0] <= b).length,
                   pts: WATCH.metrics.filter(m => m.key.startsWith('glucose_')).reduce((n, m) => n + m.pts.length, 0),
-                  after: [...document.querySelectorAll('#view-health > .card')].map(x => x.id).indexOf('h-glucose')}; })()""")
-            check("glucose (#181): a Blood glucose card after weight, and a Glucose tile with the period's CGM average and its share in 70–180",
-                  gl and gl["after"] == 1 and gl["tile"] and re.match(r"Glucose \d+ ?mg/dL avg \d+% of CGM readings in 70–180$", gl["tile"]), gl)
+                  sec: [c.closest('.h-sec')?.id, tile?.closest('.h-sec')?.id], before: [...c.closest('.h-sec').querySelectorAll('.card')].map(x => x.id).slice(0, [...c.closest('.h-sec').querySelectorAll('.card')].indexOf(c))}; })()""")
+            check("glucose (#181): a Blood glucose card in Vitals after heart rate (and blood pressure, #276), and a Glucose tile there with the period's CGM average and its share in 70–180",
+                  gl and gl["sec"] == ["hs-vitals", "hs-vitals"] and gl["before"] in (["h-heart"], ["h-heart", "h-bp"]) and gl["tile"] and re.match(r"Glucose \d+ ?mg/dL avg \d+% of CGM readings in 70–180$", gl["tile"]), gl)
             pcts = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)%", gl["tir"] if gl else "")]
             check("…time in ranges for the period's CGM days, below 54 and below 70 apart, adding up, labelled the standard published ranges and not advice",
                   gl and gl["tir"].startswith("Time in ranges · 14 CGM days in this period") and all(w in gl["tir"] for w in (
@@ -2711,14 +2743,14 @@ def main():
                   vlabel: v.querySelector('svg').getAttribute('aria-label'), rlegend: r.querySelector('.legend').textContent, vlegend: v.querySelector('.legend').textContent,
                   rhint: r.querySelector('.hint').textContent, vhint: v.querySelector('.hint').textContent, vtext: v.innerText,
                   marks: [r.querySelectorAll('svg circle[fill="var(--surface)"]').length, r.querySelectorAll('svg path.pt.abn').length],
-                  order: [...document.querySelectorAll('#view-health > .card')].map(c => c.id).filter(Boolean).slice(-3),
+                  order: [...[...document.querySelectorAll('#hs-vitals .card')].map(c => c.id).slice(-2), v.closest('.h-sec').id],   // #276: VO2 max under Activity and fitness
                   list: [...r.querySelectorAll('.vital-list li')].map(l => l.textContent)}; })()""")
             r_days, v_days = len({t[:10] for t, _ in want_r}), len({t[:10] for t, _ in want_v})
             check("respiratory rate and VO2 max (#226): read from both phone apps, a day each whichever app sent it",
                   fc and fc["rdays"] == fc["rhome"] == r_days and fc["vdays"] == fc["vhome"] == v_days and fc["first"] == [["2026-08-01", 14], ["2026-08-02", 39.8]],
                   fc and {k: fc[k] for k in ("rdays", "vdays", "first")})
-            check("…a small card each, after blood oxygen: the phone's days and the visits' respiratory rates told apart, a flagged one ▲",
-                  fc and fc["order"] == ["h-oxygen", "h-resp", "h-vo2"] and fc["rclinic"] == len(RESP_VISITS) and fc["marks"] == [1, 1]
+            check("…a small card each, respiratory rate after blood oxygen in Vitals and VO2 max in Activity and fitness (#276): the phone's days and the visits' respiratory rates told apart, a flagged one ▲",
+                  fc and fc["order"] == ["h-oxygen", "h-resp", "hs-activity"] and fc["rclinic"] == len(RESP_VISITS) and fc["marks"] == [1, 1]
                   and "Phone, by day" in fc["rlegend"] and "At a visit" in fc["rlegend"] and "flagged as high or low" in fc["rhint"]
                   and re.match(r"Respiratory rate: \d+ readings from", fc["rlabel"] or ""), fc and {k: fc[k] for k in ("order", "rclinic", "marks", "rlegend", "rlabel")})
             check("…VO2 max as the watch gives it, in mL/kg/min, without fitness levels or judging words",
@@ -2813,7 +2845,7 @@ def main():
                           ["2026-10-20", 184, 36, "age", [0, 900, 1800, 0, 0, 0], False], ["2026-11-10", 184, 36, "age", [0, 0, 0, 0, 1500, 300], False]], hrs)
             zc = js("""(() => { const c = document.getElementById('h-zones'); return c && {hint: c.querySelector('.hint').textContent, label: c.querySelector('svg')?.getAttribute('aria-label'),
                 legend: [...c.querySelectorAll('.legend span')].map(s => s.textContent), list: [...c.querySelectorAll('.zones-list li')].map(l => l.textContent),
-                order: [...document.querySelectorAll('#view-health > .card')].map(c => c.id).filter(Boolean)}; })()""")
+                order: [...document.querySelectorAll('#view-health .card')].map(c => c.id).filter(Boolean)}; })()""")
             check("…a card after Activity: minutes a week in each zone, the zones said to be from the common formula, 220 minus age, and not advice",
                   zc and zc["order"][zc["order"].index("h-activity") + 1] == "h-zones" and "220 minus age (the common formula)" in zc["hint"]
                   and "184 bpm at 36 on the latest here" in zc["hint"] and "not advice" in zc["hint"] and re.match(r"Heart rate zones, minutes a week: 3 weeks from", zc["label"] or "")
@@ -9314,7 +9346,7 @@ def main():
                 settle(300)
                 c353[t] = js(CONTROLS353_JS)
                 bad353 += [f"{t}: a bare checkbox “{x}”" for x in c353[t]["bare"]]
-            if "Shade hospital stays" not in c353["health"]["toggles"] or "Denied only" not in c353["costs"]["toggles"]:
+            if "Hospital stays" not in c353["health"]["toggles"] or "Denied only" not in c353["costs"]["toggles"]:
                 bad353.append(f"toggle chips: {c353['health']['toggles']} {c353['costs']['toggles']}")
             js("journalNew()")
             settle(300)
@@ -11472,7 +11504,7 @@ def main():
                   and {m_[6] for m_ in mine if m_[4] <= 730} == {"who"} and {m_[6] for m_ in mine if m_[4] > 730} == {"cdc"}, mine[:2])
             gtext = page.inner_text("#h-growth")
             seg_ = js("[...document.querySelectorAll('#h-growth .growth-set button')].map(b => [b.textContent, b.getAttribute('aria-pressed')])")
-            heads = js("[...document.querySelectorAll('#h-growth .growth-cell h3')].map(h => h.textContent)")
+            heads = js("[...document.querySelectorAll('#h-growth .growth-cell h4')].map(h => h.textContent)")
             curves = js("[...document.querySelectorAll('#h-growth .growth-cell svg')].map(s => [s.querySelectorAll('path.growth-curve').length, s.querySelectorAll('circle').length, "
                         "[...s.querySelectorAll('text.growth-pct')].map(t => t.textContent)])")
             check("…a Growth charts card on Body and activity, with no phone: the CDC's from 2 to 20 shown first (her latest), the WHO's to 2 beside it as a pair",
@@ -11496,7 +11528,7 @@ def main():
                   and js("document.querySelector('#h-growth .growth-cell svg').getAttribute('aria-label')").startswith("Weight for age, the CDC's chart, 2 to 20 years: 5 measurements"), tipg)
             page.click("#h-growth .growth-set button:has-text('Birth to 2 years')")
             settle(400)
-            heads = js("[...document.querySelectorAll('#h-growth .growth-cell h3')].map(h => h.textContent)")
+            heads = js("[...document.querySelectorAll('#h-growth .growth-cell h4')].map(h => h.textContent)")
             curves = js("[...document.querySelectorAll('#h-growth .growth-cell svg')].map(s => [s.querySelectorAll('path.growth-curve').length, s.querySelectorAll('circle').length])")
             lst = js("[...document.querySelectorAll('#h-growth .vital-list li')].map(l => l.textContent)")
             check("…the WHO's to 2: weight, length (lying down) and head circumference from the records, the WHO's 3rd to 97th curves, ages corrected",
@@ -11516,7 +11548,7 @@ def main():
             # kg or lb, as chosen under Settings → Units
             js("CFG.units = {...CFG.units, weight: 'lb'}; renderHealth()")
             settle(300)
-            h3s = js("[...document.querySelectorAll('#h-growth .growth-cell h3')].map(h => h.textContent)")
+            h3s = js("[...document.querySelectorAll('#h-growth .growth-cell h4')].map(h => h.textContent)")
             lw = js("document.querySelector('#h-growth .vital-list li b').textContent")
             check("…in lb when lb is chosen, the curves with them", h3s[0] == "Weight for age (lb)" and lw == f"Weight {10.2 / 0.45359237:.1f} lb", (h3s, lw))
             js("CFG.units = {...CFG.units, weight: 'reported'}; renderHealth()")

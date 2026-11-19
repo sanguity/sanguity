@@ -1368,6 +1368,13 @@ Everything on `main` so far; it becomes the first tagged release.
   the other open tabs for 150 ms, so one busy for longer (drawing, or a phone's in the background) wasn't named and its
   changes went without a word; it waits 600 ms now. And since signing out forgets the account's theme (#433), the first
   page after signing in started in the system's until the settings came; signing in now asks for the theme first.
+- **Body and activity in four sections** (#276): its cards were in the order they shipped, so heart rate zones sat
+  between steps and heart rate, and blood pressure three cards from heart rate; its tiles were in another order. Now
+  it's **Body** (weight, body composition, BMI, growth), **Vitals** (heart rate and HRV, blood pressure, glucose,
+  temperature, oxygen, breathing rate), **Sleep**, and **Activity and fitness** (steps and workouts, heart rate zones,
+  VO2 max), each under its heading with its own tiles, which jump to its cards, and a bar of the sections above that
+  jumps to each. A section with nothing in it is left out. Shading hospital stays is under "Show on charts", as on
+  Labs, and the phone's last sync sits apart on the right.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
