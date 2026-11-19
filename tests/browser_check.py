@@ -6659,8 +6659,15 @@ def main():
             # ---- profile switcher: the second profile has no records yet, and its own saved view
             check("profile switcher shown", page.is_visible("#profileMenuBtn") and js("document.getElementById('profile').options.length === 2"))
             js("applyPreset('30d')")
+            # (#425: its own tab layout, Costs first and Body and activity hidden, applied though it has no records)
+            tabs425 = "[...document.querySelectorAll('header .tabs > a[id^=tab-], #tabMoreList > a[id^=tab-]')].filter(a => !a.hidden).map(a => a.id.slice(4)).join(',')"
+            put425 = "v => api('profiles/2/settings/tabs', {method: v ? 'PUT' : 'DELETE', ...(v ? {body: JSON.stringify({value: v})} : {})}).then(r => r.status)"
+            js(f"({put425})({{order: ['costs', 'overview', 'health', 'timeline', 'labs'], hidden: ['health']}})")
             pick_profile(page, label="Second person (owner)")
             page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
+            check("an empty profile's tab layout is applied on the records page, Costs first and Body and activity hidden, as the other pages show it (#425)",
+                  js(tabs425) == "costs,overview,timeline,labs", js(tabs425))
+            js(f"({put425})(null)")
             check("the period is kept per profile (not carried to another)", js("state.preset") == "2y", js("state.preset"))
             check("empty profile explains itself", "no records yet" in page.inner_text("main"))
             check("empty profile hides the tabs and filters", js("document.querySelector('.tabs').hidden && document.querySelector('.filters').hidden && getComputedStyle(document.querySelector('.tabs')).display === 'none'"))
@@ -8518,6 +8525,32 @@ def main():
             check("…two units picked in a row (lb, then ft/in), the page left at once: nothing asked, and both saved on the server (#419)",
                   lv_way == [False, 0, False, False, False] and {k: lv_got[k] for k in lv_to} == lv_to, [lv_way, lv_got, lv_to])
             check("…(the units put back as they were, again)", js(api_put, ["settings/user/units", un_was]) == 200)
+            # #425: Units is the person's own, not the profile's: lb then ft/in (the second waiting for the first's answer,
+            # each answered 1.5 s late), then another profile picked at once: both reach the server, and Settings shows them
+            # for the other profile once they're saved
+            page.reload()
+            page.wait_for_selector("#sec-units input[name=units-height][value=ftin]", timeout=10000)
+            js("""() => { const f = window.fetch; window.fetch = (u, o) => o && o.method === 'PUT' && String(u).endsWith('/settings/units')
+                ? new Promise(r => setTimeout(r, 1500)).then(() => f(u, o)) : f(u, o); }""")
+            page.click(f"#sec-units label:has(#units-weight-{lv_to['weight']})")
+            page.click(f"#sec-units label:has(#units-height-{lv_to['height']})")
+            pick_profile(page, "2")
+            for _ in range(40):
+                sw_got = un_units()
+                if [sw_got["weight"], sw_got["height"]] == [lv_to["weight"], lv_to["height"]]:
+                    break
+                settle(250)
+            sw_ticked = "[...document.querySelectorAll('#sec-units input:checked')].filter(i => /weight|height/.test(i.name)).map(i => i.value).join()"
+            try:
+                page.wait_for_function(f"document.getElementById('profile').value === '2' && {sw_ticked} === '{lv_to['weight']},{lv_to['height']}'", timeout=10000)
+            except Exception:
+                pass
+            sw_shown = [js("document.getElementById('profile').value"), js(sw_ticked), js(un_state)]
+            check("…lb, then ft/in, then another profile picked at once: both saved on the server, and shown ticked for the other profile (#425)",
+                  {k: sw_got[k] for k in lv_to} == lv_to and sw_shown == ["2", f"{lv_to['weight']},{lv_to['height']}", [False, 0, False, False, False]], [sw_got, sw_shown, lv_to])
+            check("…(the units put back as they were, a third time)", js(api_put, ["settings/user/units", un_was]) == 200)
+            js("localStorage.setItem('ht-profile', '1')")   # (this browser's last profile as it was)
+            page.goto("about:blank")   # (the next address differs only in its #: a page loaded afresh there, with ?profile=1)
             # …and the bar's Discard, pressed for another change while a tick is on its way, leaves the tick as picked:
             # the page and the server agree once it's saved, the other change discarded
             page.goto(base + "/settings.html?profile=1#dashboard")
@@ -10715,6 +10748,9 @@ def main():
                               "document.querySelector('#setNav a[aria-current=page]').dataset.group, document.getElementById('loadMsg').textContent, location.hash]")
                   == [None, True, "dashboard", "Only a profile's owners can rename or delete it.", "#dashboard"],
                   zb.evaluate("[[...document.querySelectorAll('#setNav a')].map(a => a.dataset.group), document.getElementById('loadMsg').textContent, location.hash]"))
+            # #425: said as a note, as the line above it says whose settings these are, not in a save's green
+            why425 = zb.evaluate("(m => [getComputedStyle(m.firstElementChild || m).color, getComputedStyle(document.getElementById('introHint')).color, getComputedStyle(m).color])(document.getElementById('loadMsg'))")
+            check("…the why in the note style of the line above it, not a save's (#425)", why425[0] == why425[1] != why425[2], why425)
             # #419: an editor following Sharing's old address for it is told why too; it's said until another group is shown
             sdb.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=1", (uid2,))
             zb.goto(base + "/sharing.html?profile=1#profile")

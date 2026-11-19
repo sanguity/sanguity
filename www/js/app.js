@@ -136,6 +136,13 @@ async function syncWarning(pid) {
     el("span", {text: `Records from ${w[0].source} may be out of date: ${w[0].text.replace(/^[^:]*: /, "")}${more}`}), link);
   box.hidden = false;
 }
+/* this profile's settings (changed on the Settings page); if they can't be loaded the defaults are used */
+async function settingsLoad() {
+  try {
+    const s = await api(`profiles/${PROFILE.id}/settings`);
+    if (s.ok) applySettings(await s.json());
+  } catch (e) { console.warn("settings ignored:", e.message); }
+}
 (async function boot() {
   const dates = datesReady();   // this person's time zone and date format (dates.js), read alongside the rest
   let data;
@@ -165,6 +172,8 @@ async function syncWarning(pid) {
         const u = await api("settings/user").then(x => x.ok ? x.json() : {}).catch(() => ({}));
         if (u.guide === "") { location.replace(`guide.html?profile=${PROFILE.id}`); return; }   // not finished or skipped yet
       }
+      await settingsLoad();
+      applyTabs(CFG.tabs);   // its tabs as it has them, as the other pages show them (#425)
       emptyCard(canImport(PROFILE)
         ? emptyState(`${PROFILE.name} has no records yet: lab results, visits, medications and the rest appear here once they're brought in.`,
             {href: `guide.html?profile=${PROFILE.id}`, text: "Get started"})
@@ -177,11 +186,7 @@ async function syncWarning(pid) {
     }
     if (!r.ok) throw new Error(r.status + " " + r.statusText);
     data = await r.json();
-    // this profile's settings (changed on the Settings page); if they can't be loaded the defaults are used
-    try {
-      const s = await api(`profiles/${PROFILE.id}/settings`);
-      if (s.ok) applySettings(await s.json());
-    } catch (e) { console.warn("settings ignored:", e.message); }
+    await settingsLoad();
   } catch (e) { emptyCard("Couldn't load the records: " + e.message); return; }
   applyTabs(CFG.tabs);
   applyTheme(CFG.theme);   // this user's default theme (#45), unless this browser has its own (the light/dark toggle)

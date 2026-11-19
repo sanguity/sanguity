@@ -38,14 +38,14 @@
   /* an address naming a group this person's role on the profile doesn't give them (settings.html#profile, or
      sharing.html#profile moved here, for an editor or a viewer): once the role is known (data-role, settings.js), the
      group's why is said under the title of the one shown instead, until another is, and the address names that one
-     (#419) */
+     (#419); as a note, in the style of the line above it, not a save's (#425) */
   const RANK = {viewer: 0, editor: 1, owner: 2}, said = document.getElementById("loadMsg");
   let told = null;
   function whyNot() {
     const h = decodeURIComponent(location.hash.slice(1)), role = main.dataset.role, g = GROUPS.find(x => x.id === h || x.has.includes(h));
     if (told || !role || !g?.why || RANK[role] >= RANK[g.needs]) return;
     told = g.why;
-    sayIn(said, told);
+    sayIn(said, el("span", {class: "set-who", text: told}));
     if (nav.current()) history.replaceState(null, "", "#" + nav.current().id);
   }
   const who = document.getElementById("introHint");
