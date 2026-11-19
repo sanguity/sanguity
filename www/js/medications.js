@@ -5,7 +5,7 @@
      unbroken, its latest listing's words, its last pharmacy fill, its reminders' times (#162). A row opens its drawer
      (meds.js openMedication: its history, reminders and log). A fill that came as a pharmacy claim too links to the
      claims on Costs, that drug's.
-   - Past: the rest, closed until it's opened.
+   - Past: the rest, closed until it's opened, then as it was left.
    - The medications over the records bar's period: a row each, drawn as the Timeline's Medications lane is (meds.js
      medRow: the listings, where they stopped, the fills, the doses logged), each mark opening what it is.
    It says what the records list, never whether a medication or a dose is right. Hideable like any tab (Settings →
@@ -35,7 +35,8 @@ function medOnCosts(m, ev) {
   ev.stopPropagation();   // not the row's drawer
   const ds = medClaims(m).map(c => dayTs(c.d));
   if (state.preset !== "all" && !ds.some(t => t >= state.from && t <= state.to)) setPeriod("all");
-  if (typeof costState === "object") Object.assign(costState, {q: m.key, cat: "Pharmacy"});
+  // on Claims, whichever view Costs was left on (What you paid has no search), with only the filters that find the drug's
+  if (typeof costState === "object") Object.assign(costState, {view: "claims", q: m.key, cat: "Pharmacy", deniedOnly: false});
   pickTab("costs");
   const q = document.querySelector("#costTable input.search");
   if (q) { $("#costTable").scrollIntoView({block: "start"}); q.focus({preventScroll: true}); }
@@ -50,6 +51,14 @@ function medRows(label, heads, list, cells) {
       ...cells(m).map((v, i) => el("span", {}, el("span", {class: "med-k", text: heads[i] + " "}), v)))))];
 }
 
+let medPastOpen = false;   // Past as it was left, kept while the tab is drawn again (a dose logged, the window resized)
+/* the lane's window: the period's; where that ends at the records' last day (a preset or a milestone) and a dose was
+   logged after it, on to that dose, so one logged today shows */
+function medWindow() {
+  const [a, b] = periodWindow([Math.min(...MEDS.map(medFrom)), Math.max(...MEDS.map(medTo))]);
+  const last = DOSES.length ? DOSES.at(-1).ts : 0, toEnd = state.preset in PRESET_DAYS || !!msOf(state.preset);
+  return [a, toEnd && last > b ? last + DAY / 2 : b];
+}
 function renderMedications() {
   const box = $("#view-medications");
   if (!MEDS.length) {   // (#199) what would be here, and a way to start
@@ -69,7 +78,8 @@ function renderMedications() {
           ...(f && costs && medClaims(m).length ? [el("br"), el("a", {href: "#costs", class: "med-costs", onclick: ev => medOnCosts(m, ev)}, "Its claims on Costs")] : [])],
         medReminds(m)];
     }) : el("p", {class: "hint", text: "The records list no medication without an end."}));
-  const before = past.length ? el("details", {class: "card med-past"}, el("summary", {}, el("h2", {text: `Past (${past.length})`})),
+  const before = past.length ? el("details", {class: "card med-past", open: medPastOpen || null, ontoggle: e => { medPastOpen = e.target.open; }},
+    el("summary", {}, el("h2", {text: `Past (${past.length})`})),
     medRows("Past medications", ["When", "Last listed as", "Pharmacy fills"], past, m => {
       const s = m.spans.at(-1), f = medLastFill(m);
       return [s ? `${fmtD(m.spans[0].ts)} – ${s.te != null && s.to !== s.from ? fmtD(s.te) : "listed as " + (s.status || "stopped").toLowerCase()}`
@@ -77,10 +87,10 @@ function renderMedications() {
         medListed(m) || "Not given", m.fills.length ? String(m.fills.length) : "None"];
     })) : null;
   // the medications over the period (All: from the first listing or fill to the last), as the Timeline's lane
-  const [a, b] = periodWindow([Math.min(...MEDS.map(medFrom)), Math.max(...MEDS.map(medTo))]);
+  const [a, b] = medWindow(), when = periodLabel("all the records");
   const rows = medsShown(a, b, "");
   const svg = el("svg:svg", {class: "med-lane", role: "img", "aria-label": `The medications from ${fmtD(a)} to ${fmtD(b)}, a row each: the same as listed under Current and Past.`});
-  const lane = el("div", {class: "card"}, el("h2", {text: "Over " + periodLabel("all the records")}),
+  const lane = el("div", {class: "card"}, el("h2", {text: when[0].toUpperCase() + when.slice(1)}),   // "The last 30 days", "Since diagnosis (Apr 14, 2025)", "2024"
     rows.length ? [el("p", {class: "hint", text: "Point at a mark for what it is; click it to open it."}),   // the rest behind its ⓘ (#280)
       aboutWords("A bar for each listing, a new shade where the dose changed; a line across its end where the records say it stopped, an arrow where they give no end; a small triangle under it for each pharmacy fill.",
         "Doses logged: ● taken, ◆ taken late, ○ skipped."), svg]

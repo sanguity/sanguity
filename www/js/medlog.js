@@ -156,10 +156,12 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
   const todays = DOSES.filter(d => doseDay(d) === today);
   if (!cur.length || !write && !todays.length) return null;
   const msg = el("p", {class: "hint edit-msg", role: "status"});
+  // offline (offline.js: the kept copy, read-only) the buttons stay, each saying why it does nothing, as Add's Log a dose does
+  const away = typeof OFFLINE !== "undefined" && OFFLINE.on, off = away ? {"aria-disabled": "true", "data-tip": "Needs the server: you're offline"} : {};
   const now = () => { const z = zdate(Date.now()); return `${today}T${String(z.getHours()).padStart(2, "0")}:${String(z.getMinutes()).padStart(2, "0")}`; };
-  const log = (m, status, slot) => doseSend("", {method: "POST", body: JSON.stringify({med: m.key, t: now(), status, slot: slot || null, note: ""})}, msg, {row: m.key + " " + (slot || "")});
+  const log = (m, status, slot) => away || doseSend("", {method: "POST", body: JSON.stringify({med: m.key, t: now(), status, slot: slot || null, note: ""})}, msg, {row: m.key + " " + (slot || "")});
   const quick = (m, slot, what) => el("span", {class: "dose-quick", role: "group", "aria-label": `Log ${what}`}, ...DOSE_ST.map(([s, t]) =>
-    el("button", {class: "btn small", type: "button", text: t, "aria-label": `${t}: ${what}`, onclick: () => log(m, s, slot)})));
+    el("button", {class: "btn small", type: "button", text: t, "aria-label": `${t}: ${what}`, ...off, onclick: () => log(m, s, slot)})));
   const logged = d => el("span", {class: "dose-done"}, doseIcon(d.status), `${DOSE_LABEL[d.status]} · ${fmtTime(d.ts)}` + (d.phone ? ` · from ${d.app}` : ""));
   const rows = [];
   for (const m of cur) {
@@ -178,7 +180,8 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
   }
   const week = thisWeek(DOSES.filter(d => cur.some(m => m.key === d.key)));
   return el("div", {class: "card", id}, head,
-    el("p", {class: "hint", text: write ? "Log what happened, for your own record: taken, taken late or skipped." : "What was logged today."}),
+    el("p", {class: "hint", text: !write ? "What was logged today." : away ? "Logging a dose needs the server: you're offline."
+      : "Log what happened, for your own record: taken, taken late or skipped."}),
     el("ul", {class: "doselist today"}, ...rows),
     el("p", {class: "dose-week", text: "This week: " + doseSaid(doseCounts(week))}),
     aboutWords("The times are those of the reminders set on each medication (its details, on the Medications tab). This keeps what is logged, nothing more. Doses logged in Apple Health's Medications come with the phone's data when Health Auto Export sends them. This isn't medical advice."),
