@@ -3,10 +3,12 @@
    providers.js, sources-watch.js, sources-overview.js), which draw their sections as they did on their own pages.
 
    This script signs the page in (who's signed in, the plain-HTTP warning, Log out), fills the one Profile choice every
-   section follows (#profile, the top bar's picker: nav.js, #170), and shows one group of
-   sections at a time. The address follows the group (sources.html#portals); an address naming something inside a
-   section (#import-12, a record's Source link, #100) opens that section's group, and the old pages' addresses
-   (import.html#manual, connect.html, providers.html, settings.html#watch: moved.js) land on theirs.
+   section follows (#profile, the top bar's picker: nav.js, #170), and shows one group of sections at a time, in the
+   sidebar every account page has (sidebar.js, #266): the Overview, then what stays Connected (portals and health
+   plans, the phone and watch), what comes in One-off (files, typed in, a Health Link) and the History. The address
+   follows the group (sources.html#portals); an address naming something inside a section (#import-12, a record's
+   Source link, #100) opens that section's group, and the old pages' addresses (import.html#manual, connect.html,
+   providers.html, settings.html#watch: moved.js) land on theirs.
 
    window.SgSources: ready (a promise of /api/me, or null when there's nothing to show), pid(), profile(),
    canEdit() (owner or editor of the profile chosen), show(group). Choosing another profile is a "change" on
@@ -16,79 +18,35 @@ const SgSources = (() => {
   const main = $("main.src"), sel = $("#profile");
   const GROUPS = [
     {id: "overview", title: "Overview", icon: "layout-grid", has: ["srcOverview"]},
-    {id: "upload", title: "Upload files", icon: "upload", has: ["importer", "viewOnly"]},
-    {id: "manual", title: "Type records in", icon: "keyboard", has: ["typeIn", "viewOnly"]},
-    {id: "link", title: "Paste a Health Link", icon: "link", has: ["healthLink", "viewOnly"]},
-    {id: "portals", title: "Portals and health plans", icon: "plug", has: ["mine"]},
-    {id: "phone", title: "Phone and watch", icon: "watch", has: ["watch", "cycle", "viewOnly"]},   // cycle tracking (#183)
-    {id: "history", title: "Import history", icon: "history", has: ["history"]},
+    {id: "portals", title: "Portals and health plans", icon: "plug", part: "Connected", has: ["mine"]},
+    {id: "phone", title: "Phone and watch", icon: "watch", part: "Connected", has: ["watch", "cycle", "viewOnly"]},   // cycle tracking (#183)
+    {id: "upload", title: "Upload files", icon: "upload", part: "One-off", has: ["importer", "viewOnly"]},
+    {id: "manual", title: "Type records in", icon: "keyboard", part: "One-off", has: ["typeIn", "viewOnly"]},
+    {id: "link", title: "Paste a Health Link", icon: "link", part: "One-off", has: ["healthLink", "viewOnly"]},
+    {id: "history", title: "Import history", icon: "history", part: "History", has: ["history"]},
   ];
-  /* the old pages' addresses (import.html#manual, #link, #zip, #payment; settings.html#watch: moved.js) */
-  const ALIAS = {zip: "upload", folder: "upload", files: "upload", payment: "manual", "home-reading": "manual", watch: "phone"};   // Add → Home reading (#264)
-  /* what's drawn after the page loads: an import in the history (a record's Source link, #100), a connection */
-  const LATER = [[/^import-\d+$/, "history"], [/^conn-\d+$/, "portals"]];
-  let ME = null, current = null;
+  let ME = null;
   const profile = () => ME && ME.profiles.find(p => p.id === +sel.value) || null;
   const canEdit = () => { const p = profile(); return !!p && (p.role === "owner" || p.role === "editor"); };
 
   /* ---------------------------------------------------------------- the sidebar */
-  const list = el("ul", {class: "set-nav-list"});
-  const nav = el("nav", {class: "set-nav", id: "srcNav", "aria-label": "Sources sections"}, list);
-  list.replaceChildren(...GROUPS.map(g => el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id,
-    onclick: ev => { ev.preventDefault(); show(g.id, {push: true}); }}, icon(g.icon), g.title))));   // its icon beside its name (#354)
-  function apply() {
-    for (const g of GROUPS) for (const id of g.has) {
-      const part = document.getElementById(id);
-      if (part) part.classList.toggle("grp-off", !current.has.includes(id));
-    }
-    for (const a of list.querySelectorAll("a")) {
-      a.setAttribute("aria-current", a.dataset.group === current.id ? "page" : "false");
-      // on a phone the sidebar is a row that scrolls sideways: the group shown stays in sight
-      if (a.dataset.group === current.id && list.scrollWidth > list.clientWidth) list.scrollLeft = a.parentElement.offsetLeft - list.offsetLeft - 16;
-    }
-    main.dataset.group = current.id;
-    $("#groupTitle").textContent = current.title;   // the page's h1, as on Settings and Sharing (#331)
-    hint();
-  }
-  function show(id, {push = false, scrollTo = null} = {}) {
-    const g = GROUPS.find(x => x.id === (ALIAS[id] || id)) || GROUPS[0], changed = g !== current;
-    current = g;
-    apply();
-    viewTitle("Sources: " + g.title, push && changed && "Sources: " + g.title);   // the browser tab's title; said when picked (#209)
-    if (push && location.hash.slice(1) !== g.id) history.replaceState(null, "", "#" + g.id);
-    if (scrollTo) scrollTo.scrollIntoView({block: "start"});
-    else if (push) window.scrollTo({top: 0});
-    if (changed) document.dispatchEvent(new CustomEvent("sources:group", {detail: g.id}));
-  }
-  /* #portals: a group; #import-12, #conn-3, #history: what's in a group's section */
-  function fromHash() {
-    const h = decodeURIComponent(location.hash.slice(1));
-    if (!h) return {id: "overview"};
-    if (GROUPS.some(g => g.id === h) || ALIAS[h]) return {id: h};
-    const t = document.getElementById(h);
-    const g = t && GROUPS.find(x => x.has.some(id => { const s = document.getElementById(id); return s && s.contains(t); }));
-    if (g) return {id: g.id, el: t};
-    const later = LATER.find(([re]) => re.test(h));
-    return {id: later ? later[1] : "overview"};
-  }
-  const follow = () => { const r = fromHash(); show(r.id, {scrollTo: r.el}); };
-  main.prepend(nav);
-  main.classList.add("with-nav");
+  const nav = sideNav({id: "srcNav", page: "Sources", groups: GROUPS, find: "Find in Sources", none: q => `Nothing in Sources matches “${q}”.`,
+    alias: {zip: "upload", folder: "upload", files: "upload", payment: "manual", "home-reading": "manual", watch: "phone"},   // Add → Home reading (#264);   // the old pages' addresses (import.html#manual, #link, #zip, #payment; settings.html#watch: moved.js)
+    later: [[/^import-\d+$/, "history"], [/^conn-\d+$/, "portals"]],   // drawn after the page loads: an import in the history (a record's Source link, #100), a connection
+    intro: hint, shown: g => document.dispatchEvent(new CustomEvent("sources:group", {detail: g.id}))});
+  const show = (id, opts) => nav.show(id, opts);
+  nav.start();
   /* the way back to the getting-started guide (#199): its links here carry ?guide=records or ?guide=phone */
   const fromGuide = new URLSearchParams(location.search).get("guide"), back = el("a", {class: "btn primary small", id: "guideBack", text: "Back to the guide"});
   const backTo = () => { back.href = `guide.html?profile=${encodeURIComponent(sel.value || new URLSearchParams(location.search).get("profile") || "")}#${fromGuide}`; };
   if (fromGuide === "records" || fromGuide === "phone") {
     backTo();
     sel.addEventListener("change", backTo);
-    nav.after(el("p", {class: "guide-back", id: "guideBar"}, el("span", {text: fromGuide === "phone"
+    nav.nav.after(el("p", {class: "guide-back", id: "guideBar"}, el("span", {text: fromGuide === "phone"
       ? "Getting started: set up the phone here, then go back to the guide." : "Getting started: bring in the first records here, then go back to the guide."}), back));
   }
-  follow();
-  // a section reached by its address later (Add's items, which only change it, #388) as the sidebar shows one: from the
-  // top of the page, its name said; a part of a section (#import-12) is scrolled to, as on arriving (#391)
-  addEventListener("hashchange", () => { const r = fromHash(); show(r.id, {scrollTo: r.el, push: !r.el}); });
   // the import history's section comes from its own script (import-history.js), after this one
-  document.addEventListener("DOMContentLoaded", () => { if (fromHash().el) follow(); else apply(); });
+  document.addEventListener("DOMContentLoaded", nav.again);
 
   /* ---------------------------------------------------------------- whose records, and what you can do here */
   function hint() {
@@ -114,7 +72,7 @@ const SgSources = (() => {
     if (me.user.needs_two_factor) { location.replace("account.html#twofa"); return null; }
     $("#who").textContent = me.user.username;
     { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
-    if (!me.profiles.length) { nav.hidden = true; main.classList.remove("with-nav"); $("#noProfiles").hidden = false; return null; }
+    if (!me.profiles.length) { nav.hide(); $("#noProfiles").hidden = false; return null; }
     ME = me;
     SgNav.profiles(me.profiles);   // the top bar's picker (nav.js, #170)
     backTo();   // #199

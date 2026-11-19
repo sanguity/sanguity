@@ -175,74 +175,43 @@ async function loadPasskeys() {
 }
 
 /* ---------------------------------------------------------------- the sidebar and the address */
-/* One group shown at a time; the address follows it (account.html#device). An address naming a section
-   (#password, #twofa, #passkeys, #sessions, #installApp, #offlineRecords) opens its group and scrolls to it;
-   #install and #offline are short for the last two. The old Profiles tab's address opens the Sharing page (#168),
-   and the old Admin tab's (#admin, #users, #labmaps) the Admin page (#167). */
-const MOVED = {"#profiles": "sharing.html#people", "#admin": "admin.html", "#users": "admin.html#users", "#labmaps": "admin.html#labmaps"};
+/* The sidebar every account page has (sidebar.js, #266): one group shown at a time, the address following it
+   (account.html#device). An address naming a section (#password, #twofa, #passkeys, #sessions, #installApp,
+   #offlineRecords) opens its group and scrolls to it; #install and #offline are short for the last two. The old
+   Profiles and Admin tabs' addresses (#profiles; #admin, #users, #labmaps) open Sharing and Admin (moved.js). */
 const GROUPS = [
   {id: "security", title: "Sign-in and security", icon: "lock", hint: "How you sign in, and where you're signed in now.",
    has: ["password", "twofa", "passkeys", "sessions"]},
   {id: "device", title: "This device", icon: "smartphone", hint: "Sanguity on the device you're using now: as an app, and offline.",
    has: ["installApp", "offlineRecords"]},
 ];
-const ALIAS = {install: "installApp", offline: "offlineRecords"};
-const AcctNav = (() => {
-  const main = $("main.sets"), list = el("ul", {class: "set-nav-list"});
-  const nav = el("nav", {class: "set-nav", id: "acctNav", "aria-label": "Account sections"}, list);
-  const groupOf = id => id && GROUPS.find(g => g.has.includes(id));
-  let locked = false;
-  function show(g, {push = false, scrollTo = null} = {}) {
-    for (const x of GROUPS) for (const id of x.has) $("#" + id).classList.toggle("grp-off", x !== g);
-    for (const a of list.querySelectorAll("a")) a.setAttribute("aria-current", a.dataset.group === g.id ? "page" : "false");
-    main.dataset.group = g.id;
-    $("#groupTitle").textContent = g.title;
-    $("#introHint").textContent = g.hint;
-    viewTitle("Account: " + g.title, push && "Account: " + g.title);   // the browser tab's title; said when picked (#209)
-    if (push && location.hash.slice(1) !== g.id) history.replaceState(null, "", "#" + g.id);
-    if (scrollTo && !scrollTo.hidden) scrollTo.scrollIntoView({block: "start"});
-    else if (push) window.scrollTo({top: 0});
-  }
-  function fromHash() {
-    const h = decodeURIComponent(location.hash.slice(1)), g = !locked && GROUPS.find(x => x.id === h);
-    if (g) return {g};
-    const t = h && document.getElementById(ALIAS[h] || h), of = t && (groupOf(t.id) || groupOf(t.closest("section")?.id));
-    return of && !(locked && of !== GROUPS[0]) ? {g: of, el: t} : {g: GROUPS[0]};
-  }
-  const follow = () => { if (MOVED[location.hash]) { location.replace(MOVED[location.hash]); return; } const r = fromHash(); show(r.g, {scrollTo: r.el}); };
-  list.replaceChildren(...GROUPS.map(g => el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id,
-    onclick: ev => { ev.preventDefault(); show(g, {push: true}); }}, icon(g.icon), g.title))));   // its icon beside its name (#354)
-  main.prepend(nav);
-  main.classList.add("with-nav");
-  addEventListener("hashchange", follow);
-  return {
-    follow,
-    // until the one-time password is replaced, or the second factor the server requires is set up: that alone
-    lock() { locked = true; nav.hidden = true; main.classList.remove("with-nav"); follow(); },
-  };
-})();
+let locked = false;   // until the one-time password is replaced, or the second factor the server requires is set up: that alone
+const AcctNav = sideNav({id: "acctNav", page: "Account", groups: GROUPS, find: "Find in Account", none: q => `Nothing in Account matches “${q}”.`,
+  allowed: g => !locked || g === GROUPS[0], alias: {install: "installApp", offline: "offlineRecords"},
+  intro: g => { $("#introHint").textContent = g ? g.hint : ""; }});
+const lockNav = () => { locked = true; AcctNav.hide(); AcctNav.follow(); };
 
 /* ---------------------------------------------------------------- start */
 (async () => {
-  if (MOVED[location.hash]) { location.replace(MOVED[location.hash]); return; }
-  AcctNav.follow();
+  if (sgMoved()) return;   // the old Profiles and Admin tabs' addresses (moved.js)
+  AcctNav.start();
   try { ME = await call("me"); } catch (e) { return; }
   await datesReady();   // dates in this person's time zone and format (dates.js)
   $("#who").textContent = ME.user.username;
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   $("#pwHint").textContent = `At least ${ME.password_min} characters. A few unrelated words make a strong password you can remember.`;
   if (ME.user.must_change_pw) {   // nothing else is available until the one-time password is replaced
-    $("#mustChange").hidden = false; SgNav.lock(); AcctNav.lock();
+    $("#mustChange").hidden = false; SgNav.lock(); lockNav();
     for (const id of ["#sessions", "#twofa", "#passkeys"]) $(id).hidden = true;
     $("#pwCur").focus();
     return;
   }
   if (ME.user.needs_two_factor) {   // the server requires it: set it up before anything else
-    $("#needTf").hidden = false; SgNav.lock(); AcctNav.lock();
+    $("#needTf").hidden = false; SgNav.lock(); lockNav();
     $("#sessions").hidden = true;
     await Promise.all([loadTwoFactor(), loadPasskeys()]);
     return;
   }
   await Promise.all([loadSessions(), loadTwoFactor(), loadPasskeys()]);
-  if (location.hash.length > 1 && !GROUPS.some(g => "#" + g.id === location.hash)) AcctNav.follow();   // again: the cards have their content now, so a section link lands where it should
+  AcctNav.again();   // the cards have their content now, so a section link lands where it should
 })();

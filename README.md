@@ -80,12 +80,13 @@ your role; switch profile; its About this person, Settings, Sources and Sharing;
 reading; records: upload files, connect a portal or plan, type records in, paste a Health Link) and your menu (account,
 display, getting started, light or dark, log out). The tab shown is in the address (`#timeline`, `#labs`, `#labs-heatmap`...), so Back moves between tabs and a
 copied link opens the same one. **Settings** is grouped in a sidebar (this profile's dashboard, labs and ranges, milestones; your display),
-one group at a time, with **Find a setting** to search them all.
+one group at a time, with **Find a setting** to search them all. Sources, Sharing, Account and Admin have the same
+sidebar, each with a search of its own.
 **Account** is you and this device: sign-in and security (password, two-factor sign-in, passkeys, where you're
 signed in), and this device (install as an app, offline records).
 **Sources** (in the profile menu) has everything about records coming in, in a sidebar the same way: an overview of every
-way records reach the profile and when each last brought something, upload, type in, paste a Health Link, portals
-and health plans, the phone and watch, and the import history.
+way records reach the profile and when each last brought something; what stays connected (portals and health plans,
+the phone and watch); one-off ways in (upload, type in, paste a Health Link); and the import history.
 **Sharing** gathers everything about who sees a profile and how its records go out: its people and their roles,
 share links, your calendar feed, the visit summary, Export everything and its activity, with renaming, deleting and
 adding profiles set apart under Profile, beside About this person (birth date, sex for reference ranges, height).

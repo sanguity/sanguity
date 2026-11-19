@@ -1,5 +1,5 @@
 /* Sanguity · the Admin page (#167): what only admins do, for the whole server, in one place, with a sidebar of groups
-   (as the Settings page's, settings-nav.js): Accounts (and requiring two-factor sign-in), Backups (admin-backups.js,
+   (sidebar.js, as on Settings): Accounts (and requiring two-factor sign-in), Backups (admin-backups.js,
    #200), Connected-source apps and
    their sync defaults, the Provider directory (both admin-sources.js), Lab name matches, Outside connections
    (outside.js) and Install activity (activity.js). Someone who isn't an admin gets a page saying so, and no menu item
@@ -25,50 +25,19 @@ let ME;
 $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
 /* ---------------------------------------------------------------- the sidebar: one group shown at a time */
-/* The address follows the group (admin.html#apps); an address naming a section (admin.html#users, #labmaps,
-   #sec-sync, #outside) opens that section's group and scrolls to it. */
+/* The sidebar every account page has (sidebar.js, #266), its groups under People, Data safety, Connections and Lab
+   matching. The address follows the group (admin.html#apps); an address naming a section (admin.html#users,
+   #labmaps, #sec-sync, #outside) opens that section's group and scrolls to it. */
 const GROUPS = [
-  {id: "accounts", title: "Accounts", icon: "users", has: ["users"]},
-  {id: "backups", title: "Backups", icon: "archive", has: ["backups"]},   // #200
-  {id: "apps", title: "Connected-source apps", icon: "plug", has: ["admin", "sec-sync"]},
-  {id: "directory", title: "Provider directory", icon: "book-user", has: ["directory"]},
-  {id: "labs", title: "Lab name matches", icon: "test-tube-diagonal", has: ["labmaps"]},
-  {id: "outside", title: "Outside connections", icon: "globe", has: ["outside"]},
-  {id: "activity", title: "Install activity", icon: "history", has: ["installLog"]},
+  {id: "accounts", title: "Accounts", icon: "users", part: "People", has: ["users"]},
+  {id: "activity", title: "Install activity", icon: "history", part: "People", has: ["installLog"]},
+  {id: "backups", title: "Backups", icon: "archive", part: "Data safety", has: ["backups"]},   // #200
+  {id: "apps", title: "Connected-source apps", icon: "plug", part: "Connections", has: ["admin", "sec-sync"]},
+  {id: "directory", title: "Provider directory", icon: "book-user", part: "Connections", has: ["directory"]},
+  {id: "outside", title: "Outside connections", icon: "globe", part: "Connections", has: ["outside"]},
+  {id: "labs", title: "Lab name matches", icon: "test-tube-diagonal", part: "Lab matching", has: ["labmaps"]},
 ];
-const AdminNav = (() => {
-  const main = $("main.sets"), list = el("ul", {class: "set-nav-list"});
-  const nav = el("nav", {class: "set-nav", id: "admNav", "aria-label": "Admin sections"}, list);
-  const groupOf = id => id && GROUPS.find(g => g.has.includes(id));
-  function show(g, {push = false, scrollTo = null} = {}) {
-    for (const x of GROUPS) for (const id of x.has) document.getElementById(id).classList.toggle("grp-off", x !== g);
-    for (const a of list.querySelectorAll("a")) a.setAttribute("aria-current", a.dataset.group === g.id ? "page" : "false");
-    main.dataset.group = g.id;
-    $("#groupTitle").textContent = g.title;   // the page's h1, as on Settings and Sharing (#331)
-    viewTitle("Admin: " + g.title, push && "Admin: " + g.title);   // the browser tab's title; said when picked (#209)
-    if (push && location.hash.slice(1) !== g.id) history.replaceState(null, "", "#" + g.id);
-    if (scrollTo) scrollTo.scrollIntoView({block: "start"});
-    else if (push) window.scrollTo({top: 0});
-  }
-  function fromHash() {
-    const h = decodeURIComponent(location.hash.slice(1)), g = GROUPS.find(x => x.id === h);
-    if (g) return {g};
-    const t = h && document.getElementById(h), of = t && (groupOf(t.id) || groupOf(t.closest("section")?.id));
-    return of ? {g: of, el: t} : {g: GROUPS[0]};
-  }
-  const follow = () => { const r = fromHash(); show(r.g, {scrollTo: r.el}); };
-  function start() {
-    list.replaceChildren(...GROUPS.map(g => el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id,
-      onclick: ev => { ev.preventDefault(); show(g, {push: true}); }}, icon(g.icon), g.title))));   // its icon beside its name (#354)
-    main.prepend(nav);
-    main.classList.add("with-nav");
-    $("#intro").hidden = false;
-    follow();
-    addEventListener("hashchange", follow);
-  }
-  // again once the sections have their content, so an address naming one lands where it should
-  return {start, again: () => { if (fromHash().el) follow(); }};
-})();
+const AdminNav = sideNav({id: "admNav", page: "Admin", groups: GROUPS, find: "Find in Admin", none: q => `Nothing in Admin matches “${q}”.`});
 
 /* ---------------------------------------------------------------- notices: failed sign-ins, sources that stopped */
 async function loadNotice() {
@@ -361,6 +330,7 @@ function loadInstallLog() {
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   if (!ME.user.is_admin) { $("#notAdmin").hidden = false; return; }
   for (const g of GROUPS) for (const id of g.has) $("#" + id).hidden = false;
+  $("#intro").hidden = false;
   AdminNav.start();
   SgOutside.load();     // outside.js
   loadDirectory();      // admin-sources.js
