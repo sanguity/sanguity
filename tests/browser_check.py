@@ -6473,6 +6473,44 @@ def main():
                   sorted(map(tuple, [(n, tuple(map(tuple, p))) for n, p in typed])) == [("Ferritin", ((88, ""),)), ("Hemoglobin", ((12.4, "L"),))], typed)
             charts = page.inner_text("#charts")
             check("…with a chart for each", "Hemoglobin" in charts and "Ferritin" in charts, charts[:300])
+            # #387: a save that fails keeps saying why past the check its last field's change scheduled as Save was clicked;
+            # and at 375×667 the line focus goes to after Save by keyboard is scrolled clear of the toast. Nothing is saved:
+            # the route answers the saves (a network failure, then what a save of one result answers)
+            page.goto(base + "/sources.html?profile=2#manual")
+            page.wait_for_selector("#typeIn", state="visible", timeout=10000)
+            page.set_viewport_size({"width": 375, "height": 667})
+            n_problems, man_api, man_fail = len(problems), re.compile(r"/api/profiles/\d+/manual$"), [True]
+            man_saved = json.dumps({"counts": {"typed": {"labs": 1}}, "series": ["Sodium"], "import_id": 0, "skipped": 0})
+            page.route(man_api, lambda route: route.continue_() if '"save":true' not in (route.request.post_data or "")
+                       else route.abort() if man_fail[0] else route.fulfill(status=200, content_type="application/json", body=man_saved))
+            page.fill(row(1, "test"), "Sodium")
+            page.fill(row(1, "value"), "139")
+            page.fill(row(1, "unit"), "mmol/L")
+            page.wait_for_function("document.getElementById('manMsg').textContent === '1 result ready to save.' && !document.getElementById('manSave').disabled", timeout=5000)
+            page.fill(row(1, "range"), "135 - 145")   # last, so clicking Save changes it: its change schedules a check
+            page.click("#manSave")
+            page.wait_for_timeout(2000)
+            man_failed = js("[document.getElementById('manMsg').textContent, document.activeElement.id, document.getElementById('manSave').disabled]")
+            check("Type records in (#387): a save that fails still says why 2 s later, focus on that line, and Save is enabled again",
+                  man_failed[0].startswith("Couldn't save: ") and man_failed[0].endswith(" Nothing was saved.") and man_failed[1:] == ["manMsg", False], man_failed)
+            page.focus("#manSave")   # again with nothing changed: no check is pending to turn Save back on
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(1000)
+            man_again = js("[document.getElementById('manMsg').textContent.startsWith(\"Couldn't save: \"), document.getElementById('manSave').disabled]")
+            check("…and failing again with nothing changed, it still says why and Save is still enabled, to try once more (#387)", man_again == [True, False], man_again)
+            man_fail[0] = False
+            page.focus("#manSave")
+            page.keyboard.press("Enter")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved 1 result.')", timeout=10000)
+            settle(500)
+            man_clear = js("""(() => { const m = document.getElementById('manMsg').getBoundingClientRect(), ts = [...document.querySelectorAll('#sgToasts .sg-toast')];
+                return [document.activeElement.id, m.top >= 0 && m.bottom <= innerHeight, ts.length,
+                  ts.filter(t => { const r = t.getBoundingClientRect(); return r.top < m.bottom && r.bottom > m.top && r.left < m.right && r.right > m.left; }).length]; })()""")
+            check("…and at 375×667, after Save by keyboard, the saved line focus goes to is in view and under no toast (#387)", man_clear == ["manMsg", True, 1, 0], man_clear)
+            page.unroute(man_api)
+            problems[n_problems:] = [x for x in problems[n_problems:] if "net::ERR_FAILED" not in x]   # the failure was asked for
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- the other kinds typed in: a visit, a medication, a claim and a letter with a PDF, saved as one import;
             # the visit on the timeline, the claim on Costs, the letter opening in the drawer
@@ -6626,6 +6664,10 @@ def main():
                             "document.getElementById('manKind').value, document.getElementById('manLabs').hidden, document.querySelectorAll('.man-row').length]")
             check("…2 s after Save, the saved line and its link are still there, focus on the line, and the picker reads Lab results over its row (#384)",
                   after_save[0].startswith("Saved 1 record.") and after_save[1] == 1 and after_save[2] == "manMsg" and after_save[3:] == ["labs", False, 1], after_save)
+            # #387: payments are on Costs, not the timeline: the line's link and the toast's go there
+            pay_links = js("[...document.querySelectorAll('#manMsg a, #sgToasts .sg-toast:last-child a')].map(a => [a.textContent, new URL(a.href).hash])")
+            check("…its saved line and its toast link to Costs, where payments are, not the timeline (#387)",
+                  pay_links == [["See them on Costs", "#costs"], ["Open Costs", "#costs"]], pay_links)
             page.click("#manMsg a")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && DATA.oop", timeout=20000)
             js("switchTab('costs')")

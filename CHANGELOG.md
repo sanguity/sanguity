@@ -1039,6 +1039,11 @@ Everything on `main` so far; it becomes the first tagged release.
   before it, as #379 did for the other tiles, and a time with its AM or PM. Offline, your menu's Sharing, Sources,
   Settings, Account and Getting started, still reached with the arrow keys, gave the reason they do nothing only as a
   title, which the keyboard never shows; it's their tooltip and description now.
+- **Type records in after Save: the saved line in sight, a failure's reason kept, and links to where things are**
+  (#387): on a phone the line focus goes to after Save was under the new toast; it's scrolled clear of it now. A save
+  that failed said why for a moment, then "1 result ready to save." took its place; the reason stays until something's
+  changed. And a payment's saved line and toast said "See them on the timeline": payments and claims link to Costs
+  now, problems and upcoming appointments to the Overview, the rest to the timeline as before.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
