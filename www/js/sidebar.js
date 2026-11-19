@@ -6,7 +6,8 @@
    - One group is shown at a time. Its title is the page's h1 (#groupTitle) and the browser tab's. A card's own
      title shows only beside another card of the group: alone, it's said, not shown, under the h1 that says it.
    - Its search box shows, from every group, the parts that mention what's typed (in a part with settings, .set,
-     only those that do), each with its group's name above, or says that none does, with a button to clear it (#247).
+     only those that do), each with its group's name above, or says that none does, with a button to clear it (#247)
+     and one to search everywhere, the command palette opened with the words (palette.js, #403).
    - The address follows the group (sources.html#portals). An address naming a part, or something in one
      (settings.html#sec-units, sources.html#import-12), opens that group and scrolls to it. Addresses that moved to
      another page are moved.js's.
@@ -112,7 +113,13 @@ function sideNav(o) {
     if (nothing) {
       const what = o.none(typed);
       if (none.hidden) announce(what);   // as it starts matching nothing, not at every letter after
-      none.replaceChildren(emptyState(what, {text: "Clear the search", onclick: clear}));
+      // and offers to search everywhere (#403): the command palette, with the words typed here, may find it on another page
+      const b = (text, onclick, cls = "") => el("button", {class: "btn large empty-next " + cls, type: "button", text, onclick});
+      const e = emptyState(what);
+      e.append(el("div", {class: "empty-acts"},
+        typeof SgPalette !== "undefined" && document.getElementById("barSearch") ? b(`Search everywhere for “${typed}”`, () => SgPalette.open(typed), "primary") : null,
+        b("Clear the search", clear)));
+      none.replaceChildren(e);
     }
     if (none.hidden === nothing) none.hidden = !nothing;   // only a real change (Settings watches hidden)
     if (o.intro) o.intro(q ? null : current, typed);

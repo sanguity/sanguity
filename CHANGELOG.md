@@ -1146,6 +1146,15 @@ Everything on `main` so far; it becomes the first tagged release.
   this profile" mark show only when something isn't the default. A profile renamed and another person's editor or
   viewer role changed have an Undo too; what can't be undone or touches security still asks first. Leaving the page,
   logging out or picking another profile with changes not saved still asks, on Sharing and Admin too.
+- **The command palette opens the best match, finds everyday words, and stays within reach offline** (#403): Enter
+  opened the first group's first match and a word was found inside another, so "hem" opened Dark mode ("theme"),
+  "alt" Paste a Health Link and "cre" New profile. Now one ranking runs across every group (a title starting with
+  what's typed, then each word starting a word of the title, then what else it's known by), always from the start of
+  a word, and Enter opens the best: Hemoglobin, ALT, Creatinine. "dob", "date of birth", "child", "doctor" (Share
+  links and the Visit summary), "medication" and the current medications' names (Log a dose), and "kg" (Units) find
+  their places. Offline, pages and settings and what opens them aren't listed, as the menus don't follow them, and
+  it says so. Opened from a menu, Escape puts focus back on the menu's button. A sidebar's search that finds nothing
+  offers **Search everywhere for “…”**, the palette with the words; Settings' box is "Find in Settings", as the others are.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
