@@ -1253,6 +1253,16 @@ Everything on `main` so far; it becomes the first tagged release.
   the profile's owner following `settings.html#profile` (or Sharing's old address for it) landed on Dashboard with
   nothing said; they're told only a profile's owners can rename or delete it. Rename or delete's name field shows its
   label, "Profile name". docs/database.md no longer says About this person is changed on Sharing.
+- **The other pages offline** (#413): offline, only the records page knew it. Settings, Sharing, Sources, Account,
+  Admin and Getting started opened from the service worker were an empty shell (Settings showed only its search
+  box, Account its forms), with no banner, and their command palette opened every page and setting ("password" went
+  to Account's password section, empty). Opened offline, each says so in the records page's banner ("Settings needs
+  the server…"), with a link to the records kept on this device (or that it keeps none), and shows nothing that needs
+  the server: not the page's own part, not the menus' links to other pages (they say why, as on the records page),
+  not the palette's pages and settings. It opens itself once the connection is back. A request that can't reach the
+  server says "You're offline. This needs the server." instead of "Failed to fetch", and a page that goes offline
+  while it's open says changes need the server until it's back. The service worker keeps the new script
+  (`sanguity-shell-v10`).
 - **Dark and Light mode switch offline again** (#414): since #410 your menu's (and the palette's) Dark mode saved the
   account's theme, so offline it went back, saying it wasn't saved (or "Failed to fetch"). Offline it changes for this
   browser for now, says so, and is saved for the account once the server answers again.

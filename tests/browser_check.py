@@ -13016,6 +13016,43 @@ def main():
             later = lambda v: f"{v.title()} mode on this browser for now: you're offline. It's saved for your account once you're back online."
             check("offline (#414): Dark or Light mode from your menu and then the palette changes the page, for this browser for now, and says it's saved for the account once online",
                   menu414 == [to, [later(to)]] and pal414 == [back, [later(back)], back], [menu414, pal414])
+            # (#413) the other pages with the top bar, opened offline from the service worker: the banner, saying the page
+            # needs the server, with a link to the records kept here; the page's own part left out, not shown empty or
+            # as forms that can't be sent; the menus' links to other pages not followed, saying why; and the command
+            # palette listing nothing that needs the server, saying so
+            off413 = {}
+            for path in ("settings.html", "sharing.html", "account.html", "guide.html"):
+                ph.goto(f"{base}/{path}")
+                ph.wait_for_selector("#offlineBanner", timeout=10000)
+                ph.wait_for_timeout(300)
+                got = ph.evaluate("""() => { const b = document.getElementById('offlineBanner'), a = b.querySelector('a[href]');
+                    return {text: b.innerText, link: a && new URL(a.href).pathname, shown: b.checkVisibility(), main: document.querySelector('main').checkVisibility(),
+                        links: [...document.querySelectorAll('header a.acct, dialog.sheet a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && a.dataset.tip === "Needs the server: you're offline"),
+                        theme: document.documentElement.dataset.theme}; }""")
+                ph.evaluate("document.getElementById('accountLink').click()")
+                ph.wait_for_timeout(300)
+                got["stayed"] = ph.evaluate("location.pathname") == "/" + path
+                ph.keyboard.press("Control+k")
+                ph.wait_for_selector("dialog.palette[open]", timeout=5000)
+                got["palette"] = {}
+                for q in ("", "password", "upload", "share", "getting started", "units"):
+                    ph.fill("#palQ", q)
+                    ph.wait_for_timeout(150)
+                    got["palette"][q] = ph.evaluate("[[...document.querySelectorAll('#palList .pal-t')].map(x => x.textContent), document.querySelector('.pal-note').textContent]")
+                ph.keyboard.press("Escape")
+                off413[path] = got
+            name413 = {"settings.html": "Settings", "sharing.html": "Sharing", "account.html": "Account", "guide.html": "Getting started"}
+            check("offline (#413): Settings, Sharing, Account and Getting started from the service worker say they need the server in the banner, with a link to the records, "
+                  "and show nothing that needs it: no empty page, no menu link followed, nothing in the palette that needs the server",
+                  all(g["text"].startswith(f"Offline. {name413[k]} needs the server") and g["link"] == "/" and g["shown"] and not g["main"] and g["links"] and g["stayed"]
+                      and g["theme"] == back
+                      and all(off_note in n for _, n in g["palette"].values())
+                      and not ({"Sources", "Sharing", "Settings", "Account", "Getting started", "Upload files", "New share link", "New profile"} & set(g["palette"][""][0]))   # New profile: #412
+                      and all(not g["palette"][q][0] for q in ("password", "upload", "getting started", "units")) and "New share link" not in g["palette"]["share"][0]
+                      for k, g in off413.items()), off413)
+            ph.click("#offlineBanner a")
+            until(LOADED, 20000)
+            check("…and the banner's link opens the records kept on this device", "Offline · read-only" in ph.inner_text("#offlineBanner"))
             ctx.set_offline(False)
             # online again: the links are followed, with their own tips and names
             ph.reload()
