@@ -9243,23 +9243,79 @@ def main():
             check("…switching there opens the other", js("document.getElementById('profile').value") == "1" and js("localStorage.getItem('ht-profile')") == "1")
             page.set_viewport_size({"width": 375, "height": 800})
             box = "(s => { const r = document.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom, r.left, r.right]; })"
-            # on a phone (until #268's bottom bar) every page's bar is three rows: the brand with Add and your menu, the
-            # profile menu, then the tabs scrolling sideways; whole and on the screen at 375 and 320 px (#315, #264)
-            bar_rows = """w => { const r = s => document.querySelector(s).getBoundingClientRect(), add = r('#addMenu'), pick = r('#profilePick'), tabs = r('header .tabs'),
-                name = document.querySelector('#profileMenuBtn .profile-name');
-              return document.documentElement.scrollWidth <= w && add.bottom <= pick.top && pick.bottom <= tabs.top + 1 && pick.right <= w && tabs.right <= w
-                && r('#userMenu').right <= w && name.scrollWidth <= name.clientWidth ? null
-                : [document.documentElement.scrollWidth, add.bottom, pick.top, pick.bottom, tabs.top, pick.right, tabs.right]; }"""
+            # #268: on a phone every page's top bar is one row: the brand, the profile menu (its name whole at 375 px and
+            # wider, #315; cut short only at 320, its whole name still its button's), then Add and your menu as 44 px icons
+            # named by their words. The records tabs are a bar fixed at the screen's foot: each tab an icon and a short name
+            # (Body and activity is "Body", its whole name still its link's), at least 44 px each way, the tab shown marked;
+            # five places, every tab while five or fewer are shown. Nothing on the page is left under it: scrolled to its
+            # end the page's last line is above it, and what takes focus at the foot of the page is scrolled clear of it.
+            # From the keyboard: the brand, the profile menu, the tabs, then Add and your menu. At 320, 375 and 390 px
+            phone_bar = """w => { const r = s => document.querySelector(s).getBoundingClientRect(), bad = [], hd = r('header.topbar'), bar = document.querySelector('header .tabs');
+                const row = ['header .brand-name', '#profilePick', '#addMenu', '#userMenu'].map(r), mid = (hd.top + hd.bottom) / 2;
+                if (row.some(x => x.top > mid || x.bottom < mid) || hd.height > 64) bad.push('not one row: ' + row.map(x => Math.round(x.top) + '-' + Math.round(x.bottom)).join(' ') + ' bar ' + Math.round(hd.height));
+                if (document.documentElement.scrollWidth > w) bad.push('scrolls sideways ' + document.documentElement.scrollWidth);
+                const name = document.querySelector('#profileMenuBtn .profile-name');
+                if (w > 320 && name.scrollWidth > name.clientWidth) bad.push('the profile name cut: ' + name.textContent);
+                for (const id of ['addMenuBtn', 'userMenuBtn']) { const b = document.getElementById(id), x = b.getBoundingClientRect();
+                  if (x.width < 44 || x.height < 44 || x.right > w) bad.push(id + ' ' + Math.round(x.width) + '×' + Math.round(x.height)); }
+                if (!/^(Add|Your menu)$/.test(document.getElementById('addMenuBtn').textContent.trim()) || document.getElementById('userMenuBtn').getAttribute('aria-label') !== 'Your menu') bad.push('the icons unnamed');
+                const b = bar.getBoundingClientRect(), shown = [...bar.querySelectorAll(':scope > a')].filter(a => a.checkVisibility());
+                if (getComputedStyle(bar).position !== 'fixed' || Math.abs(b.bottom - innerHeight) > 1 || b.left !== 0 || Math.abs(b.right - w) > 1) bad.push('the tabs not at the foot: ' + [b.top, b.bottom, b.left, b.right].map(Math.round));
+                const want = Math.min(5, [...document.querySelectorAll('a[id^=tab-]')].filter(a => !a.hidden).length);
+                if (shown.length !== want || document.getElementById('tabMore').checkVisibility()) bad.push('places: ' + shown.length + ' of ' + want);
+                for (const a of shown) { const x = a.getBoundingClientRect(); if (x.width < 44 || x.height < 44 || x.left < 0 || x.right > w || !a.querySelector('svg.icon')) bad.push(a.id + ' ' + Math.round(x.width) + '×' + Math.round(x.height)); }
+                const body = document.getElementById('tab-health');
+                if (body.dataset.short !== 'Body' || getComputedStyle(body.querySelector('.tab-long')).clipPath === 'none' || body.textContent !== 'Body and activity') bad.push('Body: ' + body.textContent);
+                scrollTo(0, document.documentElement.scrollHeight);
+                const last = Math.max(...[...document.querySelectorAll('body > :not(header, dialog, script, .sg-follow, .sg-toasts, #tip, .skip-link) *')].filter(n => n.checkVisibility() && getComputedStyle(n).position !== 'fixed').map(n => n.getBoundingClientRect().bottom));
+                if (last > bar.getBoundingClientRect().top + 1) bad.push('under the tabs at the end: ' + Math.round(last) + ' > ' + Math.round(bar.getBoundingClientRect().top));
+                scrollTo(0, 0);
+                return bad.length ? bad : null; }"""
             rows = {}
-            for w in (375, 320):
+            for w in (390, 375, 320):
                 page.set_viewport_size({"width": w, "height": 800})
                 for path in ("", "sources.html", "sharing.html", "settings.html", "account.html", "admin.html", "guide.html"):
                     page.goto(base + "/" + path)
                     page.wait_for_function(filled, timeout=20000)
                     settle(300)
-                    if (bad := js(bar_rows, w)):
+                    if (bad := js(phone_bar, w)):
                         rows[f"{path or 'records'} at {w}"] = bad
-            check("at 375 and 320 px every page fits, the profile menu on a row of its own between the menus and the tabs, its name whole (#315)", not rows, rows)
+            check("at 390, 375 and 320 px every page's top bar is one row (the brand, the profile menu, Add and your menu) and the tabs a bar at the screen's foot: "
+                  "five 44 px places each an icon and a short name, the page's end above it (#268, #315)", not rows, rows)
+            # every tab reachable from the bar, by touch and keyboard, at each width; focus at the foot of the page clear of it
+            reach = {}
+            for w in (390, 375, 320):
+                page.set_viewport_size({"width": w, "height": 800})
+                page.goto(base + "/")
+                page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                for t in js("SgNav.TABS.filter(t => !document.getElementById('tab-' + t).hidden)"):
+                    tab_click(page, "#tab-" + t)
+                    settle(200)
+                    if js("[state.tab, document.getElementById('tab-' + state.tab).getAttribute('aria-current')]") != [t, "page"]:
+                        reach[f"{w}: {t}"] = js("state.tab")
+                page.focus("#profileMenuBtn")
+                order = []
+                for _ in range(9):
+                    page.keyboard.press("Tab")
+                    order.append(js("document.activeElement.id"))
+                    if order[-1] == "addMenuBtn":
+                        break
+                if order != js("[...document.querySelectorAll('header .tabs > a, #tabMoreBtn')].filter(a => a.checkVisibility()).map(a => a.id)") + ["addMenuBtn"]:
+                    reach[f"{w}: keyboard"] = order
+                # a control on the screen but under the bar (50 px from the screen's foot), focused: scrolled clear of it
+                js("() => { const f = [...document.querySelectorAll('main a[href], main button')].filter(n => n.checkVisibility()).at(-1); scrollBy(0, f.getBoundingClientRect().top - (innerHeight - 50)); f.focus(); }")
+                settle(200)
+                clear = js("() => document.activeElement.getBoundingClientRect().bottom <= document.querySelector('header .tabs').getBoundingClientRect().top + 1")
+                if not clear:
+                    reach[f"{w}: focus under the tabs"] = js("() => [document.activeElement.textContent, document.activeElement.getBoundingClientRect().bottom]")
+            check("…every tab reached from it and opened, at 390, 375 and 320 px; from the keyboard the tabs come after the profile menu and before Add; "
+                  "a control under the bar is scrolled clear of it as it takes focus (#268)", not reach, reach)
+            # under 500 px tall (a phone on its side, 400% zoom) the bar would take too much of the screen: the tabs are a
+            # row in the top bar again, scrolling sideways, and the top bar scrolls away with the page (#308)
+            page.set_viewport_size({"width": 375, "height": 450})
+            settle(300)
+            got = js("[getComputedStyle(document.querySelector('header.topbar')).position, getComputedStyle(document.querySelector('header .tabs')).position, document.querySelector('header .tabs').getBoundingClientRect().bottom <= document.querySelector('header.topbar').getBoundingClientRect().bottom, getComputedStyle(document.documentElement).getPropertyValue('--tabbar')]")
+            check("…and under 500 px tall the tabs are a row in the top bar, which scrolls with the page (#268, #308)", got == ["relative", "static", True, ""], got)
             page.set_viewport_size({"width": 1400, "height": 900})
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- milestones (#39) and visits counted as workouts (#43) on the Settings page: a milestone added (primary)

@@ -87,6 +87,8 @@ function barSearch() {
   return el("button", {class: "iconbtn bar-search", type: "button", id: "barSearch", "aria-label": "Search", "aria-haspopup": "dialog", "data-tip": "Search"},
     icon("search"));
 }
+/* phones (#268): the layout at 700 px or narrower (nav.js's phoneBar, below) */
+const PHONE = matchMedia("(max-width:700px)");
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
   if (!header) return {sync() {}, lock() {}, profiles() { return null; }, layout() { return {}; }, fit() {}, menu: menuWire, TABS: []};
@@ -104,7 +106,7 @@ const SgNav = (() => {
   const caret = () => el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down"));
   function menu(id, label, ico, entries) {
     const btn = el("button", {class: "iconbtn menu-btn", type: "button", id: id + "Btn", "aria-haspopup": "menu", "aria-expanded": "false",
-      "aria-controls": id + "List"}, ico ? el("span", {class: "menu-ico", "aria-hidden": "true"}, icon(ico)) : null, label);
+      "aria-controls": id + "List"}, ico ? el("span", {class: "menu-ico", "aria-hidden": "true"}, icon(ico)) : null, label ? el("span", {class: "menu-word", text: label}) : null);
     const list = el("div", {class: "menu-list", id: id + "List", role: "menu", "aria-labelledby": id + "Btn"}, ...entries);
     for (const x of list.querySelectorAll("[role^=menuitem]")) x.tabIndex = -1;
     return menuWire({btn, list, wrap: el("div", {class: "menu", id}, btn, list)});
@@ -204,7 +206,7 @@ const SgNav = (() => {
      hidden ones (Settings → Dashboard → Tabs: the records page passes its own, other pages ask for it). On the records
      page app.js shows the one picked (aria-current, then SgNav.fit()) and follows the links itself. Those that don't
      fit go under More (#265), which ends with Edit tabs…; the tab shown always stays in sight, taking the last place
-     there is. On a phone the row scrolls sideways instead. */
+     there is. On a phone they're the bar at the screen's foot instead, five places (phoneBar, below). */
   const TABS = [["overview", "Overview"], ["health", "Body and activity"], ["timeline", "Timeline"], ["labs", "Labs"], ["costs", "Costs"]];
   const tabEl = Object.fromEntries(TABS.map(([t, text]) => [t, el("a", {id: "tab-" + t, href: (onRecords ? "#" : "./#") + t, text,
     "data-tip": t === "health" ? "Watch, sleep and smart-scale data" : null})]));
@@ -216,7 +218,6 @@ const SgNav = (() => {
   const tabs = el("nav", {class: "tabs", "aria-label": "Records"}, ...Object.values(tabEl), more.wrap);
   wrap.after(tabs);
   let order = TABS.map(([t]) => t), hidden = new Set();
-  const phone = matchMedia("(max-width:700px)");
   function fit() {
     const shown = order.filter(t => !hidden.has(t)).map(t => tabEl[t]), had = document.activeElement;
     const put = vis => {
@@ -230,8 +231,9 @@ const SgNav = (() => {
       more.wrap.hidden = vis.length === shown.length;
     };
     put(shown);
-    if (!phone.matches) {
-      const cur = shown.find(a => a.getAttribute("aria-current") === "page");
+    const cur = shown.find(a => a.getAttribute("aria-current") === "page");
+    if (PHONE.matches) put(phoneSlots(shown, cur));
+    else {
       for (let n = shown.length - 1; n > 0 && tabs.scrollWidth > tabs.clientWidth; n--) {
         const vis = shown.slice(0, n);
         if (cur && !vis.includes(cur)) vis[n - 1] = cur;
@@ -348,5 +350,31 @@ const SgNav = (() => {
   }).observe(header);
   for (const x of [wrap, menus]) new ResizeObserver(() => requestAnimationFrame(fit)).observe(x);
   document.fonts?.ready.then(fit);
+
+  /* ---- phones (#268): the top bar one row, the brand (its mark alone at 480 px or narrower), the profile menu, then
+     Add and your menu as icons; the records tabs a bar fixed at the screen's foot (app.css), each an icon and a short
+     name ("Body": the whole name is still its name, for a screen reader and #tabTitle). The bar has five places: every
+     tab while there are five or fewer, else four and More, the tab shown among the four (phoneSlots). Under 500 px
+     tall the tabs go back to a row in the top bar, which scrolls away with the page (#308). */
+  function phoneSlots(shown, cur) {
+    if (shown.length <= 5) return shown;
+    const vis = shown.slice(0, 4);
+    if (cur && !vis.includes(cur)) vis[3] = cur;
+    return vis;
+  }
+  function phoneBar() {
+    const TAB_ICON = {overview: "layout-grid", health: "heart-pulse", timeline: "chart-gantt", labs: "test-tube-diagonal", costs: "banknote", meds: "pill"};
+    const SHORT = {health: "Body", meds: "Meds"};
+    for (const [t] of TABS) {
+      const a = tabEl[t];
+      a.replaceChildren(icon(TAB_ICON[t] || "file-text"), el("span", {class: "tab-long", text: a.textContent}));
+      if (SHORT[t]) a.dataset.short = SHORT[t];
+    }
+    more.btn.prepend(el("span", {class: "menu-ico", "aria-hidden": "true"}, icon("ellipsis")));
+    user.btn.prepend(el("span", {class: "menu-ico", "aria-hidden": "true"}, icon("circle-user")));
+    const brand = header.querySelector(".brand-link") || svgLogo, word = brand && [...brand.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+    if (word) word.replaceWith(el("span", {class: "brand-word", text: word.textContent}));
+  }
+  phoneBar();
   return {sync, lock, profiles, layout, fit, menu: menuWire, TABS: TABS.map(([t]) => t)};
 })();

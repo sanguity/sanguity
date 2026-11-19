@@ -68,6 +68,9 @@ ICONS = [
                              # your menu: Sources, Settings, Account (and Sharing's Profile), Admin, Getting started,
                              # Log out
     "search",                # the top bar's Search, the command palette (#273)
+    # the records tabs on a phone's bar at the screen's foot (#268): Overview is layout-grid, Labs test-tube-diagonal,
+    # Costs banknote, More ellipsis, your menu circle-user (above)
+    "heart-pulse", "chart-gantt",  # Body and activity, Timeline
 ]
 
 
