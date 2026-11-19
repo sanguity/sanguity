@@ -405,7 +405,8 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
 .menu{position:relative;flex:none}
 .menu[hidden]{display:none}
 .bar-menus{display:flex;align-items:center;gap:inherit;flex:none}   /* Add and your menu (nav.js), wrapped as one (#319) */
-.bar-search{padding-inline:var(--sp-1)}   /* Search (nav.js, #273): an icon, narrow, so the five tabs still fit beside it at 1100 px (#265) */
+.bar-search{min-width:32px;padding-inline:0}   /* Search (nav.js, #273): an icon, square, the size of Add and your menu beside it (#400) */
+@media (max-width:700px),(pointer:coarse){ .bar-search{min-width:44px} }
 .menu-btn{display:inline-flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-3);color:inherit;max-width:16em}
 .menu-btn #who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .menu-btn[aria-expanded="true"]{background:var(--hover)}
@@ -1531,7 +1532,6 @@ dialog.palette[open]{display:flex;flex-direction:column;overflow:hidden}
   dialog.palette{margin-top:var(--sp-2);max-height:calc(100dvh - var(--sp-4))}
   .pal-c{grid-column:2;text-align:left}
   .pal-hint{display:none}
-  .bar-search{padding-inline:var(--sp-2)}   /* the top bar's Search, as wide as it is tall there is room for (nav.js) */
 }
 @media (forced-colors: active){
   .pal-opt[aria-selected="true"]{forced-color-adjust:none;background:Highlight;color:HighlightText}

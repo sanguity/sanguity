@@ -9818,7 +9818,7 @@ def main():
             # wider, #315; cut short only at 320, its whole name still its button's), then Add and your menu as 44 px icons
             # named by their words. The records tabs are a bar fixed at the screen's foot: each tab an icon and a short name
             # (Body and activity is "Body", its whole name still its link's), at least 44 px each way, the tab shown marked;
-            # five places, every tab while five or fewer are shown. Nothing on the page is left under it: scrolled to its
+            # five places, every tab while five or fewer are shown; Search 44 px too (#400). Nothing on the page is left under it: scrolled to its
             # end the page's last line is above it, and what takes focus at the foot of the page is scrolled clear of it.
             # From the keyboard: the brand, the profile menu, the tabs, then Add and your menu. At 320, 375 and 390 px
             phone_bar = """w => { const r = s => document.querySelector(s).getBoundingClientRect(), bad = [], hd = r('header.topbar'), bar = document.querySelector('header .tabs');
@@ -9827,9 +9827,9 @@ def main():
                 if (document.documentElement.scrollWidth > w) bad.push('scrolls sideways ' + document.documentElement.scrollWidth);
                 const name = document.querySelector('#profileMenuBtn .profile-name');
                 if (w > 320 && name.scrollWidth > name.clientWidth) bad.push('the profile name cut: ' + name.textContent);
-                for (const id of ['addMenuBtn', 'userMenuBtn']) { const b = document.getElementById(id), x = b.getBoundingClientRect();
+                for (const id of ['barSearch', 'addMenuBtn', 'userMenuBtn']) { const b = document.getElementById(id), x = b.getBoundingClientRect();
                   if (x.width < 44 || x.height < 44 || x.right > w) bad.push(id + ' ' + Math.round(x.width) + '×' + Math.round(x.height)); }
-                if (!/^(Add|Your menu)$/.test(document.getElementById('addMenuBtn').textContent.trim()) || document.getElementById('userMenuBtn').getAttribute('aria-label') !== 'Your menu') bad.push('the icons unnamed');
+                if (document.getElementById('addMenuBtn').textContent.trim() !== 'Add' || !/^demo, your menu$/.test(document.getElementById('userMenuBtn').textContent.trim())) bad.push('the icons unnamed');
                 const b = bar.getBoundingClientRect(), shown = [...bar.querySelectorAll(':scope > a')].filter(a => a.checkVisibility());
                 if (getComputedStyle(bar).position !== 'fixed' || Math.abs(b.bottom - innerHeight) > 1 || b.left !== 0 || Math.abs(b.right - w) > 1) bad.push('the tabs not at the foot: ' + [b.top, b.bottom, b.left, b.right].map(Math.round));
                 const want = Math.min(5, [...document.querySelectorAll('a[id^=tab-]')].filter(a => !a.hidden).length);
@@ -9887,6 +9887,27 @@ def main():
             settle(300)
             got = js("[getComputedStyle(document.querySelector('header.topbar')).position, getComputedStyle(document.querySelector('header .tabs')).position, document.querySelector('header .tabs').getBoundingClientRect().bottom <= document.querySelector('header.topbar').getBoundingClientRect().bottom, getComputedStyle(document.documentElement).getPropertyValue('--tabbar')]")
             check("…and under 500 px tall the tabs are a row in the top bar, which scrolls with the page (#268, #308)", got == ["relative", "static", True, ""], got)
+            # #400: Search is the size of Add and your menu beside it, 44 by 44 on a phone (above) and on a touch screen;
+            # your menu's name starts with what it shows ("demo, your menu": speech input says what it sees, WCAG 2.5.3);
+            # About this person picked from the profile menu on Settings puts focus on its heading there
+            tctx = browser.new_context(viewport={"width": 1400, "height": 900}, has_touch=True, bypass_csp=True)
+            tctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            tpg = tctx.new_page()
+            tpg.goto(base + "/settings.html?profile=1")
+            tpg.wait_for_function(filled, timeout=20000)
+            touch = tpg.evaluate("[matchMedia('(pointer: coarse)').matches, ...['barSearch', 'addMenuBtn'].map(id => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })]")
+            tctx.close()
+            page.goto(base + "/settings.html?profile=1#dashboard")
+            page.wait_for_selector("#sections > section", state="attached", timeout=10000)
+            yours = [ax_said(page, "#userMenuBtn")[0], js("document.getElementById('who').textContent")]
+            page.click("#profileMenuBtn")
+            page.click("#aboutLink")
+            page.wait_for_function("document.activeElement.id === 'groupTitle'", timeout=5000)
+            about = js("[document.activeElement.textContent, location.hash, location.search]")
+            check("the top bar's small things (#400): Search 44 by 44 on a touch screen; your menu named for what it shows; About this person from "
+                  "the profile menu on Settings puts focus on its heading", touch[0] and touch[1][0] >= 44 and touch[1][1] >= 44 and touch[1][1] == touch[2][1]
+                  and yours[1] == "demo" and yours[0].startswith(yours[1]) and "your menu" in yours[0] and about == ["About this person", "#about", "?profile=1"],
+                  [touch, yours, about])
             # #396: a long profile name (40 characters; the server allows 80) is cut short inside its slot, its caret kept,
             # and never covers Search or Add: each is tapped at its centre. On a wide screen it takes the room the bar has
             # (whole at 1400 px); wherever it's cut, its whole name is still its button's name, and its tip. At 320, 375, 390

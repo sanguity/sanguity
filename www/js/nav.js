@@ -367,9 +367,9 @@ const SgNav = (() => {
     sep(),
     action("logout", "log-out", "Log out"),
   ]);
-  user.btn.replaceChildren(who, caret());
+  // its name starts with what it shows, "demo, your menu" (#400: speech input says what it sees, WCAG 2.5.3)
+  user.btn.replaceChildren(who, el("span", {class: "vh", text: ", your menu"}), caret());
   add.btn.append(caret());
-  user.btn.setAttribute("aria-label", "Your menu");
   // the spacer before the records page's Install app button, so it sits with the menus
   const inst = document.getElementById("installBtn");
   if (inst) inst.before(el("span", {class: "spacer"}));
@@ -420,6 +420,53 @@ const SgNav = (() => {
   }
   new MutationObserver(sync).observe(add.list, {attributes: true, subtree: true, attributeFilter: ["hidden"]});
   sync();
+
+  /* ---- a menu's link to a group or a part of a page with a sidebar (#398, #400): focus goes to what it opened, the
+     group's heading (the page's h1) or the part's, as the palette's links do. On that page itself it only changes the
+     address, which the sidebar follows (About this person from Settings' profile menu); to another page, once that
+     page has drawn it (Edit tabs… from the records page: Settings → Tabs), unless something else had focus first. */
+  const ARRIVE = "sg-arrive", sidePage = f => typeof SG_PAGES !== "undefined" && Object.values(SG_PAGES).some(P => P.page === f);
+  function headingOf(id) {
+    const group = Object.values(SG_PAGES).find(P => P.page === page)?.groups.some(g => g.id === id), part = !group && document.getElementById(id);
+    if (!group && !part) return null;   // (#home-reading: its page puts focus in the form it opens)
+    let t = part && part.querySelector(":scope > h2, :scope > .set-hd > h2");
+    if (!t || t.classList.contains("vh")) t = document.getElementById("groupTitle");   // a card alone in its group: the h1 says it
+    return t && t.checkVisibility() ? t : null;
+  }
+  function focusOn(id, wait) {
+    const go = () => {
+      if (wait && document.activeElement !== document.body) return true;
+      const modal = document.querySelector("dialog:modal");   // a phone's sheet the link was in: once it's closed, and has given focus back
+      if (modal) { modal.addEventListener("close", () => setTimeout(go), {once: true}); return true; }
+      const t = headingOf(id);
+      if (!t) return false;
+      if (!t.hasAttribute("tabindex")) t.tabIndex = -1;
+      t.focus({preventScroll: true});   // (the sidebar has scrolled to it)
+      return true;
+    };
+    if (!wait) return void setTimeout(go);
+    if (go()) return;
+    const ob = new MutationObserver(() => { if (go()) ob.disconnect(); });
+    ob.observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "class"]});
+    setTimeout(() => ob.disconnect(), wait);
+  }
+  for (const m of [prof, add, user, more]) m.list.addEventListener("click", ev => {
+    const a = ev.target.closest("a[href]");
+    if (!a || ev.defaultPrevented || ev.button || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    const u = new URL(a.href), file = u.pathname.split("/").pop() || "index.html", id = decodeURIComponent(u.hash.slice(1));
+    if (!id || !sidePage(file)) return;
+    if (file !== page) { try { sessionStorage.setItem(ARRIVE, file + "#" + id); } catch (e) {} return; }
+    ev.preventDefault();   // the same page: the address only, the profile shown kept
+    addEventListener("hashchange", () => focusOn(id), {once: true});
+    if (location.hash !== u.hash) location.hash = u.hash;
+    else dispatchEvent(new HashChangeEvent("hashchange", {oldURL: location.href, newURL: location.href}));   // (the page's own listeners read newURL)
+  });
+  document.addEventListener("DOMContentLoaded", () => {   // (groups.js is there by then)
+    let w = null;
+    try { w = sessionStorage.getItem(ARRIVE); sessionStorage.removeItem(ARRIVE); } catch (e) {}
+    const id = decodeURIComponent(location.hash.slice(1));
+    if (w && id && w === page + "#" + id) focusOn(id, 10000);
+  });
   /* Admin, for admins only (#167): once the page's own scripts have asked who's signed in; and on a page that isn't
      about a profile, the profile menu */
   const own = onRecords || header.hasAttribute("data-profile");
