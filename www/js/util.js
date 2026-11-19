@@ -29,8 +29,7 @@ const pressable = fn => ({role: "button", tabindex: 0, onclick: fn,
    the ⓘ beside its heading (aboutWire, below), so a heading has one line of hint under it at most. Put where the
    words are wanted, after the heading and its hint; strings become paragraphs, nulls are left out; a first {title}
    names it ("About the charts") and puts its ⓘ there, where there's no heading to put it beside. Pages write the same
-   <div class="about-words" hidden> by hand (data-title for a title). moreAbout: its old name (#176), for meds.js and
-   medlog.js until they're moved to it. */
+   <div class="about-words" hidden> by hand (data-title for a title). */
 function aboutWords(...kids) {
   const o = kids[0] && !kids[0].nodeType && typeof kids[0] === "object" && !Array.isArray(kids[0]) ? kids.shift() : {};
   const w = el("div", {class: "about-words", hidden: "", "data-title": o.title, id: o.id},
@@ -39,7 +38,6 @@ function aboutWords(...kids) {
   if (aboutWire.later.size === 1) { queueMicrotask(aboutWire); requestAnimationFrame(() => aboutWire()); }
   return w;
 }
-const moreAbout = aboutWords;
 /* a setting's or a section's help as the server words it (#280): its first line the hint under the heading, what
    follows a line break (and more, more paragraphs) behind the heading's ⓘ. -> the nodes */
 const helpNodes = (help, ...more) => {
