@@ -1334,6 +1334,12 @@ Everything on `main` so far; it becomes the first tagged release.
   holds two lines of, so the swap moves nothing; at 320 px the longer headings sit beside the control too. The
   browser check lets Source Serif through first, so it catches that every time, and checks Body and activity at
   320 px too.
+- **Offline: Settings → Display's theme, dates and units, and pages coming back by themselves** (#428): with a profile
+  picked, Settings saves your theme, date format and units through the profile, and the offline copy didn't follow
+  those saves, so the records page offline showed the theme, dates and units the records were loaded with (and dates
+  offline were always in the browser's format). The copy takes them now, and the records page offline shows dates in
+  your format. A page opened offline (Settings, Sources…) went live again only when the browser said it was online;
+  it asks the server every few seconds too, as the records page does, so it opens once the server answers.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

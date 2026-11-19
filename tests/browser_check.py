@@ -13056,8 +13056,12 @@ def main():
 
             def until(expr, ms):   # page.wait_for_function evaluates a string, which the page's CSP refuses
                 for _ in range(ms // 100):
-                    if ph.evaluate(expr):
-                        return
+                    try:
+                        if ph.evaluate(expr):
+                            return
+                    except Exception as e:   # the page loading again meanwhile (#424: back online it reloads by itself): ask again
+                        if "context was destroyed" not in str(e) and "navigat" not in str(e):
+                            raise
                     ph.wait_for_timeout(100)
                 raise TimeoutError(f"waited {ms} ms for {expr}")
 
@@ -13249,6 +13253,48 @@ def main():
                 picked424.append([where, to424, ph.evaluate(COPY_THEME)])
             check("theme (#424): picked online from your menu on the records page and on Settings, the offline copy's settings take it each time",
                   all(t == kept for _, t, kept in picked424), picked424)
+            # (#428) Settings → Display saves the person's own settings through the profile's path (profiles/1/settings/…)
+            # with a profile picked: its theme, date format and units reach the copy too, so the records page opened
+            # offline from there shows them; then they're put back, online
+            mine428 = ph.evaluate("api('settings/user').then(r => r.json())")
+            want428 = ["dark" if picked424[-1][1] == "light" else "light", "dmy" if mine428["dates.format"] == "ymd" else "ymd",
+                       "lb" if mine428["units"]["weight"] == "kg" else "kg"]
+            ph.goto(base + "/settings.html?profile=1#display")
+            ph.wait_for_selector("#dateFormat", state="attached", timeout=10000)
+            sent428 = []
+            on428 = lambda r: r.method == "PUT" and "/api/" in r.url and sent428.append(r.url.split("/api/")[1])
+            ph.on("request", on428)
+            ph.evaluate(f"document.getElementById('theme-{want428[0]}').click()")
+            ph.select_option("#dateFormat", want428[1])
+            ph.evaluate(f"document.getElementById('units-weight-{want428[2]}').click()")
+            COPY428 = COPY + ".then(c => c && JSON.parse(c.settings || '{}')).then(s => s && [s.theme, (s.dates || {}).format, (s.units || {}).weight])"
+            copy_is428 = lambda v: COPY428 + ".then(x => JSON.stringify(x) === " + json.dumps(json.dumps(v, separators=(",", ":"))) + ")"
+            try:
+                until(copy_is428(want428), 5000)
+            except TimeoutError:
+                pass
+            ph.remove_listener("request", on428)
+            now428 = ph.evaluate("api('settings/user').then(r => r.json())")
+            saved428 = [sent428, [now428["theme"], now428["dates.format"], now428["units"]["weight"]], ph.evaluate(COPY428)]
+            check("Settings → Display (#428): the theme, date format and units, saved through the profile's settings, are the server's and the offline copy's",
+                  sorted(saved428[0]) == ["profiles/1/settings/dates.format", "profiles/1/settings/theme", "profiles/1/settings/units"]
+                  and saved428[1] == want428 and saved428[2] == want428, saved428)
+            ctx.set_offline(True)
+            ph.goto(base + "/?profile=1")
+            until(LOADED, 20000)
+            until("document.getElementById('offlineBanner').textContent.includes(fmtD(OFFLINE.copy.loaded))", 5000)
+            shown428 = ph.evaluate(f"[{SHOWN}, DATES.format, CFG.units.weight, document.getElementById('offlineBanner').textContent.includes(fmtDT(OFFLINE.copy.loaded))]")
+            check("…and the records page opened offline after it shows them: that theme, its dates in that format (the banner's too), weights in that unit (#428)",
+                  shown428 == [*want428, True], [shown428, want428])
+            ctx.set_offline(False)
+            ph.goto(base + "/settings.html?profile=1")
+            ph.wait_for_selector("#dateFormat", state="attached", timeout=10000)
+            ph.evaluate("""([t, m]) => Promise.all([api('settings/user/theme', {method: 'PUT', body: JSON.stringify({value: t})}),
+                api('settings/user/dates.format', {method: 'PUT', body: JSON.stringify({value: m['dates.format']})}),
+                api('settings/user/units', {method: 'PUT', body: JSON.stringify({value: m.units})})])""", [picked424[-1][1], mine428])
+            ph.goto(base + "/?profile=1")
+            until(LOADED, 20000)
+            until(copy_is428([picked424[-1][1], mine428["dates.format"], mine428["units"]["weight"]]), 5000)
             ctx.set_offline(True)
             ph.reload()
             until(LOADED, 20000)
@@ -13458,6 +13504,24 @@ def main():
                 await api('profiles/1/costs/mark', {method: 'PUT', body: JSON.stringify({event: c.claim, hsa: 'auto'})}); })""", ch405)
             ph.evaluate("""(async c => { await RENAME.import.save(c.imp, ''); await RENAME.lab.save(c.lab, '');   // #416's undone
                 await tvStore(CFG.trends.views.map(tvPlain).filter(v => v.name !== 'Preset (#416)'), 'Deleted.'); })""", ch416)
+            # (#428) a page opened offline (offline-page.js) goes live by itself too once the server answers again, with
+            # no "online" event: the network stays up, and the server is out of reach (a route) and then back
+            ph.route("**/api/**", lambda r: r.abort("internetdisconnected"))
+            ph.goto(base + "/sources.html?profile=1")
+            ph.wait_for_selector("#offlineBanner", timeout=10000)
+            cut428 = ph.evaluate("[document.querySelector('main').checkVisibility(), OFFLINE.on]")
+            ph.unroute("**/api/**")
+            t428 = time.monotonic()
+            for _ in range(100):
+                try:
+                    if ph.evaluate("document.readyState === 'complete' && !document.getElementById('offlineBanner') && document.querySelector('main').checkVisibility()"):
+                        break
+                except Exception:   # (the page is being loaded again)
+                    pass
+                ph.wait_for_timeout(100)
+            back428 = [cut428, round(time.monotonic() - t428, 1), ph.evaluate("[!document.getElementById('offlineBanner'), OFFLINE.on, document.querySelector('main').checkVisibility()]")]
+            check("a page opened offline (#428): with the server out of reach, Sources says so in the banner; once it answers, it opens live by itself within a few seconds",
+                  back428[0] == [False, True] and back428[1] < 8 and back428[2] == [True, False, True], back428)
 
             # turned off: the copy goes
             ph.goto(base + "/account.html#offline")

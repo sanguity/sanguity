@@ -173,6 +173,15 @@ class Pwa(unittest.TestCase):
                     bad.append(f"{os.path.relpath(path, ROOT)}: byte {data[e.start]:#04x} at {e.start}")
         self.assertEqual(bad, [], "files under www/ that aren't valid UTF-8")
 
+    def test_the_offline_copy_knows_the_persons_own_settings(self):
+        # #428: the records page offline answers settings/user from the copy, and a profile's settings saved on Settings
+        # give the copy the person's own: pwa.js names them (SgOffline.mine), so they must be the server's of scope "user"
+        with open(os.path.join(WWW, "js", "pwa.js"), encoding="utf-8") as f:
+            mine = json.loads(re.search(r"const MINE = (\[[^\]]*\]);", f.read()).group(1))
+        sys.path.insert(0, ROOT)
+        from server import settings
+        self.assertEqual(sorted(mine), sorted(k for k, d in settings.SETTINGS.items() if d.scope == "user"))
+
     def test_me_says_when_the_sign_in_ends(self):
         self.assertEqual(self.served["login"], 200)
         me = self.served["me"]

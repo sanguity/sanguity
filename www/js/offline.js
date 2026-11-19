@@ -9,7 +9,8 @@
      a new copy keeps the details opened before). A change made on the page (#271) goes into the copy too, from the
      same reply the page puts in place, with the records' revision after it (#405), so the copy stays as the page is
      and keeps the details of what's opened after it;
-   - when the server can't be reached, app.js is answered from that copy (only that profile; anything else, and every
+   - when the server can't be reached, app.js is answered from that copy (only that profile, and the person's own
+     settings as its settings have them: the theme, the date format, units, #428; anything else, and every
      change, is refused as needing the server), and the page says it's offline, read-only, and when the records were
      loaded. Without a copy it says records aren't available offline. */
 "use strict";
@@ -128,6 +129,9 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
   }
 
   /* ---- offline: answer from the kept copy */
+  // the person's own settings (theme, time zone, date format, units: GET settings/user), as the copy's settings have
+  // them (#428: dates.js reads the date format there)
+  const mine = c => c.settings ? json(SgOffline.mine(JSON.parse(c.settings))) : json({detail: "Not kept for offline viewing."}, 404);
   function fromCopy(path, method, url) {
     const c = OFFLINE.copy;
     if (method !== "GET") return json({detail: NEEDS_SERVER}, 503);
@@ -142,6 +146,7 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
     }
     if (path === "me") return json({user: {id: 0, username: c.user, is_admin: false, must_change_pw: false, two_factor: false, needs_two_factor: false},
       profiles: [c.profile], two_factor_required: false, session_ends: c.ends, offline: true});
+    if (path === "settings/user") return mine(c);
     const m = path.match(PART);
     if (m && +m[1] === c.profile.id) return c[m[2]] == null ? json({detail: "Not kept for offline viewing."}, 404) : json(c[m[2]]);
     return json({detail: NEEDS_SERVER}, 503);
@@ -160,6 +165,10 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
         if (c) { OFFLINE.on = true; OFFLINE.copy = c; offlineView(); return fromCopy(path, method); }
         notAvailable();
         throw new Error("you're offline.");
+      }
+      if (path === "settings/user" && method === "GET") {   // (dates.js asks before "me": the date format, #428)
+        const c = SgOffline.on() ? await SgOffline.load() : null;
+        if (c) return mine(c);
       }
       throw err;
     }
@@ -205,9 +214,11 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
     const c = OFFLINE.copy;
     document.body.classList.add("offline");
     watchBack();
+    const loadedOn = () => `${c.profile.name}, as loaded on ${fmtDT(c.loaded)}. `, when = document.createTextNode(loadedOn());
     banner(el("strong", {text: "Offline · read-only. "}),
-      `${c.profile.name}, as loaded on ${fmtDT(c.loaded)}. `,   // in their date format (dates.js, loaded by the time a request fails)
-      el("span", {class: "why", text: "Changes, documents, imports, settings and your account need the server; they come back when you're online."}));
+      when, el("span", {class: "why", text: "Changes, documents, imports, settings and your account need the server; they come back when you're online."}));
+    // in their date format, the copy's (dates.js, loaded by the time a request fails, reads it from settings/user: #428)
+    datesReady().then(() => { const t = loadedOn(); if (when.data !== t) when.data = t; });
     const why = "Needs the server: you're offline";
     const header = () => {
       // the menus' links to the other pages: still reached with the arrow keys, so the reason is their tip and
