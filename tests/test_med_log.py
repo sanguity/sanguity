@@ -110,6 +110,20 @@ class Log(unittest.TestCase):
         r = self.c["lee"].delete(self.path(f"/{j['id']}"), headers=H)
         self.assertEqual(r.json(), {"ok": True, "removed": [j["id"]]})
 
+    def test_replies_say_the_records_revision(self):
+        """#405: each change's reply says the records' revision after it, as the page's data does, so the offline copy
+        can follow the change"""
+        rev = lambda: self.c["kim"].get(f"/api/profiles/{self.pid}/data").headers["X-Records-Rev"]
+        before = rev()
+        r = self.c["lee"].post(self.path(), json={"med": "fictionamide", "t": D(-1) + "T08:05", "status": "taken"}, headers=H)
+        self.assertEqual(r.headers["X-Records-Rev"], rev())
+        self.assertNotEqual(r.headers["X-Records-Rev"], before)
+        did = r.json()["id"]
+        for change in (lambda: self.c["lee"].put(self.path(f"/{did}"), json={"med": "fictionamide", "t": D(-1) + "T08:15", "status": "late"}, headers=H),
+                       lambda: self.c["lee"].delete(self.path(f"/{did}"), headers=H)):
+            r = change()
+            self.assertEqual((r.status_code, r.headers["X-Records-Rev"]), (200, rev()))
+
     def test_who_and_refusals(self):
         self.log(who="kim", code=403)
         bad = [({"med": "no such"}, "Pick the medication"), ({"status": "due"}, "taken, taken late or skipped"),

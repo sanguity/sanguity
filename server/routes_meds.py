@@ -4,14 +4,15 @@ read them (the records the page loads list them too, as "reminders"); owners and
 the same way ("doses" in the records). The CSRF check in main.guard covers each change like every other, and each goes
 in the profile's activity log as "medication" (what was done, how many times a day or the dose's status, never the
 medication or a note). Each change's reply carries what it changed (#271), as the records list it, so the records page
-updates in place: "reminders" or "doses", the one added or changed; "removed", the id of one removed."""
+updates in place: "reminders" or "doses", the one added or changed; "removed", the id of one removed. Its X-Records-Rev
+header is the records' revision after it (records.stamp, #405)."""
 from datetime import timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from . import activity, db as dbm, med_log, med_reminders as mr, settings
+from . import activity, db as dbm, med_log, med_reminders as mr, records, settings
 from .main import _client_ip, get_db, need, user
 
 router = APIRouter()
@@ -55,17 +56,18 @@ def list_reminders(pid: int, s=Depends(user), db=Depends(get_db)):
 
 
 @router.post("/api/profiles/{pid}/medications/reminders", status_code=201)
-def add_reminder(pid: int, body: Reminder, request: Request, s=Depends(user), db=Depends(get_db)):
+def add_reminder(pid: int, body: Reminder, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     r = _checked(db, pid, s, body)
     with dbm.transaction(db):
         rid = mr.add(db, pid, s, r, body.on)
         _log(db, s, pid, "reminder.add", request, r)
+    records.stamp(response, db, pid)
     return {"id": rid, "reminder": mr.get(db, pid, rid), "reminders": mr.listing(db, pid, [rid])}
 
 
 @router.put("/api/profiles/{pid}/medications/reminders/{rid}")
-def change_reminder(pid: int, rid: int, body: Reminder, request: Request, s=Depends(user), db=Depends(get_db)):
+def change_reminder(pid: int, rid: int, body: Reminder, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     was = mr.get(db, pid, rid)
     if was is None:
@@ -75,27 +77,30 @@ def change_reminder(pid: int, rid: int, body: Reminder, request: Request, s=Depe
         if mr.change(db, pid, rid, s, r, body.on) is None:
             raise HTTPException(404, "No such reminder.")
         _log(db, s, pid, "reminder.change", request, r)
+    records.stamp(response, db, pid)
     return {"reminder": mr.get(db, pid, rid), "reminders": mr.listing(db, pid, [rid])}
 
 
 @router.patch("/api/profiles/{pid}/medications/reminders/{rid}")
-def switch_reminder(pid: int, rid: int, body: Switch, request: Request, s=Depends(user), db=Depends(get_db)):
+def switch_reminder(pid: int, rid: int, body: Switch, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     """Turn a reminder on or off; off keeps it, listed nowhere, to turn on again."""
     need(db, s, pid, "editor")
     with dbm.transaction(db):
         if mr.change(db, pid, rid, s, active=body.on) is None:
             raise HTTPException(404, "No such reminder.")
         _log(db, s, pid, "reminder.on" if body.on else "reminder.off", request)
+    records.stamp(response, db, pid)
     return {"reminder": mr.get(db, pid, rid), "reminders": mr.listing(db, pid, [rid])}
 
 
 @router.delete("/api/profiles/{pid}/medications/reminders/{rid}")
-def remove_reminder(pid: int, rid: int, request: Request, s=Depends(user), db=Depends(get_db)):
+def remove_reminder(pid: int, rid: int, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     with dbm.transaction(db):
         if mr.remove(db, pid, rid) is None:
             raise HTTPException(404, "No such reminder.")
         _log(db, s, pid, "reminder.delete", request)
+    records.stamp(response, db, pid)
     return {"ok": True, "removed": [rid]}
 
 
@@ -124,17 +129,18 @@ def list_doses(pid: int, s=Depends(user), db=Depends(get_db)):
 
 
 @router.post("/api/profiles/{pid}/medications/doses", status_code=201)
-def add_dose(pid: int, body: Dose, request: Request, s=Depends(user), db=Depends(get_db)):
+def add_dose(pid: int, body: Dose, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     d = _dose(db, pid, s, body)
     with dbm.transaction(db):
         did = med_log.add(db, pid, s, d)
         activity.log(db, "medication", s, pid, med_log.log_detail("add", d), _client_ip(request))
+    records.stamp(response, db, pid)
     return {"id": did, "doses": med_log.listing(db, pid, [did])}
 
 
 @router.put("/api/profiles/{pid}/medications/doses/{did}")
-def change_dose(pid: int, did: int, body: Dose, request: Request, s=Depends(user), db=Depends(get_db)):
+def change_dose(pid: int, did: int, body: Dose, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     was = med_log.get(db, pid, did)
     if was is None:
@@ -144,15 +150,17 @@ def change_dose(pid: int, did: int, body: Dose, request: Request, s=Depends(user
         if med_log.change(db, pid, did, s, d) is None:
             raise HTTPException(404, "No such dose in the log.")
         activity.log(db, "medication", s, pid, med_log.log_detail("change", d), _client_ip(request))
+    records.stamp(response, db, pid)
     return {"ok": True, "doses": med_log.listing(db, pid, [did])}
 
 
 @router.delete("/api/profiles/{pid}/medications/doses/{did}")
-def remove_dose(pid: int, did: int, request: Request, s=Depends(user), db=Depends(get_db)):
+def remove_dose(pid: int, did: int, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     with dbm.transaction(db):
         was = med_log.remove(db, pid, did)
         if was is None:
             raise HTTPException(404, "No such dose in the log.")
         activity.log(db, "medication", s, pid, med_log.log_detail("delete", was), _client_ip(request))
+    records.stamp(response, db, pid)
     return {"ok": True, "removed": [did]}

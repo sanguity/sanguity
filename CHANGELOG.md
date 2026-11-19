@@ -1180,6 +1180,13 @@ Everything on `main` so far; it becomes the first tagged release.
   Timeline or Overview row by its record, so a rename doesn't lose it), and Escape or ✕ takes focus back there. A
   dose logged beside a medication's drawer, or a correction or "Same result" deep in a lab day, drew the drawer again
   at its top with its log folded; it's drawn again in place now, its scroll, what's open and "Show all" as they were.
+- **The offline copy follows the changes made on the page** (#405): with Offline records on, a dose, a journal entry, a
+  reminder or a correction made since the page loaded wasn't in the copy (reloaded offline, it showed the records as
+  they were loaded), and since the server's records had moved on, nothing opened after the change was kept for
+  offline until the next full load. Each change's reply now says the records' revision after it (`X-Records-Rev`),
+  and the copy takes the change from the same reply the page puts in place, so it stays as the page is and keeps
+  collecting what's opened. Costs' out-of-pocket mark loaded all the records again for its part and drew Costs itself,
+  emptying the copy's details; its reply carries the out-of-pocket part now, put in place through the store.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -12435,6 +12435,24 @@ def main():
                 listed: Object.values(JSON.parse(c.data).details).every(d => d.type === 'labday' || d.partial), rev: c.rev}))""")
             check("offline records (#217): the copy keeps the details of the records opened here, with their records' revision, after a reload too",
                   look["files"] == len(docs) and look["claims"] == 0 and look["listed"] and bool(look["rev"]), look)
+            # #405: changes made on the page, in place (#271), go into the copy with the records' revision after them: a
+            # dose logged, a visit renamed and a claim's share marked HSA (Costs' mark, through the store), then the lab
+            # day opened again (with the documents: a rename's records come whole, and the details opened before went
+            # with the records they belonged to). Offline after a reload, all three are there and the lab day's kept.
+            ch405 = ph.evaluate("""(async () => {
+                const m = MEDS.find(mrCurrent), v = EV.find(e => e.k === 'visit' && !e.hidden), c = ((DATA.oop || {}).claims || [])[0], at = isoDay(Date.now() - DAY) + 'T07:05';
+                await doseSend('', {method: 'POST', body: JSON.stringify({med: m.key, t: at, status: 'taken', note: '', slot: null})}, el('p'), {row: ''});
+                await sendEdit('', {method: 'POST', body: JSON.stringify({event: v.id, action: 'rename', title: 'Renamed for offline (#405)'})}, el('p'), {event: v.id});
+                closeDrawer();
+                await sendMark({event: c.id, hsa: 'HSA'}, el('p'));
+                return {dose: DATA.doses.find(d => d.t === at && d.med === m.key)?.id, visit: v.id, claim: c.id, hsa: (DATA.oop.claims.find(x => x.id === c.id) || {}).hsa}; })()""")
+            ph.evaluate("""(async id => { await openEvent(byId.get(id)); closeDrawer();
+                await loadDetails(EV.filter(e => e.k === 'document').map(e => e.id)); })""", day[0])
+            IN405 = COPY + f""".then(c => {{ const d = c && JSON.parse(c.data); return !!d && d.doses.some(x => x.id === {json.dumps(ch405["dose"])})
+                && d.events.some(e => e.id === {ch405["visit"]} && e.title === 'Renamed for offline (#405)') && (d.oop.claims.find(x => x.id === {ch405["claim"]}) || {{}}).hsa === 'HSA'
+                && {json.dumps([str(i) for i in day[1:] + docs])}.every(k => k in (c.details || {{}})); }})"""
+            until(IN405, 5000)
+            in405 = ph.evaluate(IN405)
             # offline: that profile, read-only, with when it was loaded
             test_pages = ph.evaluate("TEST_PAGES")   # (#378, below)
             ctx.set_offline(True)
@@ -12447,6 +12465,12 @@ def main():
             tab_click(ph, "#tab-labs")
             ph.wait_for_selector("#charts svg", timeout=10000)
             check("offline: Trends draws from the kept copy", ph.evaluate("document.querySelectorAll('#charts svg').length") > 0)
+            off405 = ph.evaluate("""(async ([c, ids]) => { await loadDetails(ids);
+                return {dose: DATA.doses.some(d => d.id === c.dose), title: byId.get(c.visit)?.title, hsa: (DATA.oop.claims.find(x => x.id === c.claim) || {}).hsa,
+                        day: ids.every(id => detailsHave(id) && !DETAILS_MISSED.has(id))}; })""", [ch405, day])
+            check("offline (#405): a dose logged, a visit renamed and a claim marked in place, then a lab day opened: after a reload offline all three are there and the lab day's details are kept",
+                  ch405["dose"] and ch405["hsa"] == "HSA" and in405
+                  and off405 == {"dose": True, "title": "Renamed for offline (#405)", "hsa": "HSA", "day": True}, [ch405, in405, off405])
             check("offline: Import, Settings and Account say they need the server, as their tip, with no title (#385)",
                   ph.evaluate("[...document.querySelectorAll('header a.acct, dialog.sheet a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && a.dataset.tip === \"Needs the server: you're offline\" && !a.hasAttribute('title'))"))
             # (#385) the profile menu's and your menu's links, still reached with the arrow keys: each shows the reason as
@@ -12553,6 +12577,10 @@ def main():
                   and all(x["off"] is None and x["title"] is None and x["tip"] and x["tip"] != WHY378 for x in links if x["kind"] in ("source", "test page"))
                   and all(x["name"].endswith("opens in a new tab") for x in links if x["kind"] == "test page"), links)
             ph.evaluate("closeDrawer()")
+            ph.evaluate("""(async c => { await api(`profiles/1/medications/doses/${c.dose}`, {method: 'DELETE'});   // #405's changes undone
+                const x = (await (await api('profiles/1/edits')).json()).edits.find(x => x.action === 'rename' && x.ids.includes(c.visit));
+                if (x) await api(`profiles/1/edits/${x.id}`, {method: 'DELETE'});
+                await api('profiles/1/costs/mark', {method: 'PUT', body: JSON.stringify({event: c.claim, hsa: 'auto'})}); })""", ch405)
 
             # turned off: the copy goes
             ph.goto(base + "/account.html#offline")

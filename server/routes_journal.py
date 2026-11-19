@@ -13,13 +13,14 @@ profile's activity log (the kind of entry, never what it says).
 The symptom groups themselves are the setting journal.groups (PUT .../settings/journal.groups).
 
 Each change's reply carries what it changed (#271), so the records page updates in place instead of loading the records
-again: "journal", the entries added or changed, as the records list them; "removed", the ids of those deleted."""
+again: "journal", the entries added or changed, as the records list them; "removed", the ids of those deleted. Its
+X-Records-Rev header is the records' revision after it (records.stamp, #405)."""
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, StrictInt
 
-from . import activity, db as dbm, journal, journal_photos as photos
+from . import activity, db as dbm, journal, journal_photos as photos, records
 from .main import DOC_CSP, _client_ip, get_db, need, user
 
 router = APIRouter()
@@ -61,17 +62,18 @@ def list_journal(pid: int, s=Depends(user), db=Depends(get_db)):
 
 
 @router.post("/api/profiles/{pid}/journal", status_code=201)
-def add_entry(pid: int, body: Entry, request: Request, s=Depends(user), db=Depends(get_db)):
+def add_entry(pid: int, body: Entry, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     entry = _checked(db, pid, body)
     with dbm.transaction(db):
         jid = journal.add(db, pid, s, entry)
         activity.log(db, "journal", s, pid, journal.log_detail("add", entry), _client_ip(request))
+    records.stamp(response, db, pid)
     return {"id": jid, "journal": journal.listing(db, pid, [jid])}
 
 
 @router.post("/api/profiles/{pid}/journal/group", status_code=201)
-def add_group(pid: int, body: Group, request: Request, s=Depends(user), db=Depends(get_db)):
+def add_group(pid: int, body: Group, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     """A symptom group (#161), each symptom an entry of its own with its own severity, saved together or not at all."""
     need(db, s, pid, "editor")
     try:
@@ -83,6 +85,7 @@ def add_group(pid: int, body: Group, request: Request, s=Depends(user), db=Depen
         for entry in entries:
             ids.append(journal.add(db, pid, s, entry))
             activity.log(db, "journal", s, pid, journal.log_detail("add", entry), _client_ip(request))
+    records.stamp(response, db, pid)
     return {"ids": ids, "journal": journal.listing(db, pid, ids)}
 
 
@@ -122,7 +125,7 @@ def photo(pid: int, photo_id: int, s=Depends(user), db=Depends(get_db)):
 
 
 @router.put("/api/profiles/{pid}/journal/{jid}")
-def change_entry(pid: int, jid: int, body: Entry, request: Request, s=Depends(user), db=Depends(get_db)):
+def change_entry(pid: int, jid: int, body: Entry, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     was = journal.get(db, pid, jid)
     if was is None:
@@ -132,15 +135,17 @@ def change_entry(pid: int, jid: int, body: Entry, request: Request, s=Depends(us
         if journal.change(db, pid, jid, s, entry) is None:
             raise HTTPException(404, "No such journal entry.")
         activity.log(db, "journal", s, pid, journal.log_detail("change", entry), _client_ip(request))
+    records.stamp(response, db, pid)
     return {"ok": True, "journal": journal.listing(db, pid, [jid])}
 
 
 @router.delete("/api/profiles/{pid}/journal/{jid}")
-def remove_entry(pid: int, jid: int, request: Request, s=Depends(user), db=Depends(get_db)):
+def remove_entry(pid: int, jid: int, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     with dbm.transaction(db):
         was = journal.remove(db, pid, jid)
         if was is None:
             raise HTTPException(404, "No such journal entry.")
         activity.log(db, "journal", s, pid, journal.log_detail("delete", was), _client_ip(request))
+    records.stamp(response, db, pid)
     return {"ok": True, "removed": [jid]}
