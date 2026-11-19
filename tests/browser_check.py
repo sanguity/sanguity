@@ -3064,7 +3064,10 @@ def main():
             # ⋯ menu (none for what the watch made, or a cycle record), at most four key facts, one Source, and no value said
             # twice (the title, the line's parts, the facts and the details, and the line under the facts). #406: nor by
             # meaning: a fact that's a day the head names (a range's either end, or a time's day: "Filled", "Given",
-            # "Collected"), or that starts with a place the title names; and the head says the kind once
+            # "Collected"), or that starts with a place the title names; and the head says the kind once. #418: nor a part
+            # of the line under the title, or of the note under the head, that a fact says in other words (its one number
+            # the fact's value, a word of it the fact's label: "2 messages" and Messages 2, "30-day supply" and Days'
+            # supply 30), nor a range that starts at the head's time (a rhythm notification's period)
             layout_js = """k => { const b = document.getElementById('dbody'), e = byId.get(state.selEv), lc = x => x.trim().toLowerCase();
               const title = document.getElementById('dtitle').textContent, line = document.getElementById('dsub').textContent;
               const said = [...new Set([title, ...title.split(' · '), ...line.split(' · ').flatMap(x => x.split(' – ')), ...(e ? [fmtD(e.ts), fmtD(e.te)] : [])].map(lc))];
@@ -3073,14 +3076,27 @@ def main():
               const place = vals.filter(v => [title, ...title.split(' · ')].map(lc).some(s => s.length > 3 && v.startsWith(s + ', ')));
               const kind = title.split(' · ').map(lc).includes(lc(line.split(' · ')[0])) && line.includes(' · ');
               const sources = b.querySelectorAll(':scope > p.source').length + [...b.querySelectorAll(':scope > dl dt')].filter(x => x.textContent === 'Source').length;
+              const stem = s => (s.toLowerCase().match(/[a-z]+/g) || []).map(w => w.replace(/s$/, ''));
+              const pairs = [...b.querySelectorAll(':scope > dl dt')].map(dt => [dt.textContent, lc(dt.nextElementSibling.textContent)]);
+              const parts = [...line.split(' · '), ...[...b.querySelectorAll(':scope > .dnote')].flatMap(n => n.textContent.split(' · '))];
+              const meant = parts.filter(p => { const n = p.match(/\\d+(?:[.,]\\d+)?/g);
+                return n && n.length === 1 && pairs.some(([k, v]) => v === n[0] && stem(k).some(w => stem(p).includes(w))); });
+              const from = pairs.filter(([k, v]) => v.includes(' – ') && said.includes(v.split(' – ')[0])).map(x => x[0]);
               const facts = b.querySelectorAll(':scope > dl.facts > div').length, menu = !document.getElementById('dmore').hidden;
               const bad = [!document.querySelector('#dkey svg.icon') && 'no icon', twice.length && 'twice: ' + twice, sources > 1 && sources + ' sources',
+                meant.length && 'said again by a fact: ' + meant, from.length && "from the head's time: " + from,
                 place.length && "the title's place again: " + place, kind && 'its kind twice in the head',
                 facts > 4 && facts + ' facts', menu !== !['exercise', 'ecg', 'rhythm', 'cycle'].includes(k) && 'menu ' + menu,
                 b.querySelector('.edit-acts') && 'corrections in the body'].filter(Boolean);
               return bad.length ? k + ': ' + bad.join(', ') : null; }"""
             not_one = []
-            for k in js("[...new Set(EV.filter(e => !e.hidden).map(e => e.k))].sort()"):
+            # (#418) a pharmacy fill with a days' supply, as an import's (the demo's fills have none), first among the fills
+            fill418 = js("""(() => { const e = EV.find(e => e.k === 'rx'), id = 9418000, f = {...e, id, sub: 'Pharmacy fill · Corner Pharmacy · 30-day supply'};
+                DATA.events.push(f); byId.set(id, f); EV.unshift(f);
+                DATA.details[id] = {type: 'med', pharmacy: 'Corner Pharmacy', quantity: '30 tablets', daysSupply: 30, prescriber: 'Dr. Sam Okafor'};
+                return id; })()""")
+            kinds418 = js("[...new Set(EV.filter(e => !e.hidden).map(e => e.k))].sort()")
+            for k in kinds418:
                 js("k => openEvent(EV.find(e => e.k === k && !e.hidden))", k)
                 settle(200)
                 ok = js("document.getElementById('drawer').classList.contains('open') && document.getElementById('dtitle').textContent.length > 0")
@@ -3091,8 +3107,11 @@ def main():
                 not_one.append(js(layout_js, k))
                 page.keyboard.press("Escape")
             not_one = [x for x in not_one if x]
-            check("…each in one layout (#270): its kind's icon, title and one line of when, its corrections in the ⋯ menu, up to four key facts, one Source, nothing said twice",
-                  not not_one, not_one)
+            js("""id => { for (const l of [EV, DATA.events]) l.splice(l.findIndex(e => e.id === id), 1);
+                byId.delete(id); delete DATA.details[id]; }""", fill418)
+            check("…each in one layout (#270): its kind's icon, title and one line of when, its corrections in the ⋯ menu, up to four key facts, one Source, nothing said twice, "
+                  "by meaning too: a conversation's count, a fill's days' supply, a rhythm notification's start (#406, #418)",
+                  not not_one and {"message", "rx", "rhythm"} <= set(kinds418), [not_one, kinds418])
             stay406 = js("""(() => { const e = EV.find(e => e.k === 'stay' && !e.hidden && / · /.test(e.title)); if (!e) return null;
                 return Promise.resolve(openEvent(e)).then(() => [e.title, document.getElementById('dtitle').textContent, document.getElementById('dsub').textContent,
                   [...document.querySelectorAll('#dbody dl.facts dd')].map(d => d.textContent)]); })()""")
