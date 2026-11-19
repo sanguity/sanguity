@@ -1079,7 +1079,7 @@ Everything on `main` so far; it becomes the first tagged release.
   the arrow keys, and a tab picked opens as a View Transition, at once when less motion is asked for.
 - **Tabs that don't fit go under More** (#265): as many tabs as fit, in the profile's order, the rest under **More**,
   which ends with **Edit tabs…** (Settings → Tabs). The tab shown always stays in the bar, taking the last place.
-  All five fit at 1,100 px and wider; on a phone the tabs still scroll sideways.
+  All five fit at 1,100 px and wider; on a phone they're the bar at the screen's foot (#268).
 - **The drawer: one layout for every record, docked on wide screens** (#270): every kind of record (and a journal
   entry, a cycle record, a medication's history) opens the same way: its kind's icon in its colour, the title, one
   line of what it is and when, and a ⋯ menu with the corrections (Hide, Rename, Change category, Fix date, Merge…; a
@@ -1119,6 +1119,14 @@ Everything on `main` so far; it becomes the first tagged release.
   screen reader hears it as a combobox and its list. "/" can be turned off at its foot. The pages' groups are one
   list now (`groups.js`), which the sidebars and the palette share; the service worker keeps the new scripts
   (`sanguity-shell-v8`).
+- **Phones: the tabs at the foot of the screen, and a top bar of one row** (#268): at 390 px the top bar took three
+  rows and, with the period, over a quarter of the screen before anything to read, and the tabs' row scrolled
+  sideways, cut to "ody and activity". On a phone the top bar is one row now: the brand, the profile menu, then Add and
+  your menu as icons (their names still said). The records tabs are a bar fixed at the foot of the screen, clear of
+  the home indicator: each tab an icon over a short name ("Body"), 44 px or more each way, in five places (four and
+  More once more than five tabs are shown, the one open always among the four). The page, the toasts, Settings' Save
+  bar and the heatmap's month axis end above it, and what takes focus is scrolled clear of it. Under 500 px tall the
+  tabs are a row in the top bar again, which scrolls away with the page as before.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

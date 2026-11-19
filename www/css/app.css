@@ -15,7 +15,8 @@
 @layer reset, tokens, base, components, pages, utilities;
 
 @layer base {
-body{margin:0;background:var(--page);color:var(--ink);font:var(--fs-3)/1.45 var(--font-ui)}
+body{margin:0;background:var(--page);color:var(--ink);font:var(--fs-3)/1.45 var(--font-ui);
+  padding-inline:env(safe-area-inset-left,0px) env(safe-area-inset-right,0px)}   /* clear of a notch, the pages filling the screen (viewport-fit=cover, #268) */
 button,input,select{font:inherit;color:inherit}
 a{color:var(--accent)}   /* links in the accent, never the browser's blue or visited purple (#247); a button or menu item that is a link sets its own */
 }
@@ -342,8 +343,8 @@ dialog.sg-dlg-sheet [data-grab]{touch-action:none}
 .sg-toast-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .sg-toast-acts .btn{margin:0}
 .sg-toast-x{flex:none;margin:0;min-width:32px;padding:0}   /* the quiet button (#258), square */
-@media (max-width:700px){ .sg-toasts{inset:auto var(--sp-2) var(--sp-2) var(--sp-2);width:auto} }
-html:has(.sets section[data-dirty]) .sg-toasts{bottom:72px}
+@media (max-width:700px){ .sg-toasts{inset:auto var(--sp-2) calc(var(--sp-2) + var(--tabbar,0px)) var(--sp-2);width:auto} }   /* over a phone's tabs (#268) */
+html:has(.sets section[data-dirty]) .sg-toasts{bottom:calc(72px + var(--tabbar,0px))}
 /* in a modal dialog, or the drawer beside the page (liveFollow, #362): no popover, in the dialog's flow at its foot,
    under its buttons and over nothing in it; the drawer's body scrolls above */
 dialog>.sg-toasts{position:static;width:auto;pointer-events:auto;flex:none}
@@ -423,6 +424,42 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
     max-height:calc(100vh - var(--bar-h,56px) - 14px);max-height:calc(100dvh - var(--bar-h,56px) - 14px);overflow-y:auto}
   header.topbar .menu-item{white-space:normal}
 }
+/* ---- phones (#268, nav.js phoneBar): the top bar one row: the brand, the profile menu taking the room left (its name
+   cut short only if it must be), then Add and your menu as 44 px icons, their words still said; at 480 px or narrower
+   the brand's mark alone and the profile's role said only. The records tabs a bar fixed at the screen's foot, clear of
+   the home indicator: each place an icon over a short name, 56 px tall, the tab shown with its icon in a tinted pill;
+   the page ends above it (--tabbar: the body, the scroll padding, the toasts and Settings' Save bar). Under 500 px tall
+   the tabs stay a row in the top bar, which scrolls away with the page (#308). */
+.tabs>a>.icon,.tab-more>.menu-ico,#userMenuBtn>.menu-ico{display:none}
+@media (max-width:700px){
+  header.topbar .profile-pick{flex:1 1 0;max-width:max-content;min-width:0}
+  .profile-pick>.menu{min-width:0}
+  .profile-btn.menu-btn{max-width:100%;padding-inline:var(--sp-2)}
+  header.topbar .bar-menus{gap:var(--sp-1)}
+  :is(#addMenuBtn,#userMenuBtn){min-width:44px;padding-inline:var(--sp-2)}
+  #userMenuBtn>.menu-ico{display:inline}
+  :is(#addMenuBtn,#userMenuBtn)>.menu-caret{display:none}
+}
+@media (max-width:480px){ header .brand-name{gap:0} }
+@media (max-width:700px) and (min-height:501px){
+  html:has(header.topbar>.tabs:not([hidden])){--tabbar:calc(57px + env(safe-area-inset-bottom,0px))}
+  body{padding-bottom:var(--tabbar,0px)}
+  header.topbar .tabs{position:fixed;inset:auto 0 0;z-index:20;width:auto;gap:0;padding:0 0 env(safe-area-inset-bottom,0px);border-radius:0;border-top:1px solid var(--grid);
+    background:var(--surface);overflow:visible}
+  header.topbar .tabs>:is(a,.menu){flex:1 1 0;min-width:0}
+  header.topbar :is(.tabs>a,.tab-more){flex-direction:column;justify-content:center;gap:2px;width:100%;min-height:56px;padding:var(--sp-1) 0;border-radius:0;font-size:var(--fs-1)}
+  .tabs>a>.icon,.tab-more>.menu-ico{display:block;box-sizing:content-box;padding:var(--sp-1) var(--sp-4);border-radius:var(--r-pill);font-size:var(--fs-5)}
+  .tab-more>.menu-caret{display:none}
+  header.topbar .tabs>[aria-current="page"]{background:none;box-shadow:none;font-weight:var(--fw-semibold)}
+  .tabs>[aria-current="page"]>.icon{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+  .tabs>a[data-short]::after{content:attr(data-short) / ""}
+  @media (forced-colors:active){ header.topbar .tabs>[aria-current="page"]>.icon{forced-color-adjust:none;background:Highlight;color:HighlightText} }
+}
+/* what's said but not shown there: Add's and your menu's words, the brand's and the profile's role at 480 px or
+   narrower, a tab's whole name beside its short one */
+@media (max-width:700px){ :is(#addMenuBtn,#userMenuBtn)>:is(.menu-word,#who){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap} }
+@media (max-width:480px){ header :is(.brand-word,.profile-role){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap} }
+@media (max-width:700px) and (min-height:501px){ .tabs>a[data-short]>.tab-long{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap} }
 .filters{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;padding:var(--sp-3) var(--sp-5);border-bottom:1px solid var(--grid);background:var(--surface)}
 .dates{display:flex;gap:var(--sp-2);align-items:center;color:var(--muted);font-size:var(--fs-3)}
 .search{min-width:200px}
@@ -526,10 +563,11 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-minis>*{flex:1 1 0;min-width:min-content;justify-content:flex-end}   /* tiles (#260), never narrower than a figure: the row wraps
    instead (#351); a label that wraps grows up from its value, so a row's values stay on one line */
 /* heatmap */
-/* overflow-x:clip (not auto) so the wrapper is not a scroll container and the month axis can stick to the window bottom */
+/* overflow-x:clip (not auto) so the wrapper is not a scroll container and the month axis can stick to the window bottom
+   (over a phone's tabs, #268) */
 .hm-wrap{overflow-x:clip}
 #hm{display:block}
-#hmAxis{display:block;position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--axis);z-index:1}
+#hmAxis{display:block;position:sticky;bottom:var(--tabbar,0px);background:var(--surface);border-top:1px solid var(--axis);z-index:1}
 #hm text.row{fill:var(--ink2);font-size:var(--fs-1)}
 #hm text.grp{fill:var(--muted);font-size:var(--fs-1);font-weight:var(--fw-semibold);letter-spacing:.05em;text-transform:uppercase}
 #hm text.hm-proc{fill:var(--c-procedure);font-size:var(--fs-1)}   /* ◆ over a column with a procedure */
@@ -842,7 +880,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-changed h3 .set-unsaved{display:inline-block}
 .sets .set-foot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);border-top:1px solid var(--grid);margin:var(--sp-3) calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4));padding:var(--sp-2) var(--sp-4);border-radius:0 0 var(--r-lg) var(--r-lg);background:var(--surface)}
 .sets section:not([data-dirty])>.set-foot:has(>.msg:empty){display:none}   /* until there's something to save or say */
-.sets section[data-dirty]>.set-foot{position:sticky;bottom:0;z-index:5;box-shadow:0 -8px 14px -10px rgba(0,0,0,.35)}
+.sets section[data-dirty]>.set-foot{position:sticky;bottom:var(--tabbar,0px);z-index:5;box-shadow:0 -8px 14px -10px rgba(0,0,0,.35)}
 @media (max-width:700px){ .sets .set-foot{margin:var(--sp-3) calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3));padding:var(--sp-2) var(--sp-3);border-radius:0 0 var(--r-md) var(--r-md)} }   /* the card's own padding there */
 .set-nav-dirty::after{content:"";display:inline-block;width:7px;height:7px;border-radius:var(--r-pill);background:var(--accent);margin-left:var(--sp-2);vertical-align:1px}
 .sets .set-more{display:none}
@@ -1362,11 +1400,6 @@ main.src[data-role=viewer] .src-edit{display:none}
 .profile-btn{font-weight:var(--fw-medium)}
 .profile-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .profile-role{flex:none;font-weight:var(--fw-regular);font-size:var(--fs-2);color:var(--ink2);border:1px solid var(--ring);border-radius:var(--r-pill);padding:0 var(--sp-2)}
-@media (max-width:700px){
-  /* on a phone, a row of its own under the brand and the menus (the tabs under it) */
-  header.topbar .profile-pick{order:4;width:100%}
-  .profile-btn.menu-btn{max-width:100%}
-}
 /* "More about this" (#176): the rest of a card's explanation behind one toggle, the same on every page (util.js
    moreAbout(), or the same <details class="more"> written in the page). Closed, it's one short line under the lead. */
 details.more{margin:-4px 0 var(--sp-2);color:var(--muted);font-size:var(--fs-2)}
@@ -1577,13 +1610,13 @@ main.acct.guide{max-width:640px}
    (--bar-h, its height, set by nav.js), a scrolling table's header row and a Settings group's sticky Save bar (2.4.11);
    a button in a table's cell that reads as the cell's text (.cell-btn) and the ✎, 24 px targets (2.5.8) */
 .menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-html{scroll-padding-top:calc(var(--bar-h,0px) + 8px)}
-html:has(.sets section[data-dirty]){scroll-padding-bottom:72px}
+html{scroll-padding-top:calc(var(--bar-h,0px) + 8px);scroll-padding-bottom:var(--tabbar,0px)}   /* and clear of a phone's tabs (#268) */
+html:has(.sets section[data-dirty]){scroll-padding-bottom:calc(72px + var(--tabbar,0px))}
 /* toasts over the page (#362): what takes focus is scrolled clear of them (--toasts-h, their height, util.js), above
    Settings' Save bar while it shows, and the page's foot can scroll up above them */
-html:has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + var(--sp-5))}
-html:has(body>.sg-toasts .sg-toast) body{padding-bottom:calc(var(--toasts-h,0px) + var(--sp-5))}
-html:has(.sets section[data-dirty]):has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + 72px + var(--sp-2))}
+html:has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + var(--sp-5) + var(--tabbar,0px))}
+html:has(body>.sg-toasts .sg-toast) body{padding-bottom:calc(var(--toasts-h,0px) + var(--sp-5) + var(--tabbar,0px))}
+html:has(.sets section[data-dirty]):has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + 72px + var(--sp-2) + var(--tabbar,0px))}
 .tablewrap{scroll-padding-top:34px}
 .cell-btn{border:0;background:none;padding:3px 0;margin:-3px 0;min-width:var(--sp-5);font:inherit;color:inherit;text-align:inherit;cursor:pointer;border-radius:var(--r-sm)}   /* 24 px tall, the row as before (2.5.8) */
 .cell-btn:hover{text-decoration:underline}
