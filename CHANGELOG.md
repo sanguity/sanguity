@@ -1079,7 +1079,8 @@ Everything on `main` so far; it becomes the first tagged release.
   the arrow keys, and a tab picked opens as a View Transition, at once when less motion is asked for.
 - **Tabs that don't fit go under More** (#265): as many tabs as fit, in the profile's order, the rest under **More**,
   which ends with **Edit tabs…** (Settings → Tabs). The tab shown always stays in the bar, taking the last place.
-  All five fit at 1,100 px and wider; on a phone they're the bar at the screen's foot (#268).
+  All five fit at 1,100 px and wider (all six at 1,400 px since the Medications tab, #275); on a phone they're the
+  bar at the screen's foot (#268).
 - **The drawer: one layout for every record, docked on wide screens** (#270): every kind of record (and a journal
   entry, a cycle record, a medication's history) opens the same way: its kind's icon in its colour, the title, one
   line of what it is and when, and a ⋯ menu with the corrections (Hide, Rename, Change category, Fix date, Merge…; a
@@ -1413,6 +1414,13 @@ Everything on `main` so far; it becomes the first tagged release.
   within its panel), and the labs with no panel, or alone in theirs, in Other, last, collapsed in the list until
   opened. Above the charts, the view switch, Show on charts, a Legend and an ⓘ (the drag hint and how to zoom) share
   one row, with the not-medical-advice caption under it.
+- **A Medications tab** (#275): medications showed in six places, but only a medication's drawer held one, so
+  nothing answered "what is she taking now?". A tab after Body and activity has **Today** (each of today's doses,
+  logged with Taken, Taken late or Skipped: the dose log lives here, and Add → Log a dose opens it), **Current** (since
+  when, as listed, the last fill, with a link to its claims on Costs, and the reminders' times; a row opens its
+  drawer), **Past** (closed until opened) and the medications over the records bar's period. It's hideable like any
+  tab; a tab layout saved before it gets it after Body and activity, not at the end, on the server and in a copy kept
+  offline. With six tabs, a phone's bar shows four and More, and from 1,100 px down some go under More.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

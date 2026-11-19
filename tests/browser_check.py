@@ -627,8 +627,31 @@ def pick_profile(pg, value=None, label=None):
 
 def tab_click(pg, sel):
     """Click a records tab (nav.js's links, #264) and let its View Transition make the change: the page changes as the
-    frame after the click is drawn, so two frames on, it has."""
-    pg.click(sel)
+    frame after the click is drawn, so two frames on, it has. A tab under More (#265: on a phone, where six tabs are
+    four and More since #275) is picked from it, More opened first, as a person would. Asked once the bar has fitted its
+    tabs to the room it has, a few frames after a resize or the drawer closing (till then a tab can still look to be in
+    the bar, or be under More with More put away), and More clicked when the tab is under it twice running, 150 ms
+    apart (a resized window switches its menus between a phone's sheets and popovers as it settles)."""
+    tab, more, last = pg.locator(sel), pg.locator("#tabMoreBtn"), None
+    frames = "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))"
+    pg.evaluate(frames)
+    under = "s => !!document.querySelector(s).closest('#tabMoreList')"
+    for _ in range(40):
+        if tab.is_visible():
+            break
+        now = "more" if pg.evaluate(under, sel) and more.is_visible() else "wait"
+        if now == last == "more":
+            more.click()
+            for _ in range(20):
+                if tab.is_visible():
+                    break
+                pg.wait_for_timeout(150)
+            else:
+                pg.keyboard.press("Escape")   # (it didn't open: the bar was still changing) again
+            now = None
+        last = now
+        pg.wait_for_timeout(150)
+    tab.click()
     pg.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
 
 
@@ -2006,7 +2029,9 @@ def main():
             expect = {
                 "overview": "document.querySelectorAll('#view-overview .tile').length",
                 "health": "[...document.querySelectorAll('#view-health svg')].filter(s => s._draw && s.childNodes.length > 3).length",
-                "timeline": "document.querySelectorAll('#tl circle.ev').length + ',' + document.querySelectorAll('#list .tl-row').length",
+                # #275: the current medications listed, and the lane's bars
+                "medications": "document.querySelectorAll('#view-medications .med-rows li').length + ',' + document.querySelectorAll('#view-medications svg.med-lane .medbar').length",
+                "timeline":"document.querySelectorAll('#tl circle.ev').length + ',' + document.querySelectorAll('#list .tl-row').length",
                 "heatmap": "document.querySelectorAll('#hm rect.cell').length + ',' + +!document.getElementById('labsHeatmap').hidden + ',' + +document.getElementById('labsChart').hidden",
                 "labs": "[...document.querySelectorAll('#charts .chart svg:not(.icon)')].filter(s => s.childNodes.length > 3).length + ',' + +!document.getElementById('labsChart').hidden",
                 "costs": "document.querySelectorAll('#view-costs .tile').length",
@@ -5048,6 +5073,119 @@ def main():
                 sweep235("summary preview with the medication log", "#preview")
                 check("the medication log's form, drawer, today's doses, Labs row and summary fit 375 px, light and dark", not bad235, bad235[:6])
                 check("…and pass axe-core's WCAG A and AA rules at 1400 and 375 px, light and dark", not axe235, axe235[:6])
+
+                # ---- the Medications tab (#275): Today (the dose log's rows, #235, which live here), Current (since,
+                # as listed, the last fill and its claims on Costs, the reminder's times; a row opens its drawer), Past
+                # (closed: the demo's Examplocin, stopped) and the medications over the period, each mark opening what
+                # it is. A dose logged there draws it again in place; Add → Log a dose lands on its Today, or on the
+                # Overview's while the tab is hidden. At 1400 and 375 px, light and dark: fits, axe
+                page.goto(base + "/")
+                page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                js("setPeriod('all')")
+                tab_click(page, "#tab-medications")
+                settle(300)
+                med275 = js("""(() => { const v = document.getElementById('view-medications'), rows = s => [...v.querySelectorAll(s + ' li.med-row')];
+                    const facts = r => [...r.children].map(c => c.textContent), span = [Math.min(...MEDS.map(medFrom)), Math.max(...MEDS.map(medTo))];
+                    return {h2: [...v.querySelectorAll('h2')].map(h => h.textContent), cur: rows('div.card').map(facts), past: rows('.med-past').map(facts),
+                      open: v.querySelector('.med-past')?.open, today: [...v.querySelectorAll('#medToday .dose-today .dose-med')].map(b => b.textContent),
+                      lane: v.querySelectorAll('svg.med-lane text.medname').length, text: v.innerText,
+                      want: [MEDS.filter(mrCurrent).length, MEDS.filter(m => !mrCurrent(m)).length, medsShown(...periodWindow(span), '').length]}; })()""")
+                row275 = next((r for r in med275["cur"] if r[0] == cur["name"]), [])
+                check("Medications tab (#275): Today, Current and Past (closed) and the medications over the period; a row for each medication "
+                      "the records list as current, the rest under Past, a row each in the lane",
+                      med275["h2"] == ["Today", f"Current ({med275['want'][0]})", f"Past ({med275['want'][1]})", "Over all the records"]
+                      and len(med275["cur"]) == med275["want"][0] and len(med275["past"]) == med275["want"][1] >= 1 and med275["open"] is False
+                      and med275["lane"] == med275["want"][2] >= len(med275["cur"]) and cur["name"] in med275["today"], {k: v for k, v in med275.items() if k != "text"})
+                check("…the current medication with a reminder: since when, as listed, its last fill and the reminder's times, each fact named",
+                      len(row275) == 5 and row275[1].startswith("Since ") and row275[2].startswith("As listed ") and row275[3].startswith("Last fill ")
+                      and row275[4].startswith("Reminders 8:00 AM and 8:00 PM"), row275)
+                check("…never saying a dose was due or a medication should be taken", not re.search(r"(?i)\b(due|should|missed|overdue|adherence)\b", med275["text"]),
+                      med275["text"][:300])
+                # a row opens the medication's drawer; Escape takes focus back to it
+                page.locator("#view-medications li.med-row .cell-btn", has_text=cur["name"]).first.click()
+                settle(300)
+                opened275 = js("[document.getElementById('dtitle').textContent, document.getElementById('dsub').textContent]")
+                page.keyboard.press("Escape")
+                settle(300)
+                check("…a row opens the medication's history in the drawer, and Escape takes focus back to its row",
+                      opened275[0] == cur["name"] and opened275[1].startswith("Medication history")
+                      and js("w => document.activeElement.matches('#view-medications li.med-row .cell-btn') && document.activeElement.textContent === w", cur["name"]),
+                      [opened275, js("document.activeElement.outerHTML.slice(0, 120)")])
+                # Today: one click logs a dose, drawn again in place, focus kept in its row (#271); removed after
+                ids275 = js("(DATA.doses || []).map(d => d.id)")
+                js("window.sg275 = 1")
+                row = page.locator("#medToday .dose-today", has=page.locator(".dose-quick")).filter(has_text=cur["name"]).last
+                row.locator(".dose-quick button:text-is('Taken')").click()
+                page.wait_for_function("n => (DATA.doses || []).length === n + 1", arg=len(ids275), timeout=20000)
+                settle(300)
+                logged275 = js("""w => { const a = document.activeElement, r = a.closest('#medToday .dose-today');
+                    return [window.sg275 === 1, state.tab, !!r && r.querySelector('.dose-med').textContent === w,
+                      [...document.querySelectorAll('#medToday .dose-today')].some(r => r.querySelector('.dose-med').textContent === w && /Taken · /.test(r.querySelector('.dose-got')?.textContent || ''))]; }""", cur["name"])
+                check("…Today: Taken logs a dose now, its row saying so, without the page loading again and focus kept in the row (#235, #271)",
+                      logged275 == [True, "medications", True, True], logged275)
+                js("""async ids => { for (const d of DATA.doses.filter(d => !ids.includes(d.id))) {
+                    const r = await api(`profiles/${PROFILE.id}/medications/doses/${d.id}`, {method: 'DELETE'}); storePut('doses', await r.json()); } }""", ids275)
+                # the lane: a medication's bar says what it is, and opens it
+                bar275 = page.locator("#view-medications svg.med-lane .medbar").first
+                bar275.scroll_into_view_if_needed()
+                bar275.hover()
+                settle(150)
+                tip275 = page.inner_text("#tip")
+                which275 = js("() => MEDS[+document.querySelector('#view-medications svg.med-lane .medbar').dataset.med].name")
+                bar275.click()
+                settle(300)
+                check("…the lane: a medication's bar says what the records list when pointed at, and opens its history",
+                      tip275.startswith(which275) and js("document.getElementById('dtitle').textContent") == which275, [tip275[:120], which275])
+                page.keyboard.press("Escape")
+                settle(200)
+                # Past, opened: a stopped medication's row opens it too
+                page.click("#view-medications .med-past > summary")
+                settle(200)
+                past275 = page.locator("#view-medications .med-past li.med-row .cell-btn").first
+                past_name = past275.inner_text()
+                past275.click()
+                settle(300)
+                check("…Past opens, and a stopped medication's row opens its history", js("document.getElementById('dtitle').textContent") == past_name, past_name)
+                page.keyboard.press("Escape")
+                settle(200)
+                bad275, axe275, theme275 = [], [], js("document.documentElement.dataset.theme || null")
+                for width in (1400, 375):   # (Past left open)
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    for theme in ("light", "dark"):
+                        js("t => { document.documentElement.dataset.theme = t; }", theme)
+                        settle(250)
+                        if width < 400:
+                            bad275.extend(phone_fits(page, f"Medications tab ({theme})"))
+                        axe275.extend(axe_check(page, f"Medications tab, {width} px, {theme}")[0])
+                page.set_viewport_size({"width": 1400, "height": 900})
+                js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme275)
+                check("…the tab fits 375 px and passes axe-core's WCAG A and AA rules at 1400 and 375 px, in light and dark", not bad275 and not axe275, (bad275 + axe275)[:6])
+                # a fill's claims on Costs: the link, for each current medication with pharmacy claims, opens Costs with them listed
+                links275 = js("[document.querySelectorAll('#view-medications a.med-costs').length, MEDS.filter(mrCurrent).filter(m => medClaims(m).length).length]")
+                costs275 = None
+                if links275[0]:
+                    key275 = js("() => MEDS.filter(mrCurrent).find(m => medClaims(m).length).key")
+                    page.locator("#view-medications a.med-costs").first.click()
+                    settle(400)
+                    costs275 = js("""k => [state.tab, costState.q, document.activeElement.matches('#costTable input.search'),
+                        [...document.querySelectorAll('#costTable tbody tr')].length > 0 && [...document.querySelectorAll('#costTable tbody tr')].every(r => r.textContent.toLowerCase().includes(k))]""", key275)
+                    js("costState.q = ''; costState.cat = ''")
+                check("…a current medication's last fill links to its claims on Costs when it has pharmacy claims: Costs opens with them listed, its search focused",
+                      links275[0] == links275[1] and (costs275 is None or costs275[0] == "costs" and costs275[2] and costs275[3]), [links275, costs275])
+                # Add → Log a dose: on the Medications tab's Today, its first button focused; with the tab hidden, the Overview's
+                js("switchTab('overview')")
+                menu_click(page, "#doseLink")
+                settle(400)
+                dose275 = js("[state.tab, location.hash, !!document.activeElement.closest('#medToday .dose-quick')]")
+                js("api('profiles/1/settings/tabs', {method: 'PUT', body: JSON.stringify({value: {order: CFG.tabs.order, hidden: ['medications']}})})")
+                page.reload()
+                page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                menu_click(page, "#doseLink")
+                settle(400)
+                dose275.append(js("[state.tab, location.hash, !!document.activeElement.closest('#ovDoses'), document.getElementById('tab-medications').hidden]"))
+                js("api('profiles/1/settings/tabs', {method: 'DELETE'})")
+                check("…Add → Log a dose opens the tab's Today, its first button focused; while the tab is hidden, the Overview's doses",
+                      dose275 == ["medications", "#medications", True, ["overview", "#overview", True, True]], dose275)
                 page.goto(base + "/")
                 page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
                 js("setRange(dayTs('2025-01-01'), dayTs('2025-12-31')); switchTab('timeline')")
@@ -5445,7 +5583,7 @@ def main():
             if AXE_JS and not js("typeof axe === 'object' && typeof axe.run === 'function'"):
                 js(AXE_JS)
             outline = []
-            for t in ("overview", "health", "timeline", "labs", "costs"):
+            for t in ("overview", "health", "medications", "timeline", "labs", "costs"):
                 js(f"switchTab('{t}')")
                 settle(300)
                 outline.append([t, js("[...document.querySelectorAll('main h1')].filter(h => !h.closest('[hidden]')).map(h => h.textContent)"),
@@ -5887,7 +6025,7 @@ def main():
             check("…and kept on a reload, the date boxes showing them", js("[state.preset, document.getElementById('from').value, !document.getElementById('dates').hidden]") == ["custom", start, True],
                   js("[state.preset, document.getElementById('from').value, !document.getElementById('dates').hidden]"))
             page.set_viewport_size({"width": 375, "height": 800})
-            for t in ("health", "timeline", "labs", "heatmap", "costs"):
+            for t in ("health", "medications", "timeline", "labs", "heatmap", "costs"):
                 open_tab(t)
                 settle(300)
                 fits = js("document.documentElement.scrollWidth")
@@ -6151,7 +6289,7 @@ def main():
                 half.append(at)
                 if how == "focus":
                     page.keyboard.press("Shift")
-                    js("() => { document.getElementById('tab-timeline').focus(); }")
+                    js("() => { document.getElementById('tab-medications').focus(); }")   # the tab after it (#275)
                     js(half_out)
                     page.keyboard.press("Shift+Tab")
                 else:
@@ -7078,7 +7216,7 @@ def main():
             # ---- profile switcher: the second profile has no records yet, and its own saved view
             check("profile switcher shown", page.is_visible("#profileMenuBtn") and js("document.getElementById('profile').options.length === 2"))
             js("applyPreset('30d')")
-            # (#425: its own tab layout, Costs first and Body and activity hidden, applied though it has no records)
+            # (#425: its own tab layout, Costs first and Body and activity hidden, applied though it has no records; saved without Medications, which it gets after Body and activity, #275)
             tabs425 = "[...document.querySelectorAll('header .tabs > a[id^=tab-], #tabMoreList > a[id^=tab-]')].filter(a => !a.hidden).map(a => a.id.slice(4)).join(',')"
             put425 = "v => api('profiles/2/settings/tabs', {method: v ? 'PUT' : 'DELETE', ...(v ? {body: JSON.stringify({value: v})} : {})}).then(r => r.status)"
             js(f"({put425})({{order: ['costs', 'overview', 'health', 'timeline', 'labs'], hidden: ['health']}})")
@@ -7088,8 +7226,8 @@ def main():
                 .then(() => { localStorage.removeItem('ht-theme'); localStorage.removeItem('ht-theme-default'); })""")
             pick_profile(page, label="Second person (owner)")
             page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
-            check("an empty profile's tab layout is applied on the records page, Costs first and Body and activity hidden, as the other pages show it (#425)",
-                  js(tabs425) == "costs,overview,timeline,labs", js(tabs425))
+            check("an empty profile's tab layout is applied on the records page, Costs first and Body and activity hidden, as the other pages show it (#425), Medications in its place (#275)",
+                  js(tabs425) == "costs,overview,medications,timeline,labs", js(tabs425))
             check("…and the account's theme, dark, as a profile with records shows it (#430)",
                   js("[document.documentElement.dataset.theme, localStorage.getItem('ht-theme-default')]") == ["dark", "dark"],
                   js("[document.documentElement.dataset.theme, localStorage.getItem('ht-theme-default')]"))
@@ -9294,14 +9432,15 @@ def main():
             page.goto(base + "/settings.html?profile=1#sec-tabs")
             page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
             page.uncheck("#sec-tabs input[data-tab=costs]")
-            page.click("#sec-tabs button[aria-label='Move Timeline up']")
+            for _ in range(2):   # past Medications (#275) and Body and activity
+                page.click("#sec-tabs button[aria-label='Move Timeline up']")
             page.click("#setBar button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-tabs .set-msg').textContent.startsWith('Saved')", timeout=10000)
             shown_tabs = "[...document.querySelectorAll('.tabs a[id^=tab-]')].filter(b => !b.hidden).map(b => b.id.slice(4))"
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             check("tabs: a hidden tab leaves the bar, the others in their new order",
-                  js(shown_tabs) == ["overview", "timeline", "health", "labs"], js(shown_tabs))
+                  js(shown_tabs) == ["overview", "timeline", "health", "medications", "labs"], js(shown_tabs))
             check("…a saved view naming it opens the first shown tab", js("state.tab") == "overview" and js("!document.getElementById('view-overview').hidden"), js("state.tab"))
             # the tabs are links (#264): Tab goes from one to the next shown, the hidden one skipped, and Enter opens it
             page.focus("#tab-overview")
@@ -9313,8 +9452,8 @@ def main():
                   and js("[state.tab, location.hash, document.activeElement.id]") == ["timeline", "#timeline", "tab-timeline"],
                   [stop, js("[state.tab, location.hash, document.activeElement.id]")])
             page.goto(base + "/sources.html?profile=1")
-            page.wait_for_function("[...document.querySelectorAll('.tabs a[id^=tab-]')].filter(b => !b.hidden).length === 4", timeout=10000)
-            check("…the bar on the other pages has the profile's tabs too, each a link to it", js(shown_tabs) == ["overview", "timeline", "health", "labs"]
+            page.wait_for_function("[...document.querySelectorAll('.tabs a[id^=tab-]')].filter(b => !b.hidden).length === 5", timeout=10000)
+            check("…the bar on the other pages has the profile's tabs too, each a link to it", js(shown_tabs) == ["overview", "timeline", "health", "medications", "labs"]
                   and js("document.getElementById('tab-labs').getAttribute('href')") == "./?profile=1#labs",
                   [js(shown_tabs), js("document.getElementById('tab-labs').getAttribute('href')")])
             page.goto(base + "/")
@@ -9335,7 +9474,7 @@ def main():
                       js("[state.tab, state.labsView]"))
             page.goto(base + "/settings.html?profile=1#sec-tabs")
             page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
-            for t in ("overview", "health", "labs"):
+            for t in ("overview", "health", "medications", "labs"):
                 page.uncheck(f"#sec-tabs input[data-tab={t}]")
             check("…and the last shown tab can't be hidden", js("document.querySelector('#sec-tabs input[data-tab=timeline]').disabled"))
             page.click("#sec-tabs button:text-is('Reset to defaults')")
@@ -9345,9 +9484,9 @@ def main():
             page.wait_for_function("document.querySelector('#sec-overview .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
-            check("…Reset to defaults shows every tab again", js(shown_tabs) == ["overview", "health", "timeline", "labs", "costs"], js(shown_tabs))
+            check("…Reset to defaults shows every tab again", js(shown_tabs) == ["overview", "health", "medications", "timeline", "labs", "costs"], js(shown_tabs))
             # a layout saved before #172, with Trends and Lab heatmap: Labs takes the first one's place, and stays shown
-            # while either was; the Settings page lists the five tabs
+            # while either was; the Settings page lists the six tabs (Medications after Body and activity, #275)
             db = dbm.connect()
             db.execute("INSERT INTO settings(key, profile_id, user_id, value, sealed, changed, changed_by) VALUES('tabs', 1, NULL, ?, NULL, ?, NULL)",
                        (json.dumps({"order": ["overview", "heatmap", "health", "timeline", "labs", "costs"], "hidden": ["labs", "costs"]}), int(time.time())))
@@ -9355,25 +9494,48 @@ def main():
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             check("…a layout saved with Trends and Lab heatmap shows Labs where the heatmap was, shown as it was",
-                  js(shown_tabs) == ["overview", "labs", "health", "timeline"] and js("CFG.tabs") == {"order": ["overview", "labs", "health", "timeline", "costs"], "hidden": ["costs"]},
+                  js(shown_tabs) == ["overview", "labs", "health", "medications", "timeline"] and js("CFG.tabs") == {"order": ["overview", "labs", "health", "medications", "timeline", "costs"], "hidden": ["costs"]},
                   [js(shown_tabs), js("CFG.tabs")])
             page.goto(base + "/settings.html?profile=1#sec-tabs")
             page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
-            check("…and Settings lists the five tabs, Labs shown", js("[...document.querySelectorAll('#sec-tabs input[data-tab]')].map(i => [i.dataset.tab, i.checked])")
-                  == [["overview", True], ["labs", True], ["health", True], ["timeline", True], ["costs", False]],
+            check("…and Settings lists the six tabs, Labs shown", js("[...document.querySelectorAll('#sec-tabs input[data-tab]')].map(i => [i.dataset.tab, i.checked])")
+                  == [["overview", True], ["labs", True], ["health", True], ["medications", True], ["timeline", True], ["costs", False]],
                   js("[...document.querySelectorAll('#sec-tabs input[data-tab]')].map(i => [i.dataset.tab, i.checked])"))
             page.click("#sec-tabs button:text-is('Reset to defaults')")
             page.wait_for_function("document.querySelector('#sec-tabs .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
+            # ---- #275: a layout saved before the Medications tab, Body and activity moved last and hidden: Medications
+            # comes after it, shown, not at the end of the rest. As the server reads it (the top bar, CFG), and as nav.js
+            # lays out one it's given from before (an offline copy's settings): after Body and activity wherever that is
+            db = dbm.connect()
+            db.execute("DELETE FROM settings WHERE key='tabs' AND profile_id=1")
+            db.execute("INSERT INTO settings(key, profile_id, user_id, value, sealed, changed, changed_by) VALUES('tabs', 1, NULL, ?, NULL, ?, NULL)",
+                       (json.dumps({"order": ["costs", "overview", "labs", "timeline", "health"], "hidden": ["health"]}), int(time.time())))
+            db.close()
+            page.reload()
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
+            got275 = [js(shown_tabs), js("CFG.tabs"),
+                      js("(() => { const o = SgNav.layout({order: ['costs', 'overview', 'health', 'labs', 'timeline'], hidden: []}).order; applyTabs(CFG.tabs); return o; })()")]
+            check("a layout saved before the Medications tab gets it after Body and activity, shown though that's hidden, as the server reads it "
+                  "and as nav.js lays out one kept offline (#275)",
+                  got275 == [["costs", "overview", "labs", "timeline", "medications"],
+                             {"order": ["costs", "overview", "labs", "timeline", "health", "medications"], "hidden": ["health"]},
+                             ["costs", "overview", "health", "medications", "labs", "timeline"]], got275)
+            db = dbm.connect()
+            db.execute("DELETE FROM settings WHERE key='tabs' AND profile_id=1")
+            db.close()
+            page.reload()
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             js("switchTab('overview')")
             # ---- #265: the tabs that don't fit go under More, in the profile's order, More ending with Edit tabs…; the tab
-            # shown stays in sight, taking the last place there is; at 1400 and 1100 px all five fit
+            # shown stays in sight, taking the last place there is; at 1400 px all six fit (all five did at 1100 px before
+            # Medications, #275)
             fit_js = """() => { const bar = document.querySelector('header .tabs'), more = document.getElementById('tabMore');
                 return {bar: [...bar.querySelectorAll(':scope > a')].filter(a => a.checkVisibility()).map(a => a.id.slice(4)),
                   more: more.checkVisibility() ? [...document.querySelectorAll('#tabMoreList [role=menuitem]')].map(a => a.id.replace('tab-', '')) : null,
                   current: document.querySelector('.tabs [aria-current=page]').id.slice(4), fits: bar.scrollWidth <= bar.clientWidth && bar.getBoundingClientRect().right <= innerWidth}; }"""
-            fitted, five = {}, ["overview", "health", "timeline", "labs", "costs"]
+            fitted, six = {}, ["overview", "health", "medications", "timeline", "labs", "costs"]
             for w in (1400, 1100, 900):
                 page.set_viewport_size({"width": w, "height": 900})
                 for t in ("overview", "costs", "timeline"):
@@ -9381,11 +9543,11 @@ def main():
                     settle(150)
                     f = js(fit_js)
                     every = f["bar"] + [x for x in (f["more"] or []) if x != "editTabs"]
-                    ok = f["fits"] and f["current"] == t and t in f["bar"] and sorted(every) == sorted(five) and [x for x in every if x != t] == [x for x in five if x != t] and (
-                        f["more"] is None and f["bar"] == five if w > 1000 else bool(f["more"]) and f["more"][-1] == "editTabs" and len(f["bar"]) < 5)
+                    ok = f["fits"] and f["current"] == t and t in f["bar"] and sorted(every) == sorted(six) and [x for x in every if x != t] == [x for x in six if x != t] and (
+                        f["more"] is None and f["bar"] == six if w > 1200 else bool(f["more"]) and f["more"][-1] == "editTabs" and len(f["bar"]) < 6)
                     if not ok:
                         fitted[f"{w} px, {t}"] = f
-            check("tabs (#265): at 1400 and 1100 px all five in the bar; at 900 px those that don't fit under More, in order, ending with Edit tabs…, the tab shown always in the bar",
+            check("tabs (#265): at 1400 px all six in the bar; at 1100 and 900 px those that don't fit under More, in order, ending with Edit tabs…, the tab shown always in the bar",
                   not fitted, fitted)
             js("switchTab('costs')")
             settle(150)
@@ -9465,8 +9627,8 @@ def main():
                   not more_whole, more_whole)
             js("switchTab('overview')")
             page.set_viewport_size({"width": 1400, "height": 900})
-            # #398: Edit tabs… is always in reach, in the profile menu, whether More shows or not (at 1400 px it doesn't, nor
-            # on a phone with five tabs); it lands on Settings → Tabs with focus on its one heading, the palette finds it by
+            # #398: Edit tabs… is always in reach, in the profile menu, whether More shows or not (at 1400 px it doesn't; on a
+            # phone with six tabs it does, four and More, #275); it lands on Settings → Tabs with focus on its one heading, the palette finds it by
             # "edit tabs", and a tab hidden there and saved leaves the top bar at once, without the page loading again
             edit_tabs = {}
             for w in (1400, 375):
@@ -9494,28 +9656,28 @@ def main():
             gone = js("[window.__same398, [...document.querySelectorAll('header .tabs a[id^=tab-], #tabMoreList a[id^=tab-]')].filter(a => !a.hidden).map(a => a.id.slice(4))]")
             page.click("#sec-tabs button:text-is('Reset to defaults')")
             page.wait_for_function("!document.getElementById('tab-costs').hidden", timeout=10000)
-            check("Edit tabs… (#398): from the profile menu at 1400 and 375 px (no More there), on Settings → Tabs with focus on its one heading; "
+            check("Edit tabs… (#398): from the profile menu at 1400 px (no More there) and 375 px (More there), on Settings → Tabs with focus on its one heading; "
                   "the palette finds it by “edit tabs”; a tab hidden and saved there leaves the top bar at once, and Reset brings it back",
-                  all(not m and f == ["sec-tabs-hd", "Tabs", 1] for m, f in edit_tabs.values()) and any(t.startswith("Tabs") for t in found_tabs)
-                  and gone == [True, ["overview", "health", "timeline", "labs"]], [edit_tabs, found_tabs, gone])
+                  [m for m, _ in edit_tabs.values()] == [False, True] and all(f == ["sec-tabs-hd", "Tabs", 1] for _, f in edit_tabs.values()) and any(t.startswith("Tabs") for t in found_tabs)
+                  and gone == [True, ["overview", "health", "medications", "timeline", "labs"]], [edit_tabs, found_tabs, gone])
             # #415: the profile's tabs follow a switch made on a page other than the records page (Sources, Sharing,
-            # Account): My records' Costs hidden and Labs moved up, Second person's five as they are
+            # Account): My records' Costs hidden and Labs moved up, Second person's six as they are
             tabs415 = "[...document.querySelectorAll('header .tabs > a[id^=tab-], #tabMoreList > a[id^=tab-]')].filter(a => !a.hidden).map(a => a.id.slice(4)).join(',')"
             put415 = "v => api('profiles/1/settings/tabs', {method: v ? 'PUT' : 'DELETE', ...(v ? {body: JSON.stringify({value: v})} : {})}).then(r => r.status)"
             js(f"({put415})({{order: ['overview', 'health', 'labs', 'timeline', 'costs'], hidden: ['costs']}})")
             switched415, filled415 = {}, "!!document.querySelector('#profileMenuList [data-pid]')"
             for p in ("sources.html", "sharing.html", "account.html"):
                 page.goto(base + f"/{p}?profile=1")
-                page.wait_for_function(f"{filled415} && {tabs415} === 'overview,health,labs,timeline'", timeout=20000)
+                page.wait_for_function(f"{filled415} && {tabs415} === 'overview,health,medications,labs,timeline'", timeout=20000)
                 pick_profile(page, "2")
                 try:
-                    page.wait_for_function(f"{tabs415} === 'overview,health,timeline,labs,costs'", timeout=10000)
+                    page.wait_for_function(f"{tabs415} === 'overview,health,medications,timeline,labs,costs'", timeout=10000)
                 except Exception:
                     pass
                 switched415[p] = js(tabs415)
             js(f"({put415})(null)")
             check("…switching profile on Sources, Sharing or Account shows the new profile's tabs, not the last one's (#415)",
-                  all(v == "overview,health,timeline,labs,costs" for v in switched415.values()), switched415)
+                  all(v == "overview,health,medications,timeline,labs,costs" for v in switched415.values()), switched415)
             # #415: the page's own address always says the profile shown, so one opened at / keeps it on a reload after
             # another browser tab has switched (this browser's last profile changing under it)
             js("localStorage.setItem('ht-profile', '1')")
@@ -10457,7 +10619,7 @@ def main():
                   js(pal_aria) == [True, "combobox", "true", "listbox", "palO0", "true", 1]
                   and {"Log a dose", "Upload files", "New share link"} <= {t for g, t in empty if g == "Actions"}
                   and bool({"Dark mode", "Light mode"} & {t for g, t in empty if g == "Actions"})
-                  and [t for g, t in empty if g == "Records tabs"] == ["Overview", "Body and activity", "Timeline", "Labs", "Costs"]
+                  and [t for g, t in empty if g == "Records tabs"] == ["Overview", "Body and activity", "Medications", "Timeline", "Labs", "Costs"]
                   and [t for g, t in empty if g == "Pages"] == ["Sources", "Sharing", "Settings", "Account", "Admin", "Getting started"], [js(pal_aria), empty])
             page.keyboard.press("Escape")
             check("…Escape closes it, focus back where it was", not js("document.querySelector('dialog.palette').open") and js("document.activeElement.id") == "tab-overview")
@@ -10494,10 +10656,10 @@ def main():
                 words403[q] = [js(marked), [t for g, t in js(pal_found)]]
             page.keyboard.press("Escape")
             check("…everyday words find the right places: “dob” and “date of birth” About this person's birth date, “doctor” Share links and the Visit summary, "
-                  "“medication” Log a dose, “kg” Units",
+                  "“medication” the Medications tab (#275), Log a dose after it, “kg” Units",
                   words403["dob"][0] == words403["date of birth"][0] == ["Pages and settings", "Birth date, sex and height"]
                   and {"Share links", "Visit summary"} <= set(words403["doctor"][1]) and words403["share doctor"][0] == ["Pages and settings", "Share links"]
-                  and words403["medication"][0] == ["Actions", "Log a dose"] and words403["kg"][0] == ["Pages and settings", "Units"], words403)
+                  and words403["medication"][0] == ["Records tabs", "Medications"] and "Log a dose" in words403["medication"][1] and words403["kg"][0] == ["Pages and settings", "Units"], words403)
             # opened from inside a menu, its item gone with the menu: Escape puts focus on the menu's button
             back403 = []
             for key in ("/", "Control+k"):
@@ -10599,19 +10761,19 @@ def main():
             check("…off the records page, labs and events come from the API once it opens; a lab chosen there opens on the records page, charted, focus on it",
                   ["Labs", "Hemoglobin"] in off and js("[location.search, state.sel.has('Hemoglobin'), document.activeElement.matches('#charts svg.pz')]") == ["?profile=1", True, True],
                   [off[:4], js("[location.href, document.activeElement.outerHTML.slice(0, 80)]")])
-            # (#412) on a phone Add's list is in its sheet, and still the palette's: “medication” finds Log a dose, “upload”
+            # (#412) on a phone Add's list is in its sheet, and still the palette's: “dose” finds Log a dose, “upload”
             # Upload files; “child” finds New profile (its words, #403)
             page.set_viewport_size({"width": 375, "height": 667})
             settle(300)
             phone412 = {}
             pal("")
-            for q in ("medication", "upload", "child"):
+            for q in ("dose", "upload", "child"):   # ("medication" finds the Medications tab first since #275)
                 pal(q, None)
                 phone412[q] = js(marked)
             page.keyboard.press("Escape")
             page.set_viewport_size({"width": 1400, "height": 900})
-            check("…on a phone (375 px), Add's actions are found from its sheet: “medication” Log a dose, “upload” Upload files; and “child” New profile (#412)",
-                  phone412 == {"medication": ["Actions", "Log a dose"], "upload": ["Actions", "Upload files"], "child": ["Actions", "New profile"]}, phone412)
+            check("…on a phone (375 px), Add's actions are found from its sheet: “dose” Log a dose, “upload” Upload files; and “child” New profile (#412)",
+                  phone412 == {"dose": ["Actions", "Log a dose"], "upload": ["Actions", "Upload files"], "child": ["Actions", "New profile"]}, phone412)
             # (#412) while another page's records are on their way, Enter waits for them: "cre" opens Creatinine once
             # they're in, not New profile ("create"), the best of what was there
             page.goto(base + "/settings.html?profile=1")
@@ -10732,7 +10894,7 @@ def main():
                 profiles: [...document.querySelectorAll('#profileMenuList [role=menuitemradio]')].map(b => [b.childNodes[1].textContent, b.querySelector('.menu-note').textContent]),
                 pages: [...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.textContent), one: document.querySelectorAll('#profile').length === 1
                   && !!document.querySelector('header.topbar #profilePick > select#profile[hidden]') && !document.querySelector('main #profile, main label.set-profile')})"""
-            want_bar = {"brand": True, "tabs": ["Overview", "Body and activity", "Timeline", "Labs", "Costs"], "menus": ["profileMenuBtn", "addMenuBtn", "userMenuBtn"],
+            want_bar = {"brand": True, "tabs": ["Overview", "Body and activity", "Medications", "Timeline", "Labs", "Costs"], "menus": ["profileMenuBtn", "addMenuBtn", "userMenuBtn"],
                         "profiles": both, "pages": ["About this person", "Settings", "Edit tabs…", "Sources", "Sharing", "New profile"], "one": True}
             bars = {}
             filled = "!!document.querySelector('#profileMenuList [data-pid]')"
@@ -10743,7 +10905,7 @@ def main():
                 page.wait_for_function(ready, timeout=20000)
                 if js(bar_is) != want_bar:
                     bars[path] = js(bar_is)
-            check("every page has the same top bar: the brand, the profile menu (each profile by name and role, then its pages), the five tabs, Add and your menu (#264)",
+            check("every page has the same top bar: the brand, the profile menu (each profile by name and role, then its pages), the six tabs (Medications since #275), Add and your menu (#264)",
                   not bars, bars)
             page.focus("header .brand-link")
             page.keyboard.press("Tab")
@@ -10811,7 +10973,7 @@ def main():
             # wider, #315; cut short only at 320, its whole name still its button's), then Add and your menu as 44 px icons
             # named by their words. The records tabs are a bar fixed at the screen's foot: each tab an icon and a short name
             # (Body and activity is "Body", its whole name still its link's), at least 44 px each way, the tab shown marked;
-            # five places, every tab while five or fewer are shown; Search 44 px too (#400). Nothing on the page is left under it: scrolled to its
+            # five places, every tab while five or fewer are shown, else four and More (six since #275, Medications "Meds"); Search 44 px too (#400). Nothing on the page is left under it: scrolled to its
             # end the page's last line is above it, and what takes focus at the foot of the page is scrolled clear of it.
             # From the keyboard: the brand, the profile menu, the tabs, then Add and your menu. At 320, 375 and 390 px
             phone_bar = """w => { const r = s => document.querySelector(s).getBoundingClientRect(), bad = [], hd = r('header.topbar'), bar = document.querySelector('header .tabs');
@@ -10825,8 +10987,11 @@ def main():
                 if (document.getElementById('addMenuBtn').textContent.trim() !== 'Add' || !/^demo, your menu$/.test(document.getElementById('userMenuBtn').textContent.trim())) bad.push('the icons unnamed');
                 const b = bar.getBoundingClientRect(), shown = [...bar.querySelectorAll(':scope > a')].filter(a => a.checkVisibility());
                 if (getComputedStyle(bar).position !== 'fixed' || Math.abs(b.bottom - innerHeight) > 1 || b.left !== 0 || Math.abs(b.right - w) > 1) bad.push('the tabs not at the foot: ' + [b.top, b.bottom, b.left, b.right].map(Math.round));
-                const want = Math.min(5, [...document.querySelectorAll('a[id^=tab-]')].filter(a => !a.hidden).length);
-                if (shown.length !== want || document.getElementById('tabMore').checkVisibility()) bad.push('places: ' + shown.length + ' of ' + want);
+                const n = [...document.querySelectorAll('a[id^=tab-]')].filter(a => !a.hidden).length, want = n > 5 ? 4 : n, more = document.getElementById('tabMoreBtn');
+                if (shown.length !== want || more.checkVisibility() !== n > 5) bad.push('places: ' + shown.length + ' of ' + want + (more.checkVisibility() ? ' and More' : ''));
+                if (n > 5) { const x = more.getBoundingClientRect(); if (x.width < 44 || x.height < 44 || x.right > w + 0.5 || !more.querySelector('svg.icon')) bad.push('More ' + Math.round(x.width) + '×' + Math.round(x.height)); }
+                const meds = document.getElementById('tab-medications');
+                if (meds.dataset.short !== 'Meds' || meds.textContent !== 'Medications') bad.push('Medications: ' + meds.textContent);   // (#275)
                 for (const a of shown) { const x = a.getBoundingClientRect(); if (x.width < 44 || x.height < 44 || x.left < 0 || x.right > w || !a.querySelector('svg.icon')) bad.push(a.id + ' ' + Math.round(x.width) + '×' + Math.round(x.height)); }
                 const body = document.getElementById('tab-health');
                 if (body.dataset.short !== 'Body' || getComputedStyle(body.querySelector('.tab-long')).clipPath === 'none' || body.textContent !== 'Body and activity') bad.push('Body: ' + body.textContent);
@@ -10845,7 +11010,7 @@ def main():
                     if (bad := js(phone_bar, w)):
                         rows[f"{path or 'records'} at {w}"] = bad
             check("at 390, 375 and 320 px every page's top bar is one row (the brand, the profile menu, Add and your menu) and the tabs a bar at the screen's foot: "
-                  "five 44 px places each an icon and a short name, the page's end above it (#268, #315)", not rows, rows)
+                  "five 44 px places each an icon and a short name (four tabs and More with six, #275), the page's end above it (#268, #315)", not rows, rows)
             # every tab reachable from the bar, by touch and keyboard, at each width; focus at the foot of the page clear of it
             reach = {}
             for w in (390, 375, 320):
@@ -11435,6 +11600,14 @@ def main():
             zb.goto(base + "/?profile=1")
             zb.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             viewing = zb.evaluate(add_offers)
+            # #275: the Medications tab works for each role: a viewer sees every part and what was logged, with nothing to
+            # log a dose with, there or in a medication's drawer (an editor, below, has both)
+            meds_role = """() => { switchTab('medications'); const v = document.getElementById('view-medications');
+                openMedication(MEDS.find(mrCurrent)); const d = [...document.querySelectorAll('#dbody button')].map(b => b.textContent); closeDrawer();
+                return {tab: state.tab, h2: [...v.querySelectorAll('h2')].map(h => h.textContent.replace(/ \\(\\d+\\)$/, '')).slice(0, 2),
+                  rows: v.querySelectorAll('.med-rows li').length === MEDS.length, lane: v.querySelectorAll('svg.med-lane .medbar').length > 0,
+                  log: v.querySelectorAll('#medToday .dose-quick button').length > 0, drawer: d.includes('Log a dose')}; }"""
+            role275 = {"viewer": zb.evaluate(meds_role)}
             zb.goto(base + f"/?profile={pid3}")
             zb.wait_for_selector("main .empty-state", timeout=10000)
             zb.wait_for_selector("#addMenuBtn", timeout=10000)
@@ -11462,6 +11635,17 @@ def main():
                   and saved.startswith("Saved.") and len(zb.evaluate(f"fetch('api/profiles/{pid3}/journal').then(r => r.json()).then(j => j.entries)")) == 1,
                   [dose_said, form, saved])
             sdb.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=1", (uid2,))
+            zb.goto(base + "/?profile=1#medications")
+            zb.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            role275["editor"] = zb.evaluate(meds_role)
+            za.goto(base + "/?profile=1#medications")
+            za.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            role275["owner"] = za.evaluate(meds_role)
+            seen275 = {"tab": "medications", "h2": ["Today", "Current"], "rows": True, "lane": True}
+            check("the Medications tab for each role (#275): owners and editors log doses from its Today and a medication's drawer; "
+                  "a viewer sees every part with nothing to log with",
+                  role275 == {"viewer": {**seen275, "log": False, "drawer": False}, "editor": {**seen275, "log": True, "drawer": True},
+                              "owner": {**seen275, "log": True, "drawer": True}}, role275)
             sprof.delete_profile(sdb, pid3)
             za.evaluate("""v => Promise.all(Object.entries(v).map(([k, x]) =>
                 api('settings/user/' + k, {method: 'PUT', body: JSON.stringify({value: x})})))""", before)
@@ -12564,7 +12748,7 @@ def main():
                 page.goto(base + "/")
                 page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
                 bad = []
-                for t in ("overview", "health", "timeline", "heatmap", "labs", "costs"):
+                for t in ("overview", "health", "medications", "timeline", "heatmap", "labs", "costs"):
                     open_tab(t)
                     settle(250)
                     bad += phone_fits(page, t, phone_known)
@@ -12715,7 +12899,7 @@ def main():
                 js(f"localStorage.setItem('ht-theme', '{theme}')")
                 page.goto(base + "/")
                 page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
-                for t in ("overview", "health", "timeline", "heatmap", "labs", "costs"):
+                for t in ("overview", "health", "medications", "timeline", "heatmap", "labs", "costs"):
                     open_tab(t)
                     settle(300)
                     axe_at(page, f"{theme} {t}", outline=True)
@@ -12823,7 +13007,7 @@ def main():
                 if not spaced:   # #335: every record, so Costs has its HSA and FSA table
                     js("window._was335 = [state.preset, state.from, state.to]; setPeriod('all')")
                     axe335, wraps335 = [], []
-                for t in ("overview", "health", "timeline", "heatmap", "labs", "costs"):
+                for t in ("overview", "health", "medications", "timeline", "heatmap", "labs", "costs"):
                     open_tab(t)
                     settle(250)
                     rbad += phone_fits(page, t)
@@ -12847,7 +13031,7 @@ def main():
                         return out
                     wraps335 += drawer_wraps(320)
                     page.set_viewport_size({"width": 1400, "height": 900})   # #340: and at 1400 px, where most don't scroll
-                    for t in ("overview", "health", "timeline", "heatmap", "labs", "costs"):
+                    for t in ("overview", "health", "medications", "timeline", "heatmap", "labs", "costs"):
                         open_tab(t)
                         settle(250)
                         wraps335 += [[f"{t}, 1400 px"] + w for w in js(SCROLL_TABLES_JS)]

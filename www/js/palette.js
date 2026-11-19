@@ -139,7 +139,7 @@ const SgPalette = (() => {
     });
   }
   const TAB_WORDS = {overview: "home dashboard summary tiles", health: "body vitals steps sleep heart weight", timeline: "events history",
-    labs: "tests results charts blood work", costs: "money bills claims payments insurance", meds: "meds medication medicine prescriptions"};
+    labs: "tests results charts blood work", costs: "money bills claims payments insurance", medications: "meds medicine prescriptions pills doses taking reminders"};
   function tabs() {
     if (document.querySelector("header.topbar nav.tabs")?.hidden) return [];
     return SgNav.TABS.map(t => document.getElementById("tab-" + t)).filter(a => a && !a.hidden)

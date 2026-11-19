@@ -47,7 +47,7 @@ const DEFAULT_SETTINGS = {
     views: []},        // #37, saved views: [{name, labs, default}] (trends.js)
   labNicknames: {"Automated Abs Neutrophil Cnt": "Neutrophils (absolute)", "Lymphocytes Absolute": "Lymphocytes (absolute)", "Platelet Count": "Platelets",
     "Potassium, Blood": "Potassium", "Sodium, Blood": "Sodium", "Total Bilirubin": "Bilirubin, total"},
-  tabs: {order: ["overview", "health", "timeline", "labs", "heatmap", "costs"], hidden: []},   // #40, applied by app.js
+  tabs: {order: ["overview", "health", "medications", "timeline", "labs", "costs"], hidden: []},   // #40, applied by app.js
   theme: "system",     // #45, this user's default: "light", "dark" or "system" (the light/dark toggle overrides it per browser)
   sources: {},         // short source tags on lab results -> display names, e.g. {"EXT": "Outside lab"}
   units: {lab: "reported", weight: "reported", temperature: "reported", height: "reported"},   // #41, this user's (units.js)

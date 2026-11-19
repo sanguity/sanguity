@@ -1354,6 +1354,19 @@ svg text.medname{fill:var(--ink2);font-size:var(--fs-1)}
 .medfill.ev:hover,.medfill.ev.sel{fill:var(--ink);stroke:var(--ink)}
 .medchanges{margin:0;padding-left:var(--sp-4)}
 .medchanges li{margin:2px 0}
+/* the Medications tab (#275, medications.js): a row per medication in columns under a header, each fact named for a
+   screen reader; on a phone a row wraps, the names shown */
+.med-rows{list-style:none;margin:0 0 var(--sp-2);padding:0}
+.med-row{display:grid;grid-template-columns:minmax(0,1.5fr);grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:var(--sp-3);align-items:start;
+  padding:var(--sp-2) var(--sp-1);border-bottom:1px solid var(--grid);font-size:var(--fs-2)}
+.med-hd{color:var(--muted);font-weight:var(--fw-semibold);border-color:var(--axis);padding-block:var(--sp-1)}
+.med-rows>li,.med-past>summary{cursor:pointer}
+.med-rows>li:hover{background:var(--hover)}
+.med-k{position:absolute;clip-path:inset(50%)}
+.med-past>summary>h2{display:inline}
+.med-lane{display:block;width:100%}
+@media (max-width:600px){ .med-row{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-3)} .med-hd{display:none} .med-row>.cell-btn{flex:1 1 100%;font-weight:var(--fw-semibold)}
+  .med-k{position:static;clip-path:none;color:var(--ink2)} }
 /* ---- medication reminders through the calendar feed (#162, meds.js) */
 .mr-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-2)}
 .mr-item{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2);border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-1) var(--sp-3)}

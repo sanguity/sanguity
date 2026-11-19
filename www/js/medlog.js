@@ -4,9 +4,10 @@
    changed_by}] (server/med_log.py); the phone's (Apple Health's Medications, sent by Health Auto Export) come with the
    watch data as WATCH.med_doses = [[time with offset, name, "taken" | "skipped", dosage, units, app]], matched to a
    medication by the same key as the records' (medKeyOf, meds.js) and read only.
-   Where they show: the medication's drawer (its log, a weekly count, Log a dose), the Overview's "Today's medication
-   doses" (built from #162's reminder times when set), marks on the medication's span in the Timeline's Medications
-   lane, and a row under the Labs charts when "Doses logged" is ticked (#192's "Show on charts"). A dose is shown by its
+   Where they show: the medication's drawer (its log, a weekly count, Log a dose), today's doses (built from #162's
+   reminder times when set) on the Medications tab's Today (medications.js, #275), where the log lives, and on the
+   Overview, marks on the medication's span in the Timeline's and the Medications tab's lane, and a row under the Labs
+   charts when "Doses logged" is ticked (#192's "Show on charts"). A dose is shown by its
    shape as well as its words (taken ●, taken late ◆, skipped ○), never by colour alone.
    It keeps what the person says happened. Nothing here says a dose was due or should be taken: counts are of the
    doses logged ("12 of 14 logged doses taken"). Owners and editors log, correct and remove typed doses.
@@ -128,8 +129,9 @@ function doseForm(m, d, preset = {}) {
   seg.querySelector("[aria-checked=true]").focus({preventScroll: true});
 }
 /* every change: the reply's dose put in the records in place (store.js, #271), which draws again what shows the
-   doses (the Overview's, the lanes, the charts), and the medication's drawer drawn again (after: {med}); logged from
-   the Overview (after: {row}, its row's data-dose-row), focus goes to the row's medication once its buttons are gone */
+   doses (today's, the lanes, the charts), and the medication's drawer drawn again (after: {med}); logged from today's
+   doses (after: {row}, its row's data-dose-row, in the tab shown: the Medications tab's or the Overview's, #275), focus
+   goes to the row's medication once its buttons are gone */
 async function doseSend(path, opts, msg, after) {
   sayIn(msg, "Saving…");
   let r, j;
@@ -138,16 +140,17 @@ async function doseSend(path, opts, msg, after) {
   if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the dose (${r.status}).`, true); return; }
   storePut("doses", j);
   if (after.med) medAgain(MEDS.find(x => x.key === after.med));
-  else if (!document.activeElement || document.activeElement === document.body) document.querySelector(`[data-dose-row="${CSS.escape(after.row)}"] .dose-med`)?.focus({preventScroll: true});
+  else if (!document.activeElement || document.activeElement === document.body) document.querySelector(`#view-${state.tab} [data-dose-row="${CSS.escape(after.row)}"] .dose-med`)?.focus({preventScroll: true});
   announce(opts.method === "DELETE" ? "Dose removed from the log." : "Dose logged.");
 }
 
-/* ---------------------------------------------------------------- the Overview: today's doses
+/* ---------------------------------------------------------------- today's doses: the Medications tab's and the Overview's
    For each current medication: a row for each of today's reminder times (#162: reminders on, today one of their days,
    between from and their end), or one row when it has none; each logged dose of today beside its row. Owners and
    editors log with one click (the time is now); viewers see what was logged. None for a profile without current
-   medications, or for a viewer when nothing was logged today. */
-function todayDoses() {
+   medications, or for a viewer when nothing was logged today. A card: id and head, its own (the Medications tab's
+   Today, #275: medications.js), else the Overview's; any: what a medication with no reminder times today says for its time */
+function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication doses"}), any = "Today"} = {}) {
   const write = canEdit(), today = zToday(), dow = MR_DAYS[(zdate(Date.now()).getDay() + 6) % 7][0];
   const cur = MEDS.filter(mrCurrent);
   const todays = DOSES.filter(d => doseDay(d) === today);
@@ -170,15 +173,15 @@ function todayDoses() {
         got.length ? el("span", {class: "dose-got"}, ...got.map(logged)) : write ? quick(m, slot, what) : el("span", {class: "hint", text: "Nothing logged"})));
     }
     const other = mine.filter(d => !slots.includes(d.slot));
-    if (!slots.length || other.length) rows.push(el("li", {class: "dose-today", "data-dose-row": m.key + " "}, el("span", {class: "dose-slot", text: slots.length ? "Also" : "Today"}), open(),
+    if (!slots.length || other.length) rows.push(el("li", {class: "dose-today", "data-dose-row": m.key + " "}, el("span", {class: "dose-slot", text: slots.length ? "Also" : any}), open(),
       el("span", {class: "dose-got"}, ...other.map(logged), write ? quick(m, null, m.name) : null)));
   }
   const week = thisWeek(DOSES.filter(d => cur.some(m => m.key === d.key)));
-  return el("div", {class: "card", id: "ovDoses"}, el("h3", {text: "Today's medication doses"}),
+  return el("div", {class: "card", id}, head,
     el("p", {class: "hint", text: write ? "Log what happened, for your own record: taken, taken late or skipped." : "What was logged today."}),
     el("ul", {class: "doselist today"}, ...rows),
     el("p", {class: "dose-week", text: "This week: " + doseSaid(doseCounts(week))}),
-    moreAbout("The times are those of the reminders set on each medication (its details, on the Timeline). This keeps what is logged, nothing more. Doses logged in Apple Health's Medications come with the phone's data when Health Auto Export sends them. This isn't medical advice."),
+    moreAbout("The times are those of the reminders set on each medication (its details, on the Medications tab). This keeps what is logged, nothing more. Doses logged in Apple Health's Medications come with the phone's data when Health Auto Export sends them. This isn't medical advice."),
     msg);
 }
 

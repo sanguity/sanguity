@@ -1,7 +1,7 @@
 # Accessibility: WCAG 2.2 AA
 
 Sanguity aims to meet [WCAG 2.2](https://www.w3.org/TR/WCAG22/) at level AA on every page: the records (Overview,
-Body and activity, Timeline, Labs, Costs), the event drawer, Sources, Sharing, Settings, Account, Admin, the
+Body and activity, Medications, Timeline, Labs, Costs), the event drawer, Sources, Sharing, Settings, Account, Admin, the
 first-run guide, the provider finder, sign-in, setup and a shared page (`share.html`). This page lists each
 criterion, how it was checked, what was fixed in the review (#202), and what's still open.
 
