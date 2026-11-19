@@ -13,7 +13,10 @@
    Timeline's lane (medDoseMarks).
    Plain script, loaded in order by index.html after journal.js; all files share one global scope. */
 "use strict";
-let MEDS = [], medSel = null;   // the medications; the one open in the drawer (its index)
+let MEDS = [];   // the medications
+/* the medication whose history the drawer shows (openMedication marks the drawer with its key; drawerHead, drawing
+   anything else there, takes the mark away), or null: not a listing or a fill of it, which have its name (#417) */
+const medShown = () => drawer.classList.contains("open") && drawer.dataset.med != null && MEDS.find(m => m.key === drawer.dataset.med) || null;
 
 function medsLoad() {
   MEDS = (Array.isArray(DATA.medications) ? DATA.medications : []).filter(m => m && Array.isArray(m.spans) && Array.isArray(m.fills)).map((m, i) => {
@@ -41,7 +44,7 @@ const medSpanSays = s => [s.title, s.dose].filter(Boolean).join(" · ");
 /* ---------------------------------------------------------------- one row per medication, drawn by kind of mark */
 const MED_ROW = 18;
 function medRow(g, m, x, y, L, R, color, opts = {}) {
-  const sel = medSel === m.i && opts.selectable && drawer.classList.contains("open");
+  const sel = opts.selectable && medShown() === m;
   m.spans.forEach((s, n) => {
     const x1 = x(s.ts), x2 = x(medEnd(s));
     if (x2 < L || x1 > R) return;
@@ -121,9 +124,10 @@ CHART_LAYERS.push({
 /* ---------------------------------------------------------------- the drawer: one medication's history */
 function openMedication(m) {
   if (!m) return;
-  medSel = m.i; state.selEv = null;
+  state.selEv = null;
   const last = m.spans[m.spans.length - 1];
   const body = drawerHead("med", m.name, "Medication history · " + (m.spans.length ? `${fmtD(m.spans[0].ts)} – ${last.open ? "no end in the records" : fmtD(last.te)}` : `pharmacy fills only, from ${fmtD(m.fills[0].ts)}`));   // drawer.js (#270)
+  drawer.dataset.med = m.key;   // (medShown)
   // its key facts, as every record's (#406): what the head says (when it started, that the records give no end) isn't
   // said again
   body.append(...present(drawerFacts([["Started", m.spans.length ? fmtD(m.spans[0].ts) : ""], ["Stopped", m.stop ? fmtD(dayTs(m.stop)) : ""],
@@ -159,15 +163,12 @@ function openMedication(m) {
 /* the medication's history drawn again after a change: when the drawer shows it already, in place, as it was (its
    scroll, its log shown whole, focus: drawer.js drawerKeep, #404) */
 function medAgain(m) {
-  if (m && drawer.classList.contains("open") && medSel === m.i && $("#dtitle").textContent === m.name) return drawerKeep(() => openMedication(m));
+  if (m && medShown() === m) return drawerKeep(() => openMedication(m));
   openMedication(m);
 }
 // a dose logged elsewhere (the Overview's, beside the panel) while the panel shows this medication: drawn again (#271)
 // (focus stays where it was, outside the panel)
-storeOn("medications", () => {
-  const m = MEDS[medSel];
-  if (m && drawer.classList.contains("open") && $("#dtitle").textContent === m.name) medAgain(m);
-});
+storeOn("medications", () => { const m = medShown(); if (m) medAgain(m); });
 /* the same grouping as server/medications.med_key: the leading words before any strength or form */
 function medKeyOf(name) {
   name = String(name || "").split(/\s+/).join(" ").trim();

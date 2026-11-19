@@ -1200,6 +1200,14 @@ Everything on `main` so far; it becomes the first tagged release.
   Its reply now says the records' revision after it, and the copy takes the new name. A lab or a source tag renamed,
   a Trends view saved and the journal's groups changed on the records page reach the copy's settings too, where
   offline showed them as they were when the page loaded.
+- **The drawer shows what was opened, and focus comes back to something in sight** (#417): with a medication listing
+  or fill opened from its history, a dose logged from the Overview turned the drawer back into the medication's
+  history, since a listing has the medication's name; the history is drawn again now only when it's what the drawer
+  shows. Closing the drawer lost focus to the page after a record opened from the command palette by Ctrl+K, after
+  a phone's Add → Journal entry, and after Hide took its Timeline row away. Now focus goes back to what had
+  it before the palette opened (found again once the Timeline is drawn), to Add (not the item in its closed sheet),
+  or, with that gone, to the record's row, the row now where it was, or the list's heading. Deleting a profile in
+  Settings puts focus on the page's heading.
 - **The top bar's links open the profile shown** (#397): with a browser tab for each child, Add's links (Log a dose,
   Upload files…), Display and Getting started opened whichever profile had been picked last in any tab, not the one
   shown. Every link in the top bar to another page now carries the profile shown (`?profile=`), as the tabs, the
