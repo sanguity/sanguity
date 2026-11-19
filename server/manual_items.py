@@ -62,7 +62,7 @@ merges a later import over an earlier one), which is how a reading typed wrong i
 is a duplicate, as is one the phone sent already (the same values within a minute, in the summary's time zone).
 HEIGHT: a height typed in goes straight into About this person's history, the person's own list of heights (a
 clinic's heights in the records wait there to be added, because an import can be undone; one the person typed is one
-they accept). There it is changed or removed (Sharing → About this person); undoing the save leaves it, as undo
+they accept). There it is changed or removed (Settings → About this person); undoing the save leaves it, as undo
 leaves every setting.
 """
 import hashlib, os, re

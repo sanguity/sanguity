@@ -1,10 +1,12 @@
 /* Sanguity · the Settings page's groups, in the sidebar every account page has (sidebar.js, #266), after settings.js,
-   which draws the sections. Settings is how things look (#169): this profile's (Dashboard, Labs and ranges,
-   Milestones and activity) and the person's own (Display). What else was here has its own page now (moved.js).
+   which draws the sections. Settings is how things look (#169): this profile's (Dashboard, About this person and its
+   targets, Labs and ranges, Milestones, Workouts) and the person's own (Display). What else was here has its own page
+   now (moved.js).
 
-   Each section (#sec-<id> from the server's list) belongs to a group. The sidebar lists the groups that have
-   something to show this person; the address follows the group (settings.html#display), and an address naming a
-   section (settings.html#sec-units) opens that section's group and scrolls to it. "Find a setting" shows, across every group, only the settings whose name or
+   Each section (#sec-<id> from the server's list) belongs to a group, and About this person's two cards (#about,
+   #targets: about.js, #267) to theirs. The sidebar lists the groups that have something to show this person; the
+   address follows the group (settings.html#display), and an address naming a section (settings.html#sec-units) opens
+   that section's group and scrolls to it. "Find a setting" shows, across every group, only the settings whose name or
    help mentions what's typed.
 
    Under the group's title, whose settings these are (WHO): this profile's, for everyone it's shared with (or shown as
@@ -15,14 +17,16 @@
   if (!main) return;
   const GROUPS = [
     {id: "dashboard", title: "Dashboard", icon: "layout-grid", part: "This profile", has: ["sec-overview", "sec-tabs", "sec-trends", "sec-names", "sec-summary"]},   // sec-summary: #186
+    {id: "about", title: "About this person", icon: "user", part: "This profile", has: ["about", "targets"]},   // #194, #234; on Sharing before #267
     {id: "labs", title: "Labs and ranges", icon: "test-tube-diagonal", part: "This profile", has: ["sec-ranges"]},
-    {id: "activity", title: "Milestones and activity", icon: "flag", part: "This profile", has: ["sec-milestones", "sec-health"]},
+    {id: "milestones", title: "Milestones", icon: "flag", part: "This profile", has: ["sec-milestones"]},
+    {id: "activity", title: "Workouts", icon: "activity", part: "This profile", has: ["sec-health"]},   // visits counted as workouts (#43)
     {id: "display", title: "Display", icon: "sun-moon", part: "You", has: ["sec-appearance", "sec-dates", "sec-units"]},
     {id: "more", title: "More", icon: "ellipsis", has: [], rest: true},   // a section no group names yet
   ];
   /* whose settings each group holds: the registry's sections say it by their settings' scope (data-scope); a group
      missing here goes by that */
-  const WHO = {dashboard: "profile", labs: "profile", activity: "profile", display: "you"};
+  const WHO = {dashboard: "profile", about: "profile", labs: "profile", milestones: "profile", activity: "profile", display: "you"};
   const SAY = {
     profile: ["This profile", ", for everyone it's shared with."],
     view: ["This profile", ": you can view it, so these are shown as they are; its owners and editors change them."],

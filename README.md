@@ -79,8 +79,8 @@ your role; switch profile; its About this person, Settings, Sources and Sharing;
 (those that don't fit under **More**, which ends with Edit tabs…), **Add** (today: log a dose, a journal entry, a home
 reading; records: upload files, connect a portal or plan, type records in, paste a Health Link) and your menu (account,
 display, getting started, light or dark, log out). The tab shown is in the address (`#timeline`, `#labs`, `#labs-heatmap`...), so Back moves between tabs and a
-copied link opens the same one. **Settings** is grouped in a sidebar (this profile's dashboard, labs and ranges, milestones; your display),
-one group at a time, with **Find a setting** to search them all. Sources, Sharing, Account and Admin have the same
+copied link opens the same one. **Settings** is grouped in a sidebar (this profile's dashboard, About this person (birth date, sex for reference
+ranges, height) and its targets, labs and ranges, milestones, workouts; your display), one group at a time, with **Find a setting** to search them all. Sources, Sharing, Account and Admin have the same
 sidebar, each with a search of its own.
 **Account** is you and this device: sign-in and security (password, two-factor sign-in, passkeys, where you're
 signed in), and this device (install as an app, offline records).
@@ -89,7 +89,7 @@ way records reach the profile and when each last brought something; what stays c
 the phone and watch); one-off ways in (upload, type in, paste a Health Link); and the import history.
 **Sharing** gathers everything about who sees a profile and how its records go out: its people and their roles,
 share links, your calendar feed, the visit summary, Export everything and its activity, with renaming, deleting and
-adding profiles set apart under Profile, beside About this person (birth date, sex for reference ranges, height).
+adding profiles set apart under Profile.
 Switching the **profile** in the top bar switches it on every page.
 
 **Sharing and taking it with you**
@@ -535,7 +535,7 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   glucose, creatinine, BUN, calcium and magnesium by their molar mass; hemoglobin, MCHC, albumin and total protein by a
   power of ten); every other test stays in the unit its lab reported. Reference ranges convert with the values, and
   the value as reported is shown beside every converted one.
-- **About this person:** under **Sharing → About this person**, a profile's birth date, the sex labs base reference
+- **About this person:** under **Settings → About this person**, a profile's birth date, the sex labs base reference
   ranges on (female, male or not set; not gender identity, which Sanguity doesn't ask for) and a dated height history,
   typed in cm or in feet and inches and shown in your units. Heights a clinic recorded in the records are shown beside
   it, and added to it only when you say. Each is optional and encrypted; owners and editors change them, everyone the
@@ -547,7 +547,7 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   and sex (the WHO's to 2 years, the CDC's from 2 to 20), with each measurement's percentile; a due date, for a baby
   born early, gives the corrected age before 2. Where the tables come from and their licences:
   [docs/growth-charts.md](docs/growth-charts.md).
-- **Targets of your own (#234):** under **Sharing → About this person**, owners and editors can type in a target for
+- **Targets of your own (#234):** under **Settings → About this person**, owners and editors can type in a target for
   each reading taken at home (blood pressure, glucose meter readings, CGM time in range, body temperature, blood
   oxygen, weight), as the person's care team gave it, with who set it and when. Body and activity draws it on the
   measure's chart, marks readings at home outside it ▲ or ▼ with words, and says how many in the period were; CGM days

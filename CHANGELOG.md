@@ -1103,6 +1103,13 @@ Everything on `main` so far; it becomes the first tagged release.
   in, Health Link) and History; Admin's are People, Data safety, Connections and Lab matching. The five pages are up
   to 1280 px wide, not 1120. Every address is the same, and what moved to another page is sent on by `moved.js`
   alone; the service worker keeps the new script (`sanguity-shell-v6`).
+- **About this person and Targets are on Settings** (#267), under This profile, beside the settings they feed (ranges,
+  BMI, growth charts, heart rate zones), with the height history (`about.js`), for the same people as before: owners
+  and editors change them, viewers see them. Milestones have a group of their own, and visits counted as workouts
+  are Workouts.
+  The old addresses (`sharing.html#about`, `#targets`) open them there, with the profile, and every link to them
+  (Body and activity's heart rate zones and BMI, a height typed in, the ranges' note) goes there.
+
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

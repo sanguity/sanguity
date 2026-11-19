@@ -22,8 +22,9 @@
   <p class="brand-name"><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</p>
 </header>
 <!-- Sharing (#168): who can see a profile, and every way its records go out, for the profile picked here, with a
-     sidebar of groups (sharing.js). Each part keeps its own script: share-links.js, calendar-feed.js, summary.js and
-     activity.js. Renaming, deleting and adding profiles are set apart, under Profile, and so is About this person (#194). -->
+     sidebar of groups (sharing.js, sidebar.js). Each part keeps its own script: share-links.js, calendar-feed.js,
+     summary.js and activity.js. Renaming, deleting and adding profiles are set apart, under Profile. About this person
+     is on Settings (#267). -->
 <main class="acct sets sum shr">
   <div class="card warn" id="insecure" role="alert" hidden></div>
 
@@ -219,27 +220,6 @@
     <div id="actBody"></div>
   </section>
 
-  <!-- About this person (#194): birth date, sex used for reference ranges, height history (sharing.js, person.js) -->
-  <section class="card about" id="about" hidden>
-    <h2>Birth date, sex and height</h2>
-    <p class="hint">Some views depend on who the person is: the age on each result's day, ranges of your own by sex and
-      age (Settings → Labs and ranges), and what is built on height. Each is optional.</p>
-    <details class="more"><summary>More about this</summary>
-      <p>A profile's owners and editors change these, and everyone it's shared with sees them. They're encrypted like
-        the records and go with the profile's export. A share link shows them only if its owner ticks About this
-        person.</p>
-      <p>They're never used to judge a result or to replace the range printed on a report. This isn't medical advice.</p>
-    </details>
-    <div id="aboutBody"></div>
-    <span class="msg" id="aboutMsg" role="status"></span>
-  </section>
-  <!-- targets of your own for home readings (#234): each as the care team gave it (targets.js, server/targets.py) -->
-  <section class="card about" id="targets" hidden>
-    <h2>Targets of your own</h2>
-    <div id="targetsBody"></div>
-    <span class="msg" id="targetsMsg" role="status"></span>
-  </section>
-
   <!-- Profile, apart from sharing: rename or delete this one (owners), or make a new one (sharing.js) -->
   <section class="card" id="profileCard" hidden>
     <h2>This profile</h2>
@@ -255,6 +235,7 @@
     </form>
   </section>
 </main>
+<script src="js/moved.js"></script>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
 <script src="js/nav.js"></script>
@@ -263,8 +244,6 @@
 <script src="js/activity.js"></script>
 <script src="js/summary.js"></script>
 <script src="js/calendar-feed.js"></script>
-<script src="js/person.js"></script>
-<script src="js/targets.js"></script>
 <script src="js/sidebar.js"></script>
 <script src="js/sharing.js"></script>
 </body>

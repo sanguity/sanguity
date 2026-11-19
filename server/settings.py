@@ -581,11 +581,11 @@ section("ranges", "Reference ranges", "Your own ranges, used only for results wh
 define("ranges.overrides", "ranges", "Ranges for results without one", [], _range_check(_ranges.check_overrides),
        kind="ranges", help="By the lab's name in the records and its unit: a result in another unit gets none, and nothing "
                            "is converted. Leave the age empty for every age; a row for female or male wins over one for anyone. "
-                           "The age and sex are those in About this person (on the Sharing page).")
+                           "The age and sex are those set under About this person.")
 
 
 # ---------------------------------------------------------------- #194 about this person (server/person.py)
-# Not on the Settings screen: Sharing → About this person (routes_person.py) changes them. Before #194 the birth date
+# Not on the Settings screen: Settings → About this person (routes_person.py) changes them. Before #194 the birth date
 # and sex were ranges.birthDate and ranges.sex; schema step 30 renamed them, and LEGACY reads a file that has the old names.
 
 from . import person as _person

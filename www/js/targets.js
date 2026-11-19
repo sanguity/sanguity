@@ -1,5 +1,5 @@
 /* Sanguity · targets of your own for home readings (#234). server/targets.py keeps them, as the profile setting
-   person.targets: {measure: target}, each the care team's, typed in on Sharing → About this person by an owner or
+   person.targets: {measure: target}, each the care team's, typed in on Settings → About this person by an owner or
    editor, with who set it ("by") and when ("on"). Values are kept in one unit each (glucose mg/dL, temperature °C,
    weight kg; blood pressure mmHg, oxygen %), and shown in the units each page shows the readings in.
 
@@ -9,7 +9,7 @@
 
    On the records page (health.js, overview.js): targetOf(k), tgtIn(k, unit) [low, high] in a unit, tgtSide(v, lo, hi,
    places) "h" / "l" / "", tgtMark(V) the readings' flags, tgtLine(...) a card's line about its target, tgtLayers(...)
-   a chart's band. On Sharing (sharing.js): targetsCard(p, a, send), the editor. Plain script; all files share one scope. */
+   a chart's band. On Settings (about.js, #267): targetsCard(p, a, send), the editor. Plain script; all files share one scope. */
 "use strict";
 const TGT_MMOL = 18.0156;      // mg/dL in 1 mmol/L of glucose (server/glucose.py MGDL_PER_MMOL)
 const TGT_LB = 0.45359237;     // kg in a pound
@@ -129,11 +129,11 @@ function tgtLine(card, k, unit, flags, extra = "") {
 const tgtLayer = (b, label = "Your target") => b ? {type: "target", low: b[0], high: b[1], label} : null;
 const tgtKey = (label = "Your target, as your care team gave it") => el("span", {}, el("i", {class: "tgt-key"}), label);
 
-/* ---- Sharing → About this person: the editor (owners and editors), or the list (viewers) */
+/* ---- Settings → About this person: the editor (owners and editors), or the list (viewers) */
 /* p: the profile; a: GET person's answer; pref: this person's Units choices (settings/user units); send(path, method,
-   payload, said, focusId, quiet) as sharing.js's, the words to say once done (naming the profile if another is shown
+   payload, said, focusId, quiet) as about.js's, the words to say once done (naming the profile if another is shown
    by then, #377); undo(left, path, method, payload, said, since,
-   focusId) sharing.js's, for an Undo (#367) */
+   focusId) about.js's, for an Undo (#367) */
 function targetsCard(p, a, pref, send, undo) {
   const T = a.targets || {}, edit = a.can_change, box = el("div", {class: "tgt-edit"});
   const unitFor = k => {   // the unit each is typed in: the person's Units choice, else as it was typed, else the first

@@ -1,6 +1,6 @@
 /* Sanguity · About this person (#194): the profile's birth date, the sex used for reference ranges, and height with a
    history (server/person.py keeps them, as the settings person.birthDate, person.sex and person.heights). The records
-   page has them in CFG.person, with every setting; Sharing → About this person (sharing.js) shows and changes them.
+   page has them in CFG.person, with every setting; Settings → About this person (about.js, #267) shows and changes them.
 
    For what is built on them (BMI #195, growth percentiles #196, heart-rate zones #197), the same as server/person.py:
      personOf(cfg)               {birthDate, sex, heights, dueDate} from the merged settings, filled in ("" and [] when
