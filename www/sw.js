@@ -10,9 +10,10 @@
    network first, so an update shows at once, and the kept copy is used only when the network can't be reached. */
 "use strict";
 // The kept copy's name. A new version when FILES changes (v2: the fonts, #253; v3: a smaller Source Serif, #328; v4:
-// the icons' sprite, #257; v5: the sprite's icons for kinds of record, sidebars and menus, #354): the worker installs a
-// fresh copy under the new name, and activating deletes the old one, with any file no longer listed.
-const SHELL = "sanguity-shell-v5";
+// the icons' sprite, #257; v5: the sprite's icons for kinds of record, sidebars and menus, #354; v6: the records
+// page's store, #271): the worker installs a fresh copy under the new name, and activating deletes the old one, with
+// any file no longer listed.
+const SHELL = "sanguity-shell-v6";
 const SCOPE = new URL(self.registration.scope);
 // Every page, style, script, font and icon in www/ (tests/test_pwa.py checks this list against the folder). Not the
 // fonts' and icons' licence texts, and not connect-return.html: that's where a connected source's sign-in comes back, with a code
@@ -39,6 +40,7 @@ const FILES = [
   "js/medlog.js",
   "js/details.js",
   "js/test-pages.js",
+  "js/store.js",
 ];
 
 /* the part of a same-origin address after the app's own folder, if it's one of the app's own files: "" for the

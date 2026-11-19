@@ -3,7 +3,7 @@
    still undecided as DATA.possible = [{ref, a, b}], each side {imp, name, t, value, unit, row: [labitem event id,
    row index] | null}. A result linked as the same is already shown once by the server: its series lists the other
    sources under "same" ({point index: [{imp, link}]}), and its drawer result under "same" ([{row, imp, link, name}]).
-   Owners and editors confirm or undo here; the page then reloads, as after an edit (drawer.js afterEdit).
+   Owners and editors confirm or undo here; the reply's records are then put in place, as after an edit (drawer.js afterEdit).
    Plain script, loaded in order by index.html after sources.js; all files share one global scope. */
 "use strict";
 /* one chart per test: series with the same name and unit from different imports are drawn together, each point
@@ -31,11 +31,12 @@ async function sendSame(path, opts, msg, reopen) {
   sayIn(msg, "Saving…");
   try {
     const r = await api(`profiles/${PROFILE.id}/same${path}`, opts);
-    if (!r.ok) { const j = await r.json().catch(() => ({})); sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save it (${r.status}).`, true); return; }
-    afterEdit(reopen);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save it (${r.status}).`, true); return; }
+    afterEdit(reopen, j);
   } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
 }
-/* the lab day an event's result is listed in, to reopen after a reload (the result itself may be gone by then) */
+/* the lab day an event's result is listed in, to reopen once the records are back (the result itself may be gone by then) */
 function dayOf(eid) {
   const day = DATA.events.find(e => e.k === "lab" && (DATA.details[e.id]?.ids || []).includes(eid));
   return day ? day.id : eid;

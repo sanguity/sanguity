@@ -173,6 +173,21 @@ class Edits(unittest.TestCase):
         self.check_all_applied(self.data())
         self.check_all_applied(self.rebuild())   # #33's done-when, for events without a source key
 
+    def test_replies_carry_the_records(self):
+        """#271: an edit, and its undo, answer with the records as the page loads them, so it draws them in place"""
+        d = self.data()
+        r = self.robin.post(f"/api/profiles/{self.pid}/edits", json={"event": self.ev("Outpatient visit", d)["id"], "action": "rename", "title": "First visit"}, headers=H)
+        self.assertEqual(r.status_code, 201, r.text)
+        page = self.robin.get(f"/api/profiles/{self.pid}/data")
+        got = r.json()
+        self.assertEqual(got["records"], page.json())
+        self.assertEqual(r.headers["X-Records-Rev"], page.headers["X-Records-Rev"])
+        self.assertIn("First visit", [e["title"] for e in got["records"]["events"]])
+        r = self.robin.delete(f"/api/profiles/{self.pid}/edits/{got['id']}", headers=H)
+        self.assertEqual((r.json()["ok"], r.json()["n"]), (True, 1))
+        self.assertEqual(r.json()["records"], self.robin.get(f"/api/profiles/{self.pid}/data").json())
+        self.assertIn("Outpatient visit", [e["title"] for e in r.json()["records"]["events"]])
+
     def test_edits_follow_a_retitled_build_event(self):
         """A rebuild that names an event differently (same kind, same minute) keeps its edits on it; where that minute
         holds two events of the kind (the two lab results), nothing moves, since it can't tell which is which."""

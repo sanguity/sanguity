@@ -1,15 +1,23 @@
 """Corrections made in the app (edits.py): list, add and remove a profile's edits. Owners and editors only (viewers
 see what was edited in the records the page loads, under "edits"); the CSRF check in main.guard covers the POST
-and DELETE like every other change, and each change goes in the profile's activity log."""
+and DELETE like every other change, and each change goes in the profile's activity log. An edit can change any record
+(a merge, a rule, a hospital stay), so each change's reply carries the records as the page loads them, "records"
+(records.page_reply, #271): the page draws them in place."""
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from . import activity, db as dbm, edits
+from . import activity, db as dbm, edits, records
 from .main import _client_ip, get_db, need, user
 
 router = APIRouter()
+
+
+def with_records(db, pid, reply, status=200):
+    """The reply with the records as the page loads them (#271)."""
+    body, rev = records.page_reply(db, pid, reply)
+    return Response(body, status_code=status, media_type="application/json", headers={"X-Records-Rev": rev})
 
 
 class NewEdit(BaseModel):
@@ -61,7 +69,7 @@ def add_edit(pid: int, body: NewEdit, request: Request, s=Depends(user), db=Depe
                          _client_ip(request))
     except edits.EditError as x:
         raise HTTPException(400, str(x))
-    return {"id": ids[0], "ids": ids, "rule": rule} if ids else {"id": eid}
+    return with_records(db, pid, {"id": ids[0], "ids": ids, "rule": rule} if ids else {"id": eid}, 201)
 
 
 @router.delete("/api/profiles/{pid}/edits/{edit_id}")
@@ -73,4 +81,4 @@ def remove_edit(pid: int, edit_id: int, request: Request, s=Depends(user), db=De
             raise HTTPException(404, "No such edit.")
         activity.log(db, "edit", s, pid, {"action": gone["action"], "title": (gone["was"] or {}).get("title"), "undone": True,
                                           **({"with": gone["n"] - 1} if gone["n"] > 1 else {})}, _client_ip(request))
-    return {"ok": True, "n": gone["n"]}
+    return with_records(db, pid, {"ok": True, "n": gone["n"]})

@@ -119,7 +119,7 @@ tlSvg.addEventListener("pointerleave", hideTip);
 tlSvg.addEventListener("dblclick", () => applyPreset("all"));
 $("#ftoggle").onclick = () => { const f = $(".filters"), open = f.classList.toggle("open"); $("#ftoggle").setAttribute("aria-expanded", open); };
 let lastW = innerWidth;
-addEventListener("resize", () => { if (innerWidth === lastW) return; lastW = innerWidth; clearTimeout(window._rz); window._rz = setTimeout(renderAll, 120); });
+addEventListener("resize", () => { if (innerWidth === lastW) return; lastW = innerWidth; clearTimeout(window._rz); window._rz = setTimeout(() => keepFocus(renderAll), 120); });   // focus kept (store.js, #271)
 
 /* stats + list */
 function renderStats() {

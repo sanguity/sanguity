@@ -10,7 +10,10 @@ profile's activity log (the kind of entry, never what it says).
                                                     picture (journal_photos.py checks and cleans it) -> {"id", "type",
                                                     "bytes", "removed"}; nginx lets this one be large, as uploads
   GET    /api/profiles/{pid}/journal/photos/{id}    a photo an entry lists, to anyone who can view the profile
-The symptom groups themselves are the setting journal.groups (PUT .../settings/journal.groups)."""
+The symptom groups themselves are the setting journal.groups (PUT .../settings/journal.groups).
+
+Each change's reply carries what it changed (#271), so the records page updates in place instead of loading the records
+again: "journal", the entries added or changed, as the records list them; "removed", the ids of those deleted."""
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -64,7 +67,7 @@ def add_entry(pid: int, body: Entry, request: Request, s=Depends(user), db=Depen
     with dbm.transaction(db):
         jid = journal.add(db, pid, s, entry)
         activity.log(db, "journal", s, pid, journal.log_detail("add", entry), _client_ip(request))
-    return {"id": jid}
+    return {"id": jid, "journal": journal.listing(db, pid, [jid])}
 
 
 @router.post("/api/profiles/{pid}/journal/group", status_code=201)
@@ -80,7 +83,7 @@ def add_group(pid: int, body: Group, request: Request, s=Depends(user), db=Depen
         for entry in entries:
             ids.append(journal.add(db, pid, s, entry))
             activity.log(db, "journal", s, pid, journal.log_detail("add", entry), _client_ip(request))
-    return {"ids": ids}
+    return {"ids": ids, "journal": journal.listing(db, pid, ids)}
 
 
 def _store_photo(db, pid, uid, data):
@@ -129,7 +132,7 @@ def change_entry(pid: int, jid: int, body: Entry, request: Request, s=Depends(us
         if journal.change(db, pid, jid, s, entry) is None:
             raise HTTPException(404, "No such journal entry.")
         activity.log(db, "journal", s, pid, journal.log_detail("change", entry), _client_ip(request))
-    return {"ok": True}
+    return {"ok": True, "journal": journal.listing(db, pid, [jid])}
 
 
 @router.delete("/api/profiles/{pid}/journal/{jid}")
@@ -140,4 +143,4 @@ def remove_entry(pid: int, jid: int, request: Request, s=Depends(user), db=Depen
         if was is None:
             raise HTTPException(404, "No such journal entry.")
         activity.log(db, "journal", s, pid, journal.log_detail("delete", was), _client_ip(request))
-    return {"ok": True}
+    return {"ok": True, "removed": [jid]}

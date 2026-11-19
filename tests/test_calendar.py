@@ -717,6 +717,21 @@ class Reminders(unittest.TestCase):
             db.close()
         self.assertEqual(len(self.reminders(self.feed()[1])), 1, "back with the medication")
 
+    def test_replies_carry_what_changed(self):
+        """#271: each change's reply has the reminder as the records list it, so the page updates in place"""
+        j = self.set()
+        listed = lambda: {r["id"]: r for r in self.c["kim"].get(f"/api/profiles/{self.pid}/data").json()["reminders"]}
+        self.assertEqual(j["reminders"], [listed()[j["id"]]])
+        r = self.c["lee"].patch(self.path(f"/{j['id']}"), json={"on": False}, headers=H)
+        self.assertEqual(r.json()["reminders"], [listed()[j["id"]]])
+        self.assertFalse(r.json()["reminders"][0]["on"])
+        r = self.c["lee"].put(self.path(f"/{j['id']}"), json={"med": "fictionamide", "times": ["09:00"], "days": DOW_L, "start": D(0),
+                                                             "tz": "America/Chicago"}, headers=H)
+        self.assertEqual(r.json()["reminders"], [listed()[j["id"]]])
+        self.assertEqual(r.json()["reminders"][0]["times"], ["09:00"])
+        r = self.c["lee"].delete(self.path(f"/{j['id']}"), headers=H)
+        self.assertEqual(r.json(), {"ok": True, "removed": [j["id"]]})
+
     def test_who_and_refusals(self):
         self.set(who="kim", status=403)
         self.set(who="robin")

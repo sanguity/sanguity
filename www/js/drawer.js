@@ -165,7 +165,8 @@ function showDrawer() {
 
 /* ---------------------------------------------------------------- corrections (edits, server/edits.py)
    Owners and editors can hide, rename, re-date, un-stay or merge the open event; everyone sees what was edited.
-   Edits are applied on the server, so after a change the page loads the records again and reopens the panel. */
+   Edits are applied on the server, so a change's reply carries the records again: they're put in place of the page's
+   (store.js, #271), which draws again what shows them, and the panel shows what it showed. */
 const WATCH_KINDS = new Set(["exercise", "ecg", "rhythm"]);   // events made from the watch summary, not records (#182)
 const canEdit = () =>!!PROFILE && (PROFILE.role === "owner" || PROFILE.role === "editor");
 const editsOf = e => (DATA.edits || []).filter(x => x.ids.includes(e.id));
@@ -185,17 +186,22 @@ function describeEdit(x) {
     + ` (${x.ids.length} now)`;
   return "Edited";
 }
-function afterEdit(reopen) {
-  try { sessionStorage.setItem("sg-after-edit", JSON.stringify(reopen)); } catch (e) {}
-  location.reload();
+/* reply: the change's, with the records (none left: the page again, which says so); reopen: what the panel shows
+   now, {event} (or {alt}, a result linked away: the other side's day) if it's still there, else every edit */
+function afterEdit(reopen, reply) {
+  if (!reply?.records) { location.reload(); return; }
+  storeRecords(reply.records);
+  const e = byId.get(reopen.event) || byId.get(reopen.alt);
+  if (e) openEvent(e); else openEdits();
+  announce("Saved.");
 }
 async function sendEdit(path, opts, msg, reopen) {
   sayIn(msg, "Saving…");
-  try {
-    const r = await api(`profiles/${PROFILE.id}/edits${path}`, opts);
-    if (!r.ok) { const j = await r.json().catch(() => ({})); sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the edit (${r.status}).`, true); return; }
-    afterEdit(reopen);
-  } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
+  let r, j;
+  try { r = await api(`profiles/${PROFILE.id}/edits${path}`, opts); j = await r.json().catch(() => ({})); }
+  catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return; }
+  if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the edit (${r.status}).`, true); return; }
+  afterEdit(reopen, j);
 }
 function undoButton(x, msg, reopen) {
   const n = batchOf(x);   // made at once to similar entries (#237): undone together
@@ -298,14 +304,5 @@ function openEdits() {
   }), ...links, msg));
   showDrawer();
   renderTimeline();
-}
-/* after the reload an edit causes: reopen what was open */
-function drawerResume() {
-  let r = null;
-  try { r = JSON.parse(sessionStorage.getItem("sg-after-edit") || "null"); sessionStorage.removeItem("sg-after-edit"); } catch (e) {}
-  if (!r) return;
-  if (r.event && byId.has(r.event)) openEvent(byId.get(r.event));
-  else if (r.alt && byId.has(r.alt)) openEvent(byId.get(r.alt));   // a result linked away: the other side's day
-  else openEdits();
 }
 

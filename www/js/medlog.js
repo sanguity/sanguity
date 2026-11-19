@@ -128,17 +128,19 @@ function doseForm(m, d, preset = {}) {
   showDrawer();
   seg.querySelector("[aria-checked=true]").focus({preventScroll: true});
 }
-/* every change reloads the records and opens what was being looked at again: the medication (after: {med}), or the
-   Overview, which the address keeps (#208) */
+/* every change: the reply's dose put in the records in place (store.js, #271), which draws again what shows the
+   doses (the Overview's, the lanes, the charts), and the medication's drawer drawn again (after: {med}); logged from
+   the Overview (after: {row}, its row's data-dose-row), focus goes to the row's medication once its buttons are gone */
 async function doseSend(path, opts, msg, after) {
   sayIn(msg, "Saving…");
-  try {
-    const r = await api(`profiles/${PROFILE.id}/medications/doses${path}`, opts);
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the dose (${r.status}).`, true); return; }
-    try { if (after) sessionStorage.setItem("sg-after-med", JSON.stringify(after)); } catch (e) {}
-    location.reload();
-  } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
+  let r, j;
+  try { r = await api(`profiles/${PROFILE.id}/medications/doses${path}`, opts); j = await r.json().catch(() => ({})); }
+  catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return; }
+  if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the dose (${r.status}).`, true); return; }
+  storePut("doses", j);
+  if (after.med) openMedication(MEDS.find(x => x.key === after.med));
+  else if (!document.activeElement || document.activeElement === document.body) document.querySelector(`[data-dose-row="${CSS.escape(after.row)}"] .dose-med`)?.focus({preventScroll: true});
+  announce(opts.method === "DELETE" ? "Dose removed from the log." : "Dose logged.");
 }
 
 /* ---------------------------------------------------------------- the Overview: today's doses
@@ -153,7 +155,7 @@ function todayDoses() {
   if (!cur.length || !write && !todays.length) return null;
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   const now = () => { const z = zdate(Date.now()); return `${today}T${String(z.getHours()).padStart(2, "0")}:${String(z.getMinutes()).padStart(2, "0")}`; };
-  const log = (m, status, slot) => doseSend("", {method: "POST", body: JSON.stringify({med: m.key, t: now(), status, slot: slot || null, note: ""})}, msg, null);
+  const log = (m, status, slot) => doseSend("", {method: "POST", body: JSON.stringify({med: m.key, t: now(), status, slot: slot || null, note: ""})}, msg, {row: m.key + " " + (slot || "")});
   const quick = (m, slot, what) => el("span", {class: "dose-quick", role: "group", "aria-label": `Log ${what}`}, ...DOSE_ST.map(([s, t]) =>
     el("button", {class: "btn small", type: "button", text: t, "aria-label": `${t}: ${what}`, onclick: () => log(m, s, slot)})));
   const logged = d => el("span", {class: "dose-done"}, doseIcon(d.status), `${DOSE_LABEL[d.status]} · ${fmtTime(d.ts)}` + (d.phone ? ` · from ${d.app}` : ""));
@@ -165,11 +167,11 @@ function todayDoses() {
     for (const slot of slots) {
       const got = mine.filter(d => d.slot === slot);
       const what = `${m.name}, reminder at ${mrTime(slot)}`;
-      rows.push(el("li", {class: "dose-today"}, el("span", {class: "dose-slot", text: mrTime(slot)}), open(),
+      rows.push(el("li", {class: "dose-today", "data-dose-row": m.key + " " + slot}, el("span", {class: "dose-slot", text: mrTime(slot)}), open(),
         got.length ? el("span", {class: "dose-got"}, ...got.map(logged)) : write ? quick(m, slot, what) : el("span", {class: "hint", text: "Nothing logged"})));
     }
     const other = mine.filter(d => !slots.includes(d.slot));
-    if (!slots.length || other.length) rows.push(el("li", {class: "dose-today"}, el("span", {class: "dose-slot", text: slots.length ? "Also" : "Today"}), open(),
+    if (!slots.length || other.length) rows.push(el("li", {class: "dose-today", "data-dose-row": m.key + " "}, el("span", {class: "dose-slot", text: slots.length ? "Also" : "Today"}), open(),
       el("span", {class: "dose-got"}, ...other.map(logged), write ? quick(m, null, m.name) : null)));
   }
   const week = thisWeek(DOSES.filter(d => cur.some(m => m.key === d.key)));

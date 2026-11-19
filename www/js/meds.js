@@ -158,6 +158,14 @@ function openMedication(m) {
   showDrawer();
   renderTimeline();
 }
+// a dose logged elsewhere (the Overview's, beside the panel) while the panel shows this medication: drawn again (#271)
+// (focus stays where it was, outside the panel)
+storeOn("medications", () => {
+  const m = MEDS[medSel], a = document.activeElement;
+  if (!m || !drawer.classList.contains("open") || $("#dtitle").textContent !== m.name) return;
+  openMedication(m);
+  if (a && a.isConnected && !drawer.contains(a)) a.focus({preventScroll: true});
+});
 /* the same grouping as server/medications.med_key: the leading words before any strength or form */
 function medKeyOf(name) {
   name = String(name || "").split(/\s+/).join(" ").trim();
@@ -177,7 +185,7 @@ function medHistoryAction(e) {
    Set here, for a current medication (the records give no end for its latest listing); the person's calendar app does
    the reminding, from the calendar feed. A reminder ends on its until day, or sooner on the day the records say the
    medication stopped, and the list here says which. Owners and editors set, change, turn off and remove them; every
-   change reloads the records (as the journal's do) and opens this medication again. */
+   change is put in the records in place (store.js, #271) and this medication's drawer is drawn again. */
 const MR_DAYS = [["mo", "Mon", "Monday"], ["tu", "Tue", "Tuesday"], ["we", "Wed", "Wednesday"], ["th", "Thu", "Thursday"],
   ["fr", "Fri", "Friday"], ["sa", "Sat", "Saturday"], ["su", "Sun", "Sunday"]];
 const mrOf = m => (Array.isArray(DATA.reminders) ? DATA.reminders : []).filter(r => r && r.med === m.key);
@@ -284,18 +292,11 @@ function medReminderForm(m, r) {
 }
 async function mrSend(path, opts, msg, m) {
   sayIn(msg, "Saving…");
-  try {
-    const r = await api(`profiles/${PROFILE.id}/medications/reminders${path}`, opts);
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the reminder (${r.status}).`, true); return; }
-    try { sessionStorage.setItem("sg-after-med", JSON.stringify({med: m.key})); } catch (e) {}
-    location.reload();
-  } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
-}
-/* after that reload: the medication's drawer again (app.js calls this once the page is up) */
-function medsResume() {
-  let r = null;
-  try { r = JSON.parse(sessionStorage.getItem("sg-after-med") || "null"); sessionStorage.removeItem("sg-after-med"); } catch (e) {}
-  const m = r && MEDS.find(x => x.key === r.med);
-  if (m) openMedication(m);
+  let r, j;
+  try { r = await api(`profiles/${PROFILE.id}/medications/reminders${path}`, opts); j = await r.json().catch(() => ({})); }
+  catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return; }
+  if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the reminder (${r.status}).`, true); return; }
+  storePut("reminders", j);
+  openMedication(MEDS.find(x => x.key === m.key));
+  announce(opts.method === "DELETE" ? "Reminder removed." : "Reminder saved.");
 }

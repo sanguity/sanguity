@@ -192,7 +192,7 @@ function renderHealth() {
   const [a, b] = hRange(), len = b - a, long = len > 150 * DAY;
   // toolbar (the period is in the records bar)
   box.append(el("div", {class: "toolbar"},
-    el("label", {class: "toggle"}, el("input", {type: "checkbox", checked: hState.stays || null, onchange: e => { hState.stays = e.target.checked; hSave(); renderHealth(); }}), "Shade hospital stays"),
+    el("label", {class: "toggle"}, el("input", {type: "checkbox", checked: hState.stays || null, onchange: e => { hState.stays = e.target.checked; hSave(); keepFocus(renderHealth); }}), "Shade hospital stays"),
     el("span", {class: "hint", style: {margin: 0}, text: `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`})),
     el("p", {class: "hint chart-hint", text: "Drag any chart sideways to move through time: every chart moves together."}),
     moreAbout("Scroll or pinch to zoom, and double-click to show everything."));

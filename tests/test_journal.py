@@ -189,6 +189,17 @@ class Journal(unittest.TestCase):
         self.assertEqual(self.robin.put(self.url(f"/{nid}"), json={"kind": "note", "t": "2026-04-04", "note": "x"}, headers=H).status_code, 404)
         self.assertEqual([x["id"] for x in self.robin.get(self.url()).json()["entries"]], [sid, fid])
 
+    def test_replies_carry_what_changed(self):
+        """#271: each change's reply has the entries it changed as the records list them, so the page updates in place"""
+        j = self.add(kind="symptom", t="2026-04-03", title="Headache", severity=6, where=["head"])
+        listed = lambda: {e["id"]: e for e in self.data()["journal"]}
+        self.assertEqual(j["journal"], [listed()[j["id"]]])
+        r = self.lee.put(self.url(f"/{j['id']}"), json={"kind": "symptom", "t": "2026-04-03T07:00", "title": "Headache", "severity": 8}, headers=H)
+        self.assertEqual(r.json()["journal"], [listed()[j["id"]]])
+        self.assertEqual(r.json()["journal"][0]["changed_by"], "lee")
+        r = self.robin.delete(self.url(f"/{j['id']}"), headers=H)
+        self.assertEqual(r.json(), {"ok": True, "removed": [j["id"]]})
+
     def test_what_cant_be_saved(self):
         bad = [
             {"kind": "mood", "t": "2026-04-03", "note": "x"},
@@ -382,6 +393,7 @@ class Journal(unittest.TestCase):
         r = self.lee.post(g, json=body, headers=H)
         self.assertEqual(r.status_code, 201, r.text)
         self.assertEqual(len(r.json()["ids"]), 3)
+        self.assertEqual(r.json()["journal"], self.robin.get(self.url()).json()["entries"], "the reply has the entries it added (#271)")
         got = [(e["kind"], e["title"], e["severity"], e.get("where"), e["group"], e["t"], e["note"]) for e in self.robin.get(self.url()).json()["entries"]]
         self.assertEqual(got, [("symptom", "Headache", 7, ["head"], "Migraine day", "2026-04-03T07:30", body["note"]),
                                ("symptom", "Nausea", 3, None, "Migraine day", "2026-04-03T07:30", body["note"]),

@@ -3,7 +3,8 @@ read them (the records the page loads list them too, as "reminders"); owners and
 (routes_calendar.py) lists those turned on. The medication log (#235, med_log.py): list, log, correct and remove doses,
 the same way ("doses" in the records). The CSRF check in main.guard covers each change like every other, and each goes
 in the profile's activity log as "medication" (what was done, how many times a day or the dose's status, never the
-medication or a note)."""
+medication or a note). Each change's reply carries what it changed (#271), as the records list it, so the records page
+updates in place: "reminders" or "doses", the one added or changed; "removed", the id of one removed."""
 from datetime import timedelta
 from typing import List, Optional
 
@@ -60,7 +61,7 @@ def add_reminder(pid: int, body: Reminder, request: Request, s=Depends(user), db
     with dbm.transaction(db):
         rid = mr.add(db, pid, s, r, body.on)
         _log(db, s, pid, "reminder.add", request, r)
-    return {"id": rid, "reminder": mr.get(db, pid, rid)}
+    return {"id": rid, "reminder": mr.get(db, pid, rid), "reminders": mr.listing(db, pid, [rid])}
 
 
 @router.put("/api/profiles/{pid}/medications/reminders/{rid}")
@@ -74,7 +75,7 @@ def change_reminder(pid: int, rid: int, body: Reminder, request: Request, s=Depe
         if mr.change(db, pid, rid, s, r, body.on) is None:
             raise HTTPException(404, "No such reminder.")
         _log(db, s, pid, "reminder.change", request, r)
-    return {"reminder": mr.get(db, pid, rid)}
+    return {"reminder": mr.get(db, pid, rid), "reminders": mr.listing(db, pid, [rid])}
 
 
 @router.patch("/api/profiles/{pid}/medications/reminders/{rid}")
@@ -85,7 +86,7 @@ def switch_reminder(pid: int, rid: int, body: Switch, request: Request, s=Depend
         if mr.change(db, pid, rid, s, active=body.on) is None:
             raise HTTPException(404, "No such reminder.")
         _log(db, s, pid, "reminder.on" if body.on else "reminder.off", request)
-    return {"reminder": mr.get(db, pid, rid)}
+    return {"reminder": mr.get(db, pid, rid), "reminders": mr.listing(db, pid, [rid])}
 
 
 @router.delete("/api/profiles/{pid}/medications/reminders/{rid}")
@@ -95,7 +96,7 @@ def remove_reminder(pid: int, rid: int, request: Request, s=Depends(user), db=De
         if mr.remove(db, pid, rid) is None:
             raise HTTPException(404, "No such reminder.")
         _log(db, s, pid, "reminder.delete", request)
-    return {"ok": True}
+    return {"ok": True, "removed": [rid]}
 
 
 # ---------------------------------------------------------------- the medication log (#235)
@@ -129,7 +130,7 @@ def add_dose(pid: int, body: Dose, request: Request, s=Depends(user), db=Depends
     with dbm.transaction(db):
         did = med_log.add(db, pid, s, d)
         activity.log(db, "medication", s, pid, med_log.log_detail("add", d), _client_ip(request))
-    return {"id": did}
+    return {"id": did, "doses": med_log.listing(db, pid, [did])}
 
 
 @router.put("/api/profiles/{pid}/medications/doses/{did}")
@@ -143,7 +144,7 @@ def change_dose(pid: int, did: int, body: Dose, request: Request, s=Depends(user
         if med_log.change(db, pid, did, s, d) is None:
             raise HTTPException(404, "No such dose in the log.")
         activity.log(db, "medication", s, pid, med_log.log_detail("change", d), _client_ip(request))
-    return {"ok": True}
+    return {"ok": True, "doses": med_log.listing(db, pid, [did])}
 
 
 @router.delete("/api/profiles/{pid}/medications/doses/{did}")
@@ -154,4 +155,4 @@ def remove_dose(pid: int, did: int, request: Request, s=Depends(user), db=Depend
         if was is None:
             raise HTTPException(404, "No such dose in the log.")
         activity.log(db, "medication", s, pid, med_log.log_detail("delete", was), _client_ip(request))
-    return {"ok": True}
+    return {"ok": True, "removed": [did]}

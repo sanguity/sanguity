@@ -105,11 +105,13 @@ def remove(db, pid, did):
     return was
 
 
-def listing(db, pid):
-    """The profile's doses, oldest first: {id, med, name, t, status, note, slot, by, at, changed, changed_by}."""
+def listing(db, pid, ids=None):
+    """The profile's doses, oldest first: {id, med, name, t, status, note, slot, by, at, changed, changed_by}. ids: only
+    those doses (a change's reply carries the dose it changed, #271)."""
     out = []
-    for r in db.execute("""SELECT id, body, created_name, created, changed_name, changed FROM med_doses
-                           WHERE profile_id=? ORDER BY id""", (pid,)):
+    only = "" if ids is None else f" AND id IN ({','.join('?' * len(ids))})"
+    for r in db.execute(f"""SELECT id, body, created_name, created, changed_name, changed FROM med_doses
+                           WHERE profile_id=?{only} ORDER BY id""", (pid, *(ids or ()))):
         d = json.loads(crypto.dec(r["body"]))
         out.append({"id": r["id"], "med": d.get("med"), "name": d.get("name") or "", "t": d.get("t"), "status": d.get("status"),
                     "note": d.get("note") or "", "slot": d.get("slot"), "by": r["created_name"], "at": r["created"],

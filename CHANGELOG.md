@@ -1062,6 +1062,13 @@ Everything on `main` so far; it becomes the first tagged release.
   fonts and icons as nginx sends them, stylesheets and icons compressed, not as they are on disk, where comments
   counted as much as rules. 281.9 KB is sent today (396.3 KB on disk), and the budget is 310 KB, room for Redesigns 4
   to 7. nginx now compresses the SVG icon sprite too (10.5 KB on disk, 3.2 KB sent).
+- **Changes update the page in place** (#271): logging a dose, setting a reminder, saving or deleting a journal entry,
+  correcting a record (and linking two results as the same) loaded the whole page again, losing where it was
+  scrolled and what the panel showed. The records page keeps its records, settings and watch data in a small store of
+  its own (`www/js/store.js`), and the API's reply to each of these changes carries what changed (an edit's carries
+  the records, since it can change any of them): only the views that show that part are drawn again, the panel
+  shows what it showed, and focus stays where it was. Body and activity's "Shade hospital stays" and Costs' "Denied
+  only" and type of care keep focus too when they redraw their tab. Switching profile still loads the page again.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

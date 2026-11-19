@@ -55,27 +55,7 @@ const DEFAULT_SETTINGS = {
   visitWorkouts: [],   // past visits whose title matches count as workouts on Health, e.g. {"match": "physical therapy", "regex": false, "name": "Physical therapy", "minutes": 45}
   milestones: [],      // named dates, e.g. {"date": "2026-03-01", "label": "Diagnosis", "primary": true} (#39)
 };
-let CFG = DEFAULT_SETTINGS;
-/* each value as the server sent it (a name map it sends is the whole map: a default nickname removed in Settings
-   stays removed); a missing or malformed one keeps the default */
-function applySettings(u) {
-  if (!u || typeof u !== "object") return;
-  const obj = v => v && typeof v === "object" && !Array.isArray(v), list = (v, d) => Array.isArray(v) ? v : d;
-  CFG = {...DEFAULT_SETTINGS, ...u,
-    overview: {...DEFAULT_SETTINGS.overview, ...(obj(u.overview) ? u.overview : {})},
-    trends: {...DEFAULT_SETTINGS.trends, ...(obj(u.trends) ? u.trends : {})},
-    labNicknames: obj(u.labNicknames) ? u.labNicknames : DEFAULT_SETTINGS.labNicknames,
-    sources: obj(u.sources) ? u.sources : DEFAULT_SETTINGS.sources,
-    visitWorkouts: list(u.visitWorkouts, DEFAULT_SETTINGS.visitWorkouts),
-    milestones: list(u.milestones, DEFAULT_SETTINGS.milestones),
-    tabs: obj(u.tabs) ? u.tabs : DEFAULT_SETTINGS.tabs,
-    theme: ["light", "dark", "system"].includes(u.theme) ? u.theme : DEFAULT_SETTINGS.theme,
-    units: {...DEFAULT_SETTINGS.units, ...(obj(u.units) ? u.units : {})},
-    person: {...DEFAULT_SETTINGS.person, ...(obj(u.person) ? u.person : {})}};
-  CFG.overview.keyLabs = list(CFG.overview.keyLabs, DEFAULT_SETTINGS.overview.keyLabs);
-  CFG.trends.defaultLabs = list(CFG.trends.defaultLabs, DEFAULT_SETTINGS.trends.defaultLabs);
-  CFG.trends.views = list(CFG.trends.views, DEFAULT_SETTINGS.trends.views);
-}
+// CFG, the settings in use, and applySettings(): store.js (#271)
 const srcName = tag => CFG.sources[tag] || tag;
 const DAY = 864e5;
 
@@ -86,7 +66,7 @@ const fmtNum = v => Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? (+v.
 let ME = null, PROFILE = null;   // the signed-in account and the profile being viewed
 const stateKey = () => "ht-state" + (PROFILE ? ":" + PROFILE.id : "");
 
-let DATA, EV = [], STAYS = [], SERIES = [], byId = new Map(), WATCH = null, STEPS = [];
+// DATA, EV, STAYS, SERIES, byId, WATCH, STEPS: the records and what's worked out from them, in store.js (#271)
 const hasLane = c => EV.some(e => CAT_OF[e.k] === c) || (c.k === "watch" && STEPS.length > 0);
 /* preset: the records bar's period (#171), shared by every tab with time ("period" below); labsView: the Labs tab's
    "chart" or "heatmap" (#172) */

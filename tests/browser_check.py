@@ -3742,8 +3742,9 @@ def main():
                   asked and asked[0] == "alertdialog" and asked[1].startswith("Delete “") and "can't be undone" in asked[2] and asked[3] == "Keep it" and asked[4] == "Delete", asked)
             page.click("dialog.sg-ask .btn.danger")
             page.wait_for_function("typeof JOURNAL !== 'undefined' && EV.length > 0 && JOURNAL.length === 0 && booted && document.activeElement.id === 'journalHome'", timeout=20000)
+            # the Labs charts aren't shown, so they're drawn when they are (#271: no reload): what they'll draw
             check("deleting the entry takes it off the timeline and Trends, back to the journal's home",
-                  js("document.querySelectorAll('#charts .jmark, #tl .jmark').length") == 0 and page.inner_text("#journalHome h2") == "Journal")
+                  js("document.querySelectorAll('#tl .jmark').length + jInWindow().length") == 0 and page.inner_text("#journalHome h2") == "Journal")
             page.goto(base + "/account.html")
             page.wait_for_selector("#addMenuBtn", timeout=10000)
             menu_click(page, "#journalBtn")
@@ -4267,12 +4268,42 @@ def main():
                 sweep235("Overview with today's doses", "#ovDoses")
                 row = page.locator("#ovDoses .dose-today", has=page.locator(".dose-quick")).first
                 what = row.locator(".dose-med").inner_text()
+                js("window.sg271 = 1")   # gone if the page loads again (#271)
                 row.locator(".dose-quick button:text-is('Skipped')").click()
-                page.wait_for_load_state("load")
-                page.wait_for_function("typeof booted !== 'undefined' && booted && document.getElementById('ovDoses')", timeout=20000)
+                page.wait_for_function("w => [...document.querySelectorAll('#ovDoses .dose-today')].some(r => r.querySelector('.dose-med').textContent === w && /Skipped/.test(r.querySelector('.dose-got')?.textContent || ''))",
+                                       arg=what, timeout=20000)
                 settle(300)
                 check("…clicked Skipped: logged now, and the row says so", js("""w => [...document.querySelectorAll('#ovDoses .dose-today')].some(r =>
                     r.querySelector('.dose-med').textContent === w && /Skipped · /.test(r.querySelector('.dose-got')?.textContent || ''))""", what), what)
+                # #271: edits update in place. Logged from the Overview, its row redrawn in place: focus on the row's
+                # medication once its buttons are gone. A dose logged from the drawer over the Overview: no reload, the
+                # drawer still open on the medication, the scroll kept and the Overview's count changed; removed the same way
+                check("…without the page loading again, focus kept in that row: on its medication once its buttons are gone (#271)",
+                      js("""w => { const a = document.activeElement, r = a.closest('#ovDoses .dose-today');
+                          return window.sg271 === 1 && !!r && r.querySelector('.dose-med').textContent === w
+                            && (r.querySelector('.dose-quick') ? a.matches('.dose-quick button') : a.matches('.dose-med')); }""", what),
+                      js("document.activeElement.outerHTML.slice(0, 120)"))
+                page.locator("#ovDoses .dose-week").scroll_into_view_if_needed()
+                at271 = js("({y: scrollY, week: document.querySelector('#ovDoses .dose-week').textContent})")
+                page.locator("#ovDoses .dose-med", has_text=what).first.click()
+                settle(200)
+                n271 = page.locator("#dbody .dose-item").count()
+                page.click("#dbody button:text-is('Log a dose')")
+                settle(200)
+                page.click("#dbody button:text-is('Log dose')")
+                page.wait_for_function("n => document.querySelectorAll('#dbody .dose-item').length === n + 1", arg=n271, timeout=20000)
+                got271 = js("""({same: window.sg271 === 1, open: drawer.classList.contains('open'), title: document.getElementById('dtitle').textContent,
+                    y: scrollY, week: document.querySelector('#ovDoses .dose-week')?.textContent, tab: state.tab})""")
+                check("a dose logged in the drawer: no reload, the drawer still open on the medication, the Overview's count changed and its scroll kept (#271)",
+                      got271["same"] and got271["open"] and got271["title"] == cur["name"] and got271["tab"] == "overview"
+                      and got271["week"] != at271["week"] and abs(got271["y"] - at271["y"]) <= 2, [at271, got271])
+                page.locator("#dbody .dose-item button:text-is('Remove')").first.click()
+                answer_ask(page)
+                page.wait_for_function("n => document.querySelectorAll('#dbody .dose-item').length === n", arg=n271, timeout=20000)
+                check("…removed the same way: no reload, the drawer open, the Overview's count back",
+                      js("w => window.sg271 === 1 && drawer.classList.contains('open') && document.querySelector('#ovDoses .dose-week').textContent === w", at271["week"]))
+                page.keyboard.press("Escape")
+                settle(200)
                 # the Timeline: marks on the span, by shape, with a tooltip
                 js("setRange(Date.now() - 20 * DAY, Date.now() + 5 * DAY); switchTab('timeline')")
                 settle(400)
