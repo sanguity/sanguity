@@ -1194,6 +1194,12 @@ Everything on `main` so far; it becomes the first tagged release.
   kind once (a stay's title is its hospital, the line under it "Hospital stay" and its dates), a fact that's a day the
   head names or that starts with the place its title is says only what's left ("Where: Oncology unit", "Admitted:
   9:40 PM"), a medication's history has key facts in boxes like every record, and "Edited" is said with the edits.
+- **The offline copy follows a source's new name, and the settings saved on the records page** (#416): renaming a
+  source from the drawer's Source line left the copy with the old name and the old revision of the records, so
+  nothing opened after it was kept for offline (a lab day opened then said offline that its details weren't kept).
+  Its reply now says the records' revision after it, and the copy takes the new name. A lab or a source tag renamed,
+  a Trends view saved and the journal's groups changed on the records page reach the copy's settings too, where
+  offline showed them as they were when the page loaded.
 - **The top bar's links open the profile shown** (#397): with a browser tab for each child, Add's links (Log a dose,
   Upload files…), Display and Getting started opened whichever profile had been picked last in any tab, not the one
   shown. Every link in the top bar to another page now carries the profile shown (`?profile=`), as the tabs, the
