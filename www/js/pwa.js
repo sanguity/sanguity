@@ -54,7 +54,18 @@ const SgOffline = (() => {
     copy.settings = JSON.stringify(s);
     return true;
   }
-  return {base, works, on, set, save, load, drop, forget, withUser};
+  /* and back: the person's own of nested settings (a copy's, or a profile's as a save answers them), flat, as GET
+     settings/user has them (#428). They're the settings of scope "user" in server/settings.py, the same on every profile */
+  const MINE = ["theme", "guide", "dates.timeZone", "dates.format", "units"];
+  function mine(s) {
+    const flat = {};
+    for (const k of MINE) {
+      const v = k.split(".").reduce((d, p) => d && typeof d === "object" ? d[p] : undefined, s);
+      if (v !== undefined) flat[k] = v;
+    }
+    return flat;
+  }
+  return {base, works, on, set, save, load, drop, forget, withUser, mine};
 })();
 
 if (SgOffline.works()) navigator.serviceWorker.register(new URL("sw.js", SgOffline.base), {scope: SgOffline.base.pathname})

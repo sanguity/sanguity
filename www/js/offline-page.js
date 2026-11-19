@@ -35,18 +35,25 @@ const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on,
     }
     reached = true;
     if (OFFLINE.on && !document.body.classList.contains("offline-page")) back();
-    if (r.ok && /^settings\/user\/[^/]+$/.test(path) && ((opts && opts.method) || "GET") !== "GET") keepUser(path, r);
+    if (r.ok && SETTINGS.test(path) && ((opts && opts.method) || "GET") !== "GET") keepSettings(path, r);
     return r;
   };
-  /* the person's own settings saved here (Display, your menu's theme): the copy of records this device keeps takes
-     them, so the records page offline shows them as saved (#424; offline.js does the same there) */
+  /* settings saved here (Display, your menu's theme, the other sections): the copy of records this device keeps takes
+     them, so the records page offline shows them as saved (#424; offline.js does the same there). The reply is all of
+     them (a reset's are its "settings"): the person's own, flat (settings/user/…), or a profile's, nested
+     (profiles/<id>/settings/…, as Settings saves them with a profile picked, #428): the copy's own profile's are its
+     settings now; another profile's give the person's own, which are the same on every profile */
+  const SETTINGS = /^(settings\/user|profiles\/(\d+)\/settings)\/[^/]+(\/name)?$/;
   let kept = Promise.resolve();
-  function keepUser(path, r) {
+  function keepSettings(path, r) {
     if (!SgOffline.on()) return;
-    const body = r.clone().json();
+    const body = r.clone().json(), pid = path.match(SETTINGS)[2];
     kept = kept.then(async () => {
-      const j = await body, c = await SgOffline.load();
-      if (c && SgOffline.withUser(c, path.endsWith("/reset") ? j.settings : j)) await SgOffline.save(c);
+      const j = await body, c = await SgOffline.load(), now = path.endsWith("/reset") ? j.settings : j;
+      if (!c || !now || typeof now !== "object") return;
+      if (pid && +pid === c.profile.id) c.settings = JSON.stringify(now);
+      else if (!SgOffline.withUser(c, pid ? SgOffline.mine(now) : now)) return;
+      await SgOffline.save(c);
     }).catch(e => console.warn("offline copy not kept:", e.message));
   }
 
@@ -56,6 +63,7 @@ const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on,
   function away() {
     if (OFFLINE.on) return;
     OFFLINE.on = true;
+    watchBack();
     const opened = !reached, main = document.querySelector("main");
     document.body.classList.add("offline");
     // opened offline, its h1 is the page's (main, with its own, is left out: #424)
@@ -87,10 +95,17 @@ const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on,
     document.body.classList.remove("offline");
     document.getElementById("offlineBanner")?.remove();
   }
-  // the connection back (the browser says so, and the server answers): the page opened offline is loaded again
-  addEventListener("online", () => {
-    if (OFFLINE.on) realFetch(API + "me", {cache: "no-store", credentials: "same-origin"}).then(() => {
+  /* the connection back (the server answers: asked when the browser says it's online, and every few seconds while the
+     page is shown offline, as the records page does, #428: that isn't always said, nor is the server always back with
+     it): the page opened offline is loaded again */
+  let asking = false, watching = 0;
+  function again() {
+    if (!OFFLINE.on || asking) return;
+    asking = true;
+    realFetch(API + "me", {cache: "no-store", credentials: "same-origin"}).then(() => {
       if (document.body.classList.contains("offline-page")) location.reload(); else back();
-    }, () => {});
-  });
+    }, () => {}).finally(() => { asking = false; });
+  }
+  addEventListener("online", again);
+  function watchBack() { watching ||= setInterval(() => { if (!document.hidden) again(); }, 4000); }
 })();
