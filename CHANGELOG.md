@@ -1170,6 +1170,10 @@ Everything on `main` so far; it becomes the first tagged release.
   Phone and watch no longer says its title twice (its upload card is "Upload from the phone"). The sidebar's "not
   saved" dot shows in forced colours. A group of one card (Milestones, Workouts) has its Reset to defaults beside the
   group's title, and Workouts' card is named Workouts.
+- **One theme** (#410): your menu's Dark mode or Light mode changed only this browser, while Settings → Display kept
+  the account's theme and still showed "System". Now it saves the account's theme, as Display does, with an Undo, and
+  Display shows it; the command palette offers one theme entry. (Someone who must change their password first, and
+  can't save settings yet, still picks one for that browser.)
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
