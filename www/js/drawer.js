@@ -93,23 +93,34 @@ drawer.addEventListener("cancel", e => e.preventDefault());
    The head: the kind's icon in its colour, the title, one line of what kind it is and when, and a ⋯ menu of the
    corrections (Hide, Rename, Fix date, Merge…: drawerMenu). The body: its key facts (three or four, dl.facts), what
    the record holds, the actions that go somewhere (.dgo: another tab, the medication's history, a journal note), and
-   where it came from. Each fact once: a value the head or a key fact says isn't said again below (drawerFacts). */
+   where it came from. Each fact once: a value the head or a key fact says isn't said again below (drawerFacts), by
+   meaning as well as by its words (#406): a day the head names, however it's written, or the place its title is. */
 let drawerSaid = new Set();
 const saidKey = v => String(v).trim().toLowerCase();
-function drawerHead(k, title, line, tone) {
+/* days: the timestamps of the days the head names (a fact gives a day without its time) */
+function drawerHead(k, title, line, tone, days = []) {
   const key = $("#dkey");
   key.replaceChildren(icon(KIND_ICON[k] || (k ? "file-text" : "history")));   // none: the list of edits
   key.style.setProperty("--tone", tone || CAT_OF[k]?.color || "var(--muted)");
   $("#dtitle").textContent = title; $("#dsub").textContent = line;
-  drawerSaid = new Set([title, ...line.split(" · ")].filter(Boolean).map(saidKey));
+  drawerSaid = new Set([title, ...title.split(" · "), ...line.split(" · ").flatMap(x => x.split(" – ")), ...days.filter(isFinite).map(fmtD)].filter(Boolean).map(saidKey));
   drawerMenu([]);
   const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
   return body;
 }
+/* a value as it's said under the head: "" when the head or a key fact said it already, and without what they said at
+   its start ("Northfield General Hospital, oncology unit" under that hospital's title: "Oncology unit", #406) */
+function unsaid(v) {
+  const k = saidKey(v), at = [...drawerSaid].find(s => s.length > 3 && k.startsWith(s + ", "));
+  if (drawerSaid.has(k)) return "";
+  if (!at) return v;
+  const rest = String(v).trim().slice(at.length + 2);
+  return rest[0].toUpperCase() + rest.slice(1);
+}
 /* [label, value, dd's attributes?] pairs, those with a value not already said: the key facts ("facts", each in its own
    box, then said) or the rest ("kv") */
 function drawerFacts(rows, cls = "kv") {
-  const keep = rows.filter(r => r && r[1] != null && r[1] !== "" && !drawerSaid.has(saidKey(r[1])));
+  const keep = rows.filter(r => r && r[1] != null && r[1] !== "").map(([k, v, o]) => [k, unsaid(v), o]).filter(r => r[1] !== "");
   if (!keep.length) return null;
   if (cls === "kv") return el("dl", {class: "kv"}, keep.flatMap(([k, v, o]) => [el("dt", {text: k}), el("dd", {text: v, ...o})]));
   keep.forEach(r => drawerSaid.add(saidKey(r[1])));
@@ -174,7 +185,12 @@ function openEvent(e) {
   if (e.k === "cycle") return openCycle(e);       // cycle.js (#183)
   const d = DATA.details[e.id] || {};
   state.selEv = e.id;
-  const body = drawerHead(e.k, e.title, `${KIND_LABEL[e.k] || "Record"} · ${e.end && e.te - e.ts > DAY ? fmtD(e.ts) + " – " + fmtD(e.te) : fmtDT(e.ts)}`);
+  // its kind once (#406): a title that starts with it ("Hospital stay · Northfield General Hospital") is the rest, the
+  // line under it the kind and when; the facts leave out the days it names
+  const kind = KIND_LABEL[e.k] || "Record", parts = e.title.split(" · ");
+  const title = parts.length > 1 && saidKey(parts[0]) === saidKey(kind) ? parts.slice(1).join(" · ") : e.title;
+  const when = e.end && e.te - e.ts > DAY ? fmtD(e.ts) + " – " + fmtD(e.te) : fmtDT(e.ts);
+  const body = drawerHead(e.k, title, saidKey(title) === saidKey(kind) ? when : `${kind} · ${when}`, null, [e.ts, e.te]);
   { const wait = detailsWait(e, body); if (wait) { body.append(drawerSkeleton()); showDrawer(); return wait; } }   // its details, loaded when it's opened (details.js, #217)
   const fixes = WATCH_KINDS.has(e.k) ? null : editPanel(e);   // the ⋯ menu's corrections, and what was corrected; the watch's own aren't records
   const main = [], go = [], facts = rows => main.push(drawerFacts(rows, "facts")), kv = rows => main.push(drawerFacts(rows));
@@ -266,7 +282,7 @@ function openEvent(e) {
   }
   { const mh = medHistoryAction(e); if (mh) go.push(mh); }   // a medication's whole history (meds.js, #50)
   go.push(journalAddAction(e));   // "Add a journal note" for this day (journal.js)
-  body.append(...present(fixes, ...main, el("div", {class: "btns dgo"}, ...go), eventSource(e)));   // where it came from (sources.js)
+  body.append(...present(fixes, ...main, el("div", {class: "btns dgo"}, ...go), eventSource(e, !fixes?.querySelector(".edited"))));   // where it came from (sources.js), "Edited" once
   showDrawer();
   renderTimeline(); document.querySelectorAll(".tl-row").forEach(r => r.classList.remove("sel"));
 }

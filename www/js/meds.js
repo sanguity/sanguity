@@ -124,11 +124,11 @@ function openMedication(m) {
   medSel = m.i; state.selEv = null;
   const last = m.spans[m.spans.length - 1];
   const body = drawerHead("med", m.name, "Medication history · " + (m.spans.length ? `${fmtD(m.spans[0].ts)} – ${last.open ? "no end in the records" : fmtD(last.te)}` : `pharmacy fills only, from ${fmtD(m.fills[0].ts)}`));   // drawer.js (#270)
-  const kv = (rows) => el("dl", {class: "kv"}, ...rows.filter(r => r[1]).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})]));
-  body.append(kv([["Started", m.spans.length ? fmtD(m.spans[0].ts) : ""], ["Stopped", m.stop ? fmtD(dayTs(m.stop)) : ""],
-    ["Still listed", last && last.open ? "Yes: the latest listing gives no end date" : ""],
+  // its key facts, as every record's (#406): what the head says (when it started, that the records give no end) isn't
+  // said again
+  body.append(...present(drawerFacts([["Started", m.spans.length ? fmtD(m.spans[0].ts) : ""], ["Stopped", m.stop ? fmtD(dayTs(m.stop)) : ""],
     ["Dose changes", m.changes.length ? String(m.changes.length) : ""], ["Pharmacy fills", m.fills.length ? String(m.fills.length) : ""],
-    ["RxNorm", (m.rxnorm || []).join(", ")]]));
+    ["RxNorm", (m.rxnorm || []).join(", ")]], "facts")));
   if (m.spans.length) {
     body.append(el("div", {class: "sect", text: "What the records list"}), scrollBox({class: "tablewrap", "aria-label": "What the records list", style: {maxHeight: "none"}}, el("table", {class: "data medspans"},
       el("thead", {}, el("tr", {}, ["When", "Listed as", "Status", "Prescribed by", "Source"].map(h => el("th", {text: h})))),

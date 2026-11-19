@@ -2996,14 +2996,20 @@ def main():
             nulls_js = "/\\b(null|undefined)\\b/.test(document.getElementById('drawer').innerText)"
             # #270: every kind in one layout: its kind's icon, the title, one line of kind and when, the corrections in the
             # ⋯ menu (none for what the watch made, or a cycle record), at most four key facts, one Source, and no value said
-            # twice (the title, the line's parts, the facts and the details, and the line under the facts)
-            layout_js = """k => { const b = document.getElementById('dbody');
-              const said = [document.getElementById('dtitle').textContent, ...document.getElementById('dsub').textContent.split(' · ')].map(x => x.trim().toLowerCase());
-              const vals = [...b.querySelectorAll(':scope > dl.facts dd, :scope > dl.kv dd, :scope > .dnote')].map(x => x.textContent.trim().toLowerCase());
+            # twice (the title, the line's parts, the facts and the details, and the line under the facts). #406: nor by
+            # meaning: a fact that's a day the head names (a range's either end, or a time's day: "Filled", "Given",
+            # "Collected"), or that starts with a place the title names; and the head says the kind once
+            layout_js = """k => { const b = document.getElementById('dbody'), e = byId.get(state.selEv), lc = x => x.trim().toLowerCase();
+              const title = document.getElementById('dtitle').textContent, line = document.getElementById('dsub').textContent;
+              const said = [...new Set([title, ...title.split(' · '), ...line.split(' · ').flatMap(x => x.split(' – ')), ...(e ? [fmtD(e.ts), fmtD(e.te)] : [])].map(lc))];
+              const vals = [...b.querySelectorAll(':scope > dl.facts dd, :scope > dl.kv dd, :scope > .dnote')].map(x => lc(x.textContent));
               const all = [...said, ...vals], twice = all.filter((x, i) => x && all.indexOf(x) !== i);
+              const place = vals.filter(v => [title, ...title.split(' · ')].map(lc).some(s => s.length > 3 && v.startsWith(s + ', ')));
+              const kind = title.split(' · ').map(lc).includes(lc(line.split(' · ')[0])) && line.includes(' · ');
               const sources = b.querySelectorAll(':scope > p.source').length + [...b.querySelectorAll(':scope > dl dt')].filter(x => x.textContent === 'Source').length;
               const facts = b.querySelectorAll(':scope > dl.facts > div').length, menu = !document.getElementById('dmore').hidden;
               const bad = [!document.querySelector('#dkey svg.icon') && 'no icon', twice.length && 'twice: ' + twice, sources > 1 && sources + ' sources',
+                place.length && "the title's place again: " + place, kind && 'its kind twice in the head',
                 facts > 4 && facts + ' facts', menu !== !['exercise', 'ecg', 'rhythm', 'cycle'].includes(k) && 'menu ' + menu,
                 b.querySelector('.edit-acts') && 'corrections in the body'].filter(Boolean);
               return bad.length ? k + ': ' + bad.join(', ') : null; }"""
@@ -3021,6 +3027,13 @@ def main():
             not_one = [x for x in not_one if x]
             check("…each in one layout (#270): its kind's icon, title and one line of when, its corrections in the ⋯ menu, up to four key facts, one Source, nothing said twice",
                   not not_one, not_one)
+            stay406 = js("""(() => { const e = EV.find(e => e.k === 'stay' && !e.hidden && / · /.test(e.title)); if (!e) return null;
+                return Promise.resolve(openEvent(e)).then(() => [e.title, document.getElementById('dtitle').textContent, document.getElementById('dsub').textContent,
+                  [...document.querySelectorAll('#dbody dl.facts dd')].map(d => d.textContent)]); })()""")
+            page.keyboard.press("Escape")
+            check("…a hospital stay's head says “Hospital stay” once, its title the place, which its facts don't say again (#406)",
+                  stay406 and stay406[1] == stay406[0].split(" · ", 1)[1] and stay406[2].startswith("Hospital stay · ") and "Hospital stay" not in stay406[1]
+                  and not any(stay406[1].lower() in v.lower() for v in stay406[3]), stay406)
             check("drawer closes on Escape", not js("document.getElementById('drawer').classList.contains('open')"))
             for what, find in (("a workout without heart rate", "e => e.k === 'exercise' && !e.hidden && !DATA.details[e.id]?.hr"),
                                ("a hospital stay", "e => e.k === 'stay' && !e.hidden")):
@@ -3676,7 +3689,8 @@ def main():
             page.fill("#dbody .edit-form input", "Renamed in the browser check")
             page.click("#dbody .edit-form button:text-is('Save')")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && document.getElementById('dtitle').textContent === 'Renamed in the browser check'", timeout=20000)
-            check("a rename shows in the drawer, marked Edited", "Edited" in page.inner_text("#dbody .edited") and page.locator("#dbody .edited button[data-edit]").count() == 1)
+            check("a rename shows in the drawer, marked Edited, once (not again on its Source line, #406)", "Edited" in page.inner_text("#dbody .edited")
+                  and page.locator("#dbody .edited button[data-edit]").count() == 1 and page.inner_text("#dbody").count("Edited") == 1, page.inner_text("#dbody")[-300:])
             page.keyboard.press("Escape")
             settle(300)
             check("…then Escape takes focus back to the Timeline row it was opened from, drawn again with its new title (#404)",
@@ -4242,6 +4256,12 @@ def main():
                       js("document.getElementById('dtitle').textContent").startswith("Examplocin") and page.locator("#dbody table.medspans tbody tr").count() == 2
                       and page.locator("#dbody .medchanges li").count() == 1 and page.locator("#dbody table.medfills tbody tr").count() == 3
                       and "Discontinued" in body and "9990001" in body and js("fmtD(dayTs('2025-09-30'))") in body, body[:400])
+                facts406 = js("""(() => { const b = document.getElementById('dbody'), head = document.getElementById('dsub').textContent.toLowerCase();
+                    return {kv: !!b.querySelector(':scope > dl.kv'), facts: [...b.querySelectorAll(':scope > dl.facts > div')].map(d => [d.querySelector('dt').textContent, d.querySelector('dd').textContent]),
+                            said: [...b.querySelectorAll(':scope > dl.facts dd')].some(d => head.split(' · ').flatMap(x => x.split(' – ')).includes(d.textContent.toLowerCase()))}; })()""")
+                check("…its key facts in boxes, as every record's (#406): not its start, nor that it has no end, which the head says",
+                      not facts406["kv"] and 0 < len(facts406["facts"]) <= 4 and not facts406["said"]
+                      and not {"Started", "Still listed"} & {k for k, _ in facts406["facts"]}, facts406)
                 check("…saying what the records say, not advice", "This isn't medical advice" in body
                       and not re.search(r"\b(should|recommend|missed|too (high|low))\b", body, re.I), body[-300:])
                 page.click("#dbody table.medfills tbody tr >> nth=0")
@@ -9992,6 +10012,7 @@ def main():
             za.wait_for_selector("#dbody details.res dl.kv", timeout=5000)
             lab_kv, lab_btns = za.evaluate(kv_js), za.evaluate(btns_js)
             lab_kv.setdefault("Collected", za.evaluate("document.getElementById('dsub').textContent.split(' · ').pop()"))   # said in the head (#270)
+            lab_kv.setdefault("Resulted", za.evaluate("fmtD(byId.get(state.selEv).ts)"))   # the head's day, not said again (#406)
             za.evaluate("closeDrawer(); Promise.resolve(openEvent(EV.find(e => e.k === 'claim' && !e.hidden)))")
             za.wait_for_selector("#dbody table.data tbody td", timeout=5000)
             line_day = za.evaluate("document.querySelector('#dbody table.data tbody td').textContent")
