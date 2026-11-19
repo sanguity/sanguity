@@ -6523,6 +6523,20 @@ def main():
             def add_record(kind):
                 page.select_option("#manKind", kind)
                 page.click("#manAddKind")
+            # #388: on Sources with the profile in its address, Add → Type records in only changes the hash: the page isn't
+            # loaded again, and a lab typed in is kept. Leaving the page with it typed in asks first; with nothing typed, not
+            leave = "(() => { const e = new Event('beforeunload', {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; })()"
+            page.fill(".man-row [data-f=test]", "Hemoglobin")
+            js("window.sgSamePage = true")
+            page.click("#addMenuBtn")
+            page.click("#addMenuList a:text-is('Type records in')")
+            settle(500)
+            add_kept = js("[window.sgSamePage === true, location.search + location.hash, document.querySelector('.man-row [data-f=test]').value]")
+            asks = js(leave)
+            page.fill(".man-row [data-f=test]", "")
+            check("Type records in (#388): on sources.html?profile=2#manual, Add → Type records in keeps the page and the lab typed in; "
+                  "leaving with it typed asks first, and with nothing typed doesn't",
+                  add_kept == [True, "?profile=2#manual", "Hemoglobin"] and asks is True and js(leave) is False, [add_kept, asks])
             # #381: Lab results is one kind among the others: the page starts with its empty row; adding another kind before
             # anything is typed into it puts it away, choosing Lab results brings it back with one row (focus in its test),
             # rows typed into stay when another kind is added, and removing the last row puts it away, focus on the picker
@@ -6646,6 +6660,12 @@ def main():
                          "document.getElementById('manKind').value]")
             check("the Costs tab's link opens a payment's form, only it: lab results put away, the picker on it (#384)",
                   arrived == [1, True, 0, "payment"], arrived)
+            for _ in range(50):   # once the section is shown
+                if js("document.activeElement.dataset.f === 'payee'"):
+                    break
+                settle(100)
+            check("…with focus in its “Paid to”, not left on the page (#388)", js("document.activeElement.dataset.f") == "payee",
+                  js("document.activeElement.id || document.activeElement.tagName"))
             page.fill(card(1, "date"), "2026-11-05")
             page.fill(card(1, "payee"), "Lakeside Clinic (fictional)")
             page.select_option(card(1, "hsa"), "HSA")

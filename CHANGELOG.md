@@ -1044,6 +1044,10 @@ Everything on `main` so far; it becomes the first tagged release.
   that failed said why for a moment, then "1 result ready to save." took its place; the reason stays until something's
   changed. And a payment's saved line and toast said "See them on the timeline": payments and claims link to Costs
   now, problems and upcoming appointments to the Overview, the rest to the timeline as before.
+- **Type records in keeps what's typed** (#388): on a Sources page whose address names the profile (as Costs' and the
+  Overview's links give), Add → Type records in loaded the page again and lost everything typed, without a word. On
+  Sources, Add's ways in only change the section now, and leaving the page with something typed in and not saved asks
+  first, as Settings does. Arriving from Costs' "Type in a payment" puts focus in "Paid to" rather than on the page.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
