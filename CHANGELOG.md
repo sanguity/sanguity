@@ -1208,6 +1208,10 @@ Everything on `main` so far; it becomes the first tagged release.
   fits beside More, it goes under More too and More takes its name ("Labs ▾"). The tabs are a little narrower, so all
   five still fit at 1,100 px. With the drawer docked, the page is laid out for the room it has: up to 1,500 px wide,
   Labs' list and charts, the Overview's columns and the Timeline's rows are as on a screen 900 px wide.
+- **The top bar's small things** (#400): Search is the size of Add and your menu beside it (44 px on a phone or a
+  touch screen, where it was 32 or 24 px wide); your menu's name starts with what it shows ("demo, your menu", so
+  speech input can say it); and a link from a menu to a part of the page you're on (About this person, on Settings)
+  puts focus on its heading, as the command palette's links do, instead of leaving it nowhere.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
