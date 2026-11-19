@@ -50,7 +50,11 @@ function codeStep(on, methods = {code: true}) {
   if (on) (code ? document.getElementById("c") : pkBtn).focus();
 }
 function signedIn(j) {
-  const next = () => location.replace(j.must_change_pw ? "account.html#password" : "./");
+  // the account's own theme, remembered before the first page draws (theme.js), as signing out took the last one's
+  // (#433): asked here, at most half a second, so a dark account's first page doesn't start light (#436)
+  const themed = Promise.race([api("settings/user").then(r => r.ok ? r.json() : null).then(s => s && applyTheme(s.theme)).catch(() => {}),
+    new Promise(r => setTimeout(r, 500))]);
+  const next = () => themed.then(() => location.replace(j.must_change_pw ? "account.html#password" : "./"));
   if (j.recovery_codes_left == null) { next(); return; }
   // a recovery code was used: say what that means before going on, on the page with a Continue (#210: not a pop-up)
   const note = el("p", {id: "recoveryNote"}), go = el("button", {type: "button", id: "recoveryGo", text: "Continue", onclick: next});

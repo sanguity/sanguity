@@ -7201,12 +7201,25 @@ def main():
                 except Exception:
                     pass
             plain432 = [held432()[:2], a432.evaluate("!!document.querySelector('dialog.sg-ask[open]')"), a432.evaluate(me432)]
+            # #436: a tab busy for a moment as it's asked (350 ms of drawing, say) still answers, and is named
+            in432()
+            b432.click("[data-key=labNicknames] button:text-is('Add a row')")
+            b432.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Typed, busy")
+            b432.evaluate("setTimeout(() => { const t = performance.now(); while (performance.now() - t < 350) {} }, 0)")
+            a432.bring_to_front()
+            menu_click(a432, "#logout")
+            busy436 = answer_ask(a432, yes=False)
+            menu_click(a432, "#logout")
+            a432.click("dialog.sg-ask[open] .sg-ask-acts button:last-child")
+            a432.wait_for_url("**/login.html", timeout=10000)
             ctx432.close()
             check("…and online, Log out asks the other open tabs too, naming the pages with changes not saved (#432); Stay leaves all three as they were, signed in",
                   asked432 == ["Log out with changes not saved?", "Changes not saved in Settings and Sources (other tabs) will be lost. Stay to save them first."]
                   and stay432 == [["/", "/settings.html", "/sources.html"], "Typed, not saved", "Hemoglobin", 200, "userMenuBtn"], [asked432, stay432])
             check("…Log out then ends the sign-in on the server and sends the other tabs to the sign-in page; with nothing unsaved elsewhere, nothing more is asked (#432)",
                   out432 == [["/login.html"] * 3, 401] and plain432 == [["/login.html"] * 2, False, 401], [out432, plain432])
+            check("…and a tab busy for a moment as it's asked still answers, named among the pages with changes not saved (#436)",
+                  busy436[1].startswith("Changes not saved in Settings (another tab)"), busy436)
             # #391: Add's items only change the section on Sources (#388); the one shown comes from the top of the page, with
             # its name said and in the tab's title, as the sidebar shows one
             page.set_viewport_size({"width": 375, "height": 760})
@@ -10693,6 +10706,16 @@ def main():
             menu_click(p433, "#logout")
             p433.wait_for_url("**/login.html", timeout=10000)
             seen433 = [p433.evaluate("[document.documentElement.dataset.theme ?? null, localStorage.getItem('ht-theme-default')]")]
+            # #436: the same account signing in again starts its first page in its own theme, asked at sign-in, not the
+            # system's for a moment (theme.js draws from what's remembered, which signing out took)
+            ctx433.add_init_script("addEventListener('DOMContentLoaded', () => { window.sgFirstTheme = document.documentElement.dataset.theme || null; })")
+            p433.fill("#u", USER)
+            p433.fill("#p", PW)
+            p433.click("#b")
+            p433.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+            first436 = p433.evaluate("window.sgFirstTheme")
+            menu_click(p433, "#logout")
+            p433.wait_for_url("**/login.html", timeout=10000)
             p433.fill("#u", USER2)
             p433.fill("#p", PW2)
             p433.click("#b")
@@ -10711,6 +10734,7 @@ def main():
             check("an account with no profile, signed in after one with Dark, sees its own theme on the records page, and a change to it after a reload; "
                   "sign-out leaves no account's theme behind (#433)",
                   seen433 == [[None, None], "system", [None, None], ["light", "light"]], seen433)
+            check("…and an account with Dark signing in again has its first page dark from the first frame, not the system's (#436)", first436 == "dark", first436)
             zb.evaluate("location.hash = '#watch'")
             zb.wait_for_url("**/sources.html#phone", timeout=10000)
             check("…an old Settings address followed within the page opens its new home (#watch → Sources)", True)

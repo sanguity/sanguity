@@ -1364,6 +1364,10 @@ Everything on `main` so far; it becomes the first tagged release.
   Inter than in the stand-in font drawn before it, so everything below jumped 40 px once it arrived. Each chip's words
   now take the room they need in the stand-in, a little more, whichever font is drawn, so no chip moves; the browser
   check's font swap covers the Timeline at 1280, 1400 and 375 px.
+- **Log out waits for a busy tab, and the first page after signing in has the account's theme** (#436): Log out asked
+  the other open tabs for 150 ms, so one busy for longer (drawing, or a phone's in the background) wasn't named and its
+  changes went without a word; it waits 600 ms now. And since signing out forgets the account's theme (#433), the first
+  page after signing in started in the system's until the settings came; signing in now asks for the theme first.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
