@@ -56,21 +56,31 @@ ICONS = [
     "notebook",              # the journal (and Add's Journal entry)
     "smile",                 # mood and energy
     "droplet",               # cycle tracking
-    # the sidebars, the Add menu and your menu (#354)
-    "layout-grid", "flag",   # Settings: Dashboard (and Sources' Overview), Milestones and activity
+    # the places (#354), one icon each wherever they're shown (#399: groups.js's SG_ICON and SG_PAGES, sgIcon())
+    "layout-grid", "flag",   # the Overview tab, Settings' Milestones
     "upload", "keyboard", "link", "plug", "history",  # Sources (and Add): Upload files, Type records in, Paste a Health
-                             # Link, Portals (and Admin's apps), Import history (and Sharing's and Admin's Activity)
-    "users", "share-2", "calendar", "download", "user",  # Sharing: People (and Admin's Accounts), Share links (and your
-                             # menu's Sharing), Calendar feed, Export everything, About this person
+                             # Link, Portals and health plans, Import history
+    "users", "share-2", "calendar", "download", "user",  # Sharing: People; the Sharing page; Calendar feed, Export
+                             # everything; Settings' About this person
     "lock", "smartphone",    # Account: Sign-in and security, This device
     "archive", "book-user", "globe",  # Admin: Backups, Provider directory, Outside connections
     "database", "settings", "circle-user", "wrench", "compass", "log-out",
-                             # your menu: Sources, Settings, Account (and Sharing's Profile), Admin, Getting started,
-                             # Log out
+                             # the Sources and Settings pages, your menu (its button on a phone), Admin, Getting
+                             # started, Log out
     "search",                # the top bar's Search, the command palette (#273)
     # the records tabs on a phone's bar at the screen's foot (#268): Overview is layout-grid, Labs test-tube-diagonal,
     # Costs banknote, More ellipsis, your menu circle-user (above)
     "heart-pulse", "chart-gantt",  # Body and activity, Timeline
+    # #399: a place of its own for what shared one
+    "gauge",                 # Add's Home reading
+    "user-plus", "user-pen",  # New profile, Sharing's Profile
+    "key-round",             # the Account page
+    "monitor",               # Display (your menu, Settings)
+    "layout-list", "layout-dashboard",  # Sources' Overview, Settings' Dashboard
+    "ruler", "dumbbell", "folder",  # Settings: Labs and ranges, Workouts, More
+    "send", "scroll-text",   # Sharing: Share links (and New share link), Activity
+    "user-cog", "logs", "app-window", "arrow-right-left",  # Admin: Accounts, Install activity, Connected-source apps,
+                             # Lab name matches
 ]
 
 

@@ -96,16 +96,15 @@ const SgPalette = (() => {
   const medNames = () => (onRecords ? (recs() ? current(DATA.medications) : []) : REC?.meds || []).join(" ");
 
   /* ---- what it finds: {icon (a name or an element), title, ctx (where or what it is), words, go()} */
-  const TAB_ICON = {overview: "layout-grid", health: "activity", timeline: "calendar", labs: "test-tube-diagonal", costs: "banknote"};
   function actions() {
     const out = [], add = document.getElementById("addMenu");
     if (add && !add.hidden) for (const x of add.querySelectorAll("[role^=menuitem]")) {
       if (x.hidden || x.closest("[role=group]")?.hidden) continue;
       out.push({icon: x.querySelector("svg.icon"), title: x.textContent.trim(), ctx: "Add", go: () => x.click()});
     }
-    if (profile()?.role === "owner") out.push({icon: "share-2", title: "New share link", ctx: "Sharing", go: newLink});
+    if (profile()?.role === "owner") out.push({icon: sgIcon("sharing/links"), title: "New share link", ctx: "Sharing", go: newLink});
     const th = document.getElementById("theme");
-    if (th && !th.hidden) out.push({icon: "sun-moon", title: th.textContent.trim(), ctx: "Your menu", words: "theme dark light", go: () => th.click()});
+    if (th && !th.hidden) out.push({icon: sgIcon("theme"), title: th.textContent.trim(), ctx: "Your menu", words: "theme dark light", go: () => th.click()});
     return out;
   }
   /* what else the actions are known by (#403): Add's ways in, as their Sources groups (groups.js), the rest here, and
@@ -128,7 +127,7 @@ const SgPalette = (() => {
   function tabs() {
     if (document.querySelector("header.topbar nav.tabs")?.hidden) return [];
     return SgNav.TABS.map(t => document.getElementById("tab-" + t)).filter(a => a && !a.hidden)
-      .map(a => ({icon: TAB_ICON[a.id.slice(4)], title: a.textContent.trim(), ctx: "Records tab", words: TAB_WORDS[a.id.slice(4)], go: () => a.click()}));
+      .map(a => ({icon: sgIcon(a.id.slice(4)), title: a.textContent.trim(), ctx: "Records tab", words: TAB_WORDS[a.id.slice(4)], go: () => a.click()}));
   }
   /* the pages (not the one you're on) and, when something's typed, their groups and named parts */
   function pages(all) {
@@ -140,10 +139,10 @@ const SgPalette = (() => {
       for (const g of P.groups) {
         if (g.rest || (g.needs && role < RANK[g.needs])) continue;
         out.push({icon: g.icon, title: g.title, ctx: P.title, words: g.words, go: () => goTo(P, g.id)});
-        for (const [title, id, words] of g.finds || []) out.push({icon: g.icon, title, ctx: `${P.title} › ${g.title}`, words, go: () => goTo(P, id, true)});
+        for (const [title, id, words] of g.finds || []) out.push({icon: sgIcon(P.page.replace(".html", "/") + id), title, ctx: `${P.title} › ${g.title}`, words, go: () => goTo(P, id, true)});
       }
     }
-    if (page !== "guide.html") out.push({icon: "compass", title: "Getting started", ctx: "Page", words: "guide first records", go: () => { location.href = "guide.html" + (pid() ? "?profile=" + pid() : ""); }});
+    if (page !== "guide.html") out.push({icon: sgIcon("guide"), title: "Getting started", ctx: "Page", words: "guide first records", go: () => { location.href = "guide.html" + (pid() ? "?profile=" + pid() : ""); }});
     return out;
   }
   /* the labs: null while another page's are still on their way */
@@ -294,7 +293,8 @@ const SgPalette = (() => {
       if (!t.hasAttribute("tabindex")) t.tabIndex = -1;
       t.focus({preventScroll: !!part});   // a part: scrolled to by the sidebar already
     }, {once: true});
-    if (location.hash === "#" + id) dispatchEvent(new HashChangeEvent("hashchange")); else location.hash = id;
+    if (location.hash === "#" + id) dispatchEvent(new HashChangeEvent("hashchange", {oldURL: location.href, newURL: location.href}));   // (the page's listeners read newURL: import-records.js)
+    else location.hash = id;
   }
   /* the records page, to do the rest there (resume) */
   function arrive(what, v, hash) {

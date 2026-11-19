@@ -1217,6 +1217,13 @@ Everything on `main` so far; it becomes the first tagged release.
   heading: a section of one setting with the same name, as Tabs, Units and Milestones are, no longer says it twice),
   the command palette finds it by "edit tabs", and a new order or a tab hidden there shows in the top bar once it's
   saved, not after a reload. Its help no longer mentions the arrow keys, which #264 replaced.
+- **One icon per thing** (#399): the same item had different icons in different places (Display a gear in your
+  menu and a sun in Settings; Body and activity a heart on a phone and a pulse in the palette), and one icon stood for
+  several things (the pulse was a home reading, Workouts and Body and activity). Each place now has one icon wherever
+  it's shown (the top bar and its menus, a phone's tab bar, the sidebars, the command palette), from one list
+  (`groups.js`, `sgIcon()`), and no icon is two places': Display is a screen, Account a key, Workouts a dumbbell, a
+  home reading a gauge, New profile a person with a plus, and the groups that shared an icon have their own (16 icons
+  added to the sprite).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
