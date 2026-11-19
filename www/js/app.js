@@ -69,16 +69,22 @@ addEventListener("hashchange", () => {
   const t = tabOfHash();
   if (t) { if (t[1]) state.labsView = t[1]; switchTab(t[0]); }
 });
-/* Add → Log a dose (#264): the Overview's "Today's medication doses" (medlog.js), its first button focused; with no
-   current medication to log, a toast says so */
+/* Add → Log a dose (#264): the Overview's "Today's medication doses" (medlog.js), its first button focused; with none
+   to log (no current medication, no records yet, or a profile you can only view: an address typed in), a toast says
+   why. Add offers it only for a profile with a current medication (doseOffer, #401) */
 function logDose() {
-  try { history.replaceState(history.state, "", location.pathname + location.search + "#overview"); } catch (e) {}
-  switchTab("overview");
+  try { history.replaceState(history.state, "", location.pathname + location.search + (DATA ? "#overview" : "")); } catch (e) {}
+  if (DATA) switchTab("overview");
   const card = $("#ovDoses");
-  if (!card) { toast("There's no current medication to log a dose for."); return; }
+  if (!card) {
+    toast(!canEdit() ? `You can view ${PROFILE.name}: its owners and editors log its doses.`
+      : `${PROFILE.name} has no current medication to log a dose for.`);
+    return;
+  }
   card.scrollIntoView({block: "start"});
   (card.querySelector(".dose-quick button") || card.querySelector("button")).focus({preventScroll: true});
 }
+const doseOffer = () => $("#doseLink").toggleAttribute("data-none", !DATA || !MEDS.some(mrCurrent));   // nav.js hides it then (#401)
 $("#optMarks").onchange = e => { state.marks = e.target.checked; renderCharts(); save(); };
 $("#optSmooth").onchange = e => { state.smooth = e.target.checked; renderCharts(); save(); };
 function renderAll() {
@@ -97,7 +103,10 @@ function renderAll() {
    saved), the tab shown is drawn again in place, its scroll and focus kept; the others are drawn when they're opened */
 const TAB_SHOWS = {overview: ["events", "labs", "medications"], health: ["events"], timeline: ["events", "medications", "journal"],
   labs: ["events", "labs", "medications", "journal"], costs: ["events", "costs"]};
-storeOn(STORE_PARTS, parts => { if (booted && TAB_SHOWS[state.tab].some(p => parts.has(p))) keepFocus(renderAll); });
+storeOn(STORE_PARTS, parts => {
+  if (parts.has("medications")) doseOffer();
+  if (booted && TAB_SHOWS[state.tab].some(p => parts.has(p))) keepFocus(renderAll);
+});
 /* no records to show (an empty profile, none shared, or an error): a message instead of the tabs, and none of the
    controls that would render them, since those need DATA and the tab sections this replaces. One empty state
    (emptyState, util.js: #199), or the words of an error */
@@ -139,7 +148,7 @@ async function syncWarning(pid) {
     if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
     $("#who").textContent = ME.user.username;
     const canImport = p => p.role === "owner" || p.role === "editor";
-    $("#importLink").hidden = !ME.profiles.some(canImport);
+    doseOffer();   // none until the records are here (#401)
     // the first-run guide and the empty states (#199): with no profile, make one (guide.html?new)
     if (!ME.profiles.length) { emptyCard(emptyState(`No health profile is shared with you yet: make one of your own, or ask a profile's owner to share theirs with ${ME.user.username}.`, {href: "guide.html?new", text: "Make a profile"})); return; }
     // the top bar's picker (nav.js, #170): the profile the address names, else this browser's last, else the first
@@ -161,6 +170,9 @@ async function syncWarning(pid) {
             {href: `guide.html?profile=${PROFILE.id}`, text: "Get started"})
         : emptyState(`${PROFILE.name} has no records yet: its owners and editors bring them in, and they appear here for you too.`,
             {href: `sharing.html?profile=${PROFILE.id}#people`, text: "See who has access"}));
+      // arriving from Add on another page (#401): a journal entry can be the first record; a dose can't, and says why
+      await dates;
+      if (location.hash === "#log-dose") logDose(); else if (canImport(PROFILE)) journalResume();
       return;
     }
     if (!r.ok) throw new Error(r.status + " " + r.statusText);

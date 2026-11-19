@@ -174,8 +174,8 @@ $("#go").onclick = async () => {
 };
 
 /* ---------------------------------------------------------------- start */
-/* the page signs in and fills the Profile choice (sources-page.js); a profile you can only view gets a note in place
-   of this section, typing in and pasting a link (#viewOnly) */
+/* the page signs in and fills the Profile choice (sources-page.js); the Sources sidebar lists this section,
+   typing in and pasting a link only for the profile's owners and editors (#401) */
 (async () => {
   ME = await SgSources.ready;
   if (!ME) return;

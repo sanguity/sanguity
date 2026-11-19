@@ -4,7 +4,8 @@
 
    SG_PAGES[name] is {page: its file, title, icon, profile: true for a page about the profile chosen (its addresses
    carry ?profile=), admin: true for admins only, words (as a group's, below), groups}. Each group is what sideNav() takes, {id, title, icon, part,
-   has: [the ids of its parts], …}, with what the page's own script reads (Sharing's needs and why, Account's hint),
+   has: [the ids of its parts], …}, with what the page's own script reads (needs: the role on the profile shown it's
+   for, on Sources and Sharing, and Sharing's why; Account's hint),
    and for the palette:
    - words: what else someone might type for it ("password" for Sign-in and security), in lower case;
    - finds: its parts that are worth going to by name, [title as the part's heading says it, its id, words]. The
@@ -34,14 +35,14 @@ function sgIcon(key) {
 const SG_PAGES = {
   sources: {page: "sources.html", title: "Sources", icon: "database", profile: true, words: "import add records bring in", groups: [
     {id: "overview", title: "Overview", icon: "layout-list", has: ["srcOverview"], words: "sources connections where records come from"},
-    {id: "portals", title: "Portals and health plans", icon: "plug", part: "Connected", has: ["mine"],
+    {id: "portals", title: "Portals and health plans", icon: "plug", part: "Connected", has: ["mine"], needs: "editor",   // the ways in: owners' and editors' (#401)
      words: "connect portal patient health plan insurance fhir sync"},
-    {id: "phone", title: "Phone and watch", icon: "watch", part: "Connected", has: ["watch", "cycle", "viewOnly"],   // cycle tracking (#183)
+    {id: "phone", title: "Phone and watch", icon: "watch", part: "Connected", has: ["watch", "cycle"], needs: "editor",   // cycle tracking (#183)
      words: "health connect android watch phone steps sleep", finds: [["Cycle tracking", "cycle", "period menstrual"]]},
-    {id: "upload", title: "Upload files", icon: "upload", part: "One-off", has: ["importer", "viewOnly"], words: "import zip folder files export takeout"},
-    {id: "manual", title: "Type records in", icon: "keyboard", part: "One-off", has: ["typeIn", "viewOnly"],
+    {id: "upload", title: "Upload files", icon: "upload", part: "One-off", has: ["importer"], needs: "editor", words: "import zip folder files export takeout"},
+    {id: "manual", title: "Type records in", icon: "keyboard", part: "One-off", has: ["typeIn"], needs: "editor",
      words: "manual enter lab result home reading blood pressure weight payment cost"},
-    {id: "link", title: "Paste a Health Link", icon: "link", part: "One-off", has: ["healthLink", "viewOnly"], words: "smart health link shl qr code"},
+    {id: "link", title: "Paste a Health Link", icon: "link", part: "One-off", has: ["healthLink"], needs: "editor", words: "smart health link shl qr code"},
     {id: "history", title: "Import history", icon: "history", part: "History", has: ["history"], words: "imports undo remove"},
   ]},
   sharing: {page: "sharing.html", title: "Sharing", icon: "share-2", profile: true, words: "share who sees", groups: [

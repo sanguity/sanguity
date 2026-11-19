@@ -10336,6 +10336,26 @@ def main():
             check("…the timeline's event list in that format", bool(__import__("re").fullmatch(r"\d{4}-\d{2}-\d{2}", shown)), shown)
             check("a viewer gets no Journal entry under Add, and no journal card while no one has written in it (#173)",
                   zb.evaluate("document.getElementById('journalBtn').hidden && !document.getElementById('journalHome')"))
+            # #401: Add and the command palette's actions follow your role on the profile shown, on every page: a viewer
+            # is offered no way to add in either
+            add_offers = """() => document.getElementById('addMenu').hidden ? [] : [...document.querySelectorAll('#addMenuList [role^=menuitem]')]
+                .filter(x => !x.hidden && !x.closest('[hidden]')).map(x => x.textContent.trim())"""
+            pal_actions = """() => [...document.querySelectorAll('#palList [role=group]')].filter(g => g.querySelector('.pal-sec').textContent === 'Actions')
+                .flatMap(g => [...g.querySelectorAll('.pal-t')].map(t => t.textContent))"""
+            ADDS = {"Log a dose", "Journal entry", "Home reading", "Upload files", "Connect a portal or plan", "Type records in", "Paste a Health Link", "New share link"}
+            offered = {}
+            for path in ("?profile=1", "sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html", "guide.html?profile=1"):
+                zb.goto(base + "/" + path)
+                zb.wait_for_function("document.getElementById('profile').value === '1' && !document.getElementById('profilePick').hidden", timeout=10000)
+                zb.wait_for_load_state("networkidle")
+                zb.keyboard.press("Control+k")
+                zb.wait_for_function("document.querySelectorAll('#palList [role=option]').length > 3", timeout=10000)
+                offered[path] = [zb.evaluate(add_offers), zb.evaluate(pal_actions)]
+                zb.keyboard.press("Escape")
+            check("…nor any way to add, in Add or the command palette, on any page (#401)",
+                  all(not adds and not set(acts) & ADDS for adds, acts in offered.values()), offered)
+            zb.goto(base + "/?profile=1")   # back on the records page, for the checks below
+            zb.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             check("…and the header", " built 20" in zb.evaluate("document.getElementById('meta').textContent"), zb.evaluate("document.getElementById('meta').textContent"))
             check("…a journal entry's time is theirs too: 11:30 pm in Auckland, not in this browser's Chicago",
                   zb.evaluate("jTime('2026-03-10T23:30') === Date.parse('2026-03-10T10:30:00Z') && isoDay(jTime('2026-03-10')) === '2026-03-10'"),
@@ -10376,14 +10396,15 @@ def main():
             zb.evaluate("datesReady().then(() => true)")   # the zone read from the server, not only from the last visit
             check("…the import pages read them too", zb.evaluate("DATES.zone") == "Pacific/Auckland" and zb.evaluate("zToday()") == zb.evaluate(
                 "new Intl.DateTimeFormat('en-CA', {timeZone: 'Pacific/Auckland'}).format(new Date())"), zb.evaluate("DATES.zone"))
-            # Sources for someone who can only view the profile (#166): what reaches it and its history, nothing to add
-            zb.wait_for_selector("#viewOnly", state="visible", timeout=10000)
-            shown_src = "['importer', 'viewOnly', 'watch'].filter(id => getComputedStyle(document.getElementById(id)).display !== 'none')"
-            check("Sources, view only: a note in place of Upload files", zb.evaluate(shown_src) == ["viewOnly"]
-                  and "you can view this profile" in zb.inner_text("#introHint"), (zb.evaluate(shown_src), zb.inner_text("#introHint")))
-            zb.click("#srcNav a[data-group=phone]")
-            check("…and of Phone and watch, which only owners and editors set up", zb.evaluate(shown_src) == ["viewOnly"], zb.evaluate(shown_src))
-            zb.click("#srcNav a[data-group=overview]")
+            # Sources for someone who can only view the profile (#166, #401): what reaches it and its history, nothing to
+            # add; the groups that add records aren't listed (needs, as Sharing's), and an address naming one (the old
+            # import page's, Upload files) shows the Overview, the address saying so
+            zb.wait_for_function("location.hash === '#overview' && document.querySelector('#srcNav [aria-current=page]')?.dataset.group === 'overview'", timeout=10000)
+            src_groups = zb.evaluate("[...document.querySelectorAll('#srcNav a')].map(a => a.dataset.group)")
+            check("Sources, view only: the Overview and the import history only, the old Upload files address showing the Overview (#401)",
+                  src_groups == ["overview", "history"] and "you can view this profile" in zb.inner_text("#introHint")
+                  and zb.evaluate("['importer', 'typeIn', 'healthLink', 'watch', 'mine'].every(id => getComputedStyle(document.getElementById(id)).display === 'none')"),
+                  [src_groups, zb.inner_text("#introHint")])
             zb.wait_for_selector("#srcList h3", timeout=10000)
             ov = zb.inner_text("#srcOverview")
             check("…the Overview lists what reached the profile, with no phone and nothing to add",
@@ -10442,6 +10463,40 @@ def main():
             check("…which opens the guide at the first records, with no step naming the profile (its owners' to do)",
                   zb.evaluate("[...document.querySelectorAll('#guideSteps li')].map(li => li.textContent.replace(/^\\d/, ''))") == ["First records", "Phone (optional)", "Overview"]
                   and zb.evaluate("location.hash") == "#records", zb.evaluate("[...document.querySelectorAll('#guideSteps li')].map(li => li.textContent)"))
+            # #401: someone who can add to one profile (this empty one) and only view another (My records, for this):
+            # Add on the records page follows the profile shown; on the empty one Log a dose isn't offered there (no
+            # current medication), and from another page it says why; Journal entry opens its form, and saves
+            sdb.execute("UPDATE memberships SET role='viewer' WHERE user_id=? AND profile_id=1", (uid2,))
+            zb.goto(base + "/?profile=1")
+            zb.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            viewing = zb.evaluate(add_offers)
+            zb.goto(base + f"/?profile={pid3}")
+            zb.wait_for_selector("main .empty-state", timeout=10000)
+            zb.wait_for_selector("#addMenuBtn", timeout=10000)
+            own_empty = zb.evaluate(add_offers)
+            check("Add follows the profile shown (#401): nothing for one they can only view; on the empty one they edit, all but Log a dose",
+                  viewing == [] and own_empty == ["Journal entry", "Home reading", "Upload files", "Connect a portal or plan", "Type records in", "Paste a Health Link"],
+                  [viewing, own_empty])
+            zb.goto(base + f"/settings.html?profile={pid3}")
+            zb.wait_for_selector("#addMenuBtn", timeout=10000)
+            menu_click(zb, "#doseLink")
+            zb.wait_for_selector("#sgToasts .sg-toast-text", timeout=10000)
+            dose_said = zb.inner_text("#sgToasts .sg-toast:last-child .sg-toast-text")
+            zb.goto(base + f"/settings.html?profile={pid3}")
+            zb.wait_for_selector("#addMenuBtn", timeout=10000)
+            menu_click(zb, "#journalBtn")
+            zb.wait_for_selector("#drawer[open] textarea", timeout=10000)
+            form = zb.inner_text("#dtitle")
+            zb.click("#drawer [role=radio]:text-is('Note')")
+            zb.fill("#drawer textarea", "A first note")
+            zb.click("#drawer button[type=submit]")
+            zb.wait_for_function("!document.getElementById('drawer').open", timeout=10000)
+            saved = zb.inner_text("#sgToasts .sg-toast:last-child .sg-toast-text")
+            check("…on an empty profile, Add → Log a dose from another page says there's no medication to log, and Journal entry opens its form and saves",
+                  dose_said == "Shared empty profile has no current medication to log a dose for." and form == "New journal entry"
+                  and saved.startswith("Saved.") and len(zb.evaluate(f"fetch('api/profiles/{pid3}/journal').then(r => r.json()).then(j => j.entries)")) == 1,
+                  [dose_said, form, saved])
+            sdb.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=1", (uid2,))
             sprof.delete_profile(sdb, pid3)
             za.evaluate("""v => Promise.all(Object.entries(v).map(([k, x]) =>
                 api('settings/user/' + k, {method: 'PUT', body: JSON.stringify({value: x})})))""", before)

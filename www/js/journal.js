@@ -46,10 +46,10 @@ function journalLoad() {
     return e;
   });
   EV = EV.concat(JOURNAL);
-  // Add → Journal entry (nav.js): the new-entry form, from any tab; the panel gives focus back to the Add button
-  $("#journalBtn").hidden = !jCanWrite();
-  $("#journalBtn").onclick = () => { $("#addMenuBtn")?.focus({preventScroll: true}); journalNew(); };
 }
+// Add → Journal entry (nav.js, which offers it to the profile's owners and editors, #401): the new-entry form, from
+// any tab, or on a profile with no records yet; the panel gives focus back to the Add button
+$("#journalBtn").onclick = () => { $("#addMenuBtn")?.focus({preventScroll: true}); journalNew(); };
 
 /* ---------------------------------------------------------------- marks: shape by kind, size by severity */
 const jRadius = j => jRated(j) ? 3 + j.severity * .45 : 4;   // 3 (none) to 7.5 (worst)
@@ -596,6 +596,8 @@ async function jSend(path, opts, msg, reopen) {
   try { r = await api(`profiles/${PROFILE.id}/journal${path}`, opts); j = await r.json().catch(() => ({})); }
   catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return; }
   if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the entry (${r.status}).`, true); return; }
+  // a profile with no records yet (#401): the entry is kept, and shown with them once there are some
+  if (!DATA) { closeDrawer(); toast(`Saved. It's shown on the Timeline once ${PROFILE.name} has records.`); return; }
   storePut("journal", j);
   const id = reopen.created ? j.id : reopen.entry;
   if (id && byId.has(-id)) openEvent(byId.get(-id)); else journalHome();

@@ -223,6 +223,7 @@ const SgNav = (() => {
   function draw() {
     const p = known.find(x => String(x.id) === pick.value);
     wrap.hidden = !p || locked;
+    sync();   // Add, by your role on it (#401)
     if (!p) return;
     const role = x => ROLE[x.role] || x.role;
     prof.btn.replaceChildren(el("span", {class: "vh", text: "Profile: "}), el("span", {class: "profile-name", text: p.name}), " ",
@@ -411,16 +412,18 @@ const SgNav = (() => {
   new MutationObserver(themeLabel).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
   themeLabel();
 
-  /* the ways in follow #importLink (the records page hides it for someone who can only view); a group with nothing
-     in it goes, and with nothing in it at all, Add goes */
+  /* Add follows your role on the profile shown (#401), on every page and as you switch profile: its ways to add are
+     for the profile's owners and editors, and Log a dose is for one with a current medication where the page knows
+     (the records page marks it data-none when there's none); a group with nothing in it goes, and with nothing in it
+     at all (no profile shown, or one you can only view), Add goes, and the command palette offers none of them */
   const setHidden = (x, h) => { if (x.hidden !== h) x.hidden = h; };   // only real changes: the observer below sees these
   function sync() {
-    const imp = document.getElementById("importLink");
-    for (const x of add.list.querySelectorAll("[data-needs=import]")) if (x !== imp) setHidden(x, imp.hidden);
+    const p = known.find(x => String(x.id) === pick.value), can = !!p && (p.role === "owner" || p.role === "editor");
+    for (const x of add.list.querySelectorAll("[data-needs], #journalBtn")) setHidden(x, !can || x.hasAttribute("data-none"));
     for (const g of add.list.querySelectorAll("[role=group]")) setHidden(g, ![...g.querySelectorAll("[role^=menuitem]")].some(x => !x.hidden));
-    setHidden(add.wrap, items(add).length === 0);
+    setHidden(add.wrap, locked || items(add).length === 0);
   }
-  new MutationObserver(sync).observe(add.list, {attributes: true, subtree: true, attributeFilter: ["hidden"]});
+  new MutationObserver(sync).observe(add.list, {attributes: true, subtree: true, attributeFilter: ["data-none"]});
   sync();
 
   /* ---- a menu's link to a group or a part of a page with a sidebar (#398, #400): focus goes to what it opened, the
