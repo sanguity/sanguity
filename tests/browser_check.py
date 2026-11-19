@@ -12885,6 +12885,7 @@ def main():
             in405 = ph.evaluate(IN405)
             # offline: that profile, read-only, with when it was loaded
             test_pages = ph.evaluate("TEST_PAGES")   # (#378, below)
+            theme414 = ph.evaluate("api('settings/user').then(r => r.json()).then(j => j.theme)")   # (#414, below: put back after)
             ctx.set_offline(True)
             ph.reload()
             until(LOADED, 20000)
@@ -12995,10 +12996,37 @@ def main():
                   and all(x["tip"] == WHY378 and x["title"] is None and x["off"] == "true" and "new tab" not in (x["name"] or "") for x in links)
                   and all(tip == WHY378 and said and said[1] == WHY378 and "new tab" not in said[0] for tip, said in shown.values()), [links, shown])
             ph.evaluate("DATA.journal = []; journalLoad(); closeDrawer()")
+            # (#414) Dark mode offline, from your menu and from the palette: the page changes, for this browser for now,
+            # and the toast says it's saved for the account once online (checked below, online again); never a raw error
+            TOASTS = "[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent)"
+            SHOWN = "document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')"
+            ph.evaluate("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            to = "dark" if ph.evaluate(SHOWN) == "light" else "light"
+            menu_click(ph, "#theme")
+            ph.wait_for_timeout(500)
+            menu414 = [ph.evaluate(SHOWN), ph.evaluate(TOASTS)]
+            ph.keyboard.press("Control+k")
+            ph.wait_for_selector("dialog.palette[open]", timeout=5000)
+            back = "light" if to == "dark" else "dark"
+            ph.fill("#palQ", back)
+            ph.wait_for_timeout(150)
+            ph.keyboard.press("Enter")
+            ph.wait_for_timeout(500)
+            pal414 = [ph.evaluate(SHOWN), ph.evaluate(TOASTS)[-1:], ph.evaluate("localStorage.getItem('sg-theme-later')")]
+            later = lambda v: f"{v.title()} mode on this browser for now: you're offline. It's saved for your account once you're back online."
+            check("offline (#414): Dark or Light mode from your menu and then the palette changes the page, for this browser for now, and says it's saved for the account once online",
+                  menu414 == [to, [later(to)]] and pal414 == [back, [later(back)], back], [menu414, pal414])
             ctx.set_offline(False)
             # online again: the links are followed, with their own tips and names
             ph.reload()
             until(LOADED + " && booted", 20000)
+            until("localStorage.getItem('sg-theme-later') === null", 5000)
+            saved414 = [ph.evaluate("api('settings/user').then(r => r.json()).then(j => j.theme)"), ph.evaluate("localStorage.getItem('ht-theme')"), ph.evaluate(SHOWN),
+                        ph.evaluate(TOASTS)]
+            check("…online again (#414), the theme picked offline is saved for the account, and is no longer this browser's own",
+                  saved414 == [back, None, back, [f"Saved your theme for your account: {back.title()}, as picked offline."]], saved414)
+            ph.evaluate("t => api('settings/user/theme', {method: 'PUT', body: JSON.stringify({value: t})}).then(() => applyTheme(t))", theme414)
+            ph.evaluate("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             ph.evaluate("id => openEvent(byId.get(id))", day[0])
             until("document.querySelector('#dbody a.test-page') !== null", 5000)
             links = ph.evaluate(LINKS378)

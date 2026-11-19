@@ -402,7 +402,10 @@ const SgNav = (() => {
     document.documentElement.dataset.theme = to;   // shown as it's picked
     let from;
     try { from = (await (await api("settings/user")).json()).theme; await putTheme(to); }
-    catch (e) { if (was) document.documentElement.dataset.theme = was; else delete document.documentElement.dataset.theme; toast(`The theme isn't saved: ${e.message}`); return; }
+    catch (e) {
+      if (themeLater(to, e)) return;
+      if (was) document.documentElement.dataset.theme = was; else delete document.documentElement.dataset.theme; toast(`The theme isn't saved: ${e.message}`); return;
+    }
     toast(`Saved your theme: ${to === "dark" ? "Dark" : "Light"}.`, {action: "Undo", onAction: async () => {
       const now = (await (await api("settings/user")).json()).theme;
       if (now !== to) { toast("The theme was changed since, so it's left as it is."); return; }
@@ -411,6 +414,28 @@ const SgNav = (() => {
   };
   new MutationObserver(themeLabel).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
   themeLabel();
+  /* offline (#414): the server can't be reached (offline.js's or offline-page.js's OFFLINE, or a request that never
+     got an answer), so the theme picked is this browser's own for now, as before #410, and saved for the account
+     once the server answers again: on the next page opened online, or here when the connection is back */
+  const LATER = "sg-theme-later", away = e => (typeof OFFLINE !== "undefined" && OFFLINE.on) || e instanceof TypeError;
+  const themeName = v => v === "dark" ? "Dark" : "Light";
+  function themeLater(to, e) {
+    if (!away(e)) return false;
+    try { localStorage.setItem("ht-theme", to); localStorage.setItem(LATER, to); } catch (x) {}
+    applyTheme();
+    toast(`${themeName(to)} mode on this browser for now: you're offline. It's saved for your account once you're back online.`);
+    return true;
+  }
+  async function saveLater() {
+    let v = null, saved = true;
+    try { v = localStorage.getItem(LATER); } catch (e) {}
+    if (!v || locked) return;
+    try { await putTheme(v); }
+    catch (e) { if (away(e)) return; saved = false; }   // not reached yet: another time; refused: it stays this browser's own (Display says so)
+    try { localStorage.removeItem(LATER); } catch (e) {}
+    if (saved) toast(`Saved your theme for your account: ${themeName(v)}, as picked offline.`);
+  }
+  addEventListener("online", () => setTimeout(saveLater, 1000));
 
   /* Add follows your role on the profile shown (#401), on every page and as you switch profile: its ways to add are
      for the profile's owners and editors, and Log a dose is for one with a current medication where the page knows
@@ -478,6 +503,7 @@ const SgNav = (() => {
   document.addEventListener("DOMContentLoaded", () => {
     api("me").then(r => r.ok ? r.json() : null).then(me => {
       if (me && !own && !locked) profiles(me.profiles);
+      if (me && !me.offline) saveLater();   // a theme picked offline (#414)
       if (me && me.user && me.user.is_admin && !locked) {
         const a = document.getElementById("adminLink");
         a.hidden = false;
