@@ -74,21 +74,22 @@ on the **Settings** page, appear on every chart and as "since" periods.
   timeline and, when ticked, under the Labs charts, with a weekly count of what was logged. Apple Health's Medications
   doses come in through Health Auto Export; it records what you say happened and never says a dose was due.
 
-**Finding your way.** One bar across the top: your records' tabs, **Add** (upload files, connect a portal or plan, type
-records in, paste a Health Link, a journal entry) and your menu (sources, sharing, settings, account, light or dark,
-log out). The tab shown is in the address (`#timeline`, `#labs`, `#labs-heatmap`...), so Back moves between tabs and a
+**Finding your way.** The same bar across the top of every page: the **profile menu** (the profile shown, by name and
+your role; switch profile; its About this person, Settings, Sources and Sharing; New profile), your records' tabs,
+**Add** (today: log a dose, a journal entry, a home
+reading; records: upload files, connect a portal or plan, type records in, paste a Health Link) and your menu (account,
+display, getting started, light or dark, log out). The tab shown is in the address (`#timeline`, `#labs`, `#labs-heatmap`...), so Back moves between tabs and a
 copied link opens the same one. **Settings** is grouped in a sidebar (this profile's dashboard, labs and ranges, milestones; your display),
 one group at a time, with **Find a setting** to search them all.
 **Account** is you and this device: sign-in and security (password, two-factor sign-in, passkeys, where you're
 signed in), and this device (install as an app, offline records).
-**Sources** (in your menu) has everything about records coming in, in a sidebar the same way: an overview of every
+**Sources** (in the profile menu) has everything about records coming in, in a sidebar the same way: an overview of every
 way records reach the profile and when each last brought something, upload, type in, paste a Health Link, portals
 and health plans, the phone and watch, and the import history.
 **Sharing** gathers everything about who sees a profile and how its records go out: its people and their roles,
 share links, your calendar feed, the visit summary, Export everything and its activity, with renaming, deleting and
 adding profiles set apart under Profile, beside About this person (birth date, sex for reference ranges, height).
-The **profile** a page is about is in the top bar, by name and your role, on the records, Sources, Sharing and
-Settings; switching it there switches it on every page.
+Switching the **profile** in the top bar switches it on every page.
 
 **Sharing and taking it with you**
 
@@ -562,7 +563,7 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   that changed its range), the chart's shaded band steps with each result's range and a line under its name says so
   ("Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL"), compared in the units shown; its table
   gives each row its own range.
-- **Visit summary:** one or two printable pages to bring to an appointment (**Sharing → Visit summary**, from your menu, top right):
+- **Visit summary:** one or two printable pages to bring to an appointment (**Sharing → Visit summary**, from the profile menu, top left):
   results out of range since the last visit, each against the range on its own report (or a range from settings
   when the report gives none), trends of the key labs and
   any others picked, current medications, upcoming appointments and your questions (kept as your own draft for the

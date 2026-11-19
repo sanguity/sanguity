@@ -1069,6 +1069,14 @@ Everything on `main` so far; it becomes the first tagged release.
   the records, since it can change any of them): only the views that show that part are drawn again, the panel
   shows what it showed, and focus stays where it was. Body and activity's "Shade hospital stays" and Costs' "Denied
   only" and type of care keep focus too when they redraw their tab. Switching profile still loads the page again.
+- **The same top bar on every page** (#264): Sources, Sharing, Settings, Account, Admin and Getting started showed
+  the brand and the page's name, and the records tabs were only on the records page. Every page now has one bar: the
+  brand, a **profile menu** (switch profile, each with your role; About this person, Settings, Sources and Sharing
+  for that profile; New profile), the records tabs as links (one from Settings opens that tab), **Add** and **your
+  menu** (Account, Display, Admin, Getting started, light or dark, Log out). Add has two groups: Today (Log a dose,
+  which opens the Overview's "Today's medication doses"; Journal entry; Home reading, a blood pressure's form under
+  Type records in) and Records (Upload, Connect, Type in, Health Link). Tab and Enter go from tab to tab instead of
+  the arrow keys, and a tab picked opens as a View Transition, at once when less motion is asked for.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

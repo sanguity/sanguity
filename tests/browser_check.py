@@ -603,13 +603,33 @@ def start_app():
     return srv, f"http://127.0.0.1:{port}"
 
 
-USER_MENU = {"#logout", "#settingsLink", "#sharingLink", "#theme"}
+USER_MENU = {"#logout", "#theme", "#accountLink", "#displayLink", "#adminLink", "#guideLink"}
+PROFILE_MENU = {"#settingsLink", "#sharingLink", "#sourcesLink", "#aboutLink", "#newProfileLink"}   # #264
 
 
 def menu_click(pg, item):
     """Click an item of the top bar's menus (nav.js): open its menu first, as a person would."""
-    pg.click("#userMenuBtn" if item in USER_MENU else "#addMenuBtn")
+    pg.click("#userMenuBtn" if item in USER_MENU else "#profileMenuBtn" if item in PROFILE_MENU else "#addMenuBtn")
     pg.click(item)
+
+
+def pick_profile(pg, value=None, label=None):
+    """Switch profile from the top bar's profile menu (#264), as a person would: open it, pick the profile by its id
+    (value) or by its name and role as the hidden select lists it (label, "Second person (owner)")."""
+    if value is None:   # once the page has filled the menu, as select_option waited for its option
+        opt = pg.locator("#profile option").filter(has_text=re.compile("^" + re.escape(label) + "$"))
+        opt.wait_for(state="attached")
+        value = opt.get_attribute("value")
+    pg.click("#profileMenuBtn")
+    pid = value
+    pg.click(f"#profileMenuList [data-pid='{pid}']")
+
+
+def tab_click(pg, sel):
+    """Click a records tab (nav.js's links, #264) and let its View Transition make the change: the page changes as the
+    frame after the click is drawn, so two frames on, it has."""
+    pg.click(sel)
+    pg.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
 
 
 def stopped(e):
@@ -1251,7 +1271,7 @@ SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main 
 CONTROL_SIZES_JS = r"""phone => { const ok = phone ? [44] : [24, 32, 40], out = [];
   const targetOf = e => { const r = e.getBoundingClientRect(), a = getComputedStyle(e, '::after');   // a see-through ::after out past its edges is its target too (the ✎, #373)
     const o = a.content !== 'none' && a.position === 'absolute' ? Math.max(0, -parseFloat(a.top) || 0) : 0; return [r.width + 2 * o, r.height + 2 * o]; };
-  for (const e of document.querySelectorAll('.btn, .iconbtn, .tabs button, .period-more-btn, .seg, .toggle, .chip')) {
+  for (const e of document.querySelectorAll('.btn, .iconbtn, .tabs > a, .period-more-btn, .seg, .toggle, .chip')) {
     const h = Math.round(targetOf(e)[1] * 10) / 10;
     if (!h || !e.checkVisibility() || ok.some(v => Math.abs(h - v) < .5)) continue;
     const r = document.createRange(); r.selectNodeContents(e);
@@ -1559,7 +1579,7 @@ def main():
             strict.goto(base + "/" + path)
             strict.wait_for_selector(ready, state="attached", timeout=10000)
             strict.wait_for_timeout(200)
-            title = title or strict.evaluate("document.querySelector('[role=tab][aria-selected=true]').textContent") + " · My records"
+            title = title or strict.evaluate("document.querySelector('.tabs [aria-current=page]').textContent") + " · My records"
             hash_was = strict.evaluate("location.hash")
             strict.keyboard.press("Tab")
             f = strict.evaluate(focused)
@@ -1814,7 +1834,7 @@ def main():
               js("state.tab === 'labs' && state.labsView === 'heatmap' && state.preset === '1y' && localStorage.getItem('ht-state') === null && !!localStorage.getItem('ht-state:1')"))
 
         def open_tab(t):   # "heatmap" and "labs": the Labs tab as a heatmap or as charts (#172)
-            page.click("#tab-" + ("labs" if t == "heatmap" else t))
+            tab_click(page, "#tab-" + ("labs" if t == "heatmap" else t))
             if t in ("labs", "heatmap"):
                 page.click("#labsView button[data-view=%s]" % ("heatmap" if t == "heatmap" else "chart"))
         view_of = lambda t: "labs" if t == "heatmap" else t
@@ -3482,7 +3502,7 @@ def main():
             problems[:] = [x for x in problems if "Refused to execute the redirect" not in x]   # the drawer's frame refused it too
 
             # ---- corrections (#33): hide an event from the drawer, see it leave the timeline, undo; rename shows "Edited"
-            page.click("#tab-timeline")
+            tab_click(page, "#tab-timeline")
             js("applyPreset('all')")
             settle()
             pick = js("""(() => { const e = EV.find(e => !['exercise', 'labitem', 'lab'].includes(e.k) && EV.filter(x => x.title === e.title).length === 1);
@@ -3612,7 +3632,7 @@ def main():
             settle(300)
             check("…and Cancel closes it, giving focus back to Add", js("!drawer.classList.contains('open') && document.activeElement.id === 'addMenuBtn'"),
                   js("document.activeElement.id"))
-            page.click("#tab-timeline")
+            tab_click(page, "#tab-timeline")
             settle()
             home = js("""(() => { const c = document.getElementById('journalHome'), cards = [...document.querySelectorAll('#view-timeline > .card')];
                 return c && {title: c.querySelector('h2').textContent, at: cards.indexOf(c), tl: cards.findIndex(x => x.contains(document.getElementById('tl'))),
@@ -3650,7 +3670,7 @@ def main():
             check("the symptom is saved, dated to the event, and opens in the drawer",
                   entry["day"] == day_of["day"] and entry["sev"] == 7 and entry["kind"] == "symptom" and entry["med"] == (meds[0] if meds else None)
                   and "7/10" in page.inner_text("#dbody"), entry)
-            page.click("#tab-timeline")
+            tab_click(page, "#tab-timeline")
             js("id => setRange(byId.get(id).ts - 20 * DAY, byId.get(id).ts + 20 * DAY)", entry["id"])
             settle()
             lane = js("""(() => { const m = document.querySelector('#tl .jmark'); return {lane: [...document.querySelectorAll('#tl .lane-label')].some(t => t.textContent === 'Journal'),
@@ -3658,7 +3678,7 @@ def main():
             check("…on the timeline in its own Journal lane, sized by severity", lane["lane"] and lane["n"] == 1 and lane["shape"] == "circle" and abs(lane["r"] - 6.15) < 0.01, lane)
             check("…and in the event list", "Headache (browser check)" in page.inner_text("#list"))
             js("closeDrawer()")   # the entry's panel covers the tab bar's right end on narrower or wider fonts
-            page.click("#tab-labs")
+            tab_click(page, "#tab-labs")
             settle()
             if not js("document.querySelectorAll('#charts .chart svg:not(.icon)').length"):
                 js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
@@ -3752,7 +3772,7 @@ def main():
             check("Add → Journal entry on another page opens the records page with the form, the address naming its tab again (#208)",
                   js("drawer.classList.contains('open') && location.hash === tabHash() && location.hash !== '#new-journal-entry'"), js("location.href"))
             page.keyboard.press("Escape")
-            page.click("#tab-timeline")
+            tab_click(page, "#tab-timeline")
             settle()
 
             # ---- the journal's symptom groups, where on the body, moods and photos (#161): a group made and logged in
@@ -4034,12 +4054,12 @@ def main():
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
             check("…all removed again", js("JOURNAL.length === 0 && (CFG.journal?.groups || []).length === 0 && !document.querySelector('#tl .jmood')"))
-            page.click("#tab-timeline")
+            tab_click(page, "#tab-timeline")
             settle()
 
             # ---- the medication timeline (#50): spans with the dose change, the stop and the fills; the history in the
             # drawer; the rows under each Trends chart when ticked; at 375 px
-            page.click("#tab-timeline")
+            tab_click(page, "#tab-timeline")
             js("setRange(dayTs('2025-01-01'), dayTs('2025-12-31'))")
             settle()
             med = js("""(() => { const m = MEDS.find(m => m.key === 'examplocin'); return m && {i: m.i, spans: m.spans.length, changes: m.changes.length,
@@ -4089,7 +4109,7 @@ def main():
                 check("the Medications lane fits 375 px, names shortened", narrow["fits"] and narrow["bars"] == 2 and narrow["inside"] and narrow["names"], narrow)
                 page.set_viewport_size({"width": 1400, "height": 900})
                 settle(200)
-                page.click("#tab-labs")
+                tab_click(page, "#tab-labs")
                 settle()
                 if not js("document.querySelectorAll('#charts .chart svg:not(.icon)').length"):
                     js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
@@ -4109,7 +4129,7 @@ def main():
                 page.set_viewport_size({"width": 1400, "height": 900})
                 page.uncheck("#optMeds")
                 settle(200)
-                page.click("#tab-timeline")
+                tab_click(page, "#tab-timeline")
                 settle()
 
             # ---- medication reminders through the calendar feed (#162): set on a current medication's drawer (two times,
@@ -4314,7 +4334,7 @@ def main():
                 settle(150)
                 check("…hovering one says what happened and when", re.match(r"(Taken|Skipped)", page.inner_text("#tip")) and cur["name"] in page.inner_text("#tip"), page.inner_text("#tip"))
                 # Labs: a row of doses under each chart when ticked
-                page.click("#tab-labs")
+                tab_click(page, "#tab-labs")
                 settle()
                 if not js("document.querySelectorAll('#charts .chart svg:not(.icon)').length"):
                     js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
@@ -4386,7 +4406,7 @@ def main():
             settle()
 
             # ---- Trends: drag pans every chart together, ctrl+wheel zooms, milestones drawn on All
-            page.click("#tab-labs")
+            tab_click(page, "#tab-labs")
             js("applyPreset('1y')")
             settle()
             box = page.locator("#charts .chart svg:not(.icon)").first.bounding_box()
@@ -4671,14 +4691,14 @@ def main():
             settle(200)
             after_undo = js(focus_id)
             check("toast focus (#361): deleting a view by keyboard leaves focus on the view picker; Alt+N, Enter on Undo, and focus is back on the tab",
-                  after_delete == ["SELECT", "viewPick"] and after_undo == ["BUTTON", "tab-labs"] and not js("document.querySelector('#sgToasts .sg-toast')"),
+                  after_delete == ["SELECT", "viewPick"] and after_undo == ["A", "tab-labs"] and not js("document.querySelector('#sgToasts .sg-toast')"),
                   [after_delete, after_undo])
             js("for (const n of [1, 2, 3]) toast('Toast ' + n, {action: 'Undo', onAction: async () => {}})")
             page.focus("#tab-labs")
             js("document.querySelector('#sgToasts .sg-toast button').focus()")   # the oldest, as Tab or a click would
             js("toast('Toast 4', {action: 'Undo', onAction: async () => {}})")
             check("…a fourth toast sends away the focused oldest one, and focus goes back where it was",
-                  js(focus_id) == ["BUTTON", "tab-labs"] and js("[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent)") == ["Toast 2", "Toast 3", "Toast 4"],
+                  js(focus_id) == ["A", "tab-labs"] and js("[...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent)") == ["Toast 2", "Toast 3", "Toast 4"],
                   js(focus_id))
             page.focus("#labQ")
             page.keyboard.press("Alt+n")
@@ -4736,10 +4756,10 @@ def main():
             js("switchTab('overview')")
             settle(200)
             js("document.getElementById('sgStatus').textContent = ''")
-            page.click("#tab-labs")
+            tab_click(page, "#tab-labs")
             settle(300)
             in_bar = [page.title(), js("document.getElementById('sgStatus').textContent")]
-            page.click("#tab-overview")
+            tab_click(page, "#tab-overview")
             settle(300)
             page.locator("#view-overview button", has_text="Open Costs").first.click()
             elsewhere_said = [page.title(), said(page)]
@@ -5097,7 +5117,7 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
 
             # ---- Body and activity: drag changes the records bar's period (#171)
-            page.click("#tab-health")
+            tab_click(page, "#tab-health")
             settle()
             hbox = page.locator("#view-health svg.pz").first.bounding_box()
             hbefore = js("hRange()")
@@ -5114,7 +5134,7 @@ def main():
             # ---- one period for every tab with time (#171): picked on one tab, the same dates on the others (Labs in
             # both its views, #172); a calendar year, a milestone or dates typed in; kept on a reload; Costs by month or
             # by year; the records bar at 375 px on each tab, and none on the Overview
-            page.click("#tab-timeline")
+            tab_click(page, "#tab-timeline")
             page.click("#presets button:text-is('1y')")
             settle()
             want = js("[state.from, state.to]")
@@ -6080,7 +6100,7 @@ def main():
             # #379: on a touch screen the ✎'s target on the heatmap table's last row stays inside the table's scroller, so
             # with its rows fitting (the demo's labs, under the 70vh it may take) the table doesn't scroll, at 1400 and 375 px
             hm379 = {}
-            tpg.click("#tab-labs")
+            tab_click(tpg, "#tab-labs")
             tpg.click("#labsView button[data-view=heatmap]")
             tpg.evaluate("state.tables.add('#hm'); renderHeatmap()")
             for width in (1400, 375):
@@ -6132,7 +6152,7 @@ def main():
             settle(300)
 
             # ---- Timeline: event sort toggle
-            page.click("#tab-timeline")
+            tab_click(page, "#tab-timeline")
             settle()
             first_new = js("document.querySelector('#list .tl-row .d').textContent")
             page.click("#sortSeg [data-sort=asc]")
@@ -6144,9 +6164,9 @@ def main():
             check("no NaN SVG attributes", not nan, nan[:5] if nan else "")
 
             # ---- profile switcher: the second profile has no records yet, and its own saved view
-            check("profile switcher shown", js("!document.getElementById('profile').hidden && document.getElementById('profile').options.length === 2"))
+            check("profile switcher shown", page.is_visible("#profileMenuBtn") and js("document.getElementById('profile').options.length === 2"))
             js("applyPreset('30d')")
-            page.select_option("#profile", label="Second person (owner)")
+            pick_profile(page, label="Second person (owner)")
             page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
             check("the period is kept per profile (not carried to another)", js("state.preset") == "2y", js("state.preset"))
             check("empty profile explains itself", "no records yet" in page.inner_text("main"))
@@ -6400,7 +6420,7 @@ def main():
                 return {status: r.status, type: r.headers.get('content-type'), pdf: (await r.text()).startsWith('%PDF')}; })()""")
             check("…whose attached PDF, stored with the upload, opens", doc == {"status": 200, "type": "application/pdf", "pdf": True}, doc)
             # the imported claims are on the Costs tab: rows from each insurer, with their care categories and denials
-            page.click("#tab-costs")
+            tab_click(page, "#tab-costs")
             settle()
             js("applyPreset('all')")
             settle(200)
@@ -6416,7 +6436,7 @@ def main():
                   (by.get(("2026-02-03", "Valley Reference Laboratory")) or [""] * 8)[3:5] == ["Lab & pathology", "$200"],
                   by.get(("2026-02-03", "Valley Reference Laboratory")))
             check("…and the insurers named", {"UnitedHealthcare", "Blue Cross Blue Shield", "Insurance"} <= set(js("DATA.costs.map(c => c.ins)")))
-            page.select_option("#profile", label="My records (owner)")
+            pick_profile(page, label="My records (owner)")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && "
                                    "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)   # its saved view restored
             check("switching back restores the profile's tab", js("state.tab") == "timeline", js("state.tab"))
@@ -6429,7 +6449,7 @@ def main():
             check("the setup build's import is listed, with why it can't be undone and no Undo",
                   js("(() => { const li = document.querySelector('#history li[data-import]'); return !!li.querySelector('.note') && "
                      "li.querySelector('.note').textContent.includes('rebuild') && !li.querySelector('button.undo'); })()"))
-            page.select_option("#profile", label="Second person (owner)")
+            pick_profile(page, label="Second person (owner)")
             page.wait_for_selector("#history li[data-format='fhir']", timeout=10000)
             hist = js("[...document.querySelectorAll('#history li[data-import]')].map(li => li.dataset.format)")
             check("the import history lists the C-CDA, FHIR, claims, CareSpace and Epic imports, newest first",
@@ -7066,7 +7086,7 @@ def main():
             check("…and saves it", js(f"{last_card}.textContent").startswith("Imported."), js(f"{last_card}.textContent")[:200])
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
-            page.select_option("#profile", label="My records (owner)")
+            pick_profile(page, label="My records (owner)")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
 
             # ---- Settings (#35): change settings on the screen, and the dashboard follows; reset a section
@@ -7117,9 +7137,10 @@ def main():
             check("…Settings and its sidebar fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             # ---- #174: the group's title and whose settings these are above it (no card of its own), one Save per
             # section with a way back, and on a phone the page's title whole and each key lab one row with a menu
-            check("Settings at 375 px: the top bar's title is whole",
-                  js("(t => t.textContent === 'Settings' && t.scrollWidth <= t.clientWidth && t.scrollHeight <= t.clientHeight + 1)(document.querySelector('header .page-title'))"),
-                  js("(t => [t.scrollWidth, t.clientWidth, t.scrollHeight, t.clientHeight])(document.querySelector('header .page-title'))"))
+            check("Settings at 375 px: the page's title is whole (the top bar has none since #264: the page's h1 is it)",
+                  js("(t => t.textContent === 'Display' && t.scrollWidth <= t.clientWidth && t.scrollHeight <= t.clientHeight + 1)(document.getElementById('groupTitle'))")
+                  and js("!document.querySelector('header .page-title')"),
+                  js("(t => [t.textContent, t.scrollWidth, t.clientWidth, t.scrollHeight, t.clientHeight])(document.getElementById('groupTitle'))"))
             check("…Display says, under its title, that its settings are just for you",
                   js("document.getElementById('groupTitle').textContent") == "Display" and js("document.getElementById('introHint').textContent").startswith("Just for you")
                   and js("getComputedStyle(document.getElementById('intro')).borderTopWidth") == "0px", js("document.getElementById('introHint').textContent"))
@@ -7167,7 +7188,7 @@ def main():
                   o0[0] not in js(order) and js("document.activeElement.getAttribute('aria-label')") == f"Move or remove {o0[2]}", js(order)[:3])
             leave = "(() => { const e = new Event('beforeunload', {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; })()"
             check("…leaving the page with it not saved asks first", js(leave))
-            page.select_option("#profile", label="Second person (owner)")
+            pick_profile(page, label="Second person (owner)")
             answer_ask(page, yes=False)
             check("…so does switching profiles, which stays put when told to",
                   js("PID") == 1 and js("document.getElementById('profile').value") == "1" and js("document.getElementById('sec-overview').hasAttribute('data-dirty')"))
@@ -7181,19 +7202,19 @@ def main():
             # (#210) told yes in the app's dialog, switching profile with changes not saved goes on to the other profile
             page.click("#sec-overview .set-order li:nth-child(1) .set-more-btn")
             page.click("#sec-overview .set-order li:nth-child(1) .menu-item:text-is('Move down')")
-            page.select_option("#profile", label="Second person (owner)")
+            pick_profile(page, label="Second person (owner)")
             switch_asked = answer_ask(page)
             page.wait_for_function("PID === 2 && !document.querySelector('#sections > [data-dirty]')", timeout=10000)
             check("…and told yes in the app's dialog, it switches, the changes left behind (#210)",
                   switch_asked[0] == "Switch profile and lose your changes?" and js("document.getElementById('profile').value") == "2", switch_asked)
-            page.select_option("#profile", "1")
+            pick_profile(page, "1")
             page.wait_for_function("PID === 1", timeout=10000)
             settle(400)
             check("…and back on the first profile, its key labs are as saved", js(order) == o0, js(order)[:3])
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click(".set-nav-list a[data-group=dashboard]")
             page.click("#userMenuBtn")
-            check("the top bar: your menu opens with its items, Admin among them for an admin", page.is_visible("#settingsLink") and page.is_visible("#logout")
+            check("the top bar: your menu opens with its items, Admin among them for an admin", page.is_visible("#accountLink") and page.is_visible("#logout")
                   and page.is_visible("#adminLink") and js("document.getElementById('userMenuBtn').getAttribute('aria-expanded')") == "true")
             page.keyboard.press("Escape")
             check("…Escape closes it and puts the focus back on its button", page.is_hidden("#userMenuList") and js("document.activeElement.id") == "userMenuBtn")
@@ -7216,11 +7237,15 @@ def main():
                   and js("CSS.supports('anchor-name: --a') && getComputedStyle(document.getElementById('userMenuList')).positionAnchor") == "--menu", [geo, calm])
             page.focus("#addMenuBtn")
             page.keyboard.press("ArrowDown")
-            check("…the Add menu opens from the keyboard, on its first item", js("document.activeElement.textContent") == "Upload files", js("document.activeElement.textContent"))
+            check("…the Add menu opens from the keyboard, on its first item", js("document.activeElement.textContent") == "Log a dose", js("document.activeElement.textContent"))
             page.keyboard.press("ArrowDown")
-            check("…and the arrow keys move through it", js("document.activeElement.textContent") == "Connect a portal or plan", js("document.activeElement.textContent"))
-            check("…each way in opening its section of Sources (#166)", js("[...document.querySelectorAll('#addMenuList a[data-needs=import]')].map(a => a.getAttribute('href'))")
-                  == ["sources.html#upload", "sources.html#portals", "sources.html#manual", "sources.html#link"])
+            check("…and the arrow keys move through it", js("document.activeElement.textContent") == "Journal entry", js("document.activeElement.textContent"))
+            # #264: in two groups, Today and Records, each way in opening its section of Sources (#166)
+            check("…in two groups: Today (a dose, a journal entry, a home reading), then Records, each way in opening its section of Sources (#166)",
+                  js("[...document.querySelectorAll('#addMenuList [role=group]')].map(g => [g.getAttribute('aria-label'), ...[...g.querySelectorAll('[role=menuitem]')].map(a => a.getAttribute('href'))])")
+                  == [["Today", "./#log-dose", "./#new-journal-entry", "sources.html#home-reading"],
+                      ["Records", "sources.html#upload", "sources.html#portals", "sources.html#manual", "sources.html#link"]],
+                  js("[...document.querySelectorAll('#addMenuList [role=group]')].map(g => [g.getAttribute('aria-label'), ...[...g.querySelectorAll('[role=menuitem]')].map(a => a.getAttribute('href'))])"))
             page.keyboard.press("Escape")
             # #244: on a phone the bar wraps, and a menu pinned to its button's right edge opened off the screen's left;
             # each now opens the screen's width under the bar, so every item is on the screen
@@ -7235,11 +7260,11 @@ def main():
                     page.goto(base + path)
                     page.wait_for_selector("#userMenuBtn", state="visible", timeout=10000)
                     settle(300)
-                    for m in ("addMenu", "userMenu"):
+                    for m in ("profileMenu", "addMenu", "userMenu"):
                         page.click(f"#{m}Btn")
                         bad += [f"{path} at {w} px, {m}: {x}" for x in js(menu_out, m + "List")]
                         page.keyboard.press("Escape")
-            check("at 320, 375 and 390 px, the top bar's Add and your menu open under the bar with every item on the screen (#244)", not bad, bad[:6])
+            check("at 320, 375 and 390 px, the top bar's profile menu, Add and your menu open under the bar with every item on the screen (#244, #264)", not bad, bad[:6])
             # #308: under 500 px tall the bar scrolls with the page, and the menus opened --bar-h down the screen, a gap under
             # a bar that had scrolled up; opened with the bar scrolled up to the buttons, each sits right under the bar, on the screen
             # (its foot may run below the screen's: it's as tall as its items, and the page scrolls to it, #319)
@@ -7253,7 +7278,7 @@ def main():
                 page.goto(base + path)
                 page.wait_for_selector("#userMenuBtn", state="visible", timeout=10000)
                 settle(300)
-                for m in ("addMenu", "userMenu"):
+                for m in ("profileMenu", "addMenu", "userMenu"):
                     # scrolled to the button's top edge and tapped (a click from Playwright or the keyboard would scroll the bar back)
                     js("id => { const b = document.getElementById(id); scrollTo(0, b.getBoundingClientRect().top + scrollY); }", m + "Btn")
                     settle(100)
@@ -7300,7 +7325,7 @@ def main():
                 settle(300)
                 if js(menus_row):
                     bad.append(f"{path} at 320×180: Add, your menu {js(menus_row)}")
-                for m in ("addMenu", "userMenu"):
+                for m in ("profileMenu", "addMenu", "userMenu"):
                     js("id => document.getElementById(id).click()", m + "Btn")
                     settle(100)
                     where = js(menu_whole, m + "List")
@@ -7871,7 +7896,7 @@ def main():
             ticked2 = lambda: js(api_get, "profiles/2/settings")["summary"]["ticked"]
             other_had = ticked2()
             js("document.getElementById('sec-summary').dataset.was = 1")   # (drawn again for the other profile: a new section)
-            page.select_option("#profile", "2")
+            pick_profile(page, "2")
             page.wait_for_function("PID === 2 && !!document.querySelector(\"#sec-summary:not([data-was]) [data-key='summary.ticked'] input[type=checkbox]\")", timeout=10000)
             page.check(box(2))
             p2_edit = js("SET_ITEMS['summary.ticked'].value()")
@@ -7885,7 +7910,7 @@ def main():
                   and p2_after[4] and "Undone" not in p2_after[5], [mine, p2_after])
             page.click("#sec-summary .set-foot button:text-is('Discard changes')")
             js("document.getElementById('sec-summary').dataset.was = 1")
-            page.select_option("#profile", "1")
+            pick_profile(page, "1")
             page.wait_for_function("PID === 1 && !!document.querySelector('#sec-summary:not([data-was])')", timeout=10000)
             js(api_put, ["profiles/1/settings/summary.ticked", []])
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
@@ -7904,7 +7929,7 @@ def main():
             page.wait_for_function(f"{th_msg}.startsWith('Saved')", timeout=10000)
             th.append([my_theme(), js("document.documentElement.dataset.theme")])
             js("document.getElementById('sec-appearance').dataset.was = 1")
-            page.select_option("#profile", "2")
+            pick_profile(page, "2")
             page.wait_for_function("PID === 2 && !!document.querySelector('#sec-appearance:not([data-was]) input[value=dark]')", timeout=10000)
             th.append(js("document.querySelector('#sec-appearance input:checked').value"))
             page.click(undo_toast)
@@ -7953,16 +7978,28 @@ def main():
             page.click("#sec-tabs button[aria-label='Move Timeline up']")
             page.click("#sec-tabs .set-foot button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-tabs .set-foot > .msg').textContent.startsWith('Saved')", timeout=10000)
-            shown_tabs = "[...document.querySelectorAll('.tabs [role=tab]')].filter(b => !b.hidden).map(b => b.id.slice(4))"
+            shown_tabs = "[...document.querySelectorAll('.tabs a[id^=tab-]')].filter(b => !b.hidden).map(b => b.id.slice(4))"
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             check("tabs: a hidden tab leaves the bar, the others in their new order",
                   js(shown_tabs) == ["overview", "timeline", "health", "labs"], js(shown_tabs))
             check("…a saved view naming it opens the first shown tab", js("state.tab") == "overview" and js("!document.getElementById('view-overview').hidden"), js("state.tab"))
+            # the tabs are links (#264): Tab goes from one to the next shown, the hidden one skipped, and Enter opens it
             page.focus("#tab-overview")
-            page.keyboard.press("ArrowLeft")
-            check("…the arrow keys skip it", js("state.tab") == "labs" and js("document.activeElement.id") == "tab-labs", js("state.tab"))
-            page.keyboard.press("ArrowRight")
+            page.keyboard.press("Tab")
+            stop = js("document.activeElement.id")
+            page.keyboard.press("Enter")
+            page.wait_for_function("state.tab === 'timeline'", timeout=5000)
+            check("…Tab skips it, and Enter opens the tab that has focus", stop == "tab-timeline"
+                  and js("[state.tab, location.hash, document.activeElement.id]") == ["timeline", "#timeline", "tab-timeline"],
+                  [stop, js("[state.tab, location.hash, document.activeElement.id]")])
+            page.goto(base + "/sources.html?profile=1")
+            page.wait_for_function("[...document.querySelectorAll('.tabs a[id^=tab-]')].filter(b => !b.hidden).length === 4", timeout=10000)
+            check("…the bar on the other pages has the profile's tabs too, each a link to it", js(shown_tabs) == ["overview", "timeline", "health", "labs"]
+                  and js("document.getElementById('tab-labs').getAttribute('href')") == "./?profile=1#labs",
+                  [js(shown_tabs), js("document.getElementById('tab-labs').getAttribute('href')")])
+            page.goto(base + "/")
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             js("switchTab('costs')")
             check("…asking for it opens the first shown tab", js("state.tab") == "overview", js("state.tab"))
             page.goto(base + "/#costs")
@@ -8013,6 +8050,14 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             js("switchTab('overview')")
+            # #264: a tab picked changes the page as a View Transition, but not when less motion is asked for
+            js("window.__vt = 0; const o = document.startViewTransition.bind(document); document.startViewTransition = f => { window.__vt++; return o(f); }; null")
+            tab_click(page, "#tab-labs")
+            page.emulate_media(reduced_motion="reduce")
+            tab_click(page, "#tab-timeline")
+            page.emulate_media(reduced_motion="no-preference")
+            check("…a tab picked opens as a View Transition, at once with less motion", js("[window.__vt, state.tab]") == [1, "timeline"], js("[window.__vt, state.tab]"))
+            js("switchTab('overview')")
 
             # ---- the tab in the address (#208), in a browser of its own (its own history and saved view): picking a
             # tab adds a history entry, so Back and Forward move between tabs; the app's own switches and the Labs view
@@ -8032,7 +8077,7 @@ def main():
             check("tab address: opening the page with no # names the tab it opens, without a history entry of its own",
                   addr()[1:] == ["#overview", "overview", "chart", n0] and n0 == blank + 1, [addr(), blank])
             for t in ("timeline", "labs", "costs"):
-                tp.click("#tab-" + t)
+                tab_click(tp, "#tab-" + t)
             check("…picking Timeline, Labs and Costs adds an entry each, the address naming the tab", addr()[1:] == ["#costs", "costs", "chart", n0 + 3], addr())
             tp.go_back()
             tp.go_back()
@@ -8054,8 +8099,8 @@ def main():
             check("…an old alias opens its tab, the address then naming it", addr()[1:4] == ["#labs", "labs", "chart"], addr())
             tp.goto(base + "/?profile=1#costs")
             tp.wait_for_function(ready + " && state.tab === 'costs'", timeout=20000)
-            tp.click("#tab-health")
-            tp.click("#tab-labs")
+            tab_click(tp, "#tab-health")
+            tab_click(tp, "#tab-labs")
             tp.click("#labsView button[data-view=heatmap]")
             check("…?profile= stays beside the #", addr()[:2] == ["?profile=1", "#labs-heatmap"], addr())
             copied = tp.url
@@ -8294,9 +8339,9 @@ def main():
             # preview, then download the PDF and read it back
             page.goto(base + "/")   # from the main page, after the settings checks above
             page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
-            menu = js("[...document.querySelectorAll('#userMenuList [role=menuitem]')].map(x => x.textContent)")
-            check("your menu has one Sharing item, in place of Visit summary and Share links (#168)",
-                  js("document.getElementById('sharingLink').getAttribute('href')") == "sharing.html" and "Sharing" in menu
+            menu = js("[...document.querySelectorAll('#profileMenuList [role=menuitem]')].map(x => x.textContent)")
+            check("the profile menu has one Sharing item, the profile's, in place of Visit summary and Share links (#168, #264)",
+                  js("document.getElementById('sharingLink').getAttribute('href')") == f"sharing.html?profile={js('PROFILE.id')}" and "Sharing" in menu
                   and "Visit summary" not in menu and "Share links" not in menu, menu)
             was_profile = js("localStorage.getItem('ht-profile')")   # the Sharing page remembers the profile picked, as Settings does
             page.goto(base + "/summary.html?profile=2")   # the second profile: results from several imports, Ferritin typed in
@@ -8715,7 +8760,7 @@ def main():
             page.click("#tgt-spo2-clear")
             page.wait_for_function("document.getElementById('targetsMsg').textContent === 'Cleared the target for blood oxygen.'", timeout=10000)
             other_before = js("fetch('api/profiles/2/person', {cache: 'no-store'}).then(r => r.json()).then(j => JSON.stringify(j.targets || {}))")
-            page.select_option("#profile", "2")
+            pick_profile(page, "2")
             page.wait_for_selector("#about[data-profile='2']", timeout=10000)
             shown2 = js("document.getElementById('targetsBody').innerText")
             page.locator("#sgToasts .sg-toast", has_text="Cleared the target for blood oxygen").locator("button:text-is('Undo')").click()
@@ -8728,7 +8773,7 @@ def main():
                   and switched[4] == ["My records: Undone: the target for blood oxygen is back."], switched)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             js("fetch('api/profiles/1/person', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({targets: {spo2: null}})})")
-            page.select_option("#profile", "1")
+            pick_profile(page, "1")
             page.wait_for_selector("#about[data-profile='1']", timeout=10000)
             # #377: a Clear whose request is held until another profile is shown is still done: a toast naming its
             # profile says so, with the Undo, which puts it back there (the server read after each step)
@@ -8737,7 +8782,7 @@ def main():
             js("""() => { const f = window.fetch; window.sgGate = new Promise(r => { window.sgOpen = r; });
                 window.fetch = (u, o) => o && o.method === 'PUT' && String(u).endsWith('profiles/1/person') ? sgGate.then(() => { window.fetch = f; return f(u, o); }) : f(u, o); }""")
             page.click("#tgt-spo2-clear")
-            page.select_option("#profile", "2")
+            pick_profile(page, "2")
             page.wait_for_selector("#about[data-profile='2']", timeout=10000)
             shown2 = js("document.getElementById('targetsBody').innerText")
             js("sgOpen()")
@@ -8750,7 +8795,7 @@ def main():
                   held[0] and held[0]["low"] == 92 and held[1] is None and held[2] == "" and held[3] == held[0] and held[4] == "2" and held[5], held)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             js("fetch('api/profiles/1/person', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({targets: {spo2: null}})})")
-            page.select_option("#profile", "1")
+            pick_profile(page, "1")
             page.wait_for_selector("#about[data-profile='1']", timeout=10000)
             t234_bad, t234_axe = [], []
             for width in (1400, 375):
@@ -8858,33 +8903,55 @@ def main():
             check("…cleared, nothing of them is left drawn or said", cleared == {} and js(no_marks) == 0
                   and not js("WATCH.metrics.some(m => m.key.startsWith('glucose_own_') || m.key === 'glucose_dist')"), cleared)
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
-            # ---- the profile picker in the top bar (#170): on every page about a profile, each profile by name and
-            # your role; the page follows it and keeps its section; the address's ?profile= and this browser follow it
+            # ---- the same top bar on every page (#264): the brand, the profile menu (#170: each profile by name and your
+            # role, the profile's own pages, New profile), the records tabs as links, Add and your menu. The page follows
+            # the profile picked and keeps its section; the address's ?profile= and this browser follow it
             was_profile = js("localStorage.getItem('ht-profile')")
-            both = ["My records (owner)", "Second person (owner)"]
+            both = [["My records", "owner"], ["Second person", "owner"]]
+            bar_is = """() => ({brand: !!document.querySelector('header.topbar .brand-name'), tabs: [...document.querySelectorAll('header.topbar nav.tabs a[id^=tab-]')].map(a => a.textContent),
+                menus: [...document.querySelectorAll('header.topbar [aria-haspopup=menu]')].filter(b => b.checkVisibility()).map(b => b.id),
+                profiles: [...document.querySelectorAll('#profileMenuList [role=menuitemradio]')].map(b => [b.childNodes[1].textContent, b.querySelector('.menu-note').textContent]),
+                pages: [...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.textContent), one: document.querySelectorAll('#profile').length === 1
+                  && !!document.querySelector('header.topbar #profilePick > select#profile[hidden]') && !document.querySelector('main #profile, main label.set-profile')})"""
+            want_bar = {"brand": True, "tabs": ["Overview", "Body and activity", "Timeline", "Labs", "Costs"], "menus": ["profileMenuBtn", "addMenuBtn", "userMenuBtn"],
+                        "profiles": both, "pages": ["About this person", "Settings", "Sources", "Sharing", "New profile"], "one": True}
+            bars = {}
+            filled = "!!document.querySelector('#profileMenuList [data-pid]')"
             for path, ready in (("/", "typeof booted !== 'undefined' && booted"), ("/sources.html#portals", "!document.getElementById('intro').hidden"),
                                 ("/sharing.html#people", "!!document.querySelector('#memberList tbody tr')"),
-                                ("/settings.html#display", "!!document.querySelector('#sections > section')")):
+                                ("/settings.html#display", "!!document.querySelector('#sections > section')"), ("/account.html", filled), ("/admin.html", filled), ("/guide.html", filled)):
                 page.goto(base + path)
                 page.wait_for_function(ready, timeout=20000)
-                check(f"{path}: the profile picker is in the top bar, each profile by name and role, and the page has no Profile choice of its own",
-                      js("document.querySelectorAll('#profile').length === 1 && !!document.querySelector('header.topbar #profilePick > select#profile') "
-                         "&& !document.querySelector('main #profile, main label.set-profile')")
-                      and page.get_by_role("combobox", name="Profile").is_visible()
-                      and js("[...document.getElementById('profile').options].map(o => o.textContent)") == both,
-                      js("[...document.querySelectorAll('#profile option')].map(o => o.textContent)"))
+                if js(bar_is) != want_bar:
+                    bars[path] = js(bar_is)
+            check("every page has the same top bar: the brand, the profile menu (each profile by name and role, then its pages), the five tabs, Add and your menu (#264)",
+                  not bars, bars)
             page.focus("header .brand-link")
             page.keyboard.press("Tab")
-            check("…reached from the keyboard right after the brand and the page's title", js("document.activeElement.id") == "profile", js("document.activeElement.id"))
-            for path in ("/account.html", "/admin.html"):
-                page.goto(base + path)
-                page.wait_for_load_state("networkidle")
-                check(f"{path}: no profile picker, the page isn't about a profile", js("!document.getElementById('profile') && !document.getElementById('profilePick')"))
+            first = js("document.activeElement.id")
+            page.keyboard.press("Tab")
+            check("…the profile menu reached from the keyboard right after the brand, and then the tabs", [first, js("document.activeElement.id")] == ["profileMenuBtn", "tab-overview"],
+                  [first, js("document.activeElement.id")])
+            page.click("#profileMenuBtn")
+            pid = js("document.getElementById('profile').value")
+            check("…the profile menu: About this person in Settings (#267), the profile's Settings, Sources and Sharing, each for the profile shown, and New profile",
+                  js("[...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.getAttribute('href'))")
+                  == [f"settings.html?profile={pid}#about"] + [f"{x}.html?profile={pid}" for x in ("settings", "sources", "sharing")] + ["guide.html?new"],
+                  js("[...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.getAttribute('href'))"))
+            page.keyboard.press("Escape")
+            # a tab link from another page opens that tab (#264), on the profile shown there
+            page.goto(base + "/settings.html?profile=1#display")
+            page.wait_for_selector("#sections > section", state="attached", timeout=10000)
+            page.click("#tab-costs")
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            check("…a tab link from Settings opens that tab on the records page",
+                  js("[state.tab, location.hash, PROFILE.id, document.getElementById('tab-costs').getAttribute('aria-current')]") == ["costs", "#costs", 1, "page"],
+                  js("[state.tab, location.hash, PROFILE.id]"))
             page.goto(base + "/sources.html?profile=2#portals")
             page.wait_for_function("!document.getElementById('intro').hidden && document.getElementById('introHint').textContent.includes('Second person')", timeout=10000)
             check("an address naming a profile (?profile=2) opens it, and this browser remembers it",
                   js("document.getElementById('profile').value") == "2" and js("localStorage.getItem('ht-profile')") == "2")
-            page.select_option("#profile", "1")
+            pick_profile(page, "1")
             page.wait_for_function("document.getElementById('introHint').textContent.includes('My records')", timeout=10000)
             check("switching profile redraws the page for it, in the same section, and the address and this browser follow",
                   js("[location.search, location.hash, document.querySelector('#srcNav [aria-current=page]').textContent, localStorage.getItem('ht-profile')]")
@@ -8892,47 +8959,34 @@ def main():
                   js("[location.search, location.hash, localStorage.getItem('ht-profile')]"))
             page.goto(base + "/settings.html#display")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
-            page.select_option("#profile", "2")
+            pick_profile(page, "2")
             page.wait_for_function("PID === 2 && !!document.querySelector('#sections > section')", timeout=10000)
             check("…on Settings too, keeping its group", js("location.hash") == "#display" and js("localStorage.getItem('ht-profile')") == "2")
             page.goto(base + "/")
             page.wait_for_function("typeof booted !== 'undefined' && booted || !!document.querySelector('main .empty')", timeout=20000)
             check("…and the records page opens the profile chosen there", js("PROFILE.id") == 2 and js("document.getElementById('profile').value") == "2")
-            page.select_option("#profile", "1")   # the records page loads again for it
+            pick_profile(page, "1")   # the records page loads again for it
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             check("…switching there opens the other", js("document.getElementById('profile').value") == "1" and js("localStorage.getItem('ht-profile')") == "1")
             page.set_viewport_size({"width": 375, "height": 800})
             box = "(s => { const r = document.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom, r.left, r.right]; })"
-            check("at 375 px the records page fits, the picker a row of its own between the menus and the tabs",
-                  js("document.documentElement.scrollWidth") <= 375 and js(box + "('#addMenu')")[1] <= js(box + "('#profilePick')")[0]
-                  and js(box + "('#profilePick')")[1] <= js(box + "('header .tabs')")[0] + 1 and js(box + "('#profilePick')")[3] <= 375,
-                  [js("document.documentElement.scrollWidth"), js(box + "('#addMenu')"), js(box + "('#profilePick')"), js(box + "('header .tabs')")])
-            for path, ready in (("/sources.html#portals", "!document.getElementById('intro').hidden"), ("/sharing.html#people", "!!document.querySelector('#memberList tbody tr')"),
-                                ("/settings.html#display", "!!document.querySelector('#sections > section')")):
-                page.goto(base + path)
-                page.wait_for_function(ready, timeout=20000)
-                check(f"…{path} fits too, the picker beside the page's title under the menus (#315), whole",
-                      js("document.documentElement.scrollWidth") <= 375 and page.is_visible("#profile")
-                      and js(box + "('#addMenu')")[1] <= min(js(box + "('.page-title')")[0], js(box + "('#profilePick')")[0])
-                      and js(box + "('.page-title')")[3] <= js(box + "('#profilePick')")[2] and js(box + "('#profilePick')")[3] <= 375
-                      and js(box + "('#profilePick')")[1] <= js(box + "('header.topbar')")[1],
-                      [js("document.documentElement.scrollWidth"), js(box + "('#addMenu')"), js(box + "('.page-title')"), js(box + "('#profilePick')")])
-            # #315: at 320 px the title beside the brand and the menus had 23 px, "S." for Settings; on its own row under them
-            # (with the picker, where there is one), each page's title is whole, on the screen and clear of the menus
-            title_whole = """(() => { const t = document.querySelector('header .page-title'), r = t.getBoundingClientRect(),
-                menus = [...document.querySelectorAll('header .menu')].filter(m => m.checkVisibility()).map(m => m.getBoundingClientRect());
-              return [t.textContent, t.checkVisibility() && t.scrollWidth <= t.clientWidth && t.scrollHeight <= t.clientHeight + 1 && r.left >= 0 && r.right <= 320
-                && menus.every(m => r.top >= m.bottom || r.bottom <= m.top || r.right <= m.left || r.left >= m.right),
-                [t.scrollWidth, t.clientWidth, t.scrollHeight, t.clientHeight, Math.round(r.left), Math.round(r.right)]]; })()"""
-            page.set_viewport_size({"width": 320, "height": 800})
-            titles = {}
-            for path in ("sources.html", "sharing.html", "settings.html", "account.html", "admin.html", "guide.html"):
-                page.goto(base + "/" + path)
-                page.wait_for_selector("header .page-title", timeout=10000)
-                settle(300)
-                titles[path] = js(title_whole)
-            check("at 320 px every page's title in the top bar is whole, on a row of its own under the menus (#315)",
-                  all(ok and name in ("Sources", "Sharing", "Settings", "Account", "Admin", "Getting started") for name, ok, _ in titles.values()), titles)
+            # on a phone (until #268's bottom bar) every page's bar is three rows: the brand with Add and your menu, the
+            # profile menu, then the tabs scrolling sideways; whole and on the screen at 375 and 320 px (#315, #264)
+            bar_rows = """w => { const r = s => document.querySelector(s).getBoundingClientRect(), add = r('#addMenu'), pick = r('#profilePick'), tabs = r('header .tabs'),
+                name = document.querySelector('#profileMenuBtn .profile-name');
+              return document.documentElement.scrollWidth <= w && add.bottom <= pick.top && pick.bottom <= tabs.top + 1 && pick.right <= w && tabs.right <= w
+                && r('#userMenu').right <= w && name.scrollWidth <= name.clientWidth ? null
+                : [document.documentElement.scrollWidth, add.bottom, pick.top, pick.bottom, tabs.top, pick.right, tabs.right]; }"""
+            rows = {}
+            for w in (375, 320):
+                page.set_viewport_size({"width": w, "height": 800})
+                for path in ("", "sources.html", "sharing.html", "settings.html", "account.html", "admin.html", "guide.html"):
+                    page.goto(base + "/" + path)
+                    page.wait_for_function(filled, timeout=20000)
+                    settle(300)
+                    if (bad := js(bar_rows, w)):
+                        rows[f"{path or 'records'} at {w}"] = bad
+            check("at 375 and 320 px every page fits, the profile menu on a row of its own between the menus and the tabs, its name whole (#315)", not rows, rows)
             page.set_viewport_size({"width": 1400, "height": 900})
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- milestones (#39) and visits counted as workouts (#43) on the Settings page: a milestone added (primary)
@@ -8980,12 +9034,12 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
-            page.click("#tab-labs")
+            tab_click(page, "#tab-labs")
             js("applyPreset('all')")
             settle()
             check("…the new milestone is marked on Trends",
                   js("[...document.querySelectorAll('#charts .mslabel')].some(t => t.textContent.includes('Browser check milestone'))"))
-            page.click("#tab-health")
+            tab_click(page, "#tab-health")
             settle()
             page.click("#presets button:text-is('Since browser check milestone')")
             settle()
@@ -9138,7 +9192,7 @@ def main():
                 za.wait_for_timeout(300)
                 if found := za.evaluate(iso_js):
                     iso_seen[where] = found
-            for tab in za.evaluate("[...document.querySelectorAll('[role=tablist] [role=tab][id^=\"tab-\"]')].filter(t => !t.hidden).map(t => t.id.slice(4))"):
+            for tab in za.evaluate("[...document.querySelectorAll('.tabs a[id^=\"tab-\"]')].filter(t => !t.hidden).map(t => t.id.slice(4))"):
                 za.evaluate(f"switchTab('{tab}')")
                 iso_scan("records: " + tab)
             for path, nav in (("sources.html?profile=1", "#srcNav"), ("sharing.html?profile=1", "#shrNav"), ("settings.html?profile=1", "#setNav"),
@@ -9177,7 +9231,7 @@ def main():
             check("…Health's weekly bins start at their own Monday",
                   (za.evaluate(weekly_key), zb.evaluate(weekly_key)) == ("2026-03-02T20:00:00.000Z", "2026-03-08T23:00:00.000Z"),
                   (za.evaluate(weekly_key), zb.evaluate(weekly_key)))
-            zb.click("#tab-timeline")
+            tab_click(zb, "#tab-timeline")
             zb.wait_for_selector("#list .tl-row .d", timeout=10000)
             shown = zb.evaluate("document.querySelector('#list .tl-row .d').textContent")
             check("…the timeline's event list in that format", bool(__import__("re").fullmatch(r"\d{4}-\d{2}-\d{2}", shown)), shown)
@@ -9214,10 +9268,10 @@ def main():
             check("…an owner's group in the address shows People, saying share links are for owners",
                   zb.evaluate("document.querySelector('#shrNav [aria-current=page]').textContent") == "People" and "owners" in zb.inner_text("#pageMsg")
                   and zb.evaluate("location.hash") == "#people" and zb.evaluate("document.getElementById('links').hidden && document.getElementById('linksBody').children.length === 0"))
-            check("…with one profile, the top bar names it and their role, as a plain label (#170)",
-                  zb.evaluate("document.getElementById('profile').hidden && !document.getElementById('profileOne').hidden")
-                  and zb.evaluate("document.getElementById('profileOne').textContent") == "Profile: My records view only" and zb.is_visible("#profileOne .profile-role"),
-                  zb.evaluate("document.getElementById('profileOne').textContent"))
+            check("…with one profile, the top bar's profile menu names it and their role, with no other to switch to (#170, #264)",
+                  zb.evaluate("document.getElementById('profileMenuBtn').textContent") == "Profile: My records view only" and zb.is_visible("#profileMenuBtn .profile-role")
+                  and zb.evaluate("document.querySelectorAll('#profileMenuList [role=menuitemradio]').length") == 0,
+                  zb.evaluate("document.getElementById('profileMenuBtn').textContent"))
             zb.goto(base + "/import.html")
             zb.wait_for_selector("#importer", state="attached", timeout=10000)
             zb.evaluate("datesReady().then(() => true)")   # the zone read from the server, not only from the last visit
@@ -9824,7 +9878,7 @@ def main():
             page.wait_for_selector("#adminNote:not([hidden])", timeout=10000)
             check("connected sources: no setup on the everyday page, and an admin is pointed to Admin (#167)",
                   js("!document.getElementById('srcForm') && document.querySelector('#adminNote a').getAttribute('href')") == "admin.html#apps")
-            page.select_option("#profile", label="Second person (owner)")
+            pick_profile(page, label="Second person (owner)")
             page.wait_for_selector("#sourceButtons button", timeout=10000)
             check("…each Connect button says where it signs in as a tip, not a title, the words on no screen (#358)",
                   js("[...document.querySelectorAll('#sourceButtons button')].every(b => !b.hasAttribute('title') && /^Signs in at /.test(b.dataset.tip || ''))"),
@@ -9938,7 +9992,7 @@ def main():
             check("…and linking it again from the drawer shows it once", len(js(hgb_day)) == 1, js(hgb_day))
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/sources.html#portals")
-            page.select_option("#profile", label="Second person (owner)")
+            pick_profile(page, label="Second person (owner)")
             page.wait_for_function("document.getElementById('connList').textContent.includes('New records come in on a schedule')", timeout=20000)
             imports = lambda: js(f"fetch('api/profiles/{conn_pid}/connections').then(r => r.json()).then(j => j.connections[0].imports)")
             fake.add({"resourceType": "Observation", "status": "final", "effectiveDateTime": "2026-11-12T08:00:00Z",
@@ -10118,7 +10172,7 @@ def main():
             page.wait_for_function("[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake health plan') && "
                                    "(p.textContent.includes('Discovery works') || p.textContent.includes('tested ')))", timeout=10000)
             page.goto(base + "/sources.html#portals")
-            page.select_option("#profile", label="Second person (owner)")
+            pick_profile(page, label="Second person (owner)")
             page.wait_for_selector("#sourceButtons button:has-text('Fake health plan')", timeout=10000)
             page.click("#sourceButtons button:has-text('Fake health plan')")   # what to pull (#99), then sign in
             page.wait_for_selector(".conn-choose", timeout=10000)
@@ -10427,7 +10481,7 @@ def main():
             open_tab("timeline")
             settle(300)
             icons_in(["#chips .toggle", "#list .tl-row"])
-            for m in ("addMenu", "userMenu"):
+            for m in ("profileMenu", "addMenu", "userMenu"):
                 page.click(f"#{m}Btn")
                 page.wait_for_selector(f"#{m}List:popover-open", timeout=5000)
                 icons_in([f"#{m}List [role=menuitem]"], open=True)
@@ -10448,9 +10502,9 @@ def main():
                 settle(200)
                 icons_in([f"{nav} a[data-group]"])
             want = {"#setNav a[data-group]": 4, "#srcNav a[data-group]": 7, "#shrNav a[data-group]": 8, "#acctNav a[data-group]": 2, "#admNav a[data-group]": 7,
-                    "#addMenuList [role=menuitem]": 5, "#userMenuList [role=menuitem]": 8}
+                    "#profileMenuList [role=menuitem]": 5, "#addMenuList [role=menuitem]": 7, "#userMenuList [role=menuitem]": 6}
             check("icons (#354): one Lucide icon, hidden from screen readers and drawn from a symbol the sprite has, in each link of the "
-                  "five sidebars, each kind chip (its kind's), each Timeline row and each item of the Add menu and your menu",
+                  "five sidebars, each kind chip (its kind's), each Timeline row and each item of the profile menu, the Add menu and your menu",
                   not icons_bad and all(icons_n.get(k, 0) >= v for k, v in want.items()) and icons_n["#chips .toggle"] >= 10 and icons_n["#list .tl-row"] > 50,
                   icons_bad[:10] or icons_n)
             check("…and the Dark mode item, turned Light mode and back, keeps its icon before its words",
@@ -10928,7 +10982,7 @@ def main():
             check("Export everything downloads a zip", href == "api/profiles/1/export" and head == [0x50, 0x4B], (href, head))
             # People on the second profile (picked at the top): sharing with someone who already has access asks before
             # changing their role, and declining keeps it; then sharing for real, and a role changed in the table
-            page.select_option("#profile", "2")
+            pick_profile(page, "2")
             page.click("#shrNav a[data-group=people]")
             page.wait_for_function("document.querySelector('#introHint').textContent.includes('Second person') && document.getElementById('people').dataset.profile === '2'", timeout=10000)
             check("picking another profile shows its people, and the address keeps the group", js("location.hash") == "#people"
@@ -11121,7 +11175,7 @@ def main():
             page.click("#profileBody button:text-is('Rename')")
             page.wait_for_function("document.getElementById('profileMsg').textContent === 'Renamed.' && document.querySelector('#profile option:checked').textContent === 'Third person, renamed (owner)'", timeout=10000)
             check("Rename renames it, in the picker too", True)
-            page.select_option("#profile", "2")
+            pick_profile(page, "2")
             page.wait_for_function("document.querySelector('#profileBody input').value === 'Second person'", timeout=10000)
             second = page.locator("#profileCard")
             second.get_by_role("button", name="Delete profile…").click()
@@ -11492,28 +11546,30 @@ def main():
             name = ph.evaluate("PROFILE.name")
             check("offline, records on: the last profile opens read-only, with when it was loaded",
                   "Offline · read-only" in text and f"{name}, as loaded on" in text, text)
-            ph.click("#tab-labs")
+            tab_click(ph, "#tab-labs")
             ph.wait_for_selector("#charts svg", timeout=10000)
             check("offline: Trends draws from the kept copy", ph.evaluate("document.querySelectorAll('#charts svg').length") > 0)
             check("offline: Import, Settings and Account say they need the server, as their tip, with no title (#385)",
                   ph.evaluate("[...document.querySelectorAll('header a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && a.dataset.tip === \"Needs the server: you're offline\" && !a.hasAttribute('title'))"))
-            # (#385) your menu's links, still reached with the arrow keys: each shows the reason as its tooltip and has it as
-            # its description, focused from the keyboard
+            # (#385) the profile menu's and your menu's links, still reached with the arrow keys: each shows the reason as
+            # its tooltip and has it as its description, focused from the keyboard; the other profile can't be picked (#264)
             ph.mouse.move(0, 0)
-            ph.focus("#userMenuBtn")
-            ph.keyboard.press("Enter")
             menu385 = []
-            for _ in range(ph.evaluate("[...document.querySelectorAll('#userMenuList [role=menuitem]')].filter(x => !x.hidden).length")):
-                ph.wait_for_timeout(150)
-                if ph.evaluate("document.activeElement.matches('a.acct')"):
-                    menu385.append([ph.evaluate("document.activeElement.textContent.trim()"),
-                                    ph.evaluate("(t => t && t.matches(':popover-open') && t.textContent)(document.getElementById('sgTip'))"),
-                                    ax_said(ph, "#userMenuList a.acct:focus")])
-                ph.keyboard.press("ArrowDown")
-            ph.keyboard.press("Escape")
-            check("offline (#385): your menu's links, reached with the arrow keys, give the reason as their tooltip and description",
-                  {"Sharing", "Sources", "Settings", "Account", "Getting started"} <= {m[0] for m in menu385}
-                  and all(m[1] == "Needs the server: you're offline" and m[2] and m[2][1] == "Needs the server: you're offline" for m in menu385), menu385)
+            for m in ("profileMenu", "userMenu"):
+                ph.focus(f"#{m}Btn")
+                ph.keyboard.press("Enter")
+                for _ in range(ph.evaluate(f"[...document.querySelectorAll('#{m}List [role^=menuitem]')].filter(x => !x.hidden).length")):
+                    ph.wait_for_timeout(150)
+                    if ph.evaluate("document.activeElement.matches('a.acct')"):
+                        menu385.append([ph.evaluate("document.activeElement.textContent.trim()"),
+                                        ph.evaluate("(t => t && t.matches(':popover-open') && t.textContent)(document.getElementById('sgTip'))"),
+                                        ax_said(ph, f"#{m}List a.acct:focus")])
+                    ph.keyboard.press("ArrowDown")
+                ph.keyboard.press("Escape")
+            check("offline (#385): the profile menu's and your menu's links, reached with the arrow keys, give the reason as their tooltip and description",
+                  {"Sharing", "Sources", "Settings", "About this person", "Account", "Display", "Getting started"} <= {m[0] for m in menu385}
+                  and all(m[1] == "Needs the server: you're offline" and m[2] and m[2][1] == "Needs the server: you're offline" for m in menu385)
+                  and ph.evaluate("[...document.querySelectorAll('#profileMenuList [role=menuitemradio]')].every(b => b.getAttribute('aria-disabled') === 'true')"), menu385)
             ph.evaluate("document.querySelector('#settingsLink').click()")
             ph.wait_for_timeout(300)
             check("offline: a link to another page isn't followed", ph.evaluate("location.pathname") == "/")
@@ -11692,7 +11748,7 @@ def main():
             fp.wait_for_selector("#step-records:not([hidden])", timeout=10000)
             check("…naming the profile there (who it's for), then the first records, each way skippable",
                   fp.evaluate("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => p.name))") == ["Robin Example"]
-                  and "Robin Example" in fp.inner_text("#profileOne") and fp.evaluate("location.hash") == "#records"
+                  and "Robin Example" in fp.inner_text("#profileMenuBtn") and fp.evaluate("location.hash") == "#records"
                   and fp.is_visible("#step-records [data-skip]") and fp.is_hidden("#step-records [data-next]"))
             ways = fp.evaluate("[...document.querySelectorAll('#step-records .guide-way')].map(a => a.getAttribute('href'))")
             check("…its ways in are Sources' own sections: upload, a portal or plan (#165's section), typing in",
@@ -11781,14 +11837,14 @@ def main():
             fp.goto(fbase + f"/?profile={pid2}#overview")
             f_until("typeof booted !== 'undefined' && booted && EV.length > 0")
             for t in want:
-                fp.click("#tab-" + t)
+                tab_click(fp, "#tab-" + t)
                 if t == "timeline":
                     fp.fill("#q", "no such event")
                     f_until("!!document.querySelector('#list .empty-state')", 5000)
                 got[t] = fp.evaluate(nexts, "#view-" + t)
             check("…every records tab with nothing to show (a profile with only a visit) says what would be there, with one next step",
                   r == 200 and got == want and fp.is_visible("#notice") and "Not medical advice" in fp.inner_text("#notice"), (r, got))
-            fp.click("#tab-timeline")
+            tab_click(fp, "#tab-timeline")
             fp.click("#list .empty-next")
             f_until("document.querySelectorAll('#list .tl-row').length === 1 && state.q === '' && state.preset === 'all'", 5000)
             check("…the Timeline's Show everything clears the search and the period", fp.evaluate("document.activeElement.id") == "listTitle")
@@ -11799,7 +11855,7 @@ def main():
                 fp.goto(fbase + f"/?profile={pid2}#overview")
                 f_until("typeof booted !== 'undefined' && booted")
                 for t in want:
-                    fp.click("#tab-" + t)
+                    tab_click(fp, "#tab-" + t)
                     fp.wait_for_timeout(150)
                     bad += phone_fits(fp, f"{theme} {t}")
                     empty_axe = [a + b for a, b in zip(empty_axe, axe_check(fp, f"empty {t}, {theme}"))]   # #202

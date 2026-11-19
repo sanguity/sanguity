@@ -172,7 +172,7 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
 @media (forced-colors:active){   /* selected or shown: the system's highlight, kept as is (no text backplate over it) */
   .seg{background:CanvasText;border-color:CanvasText}
   .seg>button,.seg>label{background:Canvas;color:CanvasText}
-  .seg>[aria-pressed="true"],.seg>[aria-checked="true"],.seg>label:has(>input:checked){forced-color-adjust:none;background:Highlight;color:HighlightText;box-shadow:none}
+  .seg>[aria-pressed="true"],.seg>[aria-checked="true"],.seg>label:has(>input:checked),.tabs>[aria-current="page"]{forced-color-adjust:none;background:Highlight;color:HighlightText;box-shadow:none}
   button.toggle,label.toggle{background:Canvas;color:CanvasText;border:1px dashed CanvasText}
   .toggle[aria-pressed="true"],.toggle:has(>input:checked){forced-color-adjust:none;background:Highlight;color:HighlightText;border:1px solid Highlight}
   .toggle::before{color:inherit}
@@ -264,6 +264,17 @@ button.tile{cursor:pointer}
 .menu-item{display:block;text-align:left;width:100%;padding:var(--sp-2) var(--sp-3);border:0;background:none;border-radius:var(--r-sm);color:var(--ink);font:inherit;font-size:var(--fs-3);cursor:pointer;text-decoration:none;white-space:nowrap}
 .menu-item:hover,.menu-item:focus-visible{background:var(--hover);outline:none}
 .menu-sep{height:1px;background:var(--grid);margin:var(--sp-1) 2px}
+/* a pick-one menu's items (the period's More…, the profile menu's profiles), the picked one ticked (#257) and tinted; a
+   group's name over its items; the page you're on, in bold */
+.menu-item[role=menuitemradio]{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-3);padding-left:var(--sp-5);white-space:normal}
+.menu-item[aria-checked="true"]{background:color-mix(in srgb,var(--accent) 12%,var(--raised));font-weight:var(--fw-semibold)}
+.menu-item>.i-check{position:absolute;left:var(--sp-2);margin-top:.225em;color:var(--accent);stroke-width:2.5}
+.menu-item:not([aria-checked="true"])>.i-check{display:none}
+.menu-item[aria-checked]:is(:hover,:focus-visible){background:var(--hover)}
+.menu-item[aria-disabled="true"]{color:var(--muted);cursor:not-allowed}
+.menu-head{padding:var(--sp-1) var(--sp-3) 2px var(--sp-5);color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-semibold)}
+.menu-note{flex:none;color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-regular)}
+.menu-item[aria-current="page"]{font-weight:var(--fw-semibold)}
 
 /* ---- tooltips (#261, data-tip, util.js): over its element, centred on it, or under it where there's no room above,
    never on it; kept 8 px inside the screen (its margins: a box shifted to fit keeps them inside the screen, #357),
@@ -352,12 +363,14 @@ header .brand-name{font-size:var(--fs-5);margin:0;font-weight:var(--fw-semibold)
 header .brand-name .brand{width:19px;height:23px;flex:none}
 .brand-drop{fill:var(--brand)}.brand-line{stroke:var(--brand-ink)}.brand-dot{fill:var(--brand-ink)}
 header .meta{color:var(--muted);font-size:var(--fs-2)}
+/* the records tabs (nav.js, #264): links, the one shown raised */
 .tabs{display:flex;gap:2px;background:var(--hover);border-radius:var(--r-md);padding:3px}
-.tabs button{border:0;background:none;min-height:32px;padding:var(--sp-1) var(--sp-4);border-radius:var(--r-sm);cursor:pointer;color:var(--ink2);font-weight:var(--fw-medium)}
-.tabs button[aria-selected="true"]{background:var(--raised);color:var(--ink);box-shadow:var(--shadow-1)}
-@media (max-width:640px),(pointer:coarse){ .tabs button{min-height:44px} }   /* the button's sizes (#258) */
+.tabs>a{display:inline-flex;align-items:center;gap:var(--sp-1);border:0;background:none;min-height:32px;padding:var(--sp-1) var(--sp-4);border-radius:var(--r-sm);
+  cursor:pointer;color:var(--ink2);font:inherit;font-weight:var(--fw-medium);text-decoration:none;white-space:nowrap}
+.tabs>a:hover{color:var(--ink)}
+.tabs>[aria-current="page"]{background:var(--raised);color:var(--ink);box-shadow:var(--shadow-1)}
+@media (max-width:640px),(pointer:coarse){ .tabs>a{min-height:44px} }   /* the button's sizes (#258) */
 .spacer{flex:1}
-.iconbtn.profile{max-width:14em;justify-content:flex-start;text-align:left}
 /* Settings: a sidebar of groups, one group at a time (settings-nav.js) */
 main.sets.with-nav{display:grid;grid-template-columns:220px minmax(0,1fr);column-gap:var(--sp-5);max-width:1120px;align-items:start}
 main.sets.with-nav>*{grid-column:2}
@@ -379,14 +392,13 @@ main.sets.with-nav>.set-nav{grid-column:1;grid-row:1 / span 50;position:sticky;t
   .set-nav-list a{white-space:nowrap;border:1px solid var(--ring);padding:var(--sp-1) var(--sp-3);font-size:var(--fs-3)}
   .set-nav-list a[aria-current="page"]{box-shadow:none;border-color:var(--accent)}
 }
-/* the top bar (nav.js): brand, the page's title or the records' profile and tabs, then Add and the person's menu */
+/* the top bar (nav.js, #264): brand, the profile menu, the records tabs, then Add and the person's menu; the tabs take
+   the room left, scrolling sideways where they don't fit */
 header.topbar{flex-wrap:nowrap;gap:var(--sp-3);padding:var(--sp-2) var(--sp-5)}
 header.topbar .tabs{flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
 header.topbar .tabs::-webkit-scrollbar{display:none}
-header.topbar .tabs button{white-space:nowrap}
 .brand-link{display:flex;align-items:center;gap:var(--sp-2);color:inherit;text-decoration:none;border-radius:var(--r-sm)}
 .brand-link:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-.page-title{font-weight:var(--fw-semibold);color:var(--ink2);font-size:var(--fs-4);padding-left:var(--sp-3);border-left:1px solid var(--ring);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .menu{position:relative;flex:none}
 .menu[hidden]{display:none}
 .bar-menus{display:flex;align-items:center;gap:inherit;flex:none}   /* Add and your menu (nav.js), wrapped as one (#319) */
@@ -402,9 +414,6 @@ header.topbar .tabs button{white-space:nowrap}
   header.topbar .brand-name{flex:none}
   header.topbar .spacer{display:block;flex:1}
   header.topbar .tabs{order:5;width:100%}
-  .page-title{font-size:var(--fs-3);padding-left:var(--sp-2);flex:1 1 0}
-  header.topbar .page-title + .spacer{display:none}   /* the title has the row's room, not half of it */
-  .page-title{white-space:normal;line-height:1.2;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}   /* two lines before it's cut */
   .menu-btn{max-width:10em}
   /* the top bar's menus (Add, the person's own): the bar wraps, so a menu pinned to its button's right edge would open
      off the screen's left (#244); instead each is the screen's width under the bar (--bar-h, nav.js), 8 px in */
@@ -620,7 +629,7 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
   header .meta{display:none}
   .tabs{order:5;width:100%;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
   .tabs::-webkit-scrollbar{display:none}
-  .tabs button{white-space:nowrap;padding:var(--sp-1) var(--sp-3);flex:none}
+  .tabs>a{padding:var(--sp-1) var(--sp-3);flex:none}
   header .spacer{display:none}
   main{padding:var(--sp-3) var(--sp-3) var(--sp-7)}
   .filters{padding:var(--sp-2) var(--sp-3);gap:var(--sp-2);position:relative}
@@ -1259,13 +1268,6 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .period-more-btn[aria-expanded="true"]{background:var(--hover);color:var(--ink)}
 .period-more-btn.on{background:color-mix(in srgb,var(--accent) 15%,var(--raised));color:var(--ink);font-weight:var(--fw-semibold);box-shadow:inset 0 -2px 0 var(--accent)}
 .period-more .menu-list{left:anchor(left);right:auto;width:max-content;min-width:200px;max-width:min(320px,calc(100vw - 24px));max-height:min(60vh,440px,var(--menu-room,100vh))}
-.period-more .menu-item{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-3);padding-left:var(--sp-5);white-space:normal}
-.period-more .menu-item[aria-checked="true"]{background:color-mix(in srgb,var(--accent) 12%,var(--raised));font-weight:var(--fw-semibold)}
-.period-more .menu-item>.i-check{position:absolute;left:var(--sp-2);margin-top:.225em;color:var(--accent);stroke-width:2.5}   /* the picked one's ✓ (#257) */
-.period-more .menu-item:not([aria-checked="true"])>.i-check{display:none}
-.period-more .menu-item:hover,.period-more .menu-item:focus-visible{background:var(--hover)}
-.period-more .menu-head{padding:var(--sp-1) var(--sp-3) 2px var(--sp-5);color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-semibold)}
-.period-more .menu-note{flex:none;color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-regular)}
 .period-words{color:var(--ink2);font-size:var(--fs-3)}
 .period-words[hidden],.dates[hidden]{display:none}
 .dates input{color:var(--ink)}
@@ -1328,25 +1330,15 @@ main.src[data-role=viewer] .src-edit{display:none}
 .about-dl dd,.share-about dd{margin:0;overflow-wrap:anywhere}
 @media (max-width:640px){.about-dl,.share-about{grid-template-columns:1fr;gap:0}.about-dl dd,.share-about dd{margin-bottom:var(--sp-2)}
   .about .about-recorded tr{grid-template-columns:1fr 1fr}}
-/* the profile picker in the top bar (#170, nav.js): a select, or a plain label when there's only one profile */
-.profile-pick{display:flex;align-items:center;min-width:0;flex:0 1 auto}
-.profile-pick .iconbtn.profile{min-width:0;max-width:18em;text-overflow:ellipsis}
-.profile-one{display:flex;align-items:center;gap:var(--sp-2);min-width:0;font-weight:var(--fw-medium);white-space:nowrap}
-.profile-name{overflow:hidden;text-overflow:ellipsis}
+/* the profile menu in the top bar (#170, #264, nav.js): the profile's name, cut short if it must be, and your role */
+.profile-pick{display:flex;flex:none;min-width:0}
+.profile-btn{font-weight:var(--fw-medium)}
+.profile-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .profile-role{flex:none;font-weight:var(--fw-regular);font-size:var(--fs-2);color:var(--ink2);border:1px solid var(--ring);border-radius:var(--r-pill);padding:0 var(--sp-2)}
 @media (max-width:700px){
-  /* a row of its own beside a page's title, or as a select (the records page's tabs below it) */
-  header.topbar .page-title ~ .profile-pick,header.topbar .profile-pick.many{order:4;width:100%}
-  header.topbar .page-title + .profile-pick + .spacer{display:none}
-  .profile-pick .iconbtn.profile{max-width:100%}
-}
-@media (max-width:400px){
-  /* the page's title on the second row, before the picker: beside the brand and the menus it had 23 px at 320 px, one
-     letter (#315). The bar's ::after is the line break before it, its 8 px gap taken back */
-  header.topbar:has(.page-title)::after{content:"";order:3;flex-basis:100%}
-  header.topbar .page-title{order:4;flex:0 1 auto;padding-left:0;border-left:0;margin-top:-8px}
-  header.topbar .page-title ~ .profile-pick{flex:1 1 0;width:auto;margin-top:-8px;padding-left:var(--sp-2);border-left:1px solid var(--ring)}
-  header.topbar .page-title + .spacer,header.topbar .page-title + .profile-pick + .spacer{display:block}
+  /* on a phone, a row of its own under the brand and the menus (the tabs under it) */
+  header.topbar .profile-pick{order:4;width:100%}
+  .profile-btn.menu-btn{max-width:100%}
 }
 /* "More about this" (#176): the rest of a card's explanation behind one toggle, the same on every page (util.js
    moreAbout(), or the same <details class="more"> written in the page). Closed, it's one short line under the lead. */
@@ -1728,7 +1720,7 @@ td:has(>.cell-btn~.test-page.tq)>:is(.cell-btn,small)+.test-page.tq{margin-left:
    once), a menu fades in as it opens, the drawer slides (#drawer). The reduced-motion rule (#209, above) turns all of
    them off. Only on the way in, so a change of theme or of a pressed state is never caught half way. */
 @media (hover:hover){
-  :is(.btn,.iconbtn,.tabs button,.chip,.toggle,.seg>button,.seg>label,.kind-more,.period-more-btn,.menu-item,.tile,.tile-tq,
+  :is(.btn,.iconbtn,.tabs>a,.chip,.toggle,.seg>button,.seg>label,.kind-more,.period-more-btn,.menu-item,.tile,.tile-tq,
     .tl-row,.ov-row,.srow,.jrow,.dir-hit,.set-nav-list a,.guide-way,.linkish,.fsum-reset):hover{
     transition:background-color var(--dur-1) var(--ease-out),border-color var(--dur-1) var(--ease-out),color var(--dur-1) var(--ease-out),
       filter var(--dur-1) var(--ease-out)}   /* a filled button's shade (#258) */

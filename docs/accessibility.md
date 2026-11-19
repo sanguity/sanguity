@@ -66,8 +66,8 @@ What can't be done here is a pass with a real screen reader: see [Still open](#s
 | 2.5.3 Label in name | read the labels | Nothing found: labels start with the visible words. |
 | 2.5.8 Target size (minimum) | axe's target-size rule | **Fixed.** The ✎ (rename) is a 24 px target, and a button in a table's cell is 24 px tall, without changing the rows' height. |
 | 3.1.1 Language of page | axe | Nothing found. |
-| 3.2.1 On focus, 3.2.2 On input | read the code | Nothing new: the profile picker switches whose records are shown, which is what it's for and what its label says. |
-| 3.2.3, 3.2.4 Consistent navigation and identification | looked at every page | The same top bar on every page. |
+| 3.2.1 On focus, 3.2.2 On input | read the code | Nothing new: picking a profile in the profile menu switches whose records are shown, which is what it's for and what its group says (#264). |
+| 3.2.3, 3.2.4 Consistent navigation and identification | looked at every page | The same top bar on every page: the profile menu, the records tabs, Add and your menu (#264). |
 | 3.2.6 Consistent help | looked at every page | Getting started is in the same menu on every page; a card's help is under "More about this" in the same place (#176). |
 | 3.3.1 Error identification, 3.3.3 Error suggestion | read the forms | Errors are said in words beside the form and through the shared alert line (#209). Typed-in lab rows link the message to the field (above). |
 | 3.3.2 Labels or instructions | axe | See 2.4.6. |
