@@ -1202,6 +1202,12 @@ Everything on `main` so far; it becomes the first tagged release.
   Search and Add (a tap on Search opened the profile menu), and on a wide screen it was cut at 16 characters with room
   to spare, shown whole only inside its menu. It's cut short inside its own place now, its ▾ kept, taking the room the
   bar has; where it's cut its whole name is its tip, and still its button's name.
+- **More is always whole** (#395): between 701 and 1,330 px wide the tabs' row could shrink and scroll, cutting More
+  through or hiding it (on an iPad held upright, or a wide screen with the drawer docked), so the tabs under it
+  couldn't be reached. The tabs never shrink now: the profile's name is cut short first, and where not even one tab
+  fits beside More, it goes under More too and More takes its name ("Labs ▾"). The tabs are a little narrower, so all
+  five still fit at 1,100 px. With the drawer docked, the page is laid out for the room it has: up to 1,500 px wide,
+  Labs' list and charts, the Overview's columns and the Timeline's rows are as on a screen 900 px wide.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

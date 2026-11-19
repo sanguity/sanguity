@@ -4478,9 +4478,10 @@ def main():
                             && (r.querySelector('.dose-quick') ? a.matches('.dose-quick button') : a.matches('.dose-med')); }""", what),
                       js("document.activeElement.outerHTML.slice(0, 120)"))
                 page.locator("#ovDoses .dose-week").scroll_into_view_if_needed()
-                at271 = js("({y: scrollY, week: document.querySelector('#ovDoses .dose-week').textContent})")
                 page.locator("#ovDoses .dose-med", has_text=what).first.click()
                 settle(200)
+                # (once the drawer is open: docked at 1400 px, the page is laid out for the room it leaves, #395)
+                at271 = js("({y: scrollY, week: document.querySelector('#ovDoses .dose-week').textContent})")
                 n271 = page.locator("#dbody .dose-item").count()
                 page.click("#dbody button:text-is('Log a dose')")
                 settle(200)
@@ -8610,6 +8611,68 @@ def main():
                   "put in the bar with focus on it", first == "tab-health" and last == ["editTabs", "settings.html?profile=1#sec-tabs"]
                   and js("[document.activeElement.id, document.getElementById('tab-health').parentElement.matches('nav.tabs'), document.getElementById('tabMoreList').matches(':popover-open')]")
                   == ["tab-health", True, False], [first, last, js("document.activeElement.id")])
+            # #395: More is always whole. On Labs at 701, 740, 768 (a touch screen), 900, 1100, 1200 and 1280 px, the latter two
+            # with the drawer docked too: the tabs never scroll; each tab in the bar and More are wholly in sight, each
+            # reached by a pointer at its centre, and every tab is in the bar or under More; where only More fits it names
+            # the tab shown; Tab through the bar never stops on a tab or More out of sight. Docked at 1200 px, the page is
+            # laid out for the room it has: Labs' list and charts in one column
+            MORE_WHOLE = """() => { const bad = [], r = e => e.getBoundingClientRect(), nav = document.querySelector('header .tabs'), more = document.getElementById('tabMoreBtn');
+              const inBar = [...nav.querySelectorAll(':scope > a')].filter(a => a.checkVisibility()), open = more.checkVisibility();
+              const under = open ? [...document.querySelectorAll('#tabMoreList > a[id^=tab-]')] : [], all = [...document.querySelectorAll('a[id^=tab-]')].filter(a => !a.hidden);
+              if (inBar.length + under.length !== all.length) bad.push('not every tab reached: ' + inBar.length + ' + ' + under.length + ' of ' + all.length);
+              if (nav.scrollWidth > nav.clientWidth + 1) bad.push('the tabs scroll: ' + nav.scrollWidth + ' in ' + nav.clientWidth);
+              const box = r(nav), hd = r(document.querySelector('header.topbar'));
+              for (const e of [...inBar, ...(open ? [more] : [])]) { const x = r(e), h = document.elementFromPoint((x.left + x.right) / 2, (x.top + x.bottom) / 2);
+                if (x.left < box.left - 0.5 || x.right > box.right + 0.5 || x.right > hd.right + 0.5) bad.push(e.id + ' not whole: ' + [x.left, x.right, box.left, box.right].map(Math.round));
+                if (!h || !e.contains(h)) bad.push(e.id + ' not reached at its centre'); }
+              const cur = document.querySelector('a[id^=tab-][aria-current=page]');
+              if (!inBar.length && open && !(more.textContent.includes(cur.textContent) && (more.getAttribute('aria-label') || '').startsWith(cur.textContent))) bad.push('More alone, not naming ' + cur.textContent);
+              return bad; }"""
+
+            def more_keys(pg):
+                """Tab from the profile menu to Search: what has focus in the tabs' row is whole and on top"""
+                pg.focus("#profileMenuBtn")
+                bad = []
+                for _ in range(10):
+                    pg.keyboard.press("Tab")
+                    a = pg.evaluate("""() => { const e = document.activeElement, x = e.getBoundingClientRect(), n = document.querySelector('header .tabs').getBoundingClientRect(),
+                      h = document.elementFromPoint((x.left + x.right) / 2, (x.top + x.bottom) / 2);
+                      return [e.id, !e.closest('header .tabs') || x.left >= n.left - 0.5 && x.right <= n.right + 0.5 && x.right <= innerWidth && !!h && e.contains(h)]; }""")
+                    if not a[1]:
+                        bad.append("focus out of sight on " + a[0])
+                    if a[0] in ("barSearch", "addMenuBtn"):
+                        break
+                return bad
+            more_whole = {}
+            js("switchTab('labs')")
+            for w in (701, 740, 900, 1100, 1200, 1280):
+                for docked in ((False, True) if w >= 1200 else (False,)):
+                    page.set_viewport_size({"width": w, "height": 900})
+                    if docked:
+                        js("openEvent(EV.filter(e => e.k === 'lab').pop())")
+                        page.wait_for_function("document.documentElement.classList.contains('sg-docked')", timeout=5000)
+                    settle(300)
+                    bad = js(MORE_WHOLE) + more_keys(page)
+                    if docked and w == 1200 and js("getComputedStyle(document.getElementById('labsChart')).gridTemplateColumns.split(' ').length") != 1:
+                        bad.append("Labs in two columns: " + js("getComputedStyle(document.getElementById('labsChart')).gridTemplateColumns"))
+                    if docked:
+                        js("closeDrawer()")
+                        settle(300)
+                    if bad:
+                        more_whole[f"{w}{' docked' if docked else ''}"] = bad
+            tctx = browser.new_context(viewport={"width": 768, "height": 1024}, has_touch=True, bypass_csp=True)
+            tctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            tpg = tctx.new_page()
+            tpg.goto(base + "/?profile=1#labs")
+            tpg.wait_for_function("typeof booted !== 'undefined' && booted && state.tab === 'labs'", timeout=20000)
+            tpg.wait_for_timeout(300)
+            if (bad := tpg.evaluate(MORE_WHOLE) + more_keys(tpg)) or not tpg.evaluate("matchMedia('(pointer: coarse)').matches"):
+                more_whole["768 touch"] = bad or ["not a touch screen"]
+            tctx.close()
+            check("More is always whole (#395): at 701, 740, 768 (touch), 900, 1100, 1200 and 1280 px, docked and not, every tab in the bar or under More, "
+                  "each whole and reached at its centre, focus never on one out of sight; More alone names the tab shown; docked at 1200 px Labs is one column",
+                  not more_whole, more_whole)
+            js("switchTab('overview')")
             page.set_viewport_size({"width": 1400, "height": 900})
             # #264: a tab picked changes the page as a View Transition, but not when less motion is asked for
             js("window.__vt = 0; const o = document.startViewTransition.bind(document); document.startViewTransition = f => { window.__vt++; return o(f); }; null")
