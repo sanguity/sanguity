@@ -1214,6 +1214,12 @@ CHART_ACCENT_JS = r"""sel => {
 }"""
 
 
+# a tab opened for the tile checks (#330, #339, #351), from [tab, period]: "costs" is Costs' Claims and "costs-paid" its
+# What you paid, each with its More figures open, so every figure is measured (#278)
+TILE_TAB_JS = """([t, p]) => { if (p) setPeriod(p);
+  if (t.startsWith('costs')) Object.assign(costState, {view: t === 'costs' ? 'claims' : 'paid', more: true}); switchTab(t.split('-')[0]); }"""
+
+
 # a tile's change line (Costs' figures' notes too, #260), as laid out (#330): each one that wraps, as its lines, when it ends in a short
 # fragment (its last line under 40% of its longest, such as "▼ −0.03 since Aug 18," over "2026"), breaks a date, or has
 # only the change on its first line ("▼ −0.03" over "since Aug 18, 2026", #374), or a line that starts with its "·"
@@ -2049,8 +2055,8 @@ def main():
             js("window._was330 = [state.tab, state.preset, state.from, state.to]")
             for width in (1400, 1100, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all")):
-                    js("([t, p]) => { if (p) setPeriod(p); switchTab(t); }", [tab, preset])
+                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
+                    js(TILE_TAB_JS, [tab, preset])
                     settle(300)
                     got = js(TILE_LINES_JS)
                     check(f"{tab} ({width} px, #330, #374, #379): no tile's change line ends in a short fragment, breaks a date, has only the change on its first line or starts a line with its \"·\""
@@ -2084,8 +2090,8 @@ def main():
             seen260, odd260 = {}, []
             page.set_viewport_size({"width": 1400, "height": 900})
             page.mouse.move(1, 1)   # no tile under the pointer, in its hover look
-            for tab, preset in (("overview", None), ("health", "90d"), ("timeline", None), ("costs", "all")):
-                js("([t, p]) => { if (p) setPeriod(p); switchTab(t); }", [tab, preset])
+            for tab, preset in (("overview", None), ("health", "90d"), ("timeline", None), ("costs", "all"), ("costs-paid", "all")):
+                js(TILE_TAB_JS, [tab, preset])
                 settle(300)
                 got260 = js(look260)
                 seen260[tab] = len(got260["tiles"])
@@ -2107,8 +2113,8 @@ def main():
             fit351, rows351 = [], {}
             for width in (1400, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                for tab, preset in (("overview", None), ("health", "90d"), ("timeline", "all"), ("costs", "all")):
-                    js("([t, p]) => { if (p) setPeriod(p); switchTab(t); }", [tab, preset])
+                for tab, preset in (("overview", None), ("health", "90d"), ("timeline", "all"), ("costs", "all"), ("costs-paid", "all")):
+                    js(TILE_TAB_JS, [tab, preset])
                     settle(300)
                     got = js(TILE_FIT_JS)
                     rows351[f"{tab} {width}"] = [got["n"], got["rows"]]
@@ -2116,7 +2122,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             check("tiles at 1400, 375 and 320 px (#351): no value or label wider than its tile, none overlapping another, and the "
                   "values in each row of tiles on one baseline", not fit351 and all(n > 0 and r > 0 for n, r in rows351.values()), fit351[:8] or rows351)
-            js("[state.preset, state.from, state.to] = window._was330.slice(1); switchTab(window._was330[0]); renderAll()")
+            js("[state.preset, state.from, state.to] = window._was330.slice(1); Object.assign(costState, {view: 'claims', more: false}); switchTab(window._was330[0]); renderAll()")
             js("window._was330 = [state.tab, state.preset, state.from, state.to]")
             # #339: and in the other two date formats (keepDates keeps only the date together, "as of" with it), with no
             # date kept on one line sticking out of its tile
@@ -2125,8 +2131,8 @@ def main():
                 js("f => useDates(DATES.zone, f)", fmt)
                 for width in (1400, 320):
                     page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                    for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all")):
-                        js("([t, p]) => { if (p) setPeriod(p); switchTab(t); }", [tab, preset])
+                    for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
+                        js(TILE_TAB_JS, [tab, preset])
                         settle(300)
                         got = js(TILE_LINES_JS)
                         past = js("""[...document.querySelectorAll('.tile .nw')].filter(s => s.offsetParent).filter(s => {
@@ -2142,7 +2148,7 @@ def main():
                 '▼ −0.03 since 2026-08-18'].map(s => keepDates(s).filter(p => typeof p !== 'string').map(p => p.textContent))""")
             check("…dates in other languages' month names are kept together too, and only the date (#345)",
                   kept == [["12 marras 2026"], ["18 szept. 2026"], ["18. Aug. 2026"], ["18 ag. 2026"], ["2026-08-18"]], kept)
-            js("[state.preset, state.from, state.to] = window._was330.slice(1); switchTab(window._was330[0]); renderAll()")
+            js("[state.preset, state.from, state.to] = window._was330.slice(1); Object.assign(costState, {view: 'claims', more: false}); switchTab(window._was330[0]); renderAll()")
             page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- charts for everyone (#60): every chart has Chart | Table (a pick-one pair, #193) and its table has
@@ -2298,13 +2304,16 @@ def main():
                 settle(200)
             ht = js("['#h-body', '#h-glucose', '#h-sleep', '#h-activity', '#h-heart', '#h-bp', '#h-temp', '#h-oxygen', '#h-resp', '#h-vo2'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
             check("…Table shows each card's values as a table, a row per day or week", all(n > 0 for n in ht), ht)
-            # Costs: both charts
-            js("state.tables.clear(); switchTab('costs')")
+            # Costs: both charts, the claims by month under Claims and the running totals under What you paid (#278)
+            js("state.tables.clear(); costState.view = 'claims'; switchTab('costs')")
             settle(500)
-            for key in ("#costBars", "#paidCum"):
+            ct = []
+            for view, key in (("Claims", "#costBars"), ("What you paid", "#paidCum")):
+                page.click(f"#costView button:text-is('{view}')")
+                settle(200)
                 page.click(f"#view-costs .view-seg[data-key='{key}'] button:text-is('Table')")
                 settle(200)
-            ct = js("['#costBars', '#paidCum'].map(k => document.querySelector(`.view-seg[data-key='${k}']`).closest('.card').querySelectorAll('.chart-table tbody tr').length)")
+                ct.append(js("k => document.querySelector(`.view-seg[data-key='${k}']`).closest('.card').querySelectorAll('.chart-table tbody tr').length", key))
             check("Costs (#60): the claims by month and the running totals each have a table", all(n > 0 for n in ct), ct)
             # the running totals' end labels (#250): the text in an ink token, 4.5:1 against the card in both themes, the
             # series' colour on a short line key before it, not on the text
@@ -2323,6 +2332,64 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             check("Costs (#250): the running totals' end labels are in ink, 4.5:1 against the card in light and dark, each after a line key in its colour",
                   len(ends) == 4 and all(i and k and contrast(f, bg) >= 4.5 for _, _, f, i, bg, k in ends), [e + [contrast(e[2], e[4])] for e in ends])
+            # ---- Costs (#278): Claims | What you paid, a pick-one pair, each view with three figures to read first and the
+            # rest under More figures, open or shut as left; at 1400 px the claims' chart on the first screen; money
+            # right-aligned in tabular figures, a status only when it isn't the usual "processed"; at 375 px each claim a
+            # stacked row, the claims scrolling sideways nowhere, each one's Your share in sight, in light and dark
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("state.tables.clear(); costState.more = false; renderCosts()")
+            page.click("#costView button:text-is('Claims')")
+            settle(300)
+            figs = "[...document.querySelectorAll('#view-costs > .stats .tile .lbl')].map(l => l.textContent)"
+            more = "(d => d && [d.open, d.querySelectorAll('.tile').length, d.querySelector('summary').textContent])(document.querySelector('#view-costs > details.cost-more'))"
+            seg278 = js("(s => s && [s.getAttribute('role'), [...s.children].map(b => [b.textContent, b.getAttribute('aria-pressed')])])(document.getElementById('costView'))")
+            claims278 = [seg278, js(figs), js(more), js("document.activeElement.textContent")]
+            js("window.scrollTo(0, 0)")
+            chart278 = js("""(() => { const s = document.querySelector('#view-costs svg[aria-label$="insurance costs"]'), r = s && s.getBoundingClientRect();
+                return r && [Math.round(r.top), Math.round(r.bottom), innerHeight]; })()""")
+            money278 = js("""(() => { const t = document.querySelector('#costTable table'), money = [...t.querySelectorAll('th.num, td.num')];
+                return [[...t.tHead.rows[0].cells].filter(c => c.classList.contains('num')).map(c => c.textContent.trim()), money.length,
+                  money.every(c => getComputedStyle(c).textAlign === 'right' && getComputedStyle(c).fontVariantNumeric.includes('tabular-nums'))]; })()""")
+            status278 = js("""(() => { const rows = [...document.querySelectorAll('#costTable tbody tr')], shown = rows.map(r => r.cells[7].textContent);
+                return [rows.length, shown.filter(s => /^(processed|paid)$/i.test(s)).length, shown.filter(Boolean)]; })()""")
+            want_denied = js("costRows().filter(r => !/^(processed|paid)?$/i.test(r.status || '')).length")
+            check("Costs (#278): Claims | What you paid, a pick-one pair on Claims, focus on it; three figures, your share, paid by insurance and billed, the rest under More figures, shut",
+                  claims278 == [["group", [["Claims", "true"], ["What you paid", "false"]]], ["Your share", "Paid by insurance", "Billed by providers"], [False, 3, "More figures"], "Claims"],
+                  claims278)
+            check("…at 1400 px the claims' chart is on the first screen", chart278 and chart278[0] > 0 and chart278[1] <= chart278[2], chart278)
+            check("…money right-aligned in tabular figures, billed, insurance paid and your share",
+                  money278[0] == ["Billed", "Ins. paid", "Your share"] and money278[1] == 3 * (status278[0] + 1) and money278[2], money278)
+            check("…a status only when it isn't processed: no row says processed, the denied ones say so",
+                  status278[0] > 0 and status278[1] == 0 and len(status278[2]) == want_denied and all("denied" in s for s in status278[2]), [status278, want_denied])
+            page.click("#costView button:text-is('What you paid')")
+            settle(300)
+            paid278 = [js(figs), js(more), js("document.activeElement.textContent"), js("[!!document.getElementById('paidCard'), !!document.getElementById('costTable')]")]
+            page.click("#view-costs > details.cost-more summary")
+            page.click("#costView button:text-is('Claims')")
+            settle(200)
+            page.click("#costView button:text-is('What you paid')")
+            settle(200)
+            kept278 = [js(more), js("document.getElementById('oopTax').checkVisibility()")]
+            check("…What you paid: its own three figures, total out of pocket, payments and claim shares with no payment, the rest under More figures; focus on it",
+                  paid278[0] == ["Total out of pocket", "Payments", "Claim shares with no payment"] and paid278[1][:1] == [False] and paid278[1][1] >= 3
+                  and paid278[2] == "What you paid" and paid278[3] == [True, False], paid278)
+            check("…More figures opened stays open, the HSA and FSA by year in it", kept278[0][0] is True and kept278[1] is True, kept278)
+            js("costState.more = false; costState.view = 'claims'; renderCosts()")
+            theme_before = js("document.documentElement.dataset.theme || null")
+            page.set_viewport_size({"width": 375, "height": 800})
+            phone278, axe278 = [], []
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                settle(300)
+                phone278.append([theme, js("""(() => { const w = document.querySelector('#costTable .tablewrap'), b = w.getBoundingClientRect(), rows = [...w.querySelectorAll('tbody tr')];
+                    return [w.scrollWidth - w.clientWidth, rows.length, rows.filter(r => getComputedStyle(r).display !== 'flex').length,
+                      rows.filter(r => { const c = r.cells[6].getBoundingClientRect(); return !c.width || c.left < b.left || c.right > b.right + 0.5; }).length,
+                      document.documentElement.scrollWidth]; })()"""), phone_fits(page, f"Costs' claims at 375 px, {theme}")])
+                axe278 += axe_check(page, f"Costs' claims as stacked rows, 375 px, {theme}")[0]
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…at 375 px, in light and dark, the claims don't scroll sideways: each one a stacked row, its Your share in sight, the page fitting; axe finds nothing",
+                  all(p[0] <= 0 and p[1] > 0 and p[2] == 0 and p[3] == 0 and p[4] <= 375 and not bad for _, p, bad in phone278) and not axe278, [phone278, axe278[:4]])
             # the Timeline: its list is the table
             js("switchTab('timeline')")
             settle(300)
@@ -2418,10 +2485,10 @@ def main():
             bad = []
             for theme in ("light", "dark"):
                 js("t => { document.documentElement.dataset.theme = t; }", theme)
-                for tab, keys in (("labs", ["Hemoglobin"]), ("heatmap", ["#hm"]), ("health", ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen", "#h-resp", "#h-vo2"]), ("costs", ["#costBars", "#paidCum"])):
+                for tab, keys in (("labs", ["Hemoglobin"]), ("heatmap", ["#hm"]), ("health", ["#h-body", "#h-glucose", "#h-sleep", "#h-activity", "#h-heart", "#h-bp", "#h-temp", "#h-oxygen", "#h-resp", "#h-vo2"]), ("costs", ["#costBars"]), ("costs-paid", ["#paidCum"])):
                     for table in (False, True):
                         js("([keys, on]) => { state.tables.clear(); if (on) keys.forEach(k => state.tables.add(k)); }", [keys, table])
-                        js("t => t === 'heatmap' ? switchTab('labs', 'heatmap') : t === 'labs' ? switchTab('labs', 'chart') : switchTab(t)", tab)
+                        js("t => t === 'heatmap' ? switchTab('labs', 'heatmap') : t === 'labs' ? switchTab('labs', 'chart') : t.startsWith('costs') ? (costState.view = t === 'costs' ? 'claims' : 'paid', switchTab('costs')) : switchTab(t)", tab)   # Costs' two views (#278)
                         settle(400)
                         bad += phone_fits(page, f"{tab} {'table' if table else 'chart'} ({theme})")
                         if table:
@@ -2431,7 +2498,7 @@ def main():
                                 bad.append(f"{tab} table ({theme}): unreadable {look}")
             check("charts (#60): the tables and Chart | Table fit 375 px and read, in light and dark", not bad, bad[:8])
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
-            js("state.tables.clear(); [state.sel, state.preset, state.from, state.to] = window._was60; state.labsView = 'chart'; save()")
+            js("state.tables.clear(); costState.view = 'claims'; [state.sel, state.preset, state.from, state.to] = window._was60; state.labsView = 'chart'; save()")
             page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- the Sleep tile's stages (#216): the nights' deep and REM averages are hours on the page (H.sleep), shown in
@@ -5568,7 +5635,7 @@ def main():
             settle(300)
             check("…Costs counts the claims in them, and says so",
                   js("costRows().length > 0 && costRows().every(r => r.d >= isoDay(state.from) && r.d <= isoDay(state.to))")
-                  and "the last year" in page.inner_text("#paidCard h2"), page.inner_text("#paidCard h2"))
+                  and "the last year" in page.inner_text("#view-costs .card h2"), page.inner_text("#view-costs .card h2"))   # the claims chart's heading (#278)
             open_tab("overview")
             check("…the Overview has no records bar", js("getComputedStyle(document.querySelector('.filters')).display") == "none")
             year = js("periodYears().find(y => (DATA.costs || []).some(r => r.d.startsWith(y)))")
@@ -6331,18 +6398,21 @@ def main():
             open_tab("labs")
             settle(300)
             check("…and on the chart, no line", fsum("#labSum") is None)
-            # Costs: each list's filters, the claims' and the out-of-pocket amounts'
+            # Costs: each list's filters, the claims' under Claims and the out-of-pocket amounts' under What you paid (#278)
             open_tab("costs")
-            js("applyPreset('all')")
+            js("costState.view = 'claims'; applyPreset('all')")
             settle(400)
             claims_hint = "document.querySelector('#costTable .toolbar ~ p.hint').textContent"
-            check("filters on Costs (#190): unfiltered, no line by either list, the claims' totals for them all",
-                  fsum("#costTable .fsum") is None and fsum("#paidTable .fsum") is None and re.match(r"^[\d,]+ claims · billed", js(claims_hint)), js(claims_hint))
+            check("filters on Costs (#190): unfiltered, no line by the claims, their totals for them all",
+                  fsum("#costTable .fsum") is None and re.match(r"^[\d,]+ claims · billed", js(claims_hint)), js(claims_hint))
             page.select_option("#costTable select.search", "Pharmacy")
             settle(400)
             c_want = js("(r => `Showing ${r.filter(x => x.cat === 'Pharmacy').length.toLocaleString()} of ${r.length.toLocaleString()} claims · type of care: Pharmacy · Reset filters`)(costRows())")
             check("…a type of care picked: “Showing 13 of 96 claims · type of care: Pharmacy · Reset filters”, the totals for the claims shown",
                   fsum("#costTable .fsum") == c_want and js(claims_hint).startswith("For the claims shown: billed $"), [fsum("#costTable .fsum"), c_want, js(claims_hint)])
+            page.click("#costView button:text-is('What you paid')")
+            settle(300)
+            check("…What you paid, unfiltered: no line by its amounts", fsum("#paidTable .fsum") is None, fsum("#paidTable .fsum"))
             page.click("#paidTable .toggle")   # HSA only
             settle(400)
             p_want = js("(r => `Showing ${r.filter(x => x.hsa === 'HSA').length.toLocaleString()} of ${r.length.toLocaleString()} amounts · paid with an HSA · Reset filters`)(paidRows())")
@@ -6352,9 +6422,11 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             for theme in ("light", "dark"):
                 set_theme(theme)
-                settle(200)
-                bad, look = phone_fits(page, f"Costs filtered, {theme}"), line_look("#paidTable .fsum") + line_look("#costTable .fsum")
-                check(f"…at 375 px ({theme}) both fit and read", not bad and min(look) >= 4.5, [bad, look])
+                for view, sel in (("What you paid", "#paidTable .fsum"), ("Claims", "#costTable .fsum")):
+                    page.click(f"#costView button:text-is('{view}')")
+                    settle(200)
+                    bad, look = phone_fits(page, f"Costs filtered, {view}, {theme}"), line_look(sel)
+                    check(f"…at 375 px ({theme}) {view} filtered fits and reads", not bad and min(look) >= 4.5, [bad, look])
             page.set_viewport_size({"width": 1400, "height": 900})
             set_theme(theme_before)
             settle(300)   # the resize redraws the tab first (timeline.js), which would take the focus Reset gives
@@ -6362,8 +6434,11 @@ def main():
             settle(300)
             check("…the claims' Reset filters clears their filters only, focus in their search",
                   fsum("#costTable .fsum") is None and js("[costState.q, costState.cat, costState.deniedOnly]") == ["", "", False]
-                  and fsum("#paidTable .fsum") == p_want and js("document.activeElement.matches('#costTable input.search')"),
-                  [js("[costState.q, costState.cat, costState.deniedOnly]"), fsum("#paidTable .fsum"), p_want, js("document.activeElement.outerHTML.slice(0, 90)")])
+                  and js("paidState.q") == "HSA" and js("document.activeElement.matches('#costTable input.search')"),
+                  [js("[costState.q, costState.cat, costState.deniedOnly, paidState.q]"), js("document.activeElement.outerHTML.slice(0, 90)")])
+            page.click("#costView button:text-is('What you paid')")
+            settle(300)
+            check("…What you paid still filtered", fsum("#paidTable .fsum") == p_want, [fsum("#paidTable .fsum"), p_want])
             page.click("#paidTable .fsum-reset")
             settle(300)
             check("…the amounts' puts HSA only off, focus on that toggle; the period kept", fsum("#paidTable .fsum") is None and js("paidState.q") == ""
@@ -6372,9 +6447,11 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             for theme in ("light", "dark"):
                 set_theme(theme)
-                settle(200)
-                bad = phone_fits(page, f"Costs unfiltered, {theme}")
-                check(f"…and unfiltered at 375 px ({theme}), it fits", not bad, bad)
+                for view in ("What you paid", "Claims"):
+                    page.click(f"#costView button:text-is('{view}')")
+                    settle(200)
+                    bad = phone_fits(page, f"Costs unfiltered, {view}, {theme}")
+                    check(f"…and unfiltered at 375 px ({theme}), {view} fits", not bad, bad)
             page.set_viewport_size({"width": 1400, "height": 900})
             set_theme(theme_before)
             js("p => applyPreset(p)", tl_preset)
@@ -7426,6 +7503,9 @@ def main():
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
             js("paidState.q = ''; applyPreset('all')")
             settle(300)
+            page.click("#costView button:text-is('What you paid')")   # payments are under What you paid, the HSA's and FSA's
+            page.click("#view-costs > details.cost-more summary")      # totals under its More figures (#278)
+            settle(300)
             pay = js("oopRows().filter(r => r.type === 'pay' && r.who === 'Lakeside Clinic (fictional)' && r.amount === 50)"
                      ".map(r => [r.src, r.hsa, r.claim && r.claim.title, r.receipt != null, r.match])")
             check("the typed payment is listed as typed in, HSA, with its receipt, and matched to the claim",
@@ -7454,9 +7534,10 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             only = js("""(() => { const had = DATA.costs, o = DATA.oop; DATA.costs = []; DATA.oop = {payments: o.payments.map(p => ({...p, claim: null})), claims: []};
                            renderCosts(); const out = [!!document.getElementById('paidCard'), !!document.getElementById('costTable'),
-                           document.getElementById('oopTotal').textContent]; DATA.costs = had; DATA.oop = o; return out; })()""")
-            check("with no claims at all, Costs shows the payments alone", only[0] and not only[1] and "Total out of pocket" in only[2], only)
-            js("paidState.open = null; renderCosts()")
+                           document.getElementById('oopTotal').textContent, !!document.getElementById('costView')]; DATA.costs = had; DATA.oop = o; return out; })()""")
+            check("with no claims at all, Costs shows the payments alone, with no Claims | What you paid (#278)",
+                  only[0] and not only[1] and "Total out of pocket" in only[2] and not only[3], only)
+            js("paidState.open = null; Object.assign(costState, {view: 'claims', more: false}); renderCosts()")
 
             # ---- readings typed in at home (#224): blood pressure, glucose, temperature and blood oxygen typed on Sources
             # for the demo person, whose phone sends the same measures; checked as typed (plausible values, the unit),
@@ -12333,6 +12414,12 @@ def main():
                         settle(200)
                         axe_at(page, f"{theme} {t} as a table")
                         page.click(f"{seg} >> nth=0")
+                        settle(200)
+                    if t == "costs" and js("!!document.getElementById('costView')"):   # and Costs' What you paid (#278)
+                        page.click("#costView button:text-is('What you paid')")
+                        settle(300)
+                        axe_at(page, f"{theme} costs, what you paid", outline=True)
+                        page.click("#costView button:text-is('Claims')")
                         settle(200)
                 for k in ("lab", "claim", "med", "letter", "visit"):   # an event's drawer
                     if js("k => !!EV.find(e => e.k === k && !e.hidden)", k):

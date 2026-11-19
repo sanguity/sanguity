@@ -1146,6 +1146,13 @@ Everything on `main` so far; it becomes the first tagged release.
   this profile" mark show only when something isn't the default. A profile renamed and another person's editor or
   viewer role changed have an Undo too; what can't be undone or touches security still asks first. Leaving the page,
   logging out or picking another profile with changes not saved still asks, on Sharing and Admin too.
+- **Costs: what you paid first, then the claims** (#278): fourteen figures came before any chart, and the out-of-pocket
+  part interrupted the claims halfway. A **Claims | What you paid** switch now shows one at a time, each with three
+  figures first (your share, paid by insurance and billed; or the total out of pocket, the payments and the claim
+  shares with no payment) and the rest under **More figures**, so at 1,400 px the claims' chart is on the first screen
+  (on a phone 700 px down, not 3,000). Money is right-aligned in tabular figures, a claim's status shows only when it
+  isn't "processed", and under 600 px each claim is a stacked row (its name and your share, then when, who and what,
+  then billed and insurance paid), so the claims no longer scroll sideways and hide your share.
 - **The command palette opens the best match, finds everyday words, and stays within reach offline** (#403): Enter
   opened the first group's first match and a word was found inside another, so "hem" opened Dark mode ("theme"),
   "alt" Paste a Health Link and "cre" New profile. Now one ranking runs across every group (a title starting with
