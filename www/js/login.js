@@ -11,6 +11,27 @@ function stayNote(t) {   // how long a sign-in lasts, as this server is set up (
   document.getElementById("stay").textContent = say;
 }
 { const w = plainHttpWarning(), box = document.getElementById("insecure"); if (w) { box.textContent = w; box.hidden = false; } }
+/* a Log out made without the server (#422, pwa.js SgLogout): this device's part is done; the sign-in on the server is
+   ended here as soon as the server answers (tried at once, when the browser says it's online, and every few seconds,
+   as that isn't always said), and the page says which has happened. Signing in waits for that, so it can never end
+   the new sign-in. */
+const settled = async () => !SgLogout.due() || await SgLogout.finish();
+if (SgLogout.due()) {
+  const out = el("p", {class: "note", id: "outNote"});
+  f.querySelector(".logo").after(out);
+  sayIn(out, "Signed out on this device, and what it kept for offline is deleted. Your sign-in on the server ends once " +
+    "this device reaches it again; until then, Sanguity here opens on this page.");
+  let trying = false;
+  const end = async () => {
+    if (trying || !SgLogout.due()) return;
+    trying = true;
+    if (await SgLogout.finish()) { clearInterval(again); sayIn(out, "Signed out. Your sign-in on the server has ended too."); }
+    trying = false;
+  };
+  const again = setInterval(end, 4000);
+  end();
+  addEventListener("online", end);
+}
 let ticket = null;   // after a correct password, when the account has two-factor sign-in on
 const pkBtn = document.getElementById("pk"), pkBox = document.getElementById("pkBox");
 pkBox.hidden = !passkeysWork();   // only over HTTPS (or localhost), in a browser that has them
@@ -40,6 +61,7 @@ function signedIn(j) {
 pkBtn.addEventListener("click", async () => {
   pkBtn.disabled = btn.disabled = true; err.textContent = "";
   try {
+    if (!await settled()) throw new Error("Couldn't reach the server.");
     let r = await api("login/passkey/options", {method: "POST", body: JSON.stringify({ticket})});
     let j = await r.json().catch(() => ({}));
     if (r.ok) {
@@ -61,6 +83,7 @@ f.addEventListener("submit", async ev => {
   const username = document.getElementById("u").value.trim(), password = document.getElementById("p").value;
   btn.disabled = true; err.textContent = "";
   try {
+    if (!await settled()) throw new Error("not reached");   // said as the server not reached, below
     const r = ticket
       ? await api("login/code", {method: "POST", body: JSON.stringify({ticket, code: document.getElementById("c").value})})
       : await api("login", {method: "POST", body: JSON.stringify({username, password})});

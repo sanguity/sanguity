@@ -63,6 +63,22 @@ function forgetPicks() {
 document.addEventListener("sg:logout", () => { SgOffline.forget(); forgetPicks(); });   // util.js's logOut, once it's going ahead (#391)
 if (/\/(login|setup)\.html$/.test(location.pathname)) { SgOffline.forget(); forgetPicks(); }
 
+/* Log out without the server (#422: offline, or it didn't answer): what the device kept goes at once (sg:logout),
+   and the sign-in on the server is ended once it's reached, never claimed before. Until then every page here goes
+   to the sign-in page, which ends it as soon as the server answers (login.js) and says which has happened. */
+const SgLogout = (() => {
+  const KEY = "sg-logout-later";
+  const due = () => { try { return localStorage.getItem(KEY) === "1"; } catch (e) { return false; } };
+  const later = () => { try { localStorage.setItem(KEY, "1"); return true; } catch (e) { return false; } };
+  async function finish() {   // true: the server's sign-in is ended (or there was none left)
+    try { if (!(await api("logout", {method: "POST"})).ok) return false; } catch (e) { return false; }
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    return true;
+  }
+  return {due, later, finish};
+})();
+if (SgLogout.due() && !/\/(login|setup|share)\.html$/.test(location.pathname)) location.replace(new URL("login.html", SgOffline.base));
+
 /* the browser's bar in the app's colours, light or dark, following the page's own theme switch too */
 (function themeColour() {
   const metas = [...document.querySelectorAll('meta[name="theme-color"][media]')];

@@ -13445,6 +13445,46 @@ def main():
             until(NO_COPY, 5000)
             check("sign-out: the kept copy and the choice are deleted, the app's own files stay",
                   ph.evaluate(NO_COPY) and ph.evaluate("localStorage.getItem('sg-offline-records')") is None and ph.evaluate("n => caches.has(n)", shell_name))
+            # (#422) Log out offline, signed in again with a session of its own: what the device kept goes at once, and the
+            # sign-in page says the sign-in on the server ends once it's reached (no sign-out claimed that didn't happen);
+            # the app opened meanwhile goes to that page; back online, the server's session is ended and the page says so
+            def alive422(t):   # the server's own record of the sign-in
+                d = sg_db.connect()
+                try:
+                    return bool(d.execute("SELECT 1 FROM sessions WHERE token_hash=?", (sg_sec.token_hash(t),)).fetchone())
+                finally:
+                    d.close()
+            db = sg_db.connect()
+            token422, now = sg_sec.new_token(), sg_db.now()
+            db.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) VALUES(?,?,?,?,?,?,?,?)",
+                       (sg_sec.token_hash(token422), uid, now, now, now + 3600, "127.0.0.1", "browser check", now))
+            db.close()
+            ctx.add_cookies([{"name": sg_config.COOKIE, "value": token422, "url": base, "httpOnly": True, "sameSite": "Strict"}])
+            ph.evaluate("localStorage.setItem('sg-offline-records', '1')")
+            ph.goto(base + "/?profile=1")
+            until(LOADED, 20000)
+            kept_copy(full=True)
+            ctx.set_offline(True)
+            ph.reload()
+            until(LOADED, 20000)
+            menu_click(ph, "#logout")
+            ph.wait_for_url("**/login.html", timeout=10000)
+            until("!!document.getElementById('outNote')", 5000)
+            off422 = [ph.inner_text("#outNote"), ph.evaluate(NO_COPY), ph.evaluate("localStorage.getItem('sg-logout-later')")]
+            ph.goto(base + "/?profile=1")
+            ph.wait_for_url("**/login.html", timeout=10000)
+            off422.append(ph.evaluate("location.pathname"))
+            check("Log out offline (#422): the copy goes, and the sign-in page says the sign-in on the server ends once it's reached; the app opened meanwhile goes there",
+                  off422 == ["Signed out on this device, and what it kept for offline is deleted. Your sign-in on the server ends once this device reaches it again; "
+                             "until then, Sanguity here opens on this page.", True, "1", "/login.html"], off422)
+            ctx.set_offline(False)
+            try:
+                until("(document.getElementById('outNote')?.textContent || '').startsWith('Signed out. ')", 10000)
+            except TimeoutError:
+                pass
+            on422 = [ph.inner_text("#outNote"), ph.evaluate("localStorage.getItem('sg-logout-later')"), alive422(token422)]
+            check("…back online, the server's session is ended, and the page says so",
+                  on422 == ["Signed out. Your sign-in on the server has ended too.", None, False], on422)
             # offline, the browser reports each request it couldn't make; signing out ends in 401s
             problems[before:] = [x for x in problems[before:] if "ERR_INTERNET_DISCONNECTED" not in x and "401" not in x]
             ctx.close()
