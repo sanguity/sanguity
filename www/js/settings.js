@@ -134,10 +134,10 @@ function rowMenu(label, entries, act) {
    up or down (Home, End), or its ↑ and ↓ buttons. items are strings; opts.name(item) names it, opts.body(item)
    gives what its row shows, opts.extra(item, i) more buttons; opts.changed() after every change. With opts.more
    (item, i), more entries [{text, run}] for a menu of the row's actions that takes the buttons' place on a phone
-   (#174), so each row stays one line. With opts.group(items) -> [{panel, names}], the items are kept in those groups
+   (#174), so each row stays one line. With opts.group(items) -> [{panel, labs}], the items are kept in those groups
    (the key labs by panel, #279), a list for each under its name when there's more than one, and move within theirs. */
 function orderList(items, opts) {
-  const tidy = l => opts.group ? opts.group(l).flatMap(g => g.names) : [...l];
+  const tidy = l => opts.group ? opts.group(l).flatMap(g => g.labs) : [...l];
   let list = tidy(items), span = [];   // span[i]: [first, last], the rows item i moves among (its group's)
   const cls = "set-labs set-order" + (opts.more && !opts.ro ? " has-more" : "");
   const ol = el(opts.group ? "div" : "ol", {class: opts.group ? "set-groups" : cls});
@@ -174,9 +174,9 @@ function orderList(items, opts) {
   }
   function draw() {
     list = tidy(list);
-    const groups = opts.group ? opts.group(list) : [{names: list}];
+    const groups = opts.group ? opts.group(list) : [{labs: list}];
     span = []; let at = 0;
-    for (const g of groups) { const a = at; at += g.names.length; for (let k = a; k < at; k++) span[k] = [a, at - 1]; }
+    for (const g of groups) { const a = at; at += g.labs.length; for (let k = a; k < at; k++) span[k] = [a, at - 1]; }
     const rows = list.map((it, i) => {
       const n = opts.name(it), li = el("li", {"data-i": i}), [a, b] = span[i];
       const grip = opts.ro ? null : el("button", {class: "set-grip btn quiet small", type: "button", "data-act": "grip", title: "Drag to reorder",
@@ -206,8 +206,8 @@ function orderList(items, opts) {
     const none = list.length ? [] : [el("li", {class: "muted", text: "None"})];
     if (!opts.group) ol.replaceChildren(...rows, ...none);
     else ol.replaceChildren(...(none.length ? [el("ol", {class: cls}, ...none)] : groups.flatMap(g => {
-      const a = list.indexOf(g.names[0]);
-      return present(groups.length > 1 ? el("h4", {class: "sect set-grp", text: g.panel}) : null, el("ol", {class: cls}, ...rows.slice(a, a + g.names.length)));
+      const a = list.indexOf(g.labs[0]);
+      return present(groups.length > 1 ? el("h4", {class: "sect set-grp", text: g.panel}) : null, el("ol", {class: cls}, ...rows.slice(a, a + g.labs.length)));
     })));
     if (opts.drawn) opts.drawn();
   }
@@ -225,7 +225,7 @@ function tilesEditor(value, changed, ro, setting) {
   const msg = el("span", {class: "msg", role: "status"});
   const preview = el("div", {class: "tiles set-preview", role: "group", "aria-label": "Preview of the Overview's key lab tiles"});
   const sugg = el("div", {class: "set-sugg"});
-  const groups = list => labGroups(list, LABS), grouped = list => groups(list).flatMap(g => g.names);
+  const groups = list => labGroups(list, LABS), grouped = list => groups(list).flatMap(g => g.labs);
   const isDefault = list => same(list, grouped(setting.default));
   const update = () => { drawPreview(); drawSuggestions(); changed(); };
   const ol = orderList(value, {ro, changed: update, name: nick, group: groups,
@@ -236,7 +236,7 @@ function tilesEditor(value, changed, ro, setting) {
     more: n => [{text: "Remove", run: () => { ol.set(ol.get().filter(x => x !== n)); update(); }}]});
   function drawPreview() {
     const names = keyLabTiles(ol.get(), LABS, isDefault(ol.get())), gs = groups(names);
-    preview.replaceChildren(...gs.flatMap(g => [gs.length > 1 ? el("h5", {class: "sect", text: g.panel}) : null, ...g.names.map(n => {
+    preview.replaceChildren(...gs.flatMap(g => [gs.length > 1 ? el("h5", {class: "sect", text: g.panel}) : null, ...g.labs.map(n => {
       const s = labInfo(n), last = s.pts[s.pts.length - 1];
       return el("div", {class: "tile", "data-lab": n},
         el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}), nick(n) !== n ? el("span", {class: "vh", text: ` (${n})`}) : null,   // #358
