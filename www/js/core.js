@@ -249,7 +249,7 @@ function renderKinds() {
     const on = state.cats.has(c.k), n = counts[c.k] || 0, id = "kindMenu-" + c.k;
     const chip = el("button", {type: "button", class: "toggle", "data-k": c.k, "aria-pressed": on, "aria-label": `${c.label}, ${n}, ${on ? "shown" : "hidden"}`,
       onclick: () => { on ? state.cats.delete(c.k) : state.cats.add(c.k); renderAll(); }},
-      kindIcon(c.k, "key"), `${c.label} `, el("span", {class: "n", text: n}));   // its icon, in its colour: the chart's key (#354)
+      kindIcon(c.k, "key"), el("span", {class: "l", "data-l": `${c.label}\u2002${n}`}, el("span", {}, `${c.label}\u2002`, el("span", {class: "n", text: n}))));   // its icon, in its colour: the chart's key (#354); the words, as wide as app.css's .l says (#434)
     const btn = el("button", {type: "button", class: "kind-more", "data-k": c.k, "aria-label": `More for ${c.label}`,
       "data-tip": `Show only ${c.label}${hidden ? ", or show all" : ""}`, "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id}, icon("ellipsis"));
     const items = [item(c.k, `Show only ${c.label}`, () => showKinds(c.k)), hidden ? item(c.k, "Show all", () => showKinds()) : null].filter(Boolean);

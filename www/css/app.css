@@ -1448,6 +1448,10 @@ details.more code{overflow-wrap:anywhere}
    tinted with the chip while shown; its menu (Show only this, Show all) under it */
 .kind{position:relative;display:inline-flex;align-items:stretch}
 .kind>.toggle{border-top-right-radius:0;border-bottom-right-radius:0;padding-right:var(--sp-2)}
+/* its words as wide as in the local stand-in, a little wider (Inter's are): the rows stay as Inter arrives (#434) */
+.kind .l{display:inline-grid}
+.kind .l>*,.kind .l::after{grid-area:1/1}
+.kind .l::after{content:attr(data-l);visibility:hidden;font-family:"Inter fallback";letter-spacing:.02em;padding-right:.25em}
 .kind-more{display:inline-flex;align-items:center;margin:0 0 0 -1px;border:1px solid var(--axis);border-radius:0 var(--r-pill) var(--r-pill) 0;background:transparent;
   padding:0 var(--sp-3) 0 var(--sp-2);color:var(--ink2);font:inherit;font-size:var(--fs-3);font-weight:var(--fw-bold);line-height:1;cursor:pointer}
 .kind-more:hover,.kind-more[aria-expanded="true"]{color:var(--ink);background:var(--hover)}
