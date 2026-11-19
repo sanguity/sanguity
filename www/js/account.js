@@ -24,7 +24,7 @@ const device = ua => {
 };
 let ME;
 
-$("#logout").onclick = async () => { try { await call("logout", "POST"); } catch (e) {} location.replace("login.html"); };
+$("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
 /* ---------------------------------------------------------------- password */
 $("#pwForm").onsubmit = async ev => {

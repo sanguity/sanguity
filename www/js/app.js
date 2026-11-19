@@ -96,7 +96,7 @@ function emptyCard(...kids) {
 function renderProfileMenu() {
   $("#profile").onchange = () => { try { history.replaceState(history.state, "", location.pathname + location.search); } catch (e) {} location.reload(); };
 }
-$("#logout").onclick = async () => { try { await api("logout", {method: "POST"}); } catch (e) {} location.replace("login.html"); };
+$("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 /* a connected source that stopped syncing (#102): one line under the header, linking to it. Owners and editors can
    fix it, so theirs is a warning; viewers get a quieter note that the records may be behind */
 async function syncWarning(pid) {

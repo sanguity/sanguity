@@ -6564,7 +6564,31 @@ def main():
             settle(500)
             add_kept = js("[window.sgSamePage === true, location.search + location.hash, document.querySelector('.man-row [data-f=test]').value]")
             asks = js(leave)
+            # #391: Log out with it typed asks first, in the app's own dialog, before signing out: Stay leaves you signed in
+            # with it typed, so it can still be saved (the browser's "Leave site?" came after the sign-out)
+            menu_click(page, "#logout")
+            out_asked = answer_ask(page, yes=False)
+            settle(300)
+            stayed = js("fetch('api/me', {cache: 'no-store'}).then(r => [r.status, location.pathname.endsWith('/sources.html'), document.querySelector('.man-row [data-f=test]').value])")
+            stay_focus = js("document.activeElement.id")
+            check("Log out with something typed in and not saved (#391): asked first, in the app's dialog; Stay leaves you signed in with it there, "
+                  "focus back on Your menu",
+                  out_asked[0] == "Log out with changes not saved?" and stayed == [200, True, "Hemoglobin"] and stay_focus == "userMenuBtn", [out_asked, stayed, stay_focus])
             page.fill(".man-row [data-f=test]", "")
+            # #391: Add's items only change the section on Sources (#388); the one shown comes from the top of the page, with
+            # its name said and in the tab's title, as the sidebar shows one
+            page.set_viewport_size({"width": 375, "height": 760})
+            js("scrollTo(0, document.body.scrollHeight)")
+            settle(200)
+            page.click("#addMenuBtn")
+            page.click("#addMenuList a:text-is('Upload files')")
+            page.wait_for_function("document.getElementById('sgStatus').textContent.includes('Sources: Upload files')", timeout=5000)
+            add_shown = js("[scrollY, document.title, location.search + location.hash, !document.getElementById('importer').closest('.grp-off')]")
+            check("…and on Sources, Add → a section shows it from the top of the page, its name said and in the tab's title (#391)",
+                  add_shown == [0, "Sources: Upload files · Sanguity", "?profile=2#upload", True], add_shown)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#srcNav a[data-group=manual]")
+            page.wait_for_selector("#typeIn", state="visible", timeout=10000)
             check("Type records in (#388): on sources.html?profile=2#manual, Add → Type records in keeps the page and the lab typed in; "
                   "leaving with it typed asks first, and with nothing typed doesn't",
                   add_kept == [True, "?profile=2#manual", "Hemoglobin"] and asks is True and js(leave) is False, [add_kept, asks])

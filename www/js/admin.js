@@ -22,7 +22,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 let ME;
 
-$("#logout").onclick = async () => { try { await call("logout", "POST"); } catch (e) {} location.replace("login.html"); };
+$("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
 /* ---------------------------------------------------------------- the sidebar: one group shown at a time */
 /* The address follows the group (admin.html#apps); an address naming a section (admin.html#users, #labmaps,

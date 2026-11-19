@@ -84,7 +84,9 @@ const SgSources = (() => {
       ? "Getting started: set up the phone here, then go back to the guide." : "Getting started: bring in the first records here, then go back to the guide."}), back));
   }
   follow();
-  addEventListener("hashchange", follow);
+  // a section reached by its address later (Add's items, which only change it, #388) as the sidebar shows one: from the
+  // top of the page, its name said; a part of a section (#import-12) is scrolled to, as on arriving (#391)
+  addEventListener("hashchange", () => { const r = fromHash(); show(r.id, {scrollTo: r.el, push: !r.el}); });
   // the import history's section comes from its own script (import-history.js), after this one
   document.addEventListener("DOMContentLoaded", () => { if (fromHash().el) follow(); else apply(); });
 
@@ -100,7 +102,7 @@ const SgSources = (() => {
   }
 
   /* ---------------------------------------------------------------- start */
-  $("#logout").onclick = async () => { try { await api("logout", {method: "POST"}); } catch (e) {} location.replace("login.html"); };
+  $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
   const ready = (async () => {
     let r;
     try { r = await api("me"); } catch (e) { return null; }

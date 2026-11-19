@@ -1053,6 +1053,11 @@ Everything on `main` so far; it becomes the first tagged release.
   own now, under the change, as the fonts drew it anyway, with no "·" to strand, and the tiles keep their height when
   the fonts arrive. A toast with two actions could wrap its ✕ onto a line of its own; its ✕ stays on the first line,
   at the right, with the actions under the words.
+- **Log out asks about what isn't saved first** (#391): Log out signed out, then the page's own "Leave site?" asked
+  about the lab typed in, the Settings section changed or the upload on its way, too late: Stay left a page that
+  couldn't save. Every page's Log out now asks first, in the app's own dialog, and signs out only once you say so.
+  And on Sources, Add's items (which only change the section since #388) show it as the sidebar does: from the top
+  of the page, with its name said.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

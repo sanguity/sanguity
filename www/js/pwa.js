@@ -60,7 +60,7 @@ function forgetPicks() {
   } catch (e) {}
 }
 // signing out (any page's Log out button) or reaching the sign-in or setup page: whatever the device kept is deleted
-document.addEventListener("click", e => { if (e.target.closest && e.target.closest("#logout")) { SgOffline.forget(); forgetPicks(); } }, true);
+document.addEventListener("sg:logout", () => { SgOffline.forget(); forgetPicks(); });   // util.js's logOut, once it's going ahead (#391)
 if (/\/(login|setup)\.html$/.test(location.pathname)) { SgOffline.forget(); forgetPicks(); }
 
 /* the browser's bar in the app's colours, light or dark, following the page's own theme switch too */

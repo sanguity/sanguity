@@ -27,7 +27,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
 (() => {
   let ME = null, P = null, MEMBERS = [], MEMBERS_OF = null;   // MEMBERS_OF: the profile MEMBERS are of
   const sel = $("#profile"), main = $("main.sets");
-  $("#logout").onclick = async () => { try { await call("logout", "POST"); } catch (e) {} location.replace("login.html"); };
+  $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
   /* ---------------------------------------------------------------- the sidebar: one group shown at a time */
   const RANK = {viewer: 0, editor: 1, owner: 2};

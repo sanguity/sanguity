@@ -134,7 +134,7 @@ function setBusy(on) {
   $("#go").disabled = on || !chosen.length;
   $("#importer").setAttribute("aria-busy", on);
 }
-const leaving = e => { e.preventDefault(); e.returnValue = ""; };
+const leaving = e => { if (!sgLeaving) { e.preventDefault(); e.returnValue = ""; } };
 $("#go").onclick = async () => {
   const pid = +$("#profile").value, items = chosen.slice(), xhrs = new Set();
   let uploadId = null, done = 0;

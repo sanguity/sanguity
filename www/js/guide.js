@@ -33,7 +33,7 @@
   }
   const setGuide = v => call("settings/user/guide", "PUT", {value: v}).catch(() => {});   // a failure only means it opens again
   const records = (pid, hash) => `./?profile=${pid}#${hash}`;
-  $("#logout").onclick = async () => { try { await api("logout", {method: "POST"}); } catch (e) {} location.replace("login.html"); };
+  $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
   /* ---------------------------------------------------------------- the steps */
   function drawList() {

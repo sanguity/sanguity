@@ -274,7 +274,7 @@
   // leaving the page with what's typed in not saved asks first, as Settings does for its unsaved sections (#388): a lab
   // row changed from what it was given, or a record's form from what it started with (values() sends only its kind)
   addEventListener("beforeunload", ev => {
-    if (rows().some(typedIn) || recs.values().some(v => Object.keys(v).length > 1)) { ev.preventDefault(); ev.returnValue = ""; }
+    if (!sgLeaving && (rows().some(typedIn) || recs.values().some(v => Object.keys(v).length > 1))) { ev.preventDefault(); ev.returnValue = ""; }
   });
   keepBox.addEventListener("change", () => { if (!saving) soon(); });
   $("#profile").addEventListener("change", () => { recs.reset(); soon(); });
