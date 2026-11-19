@@ -1187,6 +1187,13 @@ Everything on `main` so far; it becomes the first tagged release.
   and the copy takes the change from the same reply the page puts in place, so it stays as the page is and keeps
   collecting what's opened. Costs' out-of-pocket mark loaded all the records again for its part and drew Costs itself,
   emptying the copy's details; its reply carries the out-of-pocket part now, put in place through the store.
+- **The drawer says each fact once, by meaning too** (#406): a hospital stay said "Hospital stay" twice in its head
+  and its hospital again under it; a medication listing's "Listed since", a fill's "Filled", a vaccine's "Given" and
+  a result's "Collected" repeated the head's day in another format; a medication's history had its own list, with
+  "Started" and "Still listed" saying what its head said; and an edited record said "Edited" twice. The head says the
+  kind once (a stay's title is its hospital, the line under it "Hospital stay" and its dates), a fact that's a day the
+  head names or that starts with the place its title is says only what's left ("Where: Oncology unit", "Admitted:
+  9:40 PM"), a medication's history has key facts in boxes like every record, and "Edited" is said with the edits.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
