@@ -161,12 +161,15 @@ const SgNav = (() => {
   const sep = () => el("div", {class: "menu-sep", role: "separator"});
 
   /* Add: records in, each way opening its section of the Sources page (#166); a journal entry, whose form journal.js
-     opens on the records page (from another page, the link takes you there and it opens, #173) */
+     opens on the records page (from another page, the link takes you there and it opens, #173). On the Sources page
+     itself only the address's #section changes: the page isn't loaded again, so the profile in its address (?profile=2)
+     and what's typed in are kept (#388) */
+  const src = location.pathname.endsWith("/sources.html") ? "" : "sources.html";
   const add = menu("addMenu", "Add", "plus", [
-    link("sources.html#upload", "upload", "Upload files", {id: "importLink", "data-needs": "import"}),
-    link("sources.html#portals", "plug", "Connect a portal or plan", {"data-needs": "import"}),
-    link("sources.html#manual", "keyboard", "Type records in", {"data-needs": "import"}),
-    link("sources.html#link", "link", "Paste a Health Link", {"data-needs": "import"}),
+    link(src + "#upload", "upload", "Upload files", {id: "importLink", "data-needs": "import"}),
+    link(src + "#portals", "plug", "Connect a portal or plan", {"data-needs": "import"}),
+    link(src + "#manual", "keyboard", "Type records in", {"data-needs": "import"}),
+    link(src + "#link", "link", "Paste a Health Link", {"data-needs": "import"}),
     sep(), onRecords ? action("journalBtn", "notebook", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "notebook", "Journal entry", {id: "journalBtn"}),
   ]);
   /* the person's own menu */

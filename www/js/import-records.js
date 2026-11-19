@@ -137,10 +137,13 @@
       inUnits(card); card.dataset.initial = JSON.stringify(read(card));
     });
     number();
-    if (focus) (card.querySelector("input:not([data-f=date]):not([data-f=admit]):not([data-f=start]), textarea") || first).focus();
+    if (focus) focusIn(card);
     changed();
     return card;
   }
+  // a new form's first field after its date, which starts filled in ("Paid to" for a payment)
+  const focusIn = card => (card.querySelector("input:not([data-f=date]):not([data-f=admit]):not([data-f=start]), textarea")
+    || card.querySelector("[data-f=date],[data-f=admit],[data-f=start]")).focus();
   function number() {   // each form's group is named by its kind and number, so the checks and "Remove" say which
     cards().forEach((c, i) => c.setAttribute("aria-label", `${KINDS[c.dataset.kind][0]}, record ${i + 1}`));
   }
@@ -242,8 +245,13 @@
   });
 
   // the Costs tab's "Type in what you paid" (#55) opens sources.html#payment: Type records in, with a payment's form
-  // (the picker on it, as Add leaves it; import-manual.js starts with lab results put away, #384)
-  if (location.hash === "#payment") { showKind("manual"); picker.value = "payment"; add("payment"); }
+  // (the picker on it, as Add leaves it; import-manual.js starts with lab results put away, #384). Focus goes into it once
+  // the section is shown (import.js, once /api/me has answered), not before, when it would stay on the page (#388)
+  if (location.hash === "#payment") {
+    showKind("manual"); picker.value = "payment";
+    const card = add("payment", false);
+    SgSources.ready.then(me => setTimeout(() => { if (me && card.isConnected && document.activeElement === document.body) focusIn(card); }));
+  }
   $("#profile").addEventListener("change", () => { if (cards().some(c => HINTS[c.dataset.kind])) loadUnits(); });
 
   window.sanguityRecords = {
