@@ -42,14 +42,15 @@
   <!-- About this person (#194, here since #267): birth date, sex used for reference ranges, height history (about.js, person.js) -->
   <section class="card about" id="about" hidden>
     <h2 id="aboutHd" tabindex="-1">Birth date, sex and height</h2>
-    <p class="hint">Some views depend on who the person is: the age on each result's day, ranges of your own by sex and
-      age (Labs and ranges, here), and what is built on height. Each is optional.</p>
-    <details class="more"><summary>More about this</summary>
+    <p class="hint">Each optional: the age on each result's day, your own ranges by sex and age, and what's built on height.</p>
+    <div class="about-words" hidden>
+      <p>Some views depend on who the person is: the age on each result's day, ranges of your own by sex and age (Labs
+        and ranges, here), and what is built on height.</p>
       <p>A profile's owners and editors change these, and everyone it's shared with sees them. They're encrypted like
         the records and go with the profile's export. A share link shows them only if its owner ticks About this
         person.</p>
       <p>They're never used to judge a result or to replace the range printed on a report. This isn't medical advice.</p>
-    </details>
+    </div>
     <div id="aboutBody"></div>
     <span class="msg" id="aboutMsg" role="status"></span>
   </section>

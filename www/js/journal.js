@@ -277,7 +277,7 @@ function journalHomeCard() {
     jCanWrite() || groups.length ? el("div", {class: "btns jgroup-btns"},   // #161: symptom groups, logged in one go
       jCanWrite() && groups.length ? el("button", {class: "btn", type: "button", text: "Log a symptom group", onclick: () => journalPickGroup(closeDrawer)}) : null,
       el("button", {class: "btn", type: "button", text: groups.length ? `Symptom groups (${groups.length})` : "Symptom groups", onclick: () => journalGroups(closeDrawer)})) : null,
-    moreAbout(JOURNAL_HINT, "Photos have where they were taken (GPS), the camera and the time taken out before they're kept. They're only in a share link when you tick “Photos in the journal”."));
+    aboutWords(JOURNAL_HINT, "Photos have where they were taken (GPS), the camera and the time taken out before they're kept. They're only in a share link when you tick “Photos in the journal”."));
   if (n) {
     const v = jList(true);
     card.append(...v.nodes.filter(Boolean));
@@ -305,9 +305,10 @@ function journalHome(push) {
 function openJournalList() {
   state.selEv = null;
   const body = jDrawer("Journal", JOURNAL.length ? `${JOURNAL.length} entr${JOURNAL.length === 1 ? "y" : "ies"} written by the people who use this profile` : "Nothing written yet");
-  body.append(...[jCanWrite() ? el("div", {class: "btns"}, el("button", {class: "btn primary", type: "button", text: "Add an entry", onclick: () => journalForm(null, {}, openJournalList)}),
-      jGroups().length ? el("button", {class: "btn", type: "button", text: "Log a symptom group", onclick: () => journalPickGroup(openJournalList)}) : null) : null,
-    ...jList(false).nodes, moreAbout(JOURNAL_HINT)].filter(Boolean));   // append(null) would write "null"
+  body.append(...[el("div", {class: "btns"}, jCanWrite() ? el("button", {class: "btn primary", type: "button", text: "Add an entry", onclick: () => journalForm(null, {}, openJournalList)}) : null,
+      jCanWrite() && jGroups().length ? el("button", {class: "btn", type: "button", text: "Log a symptom group", onclick: () => journalPickGroup(openJournalList)}) : null,
+      aboutWords({title: "the journal"}, JOURNAL_HINT)),   // its ⓘ (#280)
+    ...jList(false).nodes].filter(Boolean));   // append(null) would write "null"
   showDrawer();
   renderTimeline();
 }

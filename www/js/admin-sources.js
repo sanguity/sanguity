@@ -254,13 +254,13 @@ function drawSync(sec, note, keep = []) {
       get: () => ed.get(), put: v => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); }});
     node.classList.toggle("set-changed", e.counts());
     node.append(...present(el("h3", {class: "sub"}, st.label, same(st.value, st.default) ? null : el("span", {class: "tag", text: "set for this server"}),
-      el("span", {class: "tag set-unsaved", text: "not saved"})), st.help ? el("p", {class: "hint", text: st.help}) : null, ed.node));
+      el("span", {class: "tag set-unsaved", text: "not saved"})), helpNodes(st.help), ed.node));
     return e;
   });
   if (note) sayIn(msg, note, false, {say: false});
   card.replaceChildren(...present(
     el("div", {class: "set-hd"}, el("h2", {id: "sec-sync-hd", tabindex: -1, text: sec.title}), reset),
-    sec.help ? el("p", {class: "hint", text: sec.help}) : null, msg,
+    helpNodes(sec.help), msg,
     ...SYNC.map(e => e.node)));
   count();
   if (back && !card.contains(document.activeElement)) document.getElementById(back)?.focus({preventScroll: true});   // (a control saved as it's changed)
@@ -358,7 +358,7 @@ async function loadDirectory() {
     el("div", {class: "dir-src"}, el("pre", {}, el("code", {text: "python3 tools/build_directory.py"}))),
     el("p", {class: "hint", text: "It downloads Epic's and Oracle Health's lists (about 100 MB from Epic, 4 MB from Oracle), and the next " +
       "search uses them, with no restart."}),
-    moreAbout("It writes this server's own copy, data/directory/providers.json.gz. Run it again now and then (Epic suggests weekly) to " +
+    aboutWords("It writes this server's own copy, data/directory/providers.json.gz. Run it again now and then (Epic suggests weekly) to " +
       "pick up new hospitals. It's the only part of Sanguity that downloads a list, and only when you run it. More in docs/provider-directory.md."));
   $("#directory").hidden = false;
 }

@@ -243,7 +243,7 @@ function ovReadings() {
   const watch = watchTiles(), home = homeTiles();
   if (!watch.length && !home.length) return [];
   return [ovHead("Readings", watch.length ? el("p", {class: "hint", text: "The watch's last 7 days against the 4 weeks before, and the latest weight against your weight at diagnosis."}) : null),
-    watch.length ? moreAbout("Sparklines show the last 30 days for the watch, and the last year for weight.") : null,
+    watch.length ? aboutWords("Sparklines show the last 30 days for the watch, and the last year for weight.") : null,
     el("div", {class: "tiles ov-read"}, ...watch, ...home)];
 }
 

@@ -49,10 +49,10 @@
     <h2>Accounts</h2>
     <p class="hint">An account for each person who signs in. Being an admin lets someone manage accounts; it doesn't show
       them anyone's records.</p>
-    <details class="more"><summary>More about this</summary>
+    <div class="about-words" hidden>
       <p>A new account gets a one-time password, and its person chooses their own at first sign-in. Records are shared
         profile by profile, by each profile's owners, on its Sharing page.</p>
-    </details>
+    </div>
     <p class="warn" id="adminTf" hidden>To manage accounts, turn on two-factor sign-in (the authenticator app) or add a
       passkey for your own account, under <a href="account.html#security">Account → Sign-in &amp; security</a>. Admins need one as soon as the server has more than one account.</p>
     <div id="reauth" class="reauth" hidden></div>
@@ -73,12 +73,11 @@
   <!-- Backups (#200): the newest backup, Back up now, the schedule, and checking a backup (admin-backups.js) -->
   <section class="card bk" id="backups" hidden>
     <h2>Backups</h2>
-    <p class="hint">A checked copy of the accounts, profiles and records, and of the phone and watch data, written to
-      the backups folder. Copy them off this server too.</p>
+    <p class="hint">A checked copy of the records, accounts, and phone and watch data in the backups folder. Copy them off this server too.</p>
     <p class="bk-key"><b>The encryption key isn't in the backups.</b> Keep a copy of the key file somewhere else, like a
       password manager or a USB stick in a drawer: without it no backup can be read, and nobody can recover it.
       <span id="bkKeyFile"></span></p>
-    <details class="more"><summary>More about this</summary>
+    <div class="about-words" hidden>
       <p>A backup holds the database (accounts, profiles, records, settings), each profile's documents and uploads, the
         setup build, and the watch receiver's data: its database for each profile, as it last saved it, and every
         upload from a phone it archived. Not in it: your original exports, the encryption key, and the configuration
@@ -89,7 +88,7 @@
         Restoring one replaces the live data, so it's done on the server with the app stopped
         (python -m server.manage restore), never from this page. The watch receiver puts its data back when it's
         restarted after that.</p>
-    </details>
+    </div>
     <div id="bkStatus" class="bk-status"></div>
     <div class="row"><button class="btn primary" type="button" id="bkNow">Back up now</button>
       <span class="msg" id="bkNowMsg" role="status"></span></div>
@@ -108,10 +107,10 @@
   <section class="card" id="admin" hidden>
     <h2>Set up a source</h2>
     <p class="hint">Register this server's own app with each vendor, so people can connect their portals and health plans.</p>
-    <details class="more"><summary>More about this</summary>
+    <div class="about-words" hidden>
       <p>The vendor sends sign-ins straight back here. Nothing is shared with the Sanguity project: the count of
         connections below stays on this server. Why each install has its own app: docs/connected-sources-oauth.md.</p>
-    </details>
+    </div>
     <dl class="kv">
       <dt>Return address</dt><dd><code id="returnAddr"></code> <button class="btn small" id="copyReturn" type="button">Copy</button></dd>
     </dl>
@@ -146,10 +145,10 @@
   <section class="card dir" id="directory" hidden>
     <h2>Provider directory</h2>
     <p class="hint">The list Find your provider searches, kept on this server: searching it contacts no one.</p>
-    <details class="more"><summary>More about this</summary>
+    <div class="about-words" hidden>
       <p>Sanguity ships with the vendors' test sandboxes and Medicare. Epic's and Oracle Health's published lists can't be
         shipped under their terms, so each server adds its own copy.</p>
-    </details>
+    </div>
     <div id="dirSources"></div>
     <div id="dirAdd"></div>
     <span class="msg" id="dirMsg" role="status"></span>
@@ -157,13 +156,13 @@
 
   <section class="card" id="labmaps" hidden>
     <h2>Lab name matches</h2>
-    <p class="hint">The series each unfamiliar lab name was matched to at an import's preview. These matches apply to every
-      profile on this server, so only admins can change or remove them; a change applies to later imports only.</p>
-    <details class="more"><summary>More about this</summary>
+    <p class="hint">The series each unfamiliar lab name was matched to at an import. A change applies to later imports only.</p>
+    <div class="about-words" hidden>
+      <p>These matches apply to every profile on this server, so only admins can change or remove them.</p>
       <p>When an import has a lab test spelled in a way Sanguity doesn't know, the person importing it picks the series it
         belongs to (or keeps it separate), and that choice is used for later imports from the same source. The matches
         name tests, never anyone's results or profiles. Results already saved keep their series.</p>
-    </details>
+    </div>
     <div id="labmapList"></div>
     <datalist id="labmapNames"></datalist>
     <span class="msg" id="labmapMsg" role="status"></span>
@@ -173,7 +172,7 @@
   <section class="card out" id="outside" aria-labelledby="outsideTitle" hidden>
     <h2 id="outsideTitle">Outside connections</h2>
     <p class="out-lead" id="outsideLead">Sanguity contacts only the hosts listed here.</p>
-    <p class="hint" id="outsideScope"></p>
+    <div class="about-words" hidden><p id="outsideMore"></p><p id="outsideScope"></p></div>
     <div id="outsideBody"></div>
     <span class="msg" id="outsideMsg" role="status"></span>
   </section>
@@ -182,10 +181,10 @@
   <section class="card" id="installLog" hidden>
     <h2>Install activity</h2>
     <p class="hint">What admins and people did to accounts and to the server. It never shows anyone's records.</p>
-    <details class="more"><summary>More about this</summary>
+    <div class="about-words" hidden>
       <p>Accounts created, disabled, reset or removed, two-factor sign-in, connected-source apps, lab name matches and the
         server's settings. Each profile's own activity is on its Sharing page, under Activity.</p>
-    </details>
+    </div>
     <div id="acctLog"></div>
   </section>
 </main>

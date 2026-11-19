@@ -1675,7 +1675,7 @@ def main():
         strict.fill("#admFind", "usb stick")
         strict.wait_for_timeout(200)
         found = strict.evaluate("[document.getElementById('groupTitle').textContent, [...document.querySelectorAll('main > section')].filter(s => s.checkVisibility()).map(s => s.id), "
-                                "document.querySelector('#backups > h2').getBoundingClientRect().width > 2, !!document.querySelector('#admNav a[aria-current=page]')]")
+                                "document.querySelector('#backups > .set-hd > h2').getBoundingClientRect().width > 2, !!document.querySelector('#admNav a[aria-current=page]')]")
         strict.fill("#admFind", "no such thing zq")
         strict.wait_for_timeout(200)
         empty = strict.evaluate("(b => [b.checkVisibility() && b.querySelector('p').textContent, ...[...b.querySelectorAll('button')].map(x => x.textContent)])(document.getElementById('admNone'))")
@@ -1684,32 +1684,134 @@ def main():
         check("…its search on every page (Admin's here): the parts that mention it, from every group, each with its title, or says none does, with a button that clears it",
               found[0] == "Find in Admin" and "backups" in found[1] and "users" not in found[1] and found[2] and not found[3]
               and empty == ["Nothing in Admin matches “no such thing zq”.", "Search everywhere for “no such thing zq”", "Clear the search"] and back == ["admFind", "", "Backups", True], (found, empty, back))
-        # ---- shorter help text (#176): a card leads with a short line, and the rest of its explanation is behind one
-        # "More about this" toggle, the same on every page: closed at first, still in the page when closed, opened and
-        # closed by keyboard, readable in dark mode (this page's theme) and at 375 px. What someone needs to decide
-        # safely stays in the lead, outside the toggle.
-        more_js = """[...document.querySelectorAll('details.more')].map(d => { const s = d.querySelector(':scope > summary'), cs = getComputedStyle(s);
-            return {at: (d.parentElement.closest('[id]') || {}).id, open: d.open, says: s.textContent, inside: d.textContent.length > s.textContent.length + 20,
-                    look: [cs.fontSize, cs.color, cs.cursor].join(' ')}; })"""
-        looks, seen_more = set(), {}
-        for path, ready in (("sources.html?profile=1#upload", "#watch .w-addr"), ("sharing.html?profile=1#links", "#links details.more"),
-                            ("admin.html#labs", "#dirAdd details.more"), ("", "#view-overview .card")):
-            strict.goto(base + "/" + path)
-            strict.wait_for_selector(ready, state="attached", timeout=10000)
-            found = strict.evaluate(more_js)
-            seen_more[path] = sorted({f["at"] for f in found})
-            looks |= {f["look"] for f in found}
-            check(f"{path or 'records'}: help beyond a card's lead is behind “More about this”, closed, still in the page (#176)",
-                  found and all(not f["open"] and f["says"] == "More about this" and f["inside"] for f in found), found)
-        check("…on the cards of every page that has them", all(set(seen_more[k]) >= want for k, want in (
-              ("sources.html?profile=1#upload", {"importer", "panel-manual", "panel-link", "mine", "finder", "watch"}),
-              ("sharing.html?profile=1#links", {"linksBody", "calendar", "summaryIntro", "export"}),
-              ("admin.html#labs", {"users", "admin", "directory", "dirAdd", "labmaps", "installLog"}),
-              ("", {"tlMain", "labsHeatmap"}))), seen_more)   # Labs' charts: behind their ⓘ (#279)
-        dark = [int(x) for x in re.findall(r"\d+", next(iter(looks)).split(" ", 1)[1])[:3]] if looks else [0, 0, 0]
-        check("…styled once: the same toggle everywhere, light on the dark theme", len(looks) == 1 and sum(dark) > 450, looks)
+        # ---- help text (#280, after #176's "More about this"): under a heading, one line of hint at most before what its
+        # card holds (as laid out at 1400 px: the lines its words take, as the tile checks measure them; a disclosure
+        # counts its summary's line). The rest of a card's background is behind an ⓘ beside its heading, named "About"
+        # and the heading (its tip the same), which opens under it from the keyboard and closes with Escape, focus kept on
+        # it and put back on it; a card alone in its group has it beside the h1. No disclosure is labelled "More about
+        # this". On every group of Sources, Sharing, Settings, Account and Admin, every records tab (the Medications tab
+        # is #275's) and Getting started. What someone needs in order to act (.howto) stays in full, and isn't counted.
+        HELP_JS = r"""() => {
+          const lines = e => { const tops = [], w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+            for (let n; (n = w.nextNode());) {
+              if (!n.parentElement.checkVisibility() || n.parentElement.closest('.vh')) continue;
+              for (const m of n.data.matchAll(/\S+/g)) { const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+                for (const x of r.getClientRects()) if (x.width > 0 && !tops.some(t => Math.abs(t - x.top) < 4)) tops.push(x.top); } }
+            return tops.length; };
+          const own = h => ([...h.childNodes].filter(c => c.nodeType === 3).map(c => c.data).join('').trim() || h.textContent.trim()).replace(/\s*\(\d[\d,]*\)$/, '');
+          const main = document.querySelector('main'), over = [], infos = [];
+          const more = [...document.querySelectorAll('summary')].filter(s => s.textContent.trim() === 'More about this').length;
+          for (const h of main.querySelectorAll('h1, h2, h3, h4')) {
+            if (!(h.checkVisibility() || h.matches('.vh')) || h.closest('dialog, [popover], nav')) continue;
+            const at = h.parentElement.matches('.set-hd, .list-hd, .ov-h, .set-top-hd') ? h.parentElement : h;
+            let n = 0;
+            for (let x = at.nextElementSibling; x; x = x.nextElementSibling) {
+              if (!x.checkVisibility()) continue;
+              if (!x.matches('.hint, details, .out-lead') || x.matches('.msg')) break;
+              n += lines(x);
+            }
+            if (n > 1) over.push(own(h) + ': ' + n + ' lines');
+          }
+          for (const b of main.querySelectorAll('.info > button')) {
+            if (!b.checkVisibility()) continue;
+            const h = b.parentElement.previousElementSibling, w = document.getElementById(b.getAttribute('aria-controls'));
+            infos.push({id: b.id, name: b.getAttribute('aria-label'), tip: b.dataset.tip, words: !!w && w.textContent.trim().length > 20,
+                        about: w && w.dataset.title || (h && h.matches('h1, h2, h3, h4') ? own(h) : null)});
+          }
+          return {more, over, infos};
+        }"""
+        INFO_KEYS = """id => { const b = document.getElementById(id), w = document.getElementById(b.getAttribute('aria-controls'));
+          return [w.matches(':popover-open'), b.getAttribute('aria-expanded'), document.activeElement === b]; }"""
+        help_more, help_over, help_names, help_keys, help_seen = 0, [], [], [], {}
+        def help_here(where):
+            nonlocal help_more
+            strict.wait_for_load_state("networkidle")
+            strict.wait_for_timeout(300)
+            r = strict.evaluate(HELP_JS)
+            help_more += r["more"]
+            help_over.extend(f"{where}: {o}" for o in r["over"])
+            help_seen[where] = [i["name"] for i in r["infos"]]
+            for i in r["infos"]:
+                if not (i["about"] and i["name"] == "About " + i["about"] and i["tip"] == i["name"] and i["words"]):
+                    help_names.append((where, i))
+                strict.focus("#" + i["id"])
+                strict.keyboard.press("Enter")
+                strict.wait_for_timeout(120)
+                opened = strict.evaluate(INFO_KEYS, i["id"])
+                strict.keyboard.press("Escape")
+                strict.wait_for_timeout(120)
+                shut = strict.evaluate(INFO_KEYS, i["id"])
+                if opened != [True, "true", True] or shut != [False, "false", True]:
+                    help_keys.append((where, i["name"], opened, shut))
+        strict.goto(base + "/")
+        for _ in range(100):   # (under the CSP: no wait_for_function, whose string is eval'd)
+            if strict.evaluate("typeof booted !== 'undefined' && booted"):
+                break
+            strict.wait_for_timeout(200)
+        for tab, how in (("Overview", "switchTab('overview')"), ("Body and activity", "switchTab('health')"), ("Timeline", "switchTab('timeline', 'timeline')"),
+                         ("Journal", "switchTab('timeline', 'journal')"), ("Labs", "switchTab('labs', 'chart')"), ("Labs heatmap", "switchTab('labs', 'heatmap')"),
+                         ("Costs", "costState.view = 'claims'; switchTab('costs')"), ("Costs paid", "costState.view = 'paid'; switchTab('costs')")):
+            strict.evaluate(how)
+            help_here("records " + tab)
+        strict.evaluate("costState.view = 'claims'; switchTab('overview')")   # (as the checks after expect it)
+        strict.wait_for_timeout(300)
+        for page_ in ("sources", "sharing", "settings", "account", "admin"):
+            strict.goto(base + f"/{page_}.html" + ("?profile=1" if page_ in ("sources", "sharing", "settings") else ""))
+            strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
+            for g in strict.evaluate("[...document.querySelectorAll('main > nav.set-nav a[data-group]')].map(a => a.dataset.group)"):
+                strict.click(f"main > nav.set-nav a[data-group='{g}']")
+                help_here(f"{page_} {g}")
+        strict.goto(base + "/guide.html?profile=1")
+        help_here("guide")
+        check("help text (#280): no disclosure is labelled “More about this”, on any group of any page, any records tab or the guide", help_more == 0, help_more)
+        check("…and no heading has more than one line of hint before its card's content, at 1400 px", help_seen and not help_over, help_over)
+        check("…the rest behind an ⓘ beside the heading, named “About” and the heading, its tip the same (a card alone: beside the h1)", not help_names, help_names)
+        n_info = sum(len(v) for v in help_seen.values())
+        check(f"…each ⓘ ({n_info}) opens under it by Enter, focus kept on it, and Escape closes it, focus on it still", n_info >= 30 and not help_keys, help_keys)
+        check("…on the pages that have background to give", all(help_seen.get(w) for w in (
+              "records Overview", "records Body and activity", "records Timeline", "records Journal", "records Labs", "records Labs heatmap",
+              "sources upload", "sources portals", "sources phone", "sharing links", "sharing calendar", "sharing export",
+              "settings dashboard", "settings about", "account security", "admin accounts", "admin backups", "admin outside")), help_seen)
+        # a card alone in its group (Sources → Upload files): its ⓘ beside the h1, and back in the card beside its own
+        # title when the search shows it among others
+        strict.goto(base + "/sources.html?profile=1#upload")
+        strict.wait_for_selector("#groupTitle + .info > button", timeout=10000)
+        strict.fill("#srcFind", "export")
+        strict.wait_for_timeout(300)
+        back_ = strict.evaluate("[!!document.querySelector('#importer .set-hd > h2 + .info'), !document.querySelector('#groupTitle + .info')]")
+        strict.fill("#srcFind", "")
+        strict.wait_for_timeout(300)
+        check("…a lone card's ⓘ beside the h1, and beside its own title while the search shows it with others",
+              back_ == [True, True] and strict.evaluate("!!document.querySelector('#groupTitle + .info') && document.querySelector('#groupTitle + .info > button').getAttribute('aria-label') === 'About Upload files'"), back_)
+        # open, in light and dark: axe finds nothing serious; on a phone it's a sheet from the screen's foot, named as
+        # the ⓘ is, closed by Escape with focus back on the ⓘ, fitting 375 and 320 px
+        strict.click("#groupTitle + .info > button")
+        strict.wait_for_timeout(200)
+        for theme in ("light", "dark"):
+            strict.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+            strict.wait_for_timeout(150)
+            serious, minor = axe_check(strict, f"Upload files' ⓘ open ({theme})")
+            check(f"…axe finds nothing serious with one open ({theme})", not serious, "; ".join(serious + minor)[:600])
+        strict.keyboard.press("Escape")
+        for w in (375, 320):
+            strict.set_viewport_size({"width": w, "height": 800})
+            strict.wait_for_timeout(250)
+            strict.focus("#groupTitle + .info > button")
+            strict.keyboard.press("Enter")
+            strict.wait_for_timeout(400)
+            sheet = strict.evaluate("""(() => { const d = document.querySelector('dialog.sheet[open]'), r = d && d.getBoundingClientRect();
+              return d && [d.querySelector('h2').textContent, d.querySelector('.sheet-body').textContent.includes('Files go to your Sanguity server only'),
+                r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight + 1, document.documentElement.scrollWidth <= innerWidth]; })()""")
+            strict.keyboard.press("Escape")
+            strict.wait_for_timeout(400)
+            after_ = strict.evaluate("[!!document.querySelector('dialog.sheet[open]'), document.activeElement.getAttribute('aria-label'), document.querySelector('#groupTitle + .info .about-words').textContent.includes('Files go to')]")
+            check(f"…at {w} px it opens as a sheet, named as the ⓘ is, fitting the screen; Escape closes it, focus back on the ⓘ, its words back under it",
+                  sheet == ["About Upload files", True, True, True] and after_ == [False, "About Upload files", True], (sheet, after_))
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        strict.evaluate("document.documentElement.dataset.theme = 'dark'")
+        # what a person needs to decide stays in the leads (#176): a share link's reach, an export's privacy
         strict.goto(base + "/sharing.html?profile=1#links")
-        strict.wait_for_selector("#links details.more", timeout=10000)
+        strict.wait_for_selector("#links .share-links > p.hint", timeout=10000)
         links_lead = strict.evaluate("document.querySelector('#links .share-links > p.hint').textContent")
         strict.click("#shrNav a[data-group=export]")
         export_lead = strict.evaluate("document.querySelector('#export > p.hint').textContent")
@@ -1720,18 +1822,6 @@ def main():
         check("…and that undoing an import removes what it brought, with Fetch the only time a Health Link's server is contacted",
               "Undoing an import removes the records" in strict.inner_text("#history")
               and "only when you choose Fetch" in strict.evaluate("document.querySelector('#healthLink p.hint').textContent"))
-        strict.click("#srcNav a[data-group=upload]")
-        summ = "#importer details.more > summary"
-        strict.focus(summ)
-        strict.keyboard.press("Enter")
-        opened = strict.evaluate("[document.querySelector('#importer details.more').open, document.querySelector('#importer details.more p').checkVisibility()]")
-        strict.set_viewport_size({"width": 375, "height": 800})
-        strict.wait_for_timeout(200)
-        fits = strict.evaluate("document.documentElement.scrollWidth <= 375 && document.querySelector('#importer details.more').getBoundingClientRect().right <= 375")
-        strict.keyboard.press("Enter")
-        check("…opened by keyboard, its text shown, fitting 375 px; closed again by keyboard", opened == [True, True] and fits
-              and not strict.evaluate("document.querySelector('#importer details.more').open"), (opened, fits))
-        strict.set_viewport_size({"width": 1400, "height": 900})
         # ---- keyboard and screen-reader basics (#209), under the CSP: on every page with the top bar, Tab's first stop
         # is "Skip to content", shown while it has focus (readable on this page's dark theme, at 1400 and 375 px), and
         # Enter moves focus to the page's main part without changing the address; the browser tab's title names the
@@ -3101,7 +3191,7 @@ def main():
             check("…then five zones from 220 minus the age on each workout's day (35, then 36 after the birthday), the time in each from the readings",
                   hrs == [["2026-09-08", 185, 35, "age", [0, 300, 600, 600, 300, 0], False], ["2026-09-12", 184, 36, "age", None, False],
                           ["2026-10-20", 184, 36, "age", [0, 900, 1800, 0, 0, 0], False], ["2026-11-10", 184, 36, "age", [0, 0, 0, 0, 1500, 300], False]], hrs)
-            zc = js("""(() => { const c = document.getElementById('h-zones'); return c && {hint: c.querySelector('.hint').textContent, label: c.querySelector('svg')?.getAttribute('aria-label'),
+            zc = js("""(() => { const c = document.getElementById('h-zones'); return c && {hint: c.querySelector('.hint').textContent + ' ' + (c.querySelector('.about-words')?.textContent || ''), label: c.querySelector('svg:not(.icon)')?.getAttribute('aria-label'),
                 legend: [...c.querySelectorAll('.legend span')].map(s => s.textContent), list: [...c.querySelectorAll('.zones-list li')].map(l => l.textContent),
                 order: [...document.querySelectorAll('#view-health .card')].map(c => c.id).filter(Boolean)}; })()""")
             check("…a card after Activity: minutes a week in each zone, the zones said to be from the common formula, 220 minus age, and not advice",
@@ -3112,7 +3202,7 @@ def main():
                   zc and len(zc["list"]) == 4 and "most time in zone 4" in zc["list"][0] and "average and highest only" in zc["list"][2]
                   and "most time in zones 2 and 3" in zc["list"][3]
                   and not re.search(r"(?i)\b(good|great|poor|bad|too|risk|danger|normal)\b", " ".join(zc["list"]) + zc["hint"]), zc and zc["list"])
-            page.focus("#h-zones svg")
+            page.focus("#h-zones svg:not(.icon)")
             page.keyboard.press("End")
             settle(150)
             check("…the chart steps a week at a time from the keyboard, the tooltip giving each zone's minutes",
@@ -3153,7 +3243,7 @@ def main():
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             js("state.tables.clear(); setRange(dayTs('2026-08-01'), dayTs('2026-11-14')); switchTab('health')")
             settle(500)
-            mz = js("[document.querySelector('#h-zones .hint').textContent, WATCH.exercise.filter(x => x.hr).map(x => [x.hr.zmax, x.hr.basis, x.hr.zones || null])]")
+            mz = js("[document.querySelector('#h-zones .hint').textContent + ' ' + (document.querySelector('#h-zones .about-words')?.textContent || ''), WATCH.exercise.filter(x => x.hr).map(x => [x.hr.zmax, x.hr.basis, x.hr.zones || null])]")
             check("…replaces the estimate for every workout, and the card says so",
                   "the maximum heart rate entered in About this person, 190 bpm" in mz[0] and mz[1][3] == [190, "measured", [0, 0, 0, 600, 900, 300]]
                   and all(z[0] == 190 for z in mz[1]), mz)
@@ -8601,7 +8691,7 @@ def main():
             check("…as a switch, numbers and choices, no Save of its own, and neither “set for this server” nor Reset to defaults while all are Sanguity's own (#101, #102, #272)",
                   js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length, "
                      "document.querySelectorAll('#sec-sync button.primary').length, document.querySelectorAll('#sec-sync h3 .tag:not(.set-unsaved)').length, "
-                     "document.querySelector('#sec-sync .set-hd button').hidden]") == [5, 3, 0, 0, True], js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
+                     "document.querySelector('#sec-sync .set-hd > button').hidden]") == [5, 3, 0, 0, True], js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
             # #272: a number waits for the group's bar; the switch beside it is saved as it's changed, the number kept as typed
             page.fill("#sec-sync [data-key='sync.staleDays'] input", "5")
             sync_bar = js("[document.getElementById('admBar').hidden, document.querySelector('#admBar .sg-bar-n').textContent]")
@@ -8619,7 +8709,7 @@ def main():
             stale = "fetch('api/profiles/1/settings').then(r => r.json()).then(s => s.sync.staleDays)"
             check("…saved for every connection on the server", js(stale) == 5 and "set for this server" in page.inner_text("#sec-sync [data-key='sync.staleDays']")
                   and js("document.getElementById('admBar').hidden"), js(stale))
-            page.click("#sec-sync .set-hd button")
+            page.click("#sec-sync .set-hd > button")
             page.wait_for_function("document.querySelector('#sec-sync .set-msg').textContent.includes('back to')", timeout=10000)
             check("…and Reset to defaults puts them back at once, asking nothing (#272), with an Undo", js(stale) == 3 and not js("!!document.querySelector('dialog[open]')")
                   and js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == "The sync defaults are back to Sanguity's own.", js(stale))
@@ -8645,7 +8735,7 @@ def main():
             bk_dir = os.path.join(TMP, "backups")
             page.click("#admNav a[data-group=backups]")
             page.wait_for_selector("#bkStatus .kv", timeout=10000)
-            check("Backups (#200): its own group, the key reminder in the lead (not behind More about this)",
+            check("Backups (#200): its own group, the key reminder in the lead (not behind its ⓘ, #280)",
                   js(display, "backups") != "none" and js("location.hash") == "#backups"
                   and "encryption key isn't in the backups" in js("document.querySelector('#backups > .bk-key').textContent")
                   and js("document.querySelector('#backups > .bk-key').checkVisibility()"), js("location.hash"))
@@ -8653,7 +8743,7 @@ def main():
             # ---- the watch receiver's data in backups (#227): what's in them and what isn't, said on the Backups group;
             # first with no receiver's folder in sight, then with a receiver's (fictional readings, one upload after its
             # last save); Check a backup counts them beside the folder's now
-            more = js("document.querySelector('#backups details.more').textContent")
+            more = js("[...document.querySelectorAll('.about-words')].find(w => w.getAttribute('aria-label') === 'About Backups').textContent")   # behind the ⓘ (#280)
             check("Backups (#227): says the phone and watch data is in them, and what isn't (exports, the key, the configuration)",
                   "the watch receiver's data" in more and "Not in it: your original exports, the encryption key, and the configuration" in more
                   and "phone and watch data" in js("document.querySelector('#backups > .hint').textContent"), more[:300])
@@ -9110,7 +9200,7 @@ def main():
             page.click(tile)
             page.wait_for_function(f"{ov_msg}.startsWith('Saved')", timeout=10000)
             inst = [home(), js("document.getElementById('setBar').hidden"), js("!!document.querySelector('#sections > [data-dirty], .set-changed')"),
-                    js(toasts_said), js("document.activeElement.id"), js("!document.querySelector('#sec-overview .set-hd button').hidden")]
+                    js(toasts_said), js("document.activeElement.id"), js("!document.querySelector('#sec-overview .set-hd > button').hidden")]
             page.click(undo_toast)
             page.wait_for_function(f"{ov_msg}.startsWith('Undone')", timeout=10000)
             check("a tick on Settings is saved as it's made (#272): no bar, nothing left unsaved, a toast “Saved · Undo”, focus where it was, Reset shown "
@@ -11267,7 +11357,7 @@ def main():
             check("a viewer's Settings: the profile's groups say they're shown as they are, with nothing to change or reset, while their own settings can be",
                   zb.evaluate("document.getElementById('introHint').textContent").startswith("This profile: you can view it")
                   and zb.evaluate("!document.querySelector('#sec-overview :is(input, select, textarea):not(:disabled), #sec-names :is(input, select, textarea):not(:disabled)')"
-                                  " && [...document.querySelectorAll('#sec-overview .set-hd button, #sec-names .set-hd button')].every(b => b.hidden)"
+                                  " && [...document.querySelectorAll('#sec-overview .set-hd > button, #sec-names .set-hd > button')].every(b => b.hidden)"
                                   " && !document.querySelector('#sec-units input[type=radio]').disabled"),
                   zb.evaluate("document.getElementById('introHint').textContent"))
             # #169: with no profile at all, Settings still has their own Display settings, says how to get a profile,
@@ -11669,7 +11759,11 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("…and the card fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
-            # iPhone (#148): Health Auto Export's setup steps beside Life Dashboard's: address, header, data, how often
+            # iPhone (#148): Health Auto Export's setup steps beside Life Dashboard's: address, header, data, how often,
+            # in a disclosure named for them (#280)
+            check("…Health Auto Export's steps in a disclosure named for them, closed at first (#280)",
+                  js("(d => d.matches('details') && !d.open && d.querySelector('summary').textContent)(document.getElementById('watchHae'))") == "How to set up Health Auto Export on an iPhone")
+            page.click("#watchHae > summary")
             hae_txt = page.inner_text("#watchHae")
             check("watch card: Health Auto Export's steps (address, header, data, how often, workouts)",
                   all(w in hae_txt for w in ("Health Auto Export", "REST API", ":8731/ingest", "Authorization", "Bearer " + made,
@@ -11686,6 +11780,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             page.reload()
             page.wait_for_selector("#watch .w-secret", timeout=10000)
+            js("document.getElementById('watchHae').open = true")
             masked = js("document.querySelector('#watch .w-secret').textContent")
             check("…then only its last characters", masked.endswith(made[-4:]) and made not in page.content(), masked)
             check("…and the iPhone steps name the secret without showing it",
@@ -12447,7 +12542,9 @@ def main():
             page.wait_for_url("**/admin.html#outside", timeout=10000)
             page.wait_for_function("document.getElementById('outsideBody').textContent.includes('May contact now')", timeout=10000)
             out = page.inner_text("#outside")
-            check("Admin says plainly that nothing else is contacted", "Nothing else leaves this server" in out, out[:200])
+            check("Admin says plainly that nothing else is contacted (the lead, and the rest behind its ⓘ, #280)",
+                  "Sanguity contacts only the hosts listed here" in js("document.getElementById('outsideLead').textContent")
+                  and "Nothing else leaves this server" in js("[...document.querySelectorAll('.about-words')].find(w => w.getAttribute('aria-label') === 'About Outside connections').textContent"), out[:200])
             check("…lists the connected source with its host, scopes and last contact",
                   "Fake Epic sandbox" in out and f"127.0.0.1:{fake.port}" in out and "patient/Observation" in out
                   and "Second person" in out and "Last contact" in out, out[:600])
@@ -13200,7 +13297,8 @@ def main():
             lm = js("[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => tr.textContent)")
             check("Admin lists the lab name match, who made it and from what, with Change and Remove (#23)",
                   any("Hemoglobin Whole Bld" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "Change" in t and "Remove" in t for t in lm)
-                  and "only admins can change or remove" in page.inner_text("#labmaps") and js(display, "labmaps") != "none", lm)
+                  and "only admins can change or remove" in js("[...document.querySelectorAll('.about-words')].find(w => w.getAttribute('aria-label') === 'About Lab name matches').textContent")   # (behind its ⓘ, #280)
+                  and js(display, "labmaps") != "none", lm)
             # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on Account
             page.goto(base + "/account.html#profiles")
             page.wait_for_url("**/sharing.html#people", timeout=10000)

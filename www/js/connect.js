@@ -239,6 +239,7 @@
     }
     $("#viewerNote").hidden = d.can_connect;
     $("#noSources").hidden = !!d.sources.length || !d.can_connect;
+    $("#adminNote").hidden = !ME.user.is_admin || !$("#noSources").hidden;   // (none set up: the line above says it, #280)
     $("#sourceButtons").replaceChildren(...(d.can_connect ? d.sources : []).filter(s => !s.waiting).map(s =>
       el("button", {class: "btn", type: "button", text: `Connect ${s.name}…`, "data-tip": `Signs in at ${s.host}`, onclick: () => {
         const open = document.getElementById("choose-" + s.id);
@@ -275,7 +276,8 @@
   (async function () {
     ME = await SgSources.ready;   // the page signs in and chooses the profile (sources-page.js)
     if (!ME) return;
-    if (ME.user.is_admin) { $("#noSources").textContent = "No portal or health plan is set up on this server yet."; $("#adminNote").hidden = false; }
+    if (ME.user.is_admin) $("#noSources").replaceChildren("No portal or health plan is set up on this server yet: as an admin, you set them up under ",
+      el("a", {href: "admin.html#apps", text: "Admin → Connected-source apps"}), ".");
     PID = SgSources.pid();
     $("#profile").addEventListener("change", () => { PID = SgSources.pid(); load(); });
     $("#mine").hidden = false;

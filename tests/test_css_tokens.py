@@ -95,8 +95,8 @@ ALLOWED = {
     # for its sides and 7.5 px for a region's count (the heatmap's ? is an icon since #257)
     # its radius is a colour key's or swatch's 2 px (a data mark, not a component); its shadows are bars drawn inset
     # (a selected item's accent bar, a seg's underline), the sticky Save bar's shadow upward and the offline flash (#256)
-    # its px spacing is four negative margins (#333): -4, -6 and -8 px tuck a note under what it's about (a chart's hint,
-    # the tiles' range note, a stats note, More about this) or pull a phone's page title up under the brand; -5 and -6 px
+    # its px spacing is four negative margins (#333): -4, -6 and -8 px tuck a note under what it's about (a field's hint,
+    # the tiles' range note, a stats note) or pull a phone's page title up under the brand; -5 and -6 px
     # keep a 24 px target (the ✎, a test link, Reset filters on a phone) from making its line taller
     # its durations: the offline banner's .6s flash, and the reduced-motion rule's 1ms, which stops animations but still
     # lets them end (an animationend handler runs)

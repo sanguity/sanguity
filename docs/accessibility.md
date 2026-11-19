@@ -68,7 +68,7 @@ What can't be done here is a pass with a real screen reader: see [Still open](#s
 | 3.1.1 Language of page | axe | Nothing found. |
 | 3.2.1 On focus, 3.2.2 On input | read the code | Nothing new: picking a profile in the profile menu switches whose records are shown, which is what it's for and what its group says (#264). |
 | 3.2.3, 3.2.4 Consistent navigation and identification | looked at every page | The same top bar on every page: the profile menu, the records tabs, Add and your menu (#264). |
-| 3.2.6 Consistent help | looked at every page | Getting started is in the same menu on every page; a card's help is under "More about this" in the same place (#176). |
+| 3.2.6 Consistent help | looked at every page | Getting started is in the same menu on every page; a card's background is behind the ⓘ beside its heading, the same button in the same place on every page (#280). |
 | 3.3.1 Error identification, 3.3.3 Error suggestion | read the forms | Errors are said in words beside the form and through the shared alert line (#209). Typed-in lab rows link the message to the field (above). |
 | 3.3.2 Labels or instructions | axe | See 2.4.6. |
 | 3.3.4 Error prevention | read the code | Removing, revoking and undoing ask first (#210); imports are previewed and can be undone. |

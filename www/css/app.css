@@ -491,12 +491,13 @@ main{padding:var(--sp-4) var(--sp-5) var(--sp-7);max-width:1500px;margin:0 auto}
 footer.notice{max-width:1500px;margin:0 auto;padding:var(--sp-3) var(--sp-5) var(--sp-5);border-top:1px solid var(--grid);color:var(--ink2);font-size:var(--fs-2);box-sizing:border-box}
 .range-note{color:var(--ink2);font-size:var(--fs-2);margin:var(--sp-2) 0 var(--sp-2)}
 .tiles + .range-note{margin:-8px 0 var(--sp-4)}
-.card h2,.card>h1,:is(.ov-cols,.ov-today) .card>h3{font-size:var(--fs-4);margin:0 0 2px;font-weight:var(--fw-semibold)}
+.card h2,.card>h1,:is(.ov-cols,.ov-today) :is(.card,.card>.set-hd)>h3{font-size:var(--fs-4);margin:0 0 2px;font-weight:var(--fw-semibold)}
 .card .hint{color:var(--muted);font-size:var(--fs-3);margin:0 0 var(--sp-2)}
+.howto{color:var(--ink2);font-size:var(--fs-3);margin:0 0 var(--sp-2)}   /* what someone needs in order to act, in full (#280): what to upload, what a field expects, a warning */
 /* the type scale (#255, tokens.css): Source Serif 4 for page and section titles and the headline values, Inter for the
    rest (a value's unit too); tabular figures wherever numbers are read against each other: values, tables, chart axes,
    the drawer's facts */
-.card h2,.card>h1,:is(.ov-cols,.ov-today) .card>h3,.ov-h h2,.sets .set-top h1,.guide-hd h1,.guide-step h2,.sg-ask h2,#drawer .dh h3,.dir .dir-hd h2,.src .dir-hd h3,
+.card h2,.card>h1,:is(.ov-cols,.ov-today) :is(.card,.card>.set-hd)>h3,.ov-h h2,.sets .set-top h1,.guide-hd h1,.guide-step h2,.sg-ask h2,#drawer .dh h3,.dir .dir-hd h2,.src .dir-hd h3,
   .tile .val{font-family:var(--font-display,Georgia,serif)}
 .tile .val small{font-family:var(--font-ui,system-ui,sans-serif)}
 .tile .val,svg text,.tip,.kv dd,.acct .tbl,.zones-tbl,.ecg-sum,.bk .kv{font-variant-numeric:tabular-nums}
@@ -566,7 +567,6 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .chart svg:not(.icon){width:100%;display:block}
 .pz{touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
 .dragging .pz,.dragging .pz *{cursor:grabbing!important}
-.chart-hint{margin:-4px 0 var(--sp-3)}
 .list-hd{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:2px}
 .list-hd h2{margin:0!important}
 /* a heading wraps beside its one control: no font swap pushes that under it (#426) */
@@ -1276,10 +1276,7 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .overlays .lbl{font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2);margin-right:2px}
 .labs-aids{display:flex;gap:var(--sp-2);margin-left:auto}
 .labs-aids .btn{margin:0}
-.labs-pop>button{anchor-name:--menu}
-.labs-pop>.menu-list{gap:var(--sp-2);margin:0;padding:var(--sp-2) var(--sp-3);max-width:min(340px,calc(100vw - 24px));font-size:var(--fs-2);color:var(--ink2)}
 .legend.menu-list:not(:popover-open,.sg-measure){display:none}
-.pop-text p{margin:0}
 /* a list's labs grouped by panel (#279): Other, collapsed; a group's name over the Overview's tiles and Settings' list */
 .series-list summary.grp{cursor:pointer;border-radius:var(--r-sm)}
 .series-list summary.grp:hover{color:var(--ink2)}
@@ -1503,9 +1500,21 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .profile-btn{font-weight:var(--fw-medium)}
 .profile-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .profile-role{flex:none;font-weight:var(--fw-regular);font-size:var(--fs-2);color:var(--ink2);border:1px solid var(--ring);border-radius:var(--r-pill);padding:0 var(--sp-2)}
-/* "More about this" (#176): the rest of a card's explanation behind one toggle, the same on every page (util.js
-   moreAbout(), or the same <details class="more"> written in the page). Closed, it's one short line under the lead. */
-details.more{margin:-4px 0 var(--sp-2);color:var(--muted);font-size:var(--fs-2)}
+/* a menu's popover of words (Labs' Legend, #279) and an ⓘ (#280, util.js aboutWire): under its button, a part's
+   background beside its heading, in a row with it (.set-hd: a card's title and Reset, or one made for it), or beside
+   the h1 for a card alone in its group (sidebar.js); in a sheet on a phone */
+.pop>button{anchor-name:--menu}
+.pop>button.sg-tip-on{anchor-name:--menu,--sg-tip}   /* its tip's anchor too */
+.info>.menu-list{left:anchor(left);right:auto}   /* from the heading's side, as the kinds' menus open */
+.pop>.menu-list{gap:var(--sp-2);margin:0;padding:var(--sp-2) var(--sp-3);max-width:min(340px,calc(100vw - 24px));font-size:var(--fs-2);color:var(--ink2)}
+.pop-text p{margin:0}
+.sheet-body.pop-text{display:flex;flex-direction:column;gap:var(--sp-3);font-size:var(--fs-3);color:var(--ink2)}
+.set-hd{display:flex;align-items:center;gap:var(--sp-1) var(--sp-2);flex-wrap:wrap}
+.info{display:inline-flex}
+:is(.set-hd,.set-top-hd)>.info{margin-right:auto}
+.info>.btn{margin:0;color:var(--ink2);font-size:var(--fs-4)}
+/* a disclosure named for what's in it (#176, #280: "How undo works"), the same on every page */
+details.more{margin:0 0 var(--sp-2);color:var(--ink2);font-size:var(--fs-3)}   /* steps read while doing the task: 14 px, as instructions are */
 details.more>summary{cursor:pointer;width:fit-content;color:var(--ink2);border-radius:var(--r-sm);padding:1px 2px;margin-left:-2px}
 details.more>summary:hover{color:var(--ink)}
 details.more>summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}

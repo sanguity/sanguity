@@ -3,7 +3,7 @@
    it: only owners turn it on or off, or delete what's kept); viewers don't see it at all, and aren't told whether it's
    on. The card says plainly what's kept, who sees it, where it never goes, and what deleting reaches and what it
    can't. The Sources page signs in and chooses the profile (sources-page.js). */
-"use strict";   // $, el, api, ask, sayIn, moreAbout come from util.js
+"use strict";   // $, el, api, ask, sayIn, aboutWords come from util.js
 (() => {
   async function call(path, method = "GET", body) {
     const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body)});
@@ -46,7 +46,7 @@
     };
     if (!st.on) {
       parts.push(el("p", {class: "hint", id: "cycleState", text: `Off. ${KEPT} from the phone apps are left out of every upload before anything is kept.`}),
-        moreAbout(`Turned on, ${KEPT.toLowerCase()} from Health Connect (Life Dashboard Companion) or Apple Health (Health Auto Export) are kept for this profile. ${WHO}`, NEVER, SEX, WORDS));
+        aboutWords(`Turned on, ${KEPT.toLowerCase()} from Health Connect (Life Dashboard Companion) or Apple Health (Health Auto Export) are kept for this profile. ${WHO}`, NEVER, SEX, WORDS));
       if (owner) {
         const go = el("button", {class: "btn", type: "button", id: "cycleOn", text: "Turn on cycle tracking…", disabled: !st.ready || null, onclick: async () => {
           if (!await ask({title: "Turn on cycle tracking?", action: "Turn on", message: [
@@ -62,7 +62,7 @@
       const d = st.deletion, waiting = d && !d.done;
       parts.push(el("p", {class: "hint", id: "cycleState", text: `On since ${day(st.since)}. ` + (waiting ? "Deleting what was kept: nothing is shown until the receiver has done it."
         : st.count ? `Kept: ${st.count} record${st.count === 1 ? "" : "s"}, shown on the Timeline.` : "Nothing received yet.")}),
-        moreAbout(WHO, NEVER, SEX, WORDS),
+        aboutWords(WHO, NEVER, SEX, WORDS),
         el("h3", {class: "sub", text: "Sending them from the phone"}),
         el("ul", {class: "cy-list"},
           el("li", {text: "Android: in Health Connect, let Life Dashboard Companion read cycle tracking (menstruation, ovulation tests, cervical mucus, spotting). It sends them with the rest."}),
