@@ -154,7 +154,7 @@ function openMedication(m) {
   if (notes.length) body.append(el("div", {class: "sect", text: "Journal entries linked to it"}),
     ...notes.sort((a, b) => a.ts - b.ts).map(e => el("button", {class: "btn", type: "button", text: `${fmtD(e.ts)} · ${e.title}`, onclick: () => openEvent(e)})));
   body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "What the records say, in order: a listing's dates may not be when a medication started or ended. This isn't medical advice."}),
-    moreAbout("A clinic's medication list dates a medication from when it was recorded there, which may not be when it was started; a listing with no end date may still have ended."),
+    aboutWords("A clinic's medication list dates a medication from when it was recorded there, which may not be when it was started; a listing with no end date may still have ended."),
     el("div", {class: "btns"}, el("button", {class: "btn", type: "button", text: "Zoom timeline to this medication", onclick: () => {
       const a = medFrom(m), b = medTo(m), pad = Math.max(7 * DAY, (b - a) * .05); setRange(a - pad, b + pad); pickTab("timeline"); }})));
   showDrawer();

@@ -1689,8 +1689,8 @@ def main():
         # counts its summary's line). The rest of a card's background is behind an ⓘ beside its heading, named "About"
         # and the heading (its tip the same), which opens under it from the keyboard and closes with Escape, focus kept on
         # it and put back on it; a card alone in its group has it beside the h1. No disclosure is labelled "More about
-        # this". On every group of Sources, Sharing, Settings, Account and Admin, every records tab (the Medications tab
-        # is #275's) and Getting started. What someone needs in order to act (.howto) stays in full, and isn't counted.
+        # this". On every group of Sources, Sharing, Settings, Account and Admin, every records tab and Getting
+        # started. What someone needs in order to act (.howto) stays in full, and isn't counted.
         HELP_JS = r"""() => {
           const lines = e => { const tops = [], w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
             for (let n; (n = w.nextNode());) {
@@ -1748,7 +1748,7 @@ def main():
             if strict.evaluate("typeof booted !== 'undefined' && booted"):
                 break
             strict.wait_for_timeout(200)
-        for tab, how in (("Overview", "switchTab('overview')"), ("Body and activity", "switchTab('health')"), ("Timeline", "switchTab('timeline', 'timeline')"),
+        for tab, how in (("Overview", "switchTab('overview')"), ("Body and activity", "switchTab('health')"), ("Medications", "switchTab('medications')"), ("Timeline", "switchTab('timeline', 'timeline')"),
                          ("Journal", "switchTab('timeline', 'journal')"), ("Labs", "switchTab('labs', 'chart')"), ("Labs heatmap", "switchTab('labs', 'heatmap')"),
                          ("Costs", "costState.view = 'claims'; switchTab('costs')"), ("Costs paid", "costState.view = 'paid'; switchTab('costs')")):
             strict.evaluate(how)

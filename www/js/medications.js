@@ -81,7 +81,9 @@ function renderMedications() {
   const rows = medsShown(a, b, "");
   const svg = el("svg:svg", {class: "med-lane", role: "img", "aria-label": `The medications from ${fmtD(a)} to ${fmtD(b)}, a row each: the same as listed under Current and Past.`});
   const lane = el("div", {class: "card"}, el("h2", {text: "Over " + periodLabel("all the records")}),
-    rows.length ? [svg, el("p", {class: "hint", text: "A bar for each listing, a new shade where the dose changed; a line across its end where the records say it stopped, an arrow where they give no end; a small triangle under it for each pharmacy fill. Doses logged: ● taken, ◆ taken late, ○ skipped. Point at a mark for what it is; click it to open it."})]
+    rows.length ? [el("p", {class: "hint", text: "Point at a mark for what it is; click it to open it."}),   // the rest behind its ⓘ (#280)
+      aboutWords("A bar for each listing, a new shade where the dose changed; a line across its end where the records say it stopped, an arrow where they give no end; a small triangle under it for each pharmacy fill.",
+        "Doses logged: ● taken, ◆ taken late, ○ skipped."), svg]
       : el("p", {class: "hint", text: "No medications in this period."}));
   box.replaceChildren(...[today, now, before, lane].filter(Boolean),
     el("p", {class: "hint", text: "What the records list, in order: a listing's dates may not be when a medication started or ended. This isn't medical advice."}));
