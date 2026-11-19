@@ -245,7 +245,10 @@ function ask({title, message = "", action = "OK", cancel = "Cancel", danger = fa
     box.addEventListener("close", () => {
       liveFollow();   // the status line back out first (below)
       box.remove();
-      if (opener && opener.isConnected && opener !== document.body) opener.focus();
+      // asked from a menu's item (Log out, #391): the menu has closed by now, so focus goes to the button that opens it
+      const pop = opener && opener.closest?.("[popover]"), back = pop && !pop.matches(":popover-open")
+        ? [...document.querySelectorAll("button")].find(b => b.popoverTargetElement === pop) : opener;
+      if (back && back.isConnected && back !== document.body) back.focus();
       resolve(box.returnValue === "yes");
     });
     document.body.append(box);
@@ -576,3 +579,19 @@ const toast = (() => {
     return {close: gone, node: t};
   };
 })();
+
+/* Log out, the same on every page (#391). What the page hasn't saved (its beforeunload guards: Settings' sections,
+   Type records in, an upload on its way) is asked about first, in the app's own dialog: signed out first, there'd be
+   nothing left to save it with, and the browser's "Leave site?" would come too late. Said yes to, the guards stand
+   aside (sgLeaving), and pwa.js deletes what the device kept (sg:logout). */
+let sgLeaving = false;
+async function logOut() {
+  const unsaved = new Event("beforeunload", {cancelable: true});
+  dispatchEvent(unsaved);
+  if (unsaved.defaultPrevented && !await ask({title: "Log out with changes not saved?", danger: true, action: "Log out", cancel: "Stay",
+      message: "What's on this page and not saved yet will be lost. Stay to save it first."})) return;
+  sgLeaving = true;
+  document.dispatchEvent(new Event("sg:logout"));
+  try { await api("logout", {method: "POST"}); } catch (e) {}
+  location.replace("login.html");
+}

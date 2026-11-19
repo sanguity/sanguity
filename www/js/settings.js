@@ -15,7 +15,7 @@ async function call(path, method = "GET", body) {
   return j;
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-$("#logout").onclick = async () => { try { await call("logout", "POST"); } catch (e) {} location.replace("login.html"); };
+$("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
 /* ---------------------------------------------------------------- editors: each builds its controls from a value
    and reads the value back (get), calling changed() on every edit */
@@ -602,7 +602,7 @@ function sectionCard(sec, opts = {}) {
   return card;
 }
 const unsavedSections = () => [...document.querySelectorAll("#sections > section[data-dirty]")];
-addEventListener("beforeunload", ev => { if (unsavedSections().length) { ev.preventDefault(); ev.returnValue = ""; } });
+addEventListener("beforeunload", ev => { if (!sgLeaving && unsavedSections().length) { ev.preventDefault(); ev.returnValue = ""; } });
 /* another profile: changes not saved here would be lost. Asked before anything else follows the picker, so saying
    no leaves the whole page on this profile: the change stops here and the picker shows this profile while the app's
    dialog asks (#210); saying yes picks the other profile again, and that change goes on to everything else. */
