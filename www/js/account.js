@@ -179,12 +179,7 @@ async function loadPasskeys() {
    (account.html#device). An address naming a section (#password, #twofa, #passkeys, #sessions, #installApp,
    #offlineRecords) opens its group and scrolls to it; #install and #offline are short for the last two. The old
    Profiles and Admin tabs' addresses (#profiles; #admin, #users, #labmaps) open Sharing and Admin (moved.js). */
-const GROUPS = [
-  {id: "security", title: "Sign-in and security", icon: "lock", hint: "How you sign in, and where you're signed in now.",
-   has: ["password", "twofa", "passkeys", "sessions"]},
-  {id: "device", title: "This device", icon: "smartphone", hint: "Sanguity on the device you're using now: as an app, and offline.",
-   has: ["installApp", "offlineRecords"]},
-];
+const GROUPS = SG_PAGES.account.groups;   // groups.js: one list, which the command palette searches too (#273)
 let locked = false;   // until the one-time password is replaced, or the second factor the server requires is set up: that alone
 const AcctNav = sideNav({id: "acctNav", page: "Account", groups: GROUPS, find: "Find in Account", none: q => `Nothing in Account matches “${q}”.`,
   allowed: g => !locked || g === GROUPS[0], alias: {install: "installApp", offline: "offlineRecords"},

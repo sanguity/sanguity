@@ -16,15 +16,7 @@
 "use strict";   // $, el and api come from util.js
 const SgSources = (() => {
   const main = $("main.src"), sel = $("#profile");
-  const GROUPS = [
-    {id: "overview", title: "Overview", icon: "layout-grid", has: ["srcOverview"]},
-    {id: "portals", title: "Portals and health plans", icon: "plug", part: "Connected", has: ["mine"]},
-    {id: "phone", title: "Phone and watch", icon: "watch", part: "Connected", has: ["watch", "cycle", "viewOnly"]},   // cycle tracking (#183)
-    {id: "upload", title: "Upload files", icon: "upload", part: "One-off", has: ["importer", "viewOnly"]},
-    {id: "manual", title: "Type records in", icon: "keyboard", part: "One-off", has: ["typeIn", "viewOnly"]},
-    {id: "link", title: "Paste a Health Link", icon: "link", part: "One-off", has: ["healthLink", "viewOnly"]},
-    {id: "history", title: "Import history", icon: "history", part: "History", has: ["history"]},
-  ];
+  const GROUPS = SG_PAGES.sources.groups;   // groups.js: one list, which the command palette searches too (#273)
   let ME = null;
   const profile = () => ME && ME.profiles.find(p => p.id === +sel.value) || null;
   const canEdit = () => { const p = profile(); return !!p && (p.role === "owner" || p.role === "editor"); };

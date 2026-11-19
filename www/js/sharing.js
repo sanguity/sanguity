@@ -31,15 +31,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
 
   /* ---------------------------------------------------------------- the sidebar: one group shown at a time */
   const RANK = {viewer: 0, editor: 1, owner: 2};
-  const GROUPS = [
-    {id: "people", title: "People", icon: "users", part: "Sharing", has: ["people"]},
-    {id: "links", title: "Share links", icon: "share-2", part: "Sharing", has: ["links"], needs: "owner", why: "Share links are made by a profile's owners."},
-    {id: "calendar", title: "Calendar feed", icon: "calendar", part: "Sharing", has: ["calendar"]},
-    {id: "summary", title: "Visit summary", icon: "file-text", part: "Sharing", has: ["summaryIntro", "build", "preview"]},
-    {id: "export", title: "Export everything", icon: "download", part: "Sharing", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it."},
-    {id: "activity", title: "Activity", icon: "history", part: "Sharing", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners."},
-    {id: "profile", title: "Profile", icon: "circle-user", part: "Profiles", has: ["profileCard", "newProfile"]},
-  ];
+  const GROUPS = SG_PAGES.sharing.groups;   // groups.js: one list, which the command palette searches too (#273)
   const PROFILE = GROUPS.at(-1);
   const allowed = g => P ? RANK[P.role] >= RANK[g.needs || "viewer"] : g === PROFILE;
   const nav = sideNav({id: "shrNav", page: "Sharing", groups: GROUPS, find: "Find in Sharing", none: q => `Nothing in Sharing matches “${q}”.`,

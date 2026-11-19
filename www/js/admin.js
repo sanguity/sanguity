@@ -28,15 +28,7 @@ $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (
 /* The sidebar every account page has (sidebar.js, #266), its groups under People, Data safety, Connections and Lab
    matching. The address follows the group (admin.html#apps); an address naming a section (admin.html#users,
    #labmaps, #sec-sync, #outside) opens that section's group and scrolls to it. */
-const GROUPS = [
-  {id: "accounts", title: "Accounts", icon: "users", part: "People", has: ["users"]},
-  {id: "activity", title: "Install activity", icon: "history", part: "People", has: ["installLog"]},
-  {id: "backups", title: "Backups", icon: "archive", part: "Data safety", has: ["backups"]},   // #200
-  {id: "apps", title: "Connected-source apps", icon: "plug", part: "Connections", has: ["admin", "sec-sync"]},
-  {id: "directory", title: "Provider directory", icon: "book-user", part: "Connections", has: ["directory"]},
-  {id: "outside", title: "Outside connections", icon: "globe", part: "Connections", has: ["outside"]},
-  {id: "labs", title: "Lab name matches", icon: "test-tube-diagonal", part: "Lab matching", has: ["labmaps"]},
-];
+const GROUPS = SG_PAGES.admin.groups;   // groups.js: one list, which the command palette searches too (#273)
 const AdminNav = sideNav({id: "admNav", page: "Admin", groups: GROUPS, find: "Find in Admin", none: q => `Nothing in Admin matches “${q}”.`});
 
 /* ---------------------------------------------------------------- notices: failed sign-ins, sources that stopped */

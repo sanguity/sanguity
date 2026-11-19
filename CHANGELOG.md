@@ -1109,6 +1109,16 @@ Everything on `main` so far; it becomes the first tagged release.
   are Workouts.
   The old addresses (`sharing.html#about`, `#targets`) open them there, with the profile, and every link to them
   (Body and activity's heart rate zones and BMI, a height typed in, the ranges' note) goes there.
+- **A command palette** (#273): only the Timeline had a search box, and each sidebar's search found things on its
+  own page. **Ctrl+K** (⌘K on a Mac), **/** when you're not typing in a field, or the top bar's new **Search** opens
+  one box on every page that finds actions (what Add offers you, New share link for a profile's owners, light or
+  dark), the records tabs, every page's sidebar groups and the parts worth going to by name ("password" finds
+  Account's Password, "units" Display's Units), lab names (charted on Labs) and events (the Timeline's index, opened
+  in the drawer, or the Timeline searched for them). Off the records page the profile's labs and events are read
+  from the API the first time it opens there. The arrow keys move through what it finds and Enter opens it; a
+  screen reader hears it as a combobox and its list. "/" can be turned off at its foot. The pages' groups are one
+  list now (`groups.js`), which the sidebars and the palette share; the service worker keeps the new scripts
+  (`sanguity-shell-v8`).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

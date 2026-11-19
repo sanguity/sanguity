@@ -81,6 +81,12 @@ function menuPlace(m) {
   const top = h <= below || below >= above ? r.bottom + 6 : r.top - 6 - h;
   placeAt(list, {"--menu-top": top, "--menu-left": left, "--menu-bar": bar ? bar.getBoundingClientRect().bottom + scrollY : 0});
 }
+/* the top bar's Search (#273): opens the command palette (palette.js wires it, and puts the keys that open it too in
+   its tip). An icon, its name said. Hidden with the rest of the bar by lock() */
+function barSearch() {
+  return el("button", {class: "iconbtn bar-search", type: "button", id: "barSearch", "aria-label": "Search", "aria-haspopup": "dialog", "data-tip": "Search"},
+    icon("search"));
+}
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
   if (!header) return {sync() {}, lock() {}, profiles() { return null; }, layout() { return {}; }, fit() {}, menu: menuWire, TABS: []};
@@ -289,7 +295,7 @@ const SgNav = (() => {
   if (inst) inst.before(el("span", {class: "spacer"}));
   else header.append(el("span", {class: "spacer"}));
   // in one box, so where the bar wraps on a phone the two go to the next row together, never your menu alone (#319)
-  const menus = el("div", {class: "bar-menus"}, add.wrap, user.wrap);
+  const menus = el("div", {class: "bar-menus"}, barSearch(), add.wrap, user.wrap);
   header.append(menus);
 
   /* light or dark: this browser's own choice over the account's default (applyTheme in util.js) */
@@ -327,7 +333,7 @@ const SgNav = (() => {
   /* nothing to go to but Log out (a password to change or a second factor to set up first, account.js) */
   function lock() {
     locked = true;
-    add.wrap.hidden = wrap.hidden = tabs.hidden = true;
+    add.wrap.hidden = wrap.hidden = tabs.hidden = $("#barSearch").hidden = true;
     for (const x of items(user)) if (x.id !== "logout" && x.id !== "theme") x.hidden = true;
     for (const s of user.list.querySelectorAll(".menu-sep")) s.hidden = true;
     const b = header.querySelector(".brand-link");

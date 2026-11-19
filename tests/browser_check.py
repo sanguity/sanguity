@@ -9047,6 +9047,135 @@ def main():
             check("…cleared, nothing of them is left drawn or said", cleared == {} and js(no_marks) == 0
                   and not js("WATCH.metrics.some(m => m.key.startsWith('glucose_own_') || m.key === 'glucose_dist')"), cleared)
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
+            # ---- the command palette (#273): Ctrl+K, "/" or the top bar's Search opens one box that finds actions, the
+            # records tabs, every page's groups and their parts (groups.js), labs and events, a combobox over a listbox
+            pal_found = "[...document.querySelectorAll('#palList [role=option]')].map(o => [o.closest('[role=group]').firstChild.textContent, o.querySelector('.pal-t').textContent])"
+            pal_aria = """(() => { const q = document.getElementById('palQ'), l = document.getElementById(q.getAttribute('aria-controls')), a = q.getAttribute('aria-activedescendant');
+                return [document.activeElement === q, q.getAttribute('role'), q.getAttribute('aria-expanded'), l && l.getAttribute('role'), a,
+                  a && document.getElementById(a).getAttribute('aria-selected'), document.querySelectorAll('#palList [aria-selected=true]').length]; })()"""
+            def pal(q, key="Control+k"):   # opened by key (or not, key None: already open) and q typed, as a person would
+                if key:
+                    page.keyboard.press(key)
+                page.wait_for_selector("dialog.palette[open]", timeout=5000)
+                page.fill("#palQ", q)
+                settle(150)
+            was_profile = js("localStorage.getItem('ht-profile')")
+            page.goto(base + "/?profile=1")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            page.focus("#tab-overview")
+            pal("")
+            has_opt = "t => [...document.querySelectorAll('#palList .pal-t')].some(x => x.textContent === t)"
+            page.wait_for_function(f"({has_opt})('New share link') && ({has_opt})('Admin')", timeout=10000)   # once it knows who you are
+            empty = js(pal_found)
+            check("the command palette (#273): Ctrl+K opens it, focus in its box, a combobox over a listbox (the first marked); with nothing typed, "
+                  "the Add menu's actions, New share link and light or dark mode, the records tabs and the other pages",
+                  js(pal_aria) == [True, "combobox", "true", "listbox", "palO0", "true", 1]
+                  and {"Log a dose", "Upload files", "New share link"} <= {t for g, t in empty if g == "Actions"}
+                  and bool({"Dark mode", "Light mode"} & {t for g, t in empty if g == "Actions"})
+                  and [t for g, t in empty if g == "Records tabs"] == ["Overview", "Body and activity", "Timeline", "Labs", "Costs"]
+                  and [t for g, t in empty if g == "Pages"] == ["Sources", "Sharing", "Settings", "Account", "Admin", "Getting started"], [js(pal_aria), empty])
+            page.keyboard.press("Escape")
+            check("…Escape closes it, focus back where it was", not js("document.querySelector('dialog.palette').open") and js("document.activeElement.id") == "tab-overview")
+            pal("hemoglobin", "/")
+            hemo = js(pal_found)
+            page.keyboard.press("Enter")
+            settle(300)
+            check("…“/” opens it too; “hemoglobin” finds the lab first, and Enter charts it on Labs, focus on its chart",
+                  hemo[:1] == [["Labs", "Hemoglobin"]] and js("[state.tab, state.sel.has('Hemoglobin'), document.activeElement.matches('#charts svg.pz'), document.activeElement.getAttribute('aria-label').startsWith('Hemoglobin')]")
+                  == ["labs", True, True, True], [hemo[:3], js("[state.tab, document.activeElement.outerHTML.slice(0, 80)]")])
+            page.click("#barSearch")
+            pal("visit", None)
+            found = js(pal_found)
+            # a visit (not the HTML record "Visit summary", whose frame's refresh is refused: #221)
+            at = js("[...document.querySelectorAll('#palList [role=option]')].findIndex(o => o.querySelector('.pal-c')?.textContent.startsWith(', Visit ·'))")
+            at = None if at < 0 else at
+            for _ in range(at or 0):
+                page.keyboard.press("ArrowDown")
+            moved = js(pal_aria)
+            want = js("document.querySelector('#palList [aria-selected=true] .pal-t').textContent")
+            page.keyboard.press("Enter")
+            page.wait_for_selector("#drawer.open", timeout=5000)
+            settle(300)
+            check("…the top bar's Search opens it; “visit” finds events (the Timeline's index), the arrows move the marked one, and Enter opens it on the Timeline, in the drawer",
+                  at is not None and moved[4:] == [f"palO{at}", "true", 1] and js("[state.tab, document.getElementById('dtitle').textContent]") == ["timeline", want],
+                  [found, moved, js("[state.tab, document.getElementById('dtitle').textContent]")])
+            js("closeDrawer()")
+            pal("visit")
+            page.locator("#palList [role=option]").filter(has_text="Search the Timeline for “visit”").click()
+            settle(300)
+            check("…with more events than it lists, its last line searches the Timeline for them",
+                  js("[state.tab, state.q, document.getElementById('q').value, document.activeElement.id]") == ["timeline", "visit", "visit", "listTitle"],
+                  js("[state.tab, state.q, document.activeElement.id]"))
+            js("clearTimeout(qT); state.q = ''; document.getElementById('q').value = ''; renderAll()")
+            pal_axe, pal_fit = [], {}
+            for scheme in ("light", "dark"):
+                page.emulate_media(color_scheme=scheme)
+                for w in (1400, 375, 320):
+                    page.set_viewport_size({"width": w, "height": 900 if w > 400 else 640})
+                    pal("pass")
+                    page.keyboard.press("ArrowDown")
+                    if w != 320:
+                        pal_axe += axe_check(page, f"command palette, {scheme}, {w} px")[0]
+                    f = js("w => { const d = document.querySelector('dialog.palette').getBoundingClientRect(), l = document.getElementById('palList'); "
+                           "return d.left >= 0 && d.right <= w && d.bottom <= innerHeight && l.scrollWidth <= l.clientWidth && document.documentElement.scrollWidth <= w; }", w)
+                    if not f:
+                        pal_fit[f"{scheme} {w}"] = f
+                    page.keyboard.press("Escape")
+            page.emulate_media(color_scheme="light")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…axe-core finds nothing serious with it open, light and dark, at 1400 and 375 px, and it's whole on the screen at 320 px too", not pal_axe and not pal_fit, (pal_axe + [pal_fit])[:6])
+            pal("password")
+            pw = js(pal_found)
+            page.keyboard.press("Enter")
+            page.wait_for_url("**/account.html#password", timeout=10000)
+            page.wait_for_function("document.querySelector('#acctNav [aria-current=page]')?.dataset.group === 'security'", timeout=10000)
+            check("…“password” finds Account's Password first (Sign-in and security), and Enter opens that group there, at it",
+                  pw[:1] == [["Pages and settings", "Password"]] and js("document.getElementById('password').checkVisibility()"), pw[:3])
+            page.goto(base + "/settings.html?profile=1#dashboard")
+            page.wait_for_selector("#sections > section", state="attached", timeout=10000)
+            settle(300)
+            pal("units")
+            page.keyboard.press("Enter")
+            settle(300)
+            check("…on Settings, “units” shows Display's Units on the same page, focus on its heading",
+                  js("[location.hash, document.querySelector('#setNav [aria-current=page]').dataset.group, document.activeElement.closest('section')?.id, document.activeElement.tagName]")
+                  == ["#sec-units", "display", "sec-units", "H2"], js("[location.hash, document.activeElement.outerHTML.slice(0, 80)]"))
+            pal("hemoglobin")
+            page.wait_for_function("[...document.querySelectorAll('#palList [role=option]')].some(o => o.textContent.startsWith('Hemoglobin'))", timeout=15000)
+            off = js(pal_found)
+            page.keyboard.press("Enter")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && state.tab === 'labs'", timeout=20000)
+            settle(500)
+            check("…off the records page, labs and events come from the API once it opens; a lab chosen there opens on the records page, charted, focus on it",
+                  ["Labs", "Hemoglobin"] in off and js("[location.search, state.sel.has('Hemoglobin'), document.activeElement.matches('#charts svg.pz')]") == ["?profile=1", True, True],
+                  [off[:4], js("[location.href, document.activeElement.outerHTML.slice(0, 80)]")])
+            pal("share")
+            page.wait_for_function(f"({has_opt})('New share link')", timeout=10000)
+            share = js(pal_found)
+            page.keyboard.press("Enter")
+            page.wait_for_url("**/sharing.html?profile=1#links", timeout=10000)
+            page.wait_for_selector("#linksBody .share-form", timeout=10000)
+            settle(300)
+            check("…“share” finds New share link first, and Enter opens Sharing's form for one, focus in it", share[:1] == [["Actions", "New share link"]]
+                  and js("!!document.activeElement.closest('#linksBody .share-form')"), [share[:3], js("document.activeElement.outerHTML.slice(0, 80)")])
+            page.locator("#linksBody .share-form button").filter(has_text="Cancel").click()
+            page.focus("#shrFind")
+            page.keyboard.press("/")
+            typed = [js("document.querySelector('dialog.palette').open"), js("document.getElementById('shrFind').value")]
+            js("const f = document.getElementById('shrFind'); f.value = ''; f.dispatchEvent(new Event('input')); f.blur()")
+            pal("", "/")
+            page.click("#palSlash")
+            page.keyboard.press("Escape")
+            page.keyboard.press("/")
+            settle(150)
+            off_slash = [js("document.querySelector('dialog.palette').open"), js("document.getElementById('barSearch').dataset.tip")]
+            pal("")
+            page.click("#palSlash")
+            page.keyboard.press("Escape")
+            check("…“/” typed in a field is typed; the palette's own switch turns “/” off (WCAG 2.1.4) and on, Ctrl+K still opening it, its tip following",
+                  typed == [False, "/"] and off_slash in ([False, "Search (Ctrl+K)"], [False, "Search (⌘K)"]) and js("document.getElementById('barSearch').dataset.tip").endswith(" or /)"),
+                  [typed, off_slash])
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- the same top bar on every page (#264): the brand, the profile menu (#170: each profile by name and your
             # role, the profile's own pages, New profile), the records tabs as links, Add and your menu. The page follows
             # the profile picked and keeps its section; the address's ?profile= and this browser follow it
@@ -9304,6 +9433,21 @@ def main():
             check("two people in different time zones each see days split at their own midnight",
                   got[USER][:2] == ("2026-03-10", "2026-03-10T07:00:00.000Z") and got[USER2][:2] == ("2026-03-11", "2026-03-10T11:00:00.000Z"), got)
             check("…and dates in their own format", got[USER][2] == "10 Mar 2026" and got[USER2][2] == "2026-03-11", got)
+            # the command palette (#273) offers someone who can only view a profile what they can do: no Add actions, no New
+            # share link, Sharing's groups their role allows, and no Admin for someone who isn't an admin
+            zb.keyboard.press("Control+k")
+            zb.wait_for_selector("dialog.palette[open]", timeout=5000)
+            zb.wait_for_timeout(600)   # (who's signed in, asked as it opens)
+            seen = {}
+            for q in ("", "share", "export", "accounts"):
+                zb.fill("#palQ", q)
+                zb.wait_for_timeout(150)
+                seen[q] = zb.evaluate("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent)")
+            zb.keyboard.press("Escape")
+            check("…the command palette offers a viewer no Add actions or New share link, none of Sharing's groups for owners or editors, and no Admin (#273)",
+                  not any(x.endswith(", Add") or x.startswith("New share link") for x in seen[""] + seen["share"])
+                  and not any(x.startswith(("Share links", "Export everything", "Admin", "Accounts")) for v in seen.values() for x in v)
+                  and any(x.startswith("People, Sharing") for x in seen["share"]), seen)
             # #248: a result's Collected and Resulted, a claim's services and the Costs claims table in that format too,
             # not as the record's ISO text; and the drawer's buttons name the Labs tab by its name
             dmy = r"\d{1,2} [A-Z][a-z]{2} \d{4}"

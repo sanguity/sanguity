@@ -195,5 +195,6 @@ async function syncWarning(pid) {
   booted = true;
   try { performance.mark("sanguity:ready"); } catch (e) {}   // the records page is ready: what docs/performance.md times (#201)
   journalResume();  // Add → Journal entry from another page (journal.js)
+  SgPalette.resume();   // a lab or an event chosen in the command palette on another page (palette.js, #273)
   if (location.hash === "#log-dose") logDose();   // arriving from Add on another page (nav.js)
 })();
