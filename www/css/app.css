@@ -156,6 +156,7 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
 .toggle[aria-pressed="false"] .n,.toggle:has(>input:not(:checked)) .n{color:var(--muted)}
 .toggle>input{position:absolute;inset:0;width:100%;height:100%;margin:0;border-radius:inherit;opacity:0;cursor:pointer}
 .toggle:has(>input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}   /* the chip, when the box inside it has focus */
+.toggle:has(>input[aria-disabled=true]),.toggle>input[aria-disabled=true]{cursor:default}   /* on, and can't be put off: its tip says why (#444) */
 .seg.view-seg{font-size:var(--fs-2)}
 .seg.view-seg>button{min-height:22px;padding:0 var(--sp-2)}   /* 24 px with the group's edge */
 .chips{display:flex;gap:var(--sp-2);flex-wrap:wrap}
@@ -1559,7 +1560,6 @@ details.more code{overflow-wrap:anywhere}
 .fsum-reset:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .series-hd .fsum{margin:0}
 .list-hd + .fsum{margin:var(--sp-1) 0 var(--sp-2)}
-.stats-note{margin:-6px 0 var(--sp-3);font-size:var(--fs-2);color:var(--ink2)}
 @media (max-width:700px){ .fsum-reset{padding:var(--sp-1) var(--sp-2);margin:-6px 0 -6px -6px} }
 @media (forced-colors:active){
   .fsum{border-left-color:CanvasText}

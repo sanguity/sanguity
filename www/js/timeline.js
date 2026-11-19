@@ -153,10 +153,13 @@ let TL_PAGE = 400;   // events drawn at a time (the browser check draws fewer, t
 const isWork = e => e.k === "exercise";
 const tlN = (n, one, many = one + "s") => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 const tlMins = m => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} m` : ""}`).replace(/ /g, "\u00a0");   // kept on one line
-const tlWorkListed = () => state.tlWork || CATS.filter(hasLane).every(c => c.k === "watch" || !state.cats.has(c.k));
+/* Watch the only kind shown: its workouts are what's listed, so List workouts reads on and can't be put off (#444) */
+const tlWatchOnly = () => state.cats.has("watch") && CATS.filter(hasLane).every(c => c.k === "watch" || !state.cats.has(c.k));
+const tlWorkListed = () => state.tlWork || tlWatchOnly();
 /* the events the list holds, in its order */
 const tlListed = (all = EV.filter(visible), listed = tlWorkListed()) => all.filter(e => listed || !isWork(e)).sort((a, b) => state.asc ? a.ts - b.ts : b.ts - a.ts);
 $("#sortSeg").onclick = ev => { const b = ev.target.closest("button[data-sort]"); if (!b) return; state.asc = b.dataset.sort === "asc"; renderList(); save(); };
+$("#tlWork").onclick = ev => { if (ev.target.getAttribute("aria-disabled") === "true") ev.preventDefault(); };   // (focusable still, its tip saying why)
 $("#tlWork").onchange = ev => { state.tlWork = ev.target.checked; renderList(); save(); };
 /* the line over the list: "The last year: 9 lab draws, 22 results, 3 out of range · 97 workouts, not listed" */
 function tlSum(v, listed) {
@@ -174,7 +177,10 @@ function renderList() {
   tlSum(all, listed);
   $("#listTitle").textContent = `Events (${v.length.toLocaleString()})`;
   for (const b of $("#sortSeg").children) b.setAttribute("aria-pressed", (b.dataset.sort === "asc") === state.asc);
-  $("#tlWork").checked = state.tlWork;
+  const wb = $("#tlWork"), only = tlWatchOnly();
+  wb.checked = listed;
+  if (only) { wb.setAttribute("aria-disabled", "true"); wb.dataset.tip = "Watch is the only kind shown, so its workouts are listed"; }
+  else { wb.removeAttribute("aria-disabled"); delete wb.dataset.tip; }
   const list = $("#list");
   if (!v.length) {   // #199: what would be here, and the one way back to it
     const w = all.filter(isWork).length, head = () => { const h = $("#listTitle"); h.tabIndex = -1; h.focus(); };   // the button goes with the empty list
