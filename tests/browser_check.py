@@ -6853,8 +6853,10 @@ def main():
             open_tab("overview")
             settle(300)
             ov279 = js("""(() => { const out = []; let g = null;
-              for (const x of document.querySelectorAll('#view-overview > .tiles > .sect, #view-overview > .tiles .tile:not(.home-tile)'))
-                if (x.matches('.sect')) g = x.textContent; else { const s = x.querySelector('.lbl > span:first-child'); out.push([s.dataset.tip || s.textContent, g]); }
+              // the key labs run from the flags (#ovOut) to the range note: an h3.ov-panel per panel, then its tiles (#274)
+              for (let x = document.getElementById('ovOut')?.nextElementSibling; x && !x.matches('.range-note'); x = x.nextElementSibling)
+                if (x.matches('.ov-panel')) g = x.textContent;
+                else for (const t of x.querySelectorAll('.tile')) { const s = t.querySelector('.lbl > span:first-child'); out.push([s.dataset.tip || s.textContent, g]); }
               return out; })()""")
             check("…the Overview's key-lab tiles under the same panels, in the order chosen within each",
                   ov279 and all(want279.get(n) == g for n, g in ov279)
