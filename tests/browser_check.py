@@ -913,6 +913,66 @@ def legend_marks_apart(page, sel):
     return apart
 
 
+# what icon each place shows on the page, as [place, icon, where] (#399): the top bar and its menus, a phone's tab
+# bar, the sidebar, and with palette true the command palette, opened and searched for every page, group and part by
+# name. A place is a records tab ("labs"), the bar's own ("add", "dose"), a page ("sources") or a group or part of one
+# ("sources/upload"), as groups.js's sgIcon() names them; a link's place is where it goes
+ICON_PLACES_JS = r"""async palette => {
+  const out = [], page = location.pathname.split('/').pop() || 'index.html', stem = f => f.replace(/\.html$/, '');
+  const ico = e => [...(e?.querySelectorAll('svg.icon') || [])].map(s => [...s.classList].find(c => c.startsWith('i-'))?.slice(2)).find(Boolean) || null;
+  const ID = {doseLink: 'dose', journalBtn: 'journal', theme: 'theme', logout: 'logout', editTabs: 'settings/sec-tabs', editTabsLink: 'settings/sec-tabs',
+    newProfileLink: 'sharing/newProfile', barSearch: 'search', addMenuBtn: 'add', userMenuBtn: 'you', tabMoreBtn: 'more'};
+  const place = (file, hash) => {
+    if (file === 'guide.html') return 'guide';
+    const P = Object.values(SG_PAGES).find(x => x.page === file);
+    if (!P) return file + (hash ? '#' + hash : '');
+    if (!hash) return stem(file);
+    if (SG_ICON[stem(file) + '/' + hash]) return stem(file) + '/' + hash;
+    const g = P.groups.find(x => x.id === hash) || P.groups.find(x => x.has.includes(hash) || (x.finds || []).some(f => f[1] === hash));
+    return g ? stem(file) + '/' + g.id : stem(file) + '#' + hash;
+  };
+  const keyOf = x => {
+    if (ID[x.id]) return ID[x.id];
+    if (x.id && x.id.startsWith('tab-')) return x.id.slice(4);
+    const h = x.getAttribute('href');
+    if (h == null) return null;
+    const u = new URL(h, location.href);
+    return place(u.pathname.split('/').pop() || 'index.html', decodeURIComponent(u.hash.slice(1)));
+  };
+  for (const id of ['profileMenuList', 'addMenuList', 'userMenuList', 'tabMoreList'])
+    for (const x of document.querySelectorAll(`#${id} [role^=menuitem]:not([data-pid])`)) out.push([keyOf(x), ico(x), id]);
+  for (const id of ['barSearch', 'addMenuBtn', 'userMenuBtn', 'tabMoreBtn']) { const b = document.getElementById(id); if (b && ico(b)) out.push([ID[id], ico(b), 'bar']); }
+  for (const a of document.querySelectorAll('header .tabs > a[id^=tab-]')) out.push([a.id.slice(4), ico(a), 'tab bar']);
+  for (const a of document.querySelectorAll('.set-nav-list a[data-group]')) out.push([stem(page) + '/' + a.dataset.group, ico(a), 'sidebar']);
+  if (!palette) return out;
+  SgPalette.open();
+  await new Promise(r => setTimeout(r, 1500));   // who you are (Admin's pages, a profile's role)
+  const q = document.getElementById('palQ'), titled = new Map();
+  for (const [k, P] of Object.entries(SG_PAGES)) {
+    titled.set('Page|' + P.title, k);
+    for (const g of P.groups) {
+      titled.set(P.title + '|' + g.title, k + '/' + g.id);
+      for (const [t, id] of g.finds || []) titled.set(`${P.title} › ${g.title}|${t}`, SG_ICON[k + '/' + id] ? k + '/' + id : k + '/' + g.id);
+    }
+  }
+  titled.set('Page|Getting started', 'guide');
+  titled.set('Sharing|New share link', 'sharing/links');
+  const addKey = new Map([...document.querySelectorAll('#addMenuList [role^=menuitem]')].map(x => [x.textContent.trim(), keyOf(x)]));
+  const tabKey = new Map([...document.querySelectorAll('a[id^=tab-]')].map(a => [a.textContent.trim(), a.id.slice(4)]));
+  for (const typed of ['', ...new Set([...titled.keys()].map(k => k.split('|')[1]))]) {
+    q.value = typed;
+    q.dispatchEvent(new Event('input'));
+    for (const o of document.querySelectorAll('#palList [role=option]')) {
+      const t = o.querySelector('.pal-t').textContent, c = (o.querySelector('.pal-c')?.textContent || '').replace(/^, /, '');
+      const k = c === 'Add' ? addKey.get(t) : c === 'Records tab' ? tabKey.get(t) : c === 'Your menu' ? 'theme' : titled.get(c + '|' + t);
+      if (k) out.push([k, ico(o), 'palette']);
+    }
+  }
+  document.querySelector('dialog.palette').close();
+  return out;
+}"""
+
+
 def icon_audit(page, label):
     """(how many icons are shown, what's wrong with them) on the page as it is (#257)"""
     a = page.evaluate(ICON_AUDIT, [ICON_GLYPHS, TEXT_MARKS])
@@ -9978,6 +10038,28 @@ def main():
             check("a 40-character profile name (#396): its button inside its slot with its caret, Search, Add and your menu tapped at their centres, "
                   "whole at 1400 px, and where it's cut its whole name its button's name and tip, at 320, 375, 390 and 1400 px", not name_fit, name_fit)
             page.set_viewport_size({"width": 1400, "height": 900})
+            # #399: one icon per place, wherever it's shown, and no icon for two places: the top bar, its menus and a
+            # phone's tab bar on the records page and every page with a sidebar, those sidebars, and the command palette's
+            # pages, groups, parts, tabs and actions, at 1400 and 375 px
+            places = []
+            for w in (1400, 375):
+                page.set_viewport_size({"width": w, "height": 900 if w > 400 else 800})
+                for path in ("?profile=1#overview", "sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+                    page.goto(base + "/" + path)
+                    page.wait_for_function(filled, timeout=20000)
+                    settle(800)   # (the sidebar's groups, once the page knows what it holds)
+                    places += js(ICON_PLACES_JS, w == 1400 and path.startswith("?"))
+            by_place, by_icon = {}, {}
+            for k, i, where in places:
+                by_place.setdefault(k, {}).setdefault(i, set()).add(where)
+                by_icon.setdefault(i, set()).add(k)
+            two = {k: {i: sorted(w) for i, w in v.items()} for k, v in by_place.items() if len(v) > 1 or None in v}
+            shared = {i: sorted(k) for i, k in by_icon.items() if len(k) > 1}
+            seen = {w for _, _, w in places}
+            check("one icon per place (#399): each of the top bar's, its menus', a phone's tab bar's, the sidebars' and the palette's places has one icon "
+                  "wherever it's shown, and no icon is two places'", not two and not shared and len(by_place) >= 45
+                  and seen >= {"palette", "sidebar", "tab bar", "bar", "addMenuList", "profileMenuList", "userMenuList"}, [two, shared, len(by_place), sorted(seen)])
+            page.set_viewport_size({"width": 1400, "height": 900})
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- milestones (#39) and visits counted as workouts (#43) on the Settings page: a milestone added (primary)
             # shows as a marker on Trends and a "since" period on Health; a rule (a bad regular expression refused
@@ -11552,6 +11634,7 @@ def main():
                 if not js("!!document.querySelector('#userMenuList:popover-open')"):
                     page.click("#userMenuBtn")
                 page.click("#theme")
+                page.wait_for_selector("#userMenuList:not(:popover-open)", state="attached", timeout=5000)   # (closed once picked, a task later)
                 theme_item.append(js(item))
             if js("!!document.querySelector('#userMenuList:popover-open')"):
                 page.keyboard.press("Escape")

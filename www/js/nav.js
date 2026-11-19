@@ -1,4 +1,4 @@
-/* Sanguity · the top bar on every signed-in page (after util.js and pwa.js, before the page's own script).
+/* Sanguity · the top bar on every signed-in page (after util.js, pwa.js and groups.js, before the page's own script).
 
    One row, the same on every page (#264): the brand (back to the records), the profile menu (switch profile; About
    this person, Settings, Sources, Sharing; New profile), the records tabs as links (those that don't fit under More,
@@ -84,7 +84,7 @@ function menuPlace(m) {
    its tip). An icon, its name said. Hidden with the rest of the bar by lock() */
 function barSearch() {
   return el("button", {class: "iconbtn bar-search", type: "button", id: "barSearch", "aria-label": "Search", "aria-haspopup": "dialog", "data-tip": "Search"},
-    icon("search"));
+    icon(sgIcon("search")));
 }
 /* ---- phones (#268, #269): at 700 px or narrower the top bar's menus, the records bar's period and the Timeline's
    filters open as sheets from the foot of the screen (openDialog's, util.js: #262), in reach of a thumb, the screen's
@@ -160,16 +160,16 @@ const SgNav = (() => {
   const caret = () => el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down"));
   function menu(id, label, ico, entries) {
     const btn = el("button", {class: "iconbtn menu-btn", type: "button", id: id + "Btn", "aria-haspopup": "menu", "aria-expanded": "false",
-      "aria-controls": id + "List"}, ico ? el("span", {class: "menu-ico", "aria-hidden": "true"}, icon(ico)) : null, label ? el("span", {class: "menu-word", text: label}) : null);
+      "aria-controls": id + "List"}, ico ? el("span", {class: "menu-ico", "aria-hidden": "true"}, icon(sgIcon(ico))) : null, label ? el("span", {class: "menu-word", text: label}) : null);
     const list = el("div", {class: "menu-list", id: id + "List", role: "menu", "aria-labelledby": id + "Btn"}, ...entries);
     for (const x of list.querySelectorAll("[role^=menuitem]")) x.tabIndex = -1;
     return menuWire({btn, list, wrap: el("div", {class: "menu", id}, btn, list)});
   }
   /* each item with its icon before its words (#354), hidden from assistive technology; a link to the page you're on
-     says so (aria-current) */
+     says so (aria-current). ico: the place's key in groups.js's one list of icons (sgIcon, #399) */
   const link = (href, ico, text, attrs = {}) => el("a", {class: "menu-item acct", role: "menuitem", href,
-    "aria-current": href.split("?")[0] === page ? "page" : null, ...attrs}, icon(ico), text);
-  const action = (id, ico, text, attrs = {}) => el("button", {class: "menu-item", role: "menuitem", type: "button", id, ...attrs}, icon(ico), text);
+    "aria-current": href.split("?")[0] === page ? "page" : null, ...attrs}, icon(sgIcon(ico)), text);
+  const action = (id, ico, text, attrs = {}) => el("button", {class: "menu-item", role: "menuitem", type: "button", id, ...attrs}, icon(sgIcon(ico)), text);
   const sep = () => el("div", {class: "menu-sep", role: "separator"});
   const head = text => el("div", {class: "menu-head", "aria-hidden": "true", text});
   const group = (label, ...kids) => el("div", {role: "group", "aria-label": label}, head(label), ...kids);
@@ -189,12 +189,12 @@ const SgNav = (() => {
   const prof = menu("profileMenu", "", "", []);
   prof.btn.classList.add("profile-btn");
   const radios = el("div", {role: "group", "aria-label": "Switch profile"}), rSep = sep();
-  const pLinks = [link("settings.html#about", "book-user", "About this person", {id: "aboutLink"}),   // in Settings now (#267)
+  const pLinks = [link("settings.html#about", "settings/about", "About this person", {id: "aboutLink"}),   // in Settings now (#267)
     link("settings.html", "settings", "Settings", {id: "settingsLink"}),
-    link("settings.html#sec-tabs", "pencil", "Edit tabs…", {id: "editTabsLink"}),   // always in reach, whether or not More shows (#398)
-    link("sources.html", "database", "Sources", {id: "sourcesLink"}),
-    link("sharing.html", "share-2", "Sharing", {id: "sharingLink"})];
-  prof.list.append(radios, rSep, ...pLinks, sep(), link("guide.html?new", "plus", "New profile", {id: "newProfileLink"}));
+    link("settings.html#sec-tabs", "settings/sec-tabs", "Edit tabs…", {id: "editTabsLink"}),   // always in reach, whether or not More shows (#398)
+    link("sources.html", "sources", "Sources", {id: "sourcesLink"}),
+    link("sharing.html", "sharing", "Sharing", {id: "sharingLink"})];
+  prof.list.append(radios, rSep, ...pLinks, sep(), link("guide.html?new", "sharing/newProfile", "New profile", {id: "newProfileLink"}));
   for (const x of items(prof)) x.tabIndex = -1;
   const wrap = el("div", {class: "profile-pick", id: "profilePick", hidden: ""}, prof.wrap, pick);
   svgLogo.after(wrap);
@@ -280,7 +280,7 @@ const SgNav = (() => {
   const TABS = [["overview", "Overview"], ["health", "Body and activity"], ["timeline", "Timeline"], ["labs", "Labs"], ["costs", "Costs"]];
   const tabEl = Object.fromEntries(TABS.map(([t, text]) => [t, el("a", {id: "tab-" + t, href: (onRecords ? "#" : "./#") + t, text,
     "data-tip": t === "health" ? "Watch, sleep and smart-scale data" : null})]));
-  const editTabs = el("a", {class: "menu-item acct", role: "menuitem", id: "editTabs", href: "settings.html#sec-tabs"}, icon("pencil"), "Edit tabs…");
+  const editTabs = el("a", {class: "menu-item acct", role: "menuitem", id: "editTabs", href: "settings.html#sec-tabs"}, icon(sgIcon("settings/sec-tabs")), "Edit tabs…");
   const more = menu("tabMore", "More", "", [sep(), editTabs]);
   more.btn.className = "tab-more";
   more.btn.append(caret());
@@ -347,27 +347,27 @@ const SgNav = (() => {
      section of the Sources page (#166). On the Sources page itself only the address's #section changes: the page
      isn't loaded again, so the profile in its address (?profile=2) and what's typed in are kept (#388) */
   const src = page === "sources.html" ? "" : "sources.html", rec = onRecords ? "" : "./";
-  const add = menu("addMenu", "Add", "plus", [
+  const add = menu("addMenu", "Add", "add", [
     group("Today",
-      link(rec + "#log-dose", "pill", "Log a dose", {id: "doseLink", "data-needs": "import"}),
-      onRecords ? action("journalBtn", "notebook", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "notebook", "Journal entry", {id: "journalBtn"}),
-      link(src + "#home-reading", "activity", "Home reading", {"data-needs": "import"})),
+      link(rec + "#log-dose", "dose", "Log a dose", {id: "doseLink", "data-needs": "import"}),
+      onRecords ? action("journalBtn", "journal", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "journal", "Journal entry", {id: "journalBtn"}),
+      link(src + "#home-reading", "reading", "Home reading", {"data-needs": "import"})),
     group("Records",
-      link(src + "#upload", "upload", "Upload files", {id: "importLink", "data-needs": "import"}),
-      link(src + "#portals", "plug", "Connect a portal or plan", {"data-needs": "import"}),
-      link(src + "#manual", "keyboard", "Type records in", {"data-needs": "import"}),
-      link(src + "#link", "link", "Paste a Health Link", {"data-needs": "import"})),
+      link(src + "#upload", "sources/upload", "Upload files", {id: "importLink", "data-needs": "import"}),
+      link(src + "#portals", "sources/portals", "Connect a portal or plan", {"data-needs": "import"}),
+      link(src + "#manual", "sources/manual", "Type records in", {"data-needs": "import"}),
+      link(src + "#link", "sources/link", "Paste a Health Link", {"data-needs": "import"})),
   ]);
   /* the person's own menu (#264): what's theirs whichever profile is shown */
   const who = el("span", {id: "who", text: "Account"});
   const user = menu("userMenu", "", "", [
-    link("account.html", "circle-user", "Account", {id: "accountLink"}),
-    link("settings.html#display", "settings", "Display", {id: "displayLink"}),
-    link("admin.html", "wrench", "Admin", {id: "adminLink", hidden: ""}),
-    link("guide.html", "compass", "Getting started", {id: "guideLink"}),   // the first-run guide, any time (#199)
-    action("theme", "sun-moon", "Dark mode"),
+    link("account.html", "account", "Account", {id: "accountLink"}),
+    link("settings.html#display", "settings/display", "Display", {id: "displayLink"}),
+    link("admin.html", "admin", "Admin", {id: "adminLink", hidden: ""}),
+    link("guide.html", "guide", "Getting started", {id: "guideLink"}),   // the first-run guide, any time (#199)
+    action("theme", "theme", "Dark mode"),
     sep(),
-    action("logout", "log-out", "Log out"),
+    action("logout", "logout", "Log out"),
   ]);
   // its name starts with what it shows, "demo, your menu" (#400: speech input says what it sees, WCAG 2.5.3)
   user.btn.replaceChildren(who, el("span", {class: "vh", text: ", your menu"}), caret());
@@ -514,15 +514,14 @@ const SgNav = (() => {
     return vis;
   }
   function phoneBar() {
-    const TAB_ICON = {overview: "layout-grid", health: "heart-pulse", timeline: "chart-gantt", labs: "test-tube-diagonal", costs: "banknote", meds: "pill"};
     const SHORT = {health: "Body", meds: "Meds"};
     for (const [t] of TABS) {
       const a = tabEl[t];
-      a.replaceChildren(icon(TAB_ICON[t] || "file-text"), el("span", {class: "tab-long", text: a.textContent}));
+      a.replaceChildren(icon(sgIcon(t)), el("span", {class: "tab-long", text: a.textContent}));
       if (SHORT[t]) a.dataset.short = SHORT[t];
     }
-    more.btn.prepend(el("span", {class: "menu-ico", "aria-hidden": "true"}, icon("ellipsis")));
-    user.btn.prepend(el("span", {class: "menu-ico", "aria-hidden": "true"}, icon("circle-user")));
+    more.btn.prepend(el("span", {class: "menu-ico", "aria-hidden": "true"}, icon(sgIcon("more"))));
+    user.btn.prepend(el("span", {class: "menu-ico", "aria-hidden": "true"}, icon(sgIcon("you"))));
     const brand = header.querySelector(".brand-link") || svgLogo, word = brand && [...brand.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
     if (word) word.replaceWith(el("span", {class: "brand-word", text: word.textContent}));
     menuSheet(prof, "Profile");
