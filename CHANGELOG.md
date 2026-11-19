@@ -1155,6 +1155,11 @@ Everything on `main` so far; it becomes the first tagged release.
   their places. Offline, pages and settings and what opens them aren't listed, as the menus don't follow them, and
   it says so. Opened from a menu, Escape puts focus back on the menu's button. A sidebar's search that finds nothing
   offers **Search everywhere for “…”**, the palette with the words; Settings' box is "Find in Settings", as the others are.
+- **A preference on its way to the server isn't "not saved"** (#407): while a unit, the theme or a tick was being
+  saved, the bar showed "1 change · Discard · Save", the setting "not saved" and the sidebar its dot, and leaving
+  asked; Discard then showed the old value though the new one was saved. Now one on its way counts nowhere, and the
+  bar's Discard of other changes leaves it as picked; only one the server refuses waits in the bar, saying why
+  (Settings and Admin's sync defaults).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

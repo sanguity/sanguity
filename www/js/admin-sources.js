@@ -202,7 +202,8 @@ $("#srcForm").onsubmit = async ev => {
 /* The install's own settings (server/settings.py, scope "install"), from GET settings/install, saved as Settings'
    are (#272): on or off and the kinds ticked as they're changed, a toast saying so with an Undo; the numbers kept as
    typed, marked "not saved" and counted in the card's data-dirty, until the group's bar (sidebar.js, admin.js) saves
-   them (syncSave) or puts them back (syncDiscard). "set for this server" and Reset to defaults show only when one
+   them (syncSave) or puts them back (syncDiscard). One saved as it's changed isn't counted while it's on its way,
+   only once the server refuses it (held, #407). "set for this server" and Reset to defaults show only when one
    isn't Sanguity's own default, and a Reset has an Undo too. A connection can change its own on the Connected
    sources page. */
 /* a whole number, on or off, some of a few choices (the install's sync.* settings, #101); each control has an id, for
@@ -225,7 +226,7 @@ const SYNC_EDITORS = {number: numberEditor, toggle: toggleEditor, choices: choic
 const SYNC_NOW = new Set(["toggle", "choices"]);   // saved as they're changed
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const syncList = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.length - 1 ? " and " : ", ") + `“${l}”`).join("");
-let SYNC = [];   // the settings drawn: {st, dirty(), get(), put(value)}
+let SYNC = [];   // the settings drawn: {st, dirty(), counts(), held, get(), put(value)}
 
 async function loadSync(note) {
   const box = $("#sec-sync");
@@ -239,17 +240,19 @@ async function loadSync(note) {
 /* drawn again from the server's answer; keep: the settings changed and not saved, kept as typed */
 function drawSync(sec, note, keep = []) {
   const card = $("#sec-sync"), msg = el("span", {class: "msg set-msg"}), back = card.contains(document.activeElement) ? document.activeElement.id : null;
-  const count = () => { const n = SYNC.filter(e => e.dirty()).length; if (n) card.setAttribute("data-dirty", n); else card.removeAttribute("data-dirty"); };
+  const count = () => { const n = SYNC.filter(e => e.counts()).length; if (n) card.setAttribute("data-dirty", n); else card.removeAttribute("data-dirty"); };
   const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", hidden: sec.settings.every(st => same(st.value, st.default)) || null, onclick: () => syncReset(sec)});
   SYNC = sec.settings.map(st => {
-    const node = el("div", {class: "set", "data-key": st.key}), e = {st};
+    const node = el("div", {class: "set", "data-key": st.key}), was = keep.find(k => k.st.key === st.key), e = {st, held: !!was?.held, queue: was?.queue};
+    const mark = () => { node.classList.toggle("set-changed", e.counts()); count(); };
     const make = v => (SYNC_EDITORS[st.kind] || numberEditor)(v, () => {
-      node.classList.toggle("set-changed", e.dirty()); count();
+      e.held = false; mark();
       if (SYNC_NOW.has(st.kind) && e.dirty()) syncNow(e);
     }, false, st);
-    let ed = make(keep.find(k => k.st.key === st.key)?.get() ?? st.value);
-    Object.assign(e, {node, dirty: () => !same(ed.get(), st.value), get: () => ed.get(), put: v => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); }});
-    node.classList.toggle("set-changed", e.dirty());
+    let ed = make(was ? was.get() : st.value);
+    Object.assign(e, {node, mark, dirty: () => !same(ed.get(), st.value), counts: () => e.dirty() && (!SYNC_NOW.has(st.kind) || e.held),
+      get: () => ed.get(), put: v => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); }});
+    node.classList.toggle("set-changed", e.counts());
     node.append(...present(el("h3", {class: "sub"}, st.label, same(st.value, st.default) ? null : el("span", {class: "tag", text: "set for this server"}),
       el("span", {class: "tag set-unsaved", text: "not saved"})), st.help ? el("p", {class: "hint", text: st.help}) : null, ed.node));
     return e;
@@ -283,7 +286,10 @@ function syncNow(e) {
     const value = e.get(), was = [{key: e.st.key, label: e.st.label, value: e.st.value, wrote: value}];
     let d;
     try { d = await call(`settings/install/${encodeURIComponent(e.st.key)}`, "PUT", {value}); }
-    catch (err) { sayIn($("#sec-sync .set-msg"), `“${e.st.label}” isn't saved: ${err.message}`, true); return; }
+    catch (err) {
+      const now = SYNC.find(x => x.st.key === e.st.key && x.dirty()) || e;   // (drawn again meanwhile: that one)
+      sayIn($("#sec-sync .set-msg"), `“${e.st.label}” isn't saved: ${err.message}`, true); now.held = true; now.mark(); return;
+    }
     const said = `Saved “${e.st.label}”.`;
     drawSync(syncSec(d), said, SYNC.filter(x => x !== e && x.dirty()));
     toast(said, {action: "Undo", onAction: () => syncUndo(was)});
@@ -291,7 +297,7 @@ function syncNow(e) {
 }
 /* the bar's Save: each number changed, in turn; the first refusal stops it and says why */
 async function syncSave(msg, had) {
-  const todo = SYNC.filter(e => e.dirty()), done = [], was = [];
+  const todo = SYNC.filter(e => e.counts()), done = [], was = [];
   let last = null;
   for (const e of todo) {
     const value = e.get();
@@ -309,7 +315,7 @@ async function syncSave(msg, had) {
   toast(said, {action: "Undo", onAction: () => syncUndo(was)});
 }
 function syncDiscard() {
-  for (const e of SYNC) if (e.dirty()) { e.put(e.st.value); e.node.classList.remove("set-changed"); }
+  for (const e of SYNC) if (e.counts()) { e.put(e.st.value); e.node.classList.remove("set-changed"); }   // (one on its way stays, #407)
   $("#sec-sync").removeAttribute("data-dirty");
   sayIn($("#sec-sync .set-msg"), "Changes discarded: back as saved.");
   $("#sec-sync-hd").focus();
