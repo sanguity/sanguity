@@ -1224,6 +1224,16 @@ Everything on `main` so far; it becomes the first tagged release.
   (`groups.js`, `sgIcon()`), and no icon is two places': Display is a screen, Account a key, Workouts a dumbbell, a
   home reading a gauge, New profile a person with a plus, and the groups that shared an icon have their own (16 icons
   added to the sprite).
+- **Add follows your role on the profile shown** (#401): Add (and the command palette's actions, which copy it)
+  offered every way to add to someone who could only view the profile, on every page but the records page, and there
+  to anyone who could add to some other profile; Upload files then said twice that they could only view, and Log a
+  dose that there was no current medication when there were. Now its items are for the owners and editors of the
+  profile shown, on every page and as you switch profile, and none at all leaves Add out. Log a dose is offered on
+  the records page only with a current medication, and from another page says why when there's none to log or the
+  profile is one you view. On a profile with no records yet, Log a dose and Journal entry from another page did
+  nothing; the first says why and the second opens its form, the entry kept for when the records arrive. Sources
+  lists only its Overview and Import history to someone who can only view the profile (as Sharing leaves out its
+  owners' groups), and an address naming another, the old import page's, opens the Overview.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

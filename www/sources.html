@@ -51,14 +51,8 @@
     <div id="srcList"></div>
   </section>
 
-  <!-- for a profile you can only view: in place of the parts that add records -->
-  <section class="card" id="viewOnly" hidden>
-    <p>You can view this profile, so you see what reaches it and its import history. Its owners and editors add records
-      to it, connect its portals and health plans, and set up its phone.</p>
-  </section>
-
   <!-- Upload files (import.js) -->
-  <section class="card src-edit" id="importer" hidden>
+  <section class="card" id="importer" hidden>
     <h2>Upload files</h2>
     <p class="hint">The export you downloaded from a patient portal or app: a zip, a folder, or single files.</p>
     <details class="more"><summary>More about this</summary>
@@ -102,7 +96,7 @@
   </section>
 
   <!-- Type records in (import-manual.js, import-records.js) -->
-  <section class="card src-edit" id="typeIn" hidden>
+  <section class="card" id="typeIn" hidden>
     <h2>Type records in</h2>
     <div id="panel-manual">
       <p class="hint">For records on paper, or from a portal with no export: lab results, visits, medications, claims and more.</p>
@@ -135,7 +129,7 @@
   </section>
 
   <!-- Paste a Health Link (import-shl.js) -->
-  <section class="card src-edit" id="healthLink" hidden>
+  <section class="card" id="healthLink" hidden>
     <h2>Paste a Health Link</h2>
     <div id="panel-link">
       <p class="hint">Paste a SMART Health Link or Health Card from a provider, insurer or app, or scan its QR code.
@@ -202,9 +196,9 @@
   </section>
 
   <!-- Phone and watch (sources-watch.js) -->
-  <section class="card src-edit" id="watch" hidden></section>
+  <section class="card" id="watch" hidden></section>
   <!-- Cycle tracking, opt-in (#183, sources-cycle.js): owners and editors only; off until an owner turns it on -->
-  <section class="card src-edit" id="cycle" hidden></section>
+  <section class="card" id="cycle" hidden></section>
 
   <!-- an import being read or previewed, from any section (import-jobs.js); Import history comes after it
        (import-history.js) -->
