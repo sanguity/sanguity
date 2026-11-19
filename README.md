@@ -75,8 +75,8 @@ on the **Settings** page, appear on every chart and as "since" periods.
   doses come in through Health Auto Export; it records what you say happened and never says a dose was due.
 
 **Finding your way.** The same bar across the top of every page: the **profile menu** (the profile shown, by name and
-your role; switch profile; its About this person, Settings, Sources and Sharing; New profile), your records' tabs,
-**Add** (today: log a dose, a journal entry, a home
+your role; switch profile; its About this person, Settings, Sources and Sharing; New profile), your records' tabs
+(those that don't fit under **More**, which ends with Edit tabs…), **Add** (today: log a dose, a journal entry, a home
 reading; records: upload files, connect a portal or plan, type records in, paste a Health Link) and your menu (account,
 display, getting started, light or dark, log out). The tab shown is in the address (`#timeline`, `#labs`, `#labs-heatmap`...), so Back moves between tabs and a
 copied link opens the same one. **Settings** is grouped in a sidebar (this profile's dashboard, labs and ranges, milestones; your display),

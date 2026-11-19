@@ -1077,6 +1077,9 @@ Everything on `main` so far; it becomes the first tagged release.
   which opens the Overview's "Today's medication doses"; Journal entry; Home reading, a blood pressure's form under
   Type records in) and Records (Upload, Connect, Type in, Health Link). Tab and Enter go from tab to tab instead of
   the arrow keys, and a tab picked opens as a View Transition, at once when less motion is asked for.
+- **Tabs that don't fit go under More** (#265): as many tabs as fit, in the profile's order, the rest under **More**,
+  which ends with **Edit tabs…** (Settings → Tabs). The tab shown always stays in the bar, taking the last place.
+  All five fit at 1,100 px and wider; on a phone the tabs still scroll sideways.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

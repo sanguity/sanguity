@@ -1271,7 +1271,7 @@ SWAP_BOXES_JS = """() => Object.fromEntries([...document.querySelectorAll('main 
 CONTROL_SIZES_JS = r"""phone => { const ok = phone ? [44] : [24, 32, 40], out = [];
   const targetOf = e => { const r = e.getBoundingClientRect(), a = getComputedStyle(e, '::after');   // a see-through ::after out past its edges is its target too (the ✎, #373)
     const o = a.content !== 'none' && a.position === 'absolute' ? Math.max(0, -parseFloat(a.top) || 0) : 0; return [r.width + 2 * o, r.height + 2 * o]; };
-  for (const e of document.querySelectorAll('.btn, .iconbtn, .tabs > a, .period-more-btn, .seg, .toggle, .chip')) {
+  for (const e of document.querySelectorAll('.btn, .iconbtn, .tabs > a, .tab-more, .period-more-btn, .seg, .toggle, .chip')) {
     const h = Math.round(targetOf(e)[1] * 10) / 10;
     if (!h || !e.checkVisibility() || ok.some(v => Math.abs(h - v) < .5)) continue;
     const r = document.createRange(); r.selectNodeContents(e);
@@ -8050,6 +8050,42 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             js("switchTab('overview')")
+            # ---- #265: the tabs that don't fit go under More, in the profile's order, More ending with Edit tabs…; the tab
+            # shown stays in sight, taking the last place there is; at 1400 and 1100 px all five fit
+            fit_js = """() => { const bar = document.querySelector('header .tabs'), more = document.getElementById('tabMore');
+                return {bar: [...bar.querySelectorAll(':scope > a')].filter(a => a.checkVisibility()).map(a => a.id.slice(4)),
+                  more: more.checkVisibility() ? [...document.querySelectorAll('#tabMoreList [role=menuitem]')].map(a => a.id.replace('tab-', '')) : null,
+                  current: document.querySelector('.tabs [aria-current=page]').id.slice(4), fits: bar.scrollWidth <= bar.clientWidth && bar.getBoundingClientRect().right <= innerWidth}; }"""
+            fitted, five = {}, ["overview", "health", "timeline", "labs", "costs"]
+            for w in (1400, 1100, 900):
+                page.set_viewport_size({"width": w, "height": 900})
+                for t in ("overview", "costs", "timeline"):
+                    js(f"switchTab('{t}')")
+                    settle(150)
+                    f = js(fit_js)
+                    every = f["bar"] + [x for x in (f["more"] or []) if x != "editTabs"]
+                    ok = f["fits"] and f["current"] == t and t in f["bar"] and sorted(every) == sorted(five) and [x for x in every if x != t] == [x for x in five if x != t] and (
+                        f["more"] is None and f["bar"] == five if w > 1000 else bool(f["more"]) and f["more"][-1] == "editTabs" and len(f["bar"]) < 5)
+                    if not ok:
+                        fitted[f"{w} px, {t}"] = f
+            check("tabs (#265): at 1400 and 1100 px all five in the bar; at 900 px those that don't fit under More, in order, ending with Edit tabs…, the tab shown always in the bar",
+                  not fitted, fitted)
+            js("switchTab('costs')")
+            settle(150)
+            page.focus("#tabMoreBtn")
+            page.keyboard.press("Enter")
+            first = js("document.activeElement.id")
+            page.keyboard.press("End")
+            last = [js("document.activeElement.id"), js("document.getElementById('editTabs').getAttribute('href')")]
+            page.keyboard.press("Home")
+            page.keyboard.press("Enter")
+            page.wait_for_function("state.tab === 'health'", timeout=5000)
+            settle(150)
+            check("…More by keyboard: Enter opens it on its first tab, End reaches Edit tabs… (Settings → Tabs, for this profile), and Enter on a tab opens it, "
+                  "put in the bar with focus on it", first == "tab-health" and last == ["editTabs", "settings.html?profile=1#sec-tabs"]
+                  and js("[document.activeElement.id, document.getElementById('tab-health').parentElement.matches('nav.tabs'), document.getElementById('tabMoreList').matches(':popover-open')]")
+                  == ["tab-health", True, False], [first, last, js("document.activeElement.id")])
+            page.set_viewport_size({"width": 1400, "height": 900})
             # #264: a tab picked changes the page as a View Transition, but not when less motion is asked for
             js("window.__vt = 0; const o = document.startViewTransition.bind(document); document.startViewTransition = f => { window.__vt++; return o(f); }; null")
             tab_click(page, "#tab-labs")
