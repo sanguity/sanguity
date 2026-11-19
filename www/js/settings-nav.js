@@ -15,15 +15,7 @@
 (() => {
   const main = document.querySelector("main.sets");
   if (!main) return;
-  const GROUPS = [
-    {id: "dashboard", title: "Dashboard", icon: "layout-grid", part: "This profile", has: ["sec-overview", "sec-tabs", "sec-trends", "sec-names", "sec-summary"]},   // sec-summary: #186
-    {id: "about", title: "About this person", icon: "user", part: "This profile", has: ["about", "targets"]},   // #194, #234; on Sharing before #267
-    {id: "labs", title: "Labs and ranges", icon: "test-tube-diagonal", part: "This profile", has: ["sec-ranges"]},
-    {id: "milestones", title: "Milestones", icon: "flag", part: "This profile", has: ["sec-milestones"]},
-    {id: "activity", title: "Workouts", icon: "activity", part: "This profile", has: ["sec-health"]},   // visits counted as workouts (#43)
-    {id: "display", title: "Display", icon: "sun-moon", part: "You", has: ["sec-appearance", "sec-dates", "sec-units"]},
-    {id: "more", title: "More", icon: "ellipsis", has: [], rest: true},   // a section no group names yet
-  ];
+  const GROUPS = SG_PAGES.settings.groups;   // groups.js: one list, which the command palette searches too (#273)
   /* whose settings each group holds: the registry's sections say it by their settings' scope (data-scope); a group
      missing here goes by that */
   const WHO = {dashboard: "profile", about: "profile", labs: "profile", milestones: "profile", activity: "profile", display: "you"};

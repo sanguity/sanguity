@@ -403,6 +403,7 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
 .menu{position:relative;flex:none}
 .menu[hidden]{display:none}
 .bar-menus{display:flex;align-items:center;gap:inherit;flex:none}   /* Add and your menu (nav.js), wrapped as one (#319) */
+.bar-search{padding-inline:var(--sp-1)}   /* Search (nav.js, #273): an icon, narrow, so the five tabs still fit beside it at 1100 px (#265) */
 .menu-btn{display:inline-flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-3);color:inherit;max-width:16em}
 .menu-btn #who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .menu-btn[aria-expanded="true"]{background:var(--hover)}
@@ -1437,6 +1438,39 @@ dialog.sg-ask{width:min(440px,calc(100vw - 32px));padding:var(--sp-4) var(--sp-5
 .sg-ask .btn{margin:0}
 @media (forced-colors: active){
   .sg-ask .btn.primary,.sg-ask .btn.danger{border-width:2px}
+}
+
+/* ---- the command palette (#273, palette.js): a search box over what it finds, in groups, near the top of the screen
+   (the whole of a phone's), the one marked (Enter opens it) tinted and barred; the box's focus is the line under it */
+dialog.palette{width:min(640px,calc(100vw - 32px));margin-top:12vh;max-height:76dvh}
+dialog.palette[open]{display:flex;flex-direction:column;overflow:hidden}
+.pal-head{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-4);border-bottom:1px solid var(--grid)}
+.pal-head:has(input:focus-visible){box-shadow:inset 0 -2px 0 var(--accent)}
+.pal-head>.icon{flex:none;color:var(--muted)}
+.pal-head input{flex:1;min-width:0;padding:var(--sp-2) 0;border:0;background:none;color:var(--ink);font:inherit;font-size:var(--fs-4);outline:none}
+.pal-head .btn{margin:0}
+.pal-list{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 var(--sp-2) var(--sp-2)}
+.pal-list:empty{display:none}
+.pal-sec{padding:var(--sp-3) var(--sp-2) var(--sp-1);color:var(--muted);font-size:var(--fs-1);font-weight:var(--fw-semibold)}
+.pal-opt{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:0 var(--sp-3);padding:var(--sp-2);border-radius:var(--r-sm);cursor:pointer}
+.pal-opt>.icon{align-self:center;color:var(--ink2)}
+.pal-t{overflow-wrap:anywhere}
+.pal-c{color:var(--muted);font-size:var(--fs-2);text-align:right}
+.pal-opt:hover{background:var(--hover)}
+.pal-opt[aria-selected="true"]{background:color-mix(in srgb,var(--accent) 14%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
+.pal-opt[aria-selected="true"] .pal-c{color:var(--ink2)}
+.pal-note{margin:0;padding:var(--sp-3) var(--sp-4);color:var(--ink2)}
+.pal-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);padding:var(--sp-2) var(--sp-4);border-top:1px solid var(--grid);font-size:var(--fs-2);color:var(--ink2)}
+.pal-hint{color:var(--muted);font-size:var(--fs-1)}
+@media (max-width:700px){
+  dialog.palette{margin-top:var(--sp-2);max-height:calc(100dvh - var(--sp-4))}
+  .pal-c{grid-column:2;text-align:left}
+  .pal-hint{display:none}
+  .bar-search{padding-inline:var(--sp-2)}   /* the top bar's Search, as wide as it is tall there is room for (nav.js) */
+}
+@media (forced-colors: active){
+  .pal-opt[aria-selected="true"]{forced-color-adjust:none;background:Highlight;color:HighlightText}
+  .pal-opt[aria-selected="true"] :is(.pal-c,.icon){color:HighlightText}
 }
 
 /* ---- charts for everyone (#60): Chart | Table on every chart (a small pick-one .seg, #193), the tables in the

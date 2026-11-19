@@ -67,6 +67,7 @@ ICONS = [
     "database", "settings", "circle-user", "wrench", "compass", "log-out",
                              # your menu: Sources, Settings, Account (and Sharing's Profile), Admin, Getting started,
                              # Log out
+    "search",                # the top bar's Search, the command palette (#273)
 ]
 
 
