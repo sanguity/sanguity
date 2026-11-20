@@ -1408,9 +1408,9 @@ table.data.doseweeks td:first-child,table.data.doseweeks th:first-child{text-ali
 .dose-got,.dose-quick{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
 .dose-got .btn,.dose-quick .btn{margin:0}   /* the row's gap spaces them (#256) */
 .dose-done{display:inline-flex;gap:var(--sp-1);align-items:center}
-.few .dose-today{flex-wrap:nowrap}   /* the Overview's, one line each (#440): Taken and its ⋯ beside the name, which wraps */
+.few .dose-today:not(.logged){flex-wrap:nowrap}   /* the Overview's, one line each (#440): Taken and its ⋯ beside the name, which wraps */
 .few .dose-slot{flex-basis:64px}
-.few .dose-med{flex-basis:0}
+.few :not(.logged)>.dose-med{flex-basis:0}   /* with doses logged, they wrap under it, as on the Medications tab (#468) */
 .dose-st{align-self:flex-start}
 /* out of pocket (#55): a payment counted once, the editor under its row */
 table.data.oop tr.oop-dup td{color:var(--muted)}

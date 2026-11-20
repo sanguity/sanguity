@@ -1616,6 +1616,10 @@ Everything on `main` so far; it becomes the first tagged release.
   gave focus to the claim's row, then laid the page out wider with that row above the screen; it's brought into
   sight. With a payment typed in, the hint was two lines at 390 px; it names the three shortly ("From payments typed
   in, an export and claims"), in full behind its ⓘ.
+- **The Overview's Today keeps a medication's name readable once a dose is logged** (#468): each dose logged today was
+  added beside Taken and ⋯ on a row that couldn't wrap, so the name was squeezed a word a line under them, to nothing
+  with two doses at 900 px or six at any width. A row with doses logged wraps them under its name, as the Medications
+  tab's does; a row with nothing logged is still one line.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
