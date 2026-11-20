@@ -12,6 +12,19 @@ function hmLevel(v, lo, hi) {
   return Math.sign(z) * step;
 }
 const hmFill = lv => lv === 0 ? "var(--div-mid)" : `color-mix(in oklab, var(--div-mid), var(${lv < 0 ? "--div-lo" : "--div-hi"}) ${Math.abs(lv) * 25}%)`;
+/* a row's results in the period by day, each of them in time order (#471): a day can hold two draws' results, an
+   outside lab's typed in on a clinic draw's day, and the last no longer hides the others. -> Map(day -> [point]) */
+function hmDays(s) {
+  const m = new Map();
+  for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) { const k = isoDay(p.ts); (m.get(k) || m.set(k, []).get(k)).push(p); }
+  return m;
+}
+/* the draw a result is in (#471): the one with it among its own results (store.js labDayWords' e.res, util.js
+   labDraws), the nearest in time where it's several draws'; null for a visit's Vitals, which are no draw's */
+const hmDraw = (p, k) => EV.filter(e => e.k === "lab" && isoDay(e.ts) === k && e.res?.some(([, q]) => q === p))
+  .sort((a, b) => Math.abs(a.ts - p.ts) - Math.abs(b.ts - p.ts))[0] || null;
+/* another of a day's results, in the tip of one (#471): "Also at 8:31 AM: 0.89 mg/dL · In range" */
+const hmAlso = (s, p) => `Also at ${fmtTime(p.ts)}: ${p[5] || fmtNum(p[1])} ${s.unit}${statusOf(p) ? " · " + statusOf(p).text : ""}`;
 function renderHeatmap() {
   const asTable = state.tables.has("#hm");   // Grid | Table (#60)
   const hd = $("#hmHd"); hd.querySelector(".view-seg")?.remove(); hd.append(viewSeg("#hm", "the heatmap", renderHeatmap, "Grid"));
@@ -51,7 +64,7 @@ function renderHeatmap() {
   svg._geom = {L: LW, R: LW + cols.length * cw, w: W};
   axis.setAttribute("viewBox", `0 0 ${W} ${AH}`); axis.setAttribute("width", W); axis.setAttribute("height", AH);
   const ax = [];
-  const g = [];
+  const g = [], cellPts = rows.map(hmDays);   // each row's results by day (#471)
   const colX = new Map(cols.map(([k], i) => [k, LW + i * cw]));
   // hospital stay strip + procedure markers
   for (const [k, ts] of cols) {
@@ -77,14 +90,14 @@ function renderHeatmap() {
       ...(edit ? {"data-rename": "lab", "data-key": s.name} : {})},   // clicked; by keyboard, the ✎ in the heatmap's table or a chart (#202: the grid is one picture)
       (nm.length > cut ? nm.slice(0, cut - 1) + "…" : nm) + unit,
       el("svg:title", {text: renamedTitle("lab", s.name) + unit + (edit ? " · click to rename" : "") + rowRanges(s)})));
-    const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(dayKey(p.ts), p);
-    for (const [k, p] of byDay) {
-      const lv = hmLevel(p[1], p[2], p[3]);
-      const r = el("svg:rect", {class: "cell", x: colX.get(k) + (cw > 6 ? .5 : 0), y: ry + 1, width: cw - (cw > 6 ? 1 : 0), height: rowH - gap, rx: cw > 8 ? 2 : 0, style: `fill:${lv == null ? "var(--grid)" : hmFill(lv)}`});
-      r.dataset.s = s.name; r.dataset.i = i; r.dataset.k = k;
+    // a day's results side by side in its cell, each its own colour and mark (#471)
+    for (const [k, ps] of cellPts[i]) ps.forEach((p, j) => {
+      const lv = hmLevel(p[1], p[2], p[3]), w = cw / ps.length, x = colX.get(k) + j * w;
+      const r = el("svg:rect", {class: "cell", x: x + (w > 6 ? .5 : 0), y: ry + 1, width: w - (w > 6 ? 1 : 0), height: rowH - gap, rx: w > 8 ? 2 : 0, style: `fill:${lv == null ? "var(--grid)" : hmFill(lv)}`});
+      r.dataset.s = s.name; r.dataset.i = i; r.dataset.k = k; r.dataset.j = j;
       g.push(r);
-      if (lv && cw >= 3) g.push(abnMark(colX.get(k) + cw / 2, ry + 1 + (rowH - gap) / 2, lv > 0 ? "H" : "L", Math.min(3.6, cw / 2 - .8), "hm-mark"));   // #60
-    }
+      if (lv && w >= 3) g.push(abnMark(x + w / 2, ry + 1 + (rowH - gap) / 2, lv > 0 ? "H" : "L", Math.min(3.6, w / 2 - .8), "hm-mark"));   // #60
+    });
   });
   // month labels go in a separate axis strip that sticks to the bottom of the window until the heatmap's end scrolls into view
   let lastM = "", lastLabelX = -1e9;
@@ -107,12 +120,13 @@ function renderHeatmap() {
     const d = ev.target.dataset || {};
     if (d.proc) { showTip([el("div", {class: "v", text: d.proc}), el("div", {class: "s", text: fmtD(+d.day)})], ev); return; }
     if (!d.s) { hideTip(); return; }
-    const s = rows[+d.i], p = s.pts.filter(p => isoDay(p.ts) === d.k).pop(); if (!p) return;
+    const s = rows[+d.i], ps = cellPts[+d.i].get(d.k) || [], p = ps[+d.j || 0]; if (!p) return;
     const st = statusOf(p);
     showTip([el("div", {class: "v", text: `${p[5] || fmtNum(p[1])} ${s.unit}`}), el("div", {class: "s", text: nice(s.name) + (nice(s.name) !== s.name ? ` (${s.name})` : "")}), el("div", {class: "s", text: `${fmtDT(p.ts)} · ${refText(p)}`}),
       ucOrig(s, p) ? el("div", {class: "s", text: "Reported as " + ucOrig(s, p)}) : null,   // #41
       st ? el("div", {class: "s", style: {color: st.cls === "ok" ? "var(--good-text)" : "var(--crit)"}}, st.icon ? [icon(st.icon), " "] : null, st.text) : null,
-      pointSources(s, p) ? el("div", {class: "s", text: "From " + pointSources(s, p)}) : null], ev);   // with any linked as the same (#96)
+      pointSources(s, p) ? el("div", {class: "s", text: "From " + pointSources(s, p)}) : null,   // with any linked as the same (#96)
+      ...ps.filter(q => q !== p).map(q => el("div", {class: "s", text: hmAlso(s, q)}))], ev);   // the day's others (#471)
   };
   svg.onpointerleave = hideTip;
   svg.onclick = ev => {
@@ -120,7 +134,8 @@ function renderHeatmap() {
     if (d.rename) { openRename(ev.target, "lab", d.key); return; }
     if (d.tp) { window.open(d.tp, "_blank", "noopener,noreferrer"); return; }   // the page's address alone (#163)
     const k = d.k || (d.day && isoDay(+d.day)); if (!k) return;
-    const e = EV.find(e => e.k === "lab" && isoDay(e.ts) === k) || EV.find(e => e.k === "procedure" && isoDay(e.ts) === k); if (e) openEvent(e);
+    const p = d.s && cellPts[+d.i]?.get(k)?.[+d.j || 0];   // the draw that holds the result (#471), not the day's first
+    const e = (p && hmDraw(p, k)) || EV.find(e => e.k === "lab" && isoDay(e.ts) === k) || EV.find(e => e.k === "procedure" && isoDay(e.ts) === k); if (e) openEvent(e);
   };
 }
 /* a lab row's name, hovered: its results' ranges when they differ in the period shown; each cell is coloured against
@@ -129,11 +144,12 @@ function rowRanges(s) {
   const d = rangesDiffer(s.pts.filter(p => p.ts >= state.from && p.ts <= state.to));
   return d ? `\n${RANGE_DIFFERS}: ${d} ${s.unit}` : "";
 }
-/* the heatmap as a table (#60): a row per lab, grouped by panel as on the heatmap, a column per draw day; a result
-   outside its reference range has ▲ or ▼ beside it, said as "high" or "low". What a row's and a result's tips say
-   (the name in the records, the reference range) is in the row's heading for screen readers too, and the description
-   of its ✎ and ? (#358); a result's own range is said in its cell only where the row's ranges differ. A panel's name
-   sticks at the left of its row, as the labs' names do, scrolled sideways (#464: its cell is the row's width) */
+/* the heatmap as a table (#60): a row per lab, grouped by panel as on the heatmap, a column per draw day (a day's
+   results from two draws each on a line with its time, #471); a result outside its reference range has ▲ or ▼ beside
+   it, said as "high" or "low". What a row's and a result's tips say (the name in the records, the reference range) is
+   in the row's heading for screen readers too, and the description of its ✎ and ? (#358); a result's own range is
+   said in its cell only where the row's ranges differ. A panel's name sticks at the left of its row, as the labs'
+   names do, scrolled sideways (#464: its cell is the row's width) */
 let hmAbout = 0;
 function hmTable(rows, cols, grp) {
   const box = $("#hmTable");
@@ -145,8 +161,8 @@ function hmTable(rows, cols, grp) {
       panel = grp.get(s); tb = el("tbody", {}); bodies.push(tb);
       tb.append(el("tr", {class: "grp"}, el("th", {scope: "rowgroup", colspan: cols.length + 1}, el("span", {text: panel}))));
     }
-    const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(isoDay(p.ts), p);
-    const differ = rowRanges(s), ranged = [...byDay.values()].find(p => p[2] != null || p[3] != null);
+    const byDay = hmDays(s);
+    const differ = rowRanges(s), ranged = [...byDay.values()].flat().find(p => p[2] != null || p[3] != null);
     const about = [nice(s.name) !== s.name ? renamedTitle("lab", s.name) : null,
       differ ? differ.trim() : ranged ? `ref ${ranged[2] ?? ""}–${ranged[3] ?? ""}${s.unit ? " " + s.unit : ""}${ranged.rs === "settings" ? ` (${RANGE_FROM_SETTINGS})` : ""}` : null].filter(Boolean).join("; ");
     const aboutId = about ? "hmAbout" + (++hmAbout) : null, edit = renameButton("lab", s.name), tq = testLink(s.name, true);   // #163
@@ -155,12 +171,17 @@ function hmTable(rows, cols, grp) {
       about ? el("span", {class: "vh"}, ", ", el("span", {id: aboutId, text: about})) : null,
       edit || tq ? el("span", {class: "hm-acts"}, edit, tq) : null),   // the ✎ and ? kept together, a phone's name wrapping (#469)
       ...cols.map(([k]) => {
-        const p = byDay.get(k); if (!p) return el("td", {});
-        const lv = hmLevel(p[1], p[2], p[3]), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it
-        const ref = p[2] != null || p[3] != null ? refText(p) : null;
-        return el("td", {class: w ? "abn" : null, "data-tip": ref}, p[5] || fmtNum(p[1]),
-          w ? el("span", {"aria-hidden": "true", text: " " + w[0]}) : null, w ? el("span", {class: "vh", text: " " + w[1].toLowerCase()}) : null,
-          ref && differ ? el("span", {class: "vh hm-ref", text: ", " + ref}) : null);
+        const ps = byDay.get(k); if (!ps) return el("td", {});
+        const one = p => {
+          const lv = hmLevel(p[1], p[2], p[3]), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it
+          const ref = p[2] != null || p[3] != null ? refText(p) : null;
+          return [w, ref, [p[5] || fmtNum(p[1]), w ? el("span", {"aria-hidden": "true", text: " " + w[0]}) : null, w ? el("span", {class: "vh", text: " " + w[1].toLowerCase()}) : null,
+            ref && differ ? el("span", {class: "vh hm-ref", text: ", " + ref}) : null]];
+        };
+        if (ps.length === 1) { const [w, ref, kids] = one(ps[0]); return el("td", {class: w ? "abn" : null, "data-tip": ref}, ...kids); }
+        // a day's results from two draws (#471): each on a line of its own with its time, and its own ▲ or ▼
+        return el("td", {"data-tip": ps.map(p => `${fmtTime(p.ts)}: ${one(p)[1] || "no range"}`).join("; ")},
+          ...ps.flatMap((p, j) => { const [w, , kids] = one(p); return [j ? el("br") : null, el("span", {class: w ? "abn" : null}, ...kids, ` (${fmtTime(p.ts)})`)]; }));
       })));
   }
   box.replaceChildren(el("p", {class: "hint", text: `${rows.length} lab${rows.length === 1 ? "" : "s"} on ${cols.length} draw day${cols.length === 1 ? "" : "s"}. ▲ above its reference range, ▼ below.`}),

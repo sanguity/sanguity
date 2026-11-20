@@ -646,7 +646,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 table.data{border-collapse:collapse;width:100%;font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 table.data th{text-align:left;color:var(--muted);font-weight:var(--fw-semibold);border-bottom:1px solid var(--axis);padding:var(--sp-1) var(--sp-2);position:sticky;top:0;background:var(--surface)}
 table.data td{border-bottom:1px solid var(--grid);padding:var(--sp-1) var(--sp-2);vertical-align:top}
-table.data td.abn{color:var(--crit);font-weight:var(--fw-semibold)}
+table.data td.abn,.hm-table span.abn{color:var(--crit);font-weight:var(--fw-semibold)}   /* in a cell with two draws' results (#471) */
 table.data tr.link{cursor:pointer}
 table.data tr.link:hover td{background:var(--hover)}
 .tablewrap{max-height:320px;overflow:auto;margin:var(--sp-2) 0 var(--sp-2)}
