@@ -246,6 +246,15 @@ button.tile{cursor:pointer}
   .tile .lbl{flex-wrap:wrap}
   .tile .lbl .st{margin-left:0}
 }
+/* ---- a setting row (#286), Settings', Sharing's, Account's and Admin's: what's set on the left (about 38%: its name, a
+   hint, its ⓘ), its control on the right, one under the other below about 600 px; a hairline above it after anything.
+   .set-row > .set-row-lbl + .set-row-ctl (setRow() in util.js); .wide: the control under its name, as wide as the row.
+   The control's side is a container: what's in it lays itself out by its own width (@container). */
+.set-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-2) var(--sp-5);padding:var(--sp-3) 0}   /* a name on its field's line */
+.set-row:not(:first-child){border-top:1px solid var(--grid)}
+.set-row-lbl{flex:38 1 0;min-width:min(100%,14rem)}
+.set-row-ctl{flex:62 1 0;min-width:min(100%,21rem);container-type:inline-size}
+.set-row.wide>*{flex-basis:100%}
 
 /* ---- menus (#261, menuWire in nav.js): the list is a popover, in the top layer over everything (no z-index), placed
    by CSS anchor positioning: under its button (the anchor, scoped to the menu's own box), its right edge on the
@@ -957,7 +966,6 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .hist>li:focus{outline:2px solid var(--accent);outline-offset:2px}
 .imp .hist li.undone .hd b,.imp .hist li.undone .what{color:var(--muted)}
 /* settings page (settings.js) */
-.sets .set{border-top:1px solid var(--grid);padding:var(--sp-3) 0 var(--sp-1)}
 .sets .set .row{margin:var(--sp-2) 0 var(--sp-2)}
 /* #174: the group shown and whose settings these are; a setting not saved yet marked so (#272: the group's bar saves it);
    a key lab's row on a phone: its handle, name and a menu (orderList's opts.more) */
@@ -997,6 +1005,9 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-hd{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);flex-wrap:wrap}
 .sets .set-hd>.vh~.btn{display:none}   /* a card alone in its group: its Reset beside the h1 (sidebar.js, #409) */
 .sets .set-hd h2{margin:0}
+.sets .set-hd:has(>h2.vh)+.set-row{border-top:0;padding-top:0}   /* (a card alone in its group: the h1 its heading) */
+.sets .set-row:has(>.set-row-ctl>.switch:first-child){align-items:flex-start}   /* a switch first: no baseline of its words to share */
+.sets .set-row-lbl>:is(label,.set-row-name){display:block;font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2);margin:0 0 var(--sp-1)}   /* a field's name, as a setting's h3 (#286) */
 .sets .set h3 .tag{font-weight:var(--fw-medium)}
 .sets .set-labs{margin:var(--sp-1) 0;padding-left:var(--sp-5);max-width:560px}
 .sets .set-labs li{padding:3px 0;border-bottom:1px solid var(--grid)}
@@ -1006,29 +1017,29 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-acts{display:flex;gap:var(--sp-1)}
 .sets .set-add{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;margin-top:var(--sp-2);max-width:560px}
 .sets .set-add input{flex:1 1 160px}
-.sets .set-rows{display:grid;gap:var(--sp-2);max-width:720px}
-.sets .set-row{display:grid;gap:var(--sp-2);align-items:end;grid-template-columns:repeat(2,minmax(0,1fr)) 72px}
-.sets .c3 .set-row{grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) 80px 72px}
-.sets .set-row>:last-child{justify-self:start}
+/* rows of fields (rowsEditor, settings.js): one grid, each row its columns (subgrid), the Remove buttons' as wide as theirs */
+.sets .set-lines{display:grid;gap:var(--sp-2);max-width:720px;grid-template-columns:repeat(2,minmax(0,1fr)) auto}
+.sets .set-line{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;gap:var(--sp-2);align-items:end}
+.sets .c3{grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) 80px auto}
+.sets .set-line>:last-child{justify-self:start}
 .sets .set-head{font-size:var(--fs-2);color:var(--muted);font-weight:var(--fw-medium)}
-.sets .set-row label{gap:2px}
+.sets .set-head:only-child{display:none}   /* no rows yet: no headings over nothing */
+.sets .set-line label{gap:2px}
 .sets .set-lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-.sets .set-row input{width:100%}
+.sets .set-line input{width:100%}
 /* #39 milestones and #43 workout rules (settings.js): a checkbox column */
-.sets .ms .set-row{grid-template-columns:170px minmax(0,1fr) 64px 72px}
-.sets .rules .set-row{grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) 80px 96px 72px}
-.sets .set-row .set-tick{align-self:center}
-.sets .set-row .set-tick input{width:auto;justify-self:start}   /* its native size, not stretched across the column (#353) */
-@media (max-width:600px){
-  .sets .ms .set-row,.sets .rules .set-row{grid-template-columns:1fr}
-  .sets .set-row .set-tick{display:flex;flex-direction:row;align-items:center;gap:var(--sp-2)}
-}
-.sets .set-json{width:100%;max-width:560px;font:var(--fs-2) var(--font-mono)}
-@media (max-width:600px){
+.sets .ms{grid-template-columns:170px minmax(0,1fr) 64px auto}
+.sets .rules{grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) 80px 96px auto}
+.sets .set-line .set-tick{align-self:center}
+.sets .set-line .set-tick input{width:auto;justify-self:start}   /* its native size, not stretched across the column (#353) */
+@container (width < 480px){   /* (the setting row's control side, #286) */
+  .sets :is(.set-lines,.c3,.ms,.rules){grid-template-columns:1fr}
+  .sets .set-line .set-tick{display:flex;flex-direction:row;align-items:center;gap:var(--sp-2)}
   .sets .set-head{display:none}
-  .sets .set-row,.sets .c3 .set-row{grid-template-columns:1fr;border-bottom:1px solid var(--grid);padding-bottom:var(--sp-2)}
+  .sets .set-line{border-bottom:1px solid var(--grid);padding-bottom:var(--sp-2)}
   .sets .set-lbl{position:static;width:auto;height:auto;clip:auto;font-size:var(--fs-2);color:var(--muted)}
 }
+.sets .set-json{width:100%;max-width:560px;font:var(--fs-2) var(--font-mono)}
 /* settings page: ordered lists, key-lab tiles, tabs, theme (#36, #40, #45) */
 .sets .set-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .sets .set-order li.dragging{opacity:.6;background:var(--hover)}
@@ -1151,11 +1162,9 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 @media (max-width:600px){.sync-warn{margin:var(--sp-2) var(--sp-3) 0}}
 /* calendar feed on the Sharing page (calendar-feed.js, #51) */
 .cal .cal-opts{border:0;padding:0;margin:var(--sp-2) 0;display:grid;gap:var(--sp-2);max-width:640px}
-.cal .cal-opts legend{font-size:var(--fs-3);font-weight:var(--fw-medium);color:var(--ink2);padding:0;margin-bottom:var(--sp-1)}
 .cal label.check{align-items:flex-start;font-weight:var(--fw-regular);padding-bottom:0}
 .cal label.check:not(.switch) input{margin-top:3px;flex:none}
 .cal label.check.switch{align-items:center}
-.cal .cal-opts p{margin:0}
 .cal .cal-setup{margin-top:var(--sp-3);border-left:3px solid var(--accent);padding:var(--sp-1) 0 var(--sp-1) var(--sp-3)}
 .cal .cal-url{display:flex;gap:var(--sp-2);max-width:720px;flex-wrap:wrap}
 .cal .cal-url input{flex:1 1 220px;font:var(--fs-2) var(--font-mono)}
@@ -1163,11 +1172,9 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .cal .cal-steps li{margin:var(--sp-1) 0;overflow-wrap:anywhere}
 /* ---- Export everything: the format, and what a FHIR export includes (#205) */
 #export .exp-opts{border:0;padding:0;margin:var(--sp-3) 0;display:grid;gap:var(--sp-2);max-width:760px;min-width:0}
-#export .exp-opts legend{font-size:var(--fs-3);font-weight:var(--fw-medium);color:var(--ink2);padding:0;margin-bottom:var(--sp-1)}
 #export .exp-opts label.check{align-items:flex-start;font-weight:var(--fw-regular);padding-bottom:0;color:var(--ink)}
 #export .exp-opts label.check input{margin-top:3px;flex:none}
-#export .exp-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:var(--sp-2) var(--sp-4)}
-#export .exp-opts p{margin:var(--sp-1) 0 0}
+#export .exp-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:var(--sp-2) var(--sp-4)}
 .cal #calStatus{font-size:var(--fs-3);margin:var(--sp-2) 0}
 .cal .tbl td{overflow-wrap:anywhere}
 /* ---- the journal (journal.js, #49): marks sized by severity, shaped by kind */
@@ -1351,14 +1358,17 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .data td .orig{display:block;font-size:var(--fs-1);color:var(--muted)}
 .sets .set-units legend{font-weight:var(--fw-semibold);font-size:var(--fs-3);margin-bottom:2px;padding:0}
 .sets .set-units .set-radios{margin:var(--sp-1) 0 var(--sp-3)}
+.sets .set-units>:first-child{margin-top:0}
+.sets .set-units>:last-child{margin-bottom:0}
+.sets .set-row:has(>.set-row-ctl>.set-units){align-items:flex-start}   /* (its first line a legend, which gives no baseline, #286) */
 /* settings page: reference ranges from settings (#44) */
-.sets .rng{max-width:860px}
-.sets .rng .set-row{grid-template-columns:minmax(0,2fr) minmax(0,1fr) 92px 64px 64px 72px 72px 72px}
-.sets .rng .set-row select{width:100%}
-@media (max-width:760px){
+.sets .rng{max-width:860px;grid-template-columns:minmax(0,2fr) minmax(0,1fr) 92px 64px 64px 72px 72px auto}
+.sets .rng .set-line select{width:100%}
+@container (width < 720px){
   .sets .rng .set-head{display:none}
-  .sets .rng .set-row{grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:1px solid var(--grid);padding-bottom:var(--sp-2)}
-  .sets .rng .set-row>label:first-child{grid-column:1 / -1}
+  .sets .rng{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sets .rng .set-line{border-bottom:1px solid var(--grid);padding-bottom:var(--sp-2)}
+  .sets .rng .set-line>label:first-child{grid-column:1 / -1}
   .sets .rng .set-lbl{position:static;width:auto;height:auto;clip:auto;font-size:var(--fs-2);color:var(--muted)}
 }
 /* share links (#47): the owner's panel on the Account page (js/share-links.js) and the shared page (share.html) */
@@ -1569,16 +1579,11 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 /* the Sharing page (#168, sharing.html): Settings' sidebar (main.sets) with Account's cards; Profile set apart in it */
 .shr .shr-members td:first-child{overflow-wrap:anywhere}
 .shr .shr-share input{flex:1 1 140px;min-width:0}
+.shr #shareWith>.set-row{border-top:1px solid var(--grid)}   /* under who has access (#286) */
 /* ---- About this person (#194): Settings → About this person (about.js, #267), and its section on a share link's page */
-.about h3.sub{margin:var(--sp-5) 0 var(--sp-1)}
-.about .about-details>.about-row{margin-top:var(--sp-3)}
-.about .about-field{margin:var(--sp-3) 0 0}
 .about .about-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin-top:var(--sp-2)}
-.about .about-field .muted{margin:var(--sp-1) 0 0}
-.about .about-sex,.about .about-typed{border:0;padding:0;margin:var(--sp-3) 0 0;min-width:0}
-.about .about-typed{margin:0}
+.about .about-typed{border:0;padding:0;margin:0;min-width:0}
 .about legend{font-size:var(--fs-3);color:var(--ink2);font-weight:var(--fw-medium);padding:0;margin-bottom:var(--sp-1)}
-.about .about-sex .muted{margin:var(--sp-2) 0 0}
 .about .about-add{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--sp-2);margin:var(--sp-3) 0 var(--sp-1)}
 .about .about-ftin{display:flex;gap:var(--sp-2)}
 .about .about-num input{width:10em;max-width:100%}
@@ -1958,7 +1963,7 @@ svg text.growth-pct{font-size:var(--fs-1)}
 .tgt-line{margin:var(--sp-1) 0 var(--sp-2)}
 .tgt-line b{color:var(--ink);font-weight:var(--fw-semibold)}
 .glu-own{border-top:1px solid var(--grid);padding-top:var(--sp-2)}
-.about .tgt-one{border-top:1px solid var(--grid);padding:var(--sp-2) 0 var(--sp-1);margin-top:var(--sp-2)}
+.about .tgt-one{align-items:flex-start}   /* (its fields under their names: no baseline to share, #286) */
 .about .tgt-one h3{margin:0 0 2px}
 .about .tgt-now{margin:0 0 var(--sp-2)}
 .about .tgt-form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--sp-2) var(--sp-4)}
@@ -2044,6 +2049,9 @@ td:has(>.cell-btn~.test-page.tq)>:is(.cell-btn,small)+.test-page.tq{margin-left:
    over the element's own margin on that side only */
 .mt-1{margin-top:var(--sp-1)} .mt-2{margin-top:var(--sp-2)} .mt-3{margin-top:var(--sp-3)} .mb-2{margin-bottom:var(--sp-2)}
 .my-2{margin-top:var(--sp-2);margin-bottom:var(--sp-2)}
+/* a setting row's sides (#286): no space at their top or foot, whatever a page gives what's there */
+:is(.set-row-lbl,.set-row-ctl)>:first-child{margin-top:0}
+:is(.set-row-lbl,.set-row-ctl)>:last-child{margin-bottom:0}
 /* said, not shown: the text is there for screen readers */
 .vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 }

@@ -69,14 +69,14 @@ function labsEditor(value, changed, ro) {
    column is one choice across the rows (#259: a milestone's Primary), its radios one group. */
 let rowsEditors = 0;
 function rowsEditor(rows, cols, changed, ro, blank, cls = "") {
-  const body = el("div", {class: "set-rows c" + cols.length + (cls ? " " + cls : "")}), group = "rows" + (++rowsEditors) + "-";
+  const body = el("div", {class: "set-lines c" + cols.length + (cls ? " " + cls : "")}), group = "rows" + (++rowsEditors) + "-";
   let made = 0;
-  const head = el("div", {class: "set-row set-head", "aria-hidden": "true"}, ...cols.map(c => el("span", {text: c.label})), el("span"));
+  const head = el("div", {class: "set-line set-head", "aria-hidden": "true"}, ...cols.map(c => el("span", {text: c.label})), el("span"));
   const tick = c => c.type === "checkbox" || c.type === "radio";
   const only = (c, input) => { if (c.only && input.checked) for (const x of body.querySelectorAll(`[data-k="${c.key}"]`)) if (x !== input) x.checked = false; };
   const make = r => {
     const id = group + (++made) + "-";   // c.of: the column that names the row, said with a radio's label ("Primary Diagnosis", #353)
-    const row = el("div", {class: "set-row"}, ...cols.map(c => el("label", {class: tick(c) ? "set-tick" : null},
+    const row = el("div", {class: "set-line"}, ...cols.map(c => el("label", {class: tick(c) ? "set-tick" : null},
       el("span", {class: "set-lbl", id: id + c.key + "-l", text: c.label}),
       el("input", {"data-k": c.key, id: id + c.key, "aria-labelledby": c.of ? `${id}${c.key}-l ${id}${c.of}` : null, type: c.type || "text", name: c.type === "radio" ? group + c.key : null, value: tick(c) ? null : r[c.key] ?? "", checked: tick(c) ? !!r[c.key] : null,
         disabled: ro, oninput: ev => { if (tick(c)) only(c, ev.target); changed(); }, ...(c.attrs || {})}))));
@@ -87,7 +87,7 @@ function rowsEditor(rows, cols, changed, ro, blank, cls = "") {
   const box = el("div", {}, body);
   if (!ro) box.append(el("div", {class: "set-add"}, el("button", {class: "btn small", type: "button", text: "Add a row",
     onclick: () => { const r = make(blank); body.append(r); r.querySelector("input").focus(); changed(); }})));
-  const read = () => [...body.querySelectorAll(".set-row:not(.set-head)")].map(row =>
+  const read = () => [...body.querySelectorAll(".set-line:not(.set-head)")].map(row =>
     Object.fromEntries(cols.map(c => { const i = row.querySelector(`[data-k="${c.key}"]`), v = i.value;
       return [c.key, tick(c) ? i.checked : c.type === "number" ? (v === "" ? null : +v) : v.trim()]; })));
   return {node: box, read};
@@ -443,12 +443,12 @@ const unranged = () => LABS.filter(s => !s.watch).map(s => ({name: s.name, unit:
 function rangesEditor(value, changed, ro) {
   const SEX = [["any", "Anyone"], ["female", "Female"], ["male", "Male"]];
   const cols = [["lab", "Lab (name in the records)"], ["unit", "Unit"], ["sex", "Sex"], ["ageFrom", "Age from"], ["ageTo", "Age to"], ["low", "Low"], ["high", "High"]];
-  const body = el("div", {class: "set-rows rng"});
-  body.append(el("div", {class: "set-row set-head", "aria-hidden": "true"}, ...cols.map(([, l]) => el("span", {text: l})), el("span")));
+  const body = el("div", {class: "set-lines rng"});
+  body.append(el("div", {class: "set-line set-head", "aria-hidden": "true"}, ...cols.map(([, l]) => el("span", {text: l})), el("span")));
   const num = (k, v, attrs) => el("input", {"data-k": k, type: "number", value: v ?? "", disabled: ro, oninput: update, step: "any", ...attrs});
   const make = r => {
     const field = (k, l, input) => el("label", {}, el("span", {class: "set-lbl", text: l}), input);
-    const row = el("div", {class: "set-row"},
+    const row = el("div", {class: "set-line"},
       field("lab", cols[0][1], el("input", {"data-k": "lab", value: r.lab || "", list: "labNames", maxlength: 120, disabled: ro, oninput: update})),
       field("unit", "Unit", el("input", {"data-k": "unit", value: r.unit || "", maxlength: 30, disabled: ro, oninput: update})),
       field("sex", "Sex", el("select", {"data-k": "sex", disabled: ro, onchange: update}, ...SEX.map(([v, l]) => el("option", {value: v, text: l, selected: (r.sex || "any") === v ? "" : null})))),
@@ -459,7 +459,7 @@ function rangesEditor(value, changed, ro) {
     row.append(ro ? el("span") : beside("Remove", "Remove this range", () => { row.remove(); update(); }));
     return row;
   };
-  const read = () => [...body.querySelectorAll(".set-row:not(.set-head)")].map(row => {
+  const read = () => [...body.querySelectorAll(".set-line:not(.set-head)")].map(row => {
     const v = k => row.querySelector(`[data-k="${k}"]`).value, n = k => v(k) === "" ? null : +v(k);
     return {lab: v("lab").trim(), unit: v("unit").trim(), sex: v("sex"), ageFrom: n("ageFrom"), ageTo: n("ageTo"), low: n("low"), high: n("high")};
   }).filter(r => r.lab || r.unit || r.low != null || r.high != null);
@@ -510,19 +510,20 @@ const atDefault = st => same(st.value, st.default) || (st.kind === "timezone" &&
 const isOwn = st => st.from === "profile" || st.from === "user";   // kept here: Reset to defaults takes it off
 const setBase = () => PID == null ? "settings/user" : `profiles/${PID}/settings`;
 
-/* one setting: its name, where its value comes from (unless it's the default), its editor, and a line for what went
-   wrong saving it. changed(item) after every edit in it; changed() when it's filled in otherwise (put). A simple
+/* one setting, a setting row (#286): on the left its name, where its value comes from (unless it's the default) and
+   its help; on the right its editor, and a line for what went wrong saving it. changed(item) after every edit in it; changed() when it's filled in otherwise (put). A simple
    preference on its way to the server isn't a change not saved (#407): counts() is what the bar, the sidebar's dot,
    "not saved" and the questions before leaving count; for one of those, only one held for the bar: refused by the
-   server, or filled in by put(). solo: the section's only setting, with its name, which the section's heading says: no
-   heading of its own, only its marks (#398). */
+   server, or filled in by put(). solo: the section, when this is its only setting, with its name, which the section's
+   heading says: no heading of its own, only its marks (#398), and the section's help beside it. */
 const SET_ITEMS = {};   // key -> the setting's item drawn last: put(value) fills its editor in, unsaved (presets.js, #186)
+const WIDE = new Set(["ranges"]);   // a table of many columns: under its label, the card's width (#286)
 function settingNode(st, changed, mixed, solo) {
   const ro = !st.can_change;
   const msg = el("span", {class: "msg", role: "status"});
   const from = el("span", {class: "tag"});
   const unsaved = el("span", {class: "tag set-unsaved", text: "not saved"});
-  const node = el("div", {class: "set", "data-key": st.key, "data-scope": st.scope});
+  const node = el("div", {class: "set set-row" + (WIDE.has(st.kind) ? " wide" : ""), "data-key": st.key, "data-scope": st.scope});   // a setting row (#286)
   const tag = () => { from.textContent = FROM[st.from] || st.from; from.hidden = atDefault(st); };
   let ed = null;
   const item = {st, node, msg, instant: INSTANT.has(st.kind) && !ro, held: false,
@@ -538,9 +539,9 @@ function settingNode(st, changed, mixed, solo) {
   item.put = (v, held = true) => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); item.held = held; mark(); changed(); };   // #186: not saved, a simple one too
   SET_ITEMS[st.key] = item;
   tag();
-  node.append(...present(el(solo ? "div" : "h3", {class: "sub"}, solo ? null : st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
-    solo ? null : helpNodes(st.help),   // (alone in its section: with the section's, #280)
-    ed.node, msg));
+  node.append(el("div", {class: "set-row-lbl"}, el(solo ? "div" : "h3", {class: "sub"}, solo ? null : st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
+    solo ? helpNodes(solo.help, ...st.help.split("\n")) : helpNodes(st.help)),   // (alone in its section: the section's help with its own, #280)
+    el("div", {class: "set-row-ctl"}, ed.node, msg));
   return item;
 }
 
@@ -603,14 +604,14 @@ function sectionCard(sec, opts = {}) {
     if (n && !msg.classList.contains("bad")) sayIn(msg, "");
     if (card && it && it.instant && it.dirty()) saveNow(it, card);
   };
-  const solo = sec.settings.length === 1 && sec.settings[0].label === sec.title;
+  const solo = sec.settings.length === 1 && sec.settings[0].label === sec.title ? sec : null;
   const items = sec.settings.map(st => settingNode(st, changed, mixed, solo));
   const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", onclick: () => resetSection(card)});
   const tidy = () => { reset.hidden = !items.some(it => it.st.can_change && isOwn(it.st) && !atDefault(it.st)); };
   tidy();
   card = el("section", {class: "card", id: "sec-" + sec.id},
     el("div", {class: "set-hd"}, el("h2", {id: `sec-${sec.id}-hd`, tabindex: -1, text: sec.title}), reset),
-    helpNodes(sec.help, ...(solo ? sec.settings[0].help.split("\n") : [])),
+    solo ? null : helpNodes(sec.help),   // (alone: beside its setting, in the row, #286)
     sec.id === "overview" ? presetsBlock(sec) : null,   // "Start from a condition" (presets.js, #186)
     ...items.map(it => it.node), msg);   // (at its foot: words changing there move nothing in it)
   return Object.assign(card, {sgItems: items, sgSec: sec, sgChanged: () => changed(), sgTidy: tidy});

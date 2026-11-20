@@ -243,7 +243,7 @@ function drawSync(sec, note, keep = []) {
   const count = () => { const n = SYNC.filter(e => e.counts()).length; if (n) card.setAttribute("data-dirty", n); else card.removeAttribute("data-dirty"); };
   const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", hidden: sec.settings.every(st => same(st.value, st.default)) || null, onclick: () => syncReset(sec)});
   SYNC = sec.settings.map(st => {
-    const node = el("div", {class: "set", "data-key": st.key}), was = keep.find(k => k.st.key === st.key), e = {st, held: !!was?.held, queue: was?.queue};
+    const node = el("div", {class: "set set-row", "data-key": st.key}), was = keep.find(k => k.st.key === st.key), e = {st, held: !!was?.held, queue: was?.queue};
     const mark = () => { node.classList.toggle("set-changed", e.counts()); count(); };
     const make = v => (SYNC_EDITORS[st.kind] || numberEditor)(v, () => {
       e.held = false; mark();
@@ -253,8 +253,9 @@ function drawSync(sec, note, keep = []) {
     Object.assign(e, {node, mark, dirty: () => !same(ed.get(), st.value), counts: () => e.dirty() && (!SYNC_NOW.has(st.kind) || e.held),
       get: () => ed.get(), put: v => { const old = ed.node; ed = make(v); old.replaceWith(ed.node); }});
     node.classList.toggle("set-changed", e.counts());
-    node.append(...present(el("h3", {class: "sub"}, st.label, same(st.value, st.default) ? null : el("span", {class: "tag", text: "set for this server"}),
-      el("span", {class: "tag set-unsaved", text: "not saved"})), helpNodes(st.help), ed.node));
+    // a setting row (#286): its name and help on the left, its control on the right, as Settings' are
+    node.append(el("div", {class: "set-row-lbl"}, el("h3", {class: "sub"}, st.label, same(st.value, st.default) ? null : el("span", {class: "tag", text: "set for this server"}),
+      el("span", {class: "tag set-unsaved", text: "not saved"})), helpNodes(st.help)), el("div", {class: "set-row-ctl"}, ed.node));
     return e;
   });
   if (note) sayIn(msg, note, false, {say: false});

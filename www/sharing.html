@@ -70,28 +70,46 @@
         draws, never an order or a booking. Medication reminders are the ones set on a medication's details (the
         Medications tab); each repeats at its times in the time zone it was set in.</p>
     </div>
+    <!-- its choices as setting rows (#286, app.css .set-row): what each is on the left, the control on the right -->
     <div id="calNew" hidden>
-      <fieldset class="cal-opts">
-        <legend>What each event says</legend>
-        <label class="check"><input type="radio" name="calDetails" value="minimal" checked> Minimal: “Appointment”, “Labs expected” or “Medication”, the time and a link back here</label>
-        <label class="check"><input type="radio" name="calDetails" value="full"> Full: the visit's title, where and with whom, which lab panels, the source it came from, and a medication's name and instructions</label>
-        <p class="muted">Calendars often sync to your phone maker's or email provider's cloud. Minimal keeps health details out of it.
-          Neither ever includes results or diagnoses.</p>
-        <label class="check switch"><input type="checkbox" role="switch" id="calLabs" checked> Also show expected lab draws (tentative, all-day, “expected, not scheduled”)</label>
-        <label class="check switch"><input type="checkbox" role="switch" id="calMeds" checked> Also show medication reminders (repeating, at the times set on each medication)</label>
-      </fieldset>
+      <div class="set-row">
+        <div class="set-row-lbl"><p class="set-row-name" id="calDetailsLbl">What each event says</p>
+          <p class="hint">Calendars often sync to your phone maker's or email provider's cloud. Minimal keeps health details out of it.
+            Neither ever includes results or diagnoses.</p></div>
+        <div class="set-row-ctl"><fieldset class="cal-opts" aria-labelledby="calDetailsLbl">
+          <label class="check"><input type="radio" name="calDetails" value="minimal" checked> Minimal: “Appointment”, “Labs expected” or “Medication”, the time and a link back here</label>
+          <label class="check"><input type="radio" name="calDetails" value="full"> Full: the visit's title, where and with whom, which lab panels, the source it came from, and a medication's name and instructions</label>
+        </fieldset></div>
+      </div>
+      <div class="set-row">
+        <div class="set-row-lbl"><p class="set-row-name">Lab draws and reminders</p></div>
+        <div class="set-row-ctl"><div class="cal-opts">
+          <label class="check switch"><input type="checkbox" role="switch" id="calLabs" checked> Also show expected lab draws (tentative, all-day, “expected, not scheduled”)</label>
+          <label class="check switch"><input type="checkbox" role="switch" id="calMeds" checked> Also show medication reminders (repeating, at the times set on each medication)</label>
+        </div></div>
+      </div>
       <div class="row"><button class="btn primary" id="calCreate" type="button">Create my calendar feed</button></div>
     </div>
     <div id="calHave" hidden>
       <p id="calStatus"></p>
-      <div class="form inline">
-        <label>What each event says <select id="calDetailsNow"><option value="minimal">Minimal</option><option value="full">Full</option></select></label>
-        <label class="check switch"><input type="checkbox" role="switch" id="calLabsNow"> Expected lab draws</label>
-        <label class="check switch"><input type="checkbox" role="switch" id="calMedsNow"> Medication reminders</label>
+      <div class="set-row">
+        <div class="set-row-lbl"><label for="calDetailsNow">What each event says</label></div>
+        <div class="set-row-ctl"><select id="calDetailsNow"><option value="minimal">Minimal</option><option value="full">Full</option></select></div>
       </div>
-      <div class="row">
-        <button class="btn" id="calRotate" type="button">Get a new address</button>
-        <button class="btn danger" id="calRevoke" type="button">Turn off my feed</button>
+      <div class="set-row">
+        <div class="set-row-lbl"><p class="set-row-name">Lab draws and reminders</p></div>
+        <div class="set-row-ctl"><div class="cal-opts">
+          <label class="check switch"><input type="checkbox" role="switch" id="calLabsNow"> Expected lab draws</label>
+          <label class="check switch"><input type="checkbox" role="switch" id="calMedsNow"> Medication reminders</label>
+        </div></div>
+      </div>
+      <div class="set-row">
+        <div class="set-row-lbl"><p class="set-row-name">The feed's address</p>
+          <p class="hint">A new one stops the old one working. Turning the feed off stops it in every calendar app.</p></div>
+        <div class="set-row-ctl"><div class="row">
+          <button class="btn" id="calRotate" type="button">Get a new address</button>
+          <button class="btn danger" id="calRevoke" type="button">Turn off my feed</button>
+        </div></div>
       </div>
     </div>
     <div id="calSetup" class="cal-setup" hidden>
@@ -172,10 +190,12 @@
   <!-- the measures ticked at first (#186), owners' and editors' to set: on Settings → Dashboard before #402 (summary.js) -->
   <section class="card" id="sumTicked" hidden>
     <h2 id="sumTickedHd">Measures ticked at first</h2>
-    <p class="hint">Ticked at first in the visit summary of everyone it's shared with, where this profile has some.</p>
-    <div class="about-words" hidden><p>Each summary can still untick them. The others start unticked.</p></div>
-    <div class="row set-choices" id="sumTickedBoxes" role="group" aria-labelledby="sumTickedHd"></div>
-    <span class="msg" id="sumTickedMsg" role="status"></span>
+    <div class="set-row">
+      <div class="set-row-lbl"><p class="hint">Ticked at first in the visit summary of everyone it's shared with, where this profile has some.</p>
+        <div class="about-words" hidden><p>Each summary can still untick them. The others start unticked.</p></div></div>
+      <div class="set-row-ctl"><div class="row set-choices" id="sumTickedBoxes" role="group" aria-labelledby="sumTickedHd"></div>
+        <span class="msg" id="sumTickedMsg" role="status"></span></div>
+    </div>
   </section>
 
   <!-- Export everything: owners and editors (sharing.js) -->
@@ -188,33 +208,38 @@
       <p>FHIR R4 is the standard format health apps and patient portals read. A FHIR export holds the records you tick
         as one bundle, with the documents' files beside it in the zip. Sanguity's own import reads it back too.</p>
     </div>
-    <!-- the format, and with FHIR what goes in it (#205, sharing.js); the part names are fhir_export.PARTS' keys -->
-    <fieldset class="exp-opts" id="exportFormat">
-      <legend>Format</legend>
-      <label class="check"><input type="radio" name="exportFormat" value="sanguity" checked> Sanguity's own: everything,
-        to keep or to load into another Sanguity</label>
-      <label class="check"><input type="radio" name="exportFormat" value="fhir"> FHIR R4: a standard bundle other health
-        apps can read</label>
-    </fieldset>
-    <fieldset class="exp-opts" id="exportParts" hidden>
-      <legend>What to include</legend>
-      <div class="exp-parts">
-        <label class="check"><input type="checkbox" name="exportPart" value="labs" checked> Lab results, and vitals taken at visits</label>
-        <label class="check"><input type="checkbox" name="exportPart" value="visits" checked> Visits, hospital stays and upcoming appointments</label>
-        <label class="check"><input type="checkbox" name="exportPart" value="problems" checked> Conditions and allergies</label>
-        <label class="check"><input type="checkbox" name="exportPart" value="meds" checked> Medications and pharmacy fills</label>
-        <label class="check"><input type="checkbox" name="exportPart" value="immunizations" checked> Immunizations</label>
-        <label class="check"><input type="checkbox" name="exportPart" value="procedures" checked> Procedures, imaging and other studies</label>
-        <label class="check"><input type="checkbox" name="exportPart" value="documents" checked> Documents and letters, with their files</label>
-        <label class="check"><input type="checkbox" name="exportPart" value="messages" checked> Messages</label>
-        <label class="check"><input type="checkbox" name="exportPart" value="claims" checked> Claims</label>
-        <label class="check"><input type="checkbox" name="exportPart" value="home" checked> Home readings and the phone's daily measures</label>
-        <label class="check"><input type="checkbox" name="exportPart" value="ecg" checked> ECGs, with their waveforms</label>
-        <label class="check"><input type="checkbox" name="exportPart" value="person" checked> About this person: birth date, sex used for reference ranges, heights</label>
-      </div>
-      <p class="muted" id="exportNotMapped">Not in a FHIR bundle, which has no place for them: the journal, settings,
-        workouts, out-of-pocket payments and the activity log. What you untick stays out too.</p>
-    </fieldset>
+    <!-- the format, and with FHIR what goes in it (#205, sharing.js), as setting rows (#286); the part names are
+         fhir_export.PARTS' keys -->
+    <div class="set-row">
+      <div class="set-row-lbl"><p class="set-row-name" id="exportFormatLbl">Format</p></div>
+      <div class="set-row-ctl"><fieldset class="exp-opts" id="exportFormat" aria-labelledby="exportFormatLbl">
+        <label class="check"><input type="radio" name="exportFormat" value="sanguity" checked> Sanguity's own: everything,
+          to keep or to load into another Sanguity</label>
+        <label class="check"><input type="radio" name="exportFormat" value="fhir"> FHIR R4: a standard bundle other health
+          apps can read</label>
+      </fieldset></div>
+    </div>
+    <div class="set-row" id="exportParts" hidden>
+      <div class="set-row-lbl"><p class="set-row-name" id="exportPartsLbl">What to include</p>
+        <p class="hint" id="exportNotMapped">Not in a FHIR bundle, which has no place for them: the journal, settings,
+          workouts, out-of-pocket payments and the activity log. What you untick stays out too.</p></div>
+      <div class="set-row-ctl"><fieldset class="exp-opts" aria-labelledby="exportPartsLbl">
+        <div class="exp-parts">
+          <label class="check"><input type="checkbox" name="exportPart" value="labs" checked> Lab results, and vitals taken at visits</label>
+          <label class="check"><input type="checkbox" name="exportPart" value="visits" checked> Visits, hospital stays and upcoming appointments</label>
+          <label class="check"><input type="checkbox" name="exportPart" value="problems" checked> Conditions and allergies</label>
+          <label class="check"><input type="checkbox" name="exportPart" value="meds" checked> Medications and pharmacy fills</label>
+          <label class="check"><input type="checkbox" name="exportPart" value="immunizations" checked> Immunizations</label>
+          <label class="check"><input type="checkbox" name="exportPart" value="procedures" checked> Procedures, imaging and other studies</label>
+          <label class="check"><input type="checkbox" name="exportPart" value="documents" checked> Documents and letters, with their files</label>
+          <label class="check"><input type="checkbox" name="exportPart" value="messages" checked> Messages</label>
+          <label class="check"><input type="checkbox" name="exportPart" value="claims" checked> Claims</label>
+          <label class="check"><input type="checkbox" name="exportPart" value="home" checked> Home readings and the phone's daily measures</label>
+          <label class="check"><input type="checkbox" name="exportPart" value="ecg" checked> ECGs, with their waveforms</label>
+          <label class="check"><input type="checkbox" name="exportPart" value="person" checked> About this person: birth date, sex used for reference ranges, heights</label>
+        </div>
+      </fieldset></div>
+    </div>
     <!-- menstrual cycle records (#183): offered only while cycle tracking is on, unticked each time (sharing.js) -->
     <p class="check-line" id="exportCycleWrap" hidden><label class="check"><input type="checkbox" id="exportCycle">
       Include the cycle records too, in this export only</label></p>

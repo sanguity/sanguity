@@ -179,7 +179,9 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     }
     const who = el("input", {placeholder: "username", autocapitalize: "none", spellcheck: "false", "aria-label": "Share with username", required: true});
     const role = roleSelect("viewer", null, "Role to share as");
-    $("#shareWith").replaceChildren(el("form", {class: "row shr-share", onsubmit: async ev => { ev.preventDefault();
+    // a setting row (#286, util.js): what it does on the left, the form on the right
+    $("#shareWith").replaceChildren(setRow([el("p", {class: "set-row-name", text: "Share with someone"}),
+      el("p", {class: "hint", text: "By their username: they need an account on this server."})], el("form", {class: "row shr-share", onsubmit: async ev => { ev.preventDefault();
       // sharing with someone who already has access would quietly change their role: say so first; owner is asked as above
       const name = who.value.trim(), had = MEMBERS.find(m => m.username.toLowerCase() === name.toLowerCase());
       if (had && had.role === role.value) { fail(new Error(`${had.username} already has access as ${had.role}.`)); return; }
@@ -187,7 +189,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
                             message: `${had.username} already has access to ${p.name} as ${had.role}.`, action: "Change role"})))) return;
       try { await call(`profiles/${p.id}/members`, "PUT", {username: name, role: role.value}); await again(); sayIn($("#peopleMsg"), `Shared with ${name} as ${role.value}.`); }
       catch (e) { fail(e); } }},
-      el("span", {class: "muted", text: "Share with"}), who, "as", role, el("button", {class: "btn", type: "submit", text: "Share"})));
+      who, "as", role, el("button", {class: "btn", type: "submit", text: "Share"}))));
   }
 
   /* ---------------------------------------------------------------- Export: the cycle records, ticked each time (#183):
