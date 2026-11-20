@@ -383,9 +383,9 @@ function renderPaid(box, claimRows, periodLabel) {
     for (const g of groups) host.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto"},
       ...pressable(() => pick(g.key)), "aria-pressed": paidState.q === g.key},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}), el("span", {class: "v", text: usd(g.v)}),
-      el("span", {class: "s", style: {display: "flex", alignItems: "center"}},
-        el("span", {class: "cost-bar", style: {width: Math.max(0, g.v / max * 72) + "%", background: "var(--c-procedure)", flex: "none"}}),
-        el("span", {style: {marginLeft: "8px", color: "var(--muted)"}, text: `${g.n} amount${g.n === 1 ? "" : "s"}`}))));
+      el("span", {class: "s cost-bars"},   // the bar the row's width on one scale, its note under it, as the claims' (#483, #485)
+        el("span", {class: "cost-bar-run"}, el("span", {class: "cost-bar", style: {width: Math.max(0, g.v / max * 100) + "%", background: "var(--c-procedure)"}})),
+        el("span", {class: "cost-bar-note", text: `${g.n} amount${g.n === 1 ? "" : "s"}`}))));
   };
   bars(g1, grp(r => r.group)); bars(g2, grp(r => r.who || "(no payee)"));
   // every amount, with where it came from

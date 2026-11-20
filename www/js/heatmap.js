@@ -108,7 +108,7 @@ function renderHeatmap() {
   // month labels go in a separate axis strip that sticks to the bottom of the window until the heatmap's end scrolls into view
   // the month lines go under the cells (#479): over them they took the taps, and on a phone's narrow columns they
   // covered a month's first draw, its out-of-range colour with it; they show in the gaps between the rows
-  let lastM = "", lastLabelX = -1e9, lastT = null, lastText = null;
+  let lastM = "", lastLabelX = -1e9, lastLabelEnd = -1e9, lastT = null, lastText = null;
   const lines = [];
   for (const [k, ts] of cols) {
     const m = k.slice(0, 7); if (m === lastM) continue; lastM = m;
@@ -117,15 +117,21 @@ function renderHeatmap() {
     ax.push(el("svg:line", {x1: cx, x2: cx, y1: 0, y2: 5, stroke: "var(--axis)"}));
     const t = zdate(ts).toLocaleDateString(undefined, {month: "short", year: "2-digit"});
     lastT = null;
-    if (cx - lastLabelX >= 44 && cx + 2 + labelW(t, "") <= W) { lastText = el("svg:text", {x: cx + 2, y: AH - 6, text: t}); ax.push(lastText); lastLabelX = cx; }   // one that would run past the grid's end, not cut there (#476)
+    // 44 px apart and 6 px clear of the one before as measured (#485: a French "sept. 25" is 43 px wide), and none that
+    // would run past the grid's end, not cut there (#476)
+    if (cx - lastLabelX >= 44 && cx + 2 >= lastLabelEnd + 6 && cx + 2 + labelW(t, "") <= W) { lastText = el("svg:text", {x: cx + 2, y: AH - 6, text: t}); ax.push(lastText); lastLabelX = cx; lastLabelEnd = cx + 2 + labelW(t, ""); }
     else lastT = [cx, t];
   }
   // the latest month always named, held inside the grid's end where it doesn't fit after its line; the label before it
   // dropped where the two would meet (#481: on ten years it was dropped instead, so nothing said the grid reached 2026)
+  // (#485) never back into the names' column, over "Draw date" (one draw day's grid is narrower than its label: it runs
+  // on past the grid, the axis strip widened to hold it); the one before dropped where they'd meet, as measured
   if (lastT) {
-    const x = Math.min(lastT[0] + 2, W - 2 - labelW(lastT[1], ""));
-    if (lastText && x - lastLabelX < 44) ax.splice(ax.indexOf(lastText), 1);
+    const x = Math.max(LW + 2, Math.min(lastT[0] + 2, W - 2 - labelW(lastT[1], "")));
+    if (lastText && x < lastLabelEnd + 6) ax.splice(ax.indexOf(lastText), 1);
     ax.push(el("svg:text", {x, y: AH - 6, text: lastT[1]}));
+    const aw = Math.ceil(x + labelW(lastT[1], "") + 2);   // the strip as wide as its last label, where the grid is narrower
+    if (aw > W) { axis.setAttribute("viewBox", `0 0 ${aw} ${AH}`); axis.setAttribute("width", aw); }
   }
   ax.push(el("svg:text", {x: LW - 8, y: AH - 6, "text-anchor": "end", text: "Draw date"}));
   svg.replaceChildren(...lines, ...g); axis.replaceChildren(...ax);

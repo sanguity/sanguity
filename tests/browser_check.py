@@ -3422,6 +3422,18 @@ def main():
                 return [ls.length > 0 && ls.every(l => l.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING), labels.includes(ms[0]), ms, labels.slice(-3)]; })()""")
             check("…drawn under the cells, so a month's first draw keeps its colour; and the latest month is named on the axis (#479, #481)",
                   under479[0] and under479[1], under479)
+            # #485: in a period with one draw day (90 days) the latest month was pulled back over "Draw date"; no two of the
+            # axis's labels meet, and every one is inside the strip, in 90 days and All
+            OVER485 = """() => { const ax = document.getElementById('hmAxis').getBoundingClientRect(), ls = [...document.querySelectorAll('#hmAxis text')].map(t => [t.textContent, t.getBoundingClientRect()]);
+              const meet = []; for (let i = 0; i < ls.length; i++) for (let j = i + 1; j < ls.length; j++) if (ls[i][1].left < ls[j][1].right + 2 && ls[j][1].left < ls[i][1].right + 2) meet.push(ls[i][0] + '|' + ls[j][0]);
+              return [meet, ls.filter(([, r]) => r.right > ax.right + 1 || r.left < ax.left - 1).map(([t]) => t)]; }"""
+            over485 = {}
+            for per in ("90d", "all"):
+                js("p => { setPeriod(p); renderAll(); }", per)
+                settle(200)
+                over485[per] = js(OVER485)
+            check("…in 90 days (one draw day) and All, no two axis labels meet and each is inside the strip: the latest month isn't drawn over “Draw date” (#485)",
+                  all(v == [[], []] for v in over485.values()), over485)
             for w476 in (320, 375):
                 page.set_viewport_size({"width": w476, "height": 800})
                 settle(400)
@@ -5124,6 +5136,13 @@ def main():
                 .map(card => [...card.querySelectorAll('.cost-bar-run')].map(r => Math.round(r.getBoundingClientRect().width)))""")
             check("…Costs' groups (By type of care, Top providers) each keep their note on one line at 1400 px, and every row's bars are on one scale (#479, #481)",
                   notes479 and all(h <= 1 for _, h in notes479) and runs481 and all(len(set(ws)) == 1 for ws in runs481), [notes479, runs481])
+            # #485: What you paid's lists (What it was for, Who was paid) the same: the note under the bar, one line, at 320 px
+            page.set_viewport_size({"width": 320, "height": 800})
+            js("costState.view = 'paid'; switchTab('costs')")
+            settle(400)
+            paid485 = js("""[...document.querySelectorAll('#view-costs .cost-bar-note')].map(n => [n.textContent, Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight))])""")
+            check("…and What you paid's lists keep each note on one line under its bar at 320 px (#485)", paid485 and all(h <= 1 for _, h in paid485), paid485)
+            js("costState.view = 'claims'")
             js("switchTab('timeline', 'timeline')")
             page.set_viewport_size(vw479)
             settle(300)
