@@ -112,6 +112,61 @@ const helpNodes = (help, ...more) => {
    for another element than a div). -> the row */
 const setRow = (lbl, ctl, {tag = "div", ...attrs} = {}) => el(tag, {...attrs, class: "set-row" + (attrs.class ? " " + attrs.class : "")},
   el("div", {class: "set-row-lbl"}, lbl), el("div", {class: "set-row-ctl"}, ctl));
+/* a small menu of a row's actions (Settings' ordered lists, Admin's accounts, #287): its ⋯ button opens it by touch,
+   mouse or keyboard (Enter, Space or the down arrow; then the arrow keys, and Escape to close it: the app's one menu,
+   SgNav.menu in nav.js). entries: [{text, run, danger}], a null for a line between two; act: the button's
+   data-act; cls: the menu's class ("set-more": shown only on a phone, in Settings' lists). -> the menu */
+let rowMenus = 0;
+function rowMenu(label, entries, act, cls = "set-more") {
+  const id = "rowMenu" + (++rowMenus);
+  const btn = el("button", {class: "btn small set-more-btn", type: "button", "data-act": act, "aria-label": label,
+    "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id}, icon("ellipsis"));
+  const items = entries.map(e => e ? el("button", {class: "menu-item" + (e.danger ? " danger" : ""), role: "menuitem", type: "button", tabindex: "-1",
+    text: e.text, onclick: () => { m.close(); e.run(); }}) : el("div", {class: "menu-sep", role: "separator"}));
+  const list = el("div", {class: "menu-list", id, role: "menu", "aria-label": label}, ...items);
+  const m = SgNav.menu({btn, list, wrap: el("div", {class: "menu " + cls}, btn, list)});
+  return m.wrap;
+}
+/* the danger zone (#287, app.css .danger-zone): what can't be undone, deleting a profile (profile-card.js) or removing
+   an account (admin.js), in one red-edged box of its own under the settings, not a row among them. A setting row: its
+   title and why on the left; on the right o.pick (Admin's choice of account) or a button, o.open ("Delete profile…"),
+   that opens the rest: what goes (o.says(name), nodes), what to do first (o.first(name): Export everything first), and
+   the name to type exactly before its red button, o.action, does o.run(typed), which throws to say why not (the server
+   checks the name again). -> {node, show(name, {focus}), hide(), msg}: show(name) opens it for that name, focus on the
+   box to type it in unless focus is false; msg says how it went, under it */
+let dangerZones = 0;
+function dangerZone(o) {
+  const id = "dz" + (++dangerZones), typed = el("input", {id: id + "Name", autocomplete: "off", autocapitalize: "none", spellcheck: "false"});
+  const go = el("button", {class: "btn danger", type: "button", text: o.action, disabled: true});
+  const said = el("div", {class: "dz-says"}), first = el("div", {class: "dz-first"}), lbl = el("label", {for: typed.id});
+  const msg = el("p", {class: "msg dz-msg"});
+  const body = el("div", {class: "dz-body", id: id + "Body", hidden: true}, said, first, el("div", {class: "dz-name"}, lbl, typed), go);
+  let name = null;
+  const ready = () => { go.disabled = name == null || typed.value.trim() !== name; };
+  typed.oninput = ready;
+  typed.onkeydown = ev => { if (ev.key === "Enter" && !go.disabled) { ev.preventDefault(); go.click(); } };
+  go.onclick = async () => {
+    go.disabled = true; sayIn(msg, "");
+    try { await o.run(typed.value); } catch (e) { sayIn(msg, e.message, true); ready(); }
+  };
+  const open = o.open ? el("button", {class: "btn dz-open", type: "button", text: o.open, "aria-expanded": "false", "aria-controls": body.id,
+    onclick: () => body.hidden ? show(o.name) : hide()}) : null;
+  function show(n, {focus = true} = {}) {
+    name = n; typed.value = ""; lbl.textContent = `Type ${n} to confirm`;
+    said.replaceChildren(...[].concat(o.says(n)).map(x => typeof x === "string" ? el("p", {text: x}) : x));
+    first.replaceChildren(...[].concat(o.first ? o.first(n) : []));
+    first.hidden = !first.childElementCount;
+    body.hidden = false; open?.setAttribute("aria-expanded", "true"); sayIn(msg, ""); ready();
+    if (!focus) return;
+    typed.focus({preventScroll: true});
+    typed.scrollIntoView({block: "nearest", behavior: smoothly()});
+  }
+  function hide() { body.hidden = true; open?.setAttribute("aria-expanded", "false"); name = o.open ? o.name : null; typed.value = ""; ready(); }
+  const node = el("section", {class: "danger-zone", "aria-labelledby": id + "Title"},
+    setRow([el("h3", {class: "sub", id: id + "Title", text: o.title}), o.hint ? el("p", {class: "hint", text: o.hint}) : null], o.pick || open),
+    body, msg);
+  return {node, show, hide, msg};
+}
 /* An empty state (#199): one sentence saying what would appear here, and the one next step, a link ({href, text}) or
    a button ({onclick, text}); none (null) for someone who can't take it. tag: "div" for a whole card's place, "li"
    inside a list. The records tabs, the Sources and Sharing lists and the journal use it. */

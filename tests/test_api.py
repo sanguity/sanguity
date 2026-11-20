@@ -485,13 +485,17 @@ class Api(unittest.TestCase):
         rita.patch(f"/api/profiles/{pid}", json={"name": "Rita's records"}, headers=H)   # something in the log
         ben = self.login("ben")
         # only admins, and not themselves
-        self.assertEqual(rita.request("DELETE", f"/api/users/{ids['kai']}", json={}, headers=H).status_code, 403)
-        self.assertEqual(ben.request("DELETE", "/api/users/1", json={}, headers=H).status_code, 400)
+        self.assertEqual(rita.request("DELETE", f"/api/users/{ids['kai']}", json={"confirm_name": "kai"}, headers=H).status_code, 403)
+        self.assertEqual(ben.request("DELETE", "/api/users/1", json={"confirm_name": "ben"}, headers=H).status_code, 400)
+        # its username typed exactly (#287): missing, or not quite it, removes nothing
+        self.assertEqual(ben.request("DELETE", f"/api/users/{ids['rita']}", json={}, headers=H).status_code, 422)
+        r = ben.request("DELETE", f"/api/users/{ids['rita']}", json={"confirm_name": "Rita"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["detail"]), (400, "Type the account's username exactly to confirm."))
         # a sole owner: asked first, then their profile is handed over in the same step
-        r = ben.request("DELETE", f"/api/users/{ids['rita']}", json={}, headers=H)
+        r = ben.request("DELETE", f"/api/users/{ids['rita']}", json={"confirm_name": " rita "}, headers=H)
         self.assertEqual((r.status_code, r.json()["detail"]["sole_owner_of"]), (409, ["Rita's records"]))
-        self.assertEqual(ben.request("DELETE", f"/api/users/{ids['rita']}", json={"hand_to": "nobody-here"}, headers=H).status_code, 404)
-        r = ben.request("DELETE", f"/api/users/{ids['rita']}", json={"hand_to": "kai"}, headers=H)
+        self.assertEqual(ben.request("DELETE", f"/api/users/{ids['rita']}", json={"confirm_name": "rita", "hand_to": "nobody-here"}, headers=H).status_code, 404)
+        r = ben.request("DELETE", f"/api/users/{ids['rita']}", json={"confirm_name": "rita", "hand_to": "kai"}, headers=H)
         self.assertEqual((r.status_code, r.json()["handed_over"]), (200, ["Rita's records"]))
         # gone: can't sign in, signed out, not in sharing lists; the other member is unaffected and now owns it
         self.assertEqual(client().post("/api/login", json={"username": "rita", "password": "rita keeps a long passphrase"}, headers=H).status_code, 401)

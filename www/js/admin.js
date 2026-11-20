@@ -70,7 +70,7 @@ function syncNotice(rows) {
 /* admins need a second factor of their own once the server has more than one account: until then, say so (the
    server refuses the rest of this page until then too) */
 function adminGate() {
-  $("#adminTf").hidden = false; $("#adminTools").hidden = true; $("#users").hidden = false;
+  $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
   for (const id of ["#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
 }
@@ -126,62 +126,77 @@ function showTemp(username, pw, days) {
   say("#userMsg", [`One-time password for ${username}: `, el("code", {text: pw}),
     ` — give it to them privately; it isn't shown again, and stops working if not used within ${days || 7} days.`]);
 }
+/* the accounts (#287): a row each, its name with badges (admin, two-factor, disabled; "(you)" on your own), where it's
+   signed in, and a ⋯ menu of what can be done to it (util.js rowMenu, as Settings' rows). Your own row has none: none
+   of those can be done to your own account here. Removing one is the danger zone's, under the list. On a phone each row
+   is a little card, each value under its column's name (util.js labelCells, #320). */
+const devices = n => n ? plural(n, "device") : "no device";
 async function loadUsers() {
-  const list = await call("users");
+  const list = await call("users"), mine = document.activeElement?.closest?.("#userList tr[data-user]")?.dataset.user;
   loadOwnerless();
-  $("#userList").replaceChildren(el("table", {class: "tbl"},
-    el("thead", {}, el("tr", {}, ...["Account", "Status", "2FA", "Devices", ""].map(h => el("th", {text: h})))),
+  $("#userList").replaceChildren(el("table", {class: "tbl users"},
+    el("thead", {}, el("tr", {}, ...["Account", "Signed in on", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...list.map(u => {
       const self = u.id === ME.user.id;
-      // each change but Enable is asked first (#249), before any fresh check: Cancel sends nothing
-      const act = (label, body, {sure, done} = {}) => el("button", {class: "btn small", type: "button", text: label, disabled: self || null,
-        onclick: async () => {
-          if (sure && !await ask(sure)) return;
-          try {
-            let r;
-            try { r = await fresh(() => call("users/" + u.id, "PATCH", body)); }
-            catch (e) {   // disabling the only owner of a profile: the server says which, and it's asked once more
-              if (!(e.detail && e.detail.sole_owner_of)) throw e;
-              if (!await ask({title: `Disable ${u.username} anyway?`, message: e.message, action: "Disable anyway", danger: true})) throw new Error("Not disabled.");
-              r = await call("users/" + u.id, "PATCH", {...body, force: true});
-            }
-            done && done(r); loadUsers();
-          } catch (e) { say("#userMsg", e.message, true); }
-        }});
-      return el("tr", {},
-        el("td", {}, u.username, u.is_admin ? el("span", {class: "tag", text: "admin"}) : null, self ? el("span", {class: "muted", text: " (you)"}) : null),
-        el("td", {text: u.disabled ? "disabled" : u.must_change_pw ? "hasn't chosen a password yet" : "active"}),
-        el("td", {text: u.two_factor ? "on" : "off"}),
-        el("td", {text: u.sessions}),
-        el("td", {class: "acts"},
-          act(u.disabled ? "Enable" : "Disable", {disabled: !u.disabled}, u.disabled ? {} : {sure: {title: `Disable ${u.username}?`,
-            message: ["They're signed out everywhere and can't sign in until an admin enables the account again.",
-                      "Their profiles and records stay as they are."], action: "Disable", danger: true}}),
-          act(u.is_admin ? "Remove admin" : "Make admin", {is_admin: !u.is_admin}, {sure: u.is_admin
-            ? {title: `Remove ${u.username}'s admin role?`, message: "They keep their account and the profiles shared with them, but can't use the Admin page any more.",
-               action: "Remove admin"}
-            : {title: `Make ${u.username} an admin?`, message: ["Admins look after every account on this server: they can add, disable and remove accounts, " +
-                 "reset passwords and turn off two-factor sign-in, and look after backups and sources.",
-                 "They don't see a profile's records unless it's shared with them. They'll need two-factor sign-in of their own to use the Admin page."],
-               action: "Make admin", danger: true}}),
-          act("Reset password", {reset_password: true}, {sure: {title: `Reset ${u.username}'s password?`,
-            message: ["Their password stops working at once, and they're signed out everywhere.",
-                      "You'll get a one-time password to give them; they choose a new one when they first sign in with it." +
-                      (u.two_factor ? " Their two-factor sign-in stays on." : "")], action: "Reset password", danger: true},
-            done: r => setTimeout(() => showTemp(u.username, r.temporary_password, r.temporary_days))}),
-          self ? null : el("button", {class: "btn small", type: "button", text: "Remove", onclick: () => removeAccount(u)}),
-          u.two_factor ? el("button", {class: "btn small", type: "button", text: "Turn off 2FA", disabled: self || null, onclick: async () => {
-            if (!await ask({title: `Turn off two-factor sign-in for ${u.username}?`,
-                            message: ["Do this only if they lost both their phone and their recovery codes.", "They'll be signed out everywhere."],
-                            action: "Turn off", danger: true})) return;
-            try { await fresh(() => call("users/" + u.id, "PATCH", {disable_2fa: true})); loadUsers(); } catch (e) { say("#userMsg", e.message, true); } }}) : null));
+      return el("tr", {"data-user": u.id},
+        el("td", {class: "who"}, el("b", {text: u.username}), self ? el("span", {class: "muted", text: " (you)"}) : null,
+          u.is_admin ? el("span", {class: "tag", text: "admin"}) : null,
+          u.two_factor ? el("span", {class: "tag", text: "two-factor"}) : null,
+          u.disabled ? el("span", {class: "tag off", text: "disabled"}) : null,
+          !u.disabled && u.must_change_pw ? el("span", {class: "muted new-pw", text: "Hasn't chosen a password yet"}) : null),
+        el("td", {text: devices(u.sessions)}),
+        el("td", {class: "acts"}, self ? null : userMenu(u)));
     }))));
+  accountsZone(list.filter(u => u.id !== ME.user.id));
+  // a change from a row's menu redraws the list: focus back on that row's ⋯
+  if (mine && document.activeElement === document.body)
+    $(`#userList tr[data-user="${mine}"] .set-more-btn`)?.focus({preventScroll: true});
+}
+/* a row's ⋯: each change but Enable is asked first (#249), before any fresh check, so Cancel sends nothing */
+function userMenu(u) {
+  const n = u.username;
+  return rowMenu(`Manage ${n}`, [
+    u.is_admin
+      ? {text: "Remove admin…", run: () => changeUser(u, {is_admin: false}, {title: `Remove ${n}'s admin role?`,
+          message: "They keep their account and the profiles shared with them, but can't use the Admin page any more.", action: "Remove admin"})}
+      : {text: "Make admin…", run: () => changeUser(u, {is_admin: true}, {title: `Make ${n} an admin?`, message: [
+          "Admins look after every account on this server: they can add, disable and remove accounts, reset passwords and " +
+          "turn off two-factor sign-in, and look after backups and sources.",
+          "They don't see a profile's records unless it's shared with them. They'll need two-factor sign-in of their own to use the Admin page."],
+          action: "Make admin", danger: true})},
+    {text: "Reset password…", run: () => changeUser(u, {reset_password: true}, {title: `Reset ${n}'s password?`, message: [
+      "Their password stops working at once, and they're signed out everywhere.",
+      "You'll get a one-time password to give them; they choose a new one when they first sign in with it." +
+      (u.two_factor ? " Their two-factor sign-in stays on." : "")], action: "Reset password", danger: true},
+      r => setTimeout(() => showTemp(n, r.temporary_password, r.temporary_days)))},
+    u.two_factor ? {text: "Turn off two-factor sign-in…", run: () => changeUser(u, {disable_2fa: true}, {title: `Turn off two-factor sign-in for ${n}?`,
+      message: ["Do this only if they lost both their phone and their recovery codes.", "They'll be signed out everywhere."], action: "Turn off", danger: true})} : false,
+    u.disabled
+      ? {text: "Enable", run: () => changeUser(u, {disabled: false})}
+      : {text: "Disable…", run: () => changeUser(u, {disabled: true}, {title: `Disable ${n}?`, message: [
+          "They're signed out everywhere and can't sign in until an admin enables the account again.",
+          "Their profiles and records stay as they are."], action: "Disable", danger: true})},
+    null,
+    {text: "Remove account…", danger: true, run: () => { $("#rmUser").value = u.id; USERZONE.show(n); }}].filter(e => e !== false), "user", "user-more");
+}
+async function changeUser(u, body, sure, done) {
+  if (sure && !await ask(sure)) return;
+  try {
+    let r;
+    try { r = await fresh(() => call("users/" + u.id, "PATCH", body)); }
+    catch (e) {   // disabling the only owner of a profile: the server says which, and it's asked once more
+      if (!(e.detail && e.detail.sole_owner_of)) throw e;
+      if (!await ask({title: `Disable ${u.username} anyway?`, message: e.message, action: "Disable anyway", danger: true})) throw new Error("Not disabled.");
+      r = await call("users/" + u.id, "PATCH", {...body, force: true});
+    }
+    done && done(r); await loadUsers();
+  } catch (e) { say("#userMsg", e.message, true); }
 }
 /* profiles nobody can manage (every owner disabled or removed): an admin names a new owner; never shows records */
 async function loadOwnerless() {
   const list = await call("ownerless"), box = $("#ownerless");
   if (!list.length) { box.replaceChildren(); return; }
-  box.replaceChildren(el("div", {class: "danger-zone ownerless"},
+  box.replaceChildren(el("div", {class: "ownerless"},
     el("p", {}, el("b", {text: "Profiles without an owner. "}), "Every owner of these was disabled or removed, so nobody can ",
       "share or rename them. Give each an owner who should look after it. Whoever you choose can see its records."),
     ...list.map(p => {
@@ -205,28 +220,47 @@ async function loadOwnerless() {
     })));
 }
 
-/* removing an account for good: if they alone own profiles, ask who takes those over first */
-async function removeAccount(u) {
-  if (!await ask({title: `Remove the account ${u.username} for good?`,
-                  message: ["They're signed out and lose access to every profile.",
-                            "Their past activity stays in the logs, marked as removed. Their profiles' records stay."],
-                  action: "Remove account", danger: true})) return;
-  let body = {};
+/* removing an account for good (#287): the danger zone under the list (util.js dangerZone, as deleting a profile), the
+   account picked there or by its row's "Remove account…", its username typed before it goes (the server checks it
+   again). If they alone own profiles, who takes those over is asked then. others: every account but your own */
+let USERZONE, USERS = new Map();
+function accountsZone(others) {
+  USERS = new Map(others.map(u => [String(u.id), u]));
+  if (!USERZONE) {
+    const pick = el("select", {id: "rmUser"});
+    USERZONE = dangerZone({title: "Remove an account", hint: "For good: they lose access to every profile. It can't be undone.",
+      pick: el("label", {class: "dz-name"}, "Account to remove", pick),
+      says: () => ["They're signed out everywhere and lose access to every profile shared with them.",
+                   "Their past activity stays in the logs, marked as removed. Their profiles' records stay."],
+      action: "Remove the account", run: typed => removeAccount(USERS.get(pick.value), typed)});
+    pick.onchange = () => { const u = USERS.get(pick.value); u ? USERZONE.show(u.username, {focus: false}) : USERZONE.hide(); };
+    $("#userDanger").replaceChildren(USERZONE.node);
+  }
+  const pick = $("#rmUser"), was = pick.value;
+  pick.replaceChildren(el("option", {value: "", text: "Choose an account…"}), ...others.map(u => el("option", {value: u.id, text: u.username})));
+  pick.value = USERS.has(was) ? was : "";
+  if (!pick.value) USERZONE.hide();
+  USERZONE.node.hidden = !others.length;   // yours alone: nothing to remove here
+}
+async function removeAccount(u, typed) {
+  let body = {confirm_name: typed};
   for (;;) {
     try {
       const r = await call("users/" + u.id, "DELETE", body);
-      say("#userMsg", `Removed ${u.username}.` + (r.handed_over.length ? ` ${body.hand_to} now owns ${r.handed_over.join(", ")}.` : ""));
-      loadUsers();
+      $("#rmUser").value = "";
+      await loadUsers();
+      sayIn(USERZONE.msg, `Removed ${u.username}.` + (r.handed_over.length ? ` ${body.hand_to} now owns ${r.handed_over.join(", ")}.` : ""));
+      $("#rmUser").focus();   // the box it was typed in went with it
       return;
     } catch (e) {
-      if (!(e.detail && e.detail.sole_owner_of)) { say("#userMsg", e.message, true); return; }
+      if (!(e.detail && e.detail.sole_owner_of)) throw e;
       // who takes their profiles over: asked in the app's dialog, with a box for the name (#210: was the browser's prompt)
       const field = el("input", {autocapitalize: "none", spellcheck: "false", autocomplete: "off"});
       if (!await ask({title: `Who takes over from ${u.username}?`,
                       message: [e.message, el("label", {}, "New owner's username", field),
                                 "Leave it empty to remove the account anyway: an admin can give the profile an owner later, under Accounts."],
-                      action: "Remove account", danger: true, field})) { say("#userMsg", "Not removed."); return; }
-      body = field.value.trim() ? {hand_to: field.value.trim()} : {force: true};
+                      action: "Remove account", danger: true, field})) throw new Error("Not removed.");
+      body = {confirm_name: typed, ...(field.value.trim() ? {hand_to: field.value.trim()} : {force: true})};
     }
   }
 }

@@ -255,6 +255,17 @@ button.tile{cursor:pointer}
 .set-row-lbl{flex:38 1 0;min-width:min(100%,14rem)}
 .set-row-ctl{flex:62 1 0;min-width:min(100%,21rem);container-type:inline-size}
 .set-row.wide>*{flex-basis:100%}
+/* ---- the danger zone (#287, dangerZone() in util.js): what can't be undone (deleting a profile, removing an account)
+   in one red-edged box of its own, last, apart from the settings: a setting row, its title in red; opened, what goes,
+   what to do first, and the name to type before its red button works. */
+.danger-zone{margin-top:var(--sp-4);padding:0 var(--sp-4);border:1px solid var(--crit);border-radius:var(--r-md)}
+.dz-body{display:grid;justify-items:start;gap:var(--sp-3);padding:var(--sp-3) 0;border-top:1px solid var(--grid)}
+.dz-body>*,.dz-says>p{margin:0}
+.dz-first{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.dz-says{display:grid;gap:var(--sp-2);max-width:60ch}
+.dz-name{display:grid;gap:var(--sp-1);width:min(100%,24rem)}
+.dz-msg{padding-bottom:var(--sp-3)}
+.menu-item.danger{color:var(--crit)}
 
 /* ---- menus (#261, menuWire in nav.js): the list is a popover, in the top layer over everything (no z-index), placed
    by CSS anchor positioning: under its button (the anchor, scoped to the menu's own box), its right edge on the
@@ -535,6 +546,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .tip .k{display:inline-block;width:12px;height:2px;border-radius:2px;vertical-align:middle;margin-right:var(--sp-2)}
 .card h3.sub,.h-sec h4.sub{font-size:var(--fs-3);font-weight:var(--fw-semibold);margin:0 0 var(--sp-1);color:var(--ink2)}
 .card h3.sub.next,.h-sec h4.sub.next{margin-top:var(--sp-3)}   /* a part of a card after a chart or a list (health.js) */
+.card .danger-zone h3.sub{color:var(--crit)}   /* the danger zone's title (components, #287) */
 .list{display:flex;flex-direction:column}
 /* the Timeline's Events card (#277, timeline.js): the kinds and the search under its heading, the line of counts, then
    the events by day under month headings, each month skipped by the browser while off screen. A day's date once, its
@@ -818,11 +830,12 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .prof:first-child{border-top:0}
 .acct .prof-hd{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 .acct .activity-wrap{margin-top:var(--sp-3)}
-.acct .danger-zone{margin-top:var(--sp-2);padding:var(--sp-2) var(--sp-3);border:1px solid var(--crit);border-radius:var(--r-md);max-width:560px}
-.acct .danger-zone p{margin:0 0 var(--sp-2);font-size:var(--fs-3)}
-.acct .danger-zone label{margin-top:var(--sp-2)}
-.acct .ownerless{margin-top:var(--sp-3);max-width:none}
+.acct .ownerless{margin-top:var(--sp-3);padding:var(--sp-2) var(--sp-3);border:1px solid var(--c-study);border-radius:var(--r-md)}   /* to repair, not to undo: a warning's edge, not the danger zone's */
+.acct .ownerless p{margin:0 0 var(--sp-2);font-size:var(--fs-3)}
 .acct .ownerless .row{border-top:1px solid var(--grid);padding-top:var(--sp-2)}
+.acct .tag.off{background:none;outline:1px solid var(--ring);outline-offset:-1px}   /* disabled: an outline, not a fill */
+.acct .users .new-pw{display:block}
+.acct .tbl.users td.acts{display:table-cell;width:1%}   /* the ⋯ column as narrow as its button */
 .acct .activity{margin-top:var(--sp-2)}
 .acct .activity td.nowrap{white-space:nowrap}
 #acctLog{margin-top:var(--sp-3)}
@@ -839,6 +852,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
   /* the hidden headings' names, on the cells (labelCells, util.js, #320): read once, as the headings are gone too */
   .acct .tbl td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:var(--fs-2);font-weight:var(--fw-medium);overflow-wrap:normal}
   .acct .activity .tbl td:nth-child(n+3){grid-column:1/-1}   /* …and an activity log's what and address take the row's width */
+  .acct .tbl.users td.acts{grid-area:1/2/span 2}   /* an account's ⋯ on the right, beside its name and devices (#287) */
 }
 /* uploading (#281, import.js dropTarget): Sources → Upload files, the guide's step 2 and the dialog a drop opens
    (drop.js); the drop target, then each upload's card (import-jobs.js frame): its title, the stage line, one bar,

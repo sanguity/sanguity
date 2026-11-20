@@ -1488,6 +1488,16 @@ Everything on `main` so far; it becomes the first tagged release.
   (or why they can't: a profile you can only view, or offline); let go, they upload into that page's drop target, or
   into one in a dialog over the page, the records page drawing what's saved there in place. Nothing dropped is kept
   but on its way to the server. The service worker keeps the new script (`sanguity-shell-v12`).
+- **Admin's accounts: badges and a ⋯ menu per row, and one danger zone** (#287): each account had up to five
+  identical small buttons, three of them disabled on your own row, beside an "off" and a "2" in columns of their own,
+  and deleting a profile sat under its Rename looking the same. Now each account is its name with badges (admin,
+  two-factor, disabled) and the devices it's signed in on, and a ⋯ menu of what can be done to it, as Settings' rows
+  have: Make or Remove admin, Reset password, Turn off two-factor sign-in, Disable or Enable, and Remove account. Your
+  own row has none, as none of these can be done to your own account there. On a phone each value is under its
+  column's name. Removing an account and deleting a profile are each a danger zone, a red-edged box after everything
+  else in their card: the account or the profile, what goes and what stays, Export everything first for a profile, and
+  its name typed exactly before the red button works. The server now checks an account's username too, as it checks
+  a profile's name (`confirm_name` on `DELETE /api/users/{id}`).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
