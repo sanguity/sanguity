@@ -5409,7 +5409,9 @@ def main():
                 row = page.locator("#ovDoses .dose-today", has=page.locator(".dose-quick")).first
                 what = row.locator(".dose-med").inner_text()
                 js("window.sg271 = 1")   # gone if the page loads again (#271)
-                # on the Overview, Taken late and Skipped are under the row's ⋯ (#440), a menu
+                # on the Overview, Taken late and Skipped are under the row's ⋯ (#440), a menu. The row mid-screen first,
+                # so the menu has room on either side and the click needn't scroll (which can flip it to the other side)
+                row.evaluate("r => r.scrollIntoView({block: 'center'})")
                 row.locator(".dose-quick button.dose-more").click()
                 page.wait_for_selector("#ovDoses .menu-list:popover-open", timeout=5000)
                 menu440 = js("[...document.querySelectorAll('#ovDoses .menu-list:popover-open [role=menuitem]')].map(b => b.textContent)")
