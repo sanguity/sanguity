@@ -1539,6 +1539,12 @@ Everything on `main` so far; it becomes the first tagged release.
   addresses do. Opening the app with no # restored Labs' and the Timeline's last view but not Costs'; it does now. "Its
   claims on Costs" took every click, so a Ctrl-, ⌘- or Shift-click opened nothing elsewhere; it leaves those to the
   browser, its address (`#costs?drug=…`) opening the drug's claims in the new tab.
+- **The Timeline's search finds a lab draw by its tests, and counts only theirs** (#459): a lab draw was found by its
+  panels' names, so "ferritin" or "hemoglobin" listed nothing; it's found by its tests' names too, as the records and
+  Labs name them ("platelets" as well as "platelet count"). Under a search that names tests, the line over the list
+  counted every value of the draws found, so "psa" said "23 lab draws, 598 results, 8 out of range" when PSA's 23 were
+  all in range; it counts those tests' results only, and says which ("23 lab draws, 23 PSA results"; "104 results of
+  the 4 tests matching “iron”").
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

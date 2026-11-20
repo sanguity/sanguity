@@ -3011,6 +3011,33 @@ def main():
             check("…the line counts the lab draws' results as Labs does, its values in the period (its Vitals aside), and those out of range (#451)",
                   tl451["n"] > tl451["draws"] and f"{tl451['draws']:,} lab draws, {tl451['n']:,} results, {tl451['abn']:,} out of range" in off["sum"], [tl451, off["sum"]])
             check("…and each lab row names its panels (or its one test) as Labs does (#451)", tl451["subs"] > 0 and tl451["odd"] == [], tl451)
+            # #459: the search finds a lab draw by a test's name, as the records or Labs name it (a draw's search words were
+            # its panels: "hemoglobin" found nothing in "CBC with differential"), and under it the line counts those tests'
+            # results only ("psa" said the PSA draws' 598 values, 8 out of range, when PSA's 23 were all in range)
+            tl459_q = r"""(q => { const ss = SERIES.filter(s => !s.watch && s.panel !== 'Vitals' && [s.name, nice(s.name), s.panel || ''].some(t => t.toLowerCase().includes(q)));
+                const days = new Set(ss.flatMap(s => s.pts.map(p => isoDay(p.ts)))), pts = ss.flatMap(s => s.pts).filter(p => p.ts >= state.from && p.ts <= state.to);
+                const want = EV.filter(e => e.k === 'lab' && !e.hidden && inRange(e) && days.has(isoDay(e.ts))).map(e => e.id).sort((a, b) => a - b);
+                const got = tlListed().filter(e => e.k === 'lab').map(e => e.id).sort((a, b) => a - b), gotDays = new Set(got.map(id => isoDay(byId.get(id).ts)));
+                let all = 0; for (const s of SERIES) if (!s.watch && s.panel !== 'Vitals') for (const p of s.pts) if (gotDays.has(isoDay(p.ts))) all++;
+                return {names: [...new Set(ss.map(s => nice(s.name)))], n: pts.length, abn: pts.filter(p => p[4]).length, all, got: got.length, same: JSON.stringify(want) === JSON.stringify(got),
+                  sum: document.getElementById('tlSum').textContent}; })(document.getElementById('q').value.trim().toLowerCase())"""
+            tl459 = {}
+            for q in ("hemoglobin", "platelets", "cbc"):
+                page.fill("#q", q)
+                settle(400)
+                tl459[q] = js(tl459_q)
+            page.fill("#q", "")
+            settle(400)
+            hb, plt, cbc = tl459["hemoglobin"], tl459["platelets"], tl459["cbc"]
+            check("Timeline (#459): searching a test's name lists its draws (“hemoglobin”, a test of CBC with differential), and by the name Labs shows "
+                  "it by (“platelets”, Platelet Count's)", hb["names"] == ["Hemoglobin"] and hb["got"] > 0 and hb["same"] and plt["names"] == ["Platelets"]
+                  and plt["got"] > 0 and plt["same"], tl459)
+            check("…and the line over the list counts that test's results, not every value of its draws: “45 lab draws, 45 Hemoglobin results, 25 out of range”",
+                  hb["abn"] > 0 and hb["n"] < hb["all"] and f"{hb['got']:,} lab draws, {hb['n']:,} Hemoglobin results, {hb['abn']:,} out of range" in hb["sum"]
+                  and f"{plt['n']:,} Platelets results" in plt["sum"], tl459)
+            check("…a search naming several tests (“cbc”, a panel) counts theirs and says how many tests: “225 results of the 5 tests matching “cbc””",
+                  len(cbc["names"]) > 1 and cbc["same"]
+                  and f"{cbc['got']:,} lab draws, {cbc['n']:,} results of the {len(cbc['names'])} tests matching “cbc”, {cbc['abn']:,} out of range" in cbc["sum"], cbc)
             page.click("label.toggle:has(#tlWork)")
             settle(300)
             on = js(ev_list)

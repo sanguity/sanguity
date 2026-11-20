@@ -163,23 +163,31 @@ $("#tlWork").onclick = ev => { if (ev.target.getAttribute("aria-disabled") === "
 $("#tlWork").onchange = ev => { state.tlWork = ev.target.checked; renderList(); save(); };
 /* the results of these lab draws, as Labs counts them (#451): the values on their days, and those out of range (e.n
    counts reports, so "100 results, 67 out of range" read as 67 of 100 when it was 67 of 442 values); Labs' Vitals,
-   readings taken at visits, aren't a draw's. -> [n, abn] */
-function tlLabValues(labs) {
+   readings taken at visits, aren't a draw's; with tests (a Set of series), theirs only. -> [n, abn] */
+function tlLabValues(labs, tests = null) {
   const from = [...new Set(labs.map(e => isoDay(e.ts)))].map(d => zParse(d + "T00:00:00")).sort((a, b) => a - b);
   const to = from.map(t => zParse(isoDay(t + 1.5 * DAY) + "T00:00:00"));   // the next day's start
   let n = 0, abn = 0;
-  if (from.length) for (const s of SERIES) if (!s.watch && s.panel !== "Vitals") for (const p of s.pts) {   // (a visit's vitals aren't a draw's)
+  if (from.length) for (const s of SERIES) if (!s.watch && s.panel !== "Vitals" && (!tests || tests.has(s))) for (const p of s.pts) {   // (a visit's vitals aren't a draw's)
     let lo = 0, hi = from.length - 1;   // the last day that starts at or before it
     while (lo < hi) { const m = (lo + hi + 1) >> 1; if (from[m] <= p.ts) lo = m; else hi = m - 1; }
     if (from[lo] <= p.ts && p.ts < to[lo]) { n++; if (p[4]) abn++; }
   }
   return [n, abn];
 }
-/* the line over the list: "The last year: 9 lab draws, 31 results, 3 out of range · 97 workouts, not listed" */
+/* the tests a search names (#459): the lab series whose name, the name Labs shows it by, or panel has what was typed,
+   as a lab day's search words do (store.js labDayWords); none with no search */
+const tlTestsHit = () => !state.q ? [] : SERIES.filter(s => !s.watch && s.panel !== "Vitals"
+  && [s.name, nice(s.name), s.panel || "", panelName(s.panel || "")].some(t => t.toLowerCase().includes(state.q)));
+/* the line over the list: "The last year: 9 lab draws, 31 results, 3 out of range · 97 workouts, not listed". Under a
+   search that names tests, the draws' results are those tests' only ("23 lab draws, 23 PSA results": not the 598 values
+   of the draws that have a PSA, 8 of them out of range, read as PSA's), and it says which */
 function tlSum(v, listed) {
-  const labs = v.filter(e => e.k === "lab"), [res, abn] = tlLabValues(labs);
-  const work = v.filter(isWork).length, parts = [], when = periodLabel();
-  if (labs.length) parts.push(`${tlN(labs.length, "lab draw")}, ${tlN(res, "result")}${abn ? `, ${abn.toLocaleString()} out of range` : ""}`);
+  const labs = v.filter(e => e.k === "lab"), tests = tlTestsHit(), [res, abn] = tlLabValues(labs, tests.length ? new Set(tests) : null);
+  const work = v.filter(isWork).length, parts = [], when = periodLabel(), names = [...new Set(tests.map(s => nice(s.name)))];
+  const what = !names.length ? tlN(res, "result") : names.length === 1 ? tlN(res, `${names[0]} result`)
+    : `${tlN(res, "result")} of the ${names.length} tests matching “${timelineFilters().q || state.q}”`;
+  if (labs.length) parts.push(`${tlN(labs.length, "lab draw")}, ${what}${abn ? `, ${abn.toLocaleString()} out of range` : ""}`);
   if (work) parts.push(tlN(work, "workout") + (listed ? "" : ", not listed"));
   const p = $("#tlSum");
   p.hidden = !parts.length;
