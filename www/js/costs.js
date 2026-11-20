@@ -79,7 +79,7 @@ function renderCosts() {
     mc.append(el("div", {class: "legend mb-2"},
       el("span", {}, el("i", {style: {background: "var(--c-lab)"}}), "Paid by insurance"),
       el("span", {}, el("i", {style: {background: "var(--c-imaging)"}}), "Your share"),
-      el("span", {}, el("i", {style: {background: "var(--stay)"}}), "Hospital stay")));
+      el("span", {}, el("i", {class: "stay-key"}), "Hospital stay")));   // its edge too (#450)
     const svg = el("svg:svg", {role: "img", "aria-label": by === "year" ? "Yearly insurance costs" : "Monthly insurance costs"}); mc.append(svg);
     requestAnimationFrame(() => drawCostBars(svg, rows, by));
   }

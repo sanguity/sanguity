@@ -31,7 +31,9 @@ function menuWire(m) {
   m.open = () => { if (!isOpen() && list.isConnected) list.showPopover({source: btn}); };
   m.close = () => { if (isOpen()) list.hidePopover(); };
   let leaving = false;
-  const follow = () => menuPlace(m);   // placed before it's drawn, and again while open as the page scrolls or resizes (#356)
+  // placed before it's drawn, and again while open as the page scrolls or resizes (#356); a list taken out of the page
+  // while open closes with no beforetoggle, so then its listeners go at the next scroll or resize (#450)
+  const follow = () => { if (list.isConnected) return menuPlace(m); removeEventListener("scroll", follow, {capture: true}); removeEventListener("resize", follow); };
   list.addEventListener("beforetoggle", ev => {
     const on = ev.newState === "open";
     btn.setAttribute("aria-expanded", String(on));
