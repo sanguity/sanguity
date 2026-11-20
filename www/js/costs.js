@@ -350,7 +350,7 @@ function renderPaid(box, claimRows, periodLabel) {
       });
       cum.append(stacked(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", settled ? "Reduced so far" : "Difference"], out.reverse())));
     } else {
-      const svg = el("svg:svg", {role: "img", "aria-label": "Your share and the bills you paid, running totals. Table lists them by month."});
+      const svg = el("svg:svg", {role: "img", height: 210, "aria-label": "Your share and the bills you paid, running totals. Table lists them by month."});   // its height from the start, so what's under it doesn't move when it's drawn a frame later (#473)
       cum.append(el("div", {class: "legend mb-2"},
         el("span", {}, el("i", {style: {background: "var(--c-imaging)"}}), "Your share per insurers, running total"),
         el("span", {}, el("i", {style: {background: "var(--c-procedure)"}}), "Medical bills you paid, running total")), svg);
