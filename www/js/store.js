@@ -117,14 +117,15 @@ function labDayWords() {
   }
 }
 /* the records' span, the watch's last day included, and the journal's and cycle tracking's entries (EV, #472): one
-   written after the latest import is in the period that ends at the latest record, as the palette finds it */
+   written after the latest import is in the period that ends at the latest record, as the palette finds it.
+   state.last: the latest entry, however far ahead, where All ends (core.js setPeriod, #475) */
 function storeSpan() {
-  let min = Infinity, max = -Infinity;
+  let min = Infinity, max = -Infinity, last = -Infinity;
   // the person's own entries (journal, mood, cycle) count up to today, not past it: one dated ahead mustn't move the
   // end of every period there (#472)
   const own = new Set(["journal", "mood", "cycle"]), today = dayTs(zToday()) + DAY - 1;
-  for (const e of EV) if (isFinite(e.ts)) { const t = own.has(e.k) ? Math.min(e.ts, today) : e.ts; if (t < min) min = t; if (t > max) max = t; }
-  state.min = min; state.max = max;
+  for (const e of EV) if (isFinite(e.ts)) { const t = own.has(e.k) ? Math.min(e.ts, today) : e.ts; if (t < min) min = t; if (t > max) max = t; if (e.ts > last) last = e.ts; }
+  state.min = min; state.max = max; state.last = last;
   for (const s of SERIES) if (s.watch && s.pts.length) state.max = Math.max(state.max, s.pts[s.pts.length - 1].ts);
 }
 /* the watch data from the Health Connect receiver, joined to the records: its charts in SERIES, its workouts, ECGs and

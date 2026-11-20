@@ -37,12 +37,15 @@ const hasLane = c => EV.some(e => CAT_OF[e.k] === c) || (c.k === "watch" && STEP
 /* preset: the records bar's period (#171), shared by every tab with time ("period" below); labsView: the Labs tab's
    "chart" or "heatmap" (#172); tlView: the Timeline tab's "timeline" or "journal", and tlWork: its list has the
    workouts too (#277, timeline.js) */
-const state = { from: 0, to: 0, min: 0, max: 0, preset: "2y", cats: savedCats(null), q: "", tab: "overview", labsView: "chart", tlView: "timeline", tlWork: false, marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
+const state = { from: 0, to: 0, min: 0, max: 0, last: 0, preset: "2y", cats: savedCats(null), q: "", tab: "overview", labsView: "chart", tlView: "timeline", tlWork: false, marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
 
 /* ---------------------------------------------------------------- persistence */
 /* the person's own period, saved in place of All while the palette shows everything for this visit (periodVisit) */
 let periodKept = null;
-function save() { if (state.preset !== "all") periodKept = null; const P = periodKept || state; try { localStorage.setItem(stateKey(), JSON.stringify({preset: P.preset, from: P.from, to: P.to, cats: [...state.cats], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, tlView: state.tlView, costView: typeof costState === "object" ? costState.view : undefined, tlWork: state.tlWork, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
+/* and their own kinds, saved in place of those a link shows for this visit (kindsVisit, #475), until they change them */
+let catsKept = null, catsVisit = "";
+const catsKey = s => [...s].sort().join();
+function save() { if (state.preset !== "all") periodKept = null; if (catsKept && catsKey(state.cats) !== catsVisit) catsKept = null; const P = periodKept || state; try { localStorage.setItem(stateKey(), JSON.stringify({preset: P.preset, from: P.from, to: P.to, cats: [...(catsKept || state.cats)], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, tlView: state.tlView, costView: typeof costState === "object" ? costState.view : undefined, tlWork: state.tlWork, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
 function restore() {
   try {
     let raw = localStorage.getItem(stateKey());
@@ -78,7 +81,8 @@ function setPeriod(p) {
   const end = state.max + DAY, m = msOf(p);
   if (!(p in PRESET_DAYS) && p !== "all" && !m && !isYearKey(p)) p = "all";   // e.g. a milestone since deleted
   state.preset = lastPeriod = p;
-  if (p === "all") { const pad = (state.max - state.min) * .02 + DAY; state.from = state.min - pad; state.to = state.max + pad; }
+  // All: to the latest entry, however far ahead (state.last, #475), padded by the records' span
+  if (p === "all") { const pad = (state.max - state.min) * .02 + DAY; state.from = state.min - pad; state.to = Math.max(state.max, state.last) + pad; }
   else if (m) { state.to = end; state.from = Math.min(zParse(m.date + "T00:00:00"), end - 7 * DAY); }
   else if (isYearKey(p)) { state.from = zParse(p + "-01-01T00:00:00"); state.to = zParse((+p + 1) + "-01-01T00:00:00") - 1; }
   else { state.to = end; state.from = end - PRESET_DAYS[p] * DAY; }
@@ -87,6 +91,8 @@ function applyPreset(p) { periodKept = null; setPeriod(p); renderAll(); }
 /* period p for this visit only (the palette's search of everything on file from another page, #472): the person's
    own stays the one saved, until they pick another */
 function periodVisit(p) { const kept = periodKept || {preset: state.preset, from: state.from, to: state.to}; setPeriod(p); periodKept = kept; }
+/* the kinds ks shown for this visit only (a link to one kind's records on the Timeline, #475): theirs stay saved */
+function kindsVisit(ks) { catsKept = catsKept || new Set(state.cats); state.cats = new Set(ks); catsVisit = catsKey(state.cats); }
 function setRange(a, b, fromUser = true) {
   const minSpan = 2 * DAY; if (b - a < minSpan) { const m = (a + b) / 2; a = m - minSpan/2; b = m + minSpan/2; }
   state.from = a; state.to = b; if (fromUser) state.preset = "custom"; renderAll();
