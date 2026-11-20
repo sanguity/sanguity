@@ -5675,6 +5675,24 @@ def main():
                       "with them listed, its search focused (#439)",
                       links275[0] == links275[1] and (costs275 is None or costs275[0] == "costs" and costs275[2] and costs275[3]
                                                       and costs275[4] == "claims" and costs275[5] is False and costs275[6] == "Claims"), [links275, costs275])
+                # (#452) a Ctrl-click (a new tab) is the browser's, not prevented: the link's address names Costs' claims and
+                # the drug, and opens on them there, the row's drawer not opened here
+                ctrl452 = None
+                if links275[0]:
+                    js("switchTab('medications')")
+                    settle(300)
+                    js("(a => a.addEventListener('click', ev => { window.sg452 = [ev.defaultPrevented, ev.ctrlKey]; }, {once: true}))(document.querySelector('#view-medications a.med-costs'))")
+                    with page.context.expect_page() as got452:
+                        page.locator("#view-medications a.med-costs").first.click(modifiers=["Control"])
+                    np452 = got452.value
+                    np452.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                    ctrl452 = [js("[window.sg452, document.querySelector('#view-medications a.med-costs').getAttribute('href'), state.tab, drawer.classList.contains('open')]"),
+                               np452.evaluate("""k => [location.hash, state.tab, costState.view, costState.q, costState.cat,
+                                 [...document.querySelectorAll('#costTable tbody tr')].length > 0 && [...document.querySelectorAll('#costTable tbody tr')].every(r => r.textContent.toLowerCase().includes(k))]""", key275)]
+                    np452.close()
+                    js("save()")   # (this page's view saved again, over the new tab's)
+                check("…a Ctrl-click on Its claims on Costs isn't prevented: its address (#costs?drug=…) opens a new tab on the drug's claims (#452)",
+                      ctrl452 is None or ctrl452 == [[[False, True], js("k => '#costs?drug=' + encodeURIComponent(k)", key275), "medications", False], ["#costs", "costs", "claims", key275, "Pharmacy", True]], ctrl452)
                 # Add → Log a dose: on the Medications tab's Today, its first button focused; with the tab hidden, the Overview's
                 js("switchTab('overview')")
                 menu_click(page, "#doseLink")
@@ -10489,6 +10507,13 @@ def main():
             tp.goto(base + "/")
             tp.wait_for_function(ready, timeout=20000)
             check("…while the address with no # opens the tab last used", addr()[1:3] == ["#health", "health"], addr())
+            # (#452) in its view too, Costs' as Labs' and the Timeline's: opening / after #costs-paid lands on What you paid
+            tp.goto(base + "/?profile=1#costs-paid")
+            tp.wait_for_function(ready + " && state.tab === 'costs'", timeout=20000)
+            tp.goto(base + "/")
+            tp.wait_for_function(ready, timeout=20000)
+            paid452 = tp.evaluate("[location.hash, state.tab, costState.view, !!document.getElementById('paidCard')]")
+            check("…and in the view last used: / after #costs-paid opens Costs' What you paid (#452)", paid452 == ["#costs-paid", "costs", "paid", True], paid452)
             tctx.close()
 
             # ---- #45 a default theme for the account: a fresh browser signed in as the same person uses it; your
@@ -11370,6 +11395,26 @@ def main():
                   words403["dob"][0] == words403["date of birth"][0] == ["Pages and settings", "Birth date, sex and height"]
                   and {"Share links", "Visit summary"} <= set(words403["doctor"][1]) and words403["share doctor"][0] == ["Pages and settings", "Share links"]
                   and words403["medication"][0] == ["Records tabs", "Medications"] and "Log a dose" in words403["medication"][1] and words403["kg"][0] == ["Pages and settings", "Units"], words403)
+            # (#452) each view with an address is its own entry, and Enter opens it there: "heatmap" Labs › Heatmap, "what
+            # you paid" and "out of pocket" Costs › What you paid, "journal" Timeline › Journal (before Add's Journal entry);
+            # "labs" opens Labs as charts, whichever view it was left in
+            views452 = {}
+            for q in ("heatmap", "what you paid", "out of pocket", "journal", "labs"):
+                js("switchTab('overview')")
+                pal(q)
+                first = js(marked)
+                ctx452 = js("document.querySelector('#palList [aria-selected=true] .pal-c')?.textContent")
+                page.keyboard.press("Enter")
+                settle(300)
+                views452[q] = [first, ctx452, js("[location.hash, state.tab]")]
+            js("costState.view = 'claims'; state.tlView = 'timeline'; switchTab('overview')")   # (the views as the checks after expect them)
+            check("…views with an address are found by name, Enter opening them: “heatmap”, “what you paid”, “out of pocket”, “journal” (before Add's "
+                  "Journal entry), and “labs” Labs as charts, whichever view it was left in (#452)",
+                  views452 == {"heatmap": [["Records tabs", "Heatmap"], ", Records tab › Labs", ["#labs-heatmap", "labs"]],
+                               "what you paid": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
+                               "out of pocket": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
+                               "journal": [["Records tabs", "Journal"], ", Records tab › Timeline", ["#timeline-journal", "timeline"]],
+                               "labs": [["Records tabs", "Labs"], ", Records tab", ["#labs", "labs"]]}, views452)
             # opened from inside a menu, its item gone with the menu: Escape puts focus on the menu's button
             back403 = []
             for key in ("/", "Control+k"):
@@ -11545,11 +11590,11 @@ def main():
             page.goto(base + "/settings.html?profile=1")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             js(f"({slow423})(2500)")
-            pal("he")
+            pal("blood")   # (#452: not "he", whose Heatmap, a records tab's view, can't be outranked, so it opens at once)
             page.keyboard.press("Enter")
             page.keyboard.press("ArrowDown")
             arrow430 = [js(marked)]
-            page.wait_for_function(f"({has_opt})('Hemoglobin')", timeout=20000)
+            page.wait_for_function("[...document.querySelectorAll('#palList .pal-sec')].some(x => x.textContent === 'Labs')", timeout=20000)
             settle(500)
             arrow430 += [js("document.querySelector('dialog.palette').open"), js("location.pathname"), js(marked)]
             page.keyboard.press("Enter")
@@ -13258,7 +13303,7 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && PROFILE && PROFILE.name === 'Second person' && "
                                    "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)
-            js("switchTab('costs')")
+            js("switchTab('costs', 'claims')")   # (the claims, whichever view this profile last showed: kept since #452)
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
             js("applyPreset('all')")
             settle(200)

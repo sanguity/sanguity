@@ -1532,6 +1532,14 @@ Everything on `main` so far; it becomes the first tagged release.
   Medications" and Today's ⓘ on the Medications tab sent you to that tab; they say "the Medications tab" and "below".
   Admin's provider directory says to run the download again now and then (Epic suggests weekly) in sight, not behind
   its ⓘ.
+- **Views found in the command palette, Costs' view kept, and a modified click on "Its claims on Costs"** (#452): the
+  palette found nothing for "heatmap", "what you paid" or "out of pocket", and "journal" only Add's Journal entry. Each
+  view with an address is its own entry now (Labs › Heatmap, Timeline › Journal, Costs › What you paid), a title that's
+  exactly what's typed ranks first, and Labs opens as charts, the Timeline and Costs in their first view, as their
+  addresses do. Opening the app with no # restored Labs' and the Timeline's last view but not Costs'; it does now. "Its
+  claims on Costs" took every click, so a Ctrl-, ⌘- or Shift-click opened nothing elsewhere; it leaves those to the
+  browser, its address (`#costs?drug=…`) opening the drug's claims in the new tab.
+
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

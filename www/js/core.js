@@ -74,7 +74,7 @@ const hasLane = c => EV.some(e => CAT_OF[e.k] === c) || (c.k === "watch" && STEP
 const state = { from: 0, to: 0, min: 0, max: 0, preset: "2y", cats: new Set(CATS.map(c => c.k).filter(k => k !== "claim")), q: "", tab: "overview", labsView: "chart", tlView: "timeline", tlWork: false, marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
 
 /* ---------------------------------------------------------------- persistence */
-function save() { try { localStorage.setItem(stateKey(), JSON.stringify({preset: state.preset, from: state.from, to: state.to, cats: [...state.cats], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, tlView: state.tlView, tlWork: state.tlWork, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
+function save() { try { localStorage.setItem(stateKey(), JSON.stringify({preset: state.preset, from: state.from, to: state.to, cats: [...state.cats], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, tlView: state.tlView, costView: typeof costState === "object" ? costState.view : undefined, tlWork: state.tlWork, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
 function restore() {
   try {
     let raw = localStorage.getItem(stateKey());
@@ -86,6 +86,7 @@ function restore() {
     if (s.tab && s.v === 2) [state.tab, state.labsView] = tabAlias(s.tab, s.labsView);   // Trends and Lab heatmap are Labs now (#172)
     if (s.preset) state.preset = s.preset;
     if (s.tlView === "journal") state.tlView = "journal";
+    if (s.costView === "paid" && typeof costState === "object") costState.view = "paid";   // Costs' What you paid (#452), as Labs' and the Timeline's views
     if (typeof s.tlWork === "boolean") state.tlWork = s.tlWork;
     if (typeof s.marks === "boolean") state.marks = s.marks; if (typeof s.smooth === "boolean") state.smooth = s.smooth; if (typeof s.asc === "boolean") state.asc = s.asc;
     if (s.preset === "custom" && s.from && s.to) { state.from = s.from; state.to = s.to; }
