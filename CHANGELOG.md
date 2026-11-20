@@ -1584,6 +1584,14 @@ Everything on `main` so far; it becomes the first tagged release.
   had a four-part hint, three lines on a phone and "click" on touch screens; it says the latest draw and the changes'
   date, the rest behind its ⓘ. Today's ⓘ was "About Today" on Medications and "About Today's medication doses" on the
   Overview; it's "About today's medication doses" on both.
+- **The command palette's events are the Timeline's, a lab renamed is found at once** (#463): "cbc" listed the lab
+  results the Timeline hides inside their draws, in the records' capitals ("CBC WITH DIFFERENTIAL · Lab result"), and
+  offered "Search the Timeline" with a count of them all ("254 events in all" for the Timeline's 45). It lists what the
+  Timeline shows, a lab result's title as Labs names its panel, and its count is the Timeline's in its period
+  ("Everything on file: 45 events", "The last year: 9 events"; on another page, "45 events on file"). Off the records
+  page it found a lab draw only by its panels and not its kind, so on Settings "hemoglobin" found the lab but no draws;
+  it finds them by their tests' names, as the Timeline does. A lab renamed on Labs wasn't found by its new name until
+  the page loaded again, and its old name still found the draws; the search words change with the name.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

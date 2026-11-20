@@ -10,8 +10,8 @@
      profile's role, as their sidebars list them;
    - Labs: the lab names (by the name in the records, the name shown, the panel), opened as a chart on the Labs tab;
    - Events: the Timeline's index (the words its search box finds: an event's title, what it's about, its kind, a lab
-     day's results' names), each opened in the drawer on the Timeline, most recent first, and a search of the Timeline
-     for what's typed when there are more.
+     day's results' and tests' names), those the Timeline doesn't hide, each opened in the drawer on the Timeline, most
+     recent first, and a search of the Timeline for what's typed when there are more, with how many it shows (#463).
    One ranking runs across them all (#403): a title starting with what's typed first, then one with each word typed
    starting a word of it, then what else it's known by (groups.js's words, Add's, a tab's, Log a dose's medications),
    always at the start of a word; the group with the best match comes first. Offline (offline.js) what needs the server
@@ -89,16 +89,21 @@ const SgPalette = (() => {
       .catch(() => { if (recFor === p) REC = {labs: [], events: [], failed: true}; })
       .finally(() => { if (dlg.open) draw(); });
   }
-  /* the API's records as the palette needs them: the labs' names, and each event with the words the Timeline searches */
+  /* the API's records as the palette needs them: the labs' names, and each event with the words the Timeline searches
+     (its title, what it's about, its kind's name); a lab day's as the records page has them (store.js labDayWords, #463): its reports' titles and the names of the
+     tests with a result that day, as the records and Labs name them (a visit's Vitals aside) */
   function fromData(d, s) {
-    const nick = s && s.labNicknames && typeof s.labNicknames === "object" ? s.labNicknames : {}, by = new Map(), title = new Map();
+    const nick = s && s.labNicknames && typeof s.labNicknames === "object" ? s.labNicknames : {}, by = new Map(), title = new Map(), tests = new Map();
+    const dayOf = t => typeof isoDay === "function" ? isoDay(zParse(t)) : String(t).slice(0, 10);   // dates.js, where the page has it
     for (const x of d.labs || []) if (x && x.name && (x.pts || []).length) {
       const have = by.get(x.name);
       if (have) have.n += x.pts.length; else by.set(x.name, {name: x.name, shown: nick[x.name] || x.name, panel: x.panel || "", n: x.pts.length});
+      if (x.panel !== "Vitals") for (const p of x.pts) { const k = dayOf(p[0]); (tests.get(k) || tests.set(k, new Set()).get(k)).add(x.name); }
     }
     for (const e of d.events || []) title.set(e.id, e.title || "");
-    const events = (d.events || []).map(e => ({id: e.id, k: e.k, title: e.title || "", ts: Date.parse(e.t), t: e.t,
-      _q: [e.title, e.sub, ...(e.k === "lab" ? (d.details?.[e.id]?.ids || []).map(i => title.get(i)) : [])].filter(Boolean).join(" ").toLowerCase()}));
+    const labDay = e => { const names = [...(tests.get(dayOf(e.t)) || [])]; return [...(d.details?.[e.id]?.ids || []).map(i => title.get(i)), ...names, ...names.map(n => nick[n])]; };
+    const events = (d.events || []).map(e => ({id: e.id, k: e.k, title: e.title || "", ts: Date.parse(e.t), t: e.t, hidden: !!e.hidden,
+      _q: [e.title, e.sub, KIND_LABEL[e.k], ...(e.k === "lab" ? labDay(e) : [])].filter(Boolean).join(" ").toLowerCase()}));
     return {labs: [...by.values()], events, meds: current(d.medications)};
   }
   /* the names of the medications the records list as current (meds.js mrCurrent), Log a dose's words */
@@ -187,6 +192,20 @@ const SgPalette = (() => {
     return [...seen.values()];
   }
   const events = () => onRecords ? (recs() && drawn() ? EV : []) : REC && REC.events;
+  /* the count the Timeline shows for a search (#463), hit its events found: on the records page its list's, the
+     Timeline's own (core.js visible: its period and kinds; timeline.js tlListed: workouts when listed), said as the
+     line over it says them; on another page, of everything on file, what it lists then: what isn't hidden, but claims
+     (their kind off at the start: they're on Costs) and a lab result (it has no lane: its lab day is listed) */
+  const many = n => `${n.toLocaleString()} event${n === 1 ? "" : "s"}`;
+  function tlCount(lq, hit) {
+    if (!onRecords) return many(hit.filter(e => e.k !== "claim" && e.k !== "labitem").length) + " on file";
+    const was = state.q;
+    state.q = lq;
+    try {
+      const n = tlListed().length, when = periodLabel();
+      return `${when[0].toUpperCase() + when.slice(1)}${timelineFilters().narrowed ? ", with these filters" : ""}: ${many(n)}`;
+    } finally { state.q = was; }
+  }
 
   /* how well something matches what's typed (#403), the same in every group, lower better: 0 its title is what's typed
      (#452: the Journal view before Add's Journal entry), .5 its title starts with it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
@@ -219,11 +238,14 @@ const SgPalette = (() => {
     if (E) {
       // the Timeline's own search: the whole of what's typed in an event's words (core.js matchQ); listed, those with
       // each word at the start of one of theirs, the most recent first; the rest through the Timeline's search
-      const lq = typed.trim().toLowerCase(), hit = E.filter(e => e._q.includes(lq)), kind = k => typeof KIND_LABEL !== "undefined" && KIND_LABEL[k];
-      const found = ranked(hit.map(e => ({icon: typeof kindIcon === "function" ? kindIcon(e.k) : "file-text", title: e.title, ts: e.ts || 0, s: score(e.title, e._q, words),
-        ctx: [kind(e.k), day(e.ts || e.t)].filter(Boolean).join(" · "), go: () => openEv(e.id)})), words, 6, (a, b) => b.ts - a.ts);
+      // (#463) a record the Timeline hides isn't listed (core.js visible), and a lab result's title is its panel as Labs
+      // names it, as the drawer it opens does
+      const lq = typed.trim().toLowerCase(), hit = E.filter(e => !e.hidden && e._q.includes(lq)), kind = k => KIND_LABEL[k];
+      const found = ranked(hit.map(e => { const title = e.k === "labitem" ? panelName(e.title) : e.title;
+        return {icon: typeof kindIcon === "function" ? kindIcon(e.k) : "file-text", title, ts: e.ts || 0, s: score(title, e._q, words),
+          ctx: [kind(e.k), day(e.ts || e.t)].filter(Boolean).join(" · "), go: () => openEv(e.id)}; }), words, 6, (a, b) => b.ts - a.ts);
       if (hit.length > found.length) found.push([found.length ? found.at(-1)[0] : 3, {icon: "arrow-right", title: `Search the Timeline for “${typed.trim()}”`,
-        ctx: `${hit.length.toLocaleString()} event${hit.length === 1 ? "" : "s"} in all`, go: () => timeline(typed.trim())}]);
+        ctx: tlCount(lq, hit), go: () => timeline(typed.trim())}]);
       groups.push(["Events", found]);
     }
     const best = xs => xs.length ? xs[0][0] : 9;   // (the sort keeps the order above for a tie)

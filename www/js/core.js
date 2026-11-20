@@ -21,7 +21,7 @@ const CATS = [
   {k:"cycle",     label:"Cycle tracking",   color:"var(--c-cycle)",   kinds:["cycle"]},     // #183: only when its owner turned it on (cycle.js)
 ];
 const CAT_OF = {}; CATS.forEach(c => c.kinds.forEach(k => CAT_OF[k] = c));
-const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",contact:"Chart activity",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim",journal:"Journal",mood:"Mood and energy",immunization:"Immunization",ecg:"ECG (watch)",rhythm:"Irregular rhythm notification (watch)",cycle:"Cycle tracking"};
+// KIND_LABEL, each kind's name: util.js (#463: the command palette's, on every page)
 /* each kind's icon (#354, Lucide's, in icons/sprite.svg): one map, for the Timeline's chips and rows and for what
    shows a kind next (the drawer, the charts). A category's chip takes its key's (CATS[].k): its first kind's, or the
    watch's own. */
