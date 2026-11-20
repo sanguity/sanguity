@@ -1717,6 +1717,13 @@ Everything on `main` so far; it becomes the first tagged release.
   as wide as it needs. Labels are spaced by their measured width too, so French ones ("sept. 25oct. 26") don't meet.
   What you paid's What it was for and Who was paid put each note under its bar, as the claims' lists do, so it no
   longer wraps on a phone.
+- **Type records in: kinds as chips, and real date pickers** (#285): "Add a record" was a list of 22 kinds and an Add
+  button, and other kinds' forms went in above the lab results. Each kind is now a chip, in five groups (results and
+  visits, medications, home readings, money, documents), and adds its form below the ones before, lab results' too.
+  Dates and times are the browser's date and time pickers instead of text typed as YYYY-MM-DD; lab rows pasted from a
+  spreadsheet keep its dates (10/25/2026, 8:30 AM), shown in the pickers once read. Height is typed in About this
+  person, where its history is, and no longer among the kinds. A lab result's row fits its card at every width: one
+  line where there's room, two beside the sidebar (from 761 to 900 px it ran out of its card), four on a phone.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -101,24 +101,20 @@
     <div id="panel-manual">
       <p class="hint">For records on paper, or from a portal with no export: lab results, visits, medications, claims and more.</p>
       <div class="about-words" hidden>
-        <p>You can also type in hospital stays, letters, payments and the other kinds in the list. Everything is checked as
-          you go, and Save stores it all as one import, which you can undo from the import history.</p>
+        <p>You can also type in hospital stays, letters, payments and the other kinds under Add a record, each adding its
+          form below the ones before. Everything is checked as you go, and Save stores it all as one import, which you can undo from the import history.</p>
       </div>
-      <div class="form inline man-pick">
-        <label>Add a record <select id="manKind"><option value="labs">Lab results</option></select></label>
-        <button class="btn" id="manAddKind" type="button">Add</button>
-      </div>
-      <div class="man-items" id="manItems" aria-label="Records to save"></div>
-
-      <div id="manLabs"><!-- shown while it has rows: put away when another kind is added before any is typed in -->
-      <h3 class="man-h">Lab results</h3>
+      <!-- a chip per kind, in groups (import-records.js): each adds its form at the end of the list, in the order chosen -->
+      <div class="man-kinds" id="manKinds" role="group" aria-labelledby="manKindsH"><h3 class="man-h" id="manKindsH">Add a record</h3></div>
+      <div class="man-items" id="manItems" aria-label="Records to save">
+      <fieldset class="man-labs" id="manLabs"><!-- shown while it has rows: put away when another kind is added before any is typed in -->
+      <legend>Lab results</legend>
       <p class="howto">One per row: the date, the test, its value and unit, and the reference range printed beside it (like
         <i>13.5 - 17.5</i>, <i>&lt;200</i> or <i>&gt;60</i>). You can paste rows copied from a spreadsheet.</p>
       <div class="man-rows" id="manRows" aria-label="Results to save"></div>
       <datalist id="labNames"></datalist>
-      <div class="row">
-        <button class="btn" id="manAdd" type="button">Add a row</button>
-      </div>
+      <button class="btn" id="manAdd" type="button">Add a row</button>
+      </fieldset>
       </div>
       <div class="row man-save">
         <label class="man-keep" id="manKeepWrap" hidden><input type="checkbox" id="manKeep"> Save again what's already there</label>

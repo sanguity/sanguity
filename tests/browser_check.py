@@ -2127,7 +2127,7 @@ def main():
         # its result row's ✕, with a typed record's form open too, whose ✕ must be 44 px on a phone (Settings → Display's
         # "Use this device's" shows only in another time zone: checked with the time zones, below)
         ready352 = {"people": "#memberList tbody tr", "profile": "#profileBody input", "about": "#aboutBirth", "summary": "#labIn",
-                    "dashboard": ".set-add input", "manual": "#manKind option"}
+                    "dashboard": ".set-add input", "manual": "#manKind-visit"}
         del374 = []
         for path in ("sharing.html?profile=1", "settings.html?profile=1", "sources.html?profile=1", "account.html", "admin.html"):
             strict.goto(f"{base}/{path}")
@@ -2138,8 +2138,7 @@ def main():
                     strict.wait_for_selector(ready352[g], state="attached", timeout=10000)
                 strict.wait_for_timeout(300)
                 if path.startswith("sources") and g == "manual":
-                    strict.evaluate("""() => { const s = document.getElementById('manKind'); s.value = [...s.options].find(o => /visit/i.test(o.text)).value;
-                        document.getElementById('manAddKind').click(); s.value = 'labs'; document.getElementById('manAddKind').click(); }""")
+                    strict.evaluate("() => { document.getElementById('manKind-visit').click(); document.getElementById('manKind-labs').click(); }")
                     strict.wait_for_selector("#manItems .man-item .del", timeout=5000)   # a visit, and lab results back (put away by the visit)
                 for w in (1400, 320):
                     strict.set_viewport_size({"width": w, "height": 900 if w > 400 else 640})
@@ -9099,19 +9098,30 @@ def main():
             page.fill(row(2, "unit"), "ng/mL")
             page.fill(row(2, "range"), "30-400")
             page.wait_for_function("document.getElementById('manMsg').textContent === '2 results ready to save.'", timeout=5000)
-            # a block of cells pasted from a spreadsheet fills rows of its own; removing them leaves the two typed
-            js("""(() => { const dt = new DataTransfer(); dt.setData('text/plain', 'Date\\tTest\\tResult\\tUnits\\n2026-11-02\\tWBC\\t6.1\\tK/uL\\n'
-                   + '2026-11-02\\tPlatelets\\t250\\tK/uL\\n'); document.getElementById('manAdd').click();
+            # a block of cells pasted from a spreadsheet fills rows of its own; removing them leaves the two typed. A date
+            # and time the pickers can't hold (10/25/2026, 8:30 AM) are read by the server, then shown in them (#285)
+            js("""(() => { const dt = new DataTransfer(); dt.setData('text/plain', 'Date\\tTime\\tTest\\tResult\\tUnits\\n10/25/2026\\t8:30 AM\\tWBC\\t6.1\\tK/uL\\n'
+                   + '2026-11-02\\t\\tPlatelets\\t250\\tK/uL\\n'); document.getElementById('manAdd').click();
                    document.querySelector('.man-row:nth-child(3) [data-f=date]').dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})); })()""")
             check("rows pasted from a spreadsheet fill in by their header", js("[...document.querySelectorAll('.man-row [data-f=test]')].map(i => i.value)")
                   == ["HGB", "Ferritin", "WBC", "Platelets"], js("[...document.querySelectorAll('.man-row [data-f=test]')].map(i => i.value)"))
             page.wait_for_function("document.getElementById('manMsg').textContent === '4 results ready to save.'", timeout=5000)
+            picked285 = js("[...document.querySelectorAll('.man-row')].slice(2).map(r => ['date', 'time'].map(f => r.querySelector(`[data-f=${f}]`))"
+                           ".map(i => [i.type, i.value, i.dataset.raw || ''])).flat(2)")
+            check("…a date and time pasted as 10/25/2026 and 8:30 AM are read, then shown in the row's date and time pickers (#285)",
+                  picked285 == ["date", "2026-10-25", "", "time", "08:30", "", "date", "2026-11-02", "", "time", "", ""], picked285)
             page.click(".man-row:nth-child(4) .del")
             page.click(".man-row:nth-child(3) .del")
             page.wait_for_function("document.getElementById('manMsg').textContent === '2 results ready to save.' && !document.getElementById('manSave').disabled", timeout=5000)
-            page.set_viewport_size({"width": 375, "height": 800})
-            settle(200)
-            check("the Type them in tab fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            fit285 = {}
+            for w285 in (375, 800, 880, 1100, 1400):
+                page.set_viewport_size({"width": w285, "height": 800})
+                settle(200)
+                fit285[w285] = js("""[document.documentElement.scrollWidth, [...document.querySelectorAll('.man-row > *')].filter(e => e.checkVisibility())
+                    .every(e => e.getBoundingClientRect().right <= document.getElementById('manLabs').getBoundingClientRect().right + .5),
+                  new Set([...document.querySelectorAll('.man-row:first-child :is(input, select)')].map(i => Math.round(i.getBoundingClientRect().bottom))).size]""")
+            check("the Type them in tab fits 375 px, and its result rows their card at 375 to 1400 px, one line a result at 1400 (#285)",
+                  all(v[0] <= w and v[1] for w, v in fit285.items()) and fit285[1400][2] == 1, fit285)
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click("#manSave")
             page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
@@ -9184,11 +9194,10 @@ def main():
             page.wait_for_selector("#srcOverview", state="visible", timeout=10000)
             page.click("#srcNav a[data-group=manual]")
             page.wait_for_selector("#typeIn", state="visible", timeout=10000)
-            card = lambda i, f: f".man-item:nth-child({i}) [data-f={f}]"
+            card = lambda i, f: f".man-item:nth-child({i} of .man-item) [data-f={f}]"   # (lab results' form is in the list too, #285)
 
             def add_record(kind):
-                page.select_option("#manKind", kind)
-                page.click("#manAddKind")
+                page.click(f"#manKind-{kind}")
             # #388: on Sources with the profile in its address, Add → Type records in only changes the hash: the page isn't
             # loaded again, and a lab typed in is kept. Leaving the page with it typed in asks first; with nothing typed, not
             leave = "(() => { const e = new Event('beforeunload', {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; })()"
@@ -9306,15 +9315,20 @@ def main():
             after_visit = js(labs_now)
             add_record("labs")
             back = js(labs_now)
+            listed = "[...document.querySelectorAll('#manItems > :not([hidden])')].map(n => n.dataset.kind || n.id)"
+            order285 = [js(listed)]
             page.fill(".man-row [data-f=test]", "Hemoglobin")
             add_record("med")
             kept = js(labs_now)
+            order285.append(js(listed))
             page.click(".man-row .del")
             gone = js(labs_now)
             check("Type records in (#381): lab results is put away when another kind is added before it's typed in, comes back when chosen, "
                   "stays once typed in, and goes with its last row",
                   at_start[:2] == [True, 1] and after_visit[:2] == [False, 0] and back == [True, 1, "test"] and kept[:2] == [True, 1]
-                  and gone == [False, 0, "manKind"], [at_start, after_visit, back, kept, gone])
+                  and gone == [False, 0, "manKind-labs"], [at_start, after_visit, back, kept, gone])
+            check("Type records in (#285): each kind's form comes after the ones added before it, lab results' too", order285
+                  == [["visit", "manLabs"], ["visit", "manLabs", "med"]], order285)
             # #384: a row is typed into once any field differs from what it was given: a lab row with only its date changed
             # stays when a visit is added, with that date
             add_record("labs")
@@ -9327,12 +9341,20 @@ def main():
             while js("document.querySelectorAll('.man-item').length"):
                 page.click(".man-item .del")
             # #245: a form of each kind, with a hint under its title or without, says no "null" or "undefined"; then removed
-            kinds = js("[...document.querySelectorAll('#manKind option')].map(o => o.value).filter(k => k !== 'labs')")
+            kinds = js("[...document.querySelectorAll('#manKinds [data-kind]')].map(b => b.dataset.kind).filter(k => k !== 'labs')")
             for kind in kinds:
                 add_record(kind)
             said_null = js("[...document.querySelectorAll('.man-item')].filter(c => /\\b(null|undefined)\\b/.test(c.innerText)).map(c => c.dataset.kind)")
             check("Type records in (#245): no record's form, of any kind, says “null” or “undefined”",
                   not said_null and js("document.querySelectorAll('.man-item').length") == len(kinds) > 5, said_null)
+            groups285 = js("""[...document.querySelectorAll('#manKinds .man-kgroup')].map(g => [g.getAttribute('role'), document.getElementById(g.getAttribute('aria-labelledby')).textContent,
+                g.querySelectorAll('button.chip[data-kind]').length])""")
+            forms285 = js("""[...document.querySelectorAll('#manItems > .man-item')].map(c => [c.dataset.kind, [...c.querySelectorAll('[data-f]')]
+                .filter(i => /^(date|admit|discharge|start|stop|since|time|admit_time|discharge_time)$/.test(i.dataset.f)).map(i => i.dataset.f.replace(/^.*_time$/, 'time') + ':' + i.type)])""")
+            bad285 = [f for f in forms285 if not f[1] or any(x.split(":")[1] != ("time" if x.startswith("time") else "date") for x in f[1])]
+            check("Type records in (#285): the kinds are chips in five groups, each adding its form in the order chosen, every date and time "
+                  "a date or time picker", [g[:2] for g in groups285] == [["group", n] for n in ("Results and visits", "Medications", "Home readings", "Money", "Documents")]
+                  and sum(g[2] for g in groups285) == len(kinds) + 1 and [f[0] for f in forms285] == kinds and not bad285, [groups285, bad285 or forms285])
             while js("document.querySelectorAll('.man-item').length"):
                 page.click(".man-item .del")
             add_record("visit")
@@ -9340,10 +9362,10 @@ def main():
                   js("document.querySelectorAll('.man-item').length === 1 && /^\\d{4}-\\d\\d-\\d\\d$/.test(document.querySelector('.man-item [data-f=date]').value)")
                   and js("document.activeElement.dataset.f") == "time", js("document.activeElement.dataset.f"))
             page.fill(card(1, "date"), "2026-11-03")
-            page.fill(card(1, "date"), "2026-13-03")
+            page.fill(card(1, "date"), "")   # a date picker holds only a date: one left out is what can be wrong with it (#285)
             page.fill(card(1, "title"), "Typed follow-up visit")
             page.wait_for_function("document.querySelector('.man-item [data-f=date]').getAttribute('aria-invalid') === 'true'", timeout=5000)
-            check("a field that can't be read is marked, with why", "couldn't be read" in js("document.querySelector('.man-item .man-err').textContent")
+            check("a field that's wrong is marked, with why", js("document.querySelector('.man-item .man-err').textContent") == "This needs a date."
                   and page.is_disabled("#manSave"), js("document.querySelector('.man-item .man-err').textContent"))
             page.fill(card(1, "date"), "2026-11-03")
             page.fill(card(1, "who"), "Dr. Ada Quill (fictional)")
@@ -9375,7 +9397,7 @@ def main():
                 out += b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % xref
                 f.write(out)
             page.set_input_files(card(4, "file"), pdf_path)
-            page.wait_for_function("document.querySelector('.man-item:nth-child(4) .man-file').textContent.includes('uploaded')", timeout=10000)
+            page.wait_for_function("document.querySelector('.man-item:nth-child(4 of .man-item) .man-file').textContent.includes('uploaded')", timeout=10000)
             page.wait_for_function("document.getElementById('manMsg').textContent === '4 records ready to save.' && !document.getElementById('manSave').disabled", timeout=5000)
             checks = js("[...document.querySelectorAll('.man-item .man-check')].map(c => c.textContent)")
             check("each record says what it became", "Typed follow-up visit" in checks[0] and "Doctor visits" in checks[2]
@@ -9416,10 +9438,8 @@ def main():
             page.goto(base + "/import.html?profile=2#payment")
             page.wait_for_selector(".man-item[data-kind=payment]", timeout=10000)
             settle(300)
-            arrived = js("[document.querySelectorAll('.man-item').length, document.getElementById('manLabs').hidden, document.querySelectorAll('.man-row').length, "
-                         "document.getElementById('manKind').value]")
-            check("the Costs tab's link opens a payment's form, only it: lab results put away, the picker on it (#384)",
-                  arrived == [1, True, 0, "payment"], arrived)
+            arrived = js("[document.querySelectorAll('.man-item').length, document.getElementById('manLabs').hidden, document.querySelectorAll('.man-row').length]")
+            check("the Costs tab's link opens a payment's form, only it: lab results put away (#384)", arrived == [1, True, 0], arrived)
             for _ in range(50):   # once the section is shown
                 if js("document.activeElement.dataset.f === 'payee'"):
                     break
@@ -9441,9 +9461,9 @@ def main():
             # rather than <body> (Save disables itself), and the form as on load: lab results with one row, the picker on it
             page.wait_for_timeout(2000)
             after_save = js("[document.getElementById('manMsg').textContent, document.querySelectorAll('#manMsg a').length, document.activeElement.id || document.activeElement.tagName, "
-                            "document.getElementById('manKind').value, document.getElementById('manLabs').hidden, document.querySelectorAll('.man-row').length]")
-            check("…2 s after Save, the saved line and its link are still there, focus on the line, and the picker reads Lab results over its row (#384)",
-                  after_save[0].startswith("Saved 1 record.") and after_save[1] == 1 and after_save[2] == "manMsg" and after_save[3:] == ["labs", False, 1], after_save)
+                            "document.getElementById('manLabs').hidden, document.querySelectorAll('.man-row').length]")
+            check("…2 s after Save, the saved line and its link are still there, focus on the line, and lab results back with its row (#384)",
+                  after_save[0].startswith("Saved 1 record.") and after_save[1] == 1 and after_save[2] == "manMsg" and after_save[3:] == [False, 1], after_save)
             # #387: payments are on Costs, not the timeline: the line's link and the toast's go there
             pay_links = js("[...document.querySelectorAll('#manMsg a, #sgToasts .sg-toast:last-child a')].map(a => [a.textContent, new URL(a.href).hash])")
             check("…its saved line and its toast link to Costs' What you paid, where payments are, not the timeline (#387, #443)",
@@ -9505,13 +9525,11 @@ def main():
                 page.wait_for_selector("#typeIn", state="visible", timeout=10000)
 
             def add_record(kind):
-                page.select_option("#manKind", kind)
-                page.click("#manAddKind")
+                page.click(f"#manKind-{kind}")
             typed_form(1)
-            kinds = js("[...document.querySelectorAll('#manKind option')].map(o => o.textContent)")
-            check("typed in at home (#224): a form each for blood pressure, glucose, temperature, blood oxygen and height",
-                  all(k in kinds for k in ("Blood pressure at home", "Blood glucose at home", "Temperature at home", "Blood oxygen at home",
-                                           "Weight or steps at home", "Height")), kinds)
+            kinds = js("[...[...document.querySelectorAll('#manKinds .man-kgroup')].find(g => g.firstChild.textContent === 'Home readings').querySelectorAll('.chip')].map(c => c.textContent)")
+            check("typed in at home (#224): a form each for blood pressure, glucose, temperature, blood oxygen, weight or steps, under Home readings (#285)",
+                  kinds == ["Blood pressure", "Blood glucose", "Temperature", "Blood oxygen", "Weight or steps", "Workout"], kinds)
             add_record("home_bp")
             page.fill(card(1, "date"), "2026-11-10")
             page.fill(card(1, "time"), "05:55")
@@ -9554,9 +9572,9 @@ def main():
             for f, v in zip(("date", "time", "sys", "dia"), wall):
                 page.fill(card(5, f), v)
             page.wait_for_function("document.querySelectorAll('.man-item .dup').length === 1", timeout=5000)
-            check("…one the phone sent already is found, and left out", "already in this profile" in js("document.querySelector('.man-item:nth-child(5) .man-check').textContent"),
-                  [wall, js("document.querySelector('.man-item:nth-child(5) .man-check').textContent")])
-            page.click(".man-item:nth-child(5) .del")
+            check("…one the phone sent already is found, and left out", "already in this profile" in js("document.querySelector('.man-item:nth-child(5 of .man-item) .man-check').textContent"),
+                  [wall, js("document.querySelector('.man-item:nth-child(5 of .man-item) .man-check').textContent")])
+            page.click(".man-item:nth-child(5 of .man-item) .del")
             page.wait_for_function("document.getElementById('manMsg').textContent === '4 records ready to save.'", timeout=5000)
             bad, axe224 = [], []
             for width in (1400, 375):
@@ -9566,6 +9584,7 @@ def main():
                     settle(200)
                     if width == 375:
                         bad += phone_fits(page, f"home reading forms ({theme})")
+                    clear_of_bar(page)   # the kinds' chips are above the forms: one half under the bar isn't a small target (#285)
                     axe224 += axe_check(page, f"home reading forms, {width} px, {theme}")[0]
             js("delete document.documentElement.dataset.theme")
             page.set_viewport_size({"width": 1400, "height": 900})
@@ -9647,18 +9666,14 @@ def main():
             left = js("fetch('api/profiles/1/watch').then(r => r.json()).then(w => [['bp_readings', 'temp_readings', 'spo2_readings', 'glucose_readings']"
                       ".map(k => (w[k] || []).filter(r => r.includes('Typed in')).length), w.bp_readings.length > 20])")
             check("…undone, the typed readings are gone and the phone's stay", left == [[0, 0, 0, 0], True], left)
-            # a height typed in goes into About this person's history, which is where it's changed or removed
+            # a height is typed in About this person, where its history is, not among the kinds (#285); one sent to the
+            # typed-in route (the API still takes it) goes into that history
             typed_form(2)
-            add_record("height")
-            page.fill(card(1, "date"), "2026-11-02")
-            page.select_option(card(1, "height_unit"), "in")
-            page.fill(card(1, "height"), "5 ft 7 in")
-            page.wait_for_function("document.getElementById('manMsg').textContent === '1 record ready to save.'", timeout=5000)
-            check("…a height says it goes into About this person's history", "height 5 ft 7 in · into About this person's height history"
-                  in js("document.querySelector('.man-item .man-check').textContent"), js("document.querySelector('.man-item .man-check').textContent"))
-            page.click("#manSave")
-            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
-            page.click("#manMsg a:text-is('See the height history')")
+            no_height = js("!document.getElementById('manKind-height') && ![...document.querySelectorAll('#manKinds .chip')].some(c => /height/i.test(c.textContent))")
+            sent = js("""api('profiles/2/manual', {method: 'POST', body: JSON.stringify({rows: [], save: true,
+                           items: [{kind: 'height', date: '2026-11-02', height: '5 ft 7 in', height_unit: 'in'}]})}).then(r => r.status)""")
+            check("…a height isn't among the kinds typed in, and one sent there goes into About this person's history", no_height and sent == 200, [no_height, sent])
+            page.goto(base + "/settings.html?profile=2#about")
             page.wait_for_selector("#about .about-heights", timeout=10000)
             check("…and is there, as typed", "5 ft 7 in" in page.inner_text("#about .about-heights"), page.inner_text("#about .about-heights")[:200])
             page.set_viewport_size({"width": 375, "height": 800})
@@ -11609,9 +11624,8 @@ def main():
                 return [Math.round(b.width), Math.round(b.height), name, r.querySelector('[data-k=label]').value]; })""")
             bad353 += [f"Primary {w}×{h}, named “{n}”" for w, h, n, lab in c353["primary"] if w > 20 or h > 20 or not lab or lab not in n or not n.startswith("Primary")]
             page.goto(base + "/sources.html?profile=1#manual")
-            page.wait_for_selector("#manKind option", state="attached", timeout=10000)
-            js("""() => { const s = document.getElementById('manKind'); s.value = [...s.options].find(o => /letter/i.test(o.text)).value;
-                document.getElementById('manAddKind').click(); }""")
+            page.wait_for_selector("#manKind-document", state="attached", timeout=10000)
+            js("() => document.getElementById('manKind-document').click()")
             settle(200)
             c353["typed-in file"] = js(CONTROLS353_JS)
             page.click("#manItems .man-item .del")

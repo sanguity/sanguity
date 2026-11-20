@@ -6,11 +6,13 @@
    says what it became: the test it's charted as, the value, the range and the flag. Save stores them (save true).
    Test names are suggested from lab-aliases.json's canonical names (GET lab-names). Rows and records the profile
    has already are pointed out, and left out of the save unless "Save again what's already there" is ticked.
+   The date and time are the browser's pickers (#285). What a picker can't hold (a date pasted as 11/02/2026) is kept
+   on it (data-raw) and sent as it was, so the server reads it as it reads a spreadsheet's; once read, the picker shows it.
    Plain script after util.js and import.js; its own names stay inside this function. */
 "use strict";
 (function () {
   const FIELDS = [   // [field, caption, placeholder]: nothing that could pass for a value typed in
-    ["date", "Date", "YYYY-MM-DD"], ["time", "Time", "optional"], ["test", "Test"], ["value", "Value"],
+    ["date", "Date"], ["time", "Time (optional)"], ["test", "Test"], ["value", "Value"],
     ["unit", "Unit"], ["range", "Range", "low - high"], ["flag", "Flag"], ["lab", "Lab", "optional"]];
   const MAX = 200;   // rows the server takes at once
   // headers a pasted spreadsheet may have, as csv_labs.FIELDS spells them (the common ones)
@@ -32,7 +34,12 @@
   };
   const today = zToday;   // dates.js
   const rows = () => [...box.querySelectorAll(".man-row")];
-  const valueOf = r => Object.fromEntries(FIELDS.map(([f]) => [f, r.querySelector(`[data-f=${f}]`).value.trim()]));
+  const input = (r, f) => r.querySelector(`[data-f=${f}]`);
+  const valueOf = r => Object.fromEntries(FIELDS.map(([f]) => { const i = input(r, f); return [f, i.value.trim() || i.dataset.raw || ""]; }));
+  function put(i, v) {   // a picker refuses what isn't its own format: kept beside it for the server to read
+    i.value = v; delete i.dataset.raw;
+    if (v && !i.value) i.dataset.raw = v;
+  }
   // a row with only what a new row is given (date, time, lab) is still empty: nothing of it is sent
   const blank = v => !["test", "value", "unit", "range", "flag"].some(f => v[f]);
   // but it's been typed into once any of its fields differs from what it was given, its date or lab too (#384)
@@ -41,9 +48,11 @@
   function field([f, cap, ph]) {
     const input = f === "flag"
       ? el("select", {"data-f": f}, el("option", {value: "", text: "–"}), el("option", {value: "H", text: "High"}), el("option", {value: "L", text: "Low"}))
+      : f === "date" ? el("input", {"data-f": f, type: "date", min: "1900-01-01", max: "2100-12-31"})
+      : f === "time" ? el("input", {"data-f": f, type: "time"})
       : el("input", {"data-f": f, type: "text", placeholder: ph, autocomplete: "off", spellcheck: "false",
                      inputmode: f === "value" ? "decimal" : null, list: f === "test" ? "labNames" : null,
-                     maxlength: {date: 40, time: 20, test: 120, value: 60, unit: 30, range: 60, lab: 120}[f]});
+                     maxlength: {test: 120, value: 60, unit: 30, range: 60, lab: 120}[f]});
     return el("label", {class: "f-" + f}, el("span", {class: "cap", text: cap}), input);
   }
   function addRow(v = {}, after = null) {
@@ -53,7 +62,7 @@
       el("button", {type: "button", class: "del btn quiet", "data-tip": "Remove this row", "aria-label": "Remove this row"}, icon("x")),
       el("div", {class: "man-check", "aria-live": "polite"}));
     // a new row starts on the last one's date, time and lab: a report's results share them
-    for (const [f] of FIELDS) r.querySelector(`[data-f=${f}]`).value = v[f] ?? (["date", "time", "lab"].includes(f) ? from[f] || (f === "date" ? today() : "") : "");
+    for (const [f] of FIELDS) put(input(r, f), v[f] ?? (["date", "time", "lab"].includes(f) ? from[f] || (f === "date" ? today() : "") : ""));
     r.dataset.given = JSON.stringify(valueOf(r));
     if (after) after.after(r); else box.append(r);
     label();
@@ -95,9 +104,12 @@
       if (!x) { out.replaceChildren(); return; }
       if (!x.ok) {
         bad++;
-        out.replaceChildren("Can't save this row: it " + x.problems.join("; ") + ".");
-        for (const [word, f] of [["test name", "test"], ["date", "date"], ["value", "value"]])
-          if (x.problems.some(p => p.includes(word))) {   // the field marked, and what's wrong said with it (#202)
+        // (a date is picked, not written: the server's words for a date pasted as 03/04/2026 say so here.) A time pasted
+        // that its picker can't show is read with the date: said here, as the date is in the problem
+        const rawTime = input(r, "time").dataset.raw;
+        out.replaceChildren("Can't save this row: it " + x.problems.join("; ").replace("write it as YYYY-MM-DD", "pick it in its box") + (rawTime ? ` (the time pasted: “${rawTime}”)` : "") + ".");
+        for (const [word, f] of [["test name", "test"], ["date", "date"], ["value", "value"], ["date", rawTime ? "time" : ""]])
+          if (f && x.problems.some(p => p.includes(word))) {   // the field marked, and what's wrong said with it (#202)
             out.id ||= "man-check-" + (show.n = (show.n || 0) + 1);
             const inp = r.querySelector(`[data-f=${f}]`);
             inp.setAttribute("aria-invalid", "true"); inp.setAttribute("aria-describedby", out.id);
@@ -106,6 +118,9 @@
       }
       ok++;
       if (x.duplicate) dup++;
+      // a date or time the pickers couldn't hold, read: shown in them now (x.date is "YYYY-MM-DD" or "YYYY-MM-DD HH:MM")
+      for (const [f, v] of [["date", x.date.slice(0, 10)], ["time", x.date.slice(11, 16)]])
+        if (input(r, f).dataset.raw) put(input(r, f), v);
       const range = x.low != null && x.high != null ? `${x.low} – ${x.high}` : x.high != null ? `under ${x.high}` : x.low != null ? `over ${x.low}` : "";
       const value = x.value != null ? `${x.value}${x.unit ? " " + x.unit : ""}` : `“${x.text}”`;
       out.replaceChildren(icon("check"), " ", el("b", {text: x.name}), ` · ${recordDate(x.date)} · ${value}` + (range ? ` · range ${range}` : ""),
@@ -149,7 +164,7 @@
       cols.forEach((f, i) => { if (f && cells[i] != null) v[f] = cells[i].trim(); });
       if ((v.low || v.high) && !v.range) v.range = v.low && v.high ? `${v.low} - ${v.high}` : v.low ? `>=${v.low}` : `<=${v.high}`;
       if ("flag" in v) v.flag = flagOf(v.flag);
-      for (const [f] of FIELDS) if (f in v) r.querySelector(`[data-f=${f}]`).value = v[f];
+      for (const [f] of FIELDS) if (f in v) put(input(r, f), v[f]);
       n++;
       r = r.nextElementSibling;
     }
@@ -158,26 +173,28 @@
   });
 
   /* ---------------------------------------------------------------- rows, saving */
-  box.addEventListener("input", soon);
-  box.addEventListener("change", soon);
+  const typed = ev => { delete ev.target.dataset.raw; soon(); };   // a picker changed: what it shows is what's sent
+  box.addEventListener("input", typed);
+  box.addEventListener("change", typed);
   box.addEventListener("click", ev => {
     const del = ev.target.closest(".del");
     if (!del) return;
     const r = del.closest(".man-row"), next = r.nextElementSibling || r.previousElementSibling;
     r.remove();
     label();
-    // the last row removed puts lab results away, like any other record's form; Add brings it back
-    if (!rows().length) { labs.hidden = true; $("#manKind").focus(); }
+    // the last row removed puts lab results away, like any other record's form; its chip brings it back
+    if (!rows().length) { labs.hidden = true; $("#manKind-labs").focus(); }
     else (next && next.isConnected ? next : rows()[0]).querySelector("input").focus();
     soon();
   });
   /* Lab results is one kind of record among the others in "Add a record". The page starts with its empty row (the
      first in the list), and adding another kind before anything is typed into its rows puts it away, so the form shows
-     only what's being typed in; choosing Lab results again brings it back (import-records.js calls this first) */
+     only what's being typed in; choosing Lab results again brings it back, after the forms added before it, as any
+     kind's form is added (#285; import-records.js calls this first) */
   window.sanguityLabRows = {choose(kind) {
     if (kind === "labs") {   // shown again with a row to type in: true, nothing more to do
       if (!labs.hidden) return false;
-      labs.hidden = false;
+      labs.parentElement.append(labs); labs.hidden = false;
       const r = rows()[0] || addRow();
       if (r) r.querySelector("[data-f=test]").focus();
       soon();
@@ -222,7 +239,7 @@
       const any = ks => ks.some(k => typed[k]), elsewhere = ["labs", "height", ...HEALTH, ...COSTS, ...OVERVIEW];
       const onHealth = any(HEALTH), onCosts = any(COSTS), onOverview = any(OVERVIEW), onTimeline = Object.keys(typed).some(k => !elsewhere.includes(k));
       box.replaceChildren(); labs.hidden = false; addRow({date: rs.length ? valueOf(rs[rs.length - 1]).date : today()});
-      recs.saved(); keepBox.checked = false; $("#manKeepWrap").hidden = true; $("#manKind").value = "labs";   // as on load
+      recs.saved(); keepBox.checked = false; $("#manKeepWrap").hidden = true;   // as on load
       saving = false; ok = bad = okRecs = badRecs = 0;
       // a check of what was there before (a field's change event as Save was clicked, 350 ms) has nothing to say about
       // the new form: not run, or not shown, so it doesn't clear the saved line below (#384)
