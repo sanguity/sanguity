@@ -1978,7 +1978,7 @@ def main():
                                           ("settings.html?profile=1", "#sec-overview .set-labs li", "Settings: Dashboard", 1400),
                                           ("sharing.html?profile=1", "#memberList tbody tr", "Sharing: People", 375),
                                           ("account.html", "#acctNav a", "Account: Sign-in and security", 1400), ("admin.html", "#userList table", "Admin: Accounts", 375),
-                                          ("guide.html?profile=1", "#step-name:not([hidden])", "Getting started: Whose records", 375)):   # #199
+                                          ("guide.html?profile=1#name", "#step-name:not([hidden])", "Getting started: Whose records", 375)):   # #199 (a named profile opens at its first step not done, #290: this one asked for)
             strict.set_viewport_size({"width": width, "height": 800})
             strict.goto(base + "/" + path)
             strict.wait_for_selector(ready, state="attached", timeout=10000)
@@ -8905,12 +8905,11 @@ def main():
             page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
 
             # ---- uploading (#281): a fictional C-CDA in a zip, into the empty profile, from the guide's step 2 (#199: Get
-            # started, past its first step), which has Sources' drop target. Chosen, it starts at once: sent, unpacked,
-            # recognised and read in the background (#20), then its review, all in one card with no other click, focus
-            # on the review. Saved, its records reach the timeline. Then Sources → Upload files, the same target
+            # started, which opens there: its first step, the name, is done, #290), which has Sources' drop target. Chosen,
+            # it starts at once: sent, unpacked, recognised and read in the background (#20), then its review, all in one
+            # card with no other click, focus on the review. Saved, its records reach the timeline. Then Sources →
+            # Upload files, the same target
             page.click("main .empty a")
-            page.wait_for_selector("#step-name:not([hidden])", timeout=10000)
-            page.click("#step-name [data-skip]")
             page.wait_for_selector("#step-records .up-drop", state="visible", timeout=10000)
             check("the guide's step 2 has the drop target, files or a folder chosen or dropped, with no Upload button (#281)",
                   js("[...document.querySelectorAll('#step-records .up-btns label')].map(l => l.textContent)") == ["Choose files", "Choose a folder"]
@@ -8984,8 +8983,8 @@ def main():
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
             check("the job is done, read by the C-CDA importer", job is not None and tuple(job) == ("done", "ccda"), job and tuple(job))
             page.wait_for_selector("#recordsHave:not([hidden])", timeout=10000)
-            check("…and the guide's step says the profile has records now, with Continue (#199)",
-                  "has records now, from 1 import" in page.inner_text("#recordsHave") and page.is_visible("#step-records [data-next]"), page.inner_text("#step-records")[-300:])
+            check("…and the guide's step says the records are in, with Continue (#199, #290: in words that don't name the profile)",
+                  "The records are in, from 1 import" in page.inner_text("#recordsHave") and page.is_visible("#step-records [data-next]"), page.inner_text("#step-records")[-300:])
             page.click("#step-records a[data-to=manual]")
             page.wait_for_selector("#typeIn", state="visible", timeout=10000)
             check("…whose other ways open Sources for that profile, with a way back to the guide (#199)",
@@ -15195,7 +15194,7 @@ def main():
                         open_group(page, g)
                         settle(150)
                         axe_at(page, f"{theme} {path.split('.')[0]}#{g}", outline=True)
-                for path, ready in (("guide.html?profile=1", "#step-name:not([hidden])"), ("providers.html?q=medicare", ".dir-hit")):
+                for path, ready in (("guide.html?profile=1#name", "#step-name:not([hidden])"), ("providers.html?q=medicare", ".dir-hit")):
                     page.goto(base + "/" + path)
                     page.wait_for_selector(ready, timeout=10000)
                     settle(200)
@@ -15483,9 +15482,24 @@ def main():
             paste = """ids => ids.map(id => { const i = document.getElementById(id), ev = new ClipboardEvent('paste', {bubbles: true, cancelable: true});
                 i.dispatchEvent(ev); return [id, i.getAttribute('autocomplete'), ev.defaultPrevented]; })"""
             got = lp.evaluate(paste, ["u", "p", "c"])
+            show290 = lp.evaluate("[!document.querySelector('head style'), document.getElementById('b').matches('.btn.primary.large'), document.getElementById('pShow').getAttribute('aria-label')]")
+            lp.fill("#p", "not the password")
+            lp.click("#pShow")
+            show290 += lp.evaluate("[document.getElementById('p').type, document.getElementById('p').getAttribute('autocomplete'), document.getElementById('pShow').getAttribute('aria-label'), document.activeElement.id]")
+            lp.route("**/api/login", lambda r: r.fulfill(status=401, content_type="application/json", body='{"detail": "Wrong username or password."}'))   # not sent: no failure counted
+            lp.fill("#u", "nobody")
+            lp.click("#b")
+            for _ in range(50):   # (the real CSP: no wait_for_function)
+                if lp.evaluate("document.getElementById('e').textContent.length > 0"):
+                    break
+                lp.wait_for_timeout(100)
+            show290.append(lp.evaluate("document.getElementById('p').type"))
             ctx.close()
             check("sign-in: fields a password manager fills (username, current-password, one-time-code) and pasting allowed (3.3.8, #202)",
                   got == [["u", "username", False], ["p", "current-password", False], ["c", "one-time-code", False]], got)
+            check("…on the app's stylesheet and components, with Show on the password: shown, it's still current-password, named Hide password, "
+                  "and hidden again as the form is sent (#290)",
+                  show290 == [True, True, "Show password", "text", "current-password", "Hide password", "pShow", "password"], show290)
 
             # ---- account page: password and devices; profiles and their sharing on the Sharing page (#168); the Admin
             # page: accounts (#167)
@@ -16888,8 +16902,9 @@ def main():
             if "ph" in locals():
                 problems.append(f"phone page at {ph.url}: " + str(ph.evaluate("document.body.innerText.slice(0, 300)")))
         # ---- first run (#199): a fresh install, a second app on a data folder of its own, under the real CSP: setup,
-        # then the getting-started guide opens by itself on the new, empty profile; it's named, a fictional C-CDA is
-        # uploaded through Sources and the guide's way back, the phone is skipped, and the Overview shows the records.
+        # where the profile is named (#290: asked once), then the getting-started guide opens by itself on the new, empty
+        # profile at its first records, the name step done; a fictional C-CDA is uploaded in the step, the phone is
+        # skipped, and the Overview shows the records.
         # Then the empty states: a second, empty profile's one next step, and every records tab's (a profile with only
         # a visit), Sources' Overview and Import history; at 375 px in light and dark, the guide's steps too
         fresh = None
@@ -16940,20 +16955,60 @@ def main():
             check("first run: setup's fields look like the app's (#332): the same background, edge and corner as a field on Account, in light and dark",
                   acct_field and all(v == acct_field for v in looks.values()), [acct_field, looks])
             ring_bad, ring_seen = ring_walk(fp, "setup")
-            check("…and Tab through setup, light and dark, rings every field and Create account in the accent, 2 px (#310)",
-                  not ring_bad and all(f"{t} {i}" in ring_seen for t in ("light", "dark") for i in ("c", "u", "p", "p2", "n", "b")), ring_bad[:6] or ring_seen)
+            check("…and Tab through setup, light and dark, rings every field, the passwords' Show and Create account in the accent, 2 px (#310, #290)",
+                  not ring_bad and all(f"{t} {i}" in ring_seen for t in ("light", "dark") for i in ("c", "u", "p", "pShow", "p2", "p2Show", "n", "b")), ring_bad[:6] or ring_seen)
+            # #290: setup is on the app's stylesheet and components (no copy of its own), with Show on the passwords and a
+            # live count toward the server's minimum, said once when it's reached
+            pw_count = lambda: fp.evaluate("[document.querySelector('#pn .pw-count').textContent.trim(), document.querySelector('#pn .pw-count').classList.contains('ok')]")
+            look290 = fp.evaluate("""[!document.querySelector('head style'), [...document.styleSheets].some(s => /css\\/app\\.css$/.test(s.href || '')),
+                document.getElementById('b').matches('.btn.primary.large'), document.getElementById('p').getAttribute('aria-describedby'),
+                document.getElementById('pShow').getAttribute('aria-label'), document.getElementById('p').type]""")
+            count290 = [pw_count()]
+            fp.fill("#p", "a fictional")
+            count290.append(pw_count())
+            fp.fill("#p", "")
+            fp.focus("#p")
+            fp.keyboard.type("a fictional first-run passphrase")
+            fp.wait_for_timeout(150)
+            count290 += [pw_count(), fp.evaluate("document.getElementById('sgStatus').textContent")]
+            fp.click("#pShow")
+            shown290 = fp.evaluate("[document.getElementById('p').type, document.getElementById('pShow').getAttribute('aria-label'), document.getElementById('pShow').textContent]")
+            fp.click("#pShow")
+            shown290.append(fp.evaluate("document.getElementById('p').type"))
+            check("first run: setup is on the app's stylesheet and components, no <style> of its own; the password has Show, and its hint counts "
+                  "toward 15 characters as it's typed, said once when it's long enough (#290)",
+                  look290 == [True, True, True, "pn", "Show password", "password"]
+                  and count290 == [["0 of 15", False], ["11 of 15", False], ["Long enough", True], "Long enough: 15 characters."]
+                  and shown290 == ["text", "Hide password", "Hide", "password"], [look290, count290, shown290])
             with open(code_file, encoding="utf-8") as f:
                 fp.fill("#c", f.read().strip())
             fp.fill("#u", "robin")
             fp.fill("#p", "a fictional first-run passphrase")
             fp.fill("#p2", "a fictional first-run passphrase")
+            fp.fill("#n", "Robin")
+            fp.click("#pShow")   # shown as it's sent: hidden again first, so a browser saves it as a password
             fp.click("#b")
-            fp.wait_for_url("**/guide.html?profile=1#name", timeout=15000)
-            fp.wait_for_selector("#step-name:not([hidden])", timeout=10000)
+            fp.wait_for_url("**/guide.html?profile=1#records", timeout=15000)
+            fp.wait_for_selector("#step-records:not([hidden])", timeout=10000)
             steps_js = "[...document.querySelectorAll('#guideSteps li')].map(li => li.textContent.replace(/^\\d/, '').replace(' (done)', ''))"
-            check("first run: setup signs in and the guide opens by itself on the new, empty profile, at whose records it holds",
-                  fp.evaluate(steps_js) == ["Whose records", "First records", "Phone (optional)", "Overview"] and fp.input_value("#profName") == "robin"
-                  and fp.is_visible("#step-name [data-skip]") and fp.is_visible("#skipGuide") and guide_is() == "", fp.evaluate(steps_js))
+            done_js = "[...document.querySelectorAll('#guideSteps li.done')].map(li => (li.querySelector('.guide-n svg.i-check') ? '✓' : '') + li.textContent)"
+            check("first run: setup signs in and the guide opens by itself on the new, empty profile, past whose records it holds (asked in setup, "
+                  "never twice: that step done) at the first records (#290)",
+                  fp.evaluate(steps_js) == ["Whose records", "First records", "Phone (optional)", "Overview"] and fp.evaluate(done_js) == ["✓Whose records (done)"]
+                  and fp.evaluate("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => p.name))") == ["Robin"]
+                  and fp.is_visible("#skipGuide") and guide_is() == "", [fp.evaluate(steps_js), fp.evaluate(done_js)])
+            # the steps are one line, at 1400 and at 320 px (they wrapped into a 2×2 block on a phone), joined by a rule
+            line290 = {}
+            for w in (1400, 320):
+                fp.set_viewport_size({"width": w, "height": 800})
+                fp.wait_for_timeout(100)
+                line290[w] = fp.evaluate("""[new Set([...document.querySelectorAll('#guideSteps .guide-n')].map(n => Math.round(n.getBoundingClientRect().top))).size,
+                    [...document.querySelectorAll('#guideSteps li + li')].map(li => getComputedStyle(li, '::before').borderTopStyle).join(),
+                    getComputedStyle(document.querySelector('#guideSteps li.done + li'), '::before').borderTopColor !== getComputedStyle(document.querySelector('#guideSteps li:last-child'), '::before').borderTopColor,
+                    document.documentElement.scrollWidth <= innerWidth]""")
+            fp.set_viewport_size({"width": 1400, "height": 900})
+            check("…its steps one line at 1400 and 320 px, joined by a rule that's coloured past a step done (#290)",
+                  all(v == [1, "solid,solid,solid", True, True] for v in line290.values()), line290)
             # #479: Add → Journal entry (and Log a dose) on that new, empty profile isn't sent back to the guide: the form opens
             fp.goto(fbase + "/?profile=1#new-journal-entry")
             try:
@@ -16966,10 +17021,14 @@ def main():
             fp.wait_for_timeout(300)
             fp.goto(fbase + "/guide.html?profile=1#name")
             fp.wait_for_selector("#step-name:not([hidden])", timeout=10000)
+            name290 = [fp.input_value("#profName"), fp.inner_text("#nameGo"), fp.locator("#step-name [data-skip]").count()]
             fp.fill("#profName", "Robin Example")
+            name290.append(fp.inner_text("#nameGo"))
             fp.click("#nameGo")
             fp.wait_for_selector("#step-records:not([hidden])", timeout=10000)
-            check("…naming the profile there (who it's for), then the first records, each way skippable",
+            check("…the name step, reached from the steps, has setup's name and Continue, no Skip; changed, it's Save and continue (#290)",
+                  name290 == ["Robin", "Continue", 0, "Save and continue"], name290)
+            check("…renaming the profile there (who it's for), then the first records, each way skippable",
                   fp.evaluate("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => p.name))") == ["Robin Example"]
                   and "Robin Example" in fp.inner_text("#profileMenuBtn") and fp.evaluate("location.hash") == "#records"
                   and fp.is_visible("#step-records [data-skip]") and fp.is_hidden("#step-records [data-next]"))
@@ -16983,9 +17042,9 @@ def main():
             f_until(f"/^(Imported|Not imported)/.test({last}.textContent)", 30000)
             check("…where a fictional C-CDA is uploaded, previewed and saved", fp.evaluate(f"{last}.textContent").startswith("Imported."), fp.evaluate(f"{last}.textContent")[:200])
             fp.wait_for_selector("#recordsHave:not([hidden])", timeout=10000)
-            check("…and back in the guide, the step says the records are in, with Continue in place of Skip",
-                  "Robin Example has records now, from 1 import" in fp.inner_text("#recordsHave") and fp.is_visible("#step-records [data-next]")
-                  and fp.is_hidden("#step-records [data-skip]") and fp.evaluate("(li => li && (li.querySelector('.guide-n svg.i-check') ? '✓' : '') + li.textContent)(document.querySelector('#guideSteps li.done'))") == "✓First records (done)",
+            check("…and back in the guide, the step says the records are in, with Continue in place of Skip, and is marked done in the steps",
+                  "The records are in, from 1 import" in fp.inner_text("#recordsHave") and fp.is_visible("#step-records [data-next]")
+                  and fp.is_hidden("#step-records [data-skip]") and fp.evaluate(done_js) == ["✓Whose records (done)", "✓First records (done)"],
                   fp.inner_text("#step-records")[:300])
             fp.click("#step-records [data-next]")
             fp.wait_for_selector("#step-phone:not([hidden])", timeout=10000)
@@ -16995,7 +17054,7 @@ def main():
             fp.wait_for_selector("#step-done:not([hidden])", timeout=10000)
             f_until("document.getElementById('doneSays').textContent.length > 0", 5000)
             check("…skipped, to the end: the Overview, with nothing left to skip, the guide not yet marked done",
-                  "Robin Example has records now. The Overview" in fp.inner_text("#doneSays") and fp.is_hidden("#guideSkip") and guide_is() == "", fp.inner_text("#step-done"))
+                  "The records are in. The Overview" in fp.inner_text("#doneSays") and fp.is_hidden("#guideSkip") and guide_is() == "", fp.inner_text("#step-done"))
             # every step, and Sources with the way back, at 375 px in light and dark
             fp.set_viewport_size({"width": 375, "height": 800})
             bad = []

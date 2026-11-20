@@ -157,10 +157,11 @@ every week, but the first build compiles several packages, including `cryptograp
 hour or more on the Pi itself (a Pi with 1 GB of memory may need swap). Later builds reuse it until
 `requirements.txt` changes. The released image is already built for all three.
 
-Open `http://<this machine>:8730` and enter the setup code to create the first account. It becomes the admin
-and owns the records already on the server; until you add your own, that is the fictional demo. With no records
-on the server yet, the **Getting started** guide opens next: it names the profile, brings in its first records and,
-if you like, connects a phone; every step can be skipped, and the guide stays in your menu. Add accounts for
+Open `http://<this machine>:8730` and enter the setup code to create the first account, and whose records you'll
+keep. It becomes the admin and owns the records already on the server; until you add your own, that is the
+fictional demo. With no records on the server yet, the **Getting started** guide opens next, at its first records:
+it brings them in and, if you like, connects a phone; each step is ticked as it's done, every one can be skipped, and
+the guide stays in your menu. Add accounts for
 other people under **Admin** (in your menu, for admins), then share profiles with them under **Sharing → People**.
 
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy

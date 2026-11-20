@@ -33,6 +33,7 @@ if (SgLogout.due()) {
   addEventListener("online", end);
   addEventListener("storage", e => { if (e.key === SgLogout.KEY) end(); });
 }
+pwField(document.getElementById("p"));   // Show and Hide (util.js, #290)
 let ticket = null;   // after a correct password, when the account has two-factor sign-in on
 const pkBtn = document.getElementById("pk"), pkBox = document.getElementById("pkBox");
 pkBox.hidden = !passkeysWork();   // only over HTTPS (or localhost), in a browser that has them
@@ -57,7 +58,7 @@ function signedIn(j) {
   const next = () => themed.then(() => location.replace(j.must_change_pw ? "account.html#password" : "./"));
   if (j.recovery_codes_left == null) { next(); return; }
   // a recovery code was used: say what that means before going on, on the page with a Continue (#210: not a pop-up)
-  const note = el("p", {id: "recoveryNote"}), go = el("button", {type: "button", id: "recoveryGo", text: "Continue", onclick: next});
+  const note = el("p", {id: "recoveryNote"}), go = el("button", {type: "button", class: "btn primary large", id: "recoveryGo", text: "Continue", onclick: next});
   f.replaceChildren(f.querySelector(".logo"), note, go);
   sayIn(note, `Signed in with a recovery code. You have ${j.recovery_codes_left} left, and every other device was signed out. ` +
               "If you lost your phone, set up two-factor sign-in again under Account.");
