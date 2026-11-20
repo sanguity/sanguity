@@ -15418,6 +15418,51 @@ def main():
             page.click("#tfMsg a")
             page.wait_for_function("!document.getElementById('adminTools').hidden && document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
             check("with 2FA on, the account tools are back", js("document.getElementById('adminTf').hidden && !document.querySelector('.adm-gate')"))
+            # #287: each account a row with badges (admin, two-factor, disabled) and a ⋯ menu of what can be done to it, none
+            # on your own (none of it can be done to your own account here); on a phone each value under its column's
+            # name; removing an account in the one danger zone, last in Accounts, after the list. At 1400 and 375 px,
+            # the menu open and the zone opened from it, light and dark
+            rows287, axe287, fit287 = {}, [], []
+            for w, h in ((1400, 900), (375, 800)):
+                page.set_viewport_size({"width": w, "height": h})
+                settle(200)
+                rows287[w] = js("""[...document.querySelectorAll('#userList tbody tr')].map(r => [r.querySelector('td b').textContent,
+                    [...r.querySelectorAll('.tag')].map(t => t.textContent).join(' '), r.textContent.includes('(you)'),
+                    r.querySelector('.set-more-btn')?.getAttribute('aria-label') || null,
+                    [...r.cells].map(c => getComputedStyle(c, '::before').content.replace(/"/g, '')).filter(x => x !== 'none').join('|')])""")
+                page.locator("#userList tr", has_text="alex").get_by_role("button", name="Manage alex").click()
+                page.wait_for_selector("#userList .menu-list:popover-open", timeout=10000)
+                rows287[f"{w} menu"] = js("[...document.querySelectorAll('#userList .menu-list:popover-open [role=menuitem]')].map(i => i.textContent)")
+                fit287 += phone_fits(page, f"Admin → Accounts, alex's ⋯ open, {w} px") if w < 700 else []
+                for theme in ("light", "dark"):
+                    page.emulate_media(color_scheme=theme)
+                    axe287 += axe_check(page, f"Admin → Accounts, a row's ⋯ open, {w} px, {theme}")[0]
+                page.get_by_role("menuitem", name="Remove account…").click()
+                settle(300)
+                rows287[f"{w} zone"] = js("""(() => { const z = document.querySelectorAll('#users .danger-zone'), l = document.getElementById('userList');
+                    return [z.length, z.length === 1 && !!(l.compareDocumentPosition(z[0]) & Node.DOCUMENT_POSITION_FOLLOWING),
+                      z[0]?.querySelector('h3').textContent, document.activeElement.labels?.[0]?.textContent,
+                      z[0]?.querySelector('.btn.danger').disabled]; })()""")
+                fit287 += phone_fits(page, f"Admin → Accounts, the danger zone open, {w} px") if w < 700 else []
+                for theme in ("light", "dark"):
+                    page.emulate_media(color_scheme=theme)
+                    axe287 += axe_check(page, f"Admin → Accounts, the danger zone open, {w} px, {theme}")[0]
+                page.emulate_media(color_scheme=None)
+                page.select_option("#rmUser", "")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            me287 = [r for r in rows287[1400] if r[2]]
+            alex287 = [r for r in rows287[1400] if r[0] == "alex"]
+            check("Admin → Accounts: badges for admin and two-factor, and a ⋯ menu on each account but your own (#287)",
+                  me287 and me287[0][1] == "admin two-factor" and me287[0][3] is None and alex287 and alex287[0][3] == "Manage alex"
+                  and all(r[4] == "" for r in rows287[1400]), rows287)
+            check("…its menu: Make admin, Reset password, Disable and Remove account, each saying it asks first, at 1400 and 375 px (#287)",
+                  rows287["1400 menu"] == rows287["375 menu"] == ["Make admin…", "Reset password…", "Disable…", "Remove account…"], rows287)
+            check("…at 375 px each value under its column's name, Account and Signed in on, the ⋯ with none (#287)",
+                  all(r[4] == "Account|Signed in on" for r in rows287[375]), rows287[375])
+            check("…removing an account is the one danger zone, after the list, opened by Remove account… with focus on the box "
+                  "for the name, its button off until it's typed, at 1400 and 375 px (#287)",
+                  rows287["1400 zone"] == rows287["375 zone"] == [1, True, "Remove an account", "Type alex to confirm", True], rows287)
+            check("…and it fits 375 px, the menu or the zone open, and axe-core finds nothing serious, light and dark (#287)", not fit287 and not axe287, (fit287 + axe287)[:6])
             # activity: the profile's log (Sharing → Activity, #168) shows the records being opened (by this run), and
             # filters by kind, a document opened named by its record's title, not its stored file's name (#342); the
             # admin's account log shows the account just created
@@ -15706,6 +15751,11 @@ def main():
             second = page.locator("#profileCard")
             second.get_by_role("button", name="Delete profile…").click()
             go = second.get_by_role("button", name="Delete it and everything in it")
+            dz287 = js("""(() => { const z = document.querySelectorAll('#profileCard .danger-zone'), n = document.getElementById('profileName');
+                return [z.length, z[0]?.querySelector('h3').textContent, !!(n.compareDocumentPosition(z[0]) & Node.DOCUMENT_POSITION_FOLLOWING),
+                  !z[0]?.contains(n), z[0]?.querySelector('.dz-open').getAttribute('aria-expanded'), document.activeElement.labels?.[0]?.textContent]; })()""")
+            check("deleting a profile is its card's danger zone, apart from its name and after it, opened by Delete profile… with "
+                  "focus on the box for the name (#287)", dz287 == [1, "Delete this profile", True, True, "true", "Type Second person to confirm"], dz287)
             check("delete needs the profile's name first, typed exactly, with Export everything offered first",
                   go.is_disabled() and second.get_by_role("link", name="Export everything first").get_attribute("href") == "api/profiles/2/export")
             second.get_by_label("Type Second person to confirm").fill("Second perso")
@@ -15734,10 +15784,13 @@ def main():
             page.wait_for_function("document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
             before = len(problems)
             alex_row = lambda: page.locator("#userList tr", has_text="alex")  # noqa: E731
+            def alex_do(item):   # each change is in the row's ⋯ menu now (#287)
+                alex_row().get_by_role("button", name="Manage alex").click()
+                alex_row().get_by_role("menuitem", name=item).click()
             alex_is = lambda: js("fetch('api/users').then(r => r.json()).then(l => l.find(u => u.username === 'alex'))")  # noqa: E731
             focus_js = "(() => { const d = document.querySelector('dialog.sg-ask[open]'); return [d.getAttribute('role'), document.activeElement.textContent]; })()"
             pw_was = db.execute("SELECT pw_hash FROM users WHERE username='alex'").fetchone()[0]
-            alex_row().get_by_role("button", name="Reset password").click()   # asked first (#249), before the fresh check
+            alex_do("Reset password…")   # asked first (#249), before the fresh check
             page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
             reset_focus = js(focus_js)
             asked = answer_ask(page, yes=False)
@@ -15746,7 +15799,7 @@ def main():
                   and "one-time password" in asked[1] and reset_focus == ["alertdialog", "Cancel"], [asked, reset_focus])
             check("…Cancel resets nothing, and asks for no fresh check", js("document.getElementById('reauth').hidden")
                   and db.execute("SELECT pw_hash FROM users WHERE username='alex'").fetchone()[0] == pw_was and not js("document.querySelector('#userMsg code')"))
-            alex_row().get_by_role("button", name="Reset password").click()
+            alex_do("Reset password…")
             answer_ask(page)
             page.wait_for_selector("#reauth input", state="visible", timeout=10000)
             check("resetting a password asks to confirm it's you", "Confirm it's you" in page.inner_text("#reauth"))
@@ -15757,7 +15810,7 @@ def main():
             check("after the password, the reset goes ahead", True)
             problems[before:] = [x for x in problems[before:] if "403" not in x]   # the refusal that asks
             # Make admin and Remove admin ask first, naming the account (#249); Cancel leaves the flag as it was
-            alex_row().get_by_role("button", name="Make admin").click()
+            alex_do("Make admin…")
             page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
             admin_focus = js(focus_js)
             asked = answer_ask(page, yes=False)
@@ -15765,17 +15818,17 @@ def main():
             check("Make admin asks first, in red with focus on Cancel, saying what an admin can do (#249)", asked[0] == "Make alex an admin?"
                   and "reset passwords" in asked[1] and admin_focus == ["alertdialog", "Cancel"], [asked, admin_focus])
             check("…Cancel leaves them not an admin", not alex_is()["is_admin"])
-            alex_row().get_by_role("button", name="Make admin").click()
+            alex_do("Make admin…")
             answer_ask(page)
-            page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.querySelector('.tag'))", timeout=10000)
+            page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && [...r.querySelectorAll('.tag')].some(t => t.textContent === 'admin'))", timeout=10000)
             check("…confirming makes them an admin", alex_is()["is_admin"])
-            alex_row().get_by_role("button", name="Remove admin").click()
+            alex_do("Remove admin…")
             asked = answer_ask(page, yes=False)
             settle(300)
             check("Remove admin asks first (#249)", asked[0] == "Remove alex's admin role?" and "Admin page" in asked[1] and alex_is()["is_admin"], asked)
-            alex_row().get_by_role("button", name="Remove admin").click()
+            alex_do("Remove admin…")
             answer_ask(page)
-            page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && !r.querySelector('.tag') && r.textContent.includes('Make admin'))", timeout=10000)
+            page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && ![...r.querySelectorAll('.tag')].some(t => t.textContent === 'admin') && r.textContent.includes('Make admin…'))", timeout=10000)
             check("…confirming removes it", not alex_is()["is_admin"])
             # #314: requiring two-factor sign-in for everyone asks first, saying how many accounts have no second factor;
             # Cancel changes nothing. Turning it off again isn't asked. The admin has a second factor now, so the count
@@ -15804,16 +15857,16 @@ def main():
             alex = db.execute("SELECT id FROM users WHERE username='alex'").fetchone()[0]
             profiles.create_profile(db, "Alex's records", owner_id=alex)
             db.close()
-            alex_row().get_by_role("button", name="Disable").click()
+            alex_do("Disable…")
             page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
             off_focus = js(focus_js)
             asked = answer_ask(page, yes=False)
             settle(300)
             check("Disable asks first, in red with focus on Cancel, saying they're signed out (#249)", asked[0] == "Disable alex?"
                   and "signed out everywhere" in asked[1] and off_focus == ["alertdialog", "Cancel"], [asked, off_focus])
-            check("…Cancel leaves the account active", not alex_is()["disabled"] and "Disable" in alex_row().inner_text())
+            check("…Cancel leaves the account active", not alex_is()["disabled"] and not alex_row().locator(".tag", has_text="disabled").count())
             before = len(problems)
-            alex_row().get_by_role("button", name="Disable").click()
+            alex_do("Disable…")
             answer_ask(page)
             asked = answer_ask(page)
             page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.textContent.includes('disabled'))", timeout=10000)
@@ -15821,10 +15874,20 @@ def main():
             check("disabling a profile's only owner then asks about that", asked[0] == "Disable alex anyway?" and "only owner of Alex's records" in asked[1], asked)
             page.wait_for_function("document.querySelector('#ownerless') && document.querySelector('#ownerless').textContent.includes(\"Alex's records\")", timeout=10000)
             check("an admin sees profiles left without an owner", True)
-            # removing that account: confirmed, then asked who owns Alex's records instead (this admin)
+            # removing that account (#287): its row's "Remove account…" opens the danger zone for it, focus on the box for
+            # its username, which has to be typed exactly before Remove works; then asked who owns Alex's records instead
+            # (this admin)
             before_remove = len(problems)
-            page.locator("#userList tr", has_text="alex").get_by_role("button", name="Remove").click()
-            answer_ask(page)
+            alex_do("Remove account…")
+            zone = page.locator("#userDanger .danger-zone")
+            gone_btn = zone.get_by_role("button", name="Remove the account")
+            settle(300)
+            rm287 = js("[document.getElementById('rmUser').selectedOptions[0].textContent, document.activeElement.labels?.[0]?.textContent]")
+            zone.get_by_label("Type alex to confirm").fill("Alex")
+            check("…its row's Remove account… opens the danger zone for alex, focus on the box for its username, Remove the account "
+                  "off until it's typed exactly (#287)", rm287 == ["alex", "Type alex to confirm"] and gone_btn.is_disabled(), rm287)
+            zone.get_by_label("Type alex to confirm").fill("alex")
+            gone_btn.click()
             owner_asked = answer_ask(page, fill=USER)   # (#210: the app's dialog with a box for the name, not prompt)
             page.wait_for_function("!document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
             check("…asked who takes over, in the app's dialog with a box for the name", owner_asked[0] == "Who takes over from alex?"

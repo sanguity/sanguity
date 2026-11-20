@@ -134,19 +134,7 @@ function jsonEditor(value, changed, ro) {
 
 /* ---------------------------------------------------------------- #36, #40, #45: key-lab tiles, tabs, theme */
 
-/* a small menu of a row's actions: its ⋯ button opens it by touch, mouse or keyboard (Enter, Space or the down
-   arrow; then the arrow keys, and Escape to close it: the app's one menu, SgNav.menu in nav.js). entries: [{text, run}] */
-let rowMenus = 0;
-function rowMenu(label, entries, act) {
-  const id = "rowMenu" + (++rowMenus);
-  const btn = el("button", {class: "btn small set-more-btn", type: "button", "data-act": act, "aria-label": label,
-    "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id}, icon("ellipsis"));
-  const items = entries.map(e => el("button", {class: "menu-item", role: "menuitem", type: "button", tabindex: "-1", text: e.text,
-    onclick: () => { m.close(); e.run(); }}));
-  const list = el("div", {class: "menu-list", id, role: "menu", "aria-label": label}, ...items);
-  const m = SgNav.menu({btn, list, wrap: el("div", {class: "menu set-more"}, btn, list)});
-  return m.wrap;
-}
+/* (a row's ⋯ menu, rowMenu(), is util.js's: Admin's accounts have one too, #287) */
 
 /* a list put in order three ways: drag an item by its handle (mouse, pen or touch), focus the handle and press
    up or down (Home, End), or its ↑ and ↓ buttons. items are strings; opts.name(item) names it, opts.body(item)

@@ -1235,18 +1235,21 @@ class UserPatch(BaseModel):
 
 
 class UserRemove(BaseModel):
+    confirm_name: str               # the account's username, typed by the admin (Admin's danger zone, #287)
     hand_to: Optional[str] = None   # username to become owner of the profiles this account alone owned
     force: bool = False             # remove anyway, leaving those profiles without an active owner
 
 
 @app.delete("/api/users/{uid}")
 def remove_user(uid: int, body: UserRemove, request: Request, s=Depends(admin), db=Depends(get_db)):
-    """Delete an account for good (admins; not your own, not the last admin)."""
+    """Delete an account for good (admins; not your own, not the last admin), confirmed by typing its username."""
     if uid == s["id"]:
         raise HTTPException(400, "You can't remove your own account here.")
     target = db.execute("SELECT username, is_admin FROM users WHERE id=?", (uid,)).fetchone()
     if not target:
         raise HTTPException(404, "No such account.")
+    if body.confirm_name.strip() != target["username"]:   # as deleting a profile asks its name (#287)
+        raise HTTPException(400, "Type the account's username exactly to confirm.")
     if target["is_admin"] and db.execute("SELECT COUNT(*) FROM users WHERE is_admin=1 AND disabled=0 AND id<>?", (uid,)).fetchone()[0] == 0:
         raise HTTPException(409, "That's the last active admin.")
     hand_to = None
