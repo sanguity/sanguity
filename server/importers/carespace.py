@@ -24,7 +24,7 @@ export. Series: "loinc:<code>" or "carespace:name|<name lower-cased>", with "|<u
 import collections, hashlib, json, posixpath, re
 import xml.etree.ElementTree as ET
 
-from .common import canonical_lab, iso, loinc_of, num, unit_key, ymd
+from .common import canonical_lab, iso, lab_day_sub, lab_day_title, loinc_of, num, unit_key, ymd
 
 NAME = "carespace"
 LABEL = "CareSpace / OncoEMR portal export"
@@ -243,7 +243,7 @@ def parse(files, org=None, tag=None):
             if i:
                 ids.append(i)
         n = sum(len(r) for r in pans.values())
-        add(iso(first_t[day]), "lab", f"{n} lab results · {org}", ", ".join(sorted(pans))[:160], {"type": "labday", "ids": ids},
+        add(iso(first_t[day]), "lab", lab_day_title(n, org), lab_day_sub(sorted(pans)), {"type": "labday", "ids": ids},
             key=f"{NAME}:labday:{day}", abn=sum(1 for rows in pans.values() for r in rows if r[4]) or None, src=tag)
 
     # ---- the C-CDA: weights in its entries, then its narrative tables

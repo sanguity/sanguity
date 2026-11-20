@@ -3114,6 +3114,14 @@ def main():
             check("…a search naming several tests (“cbc”, a panel) counts theirs and says how many tests: “225 results of the 5 tests matching “cbc””",
                   len(cbc["names"]) > 1 and cbc["same"]
                   and f"{cbc['got']:,} lab draws, {cbc['n']:,} results of the {len(cbc['names'])} tests matching “cbc”, {cbc['abn']:,} out of range" in cbc["sum"], cbc)
+            # #458: the importers cut a long one at a whole name, with "…"; one cut mid-name at 160 characters before that
+            # has the name it cut left out for the "…", not recased half ("…, Hepatic PA")
+            cut458 = js("""(() => { const names = ['COMPREHENSIVE METABOLIC PANEL', 'CBC WITH DIFFERENTIAL', 'HEPATIC FUNCTION PANEL', 'LIPID PANEL',
+                'THYROID STIMULATING HORMONE', 'IRON AND TIBC', 'MAGNESIUM', 'HEMOGLOBIN A1C W/ EAG', 'URIC ACID'];
+              const old = names.join(', ').slice(0, 160), now = names.slice(0, 4).join(', ') + ', …';
+              return [names.includes(old.split(', ').pop()), labDaySub({id: -1, sub: old}), labDaySub({id: -1, sub: now}), names.map(panelName)]; })()""")
+            check("…no lab day's line ends mid-name: an old cut has the name it cut left out for “…”, one cut at a whole name with “…” stays so (#458)",
+                  not cut458[0] and cut458[1] == ", ".join(cut458[3][:7]) + ", …" and cut458[2] == ", ".join(cut458[3][:4]) + ", …", cut458)
             page.click("label.toggle:has(#tlWork)")
             settle(300)
             on = js(ev_list)
@@ -3216,6 +3224,14 @@ def main():
             res451 = js("""[...document.querySelectorAll('#dbody details.res summary > span:first-child')].map(s => s.textContent)""")
             check("…each of its results titled by its panel as Labs names it (#451)", res451
                   and all(x == js("x => panelName(x)", x) and not re.fullmatch(r"[A-Z ]{6,}", x) for x in res451), res451)
+            # #458: its title counts what its Results fact counts, the values (the server's title counted reports, "2 lab
+            # results" over 11 values); one titled so by an import before #458 is counted again once its results are in
+            t458 = js("""id => { const e = byId.get(id), facts = Object.fromEntries([...document.querySelectorAll('#dbody dl.facts > div')].map(d => [d.querySelector('dt').textContent, d.querySelector('dd').textContent]));
+              const old = e.title; e.title = '2 lab results';
+              try { closeDrawer(); openEvent(e); return [document.getElementById('dtitle').textContent, facts.Results, old, DATA.details[id].ids.length]; }
+              finally { e.title = old; closeDrawer(); openEvent(e); } }""", day)
+            check("…its title and its Results fact count the same, the values, and so does the server's title; one counting reports is counted again (#458)",
+                  t458[1] and int(t458[1]) > t458[3] and t458[0] == t458[2] == f"{t458[1]} lab results", t458)
             claim = js("EV.find(e => e.k === 'claim' && !detailsHave(e.id)).id")
             before = len(problems)
             busy = re.compile(r"/api/profiles/\d+/details\?")
@@ -7725,6 +7741,27 @@ def main():
             got451 = js("ns => ns.map(panelName)", list(names451))
             check("…a panel's name in capitals keeps its abbreviations: “Iron and TIBC”, “Sed rate (ESR)”, “NT-PROBNP”, “CBC w/ diff” (#451)",
                   got451 == list(names451.values()), [x for x in zip(names451, got451) if names451[x[0]] != x[1]])
+            # #458: the reviewers' 62 common panel names: every acronym kept ("PROBNP", which reads as no word), the common
+            # short words in sentence case ("Type and screen", "Anion gap"), "W/O" one word, a hyphened name part by part
+            names458 = {"COMP METABOLIC PANEL": "Comp metabolic panel", "TYPE AND SCREEN": "Type and screen", "URINE DRUG SCREEN": "Urine drug screen",
+                        "HEP B SURFACE AB": "Hep B surface AB", "HIGH SENSITIVITY CRP": "High sensitivity CRP", "GRAM STAIN": "Gram stain",
+                        "BLOOD CULTURE": "Blood culture", "LIVER PANEL": "Liver panel", "RENAL FUNCTION PANEL": "Renal function panel", "PT/INR": "PT/INR",
+                        "PROTIME-INR": "Protime-INR", "MAGNESIUM, SERUM": "Magnesium, serum", "HGB A1C": "HGB A1C",
+                        "LIPID PANEL W/ REFLEX DIRECT LDL": "Lipid panel w/ reflex direct LDL", "TSH W/REFLEX TO FT4": "TSH w/reflex to FT4",
+                        "COVID-19 PCR": "COVID-19 PCR", "FLU A/B": "Flu A/B", "STREP A": "Strep A", "HEPATITIS PANEL": "Hepatitis panel",
+                        "STOOL O&P": "Stool O&P", "CALCIUM, IONIZED": "Calcium, ionized", "CK TOTAL": "CK total", "BNP": "BNP", "PROBNP": "PROBNP",
+                        "TROPONIN I": "Troponin I", "LACTIC ACID": "Lactic acid", "BLOOD GAS, ARTERIAL": "Blood gas, arterial", "MAG": "Mag", "PHOS": "Phos",
+                        "VIT D 25 OH": "Vit D 25 OH", "FREE T4": "Free T4", "T3 FREE": "T3 free", "HIV 1/2 AB": "HIV 1/2 AB", "CBC W/O DIFF": "CBC w/o diff",
+                        "UA W/REFLEX CULTURE": "UA w/reflex culture", "MONO TEST": "Mono test", "LEAD, BLOOD": "Lead, blood", "PSA, TOTAL": "PSA, total",
+                        "PSA, FREE": "PSA, free", "TOTAL PROTEIN": "Total protein", "IRON": "Iron", "URIC ACID": "Uric acid", "CULTURE, URINE": "Culture, urine",
+                        "FECAL OCCULT BLOOD": "Fecal occult blood", "GGT": "GGT", "LIPASE": "Lipase", "PAP SMEAR": "Pap smear",
+                        "HEMOGLOBIN A1C W/ EAG": "Hemoglobin A1C w/ EAG", "CBC AUTO DIFF": "CBC auto diff", "CBC & DIFF": "CBC & diff", "ESR": "ESR",
+                        "CRP, HIGH SENSITIVITY": "CRP, high sensitivity", "FOLIC ACID": "Folic acid", "D-DIMER": "D-dimer", "CARDIAC PANEL": "Cardiac panel",
+                        "TYPE & SCREEN": "Type & screen", "BLOOD TYPE": "Blood type", "PREG TEST, URINE": "Preg test, urine", "HCG, QUANT": "HCG, quant",
+                        "BETA HCG": "Beta HCG", "POC GLUCOSE": "POC glucose", "ANION GAP": "Anion gap"}
+            got458 = js("ns => ns.map(panelName)", list(names458))
+            check("…and over 62 common panel names keeps every acronym and lowercases the common words: “Type and screen”, “CBC w/o diff”, “PROBNP” (#458)",
+                  len(names458) == 62 and got458 == list(names458.values()), [x for x in zip(names458, got458) if names458[x[0]] != x[1]])
             # #451: a key lab kept in two units (#438) has the tile of its latest result: here Hemoglobin, again in mmol/L,
             # three days after its last draw
             two451 = js("""(() => {
@@ -10053,7 +10090,9 @@ def main():
             # again, change it elsewhere, Undo
             dl_of = lambda pid=1: js(api_get, f"profiles/{pid}/settings")["trends"]["defaultLabs"]
             tr_msg = "document.querySelector('#sec-trends .set-msg').textContent"
-            drop = lambda: page.locator("[data-key='trends.defaultLabs'] .set-labs button:text-is('Remove')").first.click()
+            # (the saved list's first lab: the list shows them in Labs' order, #458)
+            remove_lab = lambda n: page.locator(f"[data-key='trends.defaultLabs'] li[data-lab=\"{n}\"] button:text-is('Remove')").click()
+            drop = lambda: remove_lab(js("SET_ITEMS['trends.defaultLabs'].value()[0]"))
             dl441 = js("""(() => { const out = []; let g = null;
               for (const x of document.querySelectorAll("[data-key='trends.defaultLabs'] :is(h4.lab-panel, li)")) if (x.matches('h4')) g = x.innerText; else out.push([x.dataset.lab, g]);
               return out; })()""")
@@ -10066,6 +10105,31 @@ def main():
             check("…each by its nickname, its name in the records beside it, and Remove its one control: no order that does nothing (#451)",
                   dl451 and all(t == (k if k == n else f"{k} ({n})") and b == [f"Remove {k}"] for n, t, k, b in dl451) and any(k != n for n, _, k, _ in dl451)
                   and js("!document.querySelector(\"[data-key='trends.defaultLabs'] ol\")"), dl451)
+            # #458: within a panel, in Labs' order (the most measured first, then by the name shown); Add takes a nickname as
+            # the lab it names, suggests the names shown, and refuses a name this profile has no lab by, as Key labs does
+            order458 = js("""(() => { const count = n => LABS.reduce((a, s) => a + (s.name === n ? s.pts.length : 0), 0), out = [];
+              for (const ul of document.querySelectorAll("[data-key='trends.defaultLabs'] ul.set-labs")) out.push([...ul.querySelectorAll('li[data-lab]')].map(li => [count(li.dataset.lab), nick(li.dataset.lab)]));
+              return out; })()""")
+            check("Labs selected at first (#458): within each panel in Labs' order, the most measured first",
+                  len(order458) > 1 and all(g == sorted(g, key=lambda x: (-x[0], x[1].lower())) for g in order458), order458)
+            add458 = "[data-key='trends.defaultLabs'] .set-add input"
+            nick458 = js("Object.entries(NICK).find(([n]) => LAB_NAMES.includes(n) && !SET_ITEMS['trends.defaultLabs'].value().includes(n))")
+            page.fill(add458, nick458[1])
+            page.press(add458, "Enter")
+            got458 = js("""n => [[...document.querySelectorAll("[data-key='trends.defaultLabs'] li[data-lab]")].filter(li => li.dataset.lab === n).map(li => li.closest('ul').previousElementSibling?.textContent),
+              [...document.querySelectorAll("[data-key='trends.defaultLabs'] h4.lab-panel")].map(h => h.textContent), SET_ITEMS['trends.defaultLabs'].value().at(-1),
+              document.querySelector("[data-key='trends.defaultLabs'] .set-add input").getAttribute('list'), [...document.querySelectorAll('#labShown option')].some(o => o.value === nick(n) && o.label === n)]""", nick458[0])
+            remove_lab(nick458[0])
+            page.fill(add458, "Not a lab in this profile")
+            page.press(add458, "Enter")
+            bad458 = js("""[document.querySelector("[data-key='trends.defaultLabs'] .msg").textContent, SET_ITEMS['trends.defaultLabs'].value(),
+              document.querySelector("[data-key='trends.defaultLabs'] .set-add input").value, document.getElementById('sec-trends').hasAttribute('data-dirty')]""")
+            page.fill(add458, "")
+            check("…a nickname added is the lab it names, under that lab's panel, no “Other” of its own; the names shown suggested, its name in the records beside",
+                  nick458 and len(got458[0]) == 1 and got458[0][0] == want279.get(nick458[0]) and "Other" not in got458[1] and got458[2] == nick458[0]
+                  and got458[3] == "labShown" and got458[4], [nick458, got458])
+            check("…and a name the profile has no lab by is refused, said so, the list as it was (#458)",
+                  "no lab called “Not a lab in this profile”" in bad458[0] and bad458[1] == dl_of() and bad458[2] == "Not a lab in this profile" and not bad458[3], bad458)
             labs0 = dl_of()
             drop()
             bar = js("[document.getElementById('setBar').hidden, document.querySelector('#setBar .sg-bar-n').textContent, document.getElementById('sec-trends').dataset.dirty]")

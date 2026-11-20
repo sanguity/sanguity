@@ -27,7 +27,7 @@ import os
 import re
 from datetime import datetime
 
-from .common import canonical_lab, loinc_of
+from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of
 
 NAME = "csv"
 LABEL = "Lab results spreadsheet (CSV)"
@@ -672,7 +672,7 @@ def build(results, source=SOURCE, sub="Imported spreadsheet"):
             line = " · ".join(x for x in [r["panel"] if r["panel"] != r["test"] else "", r["lab"]] if x) or sub
             ids.append(add(r["t"], "labitem", r["test"], line, det, key=_key(r), abn=int(bool(r["flag"])), hidden=1))
         orders = sorted({r["panel"] or r["test"] for r in rs})
-        add(rs[0]["t"], "lab", f"{len(rs)} lab result{'s' if len(rs) != 1 else ''}", ", ".join(orders)[:160],
+        add(rs[0]["t"], "lab", lab_day_title(len(rs)), lab_day_sub(orders),
             {"type": "labday", "ids": ids}, key=f"csv:labday:{day}", abn=sum(1 for r in rs if r["flag"]), src=source)
 
     names = _series_names(results)

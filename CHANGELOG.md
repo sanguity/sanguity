@@ -1555,6 +1555,19 @@ Everything on `main` so far; it becomes the first tagged release.
   else saved. An address naming a drug's claims (`#costs?drug=…`), opened in a new tab or typed, shows them as the
   link's click does: scrolled to, focus in their search. What you paid's ⓘ stays beside its heading at 320 px, and
   offline the medication drawer and Costs' editor say in a line why they can't save.
+- **Labs selected at first takes a nickname, panel names keep W/O and lose capital short words, and a lab day counts
+  its values** (#458): Settings' Labs selected at first listed nicknames but Add knew only record names, so a nickname
+  added a lab that didn't exist under an "Other" of its own, which Labs then dropped. Add takes the name a lab is shown
+  by or its record name now, suggests the names shown, and refuses one the profile has no lab by, as Key labs does
+  (which takes nicknames too now); within a panel the labs are in Labs' order, the most measured first. A panel's name
+  in capitals split "W/O" ("CBC w/O diff") and kept common short words in capitals ("TYPE and screen", "Anion GAP",
+  "Probnp"); "W/O" is one word, the common short words are in sentence case, and a word that doesn't read as one stays
+  as written ("Type and screen", "Anion gap", "PROBNP"). The importers cut a lab day's line at 160 characters mid-name
+  ("…, Hepatic PA"); they cut at a whole name with "…", and a line cut before is shown without the half name. A lab
+  day's title counted its reports ("2 lab results" over a Results fact of 11 values, in the drawer, on the Timeline
+  and in the Overview's Recent); the FHIR, C-CDA and Epic MyChart importers and the demo count its values, as the CSV,
+  PDF and CareSpace ones did ("1 lab results" there is "1 lab result"), and the drawer counts a day imported before
+  again once its results are in.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

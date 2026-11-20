@@ -40,8 +40,8 @@ import re
 import zipfile
 
 from . import ccda
-from .common import (canonical_lab, ext_alias, inferred_stays, iso, lab_alias, lab_defs, resolve_name, stay, strip_html,
-                     unit_key)
+from .common import (canonical_lab, ext_alias, inferred_stays, iso, lab_alias, lab_day_sub, lab_day_title, lab_defs,
+                     resolve_name, stay, strip_html, unit_key)
 
 NAME = "epic-mychart"
 LABEL = "Epic MyChart export"
@@ -248,7 +248,7 @@ def _results(out, tr, rel, org, tag, infer_stays):
             key = _hkey(t, kind, d.get("orderName"), r.get("name"), m.get("orderProviderName"), org)
             if kind == "lab" and not report:
                 ld = lab_days[t[:10]]
-                ld["n"] += 1
+                ld["n"] += len(rows)
                 ld["abn"] += abn_here
                 ld["orders"].add(d.get("orderName") or "")
                 ld["ids"].append(out.add(t, "labitem", d.get("orderName") or "Lab", sub, det, abn=abn_here, hidden=1, key=key))
@@ -261,8 +261,8 @@ def _results(out, tr, rel, org, tag, infer_stays):
     by_id = {e["id"]: e for e in out.events}
     for day, ld in lab_days.items():   # one visible "lab draw" event per day, linking to that day's results
         first = min((by_id[i] for i in ld["ids"]), key=lambda e: e["t"])
-        out.add(first["t"], "lab", f"{ld['n']} lab result{'s' if ld['n'] != 1 else ''}" + (f" · {org}" if org else ""),
-                ", ".join(sorted(o for o in ld["orders"] if o))[:160], {"type": "labday", "ids": ld["ids"]},
+        out.add(first["t"], "lab", lab_day_title(ld["n"], org), lab_day_sub(sorted(o for o in ld["orders"] if o)),
+                {"type": "labday", "ids": ld["ids"]},
                 abn=ld["abn"] or None, src=tag, key=f"{NAME}:labday:{day}" + (f"|{org}" if org else ""))
     if infer_stays:   # hospital stays guessed from inpatient results, when the export has no admit/discharge dates
         for st in inferred_stays(admissions, inpatient_ts, org):

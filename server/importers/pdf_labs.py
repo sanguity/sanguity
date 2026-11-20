@@ -23,7 +23,7 @@ import collections, hashlib, json, os, re, subprocess, sys
 from datetime import datetime
 
 from . import pdf_layouts
-from .common import canonical_lab, loinc_of
+from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of
 from .pdf_layouts import bounds
 
 NAME = "pdf-labs"
@@ -423,7 +423,7 @@ def _build(reports, warnings):
         rs = [r for _, group in items for r in group]
         orders = sorted({ev["title"] for ev in events if ev["id"] in ids})
         tags = sorted({r["rep"]["layout"].SOURCE for r in rs})
-        add(min(r["t"] for r in rs), "lab", f"{len(rs)} lab result{'s' if len(rs) != 1 else ''}", ", ".join(orders)[:160],
+        add(min(r["t"] for r in rs), "lab", lab_day_title(len(rs)), lab_day_sub(orders),
             {"type": "labday", "ids": ids}, key=f"{NAME}:labday:{day}", abn=sum(1 for r in rs if r["flag"]),
             src=tags[0] if len(tags) == 1 else None)
 

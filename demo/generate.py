@@ -174,7 +174,8 @@ def draw(d, names, h=8, inpatient=False):
         ids.append(add(t, "labitem", order, f"{prov} · Final · {where}", det, abn=a, hidden=1))
         abn += a
         orders.append(order)
-    add(t, "lab", f"{len(ids)} lab result{'s' if len(ids) != 1 else ''}", ", ".join(orders), {"type": "labday", "ids": ids}, abn=abn)
+    nv = sum(len(details[i]["rows"]) for i in ids)   # the title counts the values, as the drawer's Results fact does (#458)
+    add(t, "lab", f"{nv} lab result{'s' if nv != 1 else ''}", ", ".join(orders), {"type": "labday", "ids": ids}, abn=abn)
     if not inpatient:
         owed_bills.append((d, where, claim(d, where, "Laboratory tests", round(R.uniform(140, 420), 2), "Lab & pathology")))
 

@@ -125,6 +125,37 @@ def resolve_name(name, unit, org, labs):
     return canon
 
 
+# ------------------------------------------------------------------ lab days
+# The one visible "lab" event per day that links the day's results (#458): its title counts the values, as the
+# drawer's Results fact does, and its sub names the day's orders, cut at a whole name.
+
+LAB_DAY_SUB = 160
+
+
+def lab_day_title(n, org=""):
+    """'12 lab results', or '1 lab result · Northfield Lab': n is the day's values (result rows), not its reports."""
+    return f"{n} lab result{'s' if n != 1 else ''}" + (f" · {org}" if org else "")
+
+
+def lab_day_sub(orders, limit=LAB_DAY_SUB):
+    """The orders joined with ', ', the most that fit in limit characters as whole names, then '…' for the rest; a
+    first name longer than that is cut at a word."""
+    out, size = [], 0
+    names = [o for o in orders if o]
+    for i, o in enumerate(names):
+        more = i < len(names) - 1
+        if size + len(o) + (len(", …") if more else 0) > limit:
+            if not out:
+                cut = o[:limit - 1] if o[limit - 1] == " " else o[:limit - 1].rsplit(" ", 1)[0]
+                out.append((cut.rstrip(" ,") or o[:limit - 1]) + "…")
+            else:
+                out.append("…")
+            break
+        out.append(o)
+        size += len(o) + 2
+    return ", ".join(out)
+
+
 # ------------------------------------------------------------------ hospital stays
 # Each returns event fields for a "stay" event: {"t", "title", "sub", "detail", "end"} (add "id" and "k": "stay").
 
