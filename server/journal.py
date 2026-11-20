@@ -95,6 +95,9 @@ def _when(t, day_only=False):
         datetime.strptime(t, "%Y-%m-%dT%H:%M" if "T" in t else "%Y-%m-%d")
     except ValueError:
         raise JournalError("That date doesn't exist.") from None
+    from datetime import date, timedelta
+    if t[:10] > (date.today() + timedelta(days=366)).isoformat():   # a year typed wrong (2207): it'd be listed under no period (#479)
+        raise JournalError("That date is more than a year ahead: check the year.")
     if day_only and "T" in t:
         raise JournalError("A mood entry is for a whole day: give the date without a time.")
     return t

@@ -443,6 +443,7 @@ function journalForm(j, preset, back) {
   form.onsubmit = ev => {
     ev.preventDefault();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date.value)) { sayIn(msg, "Pick a date.", true); date.focus(); return; }
+    if (date.value > date.max) { sayIn(msg, "That date is more than a year ahead: check the year.", true); date.focus(); return; }   // typed past the picker's max (#479)
     if (kind === "mood") {
       if (mood.get() == null && energy.get() == null) { sayIn(msg, "Tick Mood, Energy or both.", true); return; }
       const out = {kind, t: date.value, mood: mood.get(), energy: energy.get(), note: note.value};
@@ -556,7 +557,7 @@ function journalPickGroup(back) {
 function journalGroupForm(g, back) {
   const uid = jUid(), body = jDrawer("Log a symptom group", g.name);
   const msg = el("p", {class: "hint edit-msg", role: "status"});
-  const date = el("input", {type: "date", id: `jgf-date-${uid}`, required: true}), time = el("input", {type: "time", id: `jgf-time-${uid}`});
+  const date = el("input", {type: "date", id: `jgf-date-${uid}`, required: true, max: isoDay(Date.now() + 366 * DAY)}), time = el("input", {type: "time", id: `jgf-time-${uid}`});
   date.value = isoDay(Date.now());
   const note = el("textarea", {id: `jgf-note-${uid}`, rows: 3, maxlength: 5000});
   const rows = g.symptoms.map((s, i) => {
@@ -576,6 +577,7 @@ function journalGroupForm(g, back) {
   form.onsubmit = ev => {
     ev.preventDefault();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date.value)) { sayIn(msg, "Pick a date.", true); date.focus(); return; }
+    if (date.value > date.max) { sayIn(msg, "That date is more than a year ahead: check the year.", true); date.focus(); return; }   // typed past the picker's max (#479)
     const items = rows.filter(r => r.had.checked).map(r => ({title: r.s, severity: +r.sev.input.value, where: r.where.get()}));
     if (!items.length) { sayIn(msg, "Tick at least one symptom.", true); return; }
     jSend("/group", {method: "POST", body: JSON.stringify({group: g.name, t: date.value + (time.value ? "T" + time.value.slice(0, 5) : ""), note: note.value, items})}, msg, {list: true});

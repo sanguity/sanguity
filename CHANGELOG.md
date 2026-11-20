@@ -1690,6 +1690,14 @@ Everything on `main` so far; it becomes the first tagged release.
   the visit; the kinds are the person's again once the Timeline is left. The heatmap's month lines, drawn over its
   cells, took over half the taps on a phone's ten-year All; they take none. A profile with no hospital stays isn't
   offered them on Body and activity.
+- **A year typed past the journal date's limit is refused, the heatmap's month lines stay under its colours, Escape
+  after the palette keeps focus, and Costs' notes keep their line** (#481): the journal's date limit only bounded its
+  picker, so 2207 typed in still saved, then was listed under no period; the entry and symptom-group forms say to
+  check the year, and the server refuses a date more than a year ahead. On a phone's ten-year heatmap the month lines,
+  drawn over sub-pixel columns, hid a month's first draw and its out-of-range colour; they're drawn under the cells,
+  and the latest month is named on the axis. A record opened from a tab's link at 1400 px docked the drawer, which put
+  that tab under More; Escape left focus on the page once More went, and now it's back on the tab. Costs' largest
+  group's bar squeezed its note onto two lines; the bars take what the note leaves.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
