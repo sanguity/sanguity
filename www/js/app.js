@@ -228,6 +228,9 @@ async function settingsLoad() {
   restore();   // a saved period naming a milestone that's since gone is All (setPeriod)
   const arrived = tabOfHash();
   if (arrived) { state.tab = arrived[0]; setView(arrived[1]); }
+  // a journal and nothing imported (#472): the Timeline's Journal view, where its entries are, unless the address
+  // names another tab
+  else if (DATA.imports && !Object.keys(DATA.imports).length) [state.tab, state.tlView] = ["timeline", "journal"];
   const drug = arrived?.[0] === "costs" && medCostsArrive();   // (#costs?drug=…, #452)
   if (!state.sel.size) state.sel = startLabs();   // the default saved view, else trends.defaultLabs (trends.js)
   if (state.preset !== "custom" || !(state.to > state.from)) setPeriod(state.preset);

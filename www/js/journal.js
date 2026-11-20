@@ -594,8 +594,9 @@ async function jSend(path, opts, msg, reopen) {
   try { r = await api(`profiles/${PROFILE.id}/journal${path}`, opts); j = await r.json().catch(() => ({})); }
   catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return; }
   if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the entry (${r.status}).`, true); return; }
-  // a profile with no records yet (#401): the entry is kept, and shown with them once there are some
-  if (!DATA) { closeDrawer(); toast(`Saved. It's shown on the Timeline once ${PROFILE.name} has records.`); return; }
+  // a profile with no records yet (#401): the page again, with the entry on the Timeline's Journal view (#472: the
+  // empty card has no tabs to draw it in)
+  if (!DATA) { history.replaceState(null, "", location.pathname + location.search + "#timeline-journal"); location.reload(); return; }
   storePut("journal", j);
   const id = reopen.created ? j.id : reopen.entry;
   if (id && byId.has(-id)) openEvent(byId.get(-id)); else journalHome();

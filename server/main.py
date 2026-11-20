@@ -1039,7 +1039,8 @@ def profile_data(pid: int, request: Request, s=Depends(user), db=Depends(get_db)
     if got is None:
         if (why := prof.build_error(pid)):
             raise HTTPException(500, f"The built records couldn't be loaded ({why}). Details are in the app's log.")
-        return Response(status_code=204)   # the profile exists but has no records yet
+        if (got := records.journal_page(db, pid)) is None:   # a journal and nothing imported: the journal (#472)
+            return Response(status_code=204)   # the profile exists but has no records yet
     activity.once(db, s, pid, "view", _client_ip(request))
     return Response(got[0], media_type="application/json", headers={"X-Records-Rev": got[1]})
 
