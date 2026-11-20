@@ -24,26 +24,36 @@ $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (
 const small = (text, label, onclick) => el("button", {class: "btn small", type: "button", "aria-label": label, onclick}, text);   // text: words or an icon
 const beside = (text, label, onclick) => el("button", {class: "btn", type: "button", "aria-label": label, onclick}, text);   // a button in a row of fields: their height (#352)
 
-/* an ordered list of lab names: move up, down, remove, add (suggesting the profile's own labs) */
+/* an ordered list of lab names: move up, down, remove, add (suggesting the profile's own labs). By panel, as the Labs
+   tab lists them (#441, labGroups in util.js): a list under each panel's name when there's more than one, a lab moving
+   within its own. A saved order whose panels are mixed is the same order grouped, not a change to save. */
 function labsEditor(value, changed, ro) {
-  let list = [...value];
-  const box = el("div", {class: "set-list"}), ol = el("ol", {class: "set-labs"});
+  const tidy = l => labGroups(l, LABS).flatMap(g => g.labs);
+  let list = tidy(value);
+  const box = el("div", {class: "set-list"}), lists = el("div", {class: "set-groups"});
   const input = el("input", {list: "labNames", placeholder: "Lab name", "aria-label": "Lab to add", maxlength: 120});
+  const li = i => lists.querySelectorAll("li")[i];
+  const row = (n, i, a, b) => el("li", {},   // a, b: the first and last place in its panel
+    el("span", {class: "set-name", text: n}),
+    ro ? null : el("span", {class: "set-acts"},
+      small(icon("arrow-up"), `Move ${n} up`, () => { if (i > a) { [list[i - 1], list[i]] = [list[i], list[i - 1]]; draw(); changed(); li(i - 1)?.querySelector("button")?.focus(); } }),
+      small(icon("arrow-down"), `Move ${n} down`, () => { if (i < b) { [list[i + 1], list[i]] = [list[i], list[i + 1]]; draw(); changed(); li(i + 1)?.querySelectorAll("button")[1]?.focus(); } }),
+      small("Remove", `Remove ${n}`, () => { list.splice(i, 1); draw(); changed(); })));
   function draw() {
-    ol.replaceChildren(...list.map((n, i) => el("li", {},
-      el("span", {class: "set-name", text: n}),
-      ro ? null : el("span", {class: "set-acts"},
-        small(icon("arrow-up"), `Move ${n} up`, () => { if (i) { [list[i - 1], list[i]] = [list[i], list[i - 1]]; draw(); changed(); ol.children[i - 1]?.querySelector("button")?.focus(); } }),
-        small(icon("arrow-down"), `Move ${n} down`, () => { if (i < list.length - 1) { [list[i + 1], list[i]] = [list[i], list[i + 1]]; draw(); changed(); ol.children[i + 1]?.querySelectorAll("button")[1]?.focus(); } }),
-        small("Remove", `Remove ${n}`, () => { list.splice(i, 1); draw(); changed(); })))));
-    if (!list.length) ol.append(el("li", {class: "muted", text: "None"}));
+    const gs = labGroups(list, LABS);
+    let at = 0;
+    lists.replaceChildren(...(list.length ? gs.flatMap(g => {
+      const a = at; at += g.labs.length;
+      return present(gs.length > 1 ? el("h4", {class: "lab-panel set-grp", text: g.panel}) : null,
+        el("ol", {class: "set-labs"}, ...g.labs.map((n, k) => row(n, a + k, a, at - 1))));
+    }) : [el("ol", {class: "set-labs"}, el("li", {class: "muted", text: "None"}))]));
   }
-  const add = () => { const n = input.value.trim().replace(/\s+/g, " "); if (n && !list.includes(n)) { list.push(n); draw(); changed(); } input.value = ""; input.focus(); };
+  const add = () => { const n = input.value.trim().replace(/\s+/g, " "); if (n && !list.includes(n)) { list = tidy([...list, n]); draw(); changed(); } input.value = ""; input.focus(); };
   input.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); add(); } });
   draw();
-  box.append(ol);
+  box.append(lists);
   if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn", type: "button", text: "Add", onclick: add})));
-  return {node: box, get: () => list};
+  return {node: box, get: () => same(list, tidy(value)) ? value : list};
 }
 
 /* rows of inputs (a table on wide screens, stacked on phones); cols: [{key, label, type, only, ...attrs}]. A
@@ -207,7 +217,7 @@ function orderList(items, opts) {
     if (!opts.group) ol.replaceChildren(...rows, ...none);
     else ol.replaceChildren(...(none.length ? [el("ol", {class: cls}, ...none)] : groups.flatMap(g => {
       const a = list.indexOf(g.labs[0]);
-      return present(groups.length > 1 ? el("h4", {class: "sect set-grp", text: g.panel}) : null, el("ol", {class: cls}, ...rows.slice(a, a + g.labs.length)));
+      return present(groups.length > 1 ? el("h4", {class: "lab-panel set-grp", text: g.panel}) : null, el("ol", {class: cls}, ...rows.slice(a, a + g.labs.length)));
     })));
     if (opts.drawn) opts.drawn();
   }
@@ -236,7 +246,7 @@ function tilesEditor(value, changed, ro, setting) {
     more: n => [{text: "Remove", run: () => { ol.set(ol.get().filter(x => x !== n)); update(); }}]});
   function drawPreview() {
     const names = keyLabTiles(ol.get(), LABS, isDefault(ol.get())), gs = groups(names);
-    preview.replaceChildren(...gs.flatMap(g => [gs.length > 1 ? el("h5", {class: "sect", text: g.panel}) : null, ...g.labs.map(n => {
+    preview.replaceChildren(...gs.flatMap(g => [gs.length > 1 ? el("h5", {class: "lab-panel", text: g.panel}) : null, ...g.labs.map(n => {
       const s = labInfo(n), last = s.pts[s.pts.length - 1];
       return el("div", {class: "tile", "data-lab": n},
         el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}), nick(n) !== n ? el("span", {class: "vh", text: ` (${n})`}) : null,   // #358

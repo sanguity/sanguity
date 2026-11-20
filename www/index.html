@@ -101,6 +101,7 @@
     <div class="layout" id="labsChart">
       <!-- the lab list: its header (the name filter, what's selected, saved views) stays put while the rows scroll (#192) -->
       <div class="card series-list" id="series">
+        <h2 class="vh">Lab list</h2>   <!-- its panels' names are h3s, and the charts' (#441, trends.js) -->
         <div class="series-hd">
           <div class="lab-find"><input type="search" id="labQ" placeholder="Filter lab names…" aria-label="Filter lab names" aria-describedby="labQn" autocomplete="off" spellcheck="false"><span class="n" id="labQn"></span></div>
           <p class="fsum" id="labSum" hidden></p>
@@ -109,6 +110,7 @@
         </div>
         <div id="seriesRows"></div>
       </div>
+      <h2 class="vh">Charts</h2>
       <div class="charts" id="charts"></div>
     </div>
     <div class="card" id="labsHeatmap" hidden>

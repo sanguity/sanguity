@@ -345,7 +345,7 @@ const SgPalette = (() => {
     if (!onRecords) return arrive("lab", name, "#labs");
     state.sel.add(name);
     pickTab("labs", "chart");
-    const i = SERIES.filter(s => !s.watch && state.sel.has(s.name)).findIndex(s => s.name === name), card = $("#charts").children[i];
+    const card = [...document.querySelectorAll("#charts .chart")].find(c => c.dataset.lab === name);   // in the list's order (#441)
     const t = card && card.querySelector("svg.pz, .tablewrap");
     if (!t || t.closest("[hidden]")) return;
     if (!t.hasAttribute("tabindex")) t.tabIndex = -1;
