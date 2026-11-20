@@ -5521,6 +5521,7 @@ def main():
                             axe235.extend(axe_check(page, f"{label}, {width} px, {theme}")[0])
                     page.set_viewport_size({"width": 1400, "height": 900})
                     js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme235)
+                    settle(300)   # (the page drawn again for the width it's back to, 120 ms on, before what's next: a menu opened then closed with it)
                 sweep235("dose form")
                 page.fill("#dbody textarea", "Fictional note: later than usual")
                 page.click("#dbody button:text-is('Log dose')")
