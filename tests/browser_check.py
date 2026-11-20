@@ -7680,6 +7680,27 @@ def main():
             settle(300)
             check("…by keyboard, Clear and Defaults keep focus on themselves; a chart's × gives it to the next chart's ×, the last's to its lab in the list, "
                   "at 1400 and 390 px (#462)", len(focus462) == 8 and all(focus462.values()), focus462)
+            # #469: on a phone held sideways, × on the last chart, then Clear: the page shrinks by more than a screen and the
+            # browser scrolls it up, which left the focused Clear above the top (2.4.11); keepFocus brings it back in sight.
+            # The charts' empty state names the list, which is above them there, not "on the left"
+            page.set_viewport_size({"width": 844, "height": 390})
+            settle(300)
+            page.focus("#seriesSel button:text-is('Defaults')")
+            page.keyboard.press("Enter")
+            settle(300)
+            page.locator("#charts .chart .hd > [aria-label^=Remove]").last.focus()
+            page.keyboard.press("Enter")
+            settle(300)
+            page.focus("#seriesSel button:text-is('Clear')")
+            page.keyboard.press("Enter")
+            settle(400)
+            clear469 = js("""(a => { const r = a.getBoundingClientRect(); return [a.textContent, Math.round(r.top), Math.round(r.bottom), innerHeight,
+                document.querySelector('#charts .empty')?.textContent]; })(document.activeElement)""")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("s => { state.sel = new Set(s); renderLabs(); }", sel462)
+            settle(300)
+            check("…at 844×390, Clear after × on the last chart keeps focus in sight, and the empty charts point to the list, not \"the left\" (#469)",
+                  clear469[0] == "Clear" and 0 <= clear469[1] and clear469[2] <= clear469[3] and "list" in (clear469[4] or "") and "left" not in clear469[4], clear469)
             sel_before = js("[...state.sel].sort()")
             page.click("#labQ")
             page.locator("#labQ").press_sequentially("hemo", delay=40)
@@ -7833,6 +7854,32 @@ def main():
             check("…and scrolled right, the table still shows each panel's name at the left of its row, where the labs' names stay (#464)",
                   hmt464["wide"] and hmt464["left"] > 0 and len(hmt464["after"]) > 1 and hmt464["after"] == hmt464["before"]
                   and all(hmt464["lab"] <= a <= hmt464["lab"] + 16 and b > 0 for _, a, b in hmt464["after"]), hmt464)
+            # #469: on a phone the labs' names wrap, their ✎ and ? under them, so a date's column is seen whole beside them:
+            # at 320, 375 and 390 px the room right of the names takes the widest column, and the first, middle and last
+            # columns, each scrolled to the names' edge, show every value whole. Scrolled down, the dates (and "Lab") are on
+            # top of the cells, which are positioned, at 1400 px too (the box 350 px high, so its rows scroll)
+            hmt469 = {}
+            for w469 in (320, 375, 390, 1400):
+                page.set_viewport_size({"width": w469, "height": 500})
+                settle(300)
+                hmt469[w469] = js("""(() => { const w = document.querySelector('#hmTable .tablewrap'), lab = w.querySelector('thead th'), cols = [...w.querySelectorAll('thead th')].slice(1);
+                  const room = w.clientWidth - lab.offsetWidth, widest = Math.max(...cols.map(c => c.offsetWidth)), cut = [];
+                  for (const th of [cols[0], cols[cols.length >> 1], cols.at(-1)]) {
+                    w.scrollLeft += th.getBoundingClientRect().left - lab.getBoundingClientRect().right;
+                    const from = lab.getBoundingClientRect().right, to = w.getBoundingClientRect().left + w.clientLeft + w.clientWidth;
+                    for (const td of w.querySelectorAll(`tbody tr:not(.grp) > :nth-child(${cols.indexOf(th) + 2})`)) {
+                      const b = td.getBoundingClientRect(); if (b.left < from - .5 || b.right > to + .5) cut.push([th.textContent, Math.round(b.left - from), Math.round(to - b.right)]); }
+                  }
+                  const y = scrollY; w.scrollLeft = w.scrollWidth; w.scrollTop = 120; w.scrollIntoView({block: 'nearest'});
+                  const edge = lab.getBoundingClientRect().right, under = w.scrollTop > 0 && cols.filter(th => th.getBoundingClientRect().left >= edge).concat(lab)
+                    .filter(th => { const b = th.getBoundingClientRect(); return !th.contains(document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)); }).map(th => th.textContent);
+                  w.scrollLeft = w.scrollTop = 0; scrollTo(0, y);
+                  return {room, widest, cut: cut.slice(0, 3), under}; })()""")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…on a phone the table shows a whole date's column beside the labs' names, every value can be scrolled into full view, "
+                  "and scrolled down its dates are on top of the cells, at 320, 375, 390 and 1400 px (#469)",
+                  all(r["room"] >= r["widest"] and not r["cut"] and r["under"] == [] for r in hmt469.values()), hmt469)
             # a lab kept in two units (#438): joinSeries keeps Hemoglobin in g/dL and in mmol/L apart, and the list, the
             # heatmap's grid and its table show each once, with its own unit, under the same panel (labGroups groups series)
             two438 = js("""(() => {
@@ -8163,7 +8210,7 @@ def main():
             tpg.click("#labsView button[data-view=heatmap]")
             tpg.evaluate("state.tables.add('#hm'); renderHeatmap()")
             for width in (1400, 375):
-                tpg.set_viewport_size({"width": width, "height": 900})
+                tpg.set_viewport_size({"width": width, "height": 900 if width > 400 else 1100})   # a phone's names wrap (#469): its rows are taller
                 tpg.wait_for_timeout(300)
                 hm379[width] = tpg.evaluate("""(w => w && [w.scrollHeight, w.clientHeight, w.querySelectorAll('tr:last-child .rename-btn').length,
                     parseFloat(getComputedStyle(w).maxHeight)])(document.querySelector('.tablewrap.hm-table'))""")

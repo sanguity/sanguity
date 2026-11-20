@@ -1620,6 +1620,13 @@ Everything on `main` so far; it becomes the first tagged release.
   added beside Taken and ⋯ on a row that couldn't wrap, so the name was squeezed a word a line under them, to nothing
   with two doses at 900 px or six at any width. A row with doses logged wraps them under its name, as the Medications
   tab's does; a row with nothing logged is still one line.
+- **Labs on a phone: the heatmap's table shows its values, its dates stay on top, and Clear stays in sight** (#469):
+  the table's lab names took 256 px, leaving 14 px for the values at 320 px and 84 at 390, so no date's column was
+  ever seen whole. On a phone the names wrap, the ✎ and ? together under them, in a column of about 40% of the box.
+  Scrolled down, the values showed on top of the dates; the dates are on top. On a phone held sideways, Clear after ×
+  on the last chart shrank the page and left the focused Clear above the screen; a redraw that moves the focused
+  control out of sight brings it back. The empty charts said "Pick lab values on the left", where on a phone the list
+  is above; they say "in the list".
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

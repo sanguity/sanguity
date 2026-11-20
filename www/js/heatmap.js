@@ -152,7 +152,8 @@ function hmTable(rows, cols, grp) {
     const aboutId = about ? "hmAbout" + (++hmAbout) : null, edit = renameButton("lab", s.name), tq = testLink(s.name, true);   // #163
     for (const b of [edit, tq]) if (b && aboutId) b.setAttribute("aria-describedby", aboutId);
     tb.append(el("tr", {}, el("th", {scope: "row", "data-tip": renamedTitle("lab", s.name) + differ}, `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`,
-      about ? el("span", {class: "vh"}, ", ", el("span", {id: aboutId, text: about})) : null, edit, tq),
+      about ? el("span", {class: "vh"}, ", ", el("span", {id: aboutId, text: about})) : null,
+      edit || tq ? el("span", {class: "hm-acts"}, edit, tq) : null),   // the ✎ and ? kept together, a phone's name wrapping (#469)
       ...cols.map(([k]) => {
         const p = byDay.get(k); if (!p) return el("td", {});
         const lv = hmLevel(p[1], p[2], p[3]), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it
