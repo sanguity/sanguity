@@ -1599,6 +1599,15 @@ Everything on `main` so far; it becomes the first tagged release.
   sideways, showed each panel's heading row as an empty band while the labs' names stayed; the panel's name stays at
   the left of its row too. The importers failed on a lab day whose first test name was 158 or 159 characters long with
   others after it; it's kept whole with "…".
+- **A test search counts each draw's own results, and the command palette off the records page counts the Timeline it
+  opens** (#470): a lab draw's search words, badge and ▲ came from every result on its day, so with an outside lab's
+  Creatinine 1.6 H typed in on a clinic draw's day, "creatinine" showed "1 out of range" and a ▲ on both draws, and
+  "wbc" listed the outside lab's creatinine-only one; they come from the draw's own results. Off the records page the
+  palette's "N events on file" opened the Timeline on its saved period (Settings' "psa · 23 events on file" opened
+  "Events (0)" on ten years); it opens on everything on file, in the kinds the Timeline shows. There it now finds the
+  watch's workouts and ECGs, journal entries and cycle tracking's, as the Timeline does ("walk" found nothing on
+  Settings), each with its kind's icon, and a lab renamed in Settings the next time it opens. On Getting started its
+  events read "Lab draw · 1729327440"; they have dates.
 - **Focus follows a pick on Costs, and stays put on Labs' Clear, Defaults and ×** (#462): a type of care, a provider,
   a drug, or a What it was for or Who was paid row picked on Costs scrolled to its list but left focus on the row, now
   above the screen, so the next Tab went back up; focus goes to the claims' heading, or the amounts' first control, in

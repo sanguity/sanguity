@@ -104,16 +104,15 @@ function storeRecords(data) {
 }
 /* a lab day's search words (#459): besides its title, panels and kind, its reports' titles (the panels again, as the
    records spell them) and its tests' names, as the records and Labs name them ("ferritin" finds the draws with a
-   Ferritin result, not only "iron studies"). Its tests are SERIES' points on its day, as the Timeline's line counts
-   them (timeline.js tlLabValues), a visit's Vitals aside. Made again when the settings change (applySettings): a lab
-   renamed is found by its new name at once, and no longer by the old (#463) */
+   Ferritin result, not only "iron studies"). Its tests are its own results, not its day's (util.js labDraws, #470:
+   an outside lab's creatinine typed in on a clinic draw's day isn't the clinic draw's), kept as e.res [[series,
+   point]] for its badge under a search (timeline.js tlAbn), a visit's Vitals aside. Made again when the settings
+   change (applySettings): a lab renamed is found by its new name at once, and no longer by the old (#463) */
 function labDayWords() {
-  const tests = new Map();   // "YYYY-MM-DD" -> the names of the tests with a result that day
-  for (const s of SERIES) if (!s.watch && s.panel !== "Vitals") for (const p of s.pts) {
-    const d = isoDay(p.ts); (tests.get(d) || tests.set(d, new Set()).get(d)).add(s.name);
-  }
-  for (const e of DATA.events) if (e.k === "lab") {
-    const d = DATA.details[e.id], names = [...(tests.get(isoDay(e.ts)) || [])];
+  const draws = DATA.events.filter(e => e.k === "lab"), at = e => (DATA.details[e.id]?.ids || []).map(i => byId.get(i)?.ts).filter(isFinite);
+  const own = labDraws(draws.map(e => ({id: e.id, imp: e.imp, ts: e.ts, at: at(e)})), SERIES.filter(s => !s.watch && s.panel !== "Vitals"), p => p.ts, isoDay);
+  for (const e of draws) {
+    const d = DATA.details[e.id], names = [...new Set((e.res = own.get(e.id)).map(([s]) => s.name))];
     e._q = e._q0 + " " + [...(d ? d.ids.map(i => byId.get(i)?.title || "") : []), ...names, ...names.map(nice)].join(" ").toLowerCase();
   }
 }

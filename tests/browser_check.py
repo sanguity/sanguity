@@ -3259,6 +3259,46 @@ def main():
                   hb4["rows"] > 0 and hb4["badges"] > 0 and not hb4["bad"] and hb4["marks"] == hb4["want"] > 0 and hb4["others"] > 0, hb4)
             check("…“creatinine”, out of range on few draws, shows a badge and a ▲ on those only, none on its draws with other tests out of range (#464)",
                   cr4["rows"] > 0 and not cr4["bad"] and cr4["badges"] == cr4["marks"] == cr4["want"] < cr4["others"], cr4)
+            # #470: a draw's search words, badge and ▲ come from its own results, not its day's: with an outside lab's
+            # Creatinine 1.6 H typed in on the day of a clinic draw with a Creatinine and a WBC, none out of range,
+            # "creatinine" badged both draws "1 out of range" with a ▲, and "wbc" listed the outside lab's creatinine-only
+            # draw. Its draw only, and the clinic's alone. The result is put in the records as the page has them, as a
+            # typed-in import of its own brings it (its lab day, its report and its point, under its import), and taken
+            # out again: the server's records, and its import history, stay as they were
+            day470 = js("isoDay(EV.filter(e => e.k === 'lab' && !e.abn && /creatinine/.test(e._q) && /wbc/.test(e._q)).at(-1).ts)")
+            imp470 = js("""day => api('profiles/1/data').then(r => r.json()).then(d => {
+                const imp = Math.max(0, ...Object.keys(d.imports || {}).map(Number)) + 1, id = 990301, t = day + 'T14:30:00';
+                d.imports = {...d.imports, [imp]: {label: 'Lab results typed in', origin: 'Typed in', format: 'manual'}};
+                d.events.push({id, t, k: 'lab', title: '1 lab result', sub: 'Creatinine', abn: 1, imp},
+                  {id: id + 1, t, k: 'labitem', title: 'Creatinine', sub: 'Final · Fictional Outside Lab', hidden: 1, imp});
+                d.details[id] = {type: 'labday', ids: [id + 1]};
+                d.labs.push({name: 'Creatinine', unit: d.labs.find(s => s.name === 'Creatinine').unit, panel: 'Creatinine', imp, n: 1, txt: [],
+                  pts: [[t, 1.6, 0.6, 1.2, 'H', '1.6']]});
+                storeRecords(d);
+                return imp; })""", day470)
+            reload470 = "api('profiles/1/data').then(r => r.json()).then(d => { storeRecords(d); return true; })"
+            js("window._was470 = [state.preset, state.from, state.to]; setPeriod('all'); renderAll()")
+            tl470_q = r"""([d, imp]) => ({day: [...document.querySelectorAll('#list .tl-row[data-id]')].map(r => [byId.get(+r.dataset.id), r]).filter(([e]) => e.k === 'lab' && isoDay(e.ts) === d)
+                .map(([e, r]) => [e.imp === imp ? 'outside' : 'clinic', r.querySelector('.badge.abn')?.textContent || null]).sort(),
+              marks: document.querySelectorAll('#tl path.tl-abn').length,
+              want: EV.filter(visible).filter(e => e.k === 'lab' && e.res.some(([s, p]) => s.name === 'Creatinine' && p[4])).length})"""
+            tl470 = {}
+            for q in ("", "creatinine", "wbc"):
+                page.fill("#q", q)
+                settle(400)
+                tl470[q] = js(tl470_q, [day470, imp470])
+            page.fill("#q", "")
+            settle(400)
+            js(reload470)
+            # (the records loaded again, the second workout added above for a day to fold is put back)
+            js("""(() => { const w = EV.find(e => e.k === 'exercise' && !e.hidden), x = {...w, id: 987654, title: 'rowing (browser check)', sub: '20 min'};
+              x._q = 'rowing workout exercise'; EV.push(x); byId.set(x.id, x); DATA.details[x.id] = {type: 'exercise', minutes: 20}; })()""")
+            js("[state.preset, state.from, state.to] = window._was470; renderAll()")
+            check("…with an outside lab's creatinine typed in on a clinic draw's day, “creatinine” badges its draw only, with a ▲ for each draw with a "
+                  "creatinine out of range, and “wbc” lists the clinic's draw that day, not it (#470)",
+                  imp470 and tl470[""]["day"] == [["clinic", None], ["outside", "1 out of range"]]
+                  and tl470["creatinine"]["day"] == [["clinic", None], ["outside", "1 out of range"]] and tl470["creatinine"]["marks"] == tl470["creatinine"]["want"] > 0
+                  and tl470["wbc"]["day"] == [["clinic", None]], [day470, imp470, tl470])
             # #458: the importers cut a long one at a whole name, with "…"; one cut mid-name at 160 characters before that
             # has the name it cut left out for the "…", not recased half ("…, Hepatic PA")
             cut458 = js("""(() => { const names = ['COMPREHENSIVE METABOLIC PANEL', 'CBC WITH DIFFERENTIAL', 'HEPATIC FUNCTION PANEL', 'LIPID PANEL',
@@ -12037,6 +12077,64 @@ def main():
                   "and the line to the Timeline says the count it shows: “45 events on file”",
                   all(v[:-1] == ev463[q][0][:-1] and len(v) > 1 and v[-1] == f"Search the Timeline for “{q}”, {line463['all ' + q][1][8:-1]} events on file"
                       for q, v in set463.items()), [set463, {q: [v[0][-1], line463["all " + q]] for q, v in ev463.items()}])
+            # #470: off the records page its index has the Timeline's kinds, the watch's workouts too ("walk" found nothing
+            # on Settings), each with its kind's icon (every one had a file's); its line's count is the Timeline's once
+            # followed, on a profile whose saved period is 2 years (it said "45 events on file" and opened the last 2
+            # years'), as it opens on everything on file; a lab renamed in Settings is found by its new name when it
+            # opens next, without a page load; and on Getting started (no dates of its own) its events have dates, not
+            # "Lab draw · 1729327440"
+            pal_icons = """[...document.querySelectorAll('#palList [role=group]')].filter(g => g.firstChild.textContent === 'Events')
+                .flatMap(g => [...g.querySelectorAll('[role=option]')].map(o => [o.textContent, o.querySelector('svg use')?.getAttribute('href')?.split('#')[1]]))"""
+            pal("walk")
+            page.wait_for_function("() => [...document.querySelectorAll('#palList .pal-t')].some(t => t.textContent.startsWith('Search the Timeline'))", timeout=15000)
+            walk470 = js(pal_icons)
+            page.keyboard.press("Escape")
+            pal("visit")
+            visit470 = js(pal_icons)
+            page.keyboard.press("Escape")
+            check("…(#470) on Settings, “walk” finds the watch's workouts, as on the records page, and each event has its kind's icon, not a file's",
+                  len([t for t, i in walk470 if ", Workout (watch) · " in t and i == "i-watch"]) > 1
+                  and ["i-stethoscope"] == list({i for t, i in visit470 if ", Visit · " in t}) and ["i-banknote"] == list({i for t, i in visit470 if ", Insurance claim · " in t})
+                  and not any(i == "i-file-text" and ", Document · " not in t for t, i in walk470 + visit470), [walk470, visit470])   # (a document's is a file's)
+            was470 = js("localStorage.getItem('ht-state:1')")
+            js("s => localStorage.setItem('ht-state:1', JSON.stringify({...JSON.parse(s || '{}'), preset: '2y', v: 2}))", was470)
+            pal("hemoglobin")
+            page.wait_for_function("() => [...document.querySelectorAll('#palList .pal-t')].some(t => t.textContent.startsWith('Search the Timeline'))", timeout=15000)
+            said470 = js(pal_ev)[-1]
+            page.locator("#palList [role=option]").filter(has_text="Search the Timeline for").click()
+            page.wait_for_function("() => typeof booted !== 'undefined' && booted && state.tab === 'timeline' && state.q === 'hemoglobin'", timeout=20000)
+            settle(400)
+            shows470 = js("[document.getElementById('listTitle').textContent, state.preset]")
+            js("s => s === null ? localStorage.removeItem('ht-state:1') : localStorage.setItem('ht-state:1', s)", was470)
+            check("…(#470) and on a profile whose saved period is 2 years, its count off the records page is the Timeline's once followed, on everything on file",
+                  re.fullmatch(r"Search the Timeline for “hemoglobin”, ([\d,]+) events on file", said470) is not None
+                  and shows470 == [f"Events ({re.search(r', ([\d,]+) events', said470)[1]})", "all"], [said470, shows470])
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sections > section", state="attached", timeout=10000)
+            pal("platelets")
+            page.wait_for_function(f"({has_opt})('Platelets')", timeout=15000)
+            page.keyboard.press("Escape")
+            ren470 = js("to => api('profiles/1/settings/labNicknames/name', {method: 'PUT', body: JSON.stringify({name: 'Platelet Count', to})}).then(r => r.status)", "Thrombocytes")
+            pal("thrombocytes")
+            try:
+                page.wait_for_function(f"({has_opt})('Thrombocytes')", timeout=10000)
+            except Exception:
+                pass
+            th470 = js(pal_found)
+            page.keyboard.press("Escape")
+            back470 = js("to => api('profiles/1/settings/labNicknames/name', {method: 'PUT', body: JSON.stringify({name: 'Platelet Count', to})}).then(r => r.status)", "Platelets")
+            check("…(#470) a lab renamed in Settings is found by its new name the next time it opens there, its draws too, with no page load",
+                  ren470 == back470 == 200 and ["Labs", "Thrombocytes"] in th470 and sum(g == "Events" for g, _ in th470) > 1, [ren470, back470, th470])
+            page.goto(base + "/guide.html?profile=1")
+            page.wait_for_function("() => document.getElementById('profile')?.value === '1' && !document.getElementById('barSearch').closest('[hidden]')", timeout=10000)
+            pal("visit")
+            page.wait_for_function("() => [...document.querySelectorAll('#palList .pal-t')].some(t => t.textContent.startsWith('Search the Timeline'))", timeout=15000)
+            guide470 = js(pal_ev)
+            page.keyboard.press("Escape")
+            check("…(#470) on Getting started its events have their dates, as on Settings, not a raw timestamp (“Lab draw · 1729327440”)",
+                  guide470 == set463["visit"] and not any(re.search(r"\d{9}", t) for t in guide470), [guide470, set463["visit"]])
+            page.goto(base + "/settings.html?profile=1")
+            page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             pal("hemoglobin")
             page.wait_for_function("[...document.querySelectorAll('#palList [role=option]')].some(o => o.textContent.startsWith('Hemoglobin'))", timeout=15000)
             off = js(pal_found)

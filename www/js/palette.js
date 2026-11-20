@@ -19,10 +19,11 @@
    with no copy kept counts too (#423).
    On the records page Labs and Events come from the records shown (store.js), once app.js has drawn them, the list
    drawn again then (resume(); or none coming: its empty card). On another page they come from the API:
-   the profile's records (GET profiles/{pid}/data, and its settings for the names labs are shown by) are read once,
-   the first time the palette opens there (again after another profile is chosen), and choosing one opens the records
-   page there, which does the rest (resume(), from app.js once the records are drawn; sessionStorage says what).
-   Nothing is fetched until the palette opens.
+   the profile's records (GET profiles/{pid}/data, with its watch data and cycle tracking's, the kinds the Timeline
+   lists, #470) are read once, the first time the palette opens there (again after another profile is chosen), and its
+   settings, for the names labs are shown by, each time it opens; choosing one opens the records page there, which
+   does the rest (resume(), from app.js once the records are drawn; sessionStorage says what). Nothing is fetched until
+   the palette opens. Dates are this person's on every page (dates.js).
 
    It's a combobox and a listbox (WAI-ARIA's pattern): focus stays in the box while the up and down arrows move through
    what's found (aria-activedescendant; the first is marked from the start, so Enter opens the best match, waiting for
@@ -40,7 +41,6 @@ const SgPalette = (() => {
   const KEY = "sg-palette";   // sessionStorage: what to do once another page is there ({do, v, pid})
   const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
   const pid = () => document.getElementById("profile")?.value || "";
-  const day = t => typeof fmtD === "function" ? fmtD(t) : String(t).slice(0, 10);   // dates.js, where the page has it
   const recs = () => onRecords && typeof DATA !== "undefined" && DATA;   // store.js: the records page's, once loaded
   /* the records page's records drawn (app.js: booted), or none coming (its empty card: none yet, or they couldn't be
      loaded) */
@@ -74,37 +74,69 @@ const SgPalette = (() => {
   document.body.append(dlg);
 
   /* ---- who you are, and the records of another page's profile, fetched when it first opens */
-  let ME = null, meWait = null, meDone = false, REC = null, recFor = null;
+  let ME = null, meWait = null, meDone = false, REC = null, recFor = null, RAW = null;   // RAW: [records, watch, cycle] as fetched
   const who = () => meWait ||= api("me").then(r => r.ok ? r.json() : null).catch(() => null).then(m => { ME = m; meDone = true; if (dlg.open) draw(); });
   const profile = () => ME?.profiles?.find(p => String(p.id) === pid()) || null;
   const RANK = {viewer: 0, editor: 1, owner: 2};
-  document.addEventListener("change", ev => { if (ev.target.id === "profile") recFor = REC = null; });
+  document.addEventListener("change", ev => { if (ev.target.id === "profile") recFor = REC = RAW = null; });
+  /* the records once; the profile's settings each time it opens, so a lab renamed in Settings' Names is found by its
+     new name (#470); with the watch's data and cycle tracking's (for its owners and editors only, as cycle.js asks),
+     and this person's dates (dates.js) */
   function records() {
     const p = pid();
-    if (onRecords || !p || recFor === p) return;
-    recFor = p; REC = null;
-    const json = r => r.status === 200 ? r.json() : null;
-    Promise.all([api(`profiles/${p}/data`).then(json), api(`profiles/${p}/settings`).then(r => r.ok ? r.json() : {}).catch(() => ({}))])
-      .then(([d, s]) => { if (recFor === p) REC = d ? fromData(d, s) : {labs: [], events: []}; })
+    if (onRecords || !p) return;
+    const json = r => r.status === 200 ? r.json() : null, opt = path => api(path).then(json).catch(() => null);
+    const names = () => api(`profiles/${p}/settings`).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    if (recFor === p) {
+      if (RAW) names().then(s => { if (recFor === p && RAW) { REC = fromData(...RAW, s); if (dlg.open) draw(); } });
+      return;
+    }
+    recFor = p; REC = RAW = null;
+    const cycle = who().then(() => RANK[profile()?.role] >= RANK.editor ? opt(`profiles/${p}/cycle`) : null);
+    Promise.all([api(`profiles/${p}/data`).then(json), opt(`profiles/${p}/watch`), cycle, names(), datesReady()])
+      .then(([d, w, c, s]) => { if (recFor === p) { RAW = d && [d, w, c]; REC = d ? fromData(d, w, c, s) : {labs: [], events: []}; } })
       .catch(() => { if (recFor === p) REC = {labs: [], events: [], failed: true}; })
       .finally(() => { if (dlg.open) draw(); });
   }
   /* the API's records as the palette needs them: the labs' names, and each event with the words the Timeline searches
-     (its title, what it's about, its kind's name); a lab day's as the records page has them (store.js labDayWords, #463): its reports' titles and the names of the
-     tests with a result that day, as the records and Labs name them (a visit's Vitals aside) */
-  function fromData(d, s) {
-    const nick = s && s.labNicknames && typeof s.labNicknames === "object" ? s.labNicknames : {}, by = new Map(), title = new Map(), tests = new Map();
-    const dayOf = t => typeof isoDay === "function" ? isoDay(zParse(t)) : String(t).slice(0, 10);   // dates.js, where the page has it
+     (its title, what it's about, its kind's name); a lab day's as the records page has them (store.js labDayWords,
+     #463): its reports' titles and the names of its own tests (util.js labDraws, #470), as the records and Labs name
+     them (a visit's Vitals aside). And what the records page adds to the records (#470), with the ids and words it
+     gives them there: the watch's workouts (store.js storeWatch) and ECGs (ecg.js ecgLoad), the journal's entries
+     (journal.js journalLoad, but where on the body) and cycle tracking's (cycle.js cycleLoad) */
+  function fromData(d, w, c, s) {
+    const nick = s && s.labNicknames && typeof s.labNicknames === "object" ? s.labNicknames : {}, by = new Map(), ts = new Map(), title = new Map(), lab = [];
     for (const x of d.labs || []) if (x && x.name && (x.pts || []).length) {
       const have = by.get(x.name);
       if (have) have.n += x.pts.length; else by.set(x.name, {name: x.name, shown: nick[x.name] || x.name, panel: x.panel || "", n: x.pts.length});
-      if (x.panel !== "Vitals") for (const p of x.pts) { const k = dayOf(p[0]); (tests.get(k) || tests.set(k, new Set()).get(k)).add(x.name); }
+      if (x.panel !== "Vitals") lab.push(x);
     }
-    for (const e of d.events || []) title.set(e.id, e.title || "");
-    const labDay = e => { const names = [...(tests.get(dayOf(e.t)) || [])]; return [...(d.details?.[e.id]?.ids || []).map(i => title.get(i)), ...names, ...names.map(n => nick[n])]; };
-    const events = (d.events || []).map(e => ({id: e.id, k: e.k, title: e.title || "", ts: Date.parse(e.t), t: e.t, hidden: !!e.hidden,
-      _q: [e.title, e.sub, KIND_LABEL[e.k], ...(e.k === "lab" ? labDay(e) : [])].filter(Boolean).join(" ").toLowerCase()}));
-    return {labs: [...by.values()], events, meds: current(d.medications)};
+    for (const e of d.events || []) { title.set(e.id, e.title || ""); ts.set(e.id, zParse(e.t)); }
+    const draws = (d.events || []).filter(e => e.k === "lab").map(e => ({id: e.id, imp: e.imp, ts: ts.get(e.id), at: (d.details?.[e.id]?.ids || []).map(i => ts.get(i)).filter(isFinite)}));
+    const own = labDraws(draws, lab, p => zParse(p[0]), isoDay);
+    const labDay = e => { const names = [...new Set(own.get(e.id).map(([x]) => x.name))]; return [...(d.details?.[e.id]?.ids || []).map(i => title.get(i)), ...names, ...names.map(n => nick[n])]; };
+    const ev = (e, words, t = zParse(e.t)) => ({id: e.id, k: e.k, title: e.title || "", ts: t, hidden: !!e.hidden, _q: words.filter(Boolean).join(" ").toLowerCase()});
+    const events = (d.events || []).map(e => ev(e, [e.title, e.sub, KIND_LABEL[e.k], ...(e.k === "lab" ? labDay(e) : [])], ts.get(e.id)));
+    let id = (d.events || []).reduce((m, e) => Math.max(m, +e.id || 0), 1e7);   // after every record's id
+    for (const x of w?.exercise || []) { const t = x.name.replace(/_/g, " "); events.push(ev({id: ++id, k: "exercise", t: x.start, title: t}, [t, "workout exercise"])); }
+    for (const x of w?.ecg || []) if (x && x.start && ["ecg", "irregular_rhythm"].includes(x.type)) {
+      const t = x.type === "ecg" ? (x.classification ? "ECG: " + x.classification : "ECG") : "Irregular rhythm notification", e = ev({id: ++id, k: x.type === "ecg" ? "ecg" : "rhythm", t: x.start, title: t}, [t, "ecg electrocardiogram heart rhythm watch", x.device]);
+      if (isFinite(e.ts)) events.push(e);
+    }
+    const J = {note: "Note", symptom: "Symptom", side_effect: "Side effect", mood: "Mood"};   // journal.js J_LABEL
+    for (const j of Array.isArray(d.journal) ? d.journal : []) if (j && J[j.kind]) {   // its title as journal.js jTitle gives it
+      const mood = [j.mood != null ? `mood ${j.mood}/10` : "", j.energy != null ? `energy ${j.energy}/10` : ""].filter(Boolean).join(", "), note = (j.note || "").replace(/\s+/g, " ").trim();
+      const t = j.kind === "mood" ? (mood ? mood[0].toUpperCase() + mood.slice(1) : "Mood") : j.title || (note.length > 60 ? note.slice(0, 59) + "…" : note || "Note");
+      const e = ev({id: -j.id, k: j.kind === "mood" ? "mood" : "journal", t: j.t, title: t}, [t, j.note, j.med, j.group, J[j.kind], j.kind === "mood" && "energy", "journal"]);
+      if (isFinite(e.ts)) events.push(e);
+    }
+    if (c && c.on) {
+      let cid = 5e8;   // cycle.js CYCLE_BASE
+      const cy = (t, end, x, sub) => { const e = ev({id: ++cid, k: "cycle", t, title: x.title}, [x.title, sub, "cycle tracking period"]); if (isFinite(e.ts) && isFinite(zParse(end))) events.push(e); };
+      for (const x of c.spans || []) cy(x.from + "T00:00:00", x.to + "T23:59:59", x, x.text);
+      for (const x of c.marks || []) cy(x.day + "T12:00:00", x.day + "T12:00:00", x, x.app);
+    }
+    return {labs: [...by.values()], events, meds: current(d.medications), steps: !!w?.metrics?.some(m => m && m.key === "steps" && m.pts?.length)};
   }
   /* the names of the medications the records list as current (meds.js mrCurrent), Log a dose's words */
   const current = ms => (Array.isArray(ms) ? ms : []).filter(m => m && m.spans?.at?.(-1)?.open).map(m => m.name);
@@ -194,11 +226,18 @@ const SgPalette = (() => {
   const events = () => onRecords ? (recs() && drawn() ? EV : []) : REC && REC.events;
   /* the count the Timeline shows for a search (#463), hit its events found: on the records page its list's, the
      Timeline's own (core.js visible: its period and kinds; timeline.js tlListed: workouts when listed), said as the
-     line over it says them; on another page, of everything on file, what it lists then: what isn't hidden, but claims
-     (their kind off at the start: they're on Costs) and a lab result (it has no lane: its lab day is listed) */
+     line over it says them; on another page, of everything on file, which is the period it opens with from there
+     (timeline(), #470: its saved period counted no more), in the kinds it shows (its saved ones, util.js savedCats: a
+     lab result has none, its lab day is listed) and its workouts when it lists them (timeline.js tlWorkListed) */
   const many = n => `${n.toLocaleString()} event${n === 1 ? "" : "s"}`;
   function tlCount(lq, hit) {
-    if (!onRecords) return many(hit.filter(e => e.k !== "claim" && e.k !== "labitem").length) + " on file";
+    if (!onRecords) {
+      let s = null;
+      try { s = JSON.parse(localStorage.getItem("ht-state:" + pid()) || "null"); } catch (e) {}   // (core.js save)
+      const cats = savedCats(s), cat = e => CAT_OF[e.k]?.k, lanes = new Set(REC.events.map(cat).concat(REC.steps ? ["watch"] : []));
+      const work = s?.tlWork === true || (cats.has("watch") && [...lanes].every(k => !k || k === "watch" || !cats.has(k)));
+      return many(hit.filter(e => cats.has(cat(e)) && (work || e.k !== "exercise")).length) + " on file";
+    }
     const was = state.q;
     state.q = lq;
     try {
@@ -242,8 +281,8 @@ const SgPalette = (() => {
       // names it, as the drawer it opens does
       const lq = typed.trim().toLowerCase(), hit = E.filter(e => !e.hidden && e._q.includes(lq)), kind = k => KIND_LABEL[k];
       const found = ranked(hit.map(e => { const title = e.k === "labitem" ? panelName(e.title) : e.title;
-        return {icon: typeof kindIcon === "function" ? kindIcon(e.k) : "file-text", title, ts: e.ts || 0, s: score(title, e._q, words),
-          ctx: [kind(e.k), day(e.ts || e.t)].filter(Boolean).join(" · "), go: () => openEv(e.id)}; }), words, 6, (a, b) => b.ts - a.ts);
+        return {icon: kindIcon(e.k), title, ts: e.ts || 0, s: score(title, e._q, words),
+          ctx: [kind(e.k), isFinite(e.ts) && fmtD(e.ts)].filter(Boolean).join(" · "), go: () => openEv(e.id)}; }), words, 6, (a, b) => b.ts - a.ts);
       if (hit.length > found.length) found.push([found.length ? found.at(-1)[0] : 3, {icon: "arrow-right", title: `Search the Timeline for “${typed.trim()}”`,
         ctx: tlCount(lq, hit), go: () => timeline(typed.trim())}]);
       groups.push(["Events", found]);
@@ -396,9 +435,11 @@ const SgPalette = (() => {
     keepFocus(() => pickTab("timeline"));   // what had focus before the palette opened, if it's drawn again: what the drawer gives it back to (#417)
     openEvent(e);
   }
-  /* the Timeline's search, for what was typed; focus on the list's heading, which says how many it shows */
-  function timeline(q) {
+  /* the Timeline's search, for what was typed; focus on the list's heading, which says how many it shows. From another
+     page (all), on everything on file, as the line said (tlCount, #470) */
+  function timeline(q, all) {
     if (!onRecords) return arrive("timeline", q, "#timeline");
+    if (all) setPeriod("all");
     $("#q").value = q;
     state.q = q.toLowerCase();
     pickTab("timeline");
@@ -435,7 +476,7 @@ const SgPalette = (() => {
     if (!w || (onRecords ? w.do === "new-link" : w.do !== "new-link")) return;
     try { sessionStorage.removeItem(KEY); } catch (e) {}
     if (String(w.pid || "") !== pid()) return;   // another profile since
-    ({lab: openLab, event: openEv, timeline, "new-link": newLink})[w.do]?.(w.v);
+    ({lab: openLab, event: openEv, timeline: q => timeline(q, true), "new-link": newLink})[w.do]?.(w.v);
   }
   if (page === "sharing.html") document.addEventListener("DOMContentLoaded", () => waitFor(() => pid(), resume));
   // the records page with none coming (app.js's empty card in place of the page, offline with no copy too): drawn again
