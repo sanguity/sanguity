@@ -1472,6 +1472,18 @@ Everything on `main` so far; it becomes the first tagged release.
   the list, under their panels' names, rather than the records' order. The heatmap cuts a long panel name short, whole
   in its tip, rather than run it into the grid; the Legend keeps 12 px from a phone's edge; and the key labs' change
   line keeps two lines' height under each panel again, so no row moves as the font arrives.
+- **The records tabs read as one system: one heading scheme, the cost figures one way, every view in the address**
+  (#442): the Overview and Body and activity had 18 px section headings over their cards while Medications, the
+  Timeline and Costs titled their cards in 15.5 px, so "Today" was a section on one tab and a card on the next. Now
+  every h2 on the six tabs is the same 18 px serif: a section's over its cards (whose titles are a step smaller), or a
+  card's own on a tab of one card per question. The Overview showed Billed, Paid by insurance and Your share as tinted
+  boxes, and Costs showed them the other way round as bordered tiles that looked like buttons; both now show **Your
+  share, Paid by insurance, Billed by providers**, tinted in a card, as figures to read. Body and activity's charts
+  have Labs' header: Show on charts, a **Legend** of the marks every chart shares (hospital stays, milestones) and an
+  ⓘ, with the phone's last sync under it, out of the chart options' group a screen reader announced it in (#444).
+  And Costs' Claims | What you paid is in the address (`#costs-paid`, kept on a reload), its switch named "Show the
+  costs as"; picking a view on Labs, the Timeline or Costs adds a history entry as a tab does, so Back from the
+  heatmap, the Journal or What you paid returns to the view before instead of leaving the tab.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

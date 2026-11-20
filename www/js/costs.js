@@ -12,11 +12,21 @@ const costState = {q: "", cat: "", deniedOnly: false, sort: "d", dir: -1, limit:
 const statTile = (label, value, sub, id) => el("div", {class: "tile", id: id || null},
   el("span", {class: "lbl", text: label}), el("span", {class: "val", text: value}), sub ? el("span", {class: "delta"}, keepDates(sub)) : null);
 /* a view's figures (#278): three to read first, the rest (and after them, more) under More figures, open or shut as
-   last left */
+   last left; in a card, as the Overview's are, so the tiles are tinted, not bordered like the tiles that open
+   something (#442) */
 function costFigures(box, head, rest, more) {
-  box.append(el("div", {class: "stats"}, ...head));
-  if (rest.length || more) box.append(el("details", {class: "more cost-more", open: costState.more || null, ontoggle: e => { costState.more = e.target.open; }},
+  const card = el("div", {class: "card cost-figs"}, el("div", {class: "stats"}, ...head));
+  if (rest.length || more) card.append(el("details", {class: "more cost-more", open: costState.more || null, ontoggle: e => { costState.more = e.target.open; }},
     el("summary", {text: "More figures"}), rest.length ? el("div", {class: "stats"}, ...rest) : null, more));
+  box.append(card);
+}
+/* the claims' three figures, in this order wherever they're shown (#278, #442: Costs and the Overview): your share,
+   what insurance paid and what was billed; the Overview's without the line under each (sub: false) */
+function claimFigures(rows, sub = true) {
+  const billed = sumOf(rows, "billed"), paid = sumOf(rows, "paid"), owe = sumOf(rows, "owe");
+  return [statTile("Your share", usd(owe), sub && "per the insurers, before your payments"),
+    statTile("Paid by insurance", usd(paid), sub && billed ? `${Math.round(paid / billed * 100)}% of billed` : ""),
+    statTile("Billed by providers", usd(billed), sub && "list prices, before insurance")];
 }
 function costRows() { return inPeriod(DATA.costs || []); }
 /* a table that stacks where its box is narrow (#443): each row its first cell, then the others, each named by its
@@ -41,16 +51,16 @@ function renderCosts() {
   if (!claims) { renderPaid(box, rows, periodText); return; }   // payments only: no claims to chart or list
   // Claims | What you paid (#278): the insurance story or the money out of pocket, each with its own figures
   box.append(el("div", {class: "toolbar"},
-    el("div", {class: "seg", id: "costView", role: "group", "aria-label": "Show"}, ...[["claims", "Claims"], ["paid", "What you paid"]].map(([k, l]) =>
-      el("button", {type: "button", "aria-pressed": costState.view === k, text: l, onclick: () => { if (costState.view !== k) { costState.view = k; hideTip(); keepFocus(renderCosts); } }}))),
+    // named for what it shows, as Labs' and the Timeline's are; the view in the address (#costs-paid, app.js), Back
+    // returning to the one before (#442)
+    el("div", {class: "seg", id: "costView", role: "group", "aria-label": "Show the costs as"}, ...[["claims", "Claims"], ["paid", "What you paid"]].map(([k, l]) =>
+      el("button", {type: "button", "aria-pressed": costState.view === k, text: l, onclick: () => { if (costState.view !== k) { costState.view = k; hideTip(); keepFocus(renderCosts); tabAddress(true); } }}))),
     costState.view === "paid" ? null : el("span", {class: "hint", style: {margin: 0}, text: insurerHint(DATA.costs)})));   // where the claims came from
   if (costState.view === "paid") { renderPaid(box, rows, periodText); return; }
   const billed = sumOf(rows, "billed"), paid = sumOf(rows, "paid"), owe = sumOf(rows, "owe");
   const denied = rows.filter(isDenied).length;
   const tile = statTile;
-  costFigures(box, [tile("Your share", usd(owe), "per the insurers, before your payments"),
-    tile("Paid by insurance", usd(paid), billed ? `${Math.round(paid / billed * 100)}% of billed` : ""),
-    tile("Billed by providers", usd(billed), "list prices, before insurance")],
+  costFigures(box, claimFigures(rows),
   [tile("Discounts & not covered", usd(Math.max(0, billed - paid - owe)), "network discounts, write-offs, denials"),
     tile("Claims", rows.length.toLocaleString(), `${rows.filter(r => r.kind === "pharmacy").length} pharmacy fills`),
     tile("Denied", denied.toLocaleString(), denied ? `${rows.filter(r => /PROVIDER_DENIED/i.test(r.status)).length} provider-denied` : "")]);
@@ -271,7 +281,7 @@ function renderPaid(box, claimRows, periodLabel) {
     y[r.hsa] += r.counted; y.n++; if (r.receipt != null) y.rc++;
     years.set(r.d.slice(0, 4), y);
   }
-  costFigures(box, head, tiles, years.size ? el("div", {id: "oopTax", class: "card"}, el("h2", {text: "HSA and FSA, by year"}),
+  costFigures(box, head, tiles, years.size ? el("div", {id: "oopTax", class: "mt-3"}, el("h2", {text: "HSA and FSA, by year"}),   // in the figures' card (#442)
     scrollBox({class: "tablewrap", "aria-label": "HSA and FSA, by year"}, stacked(el("table", {class: "data"},   // stacked where narrow (#443)
       el("thead", {}, el("tr", {}, ["Year", "HSA", "FSA", "Amounts", "With a receipt"].map((h, i) => el("th", {class: i ? "num" : null, text: h})))),
       el("tbody", {}, [...years.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([y, v]) => el("tr", {},

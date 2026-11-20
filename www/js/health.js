@@ -214,13 +214,21 @@ function renderHealth() {
   }
   H = H || hData();
   const [a, b] = hRange(), len = b - a, long = len > 150 * DAY;
-  // what the charts can also show, as on Labs (#192), and apart on the right where the phone's data come from (the
-  // period is in the records bar); how to move the charts behind an ⓘ beside them, as on Labs (#280)
-  box.append(el("div", {class: "toolbar overlays", role: "group", "aria-labelledby": "hOverlaysLbl"},
-    el("span", {class: "lbl", id: "hOverlaysLbl", text: "Show on charts:"}),
-    el("label", {class: "toggle"}, el("input", {type: "checkbox", checked: hState.stays || null, onchange: e => { hState.stays = e.target.checked; hSave(); keepFocus(renderHealth); }}), "Hospital stays"),
-    aboutWords({title: "the charts", id: "hChartsInfo"}, "Drag any chart sideways to move through time: every chart moves together.", "Scroll or pinch to zoom, and double-click to show everything."),
-    el("span", {class: "hint h-sync", text: `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`})));
+  // the charts' header, Labs' own (#442, index.html; the period is in the records bar): what the charts can also show,
+  // then a Legend of the marks every chart shares (each card keys its own lines) and an ⓘ of how to move them (#280);
+  // under it, apart from the chart options' group, where the phone's data come from (#444)
+  const lgBtn = el("button", {class: "btn", id: "hLegendBtn", type: "button", "aria-expanded": false, "aria-controls": "hLegendList"}, "Legend", icon("chevron-down"));
+  const lgList = el("div", {class: "menu-list legend", id: "hLegendList", role: "group", "aria-labelledby": "hLegendBtn"},
+    el("span", {}, el("i", {class: "stay-key"}), "Hospital stay"),
+    el("span", {}, el("svg:svg", {viewBox: "0 0 14 12", width: 14, height: 12, "aria-hidden": "true"}, el("svg:line", {class: "msmark", x1: 7, x2: 7, y1: 0, y2: 12})), "A milestone, named over the charts"));
+  box.append(el("div", {class: "toolbar chart-bar"},
+    el("div", {class: "overlays", role: "group", "aria-labelledby": "hOverlaysLbl"},
+      el("span", {class: "lbl", id: "hOverlaysLbl", text: "Show on charts:"}),
+      el("label", {class: "toggle"}, el("input", {type: "checkbox", checked: hState.stays || null, onchange: e => { hState.stays = e.target.checked; hSave(); keepFocus(renderHealth); }}), "Hospital stays")),
+    el("div", {class: "chart-aids"}, el("div", {class: "menu pop"}, lgBtn, lgList),
+      aboutWords({title: "the charts", id: "hChartsInfo"}, "Drag any chart sideways to move through time: every chart moves together.", "Scroll or pinch to zoom, and double-click to show everything."))),
+    el("p", {class: "hint h-sync", text: `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`}));
+  menuWire({btn: lgBtn, list: lgList, text: true});
   const S = hSections(box);
   // tiles, each in its card's section
   const prev = pts => inR(pts, a - len, a);

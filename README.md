@@ -78,7 +78,7 @@ on the **Settings** page, appear on every chart and as "since" periods.
 your role; switch profile; its About this person, Settings, Sources and Sharing; New profile), your records' tabs
 (those that don't fit under **More**, which ends with Edit tabs…), **Add** (today: log a dose, a journal entry, a home
 reading; records: upload files, connect a portal or plan, type records in, paste a Health Link) and your menu (account,
-display, getting started, light or dark, log out). The tab shown is in the address (`#timeline`, `#labs`, `#labs-heatmap`...), so Back moves between tabs and a
+display, getting started, light or dark, log out). The tab shown and its view are in the address (`#timeline`, `#labs`, `#labs-heatmap`, `#costs-paid`...), so Back moves between tabs and views and a
 copied link opens the same one. **Settings** is grouped in a sidebar (this profile's dashboard, About this person (birth date, sex for reference
 ranges, height) and its targets, labs and ranges, milestones, workouts; your display), one group at a time, with **Find in Settings** to search them all (finding nothing, it offers to search everywhere). Sources, Sharing, Account and Admin have the same
 sidebar, each with a search of its own.

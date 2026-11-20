@@ -136,7 +136,7 @@ function renderTimelineTab() {
 }
 $("#tlView").onclick = ev => {
   const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.tlView) return;
-  hideTip(); state.tlView = b.dataset.view; renderTimelineTab(); save(); tabAddress();   // #timeline or #timeline-journal (#208)
+  hideTip(); state.tlView = b.dataset.view; renderTimelineTab(); save(); tabAddress(true);   // #timeline or #timeline-journal (#208), Back returning to the view before (#442)
 };
 
 /* ---------------------------------------------------------------- the Events card (#277)

@@ -224,6 +224,6 @@ function renderLabs() {
   if (hm) renderHeatmap(); else { renderSeriesList(); renderCharts(); }
   save();
 }
-$("#labsView").onclick = ev => { const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.labsView) return; hideTip(); state.labsView = b.dataset.view; renderLabs(); tabAddress(); };   // #labs or #labs-heatmap (#208)
+$("#labsView").onclick = ev => { const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.labsView) return; hideTip(); state.labsView = b.dataset.view; renderLabs(); tabAddress(true); };   // #labs or #labs-heatmap (#208), Back returning to the view before (#442)
 function showSeries(name) { state.sel.add(name); state.labsView = "chart"; closeDrawer(); pickTab("labs"); }
 
