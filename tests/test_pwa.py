@@ -150,9 +150,13 @@ class Pwa(unittest.TestCase):
         have.discard("js/connect-return.js")   # only for where a connected source's sign-in comes back, never offline
         self.assertEqual(listed, have, "sw.js FILES lists every page, style, script, font and icon in www/")
         self.assertFalse(any(f.startswith("api/") or "connect-return" in f for f in listed))
-        # requests it answers are only the app's own files: never /api/, documents or connect/return
+        # requests it answers are only the app's own files: never /api/, documents or connect/return. The API's one
+        # mention is its route around the worker, to the network (#453)
         self.assertIn("if (path == null) return;", sw)
-        self.assertNotIn("api/", re.sub(r"/\*.*?\*/|//[^\n]*", "", sw, flags=re.S))
+        code = re.sub(r"/\*.*?\*/|//[^\n]*", "", sw, flags=re.S)
+        route = 'e.addRoutes({condition: {urlPattern: new URLPattern({pathname: SCOPE.pathname + "api/*"})}, source: "network"})'
+        self.assertIn(route, code)
+        self.assertNotIn("api/", code.replace(route, ""))
         # it never writes the offline records' cache (the page does, only when turned on)
         self.assertNotIn("sanguity-offline", re.sub(r"/\*.*?\*/|//[^\n]*", "", sw, flags=re.S))
 

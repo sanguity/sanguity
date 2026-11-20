@@ -14330,6 +14330,12 @@ def main():
                   and sum("/fonts/" in u and u.endswith(".woff2") for u in shell) == 4, len(shell))
             check("PWA: nothing from /api/ is kept, and no records until they're turned on",
                   not any("/api/" in u for u in shell) and "sanguity-offline" not in kept, list(kept))
+            # #453: the API goes around the worker (its static route): a request the worker would only pass on doesn't wait
+            # for it, so a save sent as the page is left (settings.js saveLeft, the #419 check) isn't lost with the page. (Its
+            # entry is written once its body is read)
+            routed = ph.evaluate("""() => new Promise(r => { const o = new PerformanceObserver(l => { const e = l.getEntries().find(x => x.name.endsWith('/api/me?route'));
+              if (e) { o.disconnect(); r(e.workerMatchedRouterSource); } }); o.observe({type: 'resource'}); fetch('api/me?route', {cache: 'no-store'}).then(r => r.text()); setTimeout(() => r('no entry'), 5000); })""")
+            check("PWA: the API's requests go to the network without waiting for the worker (#453)", routed == "network", routed)
 
             # offline, with offline records off: the app's shell, and why there are no records
             ctx.set_offline(True)
