@@ -106,8 +106,8 @@ function renderCosts() {
   const catCard = el("div", {class: "card"}, el("h2", {text: "By type of care"}), el("p", {class: "hint", text: "Grouped from billing codes on each claim. Click a row to list those claims below."}));
   const provCard = el("div", {class: "card"}, el("h2", {text: "Top providers"}), el("p", {class: "hint", text: "Ranked by total cost (insurance paid + your share)."}));
   two.append(catCard, provCard); box.append(two);
-  barList(catCard, groupCosts(rows, r => r.cat), k => { costState.cat = costState.cat === k ? "" : k; keepFocus(renderCosts); $("#costTable").scrollIntoView({behavior: smoothly()}); }, costState.cat);
-  barList(provCard, groupCosts(rows, r => r.prov || "(unknown)").slice(0, 10), k => { costState.q = k; keepFocus(renderCosts); $("#costTable").scrollIntoView({behavior: smoothly()}); });
+  barList(catCard, groupCosts(rows, r => r.cat), k => { costState.cat = costState.cat === k ? "" : k; toClaims(); }, costState.cat);
+  barList(provCard, groupCosts(rows, r => r.prov || "(unknown)").slice(0, 10), k => { costState.q = k; toClaims(); });
   // pharmacy
   const rx = rows.filter(r => r.kind === "pharmacy");
   if (rx.length) {
@@ -115,7 +115,7 @@ function renderCosts() {
     const pc = el("div", {class: "card"}, el("h2", {text: `Prescriptions (${rx.length} fills)`}));
     pc.append(scrollBox({class: "tablewrap", "aria-label": "Prescriptions, by drug"}, stacked(el("table", {class: "data"},   // in the page's scroll (#456)
       el("thead", {}, el("tr", {}, ["Drug", "Fills", "First", "Last", "Insurance paid", "Your share"].map((h, i) => el("th", {class: i === 1 || i > 3 ? "num" : null, text: h})))),
-      el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; keepFocus(renderCosts); $("#costTable").scrollIntoView({behavior: smoothly()}); }},
+      el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; toClaims(); }},
         el("td", {}, el("button", {class: "cell-btn", type: "button", text: x.key})), el("td", {class: "num", text: x.n}), el("td", {text: fmtD(dayTs(x.first))}), el("td", {text: fmtD(dayTs(x.last))}),
         el("td", {class: "num", text: usd(x.paid)}), el("td", {class: "num", text: usd(x.owe)}))))))));
     box.append(pc);
@@ -135,7 +135,7 @@ function renderCosts() {
   // with filters on: what they keep, with Reset filters, and the totals for the claims shown (#190, filters.js)
   const on = !!(costState.q || costState.cat || costState.deniedOnly);
   const totals = `${on ? "For the claims shown: billed" : `${list.length} claims · billed`} ${usd(sumOf(list, "billed"))} · insurance paid ${usd(sumOf(list, "paid"))} · your share ${usd(sumOf(list, "owe"))}`;
-  tc.append(el("h2", {text: "Claims"}), el("div", {class: "toolbar", style: {marginTop: "8px"}}, q, sel, den),
+  tc.append(el("h2", {tabindex: -1, text: "Claims"}), el("div", {class: "toolbar", style: {marginTop: "8px"}}, q, sel, den),
     filterLine(on ? [`Showing ${list.length.toLocaleString()} of ${rows.length.toLocaleString()} claims`, costState.cat && `type of care: ${costState.cat}`,
       costState.q && `matching “${costState.q.trim()}”`, costState.deniedOnly && "denied only"] : [],
       () => { Object.assign(costState, {q: "", cat: "", deniedOnly: false}); renderCosts(); }, () => $("#costTable input.search")),
@@ -338,7 +338,10 @@ function renderPaid(box, claimRows, periodLabel) {
   const g1 = el("div", {}, el("h3", {class: "sub", text: "What it was for"})), g2 = el("div", {}, el("h3", {class: "sub", text: "Who was paid"}));
   two.append(g1, g2); card.append(el("h2", {text: "Every amount out of pocket"}), two);
   const grp = keyFn => { const m = new Map(); for (const r of counted) { const k = keyFn(r), g = m.get(k) || {key: k, n: 0, v: 0}; g.n++; g.v += r.counted; m.set(k, g); } return [...m.values()].sort((a, b) => b.v - a.v); };
-  const pick = k => { paidState.q = paidState.q === k ? "" : k; keepFocus(renderCosts); $("#paidTable").scrollIntoView({behavior: smoothly(), block: "nearest"}); };
+  // the list scrolled to, focus on its first control, in sight (HSA only, Reset filters or a date), not left on the
+  // row above the screen (#462)
+  const pick = k => { paidState.q = paidState.q === k ? "" : k; keepFocus(renderCosts); $("#paidTable").scrollIntoView({behavior: smoothly(), block: "nearest"});
+    $("#paidTable :is(.toggle, .fsum-reset, .cell-btn)").focus({preventScroll: true}); };
   const bars = (host, groups) => {
     const max = Math.max(1, ...groups.map(g => g.v));
     // a row is a button, by keyboard too, saying whether it's picked, as the claims' are (#202, #448)
@@ -442,6 +445,12 @@ function groupCosts(rows, keyFn) {
     if (r.d < g.first) g.first = r.d; if (r.d > g.last) g.last = r.d; m.set(k, g);
   }
   return [...m.values()].sort((a, b) => (b.paid + b.owe) - (a.paid + a.owe));
+}
+/* a type of care, a provider or a drug picked: the claims drawn again and scrolled to, focus on their heading, in
+   sight, not left on the row above the screen (#462, as Body's tiles do, #455) */
+function toClaims() {
+  keepFocus(renderCosts);
+  const t = $("#costTable"); t.scrollIntoView({behavior: smoothly()}); t.querySelector("h2").focus({preventScroll: true});
 }
 function barList(card, groups, onPick, active) {
   const max = Math.max(1, ...groups.map(g => g.paid + g.owe));
