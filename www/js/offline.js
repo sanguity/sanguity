@@ -263,7 +263,25 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
         box.prepend(el("p", {class: "hint offline-note", text: "Corrections need the server: you're offline."}));
       }
       for (const c of body.querySelectorAll(".edits[data-offline] :is(button, input, select, textarea):not(:disabled)")) { c.disabled = true; c.title = why; }
+      serverOnly(body);
     };
     if (body) new MutationObserver(tidy).observe(body, {childList: true, subtree: true});
+    /* what saves, wherever it's drawn (#449): a control with class needs-server, or each in a box with it (a
+       medication's Log a dose and Add a reminder, a dose's or a reminder's Edit and Remove, the drawer's forms'
+       Save, Costs' out-of-pocket editor). A button stays in reach, aria-disabled, its tip the reason, as today's
+       doses' are (#439); a field is disabled, its title the reason (a disabled control gets no focus for a tip);
+       neither a press nor a form's submit does anything */
+    const serverOnly = root => {
+      for (const box of root.querySelectorAll(".needs-server:not([data-offline])")) {
+        box.dataset.offline = "1";
+        for (const c of box.matches("button, input, select, textarea") ? [box] : box.querySelectorAll("button, input, select, textarea"))
+          if (c.matches("button")) { c.setAttribute("aria-disabled", "true"); c.dataset.tip = why; } else { c.disabled = true; c.title = why; }
+      }
+    };
+    const off = e => { e.preventDefault(); e.stopImmediatePropagation(); };
+    document.addEventListener("click", e => { if (e.target.closest && e.target.closest(".needs-server[aria-disabled=true], .needs-server [aria-disabled=true]")) off(e); }, true);
+    document.addEventListener("submit", e => { if (e.target.querySelector(".needs-server[aria-disabled=true]")) off(e); }, true);
+    const main = document.querySelector("main");
+    if (main) new MutationObserver(() => serverOnly(main)).observe(main, {childList: true, subtree: true});
   }
 })();

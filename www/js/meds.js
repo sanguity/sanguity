@@ -225,7 +225,7 @@ function medReminderSection(m) {
     return el("li", {class: "mr-item " + st.cls},
       el("span", {class: "mr-says", text: mrSays(r) + zone}),
       el("span", {class: "mr-state", text: st.text}),
-      write ? el("span", {class: "mr-acts"},
+      write ? el("span", {class: "mr-acts needs-server"},   // what saves, off while offline (offline.js, #449)
         st.cls !== "ended" || mrEnds(r, m)?.why === "until" ? el("button", {class: "btn small", type: "button", text: "Edit",
           "aria-label": "Edit the reminder " + mrSays(r), onclick: () => medReminderForm(m, r)}) : null,
         st.cls !== "ended" ? el("button", {class: "btn small", type: "button", text: r.on ? "Turn off" : "Turn on",
@@ -236,7 +236,7 @@ function medReminderSection(m) {
           mrSend(`/${r.id}`, {method: "DELETE"}, msg, m);
         }})) : null);
   })));
-  if (write && cur) out.push(el("div", {class: "btns"}, el("button", {class: "btn", type: "button", text: rs.length ? "Add another reminder" : "Add a reminder",
+  if (write && cur) out.push(el("div", {class: "btns"}, el("button", {class: "btn needs-server", type: "button", text: rs.length ? "Add another reminder" : "Add a reminder",
     onclick: () => medReminderForm(m, null)})));
   else if (write && !cur && m.stop) out.push(el("p", {class: "hint", text: "The records say this medication stopped, so no new reminders can be set for it."}));
   out.push(el("p", {class: "hint"}, "They reach your calendar app through ",
@@ -275,7 +275,7 @@ function medReminderForm(m, r) {
     el("div", {class: "jwhen"}, row("From", from), row("Until (optional)", until)),
     el("p", {class: "hint", text: `Times are in ${zone}` + (r && r.tz ? ", the time zone it was set in." : ", your time zone (Settings → Dates and times).") +
       " Your calendar app shows each one as a repeating event, from the calendar feed."}),
-    el("div", {class: "btns"}, el("button", {class: "btn primary", type: "submit", text: r ? "Save" : "Add reminder"}),
+    el("div", {class: "btns"}, el("button", {class: "btn primary needs-server", type: "submit", text: r ? "Save" : "Add reminder"}),
       el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => openMedication(m)})), msg);
   for (const t of r ? r.times : ["08:00"]) addTime(t);
   form.onsubmit = ev => {
