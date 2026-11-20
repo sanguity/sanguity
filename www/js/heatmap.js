@@ -108,7 +108,7 @@ function renderHeatmap() {
   // month labels go in a separate axis strip that sticks to the bottom of the window until the heatmap's end scrolls into view
   // the month lines go under the cells (#479): over them they took the taps, and on a phone's narrow columns they
   // covered a month's first draw, its out-of-range colour with it; they show in the gaps between the rows
-  let lastM = "", lastLabelX = -1e9, lastT = null;
+  let lastM = "", lastLabelX = -1e9, lastT = null, lastText = null;
   const lines = [];
   for (const [k, ts] of cols) {
     const m = k.slice(0, 7); if (m === lastM) continue; lastM = m;
@@ -117,12 +117,16 @@ function renderHeatmap() {
     ax.push(el("svg:line", {x1: cx, x2: cx, y1: 0, y2: 5, stroke: "var(--axis)"}));
     const t = zdate(ts).toLocaleDateString(undefined, {month: "short", year: "2-digit"});
     lastT = null;
-    if (cx - lastLabelX >= 44 && cx + 2 + labelW(t, "") <= W) { ax.push(el("svg:text", {x: cx + 2, y: AH - 6, text: t})); lastLabelX = cx; }   // one that would run past the grid's end, not cut there (#476)
+    if (cx - lastLabelX >= 44 && cx + 2 + labelW(t, "") <= W) { lastText = el("svg:text", {x: cx + 2, y: AH - 6, text: t}); ax.push(lastText); lastLabelX = cx; }   // one that would run past the grid's end, not cut there (#476)
     else lastT = [cx, t];
   }
-  // the latest month named too, held inside the grid's end where it doesn't fit after its line (#479: the last year
-  // had no date at 1400 px), if it clears the label before it
-  if (lastT) { const x = Math.min(lastT[0] + 2, W - 2 - labelW(lastT[1], "")); if (x - lastLabelX >= 44) ax.push(el("svg:text", {x, y: AH - 6, text: lastT[1]})); }
+  // the latest month always named, held inside the grid's end where it doesn't fit after its line; the label before it
+  // dropped where the two would meet (#481: on ten years it was dropped instead, so nothing said the grid reached 2026)
+  if (lastT) {
+    const x = Math.min(lastT[0] + 2, W - 2 - labelW(lastT[1], ""));
+    if (lastText && x - lastLabelX < 44) ax.splice(ax.indexOf(lastText), 1);
+    ax.push(el("svg:text", {x, y: AH - 6, text: lastT[1]}));
+  }
   ax.push(el("svg:text", {x: LW - 8, y: AH - 6, "text-anchor": "end", text: "Draw date"}));
   svg.replaceChildren(...lines, ...g); axis.replaceChildren(...ax);
   // a panel's name kept inside the label column (#441): cut short where it would run into the grid, whole in its tip

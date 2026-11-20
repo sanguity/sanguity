@@ -501,8 +501,8 @@ function barList(card, groups, onPick, active) {
       "data-tip": `${g.key}: ${g.n} claims · billed ${usd(g.billed)} · insurance paid ${usd(g.paid)} · your share ${usd(g.owe)}`},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}),
       el("span", {class: "v", text: usd(g.paid + g.owe)}),
-      // the bars in what the note leaves, the note whole beside them, or under them where there's no room (#479: the
-      // largest's bar took the row and squeezed its note to two lines)
+      // the bars across the row, on one scale for every row, and the note whole under them (#481: beside them, the
+      // largest's bar squeezed its note to two lines, and bars sized to what each note left didn't compare)
       el("span", {class: "s cost-bars"},
         el("span", {class: "cost-bar-run"},
           el("span", {class: "cost-bar", style: {width: w1 + "%", background: "var(--c-lab)", borderRadius: w2 > 0.3 ? "2px 0 0 2px" : null}}),
