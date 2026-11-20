@@ -132,7 +132,8 @@ function rowRanges(s) {
 /* the heatmap as a table (#60): a row per lab, grouped by panel as on the heatmap, a column per draw day; a result
    outside its reference range has ▲ or ▼ beside it, said as "high" or "low". What a row's and a result's tips say
    (the name in the records, the reference range) is in the row's heading for screen readers too, and the description
-   of its ✎ and ? (#358); a result's own range is said in its cell only where the row's ranges differ */
+   of its ✎ and ? (#358); a result's own range is said in its cell only where the row's ranges differ. A panel's name
+   sticks at the left of its row, as the labs' names do, scrolled sideways (#464: its cell is the row's width) */
 let hmAbout = 0;
 function hmTable(rows, cols, grp) {
   const box = $("#hmTable");
@@ -142,7 +143,7 @@ function hmTable(rows, cols, grp) {
   for (const s of rows) {
     if (grp.get(s) !== panel) {
       panel = grp.get(s); tb = el("tbody", {}); bodies.push(tb);
-      tb.append(el("tr", {class: "grp"}, el("th", {scope: "rowgroup", colspan: cols.length + 1, text: panel})));
+      tb.append(el("tr", {class: "grp"}, el("th", {scope: "rowgroup", colspan: cols.length + 1}, el("span", {text: panel}))));
     }
     const byDay = new Map(); for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) byDay.set(isoDay(p.ts), p);
     const differ = rowRanges(s), ranged = [...byDay.values()].find(p => p[2] != null || p[3] != null);

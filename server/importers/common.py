@@ -139,14 +139,14 @@ def lab_day_title(n, org=""):
 
 def lab_day_sub(orders, limit=LAB_DAY_SUB):
     """The orders joined with ', ', the most that fit in limit characters as whole names, then '…' for the rest; a
-    first name longer than that is cut at a word."""
+    first name longer than that is cut at a word, and one that fits but leaves no room for ', …' is followed by '…'."""
     out, size = [], 0
     names = [o for o in orders if o]
     for i, o in enumerate(names):
         more = i < len(names) - 1
         if size + len(o) + (len(", …") if more else 0) > limit:
             if not out:
-                cut = o[:limit - 1] if o[limit - 1] == " " else o[:limit - 1].rsplit(" ", 1)[0]
+                cut = o[:limit - 1] if len(o) < limit or o[limit - 1] == " " else o[:limit - 1].rsplit(" ", 1)[0]   # (#464: o[limit - 1] past its end)
                 out.append((cut.rstrip(" ,") or o[:limit - 1]) + "…")
             else:
                 out.append("…")
