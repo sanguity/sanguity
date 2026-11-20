@@ -738,7 +738,9 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
 .legend{display:flex;gap:var(--sp-3);flex-wrap:wrap;font-size:var(--fs-2);color:var(--ink2);margin:var(--sp-1) 0 0}
 .legend span{display:inline-flex;align-items:center;gap:var(--sp-2)}
 .legend i{display:inline-block;width:14px;height:8px;border-radius:2px}
-.legend .stay-key{background:var(--stay)}   /* a hospital stay's shading (Body and activity's Legend, #442) */
+.stay-key{background:var(--stay);border:1px solid var(--stay-line)}   /* a hospital stay's shading, with its edge to be seen (#450) */
+/* forced colours drop a background: the swatches keep theirs, as the charts' marks do, and the stay's edge is the text's (#450) */
+@media (forced-colors:active){ .legend i,.hm-legend i{forced-color-adjust:none} .stay-key{border-color:CanvasText} }
 @media (max-width:900px){
   .layout{grid-template-columns:1fr}
   .series-list{max-height:300px}

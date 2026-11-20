@@ -2526,6 +2526,50 @@ def main():
             page.keyboard.press("Escape")
             check("…its Legend opens the marks every chart shares: hospital stays and the milestones",
                   hleg[0] and "Hospital stay" in hleg[1] and "milestone" in hleg[1] and hleg[2] == "true", hleg)
+            # #450: the Legend open, three resizes (each draws Body again) leave it open and the window's scroll and resize
+            # listeners as they were: it's kept across redraws, and a list taken out of the page drops its own (nav.js)
+            def win_listeners(cdp):
+                win = cdp.send("Runtime.evaluate", {"expression": "window"})["result"]["objectId"]
+                ls = cdp.send("DOMDebugger.getEventListeners", {"objectId": win})["listeners"]
+                return [sum(1 for x in ls if x["type"] == t) for t in ("scroll", "resize")]
+            cdp450, size450 = page.context.new_cdp_session(page), js("[innerWidth, innerHeight]")
+            page.click("#hLegendBtn")
+            settle(200)
+            leak450 = [win_listeners(cdp450)]
+            for w in (size450[0] - 60, size450[0] - 120, size450[0] - 30):
+                page.set_viewport_size({"width": w, "height": size450[1]})
+                settle(500)
+                leak450.append(win_listeners(cdp450))
+            open450 = js("[document.getElementById('hLegendList').matches(':popover-open'), document.getElementById('hLegendBtn').getAttribute('aria-expanded'), document.querySelectorAll('#hLegendList').length]")
+            page.keyboard.press("Escape")
+            page.set_viewport_size({"width": size450[0], "height": size450[1]})
+            settle(400)
+            cdp450.detach()
+            check("…open while Body is drawn again on three resizes, its Legend stays open, the window's listeners where they started (#450)",
+                  all(x == leak450[0] for x in leak450) and open450 == [True, "true", 1], [leak450, open450])
+            # #450: a hospital stay's swatch is its shading with its edge, the edge 3:1 against what it's on in light and dark
+            # (Labs' Legend, Body's; Costs' below), and in forced colours every swatch keeps its colour, the stay's edge the text's
+            swatch450 = """(sel => { const under = n => { for (; n; n = n.parentElement) { const c = getComputedStyle(n).backgroundColor;
+                  if (c !== 'rgba(0, 0, 0, 0)' && !/, 0\\)$/.test(c)) return c; } return getComputedStyle(document.body).backgroundColor; };
+                return [...document.querySelectorAll(sel)].map(i => [getComputedStyle(i).borderTopColor, under(i.parentElement), parseFloat(getComputedStyle(i).borderTopWidth)]); })"""
+            theme450, edges450 = js("document.documentElement.dataset.theme || null"), {}
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                settle(100)
+                edges450[theme] = [[contrast(e, bg), wd] for e, bg, wd in js(swatch450, "#hLegendList .stay-key, #legendList .stay-key")]
+            page.emulate_media(forced_colors="active")
+            settle(200)
+            fc450 = js("""(() => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = 'CanvasText'; document.body.append(s);
+                const text = getComputedStyle(s).color; s.remove();
+                return [...document.querySelectorAll('#hLegendList i, #legendList i')].map(i => { const cs = getComputedStyle(i), a = cs.backgroundColor.match(/[\\d.]+\\)$/);
+                  return [i.parentElement.textContent.trim(), cs.forcedColorAdjust, cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && (!a || +a[0].slice(0, -1) >= .2) || cs.borderTopColor === text && parseFloat(cs.borderTopWidth) >= 1]; }); })()""")
+            page.emulate_media(forced_colors="none")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme450)
+            check("…the Hospital stay swatch has an edge 3:1 against its legend's background, in light and dark, on Body and Labs (#450)",
+                  all(len(v) == 2 and all(c >= 3 and wd >= 1 for c, wd in v) for v in edges450.values()), edges450)
+            check("…and in forced colours the legends' swatches are kept, Value, Reference range and Hospital stay on Labs, Hospital stay on Body (#450)",
+                  len(fc450) == 4 and all(f == "none" and seen for _, f, seen in fc450)
+                  and sorted(n for n, _, _ in fc450) == ["Hospital stay", "Hospital stay", "Reference range", "Value"], fc450)
             page.click("#view-health .h-secbar button:text-is('Sleep')")
             settle(800)
             jump = js("[document.activeElement.id, (r => r.top >= 0 && r.top < innerHeight / 2)(document.getElementById('hs-sleep').getBoundingClientRect())]")
@@ -2553,6 +2597,14 @@ def main():
             # Costs: both charts, the claims by month under Claims and the running totals under What you paid (#278)
             js("state.tables.clear(); costState.view = 'claims'; switchTab('costs')")
             settle(500)
+            edges450 = {}   # the claims chart's Hospital stay swatch, with its edge, as Labs' and Body's (#450, above)
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                settle(100)
+                edges450[theme] = [[contrast(e, bg), wd] for e, bg, wd in js(swatch450, "#view-costs .legend .stay-key")]
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme450)
+            check("Costs: the claims chart's Hospital stay swatch has an edge 3:1 against the card, in light and dark (#450)",
+                  all(len(v) == 1 and v[0][0] >= 3 and v[0][1] >= 1 for v in edges450.values()), edges450)
             ct = []
             for view, key in (("Claims", "#costBars"), ("What you paid", "#paidCum")):
                 page.click(f"#costView button:text-is('{view}')")

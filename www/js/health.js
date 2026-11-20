@@ -201,8 +201,31 @@ function hSections(box) {
   };
   return S;
 }
+/* the charts' header, Labs' own (#442, index.html; the period is in the records bar): what the charts can also show,
+   then a Legend of the marks every chart shares (each card keys its own lines) and an ⓘ of how to move them (#280);
+   under it, apart from the chart options' group, where the phone's data come from (#444). Made once and kept while
+   the rest is drawn again (#450): a popover taken out of the page closes, and its window listeners stayed behind. */
+let H_BAR = null;
+function hBar() {
+  if (H_BAR) return H_BAR;
+  const lgBtn = el("button", {class: "btn", id: "hLegendBtn", type: "button", "aria-expanded": false, "aria-controls": "hLegendList"}, "Legend", icon("chevron-down"));
+  const lgList = el("div", {class: "menu-list legend", id: "hLegendList", role: "group", "aria-labelledby": "hLegendBtn"},
+    el("span", {}, el("i", {class: "stay-key"}), "Hospital stay"),
+    el("span", {}, el("svg:svg", {viewBox: "0 0 14 12", width: 14, height: 12, "aria-hidden": "true"}, el("svg:line", {class: "msmark", x1: 7, x2: 7, y1: 0, y2: 12})), "A milestone, named over the charts"));
+  const stays = el("input", {type: "checkbox", onchange: e => { hState.stays = e.target.checked; hSave(); keepFocus(renderHealth); }});
+  const sync = el("p", {class: "hint h-sync"});
+  const nodes = [el("div", {class: "toolbar chart-bar"},
+    el("div", {class: "overlays", role: "group", "aria-labelledby": "hOverlaysLbl"},
+      el("span", {class: "lbl", id: "hOverlaysLbl", text: "Show on charts:"}),
+      el("label", {class: "toggle"}, stays, "Hospital stays")),
+    el("div", {class: "chart-aids"}, el("div", {class: "menu pop"}, lgBtn, lgList),
+      aboutWords({title: "the charts", id: "hChartsInfo"}, "Drag any chart sideways to move through time: every chart moves together.", "Scroll or pinch to zoom, and double-click to show everything."))), sync];
+  menuWire({btn: lgBtn, list: lgList, text: true});
+  return H_BAR = {nodes, stays, sync};
+}
 function renderHealth() {
-  const box = $("#view-health"); box.replaceChildren();
+  const box = $("#view-health");
+  for (const n of [...box.childNodes]) if (!WATCH || !H_BAR?.nodes.includes(n)) n.remove();   // all but the header (hBar)
   // a card's heading row, under its section's: its title and Chart | Table (#60)
   const head = (title, key) => el("div", {class: "list-hd"}, el("h3", {text: title}), el("span", {class: "spacer"}), viewSeg(key, title, renderHealth));
   if (!WATCH) {   // #199: what would be here, and where it comes from (its owners and editors set the phone up)
@@ -214,21 +237,11 @@ function renderHealth() {
   }
   H = H || hData();
   const [a, b] = hRange(), len = b - a, long = len > 150 * DAY;
-  // the charts' header, Labs' own (#442, index.html; the period is in the records bar): what the charts can also show,
-  // then a Legend of the marks every chart shares (each card keys its own lines) and an ⓘ of how to move them (#280);
-  // under it, apart from the chart options' group, where the phone's data come from (#444)
-  const lgBtn = el("button", {class: "btn", id: "hLegendBtn", type: "button", "aria-expanded": false, "aria-controls": "hLegendList"}, "Legend", icon("chevron-down"));
-  const lgList = el("div", {class: "menu-list legend", id: "hLegendList", role: "group", "aria-labelledby": "hLegendBtn"},
-    el("span", {}, el("i", {class: "stay-key"}), "Hospital stay"),
-    el("span", {}, el("svg:svg", {viewBox: "0 0 14 12", width: 14, height: 12, "aria-hidden": "true"}, el("svg:line", {class: "msmark", x1: 7, x2: 7, y1: 0, y2: 12})), "A milestone, named over the charts"));
-  box.append(el("div", {class: "toolbar chart-bar"},
-    el("div", {class: "overlays", role: "group", "aria-labelledby": "hOverlaysLbl"},
-      el("span", {class: "lbl", id: "hOverlaysLbl", text: "Show on charts:"}),
-      el("label", {class: "toggle"}, el("input", {type: "checkbox", checked: hState.stays || null, onchange: e => { hState.stays = e.target.checked; hSave(); keepFocus(renderHealth); }}), "Hospital stays")),
-    el("div", {class: "chart-aids"}, el("div", {class: "menu pop"}, lgBtn, lgList),
-      aboutWords({title: "the charts", id: "hChartsInfo"}, "Drag any chart sideways to move through time: every chart moves together.", "Scroll or pinch to zoom, and double-click to show everything."))),
-    el("p", {class: "hint h-sync", text: `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`}));
-  menuWire({btn: lgBtn, list: lgList, text: true});
+  // the charts' header (hBar, above), kept: a Legend or ⓘ open stays open while the rest is drawn again (#450)
+  const bar = hBar();
+  bar.stays.checked = hState.stays;
+  bar.sync.textContent = `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`;
+  if (bar.nodes[0].parentNode !== box) box.prepend(...bar.nodes);
   const S = hSections(box);
   // tiles, each in its card's section
   const prev = pts => inR(pts, a - len, a);

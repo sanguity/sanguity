@@ -1489,6 +1489,13 @@ Everything on `main` so far; it becomes the first tagged release.
   to the service worker first, which only passes the API on, and was lost when the page went before it had. The worker
   now routes the API straight to the network where the browser lets it (Chromium's static routes), so no API request
   waits for it.
+- **Legends you can read: the hospital stay's swatch, forced colours, and Body's Legend kept open** (#450): the
+  Hospital stay swatch on Labs, Body and activity and Costs' claims chart was its 7% shading alone, about 1.1:1 against
+  the legend; it has the stay's edge now, 3:1 or more in light and dark. In forced colours the legends' swatches
+  (Value, Reference range, Hospital stay, a Body card's lines, the heatmap's colours) were blank; they keep their
+  colours, and the stay's edge is in the text's colour. Body and activity's Legend closed whenever the tab was drawn
+  again (a resize, a dose logged) and left listeners on the window each time; its header is kept across redraws now,
+  and a menu taken out of the page while open drops its listeners.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
