@@ -841,18 +841,37 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .imp-list .path{overflow-wrap:anywhere}
 .imp .imp-list progress{width:100%;height:8px}
 .imp .imp-list li.muted{display:block}
-.import-job .imp-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin-top:var(--sp-3)}
-.import-job .imp-dups ul{list-style:none;margin:var(--sp-2) 0 0;padding:0;max-height:300px;overflow-y:auto;font-size:var(--fs-3)}
-.import-job .imp-dups li{border-top:1px solid var(--grid);padding:var(--sp-1) 0;overflow-wrap:anywhere}
-.import-job .imp-dups label{display:block;cursor:pointer}
-.import-job .imp-dups .d{color:var(--muted);font-variant-numeric:tabular-nums}
-.import-job .imp-labs ul{list-style:none;margin:var(--sp-2) 0 0;padding:0;font-size:var(--fs-3)}
-.import-job .imp-labs li{border-top:1px solid var(--grid);padding:var(--sp-1) 0;display:grid;gap:var(--sp-1);overflow-wrap:anywhere}
-.import-job .imp-labs .why{color:var(--muted);font-size:var(--fs-2)}
-.import-job .imp-labs .before{font-size:var(--fs-2);font-weight:var(--fw-semibold)}
-.import-job .imp-same ul{list-style:none;margin:var(--sp-2) 0 0;padding:0;font-size:var(--fs-3)}
-.import-job .imp-same li{border-top:1px solid var(--grid);padding:var(--sp-1) 0;display:grid;gap:var(--sp-1);overflow-wrap:anywhere}
-.import-job .imp-same .why{color:var(--muted);font-size:var(--fs-2)}
+/* the import review (#282, import-jobs.js jobReview): a tile per kind, its icon in the kind's colour (a color attribute);
+   new, already here and possibly the same as a bar and its key; the lab names' table; its Add in a group bar (.sg-bar) */
+.import-job .imp-state{margin:0;font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2)}
+.import-job .imp-title{margin:0 0 var(--sp-1);font-size:var(--fs-5)}
+.import-job .d,.imp-tiles .more,.imp-labs .loinc{color:var(--muted);font-variant-numeric:tabular-nums}
+.imp-k{flex:none;box-sizing:content-box;padding:var(--sp-1);border-radius:var(--r-sm);background:color-mix(in srgb,currentColor 14%,transparent)}
+.imp-tiles{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.imp-tiles>.tile{grid-row:auto;display:flex}   /* each its own height: a few of each, under its count */
+.imp-tiles .tile>ul{list-style:none;margin:var(--sp-1) 0 0;padding:0;font-size:var(--fs-2);color:var(--ink2);overflow-wrap:anywhere}
+.imp-split{margin:var(--sp-1) 0 var(--sp-4)}
+.imp-bar{display:block;width:100%;height:var(--sp-2);border-radius:var(--r-pill)}
+.imp-split ul{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-4);list-style:none;margin:var(--sp-2) 0 0;padding:0;font-size:var(--fs-3)}
+.imp-split li::before{content:"";display:inline-block;width:var(--sp-2);height:var(--sp-2);margin-right:var(--sp-2);border-radius:var(--r-pill);background:var(--imp-c)}
+.imp-split .new{--imp-c:var(--accent)}.imp-split .here{--imp-c:var(--muted)}.imp-split .same{--imp-c:var(--c-study)}
+.imp-bar rect{fill:var(--imp-c)}
+@media (forced-colors:active){ .imp-split li::before{forced-color-adjust:none} }   /* (a background is dropped, #409) */
+.imp-labs{container-type:inline-size}
+.imp-labs table{font-size:var(--fs-3)}
+.imp-labs th{position:static}   /* not under the top bar */
+.imp-labs th:last-child{width:45%}
+.imp-labs td{overflow-wrap:anywhere}
+.imp-labs input{width:100%}
+.import-job :is(.imp-labs,.imp-same) .why,.imp-labs .before{display:block;color:var(--muted);font-size:var(--fs-2)}
+.imp-labs .before{font-weight:var(--fw-semibold)}
+.imp-labs .err{color:var(--crit)}
+@container (width < 560px){ .imp-labs td:last-child{flex-basis:100%} }
+.import-job :is(.imp-dups,.imp-same) ul{list-style:none;margin:var(--sp-2) 0 0;padding:0;font-size:var(--fs-3)}
+.import-job :is(.imp-dups,.imp-same) li{border-top:1px solid var(--grid);padding:var(--sp-1) 0;overflow-wrap:anywhere}
+.import-job .imp-dups ul{max-height:300px;overflow-y:auto}
+.import-job :is(.imp-dups,.imp-same) label{display:block;cursor:pointer}
+.import-job .imp-same li{display:grid;gap:var(--sp-1)}
 .imp .off{display:none !important}
 /* a SMART Health Link pasted or scanned (import-shl.js) */
 .imp .shl-text{display:grid;gap:var(--sp-1);margin:var(--sp-2) 0}

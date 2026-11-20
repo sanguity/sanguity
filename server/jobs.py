@@ -394,9 +394,9 @@ def summarise(data):
 def describe(r):
     mod = registry.get(r["importer"]) if r["importer"] else None
     summary = json.loads(crypto.dec(r["summary"])) if r["summary"] else {}
-    return {"id": r["id"], "upload_id": r["upload_id"], "state": r["state"], "stage": r["stage"],
+    return {"id": r["id"], "profile_id": r["profile_id"], "upload_id": r["upload_id"], "state": r["state"], "stage": r["stage"],
             "importer": r["importer"], "label": mod.LABEL if mod else r["importer"],
-            "counts": summary.get("counts"), "range": summary.get("range"), "total": summary.get("total"),
+            "counts": summary.get("counts"), "samples": summary.get("samples"), "range": summary.get("range"), "total": summary.get("total"),
             "duplicates": summary.get("duplicates"), "new": summary.get("new"), "skipped": summary.get("skipped"),
             "labs": summary.get("labs"), "lab_targets": summary.get("lab_targets"), "lab_names": summary.get("lab_names"),
             "possible": summary.get("possible") or [], "linked": summary.get("linked"),

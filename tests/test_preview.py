@@ -200,6 +200,32 @@ class Preview(unittest.TestCase):
         days = [e for e in self.robin.get(f"/api/profiles/{pid}/data").json()["events"] if e["k"] == "lab"]
         self.assertEqual(sorted(e["t"][:10] for e in days), ["2025-03-14", "2025-04-02"])
 
+    def test_review_samples_what_is_new(self):   # #282: a few of each kind, latest first, the duplicates left out
+        pid = self.profile("Samples")
+        j, _ = self.previewed(pid, {"labs.csv": CSV_HEAD + MARCH})
+        self.save(pid, j)
+        j, _ = self.previewed(pid, {"labs.csv": CSV_HEAD + MARCH + APRIL})
+        self.assertEqual(j["profile_id"], pid)
+        s = j["samples"]
+        self.assertEqual(sorted((r["t"], r["name"], r["value"], r["unit"]) for r in s["results"]),
+                         [("2025-04-02", "Ferritin", "85", "ng/mL"), ("2025-04-02", "Hemoglobin", "13.8", "g/dL")])   # not March's
+        self.assertEqual([r["t"] for r in s["events"]["lab"]], ["2025-04-02"])
+        self.assertEqual((s["allergies"], s["problems"], s["upcoming"]), ([], [], []))
+        # a C-CDA: its kinds, each at most SAMPLES, latest first; a value as reported with its unit in it shown as the number
+        pid = self.profile("Samples C-CDA")
+        j, _ = self.previewed(pid, folder_files(os.path.join(FIX, CASES["ccda"])))
+        s = j["samples"]
+        for k, n in j["counts"]["kinds"].items():
+            rows = s["events"].get(k, [])
+            self.assertEqual(len(rows), min(n, preview.SAMPLES), k)
+            self.assertEqual([r["t"] for r in rows], sorted((r["t"] for r in rows), reverse=True), k)
+            self.assertTrue(all(r["title"] for r in rows), rows)
+        self.assertEqual(len(s["results"]), preview.SAMPLES)
+        self.assertTrue(all(preview.PLAIN.fullmatch(r["value"]) for r in s["results"]), s["results"])
+        self.assertEqual(len(s["allergies"]), j["counts"]["allergies"])
+        self.assertTrue(s["allergies"][0]["title"].startswith("Allergy: "), s["allergies"])
+        self.assertEqual(len(s["problems"]), j["counts"]["problems"])
+
     def test_keep_a_duplicate_anyway(self):
         pid = self.profile("Keep")
         files = folder_files(os.path.join(FIX, CASES["fhir"]))

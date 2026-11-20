@@ -2,7 +2,7 @@
    QR code (BarcodeDetector, where the browser has it). What the link says (its host, label, flags, expiry) is shown
    first, read by the server without contacting anyone; only Fetch and preview makes the one outside request. The
    files it brings become an upload, imported like any other: window.sanguityImport.uploaded (import-jobs.js) shows
-   the preview, with Save and Cancel. $, el and api come from util.js. */
+   the review (#282), with its Add button and Cancel. $, el and api come from util.js. */
 "use strict";
 (function () {
   const text = $("#shlText"), msg = $("#shlMsg"), about = $("#shlAbout"), go = $("#shlGo"), goMsg = $("#shlGoMsg");

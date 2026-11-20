@@ -8768,14 +8768,33 @@ def main():
             last_card = "[...document.querySelectorAll('.import-job')].pop()"
             page.wait_for_function(f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             card = js(f"{last_card}.innerText")
-            check("the import stops at its preview, with what it would add, the dates, and Save and Cancel (#22)",
-                  card.startswith("Ready to import.") and "C-CDA" in card and "visit" in card and "lab result" in card
-                  and js(f"[...{last_card}.querySelectorAll('.imp-actions button')].map(b => b.textContent)") == ["Save", "Cancel"], card)
+            # the review (#282): the format and dates, a tile per kind in the Timeline's colours with a few of each, how
+            # many are new, already here or possibly the same, and a bar at the foot whose button says what it adds
+            rv = js(f"""(c => ({{title: c.querySelector('.imp-title')?.textContent,
+                tiles: [...c.querySelectorAll('.imp-tiles .tile')].map(t => [t.querySelector('.lbl').textContent, t.querySelector('.val').textContent,
+                  t.querySelectorAll('ul li:not(.more)').length, getComputedStyle(t.querySelector('.imp-k')).color]),
+                split: [...c.querySelectorAll('.imp-split li')].map(li => li.textContent),
+                buttons: [...c.querySelectorAll('.imp-actions button')].map(b => b.textContent),
+                sticky: getComputedStyle(c.querySelector('.imp-actions')).position}}))({last_card})""")
+            check("the import stops at its review (#22, #282): the format and dates, a tile per kind in its colour with a few of each, "
+                  "new / already here / possibly the same, and a sticky bar whose button says what it adds",
+                  card.startswith("Ready to import") and (rv["title"] or "").startswith("C-CDA") and " · " in rv["title"]
+                  and {"Visits", "Lab results", "Medications", "Hospital stay"} <= {t[0] for t in rv["tiles"]} and all(t[2] >= 1 for t in rv["tiles"])
+                  and len({t[3] for t in rv["tiles"]}) >= 3 and rv["split"] == ["18 new", "0 already here", "0 possibly the same"]
+                  and rv["buttons"] == ["Cancel", "Add 18 records"] and rv["sticky"] == "sticky", rv)
             check("…and nothing is saved yet", db.execute("SELECT COUNT(*) FROM imports WHERE profile_id=2").fetchone()[0] == 0)
-            page.set_viewport_size({"width": 375, "height": 800})
-            settle(200)
-            check("the preview fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            for w in (375, 320):
+                page.set_viewport_size({"width": w, "height": 800})
+                settle(200)
+                check(f"the review fits {w} px", js("document.documentElement.scrollWidth") <= w, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
+            theme_before, axe282 = js("document.documentElement.dataset.theme || null"), []
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                settle(300)
+                axe282 += axe_check(page, f"the import review, {theme}")[0]
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            check("…and axe finds nothing in it, in light or dark (#282)", not axe282, axe282)
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
             card = js(f"{last_card}.innerText")
@@ -8791,11 +8810,20 @@ def main():
             page.wait_for_function(f"document.querySelectorAll('.import-job').length >= 2 && "
                                    f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             card = js(f"{last_card}.innerText")
-            check("the same export uploaded again shows as all duplicates", card.startswith("All duplicates.") and "duplicates skipped" in card, card)
+            add_btn = f"{last_card}.querySelector('.imp-actions .primary')"
+            check("the same export uploaded again shows as all duplicates, with nothing to add (#282)",
+                  card.startswith("All duplicates") and "Already here: " in card and "duplicates, skipped unless ticked" in card
+                  and js(f"[{add_btn}.disabled, {add_btn}.textContent]") == [True, "Nothing to add"], card)
             js(f"{last_card}.querySelector('.imp-dups').open = true")
             check("…and the duplicates can be seen, each with a box to keep it anyway",
                   js(f"{last_card}.querySelectorAll('.imp-dups li input[type=checkbox]').length") > 0
                   and "visit" in js(f"{last_card}.querySelector('.imp-dups ul').innerText"))
+            visit_box = f"[...{last_card}.querySelectorAll('.imp-dups li')].find(li => li.textContent.includes('visit: ')).querySelector('input')"
+            js(f"{visit_box}.click()")
+            ticked = js(f"[{add_btn}.disabled, {add_btn}.textContent]")
+            js(f"{visit_box}.click()")
+            check("…a duplicate ticked, the button says it adds it; unticked, nothing again (#282)",
+                  ticked == [False, "Add 1 visit"] and js(f"[{add_btn}.disabled, {add_btn}.textContent]") == [True, "Nothing to add"], ticked)
             again = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()["id"]
             js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
             page.wait_for_function(f"{last_card}.textContent.startsWith('Cancelled.')", timeout=10000)
@@ -8837,7 +8865,7 @@ def main():
             page.click("#go")
             page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
                                    f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
-            items = js(f"[...{last_card}.querySelectorAll('li')].map(li => li.textContent)")
+            items = js(f"[...{last_card}.querySelectorAll('.imp-tiles .tile')].map(t => t.querySelector('.val').textContent + ' ' + t.querySelector('.lbl').textContent.toLowerCase())")
             check("import preview (#179): it lists the immunizations, allergies, pharmacy fill and upcoming appointment it would add",
                   all(x in items for x in ("2 immunizations", "2 allergies", "1 pharmacy fill", "1 upcoming appointment", "1 procedure", "2 imaging studies")), items)
             js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
@@ -8938,9 +8966,10 @@ def main():
             page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
                                    f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             card = js(f"{last_card}.innerText")
+            items = js(f"[...{last_card}.querySelectorAll('.imp-tiles .tile')].map(t => t.querySelector('.val').textContent + ' ' + t.querySelector('.lbl').textContent.toLowerCase())")
             check("an uploaded Apple Health export's preview counts its blood pressure, temperature, glucose and heights (#223)",
-                  card.startswith("Ready to import.") and all(w in card for w in ("3 blood pressure readings", "2 body temperature readings",
-                  "2 glucose meter readings", "1 day of CGM readings", "2 heights, offered for About this person")) and "cycle" not in card.lower(), card)
+                  card.startswith("Ready to import") and all(w in items for w in ("3 blood pressure readings", "2 body temperature readings",
+                  "2 glucose meter readings", "1 day of cgm readings", "2 heights, offered for about this person")) and "cycle" not in card.lower(), items)
             js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
             page.wait_for_function(f"!/^Ready to import/.test({last_card}.textContent)", timeout=10000)
             js("window.__hook = []; window.sanguityImport = {uploaded: a => window.__hook.push(a)}")
@@ -9658,12 +9687,27 @@ def main():
                                        f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             lab_csv = "Date,Test,Result,Units,Reference Range\n{},Hemoglobin Whole Bld,{},g/dL,13.5 - 17.5\n"
             upload_csv("other-lab.csv", lab_csv.format("2026-11-09", "12.9").encode())
-            labs = js(f"""(() => {{ const li = {last_card}.querySelector('.imp-labs li'); if (!li) return null;
-                const sel = li.querySelector('select'); return {{text: li.textContent, value: sel.value,
-                chosen: sel.selectedOptions[0].textContent, options: sel.options.length}}; }})()""")
-            check("the preview lists the unknown lab name, with the profile's Hemoglobin series suggested and chosen",
+            labs = js(f"""(() => {{ const tr = {last_card}.querySelector('.imp-labs tbody tr'); if (!tr) return null;
+                const box = tr.querySelector('input[list]'); return {{text: tr.textContent, value: box.value, options: box.list.options.length,
+                why: document.getElementById(box.getAttribute('aria-describedby')).textContent}}; }})()""")
+            check("the review lists the unknown lab name in its table, the profile's Hemoglobin series suggested and typed in, a list of the series to pick from (#23, #282)",
                   labs is not None and "Hemoglobin Whole Bld" in labs["text"] and labs["value"] == "Hemoglobin"
-                  and "similar name, same unit" in labs["chosen"] and labs["options"] > 3, labs)
+                  and "similar name, same unit" in labs["why"] and labs["options"] > 3, labs)
+            tiles = js(f"[...{last_card}.querySelectorAll('.imp-tiles .tile')].map(t => [t.querySelector('.lbl').textContent, t.querySelector('.val').textContent, t.querySelector('ul li').textContent])")
+            check("…the CSV's review: a tile of its lab result with the result in it, and a button saying what it adds (#282)",
+                  len(tiles) == 1 and tiles[0][:2] == ["Lab result", "1"] and "Hemoglobin Whole Bld 12.9 g/dL" in tiles[0][2]
+                  and js(f"{last_card}.querySelector('.imp-actions .primary').textContent") == "Add 1 lab result", tiles)
+            # a series that isn't there: Add refuses it, saying so at the box; typed in another case, it's the series
+            series_box = page.locator(".import-job").last.locator(".imp-labs input[list]").first
+            series_box.fill("Not a series of this profile")
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            settle(200)
+            check("…a series typed that isn't there isn't added: the box says so and has focus, and nothing's saved (#282)",
+                  js(f"{last_card}.textContent").startswith("Ready to import") and series_box.get_attribute("aria-invalid") == "true"
+                  and js("document.activeElement.getAttribute('aria-label')") == "Series for Hemoglobin Whole Bld"
+                  and "No series by that name" in js(f"{last_card}.querySelector('.imp-labs .err')?.textContent || ''"),
+                  js(f"{last_card}.querySelector('.imp-actions .msg').textContent"))
+            series_box.fill("hemoglobin")
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("the preview with lab names to match fits 375 px", js("document.documentElement.scrollWidth") <= 375,
@@ -9682,7 +9726,7 @@ def main():
                   ["2026-11-09", 12.9] in hgb and not js("SERIES.some(s => s.name === 'Hemoglobin Whole Bld')"), hgb)
             check("…charted there", "Hemoglobin" in page.inner_text("#charts"), page.inner_text("#charts")[:200])
             upload_csv("other-lab-again.csv", lab_csv.format("2026-11-12", "13.2").encode())
-            again = js(f"(() => {{ const li = {last_card}.querySelector('.imp-labs li'); return li && [li.textContent, li.querySelector('select').value]; }})()")
+            again = js(f"(() => {{ const tr = {last_card}.querySelector('.imp-labs tbody tr'); return tr && [tr.textContent, tr.querySelector('input[list]').value]; }})()")
             check("uploaded again, the name is matched as before", again is not None and "Matched as before" in again[0] and again[1] == "Hemoglobin", again)
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
@@ -14353,7 +14397,7 @@ def main():
             page.wait_for_url("**/sources.html?*#portals", timeout=20000)
             page.wait_for_selector("#import-status button.primary", timeout=30000)
             check("connecting the health plan previews its claims like an upload",
-                  "Ready to import" in page.inner_text("#import-status") and "claim" in page.inner_text("#import-status"),
+                  "Ready to import" in page.inner_text("#import-status") and "claim" in page.inner_text("#import-status").lower(),
                   page.inner_text("#import-status")[:300])
             page.click("#import-status button.primary")
             page.wait_for_function("document.getElementById('import-status').textContent.includes('Imported.')", timeout=30000)
