@@ -88,7 +88,7 @@ class Parse(unittest.TestCase):
         self.assertEqual([(e["t"], e["title"], e.get("abn")) for e in days],
                          [("2026-03-02T08:30:00-06:00", f"9 lab results · {ORG}", 3),
                           ("2026-04-01T07:45:00-05:00", f"4 lab results · {ORG}", 1),
-                          ("2026-04-12T12:00:00", f"1 lab results · {ORG}", 1)])
+                          ("2026-04-12T12:00:00", f"1 lab result · {ORG}", 1)])
         cbc = self.data["details"][self.data["details"][days[0]["id"]]["ids"][0]]
         self.assertEqual(cbc["rows"][0], ["HGB", "11.2", "g/dL", "12.0-16.0", "L"])
         self.assertEqual(cbc["rows"][3][4], "L")                                  # below the range, no code given

@@ -699,7 +699,7 @@ def parse(files):
     labs = {}                               # series name -> {unit, loinc, pts, txt, panels}
     problems, upcoming, weights = [], [], []
     lab_days = defaultdict(list)            # day -> [labitem ids]
-    lab_day_meta = defaultdict(lambda: {"t": None, "abn": 0, "orders": set()})
+    lab_day_meta = defaultdict(lambda: {"t": None, "abn": 0, "n": 0, "orders": set()})
     used_obs = set()
     reported_studies = set()                # ImagingStudies a report here describes (the report is the event)
     skipped, inline, remote, missing = Counter(), 0, 0, 0
@@ -801,6 +801,7 @@ def parse(files):
         m = lab_day_meta[day]
         m["t"] = min(m["t"] or t, t)
         m["abn"] += abn
+        m["n"] += len(rows)
         m["orders"].add(order)
 
     def document(key, t, title, att, owner, rel, org, kind="document"):
@@ -906,7 +907,7 @@ def parse(files):
     for day, ids in sorted(lab_days.items()):
         m = lab_day_meta[day]
         orders = sorted(o for o in m["orders"] if o)
-        b.add(m["t"], "lab", f"{len(ids)} lab result{'s' if len(ids) != 1 else ''}", ", ".join(orders)[:160],
+        b.add(m["t"], "lab", common.lab_day_title(m["n"]), common.lab_day_sub(orders),
               {"type": "labday", "ids": ids}, abn=m["abn"] or None, key=f"fhir:labday:{day}")
 
     # --- Conditions, medications, encounters, documents

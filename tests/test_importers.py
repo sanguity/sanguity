@@ -212,6 +212,20 @@ class Common(unittest.TestCase):
         s = common.stay("2026-03-01", "2026-03-05", "Northfield General Hospital", "", "Visit list")
         self.assertEqual((s["t"], s["end"], s["sub"]), ("2026-03-01T00:00:00", "2026-03-05T23:59:00", "Northfield General Hospital · 4 nights"))
 
+    def test_lab_days(self):
+        """A lab day's title counts its values; its sub is cut at a whole order name, with "…" (#458)."""
+        self.assertEqual((common.lab_day_title(1), common.lab_day_title(12, "Northfield Lab")), ("1 lab result", "12 lab results · Northfield Lab"))
+        orders = ["COMPREHENSIVE METABOLIC PANEL", "CBC WITH DIFFERENTIAL", "VITAMIN D, 25-HYDROXY", "HEPATIC FUNCTION PANEL",
+                  "LIPID PANEL", "THYROID STIMULATING HORMONE", "HEMOGLOBIN A1C", "IRON AND TIBC", "MAGNESIUM"]
+        self.assertEqual(common.lab_day_sub(orders[:3]), ", ".join(orders[:3]))
+        cut = common.lab_day_sub(orders)
+        self.assertLessEqual(len(cut), 160)
+        self.assertTrue(cut.endswith(", …"), cut)
+        self.assertTrue(all(o in orders for o in cut[:-3].split(", ") if o not in ("VITAMIN D", "25-HYDROXY")), cut)
+        self.assertTrue(cut[:-3].startswith(", ".join(orders[:5])), cut)
+        self.assertEqual(common.lab_day_sub(["WORD " * 40]), "WORD " * 31 + "WORD…")
+        self.assertEqual(common.lab_day_sub(["", "CBC"]), "CBC")
+
 
 class BuildUnchanged(unittest.TestCase):
     """build.py on small fictional exports writes exactly the expected file (bar the time): tests/fixtures/build/

@@ -232,7 +232,8 @@ function openEvent(e) {
   // its kind once (#406): a title that starts with it ("Hospital stay · Northfield General Hospital") is the rest, the
   // line under it the kind and when; the facts leave out the days it names
   const kind = KIND_LABEL[e.k] || "Record", parts = e.title.split(" · ");
-  const title = parts.length > 1 && saidKey(parts[0]) === saidKey(kind) ? parts.slice(1).join(" · ") : e.k === "labitem" ? panelName(e.title) : e.title;   // a result's panel as Labs names it (#451)
+  let title = parts.length > 1 && saidKey(parts[0]) === saidKey(kind) ? parts.slice(1).join(" · ") : e.k === "labitem" ? panelName(e.title) : e.title;   // a result's panel as Labs names it (#451)
+  if (d.type === "labday") title = labDayTitle(e, title);   // its values counted, as its Results fact counts them (#458)
   const when = e.end && e.te - e.ts > DAY ? fmtD(e.ts) + " – " + fmtD(e.te) : fmtDT(e.ts);
   const body = drawerHead(e.k, title, saidKey(title) === saidKey(kind) ? when : `${kind} · ${when}`, null, [e.ts, e.te]);
   { const wait = detailsWait(e, body); if (wait) { body.append(drawerSkeleton()); showDrawer(); return wait; } }   // its details, loaded when it's opened (details.js, #217)

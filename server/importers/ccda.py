@@ -419,12 +419,12 @@ def _results(doc, out):
                                        *("|".join(r[:3]) for r in rows))
             day["ids"].append(out.add(t_first, "labitem", panel, sub, det, key=key, abn=abn or None, hidden=1))
             day["abn"] += abn
-            day["n"] += 1
+            day["n"] += len(rows)
             day["orders"].add(panel)
     for d, day in days.items():     # one visible "lab draw" event per day, linking to that day's results
         first = min((e for e in out.events if e["id"] in day["ids"]), key=lambda e: e["t"])
-        out.add(first["t"], "lab", f"{day['n']} lab result{'s' if day['n'] != 1 else ''}" + (f" · {doc.org}" if doc.org else ""),
-                ", ".join(sorted(day["orders"]))[:160], {"type": "labday", "ids": day["ids"]}, abn=day["abn"] or None, src=doc.src,
+        out.add(first["t"], "lab", common.lab_day_title(day["n"], doc.org), common.lab_day_sub(sorted(day["orders"])),
+                {"type": "labday", "ids": day["ids"]}, abn=day["abn"] or None, src=doc.src,
                 key=_hkey(d, "lab", doc.src, *sorted(e["key"] for e in out.events if e["id"] in day["ids"])))
 
 

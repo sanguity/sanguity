@@ -123,6 +123,9 @@ class Bundle(Shape, unittest.TestCase):
         self.assertEqual(cbc["lab"], "Maple Grove Clinic")
         self.assertEqual(cbc["provider"], "Dr. Casey Rivera")
         self.assertEqual(days[0]["abn"], 3)   # low hemoglobin, high platelets, high LDL
+        # its title counts the values, as the drawer's Results fact does, not the reports (#458)
+        self.assertEqual(days[0]["title"], f"{sum(len(d['rows']) for d in items)} lab results")
+        self.assertGreater(len(items[0]["rows"]) + len(items[-1]["rows"]), len(items))
 
     def test_units_ranges_flags_and_loinc(self):
         hgb = series(self.data, "Hemoglobin")

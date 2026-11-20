@@ -112,27 +112,43 @@ function labGroups(labs, series = typeof SERIES !== "undefined" ? SERIES : typeo
   return [...by].map(([panel, labs]) => ({panel, labs})).concat(other ? [{panel: LAB_OTHER, labs: other}] : []);
 }
 /* a panel's name as it's read wherever it's shown (#441), the panel given by labGroups, the Timeline and the drawer:
-   one that came in capitals in sentence case, its abbreviations kept (#451): a word of four letters or fewer is kept
-   as written unless it's one of LAB_WORDS, and so is a word with a digit; a hyphened one has only its parts in
-   LAB_WORDS recased ("25-hydroxy", "NT-PROBNP"); a longer word with a vowel is recased. "IRON AND TIBC" -> "Iron and
-   TIBC", "SED RATE (ESR)" -> "Sed rate (ESR)", "CBC W/ DIFF" -> "CBC w/ diff", "ACTH". One in mixed case as it came */
-const LAB_WORDS = new Set(("AND OR OF WITH W/ WO/ TO FOR IN ON BY NO PLUS ONLY SED RATE TIME IRON UREA FREE CELL RED GAS " +
-  "ACID URIC DIFF QUAL TEST BODY MASS ZINC LEAD BONE SWAB REACTIVE HYDROXY SPECIFIC").split(" "));
+   one that came in capitals in sentence case, its abbreviations kept (#451, #458): a word of four letters or fewer is
+   kept as written unless it's one of LAB_WORDS (the common short words: "TYPE AND SCREEN" -> "Type and screen"), and
+   so is a word with a digit, whose parts in LAB_WORDS alone are recased ("25-hydroxy", "COVID-19"); a hyphened one is
+   read part by part ("D-dimer", "NT-PROBNP"); a longer word is recased when it reads as one: a vowel, after
+   consonants a word can start with, and no three consonants at its end that a word can't end in ("PROBNP" stays). "W/O" is one word. "IRON AND TIBC" ->
+   "Iron and TIBC", "SED RATE (ESR)" -> "Sed rate (ESR)", "CBC W/O DIFF" -> "CBC w/o diff", "ACTH". One in mixed case
+   as it came */
+const LAB_WORDS = new Set(("AND OR OF WITH W/ W/O TO FOR IN ON BY NO PLUS ONLY SED RATE TIME IRON UREA FREE CELL RED GAS " +
+  "ACID URIC DIFF QUAL TEST BODY MASS ZINC LEAD BONE SWAB REACTIVE HYDROXY SPECIFIC TYPE DRUG GAP AUTO MONO GRAM HIGH LOW " +
+  "COMP HEP VIT MAG PHOS FLU PREG BETA PAP TOX LOAD CORD BASE FAST HOUR SITE SKIN BILE STOOL").split(" "));
+const labWordy = w => /^(?:[^AEIOUY]|[BCDFGKPT][LR]|[CPTW]H[LR]?|S[CKPT]?[LRH]?|S[MNQW]|[DST]W|WR|[GKP]N|P[ST]|RH)?[AEIOUY]/.test(w)
+  && !/[^AEIOUYHLRST]{3}$/.test(w);
+const panelPart = w => LAB_WORDS.has(w) || w.length > 4 && labWordy(w) ? w.toLowerCase() : w;
 const panelWord = t => { const w = t.replace(/\/$/, "");
-  return (LAB_WORDS.has(t) || LAB_WORDS.has(w) ? w.toLowerCase() : w.includes("-") ? w.replace(/[A-Z]+/g, x => LAB_WORDS.has(x) ? x.toLowerCase() : x)
-    : /\d/.test(w) ? w : w.length > 4 && /[AEIOUY]/.test(w) ? w.toLowerCase() : w) + t.slice(w.length); };
-const panelName = p => /[a-z]/.test(p) ? p : p.replace(/[A-Z0-9]+(?:-[A-Z0-9]+)*\/?/g, panelWord)
+  return (LAB_WORDS.has(t) || LAB_WORDS.has(w) ? w.toLowerCase() : /\d/.test(w) ? w.replace(/[A-Z]+/g, x => LAB_WORDS.has(x) ? x.toLowerCase() : x)
+    : w.replace(/[A-Z]+/g, panelPart)) + t.slice(w.length); };
+const panelName = p => /[a-z]/.test(p) ? p : p.replace(/W\/O\b|[A-Z0-9]+(?:-[A-Z0-9]+)*\/?/g, panelWord)
   .replace(/^([^A-Za-z0-9]*)([a-z])/, (m, a, c) => a + c.toUpperCase());
 /* a lab day's line under its title, its panels as Labs names them (#451; store.js, for the Timeline, its tips and the
    Overview's Recent): the importers join them with ", ", and a name can hold one ("VITAMIN D, 25-HYDROXY"), so one
-   its results came under (their records' titles) is taken whole */
+   its results came under (their records' titles) is taken whole. The importers cut it at a whole name, with "…"
+   (#458); one cut before that at 160 characters, mid-name, has that name left out for the "…" */
 function labDaySub(e) {
   const known = (DATA.details[e.id]?.ids || []).map(i => byId.get(i)?.title).filter(Boolean).sort((a, b) => b.length - a.length), out = [];
   for (let s = e.sub; s; ) {
     const k = known.find(x => s.startsWith(x) && (s.length === x.length || s.startsWith(", ", x.length))) || s.split(", ")[0];
-    out.push(panelName(k)); s = s.slice(k.length + 2);
+    out.push(k === s && e.sub.length === 160 && !known.includes(k) && !k.endsWith("…") ? "…" : panelName(k)); s = s.slice(k.length + 2);
   }
   return out.join(", ");
+}
+/* a lab day's title once its results are in (the drawer, #458): its values counted, as its Results fact counts them,
+   for a day an importer titled by its reports before #458 ("3 lab results" over 12 values) */
+function labDayTitle(e, title = e.title) {
+  const rs = (DATA.details[e.id]?.ids || []).map(i => DATA.details[i]);
+  if (!rs.length || !rs.every(r => r && r.rows)) return title;
+  const n = rs.reduce((a, r) => a + r.rows.length, 0);
+  return title.replace(/^\d+ lab results?(?= · |$)/, `${n} lab result${n === 1 ? "" : "s"}`);
 }
 
 /* A warning when this page came over plain HTTP from somewhere other than this machine, the home network or a

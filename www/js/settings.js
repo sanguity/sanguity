@@ -27,12 +27,16 @@ const beside = (text, label, onclick) => el("button", {class: "btn", type: "butt
 /* a set of lab names: remove, add (suggesting the profile's own labs). By panel, as the Labs tab lists them (#441,
    labGroups in util.js): a list under each panel's name when there's more than one, each lab by the name it's shown by
    (a nickname, with its name in the records beside it, as Key labs shows it). Its order does nothing (Labs' charts
-   follow the list, #441), so there's none to set (#451); a saved order whose panels are mixed is the same list. */
+   follow the list, #441), so there's none to set (#451); a saved order whose panels are mixed is the same list. Within
+   a panel the labs are in Labs' order, the most measured first (#458). Add takes the name a lab is shown by or its
+   name in the records, suggests the names shown, and refuses one this profile has no lab by, as Key labs does. What
+   it saves keeps the order saved, a lab added after them. */
 function labsEditor(value, changed, ro) {
-  const tidy = l => labGroups(l, LABS).flatMap(g => g.labs);
+  const count = n => LABS.reduce((a, s) => a + (s.name === n ? s.pts.length : 0), 0);
+  const tidy = l => labGroups([...l].sort((a, b) => count(b) - count(a) || nick(a).localeCompare(nick(b))), LABS).flatMap(g => g.labs);
   let list = tidy(value);
-  const box = el("div", {class: "set-list"}), lists = el("div", {class: "set-groups"});
-  const input = el("input", {list: "labNames", placeholder: "Lab name", "aria-label": "Lab to add", maxlength: 120});
+  const box = el("div", {class: "set-list"}), lists = el("div", {class: "set-groups"}), msg = el("span", {class: "msg", role: "status"});
+  const input = el("input", {list: "labShown", placeholder: "Lab name", "aria-label": "Lab to add", maxlength: 120});
   const row = n => el("li", {"data-lab": n},
     el("span", {class: "set-name"}, nick(n), nick(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null),
     ro ? null : el("span", {class: "set-acts"}, small("Remove", `Remove ${nick(n)}`, () => {
@@ -45,12 +49,19 @@ function labsEditor(value, changed, ro) {
     lists.replaceChildren(...(list.length ? gs.flatMap(g => present(gs.length > 1 ? el("h4", {class: "lab-panel set-grp", text: g.panel}) : null,
       el("ul", {class: "set-labs"}, ...g.labs.map(row)))) : [el("ul", {class: "set-labs"}, el("li", {class: "muted", text: "None"}))]));
   }
-  const add = () => { const n = input.value.trim().replace(/\s+/g, " "); if (n && !list.includes(n)) { list = tidy([...list, n]); draw(); changed(); } input.value = ""; input.focus(); };
+  const add = () => {
+    const typed = input.value.trim().replace(/\s+/g, " "), n = labNamed(typed);
+    if (!typed) return;
+    if (LABS.length && !n) { sayIn(msg, `This profile has no lab called “${typed}”. Pick one from the list.`, true); return; }
+    if (!list.includes(n)) { list = tidy([...list, n]); draw(); changed(); }
+    input.value = ""; sayIn(msg, ""); input.focus();
+  };
   input.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); add(); } });
   draw();
   box.append(lists);
-  if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn", type: "button", text: "Add", onclick: add})));
-  return {node: box, get: () => same(list, tidy(value)) ? value : list};
+  if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn", type: "button", text: "Add", onclick: add})), msg);
+  return {node: box, get: () => { const l = [...value.filter(n => list.includes(n)), ...list.filter(n => !value.includes(n))];   // (the order saved: it does nothing)
+    return same(l, value) ? value : l; }};
 }
 
 /* rows of inputs (a table on wide screens, stacked on phones); cols: [{key, label, type, only, ...attrs}]. A
@@ -224,6 +235,12 @@ function orderList(items, opts) {
 
 const labInfo = n => LABS.find(s => s.name === n);
 const nick = n => NICK[n] || n;
+/* the lab a name typed in means (#458): its name in the records or the one it's shown by, in any letter case; null
+   when this profile has none by it, the name as typed when its labs aren't known here. #labShown suggests the names
+   shown, each with its name in the records when that's another */
+const labNamed = t => { const low = t.toLowerCase();
+  return !LABS.length ? t : LAB_NAMES.find(n => n === t) || LAB_NAMES.find(n => nick(n) === t) || LAB_NAMES.find(n => n.toLowerCase() === low || nick(n).toLowerCase() === low) || null; };
+const labShownList = () => $("#labShown").replaceChildren(...LAB_NAMES.map(n => el("option", {value: nick(n), label: nick(n) !== n ? n : null})));
 
 /* #36 the Overview's key-lab tiles: the profile's own labs, picked, ordered, and previewed as the Overview shows them:
    by panel (#279, labGroups in util.js), in order within each. A saved order whose panels are mixed is the same
@@ -263,11 +280,11 @@ function tilesEditor(value, changed, ro, setting) {
       el("button", {class: "btn small", type: "button", text: "Use the most-measured labs",
         onclick: () => { ol.set(mostMeasured(LABS).slice(0, 12)); update(); sayIn(msg, "Now the 12 most-measured labs; Save to keep them."); }})] : []));
   }
-  const input = el("input", {list: "labNames", placeholder: "Lab name", "aria-label": "Lab to add as a tile", maxlength: 120});
+  const input = el("input", {list: "labShown", placeholder: "Lab name", "aria-label": "Lab to add as a tile", maxlength: 120});
   const add = () => {
-    const n = input.value.trim().replace(/\s+/g, " ");
-    if (!n) return;
-    if (LABS.length && !labInfo(n)) { sayIn(msg, `This profile has no lab called “${n}”. Pick one from the list.`, true); return; }
+    const typed = input.value.trim().replace(/\s+/g, " "), n = labNamed(typed);
+    if (!typed) return;
+    if (LABS.length && !n) { sayIn(msg, `This profile has no lab called “${typed}”. Pick one from the list.`, true); return; }
     if (!ol.get().includes(n)) { ol.set([...ol.get(), n]); update(); }
     input.value = ""; sayIn(msg, ""); input.focus();
   };
@@ -745,6 +762,7 @@ async function load(note, force, all = false) {
   d.sections = d.sections.filter(sec => sec.settings.some(st => st.scope !== "install"));   // the server's own: on the Admin page (#167)
   const every = d.sections.flatMap(sec => sec.settings);
   NICK = every.find(st => st.key === "labNicknames")?.value || {};
+  labShownList();   // the names the lists show (#458)
   { const ov = every.find(x => x.key === "ranges.overrides"); RANGE_CFG = {...rangeConfig(merged), ...(ov ? {overrides: ov.value} : {})}; }   // #44
   { const th = every.find(st => st.key === "theme"); if (th) applyTheme(th.value); }   // #45: the saved default, here too
   { const u = every.find(st => st.kind === "units"); if (u) aboutUnits(u.value); }   // and the Units (an Undo's too): About this person's (#408)
