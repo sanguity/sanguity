@@ -2,8 +2,8 @@
 
    One row, the same on every page (#264): the brand (back to the records), the profile menu (switch profile; About
    this person, Settings, Sources, Sharing; New profile), the records tabs as links (those that don't fit under More,
-   #265), then two menus. Add: today's (a dose, a journal entry, a home reading) and records in (upload, connect, type
-   in, a Health Link). The person's own menu: Account, Display, Admin (admins only: nav.js asks the API itself, #167),
+   #265), then two menus. Add: today's (a dose, a journal entry, a home reading) and records in (what's waiting for you,
+   #283; upload, connect, type in, a Health Link). The person's own menu: Account, Display, Admin (admins only: nav.js asks the API itself, #167),
    Getting started (the first-run guide, #199), the light/dark toggle, log out. The items keep the ids the pages
    already use (#importLink, #journalBtn, #settingsLink, #theme, #logout, #who, #profile, #tab-labs), so each page's
    script sets them up as before; nav.js only builds the bar and its menus (menuWire, below).
@@ -85,6 +85,15 @@ function menuPlace(m) {
   const top = h <= below || below >= above ? r.bottom + 6 : r.top - 6 - h;
   placeAt(list, {"--menu-top": top, "--menu-left": left});
 }
+/* what's waiting for you on a profile (#283), from its jobs in state "preview" (GET .../jobs?state=preview) and its
+   connections (GET .../connections): each import left at its preview to save or cancel, {job, conn} (conn: the portal
+   whose first pull it is, or null), newest first, then each portal that needs you, {conn}: its access ended, or it
+   stopped syncing. Add's count (below) and Sources' Overview (sources-overview.js) both read it */
+function sgWaiting(jobs, conns) {
+  const cs = (conns && conns.connections || []).filter(c => c.state !== "disconnected");
+  return [...(jobs || []).filter(j => j.state === "preview").map(job => ({job, conn: cs.find(c => c.first_job === job.id) || null})),
+    ...cs.filter(c => c.state === "needs reconnect" || c.warning).map(conn => ({conn}))];
+}
 /* the top bar's Search (#273): opens the command palette (palette.js wires it, and puts the keys that open it too in
    its tip). An icon, its name said. Hidden with the rest of the bar by lock() */
 function barSearch() {
@@ -150,7 +159,7 @@ function menuSheet(m, title, ...extra) {
 }
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
-  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, layout() { return {}; }, fit() {}, menu: menuWire, TABS: []};
+  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, layout() { return {}; }, fit() {}, waited() {}, menu: menuWire, TABS: []};
   const svgLogo = header.querySelector(".brand-name");
   const onRecords = !!document.getElementById("view-overview"), page = location.pathname.split("/").pop() || "index.html";
 
@@ -231,6 +240,7 @@ const SgNav = (() => {
     const p = known.find(x => String(x.id) === pick.value);
     wrap.hidden = !p || locked;
     sync();   // Add, by your role on it (#401)
+    waitingFor(p);   // and what's waiting for you there (#283)
     canEditTabs(p);
     if (!p) return;
     tabsOf(p.id);   // its tabs, whenever the profile changes (#415)
@@ -375,6 +385,7 @@ const SgNav = (() => {
       onRecords ? action("journalBtn", "journal", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "journal", "Journal entry", {id: "journalBtn"}),
       link(src + "#home-reading", "reading", "Home reading", {"data-needs": "import"})),
     group("Records",
+      link(src + "#waiting", "sources/waiting", "Waiting for you", {id: "waitingLink", "data-needs": "import", "data-none": ""}),   // #283, below
       link(src + "#upload", "sources/upload", "Upload files", {id: "importLink", "data-needs": "import"}),
       link(src + "#portals", "sources/portals", "Connect a portal or plan", {"data-needs": "import"}),
       link(src + "#manual", "sources/manual", "Type records in", {"data-needs": "import"}),
@@ -471,6 +482,35 @@ const SgNav = (() => {
   }
   new MutationObserver(sync).observe(add.list, {attributes: true, subtree: true, attributeFilter: ["data-none"]});
   sync();
+
+  /* ---- Waiting for you (#283), first under Add's Records while something is: imports left at their preview, to save
+     or cancel, and portals that need you (sgWaiting, below), with how many, opening Sources' Overview where they're
+     listed. Asked for the profile shown, by its owners and editors (the jobs are theirs), once the page is idle and
+     each time Add opens; Sources' Overview, which reads them itself, gives its count (SgNav.waited) */
+  const waitLink = document.getElementById("waitingLink"), waitN = el("span", {class: "menu-n"});
+  waitLink.append(" ", waitN);
+  let waitFor = null, waitSeq = 0;
+  function waited(pid, n) {
+    if (String(pid) !== pick.value) return;
+    waitN.textContent = n ? String(n) : "";
+    if (n) waitLink.removeAttribute("data-none"); else waitLink.setAttribute("data-none", "");
+  }
+  async function askWaiting() {
+    const p = known.find(x => String(x.id) === pick.value), mine = ++waitSeq;
+    if (!p || locked || (p.role !== "owner" && p.role !== "editor") || (typeof OFFLINE !== "undefined" && OFFLINE.on)) return;
+    try {
+      const [jobs, conns] = await Promise.all([`profiles/${p.id}/jobs?state=preview`, `profiles/${p.id}/connections`]
+        .map(path => api(path).then(r => r.ok ? r.json() : null)));
+      if (mine === waitSeq && jobs) waited(p.id, sgWaiting(jobs, conns).length);
+    } catch (e) {}   // (offline, or the server away: nothing said)
+  }
+  function waitingFor(p) {   // the profile drawn (draw, above): asked again once it's another
+    if (!p || p.id === waitFor) return;
+    waitFor = p.id;
+    waited(p.id, 0);
+    if (window.requestIdleCallback) requestIdleCallback(() => askWaiting(), {timeout: 3000}); else setTimeout(askWaiting, 1000);
+  }
+  add.onOpen = askWaiting;
 
   /* ---- a menu's link to a group or a part of a page with a sidebar (#398, #400): focus goes to what it opened, the
      group's heading (the page's h1) or the part's, as the palette's links do. On that page itself it only changes the
@@ -580,5 +620,5 @@ const SgNav = (() => {
     menuSheet(more, "More tabs");
   }
   phoneBar();
-  return {sync, lock, profiles, layout, fit, menu: menuWire, TABS: TABS.map(([t]) => t)};
+  return {sync, lock, profiles, layout, fit, waited, menu: menuWire, TABS: TABS.map(([t]) => t)};
 })();

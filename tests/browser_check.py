@@ -752,6 +752,19 @@ def phone_fits(page, label="", ignore=()):
     return [f"{label}: {p}" if label else p for p in found]
 
 
+def open_group(page, g, nav=".set-nav"):
+    """Show a group of a page with a sidebar as a person would: its link in the sidebar; or on Sources at phone width,
+    where the sidebar gives way to the Overview's cards (#283), its card there, back on the Overview first."""
+    if page.evaluate(f"!!document.querySelector(`{nav} a[data-group='{g}']`)?.checkVisibility()"):
+        page.click(f"{nav} a[data-group='{g}']")
+        return
+    page.wait_for_selector("main[data-group]:not([data-group=''])", state="attached", timeout=10000)   # a group shown: the role known
+    if page.evaluate("document.querySelector('main').dataset.group") != "overview":
+        page.click(".src-back")
+    if g != "overview":
+        page.click(f"#srcList .src-way-t a[href='#{g}']")
+
+
 def answer_ask(page, yes=True, fill=None, timeout=10000):
     """Answer the app's own dialog (ask() in util.js, #210) as a person would, after the click that opens it: wait for
     it, type fill into its box if given, then click its action button (yes) or Cancel, and wait until it's gone.
@@ -9747,6 +9760,62 @@ def main():
             page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
             check("…and saved into Hemoglobin again", js(f"{last_card}.textContent").startswith("Imported."))
 
+            # ---- Sources' Overview as a hub (#283): an import left at its preview (the tab closed before Save or Cancel)
+            # is waiting for you, under Add with how many and at the top of the Overview, and is finished or cancelled
+            # there; a card whose import is over goes once another section is shown; on a phone the Overview's cards,
+            # not the sidebar, are the way into each section, with the way back above every other one
+            upload_csv("left-open.csv", lab_csv.format("2026-11-13", "13.1").encode())
+            left = js(f"{last_card}.dataset.job")
+            upload_csv("left-open-too.csv", lab_csv.format("2026-11-14", "13.4").encode())
+            left2 = js(f"{last_card}.dataset.job")
+            page.goto(base + "/?profile=2")   # both left at their preview, the page closed
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 2", timeout=20000)
+            page.click("#addMenuBtn")
+            waiting_item = "(() => { const a = document.getElementById('waitingLink'); return [a.hidden, a.textContent.trim(), a.getAttribute('href')]; })()"
+            page.wait_for_function(f"{waiting_item}[1].startsWith('Waiting for you ') && !{waiting_item}[0]", timeout=10000)
+            item = js(waiting_item)
+            page.click("#waitingLink")
+            page.wait_for_function("location.pathname.endsWith('/sources.html') && location.hash === '#waiting' && document.activeElement.textContent === 'Waiting for you'", timeout=10000)
+            rows = js("[...document.querySelectorAll('#srcWait > li[data-job]')].map(li => [li.dataset.job, li.querySelector('b').textContent, li.querySelector('p').textContent])")
+            ids = [r[0] for r in rows]
+            check("a preview left open is waiting for you: under Add, first of its Records, with how many, opening Sources' Overview, focus on Waiting for you (#283)",
+                  item[1] == f"Waiting for you {len(rows)}" and item[2] == "sources.html?profile=2#waiting" and len(rows) >= 2, [item, rows])
+            check("…which lists both imports left open, newest first, each with what it read, its records' dates and when it was uploaded",
+                  left2 in ids and left in ids and ids.index(left2) < ids.index(left)
+                  and all(r[1] == "Lab results spreadsheet (CSV)" and r[2].startswith("Ready to review · records from ") and "uploaded" in r[2]
+                          for r in rows if r[0] in (left, left2)), rows)
+            page.click(f"#srcWait li[data-job='{left}'] button:text-is('Review')")
+            page.wait_for_function(f"/^Ready to import/.test(document.querySelector('#srcReview .import-job[data-job=\"{left}\"]')?.textContent)", timeout=15000)
+            check("…Review opens its preview there, focus on it, the row put away while it's open",
+                  js(f"document.activeElement === document.querySelector('#srcReview .import-job[data-job=\"{left}\"]')")
+                  and not js(f"!!document.querySelector('#srcWait li[data-job=\"{left}\"]')"))
+            js(f"document.querySelector('#srcReview .import-job[data-job=\"{left}\"] .imp-actions .primary').click()")   # Save
+            page.wait_for_function(f"/^Imported/.test(document.querySelector('#srcReview .import-job[data-job=\"{left}\"]').textContent)", timeout=30000)
+            page.wait_for_function(f"!document.querySelector('#srcWait li[data-job=\"{left}\"]') && document.getElementById('waitingLink').textContent.trim() === 'Waiting for you {len(rows) - 1}'", timeout=10000)
+            check("…and saved from there, Add's count going down with it",
+                  js(f"fetch('api/profiles/2/jobs/{left}', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.state)") == "done")
+            page.click(f"#srcWait li[data-job='{left2}'] button:text-is('Cancel import…')")
+            asked = answer_ask(page)
+            page.wait_for_function(f"!document.querySelector('#srcWait li[data-job=\"{left2}\"]')", timeout=10000)
+            check("…the other cancelled from its row, asked first, nothing of it saved",
+                  asked[0] == "Cancel this import?" and js(f"fetch('api/profiles/2/jobs/{left2}', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.state)") == "discarded",
+                  asked)
+            page.click("#srcNav a[data-group=history]")
+            page.wait_for_selector("#historyList li[data-import]", timeout=10000)
+            check("…the finished card goes once another section is shown", js("document.querySelectorAll('.import-job[data-settled]').length") == 0,
+                  js("document.querySelectorAll('.import-job').length"))
+            page.set_viewport_size({"width": 375, "height": 800})
+            page.click(".src-back")
+            page.wait_for_function("document.querySelector('main').dataset.group === 'overview' && document.activeElement.id === 'groupTitle'", timeout=10000)
+            ways = js("[...document.querySelectorAll('#srcList .src-way-t a')].map(a => a.getAttribute('href'))")
+            check("on a phone the Sources sidebar gives way to the Overview's cards, one for each section, the way back to them focusing its title (#283)",
+                  not js("document.getElementById('srcNav').checkVisibility()") and ways == ["#portals", "#phone", "#upload", "#manual", "#link", "#history"], ways)
+            hub_bad = phone_fits(page, "Sources' Overview, 375 px")
+            page.click("#srcList .src-way[data-way=manual] h3 a")
+            page.wait_for_function("document.querySelector('main').dataset.group === 'manual' && document.querySelector('.src-back').checkVisibility()", timeout=10000)
+            check("…a card opening its section, with the way back above it, and the Overview fitting 375 px", not hub_bad, hub_bad)
+            page.set_viewport_size({"width": 1400, "height": 900})
+
             # ---- a SMART Health Link pasted (#94): its host, label and passcode flag are shown and nothing is fetched;
             # Fetch and preview fetches it once and shows the import's preview, which saves like an upload
             import shl_server
@@ -9957,10 +10026,12 @@ def main():
             page.keyboard.press("ArrowDown")
             check("…and the arrow keys move through it", js("document.activeElement.textContent") == "Journal entry", js("document.activeElement.textContent"))
             # #264: in two groups, Today and Records, each way in opening its section of Sources (#166)
-            check("…in two groups: Today (a dose, a journal entry, a home reading), then Records, each way in opening its section of Sources (#166)",
+            check("…in two groups: Today (a dose, a journal entry, a home reading), then Records, each way in opening its section of Sources (#166), "
+                  "after what's waiting for you (#283)",
                   js("[...document.querySelectorAll('#addMenuList [role=group]')].map(g => [g.getAttribute('aria-label'), ...[...g.querySelectorAll('[role=menuitem]')].map(a => a.getAttribute('href'))])")
                   == [["Today", "./?profile=1#log-dose", "./?profile=1#new-journal-entry", "sources.html?profile=1#home-reading"],   # for the profile shown (#397)
-                      ["Records", "sources.html?profile=1#upload", "sources.html?profile=1#portals", "sources.html?profile=1#manual", "sources.html?profile=1#link"]],
+                      ["Records", "sources.html?profile=1#waiting", "sources.html?profile=1#upload", "sources.html?profile=1#portals", "sources.html?profile=1#manual",
+                       "sources.html?profile=1#link"]],
                   js("[...document.querySelectorAll('#addMenuList [role=group]')].map(g => [g.getAttribute('aria-label'), ...[...g.querySelectorAll('[role=menuitem]')].map(a => a.getAttribute('href'))])"))
             page.keyboard.press("Escape")
             # #244: on a phone the bar wraps, and a menu pinned to its button's right edge opened off the screen's left;
@@ -13275,7 +13346,7 @@ def main():
                     za.wait_for_selector(f"{nav} a[data-group]", timeout=10000)
                 for g in za.evaluate(f"[...document.querySelectorAll('{nav} a[data-group]')].map(a => a.dataset.group)") if nav else [None]:
                     if g:
-                        za.click(f"{nav} a[data-group='{g}']")
+                        open_group(za, g, nav)
                     iso_scan(path + (f"#{g}" if g else ""))
             za.click(".dir-hit")   # the finder: a provider's details
             za.wait_for_selector("#detail .dir-from", timeout=10000)
@@ -14154,6 +14225,20 @@ def main():
             page.wait_for_selector("#import-status button.primary", timeout=30000)   # the first pull's preview
             check("signing in connects the source, and its first pull is previewed like an upload",
                   "Ready to import" in page.inner_text("#import-status"), page.inner_text("#import-status")[:300])
+            # Sources' Overview as a hub (#283): the first pull is waiting for you there too, and its Review brings the
+            # preview there, the same card (not a second one following the same import), focus on it
+            page.click("#srcNav a[data-group=overview]")
+            page.wait_for_selector("#srcWait li[data-job] button", timeout=10000)
+            pulls = js("[...document.querySelectorAll('#srcWait li[data-job]')].map(li => [li.dataset.job, li.querySelector('b').textContent]).filter(r => r[1].endsWith('first pull'))")
+            page.click(f"#srcWait li[data-job='{pulls[0][0] if pulls else 0}'] button:text-is('Review')")
+            page.wait_for_selector("#srcReview .import-job button.primary", timeout=10000)
+            moved = js("[document.querySelectorAll('.import-job[data-job]').length, document.querySelector('#srcReview .import-job').dataset.job, "
+                       "document.activeElement === document.querySelector('#srcReview .import-job'), document.querySelectorAll('#srcWait li[data-job]').length]")
+            check("…and it's waiting for you on Sources' Overview, where Review opens its preview, the same card, focus on it (#283)",
+                  len(pulls) == 1 and pulls[0][1] == "Fake Epic sandbox: its first pull" and moved[:3] == [1, pulls[0][0], True], [pulls, moved])
+            js("location.hash = '#portals'")
+            page.reload()   # back where it was, its preview under the connection as connect.js puts it
+            page.wait_for_selector("#import-status button.primary", timeout=30000)
             same_li = page.locator("#import-status .imp-same li", has_text="Hemoglobin")
             flag = same_li.inner_text() if same_li.count() == 1 else page.inner_text("#import-status")[:600]
             check("…flagging a result the file brought as possibly the same, with both sources named (#96)",
@@ -14301,18 +14386,19 @@ def main():
             page.wait_for_selector("#reconnect:not([hidden])", timeout=20000)
             check("when access ends, the page asks to sign in again", "access ended" in page.inner_text("#reconnect")
                   and page.get_by_role("button", name="Sign in again").count() == 1, page.inner_text("#connList")[:300])
-            page.click("#srcNav a[data-group=overview]")   # Sources' overview (#166): every way in, the one that stopped first
-            page.wait_for_selector("#srcWarn .src-alert", timeout=10000)
+            page.click("#srcNav a[data-group=overview]")   # Sources' overview (#166, #283): the one that stopped is waiting for you
+            page.wait_for_selector("#waiting .src-wait-row.bad", timeout=10000)
             ov = page.inner_text("#srcOverview")
-            check("the Sources overview warns that the source stopped, and lists it with when it last brought records",
-                  "access ended" in page.inner_text("#srcWarn") and "Fake Epic sandbox" in ov and "Last brought records" in ov
-                  and page.locator("#srcList .src-row.bad", has_text="Fake Epic sandbox").count() == 1, ov[:500])
-            page.click("#srcWarn a")
+            check("the Sources overview says under Waiting for you that the source's access ended, and its card says so with when it last brought records",
+                  "Fake Epic sandbox: access ended" in page.inner_text("#waiting") and "Fake Epic sandbox" in ov and "Last brought records" in ov
+                  and page.locator("#srcList .src-way[data-state=bad]", has_text="Fake Epic sandbox").count() == 1, ov[:500])
+            page.click("#waiting .src-wait-row.bad a:text-is('Sign in again')")
             page.wait_for_function("location.hash.startsWith('#conn-') && getComputedStyle(document.getElementById('mine')).display !== 'none'", timeout=5000)
             check("…its link opens the connection under Portals and health plans",
                   js("document.querySelector('#srcNav a[aria-current=page]').dataset.group") == "portals")
             page.set_viewport_size({"width": 375, "height": 800})
-            page.click("#srcNav a[data-group=overview]")
+            page.click(".src-back")   # on a phone, the way back to the Overview's cards (#283)
+            page.wait_for_selector("#waiting .src-wait-row.bad", timeout=10000)
             settle(200)
             check("…and the overview fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
@@ -14611,10 +14697,10 @@ def main():
                 page.set_viewport_size({"width": width, "height": 900})
                 for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
                     page.goto(base + "/" + path)
-                    page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
+                    page.wait_for_selector(".set-nav a[data-group]", state="attached", timeout=10000)
                     settle(300)
                     for g in js("[...document.querySelectorAll('.set-nav a[data-group]')].map(a => a.dataset.group)"):
-                        page.click(f".set-nav a[data-group={g}]")
+                        open_group(page, g)
                         settle(150)
                         if width == 1400:
                             bad += [f"{path.split('.')[0]} #{g}: {x}" for x in js(rows_typed)]
@@ -14667,10 +14753,10 @@ def main():
                 bad, seen = [], []
                 for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
                     page.goto(base + "/" + path)
-                    page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
+                    page.wait_for_selector(".set-nav a[data-group]", state="attached", timeout=10000)
                     settle(300)
                     for g in js("[...document.querySelectorAll('.set-nav a[data-group]')].map(a => a.dataset.group)"):
-                        page.click(f".set-nav a[data-group={g}]")
+                        open_group(page, g)
                         settle(150)
                         bad += phone_fits(page, f"{path.split('.')[0]} #{g}", phone_known)
                         seen.append(f"{path.split('.')[0]}#{g}")
@@ -14832,10 +14918,10 @@ def main():
                 answer_ask(page, yes=False)
                 for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
                     page.goto(base + "/" + path)
-                    page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
+                    page.wait_for_selector(".set-nav a[data-group]", state="attached", timeout=10000)
                     settle(300)
                     for g in js("[...document.querySelectorAll('.set-nav a[data-group]')].map(a => a.dataset.group)"):
-                        page.click(f".set-nav a[data-group={g}]")
+                        open_group(page, g)
                         settle(150)
                         axe_at(page, f"{theme} {path.split('.')[0]}#{g}", outline=True)
                 for path, ready in (("guide.html?profile=1", "#step-name:not([hidden])"), ("providers.html?q=medicare", ".dir-hit")):
@@ -14878,8 +14964,8 @@ def main():
                 kbad += focus_walk(page, t) + focus_walk(page, t, back=True)
             for path, g in (("sources.html?profile=1", "manual"), ("settings.html?profile=1", "labs"), ("sharing.html?profile=1", "summary"), ("admin.html", "apps")):
                 page.goto(base + "/" + path)
-                page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
-                page.click(f".set-nav a[data-group={g}]")
+                page.wait_for_selector(".set-nav a[data-group]", state="attached", timeout=10000)
+                open_group(page, g)
                 settle(200)
                 kbad += focus_walk(page, f"{path.split('.')[0]}#{g}") + focus_walk(page, f"{path.split('.')[0]}#{g}", back=True)
             check("keyboard at 375 px: Tab and Shift+Tab through each records tab and a group of each page, every stop showing focus "
@@ -14938,12 +15024,12 @@ def main():
                           and not unreached, unreached[:8] or wraps335)
                 for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
                     page.goto(base + "/" + path)
-                    page.wait_for_selector(".set-nav a[data-group]", timeout=10000)
+                    page.wait_for_selector(".set-nav a[data-group]", state="attached", timeout=10000)
                     if spaced:
                         page.add_style_tag(content=spacing)
                     settle(250)
                     for g in js("[...document.querySelectorAll('.set-nav a[data-group]')].map(a => a.dataset.group)"):
-                        page.click(f".set-nav a[data-group={g}]")
+                        open_group(page, g)
                         settle(100)
                         rbad += phone_fits(page, f"{path.split('.')[0]}#{g}")
                         if not spaced:

@@ -1,16 +1,22 @@
-/* Sanguity · Sources → Overview (#166): every way records reach the profile chosen, and when each last brought
-   something, at a glance: its connected portals and health plans (with the warning of one that stopped syncing,
-   #102), its phone and watch (for its owners and editors, who set it up), and its latest uploads and records typed
-   in. Each row opens its section. Read again when the profile changes and each time the Overview is shown.
-     GET api/profiles/{pid}/connections      what each connection is doing, and when it last pulled (connect.js's)
-     GET api/profiles/{pid}/imports          every import, a sync's naming its connection (import-history.js's)
-     GET api/profiles/{pid}/watch/receiver   the phone's setup and its last upload (owners and editors) */
+/* Sanguity · Sources → Overview (#166, #283): the hub of the Sources page.
+   - Waiting for you (#waiting), for the profile's owners and editors: each import left at its preview, a portal's first
+     pull among them (nav.js sgWaiting), with Review (its preview, opened here: import-jobs.js) and Cancel import…; and
+     each portal that needs you (access ended, or stopped syncing), with the way to it. A preview left open when a tab
+     was closed is found again here. Add's "Waiting for you" (nav.js) opens it, and is told its count.
+   - Where records come from (#srcOverview): one card per way in, each with how it's doing ("Connected · synced 2 h
+     ago", "Not set up") and its last activity, its title the link to its section; on a phone, where the sidebar gives
+     way to them (app.css), the way into each section. A profile nothing has come into yet has an empty state with a
+     picture above them; someone who can only view the profile sees the ways that brought it records, and the history.
+   Read again when the profile changes and each time the Overview is shown.
+     GET api/profiles/{pid}/connections         what each connection is doing, and when it last pulled (connect.js's)
+     GET api/profiles/{pid}/imports             every import, a sync's naming its connection (import-history.js's)
+     GET api/profiles/{pid}/watch/receiver      the phone's setup and its last upload (owners and editors)
+     GET api/profiles/{pid}/jobs?state=preview  the imports left at their preview (owners and editors)
+     POST api/profiles/{pid}/jobs/{id}/discard  Cancel import… */
 "use strict";   // $, el and api come from util.js
 (() => {
-  const RECENT = 5;   // uploads shown
-  const ORIGIN = {upload: "Uploaded", manual: "Typed in", dataset: "Loaded from the command line", build: "From the setup build"};
   const when = fmtWhen;   // dates.js
-  const box = $("#srcOverview");
+  const box = $("#srcOverview"), wait = $("#waiting"), waitList = $("#srcWait"), review = $("#srcReview");
   let seq = 0;
 
   async function get(path) {
@@ -20,81 +26,160 @@
     if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || r.status + " " + r.statusText);
     return j;
   }
-
-  /* one way in: what it is, how it's doing, when it last brought something, and a link to its section */
-  function row({name, tag, state, last, bad, href, link}) {
-    return el("li", {class: "src-row" + (bad ? " bad" : "")},
-      el("div", {class: "src-row-t"},
-        el("div", {}, el("b", {text: name}), tag ? el("span", {class: "tag", text: tag}) : null),
-        state ? el("p", {class: bad ? "msg bad" : "muted", text: state}) : null,
-        el("p", {class: "src-last", text: last})),
-      el("a", {class: "btn small", href, text: link}));
+  /* how long ago, for a status line ("synced 2 h ago"); a date once it's a week or more */
+  function ago(s) {
+    const d = Date.now() / 1000 - s;
+    return d < 60 ? "just now" : d < 3600 ? `${Math.floor(d / 60)} min ago` : d < 86400 ? `${Math.floor(d / 3600)} h ago`
+      : d < 7 * 86400 ? `${Math.floor(d / 86400)} day${d < 2 * 86400 ? "" : "s"} ago` : fmtD(s * 1000);
   }
-  const part = (title, rows, empty) => [el("h3", {class: "sub", text: title}),
-    rows.length ? el("ul", {class: "src-rows"}, ...rows) : el("p", {class: "muted", text: empty})];
+  const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
-  function connRows(conns, imports) {
-    const brought = {};   // a connection's newest sync that brought records, by its name (the history names it so)
-    for (const e of imports) if (e.origin === "sync" && e.state === "active" && e.connection) brought[e.connection] = Math.max(brought[e.connection] || 0, e.at);
-    return conns.filter(c => c.state !== "disconnected").map(c => {
-      const ended = c.state === "needs reconnect", warn = c.warning && c.warning.text;
-      const state = ended ? "Access ended: sign in again to keep it up to date." : warn ? warn
-        : c.phase === "first pull preview" ? "Its first pull is waiting for you to look at it and save it."
-        : c.phase === "first pull" ? "Pulling its records for the first time…" : "Syncing on a schedule.";
-      return row({name: c.source, tag: c.host, state, bad: ended || !!warn, href: "#conn-" + c.id, link: "Open",
-        last: (brought[c.source] ? `Last brought records ${when(brought[c.source])}` : "Hasn't brought records yet") +
-          (c.last_sync ? ` · last checked ${when(c.last_sync)}` : "")});
-    });
+  /* ---------------------------------------------------------------- Waiting for you */
+  /* an import's preview, opened here: the card it has already (a first pull's, connect.js) brought here, or a new one
+     following it; focus on it. Once it's saved or cancelled the list is read again; the card stays, saying so, until
+     another section is shown (sources-page.js) */
+  function open(job) {
+    let card = document.querySelector(`.import-job[data-job="${job.id}"]:not([data-settled])`);
+    if (card) review.append(card);
+    else {
+      window.sanguityImport.follow({profileId: SgSources.pid(), jobId: job.id, container: review, text: "Opening its preview…"}).then(() => load());
+      card = review.lastElementChild;
+    }
+    card.tabIndex = -1;
+    card.focus();
+    load();
   }
-  function phoneRows(st) {
-    if (!st) return [];
+  async function cancel(job, conn) {
+    if (!await ask({title: "Cancel this import?", danger: true, action: "Cancel import", cancel: "Keep it",
+                    message: conn ? `Nothing from ${conn.source}'s first pull is saved. You can pull again from Portals and health plans.`
+                                  : "Nothing from it is saved, and the files uploaded for it are removed. You can upload them again."})) return;
+    let r;
+    try { r = await api(`profiles/${SgSources.pid()}/jobs/${job.id}/discard`, {method: "POST"}); }
+    catch (e) { toast("Not cancelled: the server can't be reached."); return; }
+    if (!r.ok) { const e = await r.json().catch(() => ({})); toast(`Not cancelled: ${typeof e.detail === "string" ? e.detail : r.status}`); return; }
+    document.querySelector(`.import-job[data-job="${job.id}"]`)?.remove();   // its card elsewhere, with a Save that can't work now
+    toast("Cancelled: nothing from that import was saved.");
+    await load();
+    // focus on what's there now: the next thing waiting, else the heading
+    const next = waitList.querySelector("button, a");
+    if (next) next.focus();
+    else { const h = $("#groupTitle"); h.tabIndex = -1; h.focus(); }
+  }
+  function waitRow(w) {
+    const {job, conn} = w, r = job && job.range;
+    if (job) {
+      const said = [job.new === false ? "All in the profile already" : "Ready to review",
+        r ? (r.from === r.to ? `records from ${fmtD(dayTs(r.from))}` : `records from ${fmtD(dayTs(r.from))} to ${fmtD(dayTs(r.to))}`) : null,
+        `${conn ? "pulled" : "uploaded"} ${ago(job.created)}`].filter(Boolean).join(" · ");
+      return el("li", {class: "src-wait-row", "data-job": job.id}, icon(conn ? "plug" : "upload"),
+        el("div", {class: "src-wait-t"}, el("b", {text: conn ? `${conn.source}: its first pull` : job.label || "An import"}), el("p", {text: said})),
+        el("div", {class: "src-wait-acts"},
+          el("button", {class: "btn primary small needs-server", type: "button", "data-key": "review" + job.id, onclick: () => open(job)}, "Review"),
+          el("button", {class: "btn small needs-server", type: "button", "data-key": "cancel" + job.id, onclick: () => cancel(job, conn)}, "Cancel import…")));
+    }
+    const ended = conn.state === "needs reconnect";
+    return el("li", {class: "src-wait-row bad"}, icon("triangle-alert", {label: "Warning:"}),
+      el("div", {class: "src-wait-t"}, el("b", {text: ended ? `${conn.source}: access ended` : conn.source}),
+        el("p", {text: ended ? "Sign in again to keep it up to date." : conn.warning.text})),
+      el("div", {class: "src-wait-acts"}, el("a", {class: "btn small", href: "#conn-" + conn.id, text: ended ? "Sign in again" : "Fix it"})));
+  }
+  function drawWaiting(items) {
+    const shown = items.filter(w => !w.job || !review.querySelector(`.import-job[data-job="${w.job.id}"]:not([data-settled])`));   // (one open below)
+    const had = waitList.contains(document.activeElement) && document.activeElement.dataset.key;
+    waitList.replaceChildren(...shown.map(waitRow));
+    if (!shown.length && review.children.length) waitList.append(el("li", {class: "src-wait-none", text: "Nothing else is waiting for you."}));
+    if (had) waitList.querySelector(`[data-key="${had}"]`)?.focus();
+    wait.hidden = !shown.length && !review.children.length;
+  }
+
+  /* ---------------------------------------------------------------- the ways in */
+  /* one card: its icon and title (the link to its section, when it can be opened), how it's doing (ok, off or bad, said
+     in words), its last activity, and what else it lists */
+  function way({id, title, ico, state, status, last, more, link = true}) {
+    const g = SG_PAGES.sources.groups.find(x => x.id === id);
+    return el("li", {class: "src-way", "data-way": id, "data-state": state || null},
+      el("h3", {class: "src-way-t"}, icon(ico || g.icon),
+        link ? el("a", {href: "#" + id, text: title || g.title}) : el("span", {text: title || g.title})),
+      status ? el("p", {class: "src-way-st", text: status}) : null,
+      last ? el("p", {class: "src-way-last", text: last}) : null,
+      more || null);
+  }
+  function portals(conns, imports) {
+    const live = conns.filter(c => c.state !== "disconnected");
+    if (!live.length) return {state: "off", status: "Not set up", last: "Sign in to a patient portal or health plan once, and new records come in by themselves."};
+    const brought = Math.max(0, ...imports.filter(e => e.origin === "sync" && e.state === "active").map(e => e.at));
+    const synced = Math.max(0, ...live.map(c => c.last_sync || 0)), bad = live.filter(c => c.state === "needs reconnect" || c.warning);
+    const n = live.length === 1 ? "Connected" : `${live.length} connected`;
+    return {state: bad.length ? "bad" : "ok", status: synced ? `${n} · synced ${ago(synced)}` : `${n} · not synced yet`,
+      last: brought ? `Last brought records ${when(brought)}` : "Hasn't brought records yet",
+      more: el("ul", {class: "src-way-list"}, ...live.map(c => {
+        const ended = c.state === "needs reconnect", warn = c.warning && c.warning.text;
+        return el("li", {class: ended || warn ? "bad" : null}, ended || warn ? icon("triangle-alert", {label: "Warning:"}) : null,
+          el("b", {text: c.source}), ` · ${ended ? "access ended" : warn ? warn : c.phase === "first pull preview" ? "first pull ready to review"
+            : c.phase === "first pull" ? "pulling its records for the first time…" : "syncing on a schedule"}`);
+      }))};
+  }
+  function phone(st) {
     const set = st.has_secret || st.legacy;
-    return [row({name: "Phone app", tag: set ? null : "not set up", href: "#phone", link: set ? "Open" : "Set it up",
-      last: st.last ? `Last upload ${when(st.last)}` : set ? "Nothing received yet" : "No phone sends readings to this profile yet."})];
+    return !set ? {state: "off", status: "Not set up", last: "Steps, sleep, heart rate and weight, sent by the phone app."}
+      : {state: "ok", status: st.last ? `Connected · last upload ${ago(st.last)}` : "Set up · nothing received yet",
+         last: st.last ? `Last upload ${when(st.last)}` : null};
   }
-  function uploadRows(imports) {
-    return imports.filter(e => e.origin !== "sync" && e.state === "active").slice(0, RECENT).map(e =>
-      row({name: e.name || e.label, tag: e.origin === "build" ? null : ORIGIN[e.origin] || e.origin, href: "#import-" + e.id, link: "In the history",
-        last: `${when(e.at)}` + (e.by ? ` · ${e.by}` : "")}));
+  const by = e => e.by ? ` by ${e.by}` : "";
+  function uploads(imports) {
+    const e = imports.find(x => x.origin === "upload" && x.state === "active");   // newest first
+    return e ? {state: "ok", status: `Last upload ${ago(e.at)}`, last: `${e.name || e.label} · ${when(e.at)}${by(e)}`}
+      : {state: "off", status: "Nothing uploaded yet", last: "The export you downloaded from a portal or app: a zip, a folder or single files."};
+  }
+  function typed(imports) {
+    const e = imports.find(x => x.origin === "manual" && x.state === "active");
+    return e ? {state: "ok", status: `Last typed in ${ago(e.at)}`, last: `${e.name || "Typed in"} · ${when(e.at)}${by(e)}`}
+      : {state: "off", status: "Nothing typed in yet", last: "Records on paper, or from a portal with no export."};
+  }
+
+  /* nothing has come in yet: what would be here, a picture of the ways in, and the first step */
+  function empty(edit) {
+    const e = emptyState(edit ? "Nothing has come into this profile yet: each upload, record typed in, portal and phone that brings records is listed here."
+      : "Nothing has come into this profile yet: what brings it records is listed here.", edit ? {href: "#upload", text: "Upload files"} : null, {cls: "src-empty"});
+    e.prepend(el("div", {class: "src-pic", "aria-hidden": "true"},
+      ...["upload", "plug", "watch"].map(i => el("span", {class: "src-pic-way"}, icon(i))), icon("arrow-right"),
+      el("span", {class: "src-pic-to"}, icon("database"))));
+    return e;
   }
 
   async function load() {
-    const pid = SgSources.pid(), mine = ++seq;
+    const pid = SgSources.pid(), mine = ++seq, edit = SgSources.canEdit();
     if (!pid) return;
-    let conns, imps, watch = null;
+    let conns, imps, watch = null, jobs = null;
     try {
-      [conns, imps, watch] = await Promise.all([get(`profiles/${pid}/connections`), get(`profiles/${pid}/imports`),
-        SgSources.canEdit() ? get(`profiles/${pid}/watch/receiver`).catch(() => null) : null]);
+      [conns, imps, watch, jobs] = await Promise.all([get(`profiles/${pid}/connections`), get(`profiles/${pid}/imports`),
+        edit ? get(`profiles/${pid}/watch/receiver`).catch(() => null) : null, edit ? get(`profiles/${pid}/jobs?state=preview`).catch(() => null) : null]);
     } catch (e) {
       if (mine === seq) { $("#srcList").replaceChildren(el("p", {class: "msg bad", role: "alert", text: "Couldn't read this profile's sources: " + e.message})); box.hidden = false; }
       return;
     }
     if (mine !== seq) return;   // another profile was chosen meanwhile
-    const edit = conns.can_connect, imports = imps.imports || [];
-    const warned = conns.connections.filter(c => c.state === "needs reconnect" || (c.warning && c.state !== "disconnected"));
-    $("#srcWarn").replaceChildren(...warned.map(c => el("p", {class: "conn-alert src-alert", role: "alert"},
-      el("span", {}, icon("triangle-alert", {label: "Warning:"}), " " + (c.warning ? c.warning.text : `${c.source}: access ended.`) + " "),
-      el("a", {href: "#conn-" + c.id, text: edit ? "Fix it" : "Details"}))));
-    const conn = connRows(conns.connections, imports), ups = uploadRows(imports), phone = phoneRows(watch);
-    const total = imports.filter(e => e.state === "active").length;
-    if (!conn.length && !ups.length && !(watch && (watch.has_secret || watch.legacy))) {   // nothing yet: one empty state (#199)
-      $("#srcList").replaceChildren(emptyState("Nothing has come into this profile yet: each upload, record typed in, portal and phone that brings records is listed here.",
-        edit ? {href: "#upload", text: "Upload files"} : null, {cls: ""}));
-      box.hidden = false;
-      return;
-    }
-    $("#srcList").replaceChildren(...[   // without the parts left out: replaceChildren would write a null out as text
-      ...part("Portals and health plans", conn, edit ? "None connected yet." : "None connected."),
-      ...(edit ? [el("p", {class: "src-add"}, el("a", {href: "#portals", text: conn.length ? "Connect another…" : "Connect a portal or health plan…"}))] : []),
-      ...(phone.length ? part("Phone and watch", phone, "") : []),
-      ...part("Uploads and records typed in", ups, "Nothing uploaded or typed in yet."),
-      total ? el("p", {class: "src-add"}, el("a", {href: "#history", text: `All ${total} import${total === 1 ? "" : "s"}, with undo, in the import history`})) : null].filter(Boolean));
+    const imports = imps.imports || [], items = edit && jobs ? sgWaiting(jobs, conns) : [];
+    drawWaiting(items);
+    if (jobs) SgNav.waited(pid, items.length);   // Add's count (nav.js)
+    const done = imports.filter(e => e.state === "active"), total = done.length, live = conns.connections.filter(c => c.state !== "disconnected");
+    const set = watch && (watch.has_secret || watch.legacy);
+    const ways = [
+      edit || live.length ? way({id: "portals", link: edit, ...portals(conns.connections, imports)}) : null,
+      edit && watch ? way({id: "phone", ...phone(watch)}) : null,
+      edit || imports.some(x => x.origin === "upload") ? way({id: "upload", title: edit ? null : "Uploads", link: edit, ...uploads(imports)}) : null,
+      edit || imports.some(x => x.origin === "manual") ? way({id: "manual", title: edit ? null : "Typed in", link: edit, ...typed(imports)}) : null,
+      edit ? way({id: "link", state: "", last: "A SMART Health Link or its QR code, from a provider, insurer or app."}) : null,
+      way({id: "history", state: total ? "ok" : "off", status: total ? plural(total, "import", "imports") : "Nothing imported yet",
+           last: total ? `Latest: ${done[0].name || done[0].label} · ${when(done[0].at)}` : null})].filter(Boolean);   // (the setup build's too)
+    const nothing = !live.length && !total && !set;
+    $("#srcList").replaceChildren(...[nothing ? empty(edit) : null, nothing && !edit ? null : el("ul", {class: "src-ways"}, ...ways)].filter(Boolean));
     box.hidden = false;
   }
 
   (async () => {
     if (!await SgSources.ready) return;
-    $("#profile").addEventListener("change", load);
+    $("#profile").addEventListener("change", () => { review.replaceChildren(); load(); });
     document.addEventListener("sources:group", ev => { if (ev.detail === "overview") load(); });
     load();
   })();

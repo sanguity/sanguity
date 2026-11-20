@@ -4,7 +4,8 @@ other change.
 
   POST /api/profiles/{pid}/uploads/{id}/import   start: {"id": job id}
   GET  /api/profiles/{pid}/jobs[/{id}]           how it goes; in state "preview", what it would add (and a few of
-                                                 each, "samples", #282) and the duplicates
+                                                 each, "samples", #282) and the duplicates; the list with
+                                                 ?state=preview: every import waiting to be saved or cancelled (#283)
   POST /api/profiles/{pid}/jobs/{id}/confirm     save it, {"keep": [refs of duplicates to save anyway],
                                                  "labs": {series ref: series name, or null to keep its own},
                                                  "same": [refs of possible matches that are the same result]} optional
@@ -46,10 +47,13 @@ def start_import(pid: int, upload_id: str, request: Request, body: Optional[Star
 
 
 @router.get("/api/profiles/{pid}/jobs")
-def list_jobs(pid: int, s=Depends(user), db=Depends(get_db)):
-    """The profile's recent imports, newest first."""
+def list_jobs(pid: int, state: Optional[str] = None, s=Depends(user), db=Depends(get_db)):
+    """The profile's recent imports, newest first; with a state, every one in it (Sources' "Waiting for you" asks for
+    state=preview: the imports left open to save or cancel, #283)."""
     need(db, s, pid, "editor")
-    return jobs.recent(db, pid)
+    if state is not None and state not in jobs.STATES:
+        raise HTTPException(400, "No such state.")
+    return jobs.recent(db, pid, state=state)
 
 
 @router.get("/api/profiles/{pid}/jobs/{jid}")

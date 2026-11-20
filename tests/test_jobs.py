@@ -327,6 +327,27 @@ class Jobs(unittest.TestCase):
         j = self.wait(self.start(self.upload({"notes.txt": "x", "notes/visit.txt": "y"}), body={"importer": "withdoc"}))
         self.assertEqual((j["state"], j["importer"]), ("done", "withdoc"))
 
+    def test_previews_left_open_are_listed(self):   # Sources' "Waiting for you" (#283)
+        jid = self.start(self.upload({"withdoc.txt": "x", "notes/visit.txt": "y"}))
+        self.assertEqual(self.wait(jid, confirm=False)["state"], "preview")
+        done = self.wait(self.start(self.upload({"withdoc.txt": "x", "notes/other.txt": "z"})))["id"]
+        db = dbm.connect()
+        try:   # older than the 20 latest jobs: still listed by its state
+            up = db.execute("SELECT upload_id FROM jobs WHERE id=?", (done,)).fetchone()[0]
+            for _ in range(jobs.RECENT + 1):
+                db.execute("INSERT INTO jobs(profile_id, upload_id, state, created) VALUES(?, ?, 'failed', 0)", (self.pid, up))
+        finally:
+            db.close()
+        url = f"/api/profiles/{self.pid}/jobs"
+        self.assertNotIn(jid, [j["id"] for j in self.robin.get(url).json()])
+        waiting = self.robin.get(url, params={"state": "preview"}).json()
+        self.assertIn(jid, [j["id"] for j in waiting])
+        self.assertEqual({j["state"] for j in waiting}, {"preview"})
+        self.assertEqual(self.robin.get(url, params={"state": "nope"}).status_code, 400)
+        self.assertEqual(self.kim.get(url, params={"state": "preview"}).status_code, 403)   # owners' and editors', as the list is
+        self.assertEqual(self.robin.post(f"{url}/{jid}/discard", headers=H).status_code, 200)
+        self.assertNotIn(jid, [j["id"] for j in self.robin.get(url, params={"state": "preview"}).json()])
+
     def test_roles(self):
         up = self.upload({"withdoc.txt": "x", "notes/visit.txt": "y"})
         url = f"/api/profiles/{self.pid}/uploads/{up}/import"
