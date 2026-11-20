@@ -2626,6 +2626,56 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             check("…at 375 px, in light and dark, the claims don't scroll sideways: each one a stacked row, its Your share in sight, the page fitting; axe finds nothing",
                   all(p[0] <= 0 and p[1] > 0 and p[2] == 0 and p[3] == 0 and p[4] <= 375 and not bad for _, p, bad in phone278) and not axe278, [phone278, axe278[:4]])
+            # #443: no Costs table scrolls sideways at any width: the claims stack where their box is under 680 px (they
+            # scrolled from 601 to 680), Prescriptions, every amount out of pocket, the HSA and FSA by year and the charts'
+            # tables where theirs is under 560, each cell named by its column; at 375, 601, 640 and 680 px, both views,
+            # the charts as tables and More figures open, in light and dark, the page fitting and axe-clean
+            wide443 = """(() => [...document.querySelectorAll('#view-costs .tablewrap')].map(w => (t => [w.parentElement.closest('[id]').id + ':' + t.tHead.rows[0].cells[0].textContent.trim(),
+                w.scrollWidth - w.clientWidth, t.classList.contains('stack') && getComputedStyle(t).display === 'block'
+                  ? [...t.querySelectorAll('td:not(:first-child)')].every(c => !c.textContent.trim() || c.dataset.label && getComputedStyle(c, '::before').content !== 'none') : null])(w.querySelector('table'))))()"""
+            sides443, axe443, n443 = [], [], set()
+            js("state.tables.add('#costBars'); state.tables.add('#paidCum'); costState.more = true; renderCosts()")
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                for w443 in (375, 601, 640, 680):
+                    page.set_viewport_size({"width": w443, "height": 800})
+                    for view in ("claims", "paid"):
+                        js("v => { costState.view = v; renderCosts(); }", view)
+                        settle(250)
+                        got = js(wide443)
+                        n443.update(g[0] for g in got)
+                        sides443 += [[theme, w443, view, g] for g in got if g[1] > 0 or g[2] is False]
+                        sides443 += [[theme, w443, view, b] for b in phone_fits(page, f"Costs' {view} at {w443} px, {theme}")]
+                        if w443 in (375, 640):
+                            axe443 += axe_check(page, f"Costs' {view}, its tables stacked, {w443} px, {theme}")[0]
+            stacked443 = js("[...document.querySelectorAll('#view-costs table.stack')].length")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            js("state.tables.clear(); Object.assign(costState, {view: 'claims', more: false}); renderCosts()")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…no Costs table scrolls sideways at 375, 601, 640 or 680 px, both views, its charts as tables and More figures open, in light and dark: "
+                  "the claims stacked under 680 px of box, the others under 560, each cell named by its column; the page fits, axe finds nothing (#443)",
+                  not sides443 and not axe443 and n443 == {"costTable:Date", "view-costs:Drug", "view-costs:Month", "paidTable:Date", "oopTax:Year", "paidCard:Month"} and stacked443 == 3,
+                  [sides443[:6], axe443[:4], sorted(n443), stacked443])
+            # #443: Show 200 more (here, with the claims shown 20 at a time) leaves focus on the first claim it adds, not <body>
+            js("costState.limit = 20; renderCosts()")
+            settle(200)
+            more443 = js("(b => b && [b.textContent, b.type])([...document.querySelectorAll('#costTable > button')].find(b => /^Show \\d+ more$/.test(b.textContent)))")
+            page.locator("#costTable > button", has_text=re.compile(r"^Show \d+ more$")).click()
+            settle(300)
+            after443 = js("""(f => [f.tagName, !!f.closest('#costTable tbody'), f.closest('tr') ? [...f.closest('tbody').rows].indexOf(f.closest('tr')) : null,
+                document.querySelectorAll('#costTable tbody tr').length])(document.activeElement)""")
+            js("costState.limit = 200; renderCosts()")
+            check("…Show more on the claims, a button of type button, leaves focus on the first claim added (#443)",
+                  more443 and more443[1] == "button" and after443[:3] == ["BUTTON", True, 20] and after443[3] > 20, [more443, after443])
+            # #443: a link into Costs names its view: the Overview's Open Costs (an insurance card) opens Claims, whatever
+            # was shown last there (What you paid's is followed from Sources, below)
+            js("costState.view = 'paid'; switchTab('overview')")
+            settle(300)
+            page.locator("#view-overview button", has_text="Open Costs").first.click()
+            settle(300)
+            ov443 = js("[state.tab, costState.view, !!document.getElementById('costTable'), document.querySelector('#costView [aria-pressed=true]')?.textContent]")
+            check("…the Overview's Open Costs opens Claims, though What you paid was shown last (#443)", ov443 == ["costs", "claims", True, "Claims"], ov443)
+            js("applyPreset('all')")
             # the Timeline: its list is the table
             js("switchTab('timeline')")
             settle(300)
@@ -8131,10 +8181,14 @@ def main():
                   after_save[0].startswith("Saved 1 record.") and after_save[1] == 1 and after_save[2] == "manMsg" and after_save[3:] == ["labs", False, 1], after_save)
             # #387: payments are on Costs, not the timeline: the line's link and the toast's go there
             pay_links = js("[...document.querySelectorAll('#manMsg a, #sgToasts .sg-toast:last-child a')].map(a => [a.textContent, new URL(a.href).hash])")
-            check("…its saved line and its toast link to Costs, where payments are, not the timeline (#387)",
-                  pay_links == [["See them on Costs", "#costs"], ["Open Costs", "#costs"]], pay_links)
+            check("…its saved line and its toast link to Costs' What you paid, where payments are, not the timeline (#387, #443)",
+                  pay_links == [["See them on Costs", "#costs-paid"], ["Open Costs", "#costs-paid"]], pay_links)
             page.click("#manMsg a")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && DATA.oop", timeout=20000)
+            if js("typeof HASH_TABS === 'object' && 'costs-paid' in HASH_TABS"):   # the address #costs-paid is #442's
+                page.wait_for_function("!document.getElementById('view-costs').hidden && !!document.getElementById('costView')", timeout=5000)
+                paid443 = js("[state.tab, costState.view, document.querySelector('#costView [aria-pressed=true]')?.textContent]")
+                check("…followed, “See them on Costs” opens Costs on What you paid (#443)", paid443 == ["costs", "paid", "What you paid"], paid443)
             js("switchTab('costs')")
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
             js("paidState.q = ''; applyPreset('all')")
@@ -13259,7 +13313,8 @@ def main():
                     unreached = scroll_table_faults(wraps335)
                     check("…and at 320 and 1400 px every table wrapper that scrolls takes focus and is named, a region, and every "
                           "one that doesn't is neither (the tabs and the drawer, #340)",
-                          any(w[0] == "costs, 320 px" and w[1] for w in wraps335) and any(w[0].endswith("1400 px") and not w[1] for w in wraps335)
+                          # one that scrolls at 320 px: a lab's results in the drawer (Costs' tables stack instead, #443)
+                          any(w[0].endswith("320 px") and w[1] for w in wraps335) and any(w[0].endswith("1400 px") and not w[1] for w in wraps335)
                           and not unreached, unreached[:8] or wraps335)
                 for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
                     page.goto(base + "/" + path)

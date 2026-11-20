@@ -1406,12 +1406,24 @@ table.data.oop tr[aria-expanded=true] td{background:var(--hover)}
 .oop-form{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);align-items:flex-end}
 .oop-form label{display:flex;flex-direction:column;gap:3px;font-size:var(--fs-2);color:var(--ink2);min-width:0;max-width:100%}
 .oop-form select{max-width:100%}
-/* Costs (#278): money right-aligned; More figures page-wide; under 600 px a claim per stacked row (name and your share;
-   when, who, what; billed and insurance paid; laid out exactly, #338, not rewrapped as the fonts come), the headers a
-   row of sort buttons */
+/* Costs (#278): money right-aligned; More figures page-wide. Its tables' boxes are what's measured (#443): under
+   680 px of box (the claims need 660, a sideways phone or a docked drawer included) a claim per stacked row (name and
+   your share; when, who, what; billed and insurance paid; laid out exactly, #338, not rewrapped as the fonts come),
+   the headers a row of sort buttons; under 560 px the others' rows stack too, each cell named by its column */
 table.data .num{text-align:right}
+table.claims th,table.claims td:first-child{white-space:nowrap}   /* a date on one line, not "Nov / 14, / 2026" */
 details.more.cost-more>:not(summary){max-width:none;color:var(--ink);font-size:var(--fs-3)}
-@media (max-width:600px){
+#view-costs .tablewrap{container-type:inline-size}
+@container (width < 560px){
+  table.stack,.stack tbody{display:block}
+  .stack thead{display:none}
+  .stack tr{display:flex;flex-wrap:wrap;gap:0 var(--sp-3);padding:var(--sp-2) 0;border-top:1px solid var(--grid)}
+  table.stack td{border:0;padding:0;text-align:left;color:var(--ink2)}
+  table.stack td:first-child{flex-basis:100%;color:var(--ink)}
+  .stack td:empty{display:none}
+  .stack td[data-label]:not(:first-child)::before{content:attr(data-label) " ";color:var(--muted)}
+}
+@container (width < 680px){
   table.claims,.claims>*{display:block}
   .claims tr{display:flex;flex-wrap:wrap;gap:0 var(--sp-2)}
   table.claims :is(th,td){position:static;border:0;padding:0;text-align:left;color:var(--ink2)}
