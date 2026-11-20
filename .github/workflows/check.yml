@@ -44,7 +44,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30   # the suites and the browser check take about 16 minutes after Phase 8 (14 before it)
+    timeout-minutes: 45   # the suites and the browser check take about 27 minutes after Redesign 5 (16 after Phase 8): room to grow
     steps:
       - uses: actions/checkout@v7
 
