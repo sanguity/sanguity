@@ -1604,6 +1604,11 @@ Everything on `main` so far; it becomes the first tagged release.
   above the screen, so the next Tab went back up; focus goes to the claims' heading, or the amounts' first control, in
   sight. Labs' Clear and Defaults, and a chart's ×, left focus nowhere; Clear and Defaults keep it, and × gives it to
   the next chart's ×, or, on the last chart, to that lab in the list.
+- **Costs' claims stack wherever they don't fit, and What you paid's hint is one line** (#465): the claims became a
+  stacked list under 680 px of box, but in a French browser they need about 720, so from 748 to 776 px the table ran
+  past its card and the page scrolled sideways. The table's width is measured, and it stacks wherever it doesn't fit.
+  What you paid's three-sentence hint says where the amounts came from ("From a finance export and claims' shares");
+  the export's date and what isn't counted are behind its ⓘ.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

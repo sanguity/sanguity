@@ -2854,7 +2854,7 @@ def main():
             js("state.tables.clear(); Object.assign(costState, {view: 'claims', more: false}); renderCosts()")
             page.set_viewport_size({"width": 1400, "height": 900})
             check("…no Costs table scrolls sideways at 375, 601, 640 or 680 px, both views, its charts as tables and More figures open, in light and dark: "
-                  "the claims stacked under 680 px of box, the others under 560, each cell named by its column; the page fits, axe finds nothing (#443)",
+                  "the claims stacked where they don't fit their box (#465), the others under 560, each cell named by its column; the page fits, axe finds nothing (#443)",
                   not sides443 and not axe443 and n443 == {"costTable:Date", "view-costs:Drug", "view-costs:Month", "paidTable:Date", "oopTax:Year", "paidRun:Month"} and stacked443 == 3,
                   [sides443[:6], axe443[:4], sorted(n443), stacked443])
             # #443: Show 200 more (here, with the claims shown 20 at a time) leaves focus on the first claim it adds, not <body>
@@ -2965,6 +2965,10 @@ def main():
             box448 = js("""(w => [w.scrollHeight - w.clientHeight, getComputedStyle(w).maxHeight, w.querySelectorAll('tbody tr[data-oop]').length,
                 (e => e && e.closest('tr.oop-open')?.previousElementSibling === document.activeElement.closest('tr'))(document.getElementById('oopEdit')),
                 document.documentElement.scrollWidth])(document.querySelector('#paidTable .tablewrap'))""")
+            # #465: What you paid's hint one line at 390 px, where the amounts came from; the rest (the export's date, what
+            # isn't counted) behind its ⓘ
+            hint465 = js("""(p => [p.textContent, Math.round(p.getBoundingClientRect().height / parseFloat(getComputedStyle(p).lineHeight)),
+                [...p.parentElement.querySelectorAll('.about-words p')].map(x => x.textContent).join(' ')])(document.querySelector('#view-costs .cost-figs > p.hint'))""")
             js("paidState.open = null; renderCosts()")
             page.set_viewport_size({"width": 1400, "height": 900})
             HEADS448 = "[...document.querySelectorAll('main h1, #view-costs :is(h2, h3, h4)')].filter(h => h.checkVisibility() || h.closest('details')).map(h => h.tagName + ' ' + h.textContent.trim().slice(0, 30))"
@@ -2977,6 +2981,8 @@ def main():
             in_order = lambda hs: all(int(b[1]) <= int(a[1]) + 1 for a, b in zip(hs, hs[1:])) and hs[0].startswith("H1")
             check("…at 390 px the out-of-pocket amounts don't scroll inside a box (Show more instead), a row's editor in the row under it",
                   box448[0] <= 1 and box448[1] == "none" and box448[2] > 0 and box448[3] is True and box448[4] <= 390, box448)
+            check("…What you paid's hint is one line at 390 px, where its amounts came from, the rest behind its ⓘ (#465)",
+                  hint465[0].startswith("From ") and hint465[1] == 1 and "counted once" not in hint465[0] and "counted once" in hint465[2] and hint465[2].startswith("From "), hint465)
             check("…the headings in order in both views, More figures open: What you paid's HSA and FSA by year an h3 under its h2",
                   all(in_order(h) for h in heads448.values()) and any(h.startswith("H3 HSA and FSA, by year") for h in heads448["paid"]), heads448)
             # #448: the three claims figures laid out alike on the Overview and Costs at 320, 375, 390 and 1400 px: three in
@@ -14280,11 +14286,26 @@ def main():
                         Math.round(t.querySelector('.val').getBoundingClientRect().right - t.getBoundingClientRect().right)])""", "#view-" + tab)
                     seen456 += [g[0] for g in got]
                     fr456 += [f"{w} px, {tab}: “{v}” past its tile by {max(o, r)} px" for v, o, r in got if o > 1 or r > 1]
+            # #465: with those amounts the claims need about 720 px in French, and stacked only under 680 px of box: from 700
+            # to 800 px, every 4 px, the claims' table runs past neither its box nor its card, stacked where it doesn't fit,
+            # and the page doesn't scroll sideways
+            frp.evaluate("switchTab('costs', 'claims')")
+            fr465, fold465 = [], set()
+            for w in range(700, 801, 4):
+                frp.set_viewport_size({"width": w, "height": 900})
+                frp.wait_for_timeout(120)
+                got = frp.evaluate("""(w => (t => [Math.round(t.getBoundingClientRect().width - w.clientWidth), Math.round(t.getBoundingClientRect().right - w.closest('.card').getBoundingClientRect().right),
+                    t.classList.contains('fold'), document.documentElement.scrollWidth - innerWidth])(w.querySelector('table.claims')))(document.querySelector('#costTable .tablewrap'))""")
+                fold465.add(got[2])
+                if got[0] > 1 or got[1] > 1 or got[3] > 0:
+                    fr465.append([w] + got)
             fr_ctx.close()
             check("the Overview's insurance figures in a French browser fit 375 and 320 px (#342)",
                   not fr_bad and any("$US" in t for t in fr_seen), fr_bad[:6] or fr_seen)
             check("…and with five times the ten-year fixture's amounts no figure overflows its tile at 1280, 1024 and 568 px, on the Overview or Costs (#456)",
                   not fr456 and len(seen456) == 18 and all("$US" in v for v in seen456) and any(len(re.sub(r"\D", "", v)) >= 7 for v in seen456), fr456[:6] or seen456)
+            check("…and from 700 to 800 px, every 4, the claims' table runs past neither its box nor its card, stacked where it doesn't fit, the page not scrolling sideways (#465)",
+                  not fr465 and fold465 == {True, False}, fr465[:6] or fold465)
             page.set_viewport_size({"width": 1400, "height": 900})
             # forced colours (Windows' high contrast): a filled button (Save, Sign in, a dialog's action) keeps an edge
             ctx = browser.new_context(viewport={"width": 1400, "height": 900}, forced_colors="active")
