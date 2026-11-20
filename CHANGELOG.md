@@ -1484,6 +1484,11 @@ Everything on `main` so far; it becomes the first tagged release.
   And Costs' Claims | What you paid is in the address (`#costs-paid`, kept on a reload), its switch named "Show the
   costs as"; picking a view on Labs, the Timeline or Costs adds a history entry as a tab does, so Back from the
   heatmap, the Journal or What you paid returns to the view before instead of leaving the tab.
+- **Two units picked in a row and the page left at once keep both** (#453): lb then ft/in, then leaving before the
+  server answered the first, still lost ft/in now and then (6 times in 80, in a loop). The save sent as the page was left (#419) went
+  to the service worker first, which only passes the API on, and was lost when the page went before it had. The worker
+  now routes the API straight to the network where the browser lets it (Chromium's static routes), so no API request
+  waits for it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -62,6 +62,9 @@ function shellPath(url) {
 }
 
 self.addEventListener("install", e => {
+  // the API never reaches this worker where the browser can route around it (#453): a request it would only pass on
+  // still waits for the worker first, and one made as the page is left (settings.js saveLeft, keepalive) was lost then
+  if (e.addRoutes && self.URLPattern) e.waitUntil(e.addRoutes({condition: {urlPattern: new URLPattern({pathname: SCOPE.pathname + "api/*"})}, source: "network"}).catch(() => {}));
   // each file on its own: one missing file mustn't stop the rest from being kept
   e.waitUntil(caches.open(SHELL).then(c => Promise.all(FILES.map(f =>
     fetch(new Request(new URL(f, SCOPE), {cache: "no-store", credentials: "same-origin"}))
