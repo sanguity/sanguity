@@ -1599,6 +1599,11 @@ Everything on `main` so far; it becomes the first tagged release.
   sideways, showed each panel's heading row as an empty band while the labs' names stayed; the panel's name stays at
   the left of its row too. The importers failed on a lab day whose first test name was 158 or 159 characters long with
   others after it; it's kept whole with "…".
+- **Focus follows a pick on Costs, and stays put on Labs' Clear, Defaults and ×** (#462): a type of care, a provider,
+  a drug, or a What it was for or Who was paid row picked on Costs scrolled to its list but left focus on the row, now
+  above the screen, so the next Tab went back up; focus goes to the claims' heading, or the amounts' first control, in
+  sight. Labs' Clear and Defaults, and a chart's ×, left focus nowhere; Clear and Defaults keep it, and × gives it to
+  the next chart's ×, or, on the last chart, to that lab in the list.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -39,10 +39,11 @@ function renderSeriesList() {
   labCount("#labQn", top.length, all.length);
   const groups = labGroups(byFrequency(top));
   // the list's header (#192, index.html): under the filter, what's selected with Clear and Defaults, then the saved
-  // views (#37, trends-views.js); the header stays while the rows scroll, so typing in the filter keeps its focus
+  // views (#37, trends-views.js); the header stays while the rows scroll, so typing in the filter keeps its focus,
+  // and Clear and Defaults keep it on themselves as the charts are drawn again (store.js keepFocus, #462)
   $("#seriesSel").replaceChildren(el("b", {text: `${state.sel.size} selected`}), el("span", {class: "spacer"}),
-    el("button", {class: "btn", type: "button", text: "Clear", onclick: () => { state.sel.clear(); renderLabs(); }}),
-    el("button", {class: "btn", type: "button", text: "Defaults", onclick: () => { state.sel = startLabs(); renderLabs(); }}));
+    el("button", {class: "btn", type: "button", text: "Clear", onclick: () => { state.sel.clear(); keepFocus(renderLabs); }}),
+    el("button", {class: "btn", type: "button", text: "Defaults", onclick: () => { state.sel = startLabs(); keepFocus(renderLabs); }}));
   $("#tvBox").replaceChildren(...[viewsBar()].filter(Boolean));
   if (!top.length) wrap.append(el("p", {class: "hint lab-none"}, `No lab names match “${$("#labQ").value.trim()}”. `,
     el("button", {class: "btn", type: "button", text: "Clear the filter", onclick: () => { clearLabFilter(); $("#labQ").focus(); }})));
@@ -163,7 +164,13 @@ function chartCard(s) {
   card.append(el("div", {class: "hd"}, el("span", {class: "name", text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
     el("span", {class: "unit", text: `${s.unit}${!s.watch && nice(s.name) !== s.name ? " · " + renamedTitle("lab", s.name).replace(/^In/, "in") : ""}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), testLink(s.name), legend, read,   // "What is this test?" (#163, test-pages.js)
     viewSeg(s.name, nice(s.name), renderCharts),   // Chart | Table (#60)
-    el("button", {class: "btn quiet small", type: "button", "data-tip": `Remove ${nice(s.name)}`, "aria-label": `Remove ${nice(s.name)}`, onclick: () => { state.sel.delete(s.name); renderLabs(); }}, icon("x")),
+    el("button", {class: "btn quiet small", type: "button", "data-tip": `Remove ${nice(s.name)}`, "aria-label": `Remove ${nice(s.name)}`, onclick: () => {
+      // focus to the next chart's ×, else to this lab's box in the list (or Other, closed, it's in), else to the
+      // filter that hides it, not <body> (#462)
+      const cs = [...$("#charts").querySelectorAll(".chart")], next = cs.slice(cs.indexOf(card) + 1).find(c => c.dataset.lab !== s.name)?.dataset.lab;
+      state.sel.delete(s.name); renderLabs();
+      const box = [...$("#seriesRows").querySelectorAll("input[data-lab]")].find(c => c.dataset.lab === s.name);
+      ([...$("#charts").querySelectorAll(".chart")].find(c => c.dataset.lab === next)?.querySelector(".hd > [aria-label^=Remove]") || (box?.checkVisibility() ? box : box?.closest("details")?.querySelector("summary")) || $("#labQ")).focus(); }}, icon("x")),
     rangeNote(s, pts, showTable)));
   { const v = vitalLink(s); if (v) card.append(v); }   // a vital's readings at home, on Body and activity (#180, health.js)
   if (showTable) {

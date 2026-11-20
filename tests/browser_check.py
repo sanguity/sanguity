@@ -2875,12 +2875,7 @@ def main():
             cases448 = [
                 ("claims", "By year", "[...document.querySelectorAll('#costBy button')].find(b => b.textContent === 'By year')", "By year"),
                 ("claims", "By month", "[...document.querySelectorAll('#costBy button')].find(b => b.textContent === 'By month')", "By month"),
-                ("claims", "a type of care", "document.querySelector('#view-costs .ov-cols > .card .ov-row')", None),
-                ("claims", "a provider", "document.querySelectorAll('#view-costs .ov-cols > .card')[1].querySelector('.ov-row')", None),
-                ("claims", "a drug", "[...document.querySelectorAll('#view-costs .card')].find(c => /^Prescriptions/.test(c.querySelector('h2')?.textContent)).querySelector('tbody .cell-btn')", None),
                 ("paid", "HSA only", "[...document.querySelectorAll('#paidTable .toggle')].find(b => b.textContent === 'HSA only')", "HSA only"),
-                ("paid", "what it was for", "document.querySelector('#paidCard .ov-cols .ov-row')", None),
-                ("paid", "who was paid", "document.querySelectorAll('#paidCard .ov-cols > div')[1].querySelector('.ov-row')", None),
                 ("paid", "Close", "[...document.querySelectorAll('#oopEdit button')].find(b => b.textContent === 'Close')", "row"),
             ]
             focus448 = {}
@@ -2904,11 +2899,11 @@ def main():
             row448 = js("(a => [a.matches('#paidCard .ov-cols .ov-row'), a.getAttribute('role'), a.tabIndex, a.getAttribute('aria-pressed')])(document.activeElement)")
             page.keyboard.press("Enter")
             settle(300)
-            row448 += [js("[paidState.q, document.activeElement.getAttribute('aria-pressed'), !!document.querySelector('#paidTable .fsum:not([hidden])')]")]
+            row448 += [js("[paidState.q, document.querySelector('#paidCard .ov-cols .ov-row').getAttribute('aria-pressed'), !!document.querySelector('#paidTable .fsum:not([hidden])')]")]
             js("paidState.q = ''; costState.view = 'claims'; renderCosts()")
-            check("Costs (#448): By month, By year, a type of care, a provider, a drug, HSA only and What you paid's rows keep focus after Enter, picked; "
-                  "the editor's Close gives it back to the row's date",
-                  all(t and f != "BODY" and f[1] == w and (n in ("a provider", "a drug", "Close") or f[2] == "true") for n, (t, f, w) in focus448.items()), focus448)
+            check("Costs (#448): By month, By year and HSA only keep focus after Enter, picked; the editor's Close gives it back to the row's date "
+                  "(a row picked to filter gives it to the list it scrolls to: #462, below)",
+                  all(t and f != "BODY" and f[1] == w and (n == "Close" or f[2] == "true") for n, (t, f, w) in focus448.items()), focus448)
             check("…What you paid's rows are reached by Tab, buttons saying whether they're picked, and Enter lists only theirs",
                   row448[:4] == [True, "button", 0, "false"] and row448[4][0] and row448[4][1:] == ["true", True], row448)
             # #455: the editor's Close after a What it was for row has filtered its row out (the editor under the list then)
@@ -2932,6 +2927,33 @@ def main():
             js("paidState.q = ''; costState.view = 'claims'; renderCosts()")
             check("…the editor's Close, its row filtered out since by a What it was for row, leaves focus on that row, in sight, not <body> (#455)",
                   other455 >= 0 and close455 == [[True, True], ["DIV", "true", True, True]], [other455, close455])
+            # #462: a row picked to filter (a type of care, a provider, a drug; what it was for, who was paid) scrolls to its
+            # list and gives focus to what that brings into sight: the claims' heading, or the amounts' first control (HSA
+            # only); not left on the row, above the screen. At 1400×900 and 390×844, by Enter, the row scrolled to mid-screen
+            picks462 = [
+                ("claims", "a type of care", "document.querySelector('#view-costs .ov-cols > .card .ov-row')", "#costTable > h2", "cat"),
+                ("claims", "a provider", "document.querySelectorAll('#view-costs .ov-cols > .card')[1].querySelector('.ov-row')", "#costTable > h2", "q"),
+                ("claims", "a drug", "[...document.querySelectorAll('#view-costs .card')].find(c => /^Prescriptions/.test(c.querySelector('h2')?.textContent)).querySelector('tbody .cell-btn')", "#costTable > h2", "q"),
+                ("paid", "what it was for", "document.querySelector('#paidCard .ov-cols .ov-row')", "#paidTable .toggle", "paid"),
+                ("paid", "who was paid", "document.querySelectorAll('#paidCard .ov-cols > div')[1].querySelector('.ov-row')", "#paidTable .toggle", "paid"),
+            ]
+            focus462 = {}
+            for w462, h462 in ((1400, 900), (390, 844)):
+                page.set_viewport_size({"width": w462, "height": h462})
+                for view, name, sel, want, key in picks462:
+                    js("v => { Object.assign(costState, {q: '', cat: '', deniedOnly: false, view: v}); paidState.q = ''; paidState.open = null; renderCosts(); }", view)
+                    settle(200)
+                    js(f"(n => {{ n.scrollIntoView({{block: 'center'}}); n.focus(); }})({sel})")
+                    page.keyboard.press("Enter")
+                    settle(900)   # the smooth scroll done
+                    focus462[f"{w462} {name}"] = js("""([want, key]) => (a => [a.matches(want), (r => r.height > 0 && r.top >= 0 && r.bottom <= innerHeight)(a.getBoundingClientRect()),
+                        !!(key === 'paid' ? paidState.q : costState[key])])(document.activeElement)""", [want, key])
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("Object.assign(costState, {q: '', cat: '', deniedOnly: false, view: 'claims'}); paidState.q = ''; renderCosts()")
+            settle(200)
+            check("…a row picked to filter (a type of care, a provider, a drug, what it was for, who was paid) leaves focus on what its list's scroll brings into sight, "
+                  "the claims' heading or the amounts' HSA only, at 1400×900 and 390×844 (#462)",
+                  len(focus462) == 10 and all(v == [True, True, True] for v in focus462.values()), focus462)
             # #448: the out-of-pocket amounts in the page's own scroll at 390 px, no box scrolling inside it; a row's editor
             # opens in the row under it; and the headings in order, in both views with More figures open
             page.set_viewport_size({"width": 390, "height": 844})
@@ -7567,6 +7589,35 @@ def main():
             n_all = js("SERIES.filter(s => !s.watch && s.n >= 2).length")
             rows = lambda: js("document.querySelectorAll('#seriesRows .srow').length")
             check("…its count says how many labs there are", page.inner_text("#labQn") == f"{n_all} labs" and rows() == n_all, [page.inner_text("#labQn"), rows()])
+            # #462: Clear and Defaults keep focus on themselves as the charts are drawn again; a chart's × gives it to the
+            # next chart's ×, or, the last chart's, to that lab's box in the list (Other's summary while it's closed). By
+            # Enter, at 1400 and 390 px
+            sel462, focus462 = js("[...state.sel]"), {}
+            FOCUS462 = "(a => a === document.body ? 'BODY' : [a.tagName, a.textContent.trim() || a.getAttribute('aria-label') || a.dataset.lab])(document.activeElement)"
+            for w462 in (1400, 390):
+                page.set_viewport_size({"width": w462, "height": 900})
+                settle(300)
+                for b462 in ("Clear", "Defaults"):
+                    page.focus(f"#seriesSel button:text-is('{b462}')")
+                    page.keyboard.press("Enter")
+                    settle(300)
+                    focus462[f"{w462} {b462}"] = js(FOCUS462) == ["BUTTON", b462] and js("state.sel.size") == (0 if b462 == "Clear" else js("startLabs().size"))
+                labs462 = js("[...document.querySelectorAll('#charts .chart')].map(c => c.dataset.lab)")
+                page.locator("#charts .chart .hd > [aria-label^=Remove]").first.focus()
+                page.keyboard.press("Enter")
+                settle(300)
+                focus462[f"{w462} ×, first"] = js("(a => a.matches('#charts .chart .hd > [aria-label^=Remove]') && a.closest('.chart').dataset.lab)(document.activeElement)") == next(x for x in labs462 if x != labs462[0]) and labs462[0] not in js("[...state.sel]")
+                last462 = js("[...document.querySelectorAll('#charts .chart')].at(-1).dataset.lab")
+                page.locator("#charts .chart .hd > [aria-label^=Remove]").last.focus()
+                page.keyboard.press("Enter")
+                settle(300)
+                focus462[f"{w462} ×, last"] = js("""lab => (a => a.dataset.lab === lab && a.matches('#seriesRows input') || a.matches('#seriesRows details:not([open]) > summary')
+                    && [...a.parentElement.querySelectorAll('input[data-lab]')].some(c => c.dataset.lab === lab))(document.activeElement)""", last462)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("s => { state.sel = new Set(s); renderLabs(); }", sel462)
+            settle(300)
+            check("…by keyboard, Clear and Defaults keep focus on themselves; a chart's × gives it to the next chart's ×, the last's to its lab in the list, "
+                  "at 1400 and 390 px (#462)", len(focus462) == 8 and all(focus462.values()), focus462)
             sel_before = js("[...state.sel].sort()")
             page.click("#labQ")
             page.locator("#labQ").press_sequentially("hemo", delay=40)
