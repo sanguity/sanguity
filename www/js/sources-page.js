@@ -45,7 +45,7 @@ const SgSources = (() => {
   document.addEventListener("DOMContentLoaded", nav.again);
   /* an import's card once it's over (saved, failed or cancelled: import-jobs.js marks it settled) goes when another
      section is shown, so finished cards don't stay under every section, nor pile up (#283) */
-  document.addEventListener("sources:group", () => { for (const c of document.querySelectorAll(".import-job[data-settled]")) c.remove(); });
+  document.addEventListener("sources:group", () => { for (const c of document.querySelectorAll(".job[data-settled]")) c.remove(); });   // (the whole card, #281)
   /* on a phone the sidebar gives way to the Overview's cards, the way into each section (#283, app.css): above the
      others' titles, the way back to them, focus on the Overview's title */
   const srcBack = $(".src-back");

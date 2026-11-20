@@ -13,10 +13,10 @@
 // the icons' sprite, #257; v5: the sprite's icons for kinds of record, sidebars and menus, #354; v6: the records
 // page's store, #271; v7: one sidebar, #266, and About this person in Settings, #267; v8: the command palette, #273;
 // v9: renaming and deleting a profile in Settings, #402; v10: the other pages offline, #413; v11: the Medications tab,
-// #275):
+// #275; v12: a drop anywhere uploads, #281):
 // the worker installs a fresh copy under the new name, and activating deletes the old one, with any file no longer
 // listed.
-const SHELL = "sanguity-shell-v11";
+const SHELL = "sanguity-shell-v12";
 const SCOPE = new URL(self.registration.scope);
 // Every page, style, script, font and icon in www/ (tests/test_pwa.py checks this list against the folder). Not the
 // fonts' and icons' licence texts, and not connect-return.html: that's where a connected source's sign-in comes back, with a code
@@ -29,7 +29,7 @@ const FILES = [
   "icons/sprite.svg", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png",
   "js/account.js", "js/activity.js", "js/admin.js", "js/admin-sources.js", "js/app.js", "js/charts.js", "js/connect.js", "js/core.js", "js/costs.js", "js/dates.js", "js/drawer.js", "js/ecg.js", "js/filters.js", "js/health.js",
   "js/heatmap.js", "js/import-history.js", "js/import-jobs.js", "js/import-manual.js", "js/import-records.js", "js/import-shl.js",
-  "js/import.js", "js/journal.js", "js/login.js", "js/meds.js", "js/nav.js", "js/offline.js", "js/outside.js", "js/overview.js", "js/providers.js",
+  "js/import.js", "js/drop.js", "js/journal.js", "js/login.js", "js/meds.js", "js/nav.js", "js/offline.js", "js/outside.js", "js/overview.js", "js/providers.js",
   "js/person.js", "js/growth.js", "js/growth-lms.json", "js/pwa.js", "js/ranges.js", "js/rename.js", "js/same.js", "js/settings-nav.js", "js/settings.js", "js/presets.js", "js/setup.js",
   "js/sources.js", "js/summary.js", "js/theme.js", "js/timeline.js", "js/trends.js", "js/trends-views.js", "js/units.js",
   "js/util.js", "js/share.js", "js/share-links.js", "js/sharing.js", "js/calendar-feed.js", "js/moved.js",

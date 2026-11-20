@@ -840,17 +840,54 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
   .acct .tbl td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:var(--fs-2);font-weight:var(--fw-medium);overflow-wrap:normal}
   .acct .activity .tbl td:nth-child(n+3){grid-column:1/-1}   /* …and an activity log's what and address take the row's width */
 }
+/* uploading (#281, import.js dropTarget): Sources → Upload files, the guide's step 2 and the dialog a drop opens
+   (drop.js); the drop target, then each upload's card (import-jobs.js frame): its title, the stage line, one bar,
+   what's happening now and the job's own part. The veil over the page while files are dragged over it */
+.up{display:grid;gap:var(--sp-3);margin-top:var(--sp-3)}
+.up-drop{display:grid;justify-items:center;gap:var(--sp-2);padding:var(--sp-5) var(--sp-4);border:2px dashed var(--ring);border-radius:var(--r-lg);background:var(--raised);text-align:center}
+.up-ico{display:grid;place-items:center;width:2.75rem;height:2.75rem;border-radius:var(--r-pill);background:var(--hover);color:var(--accent)}
+.up-say{margin:0;font-weight:var(--fw-semibold)}
+.up-btns{display:flex;flex-wrap:wrap;justify-content:center;gap:var(--sp-2)}
+.up-btns .btn{margin:0;display:inline-flex;color:var(--ink);font-weight:var(--fw-medium)}   /* (labels: not .acct label's look) */
+.up-btns .btn.primary{color:var(--on-accent)}
+.up-what{margin:0;max-width:34rem;font-size:var(--fs-2);color:var(--muted)}
+.up-msg{margin:0;font-size:var(--fs-3)}
+.up-msg:empty{display:none}
+.up-msg.bad{color:var(--crit)}
+.up-jobs{display:grid;gap:var(--sp-3)}
+.up-jobs:empty{display:none}
+.job{margin:0;display:grid;gap:var(--sp-2)}
+.job-hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--sp-2)}
+.job-hd h3{margin:0;font-size:var(--fs-4);color:var(--ink);overflow-wrap:anywhere}
+.job .msg{margin:0;padding:0;border:0;font-size:var(--fs-3)}   /* (the records page's .msg is a quoted message) */
+.job-hd span{font-size:var(--fs-2);color:var(--muted)}
+.job-steps{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-3);margin:0;padding:0;list-style:none;font-size:var(--fs-2);color:var(--muted)}
+.job-steps li{display:flex;align-items:center;gap:var(--sp-1)}
+.job-dot{display:grid;place-items:center;width:1.1rem;height:1.1rem;border:1.5px solid currentColor;border-radius:var(--r-pill)}
+.job-dot .icon{width:.75rem;height:.75rem}
+.job-steps .done{color:var(--ink2)}
+.job-steps .done .job-dot{border-color:var(--accent-fill);background:var(--accent-fill);color:var(--on-accent)}
+.job-steps .now{color:var(--ink);font-weight:var(--fw-semibold)}
+.job-steps .now .job-dot{border-color:var(--accent);background:radial-gradient(circle,var(--accent) 0 35%,transparent 40%)}
+.job-steps .bad{color:var(--crit);font-weight:var(--fw-semibold)}
+.job-bar{width:100%;height:.5rem}
+.job-now{margin:0;font-size:var(--fs-3);color:var(--ink2);font-variant-numeric:tabular-nums}
+.job-now:empty{display:none}
+.job .import-job:empty{display:none}
+.job .import-job:focus{outline:none}   /* focus put there (the review ready), as on a section shown */
+.job .import-job>:first-child{margin-top:0}
+.job .imp-state{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}   /* the stage line shows Review: "Ready to import" is said, not shown twice (#281, #282) */
+.up-dlg[open]{display:flex;flex-direction:column}
+.up-dlg.sg-dlg-center{width:min(40rem,calc(100vw - 32px));padding-top:var(--sp-3)}
+.drop-veil{inset:0;width:auto;height:auto;margin:0;padding:var(--sp-4);border:0;background:var(--scrim);place-items:center}
+.drop-veil:popover-open{display:grid}
+.drop-veil>div{display:grid;justify-items:center;gap:var(--sp-2);max-width:28rem;padding:var(--sp-6) var(--sp-5);border:2px dashed var(--accent);border-radius:var(--r-lg);background:var(--surface);color:var(--ink);font-size:var(--fs-5);font-weight:var(--fw-semibold);text-align:center;box-shadow:var(--shadow-2)}
+.drop-veil>div p{margin:0}
+.drop-veil .icon{width:2rem;height:2rem;color:var(--accent)}
+.drop-veil.no>div{border-color:var(--crit)}
+.drop-veil.no .icon{color:var(--crit)}
+@media (forced-colors:active){ .job-steps .done .job-dot{background:Highlight;color:HighlightText} .job-steps .now .job-dot{background:Highlight} }
 /* import page (import.html) */
-.imp .imp-tabs{margin:var(--sp-4) 0 var(--sp-1)}
-.imp [role="tabpanel"] .hint{margin:var(--sp-2) 0}
-.imp .drop{margin-top:var(--sp-3);border:2px dashed var(--ring);border-radius:var(--r-md);padding:var(--sp-4) var(--sp-3);text-align:center;color:var(--muted);font-size:var(--fs-3)}
-.imp .drop.over{border-color:var(--accent);color:var(--ink);background:var(--hover)}
-.imp .imp-sum{justify-content:space-between;margin-top:var(--sp-4)}
-.imp .imp-list{list-style:none;margin:var(--sp-2) 0 0;padding:0;max-height:340px;overflow-y:auto;font-size:var(--fs-3)}
-.imp .imp-list li{display:grid;grid-template-columns:minmax(0,1fr) auto 90px 46px;gap:var(--sp-1) var(--sp-2);align-items:center;border-top:1px solid var(--grid);padding:var(--sp-1) 0}
-.imp .imp-list .path{overflow-wrap:anywhere}
-.imp .imp-list progress{width:100%;height:8px}
-.imp .imp-list li.muted{display:block}
 /* the import review (#282, import-jobs.js jobReview): a tile per kind, its icon in the kind's colour (a color attribute);
    new, already here and possibly the same as a bar and its key; the lab names' table; its Add in a group bar (.sg-bar) */
 .import-job .imp-state{margin:0;font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2)}
@@ -949,11 +986,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .man-item .man-check{margin-top:var(--sp-2);overflow-wrap:anywhere}
 .imp .man-save{flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);margin-top:var(--sp-3)}
 .imp .man-keep{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-3)}
-@media (max-width:640px){
-  .imp .imp-list li{grid-template-columns:minmax(0,1fr) auto}
-  .imp .imp-list progress{grid-column:1 / -1}
-  .imp .form.inline select{max-width:100%}
-}
+@media (max-width:640px){ .imp .form.inline select{max-width:100%} }
 /* import history (import-history.js) */
 .imp .hist{list-style:none;margin:var(--sp-3) 0 0;padding:0;font-size:var(--fs-3)}
 .imp .hist>li{border-top:1px solid var(--grid);padding:var(--sp-2) 0}
@@ -1544,7 +1577,7 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .src .src-wait-t{flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
 .src :is(.src-wait-t,.src-way) p,.src .src-wait-none{margin:2px 0 0;font-size:var(--fs-3);color:var(--ink2)}
 .src .src-wait-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
-.src #srcReview>.import-job{margin:var(--sp-3) 0 0;padding:var(--sp-3) 0 0;border:0;border-top:1px solid var(--grid);border-radius:0}   /* not a card in a card */
+.src #srcReview>.job{margin:var(--sp-3) 0 0;padding:var(--sp-3) 0 0;border:0;border-top:1px solid var(--grid);border-radius:0}   /* not a card in a card */
 .src .src-ways{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:var(--sp-3)}
 .src .src-empty+.src-ways{margin-top:var(--sp-4)}
 .src .src-way{position:relative;min-width:0;padding:var(--sp-3);border:1px solid transparent;border-radius:var(--r-lg);background:var(--hover);overflow-wrap:anywhere}

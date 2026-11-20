@@ -8769,42 +8769,45 @@ def main():
             page.goto(base + "/?profile=2")
             page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
 
-            # ---- import page: upload a fictional C-CDA in a zip into the empty profile; it's imported in the background
-            # (#20) and its records reach the timeline. Then single files, with #20's hook stood in for. Reached through
-            # the guide (#199): Get started, past its first step, then Upload an export
+            # ---- uploading (#281): a fictional C-CDA in a zip, into the empty profile, from the guide's step 2 (#199: Get
+            # started, past its first step), which has Sources' drop target. Chosen, it starts at once: sent, unpacked,
+            # recognised and read in the background (#20), then its review, all in one card with no other click, focus
+            # on the review. Saved, its records reach the timeline. Then Sources → Upload files, the same target
             page.click("main .empty a")
             page.wait_for_selector("#step-name:not([hidden])", timeout=10000)
             page.click("#step-name [data-skip]")
-            page.click("#step-records a[data-to=upload]")
-            page.wait_for_selector("#importer", state="visible", timeout=10000)
-            check("…whose Upload an export opens Sources → Upload files for that profile, with a way back to the guide (#199)",
-                  js("location.search + location.hash") == "?profile=2&guide=records#upload" and page.is_visible("#guideBar")
-                  and js("document.getElementById('guideBack').getAttribute('href')") == "guide.html?profile=2#records", js("location.href"))
-            check("import page offers the profiles you can import into, the linked one chosen",
-                  js("[...document.querySelectorAll('#profile option')].map(o => o.textContent)") == ["My records (owner)", "Second person (owner)"]
-                  and js("document.getElementById('profile').value") == "2")
+            page.wait_for_selector("#step-records .up-drop", state="visible", timeout=10000)
+            check("the guide's step 2 has the drop target, files or a folder chosen or dropped, with no Upload button (#281)",
+                  js("[...document.querySelectorAll('#step-records .up-btns label')].map(l => l.textContent)") == ["Choose files", "Choose a folder"]
+                  and js("document.querySelector('#step-records .up-btns input[webkitdirectory]').multiple")
+                  and not js("[...document.querySelectorAll('#step-records button')].some(b => /upload/i.test(b.textContent))")
+                  and js("[...document.querySelectorAll('#step-records .guide-way')].map(a => a.dataset.to)") == ["portals", "manual"])
             import io, zipfile
             buf = io.BytesIO()
             with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
                 z.write(os.path.join(ROOT, "tests", "fixtures", "importers", "ccda", "maple-grove-ccd", "maple-grove-ccd.xml"),
                         "export/summary.xml")
                 z.writestr("export/README.txt", "A fictional portal export, for the browser check.\n")
-            page.set_input_files("#pickZip", files=[{"name": "portal-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
-            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
-            check("the chosen zip is listed", "portal-export.zip" in page.inner_text("#list"))
-            page.click("#go")
-            page.wait_for_function("document.getElementById('msg').textContent.startsWith('Uploaded')", timeout=20000)
-            msg = page.inner_text("#msg")
-            check("a zip uploads through the page", msg == "Uploaded 1 file (2 once unpacked).", msg)
-            check("each file's progress reaches the end", js("[...document.querySelectorAll('#list progress')].every(p => p.value === 1)"))
+            js("window._steps281 = []; new MutationObserver(() => { const s = document.querySelector('#step-records .job')?.dataset.step; "
+               "if (s && s !== window._steps281.at(-1)) window._steps281.push(s); }).observe(document.getElementById('step-records'), {subtree: true, attributes: true, childList: true})")
+            page.set_input_files("#step-records .up-btns input:not([webkitdirectory])", files=[{"name": "portal-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+            page.wait_for_selector("#step-records .import-job", timeout=5000)   # the job's part of its card, under the stage line
+            last_card = "[...document.querySelectorAll('.import-job')].pop()"
+            page.wait_for_function(f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            settle(600)   # (the card scrolled to the top)
+            one281 = js(f"""(c => [c.querySelector('.job-hd').textContent, [...c.querySelectorAll('.job-steps li')].map(li => [li.textContent, li.className]),
+                c.querySelector('.job-steps [aria-current=step]')?.textContent, document.activeElement === {last_card}, c.querySelector('.job-bar').hidden,
+                Math.round(c.getBoundingClientRect().top) >= 0 && c.getBoundingClientRect().top < innerHeight])({last_card}.closest('.job'))""")
+            check("…a zip chosen there goes from Sending to its review in one card with no other click: the stage line, focus on the review (#281)",
+                  one281[0].startswith("portal-export.zip") and one281[0].endswith(" · 2 files once unpacked")
+                  and one281[1] == [["Sending (done)", "done"], ["Unpacking (done)", "done"], ["Recognising (done)", "done"], ["Review", "now"], ["Saved", ""]]
+                  and one281[2] == "Review" and one281[3] and one281[4] and one281[5]
+                  and js("window._steps281") == ["send", "unpack", "find", "review"], [one281, js("window._steps281")])
             from server import db as dbm, uploads
             db = dbm.connect()
             up = db.execute("SELECT id, state FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
             check("the upload is stored, unpacked and ready", up and up["state"] == "ready" and
                   sorted(uploads.manifest(db, 2, up["id"])) == ["export/README.txt", "export/summary.xml"])
-            page.wait_for_selector(".import-job", timeout=5000)   # the job's card, which shows its stage while it runs
-            last_card = "[...document.querySelectorAll('.import-job')].pop()"
-            page.wait_for_function(f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             card = js(f"{last_card}.innerText")
             # the review (#282): the format and dates, a tile per kind in the Timeline's colours with a few of each, how
             # many are new, already here or possibly the same, and a bar at the foot whose button says what it adds
@@ -8821,6 +8824,10 @@ def main():
                   and len({t[3] for t in rv["tiles"]}) >= 3 and rv["split"] == ["18 new", "0 already here", "0 possibly the same"]
                   and rv["buttons"] == ["Cancel", "Add 18 records"] and rv["sticky"] == "sticky", rv)
             check("…and nothing is saved yet", db.execute("SELECT COUNT(*) FROM imports WHERE profile_id=2").fetchone()[0] == 0)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            bad281 = phone_fits(page, "the guide's step 2 with an upload in review")
+            check("…the guide's step with its upload in review fits 375 px, nothing cut off or overlapping (#281)", not bad281, bad281)
             for w in (375, 320):
                 page.set_viewport_size({"width": w, "height": 800})
                 settle(200)
@@ -8836,16 +8843,58 @@ def main():
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
             card = js(f"{last_card}.innerText")
-            check("the upload is imported in the background, as C-CDA, and the page says what came in",
-                  card.startswith("Imported.") and "C-CDA" in card and "visit" in card and "lab result" in card, card)
+            check("the upload is imported in the background, as C-CDA, and the card says what came in, every stage done",
+                  card.startswith("Imported.") and "C-CDA" in card and "visit" in card and "lab result" in card
+                  and js(f"[...{last_card}.closest('.job').querySelectorAll('.job-steps li')].every(li => li.className === 'done')"), card)
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
             check("the job is done, read by the C-CDA importer", job is not None and tuple(job) == ("done", "ccda"), job and tuple(job))
+            page.wait_for_selector("#recordsHave:not([hidden])", timeout=10000)
+            check("…and the guide's step says the profile has records now, with Continue (#199)",
+                  "has records now, from 1 import" in page.inner_text("#recordsHave") and page.is_visible("#step-records [data-next]"), page.inner_text("#step-records")[-300:])
+            page.click("#step-records a[data-to=manual]")
+            page.wait_for_selector("#typeIn", state="visible", timeout=10000)
+            check("…whose other ways open Sources for that profile, with a way back to the guide (#199)",
+                  js("location.search + location.hash") == "?profile=2&guide=records#manual" and page.is_visible("#guideBar")
+                  and js("document.getElementById('guideBack').getAttribute('href')") == "guide.html?profile=2#records", js("location.href"))
+            check("Sources offers the profiles you can import into, the linked one chosen",
+                  js("[...document.querySelectorAll('#profile option')].map(o => o.textContent)") == ["My records (owner)", "Second person (owner)"]
+                  and js("document.getElementById('profile').value") == "2")
+            page.goto(base + "/sources.html?profile=2#upload")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            # ---- a drop anywhere (#281, drop.js): files dragged over a page show a veil naming the profile they'd go
+            # into (a drag of text shows none). First, before Sources holds a card a group change would clear (#283):
+            # let go on Sources while another group shows, Upload files is shown and
+            # they start there, through to the review with no other click, at 375 px; on the records page they go into a
+            # dialog of their own, its review there
+            drop281 = """([names, text]) => { const dt = new DataTransfer();
+                if (text) dt.setData('text/plain', text); else for (const n of names) dt.items.add(new File(['Date,Test,Result,Units,Reference Range\\n2026-10-01,WBC,6.3,K/uL,4.0 - 11.0\\n'], n, {type: 'text/csv'}));
+                document.body.dispatchEvent(new DragEvent('dragenter', {dataTransfer: dt, bubbles: true}));
+                const v = document.querySelector('.drop-veil'), said = [!!v && v.matches(':popover-open'), v ? v.textContent : null];
+                if (!text) v.dispatchEvent(new DragEvent('drop', {dataTransfer: dt, bubbles: true}));
+                else document.body.dispatchEvent(new DragEvent('dragleave', {dataTransfer: dt, bubbles: true}));
+                return said; }"""
+            page.set_viewport_size({"width": 375, "height": 800})
+            js("SgSources.show('manual')")
+            settle(300)
+            cards = js("document.querySelectorAll('.import-job').length")
+            text281 = js(drop281, [[], "some words"])
+            veil281 = js(drop281, [["dropped.csv"], None])
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && /^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            settle(600)   # (the card scrolled to the top)
+            at281 = js(f"""(c => [location.hash, getComputedStyle(document.getElementById('importer')).display !== 'none', c.querySelector('h3').textContent,
+                document.activeElement === {last_card}, c.getBoundingClientRect().top >= 0 && c.getBoundingClientRect().top < innerHeight])({last_card}.closest('.job'))""")
+            bad281 = phone_fits(page, "Sources → Upload files with a dropped file in review")
+            check("a drag of text shows no veil; a file dragged over Sources shows one naming the profile, and dropped while Type records in showed, "
+                  "Upload files is shown and it goes to its review there with no other click, focus on it, fitting 375 px (#281)",
+                  not text281[0] and veil281 == [True, "Drop to upload to Second person"]
+                  and at281 == ["#upload", True, "dropped.csv", True, True] and not bad281, [text281, veil281, at281, bad281])
+            js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            page.wait_for_function(f"{last_card}.textContent.startsWith('Cancelled.')", timeout=10000)
+            page.set_viewport_size({"width": 1400, "height": 900})
             # the same export again: everything is a duplicate; cancelling it leaves nothing behind
             imports_before = db.execute("SELECT COUNT(*) FROM imports WHERE profile_id=2").fetchone()[0]
-            page.set_input_files("#pickZip", files=[{"name": "portal-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
-            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
-            page.click("#go")
-            page.wait_for_function(f"document.querySelectorAll('.import-job').length >= 2 && "
+            page.set_input_files("#pickFiles", files=[{"name": "portal-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length >= 1 && "
                                    f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             card = js(f"{last_card}.innerText")
             add_btn = f"{last_card}.querySelector('.imp-actions .primary')"
@@ -8879,10 +8928,8 @@ def main():
                     for n in names:
                         full = os.path.join(d, n)
                         z.write(full, "fhir-export/" + os.path.relpath(full, fhir_dir).replace(os.sep, "/"))
-            page.set_input_files("#pickZip", files=[{"name": "fhir-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
-            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
-            page.click("#go")
-            page.wait_for_function(f"document.querySelectorAll('.import-job').length >= 3 && "
+            page.set_input_files("#pickFiles", files=[{"name": "fhir-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length >= 2 && "
                                    f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
@@ -8897,10 +8944,8 @@ def main():
             buf = io.BytesIO()
             with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
                 z.write(os.path.join(ROOT, "tests", "fixtures", "importers", "fhir", "portal-everything", "bundle.json"), "portal/bundle.json")
-            page.set_input_files("#pickZip", files=[{"name": "portal-everything.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
-            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
             cards = js("document.querySelectorAll('.import-job').length")
-            page.click("#go")
+            page.set_input_files("#pickFiles", files=[{"name": "portal-everything.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
             page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
                                    f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             items = js(f"[...{last_card}.querySelectorAll('.imp-tiles .tile')].map(t => t.querySelector('.val').textContent + ' ' + t.querySelector('.lbl').textContent.toLowerCase())")
@@ -8914,17 +8959,14 @@ def main():
                                              ("claims-csv", "claims-csv/eob/claims.csv")]):
                 with open(os.path.join(claims_fix, *rel.split("/")), "rb") as f:
                     raw = f.read()
+                cards = js("document.querySelectorAll('.import-job').length")
                 if name == "claims-csv":
-                    page.click("#tab-files")
                     page.set_input_files("#pickFiles", files=[{"name": "eob.csv", "mimeType": "text/csv", "buffer": raw}])
                 else:
                     buf = io.BytesIO()
                     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
                         z.writestr(f"{name}-claims/claims.json", raw)
-                    page.set_input_files("#pickZip", files=[{"name": f"{name}-claims.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
-                page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
-                cards = js("document.querySelectorAll('.import-job').length")
-                page.click("#go")
+                    page.set_input_files("#pickFiles", files=[{"name": f"{name}-claims.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
                 page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
                                        f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
                 js(f"{last_card}.querySelector('.imp-actions .primary')?.click()")   # Save, at its preview (#22)
@@ -8934,7 +8976,6 @@ def main():
                 job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
                 check(f"claims upload is imported in the background by the {name} importer",
                       card.startswith("Imported.") and job is not None and tuple(job) == ("done", name), (card, job and tuple(job)))
-            page.click("#tab-zip")
             # ...and a fictional CareSpace / OncoEMR portal export (api/*.json, its C-CDA and two PDFs), zipped in a folder
             cs_dir = os.path.join(ROOT, "tests", "fixtures", "importers", "carespace", "full")
             buf = io.BytesIO()
@@ -8943,10 +8984,8 @@ def main():
                     for n in names:
                         full = os.path.join(d, n)
                         z.write(full, "carespace-export/" + os.path.relpath(full, cs_dir).replace(os.sep, "/"))
-            page.set_input_files("#pickZip", files=[{"name": "carespace-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
-            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
             cards = js("document.querySelectorAll('.import-job').length")
-            page.click("#go")
+            page.set_input_files("#pickFiles", files=[{"name": "carespace-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
             page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
                                    f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             js(f"{last_card}.querySelector('.imp-actions .primary')?.click()")   # Save, at its preview (#22)
@@ -8977,10 +9016,8 @@ def main():
                     for n in names:
                         full = os.path.join(d, n)
                         z.write(full, "mychart-20261101/" + os.path.relpath(full, epic_dir).replace(os.sep, "/"))
-            page.set_input_files("#pickZip", files=[{"name": "mychart-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
-            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
             cards = js("document.querySelectorAll('.import-job').length")
-            page.click("#go")
+            page.set_input_files("#pickFiles", files=[{"name": "mychart-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
             page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
                                    f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             js(f"{last_card}.querySelector('.imp-actions .primary')?.click()")   # Save, at its preview (#22)
@@ -8997,10 +9034,8 @@ def main():
             buf = io.BytesIO()
             with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
                 z.write(os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml"), "apple_health_export/export.xml")
-            page.set_input_files("#pickZip", files=[{"name": "export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
-            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
             cards = js("document.querySelectorAll('.import-job').length")
-            page.click("#go")
+            page.set_input_files("#pickFiles", files=[{"name": "export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
             page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
                                    f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             card = js(f"{last_card}.innerText")
@@ -9010,16 +9045,16 @@ def main():
                   "2 glucose meter readings", "1 day of cgm readings", "2 heights, offered for about this person")) and "cycle" not in card.lower(), items)
             js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
             page.wait_for_function(f"!/^Ready to import/.test({last_card}.textContent)", timeout=10000)
-            js("window.__hook = []; window.sanguityImport = {uploaded: a => window.__hook.push(a)}")
-            page.click("#tab-files")
+            js("window.__real281 = sanguityImport.uploaded; window.__hook = []; sanguityImport.uploaded = a => { window.__hook.push({profileId: a.profileId, uploadId: a.uploadId, card: a.frame.card.isConnected}); return null; }; 0")
             page.set_input_files("#pickFiles", files=[{"name": n, "mimeType": "text/csv", "buffer": b"date,test,value\n2026-02-01,WBC,6.1\n"}
                                                       for n in ("a.csv", "b.csv")])
-            page.click("#go")
             page.wait_for_function("window.__hook.length === 1", timeout=20000)
             hook = js("window.__hook[0]")
             last = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()["id"]
-            check("after the upload, #20's hook is called with the profile and upload", hook == {"profileId": 2, "uploadId": last}, hook)
-            check("…and the page says how many were uploaded", page.inner_text("#msg") == "Uploaded 2 files.", page.inner_text("#msg"))
+            check("after the upload, #20's hook is called with the profile and upload, and the card it goes on in", hook == {"profileId": 2, "uploadId": last, "card": True}, hook)
+            sent281 = js("(c => [c.querySelector('.job-hd').textContent, c.dataset.step, c.querySelector('.job-steps li').textContent])([...document.querySelectorAll('.job')].pop())")
+            check("…and the card names what was sent, and says it's sent", sent281[0].startswith("2 files2 files · ") and sent281[1:] == ["unpack", "Sending (done)"], sent281)
+            js("sanguityImport.uploaded = window.__real281; 0")   # (0: not the function, which js() would call)
             db.close()
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
@@ -9031,6 +9066,24 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && "
                                    "TABS.some(t => !document.getElementById('view-' + t).hidden)", timeout=20000)   # the saved view restored
             check("the imported records open on the timeline of the profile they went into", js("state.tab") == "timeline", js("state.tab"))
+            # (#281) a drop on the records page: into a dialog of its own, uploading to the profile shown, its review there
+            veil281 = js(drop281, [["dropped-here.csv"], None])
+            page.wait_for_function("(c => c && /^(Ready to import|All duplicates|Not imported)/.test(c.textContent))(document.querySelector('dialog.up-dlg[open] .import-job'))", timeout=30000)
+            dlg281 = js("""[document.getElementById('upDlgT').textContent, document.querySelector('dialog.up-dlg').matches(':modal'),
+                document.activeElement === document.querySelector('dialog.up-dlg .import-job'), document.querySelector('dialog.up-dlg h3').textContent,
+                [...document.querySelectorAll('dialog.up-dlg .job-steps li')].map(li => li.className)]""")
+            bad281 = []
+            for theme in ("light", "dark"):
+                js("t => document.documentElement.dataset.theme = t", theme)
+                bad281 += axe_check(page, f"the records page's upload dialog, a dropped file in review, {theme}")[0]
+            js("delete document.documentElement.dataset.theme")
+            check("…on the records page a drop opens a dialog uploading to the profile shown, its card at its review, focus on it, axe-clean in light and dark",
+                  veil281 == [True, "Drop to upload to Second person"] and dlg281 == ["Upload to Second person", True, True, "dropped-here.csv", ["done", "done", "done", "now", ""]]
+                  and not bad281, [veil281, dlg281, bad281])
+            js("[...document.querySelectorAll('dialog.up-dlg .imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            page.wait_for_function("document.querySelector('dialog.up-dlg .import-job').textContent.startsWith('Cancelled.')", timeout=10000)
+            page.keyboard.press("Escape")
+            check("…and Escape closes it", js("!document.querySelector('dialog.up-dlg').open"))
             listed = js("document.getElementById('list').textContent")   # the list's text whole: innerText leaves out the months the browser skips off screen (#277)
             check("…where the C-CDA's visits are listed", "Outpatient visit" in listed, listed[:300])
             check("…and the FHIR export's stay and documents, beside them", "Riverside General Hospital" in listed and "Discharge summary" in listed,
@@ -9733,10 +9786,7 @@ def main():
             def upload_csv(name, body):
                 page.goto(base + "/import.html?profile=2")
                 page.wait_for_selector("#importer", state="visible", timeout=10000)
-                page.click("#tab-files")
                 page.set_input_files("#pickFiles", files=[{"name": name, "mimeType": "text/csv", "buffer": body}])
-                page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
-                page.click("#go")
                 page.wait_for_function(f"document.querySelectorAll('.import-job').length && "
                                        f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             lab_csv = "Date,Test,Result,Units,Reference Range\n{},Hemoglobin Whole Bld,{},g/dL,13.5 - 17.5\n"
@@ -14469,15 +14519,12 @@ def main():
             bb_dir = os.path.join(ROOT, "tests", "fixtures", "importers", "fhir", "blue-button")
             page.goto(base + f"/import.html?profile={conn_pid}")
             page.wait_for_selector("#importer", state="visible", timeout=10000)
-            page.click("#tab-files")
             bb_files = []
             for n in sorted(os.listdir(bb_dir)):
                 with open(os.path.join(bb_dir, n), "rb") as f:
                     bb_files.append({"name": n, "mimeType": "application/x-ndjson", "buffer": f.read()})
-            page.set_input_files("#pickFiles", files=bb_files)
-            page.wait_for_function("!document.getElementById('go').disabled", timeout=5000)
             cards = js("document.querySelectorAll('.import-job').length")
-            page.click("#go")
+            page.set_input_files("#pickFiles", files=bb_files)
             page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
                                    f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             js(f"{last_card}.querySelector('.imp-actions .primary')?.click()")
@@ -16666,22 +16713,14 @@ def main():
                   and "Robin Example" in fp.inner_text("#profileMenuBtn") and fp.evaluate("location.hash") == "#records"
                   and fp.is_visible("#step-records [data-skip]") and fp.is_hidden("#step-records [data-next]"))
             ways = fp.evaluate("[...document.querySelectorAll('#step-records .guide-way')].map(a => a.getAttribute('href'))")
-            check("…its ways in are Sources' own sections: upload, a portal or plan (#165's section), typing in",
-                  ways == [f"sources.html?profile=1&guide=records#{g}" for g in ("upload", "portals", "manual")], ways)
-            fp.click("#step-records a[data-to=upload]")
-            fp.wait_for_selector("#importer", state="visible", timeout=10000)
-            check("…Upload an export opens Sources → Upload files, saying it's part of the guide, with Back to the guide",
-                  fp.is_visible("#guideBar") and fp.get_attribute("#guideBack", "href") == "guide.html?profile=1#records")
-            fp.click("#tab-files")
-            fp.set_input_files("#pickFiles", os.path.join(ROOT, "tests", "fixtures", "importers", "ccda", "maple-grove-ccd", "maple-grove-ccd.xml"))
-            f_until("!document.getElementById('go').disabled", 5000)
-            fp.click("#go")
+            check("…its ways in: an upload in the step itself (#281), else Sources' own sections, a portal or plan (#165's section), typing in",
+                  fp.is_visible("#step-records .up-drop") and ways == [f"sources.html?profile=1&guide=records#{g}" for g in ("portals", "manual")], ways)
+            fp.set_input_files("#step-records .up-btns input:not([webkitdirectory])", os.path.join(ROOT, "tests", "fixtures", "importers", "ccda", "maple-grove-ccd", "maple-grove-ccd.xml"))
             last = "[...document.querySelectorAll('.import-job')].pop()"
             f_until(f"!!{last} && /^(Ready to import|All duplicates|Not imported)/.test({last}.textContent)", 30000)
             fp.evaluate(f"{last}.querySelector('.imp-actions .primary').click()")
             f_until(f"/^(Imported|Not imported)/.test({last}.textContent)", 30000)
             check("…where a fictional C-CDA is uploaded, previewed and saved", fp.evaluate(f"{last}.textContent").startswith("Imported."), fp.evaluate(f"{last}.textContent")[:200])
-            fp.click("#guideBack")
             fp.wait_for_selector("#recordsHave:not([hidden])", timeout=10000)
             check("…and back in the guide, the step says the records are in, with Continue in place of Skip",
                   "Robin Example has records now, from 1 import" in fp.inner_text("#recordsHave") and fp.is_visible("#step-records [data-next]")

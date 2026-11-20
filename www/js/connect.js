@@ -256,7 +256,7 @@
     for (const c of live) {   // the first pull's preview, as on the import page
       if (c.first_job && ["queued", "running", "preview"].includes(c.first_job_state) && !followed.has(c.first_job) && d.can_connect) {
         followed.add(c.first_job);
-        window.sanguityImport.follow({profileId: PID, jobId: c.first_job, container: "#import-status"}).then(() => load());
+        window.sanguityImport.follow({profileId: PID, jobId: c.first_job, container: "#import-status", title: `${c.source}: the first records`}).then(() => load());
       }
     }
     if (live.some(c => c.phase === "first pull" || c.phase === "first pull saving")) timer = setTimeout(() => load(), 2000);

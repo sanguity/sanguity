@@ -1,17 +1,25 @@
-/* Sanguity · importing an upload in the background (#20). The import page (#19) calls
-     window.sanguityImport.uploaded({profileId, uploadId[, container][, importer]})
-   once an upload is finished. This starts the import, polls it (about once a second, slower the longer it runs),
-   shows the stage, then its review (#22, #282: jobReview): what it would add by kind, the dates it covers, and the
+/* Sanguity · importing an upload in the background (#20), in one card from the first file sent to the records saved
+   (#281). The upload's drop target (import.js) makes the card (frame, below), sends the files with it, then calls
+     window.sanguityImport.uploaded({profileId, uploadId[, frame][, container][, importer][, title]})
+   once the upload is finished; a Health Link (import-shl.js) calls it too, and follow() shows an import started
+   elsewhere (a connected source's first pull, one waiting for you). This starts the import, polls it (about once a
+   second, slower the longer it runs), shows the stage, then its review (#22, #282: jobReview): what it would add by kind, the dates it covers, and the
    duplicates of what the profile has, skipped unless ticked to keep, lab names Sanguity doesn't know with a series
    suggested for each (#23: confirm it, pick another or keep it separate; remembered for later imports), results
    possibly the same as one another source brought (#96: ticked to show once), with its Add button and Cancel. Adding
    polls again and shows what came in, with a link to the timeline; cancelling throws the import and its upload away.
+
+   The card (#281): what's imported, the stage line (Sending → Unpacking → Recognising → Review → Saved; an import that
+   wasn't uploaded here starts at Recognising), one progress bar, a line saying what's happening now (said as each
+   stage starts), then the job's own part (.import-job), which the review, the result or what went wrong fills. Focus
+   moves to the review once it's ready, unless it has gone somewhere else on the page meanwhile.
    Plain script: no inline code (the pages' CSP allows scripts from js/ only); from other files it needs util.js (el,
-   icon, kindIcon, CAT_OF, keepDates, aboutWords for the ⓘ, #280) and dates.js. */
+   icon, kindIcon, CAT_OF, keepDates, aboutWords for the ⓘ, #280, sayIn, announce, smoothly) and dates.js. */
 "use strict";
 (function () {
   const STAGES = {queued: "Waiting for another import to finish…", detecting: "Recognising the files…",
                   parsing: "Reading the records…", saving: "Saving the records…"};
+  const STEPS = {send: "Sending", unpack: "Unpacking", find: "Recognising", review: "Review", saved: "Saved"};
   const KIND = {visit: ["visit", "visits"], lab: ["lab draw", "lab draws"], imaging: ["imaging study", "imaging studies"],
                 procedure: ["procedure", "procedures"], study: ["report", "reports"], message: ["message", "messages"],
                 appt_msg: ["appointment message", "appointment messages"], auto_msg: ["automated message", "automated messages"],
@@ -43,15 +51,81 @@
   const plural = (n, [one, many]) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
   const day = s => { const t = dayTs(s); return isNaN(t) ? s : fmtD(t); };   // dates.js
 
-  function box(container) {
-    let host = container;
-    if (typeof host === "string") host = document.querySelector(host);
-    if (!host) host = document.querySelector("#import-status");
-    if (!host) { host = node("section", {id: "import-status"}); (document.querySelector("main") || document.body).append(host); }
-    const card = node("div", {class: "card import-job", role: "status", "aria-live": "polite"});
-    host.append(card);
-    return card;
+  function host(container) {
+    let h = container;
+    if (typeof h === "string") h = document.querySelector(h);
+    if (!h) h = document.querySelector("#import-status");
+    if (!h) { h = node("section", {id: "import-status"}); (document.querySelector("main") || document.body).append(h); }
+    return h;
   }
+
+  /* the card (#281). opts {container, title, size, steps}: steps, the STEPS it goes through (an upload all of them).
+     -> {card, body, title, step(id, text), text(t), note(t), progress(v), end(how), focus()}. card is the whole card,
+     body its job's own part (.import-job), which the rest of this file fills and calls the card (FRAMES finds its
+     frame). step marks the stages before it done and shows and says text; text(t) changes the line without saying it
+     (a count as it goes); note(t) adds to what's said beside the title ("2 files once unpacked"); progress(v): a
+     fraction, null while there's nothing to measure (the bar moves to and fro), false for no bar; end("done") marks
+     them all done, end("failed") or end("cancelled") the stage it stopped at */
+  const FRAMES = new WeakMap();
+  function frame(opts) {
+    opts = opts || {};
+    const ids = opts.steps || Object.keys(STEPS);
+    const lis = ids.map(id => node("li", {}, node("span", {class: "job-dot", "aria-hidden": "true"}), STEPS[id], node("span", {class: "vh"})));
+    const bar = node("progress", {class: "job-bar", max: "1", "aria-label": "Progress"});
+    const now = node("p", {class: "job-now"});
+    const body = node("div", {class: "import-job", tabindex: "-1"});
+    const about = node("span", {class: "muted", text: opts.size || ""});
+    const card = node("div", {class: "card job"},
+      node("div", {class: "job-hd"}, node("h3", {text: opts.title || "Import"}), about),
+      node("ol", {class: "job-steps", "aria-label": "Stages"}, lis), bar, now, body);
+    host(opts.container).append(card);
+    let at = 0;
+    const mark = (upto, how) => lis.forEach((li, i) => {
+      const done = i < upto || i === upto && how === "done", bad = i === upto && how === "bad";
+      li.className = done ? "done" : bad ? "bad" : i === upto ? "now" : "";
+      if (i === upto && !how) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+      li.firstChild.replaceChildren(...(done ? [icon("check")] : bad ? [icon("x")] : []));
+      li.lastChild.textContent = done ? " (done)" : bad ? " (stopped)" : "";
+    });
+    const f = {card, body, title: opts.title || "Import",
+      step(id, text) {
+        at = Math.max(0, ids.indexOf(id));
+        card.dataset.step = id;
+        mark(at);
+        now.hidden = false;
+        if (text) sayIn(now, text);
+      },
+      text(t) { now.textContent = t; },
+      note(t) { about.textContent = [about.textContent, t].filter(Boolean).join(" · "); },
+      progress(v) {
+        bar.hidden = v === false;
+        if (v == null || v === false) bar.removeAttribute("value"); else bar.value = Math.max(0, Math.min(1, v));
+      },
+      end(how) {
+        f.progress(false);
+        card.dataset.step = how;
+        mark(how === "done" ? ids.length - 1 : at, how === "done" ? "done" : "bad");
+        now.hidden = true;
+      },
+      // focus to the review: from where the files were chosen or dropped (the card's own section or dialog), or from
+      // nowhere in particular, not from wherever someone has gone since
+      focus() {
+        const a = document.activeElement, from = card.parentElement.closest("section, dialog") || card.parentElement;
+        if (a && a !== document.body && !from.contains(a)) return false;
+        body.focus({preventScroll: true});
+        card.scrollIntoView({block: "start", behavior: smoothly()});   // the card's top under the top bar (scroll-padding)
+        return true;
+      }};
+    FRAMES.set(body, f);
+    f.step(ids[0]);
+    f.progress(null);
+    return f;
+  }
+  // an import started from files already on the server: in the upload's card (frame), else in a card of its own
+  // from Recognising on
+  const own = opts => opts.frame || frame({container: opts.container, title: opts.title, steps: ["find", "review", "saved"]});
+  /* a mark on the card for Sources (#283), on its job's own part, which its scripts look for, and on the whole card */
+  const tag = (card, k, v) => { card.dataset[k] = v; const f = FRAMES.get(card); if (f) f.card.dataset[k] = v; };
 
   function countItems(c) {
     const kinds = Object.entries(c.kinds || {}).sort((a, b) => b[1] - a[1]);
@@ -250,7 +324,7 @@
   }
 
   function jobReview(job, card) {
-    const j = job, pid = j.profile_id, base = `profiles/${encodeURIComponent(pid)}/jobs/${j.id}`;
+    const j = job, pid = j.profile_id, base = `profiles/${encodeURIComponent(pid)}/jobs/${j.id}`, f = FRAMES.get(card);
     return new Promise(done => {
       const range = j.range ? (j.range.from === j.range.to ? day(j.range.from) : `${day(j.range.from)} – ${day(j.range.to)}`) : "";
       const labs = labTable(j), same = sameChoices(j), dups = dupChoices(j);
@@ -286,9 +360,10 @@
         if (bad) { say("A lab name has a series that isn't there: pick one from its list, or leave it empty."); bad.focus(); return; }
         busy(true); say("Adding…");
         if (!(await act("confirm", {keep: dups.picked(), labs: labs.picked(), same: same.picked()}))) { busy(false); return; }
-        const status = node("p", {text: STAGES.saving});
-        card.replaceChildren(status);
-        done(poll(card, pid, j.id, status));
+        card.replaceChildren();
+        f.step("saved", STAGES.saving);
+        f.progress(null);
+        done(poll(card, pid, j.id, STAGES.saving));
       });
       cancel.addEventListener("click", async () => {
         busy(true); say("Cancelling…");
@@ -305,16 +380,22 @@
         node("div", {class: "sg-bar imp-actions", role: "region", "aria-label": "Add or cancel this import"},
           node("span", {class: "sg-bar-what"}, node("span", {class: "sg-bar-n", text: "Not saved yet"}), msg),
           node("span", {class: "sg-bar-acts"}, cancel, add)));
+      // the stage line says Review (#281); its "Ready to import" is said by focus on it, or else here
+      f.step("review");
+      f.text("");
+      f.progress(false);
+      if (!f.focus()) announce(`${j.new ? "Ready to import" : "All duplicates"}: ${f.title}. Nothing is saved until you add it.`);
     });
   }
 
   // replaceChildren turns a null into the text "null"; parts that aren't there are left out instead
   function fill(card, ...parts) { card.replaceChildren(...parts.filter(p => p != null)); }
   /* a card whose import is over (saved, failed or cancelled): Sources clears it once another section is shown (#283) */
-  const settled = card => { card.dataset.settled = ""; };
+  const settled = card => tag(card, "settled", "");
 
   function showDone(card, pid, j) {
     settled(card);
+    FRAMES.get(card).end("done");
     const c = j.counts || {}, items = countItems(c), sk = j.skipped || {};
     const skipped = (sk.events || 0) + (sk.results || 0), ln = j.lab_names || {};
     fill(card,
@@ -326,8 +407,7 @@
       notes(j),
       node("p", {}, node("a", {href: `index.html?profile=${pid}#timeline`, text: "See them on the timeline"})));   // its profile and tab (#208)
     // said by a toast (#263), with the way to what came in and an Undo, which asks first in Import history's words
-    // (#360: it can't be reversed): the card stays as it is, no longer said itself
-    card.removeAttribute("role"); card.removeAttribute("aria-live");
+    // (#360: it can't be reversed): the card stays as it is
     const what = items.map(li => li.textContent);
     const labs = c.results > 0, where = labs ? "labs" : "timeline";
     toast(what.length ? `Imported ${what.slice(0, 2).join(", ")}${what.length > 2 ? " and more" : ""}.` : "Imported: nothing new.", {
@@ -352,26 +432,29 @@
       parts.map((p, i) => i % 2 ? node("a", {href: p, target: "_blank", rel: "noopener noreferrer", text: p}) : p)));
     card.classList.add("error");
     settled(card);
+    const f = FRAMES.get(card);
+    f.end("failed");
+    announce("Not imported: " + f.title, {error: true});
   }
 
   async function uploaded(opts) {
-    const pid = opts && opts.profileId, up = opts && opts.uploadId;
-    const card = box(opts && opts.container);
-    const status = node("p", {text: "Starting the import…"});
-    card.replaceChildren(status);
+    opts = opts || {};
+    const pid = opts.profileId, up = opts.uploadId, f = own(opts), card = f.body;
+    f.step("find", "Starting the import…");
+    f.progress(null);
     let r;
     try {
       r = await call(`profiles/${encodeURIComponent(pid)}/uploads/${encodeURIComponent(up)}/import`,
-                     {method: "POST", body: JSON.stringify(opts && opts.importer ? {importer: opts.importer} : {})});
+                     {method: "POST", body: JSON.stringify(opts.importer ? {importer: opts.importer} : {})});
     } catch (e) { showFailed(card, "Couldn't reach the server to start the import. Check the connection and try again."); return null; }
     if (r.status === 401) { location.replace("login.html"); return null; }
     if (!r.ok) { showFailed(card, await detail(r)); return null; }
-    return poll(card, pid, (await r.json()).id, status);
+    return poll(card, pid, (await r.json()).id);
   }
 
-  async function poll(card, pid, jid, status) {
-    card.dataset.job = jid;   // which import it is: Sources' "Waiting for you" opens the card there is, not another (#283)
-    const began = Date.now();
+  async function poll(card, pid, jid, said = null) {   // said: the stage's words said already
+    tag(card, "job", jid);   // which import it is: Sources' "Waiting for you" opens the card there is, not another (#283)
+    const f = FRAMES.get(card), began = Date.now();
     let wait = 1000, misses = 0;
     for (;;) {
       await new Promise(go => setTimeout(go, wait));
@@ -383,7 +466,7 @@
         j = await g.json(); misses = 0;
       } catch (e) {
         misses++;
-        status.textContent = "Lost touch with the server; still trying… (the import carries on there)";
+        f.text("Lost touch with the server; still trying… (the import carries on there)");
       }
       if (j) {
         if (j.state === "done") { showDone(card, pid, j); return j; }
@@ -391,8 +474,9 @@
         if (j.state === "discarded") { showCancelled(card); return j; }
         if (j.state === "preview") return jobReview({profile_id: pid, ...j}, card);
         const secs = Math.round((Date.now() - began) / 1000);
-        const stage = j.state === "queued" && j.stage !== "saving" ? "queued" : j.stage;
-        status.textContent = (STAGES[stage] || "Working…") + (secs >= 5 ? ` (${secs} s)` : "");
+        const stage = j.state === "queued" && j.stage !== "saving" ? "queued" : j.stage, words = STAGES[stage] || "Working…";
+        if (words !== said) { f.step(stage === "saving" ? "saved" : "find", words); said = words; }   // said once, as it starts
+        else f.text(words + (secs >= 5 ? ` (${secs} s)` : ""));
       }
       // about once a second at first; slower for a long import, and slower still while the server can't be reached
       const elapsed = Date.now() - began;
@@ -402,16 +486,17 @@
 
   function showCancelled(card) {
     settled(card);
+    FRAMES.get(card).end("cancelled");
     card.replaceChildren(node("p", {}, node("b", {text: "Cancelled."}), " Nothing was saved, and the upload was removed."));
   }
 
   // an import someone else started (a connected source's first pull, connect.js), or one left at its preview (Sources'
   // "Waiting for you", #283, with opts.text: what it says until the preview is there): its progress and preview here
   function follow(opts) {
-    const card = box(opts && opts.container), status = node("p", {text: opts.text || "Reading the records…"});
-    card.replaceChildren(status);
-    return poll(card, opts.profileId, opts.jobId, status);
+    const f = own(opts || {}), text = opts.text || STAGES.parsing;
+    f.step("find", text);
+    return poll(f.body, opts.profileId, opts.jobId, text);
   }
 
-  window.sanguityImport = {uploaded, follow};
+  window.sanguityImport = {uploaded, follow, frame};
 })();

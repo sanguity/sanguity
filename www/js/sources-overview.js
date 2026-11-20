@@ -40,10 +40,10 @@
      another section is shown (sources-page.js) */
   function open(job) {
     let card = document.querySelector(`.import-job[data-job="${job.id}"]:not([data-settled])`);
-    if (card) review.append(card);
+    if (card) review.append(card.closest(".job") || card);   // its whole card (#281)
     else {
       window.sanguityImport.follow({profileId: SgSources.pid(), jobId: job.id, container: review, text: "Opening its preview…"}).then(() => load());
-      card = review.lastElementChild;
+      card = review.lastElementChild.querySelector(".import-job");   // the job's own part of its card (#281)
     }
     card.tabIndex = -1;
     card.focus();
@@ -57,7 +57,7 @@
     try { r = await api(`profiles/${SgSources.pid()}/jobs/${job.id}/discard`, {method: "POST"}); }
     catch (e) { toast("Not cancelled: the server can't be reached."); return; }
     if (!r.ok) { const e = await r.json().catch(() => ({})); toast(`Not cancelled: ${typeof e.detail === "string" ? e.detail : r.status}`); return; }
-    document.querySelector(`.import-job[data-job="${job.id}"]`)?.remove();   // its card elsewhere, with a Save that can't work now
+    document.querySelector(`.job[data-job="${job.id}"]`)?.remove();   // its card elsewhere, with a Save that can't work now
     toast("Cancelled: nothing from that import was saved.");
     await load();
     // focus on what's there now: the next thing waiting, else the heading

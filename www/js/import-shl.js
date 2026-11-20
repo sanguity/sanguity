@@ -71,9 +71,10 @@
         : el("span", {class: "bad", text: `Health Card from ${c.host || "an unnamed issuer"}: its signature couldn't be checked (${c.why}). Import it only if you trust where it came from.`})));
       for (const n of r.notes || []) parts.push(el("p", {class: "shl-card", text: n}));
       result.replaceChildren(...parts);
+      const title = seen.label || "A Health Link";
       text.value = ""; clear();
       const hook = window.sanguityImport && window.sanguityImport.uploaded;
-      if (typeof hook === "function") await hook({profileId: pid(), uploadId: r.upload, importer: "fhir"});
+      if (typeof hook === "function") await hook({profileId: pid(), uploadId: r.upload, importer: "fhir", title});
       tell(goMsg, "");
     } catch (e) {
       tell(goMsg, e.message, true);

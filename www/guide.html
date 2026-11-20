@@ -45,13 +45,13 @@
     <p class="muted guide-later">You can share the profile with other accounts later, under Sharing.</p>
   </section>
 
-  <!-- 2. the first records, brought in on the Sources page (which links back here) -->
+  <!-- 2. the first records: an export uploaded here (Sources' drop target, import.js: #281), or brought in on the
+       Sources page (which links back here) -->
   <section class="card guide-step" id="step-records" aria-labelledby="recordsTitle" hidden>
     <h2 id="recordsTitle">Bring in the first records</h2>
-    <p class="hint">Pick one way to start. You can add the others later, under Sources.</p>
+    <p class="hint">Upload the export a patient portal or app gave you, or start another way. You can add the others later, under Sources.</p>
+    <div id="guideDrop"></div>
     <ul class="guide-ways">
-      <li><a class="guide-way" data-to="upload" href="sources.html#upload"><b>Upload an export <svg class="icon i-arrow-right" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-arrow-right"/></svg></b>
-        <span>The zip or files a patient portal or app gave you.</span></a></li>
       <li><a class="guide-way" data-to="portals" href="sources.html#portals"><b>Connect a portal or health plan <svg class="icon i-arrow-right" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-arrow-right"/></svg></b>
         <span>Sign in to it once, and new records come in by themselves.</span></a></li>
       <li><a class="guide-way" data-to="manual" href="sources.html#manual"><b>Type them in <svg class="icon i-arrow-right" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-arrow-right"/></svg></b>
@@ -107,7 +107,10 @@
 <script src="js/groups.js"></script>
 <script src="js/nav.js"></script>
 <script src="js/palette.js"></script>
+<script src="js/drop.js"></script>
 <script src="js/dates.js"></script>
+<script src="js/import-jobs.js"></script>
+<script src="js/import.js"></script>
 <script src="js/guide.js"></script>
 </body>
 </html>

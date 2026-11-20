@@ -159,7 +159,7 @@ function menuSheet(m, title, ...extra) {
 }
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
-  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, layout() { return {}; }, fit() {}, waited() {}, menu: menuWire, TABS: []};
+  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, profile() { return null; }, layout() { return {}; }, fit() {}, waited() {}, menu: menuWire, TABS: []};
   const svgLogo = header.querySelector(".brand-name");
   const onRecords = !!document.getElementById("view-overview"), page = location.pathname.split("/").pop() || "index.html";
 
@@ -620,5 +620,7 @@ const SgNav = (() => {
     menuSheet(more, "More tabs");
   }
   phoneBar();
-  return {sync, lock, profiles, layout, fit, waited, menu: menuWire, TABS: TABS.map(([t]) => t)};
+  /* the profile shown, {id, name, role}, or null (a drop anywhere uploads to it: drop.js, #281) */
+  const profile = () => locked ? null : known.find(x => String(x.id) === pick.value) || null;
+  return {sync, lock, profiles, profile, layout, fit, waited, menu: menuWire, TABS: TABS.map(([t]) => t)};
 })();

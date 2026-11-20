@@ -1475,6 +1475,19 @@ Everything on `main` so far; it becomes the first tagged release.
   factor and passkeys, offline records, requiring two-factor sign-in, the backup schedule and the sync defaults all
   take it. A table of many columns (reference ranges) goes under its name, and the tables of rows (names, milestones,
   workout rules) follow the width they have, not the screen's.
+- **Upload: one drop target that starts at once, every stage in one card** (#281): Upload files asked for a zip, a
+  folder or single files in three tabs, though the server recognises the format itself, then for a separate Upload
+  button, and the job appeared in another card further down, with nothing scrolled or focused (on a phone, Save was two
+  screens down). Now one drop target takes files or a folder, with **Choose files** and **Choose a folder** (files
+  only on a phone or tablet), and what's chosen or dropped starts at once. The job runs in a card under it: what was
+  sent, a stage line (**Sending → Unpacking → Recognising → Review → Saved**), one progress bar and a line saying
+  what's happening, each stage said as it starts; when the review is ready, focus moves to it and its card is
+  scrolled to the top. A Health Link and a connected source's first pull show the same card from Recognising on. The
+  getting-started guide's step 2 has the same drop target, so an export goes from the guide to its review without
+  leaving it. And files dropped anywhere on a page with the top bar show a veil naming the profile they'd go into
+  (or why they can't: a profile you can only view, or offline); let go, they upload into that page's drop target, or
+  into one in a dialog over the page, the records page drawing what's saved there in place. Nothing dropped is kept
+  but on its way to the server. The service worker keeps the new script (`sanguity-shell-v12`).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
