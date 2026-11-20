@@ -884,26 +884,46 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .shl-pass{display:grid;gap:var(--sp-1);max-width:260px;margin:var(--sp-2) 0}
 .imp .shl-card{font-size:var(--fs-3);margin:var(--sp-2) 0}
 .imp .shl-card .bad{color:var(--crit)}
-/* results typed in (import-manual.js): one grid row per result, captions on the first row only, all on a phone */
-.imp .man-rows{display:grid;gap:2px;margin:var(--sp-3) 0 var(--sp-1)}
-.imp .man-row{display:grid;grid-template-columns:7.6em 4.6em minmax(8em,1.6fr) 5.4em 5em 7em 4.8em minmax(5em,1fr) auto;gap:var(--sp-1) var(--sp-2);align-items:end;padding:var(--sp-1) 0;border-top:1px solid var(--grid)}
+/* Type records in (#285): a chip per kind, in groups, each adding its form (a card) at the end of the list */
+.imp .man-h{font-size:var(--fs-3);margin:var(--sp-4) 0 var(--sp-2)}
+.imp .man-kgroup{display:grid;grid-template-columns:9em minmax(0,1fr);gap:var(--sp-1) var(--sp-3);align-items:baseline;margin-bottom:var(--sp-2)}
+.imp .man-kname{font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2)}
+@media (max-width:640px){ .imp .man-kgroup{grid-template-columns:minmax(0,1fr)} }
+/* results typed in (import-manual.js): one grid row per result where the list has room, captions on the first row only;
+   else two lines a result (date, time and test; the rest), or four on a phone (date and time; test; value, unit and
+   range; flag, lab and ✕), every caption shown. Measured on the list, not the window, so it fits beside the sidebar */
+.imp .man-rows{display:grid;gap:2px;margin:var(--sp-2) 0;container-type:inline-size}
+.imp .man-row{display:grid;grid-template-columns:repeat(6,minmax(0,1fr)) auto;gap:var(--sp-1) var(--sp-2);align-items:end;padding:var(--sp-2) 0;border-top:1px solid var(--grid)}
 .imp .man-row:first-child{border-top:0}
 .imp .man-row label{font-size:var(--fs-2);gap:2px;min-width:0}
-.imp .man-row input,.imp .man-row select{width:100%;padding:var(--sp-1);font-size:var(--fs-3)}   /* 4 px in: "optional" fits the 4.6em Time box */
-.imp .man-row:not(:first-child) .cap{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.imp .man-row .del{margin:0}   /* its ✕: the quiet button, the fields' height (#374) */
+.imp .man-row input,.imp .man-row select{width:100%;min-width:0;padding:var(--sp-1);font-size:var(--fs-3)}
+.imp .man-row .del{margin:0}   /* its ✕: the quiet button, the fields' height (#374), 44 px on a phone */
+@container (width < 36em){
+  .imp .man-row .f-date{grid-column:1 / 5}
+  .imp .man-row :is(.f-time,.f-range){grid-column:5 / -1}
+  .imp .man-row .f-test{grid-column:1 / -1}
+  .imp .man-row :is(.f-value,.f-flag){grid-column:1 / 3}
+  .imp .man-row .f-unit{grid-column:3 / 5}
+  .imp .man-row .f-lab{grid-column:3 / 7}
+}
+@container (36em <= width < 55em){
+  .imp .man-row{grid-template-columns:8.6em 7em repeat(3,minmax(0,1fr)) auto}
+  .imp .man-row .f-test{grid-column:3 / -1}
+}
+@container (width >= 55em){
+  .imp .man-row{grid-template-columns:8.6em 7em minmax(7em,1.6fr) 4.6em 4.6em 6.4em 4.6em minmax(4.6em,1fr) auto;padding:var(--sp-1) 0}
+  .imp .man-row:not(:first-child) .cap{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+}
 .imp .man-check{grid-column:1 / -1;font-size:var(--fs-2);color:var(--muted);min-height:0}
 .imp .man-check:empty{display:none}
 .imp .man-check.bad{color:var(--crit)}
 .imp .man-check .abn{color:var(--crit);font-weight:var(--fw-semibold)}
 .imp .man-check .dup{color:var(--ink2);font-weight:var(--fw-semibold)}
 /* other records typed in (import-records.js): one form per record, its fields flowing into as many columns as fit */
-.imp .man-pick{margin:var(--sp-3) 0 var(--sp-1);flex-wrap:wrap;align-items:end}
-.imp .man-pick label{min-width:0;max-width:100%}
 .imp .man-items{display:grid;gap:var(--sp-2);margin:var(--sp-2) 0}
-.imp .man-items:empty{display:none}
-.imp .man-item{position:relative;border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3) var(--sp-2);margin:0;min-width:0}
-.imp .man-item legend{font-size:var(--fs-3);font-weight:var(--fw-semibold);padding:0 var(--sp-1)}
+.imp :is(.man-item,.man-labs){position:relative;border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:0;min-width:0}
+.imp :is(.man-item,.man-labs) legend{font-size:var(--fs-3);font-weight:var(--fw-semibold);padding:0 var(--sp-1)}
+.imp .man-labs .howto{margin:0}
 .imp .rec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(9.5em,100%),1fr));gap:var(--sp-2) var(--sp-2);padding-right:var(--sp-5)}   /* room for the ✕ */
 .imp .rec-f{display:flex;flex-direction:column;font-size:var(--fs-2);gap:2px;min-width:0}
 .imp .rec-f input,.imp .rec-f select,.imp .rec-f textarea{width:100%;font-size:var(--fs-3)}
@@ -917,7 +937,6 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .man-item .del{position:absolute;top:var(--sp-1);right:var(--sp-1);margin:0}   /* its ✕: the quiet button (#374), clear of the fields */
 @media (max-width:640px),(pointer:coarse){ .imp .rec-grid{padding-right:calc(var(--sp-6) + var(--sp-1))} }   /* 44 px there */
 .imp .man-item .man-check{margin-top:var(--sp-2);overflow-wrap:anywhere}
-.imp .man-h{font-size:var(--fs-3);margin:var(--sp-4) 0 2px}
 .imp .man-save{flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);margin-top:var(--sp-3)}
 .imp .man-keep{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-3)}
 @media (max-width:640px){
@@ -936,14 +955,6 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .hist>li.hl{background:var(--raised);box-shadow:inset 3px 0 0 var(--accent);padding-left:var(--sp-3);padding-right:var(--sp-3);border-radius:var(--r-sm)}
 .imp .hist>li:focus{outline:2px solid var(--accent);outline-offset:2px}
 .imp .hist li.undone .hd b,.imp .hist li.undone .what{color:var(--muted)}
-@media (max-width:760px){
-  .imp .man-row{grid-template-columns:repeat(5,minmax(0,1fr)) auto;padding:var(--sp-2) 0}   /* the ✕ its own width, 44 px on a phone */
-  .imp .man-row:not(:first-child) .cap{position:static;width:auto;height:auto;overflow:visible;clip:auto}
-  .imp .man-row .f-date,.imp .man-row .f-time,.imp .man-row .f-lab{grid-column:span 3}
-  .imp .man-row .f-test{grid-column:1 / -1}
-  .imp .man-row .f-value,.imp .man-row .f-unit,.imp .man-row .f-range,.imp .man-row .f-flag{grid-column:span 2}
-  .imp .man-row .del{grid-column:span 1}
-}
 /* settings page (settings.js) */
 .sets .set{border-top:1px solid var(--grid);padding:var(--sp-3) 0 var(--sp-1)}
 .sets .set .row{margin:var(--sp-2) 0 var(--sp-2)}

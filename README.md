@@ -402,14 +402,16 @@ Nothing is sent anywhere: no email or push.
 
 For records on paper, or from a portal that has no export, **Sources → Type records in** takes every kind of
 record Sanguity can import. Lab results go one per row, as in a spreadsheet (and rows copied from one can be pasted
-in); everything else has a form of its own, picked from **Add a record**: a visit, a hospital stay, a procedure, an
+in); everything else has a form of its own. Under **Add a record** each kind is a button, in groups (results and visits,
+medications, home readings, money, documents), adding its form below the ones before: a visit, a hospital stay, a procedure, an
 imaging scan or a report, a medication or a pharmacy fill with its cost, a problem or diagnosis, an immunization, an insurance claim,
 an out-of-pocket payment (with its receipt, and whether an HSA or FSA paid it), an upcoming appointment, vitals taken at a visit (blood pressure, heart rate, temperature,
 height, SpO2, breathing rate, weight), a blood pressure, glucose, temperature or blood oxygen reading taken at home
 (shown beside the phone's on Body and activity, as typed in; typed again for the same time, it replaces the one
-before), a height (into About this person's history), a weight or step count measured at home, a workout, or a
-letter or document with its PDF or picture attached. Dates take the forms a lab spreadsheet does (`2026-03-04`, `4 Mar 2026`, and
-`03/04/2026` when the other dates settle which is the day).
+before), a weight or step count measured at home, a workout, or a letter or document with its PDF or picture
+attached. A height goes in Settings → About this person, with its history. Dates and times are picked with the
+browser's own date and time pickers; lab rows pasted from a spreadsheet keep the dates it has (`2026-03-04`,
+`4 Mar 2026`, and `03/04/2026` when the other dates settle which is the day), shown in the pickers once read.
 
 Each entry is checked as you type and says what it will become, or which field is wrong and why; one the profile has
 already is pointed out and left out of the save unless you tick **Save again what's already there**. **Save** stores
