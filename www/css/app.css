@@ -191,7 +191,7 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
        <span class="val">212<small>ng/mL</small></span>                    the value in the display serif, its unit
        <span class="delta">▲ +18 since Aug 18, 2026</span>                 the change line, balanced, a date kept whole
        <svg>…</svg>                                                         a sparkline, at the tile's foot
-   in a grid of .tiles (.compact for narrower ones, .stats for a row of plain counts) or a row of .ov-minis. The
+   in a grid of .tiles (.compact for narrower ones, .stats for a row of plain counts, .stats.three for three). The
    Overview's key labs and home readings, its Watch & scale and insurance figures, Body and activity's and Costs'
    figures and the Timeline's counts are all this tile. A tile inside a card is tinted instead of bordered, so there's
    never an edge inside an edge (forced colours still draw it). base.css lays a tile's text out at its exact size
@@ -206,6 +206,9 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
 .tiles,.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:0 var(--sp-3);margin-bottom:var(--sp-3)}   /* and each tile's margin (below) */
 .tiles.compact{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
 .stats{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.stats.three{grid-template-columns:repeat(auto-fit,minmax(clamp((100% - 2 * var(--sp-3)) / 3 - 1px,(480px - 100%) * 999,100%),1fr))}   /* the claims'
+   three figures, Costs' and the Overview's alike (#448): in a row where a third is wide enough, else one under another,
+   never two and one */
 .card :is(.tiles,.stats):last-child{margin-bottom:calc(-1 * var(--sp-3))}   /* the last row's margin is the card's padding */
 :is(.tile,.tile-tq){border:1px solid var(--ring);border-radius:var(--r-lg);background:var(--surface)}
 .tile{display:flex;flex-direction:column;gap:2px;min-width:0;padding:var(--sp-2) var(--sp-3);color:inherit;font:inherit;text-align:left}
@@ -613,10 +616,6 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-row .v{font-variant-numeric:tabular-nums;font-weight:var(--fw-semibold)}
 .ov-row .r{color:var(--muted);font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 .ov-row .s{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-2)}
-.ov-minis{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);margin:var(--sp-2) 0 var(--sp-3)}   /* …three side by side (#333), wrapping
-   when one is too wide for a third, as a figure in another currency's format can be at 320 px (#342) */
-.ov-minis>*{flex:1 1 0;min-width:min-content;justify-content:flex-end}   /* tiles (#260), never narrower than a figure: the row wraps
-   instead (#351); a label that wraps grows up from its value, so a row's values stay on one line */
 /* heatmap */
 /* overflow-x:clip (not auto) so the wrapper is not a scroll container and the month axis can stick to the window bottom
    (over a phone's tabs, #268) */
@@ -1411,10 +1410,11 @@ table.data.doseweeks td:first-child,table.data.doseweeks th:first-child{text-ali
 .few .dose-slot{flex-basis:64px}
 .few .dose-med{flex-basis:0}
 .dose-st{align-self:flex-start}
-/* out of pocket (#55): a payment counted once, the editor under the list */
+/* out of pocket (#55): a payment counted once, the editor under its row */
 table.data.oop tr.oop-dup td{color:var(--muted)}
-table.data.oop tr[aria-expanded=true] td{background:var(--hover)}
-.oop-edit{border:1px solid var(--ring);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin-top:var(--sp-3)}
+table.data.oop tr:has(+.oop-open){background:var(--hover)}   /* the open one, its editor in the row under it (#448) */
+table.data.oop .oop-open>td{padding:0 0 var(--sp-2);min-width:0}
+.oop-edit{border:1px solid var(--ring);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin-top:var(--sp-2)}
 .oop-form{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);align-items:flex-end}
 .oop-form label{display:flex;flex-direction:column;gap:3px;font-size:var(--fs-2);color:var(--ink2);min-width:0;max-width:100%}
 .oop-form select{max-width:100%}

@@ -1506,6 +1506,15 @@ Everything on `main` so far; it becomes the first tagged release.
   value could be stale; it shows the one with the latest result. Settings' Labs selected at first listed record names
   ("Automated Abs Neutrophil Cnt") where Key labs uses nicknames, and its ↑ and ↓ set an order nothing followed; it
   shows nicknames, with the record's name beside one, and Remove is each lab's one control.
+- **Costs keeps focus, its rows work by keyboard, and its figures look alike** (#448): By month and By year, a type
+  of care, a provider, a drug in Prescriptions and HSA only left focus on the page after Enter, and the
+  out-of-pocket editor's Close did too; each keeps it now, Close giving it back to the row's date. What you paid's
+  "What it was for" and "Who was paid" rows could be clicked but not reached by keyboard; they're buttons now that
+  say whether they're picked. Its amounts scrolled inside a 420 px box (about three rows on a phone); they're in the
+  page's own scroll, 200 at a time with Show more, and a row's editor opens under it rather than under the whole list.
+  HSA and FSA by year came as an h2 before the view's own; the view's heading leads its figures now, with it an h3
+  under it. The three claims figures sat two and one on Costs and unevenly on the Overview; on both they're three in a
+  row where each has room, one under another where not.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

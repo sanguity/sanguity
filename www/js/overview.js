@@ -319,7 +319,7 @@ function ovRecord() {
   if ((DATA.costs || []).length) {
     const rows = DATA.costs, pm = primaryMs(), dx = pm ? rows.filter(r => r.d >= pm.date) : rows;
     const cc = el("div", {class: "card"}, dx.length ? el("p", {class: "hint", text: `Claims from ${fmtD(dayTs(dx.reduce((m, r) => r.d < m ? r.d : m, dx[0].d)))} on (${listOf(insurerSpans(dx).map(s => s[0]), ", then ")}).`}) : null);
-    cc.append(el("div", {class: "ov-minis"}, ...claimFigures(dx, false)),   // Costs' three figures, in its order and look (costs.js, #442)
+    cc.append(el("div", {class: "stats three"}, ...claimFigures(dx, false)),   // Costs' three figures, in its order, look and layout (costs.js, #442, #448)
       ovGo("costs", "Open Costs", () => { if (pm) setPeriod(msKey(pm)); costState.view = "claims"; pickTab("costs"); }));   // the same period, on Claims (#443), as the Overview's other ways to a tab (#440)
     right.push(ovHead(pm ? `Insurance costs since ${lcLabel(pm.label)}` : "Insurance costs"), cc);
   }

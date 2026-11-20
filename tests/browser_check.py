@@ -2680,7 +2680,7 @@ def main():
             costs442 = js(fig_look, "#view-costs > .cost-figs > .stats .tile")
             js("switchTab('overview')")
             settle(300)
-            ov442 = js(fig_look, "#view-overview .ov-minis .tile")
+            ov442 = js(fig_look, "#view-overview .stats.three .tile")
             js("switchTab('costs')")
             settle(300)
             check("the Overview's cost figures and Costs' are in one order, your share first, and one look: tinted figures in a card, not buttons (#442)",
@@ -2730,7 +2730,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             check("…no Costs table scrolls sideways at 375, 601, 640 or 680 px, both views, its charts as tables and More figures open, in light and dark: "
                   "the claims stacked under 680 px of box, the others under 560, each cell named by its column; the page fits, axe finds nothing (#443)",
-                  not sides443 and not axe443 and n443 == {"costTable:Date", "view-costs:Drug", "view-costs:Month", "paidTable:Date", "oopTax:Year", "paidCard:Month"} and stacked443 == 3,
+                  not sides443 and not axe443 and n443 == {"costTable:Date", "view-costs:Drug", "view-costs:Month", "paidTable:Date", "oopTax:Year", "paidRun:Month"} and stacked443 == 3,
                   [sides443[:6], axe443[:4], sorted(n443), stacked443])
             # #443: Show 200 more (here, with the claims shown 20 at a time) leaves focus on the first claim it adds, not <body>
             js("costState.limit = 20; renderCosts()")
@@ -2743,6 +2743,95 @@ def main():
             js("costState.limit = 200; renderCosts()")
             check("…Show more on the claims, a button of type button, leaves focus on the first claim added (#443)",
                   more443 and more443[1] == "button" and after443[:3] == ["BUTTON", True, 20] and after443[3] > 20, [more443, after443])
+            # #448: each Costs control used by keyboard keeps focus on itself as the tab is drawn again (or, the editor's
+            # Close, gives it back to the row's date that opened it), never <body>; What you paid's "What it was for" and
+            # "Who was paid" rows are buttons, reached by Tab, saying whether they're picked
+            FOCUS448 = "(a => a === document.body ? 'BODY' : [a.tagName, a.textContent.trim().slice(0, 40), a.getAttribute('aria-pressed')])(document.activeElement)"
+            cases448 = [
+                ("claims", "By year", "[...document.querySelectorAll('#costBy button')].find(b => b.textContent === 'By year')", "By year"),
+                ("claims", "By month", "[...document.querySelectorAll('#costBy button')].find(b => b.textContent === 'By month')", "By month"),
+                ("claims", "a type of care", "document.querySelector('#view-costs .ov-cols > .card .ov-row')", None),
+                ("claims", "a provider", "document.querySelectorAll('#view-costs .ov-cols > .card')[1].querySelector('.ov-row')", None),
+                ("claims", "a drug", "[...document.querySelectorAll('#view-costs .card')].find(c => /^Prescriptions/.test(c.querySelector('h2')?.textContent)).querySelector('tbody .cell-btn')", None),
+                ("paid", "HSA only", "[...document.querySelectorAll('#paidTable .toggle')].find(b => b.textContent === 'HSA only')", "HSA only"),
+                ("paid", "what it was for", "document.querySelector('#paidCard .ov-cols .ov-row')", None),
+                ("paid", "who was paid", "document.querySelectorAll('#paidCard .ov-cols > div')[1].querySelector('.ov-row')", None),
+                ("paid", "Close", "[...document.querySelectorAll('#oopEdit button')].find(b => b.textContent === 'Close')", "row"),
+            ]
+            focus448 = {}
+            for view, name, sel, want in cases448:
+                js("v => { Object.assign(costState, {q: '', cat: '', deniedOnly: false, view: v}); paidState.q = ''; renderCosts(); }", view)
+                if name == "Close":
+                    page.focus("#paidTable tbody tr[data-oop] .cell-btn")
+                    page.keyboard.press("Enter")
+                    settle(200)
+                    want = js("document.querySelector('#paidTable tbody tr[data-oop] .cell-btn').textContent")
+                settle(150)
+                text = js(f"(n => n && (n.focus(), document.activeElement === n) && n.textContent.trim().slice(0, 40))({sel})")
+                page.keyboard.press("Enter")
+                settle(300)
+                focus448[name] = [text, js(FOCUS448), want or text]
+            js("Object.assign(costState, {q: '', cat: '', deniedOnly: false, view: 'paid'}); paidState.q = ''; paidState.open = null; renderCosts()")
+            settle(200)
+            page.focus("#paidCard .ov-cols .ov-row")
+            page.keyboard.press("Shift+Tab")
+            page.keyboard.press("Tab")
+            row448 = js("(a => [a.matches('#paidCard .ov-cols .ov-row'), a.getAttribute('role'), a.tabIndex, a.getAttribute('aria-pressed')])(document.activeElement)")
+            page.keyboard.press("Enter")
+            settle(300)
+            row448 += [js("[paidState.q, document.activeElement.getAttribute('aria-pressed'), !!document.querySelector('#paidTable .fsum:not([hidden])')]")]
+            js("paidState.q = ''; costState.view = 'claims'; renderCosts()")
+            check("Costs (#448): By month, By year, a type of care, a provider, a drug, HSA only and What you paid's rows keep focus after Enter, picked; "
+                  "the editor's Close gives it back to the row's date",
+                  all(t and f != "BODY" and f[1] == w and (n in ("a provider", "a drug", "Close") or f[2] == "true") for n, (t, f, w) in focus448.items()), focus448)
+            check("…What you paid's rows are reached by Tab, buttons saying whether they're picked, and Enter lists only theirs",
+                  row448[:4] == [True, "button", 0, "false"] and row448[4][0] and row448[4][1:] == ["true", True], row448)
+            # #448: the out-of-pocket amounts in the page's own scroll at 390 px, no box scrolling inside it; a row's editor
+            # opens in the row under it; and the headings in order, in both views with More figures open
+            page.set_viewport_size({"width": 390, "height": 844})
+            js("costState.view = 'paid'; costState.more = true; renderCosts()")
+            settle(300)
+            page.focus("#paidTable tbody tr[data-oop]:nth-child(3) .cell-btn")
+            page.keyboard.press("Enter")
+            settle(300)
+            box448 = js("""(w => [w.scrollHeight - w.clientHeight, getComputedStyle(w).maxHeight, w.querySelectorAll('tbody tr[data-oop]').length,
+                (e => e && e.closest('tr.oop-open')?.previousElementSibling === document.activeElement.closest('tr'))(document.getElementById('oopEdit')),
+                document.documentElement.scrollWidth])(document.querySelector('#paidTable .tablewrap'))""")
+            js("paidState.open = null; renderCosts()")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            HEADS448 = "[...document.querySelectorAll('main h1, #view-costs :is(h2, h3, h4)')].filter(h => h.checkVisibility() || h.closest('details')).map(h => h.tagName + ' ' + h.textContent.trim().slice(0, 30))"
+            heads448 = {}
+            for view in ("claims", "paid"):
+                js("v => { costState.view = v; renderCosts(); }", view)
+                settle(200)
+                heads448[view] = js(HEADS448)
+            js("Object.assign(costState, {view: 'claims', more: false}); renderCosts()")
+            in_order = lambda hs: all(int(b[1]) <= int(a[1]) + 1 for a, b in zip(hs, hs[1:])) and hs[0].startswith("H1")
+            check("…at 390 px the out-of-pocket amounts don't scroll inside a box (Show more instead), a row's editor in the row under it",
+                  box448[0] <= 1 and box448[1] == "none" and box448[2] > 0 and box448[3] is True and box448[4] <= 390, box448)
+            check("…the headings in order in both views, More figures open: What you paid's HSA and FSA by year an h3 under its h2",
+                  all(in_order(h) for h in heads448.values()) and any(h.startswith("H3 HSA and FSA, by year") for h in heads448["paid"]), heads448)
+            # #448: the three claims figures laid out alike on the Overview and Costs at 320, 375, 390 and 1400 px: three in
+            # a row, or one under another, never two and one
+            LAYOUT448 = """sel => { const ts = [...document.querySelectorAll(sel)], r = ts.map(t => t.getBoundingClientRect());
+                return [ts.map(t => t.querySelector('.lbl').textContent).join(', '), new Set(r.map(x => Math.round(x.top))).size, new Set(r.map(x => Math.round(x.left))).size,
+                  new Set(r.map(x => Math.round(x.width))).size]; }"""
+            figs448 = {}
+            for w448 in (320, 375, 390, 1400):
+                page.set_viewport_size({"width": w448, "height": 900})
+                settle(250)
+                got = [js(LAYOUT448, "#view-costs > .cost-figs > .stats .tile")]
+                js("switchTab('overview')")
+                settle(300)
+                got.append(js(LAYOUT448, "#view-overview .stats.three .tile"))
+                js("switchTab('costs')")
+                settle(300)
+                figs448[w448] = got
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(250)
+            check("…the claims' three figures laid out alike on the Overview and Costs at 320, 375, 390 and 1400 px: in one row, or one under another, each as wide",
+                  all(c[0] == o[0] == "Your share, Paid by insurance, Billed by providers" and c[1:] == o[1:] and c[1:] in ([1, 3, 1], [3, 1, 1]) for c, o in figs448.values())
+                  and figs448[1400][0][1:] == [1, 3, 1] and figs448[320][0][1:] == [3, 1, 1], figs448)
             # #443: a link into Costs names its view: the Overview's Open Costs (an insurance card) opens Claims, whatever
             # was shown last there (What you paid's is followed from Sources, below)
             js("costState.view = 'paid'; switchTab('overview')")
@@ -13616,14 +13705,14 @@ def main():
             fr_ctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
             frp = fr_ctx.new_page()
             frp.goto(base + "/?profile=1#overview")
-            frp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted && document.querySelector('.ov-minis')", timeout=20000)
+            frp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted && document.querySelector('#view-overview .stats.three')", timeout=20000)
             fr_bad, fr_seen = [], []
             for w in (375, 320):
                 frp.set_viewport_size({"width": w, "height": 800})
                 frp.wait_for_timeout(250)
-                fr_seen += frp.evaluate("[...document.querySelectorAll('.ov-minis .val')].map(v => v.textContent)")
+                fr_seen += frp.evaluate("[...document.querySelectorAll('#view-overview .stats.three .val')].map(v => v.textContent)")
                 fr_bad += phone_fits(frp, f"Overview, fr-FR, {w} px") + [f"{w} px: “{t}” ends at {r} px, past its card's {c}" for t, r, c in frp.evaluate(
-                    "[...document.querySelectorAll('.ov-minis .val')].map(v => [v.textContent, Math.round(v.getBoundingClientRect().right), Math.round(v.closest('.card').getBoundingClientRect().right)])") if r > c]
+                    "[...document.querySelectorAll('#view-overview .stats.three .val')].map(v => [v.textContent, Math.round(v.getBoundingClientRect().right), Math.round(v.closest('.card').getBoundingClientRect().right)])") if r > c]
             fr_ctx.close()
             check("the Overview's insurance figures in a French browser fit 375 and 320 px (#342)",
                   not fr_bad and any("$US" in t for t in fr_seen), fr_bad[:6] or fr_seen)
