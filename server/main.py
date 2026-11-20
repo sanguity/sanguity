@@ -1039,7 +1039,8 @@ def profile_data(pid: int, request: Request, s=Depends(user), db=Depends(get_db)
     if got is None:
         if (why := prof.build_error(pid)):
             raise HTTPException(500, f"The built records couldn't be loaded ({why}). Details are in the app's log.")
-        if (got := records.journal_page(db, pid)) is None:   # a journal and nothing imported: the journal (#472)
+        # a journal and nothing imported: the journal (#472); or a watch's summary alone, as records (#477)
+        if (got := records.journal_page(db, pid, watch_store.exists(db, pid))) is None:
             return Response(status_code=204)   # the profile exists but has no records yet
     activity.once(db, s, pid, "view", _client_ip(request))
     return Response(got[0], media_type="application/json", headers={"X-Records-Rev": got[1]})

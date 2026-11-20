@@ -330,6 +330,19 @@ function ovRecord() {
     ...(left.length ? left : [ovNone("Active problems, allergies and immunizations appear here, as the records list them.")])), el("div", {}, ...right));
 }
 
+/* nothing imported yet, whatever there is of a journal or a watch (#477: the empty profile's card, #199, is gone once
+   either is there): the ways to bring records in, first. For those who only view it, who brings them in */
+function ovStart() {
+  if (!DATA.imports || Object.keys(DATA.imports).length) return [];
+  const q = `?profile=${PROFILE.id}`, go = (href, text, cls = "") => el("a", {class: `btn large empty-next ${cls}`, href, text});
+  if (!canEdit()) return [ovHead("Get started"), emptyState(`Nothing is imported into ${PROFILE.name} yet: its owners and editors bring records in, and they appear here for you too.`,
+    {href: `sharing.html${q}#people`, text: "See who has access"})];
+  const card = emptyState(`Nothing is imported into ${PROFILE.name} yet: lab results, visits, medications and the rest appear here once they're brought in.`);
+  card.append(el("div", {class: "empty-acts"}, go(`guide.html${q}`, "Open the guide", "primary"), go(`sources.html${q}#upload`, "Upload files"),
+    WATCH ? null : go(`sources.html${q}#phone`, "Connect a phone"), go(`sources.html${q}#manual`, "Type records in")));
+  return [ovHead("Get started"), card];
+}
+
 function renderOverview() {
   const box = $("#view-overview"); box.replaceChildren();
   const labDays = EV.filter(e => e.k === "lab").map(e => e.ts);
@@ -337,7 +350,7 @@ function renderOverview() {
   // no lab results yet (#199): what the tiles would show, and where results come from, in place of the key labs
   // (which would otherwise say nothing is outside its range)
   const noLabs = !SERIES.some(s => !s.watch && s.pts.length);
-  box.append(...present(...ovToday()));
+  box.append(...ovStart(), ...present(...ovToday()));
   if (noLabs) box.append(ovHead("Key labs"), emptyState("Key lab results appear here as tiles, each with its latest value and whether it's outside its reference range.",
     canEdit() ? {href: `sources.html?profile=${PROFILE.id}#manual`, text: "Add lab results"} : null));
   else box.append(...ovKeyLabs(lastDraw));
