@@ -707,7 +707,8 @@ function aboutKeep({pops, sheet}) {
   btn.setAttribute("aria-expanded", "true");
 }
 /* a popover's on a wider screen, a sheet's on a phone (the button's click opens it: aboutSheet) */
-const aboutMode = btn => { const w = document.getElementById(btn.getAttribute("aria-controls")); if (ABOUT_PHONE.matches) w.hidePopover?.(); btn.popoverTargetElement = ABOUT_PHONE.matches ? null : w; };
+// (an ⓘ whose words have gone with a part drawn again has nothing to show: it goes too, #487's phone run)
+const aboutMode = btn => { const w = document.getElementById(btn.getAttribute("aria-controls")); if (!w) { btn.closest(".info")?.remove(); return; } if (ABOUT_PHONE.matches) w.hidePopover?.(); btn.popoverTargetElement = ABOUT_PHONE.matches ? null : w; };
 ABOUT_PHONE.addEventListener("change", () => { for (const b of document.querySelectorAll(".info > button")) aboutMode(b); });
 function aboutSheet(btn, w) {
   let d = aboutSheet.d;
