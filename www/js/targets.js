@@ -157,7 +157,8 @@ function targetsCard(p, a, pref, send, undo, saveBar, notSaved) {
     const now = t ? (k === "bp" ? tgtBpText(t) : tgtRange(tgtConv(k, t.low, unit), tgtConv(k, t.high, unit), pl, shownUnit(unit))) : "";
     const head = el("h3", {class: "sub", id: id + "-hd", tabindex: -1}, TGT[k].name, edit ? notSaved() : null);
     const said = el("p", {class: "muted tgt-now", text: t ? `Your target: ${now}${tgtWho(t) ? ` (${tgtWho(t)})` : ""}.` : "No target entered."});
-    if (!edit) { box.append(el("section", {class: "tgt-one", "aria-labelledby": id + "-hd"}, head, said)); continue; }
+    // each a setting row (#286, util.js): its name and what's entered on the left, the fields on the right
+    if (!edit) { box.append(setRow(head, said, {tag: "section", class: "tgt-one", "aria-labelledby": id + "-hd"})); continue; }
     const num = (name, label, v) => el("label", {class: "about-num"}, label,
       el("input", {type: "number", name, id: `${id}-${name}`, step: "any", inputmode: "decimal", value: v == null ? "" : String(+v.toFixed(pl))}));
     const fields = k === "bp"
@@ -179,7 +180,7 @@ function targetsCard(p, a, pref, send, undo, saveBar, notSaved) {
               toast(`${done} It was ${now}.`, {action: "Undo", onAction: () => undo(got => !(got.targets || {})[k],   // none entered since
                 `profiles/${p.id}/person`, "PUT", {targets: {[k]: was}}, `Undone: the target for ${tgtLower(k)} is back.`,
                 `A target for ${tgtLower(k)} was entered since: it's left as it is.`, id + "-hd")}); }})) : null);
-    box.append(el("section", {class: "tgt-one", "aria-labelledby": id + "-hd", "data-field": k, "data-unit": k === "bp" ? null : unit}, head, said, form));
+    box.append(setRow([head, said], form, {tag: "section", class: "tgt-one", "aria-labelledby": id + "-hd", "data-field": k, "data-unit": k === "bp" ? null : unit}));
   }
   return el("div", {},
     el("p", {class: "hint", text: "For readings taken at home: a target each, as your care team gave it. Optional; with none entered, nothing changes."}),

@@ -120,14 +120,16 @@ function drawSchedule(st) {
     if (bkTyped != null) $("#backups").setAttribute("data-dirty", 1); else $("#backups").removeAttribute("data-dirty");
   };
   keep.oninput = () => { sayIn($("#bkSchedMsg"), ""); mark(); };
-  form.replaceChildren(
-    el("fieldset", {class: "set-radios"}, el("legend", {class: "set-sr", text: "Make a backup"}),
-      el("div", {class: "seg wrap", id: "bkSchedSeg"}, ...opts.map(([v, l]) => el("label", {},
-        el("input", {type: "radio", name: "bkSched", id: "bkSched-" + v, value: v, checked: v === st.schedule, onchange: () => bkFreq(v)}), l)))),
-    line,
-    el("p", {class: "hint", text: "While a schedule is on, older backups in the folder are deleted after each new one, keeping " +
-      "this many. Only Sanguity's own backup files are counted or deleted; anything else in the folder is left alone. The " +
-      "app makes the backup when the newest is a day (or a week) old, whoever made it."}),
+  form.replaceChildren(   // setting rows (#286, util.js): what each is on the left, its control on the right
+    setRow(el("p", {class: "set-row-name", id: "bkSchedLbl", text: "How often"}),
+      el("fieldset", {class: "set-radios", "aria-labelledby": "bkSchedLbl"},
+        el("div", {class: "seg wrap", id: "bkSchedSeg"}, ...opts.map(([v, l]) => el("label", {},
+          el("input", {type: "radio", name: "bkSched", id: "bkSched-" + v, value: v, checked: v === st.schedule, onchange: () => bkFreq(v)}), l))))),
+    setRow([el("p", {class: "set-row-name", text: "How many to keep"}),
+      el("p", {class: "hint", text: "While a schedule is on, older backups in the folder are deleted after each new one, keeping " +
+        "this many. Only Sanguity's own backup files are counted or deleted; anything else in the folder is left alone. The " +
+        "app makes the backup when the newest is a day (or a week) old, whoever made it."})],
+      line),
     el("span", {class: "msg", id: "bkSchedMsg", role: "status"}));
   form.onsubmit = ev => { ev.preventDefault(); $("#admBar .btn.primary")?.click(); };   // Enter: the bar's Save
   mark();

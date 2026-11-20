@@ -13,8 +13,9 @@ function drawProfile(p) {
   if (card.hidden) { $("#profileBody").replaceChildren(); return; }
   const name = el("input", {value: p.name, maxlength: 80, id: "profileName"});   // ids: focus back after a rename (#409)
   $("#profileBody").replaceChildren(
-    // its label shown (#419): the card's own "Name" is said only, under the group's title, while it's alone there
-    el("form", {class: "form inline", onsubmit: async ev => { ev.preventDefault();
+    // its label shown (#419): the card's own "Name" is said only, under the group's title, while it's alone there; a
+    // setting row each (#286, util.js), the name and deleting it
+    setRow(el("label", {for: "profileName", text: "Profile name"}), el("form", {class: "form inline", onsubmit: async ev => { ev.preventDefault();
       const was = p.name, to = name.value.trim();
       if (to === was) return;
       const had = document.activeElement?.id;
@@ -27,7 +28,7 @@ function drawProfile(p) {
         const text = back ? `Undone: the profile is “${was}” again.` : "The profile was renamed since, so its name is left as it is.";
         if (await profileNamed(p.id)) sayIn($("#profileMsg"), text); else toast(text);   // another profile shown now (#367)
       }}); }},
-      el("label", {}, "Profile name", name), el("button", {class: "btn", type: "submit", id: "profileRename", text: "Rename"})),
+      name, el("button", {class: "btn", type: "submit", id: "profileRename", text: "Rename"}))),
     profileDelete(p, fail));
 }
 /* the names as they are now: in the top bar's profile menu, and in this card while it's pid's. -> whether it is */
@@ -61,7 +62,8 @@ function profileDelete(p, fail) {
     el("div", {class: "row"}, go));
   const open = el("button", {class: "btn small", type: "button", text: "Delete profile…", "aria-expanded": "false",
     onclick: () => { box.hidden = !box.hidden; open.setAttribute("aria-expanded", !box.hidden); if (!box.hidden) typed.focus(); }});
-  return el("div", {class: "activity-wrap"}, el("h3", {class: "sub", text: "Delete this profile"}), open, box);
+  return setRow([el("h3", {class: "sub", text: "Delete this profile"}), el("p", {class: "hint", text: "For everyone it's shared with. It can't be undone."})],
+    [open, box]);
 }
 /* after a delete: the next profile, as if picked (the one deleted isn't asked about: nothing of it can be kept), or
    with none left, your own settings only */

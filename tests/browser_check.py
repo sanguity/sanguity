@@ -1671,6 +1671,31 @@ def main():
             repeats[path] = strict.evaluate(repeats_js)
         check("no card's title shown repeats its group's h1, on any group of Sources, Sharing, Settings, Account or Admin (#409: Phone and watch's)",
               not any(repeats.values()) and strict.evaluate("document.title") != "", repeats)
+        # ---- #286 one setting row: in every group of Settings, Sharing, Account and Admin with something to set, each
+        # setting is a row, its name and help on the left (about 38%) and its control on the right at 1400 px (a .wide
+        # one, a table, under its name), and the two one under the other at 375 px, as wide as the row
+        rows_js = """() => { const out = {}; for (const a of document.querySelectorAll('main > nav.set-nav a[data-group]')) { a.click();
+            const rows = [...document.querySelectorAll('main .set-row')].filter(r => r.checkVisibility());
+            if (rows.length) out[a.dataset.group] = rows.map(r => { const b = r.getBoundingClientRect(), l = r.querySelector(':scope > .set-row-lbl').getBoundingClientRect(),
+              c = r.querySelector(':scope > .set-row-ctl').getBoundingClientRect();
+              return [Math.round(l.width / b.width * 100), l.right <= c.left, c.top >= l.bottom - 1, r.matches('.wide')]; }); }
+          return out; }"""
+        rows286, want286 = {}, {"settings": ["dashboard", "about", "labs", "milestones", "activity", "profile", "display"],
+                                "sharing": ["people", "calendar", "summary", "export"], "account": ["security", "device"], "admin": ["accounts", "backups", "apps"]}
+        for w in (1400, 375):
+            strict.set_viewport_size({"width": w, "height": 900})
+            for name in want286:
+                strict.goto(f"{base}/{name}.html?profile=1")
+                strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
+                strict.wait_for_timeout(1500)   # (each page's cards drawn)
+                rows286[f"{name} {w}"] = strict.evaluate(rows_js)
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        bad286 = [(k, g, r) for k, gs in rows286.items() for g, rs in gs.items() for r in rs
+                  if not ((r[3] or (30 <= r[0] <= 45 and r[1])) if k.endswith("1400") else (r[0] >= 95 and r[2]))]
+        missing286 = [f"{name} {w}: {g}" for name, gs in want286.items() for w in (1400, 375) for g in gs if g not in rows286[f"{name} {w}"]]
+        check("one setting row (#286): every group with something to set on Settings, Sharing, Account and Admin sets it in rows, each "
+              "one's name and help beside its control (about 38%) at 1400 px, above it at 375 px", not bad286 and not missing286,
+              [missing286, bad286[:8]] if bad286 or missing286 else {k: sum(len(v) for v in gs.values()) for k, gs in rows286.items()})
         strict.goto(base + "/settings.html?profile=1#milestones")
         strict.wait_for_selector("#sec-milestones .set-hd", state="attached", timeout=10000)
         strict.wait_for_timeout(600)
@@ -1716,6 +1741,7 @@ def main():
           const more = [...document.querySelectorAll('summary')].filter(s => s.textContent.trim() === 'More about this').length;
           for (const h of main.querySelectorAll('h1, h2, h3, h4')) {
             if (!(h.checkVisibility() || h.matches('.vh')) || h.closest('dialog, [popover], nav')) continue;
+            if (h.closest('.set-row-lbl')) continue;   // a setting row's hint (#286): beside its control, not before it
             const at = h.parentElement.matches('.set-hd, .list-hd, .ov-h, .set-top-hd') ? h.parentElement : h;
             let n = 0;
             for (let x = at.nextElementSibling; x; x = x.nextElementSibling) {
@@ -9254,7 +9280,7 @@ def main():
                 b432.wait_for_selector("[data-key=labNicknames] button:text-is('Add a row')", timeout=10000)
             in432()
             b432.click("[data-key=labNicknames] button:text-is('Add a row')")
-            b432.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Typed, not saved")
+            b432.fill("[data-key=labNicknames] .set-line:last-child input[data-k=to]", "Typed, not saved")
             c432.goto(base + "/sources.html?profile=1#manual")
             c432.wait_for_selector(".man-row [data-f=test]", timeout=10000)
             c432.fill(".man-row [data-f=test]", "Hemoglobin")
@@ -9263,7 +9289,7 @@ def main():
             menu_click(a432, "#logout")
             asked432 = answer_ask(a432, yes=False)
             a432.wait_for_timeout(300)
-            stay432 = [held432(), b432.input_value("[data-key=labNicknames] .set-row:last-child input[data-k=to]"), c432.input_value(".man-row [data-f=test]"),
+            stay432 = [held432(), b432.input_value("[data-key=labNicknames] .set-line:last-child input[data-k=to]"), c432.input_value(".man-row [data-f=test]"),
                        a432.evaluate(me432), a432.evaluate("document.activeElement.id")]
             menu_click(a432, "#logout")
             a432.click("dialog.sg-ask[open] .sg-ask-acts button:last-child")   # (the page goes as it closes: no wait for it)
@@ -9286,7 +9312,7 @@ def main():
             # #436: a tab busy for a moment as it's asked (350 ms of drawing, say) still answers, and is named
             in432()
             b432.click("[data-key=labNicknames] button:text-is('Add a row')")
-            b432.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Typed, busy")
+            b432.fill("[data-key=labNicknames] .set-line:last-child input[data-k=to]", "Typed, busy")
             b432.evaluate("setTimeout(() => { const t = performance.now(); while (performance.now() - t < 350) {} }, 0)")
             a432.bring_to_front()
             menu_click(a432, "#logout")
@@ -10424,8 +10450,8 @@ def main():
                      ".filter(s => s.checkVisibility()).map(s => s.id)]") == ["labs", "sec-names", "sec-ranges"],
                   js("[...document.querySelectorAll('#sections > section')].filter(s => s.checkVisibility()).map(s => s.id)"))
             page.click("[data-key=labNicknames] button:text-is('Add a row')")
-            page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=from]", first)
-            page.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Renamed in Settings")
+            page.fill("[data-key=labNicknames] .set-line:last-child input[data-k=from]", first)
+            page.fill("[data-key=labNicknames] .set-line:last-child input[data-k=to]", "Renamed in Settings")
             page.click("#setBar button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-names .set-msg').textContent.startsWith('Saved')", timeout=10000)
             # ---- calendar feed (#51): made on the Sharing page (#168; Settings' old address opens it there), its address
@@ -11688,8 +11714,8 @@ def main():
                 bad353.append(f"quiet buttons not all found: {c353['labs 375']['quiet'][:3]} {c353['settings 375']['quiet'][:1]}")
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click(".set-nav-list a[data-group=milestones]")   # a group of its own (#267)
-            page.wait_for_selector(".ms .set-row:not(.set-head) input[type=radio]", timeout=10000)
-            c353["primary"] = js("""() => [...document.querySelectorAll('.ms .set-row:not(.set-head)')].map(r => {
+            page.wait_for_selector(".ms .set-line:not(.set-head) input[type=radio]", timeout=10000)
+            c353["primary"] = js("""() => [...document.querySelectorAll('.ms .set-line:not(.set-head)')].map(r => {
                 const i = r.querySelector('input[type=radio]'), b = i.getBoundingClientRect();
                 const name = (i.getAttribute('aria-labelledby') || '').split(' ').map(id => document.getElementById(id)).map(e => e ? (e.tagName === 'INPUT' ? e.value : e.textContent) : '?').join(' ');
                 return [Math.round(b.width), Math.round(b.height), name, r.querySelector('[data-k=label]').value]; })""")
@@ -13071,23 +13097,23 @@ def main():
             want = visit.split(" ")[0].lower()
             days = js(f"new Set(DATA.events.filter(e => e.k === 'visit' && e.ts < Date.now() && e.title.replace(/\\s+/g, ' ').trim().slice(0, 200).toLowerCase().includes({json.dumps(want)})).map(e => isoDay(e.ts))).size")
             page.goto(base + "/settings.html?profile=1#sec-milestones")
-            page.wait_for_selector("#sec-milestones [data-key=milestones] .set-row:not(.set-head)", timeout=10000)
+            page.wait_for_selector("#sec-milestones [data-key=milestones] .set-line:not(.set-head)", timeout=10000)
             check("Settings shows the Milestones section", "Milestones" in js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             ms = "[data-key=milestones]"
             page.click(f"{ms} button:text-is('Add a row')")
-            page.fill(f"{ms} .set-row:last-child input[data-k=date]", "2026-08-01")
-            page.fill(f"{ms} .set-row:last-child input[data-k=label]", "Browser check milestone")
-            page.check(f"{ms} .set-row:last-child input[data-k=primary]")
+            page.fill(f"{ms} .set-line:last-child input[data-k=date]", "2026-08-01")
+            page.fill(f"{ms} .set-line:last-child input[data-k=label]", "Browser check milestone")
+            page.check(f"{ms} .set-line:last-child input[data-k=primary]")
             check("…one primary at a time", js(f"document.querySelectorAll('{ms} input[data-k=primary]:checked').length") == 1)
             page.click("#setBar button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-milestones .set-msg').textContent.startsWith('Saved')", timeout=10000)
             rules = "[data-key=visitWorkouts]"
             page.click(".set-nav-list a[data-group=activity]")   # Workouts: a group of its own since #267
             page.click(f"{rules} button:text-is('Add a row')")
-            page.fill(f"{rules} .set-row:last-child input[data-k=match]", "(a+)+$")
-            page.fill(f"{rules} .set-row:last-child input[data-k=name]", "Browser check rule")
-            page.fill(f"{rules} .set-row:last-child input[data-k=minutes]", "40")
-            page.check(f"{rules} .set-row:last-child input[data-k=regex]")
+            page.fill(f"{rules} .set-line:last-child input[data-k=match]", "(a+)+$")
+            page.fill(f"{rules} .set-line:last-child input[data-k=name]", "Browser check rule")
+            page.fill(f"{rules} .set-line:last-child input[data-k=minutes]", "40")
+            page.check(f"{rules} .set-line:last-child input[data-k=regex]")
             n0 = len(problems)
             page.click("#setBar button:text-is('Save')")
             page.wait_for_function(f"document.querySelector('{rules} .msg').textContent.includes('very slow')", timeout=10000)
@@ -13096,8 +13122,8 @@ def main():
             problems[n0:] = [p for p in problems[n0:] if p not in refused]   # this refusal is the point, not a fault
             check("a catastrophic regular expression is refused before saving",
                   "very slow" in js(f"document.querySelector('{rules} .msg').textContent") and len(refused) == 2, refused)
-            page.fill(f"{rules} .set-row:last-child input[data-k=match]", want)
-            page.uncheck(f"{rules} .set-row:last-child input[data-k=regex]")
+            page.fill(f"{rules} .set-line:last-child input[data-k=match]", want)
+            page.uncheck(f"{rules} .set-line:last-child input[data-k=regex]")
             page.click("#setBar button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-health .set-msg').textContent.startsWith('Saved')", timeout=10000)
             page.set_viewport_size({"width": 375, "height": 800})
@@ -13691,7 +13717,7 @@ def main():
             ov = "#sec-ranges [data-key='ranges.overrides']"
             page.wait_for_selector(f"{ov} .set-sugg .chip", timeout=10000)
             page.locator(f"{ov} .set-sugg .chip").first.click()
-            r1 = page.locator(f"{ov} .set-row:not(.set-head)").nth(0)
+            r1 = page.locator(f"{ov} .set-line:not(.set-head)").nth(0)
             check("…a suggestion adds a row with its lab and unit", r1.locator("[data-k=lab]").input_value() == "Ferritin"
                   and r1.locator("[data-k=unit]").input_value() == "ng/mL")
             r1.locator("[data-k=low]").fill("200")
@@ -13707,7 +13733,7 @@ def main():
             r1.locator("[data-k=low]").fill("20")
             r1.locator("[data-k=high]").fill("200")
             page.locator(f"{ov} button:text-is('Add a range')").click()
-            r2 = page.locator(f"{ov} .set-row:not(.set-head)").nth(1)
+            r2 = page.locator(f"{ov} .set-line:not(.set-head)").nth(1)
             r2.locator("[data-k=lab]").fill("Ferritin")
             r2.locator("[data-k=unit]").fill("ng/mL")
             r2.locator("[data-k=sex]").select_option("female")
@@ -16474,7 +16500,7 @@ def main():
             p429.wait_for_selector("[data-key=labNicknames] button:text-is('Add a row')", timeout=10000)
             # (#432) with a name typed there and not saved, and a third tab with a lab typed on Sources → Type records in
             p429.click("[data-key=labNicknames] button:text-is('Add a row')")
-            p429.fill("[data-key=labNicknames] .set-row:last-child input[data-k=to]", "Typed, not saved")
+            p429.fill("[data-key=labNicknames] .set-line:last-child input[data-k=to]", "Typed, not saved")
             p432 = ctx.new_page()
             p432.on("pageerror", lambda e: problems.append(f"script error (phone, third tab): {e}"))
             p432.goto(base + "/sources.html?profile=1#manual")
@@ -16492,7 +16518,7 @@ def main():
             menu_click(ph, "#logout")
             asked432 = answer_ask(ph, yes=False)
             ph.wait_for_timeout(300)
-            stay432 = [[p.evaluate("location.pathname") for p in (ph, p429, p432)], p429.input_value("[data-key=labNicknames] .set-row:last-child input[data-k=to]"),
+            stay432 = [[p.evaluate("location.pathname") for p in (ph, p429, p432)], p429.input_value("[data-key=labNicknames] .set-line:last-child input[data-k=to]"),
                        p432.input_value(".man-row [data-f=test]"), ph.evaluate("[localStorage.getItem('sg-logout-later'), localStorage.getItem('sg-theme-later') !== null]"), alive422(token422)]
             check("Log out offline asks the other open tabs too, naming the pages with changes not saved (#432); Stay leaves all three as they were, still signed in on the server",
                   asked432 == ["Log out with changes not saved?", "Changes not saved in Settings and Sources (other tabs) will be lost. Stay to save them first."]

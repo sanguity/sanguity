@@ -57,8 +57,15 @@
       passkey for your own account, under <a href="account.html#security">Account → Sign-in &amp; security</a>. Admins need one as soon as the server has more than one account.</p>
     <div id="reauth" class="reauth" hidden></div>
     <div id="adminTools">
-      <label class="check switch"><input type="checkbox" role="switch" id="reqTf" aria-describedby="reqTfMsg"> Require two-factor sign-in for everyone</label>
-      <p class="msg req-tf-msg" id="reqTfMsg" role="status"></p>   <!-- the setting's own replies, beside it (#323) -->
+      <!-- a setting row (#286, app.css .set-row): what it does on the left, the switch on the right -->
+      <div class="set-row">
+        <div class="set-row-lbl"><p class="set-row-name">Two-factor sign-in</p>
+          <p class="hint">An account without an authenticator app or a passkey can't open any records until it sets one up.</p></div>
+        <div class="set-row-ctl">
+          <label class="check switch"><input type="checkbox" role="switch" id="reqTf" aria-describedby="reqTfMsg"> Require two-factor sign-in for everyone</label>
+          <p class="msg req-tf-msg" id="reqTfMsg" role="status"></p>   <!-- the setting's own replies, beside it (#323) -->
+        </div>
+      </div>
       <div id="userList"></div>
       <div id="ownerless"></div>
       <form id="userNew" class="form inline">

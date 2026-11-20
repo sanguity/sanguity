@@ -80,12 +80,11 @@ function presetsBlock(sec) {
     chosen, list, out);
   const open = el("button", {class: "btn small", type: "button", id: "preOpen", text: "Choose conditions…", "aria-expanded": false,
     "aria-controls": "prePanel", onclick: () => show(panel.hidden)});
-  const node = el("div", {class: "set set-presets", id: "presets"},
-    el("h3", {class: "sub", text: "Start from a condition"}),
+  const node = setRow([el("h3", {class: "sub", text: "Start from a condition"}),   // a setting row (#286, util.js)
     el("p", {class: "hint", text: "Fill in the tiles with the labs and home readings commonly followed for a condition."}),
     aboutWords("They're as a published guideline lists them, for one or more conditions. It only chooses what's shown: it " +
-      "doesn't judge results or suggest tests. It's filled in once, below, for you to change and save as usual."),
-    sugg, open, panel);
+      "doesn't judge results or suggest tests. It's filled in once, below, for you to change and save as usual.")],
+    [sugg, open, panel], {class: "set set-presets", id: "presets"});
   const show = on => {
     panel.hidden = !on; open.setAttribute("aria-expanded", String(on));
     open.textContent = on ? "Close the conditions" : "Choose conditions…";

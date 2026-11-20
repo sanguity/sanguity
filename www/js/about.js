@@ -179,26 +179,26 @@ function showAbout(p, a, drop = []) {
   if (edit) {
     const birth = el("input", {type: "date", id: "aboutBirth", name: "birthDate", value: a.birthDate, min: "1900-01-01", max: today});
     const due = el("input", {type: "date", id: "aboutDue", name: "dueDate", value: a.dueDate || "", min: a.birthDate || "1900-01-01"});   // #196
-    const sexes = el("fieldset", {class: "about-sex", "data-field": "sex"}, el("legend", {}, "Sex used for reference ranges", notSaved()),
-      el("div", {class: "seg wrap"}, ...[["female", "Female"], ["male", "Male"], ["", "Not set"]].map(([v, l]) =>
+    // each a setting row (#286, util.js): its name and what it's for on the left, the field on the right
+    const sexes = setRow([el("p", {class: "set-row-name", id: "aboutSexLbl"}, "Sex used for reference ranges", notSaved()),
+      el("p", {class: "hint", text: "What labs base their reference ranges on, for ranges of your own set for female or male. " +
+        "It isn't gender identity, which Sanguity doesn't ask for."})],
+      el("div", {class: "seg wrap", role: "radiogroup", "aria-labelledby": "aboutSexLbl"}, ...[["female", "Female"], ["male", "Male"], ["", "Not set"]].map(([v, l]) =>
         el("label", {}, el("input", {type: "radio", name: "aboutSex", value: v, checked: (a.sex || "") === v}), l))),
-      el("p", {class: "muted", text: "What labs base their reference ranges on, for ranges of your own set for female or male. " +
-        "It isn't gender identity, which Sanguity doesn't ask for."}));
+      {class: "about-field", "data-field": "sex"});
     const maxHr = el("input", {type: "number", id: "aboutMaxHr", name: "maxHr", min: 100, max: 230, step: 1, inputmode: "numeric", value: a.maxHr || ""});   // #197
+    const field = (k, id, label, help, ...ctl) => setRow([el("label", {for: id}, label, notSaved()), el("p", {class: "hint", text: help})],
+      el("div", {class: "about-row"}, ...ctl), {class: "about-field", "data-field": k});
     parts.push(el("form", {class: "about-details", onsubmit: saveBar},
-      el("div", {class: "about-field", "data-field": "birthDate"}, el("label", {for: "aboutBirth"}, "Birth date", notSaved()),
-        el("div", {class: "about-row"}, birth, el("button", {class: "btn", type: "button", text: "Clear", "aria-label": "Clear the birth date",
+      field("birthDate", "aboutBirth", "Birth date", "For the age on each result's day: ranges of your own by age band, and what depends on age.",
+        birth, el("button", {class: "btn", type: "button", text: "Clear", "aria-label": "Clear the birth date",
           onclick: () => { birth.value = ""; birth.focus(); aboutCount(); }}), age != null ? el("span", {class: "muted", text: `aged ${age} today`}) : null),
-        el("p", {class: "muted", text: "For the age on each result's day: ranges of your own by age band, and what depends on age."})),
-      el("div", {class: "about-field", "data-field": "dueDate"}, el("label", {for: "aboutDue"}, "Due date, if born early", notSaved()),   // #196
-        el("div", {class: "about-row"}, due, el("button", {class: "btn", type: "button", text: "Clear", "aria-label": "Clear the due date",
+      field("dueDate", "aboutDue", "Due date, if born early", "Optional, for a baby born early: until 2 years, growth charts use the age counted from it (the corrected age).",   // #196
+        due, el("button", {class: "btn", type: "button", text: "Clear", "aria-label": "Clear the due date",
           onclick: () => { due.value = ""; due.focus(); aboutCount(); }})),
-        el("p", {class: "muted", text: "Optional, for a baby born early: until 2 years, growth charts use the age counted from it (the corrected age)."})),
       sexes,
-      el("div", {class: "about-field", "data-field": "maxHr"}, el("label", {for: "aboutMaxHr"}, "Maximum heart rate, measured (bpm)", notSaved()),   // heart rate zones (#197)
-        el("div", {class: "about-row"}, maxHr),
-        el("p", {class: "muted", text: "Only if you know it from a test, an exercise test for example. Heart rate zones on workouts use it; " +
-          "left empty, they use the common estimate, 220 minus the age."}))));
+      field("maxHr", "aboutMaxHr", "Maximum heart rate, measured (bpm)", "Only if you know it from a test, an exercise test for example. Heart rate zones on workouts use it; " +   // heart rate zones (#197)
+        "left empty, they use the common estimate, 220 minus the age.", maxHr)));
   } else {
     parts.push(el("dl", {class: "about-dl"},
       el("dt", {text: "Birth date"}), el("dd", {text: a.birthDate ? aboutDay(a.birthDate) + (age != null ? ` (aged ${age} today)` : "") : "Not set"}),
@@ -208,8 +208,8 @@ function showAbout(p, a, drop = []) {
       el("p", {class: "hint", text: `Only the owners and editors of ${p.name} can change these.`}));
   }
   // the height history, newest first
-  parts.push(el("h3", {class: "sub", id: "aboutHeightHd", tabindex: -1, text: "Height"}),
-    el("p", {class: "hint", text: "A dated history: a child grows, and an adult's may change. The height on a day is the latest one written down by then."}));
+  const hLbl = [el("h3", {class: "sub", id: "aboutHeightHd", tabindex: -1, text: "Height"}),
+    el("p", {class: "hint", text: "A dated history: a child grows, and an adult's may change. The height on a day is the latest one written down by then."})], hCtl = [];   // a setting row (#286)
   if (edit) {
     const typed = HEIGHT_PREF === "cm" || HEIGHT_PREF === "ftin" ? HEIGHT_PREF : (a.heights.at(-1)?.unit || "cm");
     const date = el("input", {type: "date", id: "heightDate", value: today, min: a.birthDate || "1900-01-01", max: today, required: true});
@@ -224,7 +224,7 @@ function showAbout(p, a, drop = []) {
     const shown = () => { const f = units.querySelector("input:checked").value === "ftin"; cmBox.hidden = f; ftBox.hidden = !f; };
     units.addEventListener("change", shown);
     const num = i => i.value === "" ? null : +i.value;
-    parts.push(el("form", {class: "about-add", onsubmit: ev => { ev.preventDefault();
+    hCtl.push(el("form", {class: "about-add", onsubmit: ev => { ev.preventDefault();
       const unit = units.querySelector("input:checked").value, had = a.heights.some(h => h.date === date.value);
       send(`profiles/${p.id}/person/heights`, "POST", unit === "ftin" ? {date: date.value, unit, ft: num(ft), inches: num(inch)} : {date: date.value, unit, cm: num(cm)},
         `${had ? "Replaced" : "Added"} the height on ${aboutDay(date.value)}.`); }},
@@ -233,7 +233,7 @@ function showAbout(p, a, drop = []) {
     shown();
   }
   const mine = [...a.heights].reverse();
-  parts.push(mine.length ? el("table", {class: "tbl about-heights"},
+  hCtl.push(mine.length ? el("table", {class: "tbl about-heights"},
     el("thead", {}, el("tr", {}, ...["Date", "Height", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...mine.map(h => el("tr", {}, el("td", {text: aboutDay(h.date)}), el("td", {}, hText(h)),
       el("td", {class: "acts"}, edit ? el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove the height on ${aboutDay(h.date)}`,
@@ -245,6 +245,7 @@ function showAbout(p, a, drop = []) {
               `profiles/${p.id}/person/heights`, "POST", {date: h.date, unit: h.unit, cm: h.cm}, `Undone: the height on ${aboutDay(h.date)} is back.`,
               `A height on ${aboutDay(h.date)} was written down since: it's left as it is.`)}); }}) : null)))))
     : el("p", {class: "muted", id: "aboutNoHeight", text: "No height written down yet."}));
+  parts.push(setRow(hLbl, hCtl));
   // the heights a clinic recorded: beside the history, never in it until someone adds one
   if (a.recorded.length) {
     const MORE = 8, rows = a.recorded.map(r => el("tr", {}, el("td", {text: aboutDay(r.date)}), el("td", {}, hText(r)), el("td", {text: r.source || ""}),
@@ -254,13 +255,13 @@ function showAbout(p, a, drop = []) {
     rows.slice(MORE).forEach(r => { r.hidden = true; });
     const all = rows.length > MORE ? el("button", {class: "btn small", type: "button", text: `Show ${rows.length - MORE} more`,
       onclick: () => { rows.forEach(r => { r.hidden = false; }); all.remove(); }}) : null;
-    parts.push(el("h3", {class: "sub", text: "Heights in the records"}),
+    parts.push(setRow([el("h3", {class: "sub", text: "Heights in the records"}),
       el("p", {class: "hint", text: "Measured at a clinic and brought in with the records, or in the phone's Health app and brought in with its export. " +   // #223
         "They're shown here, not used, until " +
-        (edit ? "you add one to the history" : "an owner or editor adds one to the history") + ": an import can be undone, and a measurement can be off."}),
-      el("table", {class: "tbl about-heights about-recorded"},
+        (edit ? "you add one to the history" : "an owner or editor adds one to the history") + ": an import can be undone, and a measurement can be off."})],
+      [el("table", {class: "tbl about-heights about-recorded"},
         el("thead", {}, el("tr", {}, ...["Date", "Height", "From", ""].map(h => el("th", {text: h})))), el("tbody", {}, ...rows)),
-      all ? el("div", {class: "about-row"}, all) : null);
+      all ? el("div", {class: "about-row"}, all) : null]));
   }
   $("#aboutBody").replaceChildren(...parts.filter(Boolean));
   $("#targetsBody").replaceChildren(targetsCard(p, a, UNITS_PREF, (path, method, payload, said, focus, quiet) => send(path, method, payload, said, focus, $("#targetsMsg"), quiet),

@@ -107,6 +107,11 @@ const helpNodes = (help, ...more) => {
   const [line, ...rest] = (help || "").split("\n"), words = [...rest, ...more].filter(Boolean);
   return present(line ? el("p", {class: "hint", text: line}) : null, words.length ? aboutWords(...words) : null);
 };
+/* a setting row (#286, app.css .set-row): lbl, what's set (its heading or label, a hint, its ⓘ's words), on the
+   left; ctl, its control and message, on the right; attrs the row's own (a class added to set-row's; tag: "section"
+   for another element than a div). -> the row */
+const setRow = (lbl, ctl, {tag = "div", ...attrs} = {}) => el(tag, {...attrs, class: "set-row" + (attrs.class ? " " + attrs.class : "")},
+  el("div", {class: "set-row-lbl"}, lbl), el("div", {class: "set-row-ctl"}, ctl));
 /* An empty state (#199): one sentence saying what would appear here, and the one next step, a link ({href, text}) or
    a button ({onclick, text}); none (null) for someone who can't take it. tag: "div" for a whole card's place, "li"
    inside a list. The records tabs, the Sources and Sharing lists and the journal use it. */
