@@ -146,24 +146,29 @@ async function doseSend(path, opts, msg, after) {
 
 /* ---------------------------------------------------------------- today's doses: the Medications tab's and the Overview's
    For each current medication: a row for each of today's reminder times (#162: reminders on, today one of their days,
-   between from and their end), or one row when it has none; each logged dose of today beside its row. Owners and
-   editors log with one click (the time is now); viewers see what was logged. None for a profile without current
-   medications, or for a viewer when nothing was logged today. A card: id and head, its own (the Medications tab's
-   Today, #275: medications.js), else the Overview's; any: what a medication with no reminder times today says for its time */
-function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication doses"}), any = "Today"} = {}) {
+   between from and their end), or one row when it has none ("Any time"); each logged dose of today beside its row (one
+   logged at no reminder time in an "Also" row after the medication's last); the rows in order of their times, those
+   with none last. Owners and editors log with one click (the time is now); viewers
+   see what was logged, or that nothing was. None for a profile without current medications. A card: id and head, its
+   own (the Medications tab's Today, #275: medications.js), else the Overview's.
+   few (the Overview's, #440, so Upcoming stays on a phone's first screen): each row one line, Taken its one button and
+   Taken late and Skipped under its ⋯; and only that many rows, from the latest reminder time that has come (the first
+   while none has), the number left out in the card's data-more (the Overview links to the rest) */
+function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication doses"}), few = 0} = {}) {
   const write = canEdit(), today = zToday(), dow = MR_DAYS[(zdate(Date.now()).getDay() + 6) % 7][0];
   const cur = MEDS.filter(mrCurrent);
   const todays = DOSES.filter(d => doseDay(d) === today);
-  if (!cur.length || !write && !todays.length) return null;
+  if (!cur.length) return null;
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   // offline (offline.js: the kept copy, read-only) the buttons stay, each saying why it does nothing, as Add's Log a dose does
   const away = typeof OFFLINE !== "undefined" && OFFLINE.on, off = away ? {"aria-disabled": "true", "data-tip": "Needs the server: you're offline"} : {};
   const now = () => { const z = zdate(Date.now()); return `${today}T${String(z.getHours()).padStart(2, "0")}:${String(z.getMinutes()).padStart(2, "0")}`; };
   const log = (m, status, slot) => away || doseSend("", {method: "POST", body: JSON.stringify({med: m.key, t: now(), status, slot: slot || null, note: ""})}, msg, {row: m.key + " " + (slot || "")});
-  const quick = (m, slot, what) => el("span", {class: "dose-quick", role: "group", "aria-label": `Log ${what}`}, ...DOSE_ST.map(([s, t]) =>
-    el("button", {class: "btn small", type: "button", text: t, "aria-label": `${t}: ${what}`, ...off, onclick: () => log(m, s, slot)})));
+  const btn = (s, t, m, slot, what) => el("button", {class: "btn small", type: "button", text: t, "aria-label": `${t}: ${what}`, ...off, onclick: () => log(m, s, slot)});
+  const quick = (m, slot, what) => el("span", {class: "dose-quick", role: "group", "aria-label": `Log ${what}`},
+    ...(few ? [btn("taken", "Taken", m, slot, what), doseMore(m, slot, what, off, log)] : DOSE_ST.map(([s, t]) => btn(s, t, m, slot, what))));
   const logged = d => el("span", {class: "dose-done"}, doseIcon(d.status), `${DOSE_LABEL[d.status]} · ${fmtTime(d.ts)}` + (d.phone ? ` · from ${d.app}` : ""));
-  const rows = [];
+  const rows = [];   // [its time, its row]
   for (const m of cur) {
     const mine = todays.filter(d => d.key === m.key);
     const slots = [...new Set(mrOf(m).filter(r => r.on && r.days.includes(dow) && r.from <= today && !(mrEnds(r, m) && mrEnds(r, m).day < today)).flatMap(r => r.times))].sort();
@@ -171,21 +176,43 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
     for (const slot of slots) {
       const got = mine.filter(d => d.slot === slot);
       const what = `${m.name}, reminder at ${mrTime(slot)}`;
-      rows.push(el("li", {class: "dose-today", "data-dose-row": m.key + " " + slot}, el("span", {class: "dose-slot", text: mrTime(slot)}), open(),
-        got.length ? el("span", {class: "dose-got"}, ...got.map(logged)) : write ? quick(m, slot, what) : el("span", {class: "hint", text: "Nothing logged"})));
+      rows.push([slot, el("li", {class: "dose-today", "data-dose-row": m.key + " " + slot}, el("span", {class: "dose-slot", text: mrTime(slot)}), open(),
+        got.length ? el("span", {class: "dose-got"}, ...got.map(logged)) : write ? quick(m, slot, what) : el("span", {class: "hint", text: "Nothing logged"}))]);
     }
     const other = mine.filter(d => !slots.includes(d.slot));
-    if (!slots.length || other.length) rows.push(el("li", {class: "dose-today", "data-dose-row": m.key + " "}, el("span", {class: "dose-slot", text: slots.length ? "Also" : any}), open(),
-      el("span", {class: "dose-got"}, ...other.map(logged), write ? quick(m, null, m.name) : null)));
+    if (!slots.length || other.length) rows.push([(slots.at(-1) || "") + "~", el("li", {class: "dose-today", "data-dose-row": m.key + " "}, el("span", {class: "dose-slot", text: slots.length ? "Also" : "Any time"}), open(),
+      write || other.length ? el("span", {class: "dose-got"}, ...other.map(logged), write ? quick(m, null, m.name) : null) : el("span", {class: "hint", text: "Nothing logged"}))]);
+  }
+  if (!write && !todays.length) rows.length = 0;   // a viewer's, with nothing logged: the hint says so
+  // by time ("HH:MM"), its Also after its medication's last ("HH:MM~"), those with none last ("~"); stable, so a
+  // medication's own keep their order
+  rows.sort((a, b) => (a[0] > b[0]) - (a[0] < b[0]));
+  let from = 0, n = rows.length;
+  if (few && rows.length > few) {
+    const hm = now().slice(11), came = rows.filter(r => r[0].length === 5 && r[0] <= hm).at(-1);
+    from = Math.min(came ? rows.findIndex(r => r[0] === came[0]) : 0, rows.length - few); n = few;
   }
   const week = thisWeek(DOSES.filter(d => cur.some(m => m.key === d.key)));
-  return el("div", {class: "card", id}, head,
-    el("p", {class: "hint", text: !write ? "What was logged today." : away ? "Logging a dose needs the server: you're offline."
+  return el("div", {class: "card", id, "data-more": rows.length - n || null}, head,
+    el("p", {class: "hint", text: !write ? (todays.length ? "What was logged today." : "Nothing logged today.") : away ? "Logging a dose needs the server: you're offline."
       : "Log what happened, for your own record: taken, taken late or skipped."}),
-    el("ul", {class: "doselist today"}, ...rows),
+    rows.length ? el("ul", {class: "doselist today" + (few ? " few" : "")}, ...rows.slice(from, from + n).map(r => r[1])) : null,
     el("p", {class: "dose-week", text: "This week: " + doseSaid(doseCounts(week))}),
     aboutWords("The times are those of the reminders set on each medication (its details, on the Medications tab). This keeps what is logged, nothing more. Doses logged in Apple Health's Medications come with the phone's data when Health Auto Export sends them. This isn't medical advice."),
     msg);
+}
+
+/* the Overview's ⋯ beside Taken (#440): Taken late and Skipped in a menu (nav.js SgNav.menu, as Settings' row menus);
+   offline (off), the button alone, saying why */
+let doseMenus = 0;
+function doseMore(m, slot, what, off, log) {
+  const id = "doseMore" + (++doseMenus), live = !off["aria-disabled"];
+  const btn = el("button", {class: "btn small dose-more", type: "button", "aria-label": `Taken late or skipped: ${what}`, "data-tip": "Taken late or skipped", ...off,
+    ...(live ? {"aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": id} : {})}, icon("ellipsis"));
+  if (!live) return btn;
+  const list = el("div", {class: "menu-list", id, role: "menu", "aria-label": `Log ${what}`}, ...DOSE_ST.slice(1).map(([s, t]) =>
+    el("button", {class: "menu-item", role: "menuitem", type: "button", tabindex: "-1", text: t, onclick: () => log(m, s, slot)})));
+  return SgNav.menu({btn, list, wrap: el("span", {class: "menu"}, btn, list)}).wrap;
 }
 
 /* ---------------------------------------------------------------- the Timeline: marks on each medication's span */

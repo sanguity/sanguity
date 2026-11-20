@@ -2220,8 +2220,47 @@ def main():
                   all([h for h in got274[w]["h2"] if h in order] == order for w in (1400, 390, 320)) and not got274["fits320"], got274)
             check("…today's doses and the next appointment on the first screen at 1400 and 390 px",
                   all(got274[w]["doses"] and got274[w]["dosesRow"] and (got274[w]["up"] and got274[w]["next"] or not got274[w]["ahead"]) for w in (1400, 390)), got274)
+            # #440: with reminders at 8:00 AM and 8:00 PM every day on each current medication (six rows today), the
+            # Overview shows the next three, each on one line (Taken, with Taken late and Skipped under its ⋯), then
+            # "3 more on Medications": Upcoming's first row is still on a phone's first screen at 390 px. Removed after
+            rem440 = js("""async () => { const ids = []; for (const m of MEDS.filter(mrCurrent)) {
+                const r = await api(`profiles/${PROFILE.id}/medications/reminders`, {method: 'POST', body: JSON.stringify({med: m.key, times: ['08:00', '20:00'],
+                  days: ['mo', 'tu', 'we', 'th', 'fr', 'sa', 'su'], start: '2026-01-01', until: null})});
+                const j = await r.json(); ids.push(j.id); storePut('reminders', j); } return ids; }""")
+            page.set_viewport_size({"width": 390, "height": 844})
+            js("switchTab('overview')")
+            settle(300)
+            first440 = js(OV274)
+            rows440 = js("""() => { const c = document.getElementById('ovDoses'), rs = [...c.querySelectorAll('.dose-today')];
+                const one = r => { const b = [...r.children].map(x => x.getBoundingClientRect()); return Math.max(...b.map(x => x.top)) < Math.min(...b.map(x => x.bottom)); };
+                return {n: rs.length, all: todayDoses({id: 'all440'}).querySelectorAll('.dose-today').length, more: c.dataset.more,
+                  link: c.querySelector('a[href="#medications"]')?.textContent.trim(), one: rs.every(one),
+                  btns: rs.map(r => [...r.querySelectorAll('.dose-quick button:not([role=menuitem])')].map(b => b.textContent.trim() || b.getAttribute('aria-label').split(':')[0]))}; }""")
+            js("""async ids => { for (const id of ids) { const r = await api(`profiles/${PROFILE.id}/medications/reminders/${id}`, {method: 'DELETE'});
+                storePut('reminders', await r.json()); } }""", rem440)
+            check("…with twice-daily reminders on every current medication (#440): at 390 px the next three doses, one line each with Taken and its ⋯, "
+                  "“N more on Medications”, and Upcoming's first row on the first screen",
+                  rows440["n"] == 3 and rows440["all"] >= 6 and rows440["more"] == str(rows440["all"] - 3) and rows440["link"] == f"{rows440['all'] - 3} more on Medications"
+                  and rows440["one"] and all(b == ["Taken", "Taken late or skipped"] for b in rows440["btns"])
+                  and first440["doses"] and (first440["next"] or not first440["ahead"]), [rows440, first440])
             page.set_viewport_size({"width": 1400, "height": 900})
+            js("switchTab('overview')")
             settle(200)
+            # …and its way to the Medications tab looks as the one to Costs does: a link drawn as a button, with its arrow
+            page.mouse.move(1, 1)
+            look440 = js("""() => { const s = e => e && [...['borderTopStyle', 'borderTopColor', 'backgroundColor', 'borderTopLeftRadius', 'fontSize', 'fontWeight', 'color',
+                  'textDecorationLine', 'paddingLeft'].map(p => getComputedStyle(e)[p]), !!e.querySelector('svg.i-arrow-right')].join(' ');
+                return [s(document.querySelector('#ovDoses a[href="#medications"]')), s([...document.querySelectorAll('#view-overview .btn')].find(b => /^Open Costs/.test(b.textContent.trim())))]; }""")
+            check("…its way to the Medications tab looks as Open Costs does (#440)", look440[0] and look440[0] == look440[1], look440)
+            # …and a click on it with Ctrl, ⌘ or Shift is left to the browser (a new tab or window), as the tabs' own are;
+            # a plain one opens the tab here (the browser's own following stopped here, for the check)
+            mod440 = js("""() => { const a = document.querySelector('#ovDoses a[href="#medications"]'), seen = [], stop = ev => { seen.push(ev.defaultPrevented); ev.preventDefault(); };
+                document.addEventListener('click', stop);
+                for (const k of ['ctrlKey', 'metaKey', 'shiftKey', '']) a.dispatchEvent(new MouseEvent('click', {...(k ? {[k]: true} : {}), bubbles: true, cancelable: true}));
+                document.removeEventListener('click', stop);
+                return [seen, state.tab]; }""")
+            js("switchTab('overview')")
+            check("…a click on it with Ctrl, ⌘ or Shift is the browser's; a plain one opens the Medications tab (#440)", mod440 == [[False, False, False, True], "medications"], mod440)
             # Key labs: the status only on exceptions; the change's date said once in the header (a tile says its own only
             # when it differs); every key lab outside its range at its latest result named in the header's list, however old
             # (and said to be "not repeated since"), with any other lab of the last two weeks of draws; the tiles in the
@@ -5012,19 +5051,23 @@ def main():
                 page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .dose-item')", timeout=20000)
                 check("…corrected: Taken, the note kept", page.inner_text("#dbody .dose-item").startswith("Taken ·") and "later than usual" in page.inner_text("#dbody .dose-item"))
                 page.keyboard.press("Escape")
-                # today's doses on the Overview: the reminder's times when today is one of its days, else one row for it
+                # today's doses: the reminder's times when today is one of its days, else one row for it ("Any time", never
+                # "Today", #440), in order of their times; read from the whole list (the Medications tab's: the Overview
+                # shows the next few, #440)
                 js("switchTab('overview')")
                 settle(300)
-                today235 = js("""(() => { const c = document.getElementById('ovDoses'); if (!c) return null;
+                today235 = js("""(() => { const c = todayDoses({id: 'all235'}); if (!c) return null;
                     const k = MR_DAYS[(zdate(Date.now()).getDay() + 6) % 7][0];
                     return {rows: [...c.querySelectorAll('.dose-today')].map(r => [r.querySelector('.dose-slot').textContent, r.querySelector('.dose-med').textContent,
                               r.querySelectorAll('.dose-quick button').length, r.querySelector('.dose-got')?.textContent || '']),
                             weekday: ['mo', 'tu', 'we', 'th', 'fr'].includes(k), cur: MEDS.filter(mrCurrent).length,
+                            ov: [...document.querySelectorAll('#ovDoses .dose-slot')].map(s => s.textContent),
                             week: c.querySelector('.dose-week').textContent, text: c.textContent}; })()""")
                 mine = [r for r in (today235 or {}).get("rows", []) if r[1] == cur["name"]]
-                want = ["8:00 AM", "8:00 PM", "Also"] if today235 and today235["weekday"] else ["Today"]
-                check("Overview: today's medication doses, a row for each of the reminder's times today (or one), the dose logged beside it",
-                      today235 and [r[0] for r in mine] == want and "Taken" in mine[-1][3] and len({r[1] for r in today235["rows"]}) == today235["cur"], today235)
+                want = ["8:00 AM", "8:00 PM", "Also"] if today235 and today235["weekday"] else ["Any time"]
+                check("today's medication doses, a row for each of the reminder's times today (or one, “Any time”), the dose logged beside it; no row says “Today” (#440)",
+                      today235 and [r[0] for r in mine] == want and "Taken" in mine[-1][3] and len({r[1] for r in today235["rows"]}) == today235["cur"]
+                      and "Today" not in [r[0] for r in today235["rows"]] + today235["ov"] and today235["ov"], today235)
                 check("…one click logs a dose, three choices a row; the week's count; never \"due\"",
                       today235 and all(r[2] in (0, 3) for r in today235["rows"]) and today235["week"].startswith("This week: ")
                       and not re.search(r"(?i)\b(due|should|missed|overdue)\b", today235["text"]), today235 and today235["week"])
@@ -5032,7 +5075,12 @@ def main():
                 row = page.locator("#ovDoses .dose-today", has=page.locator(".dose-quick")).first
                 what = row.locator(".dose-med").inner_text()
                 js("window.sg271 = 1")   # gone if the page loads again (#271)
-                row.locator(".dose-quick button:text-is('Skipped')").click()
+                # on the Overview, Taken late and Skipped are under the row's ⋯ (#440), a menu
+                row.locator(".dose-quick button.dose-more").click()
+                page.wait_for_selector("#ovDoses .menu-list:popover-open", timeout=5000)
+                menu440 = js("[...document.querySelectorAll('#ovDoses .menu-list:popover-open [role=menuitem]')].map(b => b.textContent)")
+                check("…on the Overview, a row's ⋯ opens a menu of Taken late and Skipped (#440)", menu440 == ["Taken late", "Skipped"], menu440)
+                page.locator("#ovDoses .menu-list:popover-open [role=menuitem]:text-is('Skipped')").click()
                 page.wait_for_function("w => [...document.querySelectorAll('#ovDoses .dose-today')].some(r => r.querySelector('.dose-med').textContent === w && /Skipped/.test(r.querySelector('.dose-got')?.textContent || ''))",
                                        arg=what, timeout=20000)
                 settle(300)
@@ -11721,6 +11769,13 @@ def main():
             zb.goto(base + "/?profile=1")
             zb.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             viewing = zb.evaluate(add_offers)
+            # #440: a viewer's Overview with nothing logged today has a way to the Medications tab, as everyone's does
+            # (the day's doses, if any, left out on this page only)
+            view440 = zb.evaluate("""() => { DOSES = DOSES.filter(d => doseDay(d) !== zToday()); switchTab('overview');
+                const c = document.getElementById('ovDoses'), a = document.querySelector('#view-overview a[href="#medications"]');
+                return [c && c.querySelector('.hint').textContent, a && a.textContent.trim(), !!document.querySelector('#view-overview .dose-quick')]; }""")
+            check("a viewer's Overview with nothing logged today says so, and links to the Medications tab (#440)",
+                  view440 == ["Nothing logged today.", "Open Medications", False], view440)
             # #275: the Medications tab works for each role: a viewer sees every part and what was logged, with nothing to
             # log a dose with, there or in a medication's drawer (an editor, below, has both)
             meds_role = """() => { switchTab('medications'); const v = document.getElementById('view-medications');
@@ -14746,6 +14801,15 @@ def main():
                 got[t] = fp.evaluate(nexts, "#view-" + t)
             check("…every records tab with nothing to show (a profile with only a visit) says what would be there, with one next step",
                   r == 200 and got == want and fp.is_visible("#notice") and "Not medical advice" in fp.inner_text("#notice"), (r, got))
+            # (#440) the Overview's groups alike: each under its heading, saying what would be there when it has nothing
+            # (the one next step Key labs'), Recent with the visit
+            tab_click(fp, "#tab-overview")
+            groups440 = fp.evaluate("""() => { const out = {};
+                for (const h of document.querySelectorAll('#view-overview .ov-h')) { let n = h.nextElementSibling; while (n && n.matches('.about-words')) n = n.nextElementSibling;
+                  out[h.querySelector('h2').textContent] = !n ? null : n.matches('.empty-state') ? 'empty' : n.id || n.className; }
+                return out; }""")
+            check("…on the Overview, Today, Key labs, Readings and the Health record each say what would be there, and Recent lists the visit (#440)",
+                  groups440 == {"Today": "empty", "Key labs": "empty", "Readings": "empty", "Health record": "empty", "Recent": "ovRecent"}, groups440)
             tab_click(fp, "#tab-timeline")
             fp.click("#list .empty-next")
             f_until("document.querySelectorAll('#list .tl-row').length === 1 && state.q === '' && state.preset === 'all'", 5000)
