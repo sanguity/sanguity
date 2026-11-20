@@ -1442,6 +1442,12 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .acct .share-links{margin-top:var(--sp-2);border-left:3px solid var(--ring);padding-left:var(--sp-3)}
 .acct .share-links tr.ended td{color:var(--muted)}
 .acct .share-form{max-width:640px;margin-top:var(--sp-3)}
+.acct :is(.share-opts,.share-side){display:grid;gap:var(--sp-2);align-content:start;min-width:0}
+/* #288: what a holder will see beside the choices at 1200 px and wider, kept in sight under the top bar as they scroll */
+@media (min-width:1200px){
+  .acct .share-form{max-width:none;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:var(--sp-5);align-items:start}
+  .acct .share-side{position:sticky;top:calc(var(--bar-h,0px) + var(--sp-3))}
+}
 .acct .share-form fieldset{border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:0;display:grid;gap:2px;min-width:0}
 .acct .share-form fieldset[hidden]{display:none}
 .acct .share-form legend{font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2);padding:0 var(--sp-1)}

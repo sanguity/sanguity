@@ -1,7 +1,8 @@
 /* Sanguity · the visit summary (#48), on the Sharing page (#168): pick the visit and the "since" point, tick
    sections, add labs to trend, type questions (kept as your own draft for the profile, #219: saved with the group's
-   bar as any change is, #272, or by downloading the PDF), preview, download the PDF; and the measures the profile
-   ticks at first (#402).
+   bar as any change is, #272, or by downloading the PDF), download the PDF; and the measures the profile ticks at
+   first (#402). The preview beside the choices (#288; under them on a narrower screen) is drawn again as each one
+   changes.
    The server builds both the preview and the PDF from the same records (server/summary.py); nothing here is put
    into innerHTML. Follows the page's profile picker (#profile, filled by sharing.js); call() is sharing.js's. */
 "use strict";   // $, el and api come from util.js
@@ -21,6 +22,7 @@ function drawPicked() {
     el("button", {class: "chip", type: "button", "aria-label": `Don't trend ${labelOf(n)}`, onclick: () => {
       PICKED.splice(i, 1); drawPicked();
       ($("#picked").querySelectorAll("button")[Math.min(i, PICKED.length - 1)] || $("#labIn")).focus(); }}, labelOf(n), icon("x")))));
+  previewSoon();
 }
 const labelOf = n => (OPTS.labs.find(l => l.name === n) || {label: n}).label;
 function addLab() {
@@ -56,18 +58,18 @@ async function summarySave(msg, had) {
     let said = "Your questions were changed since, so they're left as they are.";
     if (now === text) { await call(`profiles/${pid}/summary/questions`, "PUT", {text: was}); said = "Undone: your questions are as before."; }
     if (PID !== pid) { toast(`${name}: ${said}`); return; }   // another profile shown now (#367)
-    if (now === text) { const kept = $("#questions").value !== qSaved; qSaved = was; if (!kept) $("#questions").value = was; qMark(); }
+    if (now === text) { const kept = $("#questions").value !== qSaved; qSaved = was; if (!kept) { $("#questions").value = was; previewSoon(); } qMark(); }
     sayIn($("#qMsg"), said);
   }});
 }
 function summaryDiscard() {
-  $("#questions").value = qSaved; qMark();
+  $("#questions").value = qSaved; qMark(); previewSoon();
   sayIn($("#qMsg"), "Changes discarded: back as saved.");
   $("#questions").focus();
 }
 
 async function load() {
-  $("#build").hidden = true; $("#preview").hidden = true; sayIn($("#loadMsg"), "Loading…");
+  $("#build").hidden = true; $("#preview").hidden = true; pvSeq++; sayIn($("#loadMsg"), "Loading…");
   try { OPTS = await call(`profiles/${PID}/summary`); } catch (e) { sayIn($("#loadMsg"), e.message, true); return; }
   sayIn($("#loadMsg"), OPTS.has_records ? "" : `${OPTS.profile.name} has no records yet, so the summary will be mostly empty.`);
   $("#appt").replaceChildren(...OPTS.upcoming.map((u, i) => el("option", {value: i, text: `${u.title}, ${fmtDay(u.date)}${u.who ? " · " + u.who : ""}`})),
@@ -84,17 +86,18 @@ async function load() {
     el("input", {type: "checkbox", value: s.id, checked: !(s.ask || s.off) || null}), s.label,   // off: a measure, unticked (#225)
     s.ask ? el("span", {class: "muted", text: " (only if you tick it, each time)"}) : null)));   // cycle records (#183)
   $("#keyHint").textContent = OPTS.keyLabs.length
-    ? "Your key labs from Settings, below; add any others here."   // (the chips under it name them, #280)
-    : "No key labs with results (they're set in Settings). Add labs here to trend them.";
+    ? "Your key labs are trended; add others here."   // (one line in the pane, #280, #288)
+    : "No key labs have results; add labs here.";
   $("#labNames").replaceChildren(...OPTS.labs.map(l => el("option", {value: l.label})));
   PICKED = []; drawPicked();
   $("#questions").value = qSaved = OPTS.questions || ""; sayIn($("#qMsg"), ""); qMark();
   $("#notice").textContent = OPTS.notice;
   $("#build").hidden = false;
+  previewSoon(0);
 }
 
 /* ---------------------------------------------------------------- preview */
-const cell = (text, cls) => el("td", {class: cls, text: text ?? ""});
+const cell = (text, cls) => el("td", {class: cls}, ...keepDates(text ?? ""));   // each date kept whole as the cells wrap in the pane (#288)
 function table(heads, rows, cls = "") {   // a region that can be scrolled from the keyboard on a narrow screen (#225's wider tables)
   return scrollBox({class: "scroll", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
     el("thead", {}, el("tr", {}, ...heads.map(h => el("th", {text: h})))), el("tbody", {}, ...rows)));
@@ -116,8 +119,9 @@ const measureCell = (kind, v) => !v ? v : kind === "day" ? fmtDay(v) : kind === 
 function renderPreview(s) {
   const box = $("#preview"), since = fmtDay(s.since.date);
   const labels = Object.fromEntries(OPTS.sections.map(x => [x.id, x.label]));
+  // its length beside its heading, said only when it changes (not as it's first drawn)
+  sayIn($("#prevMsg"), `${s.pages} page${s.pages === 1 ? "" : "s"}${s.fits ? "" : ", not everything fits"}`, false, {repeat: false, say: !box.hidden});
   const parts = [el("div", {class: "sum-head"},
-    el("h2", {text: `Preview: ${s.pages} page${s.pages === 1 ? "" : "s"}`}),
     el("p", {}, el("b", {text: s.profile}), ` · prepared ${fmtDay(s.prepared)}`),
     el("p", {text: s.for ? `For: ${s.for.title} on ${fmtDay(s.for.date)}${s.for.who ? " · " + s.for.who : ""}` : "For: no particular appointment"}),
     el("p", {text: `Since: ${since}${s.since.label ? ` (${s.since.label})` : ""}`}),
@@ -161,14 +165,26 @@ function renderPreview(s) {
   }
   if (s.settings_note) parts.push(el("p", {class: "hint", id: "sumSettingsNote", text: s.settings_note}));   // #44
   parts.push(el("p", {class: "hint sum-notice", text: s.notice}));
-  box.replaceChildren(...parts); box.hidden = false;
+  $("#prevBody").replaceChildren(...parts); box.hidden = false;
 }
-$("#previewBtn").onclick = async () => {
-  const b = $("#previewBtn"); b.disabled = true; sayIn($("#buildMsg"), "Making the preview…");
-  try { renderPreview(await call(`profiles/${PID}/summary/preview`, "POST", chosen())); sayIn($("#buildMsg"), ""); $("#preview").scrollIntoView({behavior: smoothly(), block: "start"}); }
-  catch (e) { sayIn($("#buildMsg"), e.message, true); }
-  finally { b.disabled = false; }
-};
+/* the live preview (#288): any choice changed asks for it again, a moment later (a while longer as questions are
+   typed), only the last asked for drawn; meanwhile it's marked busy (aria-busy, dimmed). A lab being typed in isn't
+   a choice until it's added. */
+let pvSeq = 0, pvTimer = 0;
+function previewSoon(wait = 300) {
+  if (!OPTS || $("#build").hidden) return;
+  const n = ++pvSeq;
+  $("#preview").setAttribute("aria-busy", "true");
+  clearTimeout(pvTimer);
+  pvTimer = setTimeout(async () => {
+    const pid = PID;
+    try { const s = await call(`profiles/${pid}/summary/preview`, "POST", chosen()); if (n === pvSeq && pid === PID) renderPreview(s); }
+    catch (e) { if (n === pvSeq) sayIn($("#prevMsg"), e.message, true); }
+    finally { if (n === pvSeq) $("#preview").removeAttribute("aria-busy"); }
+  }, wait);
+}
+$("#build").addEventListener("change", ev => { if (!["labIn", "questions"].includes(ev.target.id)) previewSoon(); });
+$("#build").addEventListener("input", ev => { if (ev.target.id === "questions") previewSoon(700); });
 
 /* ---------------------------------------------------------------- download: the PDF is fetched, then saved from memory */
 $("#build").onsubmit = async ev => {
@@ -213,14 +229,14 @@ async function tickSave(st, input) {
   catch (e) { input.checked = !input.checked; sayIn(msg, e.message, true); return; }
   Object.assign(st, {value, from: "profile"});
   const box = document.querySelector(`#sections input[value="${input.value}"]`);
-  if (box) box.checked = input.checked;
+  if (box) { box.checked = input.checked; previewSoon(); }
   sayIn(msg, said, false, {say: false});
   toast(said, {action: "Undo", onAction: async () => {   // what it was, if it's still as ticked here
     const now = await tickedSetting(pid), back = !!now && same(now.value, value);
     if (back) { if (was.from === "default") await call(path, "DELETE"); else await call(path, "PUT", {value: was.value}); }
     const text = back ? `Undone: “${st.label}” is as before.` : `“${st.label}” was changed since, so it's left as it is.`;
     if (PID !== pid) { toast(`${name}: ${text}`); return; }   // another profile shown now (#367)
-    if (back && box) box.checked = !input.checked;
+    if (back && box) { box.checked = !input.checked; previewSoon(); }
     await ticked();
     sayIn($("#sumTickedMsg"), text);
   }});

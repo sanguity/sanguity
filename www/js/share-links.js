@@ -103,13 +103,16 @@ function shareLinksPanel(p, {open = false} = {}) {
         f.remove(); await load();
       } catch (e) { fail(e); }
     }},
-      el("label", {}, "Name, so you know which link it is (only owners see it)", label),
-      el("fieldset", {class: "share-sections"}, el("legend", {text: "What it shows"}),
-        ...checks.map(c => el("label", {class: "check"}, c.input, el("span", {}, el("b", {text: c.s.label}), el("span", {class: "muted", text: ` ${c.s.what}`}))))),
-      labsPart,
-      el("div", {class: "row"}, el("label", {}, "Records from", from), el("label", {}, "to (empty: no end)", to)),
-      el("label", {}, "Stops working after", hours),
-      sees, el("div", {class: "row"}, go, el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => f.remove()})));
+      // the choices, and beside them (#288; under them on a narrower screen) what a holder of the link will see, then Make
+      el("div", {class: "share-opts"},
+        el("label", {}, "Name, so you know which link it is (only owners see it)", label),
+        el("fieldset", {class: "share-sections"}, el("legend", {text: "What it shows"}),
+          ...checks.map(c => el("label", {class: "check"}, c.input, el("span", {}, el("b", {text: c.s.label}), el("span", {class: "muted", text: ` ${c.s.what}`}))))),
+        labsPart,
+        el("div", {class: "row"}, el("label", {}, "Records from", from), el("label", {}, "to (empty: no end)", to)),
+        el("label", {}, "Stops working after", hours)),
+      el("div", {class: "share-side"}, sees,
+        el("div", {class: "row"}, go, el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => f.remove()}))));
     f.addEventListener("input", explain); f.addEventListener("change", explain);
     explain();
     return f;

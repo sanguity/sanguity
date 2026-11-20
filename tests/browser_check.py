@@ -2084,6 +2084,26 @@ def main():
         check("share links: the form says plainly what a holder of the link can see",
               all(w in sees for w in ("Anyone who has this link", "My records", "Visits and hospital stays", f"only {lab}", "of any date",
                                       "no documents", "nothing can be changed", "logged")) and "Medications" not in sees, sees[:400])
+        # #288: what a holder will see beside the choices at 1200 px and wider, with Make the link under it; one under the
+        # other, fitting, on a phone; an option changed changes it
+        side288 = {}
+        for w in (1400, 1200, 375, 320):
+            strict.set_viewport_size({"width": w, "height": 900})
+            strict.wait_for_timeout(150)
+            side288[w] = strict.evaluate("""w => { scrollTo(0, 0);   // (the side is sticky: at the top, level with the choices)
+                const o = document.querySelector('#links .share-opts').getBoundingClientRect(),
+                s = document.querySelector('#links .share-side').getBoundingClientRect();
+                return [o.right <= s.left && Math.abs(o.top - s.top) < 2, s.top >= o.bottom,
+                        !!document.querySelector('#links .share-side .share-sees + .row button[type=submit]'),
+                        document.documentElement.scrollWidth <= w]; }""", w)
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        form.locator("input[value=journal]").check()
+        sees288 = form.locator(".share-sees").inner_text()
+        form.locator("input[value=journal]").uncheck()
+        check("share links: what a holder will see is beside the choices at 1400 and 1200 px, under them and fitting at 375 and 320 px, "
+              "and follows a section ticked (#288)", side288 == {1400: [True, False, True, True], 1200: [True, False, True, True],
+                                                                 375: [False, True, True, True], 320: [False, True, True, True]}
+              and "Journal" in sees288 and "Journal" not in form.locator(".share-sees").inner_text(), [side288, sees288[:200]])
         form.locator("button[type=submit]").click()
         strict.wait_for_selector(".share-made .share-url", timeout=10000)
         share_url = strict.input_value(".share-made .share-url")
@@ -6177,8 +6197,7 @@ def main():
                 js("document.getElementById('since').selectedIndex = document.getElementById('since').options.length - 1")
                 for k in js("[...document.querySelectorAll('#sections input')].map(i => i.value)"):
                     (page.check if k == "medlog" else page.uncheck)(f"#sections input[value={k}]")
-                page.click("#previewBtn")
-                page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+                page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)   # drawn as the choices change (#288)
                 pv = page.inner_text("#preview")
                 check("…ticked, the preview lists each dose with what happened and the count of what was logged",
                       js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent)")[0].startswith("Medication log")
@@ -11887,19 +11906,41 @@ def main():
             check("…the questions draft, typed, is marked not saved, one change in the group's bar, and leaving asks; its Save keeps it, said by a toast with an Undo (#272)",
                   q_bar == [False, "1 change", True, True] and js("document.getElementById('shrBar').hidden")
                   and js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == "Saved your questions.", q_bar)
-            page.click("#previewBtn")
-            page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+            page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)   # drawn as the choices change (#288)
             heads = js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent.replace(/ \\(\\d+\\)$/, ''))")
             check("…the preview shows the ticked sections", len(heads) == 4 and heads[0].startswith("Out of range since") and heads[-1] == "My questions", heads)
             check("…with the questions and the notice", "Should the next draw be fasting?" in js("document.getElementById('preview').textContent")
                   and "isn't medical advice" in js("document.getElementById('preview').textContent"))
             check("…and Ferritin among the trends", "Ferritin" in js("document.getElementById('preview').textContent"))
+            # #288: the options and a live preview side by side at 1200 px and wider, one under the other below; an option
+            # changed draws the preview again, with no button to press (Preview is gone), busy meanwhile
+            panes = lambda: js("""(() => { const b = document.getElementById('build').getBoundingClientRect(),
+                p = document.getElementById('preview').getBoundingClientRect();
+                return {beside: b.right <= p.left && Math.abs(b.top - p.top) < 2, under: p.top >= b.bottom}; })()""")
+            pn = {1400: panes()}
+            page.set_viewport_size({"width": 1200, "height": 900})
+            settle(200)
+            pn[1200] = panes()
+            check("…the options on the left and the preview beside them at 1400 and 1200 px (#288)", pn[1400]["beside"] and pn[1200]["beside"]
+                  and js("!document.getElementById('previewBtn')") and js("document.getElementById('prevMsg').textContent") == "1 page", pn)
+            page.uncheck("#sections input[value=medications]")
+            busy288 = js("document.getElementById('preview').getAttribute('aria-busy')")
+            page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)
+            heads288 = js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent.replace(/ \\(\\d+\\)$/, ''))")
+            page.fill("#questions", "Is the ferritin result worth rechecking?\nShould the next draw be fasting?\nA third question, typed?")
+            page.wait_for_selector("#preview:not([aria-busy]) li:has-text('A third question, typed?')", timeout=10000)
+            check("…an option changed draws the preview again by itself, marked busy meanwhile: a section unticked leaves it, a question typed is in it (#288)",
+                  busy288 == "true" and "Current medications" not in heads288 and len(heads288) == 3, [busy288, heads288])
+            page.check("#sections input[value=medications]")
+            page.fill("#questions", "Is the ferritin result worth rechecking?\nShould the next draw be fasting?")
+            page.wait_for_selector("#preview:not([aria-busy]) h3:has-text('Current medications')", timeout=10000)
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
-            check("the visit summary and its preview fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+            check("the visit summary and its preview fit 375 px, the preview under the options (#288)", js("document.documentElement.scrollWidth") <= 375
+                  and panes()["under"], [js("document.documentElement.scrollWidth"), panes()])
             cl_tables, cl_bad = cell_labels(page, "Sharing → Visit summary")
             check("…its preview's tables with each cell under its column's name (#320)",
-                  not cl_bad and sum(1 for t in cl_tables if t[0].startswith("preview") and t[1] and t[3]) >= 2, cl_bad[:6] or cl_tables)
+                  not cl_bad and sum(1 for t in cl_tables if t[0].startswith("prevBody") and t[1] and t[3]) >= 2, cl_bad[:6] or cl_tables)
             # #324: no preview cell is wider than its row (a long test name beside an unbroken date was cut at the card's edge)
             wide = {}
             for w in (375, 320):
@@ -11954,8 +11995,7 @@ def main():
             js("document.getElementById('since').selectedIndex = document.getElementById('since').options.length - 1")   # the oldest visit: more readings
             for k in got:
                 (page.check if k in ("home_bp", "glucose", "ecg", "immunizations", "temperature") else page.uncheck)(f"#sections input[value={k}]")
-            page.click("#previewBtn")
-            page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+            page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)   # drawn as the choices change (#288)
             heads = js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent)")
             pv = js("document.getElementById('preview').textContent")
             check("…ticked, the preview shows each: blood pressure at home with the count, average and highest, and its readings",
@@ -12122,8 +12162,7 @@ def main():
             js("document.getElementById('since').selectedIndex = document.getElementById('since').options.length - 1")
             for k in got:
                 (page.check if k in ("glucose", "oxygen") else page.uncheck)(f"#sections input[value={k}]")
-            page.click("#previewBtn")
-            page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+            page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)   # drawn as the choices change (#288)
             pv = js("document.getElementById('preview').textContent")
             rows232 = js("[...document.querySelectorAll('#preview table tbody tr')].map(r => [...r.cells].map(c => c.textContent))")
             check("…ticked, the preview lists each glucose reading typed in with its time and meal note, and the blood oxygen one",
@@ -12417,8 +12456,7 @@ def main():
             js("document.getElementById('since').selectedIndex = document.getElementById('since').options.length - 1")   # the oldest visit: the CGM's days too
             for k in got:
                 (page.check if k == "targets" else page.uncheck)(f"#sections input[value={k}]")
-            page.click("#previewBtn")
-            page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+            page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)   # drawn as the choices change (#288)
             pv = js("document.getElementById('preview').innerText")
             check("…the visit summary offers them unticked; ticked, each target with who set it and the period's readings against it",
                   got.get("targets") is False and "Your targets for home readings since" in pv and "Sanguity doesn't suggest targets" in pv
@@ -13906,8 +13944,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + f"/sharing.html?profile={rpid}#summary")
             page.wait_for_selector("#build:not([hidden])", timeout=10000)
-            page.click("#previewBtn")
-            page.wait_for_selector("#preview:not([hidden]) h3", timeout=10000)
+            page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)   # drawn as the choices change (#288)
             check("visit summary: a result without a range is judged against the range from settings, marked so",
                   "(settings)" in js("document.getElementById('preview').textContent")
                   and "range from settings" in js("document.getElementById('sumSettingsNote')?.textContent || ''"))

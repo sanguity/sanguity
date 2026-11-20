@@ -9,6 +9,14 @@
 .sum-add{display:flex;align-items:center;gap:var(--sp-2);max-width:420px}
 .sum-add input{flex:1 1 auto}
 .sum-notice{margin:var(--sp-3) 0 0}
+/* the options and the preview (#288): side by side at 1200 px and wider, the preview's cells wrapping in its pane;
+   dimmed while it's drawn again */
+@media (min-width:1200px){
+  .sum-panes{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);column-gap:var(--sp-5);align-items:start}
+  .sum-panes .sum-preview .tbl td{white-space:normal}
+}
+.sum-pv-hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--sp-3)}
+.sum-preview[aria-busy=true] #prevBody{opacity:.55;transition:opacity var(--dur-2)}
 .sum-preview h3{font-size:var(--fs-3);font-weight:var(--fw-semibold);margin:var(--sp-4) 0 2px}
 .sum-preview .sum-head{border-bottom:1px solid var(--grid);padding-bottom:var(--sp-2)}
 .sum-preview .sum-head p{margin:2px 0;font-size:var(--fs-3)}
