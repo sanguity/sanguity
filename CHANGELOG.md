@@ -1636,6 +1636,13 @@ Everything on `main` so far; it becomes the first tagged release.
   on the last chart shrank the page and left the focused Clear above the screen; a redraw that moves the focused
   control out of sight brings it back. The empty charts said "Pick lab values on the left", where on a phone the list
   is above; they say "in the list".
+- **The heatmap shows each draw's result on a day with two, and opens the draw that holds it; the Timeline's line
+  counts a draw's own results under a search** (#471): with an outside lab's Creatinine 1.6 H typed in on the day of a
+  clinic draw whose Creatinine was 0.89, the heatmap showed only the 1.6, in its grid, tip and table, and its cell
+  opened the clinic's draw. The cell holds both side by side, each coloured and marked by its own range, each's tip
+  saying the other; each opens its own draw; the table gives both, each with its time. Under "metabolic", listing the
+  clinic's draw only, the line said "7 results …, 1 out of range" from the 1.6 on its day; it counts the listed draws'
+  own results, as their badges do.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

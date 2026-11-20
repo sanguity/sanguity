@@ -3287,8 +3287,38 @@ def main():
                 page.fill("#q", q)
                 settle(400)
                 tl470[q] = js(tl470_q, [day470, imp470])
+            # #471: the line under a search counts the listed draws' own results, as their badges do: "metabolic" lists the
+            # clinic's draw, not the outside lab's, and said "7 results …, 1 out of range" with the 1.6 on its day counted
+            page.fill("#q", "metabolic")
+            settle(400)
+            tl471 = js(r"""d => { const ss = tlTestsHit(), at = d + 'T14:30:00', draws = tlListed().filter(e => e.k === 'lab'), days = new Set(draws.map(e => isoDay(e.ts)));
+                const pts = ss.flatMap(s => s.pts).filter(p => days.has(isoDay(p.ts))), own = pts.filter(p => p[0] !== at);
+                return {draws: draws.length, outside: draws.filter(e => isoDay(e.ts) === d).length, cut: pts.length - own.length, n: own.length, abn: own.filter(p => p[4]).length,
+                  tests: new Set(ss.map(s => nice(s.name))).size, sum: document.getElementById('tlSum').textContent}; }""", day470)
             page.fill("#q", "")
             settle(400)
+            # #471: the heatmap goes by draw too: that day's Creatinine cell shows both results side by side, each its own
+            # colour, its tip saying the other (the last hid the rest); the 1.6 opens its own draw, not the clinic's, which
+            # had none out of range; the table says both, each with its time, the 1.6 high
+            hm471_had = js("state.tables.has('#hm')")
+            js("state.tables.delete('#hm'); switchTab('labs', 'heatmap')")
+            settle(400)
+            hm471 = js(r"""([d, imp]) => { const cells = [...document.querySelectorAll(`#hm rect.cell[data-s='Creatinine'][data-k='${d}']`)];
+                const tips = cells.map(c => { const r = c.getBoundingClientRect();
+                  c.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2}));
+                  return document.getElementById('tip').innerText; });
+                hideTip();
+                const vals = SERIES.find(s => s.name === 'Creatinine').pts.filter(p => isoDay(p.ts) === d).map(p => p[5] || fmtNum(p[1])), i = tips.findIndex(t => t.startsWith('1.6 '));
+                state.selEv = null; cells[i]?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                const e = byId.get(state.selEv);
+                return {vals, fills: new Set(cells.map(c => c.style.fill)).size, tips, opened: e ? [e.imp === imp, isoDay(e.ts) === d] : null}; }""", [day470, imp470])
+            page.keyboard.press("Escape")
+            js("state.tables.add('#hm'); renderHeatmap()")
+            hmt471 = js(r"""d => { const t = document.querySelector('#hmTable table'), i = [...t.querySelectorAll('thead th')].findIndex(h => h.textContent === fmtD(dayTs(d)));
+                const td = [...t.querySelectorAll('tbody tr')].find(r => /^Creatinine \(/.test(r.querySelector('th')?.firstChild.textContent || ''))?.children[i];
+                return td && {lines: [...td.querySelectorAll(':scope > span')].map(s => s.textContent), abn: [...td.querySelectorAll(':scope > span.abn')].map(s => s.textContent)}; }""", day470)
+            js("h => { if (!h) state.tables.delete('#hm'); switchTab('timeline'); }", hm471_had)
+            settle(300)
             js(reload470)
             # (the records loaded again, the second workout added above for a day to fold is put back)
             js("""(() => { const w = EV.find(e => e.k === 'exercise' && !e.hidden), x = {...w, id: 987654, title: 'rowing (browser check)', sub: '20 min'};
@@ -3299,6 +3329,19 @@ def main():
                   imp470 and tl470[""]["day"] == [["clinic", None], ["outside", "1 out of range"]]
                   and tl470["creatinine"]["day"] == [["clinic", None], ["outside", "1 out of range"]] and tl470["creatinine"]["marks"] == tl470["creatinine"]["want"] > 0
                   and tl470["wbc"]["day"] == [["clinic", None]], [day470, imp470, tl470])
+            check("…and under “metabolic”, which lists the clinic's draw that day, not the outside lab's, the line counts the listed draws' own "
+                  "results, not the 1.6 on that day (#471)",
+                  tl471["outside"] == 1 and tl471["cut"] == 1 and tl471["sum"].split(": ", 1)[-1].split(" · ")[0] == f"{tl471['draws']:,} lab draw{'s' if tl471['draws'] != 1 else ''}, "
+                  f"{tl471['n']:,} results of the {tl471['tests']} tests matching “metabolic”" + (f", {tl471['abn']:,} out of range" if tl471["abn"] else ""), tl471)
+            v471 = hm471["vals"]
+            check("heatmap (#471): a day with two draws' creatinine shows both, side by side in its cell, each coloured by its own, each's tip "
+                  "saying the other; the 1.6 opens the outside lab's draw that holds it, not the clinic's",
+                  len(v471) == 2 and "1.6" in v471 and hm471["fills"] == 2 and len(hm471["tips"]) == 2
+                  and all(t.startswith(v + " ") and "Also at " in t and f": {o} " in t for t, v, o in zip(hm471["tips"], v471, v471[::-1]))
+                  and hm471["opened"] == [True, True], hm471)
+            check("…and its table's cell gives both, each on its line with its time, the 1.6 said high (#471)",
+                  hmt471 and [x.split(" ")[0].rstrip(",") for x in hmt471["lines"]] == v471 and all(x.endswith(")") for x in hmt471["lines"])
+                  and len(hmt471["abn"]) == 1 and hmt471["abn"][0].startswith("1.6 ▲ high"), hmt471)
             # #458: the importers cut a long one at a whole name, with "…"; one cut mid-name at 160 characters before that
             # has the name it cut left out for the "…", not recased half ("…, Hepatic PA")
             cut458 = js("""(() => { const names = ['COMPREHENSIVE METABOLIC PANEL', 'CBC WITH DIFFERENTIAL', 'HEPATIC FUNCTION PANEL', 'LIPID PANEL',
