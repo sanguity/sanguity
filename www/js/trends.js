@@ -88,7 +88,7 @@ function renderCharts() {
   const box = $("#charts"); box.replaceChildren();
   document.querySelectorAll(".marks-key").forEach(k => k.hidden = !state.marks);   // their legend, while they're shown (#250)
   const sel = SERIES.filter(s => !s.watch && state.sel.has(s.name));
-  if (!sel.length) { box.append(el("div", {class: "card empty", text: "Pick lab values on the left to chart them."})); return; }
+  if (!sel.length) { box.append(el("div", {class: "card empty", text: "Pick lab values in the list to chart them."})); return; }
   // in the list's order, under its panels' names (#441)
   const groups = labGroups(byFrequency(sel));
   for (const {panel, labs} of groups) {

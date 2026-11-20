@@ -1674,7 +1674,11 @@ path.pt.abn{stroke-width:1.5}
 .hm-table td{position:relative}   /* holds its visually-hidden "high"/"low", which would otherwise widen the page */
 .hm-table tbody th{position:sticky;top:auto;left:0;z-index:1;background:var(--surface)}
 .hm-table tbody th[scope=row]{color:var(--ink);font-weight:var(--fw-medium);border-bottom:1px solid var(--grid)}
-.hm-table thead th:first-child{left:0;z-index:2}
+.hm-table thead th{z-index:2}   /* the dates over the cells, which are positioned (#469) */
+.hm-table thead th:first-child{left:0;z-index:3}
+/* on a phone the names wrap, the ✎ and ? together under them, in a column of about 40% of the box: a date's column is seen
+   whole beside it, at 320 px too (#469, 1.4.10) */
+@media (max-width:640px){ .hm-table tbody th[scope=row]{white-space:normal;overflow-wrap:anywhere;min-width:36vw;max-width:36vw} .hm-acts{white-space:nowrap} }
 .hm-table tr.grp th{position:static;color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-semibold);padding-top:var(--sp-2)}
 .hm-table tr.grp span{position:sticky;left:var(--sp-2)}   /* its name stays in view scrolled sideways (#464), the cell being the row's width */
 /* ---- each result against its own range (#58): under a chart's name, when its results' ranges differ, which ones;

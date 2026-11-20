@@ -50,12 +50,21 @@ function storeChanged(...parts) {
    (the same id, or the same kind of control with the same name, shown), so a redraw doesn't drop it to the page; an ⓘ left
    open opens again (util.js aboutKeep); and what focus goes back to when the drawer closes is found again too */
 const focusKey = x => [x.tagName, x.type, x.id || x.getAttribute("aria-label") || (x.labels?.[0] || x).textContent.trim(), JSON.stringify(x.dataset)].join("\n");
+/* the control in sight, clear of the bar at the top and what's over the bottom (html's scroll-padding) */
+function inSight(x) {
+  const r = x.getBoundingClientRect(), pad = getComputedStyle(document.documentElement);
+  return r.bottom > parseFloat(pad.scrollPaddingTop) && r.top < innerHeight - parseFloat(pad.scrollPaddingBottom);
+}
 function keepFocus(draw) {
-  const a = document.activeElement, key = a && a !== document.body ? focusKey(a) : null, open = aboutOpen();
+  const a = document.activeElement, key = a && a !== document.body ? focusKey(a) : null, open = aboutOpen(), seen = key && inSight(a);
   draw();
   aboutWire();   // the ⓘ drawn with it, there now to be found (util.js, #280)
   // one shown: a tab not shown keeps its controls, and a twin of the same name there can't take focus (#455)
   if (key && !a.isConnected) [...document.querySelectorAll(a.tagName)].find(x => focusKey(x) === key && x.checkVisibility())?.focus({preventScroll: true});
+  // in sight before, in sight after: a page that grew shorter, scrolled up by the browser, can't leave it above the
+  // top (#469, 2.4.11)
+  const f = document.activeElement;
+  if (seen && f !== document.body && !inSight(f)) f.scrollIntoView({block: "nearest"});
   aboutKeep(open);   // and one left open, open still (#447)
   drawerBack();   // and what opened the drawer, found again (drawer.js, #404)
 }
