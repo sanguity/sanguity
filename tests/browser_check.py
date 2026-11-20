@@ -8316,10 +8316,9 @@ def main():
                   pay_links == [["See them on Costs", "#costs-paid"], ["Open Costs", "#costs-paid"]], pay_links)
             page.click("#manMsg a")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && DATA.oop", timeout=20000)
-            if js("typeof HASH_TABS === 'object' && 'costs-paid' in HASH_TABS"):   # the address #costs-paid is #442's
-                page.wait_for_function("!document.getElementById('view-costs').hidden && !!document.getElementById('costView')", timeout=5000)
-                paid443 = js("[state.tab, costState.view, document.querySelector('#costView [aria-pressed=true]')?.textContent]")
-                check("…followed, “See them on Costs” opens Costs on What you paid (#443)", paid443 == ["costs", "paid", "What you paid"], paid443)
+            page.wait_for_function("!document.getElementById('view-costs').hidden && !!document.getElementById('costView')", timeout=5000)
+            paid443 = js("[state.tab, costState.view, document.querySelector('#costView [aria-pressed=true]')?.textContent]")   # the address #costs-paid (#442)
+            check("…followed, “See them on Costs” opens Costs on What you paid (#443)", paid443 == ["costs", "paid", "What you paid"], paid443)
             js("switchTab('costs')")
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
             js("paidState.q = ''; applyPreset('all')")
