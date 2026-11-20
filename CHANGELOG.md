@@ -1526,6 +1526,17 @@ Everything on `main` so far; it becomes the first tagged release.
   sections stays in view under the header and goes to each, and **Print** prints the records in light, without the
   bar or buttons, whatever the theme. The same link is 1,978 px at 1400 px and about 4,600 on a phone. Every view is
   still logged in the profile's activity.
+- **First run: one name, a guide that keeps track, and sign-in in the new look** (#290): setup asked whose records the
+  server keeps, then the getting-started guide opened on the same question, with the name prefilled and the step never
+  marked done; with the default name it said "My records has records now", and on a phone its four steps wrapped into
+  a 2×2 block. Now the name is asked once, in setup, and the guide opens at the first step not done (the first
+  records, on a fresh install), the name step ticked and still there to rename the profile. Each step is ticked as its
+  aim is met, the steps drawn as one line joined by a rule that's green past each step done, four across at 320 px
+  too, and the guide's words no longer use the profile's name as a person. Sign-in and setup are on the app's
+  stylesheet and components (the card, the large button and field) in place of a copy of their own, with the title in
+  the serif, **Show** on every password field (hidden again as the form is sent, so a browser still saves it as a
+  password), and a live count toward the minimum length under setup's password ("9 of 15", then "Long enough", said
+  once), the minimum as the server is set up (`PASSWORD_MIN_LENGTH`).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

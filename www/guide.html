@@ -30,15 +30,15 @@
     <ol class="guide-steps" id="guideSteps" aria-label="Steps"></ol>
   </div>
 
-  <!-- 1. whose records: names the profile (owners), or makes one (someone with none yet) -->
+  <!-- 1. whose records: makes a profile (someone with none yet), or renames it (owners). Setup and every other way a
+       profile is made ask its name, so for a profile that's here the step is done (#290), reached from the steps -->
   <section class="card guide-step" id="step-name" aria-labelledby="nameTitle" hidden>
     <h2 id="nameTitle">Whose records will this profile hold?</h2>
     <p class="howto">One person's: yours, or someone you look after. Give it their name, as you'd like to see it.</p>
     <form class="form" id="nameForm">
       <label>Their name <input id="profName" maxlength="80" autocomplete="off" spellcheck="false" required></label>
       <div class="row">
-        <button class="btn primary" type="submit" id="nameGo">Save and continue</button>
-        <button class="btn" type="button" data-skip>Skip this step</button>
+        <button class="btn primary" type="submit" id="nameGo">Continue</button>
         <span class="msg" id="nameMsg"></span>
       </div>
     </form>

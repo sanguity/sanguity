@@ -13,54 +13,35 @@
 <meta name="apple-mobile-web-app-title" content="Sanguity">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/base.css">
-<style>
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--page);color:var(--ink);font:var(--fs-4)/1.45 var(--font-ui);padding:var(--sp-4)}
-form{width:100%;max-width:400px;background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--sp-5);box-shadow:var(--shadow-2)}
-.logo{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-5)}
-.logo svg{width:28px;height:34px}
-.brand-drop{fill:var(--brand)}.brand-line{stroke:var(--brand-ink)}.brand-dot{fill:var(--brand-ink)}
-h1{font-size:var(--fs-5);margin:0;font-weight:var(--fw-semibold)}
-label{display:block;font-size:var(--fs-3);color:var(--ink2);margin:var(--sp-4) 0 var(--sp-1);font-weight:var(--fw-medium)}
-/* the app's field (#332, #259) at the large size: 40 px, 44 on a phone or a touch screen */
-input{width:100%;min-height:40px;font:inherit;line-height:1.25;color:inherit;background:var(--raised);border:1px solid var(--field-line);border-radius:var(--r-sm);padding:var(--sp-2) var(--sp-3)}
-@media (max-width:640px),(pointer:coarse){ input{min-height:44px} }
-/* the app's large primary button (app.css, #258): 40 px, 44 on a phone or a touch screen */
-button{width:100%;min-height:40px;margin-top:var(--sp-5);font:inherit;font-weight:var(--fw-semibold);line-height:1.25;color:var(--on-accent);background:var(--accent-fill);border:1px solid transparent;border-radius:var(--r-sm);padding:var(--sp-2) var(--sp-4);cursor:pointer}
-button:not(:disabled):hover{filter:brightness(.9)}
-button:not(:disabled):active{filter:brightness(.8)}
-@media (max-width:640px),(pointer:coarse){ button{min-height:44px} }
-button:disabled{opacity:.6;cursor:wait}
-@media (forced-colors:active){ button{border:1px solid ButtonText} }   /* its edge, in high contrast too (#202) */
-.err{color:var(--crit);font-size:var(--fs-3);margin-top:var(--sp-3);min-height:1.2em}
-.note{color:var(--muted);font-size:var(--fs-3);margin-top:var(--sp-4)}   /* what to do next, at the size of the labels (#255) */
-.note.first{margin-top:0}
-.note.tight{margin-top:var(--sp-2)}   /* under the field it's about */
-.opt{font-weight:var(--fw-regular);color:var(--muted)}
-</style>
+<link rel="stylesheet" href="css/app.css">
 <script src="js/theme.js"></script>
 </head>
-<body>
-<form id="f" autocomplete="off">
+<body class="auth">
+<main>
+<form class="card" id="f" autocomplete="off">
   <div class="logo">
     <svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>
     <h1>Set up Sanguity</h1>
   </div>
-  <div class="note first">Create the first account. It becomes the admin and owns the records already on this server.
-    The setup code is in the app's log: <code>docker compose logs app</code></div>
+  <p class="note first">Create the first account. It becomes the admin, and owns the records already on this server.</p>
   <label for="c">Setup code</label>
-  <input id="c" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX" required autofocus>
+  <input id="c" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX" required autofocus aria-describedby="cn">
+  <p class="note tight" id="cn">It's in the app's log: <code>docker compose logs app</code></p>
   <label for="u">Your username</label>
   <input id="u" autocomplete="username" autocapitalize="none" spellcheck="false" required>
   <label for="p">Password</label>
-  <input id="p" type="password" autocomplete="new-password" required>
-  <div class="note tight" id="pn"></div>
+  <input id="p" type="password" autocomplete="new-password" required aria-describedby="pn">
+  <p class="note tight" id="pn">At least 15 characters. A few unrelated words work well.</p>
   <label for="p2">Repeat password</label>
   <input id="p2" type="password" autocomplete="new-password" required>
-  <label for="n">Whose records are on this server? <span class="opt">(profile name, optional)</span></label>
-  <input id="n" placeholder="e.g. your first name" maxlength="80">
-  <button id="b" type="submit">Create account</button>
+  <!-- whose records: asked here once; the guide counts its first step done (#290) -->
+  <label for="n">Whose records will you keep here? <span class="opt">(optional)</span></label>
+  <input id="n" placeholder="e.g. your first name" maxlength="80" autocomplete="off" aria-describedby="nn">
+  <p class="note tight" id="nn">Their name: yours, or someone you look after. Left empty, it's your username. You can change it later.</p>
+  <button class="btn primary large" id="b" type="submit">Create account</button>
   <div class="err" id="e" role="alert"></div>
 </form>
+</main>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
 <script src="js/setup.js"></script>

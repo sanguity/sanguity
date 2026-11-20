@@ -172,6 +172,38 @@ function dangerZone(o) {
    inside a list. The records tabs, the Sources and Sharing lists and the journal use it. */
 const emptyState = (what, next, {tag = "div", cls = "card"} = {}) => el(tag, {class: `${cls} empty-state`.trim()}, el("p", {text: what}),
   next ? el(next.href ? "a" : "button", {class: `btn primary empty-next ${/\bcard\b/.test(cls) ? "large" : "small"}`, href: next.href, type: next.href ? null : "button", text: next.text, onclick: next.onclick}) : null);
+/* a password field (#290): sign-in's and setup's. A Show button in the field's end shows what's typed, and Hide hides
+   it again (named "Show password" or "Hide password"); it's hidden again as the form is sent, so a browser saves it as
+   a password. With min (a new password), the hint given (the field's aria-describedby) counts toward it as it's typed,
+   "9 of 15", and says once that it's long enough. -> {count(min)}: a new minimum, as the server gives it */
+function pwField(input, {min = 0, hint = null} = {}) {
+  const show = el("button", {type: "button", class: "btn quiet small pw-show", id: input.id + "Show", "aria-controls": input.id});
+  const shown = on => {
+    input.type = on ? "text" : "password";
+    show.textContent = on ? "Hide" : "Show";
+    show.setAttribute("aria-label", `${on ? "Hide" : "Show"} password`);
+  };
+  shown(false);
+  show.onclick = () => shown(input.type === "password");
+  const box = el("div", {class: "pw"});
+  input.replaceWith(box);
+  box.append(input, show);
+  if (input.form) input.form.addEventListener("submit", () => shown(false), true);
+  if (!hint) return {count() {}};
+  const n = el("span", {class: "pw-count"});
+  let enough = false;
+  const count = () => {
+    const len = [...input.value].length, ok = len >= min;
+    n.classList.toggle("ok", ok);
+    n.replaceChildren(...(ok ? [icon("check"), " Long enough"] : [`${len} of ${min}`]));
+    if (ok && !enough && document.activeElement === input) announce(`Long enough: ${len} characters.`);
+    enough = ok;
+  };
+  hint.replaceChildren(el("span", {text: hint.textContent.replace(/\d+/, () => min)}), n);
+  input.addEventListener("input", count);
+  count();
+  return {count(m) { if (m) { min = m; hint.firstChild.textContent = hint.firstChild.textContent.replace(/\d+/, m); count(); } }};
+}
 /* a line of text with each date in it kept on one line (#330), so a tile's "▼ −0.03 since Aug 18, 2026" never leaves
    its year alone below: the text as parts for el(), a date in a <span class="nw">, its textContent unchanged. The
    app's three date formats (dates.js): "Aug 18, 2026", "18 Aug 2026" and "2026-08-18", and "as of" kept as one too

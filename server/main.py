@@ -343,8 +343,9 @@ class Setup(BaseModel):
 
 @app.get("/api/setup")
 def setup_state(db=Depends(get_db)):
-    """Whether first-run setup is due, and how long a sign-in lasts (for the note on the sign-in page)."""
-    return {"needed": db.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None,
+    """Whether first-run setup is due, how long a new password must be (setup counts toward it as it's typed, #290),
+    and how long a sign-in lasts (for the note on the sign-in page)."""
+    return {"needed": db.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None, "password_min": config.PASSWORD_MIN,
             "session": {"days": config.SESSION_DAYS, "hours_without_2fa": config.SESSION_HOURS_WITHOUT_2FA,
                         "idle_minutes": config.SESSION_IDLE_MINUTES}}
 

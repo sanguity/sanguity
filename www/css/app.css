@@ -85,8 +85,8 @@ svg.qr{display:block;width:min(100%,200px);height:auto;color-scheme:light;color:
 /* ---- a field (#259): every text field, number, date, search box, select and textarea, the same look on every page:
    the raised surface, the field's edge (3:1 against what it's on, #202; red while it's invalid), the small corner and
    padding on the scale, 32 px tall like the default button beside it, 44 px on a phone or a touch screen. In :where(),
-   so a page's own rule for a field's width or a narrower padding wins without a fight. Sign-in and setup have the
-   same look at the large size in their own <style>. */
+   so a page's own rule for a field's width or a narrower padding wins without a fight. Sign-in and setup have it
+   at the large size (.auth, #290). */
 :where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=hidden],[type=color],[type=submit],[type=button],[type=reset],[type=image]),select,textarea){
   min-height:32px;max-width:100%;min-width:0;padding:var(--sp-1) var(--sp-2);border:1px solid var(--field-line);border-radius:var(--r-sm);
   background:var(--raised);color:var(--ink);font:inherit;font-weight:var(--fw-regular)}
@@ -1893,18 +1893,55 @@ main[data-group=backups] #backupNotice{display:none}   /* the Backups group says
 }
 
 
+/* ---- sign-in and setup (#290): login.html and setup.html, one card in the window's middle, on the app's components:
+   the card, the large button, and the field at the large size (40 px, 44 on a phone or a touch screen). A password
+   field has Show in its end (pwField, util.js), and setup's counts toward the minimum */
+body.auth{display:grid;place-items:center;min-height:100vh;padding:var(--sp-4);font-size:var(--fs-4)}
+.auth main{width:100%;max-width:400px;padding:0}
+.auth.signin main{max-width:360px}
+.auth form.card{margin:0;padding:var(--sp-5);box-shadow:var(--shadow-2)}
+.auth .logo{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-5)}
+.auth .logo .brand{width:28px;height:34px}
+.auth h1{margin:0;font:var(--fw-semibold) var(--fs-6)/1.2 var(--font-display);letter-spacing:-.01em}
+.auth label{display:block;margin:var(--sp-4) 0 var(--sp-1);font-size:var(--fs-3);font-weight:var(--fw-medium);color:var(--ink2)}
+.auth input{width:100%;min-height:40px;padding:var(--sp-2) var(--sp-3);line-height:1.25}
+.auth .btn.large{width:100%;margin:var(--sp-5) 0 0}
+.auth #pk{margin-top:var(--sp-3)}
+.pw{position:relative}
+.auth .pw input{padding-right:calc(var(--sp-7) + var(--sp-3))}   /* clear of Show */
+.pw>.pw-show{position:absolute;z-index:1;top:50%;right:var(--sp-2);translate:0 -50%;margin:0}   /* over the field, on purpose: a layer of its own */
+.auth .note{margin:var(--sp-4) 0 0;font-size:var(--fs-3);color:var(--muted)}   /* what to do next, at the size of the labels (#255) */
+.auth .note.first{margin-top:0}
+.auth .note.tight{margin-top:var(--sp-2)}   /* under the field it's about */
+.auth .note:has(.pw-count){display:flex;justify-content:space-between;gap:var(--sp-3)}
+.pw-count{flex:none;font-variant-numeric:tabular-nums}
+.pw-count.ok{color:var(--good-text);font-weight:var(--fw-medium)}
+.auth .opt{font-weight:var(--fw-regular);color:var(--muted)}
+.auth .err{min-height:1.2em;margin-top:var(--sp-3);font-size:var(--fs-3);color:var(--crit)}
+.auth .insecure{margin:0 0 var(--sp-2);padding:var(--sp-2) var(--sp-3);border:1px solid var(--crit);border-radius:var(--r-md);font-size:var(--fs-3);color:var(--crit)}
+.auth .or{display:flex;align-items:center;gap:var(--sp-2);margin-top:var(--sp-4);font-size:var(--fs-2);color:var(--muted)}
+.auth .or::before,.auth .or::after{content:"";flex:1;border-top:1px solid var(--ring)}
+@media (max-width:640px),(pointer:coarse){ .auth input{min-height:44px} .pw>.pw-show{right:0} }
+@media (max-width:480px){ .auth form.card{padding:var(--sp-4)} }
+
+
 /* ---- the getting-started guide and empty states (#199): guide.html's steps (guide.js), the way back to it on
    Sources, and an empty state anywhere (emptyState, util.js): what would appear there, and one next step */
 main.acct.guide{max-width:640px}
 .guide-hd h1{font-size:var(--fs-6);font-weight:var(--fw-semibold);margin:2px 0 var(--sp-3);letter-spacing:-.01em}
-.guide-steps{list-style:none;display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);margin:0 0 var(--sp-4);padding:0;font-size:var(--fs-3);color:var(--ink2)}
-.guide-steps li>*{display:inline-flex;align-items:center;gap:var(--sp-2);color:inherit;text-decoration:none;padding:3px 0}
+/* the steps as one line (#290): a numbered dot each, its name under it, joined by a rule that's green past each step
+   done; four across at 320 px too */
+.guide-steps{list-style:none;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);margin:0 0 var(--sp-4);padding:0;font-size:var(--fs-3);color:var(--ink2);text-align:center}
+.guide-steps li{position:relative}
+.guide-steps li+li::before{content:"";position:absolute;top:14px;left:calc(15px - 50%);right:calc(50% + 15px);border-top:2px solid var(--axis)}
+.guide-steps li.done+li::before{border-color:var(--good-text)}
+.guide-steps li>*{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);padding:2px var(--sp-1);color:inherit;text-decoration:none;border-radius:var(--r-sm)}
 .guide-steps a:hover{color:var(--ink);text-decoration:underline}
-.guide-steps a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm)}
-.guide-n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:var(--r-pill);border:1px solid var(--axis);font-size:var(--fs-2);font-weight:var(--fw-semibold);flex:none}
+.guide-n{display:grid;place-items:center;width:24px;height:24px;border-radius:var(--r-pill);border:1px solid var(--axis);background:var(--page);font-size:var(--fs-2);font-weight:var(--fw-semibold);flex:none}
 .guide-steps .cur{color:var(--ink);font-weight:var(--fw-semibold)}
 .guide-steps .done .guide-n{border-color:var(--good-text);color:var(--good-text)}
 .guide-steps .cur .guide-n{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent)}
+@media (max-width:600px){ .guide-steps{font-size:var(--fs-2)} }
 .guide-step h2{font-size:var(--fs-5);margin:0 0 var(--sp-1)}
 .guide-step h2:focus{outline:none}
 .guide-step .form{max-width:none;margin-top:var(--sp-3)}

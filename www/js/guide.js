@@ -1,9 +1,12 @@
 /* Sanguity · the getting-started guide (#199): guide.html. From a profile with nothing in it to its first records, one
    step at a time: whose records it holds (its name: owners only), the first records, a phone (optional), then the
-   Overview. Every step can be skipped, and the step list at the top reaches any of them again. An export is uploaded
-   in the records step itself, with Sources' drop target (import.js, #281), through to its review and Save; the other
-   ways and the phone are on the Sources page: its links carry ?guide=<step>, and that page shows a way back here
-   (sources-page.js). Someone with no profile yet makes one in the first step (also guide.html?new); someone
+   Overview. The steps are one line at the top, each marked done as its aim is met (#290), and any of them can be
+   reached from it again; the guide opens at the first that isn't done, and every step but the first can be skipped.
+   Every way a profile is made asks its name (setup, or this guide's first step, where New profile leads), so a
+   profile that's here has its first step done: a fresh install is asked it once, in setup, and the step here only
+   renames it. An export is uploaded in the records step itself, with Sources' drop target (import.js, #281), through
+   to its review and Save; the other ways and the phone are on the Sources page: its links carry ?guide=<step>, and
+   that page shows a way back here (sources-page.js). Someone with no profile yet makes one in the first step (also guide.html?new); someone
    who can only view a profile is told its owners and editors set it up, with no steps of theirs.
 
    Signing in to an empty profile of your own (your only one) opens this page until you finish or skip it: the
@@ -23,7 +26,7 @@
   ];
   const q = new URLSearchParams(location.search), making = q.has("new");
   let ME = null, P = null, steps = [], current = null;
-  const done = {};   // the steps whose aim is met: records came in, a phone is set up
+  const done = {};   // the steps whose aim is met: the profile is named (it's here), records came in, a phone is set up
 
   async function call(path, method = "GET", body) {
     const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body)});
@@ -72,6 +75,7 @@
     ev.preventDefault();
     const name = $("#profName").value.trim(), msg = $("#nameMsg");
     if (!name) { sayIn(msg, "Type a name first.", true); return; }
+    if (P && name === P.name) { next(); return; }   // done already: on to the next step
     $("#nameGo").disabled = true;
     try {
       if (!P) {   // a new profile: open the guide on it
@@ -84,12 +88,16 @@
         P.name = name;
         SgNav.profiles(ME.profiles, P.id);   // the top bar's picker says the new name
         sayIn(msg, "Saved.");
+        nameGo();
       }
       drawFor();
       next();
     } catch (e) { sayIn(msg, e.message, true); }
     $("#nameGo").disabled = false;
   };
+  /* the name step's button: Continue while the name is the profile's, Save and continue once it's changed */
+  const nameGo = () => { if (P) $("#nameGo").textContent = $("#profName").value.trim() === P.name ? "Continue" : "Save and continue"; };
+  $("#profName").addEventListener("input", nameGo);
   /* the words and links that name the profile, once it's known (and again after it's renamed) */
   function drawFor() {
     if (!P) return;
@@ -111,11 +119,13 @@
       sec.querySelector("[data-next]").hidden = !yes;
       sec.querySelector("[data-skip]").hidden = yes;
     };
-    have("recordsHave", done.records, `${P.name} has records now, from ${n} import${n === 1 ? "" : "s"}. Add more any time under Sources.`);
+    // the words don't name the profile: a name such as "My records" (the one the server's own records came in as)
+    // made "My records has records now" (#290)
+    have("recordsHave", done.records, `The records are in, from ${n} import${n === 1 ? "" : "s"}. Add more any time under Sources.`);
     have("phoneHave", done.phone, "A phone is set up for this profile. Its readings appear on Body and activity once it sends some.");
     $("#doneSays").textContent = done.records
-      ? `${P.name} has records now. The Overview shows the latest of each key lab, anything flagged outside its reference range, and what happened most recently.`
-      : `${P.name} has no records yet, so the Overview starts empty. It fills in as records come in: Add, in the top bar, brings them in any time.`;
+      ? "The records are in. The Overview shows the latest of each key lab, anything flagged outside its reference range, and what happened most recently."
+      : "There are no records yet, so the Overview starts empty. It fills in as records come in: Add, in the top bar, brings them in any time.";
     drawList();
   }
   /* the first records' drop target (#281, import.js): once one is saved, the step says the profile has records. A
@@ -163,14 +173,17 @@
     if (!P) {   // no profile yet (or making another): its name first, and nothing to skip to
       $("#nameTitle").textContent = "Whose records will your profile hold?";
       $("#nameGo").textContent = "Create the profile";
-      $("#nameForm [data-skip]").hidden = true;
       $("#guideTitle").textContent = making && ME.profiles.length ? "A new profile" : "Getting started";
     } else {
       $("#profName").value = P.name;
+      done.name = true;   // named when it was made (setup asked): renamed here if wanted, never asked again (#290)
+      nameGo();
       dropHere();
+      await status();
     }
     drawFor();
-    show(location.hash.slice(1));
-    if (P) await status();
+    // the step in the address (a link to it, the way back from Sources), else the first not done yet
+    const asked = location.hash.slice(1);
+    show(steps.some(s => s.id === asked) ? asked : (steps.find(s => !done[s.id]) || steps[steps.length - 1]).id);
   })();
 })();

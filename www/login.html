@@ -13,39 +13,12 @@
 <meta name="apple-mobile-web-app-title" content="Sanguity">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/base.css">
-<style>
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--page);color:var(--ink);font:var(--fs-4)/1.45 var(--font-ui);padding:var(--sp-4)}
-form{width:100%;max-width:340px;background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--sp-5);box-shadow:var(--shadow-2)}
-.logo{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-5)}
-.logo svg{width:28px;height:34px}
-.brand-drop{fill:var(--brand)}.brand-line{stroke:var(--brand-ink)}.brand-dot{fill:var(--brand-ink)}
-h1{font-size:var(--fs-5);margin:0;font-weight:var(--fw-semibold)}
-label{display:block;font-size:var(--fs-3);color:var(--ink2);margin:var(--sp-4) 0 var(--sp-1);font-weight:var(--fw-medium)}
-/* the app's field (#332, #259) at the large size: 40 px, 44 on a phone or a touch screen */
-input{width:100%;min-height:40px;font:inherit;line-height:1.25;color:inherit;background:var(--raised);border:1px solid var(--field-line);border-radius:var(--r-sm);padding:var(--sp-2) var(--sp-3)}
-@media (max-width:640px),(pointer:coarse){ input{min-height:44px} }
-/* the app's large primary button (app.css, #258): 40 px, 44 on a phone or a touch screen */
-button{width:100%;min-height:40px;margin-top:var(--sp-5);font:inherit;font-weight:var(--fw-semibold);line-height:1.25;color:var(--on-accent);background:var(--accent-fill);border:1px solid transparent;border-radius:var(--r-sm);padding:var(--sp-2) var(--sp-4);cursor:pointer}
-button:not(:disabled):hover{filter:brightness(.9)}
-button:not(:disabled):active{filter:brightness(.8)}
-@media (max-width:640px),(pointer:coarse){ button{min-height:44px} }
-button:disabled{opacity:.6;cursor:wait}
-@media (forced-colors:active){ button{border:1px solid ButtonText} }   /* its edge, in high contrast too (#202) */
-.err{color:var(--crit);font-size:var(--fs-3);margin-top:var(--sp-3);min-height:1.2em}
-.note{color:var(--muted);font-size:var(--fs-3);margin-top:var(--sp-4)}   /* what to do next, at the size of the labels (#255) */
-.note.tight{margin-top:var(--sp-2)}   /* under the field it's about */
-.insecure{color:var(--crit);font-size:var(--fs-3);border:1px solid var(--crit);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:0 0 var(--sp-2)}
-button.alt{background:var(--raised);color:var(--ink);border-color:var(--ring);margin-top:var(--sp-3)}   /* the default button */
-button.alt:not(:disabled):hover{filter:none;background:var(--hover)}
-.or{display:flex;align-items:center;gap:var(--sp-2);color:var(--muted);font-size:var(--fs-2);margin-top:var(--sp-4)}
-.or::before,.or::after{content:"";flex:1;border-top:1px solid var(--ring)}
-/* the shared status line (announce() in util.js): said, not shown; the recovery-code note uses it (#210) */
-.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
-</style>
+<link rel="stylesheet" href="css/app.css">
 <script src="js/theme.js"></script>
 </head>
-<body>
-<form id="f" autocomplete="on">
+<body class="auth signin">
+<main>
+<form class="card" id="f" autocomplete="on">
   <div class="logo">
     <svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>
     <h1>Sanguity</h1>
@@ -60,19 +33,20 @@ button.alt:not(:disabled):hover{filter:none;background:var(--hover)}
   <div id="step2" hidden>
     <div id="codeBox">
       <label for="c">Code from your authenticator app</label>
-      <input id="c" name="code" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" placeholder="123 456">
-      <div class="note tight">Lost your phone? Enter one of your recovery codes instead.</div>
+      <input id="c" name="code" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" placeholder="123 456" aria-describedby="cn">
+      <div class="note tight" id="cn">Lost your phone? Enter one of your recovery codes instead.</div>
     </div>
   </div>
-  <button id="b" type="submit">Sign in</button>
+  <button class="btn primary large" id="b" type="submit">Sign in</button>
   <div id="pkBox" hidden>
     <div class="or" id="pkOr">or</div>
-    <button id="pk" class="alt" type="button">Sign in with a passkey</button>
+    <button class="btn large" id="pk" type="button">Sign in with a passkey</button>
   </div>
   <div class="err" id="e" role="alert"></div>
   <div class="note" id="stay">Private medical records. You'll stay signed in on this device until you log out: up to 30 days
     with two-factor sign-in or a passkey, otherwise 12 hours.</div>
 </form>
+</main>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
 <script src="js/login.js"></script>

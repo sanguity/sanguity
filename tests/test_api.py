@@ -192,6 +192,7 @@ class Api(unittest.TestCase):
     def test_a_flow(self):   # runs first: it does the first-run setup the other tests rely on
         anon = client()
         self.assertTrue(anon.get("/api/setup").json()["needed"])
+        self.assertEqual(anon.get("/api/setup").json()["password_min"], main.config.PASSWORD_MIN)   # setup's live count (#290)
         self.assertEqual(anon.get("/api/me").status_code, 401)
         self.assertEqual(anon.get("/api/profiles/1/data").status_code, 401)
 
