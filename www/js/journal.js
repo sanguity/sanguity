@@ -395,7 +395,7 @@ function journalForm(j, preset, back) {
   const uid = jUid(), id = n => `j-${n}-${uid}`;
   const kinds = el("div", {class: "seg jkinds", role: "radiogroup", "aria-label": "Kind of entry"});
   let kind = cur.kind;
-  const date = el("input", {type: "date", id: id("date"), required: true}), time = el("input", {type: "time", id: id("time")});
+  const date = el("input", {type: "date", id: id("date"), required: true, max: isoDay(Date.now() + 366 * DAY)}), time = el("input", {type: "time", id: id("time")});   // the date a year ahead at most (#479)
   date.value = cur.t.slice(0, 10); time.value = cur.t.length > 10 ? cur.t.slice(11, 16) : "";
   const title = el("input", {type: "text", id: id("title"), maxlength: 200, autocomplete: "off"}); title.value = cur.title || "";
   const sev = jScale(id("sev"), "Severity", cur.severity);

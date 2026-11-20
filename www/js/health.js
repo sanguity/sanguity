@@ -221,7 +221,7 @@ function hBar() {
   if (H_BAR) return H_BAR;
   const lgBtn = el("button", {class: "btn", id: "hLegendBtn", type: "button", "aria-expanded": false, "aria-controls": "hLegendList"}, "Legend", icon("chevron-down"));
   const lgList = el("div", {class: "menu-list legend", id: "hLegendList", role: "group", "aria-labelledby": "hLegendBtn"},
-    el("span", {}, el("i", {class: "stay-key"}), "Hospital stay"),
+    el("span", {class: "h-stay-key"}, el("i", {class: "stay-key"}), "Hospital stay"),
     el("span", {}, el("svg:svg", {viewBox: "0 0 14 12", width: 14, height: 12, "aria-hidden": "true"}, el("svg:line", {class: "msmark", x1: 7, x2: 7, y1: 0, y2: 12})), "A milestone, named over the charts"));
   const stays = el("input", {type: "checkbox", onchange: e => { hState.stays = e.target.checked; hSave(); keepFocus(renderHealth); }});
   const sync = el("p", {class: "hint h-sync"});
@@ -251,6 +251,8 @@ function renderHealth() {
   // the charts' header (hBar, above), kept: a Legend or ⓘ open stays open while the rest is drawn again (#450)
   const bar = hBar();
   bar.stays.checked = hState.stays;
+  const noStays = !STAYS.length;   // nothing to shade: no toggle, no Legend entry (#479)
+  bar.stays.closest(".overlays").hidden = noStays; bar.nodes[0].querySelector(".h-stay-key").hidden = noStays;
   bar.sync.textContent = `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`;
   if (bar.nodes[0].parentNode !== box) box.prepend(...bar.nodes);
   const S = hSections(box);

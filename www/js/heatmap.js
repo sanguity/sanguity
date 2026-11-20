@@ -110,7 +110,7 @@ function renderHeatmap() {
   for (const [k, ts] of cols) {
     const m = k.slice(0, 7); if (m === lastM) continue; lastM = m;
     const cx = colX.get(k);
-    g.push(el("svg:line", {x1: cx, x2: cx, y1: top - 2, y2: H, stroke: "var(--grid)"}));
+    g.push(el("svg:line", {x1: cx, x2: cx, y1: top - 2, y2: H, stroke: "var(--grid)", "pointer-events": "none"}));   // over the cells, but a tap goes to the cell (#479)
     ax.push(el("svg:line", {x1: cx, x2: cx, y1: 0, y2: 5, stroke: "var(--axis)"}));
     const t = zdate(ts).toLocaleDateString(undefined, {month: "short", year: "2-digit"});
     if (cx - lastLabelX >= 44 && cx + 2 + labelW(t, "") <= W) { ax.push(el("svg:text", {x: cx + 2, y: AH - 6, text: t})); lastLabelX = cx; }   // one that would run past the grid's end, not cut there (#476)

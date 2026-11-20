@@ -3408,6 +3408,13 @@ def main():
                 const t = document.getElementById('tip').getBoundingClientRect(); hideTip();
                 return [Math.round(t.left), Math.round(t.right), Math.round(t.top), Math.round(t.bottom), innerWidth, innerHeight]; }"""
             fit476, tip476 = {}, {}
+            # #479: the month lines are drawn over the cells; a tap on one's pixel goes to the cell under it, not the line
+            line479 = js("""(() => { setPeriod('all'); renderAll(); const l = [...document.querySelectorAll('#hm > g line, #hm line')].find(l => l.getAttribute('stroke') === 'var(--grid)');
+                const c = document.querySelector('#hm rect.cell'); if (!l || !c) return ['none', !!l, !!c];
+                const lr = l.getBoundingClientRect(), cr = c.getBoundingClientRect(); c.scrollIntoView({block: 'center'});
+                const cr2 = c.getBoundingClientRect(), hit = document.elementFromPoint(l.getBoundingClientRect().left + .5, cr2.top + cr2.height / 2);
+                return [hit && hit.tagName, getComputedStyle(l).pointerEvents]; })()""")
+            check("the heatmap's month lines don't take a tap or a hover: the cell under one's pixel does (#479)", line479 == ["rect", "none"], line479)
             for w476 in (320, 375):
                 page.set_viewport_size({"width": w476, "height": 800})
                 settle(400)
@@ -4498,6 +4505,9 @@ def main():
             page.locator("#ovImmunizations button", has_text="All 9 on the Timeline").click()
             settle(400)
             imm475 = [js("[state.tab, state.preset, [...state.cats], tlListed().length, tlListed().every(e => e.k === 'immunization')]")]
+            # #479: left for Labs, the kinds are the person's again, so its medication lanes (Show on charts) are drawn
+            lab479 = js("(() => { const was = medsOnTrends; medsOnTrends = true; switchTab('labs', 'chart'); const r = [state.cats.has('med'), state.cats.has('journal'), medsInWindow().length > 0]; medsOnTrends = was; return r; })()")
+            check("…(#479) and Labs, opened after it, has the person's kinds back: its medication lanes and journal marks are drawn", lab479 == [True, True, True], lab479)
             js("switchTab('overview')")
             imm475.append(js("(s => [s.preset, [...s.cats].sort()])(JSON.parse(localStorage.getItem('ht-state:1')))"))
             page.reload()
@@ -5673,6 +5683,9 @@ def main():
                   "one dated ahead doesn't stretch the period past today; the span is the records' again once they're gone (#472)",
                   all(v[0][-1] == "Fictional, written after the records" and v[1] and v[2] for v in span472.values())
                   and js("[state.max, state.last]") == [last472[0], last472[2]], [when472, span472, last472, js("[state.max, state.last]")])
+            typo479 = js("""(() => { const e = {id: -9e8, k: 'journal', t: '2207-11-20T12:00:00', ts: dayTs('2207-11-20'), title: 'Fictional typo'}; EV.push(e); storeSpan();
+                const last = state.last; EV.splice(EV.indexOf(e), 1); storeSpan(); return [last <= Date.now() + 367 * DAY, last > Date.now()]; })()""")
+            check("…(#479) one dated 2207 (a year typed wrong) moves All's end no more than a year ahead", typo479 == [True, True], typo479)
             check("…(#475) and one dated a year ahead is listed under All, which runs to it, and not under 2 years",
                   span472["all"][0] == ["Fictional, dated ahead", "Fictional, written after the records"] and span472["all"][3]
                   and span472["2y"][0] == ["Fictional, written after the records"] and not span472["2y"][3], span472)
@@ -8642,6 +8655,8 @@ def main():
             settle(300)
             watch477 = js("""[location.hash, state.tab, !document.querySelector('main .empty'),
                 [...document.querySelectorAll('#view-health svg')].filter(s => s._draw && s.childNodes.length > 3).length > 0]""")
+            stay479 = js("[STAYS.length, document.querySelector('#view-health .overlays').hidden, document.querySelector('#view-health .h-stay-key').hidden]")
+            check("…with no hospital stays, Body and activity offers no Hospital stays to show, in its bar or its Legend (#479)", stay479 == [0, True, True], stay479)
             js("switchTab('overview')")
             watch477.append(js("[...document.querySelectorAll('#view-overview .empty-acts a')].map(a => a.getAttribute('href'))"))
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was477)
@@ -16397,6 +16412,18 @@ def main():
             check("first run: setup signs in and the guide opens by itself on the new, empty profile, at whose records it holds",
                   fp.evaluate(steps_js) == ["Whose records", "First records", "Phone (optional)", "Overview"] and fp.input_value("#profName") == "robin"
                   and fp.is_visible("#step-name [data-skip]") and fp.is_visible("#skipGuide") and guide_is() == "", fp.evaluate(steps_js))
+            # #479: Add → Journal entry (and Log a dose) on that new, empty profile isn't sent back to the guide: the form opens
+            fp.goto(fbase + "/?profile=1#new-journal-entry")
+            try:
+                f_until("!!document.querySelector('dialog[open] input[type=date]') || location.pathname.endsWith('guide.html')", 15000)
+            except TimeoutError:
+                pass
+            new479 = fp.evaluate("[location.pathname.endsWith('guide.html'), !!document.querySelector('dialog[open] input[type=date]')]")
+            check("first run: Add → Journal entry on the new, empty profile opens the entry's form there, not the guide (#479)", new479 == [False, True], new479)
+            fp.keyboard.press("Escape")   # the form closed, nothing written, before going back to the guide
+            fp.wait_for_timeout(300)
+            fp.goto(fbase + "/guide.html?profile=1#name")
+            fp.wait_for_selector("#step-name:not([hidden])", timeout=10000)
             fp.fill("#profName", "Robin Example")
             fp.click("#nameGo")
             fp.wait_for_selector("#step-records:not([hidden])", timeout=10000)
