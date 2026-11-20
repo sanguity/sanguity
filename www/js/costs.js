@@ -17,11 +17,25 @@ const statTile = (label, value, sub, id) => el("div", {class: "tile", id: id || 
    follows its h2: #448). The three in one row, or one under another where a third is too narrow (.stats.three,
    app.css), as on the Overview */
 function costFigures(box, head, rest, more, top = []) {
-  const card = el("div", {class: "card cost-figs"}, ...top, el("div", {class: "stats three"}, ...head));
+  const card = el("div", {class: "card cost-figs"}, ...top, threeFigures(head));
   if (rest.length || more) card.append(el("details", {class: "more cost-more", open: costState.more || null, ontoggle: e => { costState.more = e.target.open; }},
     el("summary", {text: "More figures"}), rest.length ? el("div", {class: "stats"}, ...rest) : null, more));
   box.append(card);
 }
+/* the three figures' grid, Costs' and the Overview's (#448): in a row where a third is wide enough (.stats.three,
+   app.css) and each figure fits its tile, else one under another (.one, #456: "1 002 666 $US" in a French browser is
+   wider than a third of the Overview's column at 1280 px). Measured as its width changes and once the fonts are in */
+const threeFit = g => {
+  g.classList.remove("one");
+  if (g.clientWidth && [...g.children].some(t => t.scrollWidth > t.clientWidth + 1)) g.classList.add("one");
+};
+const threeSeen = new ResizeObserver(es => { for (const e of es) {
+  const g = e.target, w = Math.round(e.contentRect.width);
+  if (!g.isConnected) threeSeen.unobserve(g);
+  else if (g.sgW !== w) { g.sgW = w; threeFit(g); }   // not again for its own height, which the fit changes
+} });
+document.fonts?.ready.then(() => document.querySelectorAll(".stats.three").forEach(threeFit));
+function threeFigures(tiles) { const g = el("div", {class: "stats three"}, ...tiles); threeSeen.observe(g); return g; }
 /* the claims' three figures, in this order wherever they're shown (#278, #442: Costs and the Overview): your share,
    what insurance paid and what was billed; the Overview's without the line under each (sub: false) */
 function claimFigures(rows, sub = true) {
@@ -54,9 +68,9 @@ function renderCosts() {
   // Claims | What you paid (#278): the insurance story or the money out of pocket, each with its own figures
   box.append(el("div", {class: "toolbar"},
     // named for what it shows, as Labs' and the Timeline's are; the view in the address (#costs-paid, app.js), Back
-    // returning to the one before (#442)
+    // returning to the one before (#442), and kept for the next visit (save(), core.js; #456)
     el("div", {class: "seg", id: "costView", role: "group", "aria-label": "Show the costs as"}, ...[["claims", "Claims"], ["paid", "What you paid"]].map(([k, l]) =>
-      el("button", {type: "button", "aria-pressed": costState.view === k, text: l, onclick: () => { if (costState.view !== k) { costState.view = k; hideTip(); keepFocus(renderCosts); tabAddress(true); } }}))),
+      el("button", {type: "button", "aria-pressed": costState.view === k, text: l, onclick: () => { if (costState.view !== k) { costState.view = k; hideTip(); keepFocus(renderCosts); save(); tabAddress(true); } }}))),
     costState.view === "paid" ? null : el("span", {class: "hint", style: {margin: 0}, text: insurerHint(DATA.costs)})));   // where the claims came from
   if (costState.view === "paid") { renderPaid(box, rows, periodText); return; }
   const billed = sumOf(rows, "billed"), paid = sumOf(rows, "paid"), owe = sumOf(rows, "owe");
@@ -99,7 +113,7 @@ function renderCosts() {
   if (rx.length) {
     const g = groupCosts(rx, r => r.title.replace(/\s+\d.*$/, ""));
     const pc = el("div", {class: "card"}, el("h2", {text: `Prescriptions (${rx.length} fills)`}));
-    pc.append(scrollBox({class: "tablewrap", "aria-label": "Prescriptions, by drug", style: {maxHeight: "360px"}}, stacked(el("table", {class: "data"},
+    pc.append(scrollBox({class: "tablewrap", "aria-label": "Prescriptions, by drug"}, stacked(el("table", {class: "data"},   // in the page's scroll (#456)
       el("thead", {}, el("tr", {}, ["Drug", "Fills", "First", "Last", "Insurance paid", "Your share"].map((h, i) => el("th", {class: i === 1 || i > 3 ? "num" : null, text: h})))),
       el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; keepFocus(renderCosts); $("#costTable").scrollIntoView({behavior: smoothly()}); }},
         el("td", {}, el("button", {class: "cell-btn", type: "button", text: x.key})), el("td", {class: "num", text: x.n}), el("td", {text: fmtD(dayTs(x.first))}), el("td", {text: fmtD(dayTs(x.last))}),
@@ -130,7 +144,7 @@ function renderCosts() {
   const money = ["billed", "paid", "owe"];   // right-aligned, in tabular figures (#278)
   // where the table doesn't fit (under 680 px of box) each claim is a stacked row, its headers a row of sort buttons
   // (.claims, app.css; #278, #443)
-  tc.append(scrollBox({class: "tablewrap", "aria-label": "Claims", style: {maxHeight: "none"}}, el("table", {class: "data claims"},
+  tc.append(scrollBox({class: "tablewrap", "aria-label": "Claims"}, el("table", {class: "data claims"},
     // a column's sort is a button in its header, its order said by aria-sort; a claim opens from its name, a button, or
     // anywhere on its row by pointer (#202: by keyboard too, and said as what they are)
     el("thead", {}, el("tr", {}, cols.map(([key, h], i) => el("th", {scope: "col", class: money.includes(key) ? "num" : null, "aria-sort": costState.sort === key ? (costState.dir > 0 ? "ascending" : "descending") : null},
@@ -327,11 +341,12 @@ function renderPaid(box, claimRows, periodLabel) {
   const bars = (host, groups) => {
     const max = Math.max(1, ...groups.map(g => g.v));
     // a row is a button, by keyboard too, saying whether it's picked, as the claims' are (#202, #448)
-    for (const g of groups) host.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto", background: paidState.q === g.key ? "var(--hover)" : null},
+    // picked, tinted (in forced colours ringed, its bar in the text's colour: .cost-bar, app.css, #456)
+    for (const g of groups) host.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto"},
       ...pressable(() => pick(g.key)), "aria-pressed": paidState.q === g.key},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}), el("span", {class: "v", text: usd(g.v)}),
       el("span", {class: "s", style: {display: "flex", alignItems: "center"}},
-        el("span", {style: {display: "inline-block", height: "8px", width: Math.max(0, g.v / max * 72) + "%", background: "var(--c-procedure)", flex: "none", borderRadius: "2px"}}),
+        el("span", {class: "cost-bar", style: {width: Math.max(0, g.v / max * 72) + "%", background: "var(--c-procedure)", flex: "none"}}),
         el("span", {style: {marginLeft: "8px", color: "var(--muted)"}, text: `${g.n} amount${g.n === 1 ? "" : "s"}`}))));
   };
   bars(g1, grp(r => r.group)); bars(g2, grp(r => r.who || "(no payee)"));
@@ -352,8 +367,8 @@ function renderPaid(box, claimRows, periodLabel) {
   const shown = Math.max(paidState.limit, list.findIndex(r => oopKey(r) === paidState.open) + 1);   // the open one too
   const open = paidState.open && rows.find(r => oopKey(r) === paidState.open), edit = open && oopEditor(open);
   // the amounts in the page's own scroll, 200 at a time (Show more), as the claims are: no box that scrolls inside it
-  // (#448)
-  tw.append(scrollBox({class: "tablewrap", "aria-label": "Every amount out of pocket", style: {maxHeight: "none"}}, stacked(el("table", {class: "data oop"},
+  // (#448; none on Costs, app.css, #456)
+  tw.append(scrollBox({class: "tablewrap", "aria-label": "Every amount out of pocket"}, stacked(el("table", {class: "data oop"},
     el("thead", {}, el("tr", {}, ["Date", "Paid to", "For", "Where the number came from", "HSA/FSA", "Amount"].map((h, i) => el("th", {class: i === 5 ? "num" : null, text: h})))),
     // a row opens its editor in a row of its own under it (#448: not under the whole list), from anywhere on it by
     // pointer; its date is the button that says whether it's open (#202: a table's row can't be expanded itself)
@@ -431,14 +446,14 @@ function barList(card, groups, onPick, active) {
   const max = Math.max(1, ...groups.map(g => g.paid + g.owe));
   for (const g of groups) {
     const w1 = g.paid / max * 100, w2 = g.owe / max * 100;
-    card.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto", background: active === g.key ? "var(--hover)" : null}, ...pressable(() => onPick(g.key)),
+    card.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto"}, ...pressable(() => onPick(g.key)),   // picked, as What you paid's (#456)
       "aria-pressed": active === undefined ? null : active === g.key,   // a type of care picked filters the claims (#202)
       "data-tip": `${g.key}: ${g.n} claims · billed ${usd(g.billed)} · insurance paid ${usd(g.paid)} · your share ${usd(g.owe)}`},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}),
       el("span", {class: "v", text: usd(g.paid + g.owe)}),
       el("span", {class: "s", style: {display: "flex", gap: "2px", alignItems: "center"}},
-        el("span", {style: {display: "inline-block", height: "8px", width: w1 + "%", background: "var(--c-lab)", borderRadius: w2 > 0.3 ? "2px 0 0 2px" : "2px"}}),
-        w2 > 0.3 ? el("span", {style: {display: "inline-block", height: "8px", width: w2 + "%", background: "var(--c-imaging)", borderRadius: "0 2px 2px 0"}}) : null,
+        el("span", {class: "cost-bar", style: {width: w1 + "%", background: "var(--c-lab)", borderRadius: w2 > 0.3 ? "2px 0 0 2px" : null}}),
+        w2 > 0.3 ? el("span", {class: "cost-bar", style: {width: w2 + "%", background: "var(--c-imaging)", borderRadius: "0 2px 2px 0"}}) : null,
         el("span", {style: {marginLeft: "8px", color: "var(--muted)"}, text: `${g.n} claim${g.n === 1 ? "" : "s"}${g.owe >= 1 ? ` · your share ${usd(g.owe)}` : ""}`}))));
   }
 }

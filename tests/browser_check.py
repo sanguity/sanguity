@@ -2918,6 +2918,61 @@ def main():
             check("…the claims' three figures laid out alike on the Overview and Costs at 320, 375, 390 and 1400 px: in one row, or one under another, each as wide",
                   all(c[0] == o[0] == "Your share, Paid by insurance, Billed by providers" and c[1:] == o[1:] and c[1:] in ([1, 3, 1], [3, 1, 1]) for c, o in figs448.values())
                   and figs448[1400][0][1:] == [1, 3, 1] and figs448[320][0][1:] == [3, 1, 1], figs448)
+            # #456: no box on Costs scrolls inside the page at 390×844 or 568×320 (Prescriptions was a 360 px box, the HSA
+            # and FSA by year and the charts' tables 320 px ones), both views, every claim on file, the charts as tables and
+            # More figures open
+            BOXES456 = """[...document.querySelectorAll('#view-costs *')].filter(n => /auto|scroll/.test(getComputedStyle(n).overflowY + getComputedStyle(n).overflowX)
+                && (n.scrollHeight > n.clientHeight + 1 || n.scrollWidth > n.clientWidth + 1)).map(n => `${n.getAttribute('aria-label') || n.className}: ${n.clientHeight} of ${n.scrollHeight} px`)"""
+            js("window._was456 = [state.preset, state.from, state.to]; setPeriod('all'); state.tables.add('#costBars'); state.tables.add('#paidCum'); costState.more = true")
+            box456, n456 = [], set()
+            for w456, h456 in ((390, 844), (568, 320)):
+                page.set_viewport_size({"width": w456, "height": h456})
+                for view in ("claims", "paid"):
+                    js("v => { costState.view = v; renderCosts(); }", view)
+                    settle(250)
+                    n456.update(js("[...document.querySelectorAll('#view-costs .tablewrap')].map(w => w.closest('.card').querySelector('h2')?.textContent.split(' ')[0])"))
+                    box456 += [f"{w456}×{h456}, {view}: {b}" for b in js(BOXES456)]
+            js("state.tables.clear(); costState.more = false; renderCosts()")
+            check("Costs (#456): no box scrolls inside the page at 390×844 or 568×320, both views, every claim on file, the charts as tables and More figures open",
+                  not box456 and {"Insurance", "Prescriptions", "Claims", "Out", "Your", "Every"} <= n456, [box456[:6], sorted(n456)])
+            # #456: the column headings stick under the top bar half-way down a long list (#448 took away the box they
+            # stuck in), every amount out of pocket and the claims, at 1400×900 and at 844×390, where the bar scrolls away
+            # and they stick at the top
+            STICK456 = """sel => { const t = document.querySelector(sel), r = t.getBoundingClientRect(); scrollTo({top: scrollY + r.top + r.height / 2, behavior: 'instant'}); }"""
+            SEEN456 = """sel => { const th = document.querySelector(sel).tHead.rows[0].cells[1], b = th.getBoundingClientRect(), bar = Math.max(0, document.querySelector('header.topbar').getBoundingClientRect().bottom),
+                at = document.elementFromPoint(b.left + 4, (b.top + b.bottom) / 2); return [Math.round(b.top - bar), !!at && th.contains(at)]; }"""
+            stick456 = {}
+            for w456, h456 in ((1400, 900), (844, 390)):
+                page.set_viewport_size({"width": w456, "height": h456})
+                for view, sel in (("paid", "#paidTable table"), ("claims", "#costTable table")):
+                    js("v => { costState.view = v; renderCosts(); }", view)
+                    settle(250)
+                    js(STICK456, sel)
+                    settle(150)
+                    stick456[f"{view}, {w456}×{h456}"] = js(SEEN456, sel)
+            js("[state.preset, state.from, state.to] = window._was456; costState.view = 'claims'; renderCosts(); scrollTo(0, 0)")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…a long list's column headings are in sight half-way down it, stuck under the top bar (at its top where the bar scrolls away), "
+                  "every amount out of pocket and the claims, at 1400×900 and 844×390 (#456)",
+                  len(stick456) == 4 and all(v == [0, True] for v in stick456.values()), stick456)
+            # #456: in forced colours a row picked to filter (a type of care, what it was for) is ringed, the others not, and
+            # every row's bar drawn (an inline background, which forced colours drop, was all that marked them)
+            page.emulate_media(forced_colors="active")
+            fc456 = {}
+            for view, row in (("claims", "#view-costs .ov-cols > .card .ov-row"), ("paid", "#paidCard .ov-cols .ov-row")):
+                js("v => { Object.assign(costState, {view: v, cat: ''}); paidState.q = ''; renderCosts(); }", view)
+                settle(200)
+                page.focus(row)
+                page.keyboard.press("Enter")
+                settle(300)
+                js("document.activeElement.blur()")
+                fc456[view] = js("""sel => { const rows = [...document.querySelectorAll(sel)].slice(0, 3), look = r => (c => [c.outlineStyle, c.outlineColor, c.borderStyle, c.borderColor].join(' '))(getComputedStyle(r));   /* (a background's alpha survives there, its colour not) */
+                    return [rows.map(r => r.getAttribute('aria-pressed')), look(rows[0]) !== look(rows[1]), look(rows[1]) === look(rows[2]),
+                      rows.every(r => (b => b && getComputedStyle(b).backgroundColor !== getComputedStyle(r.closest('.card')).backgroundColor)(r.querySelector('.cost-bar')))]; }""", row)
+            page.emulate_media(forced_colors="none")
+            js("Object.assign(costState, {view: 'claims', cat: ''}); paidState.q = ''; renderCosts(); scrollTo(0, 0)")
+            check("…in forced colours the row picked to filter differs from the others, and every row's bar is drawn: a type of care and what it was for (#456)",
+                  all(v == [["true", "false", "false"], True, True, True] for v in fc456.values()) and len(fc456) == 2, fc456)
             # #443: a link into Costs names its view: the Overview's Open Costs (an insurance card) opens Claims, whatever
             # was shown last there (What you paid's is followed from Sources, below)
             js("costState.view = 'paid'; switchTab('overview')")
@@ -5706,7 +5761,7 @@ def main():
                                                       and costs275[4] == "claims" and costs275[5] is False and costs275[6] == "Claims"), [links275, costs275])
                 # (#452) a Ctrl-click (a new tab) is the browser's, not prevented: the link's address names Costs' claims and
                 # the drug, and opens on them there, the row's drawer not opened here
-                ctrl452 = None
+                ctrl452 = arrive456 = None
                 if links275[0]:
                     js("switchTab('medications')")
                     settle(300)
@@ -5718,10 +5773,16 @@ def main():
                     ctrl452 = [js("[window.sg452, document.querySelector('#view-medications a.med-costs').getAttribute('href'), state.tab, drawer.classList.contains('open')]"),
                                np452.evaluate("""k => [location.hash, state.tab, costState.view, costState.q, costState.cat,
                                  [...document.querySelectorAll('#costTable tbody tr')].length > 0 && [...document.querySelectorAll('#costTable tbody tr')].every(r => r.textContent.toLowerCase().includes(k))]""", key275)]
+                    # (#456) as the click does: the claims in sight, the line saying their filter is on with them, focus in their search
+                    np452.wait_for_timeout(400)
+                    arrive456 = np452.evaluate("""(() => { const t = document.getElementById('costTable'), r = t.getBoundingClientRect(), f = t.querySelector('.fsum:not([hidden])');
+                        return [document.activeElement.matches('#costTable input.search'), r.top >= 0 && r.top < innerHeight, !!f && f.getBoundingClientRect().bottom <= innerHeight]; })()""")
                     np452.close()
                     js("save()")   # (this page's view saved again, over the new tab's)
                 check("…a Ctrl-click on Its claims on Costs isn't prevented: its address (#costs?drug=…) opens a new tab on the drug's claims (#452)",
                       ctrl452 is None or ctrl452 == [[[False, True], js("k => '#costs?drug=' + encodeURIComponent(k)", key275), "medications", False], ["#costs", "costs", "claims", key275, "Pharmacy", True]], ctrl452)
+                check("…and that new tab shows them as the click does: the claims in sight, the line saying they're filtered with them, focus in their search (#456)",
+                      ctrl452 is None or arrive456 == [True, True, True], arrive456)
                 # Add → Log a dose: on the Medications tab's Today, its first button focused; with the tab hidden, the Overview's
                 js("switchTab('overview')")
                 menu_click(page, "#doseLink")
@@ -10543,6 +10604,14 @@ def main():
             tp.wait_for_function(ready, timeout=20000)
             paid452 = tp.evaluate("[location.hash, state.tab, costState.view, !!document.getElementById('paidCard')]")
             check("…and in the view last used: / after #costs-paid opens Costs' What you paid (#452)", paid452 == ["#costs-paid", "costs", "paid", True], paid452)
+            # (#456) and when the switch picked it: Claims, the switch to What you paid, then / lands on What you paid
+            tp.goto(base + "/?profile=1#costs")
+            tp.wait_for_function(ready + " && state.tab === 'costs' && costState.view === 'claims'", timeout=20000)
+            tp.click("#costView button:text-is('What you paid')")
+            tp.goto(base + "/")
+            tp.wait_for_function(ready, timeout=20000)
+            paid456 = tp.evaluate("[location.hash, state.tab, costState.view, !!document.getElementById('paidCard')]")
+            check("…and the switch to What you paid, then /, lands on What you paid (#456)", paid456 == ["#costs-paid", "costs", "paid", True], paid456)
             tctx.close()
 
             # ---- #45 a default theme for the account: a fresh browser signed in as the same person uses it; your
@@ -13873,9 +13942,26 @@ def main():
                 fr_seen += frp.evaluate("[...document.querySelectorAll('#view-overview .stats.three .val')].map(v => v.textContent)")
                 fr_bad += phone_fits(frp, f"Overview, fr-FR, {w} px") + [f"{w} px: “{t}” ends at {r} px, past its card's {c}" for t, r, c in frp.evaluate(
                     "[...document.querySelectorAll('#view-overview .stats.three .val')].map(v => [v.textContent, Math.round(v.getBoundingClientRect().right), Math.round(v.closest('.card').getBoundingClientRect().right)])") if r > c]
+            # …and wider (#456): the amounts five times the ten-year fixture's (the Overview's billed past a million, "1 002 666
+            # $US", 17 px past its 164 px tile at 1280 px), at 1280, 1024 and 568 px no figure overflows its tile on the
+            # Overview or Costs: the three go one under another where one doesn't fit its third
+            frp.evaluate("""(() => { const pm = primaryMs(), ov = (pm ? DATA.costs.filter(r => r.d >= pm.date) : DATA.costs).reduce((a, r) => a + (r.billed || 0), 0), k = 1.2e6 / ov;
+                for (const c of DATA.costs) for (const f of ['billed', 'paid', 'owe']) c[f] = (c[f] || 0) * k; setPeriod('all'); renderAll(); })()""")
+            fr456, seen456 = [], []
+            for w in (1280, 1024, 568):
+                frp.set_viewport_size({"width": w, "height": 900})
+                for tab in ("overview", "costs"):
+                    frp.evaluate("t => switchTab(t, t === 'costs' ? 'claims' : undefined)", tab)
+                    frp.wait_for_timeout(250)
+                    got = frp.evaluate("""sel => [...document.querySelectorAll(sel + ' .stats.three > .tile')].map(t => [t.querySelector('.val').textContent, t.scrollWidth - t.clientWidth,
+                        Math.round(t.querySelector('.val').getBoundingClientRect().right - t.getBoundingClientRect().right)])""", "#view-" + tab)
+                    seen456 += [g[0] for g in got]
+                    fr456 += [f"{w} px, {tab}: “{v}” past its tile by {max(o, r)} px" for v, o, r in got if o > 1 or r > 1]
             fr_ctx.close()
             check("the Overview's insurance figures in a French browser fit 375 and 320 px (#342)",
                   not fr_bad and any("$US" in t for t in fr_seen), fr_bad[:6] or fr_seen)
+            check("…and with five times the ten-year fixture's amounts no figure overflows its tile at 1280, 1024 and 568 px, on the Overview or Costs (#456)",
+                  not fr456 and len(seen456) == 18 and all("$US" in v for v in seen456) and any(len(re.sub(r"\D", "", v)) >= 7 for v in seen456), fr456[:6] or seen456)
             page.set_viewport_size({"width": 1400, "height": 900})
             # forced colours (Windows' high contrast): a filled button (Save, Sign in, a dialog's action) keeps an edge
             ctx = browser.new_context(viewport={"width": 1400, "height": 900}, forced_colors="active")
@@ -14901,6 +14987,8 @@ def main():
             ph.evaluate("openMedication(MEDS.find(mrCurrent))")
             ph.wait_for_selector("#dbody .sect", timeout=5000)
             off449 = {"drawer": [c for c in ph.evaluate(CTRL449, "#dbody button") if re.match(r"(Log a dose|Add (a|another) reminder|(Edit|Turn o(n|ff)|Remove) the (reminder|dose))", c[0])]}
+            SAYS456 = "sel => [...document.querySelectorAll(sel)].map(p => [p.textContent, p.checkVisibility()])"
+            says456 = {"drawer": ph.evaluate(SAYS456, "#dbody > .offline-note")}
             sent449 = ph.evaluate("[(DATA.reminders || []).length, (DATA.doses || []).length]")
             for form, call in (("reminder form", "medReminderForm(MEDS.find(mrCurrent), null)"), ("dose form", "doseForm(MEDS.find(mrCurrent), null)")):
                 ph.evaluate(call)
@@ -14916,6 +15004,7 @@ def main():
             ph.evaluate("document.querySelector('#paidTable tbody tr .cell-btn').click()")
             ph.wait_for_selector("#oopEdit", timeout=5000)
             off449["costs"] = ph.evaluate(CTRL449, "#oopEdit .oop-form :is(button, select)")
+            says456["costs"] = ph.evaluate(SAYS456, "#oopEdit .offline-note")
             ph.evaluate("[...document.querySelectorAll('#oopEdit button')].find(b => b.textContent === 'Save').click()")
             ph.wait_for_timeout(300)
             off449["costs says"] = ph.evaluate("document.querySelector('#oopEdit .oop-msg').textContent")
@@ -14926,6 +15015,8 @@ def main():
                   and all(ok for k in ("drawer", "reminder form", "dose form", "costs") for _, ok in off449[k])
                   and "Save" in [c[0] for c in off449["costs"]] and len(off449["costs"]) >= 2
                   and off449["reminder form says"] == off449["dose form says"] == off449["costs says"] == "" and not off449["sent"], off449)
+            check("…and the drawer and Costs' editor each say why in a line, once, as today's doses do (#456)",
+                  says456 == {k: [["Changes need the server: you're offline.", True]] for k in ("drawer", "costs")}, says456)
             tab_click(ph, "#tab-labs")
             ph.wait_for_selector("#charts svg", timeout=10000)
             check("offline: Trends draws from the kept copy", ph.evaluate("document.querySelectorAll('#charts svg').length") > 0)

@@ -78,9 +78,9 @@ let booted = false;
 addEventListener("hashchange", () => {
   if (!booted) return;
   if (location.hash === "#log-dose") return logDose();
-  const t = tabOfHash();
-  if (t?.[0] === "costs") medCostsArrive();   // #costs?drug=… (#452)
+  const t = tabOfHash(), drug = t?.[0] === "costs" && medCostsArrive();   // #costs?drug=… (#452)
   if (t) switchTab(t[0], t[1]);
+  if (drug) medCostsShow();   // as a click on the link shows them (#456)
 });
 /* Add → Log a dose (#264): today's doses (medlog.js) on the Medications tab, where the log lives (#275), or on the
    Overview while that tab is hidden, the first button focused; with none to log (no current medication, no records
@@ -226,11 +226,14 @@ async function settingsLoad() {
   $("#meta").textContent = [DATA.source, DATA.built && "built " + fmtD(DATA.built), WATCH && WATCH.last_payload && "watch synced " + fmtDT(WATCH.last_payload)]
     .filter(Boolean).join(" · ");   // a profile of imports alone has no build to name (#199: it said "undefined · built")
   restore();   // a saved period naming a milestone that's since gone is All (setPeriod)
-  { const t = tabOfHash(); if (t) { state.tab = t[0]; setView(t[1]); } if (t?.[0] === "costs") medCostsArrive(); }   // (#costs?drug=…, #452)
+  const arrived = tabOfHash();
+  if (arrived) { state.tab = arrived[0]; setView(arrived[1]); }
+  const drug = arrived?.[0] === "costs" && medCostsArrive();   // (#costs?drug=…, #452)
   if (!state.sel.size) state.sel = startLabs();   // the default saved view, else trends.defaultLabs (trends.js)
   if (state.preset !== "custom" || !(state.to > state.from)) setPeriod(state.preset);
   await testPagesLoad();   // before the first draw, so the links are there (#163)
   switchTab(state.tab);
+  if (drug) medCostsShow();   // the drug's claims in sight, focus in their search, as a click on the link (#456)
   booted = true;
   try { performance.mark("sanguity:ready"); } catch (e) {}   // the records page is ready: what docs/performance.md times (#201)
   journalResume();  // Add → Journal entry from another page (journal.js)

@@ -39,12 +39,19 @@ function medCostsSet(m) {
   // on Claims, whichever view Costs was left on (What you paid has no search), with only the filters that find the drug's
   if (typeof costState === "object") Object.assign(costState, {view: "claims", q: m.key, cat: "Pharmacy", deniedOnly: false});
 }
-/* the address naming a drug's claims, as the page opens or the address changes (app.js): Costs set to show them */
+/* the address naming a drug's claims, as the page opens or the address changes (app.js): Costs set to show them,
+   -> whether it named one, so that once Costs is drawn they're shown as a click shows them (medCostsShow, #456) */
 function medCostsArrive() {
   const k = new URLSearchParams(location.hash.split("?")[1] || "").get("drug"), m = k && MEDS.find(x => x.key === k);
-  if (!m) return;
+  if (!m) return false;
   if (state.preset !== "custom") setPeriod(state.preset);   // (its dates, before they're looked at)
   medCostsSet(m);
+  return true;
+}
+/* the drug's claims in sight, the filter on them said at their top, focus in their search */
+function medCostsShow() {
+  const q = document.querySelector("#costTable input.search");
+  if (q) { $("#costTable").scrollIntoView({block: "start"}); q.focus({preventScroll: true}); }
 }
 function medOnCosts(m, ev) {
   ev.stopPropagation();   // not the row's drawer
@@ -52,8 +59,7 @@ function medOnCosts(m, ev) {
   ev.preventDefault();
   medCostsSet(m);
   pickTab("costs");
-  const q = document.querySelector("#costTable input.search");
-  if (q) { $("#costTable").scrollIntoView({block: "start"}); q.focus({preventScroll: true}); }
+  medCostsShow();
 }
 /* a list of medications, a row each opening its drawer (the name a button, for the keyboard): in columns under a
    header (seen, not said), each fact named for a screen reader; on a phone each row wraps, its facts' names shown

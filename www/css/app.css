@@ -209,6 +209,7 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
 .stats.three{grid-template-columns:repeat(auto-fit,minmax(clamp((100% - 2 * var(--sp-3)) / 3 - 1px,(480px - 100%) * 999,100%),1fr))}   /* the claims'
    three figures, Costs' and the Overview's alike (#448): in a row where a third is wide enough, else one under another,
    never two and one */
+.stats.three.one{grid-template-columns:1fr}   /* and where a figure is wider than its third (threeFigures, costs.js, #456) */
 .card :is(.tiles,.stats):last-child{margin-bottom:calc(-1 * var(--sp-3))}   /* the last row's margin is the card's padding */
 :is(.tile,.tile-tq){border:1px solid var(--ring);border-radius:var(--r-lg);background:var(--surface)}
 .tile{display:flex;flex-direction:column;gap:2px;min-width:0;padding:var(--sp-2) var(--sp-3);color:inherit;font:inherit;text-align:left}
@@ -1251,6 +1252,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 @keyframes offline-flash{from{box-shadow:0 0 0 3px var(--c-study)}to{box-shadow:0 0 0 0 transparent}}
 body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline #dbody a[aria-disabled="true"],body.offline .btn[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
 .offline-note{color:var(--ink2)}
+.offline-saves{margin:0 0 var(--sp-2)}   /* the drawer's and Costs' editor's line saying why (offline.js, #456) */
 @media (max-width:700px){.offline-banner{width:calc(100% - 24px)}}
 /* saved Trends views (#37, trends-views.js) */
 .tv{padding:0 var(--sp-4) var(--sp-2)}
@@ -1426,7 +1428,14 @@ table.data .num{text-align:right}
 table.claims th,table.claims td:first-child{white-space:nowrap}   /* a date on one line, not "Nov / 14, / 2026" */
 details.more.cost-more>:not(summary){max-width:none;color:var(--ink);font-size:var(--fs-3)}
 .cost-figs>details.cost-more.more{margin-bottom:0}   /* in the figures' card (#442): its padding is the space under it */
-#view-costs .tablewrap{container-type:inline-size}
+#view-costs .tablewrap{container-type:inline-size;max-height:none;overflow:visible}   /* no box scrolling inside the page (#456) */
+#view-costs table.data th{top:var(--bar-h,0px);z-index:1;box-shadow:inset 0 -1px var(--axis)}   /* the headers stick under the top bar, as the page scrolls, their rule with them */
+#view-costs td *{scroll-margin-top:40px}   /* focus not under them (2.4.11) */
+@media (max-height:500px){ #view-costs table.data th{top:0} }   /* the top bar scrolls away there */
+.ov-row[aria-pressed=true]{background:var(--hover)}   /* a row picked to filter (costs.js) */
+.cost-bar{display:inline-block;height:8px;border-radius:2px}
+@media (forced-colors:active){ .ov-row[aria-pressed=true]{outline:2px solid Highlight;outline-offset:-2px} .cost-bar{forced-color-adjust:none;background:CanvasText!important} }
+.cost-figs>.set-hd{flex-wrap:nowrap}   /* What you paid's ⓘ beside its heading at 320 px, the heading wrapping */
 @container (width < 560px){
   table.stack,.stack tbody{display:block}
   .stack thead{display:none}

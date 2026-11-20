@@ -270,10 +270,16 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
        medication's Log a dose and Add a reminder, a dose's or a reminder's Edit and Remove, the drawer's forms'
        Save, Costs' out-of-pocket editor). A button stays in reach, aria-disabled, its tip the reason, as today's
        doses' are (#439); a field is disabled, its title the reason (a disabled control gets no focus for a tip);
-       neither a press nor a form's submit does anything */
+       neither a press nor a form's submit does anything. The drawer and Costs' editor say why in a line too, as
+       today's doses do (#456): the drawer at its top, unless its corrections' line says it; the editor before its form */
     const serverOnly = root => {
       for (const box of root.querySelectorAll(".needs-server:not([data-offline])")) {
         box.dataset.offline = "1";
+        const part = box.closest("#dbody, .oop-edit");
+        if (part && !part.querySelector(".offline-saves, .edits[data-offline]")) {
+          const p = el("p", {class: "hint offline-note offline-saves", text: "Changes need the server: you're offline."});
+          if (part === body) part.prepend(p); else box.before(p);
+        }
         for (const c of box.matches("button, input, select, textarea") ? [box] : box.querySelectorAll("button, input, select, textarea"))
           if (c.matches("button")) { c.setAttribute("aria-disabled", "true"); c.dataset.tip = why; } else { c.disabled = true; c.title = why; }
       }
