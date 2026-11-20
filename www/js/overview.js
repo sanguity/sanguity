@@ -91,7 +91,8 @@ function homeTiles() {
    Today (today's doses, what's coming up, when the watch last synced), Key labs (in the person's own order, by panel,
    the status only where it's an exception), Readings (the watch's, the scale's and the home readings, in one row), then
    the Health record (problems, allergies, immunizations), what's Recent (clinical records, the workouts in one line) and
-   the insurance costs. Each group under its own h2, its cards under it as h3s (#331). */
+   the insurance costs. Each group under its own h2, its cards under it as h3s (#331); one with nothing in it says what
+   would be there (#440), as Key labs does. */
 const ovHead = (title, ...more) => el("div", {class: "ov-h"}, el("h2", {text: title}), ...more);
 /* "today", "tomorrow", "in 9 days", "in 3 weeks", "in 4 months": a day (YYYY-MM-DD) from today, in this person's zone */
 function inDays(day) {
@@ -101,17 +102,28 @@ function inDays(day) {
 const summaryHref = () => `sharing.html?profile=${PROFILE.id}#summary`;   // the visit summary (#168), the next appointment chosen
 const upWhen = u => fmtD(dayTs(u.t.slice(0, 10))) + (u.t.length > 10 ? ", " + fmtTime(zParse(u.t)) : "");
 
+/* a way to another tab, one look on the Overview (#440): a link drawn as a button, with its arrow. A click with Ctrl, ⌘,
+   Shift or Alt is the browser's (a new tab or window), as the tabs' own are (app.js) */
+const ovGo = (tab, text, go = () => pickTab(tab)) => el("a", {class: "btn", href: "#" + tab, onclick: ev => {
+  if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button) return;
+  ev.preventDefault(); go(); }}, text + " ", icon("arrow-right"));
+/* an Overview group with nothing in it (#440): what would be there, as Key labs says it; the one next step is Key labs'
+   (#199), so none here */
+const ovNone = what => emptyState(what, null);
+
 function ovToday() {
-  const doses = todayDoses();   // today's medication doses (medlog.js, #235): how they look and work is the dose list's own
-  // the way to the dose log's own tab (#275), at the end of the week's line, so the next visit stays on a phone's first
-  // screen (#274); not while that tab is hidden
-  const week = doses && shownTabs().includes("medications") && doses.querySelector(".dose-week");
-  if (week) week.append(" · ", el("a", {href: "#medications", onclick: ev => { ev.preventDefault(); pickTab("medications"); }}, "Open Medications"));
+  // today's medication doses (medlog.js, #235): how they look and work is the dose list's own. With the Medications
+  // tab shown, the next few, one line each, so Upcoming stays on a phone's first screen (#440), and the way to the
+  // tab under them, whoever is looking: to the rest, or to the tab
+  const meds = shownTabs().includes("medications") && MEDS.length, doses = todayDoses({few: meds ? 3 : 0});
+  const more = doses ? +doses.dataset.more || 0 : 0, go = meds ? ovGo("medications", more ? `${more} more on Medications` : "Open Medications") : null;
+  if (doses && go) doses.querySelector(".dose-week").after(go);
+  const card = doses || (go && el("div", {class: "card", id: "ovMeds"}, el("h3", {text: "Medications"}),
+    el("p", {class: "hint", text: "None listed as current: the records give each an end."}), go));   // only past ones
   const up = ovUpcoming(), sync = WATCH && WATCH.last_payload ? `watch last synced ${fmtDT(WATCH.last_payload)}` : "";
-  if (!doses && !up && !sync) return [];
   const day = zdate(Date.now()).toLocaleDateString(undefined, {weekday: "long", month: "long", day: "numeric"});
   return [ovHead("Today", el("p", {class: "hint", text: [day, sync].filter(Boolean).join(" · ")})),
-    doses || up ? el("div", {class: "ov-today"}, doses, up) : null];
+    card || up ? el("div", {class: "ov-today"}, card, up) : ovNone("Today's medication doses and upcoming appointments appear here, from the records or typed in.")];
 }
 /* the appointments from today on, the next first, each saying when ("in 9 days") and opening its details; and the
    visit summary to prepare for the next */
@@ -241,7 +253,7 @@ function watchTiles() {
 /* Readings: the watch's, the scale's and the readings at home (#225), in one row */
 function ovReadings() {
   const watch = watchTiles(), home = homeTiles();
-  if (!watch.length && !home.length) return [];
+  if (!watch.length && !home.length) return [ovHead("Readings"), ovNone("Readings from a watch, a smart scale or taken at home appear here as tiles, each with its latest value.")];
   return [ovHead("Readings", watch.length ? el("p", {class: "hint", text: "The watch's last 7 days against the 4 weeks before, and the latest weight against your weight at diagnosis."}) : null),
     watch.length ? aboutWords("Sparklines show the last 30 days for the watch, and the last year for weight.") : null,
     el("div", {class: "tiles ov-read"}, ...watch, ...home)];
@@ -302,7 +314,7 @@ function ovRecord() {
         el("span", {class: "s", text: listOf(works.map(e => e.title)) + ", from the watch"})));
     }
     right.push(ovHead("Recent"), rc);
-  }
+  } else right.push(ovHead("Recent"), ovNone("The latest visits, results and other clinical records appear here."));
   // insurance cost summary
   if ((DATA.costs || []).length) {
     const rows = DATA.costs, pm = primaryMs(), dx = pm ? rows.filter(r => r.d >= pm.date) : rows;
@@ -313,8 +325,8 @@ function ovRecord() {
       el("button", {class: "btn", onclick: () => { if (pm) setPeriod(msKey(pm)); pickTab("costs"); }}, "Open Costs ", icon("arrow-right")));   // the same period
     right.push(ovHead(pm ? `Insurance costs since ${lcLabel(pm.label)}` : "Insurance costs"), cc);
   }
-  if (!left.length && !right.length) return null;
-  return el("div", {class: "ov-cols"}, el("div", {}, left.length ? ovHead("Health record") : null, ...left), el("div", {}, ...right));
+  return el("div", {class: "ov-cols"}, el("div", {}, ovHead("Health record"),
+    ...(left.length ? left : [ovNone("Active problems, allergies and immunizations appear here, as the records list them.")])), el("div", {}, ...right));
 }
 
 function renderOverview() {

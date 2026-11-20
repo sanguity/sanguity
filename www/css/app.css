@@ -644,7 +644,6 @@ table.data tr.link{cursor:pointer}
 table.data tr.link:hover td{background:var(--hover)}
 .tablewrap{max-height:320px;overflow:auto;margin:var(--sp-2) 0 var(--sp-2)}
 .empty{color:var(--muted);padding:var(--sp-6);text-align:center}
-.empty.slim{padding:var(--sp-4)}   /* inside a card with other rows (overview.js) */
 /* detail drawer, one layout for every record (#270, drawer.js): the head (the kind's icon in its colour, the title, a
    line of what and when, then ⋯, wider and close), the key facts in boxes, the record, the actions, its source */
 #drawer[open]{display:flex;flex-direction:column}   /* a side panel or, on a phone, a sheet (components, #262) */
@@ -1395,6 +1394,9 @@ table.data.doseweeks td:first-child,table.data.doseweeks th:first-child{text-ali
 .dose-got,.dose-quick{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
 .dose-got .btn,.dose-quick .btn{margin:0}   /* the row's gap spaces them (#256) */
 .dose-done{display:inline-flex;gap:var(--sp-1);align-items:center}
+.few .dose-today{flex-wrap:nowrap}   /* the Overview's, one line each (#440): Taken and its ⋯ beside the name, which wraps */
+.few .dose-slot{flex-basis:64px}
+.few .dose-med{flex-basis:0}
 .dose-st{align-self:flex-start}
 /* out of pocket (#55): a payment counted once, the editor under the list */
 table.data.oop tr.oop-dup td{color:var(--muted)}
@@ -1716,6 +1718,7 @@ main.acct.guide{max-width:640px}
 .empty-state p{margin:0 auto var(--sp-3);max-width:60ch}
 .empty-state:not(.card){padding:var(--sp-1) 0;color:var(--ink2);list-style:none}
 .empty-state:not(.card) p{margin:0 0 var(--sp-2)}
+.empty-state p:only-child{margin-bottom:0}   /* with no next step (the Overview's groups, #440) */
 .empty-state .btn.empty-next{margin:0}
 .empty-acts{display:flex;flex-wrap:wrap;justify-content:center;gap:var(--sp-2)}
 @media (forced-colors:active){ .guide-back,.guide-way{border-color:ButtonText} }

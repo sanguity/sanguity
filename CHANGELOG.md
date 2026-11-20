@@ -1428,6 +1428,15 @@ Everything on `main` so far; it becomes the first tagged release.
   records' last day; the lane runs on to it. Its heading said "Over since diagnosis (Apr 14, 2025)"; it says the
   period: "Since diagnosis (Apr 14, 2025)", "The last 30 days". Offline, Taken, Taken late and Skipped each failed
   with "You're offline"; on the tab and the Overview they're disabled now, each saying why, as Add's Log a dose is.
+- **The Overview's Today: a line per dose, a way to Medications for everyone, and groups that say what they'd hold**
+  (#440): with reminders at 8:00 and 20:00 on three medications, six doses of about 85 px each pushed Upcoming under a
+  phone's tab bar. Each dose takes one line now, with Taken as its one button and Taken late and Skipped under its ⋯,
+  and the Overview shows the next three by time, from the latest reminder time that has come, then "3 more on
+  Medications". The way to the Medications tab is there whoever is looking (a viewer with nothing logged today had
+  none), drawn as Open Costs is, a button with its arrow, and a Ctrl-, ⌘- or Shift-click on it opens a new tab. A
+  medication with no reminder time says "Any time" on the Overview as on the tab, not "Today" under Today. On a profile
+  with little in it, Today, Readings and the Health record say what would be there, as Key labs did, rather than
+  vanishing.
 - **Help text: one line under a heading, the rest behind ⓘ** (#280): most cards ran heading, hint, "More about this",
   then content, with up to six lines of hint before the first control (Account's offline records) and 26 "More about
   this" toggles across the pages. Now a heading has at most one line of hint at 1,400 px. A card's background (how it

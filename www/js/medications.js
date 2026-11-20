@@ -69,7 +69,7 @@ function renderMedications() {
   const cur = MEDS.filter(mrCurrent), past = MEDS.filter(m => !mrCurrent(m)).sort((a, b) => medTo(b) - medTo(a));
   const costs = shownTabs().includes("costs");
   const head = el("h2", {text: "Today"});
-  const today = cur.length ? todayDoses({id: "medToday", head, any: "Any time"}) ||el("div", {class: "card", id: "medToday"}, head, el("p", {class: "hint", text: "Nothing logged today."})) : null;
+  const today = todayDoses({id: "medToday", head});   // (none without a current medication)
   const now = el("div", {class: "card"}, el("h2", {text: `Current (${cur.length})`}),
     cur.length ? medRows("Current medications", ["Since", "As listed", "Last fill", "Reminders"], cur, m => {
       const f = medLastFill(m);
