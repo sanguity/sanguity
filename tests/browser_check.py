@@ -8523,7 +8523,18 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             bad472 += phone_fits(page, "a profile with only a journal")
+            # #477: its Overview leads with the ways to bring records in, the guide first (the empty card's Get started
+            # went with the "no records yet"; its other empty states all said Type records in)
+            js("switchTab('overview')")
+            settle(200)
+            lead477 = js("[document.querySelector('#view-overview h2')?.textContent, ...[...document.querySelectorAll('#view-overview .empty-acts a')].map(a => a.getAttribute('href'))]")
+            bad477 = phone_fits(page, "a profile with only a journal, its Overview")
             page.set_viewport_size({"width": 1400, "height": 900})
+            settle(200)
+            bad477 += axe_check(page, "a profile with only a journal, its Overview")[0]
+            check("…its Overview leads with Get started: the guide, Upload files, Connect a phone and Type records in, axe-clean, fitting a phone (#477)",
+                  lead477 == ["Get started", "guide.html?profile=2", "sources.html?profile=2#upload", "sources.html?profile=2#phone", "sources.html?profile=2#manual"]
+                  and not bad477, [lead477, bad477])
             js("Promise.all(JOURNAL.map(e => api(`profiles/${PROFILE.id}/journal/${e.j.id}`, {method: 'DELETE'})))")
             js("s => s === null ? localStorage.removeItem('ht-state:2') : localStorage.setItem('ht-state:2', s)", state472)
             page.goto(base + "/?profile=2")
@@ -8532,6 +8543,38 @@ def main():
                   "the palette finds it; deleted, the profile has no records yet again (#472)",
                   only472 == ["#timeline-journal", "timeline", "journal", False, True, True, ["#timeline-journal", "timeline", "journal"]] and not bad472
                   and "no records yet" in page.inner_text("main"), [only472, bad472])
+            # #477: a profile with a phone connected and nothing imported, no journal either: the watch's summary is its
+            # records, so it opens on Body and activity with its charts (it said "no records yet", even at #health), and
+            # its Overview leads with Get started, with no phone to connect
+            from datetime import date as date477, timedelta as td477
+            from server import db as dbm, profiles as prof477
+            wf477 = os.path.join(TMP, "watch477", "daily.json")
+            os.makedirs(os.path.dirname(wf477), exist_ok=True)
+            days477 = [(date477(2026, 11, 15) - td477(days=i)).isoformat() for i in range(60, 0, -1)]
+            with open(wf477, "w") as f:
+                json.dump({"last_payload": "2026-11-15T07:00:00Z", "exercise": [], "metrics": [
+                    {"key": "steps", "name": "Steps", "unit": "steps", "group": "activity", "pts": [[d, 6000 + i * 37 % 3000] for i, d in enumerate(days477)]},
+                    {"key": "hr_rest", "name": "Resting heart rate", "unit": "bpm", "group": "heart", "pts": [[d, 60 + i % 7] for i, d in enumerate(days477)]}]}, f)
+            db = dbm.connect()
+            wpid = prof477.create_profile(db, "Watch only (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"], watch_file=wf477)
+            db.close()
+            was477 = js("localStorage.getItem('ht-profile')")
+            page.goto("about:blank")   # (a fresh page, not a change of #)
+            page.goto(base + f"/?profile={wpid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {wpid}", timeout=20000)
+            settle(300)
+            watch477 = js("""[location.hash, state.tab, !document.querySelector('main .empty'),
+                [...document.querySelectorAll('#view-health svg')].filter(s => s._draw && s.childNodes.length > 3).length > 0]""")
+            js("switchTab('overview')")
+            watch477.append(js("[...document.querySelectorAll('#view-overview .empty-acts a')].map(a => a.getAttribute('href'))"))
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was477)
+            db = dbm.connect()
+            prof477.delete_profile(db, wpid)
+            db.close()
+            check("a profile with a phone connected and nothing imported opens on Body and activity, with its charts; its Overview leads with Get started, no phone to connect (#477)",
+                  watch477 == ["#health", "health", True, True, [f"guide.html?profile={wpid}", f"sources.html?profile={wpid}#upload", f"sources.html?profile={wpid}#manual"]], watch477)
+            page.goto(base + "/?profile=2")
+            page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
 
             # ---- import page: upload a fictional C-CDA in a zip into the empty profile; it's imported in the background
             # (#20) and its records reach the timeline. Then single files, with #20's hook stood in for. Reached through
@@ -12193,18 +12236,23 @@ def main():
                     js("clearTimeout(qT); state.q = ''; document.getElementById('q').value = ''; renderAll()")
             check("…(#463) its events are those the Timeline doesn't hide (“cbc” listed the lab results hidden in its draws, in the records' capitals), none in capitals Labs names otherwise",
                   ev463["cbc"][2] > 0 and all(len(v[0]) > 1 and not v[1] and not any(", Lab result ·" in t for t in v[0]) for v in ev463.values()), ev463)
-            check("…and its line to the Timeline says how many the Timeline then shows, in its period: “Everything on file: 45 events”, “The last year: 9 events”",
-                  all(said.endswith(f"{'Everything on file' if k.startswith('all') else 'The last year'}: {shows[8:-1]} events") and shows.startswith("Events (")
+            # (#477: "with these filters", as the line over the list says it under a search, which is one)
+            check("…and its line to the Timeline says how many the Timeline then shows, in its period: “Everything on file, with these filters: 45 events”, “The last year, with these filters: 9 events”",
+                  all(said.endswith(f"{'Everything on file' if k.startswith('all') else 'The last year'}, with these filters: {shows[8:-1]} events") and shows.startswith("Events (")
                       for k, (said, shows) in line463.items()) and line463["all hemoglobin"] != line463["1y hemoglobin"], line463)
             # #472: and the workouts it leaves out, as the line over the list says them ("walk" said "0 events", six
-            # walking workouts listed above it)
+            # walking workouts listed above it). #477: worded as that line, which it then is ("The last year: 0 events ·
+            # 56 workouts, not listed" over "The last year, with these filters: 56 workouts, not listed")
             js("window._was472 = [state.tlWork, state.cats]; state.tlWork = false; state.cats = new Set(CATS.map(c => c.k)); setPeriod('all'); switchTab('overview')")
             pal("walk")
             walk472 = [js(pal_ev)[-1], js("EV.filter(e => e.k === 'exercise' && e._q.includes('walk')).length")]
-            page.keyboard.press("Escape")
-            js("[state.tlWork, state.cats] = window._was472")
-            check("…(#472) “walk” says its workouts aren't listed: “Everything on file: 0 events · N workouts, not listed”",
-                  walk472[0] == f"Search the Timeline for “walk”, Everything on file: 0 events · {walk472[1]:,} workouts, not listed", walk472)
+            page.locator("#palList [role=option]").filter(has_text="Search the Timeline for “walk”").click()
+            settle(300)
+            walk472.append(page.inner_text("#tlSum"))
+            js("clearTimeout(qT); state.q = ''; document.getElementById('q').value = ''; [state.tlWork, state.cats] = window._was472; switchTab('overview')")
+            check("…(#472) “walk” says its workouts aren't listed, and (#477) as the line over the list then says it: “Everything on file, with these filters: 0 events · N workouts, not listed”",
+                  walk472[0] == f"Search the Timeline for “walk”, Everything on file, with these filters: 0 events · {walk472[1]:,} workouts, not listed"
+                  and walk472[2] == f"Everything on file, with these filters: {walk472[1]:,} workouts, not listed", walk472)
             # (a lab result the Timeline doesn't hide, as a report of no lab day is: its title as Labs names its panel)
             js("window._lr463 = EV.find(e => e.k === 'labitem' && e.title === 'MAGNESIUM'); _lr463.hidden = false")
             pal("magnesium")
@@ -13248,6 +13296,13 @@ def main():
                   dose_said == "Shared empty profile has no current medication to log a dose for." and form == "New journal entry"
                   and saved == ["#timeline-journal", True] and len(zb.evaluate(f"fetch('api/profiles/{pid3}/journal').then(r => r.json()).then(j => j.entries)")) == 1,
                   [dose_said, form, saved])
+            # #477: the entry opened in the drawer, focus there, and its saving said, as a save with records does (the page
+            # came back with focus on <body> and nothing said)
+            zb.wait_for_selector("#sgToasts .sg-toast-text", timeout=10000)
+            first477 = zb.evaluate("""[!!document.activeElement.closest('#drawer.open'), document.getElementById('dtitle').textContent,
+                [...document.querySelectorAll('#sgToasts .sg-toast-text')].map(t => t.textContent), history.state]""")
+            check("…the first entry's save there opens it in the drawer with focus in it, and a toast says it was saved, once (#477)",
+                  first477 == [True, "A first note", ["Entry saved."], None], first477)
             sdb.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=1", (uid2,))
             zb.goto(base + "/?profile=1#medications")
             zb.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)

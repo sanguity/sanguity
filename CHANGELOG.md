@@ -1664,6 +1664,14 @@ Everything on `main` so far; it becomes the first tagged release.
   immunizations alone as the Timeline's kinds. Both show what they link to for that visit and keep your period and
   kinds. All ended at today, so a note dated next year was listed under no period; All runs to the latest entry,
   however far ahead, and the other periods still end at the latest record.
+- **A profile with nothing imported leads with Get started, one with only a phone opens on Body and activity, and the
+  first entry's save says so** (#477): with a journal, the "no records yet" card and its Get started had gone, and
+  nothing on the page led to Upload or the guide; the Overview opens with the guide, Upload files, Connect a phone and
+  Type records in, whatever there is of a journal or a watch. A profile with a phone connected and nothing imported
+  said "no records yet", even at Body and activity; the watch's data counts as its records, and it opens there. The
+  first entry on an empty profile reloaded the page with focus nowhere and nothing said; it opens the entry in the
+  drawer, as a save with records does, and says "Entry saved." The palette's line for a search says "with these
+  filters", as the line over the list then does.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

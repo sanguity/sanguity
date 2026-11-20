@@ -229,8 +229,11 @@ async function settingsLoad() {
   const arrived = tabOfHash();
   if (arrived) { state.tab = arrived[0]; setView(arrived[1]); }
   // a journal and nothing imported (#472): the Timeline's Journal view, where its entries are, unless the address
-  // names another tab
-  else if (DATA.imports && !Object.keys(DATA.imports).length) [state.tab, state.tlView] = ["timeline", "journal"];
+  // names another tab; a watch's alone (#477: a phone connected first), Body and activity, where its charts are
+  else if (DATA.imports && !Object.keys(DATA.imports).length) {
+    if (WATCH && !(DATA.journal || []).length && shownTabs().includes("health")) state.tab = "health";
+    else [state.tab, state.tlView] = ["timeline", "journal"];
+  }
   const drug = arrived?.[0] === "costs" && medCostsArrive();   // (#costs?drug=…, #452)
   if (!state.sel.size) state.sel = startLabs();   // the default saved view, else trends.defaultLabs (trends.js)
   if (state.preset !== "custom" || !(state.to > state.from)) setPeriod(state.preset);
@@ -239,6 +242,7 @@ async function settingsLoad() {
   if (drug) medCostsShow();   // the drug's claims in sight, focus in their search, as a click on the link (#456)
   booted = true;
   try { performance.mark("sanguity:ready"); } catch (e) {}   // the records page is ready: what docs/performance.md times (#201)
+  journalSaved();   // the first entry on a profile with no records, saved: the page again, with it open (journal.js, #477)
   journalResume();  // Add → Journal entry from another page (journal.js)
   SgPalette.resume();   // a lab or an event chosen in the command palette on another page (palette.js, #273)
   if (location.hash === "#log-dose") logDose();   // arriving from Add on another page (nav.js)

@@ -242,7 +242,8 @@ const SgPalette = (() => {
     state.q = lq;
     try {
       const all = EV.filter(visible), n = tlListed(all).length, when = periodLabel();
-      return `${when[0].toUpperCase() + when.slice(1)}${timelineFilters().narrowed ? ", with these filters" : ""}: ${many(n)}${unlisted(tlWorkListed() ? 0 : all.filter(isWork).length)}`;
+      // (#477: the search is one of the filters, so "with these filters" always, as the line over the list says it then)
+      return `${when[0].toUpperCase() + when.slice(1)}, with these filters: ${many(n)}${unlisted(tlWorkListed() ? 0 : all.filter(isWork).length)}`;
     } finally { state.q = was; }
   }
   /* the workouts found that the list leaves out, as the line over it says them (timeline.js tlSum, #472) */

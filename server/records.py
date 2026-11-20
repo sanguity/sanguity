@@ -449,13 +449,15 @@ def page(db, pid):
     return None if not e or e["page"] is None else (e["page"], e["rev"])
 
 
-def journal_page(db, pid):
+def journal_page(db, pid, watch=False):
     """(the records page's data for a profile with journal entries but nothing imported: no records but the journal,
     the records' revision), or None when it has no entries either (#472: the records page shows the Timeline's
-    Journal view for it, and the command palette finds its entries, rather than "no records yet")."""
+    Journal view for it, and the command palette finds its entries, rather than "no records yet"). watch: the
+    profile has a watch summary (#477: a phone connected first, nothing imported), so its data is this too, with no
+    entries, and the page shows Body and activity."""
     e = _entry(db, pid)
     entries = e and journal.listing(db, pid)
-    if not entries:
+    if not e or not (entries or watch):
         return None
     return _dumps(units.annotate({"imports": {}, "events": [], "details": {}, "labs": [], "costs": [], "journal": entries})), e["rev"]
 

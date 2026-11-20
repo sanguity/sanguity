@@ -235,6 +235,31 @@ class Journal(unittest.TestCase):
         self.robin.delete(f"/api/profiles/{pid}/journal/{r.json()['id']}", headers=H)
         self.assertEqual(data().status_code, 204)
 
+    def test_a_watch_with_nothing_imported(self):
+        """#477: a profile with a phone connected and nothing imported, no journal either, has the same data (no
+        records, no entries), so the records page opens on Body and activity rather than "no records yet"; while the
+        phone has sent nothing, it has no records yet (204)"""
+        r = self.robin.post("/api/profiles", json={"name": "Watch only, fictional"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        pid = r.json()["id"]
+        wf = os.path.join(TMP, "watch477", "daily.json")
+        db = dbm.connect()
+        db.execute("UPDATE profiles SET watch_file=? WHERE id=?", (wf, pid))
+        db.close()
+        data = lambda: self.robin.get(f"/api/profiles/{pid}/data")
+        self.assertEqual(data().status_code, 204)   # connected, nothing sent yet
+        os.makedirs(os.path.dirname(wf), exist_ok=True)
+        with open(wf, "w") as f:
+            json.dump({"metrics": [{"key": "steps", "name": "Steps", "unit": "steps", "group": "activity", "pts": [["2026-04-03", 5000]]}]}, f)
+        got = data()
+        self.assertEqual(got.status_code, 200, got.text)
+        d = got.json()
+        self.assertEqual((d["events"], d["labs"], d["imports"], d["journal"]), ([], [], {}, []))
+        self.assertEqual(self.robin.get(f"/api/profiles/{pid}/watch").status_code, 200)
+        self.assertEqual(self.kim.get(f"/api/profiles/{pid}/data").status_code, 404)   # still only for its members
+        os.remove(wf)
+        self.assertEqual(data().status_code, 204)
+
     def test_what_cant_be_saved(self):
         bad = [
             {"kind": "mood", "t": "2026-04-03", "note": "x"},

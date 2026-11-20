@@ -369,6 +369,13 @@ def _tidy_cycle(db, pid):
             _remove(os.path.join(d, x))
 
 
+def exists(db, pid):
+    """Whether the profile has a watch summary for load to read (#477: one with nothing imported is shown as records),
+    without reading it."""
+    r = db.execute("SELECT watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
+    return r is not None and any(p and os.path.isfile(p) for p in (r["watch_file"], side_path(pid)))
+
+
 def load(db, pid):
     """What the Health tab reads: the profile's watch file with any import kept beside it merged in (the watch
     file winning), or None when there is neither."""

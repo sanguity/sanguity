@@ -595,12 +595,24 @@ async function jSend(path, opts, msg, reopen) {
   catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return; }
   if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the entry (${r.status}).`, true); return; }
   // a profile with no records yet (#401): the page again, with the entry on the Timeline's Journal view (#472: the
-  // empty card has no tabs to draw it in)
-  if (!DATA) { history.replaceState(null, "", location.pathname + location.search + "#timeline-journal"); location.reload(); return; }
+  // empty card has no tabs to draw it in), the entry opened there and its saving said (#477: journalSaved)
+  if (!DATA) {
+    history.replaceState({journalSaved: reopen.created ? j.id : 0}, "", location.pathname + location.search + "#timeline-journal");
+    location.reload(); return;
+  }
   storePut("journal", j);
   const id = reopen.created ? j.id : reopen.entry;
   if (id && byId.has(-id)) openEvent(byId.get(-id)); else journalHome();
   announce(opts.method === "DELETE" ? "Entry deleted." : "Saved.");
+}
+/* the page again after the first entry on a profile with no records (jSend, #477): as a save with records does, the
+   entry opened in the drawer, focus there (a group's entries: the journal's home), and a toast that it was saved */
+function journalSaved() {
+  const id = history.state?.journalSaved;
+  if (id == null) return;
+  try { history.replaceState(null, "", location.href); } catch (e) {}   // not again on the next reload
+  if (id && byId.has(-id)) openEvent(byId.get(-id)); else journalHome();
+  toast(id ? "Entry saved." : "Entries saved.");
 }
 /* arriving from Add → Journal entry on another page (nav.js links to ./#new-journal-entry) */
 function journalResume() {
