@@ -4410,6 +4410,29 @@ def main():
             check("…and axe-core finds nothing serious on them at 1400 and 375 px, in light and dark (#202)", not axe_bad, axe_bad[:6])
             open_tab("overview")
             settle(200)
+            # #475: past eight, "All N on the Timeline" shows them all there on All for this visit, the period and kinds
+            # saved staying the person's (2 years, every kind), on another tab and after a reload; it saved All and
+            # immunizations alone. Six more (copies, gone with the reload) make nine
+            was475 = js("localStorage.getItem('ht-state:1')")
+            js("""applyPreset('2y'); for (let i = 0; i < 6; i++) { const e = {...EV.find(e => e.k === 'immunization'), id: 9e8 + i}; EV.push(e); byId.set(e.id, e); }
+                save(); renderAll()""")
+            settle(300)
+            mine475 = js("(s => [s.preset, [...s.cats].sort()])(JSON.parse(localStorage.getItem('ht-state:1')))")
+            page.locator("#ovImmunizations button", has_text="All 9 on the Timeline").click()
+            settle(400)
+            imm475 = [js("[state.tab, state.preset, [...state.cats], tlListed().length, tlListed().every(e => e.k === 'immunization')]")]
+            js("switchTab('overview')")
+            imm475.append(js("(s => [s.preset, [...s.cats].sort()])(JSON.parse(localStorage.getItem('ht-state:1')))"))
+            page.reload()
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            imm475.append(js("[state.preset, [...state.cats].sort()]"))
+            js("s => s === null ? localStorage.removeItem('ht-state:1') : localStorage.setItem('ht-state:1', s)", was475)
+            page.reload()
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            check("…(#475) All 9 on the Timeline shows the nine there on All for this visit, and leaves the period and kinds saved as they were "
+                  "(2 years, every kind), on another tab and after a reload",
+                  imm475[0] == ["timeline", "all", ["immunization"], 9, True] and imm475[1] == mine475 and imm475[2] == mine475
+                  and mine475[0] == "2y" and len(mine475[1]) > 5, [mine475, imm475])
 
             # ---- menstrual cycle tracking, opt-in (#183): off, the receiver's cycle.json (the fixture, both phone apps')
             # shows nowhere; an owner turns it on under Sources → Phone and watch, asked first with who sees it and where
@@ -5553,9 +5576,10 @@ def main():
             check("…all removed again", js("JOURNAL.length === 0 && (CFG.journal?.groups || []).length === 0 && !document.querySelector('#tl .jmood')"))
             # #472: an entry written after the latest record is in the period that ends at the latest record (the default
             # 2 years said "Events (0)" for one), and under All, past its padding too; one dated ahead doesn't move the
-            # end of every period past today; deleted, the span is the records' again
-            last472 = js("[state.max, state.preset]")
-            when472 = js("[isoDay(Math.min(Date.now(), state.max + 14 * DAY)), isoDay(Date.now() + 150 * DAY)]")
+            # end of every period past today; deleted, the span is the records' again. (#475: one dated a year ahead is
+            # listed under All, which runs to it, and not under 2 years; it was under none)
+            last472 = js("[state.max, state.preset, state.last]")
+            when472 = js("[isoDay(Math.min(Date.now(), state.max + 14 * DAY)), isoDay(Date.now() + 365 * DAY)]")
             ids472 = [js("""([t, note]) => api(`profiles/${PROFILE.id}/journal`, {method: 'POST', body: JSON.stringify({kind: 'note', t, note})})
                 .then(r => r.json()).then(j => { storePut('journal', j); return j.id; })""", [t, note])
                 for t, note in ((when472[0], "Fictional, written after the records"), (when472[1], "Fictional, dated ahead"))]
@@ -5563,14 +5587,18 @@ def main():
             for per in ("2y", "all"):
                 js(f"applyPreset('{per}'); pickTab('timeline', 'timeline')")
                 settle(200)
-                span472[per] = js("""[tlListed().filter(e => e.k === 'journal').map(e => e.j.note), [...document.querySelectorAll('#list .tl-row')]
-                    .some(r => r.textContent.includes('written after the records')), state.max <= dayTs(zToday()) + DAY]""")
+                span472[per] = js("""[tlListed().filter(e => e.k === 'journal').map(e => e.j.note).sort(), [...document.querySelectorAll('#list .tl-row')]
+                    .some(r => r.textContent.includes('written after the records')), state.max <= dayTs(zToday()) + DAY,
+                    [...document.querySelectorAll('#list .tl-row')].some(r => r.textContent.includes('Fictional, dated ahead'))]""")
             js("ids => Promise.all(ids.map(i => api(`profiles/${PROFILE.id}/journal/${i}`, {method: 'DELETE'}).then(r => r.json()).then(j => storePut('journal', j))))", ids472)
             js(f"applyPreset('{last472[1]}')")
             check("a journal entry dated after the latest record is listed under the default period (2 years) and under All, past its padding too; "
                   "one dated ahead doesn't stretch the period past today; the span is the records' again once they're gone (#472)",
-                  all(v[0] == ["Fictional, written after the records"] and v[1] and v[2] for v in span472.values())
-                  and js("state.max") == last472[0], [when472, span472, last472, js("state.max")])
+                  all(v[0][-1] == "Fictional, written after the records" and v[1] and v[2] for v in span472.values())
+                  and js("[state.max, state.last]") == [last472[0], last472[2]], [when472, span472, last472, js("[state.max, state.last]")])
+            check("…(#475) and one dated a year ahead is listed under All, which runs to it, and not under 2 years",
+                  span472["all"][0] == ["Fictional, dated ahead", "Fictional, written after the records"] and span472["all"][3]
+                  and span472["2y"][0] == ["Fictional, written after the records"] and not span472["2y"][3], span472)
             js("pickTab('timeline', 'timeline')")   # the timeline again, not the journal (#277)
             tab_click(page, "#tab-timeline")
             settle()
@@ -6126,6 +6154,36 @@ def main():
                       ctrl452 is None or ctrl452 == [[[False, True], js("k => '#costs?drug=' + encodeURIComponent(k)", key275), "medications", False], ["#costs", "costs", "claims", key275, "Pharmacy", True]], ctrl452)
                 check("…and that new tab shows them as the click does: the claims in sight, the line saying they're filtered with them, focus in their search (#456)",
                       ctrl452 is None or arrive456 == [True, True, True], arrive456)
+                # (#475) the period it widens, to show claims outside it, is for this visit: with 30 days saved (or a
+                # zoom), the link and the address show them on All, and the saved period is still the person's, on
+                # another tab and after a reload; it saved All
+                keep475 = []
+                if links275[0]:
+                    was475 = js("localStorage.getItem('ht-state:1')")
+                    for how, per in (("link", "30d"), ("address", "30d"), ("link", "custom")):
+                        js("switchTab('medications')")
+                        js("p => { if (p === 'custom') setRange(state.max - 20 * DAY, state.max - 5 * DAY); else applyPreset(p); save(); }", per)
+                        settle(300)
+                        mine = js("(s => [s.preset, s.from, s.to])(JSON.parse(localStorage.getItem('ht-state:1')))")
+                        if how == "link":
+                            page.locator("#view-medications a.med-costs").first.click()
+                        else:
+                            js("k => { location.hash = '#costs?drug=' + encodeURIComponent(k); }", key275)
+                        page.wait_for_function("() => state.tab === 'costs'", timeout=10000)
+                        settle(400)
+                        shown = js("[state.preset, [...document.querySelectorAll('#costTable tbody tr')].length > 0]")
+                        js("switchTab('overview')")
+                        tab = js("(s => [s.preset, s.from, s.to])(JSON.parse(localStorage.getItem('ht-state:1')))")
+                        page.reload()
+                        page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                        keep475.append([how, mine, shown, tab, js("[state.preset, state.from, state.to]")])
+                    js("s => s === null ? localStorage.removeItem('ht-state:1') : localStorage.setItem('ht-state:1', s)", was475)
+                    page.reload()
+                    page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                check("…(#475) with 30 days saved, or a zoom, Its claims on Costs (the link and its address) shows them on All for this visit, "
+                      "and leaves the period saved as it was, on another tab and after a reload",
+                      [k[1][0] for k in keep475] in ([], ["30d", "30d", "custom"])
+                      and all(k[2] == ["all", True] and k[3] == k[1] and k[4][0] == k[1][0] and (k[1][0] != "custom" or k[4] == k[1]) for k in keep475), keep475)
                 # Add → Log a dose: on the Medications tab's Today, its first button focused; with the tab hidden, the Overview's
                 js("switchTab('overview')")
                 menu_click(page, "#doseLink")

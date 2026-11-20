@@ -1658,6 +1658,12 @@ Everything on `main` so far; it becomes the first tagged release.
   into sight first, then as much of the editor under it as fits. A claim opened as the drawer docked at 1300 or 1400 px
   brought only its name into sight, at the window's bottom edge, its date, provider and amounts cut off (42 px of a
   stacked row in a French browser); its whole row is brought into sight.
+- **Links that widen the view leave yours saved, and All lists an entry dated ahead** (#475): a medication's "Its
+  claims on Costs" (and its address) saved All as your period, on every tab and after a reload, when its claims were
+  outside a saved 30 days or a zoom; the Overview's "All N on the Timeline" for immunizations saved All and
+  immunizations alone as the Timeline's kinds. Both show what they link to for that visit and keep your period and
+  kinds. All ended at today, so a note dated next year was listed under no period; All runs to the latest entry,
+  however far ahead, and the other periods still end at the latest record.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

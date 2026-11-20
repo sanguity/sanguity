@@ -296,8 +296,9 @@ function ovRecord() {
     const ic = el("div", {class: "card", id: "ovImmunizations"}, el("h3", {text: `Immunizations (${imms.length})`}),
       el("p", {class: "hint", text: "Vaccines the records say were given, newest first"}));
     for (const e of imms.slice(0, 8)) { const d = DATA.details[e.id] || {}; ic.append(eventRow(e, [d.dose ? "Dose " + d.dose : "", d.where || d.performer].filter(Boolean).join(" · "))); }
+    // (all of them for this visit: the period and kinds saved stay the person's, #475)
     if (imms.length > 8) ic.append(el("button", {class: "btn mt-2", onclick: () => {
-      setPeriod("all"); state.cats = new Set(["immunization"]); pickTab("timeline"); }}, `All ${imms.length} on the Timeline `, icon("arrow-right")));
+      periodVisit("all"); kindsVisit(["immunization"]); pickTab("timeline"); }}, `All ${imms.length} on the Timeline `, icon("arrow-right")));
     left.push(ic);
   }
   // Recent: the clinical records (cycle records only in their lane, #183), and the watch's workouts in one line: those

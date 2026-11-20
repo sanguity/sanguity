@@ -35,7 +35,7 @@ const medClaims = m => (DATA.costs || []).filter(c => c.kind === "pharmacy" && c
 const medCostsHref = m => "#costs?drug=" + encodeURIComponent(m.key);
 function medCostsSet(m) {
   const ds = medClaims(m).map(c => dayTs(c.d));
-  if (state.preset !== "all" && !ds.some(t => t >= state.from && t <= state.to)) setPeriod("all");
+  if (state.preset !== "all" && !ds.some(t => t >= state.from && t <= state.to)) periodVisit("all");   // for this visit: theirs stays saved (#475)
   // on Claims, whichever view Costs was left on (What you paid has no search), with only the filters that find the drug's
   if (typeof costState === "object") Object.assign(costState, {view: "claims", q: m.key, cat: "Pharmacy", deniedOnly: false});
 }
