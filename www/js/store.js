@@ -35,6 +35,7 @@ function applySettings(u) {
   // milestones are a setting since #39 (the server moved those of data.json and corrections.json in once)
   MILESTONES = CFG.milestones.filter(m => m && /^\d{4}-\d{2}-\d{2}/.test(m.date || ""))
     .map(m => ({...m, date: m.date.slice(0, 10), label: m.label || "Milestone"})).sort((a, b) => a.date.localeCompare(b.date));
+  if (DATA) labDayWords();   // a lab day's search words, with the names labs are shown by now (#463: a rename)
 }
 
 /* ---------------------------------------------------------------- change notices */
@@ -66,7 +67,7 @@ function storeRecords(data) {
   DATA = data; byId = new Map();
   for (const e of DATA.events) {
     e.ts = zParse(e.t); e.te = e.end ? zParse(e.end) : e.ts;
-    e._q = (e.title + " " + (e.sub || "") + " " + (KIND_LABEL[e.k] || "")).toLowerCase();
+    e._q = e._q0 = (e.title + " " + (e.sub || "") + " " + (KIND_LABEL[e.k] || "")).toLowerCase();   // (_q0: before labDayWords)
     byId.set(e.id, e);
     if (e.k === "lab") { const d = DATA.details[e.id]; e.n = d ? d.ids.length : 1; }
   }
@@ -95,7 +96,8 @@ function storeRecords(data) {
 /* a lab day's search words (#459): besides its title, panels and kind, its reports' titles (the panels again, as the
    records spell them) and its tests' names, as the records and Labs name them ("ferritin" finds the draws with a
    Ferritin result, not only "iron studies"). Its tests are SERIES' points on its day, as the Timeline's line counts
-   them (timeline.js tlLabValues), a visit's Vitals aside */
+   them (timeline.js tlLabValues), a visit's Vitals aside. Made again when the settings change (applySettings): a lab
+   renamed is found by its new name at once, and no longer by the old (#463) */
 function labDayWords() {
   const tests = new Map();   // "YYYY-MM-DD" -> the names of the tests with a result that day
   for (const s of SERIES) if (!s.watch && s.panel !== "Vitals") for (const p of s.pts) {
@@ -103,7 +105,7 @@ function labDayWords() {
   }
   for (const e of DATA.events) if (e.k === "lab") {
     const d = DATA.details[e.id], names = [...(tests.get(isoDay(e.ts)) || [])];
-    e._q += " " + [...(d ? d.ids.map(i => byId.get(i)?.title || "") : []), ...names, ...names.map(nice)].join(" ").toLowerCase();
+    e._q = e._q0 + " " + [...(d ? d.ids.map(i => byId.get(i)?.title || "") : []), ...names, ...names.map(nice)].join(" ").toLowerCase();
   }
 }
 /* the records' span, the watch's last day included */

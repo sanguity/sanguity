@@ -11747,6 +11747,59 @@ def main():
                   js("[state.tab, state.q, document.getElementById('q').value, document.activeElement.id]") == ["timeline", "visit", "visit", "listTitle"],
                   js("[state.tab, state.q, document.activeElement.id]"))
             js("clearTimeout(qT); state.q = ''; document.getElementById('q').value = ''; renderAll()")
+            # #463: its events are the Timeline's: none it hides ("hemoglobin" listed six hidden lab results, raw capitals
+            # and all, and offered "254 events in all" for the Timeline's 45), and its last line says how many the
+            # Timeline shows, in its period; a lab result's title is its panel as Labs names it; a lab renamed is found
+            # by its new name at once, and no longer by the old
+            pal_ev = """[...document.querySelectorAll('#palList [role=group]')].filter(g => g.firstChild.textContent === 'Events')
+                .flatMap(g => [...g.querySelectorAll('[role=option]')].map(o => o.textContent))"""
+            raw463 = "[...document.querySelectorAll('#palList .pal-t')].map(t => t.textContent).filter(t => panelName(t) !== t && SERIES.some(s => s.panel === t))"
+            js("window._was463 = [state.preset, state.from, state.to]; setPeriod('all'); switchTab('overview')")
+            ev463, line463 = {}, {}
+            for scope in ("all", "1y"):
+                js(f"setPeriod('{scope}'); renderAll()")
+                for q in ("hemoglobin", "platelets", "cbc", "visit"):
+                    js("switchTab('overview')")
+                    pal(q)
+                    if scope == "all":
+                        ev463[q] = [js(pal_ev), js(raw463), js("q => EV.filter(e => e.hidden && e._q.includes(q)).length", q)]
+                    said = js(pal_ev)[-1]
+                    page.locator("#palList [role=option]").filter(has_text="Search the Timeline for").click()
+                    settle(400)
+                    line463[scope + " " + q] = [said, js("document.getElementById('listTitle').textContent")]
+                    js("clearTimeout(qT); state.q = ''; document.getElementById('q').value = ''; renderAll()")
+            check("…(#463) its events are those the Timeline doesn't hide (“cbc” listed the lab results hidden in its draws, in the records' capitals), none in capitals Labs names otherwise",
+                  ev463["cbc"][2] > 0 and all(len(v[0]) > 1 and not v[1] and not any(", Lab result ·" in t for t in v[0]) for v in ev463.values()), ev463)
+            check("…and its line to the Timeline says how many the Timeline then shows, in its period: “Everything on file: 45 events”, “The last year: 9 events”",
+                  all(said.endswith(f"{'Everything on file' if k.startswith('all') else 'The last year'}: {shows[8:-1]} events") and shows.startswith("Events (")
+                      for k, (said, shows) in line463.items()) and line463["all hemoglobin"] != line463["1y hemoglobin"], line463)
+            # (a lab result the Timeline doesn't hide, as a report of no lab day is: its title as Labs names its panel)
+            js("window._lr463 = EV.find(e => e.k === 'labitem' && e.title === 'MAGNESIUM'); _lr463.hidden = false")
+            pal("magnesium")
+            mg463 = [js(pal_ev), js(raw463)]
+            page.keyboard.press("Escape")
+            js("_lr463.hidden = true")
+            check("…a lab result's title is its panel as Labs names it, as the drawer it opens says: “Magnesium”, not “MAGNESIUM”",
+                  any(t.startswith("Magnesium, Lab result ·") for t in mg463[0]) and not any(t.startswith("MAGNESIUM") for t in mg463[0]) and not mg463[1], mg463)
+            ren463 = js("""(to => api('profiles/1/settings/labNicknames/name', {method: 'PUT', body: JSON.stringify({name: 'Platelet Count', to})})
+                .then(r => r.json()).then(j => { RENAME.lab.done(j); afterRename('lab', 'Platelet Count'); return nice('Platelet Count'); }))('Thrombocytes')""")
+            js("setPeriod('all'); renderAll()")
+            renamed463 = {}
+            for q in ("thrombocytes", "platelets", "platelet count"):
+                pal(q)
+                renamed463[q] = [js(pal_ev), js(pal_found)]
+                page.keyboard.press("Escape")
+                js(f"$('#q').value = '{q}'; state.q = '{q}'; switchTab('timeline'); renderAll()")
+                renamed463[q].append([js("document.getElementById('listTitle').textContent"), js("document.getElementById('tlSum').textContent")])
+                js("clearTimeout(qT); state.q = ''; document.getElementById('q').value = ''; switchTab('overview'); renderAll()")
+            back463 = js("""(to => api('profiles/1/settings/labNicknames/name', {method: 'PUT', body: JSON.stringify({name: 'Platelet Count', to})})
+                .then(r => r.json()).then(j => { RENAME.lab.done(j); afterRename('lab', 'Platelet Count'); return nice('Platelet Count'); }))('Platelets')""")
+            js("[state.preset, state.from, state.to] = window._was463; switchTab('overview'); renderAll()")
+            th463, pl463, rec463 = renamed463["thrombocytes"], renamed463["platelets"], renamed463["platelet count"]
+            check("…a lab renamed on Labs is found by its new name at once, its draws too, and the Timeline's search counts its results; the old name finds them no more",
+                  ren463 == "Thrombocytes" and back463 == "Platelets" and ["Labs", "Thrombocytes"] in th463[1] and len(th463[0]) > 1
+                  and th463[2][0] == rec463[2][0] != "Events (0)" and "Thrombocytes results" in th463[2][1] and th463[0][:-1] == rec463[0][:-1]
+                  and not pl463[0] and pl463[2][0] == "Events (0)", renamed463)
             pal_axe, pal_fit = [], {}
             for scheme in ("light", "dark"):
                 page.emulate_media(color_scheme=scheme)
@@ -11780,6 +11833,19 @@ def main():
             check("…on Settings, “units” shows Display's Units on the same page, focus on its heading",
                   js("[location.hash, document.querySelector('#setNav [aria-current=page]').dataset.group, document.activeElement.closest('section')?.id, document.activeElement.tagName]")
                   == ["#sec-units", "display", "sec-units", "H2"], js("[location.hash, document.activeElement.outerHTML.slice(0, 80)]"))
+            # #463: off the records page its events are the records page's: a lab day found by its tests' names
+            # (“hemoglobin” found the lab but no draws there), none hidden, each said as there, and its line to the
+            # Timeline has the count the Timeline shows with everything on file
+            set463 = {}
+            for q in ("hemoglobin", "platelets", "cbc", "visit"):
+                pal(q)
+                page.wait_for_function("() => [...document.querySelectorAll('#palList .pal-t')].some(t => t.textContent.startsWith('Search the Timeline'))", timeout=15000)
+                set463[q] = js(pal_ev)
+                page.keyboard.press("Escape")
+            check("…(#463) on Settings, “hemoglobin” and “platelets” find their lab draws, the records page's events for them (and “visit”'s), none hidden, "
+                  "and the line to the Timeline says the count it shows: “45 events on file”",
+                  all(v[:-1] == ev463[q][0][:-1] and len(v) > 1 and v[-1] == f"Search the Timeline for “{q}”, {line463['all ' + q][1][8:-1]} events on file"
+                      for q, v in set463.items()), [set463, {q: [v[0][-1], line463["all " + q]] for q, v in ev463.items()}])
             pal("hemoglobin")
             page.wait_for_function("[...document.querySelectorAll('#palList [role=option]')].some(o => o.textContent.startsWith('Hemoglobin'))", timeout=15000)
             off = js(pal_found)

@@ -21,6 +21,9 @@ const el = (tag, attrs = {}, ...kids) => {
    (#245), so a part that may be left out (x ? el(…) : null) goes in through this, as el() leaves out its own children:
    box.append(...present(a, b ? el(…) : null)) */
 const present = (...kids) => kids.flat().filter(k => k != null);
+/* each kind of record's name: the Timeline's and the drawer's (core.js), and the command palette's on every page, an
+   event's words as the Timeline searches them (store.js, palette.js: #463) */
+const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",contact:"Chart activity",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim",journal:"Journal",mood:"Mood and energy",immunization:"Immunization",ecg:"ECG (watch)",rhythm:"Irregular rhythm notification (watch)",cycle:"Cycle tracking"};
 /* a row that opens something when clicked, a button to the keyboard and screen readers too (#202): el("div", {class:
    "ov-row", ...pressable(() => openEvent(e))}, …). Its words are its name. A table's row gets a .cell-btn in a cell. */
 const pressable = fn => ({role: "button", tabindex: 0, onclick: fn,
