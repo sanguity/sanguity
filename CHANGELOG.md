@@ -1698,6 +1698,10 @@ Everything on `main` so far; it becomes the first tagged release.
   and the latest month is named on the axis. A record opened from a tab's link at 1400 px docked the drawer, which put
   that tab under More; Escape left focus on the page once More went, and now it's back on the tab. Costs' largest
   group's bar squeezed its note onto two lines; the bars take what the note leaves.
+- **Costs' bars share one scale again, and the heatmap names its latest month** (#483): sized against what each note
+  left, a row's bars stopped comparing with the next (Vision's $6,963 shorter than Procedures' $6,961); every row's bars
+  run the row's whole width, with the note under them. On ten years the heatmap's latest month was still left
+  unnamed when it fell close to the label before it; it's always named now, the one before it dropped.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

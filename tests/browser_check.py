@@ -3419,8 +3419,8 @@ def main():
                 const last = [...document.querySelectorAll('#hm rect.cell')].map(c => c.dataset.k).sort().at(-1), ms = [0, 1].map(b => { const d = new Date(dayTs(last.slice(0, 7) + '-15')); d.setMonth(d.getMonth() - b);
                   return zdate(d.getTime()).toLocaleDateString(undefined, {month: 'short', year: '2-digit'}); });
                 const labels = [...document.querySelectorAll('#hmAxis text')].map(t => t.textContent);
-                return [ls.length > 0 && ls.every(l => l.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING), ms.some(m => labels.includes(m)), ms, labels.slice(-3)]; })()""")
-            check("…drawn under the cells, so a month's first draw keeps its colour; and the latest month (or the one before) is named on the axis (#479)",
+                return [ls.length > 0 && ls.every(l => l.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING), labels.includes(ms[0]), ms, labels.slice(-3)]; })()""")
+            check("…drawn under the cells, so a month's first draw keeps its colour; and the latest month is named on the axis (#479, #481)",
                   under479[0] and under479[1], under479)
             for w476 in (320, 375):
                 page.set_viewport_size({"width": w476, "height": 800})
@@ -5120,8 +5120,10 @@ def main():
             js("costState.view = 'claims'; switchTab('costs')")
             settle(400)
             notes479 = js("""[...document.querySelectorAll('#view-costs .cost-bar-note')].map(n => [n.textContent, Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight))])""")
-            check("…Costs' groups (By type of care, Top providers) each keep their note on one line at 1400 px (#479)",
-                  notes479 and all(h <= 1 for _, h in notes479), notes479)
+            runs481 = js("""[...new Set([...document.querySelectorAll('#view-costs .cost-bar-run')].map(r => r.parentElement.closest('.card'))).values()]
+                .map(card => [...card.querySelectorAll('.cost-bar-run')].map(r => Math.round(r.getBoundingClientRect().width)))""")
+            check("…Costs' groups (By type of care, Top providers) each keep their note on one line at 1400 px, and every row's bars are on one scale (#479, #481)",
+                  notes479 and all(h <= 1 for _, h in notes479) and runs481 and all(len(set(ws)) == 1 for ws in runs481), [notes479, runs481])
             js("switchTab('timeline', 'timeline')")
             page.set_viewport_size(vw479)
             settle(300)
