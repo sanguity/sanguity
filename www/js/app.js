@@ -43,6 +43,7 @@ const pickTab = (t, view) => switchTab(t, view, true);   // someone chose it: a 
    (pickTab), so Back returns to the tab, or the view, before. The Timeline picked from elsewhere (an event, a medication's dates) is the timeline itself; its own tab
    link opens it as it was last shown, as Labs' does */
 function switchTab(t, view, push) {
+  if (catsKept && t !== "timeline") { state.cats = catsKept; catsKept = null; }   // a link's kinds were for the Timeline's visit (#475): the person's own elsewhere (#479)
   if (TAB_ALIAS[t]) [t, state.labsView] = TAB_ALIAS[t];
   if (t === "timeline" && push && !view) view = "timeline";
   setView(view);
@@ -192,7 +193,7 @@ async function settingsLoad() {
     if (r.status === 204) {   // no records yet (#199): the getting-started guide, opened by itself the first time
       if (PROFILE.role === "owner" && ME.profiles.length === 1) {   // your own profile, and your only one
         const u = await api("settings/user").then(x => x.ok ? x.json() : {}).catch(() => ({}));
-        if (u.guide === "") { location.replace(`guide.html?profile=${PROFILE.id}`); return; }   // not finished or skipped yet
+        if (u.guide === "" && !/^#(new-journal-entry|log-dose)$/.test(location.hash)) { location.replace(`guide.html?profile=${PROFILE.id}`); return; }   // not finished or skipped yet; not when Add sent them to do something here (#479)
       }
       await settingsLoad();
       applyTabs(CFG.tabs);   // its tabs as it has them, as the other pages show them (#425)

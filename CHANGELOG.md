@@ -1681,6 +1681,15 @@ Everything on `main` so far; it becomes the first tagged release.
   clear of, so Shift+Tab up the dates, or the editor's Close, left a date under them; the dates are kept clear of the
   headings' measured height. On the ten-year All at 1400 px, a day with two draws split its cell into parts too narrow
   for a ▲, with no word of it; the legend's "zoom in" hint shows then too.
+- **A new account's first journal entry opens, a year typed wrong doesn't squeeze the charts, a link's kinds stay on
+  the Timeline, and a tap on the heatmap reaches its cell** (#479): on a new account's empty profile, Add → Journal
+  entry (and Log a dose) was sent to the guide before its form could open; an address naming Add's action skips the
+  guide. A journal entry dated 2207 ran All to 2208, ten years squeezed into each chart's left edge; the person's own
+  entries move All's end no more than a year ahead, and the date asks for no later. After the Overview's "All N on the
+  Timeline" for immunizations, Labs drew no medication lanes or journal marks though they were ticked, for the rest of
+  the visit; the kinds are the person's again once the Timeline is left. The heatmap's month lines, drawn over its
+  cells, took over half the taps on a phone's ten-year All; they take none. A profile with no hospital stays isn't
+  offered them on Body and activity.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
