@@ -151,8 +151,9 @@ async function doseSend(path, opts, msg, after) {
    with none last. Owners and editors log with one click (the time is now); viewers
    see what was logged, or that nothing was. None for a profile without current medications. A card: id and head, its
    own (the Medications tab's Today, #275: medications.js), else the Overview's.
-   few (the Overview's, #440, so Upcoming stays on a phone's first screen): each row one line, Taken its one button and
-   Taken late and Skipped under its ⋯; and only that many rows, from the latest reminder time that has come (the first
+   few (the Overview's, #440, so Upcoming stays on a phone's first screen): each row with nothing logged one line, Taken
+   its one button and Taken late and Skipped under its ⋯ (one with doses logged wraps them under its name, as the
+   Medications tab's do: .logged, #468); and only that many rows, from the latest reminder time that has come (the first
    while none has), the number left out in the card's data-more (the Overview links to the rest) */
 function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication doses"}), few = 0} = {}) {
   const write = canEdit(), today = zToday(), dow = MR_DAYS[(zdate(Date.now()).getDay() + 6) % 7][0];
@@ -176,11 +177,11 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
     for (const slot of slots) {
       const got = mine.filter(d => d.slot === slot);
       const what = `${m.name}, reminder at ${mrTime(slot)}`;
-      rows.push([slot, el("li", {class: "dose-today", "data-dose-row": m.key + " " + slot}, el("span", {class: "dose-slot", text: mrTime(slot)}), open(),
+      rows.push([slot, el("li", {class: "dose-today" + (got.length ? " logged" : ""), "data-dose-row": m.key + " " + slot}, el("span", {class: "dose-slot", text: mrTime(slot)}), open(),
         got.length ? el("span", {class: "dose-got"}, ...got.map(logged)) : write ? quick(m, slot, what) : el("span", {class: "hint", text: "Nothing logged"}))]);
     }
     const other = mine.filter(d => !slots.includes(d.slot));
-    if (!slots.length || other.length) rows.push([(slots.at(-1) || "") + "~", el("li", {class: "dose-today", "data-dose-row": m.key + " "}, el("span", {class: "dose-slot", text: slots.length ? "Also" : "Any time"}), open(),
+    if (!slots.length || other.length) rows.push([(slots.at(-1) || "") + "~", el("li", {class: "dose-today" + (other.length ? " logged" : ""), "data-dose-row": m.key + " "}, el("span", {class: "dose-slot", text: slots.length ? "Also" : "Any time"}), open(),
       write || other.length ? el("span", {class: "dose-got"}, ...other.map(logged), write ? quick(m, null, m.name) : null) : el("span", {class: "hint", text: "Nothing logged"}))]);
   }
   if (!write && !todays.length) rows.length = 0;   // a viewer's, with nothing logged: the hint says so

@@ -2343,6 +2343,34 @@ def main():
                   'textDecorationLine', 'paddingLeft'].map(p => getComputedStyle(e)[p]), !!e.querySelector('svg.i-arrow-right')].join(' ');
                 return [s(document.querySelector('#ovDoses a[href="#medications"]')), s([...document.querySelectorAll('#view-overview .btn')].find(b => /^Open Costs/.test(b.textContent.trim())))]; }""")
             check("…its way to the Medications tab looks as Open Costs does (#440)", look440[0] and look440[0] == look440[1], look440)
+            # #468: with one, two and six doses logged today on an "Any time" row (on the page only, removed after), the
+            # logged doses wrap under the medication's name, as on the Medications tab: its box at least its longest word
+            # wide (it was squeezed to nothing, a word a line, under them) and none of them over it, at 1400, 1100, 844×390,
+            # 390 and 320 px; a row with nothing logged still one line
+            key468 = js("(r => r && r.dataset.doseRow.endsWith(' ') && r.dataset.doseRow.trim())(document.querySelector('#ovDoses .dose-today'))")
+            NAME468 = r"""k => { const r = document.querySelector(`#ovDoses .dose-today[data-dose-row="${k} "]`), n = r.querySelector('.dose-med'), t = n.firstChild, b = n.getBoundingClientRect();
+                const word = Math.max(...[...t.data.matchAll(/\S+/g)].map(m => { const g = document.createRange(); g.setStart(t, m.index); g.setEnd(t, m.index + m[0].length); return g.getBoundingClientRect().width; }));
+                const right = b.left + Math.max(b.width, n.scrollWidth);   // its words, where they spill past it
+                const over = [...r.querySelectorAll('.dose-done')].filter(d => (x => x.left < right && x.right > b.left && x.top < b.bottom && x.bottom > b.top)(d.getBoundingClientRect())).length;
+                const one = [...document.querySelectorAll('#ovDoses .dose-today:not(.logged)')].every(o => { const c = [...o.children].map(x => x.getBoundingClientRect());
+                  return Math.max(...c.map(x => x.top)) < Math.min(...c.map(x => x.bottom)); });
+                return [r.querySelectorAll('.dose-done').length, Math.round(b.width), Math.ceil(word), over, one]; }"""
+            rows468, ids468 = {}, []
+            for n468 in ((1, 2, 6) if key468 else ()):
+                more = list(range(len(ids468), n468))
+                js("""([k, xs]) => storePut('doses', {doses: xs.map(i => ({id: 991000 + i, med: k, name: MEDS.find(m => m.key === k).name, t: zToday() + 'T0' + (i % 9) + ':1' + i,
+                    status: 'taken', note: '', slot: null, by: 'demo'}))})""", [key468, more])
+                ids468 += [991000 + i for i in more]
+                for w468, h468 in ((1400, 900), (1100, 800), (844, 390), (390, 844), (320, 640)):
+                    page.set_viewport_size({"width": w468, "height": h468})
+                    settle(250)
+                    rows468[f"{n468} at {w468}"] = js(NAME468, key468)
+            js("ids => storePut('doses', {removed: ids})", ids468)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(200)
+            check("…with one, two and six doses logged on an “Any time” row, at 1400, 1100, 844×390, 390 and 320 px, they wrap under the medication's name: "
+                  "its box at least its longest word, none over it; the rows with nothing logged one line each (#468)",
+                  len(rows468) == 15 and all(v[0] == int(k.split()[0]) and v[1] >= v[2] and v[3] == 0 and v[4] for k, v in rows468.items()), [key468, rows468])
             # …and a click on it with Ctrl, ⌘ or Shift is left to the browser (a new tab or window), as the tabs' own are;
             # a plain one opens the tab here (the browser's own following stopped here, for the check)
             mod440 = js("""() => { const a = document.querySelector('#ovDoses a[href="#medications"]'), seen = [], stop = ev => { seen.push(ev.defaultPrevented); ev.preventDefault(); };
