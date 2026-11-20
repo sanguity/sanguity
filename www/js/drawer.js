@@ -212,7 +212,7 @@ function rowOrig(row) {
 function resultBody(d, eid, top) {
   const out = [], key = [["Ordered by", d.provider], ["Status", d.status], ["Lab", d.lab], ["Specimen", d.specimen]];
   if (top) out.push(drawerFacts(key, "facts"));
-  out.push(drawerFacts([["Order", d.order], ["Collected", recordDate(d.collected)], ["Resulted", recordDate(d.resulted)], ...(top ? [] : key), ["Diagnosis", (d.dx || []).join("; ")]]));
+  out.push(drawerFacts([["Order", d.order && panelName(d.order)], ["Collected", recordDate(d.collected)], ["Resulted", recordDate(d.resulted)], ...(top ? [] : key), ["Diagnosis", (d.dx || []).join("; ")]]));
   const t = resultTable(d.rows); if (t) out.push(el("div", {class: "sect", text: "Results"}), t);
   const same = sameNotes(eid, d); if (same) out.push(same);   // the same result from another source (same.js)
   for (const [k, h, isHtml] of d.report || []) out.push(el("div", {class: "sect", text: k === "combinedRTFNarrativeImpression" ? "Report" : k}),
@@ -232,7 +232,7 @@ function openEvent(e) {
   // its kind once (#406): a title that starts with it ("Hospital stay · Northfield General Hospital") is the rest, the
   // line under it the kind and when; the facts leave out the days it names
   const kind = KIND_LABEL[e.k] || "Record", parts = e.title.split(" · ");
-  const title = parts.length > 1 && saidKey(parts[0]) === saidKey(kind) ? parts.slice(1).join(" · ") : e.title;
+  const title = parts.length > 1 && saidKey(parts[0]) === saidKey(kind) ? parts.slice(1).join(" · ") : e.k === "labitem" ? panelName(e.title) : e.title;   // a result's panel as Labs names it (#451)
   const when = e.end && e.te - e.ts > DAY ? fmtD(e.ts) + " – " + fmtD(e.te) : fmtDT(e.ts);
   const body = drawerHead(e.k, title, saidKey(title) === saidKey(kind) ? when : `${kind} · ${when}`, null, [e.ts, e.te]);
   { const wait = detailsWait(e, body); if (wait) { body.append(drawerSkeleton()); showDrawer(); return wait; } }   // its details, loaded when it's opened (details.js, #217)
@@ -247,7 +247,7 @@ function openEvent(e) {
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
       const abn = (r.rows || []).filter(x => x[4]).length;
-      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: `${r.order || ev2.title}`}), el("span", {class: "spacer"}), el("span", {class: "res-t", text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", "data-tip": `${abn} outside reference range`, text: abn}, el("span", {class: "vh", text: " outside reference range"})) : null), el("div", {}, ...resultBody({...r, order: null}, id), eventSource(ev2)));
+      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: panelName(r.order || ev2.title)}), el("span", {class: "spacer"}), el("span", {class: "res-t", text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", "data-tip": `${abn} outside reference range`, text: abn}, el("span", {class: "vh", text: " outside reference range"})) : null), el("div", {}, ...resultBody({...r, order: null}, id), eventSource(ev2)));
       main.push(det);
     }
   } else if (d.type === "conversation") {

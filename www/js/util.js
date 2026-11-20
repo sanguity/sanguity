@@ -111,12 +111,29 @@ function labGroups(labs, series = typeof SERIES !== "undefined" ? SERIES : typeo
   const other = by.get(LAB_OTHER); by.delete(LAB_OTHER);
   return [...by].map(([panel, labs]) => ({panel, labs})).concat(other ? [{panel: LAB_OTHER, labs: other}] : []);
 }
-/* a panel's name as it's read wherever it's shown (#441), the panel given by labGroups: one that came in capitals in
-   sentence case, its abbreviations kept ("CBC WITH DIFFERENTIAL" -> "CBC with differential": a word with a digit or
-   no vowel, or one of LAB_ABBR); one that came in mixed case as it came */
-const LAB_ABBR = new Set(["ALT", "AST", "ANA", "BUN", "HIV", "INR", "PSA", "AFP", "CEA", "EGFR", "AB", "AG", "IGA", "IGG", "IGM", "IGE"]);
-const panelName = p => /[a-z]/.test(p) ? p : p.replace(/[A-Z0-9]+/g, w => /\d|^[^AEIOUY]+$/.test(w) || LAB_ABBR.has(w) ? w : w.toLowerCase())
+/* a panel's name as it's read wherever it's shown (#441), the panel given by labGroups, the Timeline and the drawer:
+   one that came in capitals in sentence case, its abbreviations kept (#451): a word of four letters or fewer is kept
+   as written unless it's one of LAB_WORDS, and so is a word with a digit; a hyphened one has only its parts in
+   LAB_WORDS recased ("25-hydroxy", "NT-PROBNP"); a longer word with a vowel is recased. "IRON AND TIBC" -> "Iron and
+   TIBC", "SED RATE (ESR)" -> "Sed rate (ESR)", "CBC W/ DIFF" -> "CBC w/ diff", "ACTH". One in mixed case as it came */
+const LAB_WORDS = new Set(("AND OR OF WITH W/ WO/ TO FOR IN ON BY NO PLUS ONLY SED RATE TIME IRON UREA FREE CELL RED GAS " +
+  "ACID URIC DIFF QUAL TEST BODY MASS ZINC LEAD BONE SWAB REACTIVE HYDROXY SPECIFIC").split(" "));
+const panelWord = t => { const w = t.replace(/\/$/, "");
+  return (LAB_WORDS.has(t) || LAB_WORDS.has(w) ? w.toLowerCase() : w.includes("-") ? w.replace(/[A-Z]+/g, x => LAB_WORDS.has(x) ? x.toLowerCase() : x)
+    : /\d/.test(w) ? w : w.length > 4 && /[AEIOUY]/.test(w) ? w.toLowerCase() : w) + t.slice(w.length); };
+const panelName = p => /[a-z]/.test(p) ? p : p.replace(/[A-Z0-9]+(?:-[A-Z0-9]+)*\/?/g, panelWord)
   .replace(/^([^A-Za-z0-9]*)([a-z])/, (m, a, c) => a + c.toUpperCase());
+/* a lab day's line under its title, its panels as Labs names them (#451; store.js, for the Timeline, its tips and the
+   Overview's Recent): the importers join them with ", ", and a name can hold one ("VITAMIN D, 25-HYDROXY"), so one
+   its results came under (their records' titles) is taken whole */
+function labDaySub(e) {
+  const known = (DATA.details[e.id]?.ids || []).map(i => byId.get(i)?.title).filter(Boolean).sort((a, b) => b.length - a.length), out = [];
+  for (let s = e.sub; s; ) {
+    const k = known.find(x => s.startsWith(x) && (s.length === x.length || s.startsWith(", ", x.length))) || s.split(", ")[0];
+    out.push(panelName(k)); s = s.slice(k.length + 2);
+  }
+  return out.join(", ");
+}
 
 /* A warning when this page came over plain HTTP from somewhere other than this machine, the home network or a
    tailnet (where WireGuard already encrypts): passwords and records would cross the internet readable (ASVS 9.1.1). */

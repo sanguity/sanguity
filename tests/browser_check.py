@@ -2825,6 +2825,17 @@ def main():
                   off["rows"] > 0 and off["days"] <= off["rows"] and off["months"] > 1 and off["dates"] and off["oneDay"] and off["whole"] and off["kinds"]
                   and off["work"] == 0 and off["lane"] > 0 and f"{n_work:,} workouts, not listed" in off["sum"] and off["sum"].startswith("Everything on file: ")
                   and off["title"] == f"Events ({off['listed']:,})" and off["fold"] is None, off)
+            # #451: the line counts a draw's results as Labs does, its values (it counted reports, "100 results, 67 out of
+            # range" of 442 values): Labs' results in the period but its Vitals, readings taken at visits, not lab draws.
+            # And a lab row names its panels as Labs does ("CBC with differential", not capitals), or its one test
+            tl451 = js("""(() => { let n = 0, abn = 0;
+                for (const s of SERIES) if (!s.watch && s.panel !== 'Vitals') for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) { n++; if (p[4]) abn++; }
+                const labs = new Set(SERIES.filter(s => !s.watch).flatMap(s => [panelName(s.panel), panelName(s.name)]));
+                const subs = [...document.querySelectorAll('#list .tl-row[data-id]')].filter(r => byId.get(+r.dataset.id).k === 'lab').map(r => r.querySelector('.s')?.textContent || '');
+                return {n, abn, draws: EV.filter(visible).filter(e => e.k === 'lab').length, subs: subs.length, odd: [...new Set(subs.flatMap(s => s.split(', ')).filter(x => !labs.has(x)))]}; })()""")
+            check("…the line counts the lab draws' results as Labs does, its values in the period (its Vitals aside), and those out of range (#451)",
+                  tl451["n"] > tl451["draws"] and f"{tl451['draws']:,} lab draws, {tl451['n']:,} results, {tl451['abn']:,} out of range" in off["sum"], [tl451, off["sum"]])
+            check("…and each lab row names its panels (or its one test) as Labs does (#451)", tl451["subs"] > 0 and tl451["odd"] == [], tl451)
             page.click("label.toggle:has(#tlWork)")
             settle(300)
             on = js(ev_list)
@@ -2924,6 +2935,9 @@ def main():
             check("…opening a lab day shows it at once, saying its details are loading, then its results, asked for in one request",
                   first[0] and first[1] and first[2] and n == 1 and js("id => DATA.details[id].ids.every(i => detailsHave(i))", day), (first, asked))
             check("…and opened again they're kept for the page: no new request", len(asked) == 1 and js("document.querySelectorAll('#dbody details.res').length") > 1, asked)
+            res451 = js("""[...document.querySelectorAll('#dbody details.res summary > span:first-child')].map(s => s.textContent)""")
+            check("…each of its results titled by its panel as Labs names it (#451)", res451
+                  and all(x == js("x => panelName(x)", x) and not re.fullmatch(r"[A-Z ]{6,}", x) for x in res451), res451)
             claim = js("EV.find(e => e.k === 'claim' && !detailsHave(e.id)).id")
             before = len(problems)
             busy = re.compile(r"/api/profiles/\d+/details\?")
@@ -7398,6 +7412,27 @@ def main():
                   ov441[0] == [["H3", n] for n in want441], ov441[0])
             check("…each key lab's change line keeps two lines' height under its panel's name (#338)",
                   ov441[3] and len(ov441[2]) == ov441[3] and all(abs(r - 2) < .01 for r in ov441[2]), ov441[2:])
+            # #451: a name in capitals keeps its abbreviations (a short word, one with a digit, a hyphened one's parts),
+            # its common words in sentence case
+            names451 = {"IRON AND TIBC": "Iron and TIBC", "SED RATE (ESR)": "Sed rate (ESR)", "UA WITH MICROSCOPIC": "UA with microscopic",
+                        "ACTH": "ACTH", "APTT": "APTT", "HCV RNA QUANT": "HCV RNA quant", "NT-PROBNP": "NT-PROBNP", "CBC W/ DIFF": "CBC w/ diff",
+                        "CBC WITH DIFFERENTIAL": "CBC with differential", "HEMOGLOBIN A1C": "Hemoglobin A1C", "VITAMIN D, 25-HYDROXY": "Vitamin D, 25-hydroxy",
+                        "Lipid Panel": "Lipid Panel"}
+            got451 = js("ns => ns.map(panelName)", list(names451))
+            check("…a panel's name in capitals keeps its abbreviations: “Iron and TIBC”, “Sed rate (ESR)”, “NT-PROBNP”, “CBC w/ diff” (#451)",
+                  got451 == list(names451.values()), [x for x in zip(names451, got451) if names451[x[0]] != x[1]])
+            # #451: a key lab kept in two units (#438) has the tile of its latest result: here Hemoglobin, again in mmol/L,
+            # three days after its last draw
+            two451 = js("""(() => {
+              const h = SERIES.find(s => !s.watch && s.name === 'Hemoglobin');
+              const c = {...h, unit: 'mmol/L', n: 3, txt: [], pts: h.pts.slice(-3).map(p => Object.assign(p.map((v, i) => i === 1 ? +(v * .62).toFixed(1) : i === 5 ? null : v), {ts: p.ts + 3 * DAY}))};
+              SERIES.push(c);
+              try { renderOverview();
+                return [...document.querySelectorAll('#view-overview .tile')].filter(t => t.querySelector('.lbl > span:first-child')?.textContent === nice('Hemoglobin'))
+                  .map(t => [t.querySelector('.val').firstChild.textContent, t.querySelector('.val small').textContent]).concat([[fmtNum(c.pts.at(-1)[1]), 'mmol/L']]);
+              } finally { SERIES.splice(SERIES.indexOf(c), 1); renderOverview(); } })()""")
+            check("…the Overview's tile for a key lab in two units is its latest result's, in that unit (#451)",
+                  js("CFG.overview.keyLabs.includes('Hemoglobin')") and len(two451) == 2 and two451[0] == two451[1], two451)
             open_tab("labs")
             settle(300)
             labs441 = js("""(() => { const out = {heads: [...document.querySelectorAll('#labsChart :is(h1, h2, h3, h4, h5, h6)')].map(h => h.tagName + ' ' + (h.matches('.vh') ? h.textContent : h.innerText)),
@@ -9716,10 +9751,17 @@ def main():
             tr_msg = "document.querySelector('#sec-trends .set-msg').textContent"
             drop = lambda: page.locator("[data-key='trends.defaultLabs'] .set-labs button:text-is('Remove')").first.click()
             dl441 = js("""(() => { const out = []; let g = null;
-              for (const x of document.querySelectorAll("[data-key='trends.defaultLabs'] :is(h4.lab-panel, li)")) if (x.matches('h4')) g = x.innerText; else out.push([x.querySelector('.set-name').textContent, g]);
+              for (const x of document.querySelectorAll("[data-key='trends.defaultLabs'] :is(h4.lab-panel, li)")) if (x.matches('h4')) g = x.innerText; else out.push([x.dataset.lab, g]);
               return out; })()""")
             check("Labs selected at first (#441): listed by panel under their names, as the Labs tab lists them",
                   len(dl441) > 1 and all(want279.get(n) == g for n, g in dl441) and len({g for _, g in dl441}) > 1, dl441)
+            # #451: each by the name it's shown by, a nickname with its name in the records beside it as Key labs has; no
+            # order to set (it did nothing: Labs' charts follow the list), so Remove is a lab's one control
+            dl451 = js("""[...document.querySelectorAll("[data-key='trends.defaultLabs'] li[data-lab]")].map(li => [li.dataset.lab, li.querySelector('.set-name').textContent,
+              nick(li.dataset.lab), [...li.querySelectorAll('button')].map(b => b.getAttribute('aria-label'))])""")
+            check("…each by its nickname, its name in the records beside it, and Remove its one control: no order that does nothing (#451)",
+                  dl451 and all(t == (k if k == n else f"{k} ({n})") and b == [f"Remove {k}"] for n, t, k, b in dl451) and any(k != n for n, _, k, _ in dl451)
+                  and js("!document.querySelector(\"[data-key='trends.defaultLabs'] ol\")"), dl451)
             labs0 = dl_of()
             drop()
             bar = js("[document.getElementById('setBar').hidden, document.querySelector('#setBar .sg-bar-n').textContent, document.getElementById('sec-trends').dataset.dirty]")

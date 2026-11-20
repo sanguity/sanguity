@@ -1496,6 +1496,16 @@ Everything on `main` so far; it becomes the first tagged release.
   colours, and the stay's edge is in the text's colour. Body and activity's Legend closed whenever the tab was drawn
   again (a resize, a dose logged) and left listeners on the window each time; its header is kept across redraws now,
   and a menu taken out of the page while open drops its listeners.
+- **Lab names keep their abbreviations, and the Timeline, the Overview and Settings name and count labs as Labs does**
+  (#451): a panel named in capitals lost its short abbreviations to sentence case ("Iron and tibc", "Sed rate (esr)",
+  "Acth", "NT-probnp"); now a word of four letters or fewer, one with a digit and a hyphened one keep their capitals
+  unless they're common words ("Iron and TIBC", "CBC w/ diff"). The Timeline's lab rows, their tips, the Overview's
+  Recent and the drawer's results named panels in raw capitals; they use the same names as Labs. The Timeline's line
+  said "45 lab draws, 100 results, 67 out of range", counting reports but values out of range; it counts the values,
+  as Labs does ("442 results"). A key lab kept in two units showed the Overview tile of whichever came first, so its
+  value could be stale; it shows the one with the latest result. Settings' Labs selected at first listed record names
+  ("Automated Abs Neutrophil Cnt") where Key labs uses nicknames, and its ↑ and ↓ set an order nothing followed; it
+  shows nicknames, with the record's name beside one, and Remove is each lab's one control.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
