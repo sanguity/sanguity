@@ -1521,6 +1521,17 @@ Everything on `main` so far; it becomes the first tagged release.
   server." Offline they're off now, a button saying "Needs the server: you're offline" as its tip and a field as its
   title, and a press or a form's submit does nothing.
 
+- **An ⓘ stays open, with focus, when its tab is drawn again, and each is named and worded for its place** (#447): an
+  ⓘ drawn by a tab got a new id each time, so on Medications, the Overview, What you paid and the Journal a window
+  resized, a phone turned or a dose logged dropped focus to the page and closed the words it had open. Its id now
+  comes from what it's about, so focus and an open ⓘ come back, and on a phone its sheet stays open as the phone turns,
+  focus going back to the ⓘ once it closes. Settings' search finds the words behind a section's ⓘ ("Only exact
+  conversions" shows Units, where it said nothing matched). The medications lane's ⓘ was named after the period
+  ("About The last 2 years") and What you paid's after its heading ("About Out of pocket · the last 2 years"); they're
+  "About the medications lane" and "About what you paid". The calendar feed's ⓘ sent reminders to "Timeline →
+  Medications" and Today's ⓘ on the Medications tab sent you to that tab; they say "the Medications tab" and "below".
+  Admin's provider directory says to run the download again now and then (Epic suggests weekly) in sight, not behind
+  its ⓘ.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

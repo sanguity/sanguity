@@ -571,7 +571,7 @@ function aboutWire() {
     const named = !h && !w.dataset.title && document.getElementById((w.closest("[aria-labelledby]")?.getAttribute("aria-labelledby") || "").split(" ")[0]);
     const title = w.dataset.title || (h ? ([...h.childNodes].filter(c => c.nodeType === 3).map(c => c.data).join("").trim() || h.textContent.trim()).replace(/\s*\(\d[\d,]*\)$/, "")
       : named?.textContent.trim() || "this part");
-    const name = "About " + title, id = w.id || "about" + (aboutWire.n = (aboutWire.n || 0) + 1);
+    const name = "About " + title, id = w.id || aboutId(title);
     const btn = el("button", {class: "btn quiet small", type: "button", id: id + "Btn", "aria-label": name, "data-tip": name, "aria-expanded": false, "aria-controls": id}, icon("info"));
     w.removeAttribute("hidden");
     Object.assign(w, {id, popover: "auto"});
@@ -596,6 +596,32 @@ function aboutWire() {
   if (did) aboutWire.after?.();   // (sidebar.js: a lone card's ⓘ beside the h1)
 }
 aboutWire.later = new Set();
+/* its id, from what it's about (#447): the same each time its part is drawn again, so focus on its button and its words
+   left open are found again there (store.js keepFocus); a second of the same name on the page gets a number */
+function aboutId(title) {
+  const base = "about-" + (title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") || "part");
+  let id = base;
+  for (let n = 2; document.getElementById(id); n++) id = base + "-" + n;
+  return id;
+}
+/* an ⓘ left open, kept through a redraw of its part (#447, store.js keepFocus): the ⓘ of its id, drawn again, opens
+   too; on a phone the sheet showing its words stays, the new ⓘ's now (its words and focus go back there as it closes).
+   aboutOpen() before the redraw, aboutKeep(what it gave) after */
+const aboutOpen = () => ({pops: [...document.querySelectorAll(".pop-text:popover-open")].map(w => w.id), sheet: aboutSheet.d?.open ? aboutSheet.d.sgShows : null});
+function aboutKeep({pops, sheet}) {
+  for (const id of pops) {
+    const w = document.getElementById(id), btn = w && document.getElementById(id + "Btn");
+    if (btn && !w.matches(":popover-open")) w.showPopover({source: btn});
+  }
+  const d = aboutSheet.d;
+  if (!sheet || sheet.btn.isConnected || !d.open) return;
+  const btn = document.getElementById(sheet.btn.id), w = btn && document.getElementById(btn.getAttribute("aria-controls"));
+  if (!w) return;
+  if (d.sgBack === sheet.btn) d.sgBack = btn;
+  w.replaceChildren();   // (its words are in the sheet)
+  d.sgShows = {btn, w}; d.sgFrom = btn;
+  btn.setAttribute("aria-expanded", "true");
+}
 /* a popover's on a wider screen, a sheet's on a phone (the button's click opens it: aboutSheet) */
 const aboutMode = btn => { const w = document.getElementById(btn.getAttribute("aria-controls")); if (ABOUT_PHONE.matches) w.hidePopover?.(); btn.popoverTargetElement = ABOUT_PHONE.matches ? null : w; };
 ABOUT_PHONE.addEventListener("change", () => { for (const b of document.querySelectorAll(".info > button")) aboutMode(b); });

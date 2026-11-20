@@ -86,6 +86,13 @@ function sideNav(o) {
         let hit = false;
         for (const s of sets) { const h = s.textContent.toLowerCase().includes(q); s.classList.toggle("set-off", !h); hit ||= h; }
         if (!sets.length) hit = p.textContent.toLowerCase().includes(q);
+        // or its own ⓘ's words (#447: a section's help, behind the ⓘ beside its title, or beside the h1 while it's
+        // alone), outside every .set: the part shown, all its settings with it if none of them says it
+        else if (!hit && [...p.querySelectorAll(".about-words"), ...(loneInfo && p.contains(loneInfo.sgHome) ? loneInfo.querySelectorAll(".about-words") : [])]
+          .some(w => !w.closest(".set") && w.textContent.toLowerCase().includes(q))) {
+          hit = true;
+          for (const s of sets) s.classList.remove("set-off");
+        }
         if (!hit) continue;
         on.add(p);
         const label = o.label ? o.label(g) : g.title;   // the group's name, unless the part's own title says it

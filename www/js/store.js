@@ -46,14 +46,15 @@ function storeChanged(...parts) {
   for (const [want, fn] of storeSubs) if (want.some(p => got.has(p))) fn(got);
 }
 /* draw() draws part of the page again; the control that had focus, if draw() replaced it, gives focus to its new self
-   (the same id, or the same kind of control with the same name), so a redraw doesn't drop it to the page; and what
-   focus goes back to when the drawer closes is found again too */
+   (the same id, or the same kind of control with the same name), so a redraw doesn't drop it to the page; an ⓘ left
+   open opens again (util.js aboutKeep); and what focus goes back to when the drawer closes is found again too */
 const focusKey = x => [x.tagName, x.type, x.id || x.getAttribute("aria-label") || (x.labels?.[0] || x).textContent.trim(), JSON.stringify(x.dataset)].join("\n");
 function keepFocus(draw) {
-  const a = document.activeElement, key = a && a !== document.body ? focusKey(a) : null;
+  const a = document.activeElement, key = a && a !== document.body ? focusKey(a) : null, open = aboutOpen();
   draw();
   aboutWire();   // the ⓘ drawn with it, there now to be found (util.js, #280)
   if (key && !a.isConnected) [...document.querySelectorAll(a.tagName)].find(x => focusKey(x) === key)?.focus({preventScroll: true});
+  aboutKeep(open);   // and one left open, open still (#447)
   drawerBack();   // and what opened the drawer, found again (drawer.js, #404)
 }
 

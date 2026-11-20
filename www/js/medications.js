@@ -90,10 +90,11 @@ function renderMedications() {
   const [a, b] = medWindow(), when = periodLabel("all the records");
   const rows = medsShown(a, b, "");
   const svg = el("svg:svg", {class: "med-lane", role: "img", "aria-label": `The medications from ${fmtD(a)} to ${fmtD(b)}, a row each: the same as listed under Current and Past.`});
-  const lane = el("div", {class: "card"}, el("h2", {text: when[0].toUpperCase() + when.slice(1)}),   // "The last 30 days", "Since diagnosis (Apr 14, 2025)", "2024"
-    rows.length ? [el("p", {class: "hint", text: "Point at a mark for what it is; click it to open it."}),   // the rest behind its ⓘ (#280)
-      aboutWords("A bar for each listing, a new shade where the dose changed; a line across its end where the records say it stopped, an arrow where they give no end; a small triangle under it for each pharmacy fill.",
-        "Doses logged: ● taken, ◆ taken late, ○ skipped."), svg]
+  // its heading the period ("The last 30 days", "Since diagnosis (Apr 14, 2025)", "2024"); its ⓘ named for what it's about (#447)
+  const lane = el("div", {class: "card"}, el("div", {class: "set-hd"}, el("h2", {text: when[0].toUpperCase() + when.slice(1)}),
+      rows.length ? aboutWords({title: "the medications lane"}, "A bar for each listing, a new shade where the dose changed; a line across its end where the records say it stopped, an arrow where they give no end; a small triangle under it for each pharmacy fill.",
+        "Doses logged: ● taken, ◆ taken late, ○ skipped.") : null),
+    rows.length ? [el("p", {class: "hint", text: "Point at a mark for what it is; click it to open it."}), svg]
       : el("p", {class: "hint", text: "No medications in this period."}));
   box.replaceChildren(...[today, now, before, lane].filter(Boolean),
     el("p", {class: "hint", text: "What the records list, in order: a listing's dates may not be when a medication started or ended. This isn't medical advice."}));
