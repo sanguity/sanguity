@@ -391,7 +391,13 @@ function renderPaid(box, claimRows, periodLabel) {
       onclick: () => { paidState.q = fil === t ? "" : t; keepFocus(renderCosts); }}))),
     filterLine(fil ? [`Showing ${list.length.toLocaleString()} of ${rows.length.toLocaleString()} amounts`, kept] : [],
       () => { paidState.q = ""; renderCosts(); }, () => $("#paidTable .toggle") || $("#paidTable")));
-  const toggle = r => { paidState.open = paidState.open === oopKey(r) ? null : oopKey(r); renderCosts(); const e = $("#oopEdit"); if (e) e.scrollIntoView({block: "nearest"}); };
+  // opened, its row in sight first, then as much of the editor under it as fits: an editor taller than the window (a
+  // sideways phone) lined up with its top would put the date that has focus above it (#473, 2.4.11), and clear of the
+  // headings stuck over it, however many lines they wrap to (63 px at 667 px; the cells' scroll-margin is 40)
+  const toggle = r => { paidState.open = paidState.open === oopKey(r) ? null : oopKey(r); renderCosts(); const e = $("#oopEdit");
+    const b = e && $(`#paidTable tr[data-oop="${oopKey(r)}"] .cell-btn`), th = b?.closest("table").tHead.rows[0].cells[0];
+    if (e) e.scrollIntoView({block: "nearest"});
+    if (b) { b.scrollIntoView({block: "nearest"}); const over = (th.checkVisibility() ? th.getBoundingClientRect().bottom : 0) - b.getBoundingClientRect().top; if (over > -8) scrollBy(0, -over - 8); } };
   const shown = Math.max(paidState.limit, list.findIndex(r => oopKey(r) === paidState.open) + 1);   // the open one too
   const open = paidState.open && rows.find(r => oopKey(r) === paidState.open), edit = open && oopEditor(open);
   // the amounts in the page's own scroll, 200 at a time (Show more), as the claims are: no box that scrolls inside it

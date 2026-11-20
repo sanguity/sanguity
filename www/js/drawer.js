@@ -105,9 +105,11 @@ function drawerDock(on) {
   };
   back(); requestAnimationFrame(() => requestAnimationFrame(back));
   // docked, what it was opened from still in view; undocked, what has focus on the page, which the wider page moved
-  // (a claim's row, focused as the drawer closed, #467), as the Timeline keeps its row
+  // (a claim's row, focused as the drawer closed, #467), as the Timeline keeps its row: the whole row, not only the
+  // button in it (#473: a claim's name at the window's edge, its date and amounts cut off), then the button clear of a
+  // table's sticky headers
   const r = on ? drawerBack() : document.activeElement;
-  if (r?.closest?.("main")) r.scrollIntoView({block: "nearest"});
+  if (r?.closest?.("main")) { r.closest("tr")?.scrollIntoView({block: "nearest"}); r.scrollIntoView({block: "nearest"}); }
   return true;
 }
 // the page moving over puts something else under a pointer that hasn't moved: no tooltip for it (util.js, by hover,
