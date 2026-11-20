@@ -209,8 +209,10 @@ function ovKeyLabs(lastDraw) {
   }
   if (out.length > 14) flags.append(el("p", {class: "hint", text: `${out.length - 14} more in Labs.`}));
   const groups = labGroups(shown);   // the series themselves, each looked up by itself (#438)
-  const parts = [ovHead("Key labs", el("p", {class: "hint", text: [lastDraw ? `latest draw ${fmtD(lastDraw)}` : "", since ? `changes since ${fmtD(dayTs(since))}` : "",
-    "sparklines show the last 6 months", "click a tile for its full trend"].filter(Boolean).join(" · ")})), flags];
+  // one line of hint, the dates; the rest behind its ⓘ (#280, #460)
+  const hint = [lastDraw ? `Latest draw ${fmtD(lastDraw)}` : "", since ? `changes since ${fmtD(dayTs(since))}` : ""].filter(Boolean).join(" · ");
+  const parts = [ovHead("Key labs", hint ? el("p", {class: "hint"}, keepDates(hint)) : null),
+    aboutWords("Sparklines show the last 6 months.", "A tile opens its lab's full trend on Labs."), flags];
   for (const g of groups) {
     if (groups.length > 1) parts.push(el("h3", {class: "ov-panel lab-panel", text: g.panel}));
     parts.push(el("div", {class: "tiles"}, ...g.labs.map(s => labTile(s, since, lastDraw))));

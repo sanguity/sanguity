@@ -419,6 +419,11 @@ DRAW_JS = """async t => { const [tab, view] = t.split("-");
   await new Promise(r => requestAnimationFrame(() => setTimeout(r)));
   return [performance.now() - s, document.getElementById("view-" + tab).getElementsByTagName("*").length]; }"""
 TABS = ("overview", "health", "medications", "timeline", "labs", "labs-heatmap", "costs")   # Medications since #275
+# every card of Body and activity's with Chart | Table, shown as a table (#460): each its latest 200 rows, Show more for
+# the rest; {all: every card's choice is Table, more: the Show more buttons}
+H_TABLES = ["#h-body", "#h-heart", "#h-bp", "#h-glucose", "#h-temp", "#h-oxygen", "#h-resp", "#h-sleep", "#h-activity", "#h-zones", "#h-vo2", "#h-growth"]
+H_TABLES_JS = """() => { const segs = [...document.querySelectorAll('#view-health .view-seg')];
+  return {all: segs.length > 0 && segs.every(s => s.querySelector('[aria-pressed=true]').textContent === 'Table'), more: document.querySelectorAll('#view-health .h-more').length}; }"""
 # Body and activity's sections on the ten years, each with its cards (#276)
 SECTIONS = [["hs-body", ["h-body"]], ["hs-vitals", ["h-heart", "h-bp", "h-glucose", "h-temp", "h-oxygen"]], ["hs-sleep", ["h-sleep"]], ["hs-activity", ["h-activity"]]]
 # the Timeline's Events list with the period "All" (#277): its first page, then Show more until every event it lists is
@@ -435,8 +440,9 @@ TL_ALL_JS = """async () => { const frame = () => new Promise(r => requestAnimati
 def page_times(viewport, throttle=1):
     """{tab: median ms to the page ready, loaded on that tab}, {tab: median ms of its first draw with the period
     "All"}, {tab: its elements}, any script or console errors, what Costs' out-of-pocket list shows before and
-    after Show 200 more, Body and activity's sections with their cards (#276), and the Timeline's list shown whole
-    (TL_ALL_JS, #277). throttle: Chromium's CPU slowdown (4: a phone)."""
+    after Show 200 more, Body and activity's sections with their cards (#276), the Timeline's list shown whole
+    (TL_ALL_JS, #277), and Body and activity with every card on Table (H_TABLES_JS, #460: its draw and elements are
+    the tab's "health, every table"). throttle: Chromium's CPU slowdown (4: a phone)."""
     from playwright.sync_api import sync_playwright
     errors, ready_ms, draw_ms, elements = [], {}, {}, {}
     with sync_playwright() as p:
@@ -484,8 +490,17 @@ def page_times(viewport, throttle=1):
         more.click()
         paged += [page.evaluate(rows), page.evaluate("() => document.querySelector('#paidTable tbody tr:nth-child(201)').contains(document.activeElement)")]   # its button (#202)
         tl_all = page.evaluate(TL_ALL_JS)
+        runs = []
+        for n in range(RUNS):   # Body and activity again, every card on Table (#460)
+            page.goto(f"{BASE}/index.html?profile=1&tables={n}#overview")
+            ready()
+            page.evaluate("ks => { for (const k of ks) state.tables.add(k); }", H_TABLES)
+            ms, elements["health, every table"] = page.evaluate(DRAW_JS, "health")
+            runs.append(ms)
+        draw_ms["health, every table"] = round(statistics.median(runs))
+        tables = page.evaluate(H_TABLES_JS)
         browser.close()
-    return ready_ms, draw_ms, elements, errors, paged, sections, tl_all
+    return ready_ms, draw_ms, elements, errors, paged, sections, tl_all, tables
 
 
 class PageBudgets(unittest.TestCase):
@@ -505,15 +520,16 @@ class PageBudgets(unittest.TestCase):
         self.assertEqual([tl_all["rows"], tl_all["focused"]], [tl_all["want"], True], tl_all)
 
     def test_desktop(self):
-        ready_ms, draw_ms, elements, errors, paged, sections, tl_all = page_times({"width": 1400, "height": 900})
+        ready_ms, draw_ms, elements, errors, paged, sections, tl_all, tables = page_times({"width": 1400, "height": 900})
         self.assertEqual(errors, [])
         self.assertEqual(paged, [200, "Show 200 more", 400, True])
         self.assertEqual(sections, SECTIONS, "Body and activity's sections (#276)")
+        self.assertTrue(tables["all"] and tables["more"] > 0, f"Body and activity, every card on Table, paged (#460): {tables}")
         self.check_timeline(tl_all, "")
         self.check("", {"page_ready_ms": ready_ms, "tab_draw_ms": {**draw_ms, "timeline, Show more": tl_all["ms"]}, "tab_elements": elements})
 
     def test_phone(self):   # 375 px wide, with the CPU four times slower
-        ready_ms, draw_ms, _, errors, _, _, tl_all = page_times({"width": 375, "height": 800}, throttle=4)
+        ready_ms, draw_ms, _, errors, _, _, tl_all, _ = page_times({"width": 375, "height": 800}, throttle=4)
         self.assertEqual(errors, [])
         self.check_timeline(tl_all, "phone_")
         self.check("phone_", {"page_ready_ms": ready_ms, "tab_draw_ms": {**draw_ms, "timeline, Show more": tl_all["ms"]}})

@@ -1578,6 +1578,12 @@ Everything on `main` so far; it becomes the first tagged release.
   before leaving went back in this browser (Light picked, the next page showed dark), the page said offline for a
   moment, and a second unit picked was sent twice. Once the page is being left, a save that fails does nothing more
   there, and nothing queued behind it is sent again.
+- **Body and activity's tables a page at a time, Key labs' hint on one line, Today's ⓘ named one way** (#460): a
+  card's Table drew every day; on ten years Heart rate's had 3,493 rows, and every card on Table about 64,000
+  elements. Each shows its latest 200 rows, with Show more for the next, as Costs' list does. The Overview's Key labs
+  had a four-part hint, three lines on a phone and "click" on touch screens; it says the latest draw and the changes'
+  date, the rest behind its ⓘ. Today's ⓘ was "About Today" on Medications and "About Today's medication doses" on the
+  Overview; it's "About today's medication doses" on both.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

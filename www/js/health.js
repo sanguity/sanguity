@@ -17,6 +17,17 @@ function hLoad() {
   } catch (e) {}
 }
 function hSave() { try { localStorage.setItem(hKey(), JSON.stringify({stays: hState.stays, bmiWho: hState.bmiWho})); } catch (e) {} }
+/* a card's Table (#460): its latest H_PAGE rows (they come newest first), then Show more for the next, as Costs' list
+   does; ten years drew every day, 3,500 rows for heart rate alone. key: the card's ("#h-…"), what hShown keeps, for
+   the page's life, of how many it shows. -> [the table, Show more if rows are left] */
+let H_PAGE = 200;   // (the browser check shows fewer, to see Show more on the demo)
+const hShown = {};
+function hTable(key, heads, rows) {
+  const n = Math.max(H_PAGE, hShown[key] || 0);
+  return [chartTable(heads, rows.slice(0, n)), rows.length > n ? el("button", {class: "btn h-more", type: "button", text: `Show ${Math.min(H_PAGE, rows.length - n).toLocaleString()} more`,
+    onclick: () => { hShown[key] = n + H_PAGE; renderHealth();
+      const r = $(`${key} tbody`)?.rows[n]; if (r) { r.tabIndex = -1; r.focus(); } }}) : null].filter(Boolean);   // the first one added
+}
 function openHealth(a, b) { closeDrawer(); state.from = a; state.to = b; state.preset = "custom"; pickTab("health"); }
 function hData() {
   const M = Object.fromEntries(((WATCH || {}).metrics || []).map(m => [m.key, m]));
@@ -289,7 +300,7 @@ function renderHealth() {
     if (state.tables.has("#h-body")) {
       const comp = H.fat.length || H.lean.length;
       const bm = H.bmi.length > 0, who = bm && hState.bmiWho && H.bmi.some(r => !r.child);   // BMI (#195)
-      body.append(chartTable(["Date", "Weight (lb)", "From", ...(bm ? ["BMI (kg/m²)"] : []), ...(who ? ["WHO adult category"] : []), ...(comp ? ["Body fat (%)", "Lean mass (lb)"] : [])],
+      body.append(...hTable("#h-body", ["Date", "Weight (lb)", "From", ...(bm ? ["BMI (kg/m²)"] : []), ...(who ? ["WHO adult category"] : []), ...(comp ? ["Body fat (%)", "Lean mass (lb)"] : [])],
         byDay(wAll, H.fat, H.lean, H.bmi.map(r => [r.t, r.v, r])).map(({t, v: [w, fat, lean, bp]}) => [fmtD(t), w && wSide(w) ? [f1(w), wSide(w), TGT_WORDS[wSide(w)]] : f1(w), w ? (w[2] ? `Clinic visit (${w[2]})` : "Smart scale") : "",
           ...(bm ? [bp ? bmiWords(bp[2]) : ""] : []), ...(who ? [bp && !bp[2].child ? whoWords(bp[2].v) : ""] : []), ...(comp ? [f1(fat), f1(lean)] : [])])));
     } else { body.append(legend([[C.w, "Smart scale", 1], [C.clinic, "Clinic visit", 1], [C.w, "14-day average"]])); if (wT) body.lastChild.append(tgtKey()); }
@@ -325,7 +336,7 @@ function renderHealth() {
     S.vitals.append(ht);
     const rest = H.rest, restT = rolling(rest, long ? 14 : 5);
     if (state.tables.has("#h-heart")) {
-      ht.append(chartTable(["Date", "Resting (bpm)", "Average (bpm)", "Low–high (bpm)", ...(H.hrv.length ? ["Heart rate variability (ms)"] : [])],
+      ht.append(...hTable("#h-heart", ["Date", "Resting (bpm)", "Average (bpm)", "Low–high (bpm)", ...(H.hrv.length ? ["Heart rate variability (ms)"] : [])],
         byDay(rest, H.hr, H.hrv).map(({t, v: [r, h, hv]}) => [fmtD(t), f0(r), f0(h), h && h[2] != null ? `${Math.round(h[2])}–${Math.round(h[3])}` : "", ...(H.hrv.length ? [f0(hv)] : [])])));
     } else {
       ht.append(legend([[C.rest, "Resting"], [C.hr, "Daily average"], ["color-mix(in srgb, " + C.hr + " 30%, transparent)", "Daily low–high"]]));
@@ -354,7 +365,7 @@ function renderHealth() {
     const nights = H.sleep.map(p => { const st = p[2] + p[3] + p[4]; return [p[0], p[2], p[3], p[4], st > 0 ? 0 : p[1]]; });
     const sBars = long ? weekly(nights) : nights;
     const mins = v => v ? String(Math.round(v * 60)) : "";
-    if (state.tables.has("#h-sleep")) sl.append(chartTable([long ? "Week" : "Night", long ? "Asleep (h, average a night)" : "Asleep (h)", "Deep (min)", "REM (min)", "Light (min)"],
+    if (state.tables.has("#h-sleep")) sl.append(...hTable("#h-sleep", [long ? "Week" : "Night", long ? "Asleep (h, average a night)" : "Asleep (h)", "Deep (min)", "REM (min)", "Light (min)"],
       byDay(sBars).map(({t, v: [p]}) => [long ? weekOf(t) : fmtD(t), (p[1] + p[2] + p[3] + p[4]).toFixed(1), mins(p[1]), mins(p[2]), mins(p[3])])));
     else sl.append(legend([[C.deep, "Deep"], [C.rem, "REM"], [C.light, "Light"], ["var(--muted)", "Asleep, no stages"]]));
     if (!state.tables.has("#h-sleep")) hChart(sl, a, b, {h: 200, fmtY: v => v + "h", label: long ? "Sleep, weekly averages" : "Sleep", noun: long ? "week" : "night", nav: sBars, layers: [{type: "bars", data: sBars, keys: ["deep", "rem", "light", "other"], colors: [C.deep, C.rem, C.light, "var(--muted)"], every: long ? 7 * DAY : DAY}],
@@ -373,7 +384,7 @@ function renderHealth() {
       const wk = t => { const d = zdate(t); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime() + 3 * DAY; };
       const exBy = new Map(); for (const x of exIn) { const t = long ? wk(x.t) : dayTs(isoDay(x.t)); exBy.set(t, [...(exBy.get(t) || []), x]); }
       const exPts = [...exBy.keys()].map(t => [t]);
-      act.append(chartTable([long ? "Week" : "Date", long ? "Steps (average a day)" : "Steps", "Workouts"],
+      act.append(...hTable("#h-activity", [long ? "Week" : "Date", long ? "Steps (average a day)" : "Steps", "Workouts"],
         byDay(stBars, exPts).map(({t, v: [p, e]}) => [long ? weekOf(t) : fmtD(t), f0(p),
           (exBy.get(e ? e[0] : NaN) || []).map(x => x.pt ? `${x.rule} appointment, counted as ${x.min} min` : `${x.name || "Workout"} ${x.min} min`).join("; ")])));
     } else act.append(legend([[C.steps, long ? "Steps / day (weekly avg)" : "Steps"], ["var(--ink2)", long ? "30-day average" : "7-day average"]]));
@@ -516,7 +527,7 @@ function bpCard(box, a, b, long, legend, head, home, clinic) {
   const bT = [tgtIn("bp", "mmHg", "sys"), tgtIn("bp", "mmHg", "dia")];   // targets of the person's own (#234)
   tgtLine(card, "bp", "mmHg", bT.some(Boolean) ? home.filter(inP).map(r => (r.tf || []).find(Boolean) || "") : null, " Readings taken at visits keep their own report's flags.");
   if (state.tables.has("#h-bp")) {   // the list of readings: when, both pressures, pulse, where and from what
-    card.append(chartTable(["Date and time", "Systolic (mmHg)", "Diastolic (mmHg)", "Pulse (bpm)", "Where", "Source"],
+    card.append(...hTable("#h-bp", ["Date and time", "Systolic (mmHg)", "Diastolic (mmHg)", "Pulse (bpm)", "Where", "Source"],
       [...all].reverse().map(r => [fmtDT(r.t), tgtCell(r.v[0] != null ? fmtNum(r.v[0]) : "", r, 0), tgtCell(r.v[1] != null ? fmtNum(r.v[1]) : "", r, 1),
         r.pulse != null ? fmtNum(r.pulse) : "", r.home ? "Home" : "Clinic visit", r.src + homeAlso(r).replace(/ · /g, "; ")])));
     return;
@@ -677,7 +688,7 @@ function hGlucose(box, a, b, {head, legend, byDay}) {
   const dayPts = [...new Set([...G.days.map(d => d.d), ...meterBy.keys(), ...labBy.keys()])].sort().map(d => [dayTs(d)]);
   if (!dayPts.some(p => p[0] >= a && p[0] <= b)) { card.append(el("p", {class: "hint", text: `No glucose readings in this period (the last on ${fmtD(G.last)}).`})); return; }
   if (table) {
-    card.append(chartTable(["Date", `Average (${u})`, `Low–high (${u})`, `${s1}–${s2} (%)`, `Below ${s1} (%)`, `Below ${s0} (%)`, `Above ${s2} (%)`, "Hours with readings", `Meter readings (${u})`, ...(labs ? [`Lab results (${u})`] : [])],
+    card.append(...hTable("#h-glucose", ["Date", `Average (${u})`, `Low–high (${u})`, `${s1}–${s2} (%)`, `Below ${s1} (%)`, `Below ${s0} (%)`, `Above ${s2} (%)`, "Hours with readings", `Meter readings (${u})`, ...(labs ? [`Lab results (${u})`] : [])],
       byDay(dayPts).map(({t}) => { const k = isoDay(t), d = dayBy.get(k), ls = labBy.get(k) || [];
         return [fmtD(t), d ? fmt(d.avg) : "", d ? `${fmt(d.lo)}–${fmt(d.hi)}` : "", d ? gPct(d.in) : "", d ? gPct(d.lt70) : "", d ? gPct(d.lt54) : "", d ? gPct(d.gt180) : "",
           d ? `${gHours(d.hours)} (${d.n} readings)` : "", (meterBy.get(k) || []).map(m => `${fmtTime(m[0])} ${fmt(m[1])}${m[2] || m[4] ? ` (${[m[2] && m[2].toLowerCase(), m[3], tgtWord(m[4])].filter(Boolean).join(", ")})` : ""}`).join("; "),
@@ -729,7 +740,7 @@ function tempCard(box, a, b, legend, head, {unit, chosen, home, clinic}) {
   const tT = tgtIn("temp", unit);   // a target of the person's own (#234)
   tgtLine(card, "temp", unit, tT ? home.filter(r => r.t >= a && r.t <= b).map(r => (r.tf || [])[0] || "") : null);
   if (state.tables.has("#h-temp")) {
-    card.append(chartTable(["Date and time", `Temperature (${unit})`, "Where", "Source"],
+    card.append(...hTable("#h-temp", ["Date and time", `Temperature (${unit})`, "Where", "Source"],
       [...all].reverse().map(r => [fmtDT(r.t), tgtCell(r.v[0].toFixed(1), r, 0), r.home ? "Home" : "Clinic visit", r.src + homeAlso(r).replace(/ · /g, "; ")])));
     return;
   }
@@ -758,7 +769,7 @@ function oxygenCard(box, a, b, long, legend, head, {home, typed = [], clinic}) {
   const oT = tgtIn("spo2", "%");   // a target of the person's own (#234): each day's average, and each reading typed in
   tgtLine(card, "spo2", "%", oT ? all.filter(r => r.home).map(r => (r.tf || [])[0] || "") : null, oT && home.length ? " At home: each day's average from the phone, and each reading typed in." : "");
   if (state.tables.has("#h-oxygen")) {
-    card.append(chartTable(["Date", "SpO2 (%)", "Day's low (%)", "Where", "Source"],
+    card.append(...hTable("#h-oxygen", ["Date", "SpO2 (%)", "Day's low (%)", "Where", "Source"],
       [...all].reverse().map(r => [r.day ? fmtD(r.t) : fmtDT(r.t), tgtCell(fmtNum(r.v[0]), r, 0), r.v[1] != null ? fmtNum(r.v[1]) : "",
         r.day ? "Home, daily average" : r.home ? "Home, one reading" : "Clinic visit", r.src + homeAlso(r).replace(/ · /g, "; ")])));
     return;
@@ -815,7 +826,7 @@ function phoneDayCard(box, {a, b, long, legend, head}, o) {
   box.append(card);
   const all = [...o.home, ...o.clinic].filter(r => r.t >= a && r.t <= b).sort((p, q) => p.t - q.t);
   if (state.tables.has(key)) {
-    card.append(chartTable(["Date", `${o.name} (${o.unit})`, ...(visits ? ["Where"] : []), "Source"],
+    card.append(...hTable(key, ["Date", `${o.name} (${o.unit})`, ...(visits ? ["Where"] : []), "Source"],
       [...all].reverse().map(r => [r.day ? fmtD(r.t) : fmtDT(r.t), [fmt(r.v[0]), r.f[0]], ...(visits ? [r.day ? "Phone" : "Clinic visit"] : []),
         r.day ? r.src[0].toUpperCase() + r.src.slice(1) : r.src])));
     return;
@@ -895,7 +906,7 @@ function hZones(box, a, b, {long, legend, head, byDay}) {
   for (const x of withHr) { if (!x.hr.zones) continue; const k = wk(x.t), w = weeks.get(k) || {z: [0, 0, 0, 0, 0, 0], n: 0}; x.hr.zones.forEach((s, i) => { w.z[i] += s; }); w.n++; weeks.set(k, w); }
   const pts = [...weeks.entries()].sort((p, q) => p[0] - q[0]).map(([t, w]) => [t, ...w.z.slice(1).map(s => s / 60), w]);
   if (state.tables.has(key)) {
-    card.append(chartTable(["Week", ...[1, 2, 3, 4, 5].map(k => `Zone ${k} (min)`), "Below zone 1 (min)", "Workouts with readings"],
+    card.append(...hTable(key, ["Week", ...[1, 2, 3, 4, 5].map(k => `Zone ${k} (min)`), "Below zone 1 (min)", "Workouts with readings"],
       byDay(pts).map(({t, v: [p]}) => ["Week of " + fmtD(t - 3 * DAY), ...p.slice(1, 6).map(m => String(Math.round(m))), String(zMin(p[6].z[0])), String(p[6].n)])));
   } else {
     card.append(legend(Z_PCT.map((p, i) => [Z_C[i], `Zone ${i + 1} · ${p}${i < 4 ? `–${Z_PCT[i + 1]}` : "% and above"}${i < 4 ? "%" : ""}`])));
@@ -1047,7 +1058,7 @@ function growthCard(box, head) {
     + "Curves as each publishes them: the WHO's 3rd, 15th, 50th, 85th and 97th percentiles, the CDC's 5th to 95th."
     + (corrected ? " Before 2 years, ages are corrected for being born early (the due date in About this person)." : "")});
   if (state.tables.has("#h-growth")) {   // every measurement, newest first, with both charts' sets
-    card.append(chartTable(["Date", "Age", "Measurement", "Value", "Percentile", "Chart", "From"],
+    card.append(...hTable("#h-growth", ["Date", "Age", "Measurement", "Value", "Percentile", "Chart", "From"],
       [...D.meas].reverse().map(m => [fmtD(m.t), gAgeText(m.age), gName(m.key, m.set), gVal(m), m.p == null ? "" : pctText(m.p), m.set.toUpperCase(), m.src])), note);
     return;
   }
