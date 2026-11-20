@@ -1414,6 +1414,16 @@ Everything on `main` so far; it becomes the first tagged release.
   within its panel), and the labs with no panel, or alone in theirs, in Other, last, collapsed in the list until
   opened. Above the charts, the view switch, Show on charts, a Legend and an ⓘ (the drag hint and how to zoom) share
   one row, with the not-medical-advice caption under it.
+- **An import review screen: new, already here, or possibly the same** (#282): an import waiting to be saved said
+  "Ready to import." over a bulleted list of counts, each unknown lab name had a list of about 60 series to scroll,
+  and its button said only Save. The review now names the format and the dates ("C-CDA health summary (XML) · Jan 15,
+  2025 – Jun 10, 2026"); has a tile per kind of record, its icon in the kind's Timeline colour, with a few of what's
+  new in it (the server sends them with the preview, "samples"); a bar of how many records are new, already here and
+  possibly the same as another source's; and the lab names to match as a table, each series typed with a list to pick
+  from (a name that isn't a series is refused, saying so at its box). Its button, in a bar at the foot that stays in
+  view, says what it does ("Add 6 lab results"), following the duplicates ticked; an upload that's all duplicates
+  has nothing to add until one is. Duplicates and possible matches still act only when ticked, and nothing is saved
+  before the button.
 - **A Medications tab** (#275): medications showed in six places, but only a medication's drawer held one, so
   nothing answered "what is she taking now?". A tab after Body and activity has **Today** (each of today's doses,
   logged with Taken, Taken late or Skipped: the dose log lives here, and Add → Log a dose opens it), **Current** (since

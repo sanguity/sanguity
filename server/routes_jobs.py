@@ -3,7 +3,8 @@ then confirm (save) or discard it. Owners and editors only; the CSRF check in ma
 other change.
 
   POST /api/profiles/{pid}/uploads/{id}/import   start: {"id": job id}
-  GET  /api/profiles/{pid}/jobs[/{id}]           how it goes; in state "preview", what it would add and the duplicates
+  GET  /api/profiles/{pid}/jobs[/{id}]           how it goes; in state "preview", what it would add (and a few of
+                                                 each, "samples", #282) and the duplicates
   POST /api/profiles/{pid}/jobs/{id}/confirm     save it, {"keep": [refs of duplicates to save anyway],
                                                  "labs": {series ref: series name, or null to keep its own},
                                                  "same": [refs of possible matches that are the same result]} optional

@@ -16,15 +16,17 @@ opened) and dropped when all of them are duplicates; keeping one anyway keeps it
 keeps its day. jobs.py re-runs importers.check() on what's left before saving it.
 
   dups = find(db, pid, fmt, data)
-  report(data, dups) -> {"counts", "range", "duplicates": {...}, "total"}   for the page
+  report(data, dups) -> {"counts", "samples", "range", "duplicates": {...}, "total"}   for the page
   trim(data, dups, keep) -> the data to save                               keep: refs of duplicates to save anyway
 """
-import collections, copy, json
+import collections, copy, json, re
 
 from . import records
 
 ROWS = records.ROWS
 ITEMS_SHOWN = 500   # duplicates listed for the page, at most
+SAMPLES = 3         # what's new shown on the review screen, of each kind (#282)
+PLAIN = re.compile(r"[<>≤≥]?=?\s*-?[\d.,]+|[^\d]+")   # a value as reported that's only a value: "<5", "1,200", "Negative"
 
 
 def _canon(x):
@@ -217,13 +219,48 @@ def documents(data):
                if isinstance(d, dict) and d.get("type") == "file" and d.get("url"))
 
 
+def _latest(rows, n=SAMPLES):
+    return sorted(rows, key=lambda r: r["t"], reverse=True)[:n]
+
+
+def samples(new):
+    """A few of what's new for the review screen (#282), latest first, SAMPLES of each: {"events": {kind: [{"t",
+    "title"}]} (visible events), "results": [{"t", "name", "value", "unit"}] (the value as reported), "allergies",
+    "problems": [{"t", "title"}], "upcoming": [{"t", "title"}]}."""
+    by_kind = collections.defaultdict(list)
+    for e in new.get("events") or []:
+        if isinstance(e, dict) and not e.get("hidden"):
+            by_kind[str(e.get("k"))].append({"t": str(e.get("t") or "")[:10], "title": str(e.get("title") or "")})
+    results = []
+    for s in new.get("labs") or []:
+        if not isinstance(s, dict):
+            continue
+        for p in s.get("pts") or []:
+            if isinstance(p, list) and p:
+                shown = str(p[5]) if len(p) > 5 and p[5] not in (None, "") else ""
+                if not PLAIN.fullmatch(shown) and len(p) > 1 and isinstance(p[1], (int, float)):
+                    shown = f"{p[1]:g}"   # the number, where the value as reported has more in it (its unit: "82 mm[Hg]")
+                results.append({"t": str(p[0])[:10], "name": str(s.get("name") or ""), "value": str(shown), "unit": str(s.get("unit") or "")})
+        for t in s.get("txt") or []:
+            if isinstance(t, list) and len(t) > 1:
+                results.append({"t": str(t[0])[:10], "name": str(s.get("name") or ""), "value": str(t[1]), "unit": ""})
+    probs = [p for p in new.get("problems") or [] if isinstance(p, dict)]
+    listed = lambda rows: _latest([{"t": str(p.get("date") or "")[:10], "title": str(p.get("name") or "")} for p in rows])
+    return {"events": {k: _latest(v) for k, v in sorted(by_kind.items())}, "results": _latest(results),
+            "allergies": listed([p for p in probs if p.get("type") == "Allergy"]),
+            "problems": listed([p for p in probs if p.get("type") != "Allergy"]),
+            "upcoming": _latest([{"t": str(u.get("t") or "")[:10], "title": str(u.get("title") or "")}
+                                 for u in new.get("upcoming") or [] if isinstance(u, dict)])}
+
+
 def report(data, dups, summarise):
-    """For the page: what's new (counts by kind, as jobs.summarise counts them), the date range the upload covers,
-    and the duplicates (counted, and listed with a ref to keep one anyway)."""
+    """For the page: what's new (counts by kind, as jobs.summarise counts them, and a few of each: samples), the date
+    range the upload covers, and the duplicates (counted, and listed with a ref to keep one anyway)."""
     new = trim(data, dups)
     whole = summarise(data)
     out = summarise(new)
     out["counts"]["documents"] = documents(new)
+    out["samples"] = samples(new)
     out["range"] = whole["range"]
     events = {str(e.get("id")): e for e in data.get("events") or [] if isinstance(e, dict)}
     kinds = collections.Counter(str(events[i].get("k")) for i in dups["events"] if i in events and not events[i].get("hidden"))
