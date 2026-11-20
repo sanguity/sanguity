@@ -410,7 +410,16 @@ def get(db, pid, jid):
     return describe(r) if r else None
 
 
-def recent(db, pid, limit=RECENT):
+STATES = ("queued", "running", "preview", "done", "failed", "discarded")
+WAITING = 100   # previews listed at most: each is an import someone left to save or cancel (#283)
+
+
+def recent(db, pid, limit=RECENT, state=None):
+    """The profile's jobs, newest first: the RECENT latest, or with state, every one in that state (up to WAITING): the
+    Sources overview's "Waiting for you" asks for the previews, however long ago they were left open."""
+    if state:
+        return [describe(r) for r in db.execute("SELECT * FROM jobs WHERE profile_id=? AND state=? ORDER BY id DESC LIMIT ?",
+                                                (pid, state, WAITING))]
     return [describe(r) for r in db.execute("SELECT * FROM jobs WHERE profile_id=? ORDER BY id DESC LIMIT ?", (pid, limit))]
 
 

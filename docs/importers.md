@@ -376,7 +376,7 @@ adds to the profile's records and never replaces them.
 |---|---|
 | `POST /api/profiles/{pid}/uploads/{upload_id}/import` | Owners and editors. Optional `{"importer": NAME}`. Returns `{"id"}` (202). |
 | `GET /api/profiles/{pid}/jobs/{id}` | `state` (queued, running, done, failed), `stage` (detecting, parsing, saving), `importer`, `label`, `counts`, `range`, `warnings`, `message`. |
-| `GET /api/profiles/{pid}/jobs` | The profile's 20 most recent jobs, newest first. |
+| `GET /api/profiles/{pid}/jobs` | The profile's 20 most recent jobs, newest first. With `?state=preview` (or another state), every job in that state instead: Sources' "Waiting for you" lists the previews left open this way. |
 
 ## Import history and undo: `server/history.py`
 

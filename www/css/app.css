@@ -280,6 +280,7 @@ button.tile{cursor:pointer}
 .menu-item[aria-disabled="true"]{color:var(--muted);cursor:not-allowed}
 .menu-head{padding:var(--sp-1) var(--sp-3) 2px var(--sp-5);color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-semibold)}
 .menu-note{flex:none;color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-regular)}
+.menu-n:not(:empty){margin-left:var(--sp-1);padding:0 var(--sp-2);border-radius:var(--r-pill);background:var(--accent);color:var(--on-accent);font-size:var(--fs-2);font-weight:var(--fw-semibold)}   /* how many: Add's Waiting for you (#283) */
 .menu-item[aria-current="page"]{font-weight:var(--fw-semibold)}
 
 /* ---- tooltips (#261, data-tip, util.js): over its element, centred on it, or under it where there's no room above,
@@ -1522,24 +1523,49 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .adm .adm-gate{font-size:var(--fs-3);margin:var(--sp-2) 0 0}
 .adm #notAdmin p{max-width:62ch}
 /* the Sources page (#166, sources.html): Settings' sidebar (main.sets) with the import, connect and provider cards */
-.src #srcList h3.sub{margin:var(--sp-4) 0 0;padding-bottom:var(--sp-1);border-bottom:1px solid var(--grid);font-size:var(--fs-2);letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
-.src #srcList>.muted{margin:var(--sp-2) 0 0;font-size:var(--fs-3)}
-.src .src-rows{list-style:none;margin:0;padding:0}
-.src .src-row:first-child{border-top:0}
-.src .src-row{display:flex;gap:var(--sp-2) var(--sp-3);align-items:center;justify-content:space-between;border-top:1px solid var(--grid);padding:var(--sp-2) 0}
-.src .src-row.bad{box-shadow:inset 3px 0 0 var(--crit);padding-left:var(--sp-3)}
-.src .src-row-t{min-width:0;overflow-wrap:anywhere}
-.src .src-row-t p{margin:2px 0 0;font-size:var(--fs-3)}
-.src .src-row .btn{flex:none}
-.src .src-last{color:var(--ink2)}
-.src .src-add,.src .src-more{margin:var(--sp-3) 0 0;font-size:var(--fs-3)}
-.src .src-alert{margin:var(--sp-2) 0}
+.src .src-more{margin:var(--sp-3) 0 0;font-size:var(--fs-3)}
+/* its Overview (#283): what's waiting for you, then a card per way in, its title the link to its section (the whole
+   card answers a press); on a phone the cards are the way in, the sidebar put away, a link back over the other sections */
+.src :is(.src-wait,.src-ways,.src-way-list){list-style:none;margin:0;padding:0}
+.src .src-wait-row{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);align-items:center;padding:var(--sp-3) 0;border-top:1px solid var(--grid)}
+.src .src-wait-row:first-child{border:0;padding-top:0}
+.src :is(.src-wait-row,.src-way-t)>.icon{flex:none;color:var(--accent)}
+.src :is(.src-wait-row,.src-way-list li)>.icon-l{color:var(--crit)}
+.src .src-wait-t{flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
+.src :is(.src-wait-t,.src-way) p,.src .src-wait-none{margin:2px 0 0;font-size:var(--fs-3);color:var(--ink2)}
+.src .src-wait-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.src #srcReview>.import-job{margin:var(--sp-3) 0 0;padding:var(--sp-3) 0 0;border:0;border-top:1px solid var(--grid);border-radius:0}   /* not a card in a card */
+.src .src-ways{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:var(--sp-3)}
+.src .src-empty+.src-ways{margin-top:var(--sp-4)}
+.src .src-way{position:relative;min-width:0;padding:var(--sp-3);border:1px solid transparent;border-radius:var(--r-lg);background:var(--hover);overflow-wrap:anywhere}
+.src .src-way:has(a):hover{border-color:var(--axis)}
+.src .src-way[data-state=bad]{box-shadow:inset 3px 0 0 var(--crit)}
+.src .src-way-t{display:flex;gap:var(--sp-2);align-items:center;margin:0 0 var(--sp-2);font-size:var(--fs-4)}
+.src .src-way-t a{color:var(--ink);text-decoration:none}
+.src .src-way-t a::after{content:"";position:absolute;inset:0;border-radius:inherit}
+.src p.src-way-st{color:var(--ink);font-weight:var(--fw-medium)}
+.src .src-way-st::before{content:"";display:inline-block;width:8px;height:8px;margin-right:var(--sp-2);border-radius:var(--r-pill);border:1px solid var(--muted);vertical-align:1px}
+.src [data-state=ok]>.src-way-st::before{background:var(--good);border:0}
+.src [data-state=bad]>.src-way-st::before{background:var(--crit);border:0}
+.src .src-way-list{margin-top:var(--sp-2);font-size:var(--fs-3)}
+.src .src-way-list li{display:flex;gap:var(--sp-1);align-items:baseline}
+.src .src-empty{text-align:center}
+.src .src-empty p{margin-inline:auto}
+.src .src-pic{display:flex;justify-content:center;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-3);color:var(--muted)}
+.src .src-pic>span{display:flex;padding:var(--sp-2);border-radius:var(--r-pill);background:var(--hover);color:var(--accent)}
+.src .src-pic>.src-pic-to{padding:var(--sp-3);background:var(--accent);color:var(--on-accent)}
+.src .src-pic-to .icon{width:28px;height:28px}
+.src .src-back{display:none;align-items:center;gap:var(--sp-1);margin-bottom:var(--sp-2);font-size:var(--fs-3)}
+.src .src-back>.icon{transform:rotate(90deg)}
+@media (max-width:760px){
+  main.src.with-nav>.set-nav{display:none}
+  main.src:not([data-group=overview]) .src-back{display:inline-flex}
+}
 .src .dir-find{margin-top:var(--sp-4)}
 .src .dir-detail{border-top:1px solid var(--grid);margin-top:var(--sp-3);padding-top:var(--sp-3)}
 .src .dir-hd h3{font-size:var(--fs-4);margin:0;overflow-wrap:anywhere}
 .src #detail h4.sub{margin:var(--sp-4) 0 var(--sp-2);font-size:var(--fs-3)}
 .src #detail .dir-copy{margin-bottom:var(--sp-3)}
-@media (max-width:600px){ .src .src-row{flex-wrap:wrap} }
 /* the Sharing page (#168, sharing.html): Settings' sidebar (main.sets) with Account's cards; Profile set apart in it */
 .shr .shr-members td:first-child{overflow-wrap:anywhere}
 .shr .shr-share input{flex:1 1 140px;min-width:0}

@@ -37,17 +37,23 @@
   <!-- the group shown (sources-page.js), the profile everything here is about (the top bar's picker, nav.js), and what
        you can do with it -->
   <div class="set-top" id="intro" hidden>
+    <a class="src-back" href="#overview"><!-- on a phone, the way back to the Overview's cards (#283) --></a>
     <div class="set-top-hd">
       <h1 id="groupTitle">Sources</h1>
     </div>
     <p class="set-who" id="introHint"></p>
   </div>
 
-  <!-- Overview (sources-overview.js) -->
+  <!-- Overview (sources-overview.js, #283): what's waiting for you (an import left to review, a portal to sign in to
+       again), then one card per way records come in, each opening its section: on a phone, the way into them -->
+  <section class="card" id="waiting" hidden>
+    <h2>Waiting for you</h2>
+    <ul class="src-wait" id="srcWait"></ul>
+    <div id="srcReview"></div>
+  </section>
   <section class="card" id="srcOverview" hidden>
-    <h2>Overview</h2>
+    <h2>Where records come from</h2>
     <p class="hint">Every way records reach this profile, and when each last brought something.</p>
-    <div id="srcWarn"></div>
     <div id="srcList"></div>
   </section>
 

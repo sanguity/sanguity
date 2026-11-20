@@ -36,7 +36,8 @@ function sgIcon(key) {
 }
 const SG_PAGES = {
   sources: {page: "sources.html", title: "Sources", icon: "database", profile: true, words: "import add records bring in", groups: [
-    {id: "overview", title: "Overview", icon: "layout-list", has: ["srcOverview"], words: "sources connections where records come from"},
+    {id: "overview", title: "Overview", icon: "layout-list", has: ["waiting", "srcOverview"],   // #283
+     words: "sources connections where records come from waiting for you review"},
     {id: "portals", title: "Portals and health plans", icon: "plug", part: "Connected", has: ["mine"], needs: "editor",   // the ways in: owners' and editors' (#401)
      words: "connect portal patient health plan insurance fhir sync"},
     {id: "phone", title: "Phone and watch", icon: "watch", part: "Connected", has: ["watch", "cycle"], needs: "editor",   // cycle tracking (#183)

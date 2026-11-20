@@ -43,6 +43,14 @@ const SgSources = (() => {
   }
   // the import history's section comes from its own script (import-history.js), after this one
   document.addEventListener("DOMContentLoaded", nav.again);
+  /* an import's card once it's over (saved, failed or cancelled: import-jobs.js marks it settled) goes when another
+     section is shown, so finished cards don't stay under every section, nor pile up (#283) */
+  document.addEventListener("sources:group", () => { for (const c of document.querySelectorAll(".import-job[data-settled]")) c.remove(); });
+  /* on a phone the sidebar gives way to the Overview's cards, the way into each section (#283, app.css): above the
+     others' titles, the way back to them, focus on the Overview's title */
+  const srcBack = $(".src-back");
+  srcBack.replaceChildren(icon("chevron-down"), "Overview");
+  srcBack.onclick = ev => { ev.preventDefault(); show("overview", {push: true}); const h = $("#groupTitle"); h.tabIndex = -1; h.focus(); };
 
   /* ---------------------------------------------------------------- whose records, and what you can do here */
   function hint() {

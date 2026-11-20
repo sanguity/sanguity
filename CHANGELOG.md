@@ -1456,6 +1456,17 @@ Everything on `main` so far; it becomes the first tagged release.
   disclosure named for them ("How to set up Health Auto Export on an iPhone"). What someone needs in order to act stays
   in full, at 14 px: what to upload, what a field expects, a warning before turning something on. Settings' own help
   splits the same way (a line break in the server's words), and no disclosure is labelled "More about this".
+- **Sources' Overview is a hub, with what's waiting for you** (#283): no page read the server's import jobs, so an
+  import whose preview was left open (the tab closed before Save or Cancel) waited with no way back to it. Now
+  **Waiting for you** heads the Overview: each import left at its preview, a portal's first pull among them, with
+  **Review** (its preview, opened there) and **Cancel import…**, and each portal whose access ended or that stopped
+  syncing, with the way to it. Add lists it too, first under Records, with how many, while something is waiting. Below
+  it, one card per way records come in, each with how it's doing ("Connected · synced 2 h ago", "Not set up") and its
+  last activity, opening its section; a profile nothing has come into yet has an empty state with a picture. On a phone
+  these cards are the way into each section, in place of a sidebar that showed two and a half of its seven, with the
+  way back above every other section. An import's card once it's saved, failed or cancelled goes when another section
+  is shown, rather than staying under every one. The server lists a profile's jobs by state
+  (`GET /api/profiles/{pid}/jobs?state=preview`), so a preview left open long ago is found too.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

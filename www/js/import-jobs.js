@@ -310,8 +310,11 @@
 
   // replaceChildren turns a null into the text "null"; parts that aren't there are left out instead
   function fill(card, ...parts) { card.replaceChildren(...parts.filter(p => p != null)); }
+  /* a card whose import is over (saved, failed or cancelled): Sources clears it once another section is shown (#283) */
+  const settled = card => { card.dataset.settled = ""; };
 
   function showDone(card, pid, j) {
+    settled(card);
     const c = j.counts || {}, items = countItems(c), sk = j.skipped || {};
     const skipped = (sk.events || 0) + (sk.results || 0), ln = j.lab_names || {};
     fill(card,
@@ -348,6 +351,7 @@
     card.replaceChildren(node("p", {}, node("b", {text: "Not imported. "}),
       parts.map((p, i) => i % 2 ? node("a", {href: p, target: "_blank", rel: "noopener noreferrer", text: p}) : p)));
     card.classList.add("error");
+    settled(card);
   }
 
   async function uploaded(opts) {
@@ -366,6 +370,7 @@
   }
 
   async function poll(card, pid, jid, status) {
+    card.dataset.job = jid;   // which import it is: Sources' "Waiting for you" opens the card there is, not another (#283)
     const began = Date.now();
     let wait = 1000, misses = 0;
     for (;;) {
@@ -396,12 +401,14 @@
   }
 
   function showCancelled(card) {
+    settled(card);
     card.replaceChildren(node("p", {}, node("b", {text: "Cancelled."}), " Nothing was saved, and the upload was removed."));
   }
 
-  // an import someone else started (a connected source's first pull, connect.js): its progress and preview here
+  // an import someone else started (a connected source's first pull, connect.js), or one left at its preview (Sources'
+  // "Waiting for you", #283, with opts.text: what it says until the preview is there): its progress and preview here
   function follow(opts) {
-    const card = box(opts && opts.container), status = node("p", {text: "Reading the records…"});
+    const card = box(opts && opts.container), status = node("p", {text: opts.text || "Reading the records…"});
     card.replaceChildren(status);
     return poll(card, opts.profileId, opts.jobId, status);
   }
