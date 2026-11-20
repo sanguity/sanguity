@@ -28,15 +28,29 @@ function medReminds(m) {
   const on = rs.filter(([, c]) => c === "on").map(([r]) => `${mrAnd(r.times.map(mrTime))} ${mrDays(r.days)}`);
   return on.length ? on.join("; ") : rs.some(([, c]) => c === "off") ? "Off" : "None";
 }
-/* the drug's pharmacy claims, on Costs (#55): its claims listed there, in a period that has them */
+/* the drug's pharmacy claims, on Costs (#55): its claims listed there, in a period that has them. Its link's address
+   names them (#452: #costs?drug=metformin, Costs' claims, the drug's), so one opened in a new window or tab (Ctrl, ⌘
+   or Shift) is the browser's, and opens on them too (medCostsArrive) */
 const medClaims = m => (DATA.costs || []).filter(c => c.kind === "pharmacy" && c.d && medKeyOf(c.title) === m.key);
-function medOnCosts(m, ev) {
-  ev.preventDefault();
-  ev.stopPropagation();   // not the row's drawer
+const medCostsHref = m => "#costs?drug=" + encodeURIComponent(m.key);
+function medCostsSet(m) {
   const ds = medClaims(m).map(c => dayTs(c.d));
   if (state.preset !== "all" && !ds.some(t => t >= state.from && t <= state.to)) setPeriod("all");
   // on Claims, whichever view Costs was left on (What you paid has no search), with only the filters that find the drug's
   if (typeof costState === "object") Object.assign(costState, {view: "claims", q: m.key, cat: "Pharmacy", deniedOnly: false});
+}
+/* the address naming a drug's claims, as the page opens or the address changes (app.js): Costs set to show them */
+function medCostsArrive() {
+  const k = new URLSearchParams(location.hash.split("?")[1] || "").get("drug"), m = k && MEDS.find(x => x.key === k);
+  if (!m) return;
+  if (state.preset !== "custom") setPeriod(state.preset);   // (its dates, before they're looked at)
+  medCostsSet(m);
+}
+function medOnCosts(m, ev) {
+  ev.stopPropagation();   // not the row's drawer
+  if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button) return;   // another window's or tab's: the browser's (#452)
+  ev.preventDefault();
+  medCostsSet(m);
   pickTab("costs");
   const q = document.querySelector("#costTable input.search");
   if (q) { $("#costTable").scrollIntoView({block: "start"}); q.focus({preventScroll: true}); }
@@ -75,7 +89,7 @@ function renderMedications() {
       const f = medLastFill(m);
       return [fmtD(medSince(m)), medListed(m) || "Not given",
         [f ? fmtD(f.ts) + (f.supply ? ` · ${f.supply} days` : "") : "None in the records",
-          ...(f && costs && medClaims(m).length ? [el("br"), el("a", {href: "#costs", class: "med-costs", onclick: ev => medOnCosts(m, ev)}, "Its claims on Costs")] : [])],
+          ...(f && costs && medClaims(m).length ? [el("br"), el("a", {href: medCostsHref(m), class: "med-costs", onclick: ev => medOnCosts(m, ev)}, "Its claims on Costs")] : [])],
         medReminds(m)];
     }) : el("p", {class: "hint", text: "The records list no medication without an end."}));
   const before = past.length ? el("details", {class: "card med-past", open: medPastOpen || null, ontoggle: e => { medPastOpen = e.target.open; }},

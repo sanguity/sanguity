@@ -140,10 +140,24 @@ const SgPalette = (() => {
   }
   const TAB_WORDS = {overview: "home dashboard summary tiles", health: "body vitals steps sleep heart weight", timeline: "events history",
     labs: "tests results charts blood work", costs: "money bills claims payments insurance", medications: "meds medicine prescriptions pills doses taking reminders"};
-  function tabs() {
+  /* the views with an address of their own (#452, app.js HASH_TABS), each listed as well, once something's typed: [tab,
+     view, its # after the tab's, title, words]; a tab itself opens its first view, as its address does */
+  const TAB_VIEWS = [["labs", "heatmap", "-heatmap", "Heatmap", "grid colors colours every result table"],
+    ["timeline", "journal", "-journal", "Journal", "notes diary entries photos symptoms"],
+    ["costs", "paid", "-paid", "What you paid", "out of pocket spent spending payments total hsa fsa premiums"]];
+  const FIRST_VIEW = {labs: "chart", timeline: "timeline", costs: "claims"};
+  function tabs(all) {
     if (document.querySelector("header.topbar nav.tabs")?.hidden) return [];
-    return SgNav.TABS.map(t => document.getElementById("tab-" + t)).filter(a => a && !a.hidden)
-      .map(a => ({icon: sgIcon(a.id.slice(4)), title: a.textContent.trim(), ctx: "Records tab", words: TAB_WORDS[a.id.slice(4)], go: () => a.click()}));
+    // on the records page that tab, in that view; elsewhere the records page at its address
+    const open = (a, t, view, hash) => () => {
+      if (onRecords) pickTab(t, view);
+      else { const u = new URL(a.href); u.hash = t + hash; location.href = u.href; }
+    };
+    return SgNav.TABS.map(t => document.getElementById("tab-" + t)).filter(a => a && !a.hidden).flatMap(a => {
+      const t = a.id.slice(4), title = a.textContent.trim();
+      return [{icon: sgIcon(t), title, ctx: "Records tab", words: TAB_WORDS[t], go: FIRST_VIEW[t] ? open(a, t, FIRST_VIEW[t], "") : () => a.click()},
+        ...(all ? TAB_VIEWS.filter(v => v[0] === t).map(([, view, hash, vt, words]) => ({icon: sgIcon(t), title: vt, ctx: `Records tab › ${title}`, words, go: open(a, t, view, hash)})) : [])];
+    });
   }
   /* the pages (not the one you're on) and, when something's typed, their groups and named parts */
   function pages(all) {
@@ -174,15 +188,16 @@ const SgPalette = (() => {
   }
   const events = () => onRecords ? (recs() && drawn() ? EV : []) : REC && REC.events;
 
-  /* how well something matches what's typed (#403), the same in every group, lower better: 0 its title starts with
-     it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
+  /* how well something matches what's typed (#403), the same in every group, lower better: 0 its title is what's typed
+     (#452: the Journal view before Add's Journal entry), .5 its title starts with it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
      -1 not at all. A word typed is found only at the start of a word, never inside one ("hem" isn't in "theme").
      Words are letters and digits: "two-factor" is "two factor", as "mg/dL" is "mg dl" */
   const flat = s => " " + norm(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   function score(title, also, words) {
     const t = flat(title), hay = t + flat(also), at = (h, w) => h.includes(" " + w);
     if (!words.every(w => at(hay, w))) return -1;
-    return t.startsWith(" " + words.join(" ")) ? 0 : words.every(w => at(t, w)) ? 1 : at(t, words[0]) ? 2 : 3;
+    const all = " " + words.join(" ");
+    return t === all ? 0 : t.startsWith(all) ? .5 : words.every(w => at(t, w)) ? 1 : at(t, words[0]) ? 2 : 3;
   }
   /* xs scored (x.s, or its title, then where it is and its words), best first, then as given or by more, at most
      cap: [[score, x]] */
@@ -196,7 +211,7 @@ const SgPalette = (() => {
     const acts = known(actions()).filter(x => !off || !x.server), pgs = all => off ? [] : pages(all);   // (every page is another)
     const offNote = off ? "Pages and settings aren't listed: they need the server, and you're offline." : "";
     if (!words.length) return {groups: [["Actions", acts], ["Records tabs", tabs()], ["Pages", pgs(false)]], offNote};
-    const groups = [["Actions", ranked(acts, words, 8)], ["Records tabs", ranked(tabs(), words, 8)], ["Pages and settings", ranked(pgs(true), words, 10)]];
+    const groups = [["Actions", ranked(acts, words, 8)], ["Records tabs", ranked(tabs(true), words, 8)], ["Pages and settings", ranked(pgs(true), words, 10)]];
     const L = labs(), E = events();
     if (L) groups.push(["Labs", ranked(L.map(s => ({icon: "test-tube-diagonal", title: s.shown, n: s.n, s: score(s.shown, [s.name, s.panel].join(" "), words),
       ctx: [s.shown !== s.name && "In the records: " + s.name, `${s.n} result${s.n === 1 ? "" : "s"}`].filter(Boolean).join(" · "), go: () => openLab(s.name)})),
@@ -226,7 +241,7 @@ const SgPalette = (() => {
      (on another page Labs and Events; on the records page Add's actions too: Log a dose comes with the records) */
   let later = false, moved = false, top = null;
   const recWait = () => onRecords ? !drawn() : !!pid() && !REC, loading = () => !meDone || recWait();
-  const ORDER = ["Actions", "Records tabs", "Pages and settings"], sure = () => meDone && top && top[1] === 0 && !onRecords && ORDER.includes(top[0]);
+  const ORDER = ["Actions", "Records tabs", "Pages and settings"], sure = () => meDone && top && top[1] < 1 && !onRecords && ORDER.includes(top[0]);
   function enter() {
     if (!input.value.trim() || moved || !loading() || sure()) return pick(active);
     later = true;

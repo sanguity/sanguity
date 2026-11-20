@@ -14,11 +14,12 @@ function applyTabs(cfg) { ({order: TAB_ORDER, hidden: TAB_HIDDEN} = SgNav.layout
 /* the tab in the address (#208), with its view (#442): index.html#overview, #health, #medications (#275), #timeline,
    #timeline-journal (the Timeline as the journal, #277), #labs (Labs as charts), #labs-heatmap (Labs as the heatmap),
    #costs (Costs' claims) or #costs-paid (what you paid, #278); the old #trends and #heatmap still open Labs as charts or
-   the heatmap. An address with no # opens the tab last used (save(), core.js). tabOfHash: the address's [tab, its
+   the heatmap. What follows a ? is for the tab: #costs?drug=metformin, the drug's claims (medications.js, #452). An
+   address with no # opens the tab last used (save(), core.js). tabOfHash: the address's [tab, its
    view], or null; setView: a view, by its name, on the tab it belongs to */
 const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"], timeline: ["timeline", "timeline"], "timeline-journal": ["timeline", "journal"],
   costs: ["costs", "claims"], "costs-paid": ["costs", "paid"]};
-const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); return HASH_TABS[h] || (TABS.includes(h) ? [h] : null); };
+const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase().replace(/\?.*/s, ""); return HASH_TABS[h] || (TABS.includes(h) ? [h] : null); };
 const tabHash = () => "#" + state.tab + (state.tab === "labs" && state.labsView === "heatmap" ? "-heatmap" : state.tab === "timeline" && state.tlView === "journal" ? "-journal"
   : state.tab === "costs" && costState.view === "paid" ? "-paid" : "");
 function setView(v) {
@@ -78,6 +79,7 @@ addEventListener("hashchange", () => {
   if (!booted) return;
   if (location.hash === "#log-dose") return logDose();
   const t = tabOfHash();
+  if (t?.[0] === "costs") medCostsArrive();   // #costs?drug=… (#452)
   if (t) switchTab(t[0], t[1]);
 });
 /* Add → Log a dose (#264): today's doses (medlog.js) on the Medications tab, where the log lives (#275), or on the
@@ -224,7 +226,7 @@ async function settingsLoad() {
   $("#meta").textContent = [DATA.source, DATA.built && "built " + fmtD(DATA.built), WATCH && WATCH.last_payload && "watch synced " + fmtDT(WATCH.last_payload)]
     .filter(Boolean).join(" · ");   // a profile of imports alone has no build to name (#199: it said "undefined · built")
   restore();   // a saved period naming a milestone that's since gone is All (setPeriod)
-  { const t = tabOfHash(); if (t) { state.tab = t[0]; setView(t[1]); } }
+  { const t = tabOfHash(); if (t) { state.tab = t[0]; setView(t[1]); } if (t?.[0] === "costs") medCostsArrive(); }   // (#costs?drug=…, #452)
   if (!state.sel.size) state.sel = startLabs();   // the default saved view, else trends.defaultLabs (trends.js)
   if (state.preset !== "custom" || !(state.to > state.from)) setPeriod(state.preset);
   await testPagesLoad();   // before the first draw, so the links are there (#163)
