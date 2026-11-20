@@ -10596,6 +10596,10 @@ def main():
                 edit_tabs[w] = [more_shown, js("[document.activeElement.id, document.activeElement.textContent, document.querySelectorAll('#sec-tabs :is(h2, h3, h4)').length]")]
             js("SgPalette.open()")
             page.fill("#palQ", "edit tabs")
+            try:   # the list drawn for what's typed, before it's read
+                page.wait_for_function("[...document.querySelectorAll('#palList [role=option]')].some(o => /edit tabs/i.test(o.textContent))", timeout=5000)
+            except Exception:
+                pass
             found_tabs = js("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent)")
             page.keyboard.press("Escape")
             page.set_viewport_size({"width": 1400, "height": 900})
