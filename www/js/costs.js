@@ -13,9 +13,11 @@ const statTile = (label, value, sub, id) => el("div", {class: "tile", id: id || 
   el("span", {class: "lbl", text: label}), el("span", {class: "val", text: value}), sub ? el("span", {class: "delta"}, keepDates(sub)) : null);
 /* a view's figures (#278): three to read first, the rest (and after them, more) under More figures, open or shut as
    last left; in a card, as the Overview's are, so the tiles are tinted, not bordered like the tiles that open
-   something (#442) */
-function costFigures(box, head, rest, more) {
-  const card = el("div", {class: "card cost-figs"}, el("div", {class: "stats"}, ...head));
+   something (#442); top: what comes first in it, a view's heading (What you paid's, so the h3 in its More figures
+   follows its h2: #448). The three in one row, or one under another where a third is too narrow (.stats.three,
+   app.css), as on the Overview */
+function costFigures(box, head, rest, more, top = []) {
+  const card = el("div", {class: "card cost-figs"}, ...top, el("div", {class: "stats three"}, ...head));
   if (rest.length || more) card.append(el("details", {class: "more cost-more", open: costState.more || null, ontoggle: e => { costState.more = e.target.open; }},
     el("summary", {text: "More figures"}), rest.length ? el("div", {class: "stats"}, ...rest) : null, more));
   box.append(card);
@@ -67,9 +69,11 @@ function renderCosts() {
   // the chart, by month or by year
   const ds = rows.map(r => r.d).sort(), span = ds.length ? (+ds.at(-1).slice(0, 4) - +ds[0].slice(0, 4)) * 12 + (+ds.at(-1).slice(5, 7) - +ds[0].slice(5, 7)) + 1 : 0;
   const by = costState.by || (span > 48 ? "year" : "month");
+  // every Costs control draws the tab again with focus kept on it (store.js keepFocus), or given back to what it
+  // belongs to, never left on <body> (#448)
   const mc = el("div", {class: "card"}, el("div", {class: "list-hd"}, el("h2", {text: `Insurance claims by ${by} · ${periodText}`}), el("span", {class: "spacer"}),
       el("div", {class: "seg", id: "costBy", role: "group", "aria-label": "Group the claims"}, ...[["month", "By month"], ["year", "By year"]].map(([k, l]) =>
-        el("button", {type: "button", "aria-pressed": by === k, text: l, onclick: () => { costState.by = k; renderCosts(); }}))),
+        el("button", {type: "button", "aria-pressed": by === k, text: l, onclick: () => { costState.by = k; keepFocus(renderCosts); }}))),
       viewSeg("#costBars", "the claims by " + by, renderCosts)));   // Chart | Table (#60)
   box.append(mc);
   if (state.tables.has("#costBars")) mc.append(stacked(chartTable([by === "year" ? "Year" : "Month", "Insurance paid", "Your share", "Billed", "Claims"],
@@ -88,8 +92,8 @@ function renderCosts() {
   const catCard = el("div", {class: "card"}, el("h2", {text: "By type of care"}), el("p", {class: "hint", text: "Grouped from billing codes on each claim. Click a row to list those claims below."}));
   const provCard = el("div", {class: "card"}, el("h2", {text: "Top providers"}), el("p", {class: "hint", text: "Ranked by total cost (insurance paid + your share)."}));
   two.append(catCard, provCard); box.append(two);
-  barList(catCard, groupCosts(rows, r => r.cat), k => { costState.cat = costState.cat === k ? "" : k; renderCosts(); $("#costTable").scrollIntoView({behavior: smoothly()}); }, costState.cat);
-  barList(provCard, groupCosts(rows, r => r.prov || "(unknown)").slice(0, 10), k => { costState.q = k; renderCosts(); $("#costTable").scrollIntoView({behavior: smoothly()}); });
+  barList(catCard, groupCosts(rows, r => r.cat), k => { costState.cat = costState.cat === k ? "" : k; keepFocus(renderCosts); $("#costTable").scrollIntoView({behavior: smoothly()}); }, costState.cat);
+  barList(provCard, groupCosts(rows, r => r.prov || "(unknown)").slice(0, 10), k => { costState.q = k; keepFocus(renderCosts); $("#costTable").scrollIntoView({behavior: smoothly()}); });
   // pharmacy
   const rx = rows.filter(r => r.kind === "pharmacy");
   if (rx.length) {
@@ -97,7 +101,7 @@ function renderCosts() {
     const pc = el("div", {class: "card"}, el("h2", {text: `Prescriptions (${rx.length} fills)`}));
     pc.append(scrollBox({class: "tablewrap", "aria-label": "Prescriptions, by drug", style: {maxHeight: "360px"}}, stacked(el("table", {class: "data"},
       el("thead", {}, el("tr", {}, ["Drug", "Fills", "First", "Last", "Insurance paid", "Your share"].map((h, i) => el("th", {class: i === 1 || i > 3 ? "num" : null, text: h})))),
-      el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; renderCosts(); $("#costTable").scrollIntoView({behavior: smoothly()}); }},
+      el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; keepFocus(renderCosts); $("#costTable").scrollIntoView({behavior: smoothly()}); }},
         el("td", {}, el("button", {class: "cell-btn", type: "button", text: x.key})), el("td", {class: "num", text: x.n}), el("td", {text: fmtD(dayTs(x.first))}), el("td", {text: fmtD(dayTs(x.last))}),
         el("td", {class: "num", text: usd(x.paid)}), el("td", {class: "num", text: usd(x.owe)}))))))));
     box.append(pc);
@@ -205,7 +209,9 @@ function oopEditor(r) {
   const btns = el("div", {class: "btns my-2"});
   if (r.receipt != null && byId.get(r.receipt)) btns.append(el("button", {class: "btn", type: "button", text: "Open receipt", onclick: () => openEvent(byId.get(r.receipt))}));
   if (r.claim && byId.get(r.claim.id)) btns.append(el("button", {class: "btn", type: "button", text: "Open claim", onclick: () => openEvent(byId.get(r.claim.id))}));
-  btns.append(el("button", {class: "btn", type: "button", text: "Close", onclick: () => { paidState.open = null; renderCosts(); }}));
+  // closed, focus goes back to the row's date, the button that opened it (#448)
+  btns.append(el("button", {class: "btn", type: "button", text: "Close", onclick: () => { paidState.open = null; renderCosts();
+    $(`#paidTable tr[data-oop="${oopKey(r)}"] .cell-btn`)?.focus(); }}));
   box.append(btns);
   if (canEdit()) {
     const target = r.type === "claim" ? {event: r.id} : {payment: r.key};
@@ -238,10 +244,9 @@ function oopEditor(r) {
 }
 function renderPaid(box, claimRows, periodLabel) {
   const meta = DATA.outOfPocket || {}, all = oopRows(), claims = !!(DATA.costs || []).length;
-  const card = el("div", {class: "card", id: "paidCard"});
-  card.append(el("h2", {text: `Out of pocket · ${periodLabel}`}));
+  const card = el("div", {class: "card", id: "paidCard"}), h2 = el("h2", {text: `Out of pocket · ${periodLabel}`});
   if (!all.length) {
-    card.append(el("p", {class: "hint"}, "No out-of-pocket payments yet, and no claim lists a share for you to pay. ",
+    card.append(h2, el("p", {class: "hint"}, "No out-of-pocket payments yet, and no claim lists a share for you to pay. ",
       canEdit() ? el("a", {href: `sources.html?profile=${PROFILE.id}#payment`, text: "Type in a payment"}) : null));
     box.append(card); return;
   }
@@ -251,8 +256,9 @@ function renderPaid(box, claimRows, periodLabel) {
   const has = s => all.some(r => r.src === s);
   const ways = [has("typed") && "payments typed in", has("export") && `a finance export${meta.exported ? " (exported " + fmtD(dayTs(meta.exported)) + ")" : ""}`,
     has("claim") && "claims' shares with no payment matched"].filter(Boolean);
-  card.append(el("p", {class: "hint", text: `From ${ways.join(", ")}. Each amount is counted once.${meta.excluded ? " Not counted: " + meta.excluded + "." : ""}`}),
-    aboutWords("A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from."));
+  // the view's heading, its figures under it in their card (#448)
+  const top = [h2, el("p", {class: "hint", text: `From ${ways.join(", ")}. Each amount is counted once.${meta.excluded ? " Not counted: " + meta.excluded + "." : ""}`}),
+    aboutWords("A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from.")];
   const tile = statTile;
   const typed = sum(pays.filter(r => r.src === "typed")), exp = sum(pays.filter(r => r.src === "export"));
   const prem = sum(counted.filter(r => /premium/i.test(r.group)));
@@ -281,15 +287,16 @@ function renderPaid(box, claimRows, periodLabel) {
     y[r.hsa] += r.counted; y.n++; if (r.receipt != null) y.rc++;
     years.set(r.d.slice(0, 4), y);
   }
-  costFigures(box, head, tiles, years.size ? el("div", {id: "oopTax", class: "mt-3"}, el("h2", {text: "HSA and FSA, by year"}),   // in the figures' card (#442)
+  costFigures(box, head, tiles, years.size ? el("div", {id: "oopTax", class: "mt-3"}, el("h3", {class: "sub", text: "HSA and FSA, by year"}),   // in the figures' card (#442), under its h2 (#448)
     scrollBox({class: "tablewrap", "aria-label": "HSA and FSA, by year"}, stacked(el("table", {class: "data"},   // stacked where narrow (#443)
       el("thead", {}, el("tr", {}, ["Year", "HSA", "FSA", "Amounts", "With a receipt"].map((h, i) => el("th", {class: i ? "num" : null, text: h})))),
       el("tbody", {}, [...years.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([y, v]) => el("tr", {},
-        el("td", {text: y}), ...[usd2(v.HSA), usd2(v.FSA), v.n, v.rc].map(t => el("td", {class: "num", text: t}))))))))) : null);
-  // cumulative: share listed vs bills paid
+        el("td", {text: y}), ...[usd2(v.HSA), usd2(v.FSA), v.n, v.rc].map(t => el("td", {class: "num", text: t}))))))))) : null, top);
+  // cumulative: share listed vs bills paid. The view's cards each titled by an h2, as the claims' are (#442, #448)
   if (claims) {   // Chart | Table (#60): the table by month
-    const bills = pays.filter(r => r.group === "Medical bills");
-    card.append(el("div", {class: "list-hd mt-3"}, el("h3", {class: "sub", style: {margin: 0}, text: "Your share and the bills you paid, running totals"}),
+    const bills = pays.filter(r => r.group === "Medical bills"), cum = el("div", {class: "card", id: "paidRun"});
+    box.append(cum);
+    cum.append(el("div", {class: "list-hd"}, el("h2", {text: "Your share and the bills you paid, running totals"}),
       el("span", {class: "spacer"}), viewSeg("#paidCum", "the running totals", renderCosts)));
     if (state.tables.has("#paidCum")) {
       const m = new Map();
@@ -300,24 +307,26 @@ function renderPaid(box, claimRows, periodLabel) {
         acc[0] += s; acc[1] += p;
         return [zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"}), usd(s), usd(p), usd(acc[0]), usd(acc[1]), usd(acc[0] - acc[1])];
       });
-      card.append(stacked(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", settled ? "Reduced so far" : "Difference"], out.reverse())));
+      cum.append(stacked(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", settled ? "Reduced so far" : "Difference"], out.reverse())));
     } else {
       const svg = el("svg:svg", {role: "img", "aria-label": "Your share and the bills you paid, running totals. Table lists them by month."});
-      card.append(el("div", {class: "legend mb-2"},
+      cum.append(el("div", {class: "legend mb-2"},
         el("span", {}, el("i", {style: {background: "var(--c-imaging)"}}), "Your share per insurers, running total"),
         el("span", {}, el("i", {style: {background: "var(--c-procedure)"}}), "Medical bills you paid, running total")), svg);
       requestAnimationFrame(() => drawPaidCum(svg, claimRows, bills, settled));
     }
   }
-  // breakdowns
-  const two = el("div", {class: "ov-cols", style: {marginTop: "12px"}});
+  // breakdowns, then every amount
+  const two = el("div", {class: "ov-cols mt-3"});
   const g1 = el("div", {}, el("h3", {class: "sub", text: "What it was for"})), g2 = el("div", {}, el("h3", {class: "sub", text: "Who was paid"}));
-  two.append(g1, g2); card.append(two);
+  two.append(g1, g2); card.append(el("h2", {text: "Every amount out of pocket"}), two);
   const grp = keyFn => { const m = new Map(); for (const r of counted) { const k = keyFn(r), g = m.get(k) || {key: k, n: 0, v: 0}; g.n++; g.v += r.counted; m.set(k, g); } return [...m.values()].sort((a, b) => b.v - a.v); };
-  const pick = k => { paidState.q = paidState.q === k ? "" : k; renderCosts(); $("#paidTable").scrollIntoView({behavior: smoothly(), block: "nearest"}); };
+  const pick = k => { paidState.q = paidState.q === k ? "" : k; keepFocus(renderCosts); $("#paidTable").scrollIntoView({behavior: smoothly(), block: "nearest"}); };
   const bars = (host, groups) => {
     const max = Math.max(1, ...groups.map(g => g.v));
-    for (const g of groups) host.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto", background: paidState.q === g.key ? "var(--hover)" : null}, onclick: () => pick(g.key)},
+    // a row is a button, by keyboard too, saying whether it's picked, as the claims' are (#202, #448)
+    for (const g of groups) host.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto", background: paidState.q === g.key ? "var(--hover)" : null},
+      ...pressable(() => pick(g.key)), "aria-pressed": paidState.q === g.key},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}), el("span", {class: "v", text: usd(g.v)}),
       el("span", {class: "s", style: {display: "flex", alignItems: "center"}},
         el("span", {style: {display: "inline-block", height: "8px", width: Math.max(0, g.v / max * 72) + "%", background: "var(--c-procedure)", flex: "none", borderRadius: "2px"}}),
@@ -334,28 +343,31 @@ function renderPaid(box, claimRows, periodLabel) {
   tw.append(el("div", {class: "toolbar mb-2"},
     el("span", {class: "hint", style: {margin: 0}, text: fil ? `For the amounts shown: ${usd(sum(list))} counted` : `${list.length} amount${list.length === 1 ? "" : "s"} · ${usd(sum(list))} counted`}),
     ...["HSA", "FSA"].filter(t => all.some(r => r.hsa === t)).map(t => el("button", {class: "toggle", type: "button", "aria-pressed": fil === t, text: `${t} only`,   // on/off chips (#193)
-      onclick: () => { paidState.q = fil === t ? "" : t; renderCosts(); }}))),
+      onclick: () => { paidState.q = fil === t ? "" : t; keepFocus(renderCosts); }}))),
     filterLine(fil ? [`Showing ${list.length.toLocaleString()} of ${rows.length.toLocaleString()} amounts`, kept] : [],
       () => { paidState.q = ""; renderCosts(); }, () => $("#paidTable .toggle") || $("#paidTable")));
   const toggle = r => { paidState.open = paidState.open === oopKey(r) ? null : oopKey(r); renderCosts(); const e = $("#oopEdit"); if (e) e.scrollIntoView({block: "nearest"}); };
   const shown = Math.max(paidState.limit, list.findIndex(r => oopKey(r) === paidState.open) + 1);   // the open one too
-  tw.append(scrollBox({class: "tablewrap", "aria-label": "Every amount out of pocket", style: {maxHeight: "420px"}}, stacked(el("table", {class: "data oop"},
+  const open = paidState.open && rows.find(r => oopKey(r) === paidState.open), edit = open && oopEditor(open);
+  // the amounts in the page's own scroll, 200 at a time (Show more), as the claims are: no box that scrolls inside it
+  // (#448)
+  tw.append(scrollBox({class: "tablewrap", "aria-label": "Every amount out of pocket", style: {maxHeight: "none"}}, stacked(el("table", {class: "data oop"},
     el("thead", {}, el("tr", {}, ["Date", "Paid to", "For", "Where the number came from", "HSA/FSA", "Amount"].map((h, i) => el("th", {class: i === 5 ? "num" : null, text: h})))),
-    // a row opens its editor under the table, from anywhere on it by pointer; its date is the button that says whether
-    // it's open (#202: a table's row can't be expanded itself)
-    el("tbody", {}, list.slice(0, shown).map(r => el("tr", {class: "link" + (r.dup != null ? " oop-dup" : ""), "data-oop": oopKey(r), onclick: () => toggle(r)},
-      el("td", {style: {whiteSpace: "nowrap"}}, el("button", {class: "cell-btn", type: "button", "aria-expanded": paidState.open === oopKey(r), text: fmtD(dayTs(r.d)),
+    // a row opens its editor in a row of its own under it (#448: not under the whole list), from anywhere on it by
+    // pointer; its date is the button that says whether it's open (#202: a table's row can't be expanded itself)
+    el("tbody", {}, list.slice(0, shown).flatMap(r => [el("tr", {class: "link" + (r.dup != null ? " oop-dup" : ""), "data-oop": oopKey(r), onclick: () => toggle(r)},
+      el("td", {style: {whiteSpace: "nowrap"}}, el("button", {class: "cell-btn", type: "button", "aria-expanded": paidState.open === oopKey(r), "aria-controls": r === open ? "oopEdit" : null, text: fmtD(dayTs(r.d)),
         onclick: ev => { ev.stopPropagation(); toggle(r); $(`#paidTable tr[data-oop="${oopKey(r)}"] .cell-btn`)?.focus({preventScroll: true}); }})),
       el("td", {text: r.who || "—"}),
       el("td", {"data-tip": r.memo || null, text: r.type === "claim" ? `${r.group} · ${r.claim.title}` : r.group + (r.claim ? " · paid a claim" : "")}),
       el("td", {text: srcText(r) + (r.receipt != null ? " · receipt" : "")}),
       el("td", {text: r.hsa || ""}),
       el("td", {class: "num", style: {whiteSpace: "nowrap", color: r.amount < 0 ? "var(--good-text)" : null},
-        text: (r.amount < 0 ? `${usd2(-r.amount)} refund` : usd2(r.amount)) + (r.dup != null ? " · counted once" : "")}))))))));
+        text: (r.amount < 0 ? `${usd2(-r.amount)} refund` : usd2(r.amount)) + (r.dup != null ? " · counted once" : "")})),
+      r === open ? el("tr", {class: "oop-open"}, el("td", {colspan: 6}, edit)) : null].filter(Boolean)))))));
   if (list.length > shown) tw.append(el("button", {class: "btn", type: "button", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - shown)} more`,
-    onclick: () => { paidState.limit = shown + 200; renderCosts(); $(`#paidTable tbody tr:nth-child(${shown + 1}) .cell-btn`)?.focus(); }}));   // the first one added
-  const open = paidState.open && rows.find(r => oopKey(r) === paidState.open);
-  if (open) tw.append(oopEditor(open));
+    onclick: () => { paidState.limit = shown + 200; renderCosts(); document.querySelectorAll("#paidTable tbody tr[data-oop] .cell-btn")[shown]?.focus(); }}));   // the first one added
+  if (edit && !edit.parentElement) tw.append(edit);   // its row not listed (a row above picked since): under the list
   card.append(tw);
   box.append(card);
 }
