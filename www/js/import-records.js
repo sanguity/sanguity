@@ -262,7 +262,7 @@
   const typeIn = (hash, here) => {
     const kind = {"#payment": "payment", "#home-reading": "home_bp"}[hash];
     if (!kind) return;
-    showKind("manual");
+    SgSources.show("manual");
     const card = add(kind, false);
     if (here) setTimeout(() => focusIn(card));
     else SgSources.ready.then(me => setTimeout(() => { if (me && card.isConnected && document.activeElement === document.body) focusIn(card); }));

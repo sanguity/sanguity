@@ -57,46 +57,21 @@
     <div id="srcList"></div>
   </section>
 
-  <!-- Upload files (import.js) -->
+  <!-- Upload files (import.js): one drop target (dropTarget), a drop anywhere on the page coming here too (drop.js);
+       each upload's card under it, from Sending to Saved (import-jobs.js) -->
   <section class="card" id="importer" hidden>
     <h2>Upload files</h2>
-    <p class="hint">The export you downloaded from a patient portal or app: a zip, a folder, or single files.</p>
+    <p class="hint">The export a patient portal or app gave you, as it is: a zip, a folder or single files.</p>
     <div class="about-words" hidden>
-      <p>Files go to your Sanguity server only, and are kept there encrypted as the import's original files. Each upload
-        is shown to you as a preview first, and saved as one import you can undo from the import history.</p>
+      <p>Most portals give you a zip (MyChart, Apple Health's export.zip, Blue Button): it's unpacked on the server, and
+        Sanguity recognises the format itself. Files go to your Sanguity server only, and are kept there encrypted as the
+        import's original files. Each upload is shown to you as a review first, and saved as one import you can undo
+        from the import history.</p>
     </div>
-    <div class="tabs acct-tabs imp-tabs" role="tablist" aria-label="What to upload" id="kindTabs">
-      <button role="tab" id="tab-zip" aria-controls="panel-zip" aria-selected="true">A zip</button>
-      <button role="tab" id="tab-folder" aria-controls="panel-folder" aria-selected="false" tabindex="-1">A folder</button>
-      <button role="tab" id="tab-files" aria-controls="panel-files" aria-selected="false" tabindex="-1">Single files</button>
-    </div>
-    <div role="tabpanel" id="panel-zip" aria-labelledby="tab-zip">
-      <p class="hint">Most portals give you a zip (MyChart, Apple Health's export.zip, Blue Button). Upload it as it is: it's
-        unpacked on the server.</p>
-      <p class="hint" id="appleRecords">From an iPhone: in the Health app, tap your picture, then Export All Health Data,
-        and upload the zip it makes. If the Health app has Health Records from your hospitals or clinics, they're in it
-        too, as FHIR files, and come in as visits, lab results, medications and problems beside your activity and sleep.</p>
-      <label class="btn pick">Choose a zip… <input type="file" id="pickZip" accept=".zip,application/zip"></label>
-    </div>
-    <div role="tabpanel" id="panel-folder" aria-labelledby="tab-folder" hidden>
-      <p class="hint">An export you've already unpacked. Everything in the folder is sent, with its folders kept.</p>
-      <label class="btn pick">Choose a folder… <input type="file" id="pickFolder" webkitdirectory multiple></label>
-    </div>
-    <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" hidden>
-      <p class="hint">One or more files: a C-CDA or FHIR file, a CSV of lab results, a lab report PDF from Quest or Labcorp…</p>
-      <label class="btn pick">Choose files… <input type="file" id="pickFiles" multiple></label>
-    </div>
-
-    <div class="drop" id="drop" tabindex="-1">Or drop a zip, a folder or files here</div>
-
-    <div id="chosen" hidden>
-      <div class="row imp-sum"><b id="sum"></b><button class="btn small" id="clear" type="button">Clear</button></div>
-      <ul class="imp-list" id="list" aria-label="Files to upload"></ul>
-    </div>
-    <div class="row" id="goRow">
-      <button class="btn primary" id="go" type="button" disabled>Upload</button>
-      <span class="msg" id="msg" role="status"></span>
-    </div>
+    <p class="howto" id="appleRecords">From an iPhone: in the Health app, tap your picture, then Export All Health Data,
+      and upload the zip it makes. If the Health app has Health Records from your hospitals or clinics, they're in it
+      too, as FHIR files, and come in as visits, lab results, medications and problems beside your activity and sleep.</p>
+    <div id="upDrop"></div>
     <p class="hint src-more">No export to download? <a href="#portals">Connect the portal or health plan</a> instead, and
       new records come in by themselves.</p>
   </section>
@@ -211,6 +186,7 @@
 <script src="js/groups.js"></script>
 <script src="js/nav.js"></script>
 <script src="js/palette.js"></script>
+<script src="js/drop.js"></script>
 <script src="js/dates.js"></script>
 <script src="js/sidebar.js"></script>
 <script src="js/sources-page.js"></script>

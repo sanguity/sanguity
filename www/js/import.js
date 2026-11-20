@@ -1,186 +1,162 @@
-/* Sanguity · Sources → Upload files (#19, #166): upload a zip, a folder or files to the profile chosen on the page
-   (sources-page.js; one you own or edit). Each file is its own request (PUT, the body is the file), so a large export
-   streams to the server with progress; the server unpacks zips. Once the upload is finished,
-   window.sanguityImport.uploaded({profileId, uploadId}) starts the import if that's there (#20); otherwise the page
-   says importing comes next. */
-"use strict";   // $, el and api come from util.js
-const KINDS = ["zip", "folder", "files"];
-const SKIP = /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$/i;   // what file managers leave in folders: not records
-const PARALLEL = 3;   // files sent at once
-let ME, LIMITS = null, chosen = [], busy = false;
+/* Sanguity · uploading files (#19, #281): one drop target, dropTarget(opts), for files or a folder, chosen with its
+   buttons or dropped (anywhere on the page: drop.js hands a drop to the page's target). Whatever is chosen starts at
+   once, with no Upload button: the server recognises the format itself, a zip unpacked there. Each file is its own
+   request (PUT, the body is the file), so a large export streams to the server with progress, three at a time; then
+   window.sanguityImport.uploaded (import-jobs.js) imports it in the same card, through to its review and Save.
 
-/* api() from util.js, returning the JSON answer, or throwing with the server's message */
-async function call(path, method = "GET") {
-  const r = await api(path, {method});
-  if (r.status === 401) { location.replace("login.html"); throw new Error("signed out"); }
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || r.status + " " + r.statusText);
-  return j;
-}
-const say = (text, bad = false) => sayIn($("#msg"), text, bad);   // shown and said (util.js, #209)
-const size = n => n >= 2 ** 30 ? (n / 2 ** 30).toFixed(1) + " GB" : n >= 2 ** 20 ? (n / 2 ** 20).toFixed(1) + " MB"
-  : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " bytes";
-const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+   The target is on Sources → Upload files (below), in the getting-started guide's step 2 (guide.js), and in the
+   dialog a drop on any other page opens (drop.js).
+   dropTarget({pid, canEdit, onDone, ids}) -> {el, take(items), zone}
+     pid()      the profile the files go into; canEdit() whether you may (owner or editor)
+     onDone(j)  after an import is saved (j, the job, done)
+     ids        the pickers' ids, #pickFiles and #pickFolder (one target on a page)
+     take(items) uploads [{file, path}], as a drop does */
+"use strict";   // $, el, api, icon, sayIn and announce come from util.js
+const dropTarget = (() => {
+  const SKIP = /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$/i;   // what file managers leave in folders: not records
+  const PARALLEL = 3;   // files sent at once
+  let limits = null, sending = 0;
+  const getLimits = () => limits || (limits = api("uploads/limits").then(r => r.ok ? r.json() : null).catch(() => null));
 
-/* ---------------------------------------------------------------- what to upload: tabs */
-/* showKind("manual") or ("link"): what were this page's tabs are sections of the Sources page now (#166) */
-function showKind(name, focus = false) {
-  if (!KINDS.includes(name)) { SgSources.show(name); return; }
-  for (const k of KINDS) {
-    const on = k === name, b = $("#tab-" + k);
-    b.setAttribute("aria-selected", on); b.tabIndex = on ? 0 : -1;
-    $("#panel-" + k).hidden = !on;
+  /* api() from util.js, returning the JSON answer, or throwing with the server's message */
+  async function call(path, method = "GET") {
+    const r = await api(path, {method});
+    if (r.status === 401) { location.replace("login.html"); throw new Error("signed out"); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || r.status + " " + r.statusText);
+    return j;
   }
-  if (focus) $("#tab-" + name).focus();
-}
-$("#kindTabs").addEventListener("click", ev => { const b = ev.target.closest("[role=tab]"); if (b) showKind(b.id.slice(4)); });
-// import.html#folder, #files (moved.js keeps the address): that tab first
-{ const h = location.hash.slice(1); if (KINDS.includes(h)) showKind(h); }
-$("#kindTabs").addEventListener("keydown", ev => {   // arrow keys move between tabs, as for any tab list
-  const i = KINDS.indexOf(document.activeElement.id.slice(4));
-  if (i < 0) return;
-  const next = ev.key === "ArrowRight" ? KINDS[(i + 1) % KINDS.length] : ev.key === "ArrowLeft" ? KINDS[(i + KINDS.length - 1) % KINDS.length]
-    : ev.key === "Home" ? KINDS[0] : ev.key === "End" ? KINDS[KINDS.length - 1] : null;
-  if (next) { ev.preventDefault(); showKind(next, true); }
-});
+  const size = n => n >= 2 ** 30 ? (n / 2 ** 30).toFixed(1) + " GB" : n >= 2 ** 20 ? (n / 2 ** 20).toFixed(1) + " MB"
+    : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " bytes";
+  const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+  const leaving = e => { if (!sgLeaving) { e.preventDefault(); e.returnValue = ""; } };   // while files are being sent
 
-/* ---------------------------------------------------------------- choosing: pickers and dropping */
-function choose(items) {
-  if (busy) return;
-  chosen = items.filter(it => !SKIP.test(it.path));
-  say("");
-  render();
-}
-$("#pickZip").onchange = e => choose([...e.target.files].map(f => ({file: f, path: f.name})));
-$("#pickFolder").onchange = e => choose([...e.target.files].map(f => ({file: f, path: f.webkitRelativePath || f.name})));
-$("#pickFiles").onchange = e => choose([...e.target.files].map(f => ({file: f, path: f.name})));
-
-/* a dropped folder is walked with the entries API, keeping each file's path inside it */
-const entryFile = entry => new Promise((ok, fail) => entry.file(ok, fail));
-const readAll = async dir => {
-  const reader = dir.createReader(), out = [];
-  for (;;) {   // readEntries hands them over a batch at a time
-    const batch = await new Promise((ok, fail) => reader.readEntries(ok, fail));
-    if (!batch.length) return out;
-    out.push(...batch);
+  /* what the server would refuse, said before anything is sent */
+  function problem(items, L) {
+    if (!L) return "";
+    const big = items.find(it => it.file.size > L.file_bytes);
+    if (big) return `${big.path} is ${size(big.file.size)}: a file can be at most ${size(L.file_bytes)}.`;
+    if (items.length > L.files) return `That's ${items.length.toLocaleString()} files: an upload can hold at most ${L.files.toLocaleString()}.`;
+    const total = items.reduce((s, it) => s + it.file.size, 0);
+    if (total > L.total_bytes) return `That's ${size(total)}: an upload can hold at most ${size(L.total_bytes)}.`;
+    return "";
   }
-};
-async function walk(entry, out) {
-  if (entry.isFile) out.push({file: await entryFile(entry), path: entry.fullPath.replace(/^\/+/, "")});
-  else if (entry.isDirectory) for (const e of await readAll(entry)) await walk(e, out);
-}
-const drop = $("#drop");
-for (const t of ["dragenter", "dragover"]) drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); });
-drop.addEventListener("dragleave", () => drop.classList.remove("over"));
-drop.addEventListener("drop", async e => {
-  e.preventDefault(); drop.classList.remove("over");
-  const entries = [...(e.dataTransfer.items || [])].map(i => i.webkitGetAsEntry ? i.webkitGetAsEntry() : null).filter(Boolean);
-  if (!entries.length) { choose([...e.dataTransfer.files].map(f => ({file: f, path: f.name}))); return; }
-  const out = [];
-  try { for (const en of entries) await walk(en, out); } catch (err) { say("Couldn't read what was dropped: " + err.message, true); return; }
-  choose(out);
-});
-$("#clear").onclick = () => { for (const id of ["#pickZip", "#pickFolder", "#pickFiles"]) $(id).value = ""; choose([]); };
+  /* its name on the card: the file, the folder, or how many */
+  function named(items) {
+    const top = items[0].path.split("/");
+    if (items.length === 1) return top.at(-1);
+    if (top.length > 1 && items.every(it => it.path.startsWith(top[0] + "/"))) return top[0];
+    return plural(items.length, "file");
+  }
 
-/* the list, with what the server would refuse marked before anything is sent */
-function problem() {
-  if (!LIMITS) return "";
-  const big = chosen.find(it => it.file.size > LIMITS.file_bytes);
-  if (big) return `${big.path} is ${size(big.file.size)}: a file can be at most ${size(LIMITS.file_bytes)}.`;
-  if (chosen.length > LIMITS.files) return `That's ${chosen.length} files: an upload can hold at most ${LIMITS.files}.`;
-  const total = chosen.reduce((s, it) => s + it.file.size, 0);
-  if (total > LIMITS.total_bytes) return `That's ${size(total)}: an upload can hold at most ${size(LIMITS.total_bytes)}.`;
-  return "";
-}
-function render() {
-  $("#chosen").hidden = !chosen.length;
-  const total = chosen.reduce((s, it) => s + it.file.size, 0);
-  $("#sum").textContent = `${plural(chosen.length, "file")}, ${size(total)}`;
-  const shown = chosen.slice(0, 500);   // a folder of thousands: the first ones, and a count
-  $("#list").replaceChildren(...shown.map(it => {
-    it.bar = el("progress", {max: 1, value: 0, "aria-label": "Sent of " + it.path});
-    it.state = el("span", {class: "muted"});
-    return it.li = el("li", {}, el("span", {class: "path", text: it.path}), el("span", {class: "muted", text: size(it.file.size)}), it.bar, it.state);
-  }), ...(chosen.length > shown.length ? [el("li", {class: "muted", text: `…and ${chosen.length - shown.length} more`})] : []));
-  const why = problem();
-  if (why) say(why, true);
-  $("#go").disabled = busy || !chosen.length || !!why || !SgSources.canEdit();
-}
+  function putFile(pid, uploadId, it, xhrs, moved) {
+    return new Promise((ok, fail) => {
+      const x = new XMLHttpRequest();
+      xhrs.add(x);
+      x.open("PUT", `api/profiles/${pid}/uploads/${uploadId}/files?path=${encodeURIComponent(it.path)}`);
+      x.setRequestHeader("X-Sanguity", "1");   // the API's cross-site check, as api() sends it
+      x.setRequestHeader("Content-Type", "application/octet-stream");
+      x.upload.onprogress = e => { if (e.lengthComputable) moved(it, e.loaded); };
+      x.onload = () => {
+        xhrs.delete(x);
+        if (x.status === 401) { location.replace("login.html"); return; }
+        if (x.status === 200) { moved(it, it.file.size); ok(); return; }
+        let d; try { d = JSON.parse(x.responseText).detail; } catch (e) {}
+        fail(new Error(typeof d === "string" ? d : `${it.path}: ${x.status} ${x.statusText}`));
+      };
+      x.onerror = () => { xhrs.delete(x); fail(new Error(`${it.path} didn't reach the server (the connection dropped).`)); };
+      x.onabort = () => { xhrs.delete(x); fail(new Error("stopped")); };
+      x.send(it.file);
+    });
+  }
 
-/* ---------------------------------------------------------------- uploading */
-function putFile(pid, uploadId, it, xhrs) {
-  return new Promise((ok, fail) => {
-    const x = new XMLHttpRequest();
-    xhrs.add(x);
-    x.open("PUT", `api/profiles/${pid}/uploads/${uploadId}/files?path=${encodeURIComponent(it.path)}`);
-    x.setRequestHeader("X-Sanguity", "1");   // the API's cross-site check, as api() sends it
-    x.setRequestHeader("Content-Type", "application/octet-stream");
-    x.upload.onprogress = e => { if (it.bar && e.lengthComputable) it.bar.value = e.loaded / Math.max(e.total, 1); };
-    x.onload = () => {
-      xhrs.delete(x);
-      if (x.status === 401) { location.replace("login.html"); return; }
-      if (x.status === 200) { ok(); return; }
-      let d; try { d = JSON.parse(x.responseText).detail; } catch (e) {}
-      fail(new Error(typeof d === "string" ? d : `${it.path}: ${x.status} ${x.statusText}`));
+  /* send the files into a new upload, in the card f, then import it there; -> the job, or null */
+  async function send(pid, items, f) {
+    const xhrs = new Set(), total = items.reduce((s, it) => s + it.file.size, 0) || 1, sent = new Map();
+    let uploadId = null, done = 0;
+    sending++;
+    if (sending === 1) addEventListener("beforeunload", leaving);
+    const moved = (it, n) => {
+      sent.set(it, n);
+      const all = [...sent.values()].reduce((s, v) => s + v, 0);
+      f.progress(all / total);
+      f.text(`Sent ${size(all)} of ${size(total)}` + (items.length > 1 ? ` · ${done.toLocaleString()} of ${plural(items.length, "file")}` : ""));
     };
-    x.onerror = () => { xhrs.delete(x); fail(new Error(`${it.path} didn't reach the server (the connection dropped).`)); };
-    x.onabort = () => { xhrs.delete(x); fail(new Error("stopped")); };
-    x.send(it.file);
-  });
-}
-function setBusy(on) {
-  busy = on;
-  for (const id of ["#profile", "#pickZip", "#pickFolder", "#pickFiles", "#clear"]) $(id).disabled = on;
-  $("#go").disabled = on || !chosen.length;
-  $("#importer").setAttribute("aria-busy", on);
-}
-const leaving = e => { if (!sgLeaving) { e.preventDefault(); e.returnValue = ""; } };
-$("#go").onclick = async () => {
-  const pid = +$("#profile").value, items = chosen.slice(), xhrs = new Set();
-  let uploadId = null, done = 0;
-  setBusy(true); addEventListener("beforeunload", leaving);
-  try {
-    say("Starting the upload…");
-    uploadId = (await call(`profiles/${pid}/uploads`, "POST")).id;
-    let next = 0;
-    const worker = async () => {
-      while (next < items.length) {
-        const it = items[next++];
-        if (it.state) it.state.textContent = "sending";
-        await putFile(pid, uploadId, it, xhrs);
-        if (it.bar) it.bar.value = 1;
-        if (it.state) it.state.textContent = "sent";
-        say(`Sent ${done += 1} of ${items.length}…`);
-      }
-    };
-    try { await Promise.all(Array.from({length: Math.min(PARALLEL, items.length)}, worker)); }
-    catch (e) { for (const x of xhrs) x.abort(); throw e; }
-    say(items.some(it => /\.zip$/i.test(it.path)) ? "Unpacking on the server…" : "Finishing…");
-    const r = await call(`profiles/${pid}/uploads/${uploadId}/finish`, "POST");
-    const sent = `Uploaded ${plural(items.length, "file")}` + (r.files !== items.length ? ` (${r.files} once unpacked)` : "") + ".";
-    const hook = window.sanguityImport && window.sanguityImport.uploaded;
-    if (typeof hook === "function") { say(sent); hook({profileId: pid, uploadId}); }
-    else say(`${sent} Uploaded; importing comes next.`);
-    chosen = [];
-    $("#go").disabled = true;
-  } catch (e) {
-    if (uploadId != null) try { await call(`profiles/${pid}/uploads/${uploadId}`, "DELETE"); } catch (x) {}   // nothing half-sent is kept
-    say("The upload didn't finish: " + e.message, true);
-  } finally {
-    removeEventListener("beforeunload", leaving);
-    setBusy(false);
-    $("#go").disabled = !chosen.length;
+    try {
+      f.step("send", items.length > 1 ? `Sending ${plural(items.length, "file")}…` : "Sending…");
+      f.progress(0);
+      uploadId = (await call(`profiles/${pid}/uploads`, "POST")).id;
+      let next = 0;
+      const worker = async () => {
+        while (next < items.length) { const it = items[next++]; await putFile(pid, uploadId, it, xhrs, moved); done++; moved(it, it.file.size); }
+      };
+      try { await Promise.all(Array.from({length: Math.min(PARALLEL, items.length)}, worker)); }
+      catch (e) { for (const x of xhrs) x.abort(); throw e; }
+      const zip = items.some(it => /\.zip$/i.test(it.path));
+      f.step("unpack", zip ? "Unpacking on the server…" : "Checking the files on the server…");
+      f.progress(null);
+      const r = await call(`profiles/${pid}/uploads/${uploadId}/finish`, "POST");
+      if (r.files !== items.length) f.note(`${plural(r.files, "file")} once unpacked`);
+    } catch (e) {
+      if (uploadId != null) try { await call(`profiles/${pid}/uploads/${uploadId}`, "DELETE"); } catch (x) {}   // nothing half-sent is kept
+      f.end("failed");
+      f.body.replaceChildren(el("p", {}, el("b", {text: "Not uploaded. "}), e.message));
+      announce("Not uploaded: " + e.message, {error: true});
+      return null;
+    } finally {
+      if (--sending === 0) removeEventListener("beforeunload", leaving);
+    }
+    return window.sanguityImport.uploaded({profileId: pid, uploadId, frame: f, title: f.title});
   }
-};
 
-/* ---------------------------------------------------------------- start */
-/* the page signs in and fills the Profile choice (sources-page.js); the Sources sidebar lists this section,
-   typing in and pasting a link only for the profile's owners and editors (#401) */
-(async () => {
-  ME = await SgSources.ready;
-  if (!ME) return;
-  $("#profile").addEventListener("change", render);
-  for (const id of ["#importer", "#typeIn", "#healthLink"]) $(id).hidden = false;   // this page's tabs once (#166)
-  try { LIMITS = await call("uploads/limits"); } catch (e) {}
-  render();
+  return function dropTarget(opts) {
+    const files = el("input", {type: "file", multiple: "", id: opts.ids ? "pickFiles" : null});
+    const folder = el("input", {type: "file", multiple: "", webkitdirectory: "", id: opts.ids ? "pickFolder" : null});
+    // a folder's picker where there is one: not on a phone or tablet, whose browsers offer files only
+    const folders = "webkitdirectory" in HTMLInputElement.prototype && !matchMedia("(pointer: coarse)").matches;
+    const msg = el("p", {class: "msg up-msg"});
+    const zone = el("div", {class: "up-drop needs-server"},
+      el("span", {class: "up-ico", "aria-hidden": "true"}, icon("upload")),
+      el("p", {class: "up-say"}, folders ? "Drop files or a folder here, or" : "Choose the files to upload:"),
+      el("div", {class: "up-btns"}, el("label", {class: "btn primary pick"}, "Choose files", files),
+        folders ? el("label", {class: "btn pick"}, "Choose a folder", folder) : null),
+      el("p", {class: "up-what", text: "A zip as it came, a folder or single files. Uploading starts at once; nothing is saved until you've seen what's in it."}));
+    const jobs = el("div", {class: "up-jobs"});
+    const box = el("div", {class: "up"}, zone, msg, jobs);
+    const pick = (input, pathOf) => () => { const got = [...input.files].map(f => ({file: f, path: pathOf(f)})); input.value = ""; take(got); };
+    files.onchange = pick(files, f => f.name);
+    folder.onchange = pick(folder, f => f.webkitRelativePath || f.name);
+
+    async function take(items) {
+      items = items.filter(it => !SKIP.test(it.path));
+      const say = (t, bad = true) => sayIn(msg, t, bad);
+      if (!items.length) return say("Nothing to upload: that held no files.");
+      if (typeof OFFLINE !== "undefined" && OFFLINE.on) return say("You're offline. Uploading needs the server.");
+      if (!opts.canEdit()) return say("You can only view this profile: its owners and editors upload to it.");
+      const why = problem(items, await getLimits());
+      if (why) return say(why);
+      say("");
+      const total = items.reduce((s, it) => s + it.file.size, 0);
+      const f = window.sanguityImport.frame({container: jobs, title: named(items),
+        size: (items.length > 1 ? plural(items.length, "file") + " · " : "") + size(total)});
+      const j = await send(opts.pid(), items, f);
+      if (j && j.state === "done" && opts.onDone) opts.onDone(j);
+      return j;
+    }
+    return {el: box, take, zone};
+  };
 })();
+
+/* ---------------------------------------------------------------- Sources → Upload files */
+/* the page signs in and fills the Profile choice (sources-page.js); the Sources sidebar lists this section, typing in
+   and pasting a link only for the profile's owners and editors (#401). A drop anywhere on the page comes here, this
+   section shown first (drop.js) */
+if (document.getElementById("upDrop")) {
+  const t = dropTarget({pid: () => SgSources.pid(), canEdit: () => SgSources.canEdit(), ids: true});
+  $("#upDrop").replaceWith(t.el);
+  if (typeof SgDrop !== "undefined") SgDrop.here(t, () => { if ($("#importer").hidden || !$("#importer").checkVisibility()) SgSources.show("upload"); });
+  (async () => {
+    if (!await SgSources.ready) return;
+    for (const id of ["#importer", "#typeIn", "#healthLink"]) $(id).hidden = false;   // this page's tabs once (#166)
+  })();
+}

@@ -1,8 +1,9 @@
 /* Sanguity · the getting-started guide (#199): guide.html. From a profile with nothing in it to its first records, one
    step at a time: whose records it holds (its name: owners only), the first records, a phone (optional), then the
-   Overview. Every step can be skipped, and the step list at the top reaches any of them again. The records and the
-   phone come in on the Sources page, as anywhere else: its links carry ?guide=<step>, and that page shows a way back
-   here (sources-page.js). Someone with no profile yet makes one in the first step (also guide.html?new); someone
+   Overview. Every step can be skipped, and the step list at the top reaches any of them again. An export is uploaded
+   in the records step itself, with Sources' drop target (import.js, #281), through to its review and Save; the other
+   ways and the phone are on the Sources page: its links carry ?guide=<step>, and that page shows a way back here
+   (sources-page.js). Someone with no profile yet makes one in the first step (also guide.html?new); someone
    who can only view a profile is told its owners and editors set it up, with no steps of theirs.
 
    Signing in to an empty profile of your own (your only one) opens this page until you finish or skip it: the
@@ -117,6 +118,13 @@
       : `${P.name} has no records yet, so the Overview starts empty. It fills in as records come in: Add, in the top bar, brings them in any time.`;
     drawList();
   }
+  /* the first records' drop target (#281, import.js): once one is saved, the step says the profile has records. A
+     drop anywhere on this page comes here, the step shown first (drop.js) */
+  function dropHere() {
+    const t = dropTarget({pid: () => P.id, canEdit: () => P.role === "owner" || P.role === "editor", onDone: status});
+    $("#guideDrop").replaceWith(t.el);
+    SgDrop.here(t, () => { if (current !== "records") show("records"); });
+  }
   $("#finish").onclick = async () => {
     $("#finish").disabled = true;
     await setGuide("done");
@@ -159,6 +167,7 @@
       $("#guideTitle").textContent = making && ME.profiles.length ? "A new profile" : "Getting started";
     } else {
       $("#profName").value = P.name;
+      dropHere();
     }
     drawFor();
     show(location.hash.slice(1));

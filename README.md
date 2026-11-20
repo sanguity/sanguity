@@ -338,8 +338,9 @@ and can't be changed in Sanguity. Health Connect has no dose events, so from And
 ### Uploading records in the app
 
 **Add → Upload files** (in the top bar, or through **Getting started** on an empty profile; **Sources → Upload files**) uploads a portal's or app's export to a profile you own or edit:
-a zip as you downloaded it, a folder you've unpacked (its folders are kept), or single files. Viewers can't upload.
-Each file streams to the server on its own, with progress, and is kept in the profile's folder encrypted, as the
+a zip as you downloaded it, a folder you've unpacked (its folders are kept), or single files, chosen or dropped, and
+dropped anywhere on a page with the top bar too. Viewers can't upload. It starts as soon as they're chosen, and one
+card follows it from Sending to Saved. Each file streams to the server on its own, with progress, and is kept in the profile's folder encrypted, as the
 import's original files: they're included in **Export everything** and in backups, and go when the profile is
 deleted. A zip is unpacked on the server, never in the browser; zips inside it stay zips. The upload is then read in
 the background: its format is detected, a preview shows what's new and what's already in the profile, and nothing
