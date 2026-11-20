@@ -2660,6 +2660,13 @@ def main():
             settle(800)
             jump = js("[document.activeElement.id, (r => r.top >= 0 && r.top < innerHeight / 2)(document.getElementById('hs-sleep').getBoundingClientRect())]")
             check("…and a bar of them that jumps to each, its heading taking focus", sx["bar"] == [w[0] for w in want] and jump == ["hs-sleep-h", True], [sx["bar"], jump])
+            # #455: a tile's jump puts focus on its card's heading as the bar does, not left on the tile far above
+            js("scrollTo(0, 0)")
+            page.focus("#view-health .tile[data-card='#h-activity']")
+            page.keyboard.press("Enter")
+            settle(800)
+            tj455 = js("""(a => [a.tagName, a.closest('.card')?.id, a.textContent, (r => r.top >= 0 && r.bottom <= innerHeight)(a.getBoundingClientRect())])(document.activeElement)""")
+            check("…Enter on a tile leaves focus on its card's heading, in sight (#455)", tj455 == ["H3", "h-activity", "Steps and workouts", True], tj455)
             # a section with nothing in it is left out, and so is its tile and its place in the bar: here, no sleep
             gone = js("""(() => { const w = WATCH; WATCH = {...w, metrics: w.metrics.filter(m => !m.key.startsWith('sleep_'))}; H = null; renderHealth();
                 const r = [[...document.querySelectorAll('#view-health .h-sec')].map(s => s.id), [...document.querySelectorAll('#view-health .h-secbar button')].map(b => b.textContent),
@@ -5716,6 +5723,22 @@ def main():
                       [...document.querySelectorAll('#medToday .dose-today')].some(r => r.querySelector('.dose-med').textContent === w && /Taken · /.test(r.querySelector('.dose-got')?.textContent || ''))]; }""", cur["name"])
                 check("…Today: Taken logs a dose now, its row saying so, without the page loading again and focus kept in the row (#235, #271)",
                       logged275 == [True, "medications", True, True], logged275)
+                # #455: Taken on an "Any time" row (its buttons stay) keeps focus on Taken, as on the Overview, though the
+                # Overview hidden has a button of the same name: a redraw gives focus to the twin shown
+                any455 = page.locator("#medToday .dose-today", has=page.locator(".dose-quick")).filter(has=page.locator(".dose-slot", has_text=re.compile("^Any time$"))).first
+                if any455.count():
+                    n455, name455 = len(js("(DATA.doses || []).map(d => d.id)")), any455.locator(".dose-med").inner_text()
+                    any455.locator(".dose-quick button:text-is('Taken')").focus()
+                    page.keyboard.press("Enter")
+                    page.wait_for_function("n => (DATA.doses || []).length === n + 1", arg=n455, timeout=20000)
+                    settle(300)
+                    f455 = js("""w => { const a = document.activeElement, r = a.closest('#medToday .dose-today');
+                        return [a.textContent, !!r && r.querySelector('.dose-med').textContent === w && r.querySelector('.dose-slot').textContent,
+                          [...document.querySelectorAll('#ovDoses .dose-quick button')].some(b => b.getAttribute('aria-label') === a.getAttribute('aria-label'))]; }""", name455)
+                    check("…Taken on an “Any time” row keeps focus on Taken, a hidden Overview's button of the same name passed over (#455)",
+                          f455[:2] == ["Taken", "Any time"], f455)
+                else:
+                    check("…an “Any time” row on Today, to press Taken on (#455)", False, js("document.getElementById('medToday').innerText"))
                 js("""async ids => { for (const d of DATA.doses.filter(d => !ids.includes(d.id))) {
                     const r = await api(`profiles/${PROFILE.id}/medications/doses/${d.id}`, {method: 'DELETE'}); storePut('doses', await r.json()); } }""", ids275)
                 # the lane: a medication's bar says what it is, and opens it

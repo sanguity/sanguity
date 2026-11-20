@@ -1568,6 +1568,11 @@ Everything on `main` so far; it becomes the first tagged release.
   and in the Overview's Recent); the FHIR, C-CDA and Epic MyChart importers and the demo count its values, as the CSV,
   PDF and CareSpace ones did ("1 lab results" there is "1 lab result"), and the drawer counts a day imported before
   again once its results are in.
+- **Focus stays where it was on Medications and moves with Body's tiles** (#455): Taken on an "Any time" row of
+  Medications' Today put focus on the medication's name, where the Overview kept it on Taken: a part drawn again gave
+  focus to the first control of the same name in the page, and the Overview, hidden but still there, had one first.
+  It goes to the one shown now, on any tab. A Body and activity tile scrolled to its card but left focus on the tile,
+  far above on a phone, so the next Tab went back up; focus goes to the card's heading, as the section bar's does.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

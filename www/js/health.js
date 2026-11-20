@@ -226,8 +226,8 @@ function hBar() {
 function renderHealth() {
   const box = $("#view-health");
   for (const n of [...box.childNodes]) if (!WATCH || !H_BAR?.nodes.includes(n)) n.remove();   // all but the header (hBar)
-  // a card's heading row, under its section's: its title and Chart | Table (#60)
-  const head = (title, key) => el("div", {class: "list-hd"}, el("h3", {text: title}), el("span", {class: "spacer"}), viewSeg(key, title, renderHealth));
+  // a card's heading row, under its section's: its title (its tile focuses it, #455) and Chart | Table (#60)
+  const head = (title, key) => el("div", {class: "list-hd"}, el("h3", {tabindex: -1, text: title}), el("span", {class: "spacer"}), viewSeg(key, title, renderHealth));
   if (!WATCH) {   // #199: what would be here, and where it comes from (its owners and editors set the phone up)
     box.append(emptyState("Steps, sleep, heart rate and weight from a phone, watch or smart scale appear here once a phone sends them.",
       canEdit() ? {href: `sources.html?profile=${PROFILE.id}#phone`, text: "Connect a phone"} : null));
@@ -247,7 +247,8 @@ function renderHealth() {
   const prev = pts => inR(pts, a - len, a);
   const wAll = [...H.scale, ...H.clinic].sort((p, q) => p[0] - q[0]), wIn = inR(wAll, a, b);
   const tile = (label, val, unit, delta, href) => S[H_SEC_OF[href]].querySelector(".tiles").append(el("button", {class: "tile", "data-card": href,
-    onclick: () => $(href)?.scrollIntoView({behavior: smoothly(), block: "start"})},
+    onclick: () => { const c = $(href); if (!c) return;   // to its card, its heading focused, as the bar's section's is (#455)
+      c.scrollIntoView({behavior: smoothly(), block: "start"}); c.querySelector("h3")?.focus({preventScroll: true}); }},
     el("span", {class: "lbl", text: label}), el("span", {class: "val"}, val, el("small", {text: unit})), el("span", {class: "delta"}, keepDates(delta))));
   const chg = (cur, base, f, u = "") => cur != null && base != null ? `${cur >= base ? "▲ +" : "▼ −"}${f(Math.abs(cur - base))}${u}` : "";
   const latestW = wIn.length ? wIn[wIn.length - 1] : wAll[wAll.length - 1];
