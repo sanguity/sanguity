@@ -185,6 +185,18 @@ until every event is listed, the first new row focused each time (`check_timelin
 `tab_elements` counts a tab as first drawn; with the whole list shown the Timeline has more, which is what someone
 asks for by pressing Show more, and the months off screen cost no layout or paint.
 
+## Body and activity's tables (#460)
+
+A card's Table on Body and activity drew a row for every day of the period: on ten years Heart rate's had 3,493 rows,
+and with every card on Table the tab had 63,709 elements, a redraw taking about 2 s on a phone. Each table shows its
+latest 200 rows now, with **Show more** for the next 200, as Costs' list does. The test draws the tab again with every
+card on Table ("health, every table" in `tab_draw_ms` and `tab_elements`):
+
+| The big fixture, period **All**, every card on Table | Desktop | Phone (CPU ×4) |
+|---|---:|---:|
+| Elements | 10,260 | |
+| First draw | 124 ms | 549 ms |
+
 ## A record's details when it's opened (#217)
 
 Of the 3.5 MB the records page read, 1.4 MB was each record's details (a result's rows, a claim's lines, a message,

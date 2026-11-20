@@ -198,7 +198,7 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
       : "Log what happened, for your own record: taken, taken late or skipped."}),
     rows.length ? el("ul", {class: "doselist today" + (few ? " few" : "")}, ...rows.slice(from, from + n).map(r => r[1])) : null,
     el("p", {class: "dose-week", text: "This week: " + doseSaid(doseCounts(week))}),
-    aboutWords(`The times are those of the reminders set on each medication (its details, ${id === "ovDoses" ? "on the Medications tab" : "below"}). This keeps what is logged, nothing more. Doses logged in Apple Health's Medications come with the phone's data when Health Auto Export sends them. This isn't medical advice.`),   // (#447: on the Medications tab, they're below it)
+    aboutWords({name: "today's medication doses"}, `The times are those of the reminders set on each medication (its details, ${id === "ovDoses" ? "on the Medications tab" : "below"}). This keeps what is logged, nothing more. Doses logged in Apple Health's Medications come with the phone's data when Health Auto Export sends them. This isn't medical advice.`),   // (#447: on the Medications tab, they're below it; one name on both, #460)
     msg);
 }
 

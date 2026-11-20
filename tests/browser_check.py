@@ -1716,7 +1716,7 @@ def main():
             if (!b.checkVisibility()) continue;
             const h = b.parentElement.previousElementSibling, w = document.getElementById(b.getAttribute('aria-controls'));
             infos.push({id: b.id, name: b.getAttribute('aria-label'), tip: b.dataset.tip, words: !!w && w.textContent.trim().length > 20,
-                        about: w && w.dataset.title || (h && h.matches('h1, h2, h3, h4') ? own(h) : null)});
+                        about: w && (w.dataset.title || w.dataset.name) || (h && h.matches('h1, h2, h3, h4') ? own(h) : null)});
           }
           return {more, over, infos};
         }"""
@@ -1765,7 +1765,7 @@ def main():
         help_here("guide")
         check("help text (#280): no disclosure is labelled “More about this”, on any group of any page, any records tab or the guide", help_more == 0, help_more)
         check("…and no heading has more than one line of hint before its card's content, at 1400 px", help_seen and not help_over, help_over)
-        check("…the rest behind an ⓘ beside the heading, named “About” and the heading, its tip the same (a card alone: beside the h1)", not help_names, help_names)
+        check("…the rest behind an ⓘ beside the heading, named “About” and the heading (or the name it’s given, #460), its tip the same (a card alone: beside the h1)", not help_names, help_names)
         n_info = sum(len(v) for v in help_seen.values())
         check(f"…each ⓘ ({n_info}) opens under it by Enter, focus kept on it, and Escape closes it, focus on it still", n_info >= 30 and not help_keys, help_keys)
         check("…on the pages that have background to give", all(help_seen.get(w) for w in (
@@ -1873,10 +1873,15 @@ def main():
         # (#447) the words behind them say where things are from where they're read: Today's on Medications says below, the
         # Overview's says the Medications tab; the calendar feed's names that tab
         WORDS447 = "s => [...document.querySelectorAll(s)].map(w => w.textContent).join(' ')"
+        TODAY460 = "s => document.querySelector(s + ' .info > button')?.getAttribute('aria-label')"
         strict.evaluate("switchTab('medications')")
         on_meds = strict.evaluate(WORDS447, "#medToday .about-words")
+        today460 = [strict.evaluate(TODAY460, "#medToday")]
         strict.evaluate("switchTab('overview')")
         on_ov = strict.evaluate(WORDS447, "#ovDoses .about-words")
+        today460.append(strict.evaluate(TODAY460, "#ovDoses"))
+        check("…Today's ⓘ is named the same on Medications and the Overview, “About today's medication doses”, under either heading (#460)",
+              today460 == ["About today's medication doses"] * 2, today460)
         strict.goto(base + "/sharing.html?profile=1#calendar")
         strict.wait_for_selector("#calendar:not([hidden])", timeout=10000)
         strict.wait_for_timeout(300)
@@ -2365,6 +2370,19 @@ def main():
                 sinceOnTiles: since ? [...v.querySelectorAll('.tiles:not(.ov-read) .tile .delta')].filter(d => d.textContent.includes('since ' + since)).length : -1}; }""")
             check("…Key labs: no “In range” on the tiles, the changes' date said once in the header and not again on a tile",
                   labs274["ok"] == 0 and labs274["inRange"] == 0 and labs274["since"] and labs274["sinceOnTiles"] == 0, labs274)
+            # #460: one line of hint under Key labs at 390 px, its dates; the rest behind its ⓘ, with no "click"
+            page.set_viewport_size({"width": 390, "height": 844})
+            settle(300)
+            kl460 = js(r"""() => { const h = document.querySelector('#view-overview .ov-h:has(+ #ovOut)'), p = h.querySelector('.hint'), tops = [];
+              const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+              for (let n; (n = w.nextNode());) for (const m of n.data.matchAll(/\S+/g)) { const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+                for (const x of r.getClientRects()) if (x.width > 0 && !tops.some(t => Math.abs(t - x.top) < 4)) tops.push(x.top); }
+              const b = h.querySelector('.info > button'), words = b && document.getElementById(b.getAttribute('aria-controls')).textContent;
+              return [tops.length, p.textContent, b?.getAttribute('aria-label'), !!words && /Sparklines/.test(words) && !/click/i.test(words + p.textContent)]; }""")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(200)
+            check("…Key labs has one line of hint at 390 px, its latest draw and the changes' date, the rest behind its ⓘ (#460)",
+                  kl460[0] == 1 and kl460[1].startswith("Latest draw ") and " · changes since " in kl460[1] and kl460[2:] == ["About Key labs", True], kl460)
             check("…every key lab outside its range at its latest result is in the header's list, an old one “not repeated since”",
                   all(any(r[0] == n and (not old or r[1].endswith("not repeated since")) for r in labs274["rows"]) for n, old in labs274["flagged"])
                   and (labs274["rows"] and labs274["say"].endswith(f"({len(labs274['rows'])}):") if labs274["rows"] else labs274["say"].startswith("Nothing outside")), labs274)
@@ -2687,6 +2705,20 @@ def main():
                 settle(200)
             ht = js("['#h-body', '#h-glucose', '#h-sleep', '#h-activity', '#h-heart', '#h-bp', '#h-temp', '#h-oxygen', '#h-resp', '#h-vo2'].map(k => document.querySelector(k + ' svg') ? -1 : document.querySelectorAll(k + ' table.data tbody tr').length)")
             check("…Table shows each card's values as a table, a row per day or week", all(n > 0 for n in ht), ht)
+            # #460: a table shows its latest rows a page at a time (200; 3 here, for the demo), Show more adding the next,
+            # the first of them focused
+            pg460 = "() => [document.querySelectorAll('#h-heart tbody tr').length, document.querySelector('#h-heart .h-more')?.textContent || null, document.querySelector('#h-heart tbody td')?.textContent]"
+            js("H_PAGE = 3; renderHealth()")
+            settle(200)
+            got460 = [js(pg460)]
+            page.click("#h-heart .h-more")
+            settle(200)
+            got460 += [js(pg460), js("document.activeElement === document.querySelector('#h-heart tbody').rows[3]")]
+            js("H_PAGE = 200; for (const k in hShown) delete hShown[k]; renderHealth()")
+            settle(200)
+            check("…each table its latest rows a page at a time, Show more adding the next with the first of them focused (#460)",
+                  got460[0][:2] == [3, "Show 3 more"] and got460[1][0] == 6 and got460[1][2] == got460[0][2] and got460[2]
+                  and js(pg460)[0] == ht[4], [got460, ht[4]])
             # Costs: both charts, the claims by month under Claims and the running totals under What you paid (#278)
             js("state.tables.clear(); costState.view = 'claims'; switchTab('costs')")
             settle(500)

@@ -28,11 +28,12 @@ const pressable = fn => ({role: "button", tabindex: 0, onclick: fn,
 /* the background to a part of a page (#280): how it works, where its numbers come from, what stays private. Behind
    the ⓘ beside its heading (aboutWire, below), so a heading has one line of hint under it at most. Put where the
    words are wanted, after the heading and its hint; strings become paragraphs, nulls are left out; a first {title}
-   names it ("About the charts") and puts its ⓘ there, where there's no heading to put it beside. Pages write the same
-   <div class="about-words" hidden> by hand (data-title for a title). */
+   names it ("About the charts") and puts its ⓘ there, where there's no heading to put it beside; a {name} names it
+   alone, its ⓘ still beside the heading (Today's doses, under headings that differ by tab, #460). Pages write the
+   same <div class="about-words" hidden> by hand (data-title for a title). */
 function aboutWords(...kids) {
   const o = kids[0] && !kids[0].nodeType && typeof kids[0] === "object" && !Array.isArray(kids[0]) ? kids.shift() : {};
-  const w = el("div", {class: "about-words", hidden: "", "data-title": o.title, id: o.id},
+  const w = el("div", {class: "about-words", hidden: "", "data-title": o.title, "data-name": o.name, id: o.id},
     ...kids.flat().filter(k => k != null && k !== "").map(k => typeof k === "string" ? el("p", {text: k}) : k));
   aboutWire.later.add(w);
   if (aboutWire.later.size === 1) { queueMicrotask(aboutWire); requestAnimationFrame(() => aboutWire()); }
@@ -585,7 +586,7 @@ function aboutWire() {
     // the heading's own words: not its tags ("default", "not saved") or a count ("Journal (3)"); with none, what the
     // part it's in is named by (the drawer: its title), and it's put where it is
     const named = !h && !w.dataset.title && document.getElementById((w.closest("[aria-labelledby]")?.getAttribute("aria-labelledby") || "").split(" ")[0]);
-    const title = w.dataset.title || (h ? ([...h.childNodes].filter(c => c.nodeType === 3).map(c => c.data).join("").trim() || h.textContent.trim()).replace(/\s*\(\d[\d,]*\)$/, "")
+    const title = w.dataset.title || w.dataset.name || (h ? ([...h.childNodes].filter(c => c.nodeType === 3).map(c => c.data).join("").trim() || h.textContent.trim()).replace(/\s*\(\d[\d,]*\)$/, "")
       : named?.textContent.trim() || "this part");
     const name = "About " + title, id = w.id || aboutId(title);
     const btn = el("button", {class: "btn quiet small", type: "button", id: id + "Btn", "aria-label": name, "data-tip": name, "aria-expanded": false, "aria-controls": id}, icon("info"));
