@@ -14042,7 +14042,8 @@ def main():
             page.click("#fSave")
             page.wait_for_function("document.getElementById('sourceList').textContent.includes('Fake Epic sandbox')", timeout=10000)
             page.locator("#sourceList .prof", has_text="Fake Epic sandbox").get_by_role("button", name="Test this connection").click()
-            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Discovery works') || document.getElementById('sourceList').textContent.includes('tested ')", timeout=10000)
+            page.wait_for_function("[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake Epic sandbox') && "
+                                   "(p.textContent.includes('Discovery works') || p.textContent.includes('tested ') && !p.textContent.includes('not tested')))", timeout=10000)   # its test done, not "not tested yet"
             page.goto(base + "/connect.html")   # its old address: Sources → Portals and health plans (#166)
             page.wait_for_url("**/sources.html#portals", timeout=10000)
             page.wait_for_selector("#adminNote:not([hidden])", timeout=10000)
@@ -14342,7 +14343,7 @@ def main():
             page.wait_for_function("document.getElementById('sourceList').textContent.includes('Fake health plan')", timeout=10000)
             page.locator("#sourceList .prof", has_text="Fake health plan").get_by_role("button", name="Test this connection").click()
             page.wait_for_function("[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake health plan') && "
-                                   "(p.textContent.includes('Discovery works') || p.textContent.includes('tested ')))", timeout=10000)
+                                   "(p.textContent.includes('Discovery works') || p.textContent.includes('tested ') && !p.textContent.includes('not tested')))", timeout=10000)
             page.goto(base + "/sources.html#portals")
             pick_profile(page, label="Second person (owner)")
             page.wait_for_selector("#sourceButtons button:has-text('Fake health plan')", timeout=10000)
