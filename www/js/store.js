@@ -71,8 +71,6 @@ function storeRecords(data) {
   }
   EV = [...DATA.events];
   STAYS = DATA.events.filter(e => e.k === "stay");
-  // let search hit lab-day events through their child results' names
-  for (const e of DATA.events) if (e.k === "lab") { const d = DATA.details[e.id]; if (d) e._q += " " + d.ids.map(i => (byId.get(i)?.title || "")).join(" ").toLowerCase(); }
   for (const e of DATA.events) if (e.k === "lab" && e.sub) e.sub = labDaySub(e);   // its panels as Labs names them (util.js, #451)
   for (const s of DATA.labs) for (const p of s.pts) p.ts = zParse(p[0]);
   // #44: results with no range of their own (ranges.js). Before the units, since an override is stated in the
@@ -80,6 +78,7 @@ function storeRecords(data) {
   RANGES_USED = applyRangeOverrides(DATA.labs, rangeConfig(CFG));   // with About this person's birth date and sex (#194)
   applyUnits(DATA.labs); applyUnitsToRows(DATA.labs, DATA.details);   // this person's units, exact conversions only (units.js, #41)
   SERIES = joinSeries(DATA.labs);   // one chart per test, whichever imports brought it (same.js)
+  labDayWords();   // a lab day found by its tests' names (#459)
   STEPS = [];
   if (WATCH) storeWatch();
   journalLoad();   // the journal's entries join EV as events of kind "journal" (journal.js)
@@ -91,6 +90,20 @@ function storeRecords(data) {
   YEARS = null; H = null; G = undefined; DETAILS_GOT.clear(); DETAILS_MISSED.clear();
   if (booted && state.preset !== "custom") setPeriod(state.preset);   // a period ending at the latest record
   storeChanged(...STORE_PARTS);
+}
+/* a lab day's search words (#459): besides its title, panels and kind, its reports' titles (the panels again, as the
+   records spell them) and its tests' names, as the records and Labs name them ("ferritin" finds the draws with a
+   Ferritin result, not only "iron studies"). Its tests are SERIES' points on its day, as the Timeline's line counts
+   them (timeline.js tlLabValues), a visit's Vitals aside */
+function labDayWords() {
+  const tests = new Map();   // "YYYY-MM-DD" -> the names of the tests with a result that day
+  for (const s of SERIES) if (!s.watch && s.panel !== "Vitals") for (const p of s.pts) {
+    const d = isoDay(p.ts); (tests.get(d) || tests.set(d, new Set()).get(d)).add(s.name);
+  }
+  for (const e of DATA.events) if (e.k === "lab") {
+    const d = DATA.details[e.id], names = [...(tests.get(isoDay(e.ts)) || [])];
+    e._q += " " + [...(d ? d.ids.map(i => byId.get(i)?.title || "") : []), ...names, ...names.map(nice)].join(" ").toLowerCase();
+  }
 }
 /* the records' span, the watch's last day included */
 function storeSpan() {
