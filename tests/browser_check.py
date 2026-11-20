@@ -10010,8 +10010,11 @@ def main():
             page.wait_for_selector("#sec-units input[name=units-height][value=ftin]", timeout=10000)
             lv_to = {"weight": "lb" if un_was["weight"] != "lb" else "kg", "height": "ftin" if un_was["height"] != "ftin" else "cm"}
             from server import settings as lv_settings
-            lv_merged = lv_settings.merged
+            lv_merged, lv_put, lv_puts = lv_settings.merged, lv_settings.put, []
             lv_settings.merged = lambda *a, **k: (time.sleep(1.5), lv_merged(*a, **k))[1]
+            # (#457: the units' PUTs that reach the server counted: the lb one failing in the page as it's left frees no
+            # queue to send ft/in again after saveLeft's)
+            lv_settings.put = lambda db, key, *a, **k: (lv_puts.append(key) if key == "units" else None, lv_put(db, key, *a, **k))[1]
             try:
                 page.click(f"#sec-units label:has(#units-weight-{lv_to['weight']})")
                 page.click(f"#sec-units label:has(#units-height-{lv_to['height']})")
@@ -10028,7 +10031,34 @@ def main():
                 settle(250)
             check("…two units picked in a row (lb, then ft/in), the page left at once: nothing asked, and both saved on the server (#419)",
                   lv_way == [False, 0, False, False, False] and {k: lv_got[k] for k in lv_to} == lv_to, [lv_way, lv_got, lv_to])
+            settle(2000)   # (time for a third to come)
+            lv_settings.put = lv_put
+            check("…exactly two PUTs of them reach the server, the page left as the first was on its way (#457)", len(lv_puts) == 2, lv_puts)
             check("…(the units put back as they were, again)", js(api_put, ["settings/user/units", un_was]) == 200)
+            # #457: the account's theme System, the browser dark, none of this browser's own: Light picked and the page left
+            # at once, its save on its way (the server slow): it isn't put back in this browser, so the next page, Sharing,
+            # which reads the theme kept here, is light
+            th457 = [js(api_get, "settings/user")["theme"], js("localStorage.getItem('ht-theme')")]
+            js("localStorage.removeItem('ht-theme')")
+            check("…(the account's theme set to System)", js(api_put, ["settings/user/theme", "system"]) == 200)
+            page.emulate_media(color_scheme="dark")
+            page.goto(base + "/settings.html?profile=1#display")
+            page.wait_for_function("!!document.querySelector('#sec-appearance input[value=light]')", timeout=10000)
+            lv_settings.merged = lambda *a, **k: (time.sleep(1.5), lv_merged(*a, **k))[1]
+            try:
+                page.click("#sec-appearance label:has(#theme-light)")
+                page.goto(base + "/sharing.html?profile=1")
+            finally:
+                lv_settings.merged = lv_merged
+            page.wait_for_load_state("load")
+            got457 = [js("document.documentElement.dataset.theme || null"), js("localStorage.getItem('ht-theme-default')"), js(api_get, "settings/user")["theme"]]
+            check("…Light picked and the page left at once, its save on its way: the next page (Sharing) is light, as the server has it (#457)",
+                  got457 == ["light", "light", "light"], got457)
+            js(api_put, ["settings/user/theme", th457[0]])
+            js("([t, own]) => { if (own) localStorage.setItem('ht-theme', own); applyTheme(t); }", th457)
+            page.emulate_media(color_scheme=None)
+            page.goto(base + "/settings.html?profile=1#display")   # (back where the checks after it start)
+            page.wait_for_selector("#sec-units input[name=units-height][value=ftin]", timeout=10000)
             # #425: Units is the person's own, not the profile's: lb then ft/in (the second waiting for the first's answer,
             # each answered 1.5 s late), then another profile picked at once: both reach the server, and Settings shows them
             # for the other profile once they're saved

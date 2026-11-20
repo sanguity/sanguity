@@ -624,21 +624,29 @@ function sectionCard(sec, opts = {}) {
    still waiting behind another's answer as the page is left is sent then (saveLeft, #419). Another profile picked
    meanwhile (#425): it's still sent, to the profile it was made on (path), which for the person's own (Units) is the
    same for every profile; the other profile is drawn once it's answered (pick, below), and one of the first
-   profile's own is said with its name. SAVING: the saves on their way. */
+   profile's own is said with its name. SAVING: the saves on their way. Once the page is being left (SET_LEAVING,
+   #457), one failing does nothing here: its request was sent with keepalive and still reaches the server, though its
+   answer doesn't come back to the page, which saw it as refused, put the theme back and let the next one go out
+   again after saveLeft's; and no save queued behind it is sent, saveLeft having sent the latest. */
 const SAVING = new Set();
+let SET_LEAVING = false;
 function saveNow(it, card) {
   const pid = PID, base = setBase(), sec = card.sgSec, path = `${base}/${encodeURIComponent(it.st.key)}`;
   let mine = null;   // this browser's own theme, put back by the Undo
   if (it.st.kind === "theme") { try { mine = localStorage.getItem("ht-theme"); localStorage.removeItem("ht-theme"); } catch (e) {} applyTheme(it.value()); }
   it.path = path;
   const q = it.queue = (it.queue || Promise.resolve()).then(async () => {
-    if (!it.dirty()) return;
+    if (SET_LEAVING || !it.dirty()) return;
     const value = it.value(), was = [{key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from, wrote: {value}}];
     let now = it;
     const live = () => { const x = SET_ITEMS[it.st.key]; now = x && x !== it && x.node.isConnected ? x : it; card = now.node.closest(".card") || card; };
     it.sending = value;
     try { await call(path, "PUT", {value}, {keepalive: true}); }
-    catch (e) { live(); sayIn(now.msg, `Not saved: ${e.message}`, true); now.refuse(); if (it.st.kind === "theme") applyTheme(it.st.value); return; }
+    catch (e) {
+      // (a task later: the request torn down as the page goes fails before pagehide has been heard by every listener)
+      await new Promise(r => setTimeout(r));
+      if (SET_LEAVING) return;
+      live(); sayIn(now.msg, `Not saved: ${e.message}`, true); now.refuse(); if (it.st.kind === "theme") applyTheme(it.st.value); return; }
     finally { it.sending = undefined; }
     live(); now.saved(value); card.sgChanged(); card.sgTidy();
     if (it.st.kind === "timezone" || it.st.kind === "dateformat") useDates(SET_ITEMS["dates.timeZone"]?.st.value, SET_ITEMS["dates.format"]?.st.value);
@@ -662,12 +670,14 @@ function saveNow(it, card) {
    sent then, with keepalive, so it isn't lost. One the server refused (held) is a change not saved, asked about
    before leaving (sidebar.js); one on its way already with this value isn't sent again. */
 function saveLeft() {
+  SET_LEAVING = true;
   for (const it of Object.values(SET_ITEMS)) {
     if (!it.instant || !it.path || it.held || !it.dirty() || (it.sending !== undefined && same(it.sending, it.value()))) continue;
     api(it.path, {method: "PUT", body: JSON.stringify({value: it.value()}), keepalive: true}).catch(() => {});
   }
 }
 addEventListener("pagehide", saveLeft);
+addEventListener("pageshow", e => { if (e.persisted) SET_LEAVING = false; });   // back from the back/forward cache
 
 /* the bar's Save (sidebar.js): every change in these sections, in turn; the first the server refuses stops it, said
    there and in the bar (msg), the ones before it saved. Done: a toast says what, with an Undo, and focus, if it was
