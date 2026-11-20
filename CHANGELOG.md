@@ -1702,6 +1702,11 @@ Everything on `main` so far; it becomes the first tagged release.
   left, a row's bars stopped comparing with the next (Vision's $6,963 shorter than Procedures' $6,961); every row's bars
   run the row's whole width, with the note under them. On ten years the heatmap's latest month was still left
   unnamed when it fell close to the label before it; it's always named now, the one before it dropped.
+- **The heatmap's axis labels don't meet, and What you paid's notes keep their line** (#485): in a period with one draw
+  day the latest month was pulled back over "Draw date" ("Draw dateOct 26"); it stays at the grid's start, the axis
+  as wide as it needs. Labels are spaced by their measured width too, so French ones ("sept. 25oct. 26") don't meet.
+  What you paid's What it was for and Who was paid put each note under its bar, as the claims' lists do, so it no
+  longer wraps on a phone.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
